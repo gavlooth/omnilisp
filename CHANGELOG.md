@@ -4,6 +4,43 @@ All notable changes to Purple Go are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-12-31
+
+### Added
+- **Pattern Matching** (`pkg/eval/pattern.go`)
+  - `match` expression: `(match expr (pat body) ...)`
+  - Wildcard patterns: `_`
+  - Variable patterns: `x`
+  - Literal patterns: `42`
+  - Cons patterns: `(cons a b)`
+  - Or patterns: `(or pat1 pat2)`
+  - As patterns: `(@ x pat)`
+  - List patterns: `(list a b c)`
+  - Guards: `:when condition`
+
+- **Recursive Lambda**
+  - `(lambda self (x) body)` for self-reference
+  - New `TRecLambda` tag in AST
+  - Cleaner recursion without `letrec`
+
+- **Error Handling**
+  - `(error msg)` - raise error
+  - `(try expr handler)` - catch errors
+  - `(assert cond msg)` - conditional error
+  - New `TError` tag in AST
+
+- **List Operations (Higher-Order)**
+  - `map`, `filter`, `fold`, `foldl`
+  - `length`, `append`, `reverse`
+  - `apply`, `compose`, `flip`
+
+- **Sequencing**
+  - `(do e1 e2 ... en)` - returns last expression
+
+### Changed
+- Extended AST with `TRecLambda` and `TError` tags
+- Added `SelfName` field to Value for recursive lambdas
+
 ## [0.1.1] - 2025-12-31
 
 ### Added

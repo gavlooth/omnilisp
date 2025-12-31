@@ -22,22 +22,22 @@ Comparison between our Go implementation and the original Purple at `/home/heefo
 | Strings (as char lists) | ❌ | Original represents strings as cons lists |
 | Closures | ✅ | `TLambda` |
 | Code values | ✅ | `TCode` |
-| Error values | ❌ | `#Err{msg}` in original |
+| Error values | ✅ | `TError` with message |
 
 ### Special Forms
 | Feature | Status | Notes |
 |---------|--------|-------|
 | `lambda` | ✅ | Basic lambda |
-| `lambda self` (recursive) | ❌ | `(lambda self (x) body)` for self-reference |
+| `lambda self` (recursive) | ✅ | `(lambda self (x) body)` for self-reference |
 | `let` | ✅ | Single binding |
 | `letrec` | ✅ | Recursive bindings |
 | `if` | ✅ | Conditional |
 | `quote` | ✅ | Quote expression |
 | `and` / `or` | ✅ | Short-circuit logic |
-| `do` (sequencing) | ❌ | `(do e1 e2 ... en)` returns last |
-| `match` | ❌ | Full pattern matching |
+| `do` (sequencing) | ✅ | `(do e1 e2 ... en)` returns last |
+| `match` | ✅ | Full pattern matching |
 
-### Pattern Matching (❌ All Missing)
+### Pattern Matching (✅ Implemented)
 | Feature | Description |
 |---------|-------------|
 | Wildcard `_` | Matches anything, binds nothing |
@@ -109,16 +109,16 @@ Comparison between our Go implementation and the original Purple at `/home/heefo
 | `car` / `fst` | ✅ | |
 | `cdr` / `snd` | ✅ | |
 | `null?` | ✅ | |
-| `map` | ❌ | Higher-order |
-| `filter` | ❌ | Higher-order |
-| `fold` / `foldr` | ❌ | Right fold |
-| `foldl` | ❌ | Left fold |
-| `length` | ❌ | |
-| `append` | ❌ | |
-| `reverse` | ❌ | |
-| `apply` | ❌ | Apply fn to arg list |
+| `map` | ✅ | Higher-order |
+| `filter` | ✅ | Higher-order |
+| `fold` / `foldr` | ✅ | Right fold |
+| `foldl` | ✅ | Left fold |
+| `length` | ✅ | |
+| `append` | ✅ | |
+| `reverse` | ✅ | |
+| `apply` | ✅ | Apply fn to arg list |
 
-### Function Combinators (❌ All Missing)
+### Function Combinators (✅ Implemented)
 | Feature | Description |
 |---------|-------------|
 | `compose` | `(compose f g)` → f ∘ g |
@@ -139,14 +139,14 @@ Comparison between our Go implementation and the original Purple at `/home/heefo
 
 ---
 
-## Error Handling (❌ All Missing)
+## Error Handling (✅ Implemented)
 
-| Feature | Description |
-|---------|-------------|
-| `error` | Raise error with message |
-| `try` | Catch errors with handler |
-| `assert` | Conditional error |
-| `default-handler` | Delegate to default |
+| Feature | Status | Description |
+|---------|--------|-------------|
+| `error` | ✅ | Raise error with message |
+| `try` | ✅ | Catch errors with handler |
+| `assert` | ✅ | Conditional error |
+| `default-handler` | ❌ | Delegate to default |
 
 ---
 
