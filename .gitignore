@@ -1,0 +1,11 @@
+# Binary
+purple_go
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Test artifacts
+*.test
+coverage.out

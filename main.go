@@ -11,6 +11,7 @@ import (
 	"purple_go/pkg/ast"
 	"purple_go/pkg/codegen"
 	"purple_go/pkg/eval"
+	"purple_go/pkg/jit"
 	"purple_go/pkg/memory"
 	"purple_go/pkg/parser"
 )
@@ -141,8 +142,18 @@ func compileToC(exprs []*ast.Value) {
 }
 
 func runREPL() {
-	fmt.Println("Purple Go REPL - ASAP Memory Management")
-	fmt.Println("Type expressions to evaluate, 'quit' to exit, 'compile' to toggle compile mode")
+	fmt.Println("Purple Go REPL - Tower of Interpreters with ASAP Memory Management")
+	fmt.Println()
+
+	// Check JIT availability
+	j := jit.Get()
+	if j.IsAvailable() {
+		fmt.Println("  JIT: enabled (gcc found)")
+	} else {
+		fmt.Println("  JIT: disabled (gcc not found)")
+	}
+	fmt.Println()
+	fmt.Println("Type 'help' for commands, 'quit' to exit")
 	fmt.Println()
 
 	env := eval.DefaultEnv()
@@ -178,17 +189,11 @@ func runREPL() {
 				fmt.Println("Compile mode OFF - expressions will be interpreted")
 			}
 			continue
+		case "macros":
+			fmt.Println("Registered macros: (use defmacro to define, mcall to call)")
+			continue
 		case "help":
-			fmt.Println("Commands:")
-			fmt.Println("  quit     - exit the REPL")
-			fmt.Println("  compile  - toggle compile mode")
-			fmt.Println("  runtime  - print C runtime")
-			fmt.Println("  help     - show this help")
-			fmt.Println()
-			fmt.Println("Examples:")
-			fmt.Println("  (+ 1 2)            - add numbers")
-			fmt.Println("  (lift 42)          - lift to code")
-			fmt.Println("  (let ((x 10)) x)   - let binding")
+			printREPLHelp()
 			continue
 		case "runtime":
 			registry := codegen.NewTypeRegistry()
@@ -223,7 +228,9 @@ func runREPL() {
 
 		result := eval.Eval(expr, menv)
 		if result != nil {
-			if ast.IsCode(result) {
+			if ast.IsError(result) {
+				fmt.Printf("Error: %s\n", result.Str)
+			} else if ast.IsCode(result) {
 				if compiling {
 					fmt.Println("Generated C:")
 					fmt.Println(result.Str)
@@ -235,4 +242,48 @@ func runREPL() {
 			}
 		}
 	}
+}
+
+func printREPLHelp() {
+	fmt.Println("Commands:")
+	fmt.Println("  quit     - exit the REPL")
+	fmt.Println("  compile  - toggle compile mode (generate C code)")
+	fmt.Println("  macros   - list defined macros")
+	fmt.Println("  runtime  - print C runtime")
+	fmt.Println("  help     - show this help")
+	fmt.Println()
+	fmt.Println("Special Forms:")
+	fmt.Println("  (lambda (x) body)       - create function")
+	fmt.Println("  (lambda self (x) body)  - recursive function")
+	fmt.Println("  (let ((x val)) body)    - local binding")
+	fmt.Println("  (letrec ((f fn)) body)  - recursive binding")
+	fmt.Println("  (if cond then else)     - conditional")
+	fmt.Println("  (match val (pat body)...) - pattern matching")
+	fmt.Println("  (quote x) or 'x         - quote expression")
+	fmt.Println("  (quasiquote x)          - quasiquote with ,unquote")
+	fmt.Println()
+	fmt.Println("Staging (Tower of Interpreters):")
+	fmt.Println("  (lift val)              - lift value to code")
+	fmt.Println("  (run code)              - execute code (JIT if available)")
+	fmt.Println("  (EM expr)               - evaluate at parent meta-level")
+	fmt.Println("  (shift n expr)          - go up n levels")
+	fmt.Println("  (meta-level)            - get current tower level")
+	fmt.Println("  (clambda (x) body)      - compile lambda")
+	fmt.Println()
+	fmt.Println("Handler Customization:")
+	fmt.Println("  (get-meta 'name)        - get handler by name")
+	fmt.Println("  (set-meta! 'name fn)    - install handler")
+	fmt.Println("  (with-handlers ((name fn)) body)")
+	fmt.Println("  (default-handler 'name arg)")
+	fmt.Println()
+	fmt.Println("Macros:")
+	fmt.Println("  (defmacro name (params) body scope)")
+	fmt.Println("  (mcall macro-name args...)")
+	fmt.Println("  (macroexpand expr)      - expand without eval")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  (+ 1 2)                 => 3")
+	fmt.Println("  (map (lambda (x) (* x 2)) '(1 2 3)) => (2 4 6)")
+	fmt.Println("  (lift 42)               => Code: mk_int(42)")
+	fmt.Println("  (defmacro inc (x) `(+ 1 ,x) (mcall inc 5)) => 6")
 }
