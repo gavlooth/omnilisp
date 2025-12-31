@@ -357,6 +357,95 @@ void clear_marks_%s(Obj* x) {
 `)
 }
 
+// GenerateArenaRuntime generates arena allocation runtime
+func (g *RuntimeGenerator) GenerateArenaRuntime() {
+	g.emit(`/* Arena Allocator (Bulk Allocation/Deallocation) */
+/* For cyclic data that doesn't escape function scope */
+
+#define ARENA_BLOCK_SIZE 4096
+
+typedef struct ArenaBlock {
+    char data[ARENA_BLOCK_SIZE];
+    size_t used;
+    struct ArenaBlock* next;
+} ArenaBlock;
+
+typedef struct Arena {
+    ArenaBlock* head;
+    ArenaBlock* current;
+} Arena;
+
+static ArenaBlock* arena_new_block(void) {
+    ArenaBlock* block = malloc(sizeof(ArenaBlock));
+    if (!block) return NULL;
+    block->used = 0;
+    block->next = NULL;
+    return block;
+}
+
+Arena* arena_create(void) {
+    Arena* arena = malloc(sizeof(Arena));
+    if (!arena) return NULL;
+    arena->head = arena_new_block();
+    arena->current = arena->head;
+    return arena;
+}
+
+void arena_destroy(Arena* arena) {
+    if (!arena) return;
+    ArenaBlock* block = arena->head;
+    while (block) {
+        ArenaBlock* next = block->next;
+        free(block);
+        block = next;
+    }
+    free(arena);
+}
+
+static void* arena_alloc(Arena* arena, size_t size) {
+    if (!arena || !arena->current) return NULL;
+
+    /* Align to 8 bytes */
+    size = (size + 7) & ~7;
+
+    if (arena->current->used + size > ARENA_BLOCK_SIZE) {
+        ArenaBlock* new_block = arena_new_block();
+        if (!new_block) return NULL;
+        arena->current->next = new_block;
+        arena->current = new_block;
+    }
+
+    void* ptr = &arena->current->data[arena->current->used];
+    arena->current->used += size;
+    return ptr;
+}
+
+Obj* arena_mk_int(Arena* arena, long i) {
+    Obj* x = arena_alloc(arena, sizeof(Obj));
+    if (!x) return NULL;
+    x->mark = -2;  /* Special mark for arena-allocated */
+    x->scc_id = -1;
+    x->is_pair = 0;
+    x->scan_tag = 0;
+    x->i = i;
+    return x;
+}
+
+Obj* arena_mk_pair(Arena* arena, Obj* a, Obj* b) {
+    Obj* x = arena_alloc(arena, sizeof(Obj));
+    if (!x) return NULL;
+    x->mark = -2;  /* Special mark for arena-allocated */
+    x->scc_id = -1;
+    x->is_pair = 1;
+    x->scan_tag = 0;
+    x->a = a;
+    x->b = b;
+    return x;
+}
+
+`)
+}
+
 // GeneratePerceusRuntime generates Perceus reuse analysis runtime
 func (g *RuntimeGenerator) GeneratePerceusRuntime() {
 	g.emit(`/* Perceus Reuse Analysis Runtime */
@@ -407,6 +496,7 @@ func (g *RuntimeGenerator) GenerateAll() {
 	g.GenerateWeakRefs()
 	g.GenerateConstructors()
 	g.GenerateMemoryManagement()
+	g.GenerateArenaRuntime()
 	g.GenerateArithmetic()
 	g.GenerateComparison()
 	g.GeneratePerceusRuntime()

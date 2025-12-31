@@ -15,8 +15,10 @@ type CodeGenerator struct {
 	registry     *TypeRegistry
 	escapeCtx    *analysis.AnalysisContext
 	shapeCtx     *analysis.ShapeContext
+	arenaGen     *ArenaCodeGenerator
 	tempCounter  int
 	indentLevel  int
+	useArenaFallback bool
 }
 
 // NewCodeGenerator creates a new code generator
@@ -24,11 +26,18 @@ func NewCodeGenerator(w io.Writer) *CodeGenerator {
 	registry := NewTypeRegistry()
 	registry.InitDefaultTypes()
 	return &CodeGenerator{
-		w:         w,
-		registry:  registry,
-		escapeCtx: analysis.NewAnalysisContext(),
-		shapeCtx:  analysis.NewShapeContext(),
+		w:                w,
+		registry:         registry,
+		escapeCtx:        analysis.NewAnalysisContext(),
+		shapeCtx:         analysis.NewShapeContext(),
+		arenaGen:         NewArenaCodeGenerator(),
+		useArenaFallback: true, // Enable arena fallback for CYCLIC/UNKNOWN shapes
 	}
+}
+
+// SetArenaFallback enables or disables arena fallback for cyclic shapes
+func (g *CodeGenerator) SetArenaFallback(enabled bool) {
+	g.useArenaFallback = enabled
 }
 
 func (g *CodeGenerator) emit(format string, args ...interface{}) {
@@ -96,35 +105,60 @@ func (g *CodeGenerator) GenerateLet(bindings []struct {
 	sym *ast.Value
 	val *ast.Value
 }, body *ast.Value) string {
-	var sb strings.Builder
-
 	// Analyze the expression for escape and shape
+	needsArena := false
 	for _, bi := range bindings {
 		g.escapeCtx.AddVar(bi.sym.Str)
 		g.shapeCtx.AnalyzeShapes(bi.val)
 		g.shapeCtx.AddShape(bi.sym.Str, g.shapeCtx.ResultShape)
+
+		// Check if arena fallback is needed
+		if g.useArenaFallback {
+			shape := g.shapeCtx.ResultShape
+			if shape == analysis.ShapeCyclic || shape == analysis.ShapeUnknown {
+				needsArena = true
+			}
+		}
 	}
 
-	sb.WriteString("({\n")
+	// Convert bindings for arena generator
+	arenaBindings := make([]struct {
+		sym *ast.Value
+		val string
+	}, len(bindings))
 
-	// Generate declarations
-	for _, bi := range bindings {
+	for i, bi := range bindings {
 		valStr := ""
 		if ast.IsCode(bi.val) {
 			valStr = bi.val.Str
 		} else {
 			valStr = g.ValueToCExpr(bi.val)
 		}
-		sb.WriteString(fmt.Sprintf("    Obj* %s = %s;\n", bi.sym.Str, valStr))
+		arenaBindings[i].sym = bi.sym
+		arenaBindings[i].val = valStr
 	}
 
-	// Generate body
 	bodyStr := ""
 	if ast.IsCode(body) {
 		bodyStr = body.Str
 	} else {
 		bodyStr = g.ValueToCExpr(body)
 	}
+
+	// Use arena generator if needed
+	if needsArena {
+		return g.arenaGen.GenerateArenaLet(arenaBindings, bodyStr, true)
+	}
+
+	// Standard ASAP code generation
+	var sb strings.Builder
+	sb.WriteString("({\n")
+
+	// Generate declarations
+	for _, bi := range arenaBindings {
+		sb.WriteString(fmt.Sprintf("    Obj* %s = %s;\n", bi.sym.Str, bi.val))
+	}
+
 	sb.WriteString(fmt.Sprintf("    Obj* _res = %s;\n", bodyStr))
 
 	// Generate frees based on analysis
@@ -168,12 +202,13 @@ func (g *CodeGenerator) GenerateProgram(exprs []*ast.Value) {
 
 	// Generate main function
 	g.emit("\nint main(void) {\n")
+	g.emit("    Obj* result;\n")
 
 	for _, expr := range exprs {
 		if ast.IsCode(expr) {
-			g.emit("    Obj* result = %s;\n", expr.Str)
+			g.emit("    result = %s;\n", expr.Str)
 		} else {
-			g.emit("    Obj* result = %s;\n", g.ValueToCExpr(expr))
+			g.emit("    result = %s;\n", g.ValueToCExpr(expr))
 		}
 		g.emit("    if (result && !result->is_pair) {\n")
 		g.emit("        printf(\"Result: %%ld\\n\", result->i);\n")
