@@ -164,8 +164,17 @@ func (r *TypeRegistry) applyNamingHeuristics() {
 
 // detectSecondPointers marks the second pointer to the same type as weak
 // Example: Node has (next Node) and (prev Node) - prev becomes weak
+// BUT: Skip if there's already a weak pointer to that type (cycle already broken)
 func (r *TypeRegistry) detectSecondPointers() {
 	for _, t := range r.Types {
+		// First, check which types already have a weak pointer
+		hasWeakTo := make(map[string]bool)
+		for _, f := range t.Fields {
+			if f.IsScannable && f.Strength == FieldWeak {
+				hasWeakTo[f.Type] = true
+			}
+		}
+
 		// Track first strong pointer to each type
 		firstPointer := make(map[string]string) // targetType -> fieldName
 
@@ -175,10 +184,16 @@ func (r *TypeRegistry) detectSecondPointers() {
 				continue
 			}
 
+			// If there's already a weak pointer to this type, don't mark more as weak
+			if hasWeakTo[f.Type] {
+				continue
+			}
+
 			if first, exists := firstPointer[f.Type]; exists {
 				// This is a second pointer to the same type
 				// Mark it as weak (the first one stays strong)
 				f.Strength = FieldWeak
+				hasWeakTo[f.Type] = true // Mark that we now have a weak pointer
 				// Update the ownership edge too
 				for _, e := range r.OwnershipGraph {
 					if e.FromType == t.Name && e.FieldName == f.Name {
