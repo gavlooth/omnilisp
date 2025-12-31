@@ -121,6 +121,155 @@ func TestDeftypeTreeWithParent(t *testing.T) {
 	}
 }
 
+func TestBackEdgeHeuristics(t *testing.T) {
+	// Reset global registry before test
+	codegen.ResetGlobalRegistry()
+
+	// Test naming heuristics
+	input := `(deftype DoublyLinked
+		(value int)
+		(next DoublyLinked)
+		(prev DoublyLinked))`
+
+	p := parser.New(input)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	env := eval.DefaultEnv()
+	menv := eval.NewMenv(ast.Nil, env)
+	result := eval.Eval(expr, menv)
+
+	if ast.IsError(result) {
+		t.Fatalf("Eval error: %s", result.Str)
+	}
+
+	registry := codegen.GlobalRegistry()
+	dlDef := registry.FindType("DoublyLinked")
+	if dlDef == nil {
+		t.Fatal("DoublyLinked type not registered")
+	}
+
+	// Check that 'prev' is marked as weak (naming heuristic)
+	prevField := findField(dlDef, "prev")
+	if prevField == nil {
+		t.Fatal("prev field not found")
+	}
+	if prevField.Strength != codegen.FieldWeak {
+		t.Errorf("prev field should be weak, got %v", prevField.Strength)
+	}
+
+	// Check that 'next' is still strong
+	nextField := findField(dlDef, "next")
+	if nextField == nil {
+		t.Fatal("next field not found")
+	}
+	if nextField.Strength != codegen.FieldStrong {
+		t.Errorf("next field should be strong, got %v", nextField.Strength)
+	}
+}
+
+func TestBackEdgeHeuristicsParent(t *testing.T) {
+	// Reset global registry before test
+	codegen.ResetGlobalRegistry()
+
+	// Test parent pointer heuristic
+	input := `(deftype TreeNode
+		(value int)
+		(left TreeNode)
+		(right TreeNode)
+		(parent TreeNode))`
+
+	p := parser.New(input)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	env := eval.DefaultEnv()
+	menv := eval.NewMenv(ast.Nil, env)
+	eval.Eval(expr, menv)
+
+	registry := codegen.GlobalRegistry()
+	treeDef := registry.FindType("TreeNode")
+	if treeDef == nil {
+		t.Fatal("TreeNode type not registered")
+	}
+
+	// 'parent' should be weak (naming heuristic)
+	parentField := findField(treeDef, "parent")
+	if parentField == nil {
+		t.Fatal("parent field not found")
+	}
+	if parentField.Strength != codegen.FieldWeak {
+		t.Errorf("parent field should be weak, got %v", parentField.Strength)
+	}
+
+	// 'left' should be strong
+	leftField := findField(treeDef, "left")
+	if leftField == nil {
+		t.Fatal("left field not found")
+	}
+	if leftField.Strength != codegen.FieldStrong {
+		t.Errorf("left field should be strong, got %v", leftField.Strength)
+	}
+}
+
+func TestSecondPointerHeuristic(t *testing.T) {
+	// Reset global registry before test
+	codegen.ResetGlobalRegistry()
+
+	// Test second pointer detection (without naming hint)
+	input := `(deftype Graph
+		(data int)
+		(primary Graph)
+		(secondary Graph))`
+
+	p := parser.New(input)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	env := eval.DefaultEnv()
+	menv := eval.NewMenv(ast.Nil, env)
+	eval.Eval(expr, menv)
+
+	registry := codegen.GlobalRegistry()
+	graphDef := registry.FindType("Graph")
+	if graphDef == nil {
+		t.Fatal("Graph type not registered")
+	}
+
+	// 'primary' should be strong (first pointer to Graph)
+	primaryField := findField(graphDef, "primary")
+	if primaryField == nil {
+		t.Fatal("primary field not found")
+	}
+	if primaryField.Strength != codegen.FieldStrong {
+		t.Errorf("primary field should be strong, got %v", primaryField.Strength)
+	}
+
+	// 'secondary' should be weak (second pointer to same type)
+	secondaryField := findField(graphDef, "secondary")
+	if secondaryField == nil {
+		t.Fatal("secondary field not found")
+	}
+	if secondaryField.Strength != codegen.FieldWeak {
+		t.Errorf("secondary field should be weak, got %v", secondaryField.Strength)
+	}
+}
+
+func findField(def *codegen.TypeDef, name string) *codegen.TypeField {
+	for i := range def.Fields {
+		if def.Fields[i].Name == name {
+			return &def.Fields[i]
+		}
+	}
+	return nil
+}
+
 func TestDeftypeMultipleTypes(t *testing.T) {
 	// Reset global registry before test
 	codegen.ResetGlobalRegistry()
