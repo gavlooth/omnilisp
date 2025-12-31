@@ -66,15 +66,97 @@ func New() *Evaluator {
 	}
 }
 
-// NewMenv creates a new meta-environment
+// DefaultHandlers is the global default handler table
+var DefaultHandlers [9]*ast.HandlerWrapper
+
+// init initializes the default handlers
+func init() {
+	DefaultHandlers[ast.HIdxLit] = ast.WrapNativeHandler(defaultHLit)
+	DefaultHandlers[ast.HIdxVar] = ast.WrapNativeHandler(defaultHVar)
+	DefaultHandlers[ast.HIdxLam] = ast.WrapNativeHandler(defaultHLam)
+	DefaultHandlers[ast.HIdxApp] = ast.WrapNativeHandler(defaultHApp)
+	DefaultHandlers[ast.HIdxIf] = ast.WrapNativeHandler(defaultHIf)
+	DefaultHandlers[ast.HIdxLft] = ast.WrapNativeHandler(defaultHLft)
+	DefaultHandlers[ast.HIdxRun] = ast.WrapNativeHandler(defaultHRun)
+	DefaultHandlers[ast.HIdxEM] = ast.WrapNativeHandler(defaultHEM)
+	DefaultHandlers[ast.HIdxClam] = ast.WrapNativeHandler(defaultHClam)
+}
+
+// NewMenv creates a new meta-environment with default handlers
 func NewMenv(parent, env *ast.Value) *ast.Value {
-	return ast.NewMenv(env, parent,
-		defaultHApp,
-		defaultHLet,
-		defaultHIf,
-		defaultHLit,
-		defaultHVar,
-	)
+	level := 0
+	if parent != nil && ast.IsMenv(parent) {
+		level = parent.Level
+	}
+	var handlers [9]*ast.HandlerWrapper
+	copy(handlers[:], DefaultHandlers[:])
+	return ast.NewMenv(env, parent, level, handlers)
+}
+
+// NewMenvAtLevel creates a menv at a specific level
+func NewMenvAtLevel(parent, env *ast.Value, level int) *ast.Value {
+	var handlers [9]*ast.HandlerWrapper
+	copy(handlers[:], DefaultHandlers[:])
+	return ast.NewMenv(env, parent, level, handlers)
+}
+
+// EnsureParent ensures parent menv exists (lazy creation)
+func EnsureParent(menv *ast.Value) *ast.Value {
+	if menv == nil || !ast.IsMenv(menv) {
+		return NewMenvAtLevel(ast.Nil, ast.Nil, 1)
+	}
+	if ast.IsNil(menv.Parent) || menv.Parent == nil {
+		// Create parent at level + 1 with empty env and default handlers
+		parent := NewMenvAtLevel(ast.Nil, ast.Nil, menv.Level+1)
+		menv.Parent = parent
+		return parent
+	}
+	return menv.Parent
+}
+
+// CallHandler calls a handler (native or closure)
+func CallHandler(menv *ast.Value, idx int, arg *ast.Value) *ast.Value {
+	if menv == nil || !ast.IsMenv(menv) {
+		return ast.Nil
+	}
+	handler := menv.Handlers[idx]
+	if handler == nil {
+		handler = DefaultHandlers[idx]
+	}
+	if handler == nil {
+		return ast.Nil
+	}
+
+	if handler.Native != nil {
+		// Native handler: call directly
+		return handler.Native(arg, menv)
+	}
+
+	if handler.Closure != nil && ast.IsLambda(handler.Closure) {
+		// Closure handler: evaluate body with arg bound
+		// IMPORTANT: Use DEFAULT handlers to prevent infinite recursion
+		closure := handler.Closure
+		newEnv := EnvExtend(closure.LamEnv, closure.Params.Car, arg)
+		var defaultHandlersCopy [9]*ast.HandlerWrapper
+		copy(defaultHandlersCopy[:], DefaultHandlers[:])
+		bodyMenv := ast.NewMenv(newEnv, menv.Parent, menv.Level, defaultHandlersCopy)
+		return Eval(closure.Body, bodyMenv)
+	}
+
+	return ast.Nil
+}
+
+// CallDefaultHandler calls the default handler by name
+func CallDefaultHandler(menv *ast.Value, name string, arg *ast.Value) *ast.Value {
+	idx, ok := ast.HandlerNames[name]
+	if !ok {
+		return ast.NewError(fmt.Sprintf("unknown handler: %s", name))
+	}
+	handler := DefaultHandlers[idx]
+	if handler == nil || handler.Native == nil {
+		return ast.NewError(fmt.Sprintf("no default handler for: %s", name))
+	}
+	return handler.Native(arg, menv)
 }
 
 // Default handlers
@@ -89,6 +171,76 @@ func defaultHVar(exp, menv *ast.Value) *ast.Value {
 		return ast.Nil
 	}
 	return v
+}
+
+func defaultHLam(exp, menv *ast.Value) *ast.Value {
+	// exp is (lambda params body) or (lambda self (params) body)
+	args := exp.Cdr
+	params := args.Car
+	body := args.Cdr.Car
+
+	// Check for recursive lambda: (lambda self (params) body)
+	// where self is a symbol and (params) is a list
+	if ast.IsSym(params) && !ast.IsNil(args.Cdr) && ast.IsCell(args.Cdr) {
+		selfName := params
+		actualParams := args.Cdr.Car
+		actualBody := args.Cdr.Cdr.Car
+		return ast.NewRecLambda(selfName, actualParams, actualBody, menv.Env)
+	}
+
+	return ast.NewLambda(params, body, menv.Env)
+}
+
+func defaultHLft(exp, menv *ast.Value) *ast.Value {
+	// exp is the value to lift
+	return (&DefaultCodeGen{}).LiftValue(exp)
+}
+
+func defaultHRun(exp, menv *ast.Value) *ast.Value {
+	// exp is the code to run
+	if ast.IsCode(exp) {
+		// At base level, we can't execute C code directly
+		// In real implementation, this would compile and execute
+		return exp
+	}
+	// If it's an AST, evaluate it at base level
+	baseMenv := NewMenvAtLevel(ast.Nil, menv.Env, 0)
+	return Eval(exp, baseMenv)
+}
+
+func defaultHEM(exp, menv *ast.Value) *ast.Value {
+	// exp is the expression to evaluate at parent level
+	parent := EnsureParent(menv)
+	return Eval(exp, parent)
+}
+
+func defaultHClam(exp, menv *ast.Value) *ast.Value {
+	// exp is (clambda params body) - compile lambda under current semantics
+	args := exp.Cdr
+	params := args.Car
+	body := args.Cdr.Car
+
+	// Create a lambda AST
+	lamAST := ast.List3(ast.NewSym("lambda"), params, body)
+
+	// Compile it (evaluate with lift semantics)
+	compiled := evalCompile(lamAST, menv)
+
+	if ast.IsCode(compiled) {
+		// Evaluate the compiled code
+		return Eval(compiled, menv)
+	}
+	return compiled
+}
+
+// evalCompile evaluates an expression in compile mode (lifting values to code)
+func evalCompile(expr, menv *ast.Value) *ast.Value {
+	// For now, just lift the result
+	result := Eval(expr, menv)
+	if !ast.IsCode(result) {
+		return (&DefaultCodeGen{}).LiftValue(result)
+	}
+	return result
 }
 
 func defaultHApp(exp, menv *ast.Value) *ast.Value {
@@ -120,13 +272,8 @@ func defaultHApp(exp, menv *ast.Value) *ast.Value {
 			a = a.Cdr
 		}
 
-		bodyMenv := NewMenv(menv.Parent, newEnv)
-		bodyMenv.HApp = menv.HApp
-		bodyMenv.HLet = menv.HLet
-		bodyMenv.HIf = menv.HIf
-		bodyMenv.HLit = menv.HLit
-		bodyMenv.HVar = menv.HVar
-
+		// Create body menv preserving handlers from current menv
+		bodyMenv := ast.NewMenv(newEnv, menv.Parent, menv.Level, menv.CopyHandlers())
 		return Eval(body, bodyMenv)
 	}
 
@@ -147,13 +294,8 @@ func defaultHApp(exp, menv *ast.Value) *ast.Value {
 			a = a.Cdr
 		}
 
-		bodyMenv := NewMenv(menv.Parent, newEnv)
-		bodyMenv.HApp = menv.HApp
-		bodyMenv.HLet = menv.HLet
-		bodyMenv.HIf = menv.HIf
-		bodyMenv.HLit = menv.HLit
-		bodyMenv.HVar = menv.HVar
-
+		// Create body menv preserving handlers from current menv
+		bodyMenv := ast.NewMenv(newEnv, menv.Parent, menv.Level, menv.CopyHandlers())
 		return Eval(body, bodyMenv)
 	}
 
@@ -198,13 +340,8 @@ func defaultHLet(exp, menv *ast.Value) *ast.Value {
 		newEnv = EnvExtend(newEnv, bi.sym, bi.val)
 	}
 
-	bodyMenv := NewMenv(menv.Parent, newEnv)
-	bodyMenv.HApp = menv.HApp
-	bodyMenv.HLet = menv.HLet
-	bodyMenv.HIf = menv.HIf
-	bodyMenv.HLit = menv.HLit
-	bodyMenv.HVar = menv.HVar
-
+	// Create body menv preserving handlers
+	bodyMenv := ast.NewMenv(newEnv, menv.Parent, menv.Level, menv.CopyHandlers())
 	return Eval(body, bodyMenv)
 }
 
@@ -229,12 +366,8 @@ func generateLetCode(bindings []bindInfo, body *ast.Value, menv *ast.Value) *ast
 		newEnv = EnvExtend(newEnv, bi.sym, ref)
 	}
 
-	bodyMenv := NewMenv(menv.Parent, newEnv)
-	bodyMenv.HApp = menv.HApp
-	bodyMenv.HLet = menv.HLet
-	bodyMenv.HIf = menv.HIf
-	bodyMenv.HLit = menv.HLit
-	bodyMenv.HVar = menv.HVar
+	// Create body menv preserving handlers
+	bodyMenv := ast.NewMenv(newEnv, menv.Parent, menv.Level, menv.CopyHandlers())
 
 	res := Eval(body, bodyMenv)
 	resStr := ""
@@ -315,19 +448,19 @@ func Eval(expr, menv *ast.Value) *ast.Value {
 
 	switch expr.Tag {
 	case ast.TInt:
-		return menv.HLit(expr, menv)
+		return CallHandler(menv, ast.HIdxLit, expr)
 
 	case ast.TFloat:
-		return menv.HLit(expr, menv)
+		return CallHandler(menv, ast.HIdxLit, expr)
 
 	case ast.TChar:
-		return menv.HLit(expr, menv)
+		return CallHandler(menv, ast.HIdxLit, expr)
 
 	case ast.TCode:
 		return expr
 
 	case ast.TSym:
-		return menv.HVar(expr, menv)
+		return CallHandler(menv, ast.HIdxVar, expr)
 
 	case ast.TCell:
 		op := expr.Car
@@ -340,15 +473,15 @@ func Eval(expr, menv *ast.Value) *ast.Value {
 
 		if ast.SymEqStr(op, "lift") {
 			v := Eval(args.Car, menv)
-			return (&DefaultCodeGen{}).LiftValue(v)
+			return CallHandler(menv, ast.HIdxLft, v)
 		}
 
 		if ast.SymEqStr(op, "if") {
-			return menv.HIf(expr, menv)
+			return CallHandler(menv, ast.HIdxIf, expr)
 		}
 
 		if ast.SymEqStr(op, "let") {
-			return menv.HLet(expr, menv)
+			return defaultHLet(expr, menv)
 		}
 
 		if ast.SymEqStr(op, "letrec") {
@@ -364,19 +497,7 @@ func Eval(expr, menv *ast.Value) *ast.Value {
 		}
 
 		if ast.SymEqStr(op, "lambda") {
-			params := args.Car
-			body := args.Cdr.Car
-
-			// Check for recursive lambda: (lambda self (params) body)
-			// where self is a symbol and params is a list
-			if ast.IsSym(params) && !ast.IsNil(args.Cdr) && ast.IsCell(args.Cdr) {
-				selfName := params
-				actualParams := args.Cdr.Car
-				actualBody := args.Cdr.Cdr.Car
-				return ast.NewRecLambda(selfName, actualParams, actualBody, menv.Env)
-			}
-
-			return ast.NewLambda(params, body, menv.Env)
+			return CallHandler(menv, ast.HIdxLam, expr)
 		}
 
 		if ast.SymEqStr(op, "match") {
@@ -426,27 +547,106 @@ func Eval(expr, menv *ast.Value) *ast.Value {
 			return SymT
 		}
 
+		// EM - Escape to Meta-level
 		if ast.SymEqStr(op, "EM") {
-			// Escape to meta-level
 			e := args.Car
-			parent := menv.Parent
-			if ast.IsNil(parent) {
-				parent = NewMenv(ast.Nil, ast.Nil)
-				menv.Parent = parent
-			}
-			return Eval(e, parent)
+			return CallHandler(menv, ast.HIdxEM, e)
 		}
 
+		// run - Execute code at base level
 		if ast.SymEqStr(op, "run") {
-			// (run code) - execute code value at base level
 			codeVal := Eval(args.Car, menv)
-			if ast.IsCode(codeVal) {
-				// In interpretation mode, we can't execute C code
-				// Return the code value as-is
-				return codeVal
+			return CallHandler(menv, ast.HIdxRun, codeVal)
+		}
+
+		// clambda - Compile lambda under current semantics
+		if ast.SymEqStr(op, "clambda") {
+			return CallHandler(menv, ast.HIdxClam, expr)
+		}
+
+		// shift - Go up n levels and evaluate
+		if ast.SymEqStr(op, "shift") {
+			nVal := Eval(args.Car, menv)
+			e := args.Cdr.Car
+			n := int64(0)
+			if ast.IsInt(nVal) {
+				n = nVal.Int
 			}
-			// If it's an AST, evaluate it
-			return Eval(codeVal, menv)
+			return evalShift(int(n), e, menv)
+		}
+
+		// meta-level - Get current tower level
+		if ast.SymEqStr(op, "meta-level") {
+			return ast.NewInt(int64(menv.Level))
+		}
+
+		// get-meta - Get handler by name
+		if ast.SymEqStr(op, "get-meta") {
+			key := Eval(args.Car, menv)
+			if !ast.IsSym(key) {
+				return ast.NewError("get-meta: key must be a symbol")
+			}
+			idx, ok := ast.HandlerNames[key.Str]
+			if !ok {
+				return ast.NewError(fmt.Sprintf("get-meta: unknown handler: %s", key.Str))
+			}
+			handler := menv.GetHandler(idx)
+			if handler == nil {
+				return ast.Nil
+			}
+			// Return the closure if it's a closure handler, otherwise return a marker
+			if handler.Closure != nil {
+				return handler.Closure
+			}
+			return ast.NewSym(fmt.Sprintf("#<native-handler:%s>", key.Str))
+		}
+
+		// set-meta! - Install custom handler (returns new menv)
+		if ast.SymEqStr(op, "set-meta!") {
+			key := Eval(args.Car, menv)
+			val := Eval(args.Cdr.Car, menv)
+			if !ast.IsSym(key) {
+				return ast.NewError("set-meta!: key must be a symbol")
+			}
+			idx, ok := ast.HandlerNames[key.Str]
+			if !ok {
+				return ast.NewError(fmt.Sprintf("set-meta!: unknown handler: %s", key.Str))
+			}
+			// val must be a lambda
+			if !ast.IsLambda(val) && !ast.IsRecLambda(val) {
+				return ast.NewError("set-meta!: handler must be a lambda")
+			}
+			wrapper := ast.WrapClosureHandler(val)
+			return menv.SetHandler(idx, wrapper)
+		}
+
+		// with-menv - Evaluate body with custom meta-environment
+		if ast.SymEqStr(op, "with-menv") {
+			menvExpr := args.Car
+			bodyExpr := args.Cdr.Car
+			newMenv := Eval(menvExpr, menv)
+			if !ast.IsMenv(newMenv) {
+				return ast.NewError("with-menv: first argument must evaluate to menv")
+			}
+			return Eval(bodyExpr, newMenv)
+		}
+
+		// with-handlers - Scoped handler changes
+		// (with-handlers ((name handler) ...) body)
+		if ast.SymEqStr(op, "with-handlers") {
+			handlerList := args.Car
+			bodyExpr := args.Cdr.Car
+			return evalWithHandlers(handlerList, bodyExpr, menv)
+		}
+
+		// default-handler - Delegate to default handler
+		if ast.SymEqStr(op, "default-handler") {
+			name := Eval(args.Car, menv)
+			arg := Eval(args.Cdr.Car, menv)
+			if !ast.IsSym(name) {
+				return ast.NewError("default-handler: name must be a symbol")
+			}
+			return CallDefaultHandler(menv, name.Str, arg)
 		}
 
 		if ast.SymEqStr(op, "eval") {
@@ -514,11 +714,64 @@ func Eval(expr, menv *ast.Value) *ast.Value {
 			return evalFFIDeclare(args, menv)
 		}
 
-		// Regular application
-		return menv.HApp(expr, menv)
+		// Regular application - use app handler
+		return CallHandler(menv, ast.HIdxApp, expr)
 	}
 
 	return ast.Nil
+}
+
+// evalShift evaluates expression at n levels up the tower
+func evalShift(n int, expr, menv *ast.Value) *ast.Value {
+	if n <= 0 {
+		return Eval(expr, menv)
+	}
+	// Go up n levels
+	targetMenv := menv
+	for i := 0; i < n; i++ {
+		targetMenv = EnsureParent(targetMenv)
+	}
+	return Eval(expr, targetMenv)
+}
+
+// evalWithHandlers evaluates body with scoped handler changes
+func evalWithHandlers(handlerList, body, menv *ast.Value) *ast.Value {
+	// Start with current menv
+	newMenv := menv
+
+	// Process each handler binding
+	for !ast.IsNil(handlerList) && ast.IsCell(handlerList) {
+		binding := handlerList.Car
+		if !ast.IsCell(binding) {
+			return ast.NewError("with-handlers: invalid binding")
+		}
+
+		name := binding.Car
+		handlerExpr := binding.Cdr.Car
+
+		if !ast.IsSym(name) {
+			return ast.NewError("with-handlers: handler name must be a symbol")
+		}
+
+		idx, ok := ast.HandlerNames[name.Str]
+		if !ok {
+			return ast.NewError(fmt.Sprintf("with-handlers: unknown handler: %s", name.Str))
+		}
+
+		// Evaluate handler expression
+		handler := Eval(handlerExpr, menv)
+		if !ast.IsLambda(handler) && !ast.IsRecLambda(handler) {
+			return ast.NewError("with-handlers: handler must be a lambda")
+		}
+
+		wrapper := ast.WrapClosureHandler(handler)
+		newMenv = newMenv.SetHandler(idx, wrapper)
+
+		handlerList = handlerList.Cdr
+	}
+
+	// Evaluate body with new handlers
+	return Eval(body, newMenv)
 }
 
 func evalLetrec(exp, menv *ast.Value) *ast.Value {
@@ -539,13 +792,8 @@ func evalLetrec(exp, menv *ast.Value) *ast.Value {
 		b = b.Cdr
 	}
 
-	// Create new menv
-	recMenv := NewMenv(menv.Parent, newEnv)
-	recMenv.HApp = menv.HApp
-	recMenv.HLet = menv.HLet
-	recMenv.HIf = menv.HIf
-	recMenv.HLit = menv.HLit
-	recMenv.HVar = menv.HVar
+	// Create new menv preserving handlers
+	recMenv := ast.NewMenv(newEnv, menv.Parent, menv.Level, menv.CopyHandlers())
 
 	// Second pass: evaluate and update
 	b = bindings
@@ -663,13 +911,8 @@ func applyFn(fn *ast.Value, args *ast.Value, menv *ast.Value) *ast.Value {
 			a = a.Cdr
 		}
 
-		bodyMenv := NewMenv(menv.Parent, newEnv)
-		bodyMenv.HApp = menv.HApp
-		bodyMenv.HLet = menv.HLet
-		bodyMenv.HIf = menv.HIf
-		bodyMenv.HLit = menv.HLit
-		bodyMenv.HVar = menv.HVar
-
+		// Create body menv preserving handlers
+		bodyMenv := ast.NewMenv(newEnv, menv.Parent, menv.Level, menv.CopyHandlers())
 		return Eval(body, bodyMenv)
 	}
 
@@ -690,13 +933,8 @@ func applyFn(fn *ast.Value, args *ast.Value, menv *ast.Value) *ast.Value {
 			a = a.Cdr
 		}
 
-		bodyMenv := NewMenv(menv.Parent, newEnv)
-		bodyMenv.HApp = menv.HApp
-		bodyMenv.HLet = menv.HLet
-		bodyMenv.HIf = menv.HIf
-		bodyMenv.HLit = menv.HLit
-		bodyMenv.HVar = menv.HVar
-
+		// Create body menv preserving handlers
+		bodyMenv := ast.NewMenv(newEnv, menv.Parent, menv.Level, menv.CopyHandlers())
 		return Eval(body, bodyMenv)
 	}
 

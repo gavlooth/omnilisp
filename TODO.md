@@ -57,26 +57,27 @@ Comparison between our Go implementation and the original Purple at `/home/heefo
 | Feature | Status | Notes |
 |---------|--------|-------|
 | `lift` | ✅ | Quote value as code |
-| `run` | ❌ | `(run base code)` execute at base level |
+| `run` | ✅ | `(run code)` execute code at base level |
 | `code` / `quote` | ✅ | Quote as AST |
-| Compile mode | 🔶 | Basic support, not full tower |
+| Compile mode | ✅ | Full 9-handler tower support |
 
 ---
 
-## Meta-Level / Reflective Features (❌ All Missing)
+## Meta-Level / Reflective Features (✅ Implemented)
 
-| Feature | Description |
-|---------|-------------|
-| `EM` | Execute at parent meta-level |
-| `shift` | Go up n levels and evaluate |
-| `clambda` | Compile lambda under current semantics |
-| `meta-level` | Get current tower level |
-| `get-meta` | Fetch handler by name |
-| `set-meta!` | Install custom handler |
-| `with-menv` | Evaluate in specific meta-environment |
-| `with-handlers` | Set multiple handlers at once |
+| Feature | Status | Description |
+|---------|--------|-------------|
+| `EM` | ✅ | Execute at parent meta-level |
+| `shift` | ✅ | `(shift n expr)` Go up n levels and evaluate |
+| `clambda` | ✅ | Compile lambda under current semantics |
+| `meta-level` | ✅ | `(meta-level)` Get current tower level |
+| `get-meta` | ✅ | `(get-meta 'name)` Fetch handler by name |
+| `set-meta!` | ✅ | `(set-meta! 'name fn)` Install custom handler |
+| `with-menv` | ✅ | `(with-menv menv body)` Evaluate with custom menv |
+| `with-handlers` | ✅ | `(with-handlers ((name fn) ...) body)` |
+| `default-handler` | ✅ | `(default-handler 'name arg)` Delegate to default |
 
-### Handler Customization (❌ All Missing)
+### Handler Customization (✅ 9-Handler Table)
 - `lit` handler - numeric literal evaluation
 - `var` handler - variable lookup
 - `lam` handler - lambda creation
@@ -200,23 +201,23 @@ Comparison between our Go implementation and the original Purple at `/home/heefo
 
 ## Priority Order for Implementation
 
-### High Priority (Core Language)
-1. **Pattern matching** - fundamental for idiomatic code
-2. **Recursive lambda** - `(lambda self ...)` for cleaner recursion
-3. **Error handling** - `error`, `try`, `assert`
-4. **List operations** - `map`, `filter`, `fold`, etc.
+### High Priority (Core Language) - ✅ COMPLETE
+1. ✅ **Pattern matching** - fundamental for idiomatic code
+2. ✅ **Recursive lambda** - `(lambda self ...)` for cleaner recursion
+3. ✅ **Error handling** - `error`, `try`, `assert`
+4. ✅ **List operations** - `map`, `filter`, `fold`, etc.
 
-### Medium Priority (Staging)
-5. **`run` form** - execute code at base level
-6. **Meta-level operations** - EM, shift, clambda
-7. **Handler customization** - user-defined semantics
+### Medium Priority (Staging) - ✅ COMPLETE
+5. ✅ **`run` form** - execute code at base level
+6. ✅ **Meta-level operations** - EM, shift, clambda, meta-level
+7. ✅ **Handler customization** - 9-handler table with get/set-meta!, with-handlers
 
-### Lower Priority (Convenience)
-8. **Quasiquote** - template syntax
-9. **Macro system** - syntactic abstraction
-10. **FFI/I/O** - practical programs
-11. **Characters/strings** - text handling
-12. **Introspection** - metaprogramming
+### Lower Priority (Convenience) - ✅ MOSTLY COMPLETE
+8. ✅ **Quasiquote** - template syntax
+9. ❌ **Macro system** - syntactic abstraction (defmacro, mcall, macroexpand)
+10. ✅ **FFI/I/O** - practical programs
+11. ✅ **Characters/strings** - text handling
+12. ✅ **Introspection** - gensym, eval, sym-eq?, trace
 
 ---
 

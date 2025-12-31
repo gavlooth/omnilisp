@@ -304,12 +304,8 @@ func EvalMatch(expr *ast.Value, menv *ast.Value) *ast.Value {
 				newEnv = EnvExtend(newEnv, ast.NewSym(name), val)
 			}
 
-			bodyMenv := NewMenv(menv.Parent, newEnv)
-			bodyMenv.HApp = menv.HApp
-			bodyMenv.HLet = menv.HLet
-			bodyMenv.HIf = menv.HIf
-			bodyMenv.HLit = menv.HLit
-			bodyMenv.HVar = menv.HVar
+			// Create body menv preserving handlers
+			bodyMenv := ast.NewMenv(newEnv, menv.Parent, menv.Level, menv.CopyHandlers())
 
 			// Check guard if present
 			if guardExpr != nil {

@@ -30,6 +30,38 @@ type PrimFn func(args *Value, menv *Value) *Value
 // HandlerFn is a handler function for meta-environments
 type HandlerFn func(exp *Value, menv *Value) *Value
 
+// Handler indices for the 9-handler table
+const (
+	HIdxLit  = 0 // literal handler
+	HIdxVar  = 1 // variable lookup handler
+	HIdxLam  = 2 // lambda handler
+	HIdxApp  = 3 // application handler
+	HIdxIf   = 4 // conditional handler
+	HIdxLft  = 5 // lift handler
+	HIdxRun  = 6 // run handler
+	HIdxEM   = 7 // EM (escape to meta) handler
+	HIdxClam = 8 // clambda handler
+)
+
+// Handler names for get-meta/set-meta!
+var HandlerNames = map[string]int{
+	"lit":  HIdxLit,
+	"var":  HIdxVar,
+	"lam":  HIdxLam,
+	"app":  HIdxApp,
+	"if":   HIdxIf,
+	"lft":  HIdxLft,
+	"run":  HIdxRun,
+	"em":   HIdxEM,
+	"clam": HIdxClam,
+}
+
+// HandlerWrapper wraps a handler - either native (HandlerFn) or closure
+type HandlerWrapper struct {
+	Native  HandlerFn // For built-in handlers
+	Closure *Value    // For user-defined handlers (lambda)
+}
+
 // Value is the core tagged union type for all values
 type Value struct {
 	Tag Tag
@@ -50,14 +82,11 @@ type Value struct {
 	// TPrim
 	Prim PrimFn
 
-	// TMenv
-	Env     *Value
-	Parent  *Value
-	HApp    HandlerFn
-	HLet    HandlerFn
-	HIf     HandlerFn
-	HLit    HandlerFn
-	HVar    HandlerFn
+	// TMenv - restructured for tower of interpreters
+	Env      *Value             // Variable bindings
+	Parent   *Value             // Parent meta-environment (lazy)
+	Level    int                // Tower level (0 = base)
+	Handlers [9]*HandlerWrapper // 9-handler table
 
 	// TLambda, TRecLambda
 	Params   *Value
@@ -130,18 +159,73 @@ func NewFloat(f float64) *Value {
 	return &Value{Tag: TFloat, Float: f}
 }
 
-// NewMenv creates a meta-environment value
-func NewMenv(env, parent *Value, hApp, hLet, hIf, hLit, hVar HandlerFn) *Value {
+// NewMenv creates a meta-environment value with handler table
+func NewMenv(env, parent *Value, level int, handlers [9]*HandlerWrapper) *Value {
+	return &Value{
+		Tag:      TMenv,
+		Env:      env,
+		Parent:   parent,
+		Level:    level,
+		Handlers: handlers,
+	}
+}
+
+// NewMenvWithDefaults creates a menv with default handlers (set later by eval)
+func NewMenvWithDefaults(env, parent *Value, level int) *Value {
 	return &Value{
 		Tag:    TMenv,
 		Env:    env,
 		Parent: parent,
-		HApp:   hApp,
-		HLet:   hLet,
-		HIf:    hIf,
-		HLit:   hLit,
-		HVar:   hVar,
+		Level:  level,
+		// Handlers will be set by evaluator
 	}
+}
+
+// WrapNativeHandler wraps a native handler function
+func WrapNativeHandler(fn HandlerFn) *HandlerWrapper {
+	return &HandlerWrapper{Native: fn}
+}
+
+// WrapClosureHandler wraps a closure as a handler
+func WrapClosureHandler(closure *Value) *HandlerWrapper {
+	return &HandlerWrapper{Closure: closure}
+}
+
+// GetHandler returns handler at index
+func (v *Value) GetHandler(idx int) *HandlerWrapper {
+	if v == nil || v.Tag != TMenv || idx < 0 || idx > 8 {
+		return nil
+	}
+	return v.Handlers[idx]
+}
+
+// SetHandler returns a new menv with updated handler at index
+func (v *Value) SetHandler(idx int, handler *HandlerWrapper) *Value {
+	if v == nil || v.Tag != TMenv || idx < 0 || idx > 8 {
+		return v
+	}
+	// Copy handlers array
+	var newHandlers [9]*HandlerWrapper
+	copy(newHandlers[:], v.Handlers[:])
+	newHandlers[idx] = handler
+	return NewMenv(v.Env, v.Parent, v.Level, newHandlers)
+}
+
+// CopyHandlers returns a copy of the handler table
+func (v *Value) CopyHandlers() [9]*HandlerWrapper {
+	var result [9]*HandlerWrapper
+	if v != nil && v.Tag == TMenv {
+		copy(result[:], v.Handlers[:])
+	}
+	return result
+}
+
+// WithEnv returns a new menv with updated environment
+func (v *Value) WithEnv(newEnv *Value) *Value {
+	if v == nil || v.Tag != TMenv {
+		return v
+	}
+	return NewMenv(newEnv, v.Parent, v.Level, v.Handlers)
 }
 
 // IsNil checks if a value is nil

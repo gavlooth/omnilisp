@@ -558,13 +558,8 @@ func applyPrimFn(fn *ast.Value, args *ast.Value, menv *ast.Value) *ast.Value {
 			a = a.Cdr
 		}
 
-		bodyMenv := NewMenv(menv.Parent, newEnv)
-		bodyMenv.HApp = menv.HApp
-		bodyMenv.HLet = menv.HLet
-		bodyMenv.HIf = menv.HIf
-		bodyMenv.HLit = menv.HLit
-		bodyMenv.HVar = menv.HVar
-
+		// Create body menv preserving handlers
+		bodyMenv := ast.NewMenv(newEnv, menv.Parent, menv.Level, menv.CopyHandlers())
 		return Eval(body, bodyMenv)
 	}
 
@@ -584,13 +579,8 @@ func applyPrimFn(fn *ast.Value, args *ast.Value, menv *ast.Value) *ast.Value {
 			a = a.Cdr
 		}
 
-		bodyMenv := NewMenv(menv.Parent, newEnv)
-		bodyMenv.HApp = menv.HApp
-		bodyMenv.HLet = menv.HLet
-		bodyMenv.HIf = menv.HIf
-		bodyMenv.HLit = menv.HLit
-		bodyMenv.HVar = menv.HVar
-
+		// Create body menv preserving handlers
+		bodyMenv := ast.NewMenv(newEnv, menv.Parent, menv.Level, menv.CopyHandlers())
 		return Eval(body, bodyMenv)
 	}
 

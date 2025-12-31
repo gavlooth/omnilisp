@@ -630,3 +630,123 @@ func TestChar(t *testing.T) {
 		t.Error("(char<? #\\a #\\b) should be true")
 	}
 }
+
+// Tests for Tower of Interpreters features
+
+func TestMetaLevel(t *testing.T) {
+	// Base level should be 0
+	result := evalString("(meta-level)")
+	if result == nil || !ast.IsInt(result) || result.Int != 0 {
+		t.Errorf("(meta-level) = %v, want 0", result)
+	}
+}
+
+func TestShift(t *testing.T) {
+	// shift 0 should evaluate at current level
+	result := evalString("(shift 0 (+ 1 2))")
+	if result == nil || !ast.IsInt(result) || result.Int != 3 {
+		t.Errorf("(shift 0 (+ 1 2)) = %v, want 3", result)
+	}
+
+	// shift 1 should evaluate at parent level (level 1)
+	result = evalString("(shift 1 (meta-level))")
+	if result == nil || !ast.IsInt(result) || result.Int != 1 {
+		t.Errorf("(shift 1 (meta-level)) = %v, want 1", result)
+	}
+
+	// shift 2 should evaluate at grandparent level (level 2)
+	result = evalString("(shift 2 (meta-level))")
+	if result == nil || !ast.IsInt(result) || result.Int != 2 {
+		t.Errorf("(shift 2 (meta-level)) = %v, want 2", result)
+	}
+}
+
+func TestEM(t *testing.T) {
+	// EM should escape to parent level
+	result := evalString("(EM (meta-level))")
+	if result == nil || !ast.IsInt(result) || result.Int != 1 {
+		t.Errorf("(EM (meta-level)) = %v, want 1", result)
+	}
+
+	// Nested EM should go up multiple levels
+	result = evalString("(EM (EM (meta-level)))")
+	if result == nil || !ast.IsInt(result) || result.Int != 2 {
+		t.Errorf("(EM (EM (meta-level))) = %v, want 2", result)
+	}
+}
+
+func TestGetMeta(t *testing.T) {
+	// get-meta should return a marker for native handlers
+	result := evalString("(get-meta 'lit)")
+	if result == nil {
+		t.Error("(get-meta 'lit) should not be nil")
+	}
+	// Should return #<native-handler:lit> or similar
+	if ast.IsSym(result) && !strings.Contains(result.Str, "native-handler") {
+		t.Errorf("(get-meta 'lit) = %v, want native handler marker", result)
+	}
+}
+
+func TestWithHandlers(t *testing.T) {
+	// Custom lit handler that adds 100 to all literals
+	result := evalString(`
+		(with-handlers
+			((lit (lambda (x) (+ 100 (default-handler 'lit x)))))
+			(+ 10 20))
+	`)
+	// 10 becomes 110, 20 becomes 120, so 110 + 120 = 230
+	if result == nil || !ast.IsInt(result) || result.Int != 230 {
+		t.Errorf("with-handlers custom lit = %v, want 230", result)
+	}
+}
+
+func TestWithHandlersScoped(t *testing.T) {
+	// Handler changes should be scoped
+	result := evalString(`
+		(let ((a (+ 1 2)))          ; a = 3 (normal)
+			(let ((b (with-handlers
+						((lit (lambda (x) (+ 100 (default-handler 'lit x)))))
+						(+ 1 2))))  ; b = 203 (custom: 101 + 102)
+				(+ a b)))           ; 3 + 203 = 206
+	`)
+	if result == nil || !ast.IsInt(result) || result.Int != 206 {
+		t.Errorf("scoped handlers = %v, want 206", result)
+	}
+}
+
+func TestSetMeta(t *testing.T) {
+	// set-meta! returns new menv, used with with-menv
+	result := evalString(`
+		(with-menv
+			(set-meta! 'lit (lambda (x) (+ 50 (default-handler 'lit x))))
+			(+ 10 20))
+	`)
+	// 10 becomes 60, 20 becomes 70, so 60 + 70 = 130
+	if result == nil || !ast.IsInt(result) || result.Int != 130 {
+		t.Errorf("set-meta! custom lit = %v, want 130", result)
+	}
+}
+
+func TestDefaultHandler(t *testing.T) {
+	// default-handler should call the default behavior
+	result := evalString("(default-handler 'lit 42)")
+	if result == nil || !ast.IsInt(result) || result.Int != 42 {
+		t.Errorf("(default-handler 'lit 42) = %v, want 42", result)
+	}
+}
+
+func TestHandlerDelegation(t *testing.T) {
+	// Test handler that wraps default behavior
+	// This is the classic "tower" pattern
+	result := evalString(`
+		(with-handlers
+			((lit (lambda (x)
+				(let ((base (default-handler 'lit x)))
+					(* base 2)))))
+			(+ 3 4))
+	`)
+	// 3 becomes 6, 4 becomes 8, so 6 + 8 = 14
+	if result == nil || !ast.IsInt(result) || result.Int != 14 {
+		t.Errorf("handler delegation = %v, want 14", result)
+	}
+}
