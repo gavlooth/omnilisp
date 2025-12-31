@@ -301,6 +301,98 @@ func (r *TypeRegistry) markFieldWeak(typeName, fieldName string) {
 	}
 }
 
+// HasCycleBrokenByWeakEdges checks if cycles involving this type are broken by auto-weak edges
+// If true, dec_ref is safe to use instead of deferred_release or arena
+func (r *TypeRegistry) HasCycleBrokenByWeakEdges(typeName string) bool {
+	// Check if there are any back-edges (cycles) involving this type
+	hasCycle := false
+	hasBackEdge := false
+
+	for _, e := range r.OwnershipGraph {
+		// Check if this type participates in a cycle
+		if e.FromType == typeName || e.ToType == typeName {
+			// Check if this specific edge is a cycle back to the type
+			if e.FromType == typeName && r.canReach(e.ToType, typeName) {
+				hasCycle = true
+				if e.IsBackEdge {
+					hasBackEdge = true
+				}
+			}
+		}
+	}
+
+	// If there's a cycle but we have a back-edge breaking it, dec_ref is safe
+	return !hasCycle || hasBackEdge
+}
+
+// canReach checks if there's a path from 'from' to 'to' via strong edges only
+func (r *TypeRegistry) canReach(from, to string) bool {
+	if from == to {
+		return true
+	}
+
+	visited := make(map[string]bool)
+	var dfs func(current string) bool
+	dfs = func(current string) bool {
+		if current == to {
+			return true
+		}
+		if visited[current] {
+			return false
+		}
+		visited[current] = true
+
+		for _, e := range r.OwnershipGraph {
+			if e.FromType == current && !e.IsBackEdge {
+				if dfs(e.ToType) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	return dfs(from)
+}
+
+// CycleStatus represents the status of cycles for a type
+type CycleStatus int
+
+const (
+	CycleStatusNone      CycleStatus = iota // No cycles - pure ASAP/dec_ref
+	CycleStatusBroken                       // Has cycles but broken by weak edges - dec_ref safe
+	CycleStatusUnbroken                     // Has unbroken cycles - need arena/SCC
+)
+
+// GetCycleStatus returns the cycle status for a type
+func (r *TypeRegistry) GetCycleStatus(typeName string) CycleStatus {
+	t := r.Types[typeName]
+	if t == nil {
+		return CycleStatusNone
+	}
+
+	// Check if type is recursive
+	if !t.IsRecursive {
+		// Check if it participates in mutual recursion
+		hasCycle := false
+		for _, e := range r.OwnershipGraph {
+			if e.FromType == typeName && r.canReach(e.ToType, typeName) {
+				hasCycle = true
+				break
+			}
+		}
+		if !hasCycle {
+			return CycleStatusNone
+		}
+	}
+
+	// Type has cycles - check if they're broken
+	if r.HasCycleBrokenByWeakEdges(typeName) {
+		return CycleStatusBroken
+	}
+	return CycleStatusUnbroken
+}
+
 // InitDefaultTypes initializes the default type registry with common types
 func (r *TypeRegistry) InitDefaultTypes() {
 	// Pair type

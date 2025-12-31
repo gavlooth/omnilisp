@@ -297,3 +297,80 @@ func ShapeFreeStrategy(s Shape) string {
 		return "dec_ref"
 	}
 }
+
+// CyclicFreeStrategy represents the strategy for handling cyclic data
+type CyclicFreeStrategy int
+
+const (
+	CyclicStrategyArena     CyclicFreeStrategy = iota // Arena fallback
+	CyclicStrategyDecRef                              // dec_ref (cycles broken by weak edges)
+	CyclicStrategySCC                                 // SCC-based RC (for frozen cycles)
+	CyclicStrategyDeferred                            // Deferred release
+)
+
+// CyclicStrategyString returns string representation
+func CyclicStrategyString(s CyclicFreeStrategy) string {
+	switch s {
+	case CyclicStrategyArena:
+		return "arena"
+	case CyclicStrategyDecRef:
+		return "dec_ref"
+	case CyclicStrategySCC:
+		return "scc_release"
+	case CyclicStrategyDeferred:
+		return "deferred_release"
+	default:
+		return "deferred_release"
+	}
+}
+
+// ShapeWithCycleInfo holds shape + cycle breaking info
+type ShapeWithCycleInfo struct {
+	Shape          Shape
+	CyclesBroken   bool   // True if cycles are broken by auto-weak edges
+	TypeName       string // The type name if known
+	IsFrozen       bool   // True if data is immutable (can use SCC)
+	Strategy       CyclicFreeStrategy
+}
+
+// DetermineStrategy determines the best memory strategy based on shape and cycle info
+func (s *ShapeWithCycleInfo) DetermineStrategy() CyclicFreeStrategy {
+	switch s.Shape {
+	case ShapeTree:
+		return CyclicStrategyDecRef // free_tree is actually used, but dec_ref is safe fallback
+	case ShapeDAG:
+		return CyclicStrategyDecRef
+	case ShapeCyclic:
+		if s.CyclesBroken {
+			// Cycles are broken by auto-detected weak edges - dec_ref is safe
+			return CyclicStrategyDecRef
+		}
+		if s.IsFrozen {
+			// Immutable cyclic data - use SCC
+			return CyclicStrategySCC
+		}
+		// Mutable cyclic data with unbroken cycles - arena or deferred
+		return CyclicStrategyArena
+	default:
+		return CyclicStrategyDeferred
+	}
+}
+
+// GetFreeFunction returns the C function to call for freeing
+func (s *ShapeWithCycleInfo) GetFreeFunction() string {
+	switch s.DetermineStrategy() {
+	case CyclicStrategyDecRef:
+		if s.Shape == ShapeTree {
+			return "free_tree"
+		}
+		return "dec_ref"
+	case CyclicStrategySCC:
+		return "scc_release"
+	case CyclicStrategyArena:
+		return "" // Arena uses bulk deallocation
+	case CyclicStrategyDeferred:
+		return "deferred_release"
+	default:
+		return "dec_ref"
+	}
+}

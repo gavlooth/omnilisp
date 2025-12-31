@@ -336,6 +336,75 @@ func TestCodegenIntegration(t *testing.T) {
 	}
 }
 
+func TestShapeAwareRouting(t *testing.T) {
+	// Reset global registry before test
+	codegen.ResetGlobalRegistry()
+
+	// Define a doubly-linked list (has auto-weak back-edge for prev)
+	input := `(deftype DList
+		(value int)
+		(next DList)
+		(prev DList))`
+
+	p := parser.New(input)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	env := eval.DefaultEnv()
+	menv := eval.NewMenv(ast.Nil, env)
+	eval.Eval(expr, menv)
+
+	registry := codegen.GlobalRegistry()
+
+	// Check cycle status
+	status := registry.GetCycleStatus("DList")
+
+	// DList has cycles but they should be broken by the auto-weak 'prev' field
+	if status == codegen.CycleStatusUnbroken {
+		t.Error("DList should have broken cycles (prev is auto-weak)")
+	}
+
+	// Check that dec_ref is safe to use
+	if !registry.HasCycleBrokenByWeakEdges("DList") {
+		t.Error("DList cycles should be broken by weak edges")
+	}
+
+	t.Logf("DList cycle status: %d (0=None, 1=Broken, 2=Unbroken)", status)
+}
+
+func TestShapeAwareRoutingUnbrokenCycles(t *testing.T) {
+	// Reset global registry before test
+	codegen.ResetGlobalRegistry()
+
+	// Define a type where cycles might not be broken
+	// (no naming hints, only one pointer to same type)
+	input := `(deftype Circular
+		(value int)
+		(link Circular))`
+
+	p := parser.New(input)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	env := eval.DefaultEnv()
+	menv := eval.NewMenv(ast.Nil, env)
+	eval.Eval(expr, menv)
+
+	registry := codegen.GlobalRegistry()
+	status := registry.GetCycleStatus("Circular")
+
+	// Single self-referential pointer - if DFS finds it, it's a back-edge
+	t.Logf("Circular cycle status: %d", status)
+
+	// The DFS should have marked 'link' as a back-edge since it's a self-loop
+	// This means the cycle is broken
+	t.Logf("Has cycle broken: %v", registry.HasCycleBrokenByWeakEdges("Circular"))
+}
+
 func TestDeftypeMultipleTypes(t *testing.T) {
 	// Reset global registry before test
 	codegen.ResetGlobalRegistry()
