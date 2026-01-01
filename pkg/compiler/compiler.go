@@ -19,6 +19,17 @@ type CValue struct {
 	Owned  bool
 	IsNil  bool
 	IsTemp bool
+	Shape  analysis.Shape // Shape of the value (Tree/DAG/Cyclic)
+}
+
+// VarMemInfo tracks memory management strategy for a variable.
+type VarMemInfo struct {
+	Shape       analysis.Shape             // Tree, DAG, Cyclic, Unknown
+	Strategy    analysis.CyclicFreeStrategy // How to free cyclic data
+	EscapeClass analysis.EscapeClass       // None, Arg, Global
+	UseSymRC    bool                       // Use Symmetric RC for this var
+	UseArena    bool                       // Use arena allocation
+	UseStack    bool                       // Use stack allocation
 }
 
 // VarInfo tracks compiler metadata for a binding.
@@ -26,6 +37,7 @@ type VarInfo struct {
 	CName           string
 	Boxed           bool
 	ReturnOwnership analysis.OwnershipClass
+	MemInfo         VarMemInfo // Memory management info
 }
 
 // Compiler performs direct AST -> C lowering.
@@ -41,18 +53,73 @@ type Compiler struct {
 	helperDefs   []string
 	primClosures map[string]bool
 	errors       []error
+
+	// Memory management infrastructure
+	shapeCtx     *analysis.ShapeContext   // Shape analysis context
+	typeRegistry *codegen.TypeRegistry    // Type registry for back-edge analysis
+	symScopes    []bool                   // Stack of symmetric RC scope flags
+	arenaScopes  []bool                   // Stack of arena scope flags
 }
 
 // New creates a new Compiler.
 func New() *Compiler {
 	gen := codegen.NewCodeGenerator(&bytes.Buffer{})
 	return &Compiler{
-		gen:      gen,
-		registry: analysis.NewSummaryRegistry(),
-		globals:  make(map[string]VarInfo),
-		scopes:   []map[string]VarInfo{make(map[string]VarInfo)},
+		gen:          gen,
+		registry:     analysis.NewSummaryRegistry(),
+		globals:      make(map[string]VarInfo),
+		scopes:       []map[string]VarInfo{make(map[string]VarInfo)},
 		primClosures: make(map[string]bool),
+		// Memory management infrastructure
+		shapeCtx:     analysis.NewShapeContext(),
+		typeRegistry: codegen.NewTypeRegistry(),
+		symScopes:    []bool{false}, // Global scope starts without symmetric RC
+		arenaScopes:  []bool{false}, // Global scope starts without arena
 	}
+}
+
+// selectFreeStrategy determines the appropriate free strategy for a value.
+func (c *Compiler) selectFreeStrategy(shape analysis.Shape, escape analysis.EscapeClass) (string, VarMemInfo) {
+	info := VarMemInfo{
+		Shape:       shape,
+		EscapeClass: escape,
+	}
+
+	switch shape {
+	case analysis.ShapeTree:
+		// Pure ASAP - immediate free, no RC overhead
+		return "free_tree", info
+
+	case analysis.ShapeDAG:
+		// Reference counting for shared data
+		return "dec_ref", info
+
+	case analysis.ShapeCyclic:
+		if escape == analysis.EscapeNone {
+			// Non-escaping cycles: use arena
+			info.UseArena = true
+			info.Strategy = analysis.CyclicStrategyArena
+			return "/* arena-managed */", info
+		}
+		// Escaping cycles: use Symmetric RC
+		info.UseSymRC = true
+		info.Strategy = analysis.CyclicStrategySymmetric
+		return "sym_dec_external", info
+
+	default: // ShapeUnknown
+		// Conservative: use reference counting
+		return "dec_ref", info
+	}
+}
+
+// inSymScope returns true if currently in a symmetric RC scope.
+func (c *Compiler) inSymScope() bool {
+	return len(c.symScopes) > 0 && c.symScopes[len(c.symScopes)-1]
+}
+
+// inArenaScope returns true if currently in an arena scope.
+func (c *Compiler) inArenaScope() bool {
+	return len(c.arenaScopes) > 0 && c.arenaScopes[len(c.arenaScopes)-1]
 }
 
 // CompileProgram compiles AST expressions into a full C program.
