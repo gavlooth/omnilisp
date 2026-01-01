@@ -15,10 +15,10 @@ type CodeGenerator struct {
 	registry         *TypeRegistry
 	escapeCtx        *analysis.AnalysisContext
 	shapeCtx         *analysis.ShapeContext
-	rcOptCtx         *analysis.RCOptContext       // RC optimization context
-	summaryCtx       *analysis.SummaryAnalyzer    // Interprocedural analysis
+	rcOptCtx         *analysis.RCOptContext        // RC optimization context
+	summaryCtx       *analysis.SummaryAnalyzer     // Interprocedural analysis
 	concurrencyCtx   *analysis.ConcurrencyAnalyzer // Concurrency ownership
-	reuseCtx         *analysis.ReuseAnalyzer      // Perceus reuse analysis
+	reuseCtx         *analysis.ReuseAnalyzer       // Perceus reuse analysis
 	arenaGen         *ArenaCodeGenerator
 	tempCounter      int
 	indentLevel      int
@@ -270,11 +270,17 @@ func (g *CodeGenerator) GenerateLet(bindings []struct {
 		// RC Optimization: Track aliases and uniqueness
 		if g.enableRCOpt {
 			if ast.IsSym(bi.val) {
-				// Value is a variable reference - creates an alias
-				g.rcOptCtx.DefineAlias(bi.sym.Str, bi.val.Str)
-			} else {
+				if g.rcOptCtx.IsUnique(bi.val.Str) {
+					g.rcOptCtx.TransferUniqueness(bi.val.Str, bi.sym.Str)
+				} else {
+					// Value is a variable reference - creates an alias
+					g.rcOptCtx.DefineAlias(bi.sym.Str, bi.val.Str)
+				}
+			} else if g.rcOptCtx.IsFreshAllocation(bi.val) {
 				// Fresh allocation - starts as unique
 				g.rcOptCtx.DefineVar(bi.sym.Str)
+			} else {
+				g.rcOptCtx.DefineVarNonUnique(bi.sym.Str)
 			}
 		}
 
@@ -346,11 +352,29 @@ func (g *CodeGenerator) GenerateLet(bindings []struct {
 		// RC Optimization: Get optimized free function
 		var freeFn string
 		var rcOptComment string
+
+		if isCaptured {
+			sb.WriteString(fmt.Sprintf("    /* %s captured by closure - no free */\n", bi.sym.Str))
+			continue
+		}
+		if escapeClass == analysis.EscapeGlobal {
+			sb.WriteString(fmt.Sprintf("    /* %s escapes to return - no free */\n", bi.sym.Str))
+			continue
+		}
+
 		if g.enableRCOpt {
+			if g.IsTransferred(bi.sym.Str) {
+				if g.rcOptCtx != nil {
+					g.rcOptCtx.RecordTransferSkip()
+				}
+				sb.WriteString(fmt.Sprintf("    /* %s transferred, no RC */\n", bi.sym.Str))
+				continue
+			}
+
 			freeFn = g.rcOptCtx.GetFreeFunction(bi.sym.Str, shape)
 			if freeFn == "" {
 				// RC optimization eliminated this free
-				rcOptComment = fmt.Sprintf("    /* %s: RC elided (alias of another var) */\n", bi.sym.Str)
+				rcOptComment = fmt.Sprintf("    /* %s: RC elided (borrowed/alias) */\n", bi.sym.Str)
 			} else if freeFn == "free_unique" {
 				rcOptComment = fmt.Sprintf("    %s(%s); /* RC opt: proven unique */\n", freeFn, bi.sym.Str)
 			} else {
@@ -363,13 +387,7 @@ func (g *CodeGenerator) GenerateLet(bindings []struct {
 				freeFn, bi.sym.Str, analysis.ShapeString(shape))
 		}
 
-		if isCaptured {
-			sb.WriteString(fmt.Sprintf("    /* %s captured by closure - no free */\n", bi.sym.Str))
-		} else if escapeClass == analysis.EscapeGlobal {
-			sb.WriteString(fmt.Sprintf("    /* %s escapes to return - no free */\n", bi.sym.Str))
-		} else {
-			sb.WriteString(rcOptComment)
-		}
+		sb.WriteString(rcOptComment)
 	}
 
 	sb.WriteString("    _res;\n})")

@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"fmt"
 	"purple_go/pkg/ast"
 )
 
@@ -8,25 +9,41 @@ import (
 type RCOptimization int
 
 const (
-	RCOptNone          RCOptimization = iota
-	RCOptElideIncRef                  // Skip inc_ref (borrowed or already counted)
-	RCOptElideDecRef                  // Skip dec_ref (another alias will handle it)
-	RCOptDirectFree                   // Use free() directly (proven unique)
-	RCOptBatchedFree                  // Batch multiple frees together
-	RCOptElideAll                     // Eliminate all RC ops (unique + owned)
+	RCOptNone        RCOptimization = iota
+	RCOptElideIncRef                // Skip inc_ref (borrowed or already counted)
+	RCOptElideDecRef                // Skip dec_ref (another alias will handle it)
+	RCOptDirectFree                 // Use free() directly (proven unique)
+	RCOptBatchedFree                // Batch multiple frees together
+	RCOptElideAll                   // Eliminate all RC ops (unique + owned)
 )
 
 // RCOptInfo holds optimization information for a variable
 type RCOptInfo struct {
 	VarName       string
 	Optimizations []RCOptimization
-	Aliases       []string   // Other variables that alias this one
-	IsUnique      bool       // True if provably the only reference
-	IsBorrowed    bool       // True if borrowed (no ownership transfer)
-	DefinedAt     int        // Program point where defined
-	LastUsedAt    int        // Program point of last use
-	AliasOf       string     // If this is an alias, name of original
-	RefCountDelta int        // Net change to ref count (+1, 0, -1)
+	Aliases       []string // Other variables that alias this one
+	IsUnique      bool     // True if provably the only reference
+	IsBorrowed    bool     // True if borrowed (no ownership transfer)
+	DefinedAt     int      // Program point where defined
+	LastUsedAt    int      // Program point of last use
+	AliasOf       string   // If this is an alias, name of original
+	RefCountDelta int      // Net change to ref count (+1, 0, -1)
+}
+
+// RCStats tracks RC optimization statistics.
+type RCStats struct {
+	TotalOps      int
+	EliminatedOps int
+	UniqueSkips   int
+	BorrowSkips   int
+	TransferSkips int
+}
+
+// BorrowedRef tracks a borrowed reference relationship.
+type BorrowedRef struct {
+	Source     string // Variable borrowed from
+	Field      string // Field accessed (empty for whole value)
+	ValidUntil string // Scope where borrow ends
 }
 
 // RCOptContext holds RC optimization analysis state
@@ -36,6 +53,8 @@ type RCOptContext struct {
 	NextGroupID  int
 	CurrentPoint int
 	Eliminated   int // Count of eliminated RC operations
+	Borrows      map[string]*BorrowedRef
+	Stats        RCStats
 }
 
 // NewRCOptContext creates a new RC optimization context
@@ -44,6 +63,7 @@ func NewRCOptContext() *RCOptContext {
 		Vars:        make(map[string]*RCOptInfo),
 		AliasGroups: make(map[int][]string),
 		NextGroupID: 1,
+		Borrows:     make(map[string]*BorrowedRef),
 	}
 }
 
@@ -57,7 +77,7 @@ func (ctx *RCOptContext) nextPoint() int {
 func (ctx *RCOptContext) DefineVar(name string) *RCOptInfo {
 	info := &RCOptInfo{
 		VarName:       name,
-		IsUnique:      true,  // Fresh allocations are unique
+		IsUnique:      true, // Fresh allocations are unique
 		IsBorrowed:    false,
 		DefinedAt:     ctx.nextPoint(),
 		RefCountDelta: 0,
@@ -107,6 +127,68 @@ func (ctx *RCOptContext) DefineBorrowed(name string) *RCOptInfo {
 	return info
 }
 
+// DefineVarNonUnique defines a new variable that is not proven unique.
+func (ctx *RCOptContext) DefineVarNonUnique(name string) *RCOptInfo {
+	info := &RCOptInfo{
+		VarName:       name,
+		IsUnique:      false,
+		IsBorrowed:    false,
+		DefinedAt:     ctx.nextPoint(),
+		RefCountDelta: 0,
+	}
+	ctx.Vars[name] = info
+	return info
+}
+
+// MarkUnique marks a variable as unique.
+func (ctx *RCOptContext) MarkUnique(name string) {
+	if info := ctx.Vars[name]; info != nil {
+		info.IsUnique = true
+		return
+	}
+	ctx.DefineVar(name)
+}
+
+// IsUnique returns true if a variable is known unique.
+func (ctx *RCOptContext) IsUnique(name string) bool {
+	if info := ctx.Vars[name]; info != nil {
+		return info.IsUnique
+	}
+	return false
+}
+
+// MarkBorrowed marks a variable as borrowed from another.
+func (ctx *RCOptContext) MarkBorrowed(borrowed, source, field string) {
+	ctx.Borrows[borrowed] = &BorrowedRef{
+		Source: source,
+		Field:  field,
+	}
+	ctx.DefineBorrowed(borrowed)
+}
+
+// IsBorrowed returns true if a variable is borrowed.
+func (ctx *RCOptContext) IsBorrowed(name string) bool {
+	if _, ok := ctx.Borrows[name]; ok {
+		return true
+	}
+	if info := ctx.Vars[name]; info != nil {
+		return info.IsBorrowed
+	}
+	return false
+}
+
+// TransferUniqueness transfers uniqueness from source to dest.
+func (ctx *RCOptContext) TransferUniqueness(source, dest string) {
+	if info := ctx.Vars[source]; info != nil && info.IsUnique {
+		info.IsUnique = false
+		if destInfo := ctx.Vars[dest]; destInfo != nil {
+			destInfo.IsUnique = true
+		} else {
+			ctx.DefineVar(dest)
+		}
+	}
+}
+
 // MarkUsed marks a variable as used at the current program point
 func (ctx *RCOptContext) MarkUsed(name string) {
 	if info := ctx.Vars[name]; info != nil {
@@ -114,16 +196,127 @@ func (ctx *RCOptContext) MarkUsed(name string) {
 	}
 }
 
+// PropagateUniqueness propagates uniqueness through expressions.
+func (ctx *RCOptContext) PropagateUniqueness(expr *ast.Value) {
+	if expr == nil || ast.IsNil(expr) {
+		return
+	}
+
+	switch expr.Tag {
+	case ast.TCell:
+		if ast.IsSym(expr.Car) {
+			switch expr.Car.Str {
+			case "let":
+				ctx.propagateLetUniqueness(expr)
+			case "if":
+				ctx.propagateIfUniqueness(expr)
+			case "lambda":
+				ctx.propagateLambdaUniqueness(expr)
+			}
+		}
+	}
+}
+
+func (ctx *RCOptContext) propagateLetUniqueness(expr *ast.Value) {
+	bindings := expr.Cdr.Car
+	for !ast.IsNil(bindings) && ast.IsCell(bindings) {
+		binding := bindings.Car
+		if ast.IsCell(binding) && ast.IsSym(binding.Car) {
+			varName := binding.Car.Str
+			initExpr := binding.Cdr.Car
+
+			if ctx.isFreshAllocation(initExpr) {
+				ctx.MarkUnique(varName)
+			} else if ast.IsSym(initExpr) {
+				sourceVar := initExpr.Str
+				if ctx.IsUnique(sourceVar) {
+					ctx.TransferUniqueness(sourceVar, varName)
+				}
+			}
+		}
+		bindings = bindings.Cdr
+	}
+}
+
+func (ctx *RCOptContext) propagateIfUniqueness(expr *ast.Value) {
+	// Recurse into branches to capture local uniqueness transfers.
+	thenBranch := expr.Cdr.Cdr.Car
+	elseBranch := expr.Cdr.Cdr.Cdr.Car
+	ctx.PropagateUniqueness(thenBranch)
+	ctx.PropagateUniqueness(elseBranch)
+}
+
+func (ctx *RCOptContext) propagateLambdaUniqueness(expr *ast.Value) {
+	// Lambda parameters are borrowed.
+	params := expr.Cdr.Car
+	for !ast.IsNil(params) && ast.IsCell(params) {
+		param := params.Car
+		if ast.IsSym(param) {
+			ctx.DefineBorrowed(param.Str)
+		}
+		params = params.Cdr
+	}
+	body := expr.Cdr.Cdr.Car
+	ctx.PropagateUniqueness(body)
+}
+
+func (ctx *RCOptContext) isFreshAllocation(expr *ast.Value) bool {
+	if !ast.IsCell(expr) {
+		return false
+	}
+	if ast.IsSym(expr.Car) {
+		switch expr.Car.Str {
+		case "cons", "list", "box", "mk-int", "mk-pair", "lambda":
+			return true
+		}
+		if len(expr.Car.Str) > 3 && expr.Car.Str[:3] == "mk-" {
+			return true
+		}
+	}
+	return false
+}
+
+// IsFreshAllocation reports whether an expression is a fresh allocation.
+func (ctx *RCOptContext) IsFreshAllocation(expr *ast.Value) bool {
+	return ctx.isFreshAllocation(expr)
+}
+
+func (ctx *RCOptContext) recordOp(eliminated bool) {
+	ctx.Stats.TotalOps++
+	if eliminated {
+		ctx.Stats.EliminatedOps++
+		ctx.Eliminated++
+	}
+}
+
+func (ctx *RCOptContext) recordSkip(kind string) {
+	ctx.recordOp(true)
+	switch kind {
+	case "unique":
+		ctx.Stats.UniqueSkips++
+	case "borrow":
+		ctx.Stats.BorrowSkips++
+	case "transfer":
+		ctx.Stats.TransferSkips++
+	}
+}
+
+// RecordTransferSkip records an RC elimination due to ownership transfer.
+func (ctx *RCOptContext) RecordTransferSkip() {
+	ctx.recordSkip("transfer")
+}
+
 // GetOptimizedIncRef returns the optimized inc_ref strategy
 func (ctx *RCOptContext) GetOptimizedIncRef(name string) RCOptimization {
 	info := ctx.Vars[name]
 	if info == nil {
+		ctx.recordOp(false)
 		return RCOptNone
 	}
 
 	// Borrowed references don't need inc_ref
 	if info.IsBorrowed {
-		ctx.Eliminated++
+		ctx.recordSkip("borrow")
 		return RCOptElideIncRef
 	}
 
@@ -132,11 +325,12 @@ func (ctx *RCOptContext) GetOptimizedIncRef(name string) RCOptimization {
 		original := ctx.Vars[info.AliasOf]
 		if original != nil && !original.IsBorrowed {
 			// Let the original handle the RC
-			ctx.Eliminated++
+			ctx.recordOp(true)
 			return RCOptElideIncRef
 		}
 	}
 
+	ctx.recordOp(false)
 	return RCOptNone
 }
 
@@ -144,12 +338,13 @@ func (ctx *RCOptContext) GetOptimizedIncRef(name string) RCOptimization {
 func (ctx *RCOptContext) GetOptimizedDecRef(name string) RCOptimization {
 	info := ctx.Vars[name]
 	if info == nil {
+		ctx.recordOp(false)
 		return RCOptNone
 	}
 
 	// Borrowed references don't need dec_ref
 	if info.IsBorrowed {
-		ctx.Eliminated++
+		ctx.recordSkip("borrow")
 		return RCOptElideDecRef
 	}
 
@@ -159,7 +354,7 @@ func (ctx *RCOptContext) GetOptimizedDecRef(name string) RCOptimization {
 			aliasInfo := ctx.Vars[alias]
 			if aliasInfo != nil && aliasInfo.LastUsedAt > info.LastUsedAt {
 				// Another alias is used later, it will handle dec_ref
-				ctx.Eliminated++
+				ctx.recordOp(true)
 				return RCOptElideDecRef
 			}
 		}
@@ -167,10 +362,11 @@ func (ctx *RCOptContext) GetOptimizedDecRef(name string) RCOptimization {
 
 	// If proven unique, can use direct free
 	if info.IsUnique {
-		ctx.Eliminated++
+		ctx.recordSkip("unique")
 		return RCOptDirectFree
 	}
 
+	ctx.recordOp(false)
 	return RCOptNone
 }
 
@@ -217,6 +413,12 @@ func (ctx *RCOptContext) AnalyzeExpr(expr *ast.Value) {
 	}
 }
 
+// Analyze performs RC analysis and uniqueness propagation.
+func (ctx *RCOptContext) Analyze(expr *ast.Value) {
+	ctx.AnalyzeExpr(expr)
+	ctx.PropagateUniqueness(expr)
+}
+
 func (ctx *RCOptContext) analyzeLetRC(args *ast.Value) {
 	if ast.IsNil(args) {
 		return
@@ -236,12 +438,16 @@ func (ctx *RCOptContext) analyzeLetRC(args *ast.Value) {
 
 		// Define the bound variable
 		if ast.IsSym(sym) {
-			// Check if value is a simple variable (creates alias)
 			if ast.IsSym(valExpr) {
-				ctx.DefineAlias(sym.Str, valExpr.Str)
-			} else {
-				// Fresh allocation
+				if ctx.IsUnique(valExpr.Str) {
+					ctx.TransferUniqueness(valExpr.Str, sym.Str)
+				} else {
+					ctx.DefineAlias(sym.Str, valExpr.Str)
+				}
+			} else if ctx.isFreshAllocation(valExpr) {
 				ctx.DefineVar(sym.Str)
+			} else {
+				ctx.DefineVarNonUnique(sym.Str)
 			}
 		}
 
@@ -294,6 +500,23 @@ func (ctx *RCOptContext) GetStatistics() (total, eliminated int) {
 	total = len(ctx.Vars) * 2 // Assume 1 inc_ref + 1 dec_ref per var
 	eliminated = ctx.Eliminated
 	return
+}
+
+// GetStats returns RC optimization statistics.
+func (ctx *RCOptContext) GetStats() RCStats {
+	return ctx.Stats
+}
+
+// ReportStats returns a formatted stats summary.
+func (ctx *RCOptContext) ReportStats() string {
+	s := ctx.Stats
+	pct := 0.0
+	if s.TotalOps > 0 {
+		pct = float64(s.EliminatedOps) / float64(s.TotalOps) * 100
+	}
+	return fmt.Sprintf("RC ops: %d total, %d eliminated (%.1f%%) [unique:%d, borrow:%d, transfer:%d]",
+		s.TotalOps, s.EliminatedOps, pct,
+		s.UniqueSkips, s.BorrowSkips, s.TransferSkips)
 }
 
 // ShouldEmitIncRef returns whether inc_ref should be emitted for a variable
