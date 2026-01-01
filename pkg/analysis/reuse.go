@@ -7,24 +7,35 @@ import (
 
 // ReuseCandidate represents a potential memory reuse opportunity
 type ReuseCandidate struct {
-	ID          int         // Unique identifier
-	FreeVar     string      // Variable being freed
-	AllocVar    string      // Variable being allocated
-	FreeType    string      // Type of freed object
-	AllocType   string      // Type of allocated object
-	CanReuse    bool        // Whether sizes match
-	SourceLine  int         // Location in source
-	IsSameScope bool        // Whether both in same scope
+	ID          int    // Unique identifier
+	FreeVar     string // Variable being freed
+	AllocVar    string // Variable being allocated
+	FreeType    string // Type of freed object
+	AllocType   string // Type of allocated object
+	CanReuse    bool   // Whether sizes match
+	SourceLine  int    // Location in source
+	IsSameScope bool   // Whether both in same scope
+}
+
+// AllocationInfo tracks info about an allocation.
+type AllocationInfo struct {
+	VarName  string
+	TypeName string
+	Size     int
+	Line     int
+	IsFresh  bool
+	IsFreed  bool
+	FreeLine int
 }
 
 // ReusePattern represents a pattern of allocation followed by free
 type ReusePattern int
 
 const (
-	ReuseNone      ReusePattern = iota // No reuse possible
-	ReuseExact                          // Exact same size
-	ReusePadded                         // Can reuse with padding
-	ReusePartial                        // Can reuse part of memory
+	ReuseNone    ReusePattern = iota // No reuse possible
+	ReuseExact                       // Exact same size
+	ReusePadded                      // Can reuse with padding
+	ReusePartial                     // Can reuse part of memory
 )
 
 func (r ReusePattern) String() string {
@@ -84,14 +95,16 @@ func (ts *TypeSize) CanReuse(freeType, allocType string) ReusePattern {
 
 // ReuseContext tracks reuse opportunities
 type ReuseContext struct {
-	TypeSizes   *TypeSize
-	Candidates  []*ReuseCandidate
-	NextID      int
+	TypeSizes  *TypeSize
+	Candidates []*ReuseCandidate
+	NextID     int
 
 	// Track pending frees and allocs
-	PendingFrees  []string         // Variables pending free
-	PendingTypes  map[string]string // Variable -> type mapping
-	Reuses        map[string]string // Alloc var -> Free var mapping
+	PendingFrees []string          // Variables pending free
+	PendingTypes map[string]string // Variable -> type mapping
+	Reuses       map[string]string // Alloc var -> Free var mapping
+
+	Allocations map[string]*AllocationInfo
 }
 
 // NewReuseContext creates a new reuse analysis context
@@ -102,7 +115,90 @@ func NewReuseContext() *ReuseContext {
 		PendingFrees: make([]string, 0),
 		PendingTypes: make(map[string]string),
 		Reuses:       make(map[string]string),
+		Allocations:  make(map[string]*AllocationInfo),
 	}
+}
+
+// RegisterAllocation records an allocation for reuse analysis.
+func (ctx *ReuseContext) RegisterAllocation(varName, typeName string, line int) {
+	ctx.Allocations[varName] = &AllocationInfo{
+		VarName:  varName,
+		TypeName: typeName,
+		Size:     ctx.TypeSizes.GetSize(typeName),
+		Line:     line,
+		IsFresh:  true,
+	}
+}
+
+// MarkFreed marks an allocation as freed and pending reuse.
+func (ctx *ReuseContext) MarkFreed(varName string, line int) {
+	if info, ok := ctx.Allocations[varName]; ok {
+		info.IsFreed = true
+		info.FreeLine = line
+		ctx.AddPendingFree(varName, info.TypeName)
+		return
+	}
+	// Fallback if allocation not registered.
+	ctx.AddPendingFree(varName, "Obj")
+}
+
+// ConsumePendingFree removes a pending free by name.
+func (ctx *ReuseContext) ConsumePendingFree(name string) {
+	for i := len(ctx.PendingFrees) - 1; i >= 0; i-- {
+		if ctx.PendingFrees[i] == name {
+			ctx.PendingFrees = append(ctx.PendingFrees[:i], ctx.PendingFrees[i+1:]...)
+			delete(ctx.PendingTypes, name)
+			return
+		}
+	}
+}
+
+// WillBeReused returns true if a free variable is scheduled for reuse.
+func (ctx *ReuseContext) WillBeReused(varName string) bool {
+	for _, freeVar := range ctx.Reuses {
+		if freeVar == varName {
+			return true
+		}
+	}
+	return false
+}
+
+// FindBestReuse finds the best reuse candidate for a new allocation.
+func (ctx *ReuseContext) FindBestReuse(typeName string, line int) *ReuseCandidate {
+	targetSize := ctx.TypeSizes.GetSize(typeName)
+	var best *ReuseCandidate
+	bestWaste := int(^uint(0) >> 1)
+
+	for i := len(ctx.PendingFrees) - 1; i >= 0; i-- {
+		freeVar := ctx.PendingFrees[i]
+		freeType := ctx.PendingTypes[freeVar]
+		freeSize := ctx.TypeSizes.GetSize(freeType)
+
+		if freeSize >= targetSize {
+			waste := freeSize - targetSize
+			if waste < bestWaste {
+				best = &ReuseCandidate{
+					ID:          ctx.NextID,
+					FreeVar:     freeVar,
+					FreeType:    freeType,
+					AllocType:   typeName,
+					CanReuse:    true,
+					SourceLine:  line,
+					IsSameScope: false,
+				}
+				bestWaste = waste
+				if waste == 0 {
+					break
+				}
+			}
+		}
+	}
+
+	if best != nil {
+		ctx.NextID++
+		ctx.Candidates = append(ctx.Candidates, best)
+	}
+	return best
 }
 
 // AddPendingFree marks a variable as pending for free

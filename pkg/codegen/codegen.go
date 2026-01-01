@@ -195,6 +195,58 @@ func (g *CodeGenerator) GenerateAllocation(varName, allocType string, allocExpr 
 	return allocExpr
 }
 
+func (g *CodeGenerator) inferType(val *ast.Value) string {
+	if val == nil || ast.IsNil(val) {
+		return "Obj"
+	}
+	switch val.Tag {
+	case ast.TInt:
+		return "int"
+	case ast.TFloat:
+		return "float"
+	case ast.TChar:
+		return "char"
+	case ast.TCode:
+		return "Obj"
+	case ast.TCell:
+		if ast.IsSym(val.Car) {
+			switch val.Car.Str {
+			case "cons", "list":
+				return "pair"
+			case "box":
+				return "box"
+			case "lambda":
+				return "closure"
+			}
+			if len(val.Car.Str) > 3 && val.Car.Str[:3] == "mk-" {
+				return "Obj"
+			}
+		}
+	}
+	return "Obj"
+}
+
+func (g *CodeGenerator) generateReuseExpr(candidate *analysis.ReuseCandidate, initExpr *ast.Value, fallback string) (string, bool) {
+	switch candidate.AllocType {
+	case "int":
+		if ast.IsInt(initExpr) {
+			return fmt.Sprintf("reuse_as_int(%s, %d)", candidate.FreeVar, initExpr.Int), true
+		}
+	case "pair":
+		if ast.IsCell(initExpr) && ast.IsSym(initExpr.Car) && initExpr.Car.Str == "cons" {
+			aExpr := g.ValueToCExpr(initExpr.Cdr.Car)
+			bExpr := g.ValueToCExpr(initExpr.Cdr.Cdr.Car)
+			return fmt.Sprintf("reuse_as_pair(%s, %s, %s)", candidate.FreeVar, aExpr, bExpr), true
+		}
+	case "box":
+		if ast.IsCell(initExpr) && ast.IsSym(initExpr.Car) && initExpr.Car.Str == "box" {
+			valExpr := g.ValueToCExpr(initExpr.Cdr.Car)
+			return fmt.Sprintf("reuse_as_box(%s, %s)", candidate.FreeVar, valExpr), true
+		}
+	}
+	return fallback, false
+}
+
 func (g *CodeGenerator) emit(format string, args ...interface{}) {
 	fmt.Fprintf(g.w, format, args...)
 }
@@ -322,13 +374,39 @@ func (g *CodeGenerator) GenerateLet(bindings []struct {
 		return g.arenaGen.GenerateArenaLet(arenaBindings, bodyStr, true)
 	}
 
+	typeNames := make([]string, len(bindings))
+	for i, bi := range bindings {
+		typeNames[i] = g.inferType(bi.val)
+		if g.reuseCtx != nil {
+			g.reuseCtx.Ctx.RegisterAllocation(bi.sym.Str, typeNames[i], 0)
+		}
+	}
+
 	// Standard ASAP code generation
 	var sb strings.Builder
 	sb.WriteString("({\n")
 
 	// Generate declarations
-	for _, bi := range arenaBindings {
-		sb.WriteString(fmt.Sprintf("    Obj* %s = %s;\n", bi.sym.Str, bi.val))
+	for i, bi := range arenaBindings {
+		varName := bi.sym.Str
+		valStr := bi.val
+		typeName := typeNames[i]
+
+		if g.reuseCtx != nil {
+			if candidate := g.reuseCtx.Ctx.FindBestReuse(typeName, 0); candidate != nil {
+				reuseExpr, ok := g.generateReuseExpr(candidate, bindings[i].val, valStr)
+				if ok {
+					candidate.AllocVar = varName
+					g.reuseCtx.Ctx.Reuses[varName] = candidate.FreeVar
+					g.reuseCtx.Ctx.ConsumePendingFree(candidate.FreeVar)
+					sb.WriteString(fmt.Sprintf("    /* Reuse %s for %s */\n", candidate.FreeVar, varName))
+					sb.WriteString(fmt.Sprintf("    Obj* %s = %s;\n", varName, reuseExpr))
+					continue
+				}
+			}
+		}
+
+		sb.WriteString(fmt.Sprintf("    Obj* %s = %s;\n", varName, valStr))
 	}
 
 	sb.WriteString(fmt.Sprintf("    Obj* _res = %s;\n", bodyStr))
@@ -385,6 +463,20 @@ func (g *CodeGenerator) GenerateLet(bindings []struct {
 			freeFn = analysis.ShapeFreeStrategy(shape)
 			rcOptComment = fmt.Sprintf("    %s(%s); /* ASAP Clean (shape: %s) */\n",
 				freeFn, bi.sym.Str, analysis.ShapeString(shape))
+		}
+
+		if freeFn == "" {
+			sb.WriteString(rcOptComment)
+			continue
+		}
+
+		if g.reuseCtx != nil {
+			g.reuseCtx.Ctx.MarkFreed(bi.sym.Str, 0)
+			if g.reuseCtx.Ctx.WillBeReused(bi.sym.Str) {
+				sb.WriteString(fmt.Sprintf("    /* %s reused in outer scope - no free */\n", bi.sym.Str))
+				continue
+			}
+			g.reuseCtx.Ctx.ConsumePendingFree(bi.sym.Str)
 		}
 
 		sb.WriteString(rcOptComment)
