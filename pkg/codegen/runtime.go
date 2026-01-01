@@ -407,6 +407,73 @@ void clear_marks_%s(Obj* x) {
 `)
 }
 
+// GenerateUserTypeScanners generates scanner functions for user-defined types
+// Scanners skip weak fields to avoid traversing back-edges
+func (g *RuntimeGenerator) GenerateUserTypeScanners() {
+	if g.registry == nil {
+		return
+	}
+
+	userTypes := g.registry.GetUserDefinedTypes()
+	if len(userTypes) == 0 {
+		return
+	}
+
+	g.emit(`/* User-Defined Type Scanners */
+/* Note: Weak fields are SKIPPED to avoid traversing back-edges */
+/* These scanners are for debugging/verification, not GC */
+
+`)
+
+	for _, typeDef := range userTypes {
+		// Generate scan function
+		g.emit("void scan_%s(%s* x) {\n", typeDef.Name, typeDef.Name)
+		g.emit("    if (!x) return;\n")
+
+		for _, field := range typeDef.Fields {
+			if !field.IsScannable {
+				continue
+			}
+
+			if field.Strength == FieldWeak {
+				g.emit("    /* x->%s: WEAK - skip to avoid back-edge traversal */\n", field.Name)
+			} else {
+				// For strong fields, recursively scan if it's a known type
+				targetType := g.registry.FindType(field.Type)
+				if targetType != nil {
+					g.emit("    if (x->%s) scan_%s(x->%s);\n", field.Name, field.Type, field.Name)
+				} else {
+					// Generic object scan
+					g.emit("    /* x->%s: scan as generic Obj */\n", field.Name)
+				}
+			}
+		}
+
+		g.emit("}\n\n")
+
+		// Generate clear_marks function
+		g.emit("void clear_marks_%s(%s* x) {\n", typeDef.Name, typeDef.Name)
+		g.emit("    if (!x) return;\n")
+
+		for _, field := range typeDef.Fields {
+			if !field.IsScannable {
+				continue
+			}
+
+			if field.Strength == FieldWeak {
+				g.emit("    /* x->%s: WEAK - skip */\n", field.Name)
+			} else {
+				targetType := g.registry.FindType(field.Type)
+				if targetType != nil {
+					g.emit("    if (x->%s) clear_marks_%s(x->%s);\n", field.Name, field.Type, field.Name)
+				}
+			}
+		}
+
+		g.emit("}\n\n")
+	}
+}
+
 // GenerateArenaRuntime generates arena allocation runtime with externals support
 func (g *RuntimeGenerator) GenerateArenaRuntime() {
 	g.emit(`/* Arena Allocator (Bulk Allocation/Deallocation) */
@@ -1158,19 +1225,27 @@ func (g *RuntimeGenerator) GenerateUserTypes() {
 		return
 	}
 
+	userTypes := g.registry.GetUserDefinedTypes()
+	if len(userTypes) == 0 {
+		return
+	}
+
 	g.emit(`/* User-Defined Types */
 /* Generated from deftype declarations with automatic back-edge detection */
 
 `)
 
-	for name, typeDef := range g.registry.Types {
-		// Skip built-in types
-		if name == "Pair" || name == "List" || name == "Tree" || name == "Obj" {
-			continue
-		}
+	// Phase 1: Forward declarations for mutual recursion
+	g.emit("/* Forward declarations */\n")
+	for _, typeDef := range userTypes {
+		g.emit("typedef struct %s %s;\n", typeDef.Name, typeDef.Name)
+	}
+	g.emit("\n")
 
-		g.emit("/* Type: %s */\n", name)
-		g.emit("typedef struct %s {\n", name)
+	// Phase 2: Full struct definitions (in definition order)
+	for _, typeDef := range userTypes {
+		g.emit("/* Type: %s */\n", typeDef.Name)
+		g.emit("struct %s {\n", typeDef.Name)
 
 		for _, field := range typeDef.Fields {
 			cType := g.fieldTypeToCType(field)
@@ -1184,7 +1259,7 @@ func (g *RuntimeGenerator) GenerateUserTypes() {
 			g.emit("    %s %s;%s\n", cType, field.Name, strengthComment)
 		}
 
-		g.emit("} %s;\n\n", name)
+		g.emit("};\n\n")
 	}
 }
 
@@ -1219,18 +1294,18 @@ func (g *RuntimeGenerator) GenerateTypeReleaseFunctions() {
 		return
 	}
 
+	userTypes := g.registry.GetUserDefinedTypes()
+	if len(userTypes) == 0 {
+		return
+	}
+
 	g.emit(`/* Type-Aware Release Functions */
 /* Automatically skip weak fields (back-edges) to prevent double-free */
 
 `)
 
-	for name, typeDef := range g.registry.Types {
-		// Skip built-in types
-		if name == "Pair" || name == "List" || name == "Tree" || name == "Obj" {
-			continue
-		}
-
-		g.emit("void release_%s(%s* x) {\n", name, name)
+	for _, typeDef := range userTypes {
+		g.emit("void release_%s(%s* x) {\n", typeDef.Name, typeDef.Name)
 		g.emit("    if (!x) return;\n")
 
 		// Process each field
@@ -1265,12 +1340,8 @@ func (g *RuntimeGenerator) GenerateTypeConstructors() {
 
 `)
 
-	for name, typeDef := range g.registry.Types {
-		// Skip built-in types
-		if name == "Pair" || name == "List" || name == "Tree" || name == "Obj" {
-			continue
-		}
-
+	userTypes := g.registry.GetUserDefinedTypes()
+	for _, typeDef := range userTypes {
 		// Generate parameter list
 		var params []string
 		for _, field := range typeDef.Fields {
@@ -1282,8 +1353,8 @@ func (g *RuntimeGenerator) GenerateTypeConstructors() {
 			paramStr = "void"
 		}
 
-		g.emit("%s* mk_%s(%s) {\n", name, name, paramStr)
-		g.emit("    %s* x = malloc(sizeof(%s));\n", name, name)
+		g.emit("%s* mk_%s(%s) {\n", typeDef.Name, typeDef.Name, paramStr)
+		g.emit("    %s* x = malloc(sizeof(%s));\n", typeDef.Name, typeDef.Name)
 		g.emit("    if (!x) return NULL;\n")
 
 		for _, field := range typeDef.Fields {
@@ -1310,12 +1381,8 @@ func (g *RuntimeGenerator) GenerateFieldAccessors() {
 
 `)
 
-	for name, typeDef := range g.registry.Types {
-		// Skip built-in types
-		if name == "Pair" || name == "List" || name == "Tree" || name == "Obj" {
-			continue
-		}
-
+	userTypes := g.registry.GetUserDefinedTypes()
+	for _, typeDef := range userTypes {
 		for _, field := range typeDef.Fields {
 			if !field.IsScannable {
 				continue // Skip primitive fields for now
@@ -1325,13 +1392,13 @@ func (g *RuntimeGenerator) GenerateFieldAccessors() {
 
 			// Getter
 			if field.Strength == FieldWeak {
-				g.emit("/* %s.%s getter - WEAK field, no ref count increment */\n", name, field.Name)
-				g.emit("%s get_%s_%s(%s* x) {\n", cType, name, field.Name, name)
+				g.emit("/* %s.%s getter - WEAK field, no ref count increment */\n", typeDef.Name, field.Name)
+				g.emit("%s get_%s_%s(%s* x) {\n", cType, typeDef.Name, field.Name, typeDef.Name)
 				g.emit("    return x ? x->%s : NULL;\n", field.Name)
 				g.emit("}\n\n")
 			} else {
-				g.emit("/* %s.%s getter - STRONG field */\n", name, field.Name)
-				g.emit("%s get_%s_%s(%s* x) {\n", cType, name, field.Name, name)
+				g.emit("/* %s.%s getter - STRONG field */\n", typeDef.Name, field.Name)
+				g.emit("%s get_%s_%s(%s* x) {\n", cType, typeDef.Name, field.Name, typeDef.Name)
 				g.emit("    if (!x) return NULL;\n")
 				g.emit("    if (x->%s) inc_ref((Obj*)x->%s);\n", field.Name, field.Name)
 				g.emit("    return x->%s;\n", field.Name)
@@ -1339,8 +1406,8 @@ func (g *RuntimeGenerator) GenerateFieldAccessors() {
 			}
 
 			// Setter
-			g.emit("/* %s.%s setter */\n", name, field.Name)
-			g.emit("void set_%s_%s(%s* x, %s value) {\n", name, field.Name, name, cType)
+			g.emit("/* %s.%s setter */\n", typeDef.Name, field.Name)
+			g.emit("void set_%s_%s(%s* x, %s value) {\n", typeDef.Name, field.Name, typeDef.Name, cType)
 			g.emit("    if (!x) return;\n")
 
 			if field.Strength == FieldStrong {
@@ -1877,6 +1944,14 @@ func (g *RuntimeGenerator) GenerateAll() {
 	g.GenerateTypeReleaseFunctions()
 	g.GenerateTypeConstructors()
 	g.GenerateFieldAccessors()
+	g.GenerateUserTypeScanners()
+	g.GenerateExceptionRuntime()
+}
+
+// GenerateExceptionRuntime generates exception handling support
+func (g *RuntimeGenerator) GenerateExceptionRuntime() {
+	excGen := NewExceptionCodeGenerator(g.w, g.registry)
+	excGen.GenerateExceptionRuntime()
 }
 
 // GenerateRuntime generates the complete C99 runtime to a string

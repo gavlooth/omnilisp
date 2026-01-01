@@ -133,6 +133,122 @@ func TestWeakEdgeDetection(t *testing.T) {
 	_ = GenerateWeakEdgeComment(weakEdges) // Just check it doesn't panic
 }
 
+func TestBackEdgePatterns(t *testing.T) {
+	// Test all back-edge naming patterns
+	patterns := []struct {
+		fieldName string
+		isBackEdge bool
+	}{
+		// Original patterns
+		{"parent", true},
+		{"prev", true},
+		{"back", true},
+		{"owner", true},
+		{"container", true},
+		{"previous", true},
+		{"up", true},
+		{"outer", true},
+
+		// New expanded patterns
+		{"ancestor", true},
+		{"predecessor", true},
+		{"enclosing", true},
+		{"backref", true},
+		{"backpointer", true},
+
+		// Suffix patterns
+		{"node_back", true},
+		{"link_prev", true},
+		{"ref_parent", true},
+		{"ptr_up", true},
+
+		// Mixed case
+		{"ParentNode", true},
+		{"prevSibling", true},
+		{"ANCESTOR", true},
+
+		// Non-back-edge patterns (should be false)
+		{"next", false},
+		{"child", false},
+		{"data", false},
+		{"value", false},
+		{"forward", false},
+		{"head", false},
+		{"tail", false},
+	}
+
+	for _, tc := range patterns {
+		result := isBackEdgeHint(tc.fieldName)
+		if result != tc.isBackEdge {
+			t.Errorf("isBackEdgeHint(%q) = %v, want %v", tc.fieldName, result, tc.isBackEdge)
+		}
+	}
+}
+
+func TestExceptionContext(t *testing.T) {
+	ctx := NewExceptionContext()
+
+	// Test entering/exiting try blocks
+	pad := ctx.EnterTryBlock("e")
+	if pad == nil {
+		t.Fatal("EnterTryBlock returned nil")
+	}
+	if pad.TryBlockID != 0 {
+		t.Errorf("TryBlockID = %d, want 0", pad.TryBlockID)
+	}
+	if ctx.CurrentTryBlock != 0 {
+		t.Errorf("CurrentTryBlock = %d, want 0", ctx.CurrentTryBlock)
+	}
+
+	// Test adding cleanup points
+	cp := ctx.AddCleanupPoint("x", "Obj", 10)
+	if cp == nil {
+		t.Fatal("AddCleanupPoint returned nil")
+	}
+	if len(pad.CleanupPoints) != 1 {
+		t.Errorf("CleanupPoints count = %d, want 1", len(pad.CleanupPoints))
+	}
+
+	// Test exiting try block
+	exitPad := ctx.ExitTryBlock()
+	if exitPad != pad {
+		t.Error("ExitTryBlock returned different pad")
+	}
+	if ctx.CurrentTryBlock != -1 {
+		t.Errorf("CurrentTryBlock after exit = %d, want -1", ctx.CurrentTryBlock)
+	}
+}
+
+func TestExceptionRuntimeGeneration(t *testing.T) {
+	var sb strings.Builder
+	registry := NewTypeRegistry()
+	registry.InitDefaultTypes()
+
+	gen := NewExceptionCodeGenerator(&sb, registry)
+	gen.GenerateExceptionRuntime()
+
+	result := sb.String()
+
+	// Check for key components
+	checks := []string{
+		"ExceptionContext",
+		"exception_push",
+		"exception_pop",
+		"exception_throw",
+		"TRY_BEGIN",
+		"TRY_CATCH",
+		"REGISTER_CLEANUP",
+		"setjmp",
+		"longjmp",
+	}
+
+	for _, check := range checks {
+		if !strings.Contains(result, check) {
+			t.Errorf("Exception runtime missing: %s", check)
+		}
+	}
+}
+
 func TestCodeGenerator(t *testing.T) {
 	var sb strings.Builder
 	gen := NewCodeGenerator(&sb)

@@ -247,12 +247,18 @@ func defaultHLit(exp, menv *ast.Value) *ast.Value {
 }
 
 func defaultHVar(exp, menv *ast.Value) *ast.Value {
+	// First check local environment
 	v := EnvLookup(menv.Env, exp)
-	if v == nil {
-		fmt.Printf("Error: Unbound variable: %s\n", exp.Str)
-		return ast.Nil
+	if v != nil {
+		return v
 	}
-	return v
+	// Fall back to global environment
+	v = GlobalLookup(exp)
+	if v != nil {
+		return v
+	}
+	fmt.Printf("Error: Unbound variable: %s\n", exp.Str)
+	return ast.Nil
 }
 
 func defaultHLam(exp, menv *ast.Value) *ast.Value {
@@ -399,6 +405,17 @@ func defaultHApp(exp, menv *ast.Value) *ast.Value {
 
 	if ast.IsPrim(fn) {
 		return fn.Prim(args, menv)
+	}
+
+	// Handle continuation application
+	if ast.IsCont(fn) {
+		// Get the first argument
+		arg := ast.Nil
+		if !ast.IsNil(args) && ast.IsCell(args) {
+			arg = args.Car
+		}
+		// Call the continuation function (will panic to escape)
+		return fn.ContFn(arg)
 	}
 
 	if ast.IsLambda(fn) {
@@ -649,6 +666,41 @@ func Eval(expr, menv *ast.Value) *ast.Value {
 
 		if ast.SymEqStr(op, "do") {
 			return evalDo(args, menv)
+		}
+
+		// set! - mutate existing binding
+		if ast.SymEqStr(op, "set!") {
+			return evalSetBang(args, menv)
+		}
+
+		// define - create top-level definition
+		if ast.SymEqStr(op, "define") {
+			return evalDefine(args, menv)
+		}
+
+		// call/cc - call with current continuation
+		if ast.SymEqStr(op, "call/cc") || ast.SymEqStr(op, "call-with-current-continuation") {
+			return evalCallCC(args, menv)
+		}
+
+		// prompt - establish a delimiter for control (Felleisen's naming)
+		if ast.SymEqStr(op, "prompt") {
+			return evalPrompt(args, menv)
+		}
+
+		// control - capture delimited continuation (Felleisen's naming)
+		if ast.SymEqStr(op, "control") {
+			return evalControl(args, menv)
+		}
+
+		// go - spawn a green thread
+		if ast.SymEqStr(op, "go") {
+			return evalGo(args, menv)
+		}
+
+		// select - wait on multiple channels
+		if ast.SymEqStr(op, "select") {
+			return evalSelect(args, menv)
 		}
 
 		if ast.SymEqStr(op, "error") {
@@ -1057,6 +1109,383 @@ func evalDo(args, menv *ast.Value) *ast.Value {
 	return result
 }
 
+// contEscape is used to escape from call/cc
+type contEscape struct {
+	value *ast.Value
+	tag   int // Unique tag for matching continuations
+}
+
+// shiftEscape is used for shift/reset delimited continuations
+type shiftEscape struct {
+	proc      *ast.Value // The procedure to call with the continuation
+	resetTag  int        // Tag of the enclosing reset
+	delimited bool       // True if this is from shift (vs call/cc)
+}
+
+var contTagCounter int = 0
+
+func nextContTag() int {
+	contTagCounter++
+	return contTagCounter
+}
+
+// evalCallCC implements call/cc (call with current continuation)
+// (call/cc (lambda (k) body)) - k is the continuation that escapes to caller
+func evalCallCC(args, menv *ast.Value) *ast.Value {
+	if ast.IsNil(args) {
+		return ast.NewError("call/cc: requires a procedure")
+	}
+
+	// Evaluate the procedure
+	proc := Eval(args.Car, menv)
+	if proc == nil {
+		return ast.NewError("call/cc: procedure evaluated to nil")
+	}
+
+	// Create a unique tag for this continuation
+	tag := nextContTag()
+
+	// Create a continuation that captures the escape
+	contFn := func(val *ast.Value) *ast.Value {
+		// Panic with the value to escape
+		panic(contEscape{value: val, tag: tag})
+	}
+
+	// Create the continuation value
+	cont := ast.NewCont(contFn, menv)
+	cont.Int = int64(tag) // Store tag in Int field for matching
+
+	// Call the procedure with the continuation, catching any escape
+	defer func() {
+		if r := recover(); r != nil {
+			if escape, ok := r.(contEscape); ok && escape.tag == tag {
+				// This is our escape, return the value
+				// But we can't return from defer, so we re-panic to be caught below
+				panic(escape)
+			}
+			// Not our escape, re-panic
+			panic(r)
+		}
+	}()
+
+	// Apply the procedure to the continuation
+	// This is wrapped in a function to handle the defer properly
+	return callWithContinuation(proc, cont, menv, tag)
+}
+
+// callWithContinuation calls proc with cont and handles continuation escapes
+func callWithContinuation(proc, cont *ast.Value, menv *ast.Value, tag int) (result *ast.Value) {
+	defer func() {
+		if r := recover(); r != nil {
+			if escape, ok := r.(contEscape); ok && escape.tag == tag {
+				result = escape.value
+				return
+			}
+			panic(r) // Re-panic if not our escape
+		}
+	}()
+
+	return applyFn(proc, ast.List1(cont), menv)
+}
+
+// resetTagStack tracks the current reset boundaries
+var resetTagStack []int
+
+// pushResetTag pushes a tag onto the reset stack
+func pushResetTag(tag int) {
+	resetTagStack = append(resetTagStack, tag)
+}
+
+// popResetTag pops a tag from the reset stack
+func popResetTag() {
+	if len(resetTagStack) > 0 {
+		resetTagStack = resetTagStack[:len(resetTagStack)-1]
+	}
+}
+
+// currentResetTag returns the current reset tag or -1 if none
+func getCurrentResetTag() int {
+	if len(resetTagStack) == 0 {
+		return -1
+	}
+	return resetTagStack[len(resetTagStack)-1]
+}
+
+// evalPrompt implements (prompt body) - establishes a delimiter (Felleisen's naming)
+func evalPrompt(args, menv *ast.Value) *ast.Value {
+	if ast.IsNil(args) {
+		return ast.Nil
+	}
+
+	tag := nextContTag()
+	body := args.Car
+
+	return evalWithPrompt(body, menv, tag)
+}
+
+// evalWithPrompt evaluates body with a prompt boundary
+func evalWithPrompt(body, menv *ast.Value, tag int) (result *ast.Value) {
+	pushResetTag(tag)
+	defer popResetTag()
+
+	defer func() {
+		if r := recover(); r != nil {
+			if escape, ok := r.(shiftEscape); ok && escape.resetTag == tag {
+				// We caught a control from within our prompt
+				result = escape.proc
+				return
+			}
+			panic(r) // Re-panic if not our escape
+		}
+	}()
+
+	return Eval(body, menv)
+}
+
+// evalControl implements (control k body) - captures delimited continuation (Felleisen's naming)
+// k is bound to the continuation up to the enclosing prompt
+func evalControl(args, menv *ast.Value) *ast.Value {
+	if ast.IsNil(args) || ast.IsNil(args.Cdr) {
+		return ast.NewError("control: requires variable and body")
+	}
+
+	kSym := args.Car
+	if !ast.IsSym(kSym) {
+		return ast.NewError("control: first argument must be a symbol")
+	}
+
+	body := args.Cdr.Car
+
+	// Get the enclosing prompt tag
+	resetTag := getCurrentResetTag()
+	if resetTag < 0 {
+		return ast.NewError("control: no enclosing prompt")
+	}
+
+	// Create the continuation that, when called, returns to the enclosing reset
+	contFn := func(val *ast.Value) *ast.Value {
+		// This continuation, when invoked, just returns the value
+		// In a full implementation, this would re-install the context
+		return val
+	}
+
+	cont := ast.NewCont(contFn, menv)
+
+	// Bind k to the continuation and evaluate body
+	newEnv := EnvExtend(menv.Env, kSym, cont)
+	bodyMenv := ast.NewMenv(newEnv, menv.Parent, menv.Level, menv.CopyHandlers())
+
+	// Evaluate the body
+	result := Eval(body, bodyMenv)
+
+	// Panic to escape to the enclosing reset with the result
+	panic(shiftEscape{proc: result, resetTag: resetTag, delimited: true})
+}
+
+// evalGo implements (go expr) - spawns a green thread
+func evalGo(args, menv *ast.Value) *ast.Value {
+	if ast.IsNil(args) {
+		return ast.NewError("go: requires an expression")
+	}
+
+	expr := args.Car
+
+	// Create a thunk that will evaluate the expression
+	thunk := ast.NewLambda(ast.Nil, expr, menv.Env)
+
+	// Use goroutines for true concurrency
+	result := make(chan *ast.Value, 1)
+	go func() {
+		// Create a new menv for the goroutine
+		goMenv := ast.NewMenv(menv.Env, menv.Parent, menv.Level, menv.CopyHandlers())
+		r := Eval(expr, goMenv)
+		result <- r
+	}()
+
+	// Create a process value to represent the spawned goroutine
+	proc := ast.NewProcess(thunk)
+	proc.ProcState = ProcRunning
+
+	// Store the result channel in a way we can access it
+	// For simplicity, we'll use a goroutine that waits for completion
+	go func() {
+		r := <-result
+		proc.ProcResult = r
+		proc.ProcState = ProcDone
+	}()
+
+	return proc
+}
+
+// evalSelect implements (select clauses...)
+// Each clause is (chan-expr => handler-body) or (default => body)
+func evalSelect(args, menv *ast.Value) *ast.Value {
+	if ast.IsNil(args) {
+		return ast.Nil
+	}
+
+	// Collect channel operations
+	type selectCase struct {
+		ch      *ast.Value
+		isSend  bool
+		sendVal *ast.Value
+		body    *ast.Value
+	}
+
+	var cases []selectCase
+	var defaultBody *ast.Value
+
+	// Parse clauses
+	rest := args
+	for !ast.IsNil(rest) && ast.IsCell(rest) {
+		clause := rest.Car
+		if !ast.IsCell(clause) {
+			rest = rest.Cdr
+			continue
+		}
+
+		first := clause.Car
+
+		// Check for default clause
+		if ast.SymEqStr(first, "default") {
+			if !ast.IsNil(clause.Cdr) && ast.IsCell(clause.Cdr) {
+				defaultBody = clause.Cdr.Car
+			}
+			rest = rest.Cdr
+			continue
+		}
+
+		// Parse channel operation
+		// (recv ch => body) or (send ch val => body)
+		if ast.SymEqStr(first, "recv") {
+			if ast.IsCell(clause.Cdr) {
+				chExpr := clause.Cdr.Car
+				ch := Eval(chExpr, menv)
+				// Find body after =>
+				arrowRest := clause.Cdr.Cdr
+				if ast.IsCell(arrowRest) && ast.SymEqStr(arrowRest.Car, "=>") {
+					body := arrowRest.Cdr.Car
+					cases = append(cases, selectCase{ch: ch, isSend: false, body: body})
+				}
+			}
+		} else if ast.SymEqStr(first, "send") {
+			if ast.IsCell(clause.Cdr) && ast.IsCell(clause.Cdr.Cdr) {
+				chExpr := clause.Cdr.Car
+				valExpr := clause.Cdr.Cdr.Car
+				ch := Eval(chExpr, menv)
+				val := Eval(valExpr, menv)
+				// Find body after =>
+				arrowRest := clause.Cdr.Cdr.Cdr
+				if ast.IsCell(arrowRest) && ast.SymEqStr(arrowRest.Car, "=>") {
+					body := arrowRest.Cdr.Car
+					cases = append(cases, selectCase{ch: ch, isSend: true, sendVal: val, body: body})
+				}
+			}
+		}
+
+		rest = rest.Cdr
+	}
+
+	// Try each case without blocking
+	for _, c := range cases {
+		if !ast.IsChan(c.ch) {
+			continue
+		}
+
+		if c.isSend {
+			if ChanSend(c.ch, c.sendVal) {
+				return Eval(c.body, menv)
+			}
+		} else {
+			val, ok := ChanRecv(c.ch)
+			if ok {
+				// Bind received value if needed
+				return Eval(c.body, menv)
+				_ = val // TODO: bind to variable
+			}
+		}
+	}
+
+	// If no case ready and we have default, execute it
+	if defaultBody != nil {
+		return Eval(defaultBody, menv)
+	}
+
+	// No default, need to block - for now just return nil
+	// Full implementation would park the goroutine
+	return ast.Nil
+}
+
+// evalSetBang handles (set! var value)
+// Mutates an existing variable binding in the current environment
+func evalSetBang(args, menv *ast.Value) *ast.Value {
+	if ast.IsNil(args) || ast.IsNil(args.Cdr) {
+		return ast.NewError("set!: requires variable and value")
+	}
+
+	varSym := args.Car
+	if !ast.IsSym(varSym) {
+		return ast.NewError("set!: first argument must be a symbol")
+	}
+
+	// Evaluate the value
+	val := Eval(args.Cdr.Car, menv)
+
+	// Try to set in the current environment
+	if EnvSet(menv.Env, varSym, val) {
+		return val
+	}
+
+	// Try to set in global environment
+	globalMutex.Lock()
+	found := EnvSet(globalEnv, varSym, val)
+	globalMutex.Unlock()
+	if found {
+		return val
+	}
+
+	// Variable not found - error
+	return ast.NewError(fmt.Sprintf("set!: unbound variable: %s", varSym.Str))
+}
+
+// evalDefine handles (define name value) or (define (name args...) body)
+// Creates a binding in the global environment
+func evalDefine(args, menv *ast.Value) *ast.Value {
+	if ast.IsNil(args) {
+		return ast.NewError("define: requires at least name")
+	}
+
+	first := args.Car
+
+	// Case 1: (define (name args...) body) - function shorthand
+	if ast.IsCell(first) {
+		name := first.Car
+		if !ast.IsSym(name) {
+			return ast.NewError("define: function name must be a symbol")
+		}
+		params := first.Cdr
+		body := args.Cdr.Car
+
+		// Create a lambda
+		lam := ast.NewLambda(params, body, menv.Env)
+		GlobalDefine(name, lam)
+		return name
+	}
+
+	// Case 2: (define name value) - simple definition
+	if !ast.IsSym(first) {
+		return ast.NewError("define: first argument must be a symbol or (name args...)")
+	}
+
+	if ast.IsNil(args.Cdr) {
+		return ast.NewError("define: requires a value")
+	}
+
+	val := Eval(args.Cdr.Car, menv)
+	GlobalDefine(first, val)
+	return first
+}
+
 // applyFn applies a function to arguments
 func applyFn(fn *ast.Value, args *ast.Value, menv *ast.Value) *ast.Value {
 	if fn == nil {
@@ -1065,6 +1494,15 @@ func applyFn(fn *ast.Value, args *ast.Value, menv *ast.Value) *ast.Value {
 
 	if ast.IsPrim(fn) {
 		return fn.Prim(args, menv)
+	}
+
+	// Handle continuation application
+	if ast.IsCont(fn) {
+		arg := ast.Nil
+		if !ast.IsNil(args) && ast.IsCell(args) {
+			arg = args.Car
+		}
+		return fn.ContFn(arg)
 	}
 
 	if ast.IsLambda(fn) {
@@ -1687,6 +2125,7 @@ func evalMacroexpand(args *ast.Value, menv *ast.Value) *ast.Value {
 
 // evalDeftype handles (deftype TypeName (field1 Type1) (field2 Type2) ...)
 // Registers the type with the global registry for back-edge analysis
+// Creates constructor (mk-TypeName), accessors (TypeName-field), and predicate (TypeName?)
 func evalDeftype(args *ast.Value, menv *ast.Value) *ast.Value {
 	if ast.IsNil(args) {
 		return ast.NewError("deftype requires type name")
@@ -1701,6 +2140,7 @@ func evalDeftype(args *ast.Value, menv *ast.Value) *ast.Value {
 
 	// Parse fields: (field1 Type1) (field2 Type2) ...
 	var fields []codegen.TypeField
+	var fieldNames []string // Keep field names in order for constructor
 	rest := args.Cdr
 	for !ast.IsNil(rest) && ast.IsCell(rest) {
 		fieldDef := rest.Car
@@ -1720,16 +2160,25 @@ func evalDeftype(args *ast.Value, menv *ast.Value) *ast.Value {
 		}
 		fieldType := fieldTypeVal.Str
 
+		// Check for :weak annotation
+		strength := codegen.FieldStrong
+		if !ast.IsNil(fieldDef.Cdr.Cdr) {
+			annotation := fieldDef.Cdr.Cdr.Car
+			if ast.IsSym(annotation) && annotation.Str == ":weak" {
+				strength = codegen.FieldWeak
+			}
+		}
+
 		// Determine if field is scannable (pointer type)
-		// Primitive types like int, float, bool are not scannable
 		isScannable := !isPrimitiveType(fieldType)
 
 		fields = append(fields, codegen.TypeField{
 			Name:        fieldName,
 			Type:        fieldType,
 			IsScannable: isScannable,
-			Strength:    codegen.FieldStrong, // Default to strong, back-edge analysis will update
+			Strength:    strength,
 		})
+		fieldNames = append(fieldNames, fieldName)
 
 		rest = rest.Cdr
 	}
@@ -1742,8 +2191,108 @@ func evalDeftype(args *ast.Value, menv *ast.Value) *ast.Value {
 	registry.BuildOwnershipGraph()
 	registry.AnalyzeBackEdges()
 
+	// Create and register constructor: mk-TypeName
+	constructorName := "mk-" + typeName
+	constructor := createTypeConstructor(typeName, fieldNames)
+	GlobalDefine(ast.NewSym(constructorName), constructor)
+
+	// Create and register field accessors: TypeName-fieldName
+	for _, fieldName := range fieldNames {
+		accessorName := typeName + "-" + fieldName
+		accessor := createFieldAccessor(typeName, fieldName)
+		GlobalDefine(ast.NewSym(accessorName), accessor)
+
+		// Also create setter: set-TypeName-fieldName!
+		setterName := "set-" + typeName + "-" + fieldName + "!"
+		setter := createFieldSetter(typeName, fieldName)
+		GlobalDefine(ast.NewSym(setterName), setter)
+	}
+
+	// Create and register type predicate: TypeName?
+	predicateName := typeName + "?"
+	predicate := createTypePredicate(typeName)
+	GlobalDefine(ast.NewSym(predicateName), predicate)
+
 	// Return the type name as a symbol
 	return typeNameVal
+}
+
+// createTypeConstructor creates a primitive that constructs instances of the type
+func createTypeConstructor(typeName string, fieldNames []string) *ast.Value {
+	// Capture typeName and fieldNames in closure
+	tn := typeName
+	fns := make([]string, len(fieldNames))
+	copy(fns, fieldNames)
+
+	return ast.NewPrim(func(args *ast.Value, menv *ast.Value) *ast.Value {
+		// Collect field values from args
+		fields := make(map[string]*ast.Value)
+		argList := args
+		for i, fn := range fns {
+			if ast.IsNil(argList) {
+				return ast.NewError(fmt.Sprintf("mk-%s: expected %d arguments, got %d", tn, len(fns), i))
+			}
+			fields[fn] = argList.Car
+			argList = argList.Cdr
+		}
+		return ast.NewUserType(tn, fields)
+	})
+}
+
+// createFieldAccessor creates a primitive that accesses a field of the type
+func createFieldAccessor(typeName, fieldName string) *ast.Value {
+	tn := typeName
+	fn := fieldName
+
+	return ast.NewPrim(func(args *ast.Value, menv *ast.Value) *ast.Value {
+		if ast.IsNil(args) {
+			return ast.NewError(fmt.Sprintf("%s-%s: requires 1 argument", tn, fn))
+		}
+		v := args.Car
+		if !ast.IsUserTypeOf(v, tn) {
+			return ast.NewError(fmt.Sprintf("%s-%s: argument must be a %s", tn, fn, tn))
+		}
+		result := ast.UserTypeGetField(v, fn)
+		if result == nil {
+			return ast.Nil
+		}
+		return result
+	})
+}
+
+// createFieldSetter creates a primitive that sets a field of the type
+func createFieldSetter(typeName, fieldName string) *ast.Value {
+	tn := typeName
+	fn := fieldName
+
+	return ast.NewPrim(func(args *ast.Value, menv *ast.Value) *ast.Value {
+		if ast.IsNil(args) || ast.IsNil(args.Cdr) {
+			return ast.NewError(fmt.Sprintf("set-%s-%s!: requires 2 arguments", tn, fn))
+		}
+		v := args.Car
+		newVal := args.Cdr.Car
+		if !ast.IsUserTypeOf(v, tn) {
+			return ast.NewError(fmt.Sprintf("set-%s-%s!: first argument must be a %s", tn, fn, tn))
+		}
+		ast.UserTypeSetField(v, fn, newVal)
+		return newVal
+	})
+}
+
+// createTypePredicate creates a primitive that checks if a value is of the type
+func createTypePredicate(typeName string) *ast.Value {
+	tn := typeName
+
+	return ast.NewPrim(func(args *ast.Value, menv *ast.Value) *ast.Value {
+		if ast.IsNil(args) {
+			return ast.NewError(fmt.Sprintf("%s?: requires 1 argument", tn))
+		}
+		v := args.Car
+		if ast.IsUserTypeOf(v, tn) {
+			return ast.NewSym("t") // true
+		}
+		return ast.Nil // false
+	})
 }
 
 // isPrimitiveType returns true if the type is a primitive (non-pointer) type

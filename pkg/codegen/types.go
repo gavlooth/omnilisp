@@ -40,6 +40,7 @@ type OwnershipEdge struct {
 // TypeRegistry manages type definitions
 type TypeRegistry struct {
 	Types          map[string]*TypeDef
+	TypeOrder      []string // Track definition order for codegen
 	OwnershipGraph []*OwnershipEdge
 }
 
@@ -85,7 +86,10 @@ func (r *TypeRegistry) RegisterType(name string, fields []TypeField) {
 	// Set strengths and check for recursion
 	for i := range t.Fields {
 		if t.Fields[i].IsScannable {
-			t.Fields[i].Strength = FieldStrong
+			// Preserve strength if already set (e.g., :weak annotation)
+			if t.Fields[i].Strength == FieldUntraced {
+				t.Fields[i].Strength = FieldStrong
+			}
 			if t.Fields[i].Type == name {
 				t.IsRecursive = true
 			}
@@ -94,7 +98,38 @@ func (r *TypeRegistry) RegisterType(name string, fields []TypeField) {
 		}
 	}
 
+	// Track definition order (only add if new)
+	if _, exists := r.Types[name]; !exists {
+		r.TypeOrder = append(r.TypeOrder, name)
+	}
+
 	r.Types[name] = t
+}
+
+// GetUserDefinedTypes returns user-defined types in definition order (excludes defaults)
+func (r *TypeRegistry) GetUserDefinedTypes() []*TypeDef {
+	var result []*TypeDef
+	for _, name := range r.TypeOrder {
+		// Skip default types
+		if name == "Pair" || name == "List" || name == "Tree" {
+			continue
+		}
+		if t := r.Types[name]; t != nil {
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
+// GetAllTypes returns all types in definition order
+func (r *TypeRegistry) GetAllTypes() []*TypeDef {
+	var result []*TypeDef
+	for _, name := range r.TypeOrder {
+		if t := r.Types[name]; t != nil {
+			result = append(result, t)
+		}
+	}
+	return result
 }
 
 // FindType looks up a type by name
@@ -120,19 +155,37 @@ func (r *TypeRegistry) BuildOwnershipGraph() {
 
 // BackEdgeHints contains field name patterns that are likely back-edges
 var BackEdgeHints = []string{
-	"parent", "owner", "container", // Points to ancestor/owner
-	"prev", "previous", "back",     // Reverse direction in sequences
-	"up", "outer",                  // Hierarchical back-references
+	// Points to ancestor/owner
+	"parent", "owner", "container", "ancestor", "enclosing",
+	// Reverse direction in sequences
+	"prev", "previous", "back", "predecessor",
+	// Hierarchical back-references
+	"up", "outer", "backref", "backpointer",
+}
+
+// BackEdgeSuffixes contains suffixes that indicate back-edges
+var BackEdgeSuffixes = []string{
+	"_back", "_prev", "_parent", "_up",
 }
 
 // isBackEdgeHint returns true if the field name matches a back-edge naming pattern
 func isBackEdgeHint(fieldName string) bool {
 	lower := strings.ToLower(fieldName)
+
+	// Check contains patterns
 	for _, hint := range BackEdgeHints {
 		if strings.Contains(lower, hint) {
 			return true
 		}
 	}
+
+	// Check suffix patterns
+	for _, suffix := range BackEdgeSuffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+
 	return false
 }
 

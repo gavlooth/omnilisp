@@ -544,6 +544,15 @@ func applyPrimFn(fn *ast.Value, args *ast.Value, menv *ast.Value) *ast.Value {
 		return fn.Prim(args, menv)
 	}
 
+	// Handle continuation application
+	if ast.IsCont(fn) {
+		arg := ast.Nil
+		if !ast.IsNil(args) && ast.IsCell(args) {
+			arg = args.Car
+		}
+		return fn.ContFn(arg)
+	}
+
 	if ast.IsLambda(fn) {
 		params := fn.Params
 		body := fn.Body
@@ -592,6 +601,74 @@ func PrimPrint(args, menv *ast.Value) *ast.Value {
 	a := getOneArg(args)
 	if a != nil {
 		fmt.Println(a.String())
+	}
+	return ast.Nil
+}
+
+// PrimDisplay implements display primitive (print without newline)
+func PrimDisplay(args, menv *ast.Value) *ast.Value {
+	a := getOneArg(args)
+	if a != nil {
+		// For strings (list of chars), print the actual string
+		if ast.IsCell(a) && !ast.IsNil(a) && ast.IsChar(a.Car) {
+			for v := a; !ast.IsNil(v) && ast.IsCell(v); v = v.Cdr {
+				if ast.IsChar(v.Car) {
+					fmt.Printf("%c", rune(v.Car.Int))
+				}
+			}
+		} else {
+			fmt.Print(a.String())
+		}
+	}
+	return ast.Nil
+}
+
+// PrimNewline implements newline primitive
+func PrimNewline(args, menv *ast.Value) *ast.Value {
+	fmt.Println()
+	return ast.Nil
+}
+
+// PrimRead implements read primitive (reads from stdin)
+// For now, reads a simple integer or symbol
+func PrimRead(args, menv *ast.Value) *ast.Value {
+	var input string
+	_, err := fmt.Scan(&input)
+	if err != nil {
+		return ast.NewError("read: " + err.Error())
+	}
+
+	// Try to parse as integer
+	var n int64
+	if _, err := fmt.Sscanf(input, "%d", &n); err == nil {
+		return ast.NewInt(n)
+	}
+
+	// Otherwise return as symbol
+	return ast.NewSym(input)
+}
+
+// PrimReadChar implements read-char primitive
+func PrimReadChar(args, menv *ast.Value) *ast.Value {
+	var ch byte
+	_, err := fmt.Scanf("%c", &ch)
+	if err != nil {
+		return ast.NewError("read-char: " + err.Error())
+	}
+	return ast.NewChar(rune(ch))
+}
+
+// PrimPeekChar implements peek-char primitive (returns EOF as nil)
+// Note: This is a simplified version - true peek is complex in Go
+func PrimPeekChar(args, menv *ast.Value) *ast.Value {
+	return ast.NewError("peek-char: not implemented")
+}
+
+// PrimEof implements eof-object? primitive
+func PrimEof(args, menv *ast.Value) *ast.Value {
+	a := getOneArg(args)
+	if a != nil && ast.IsError(a) && a.Str == "EOF" {
+		return SymT
 	}
 	return ast.Nil
 }
@@ -863,6 +940,237 @@ func PrimSubstring(args, menv *ast.Value) *ast.Value {
 	return ast.SliceToList(result)
 }
 
+// Channel and Process primitives
+
+// PrimMakeChan implements make-chan primitive
+func PrimMakeChan(args, menv *ast.Value) *ast.Value {
+	capacity := 0
+	a := getOneArg(args)
+	if a != nil && ast.IsInt(a) {
+		capacity = int(a.Int)
+	}
+	return ast.NewChan(capacity)
+}
+
+// PrimChanSend implements chan-send! primitive (blocking)
+func PrimChanSend(args, menv *ast.Value) *ast.Value {
+	ch, val, ok := getTwoArgs(args)
+	if !ok {
+		return ast.NewError("chan-send!: requires channel and value")
+	}
+	if !ast.IsChan(ch) {
+		return ast.NewError("chan-send!: first argument must be a channel")
+	}
+	ChanSendBlocking(ch, val)
+	return val
+}
+
+// PrimChanRecv implements chan-recv! primitive (blocking)
+func PrimChanRecv(args, menv *ast.Value) *ast.Value {
+	ch := getOneArg(args)
+	if ch == nil || !ast.IsChan(ch) {
+		return ast.NewError("chan-recv!: requires a channel")
+	}
+	return ChanRecvBlocking(ch)
+}
+
+// PrimChanClose implements chan-close! primitive
+func PrimChanClose(args, menv *ast.Value) *ast.Value {
+	ch := getOneArg(args)
+	if ch == nil || !ast.IsChan(ch) {
+		return ast.NewError("chan-close!: requires a channel")
+	}
+	ChanClose(ch)
+	return ast.Nil
+}
+
+// PrimIsChan implements chan? primitive
+func PrimIsChan(args, menv *ast.Value) *ast.Value {
+	a := getOneArg(args)
+	if a != nil && ast.IsChan(a) {
+		return SymT
+	}
+	return ast.Nil
+}
+
+// PrimIsProcess implements process? primitive
+func PrimIsProcess(args, menv *ast.Value) *ast.Value {
+	a := getOneArg(args)
+	if a != nil && ast.IsProcess(a) {
+		return SymT
+	}
+	return ast.Nil
+}
+
+// PrimProcessState implements process-state primitive
+func PrimProcessState(args, menv *ast.Value) *ast.Value {
+	a := getOneArg(args)
+	if a == nil || !ast.IsProcess(a) {
+		return ast.NewError("process-state: requires a process")
+	}
+	states := []string{"ready", "running", "parked", "done"}
+	if a.ProcState >= 0 && a.ProcState < len(states) {
+		return ast.NewSym(states[a.ProcState])
+	}
+	return ast.NewSym("unknown")
+}
+
+// PrimProcessResult implements process-result primitive
+func PrimProcessResult(args, menv *ast.Value) *ast.Value {
+	a := getOneArg(args)
+	if a == nil || !ast.IsProcess(a) {
+		return ast.NewError("process-result: requires a process")
+	}
+	if a.ProcState != ProcDone {
+		return ast.Nil
+	}
+	return a.ProcResult
+}
+
+// Box (mutable cell) primitives
+
+// PrimBox implements box primitive - creates a mutable reference cell
+func PrimBox(args, menv *ast.Value) *ast.Value {
+	a := getOneArg(args)
+	return ast.NewBox(a)
+}
+
+// PrimUnbox implements unbox primitive - reads the value from a box
+func PrimUnbox(args, menv *ast.Value) *ast.Value {
+	a := getOneArg(args)
+	if a == nil || !ast.IsBox(a) {
+		return ast.NewError("unbox: expected box")
+	}
+	return a.BoxValue
+}
+
+// PrimSetBox implements set-box! primitive - sets the value in a box
+func PrimSetBox(args, menv *ast.Value) *ast.Value {
+	box, val, ok := getTwoArgs(args)
+	if !ok {
+		return ast.NewError("set-box!: expected 2 arguments")
+	}
+	if !ast.IsBox(box) {
+		return ast.NewError("set-box!: first argument must be a box")
+	}
+	box.BoxValue = val
+	return val
+}
+
+// PrimIsBox implements box? primitive - checks if a value is a box
+func PrimIsBox(args, menv *ast.Value) *ast.Value {
+	a := getOneArg(args)
+	if a != nil && ast.IsBox(a) {
+		return SymT
+	}
+	return ast.Nil
+}
+
+// PrimCtrTag implements ctr-tag primitive - returns the constructor name as a symbol
+// (ctr-tag (cons 1 2)) → 'cell
+// (ctr-tag 42) → 'int
+// (ctr-tag (mk-Node 1 nil)) → 'Node
+func PrimCtrTag(args, menv *ast.Value) *ast.Value {
+	a := getOneArg(args)
+	if a == nil {
+		return ast.NewError("ctr-tag: requires 1 argument")
+	}
+
+	switch a.Tag {
+	case ast.TInt:
+		return ast.NewSym("int")
+	case ast.TSym:
+		return ast.NewSym("sym")
+	case ast.TCell:
+		return ast.NewSym("cell")
+	case ast.TNil:
+		return ast.NewSym("nil")
+	case ast.TPrim:
+		return ast.NewSym("prim")
+	case ast.TLambda:
+		return ast.NewSym("lambda")
+	case ast.TRecLambda:
+		return ast.NewSym("rec-lambda")
+	case ast.TError:
+		return ast.NewSym("error")
+	case ast.TChar:
+		return ast.NewSym("char")
+	case ast.TFloat:
+		return ast.NewSym("float")
+	case ast.TMenv:
+		return ast.NewSym("menv")
+	case ast.TCode:
+		return ast.NewSym("code")
+	case ast.TBox:
+		return ast.NewSym("box")
+	case ast.TCont:
+		return ast.NewSym("continuation")
+	case ast.TChan:
+		return ast.NewSym("channel")
+	case ast.TProcess:
+		return ast.NewSym("process")
+	case ast.TUserType:
+		return ast.NewSym(a.UserTypeName)
+	default:
+		return ast.NewSym("unknown")
+	}
+}
+
+// PrimCtrArg implements ctr-arg primitive - returns the nth constructor argument
+// (ctr-arg (cons 1 2) 0) → 1  (car)
+// (ctr-arg (cons 1 2) 1) → 2  (cdr)
+// (ctr-arg (mk-Node val next) 0) → val
+func PrimCtrArg(args, menv *ast.Value) *ast.Value {
+	a, b, ok := getTwoArgs(args)
+	if !ok {
+		return ast.NewError("ctr-arg: requires 2 arguments (value index)")
+	}
+	if !ast.IsInt(b) {
+		return ast.NewError("ctr-arg: second argument must be an integer")
+	}
+	idx := int(b.Int)
+
+	switch a.Tag {
+	case ast.TCell:
+		switch idx {
+		case 0:
+			return a.Car
+		case 1:
+			return a.Cdr
+		default:
+			return ast.NewError("ctr-arg: cell only has indices 0 and 1")
+		}
+	case ast.TBox:
+		if idx == 0 {
+			return a.BoxValue
+		}
+		return ast.NewError("ctr-arg: box only has index 0")
+	case ast.TUserType:
+		// Return field by index (based on definition order)
+		i := 0
+		for fieldName := range a.UserTypeFields {
+			if i == idx {
+				return a.UserTypeFields[fieldName]
+			}
+			i++
+		}
+		return ast.NewError(fmt.Sprintf("ctr-arg: %s has no field at index %d", a.UserTypeName, idx))
+	default:
+		return ast.NewError(fmt.Sprintf("ctr-arg: cannot get argument from %s", ast.TagName(a.Tag)))
+	}
+}
+
+// PrimReifyEnv implements reify-env primitive - returns the current environment as an assoc list
+// (let ((x 1) (y 2)) (reify-env)) → ((y . 2) (x . 1) ...)
+func PrimReifyEnv(args, menv *ast.Value) *ast.Value {
+	// The environment is in the menv if available
+	if menv != nil && menv.Tag == ast.TMenv && menv.Env != nil {
+		return menv.Env
+	}
+	// Return global environment if no local environment
+	return GetGlobalEnv()
+}
+
 // DefaultEnv creates the default environment with primitives
 func DefaultEnv() *ast.Value {
 	env := ast.Nil
@@ -900,8 +1208,13 @@ func DefaultEnv() *ast.Value {
 	env = EnvExtend(env, ast.NewSym("apply"), ast.NewPrim(PrimApply))
 	env = EnvExtend(env, ast.NewSym("compose"), ast.NewPrim(PrimCompose))
 	env = EnvExtend(env, ast.NewSym("flip"), ast.NewPrim(PrimFlip))
-	// Utility
+	// I/O operations
 	env = EnvExtend(env, ast.NewSym("print"), ast.NewPrim(PrimPrint))
+	env = EnvExtend(env, ast.NewSym("display"), ast.NewPrim(PrimDisplay))
+	env = EnvExtend(env, ast.NewSym("newline"), ast.NewPrim(PrimNewline))
+	env = EnvExtend(env, ast.NewSym("read"), ast.NewPrim(PrimRead))
+	env = EnvExtend(env, ast.NewSym("read-char"), ast.NewPrim(PrimReadChar))
+	env = EnvExtend(env, ast.NewSym("eof-object?"), ast.NewPrim(PrimEof))
 	// Character operations
 	env = EnvExtend(env, ast.NewSym("char?"), ast.NewPrim(PrimIsChar))
 	env = EnvExtend(env, ast.NewSym("char->int"), ast.NewPrim(PrimCharToInt))
@@ -923,6 +1236,25 @@ func DefaultEnv() *ast.Value {
 	env = EnvExtend(env, ast.NewSym("string-append"), ast.NewPrim(PrimStringAppend))
 	env = EnvExtend(env, ast.NewSym("string-ref"), ast.NewPrim(PrimStringRef))
 	env = EnvExtend(env, ast.NewSym("substring"), ast.NewPrim(PrimSubstring))
+	// Box (mutable cell) operations
+	env = EnvExtend(env, ast.NewSym("box"), ast.NewPrim(PrimBox))
+	env = EnvExtend(env, ast.NewSym("unbox"), ast.NewPrim(PrimUnbox))
+	env = EnvExtend(env, ast.NewSym("set-box!"), ast.NewPrim(PrimSetBox))
+	env = EnvExtend(env, ast.NewSym("box?"), ast.NewPrim(PrimIsBox))
+	// Channel operations
+	env = EnvExtend(env, ast.NewSym("make-chan"), ast.NewPrim(PrimMakeChan))
+	env = EnvExtend(env, ast.NewSym("chan-send!"), ast.NewPrim(PrimChanSend))
+	env = EnvExtend(env, ast.NewSym("chan-recv!"), ast.NewPrim(PrimChanRecv))
+	env = EnvExtend(env, ast.NewSym("chan-close!"), ast.NewPrim(PrimChanClose))
+	env = EnvExtend(env, ast.NewSym("chan?"), ast.NewPrim(PrimIsChan))
+	// Process operations
+	env = EnvExtend(env, ast.NewSym("process?"), ast.NewPrim(PrimIsProcess))
+	env = EnvExtend(env, ast.NewSym("process-state"), ast.NewPrim(PrimProcessState))
+	env = EnvExtend(env, ast.NewSym("process-result"), ast.NewPrim(PrimProcessResult))
+	// Introspection operations
+	env = EnvExtend(env, ast.NewSym("ctr-tag"), ast.NewPrim(PrimCtrTag))
+	env = EnvExtend(env, ast.NewSym("ctr-arg"), ast.NewPrim(PrimCtrArg))
+	env = EnvExtend(env, ast.NewSym("reify-env"), ast.NewPrim(PrimReifyEnv))
 	// Constants
 	env = EnvExtend(env, ast.NewSym("t"), SymT)
 	env = EnvExtend(env, ast.NewSym("nil"), ast.Nil)

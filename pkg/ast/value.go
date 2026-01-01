@@ -22,6 +22,11 @@ const (
 	TError     // Error value
 	TChar      // Character value
 	TFloat     // Floating point value (float64)
+	TBox       // Mutable reference cell (for set!)
+	TCont      // First-class continuation
+	TChan      // CSP channel
+	TProcess   // Green thread / process
+	TUserType  // User-defined type instance
 )
 
 // PrimFn is a primitive function signature
@@ -93,6 +98,27 @@ type Value struct {
 	Body     *Value
 	LamEnv   *Value
 	SelfName *Value // For TRecLambda only
+
+	// TBox - mutable reference cell
+	BoxValue *Value
+
+	// TCont - continuation
+	ContFn   func(*Value) *Value // Continuation function
+	ContMenv *Value              // Captured meta-environment
+
+	// TChan - channel
+	ChanSend chan *Value // For sending
+	ChanRecv chan *Value // For receiving (same as Send for normal channels)
+	ChanCap  int         // Capacity (0 = unbuffered)
+
+	// TProcess - green thread
+	ProcCont   *Value // Current continuation
+	ProcState  int    // 0=ready, 1=running, 2=parked, 3=done
+	ProcResult *Value // Result when done
+
+	// TUserType - user-defined type instance
+	UserTypeName   string            // Type name (e.g., "Node")
+	UserTypeFields map[string]*Value // Field name -> value
 }
 
 // Nil is the singleton nil value
@@ -157,6 +183,70 @@ func NewChar(c rune) *Value {
 // NewFloat creates a floating point value
 func NewFloat(f float64) *Value {
 	return &Value{Tag: TFloat, Float: f}
+}
+
+// NewBox creates a mutable reference cell
+func NewBox(v *Value) *Value {
+	return &Value{Tag: TBox, BoxValue: v}
+}
+
+// NewCont creates a continuation value
+func NewCont(fn func(*Value) *Value, menv *Value) *Value {
+	return &Value{Tag: TCont, ContFn: fn, ContMenv: menv}
+}
+
+// NewChan creates a channel value
+func NewChan(capacity int) *Value {
+	ch := make(chan *Value, capacity)
+	return &Value{
+		Tag:      TChan,
+		ChanSend: ch,
+		ChanRecv: ch,
+		ChanCap:  capacity,
+	}
+}
+
+// NewProcess creates a green thread/process value
+func NewProcess(cont *Value) *Value {
+	return &Value{
+		Tag:       TProcess,
+		ProcCont:  cont,
+		ProcState: 0, // ready
+	}
+}
+
+// NewUserType creates a user-defined type instance
+func NewUserType(typeName string, fields map[string]*Value) *Value {
+	return &Value{
+		Tag:            TUserType,
+		UserTypeName:   typeName,
+		UserTypeFields: fields,
+	}
+}
+
+// IsUserType checks if value is a user-defined type
+func IsUserType(v *Value) bool {
+	return v != nil && v.Tag == TUserType
+}
+
+// IsUserTypeOf checks if value is an instance of specific user type
+func IsUserTypeOf(v *Value, typeName string) bool {
+	return v != nil && v.Tag == TUserType && v.UserTypeName == typeName
+}
+
+// UserTypeGetField gets a field value from a user-defined type
+func UserTypeGetField(v *Value, fieldName string) *Value {
+	if v == nil || v.Tag != TUserType || v.UserTypeFields == nil {
+		return nil
+	}
+	return v.UserTypeFields[fieldName]
+}
+
+// UserTypeSetField sets a field value in a user-defined type
+func UserTypeSetField(v *Value, fieldName string, val *Value) {
+	if v != nil && v.Tag == TUserType && v.UserTypeFields != nil {
+		v.UserTypeFields[fieldName] = val
+	}
 }
 
 // NewMenv creates a meta-environment value with handler table
@@ -278,6 +368,26 @@ func IsFloat(v *Value) bool {
 	return v != nil && v.Tag == TFloat
 }
 
+// IsBox checks if a value is a mutable box
+func IsBox(v *Value) bool {
+	return v != nil && v.Tag == TBox
+}
+
+// IsCont checks if a value is a continuation
+func IsCont(v *Value) bool {
+	return v != nil && v.Tag == TCont
+}
+
+// IsChan checks if a value is a channel
+func IsChan(v *Value) bool {
+	return v != nil && v.Tag == TChan
+}
+
+// IsProcess checks if a value is a process/green thread
+func IsProcess(v *Value) bool {
+	return v != nil && v.Tag == TProcess
+}
+
 // IsPrim checks if a value is a primitive
 func IsPrim(v *Value) bool {
 	return v != nil && v.Tag == TPrim
@@ -379,6 +489,19 @@ func (v *Value) String() string {
 		return strconv.FormatFloat(v.Float, 'g', -1, 64)
 	case TMenv:
 		return "#<menv>"
+	case TBox:
+		return fmt.Sprintf("#<box %s>", v.BoxValue.String())
+	case TCont:
+		return "#<continuation>"
+	case TChan:
+		return fmt.Sprintf("#<channel cap=%d>", v.ChanCap)
+	case TProcess:
+		states := []string{"ready", "running", "parked", "done"}
+		state := "unknown"
+		if v.ProcState >= 0 && v.ProcState < len(states) {
+			state = states[v.ProcState]
+		}
+		return fmt.Sprintf("#<process %s>", state)
 	default:
 		return "?"
 	}
@@ -447,6 +570,14 @@ func TagName(t Tag) string {
 		return "CHAR"
 	case TFloat:
 		return "FLOAT"
+	case TBox:
+		return "BOX"
+	case TCont:
+		return "CONT"
+	case TChan:
+		return "CHAN"
+	case TProcess:
+		return "PROCESS"
 	default:
 		return fmt.Sprintf("UNKNOWN(%d)", t)
 	}

@@ -1,6 +1,76 @@
 package eval
 
-import "purple_go/pkg/ast"
+import (
+	"sync"
+
+	"purple_go/pkg/ast"
+)
+
+// Global environment for top-level definitions
+var (
+	globalEnv   *ast.Value
+	globalMutex sync.RWMutex
+)
+
+// InitGlobalEnv initializes the global environment with default bindings
+func InitGlobalEnv() {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+	globalEnv = DefaultEnv()
+}
+
+// GetGlobalEnv returns the current global environment
+func GetGlobalEnv() *ast.Value {
+	globalMutex.RLock()
+	defer globalMutex.RUnlock()
+	if globalEnv == nil {
+		globalMutex.RUnlock()
+		InitGlobalEnv()
+		globalMutex.RLock()
+	}
+	return globalEnv
+}
+
+// GlobalDefine adds a definition to the global environment
+func GlobalDefine(sym, val *ast.Value) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+	if globalEnv == nil {
+		globalEnv = ast.Nil
+	}
+	// Check if already defined, update if so
+	updated := false
+	env := globalEnv
+	for !ast.IsNil(env) && ast.IsCell(env) {
+		pair := env.Car
+		if ast.IsCell(pair) && ast.SymEq(pair.Car, sym) {
+			pair.Cdr = val
+			updated = true
+			break
+		}
+		env = env.Cdr
+	}
+	if !updated {
+		globalEnv = ast.NewCell(ast.NewCell(sym, val), globalEnv)
+	}
+}
+
+// GlobalLookup looks up a symbol in the global environment
+func GlobalLookup(sym *ast.Value) *ast.Value {
+	globalMutex.RLock()
+	defer globalMutex.RUnlock()
+	if globalEnv == nil {
+		return nil
+	}
+	return EnvLookup(globalEnv, sym)
+}
+
+// ResetGlobalEnv resets the global environment (for testing)
+func ResetGlobalEnv() {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+	globalEnv = nil
+}
 
 // EnvLookup looks up a symbol in an environment (association list)
 func EnvLookup(env, sym *ast.Value) *ast.Value {
@@ -36,4 +106,19 @@ func BuildEnv(pairs ...*ast.Value) *ast.Value {
 		env = EnvExtend(env, pairs[i], pairs[i+1])
 	}
 	return env
+}
+
+// EnvSet mutates an existing binding in the environment
+// Returns true if binding was found and mutated, false otherwise
+func EnvSet(env, sym, val *ast.Value) bool {
+	for !ast.IsNil(env) && ast.IsCell(env) {
+		pair := env.Car
+		if ast.IsCell(pair) && ast.SymEq(pair.Car, sym) {
+			// Mutate the binding in place
+			pair.Cdr = val
+			return true
+		}
+		env = env.Cdr
+	}
+	return false
 }

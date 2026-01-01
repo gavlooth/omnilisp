@@ -39,6 +39,37 @@ func NewCodeGenerator(w io.Writer) *CodeGenerator {
 	}
 }
 
+// NewCodeGeneratorWithGlobalRegistry creates a code generator using the global type registry
+// This allows access to user-defined types from deftype declarations
+func NewCodeGeneratorWithGlobalRegistry(w io.Writer) *CodeGenerator {
+	return &CodeGenerator{
+		w:                w,
+		registry:         GlobalRegistry(),
+		escapeCtx:        analysis.NewAnalysisContext(),
+		shapeCtx:         analysis.NewShapeContext(),
+		rcOptCtx:         analysis.NewRCOptContext(),
+		arenaGen:         NewArenaCodeGenerator(),
+		useArenaFallback: true,
+		enableRCOpt:      true,
+	}
+}
+
+// GetCycleStatusForType returns the cycle status for a user-defined type
+// Uses TypeRegistry's analysis for cycle detection with weak edge breaking
+func (g *CodeGenerator) GetCycleStatusForType(typeName string) CycleStatus {
+	if g.registry == nil {
+		return CycleStatusNone
+	}
+	return g.registry.GetCycleStatus(typeName)
+}
+
+// ShouldUseArenaForType returns true if arena allocation should be used for a type
+// based on its cycle status (unbroken cycles require arena or SCC)
+func (g *CodeGenerator) ShouldUseArenaForType(typeName string) bool {
+	status := g.GetCycleStatusForType(typeName)
+	return status == CycleStatusUnbroken
+}
+
 // SetRCOptimization enables or disables RC optimization
 func (g *CodeGenerator) SetRCOptimization(enabled bool) {
 	g.enableRCOpt = enabled

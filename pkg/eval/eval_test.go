@@ -918,3 +918,412 @@ func TestMacroWithLetBinding(t *testing.T) {
 		t.Errorf("macro with-x = %v, want 15", result)
 	}
 }
+
+// =============================================================================
+// Mutable State Tests (Phase 1)
+// =============================================================================
+
+func TestBox(t *testing.T) {
+	// Create a box
+	result := evalString("(box 42)")
+	if result == nil || !ast.IsBox(result) {
+		t.Errorf("(box 42) = %v, want box", result)
+		return
+	}
+	if result.BoxValue.Int != 42 {
+		t.Errorf("(box 42) value = %d, want 42", result.BoxValue.Int)
+	}
+
+	// box? predicate
+	result = evalString("(box? (box 1))")
+	if ast.IsNil(result) {
+		t.Error("(box? (box 1)) should be true")
+	}
+
+	result = evalString("(box? 42)")
+	if !ast.IsNil(result) {
+		t.Error("(box? 42) should be false")
+	}
+}
+
+func TestUnbox(t *testing.T) {
+	// Unbox a value
+	result := evalString("(unbox (box 100))")
+	if result == nil || !ast.IsInt(result) || result.Int != 100 {
+		t.Errorf("(unbox (box 100)) = %v, want 100", result)
+	}
+
+	// Unbox a list
+	result = evalString("(car (unbox (box '(1 2 3))))")
+	if result == nil || !ast.IsInt(result) || result.Int != 1 {
+		t.Errorf("(car (unbox (box '(1 2 3)))) = %v, want 1", result)
+	}
+}
+
+func TestSetBox(t *testing.T) {
+	// Create box, set its value, unbox
+	result := evalString(`
+		(let ((b (box 10)))
+			(do
+				(set-box! b 20)
+				(unbox b)))
+	`)
+	if result == nil || !ast.IsInt(result) || result.Int != 20 {
+		t.Errorf("set-box! = %v, want 20", result)
+	}
+
+	// Multiple updates
+	result = evalString(`
+		(let ((counter (box 0)))
+			(do
+				(set-box! counter (+ 1 (unbox counter)))
+				(set-box! counter (+ 1 (unbox counter)))
+				(set-box! counter (+ 1 (unbox counter)))
+				(unbox counter)))
+	`)
+	if result == nil || !ast.IsInt(result) || result.Int != 3 {
+		t.Errorf("set-box! counter = %v, want 3", result)
+	}
+}
+
+func TestSetBang(t *testing.T) {
+	// set! mutates existing binding
+	result := evalString(`
+		(let ((x 10))
+			(do
+				(set! x 20)
+				x))
+	`)
+	if result == nil || !ast.IsInt(result) || result.Int != 20 {
+		t.Errorf("set! = %v, want 20", result)
+	}
+
+	// Nested let with set!
+	result = evalString(`
+		(let ((x 1))
+			(let ((y 2))
+				(do
+					(set! x 10)
+					(set! y 20)
+					(+ x y))))
+	`)
+	if result == nil || !ast.IsInt(result) || result.Int != 30 {
+		t.Errorf("nested set! = %v, want 30", result)
+	}
+
+	// set! in loop-like construct
+	result = evalString(`
+		(let ((sum 0))
+			(let ((i 1))
+				(letrec ((loop (lambda ()
+					(if (> i 5)
+						sum
+						(do
+							(set! sum (+ sum i))
+							(set! i (+ i 1))
+							(loop))))))
+					(loop))))
+	`)
+	// sum = 1 + 2 + 3 + 4 + 5 = 15
+	if result == nil || !ast.IsInt(result) || result.Int != 15 {
+		t.Errorf("set! loop = %v, want 15", result)
+	}
+}
+
+func TestDefine(t *testing.T) {
+	// Reset global env for test isolation
+	ResetGlobalEnv()
+	InitGlobalEnv()
+
+	// Simple define
+	evalString("(define answer 42)")
+	result := evalString("answer")
+	if result == nil || !ast.IsInt(result) || result.Int != 42 {
+		t.Errorf("(define answer 42) = %v, want 42", result)
+	}
+
+	// Define function shorthand
+	evalString("(define (square x) (* x x))")
+	result = evalString("(square 7)")
+	if result == nil || !ast.IsInt(result) || result.Int != 49 {
+		t.Errorf("(square 7) = %v, want 49", result)
+	}
+
+	// Define recursive function
+	evalString("(define (factorial n) (if (= n 0) 1 (* n (factorial (- n 1)))))")
+	result = evalString("(factorial 5)")
+	if result == nil || !ast.IsInt(result) || result.Int != 120 {
+		t.Errorf("(factorial 5) = %v, want 120", result)
+	}
+
+	// Redefine
+	evalString("(define answer 100)")
+	result = evalString("answer")
+	if result == nil || !ast.IsInt(result) || result.Int != 100 {
+		t.Errorf("redefined answer = %v, want 100", result)
+	}
+}
+
+func TestDefineMultipleArgs(t *testing.T) {
+	// Reset global env for test isolation
+	ResetGlobalEnv()
+	InitGlobalEnv()
+
+	// Define with multiple arguments
+	evalString("(define (add3 a b c) (+ a (+ b c)))")
+	result := evalString("(add3 1 2 3)")
+	if result == nil || !ast.IsInt(result) || result.Int != 6 {
+		t.Errorf("(add3 1 2 3) = %v, want 6", result)
+	}
+
+	// Define with no arguments
+	evalString("(define (get-pi) 314)")
+	result = evalString("(get-pi)")
+	if result == nil || !ast.IsInt(result) || result.Int != 314 {
+		t.Errorf("(get-pi) = %v, want 314", result)
+	}
+}
+
+func TestSetBangUnbound(t *testing.T) {
+	// set! on unbound variable should error
+	result := evalString("(set! unbound-var 42)")
+	if result == nil || !ast.IsError(result) {
+		t.Errorf("set! unbound = %v, want error", result)
+	}
+}
+
+func TestMutableCounter(t *testing.T) {
+	// Classic mutable counter example using box
+	result := evalString(`
+		(let ((make-counter (lambda ()
+				(let ((count (box 0)))
+					(lambda ()
+						(do
+							(set-box! count (+ 1 (unbox count)))
+							(unbox count)))))))
+			(let ((counter (make-counter)))
+				(do
+					(counter)
+					(counter)
+					(counter))))
+	`)
+	if result == nil || !ast.IsInt(result) || result.Int != 3 {
+		t.Errorf("mutable counter = %v, want 3", result)
+	}
+}
+
+func TestDeftype(t *testing.T) {
+	// deftype defines a type with fields
+	result := evalString("(deftype Node (value int) (next Node))")
+	if result == nil || !ast.IsSym(result) {
+		t.Errorf("deftype = %v, want symbol Node", result)
+		return
+	}
+	if result.Str != "Node" {
+		t.Errorf("deftype = %s, want Node", result.Str)
+	}
+}
+
+// =============================================================================
+// Continuation Tests (Phase 4)
+// =============================================================================
+
+func TestCallCC(t *testing.T) {
+	// Basic call/cc - return normally
+	result := evalString("(call/cc (lambda (k) 42))")
+	if result == nil || !ast.IsInt(result) || result.Int != 42 {
+		t.Errorf("call/cc normal = %v, want 42", result)
+	}
+
+	// call/cc with early return
+	result = evalString("(+ 1 (call/cc (lambda (k) (k 10) 20)))")
+	// (k 10) escapes, so the result is (+ 1 10) = 11
+	if result == nil || !ast.IsInt(result) || result.Int != 11 {
+		t.Errorf("call/cc early return = %v, want 11", result)
+	}
+
+	// call/cc for early exit from loop
+	result = evalString(`
+		(call/cc (lambda (return)
+			(letrec ((loop (lambda (n)
+				(if (= n 5)
+					(return 100)
+					(loop (+ n 1))))))
+				(loop 0))))
+	`)
+	if result == nil || !ast.IsInt(result) || result.Int != 100 {
+		t.Errorf("call/cc loop exit = %v, want 100", result)
+	}
+
+	// Nested call/cc
+	result = evalString(`
+		(+ (call/cc (lambda (k1)
+				(+ 1 (call/cc (lambda (k2) (k1 10))))))
+			5)
+	`)
+	// Inner k1 call escapes with 10, result is (+ 10 5) = 15
+	if result == nil || !ast.IsInt(result) || result.Int != 15 {
+		t.Errorf("nested call/cc = %v, want 15", result)
+	}
+}
+
+func TestCallCCException(t *testing.T) {
+	// Use call/cc for exception-like behavior
+	result := evalString(`
+		(call/cc (lambda (throw)
+			(let ((x 10))
+				(if (> x 5)
+					(throw 'too-big)
+					x))))
+	`)
+	if result == nil || !ast.IsSym(result) || result.Str != "too-big" {
+		t.Errorf("call/cc exception = %v, want too-big", result)
+	}
+}
+
+func TestPrompt(t *testing.T) {
+	// Prompt without control just evaluates body
+	result := evalString("(prompt (+ 1 2))")
+	if result == nil || !ast.IsInt(result) || result.Int != 3 {
+		t.Errorf("prompt simple = %v, want 3", result)
+	}
+}
+
+func TestControlPrompt(t *testing.T) {
+	// Control immediately returns a value (aborts to prompt)
+	result := evalString("(prompt (control k 42))")
+	if result == nil || !ast.IsInt(result) || result.Int != 42 {
+		t.Errorf("control/prompt simple = %v, want 42", result)
+	}
+
+	// Control with continuation call (simple form - k just returns value)
+	result = evalString("(prompt (control k (k 10)))")
+	// In our simplified implementation, (k 10) just returns 10
+	if result == nil || !ast.IsInt(result) || result.Int != 10 {
+		t.Errorf("control/prompt with k = %v, want 10", result)
+	}
+}
+
+// =============================================================================
+// CSP Concurrency Tests (Phase 5)
+// =============================================================================
+
+func TestMakeChan(t *testing.T) {
+	// Create unbuffered channel
+	result := evalString("(make-chan)")
+	if result == nil || !ast.IsChan(result) {
+		t.Errorf("(make-chan) = %v, want channel", result)
+	}
+
+	// Create buffered channel
+	result = evalString("(make-chan 5)")
+	if result == nil || !ast.IsChan(result) {
+		t.Errorf("(make-chan 5) = %v, want channel", result)
+	}
+	if result.ChanCap != 5 {
+		t.Errorf("(make-chan 5) capacity = %d, want 5", result.ChanCap)
+	}
+
+	// chan? predicate
+	result = evalString("(chan? (make-chan))")
+	if ast.IsNil(result) {
+		t.Error("(chan? (make-chan)) should be true")
+	}
+
+	result = evalString("(chan? 42)")
+	if !ast.IsNil(result) {
+		t.Error("(chan? 42) should be false")
+	}
+}
+
+func TestChannelOps(t *testing.T) {
+	// Test buffered channel send/recv
+	result := evalString(`
+		(let ((ch (make-chan 1)))
+			(do
+				(chan-send! ch 42)
+				(chan-recv! ch)))
+	`)
+	if result == nil || !ast.IsInt(result) || result.Int != 42 {
+		t.Errorf("chan send/recv = %v, want 42", result)
+	}
+}
+
+func TestGo(t *testing.T) {
+	// Spawn a goroutine
+	result := evalString("(go (+ 1 2))")
+	if result == nil || !ast.IsProcess(result) {
+		t.Errorf("(go ...) = %v, want process", result)
+	}
+
+	// process? predicate
+	result = evalString("(process? (go 1))")
+	if ast.IsNil(result) {
+		t.Error("(process? (go 1)) should be true")
+	}
+}
+
+func TestProducerConsumer(t *testing.T) {
+	// Simple producer-consumer with buffered channel
+	result := evalString(`
+		(let ((ch (make-chan 10)))
+			(do
+				(chan-send! ch 1)
+				(chan-send! ch 2)
+				(chan-send! ch 3)
+				(+ (chan-recv! ch) (+ (chan-recv! ch) (chan-recv! ch)))))
+	`)
+	// 1 + 2 + 3 = 6
+	if result == nil || !ast.IsInt(result) || result.Int != 6 {
+		t.Errorf("producer-consumer = %v, want 6", result)
+	}
+}
+
+func TestCtrTag(t *testing.T) {
+	// ctr-tag returns the constructor name as a symbol
+	result := evalString("(ctr-tag 42)")
+	if result == nil || !ast.IsSym(result) || result.Str != "int" {
+		t.Errorf("(ctr-tag 42) = %v, want 'int", result)
+	}
+
+	result = evalString("(ctr-tag (cons 1 2))")
+	if result == nil || !ast.IsSym(result) || result.Str != "cell" {
+		t.Errorf("(ctr-tag (cons 1 2)) = %v, want 'cell", result)
+	}
+
+	result = evalString("(ctr-tag nil)")
+	if result == nil || !ast.IsSym(result) || result.Str != "nil" {
+		t.Errorf("(ctr-tag nil) = %v, want 'nil", result)
+	}
+
+	result = evalString("(ctr-tag (box 42))")
+	if result == nil || !ast.IsSym(result) || result.Str != "box" {
+		t.Errorf("(ctr-tag (box 42)) = %v, want 'box", result)
+	}
+}
+
+func TestCtrArg(t *testing.T) {
+	// ctr-arg returns the nth constructor argument
+	result := evalString("(ctr-arg (cons 1 2) 0)")
+	if result == nil || !ast.IsInt(result) || result.Int != 1 {
+		t.Errorf("(ctr-arg (cons 1 2) 0) = %v, want 1", result)
+	}
+
+	result = evalString("(ctr-arg (cons 1 2) 1)")
+	if result == nil || !ast.IsInt(result) || result.Int != 2 {
+		t.Errorf("(ctr-arg (cons 1 2) 1) = %v, want 2", result)
+	}
+
+	result = evalString("(ctr-arg (box 99) 0)")
+	if result == nil || !ast.IsInt(result) || result.Int != 99 {
+		t.Errorf("(ctr-arg (box 99) 0) = %v, want 99", result)
+	}
+}
+
+func TestReifyEnv(t *testing.T) {
+	// reify-env returns the environment as an assoc list
+	result := evalString("(let ((x 1)) (reify-env))")
+	if result == nil || ast.IsNil(result) || !ast.IsCell(result) {
+		t.Errorf("(reify-env) = %v, want non-empty list", result)
+	}
+}
