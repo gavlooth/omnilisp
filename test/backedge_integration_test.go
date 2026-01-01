@@ -123,8 +123,8 @@ func TestBackEdgeIntegration(t *testing.T) {
 
 			// Check that strong fields are decremented
 			for _, fieldName := range tc.expectedStrong {
-				// Look for dec_ref call for this field
-				decRefCall := "dec_ref((Obj*)x->" + fieldName + ")"
+				// Look for dec_ref call for this field (format: if (x->field) dec_ref(x->field))
+				decRefCall := "dec_ref(x->" + fieldName + ")"
 				if !strings.Contains(runtime, decRefCall) {
 					t.Errorf("Release function should dec_ref strong field %s", fieldName)
 				}

@@ -2348,7 +2348,7 @@ static Obj* call_closure(Obj* clos, Obj** args, int arg_count) {
     Closure* c = (Closure*)clos->ptr;
     if (!c) return NULL;
     if (c->arity >= 0 && arg_count != c->arity) {
-        fprintf(stderr, "call_closure: arity mismatch (expected %d, got %d)\n", c->arity, arg_count);
+        fprintf(stderr, "call_closure: arity mismatch (expected %%d, got %%d)\n", c->arity, arg_count);
         return NULL;
     }
     if (!closure_validate(c)) {

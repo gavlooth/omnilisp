@@ -122,6 +122,20 @@ func (c *Compiler) inArenaScope() bool {
 	return len(c.arenaScopes) > 0 && c.arenaScopes[len(c.arenaScopes)-1]
 }
 
+// mergeShapes returns the conservative combination of two shapes.
+// Tree + Tree = Tree, DAG + DAG = DAG, anything cyclic = Cyclic, otherwise Unknown.
+func mergeShapes(a, b analysis.Shape) analysis.Shape {
+	if a == b {
+		return a
+	}
+	// Cyclic is most conservative
+	if a == analysis.ShapeCyclic || b == analysis.ShapeCyclic {
+		return analysis.ShapeCyclic
+	}
+	// Unknown if shapes differ (Tree + DAG = Unknown)
+	return analysis.ShapeUnknown
+}
+
 // CompileProgram compiles AST expressions into a full C program.
 func (c *Compiler) CompileProgram(exprs []*ast.Value) (string, error) {
 	var sb strings.Builder
@@ -317,26 +331,26 @@ func (c *Compiler) compileExpr(expr *ast.Value) (CValue, error) {
 
 	switch expr.Tag {
 	case ast.TInt:
-		return CValue{Expr: fmt.Sprintf("mk_int(%d)", expr.Int), Owned: true}, nil
+		return CValue{Expr: fmt.Sprintf("mk_int(%d)", expr.Int), Owned: true, Shape: analysis.ShapeTree}, nil
 	case ast.TFloat:
-		return CValue{Expr: fmt.Sprintf("mk_float(%f)", expr.Float), Owned: true}, nil
+		return CValue{Expr: fmt.Sprintf("mk_float(%f)", expr.Float), Owned: true, Shape: analysis.ShapeTree}, nil
 	case ast.TChar:
-		return CValue{Expr: fmt.Sprintf("mk_int(%d)", expr.Int), Owned: true}, nil
+		return CValue{Expr: fmt.Sprintf("mk_int(%d)", expr.Int), Owned: true, Shape: analysis.ShapeTree}, nil
 	case ast.TSym:
 		if expr.Str == "nil" {
-			return CValue{Expr: "NULL", Owned: false, IsNil: true}, nil
+			return CValue{Expr: "NULL", Owned: false, IsNil: true, Shape: analysis.ShapeTree}, nil
 		}
 		if expr.Str == "t" {
-			return CValue{Expr: "mk_int(1)", Owned: true}, nil
+			return CValue{Expr: "mk_int(1)", Owned: true, Shape: analysis.ShapeTree}, nil
 		}
 		if info, ok := c.lookup(expr.Str); ok {
 			if info.Boxed {
-				return CValue{Expr: fmt.Sprintf("box_get(%s)", info.CName), Owned: false}, nil
+				return CValue{Expr: fmt.Sprintf("box_get(%s)", info.CName), Owned: false, Shape: info.MemInfo.Shape}, nil
 			}
-			return CValue{Expr: info.CName, Owned: false}, nil
+			return CValue{Expr: info.CName, Owned: false, Shape: info.MemInfo.Shape}, nil
 		}
 		if c.isPrimitive(expr.Str) {
-			return CValue{Expr: c.primClosureExpr(expr.Str), Owned: true}, nil
+			return CValue{Expr: c.primClosureExpr(expr.Str), Owned: true, Shape: analysis.ShapeTree}, nil
 		}
 		return CValue{}, fmt.Errorf("unbound symbol: %s", expr.Str)
 	case ast.TCell:
@@ -428,13 +442,15 @@ func (c *Compiler) compileNonSymbolApply(op *ast.Value, args *ast.Value) (CValue
 
 	// Free operator if owned
 	if opVal.Owned {
-		sb.WriteString(fmt.Sprintf("    dec_ref(%s);\n", opName))
+		freeFn, _ := c.selectFreeStrategy(opVal.Shape, analysis.EscapeNone)
+		sb.WriteString(fmt.Sprintf("    %s(%s); /* op shape: %s */\n",
+			freeFn, opName, analysis.ShapeString(opVal.Shape)))
 	}
 
-	// Free arguments if owned
+	// Free arguments if owned (use dec_ref for borrowed args)
 	for i, av := range argVals {
 		if av.Owned {
-			sb.WriteString(fmt.Sprintf("    dec_ref(%s);\n", argNames[i]))
+			sb.WriteString(fmt.Sprintf("    dec_ref(%s); /* borrowed arg */\n", argNames[i]))
 		}
 	}
 
@@ -474,12 +490,16 @@ func (c *Compiler) compileIf(args *ast.Value) (CValue, error) {
 	sb.WriteString(fmt.Sprintf("        %s = %s;\n", resName, elseVal.Expr))
 	sb.WriteString("    }\n")
 	if condVal.Owned {
-		sb.WriteString(fmt.Sprintf("    dec_ref(%s);\n", condName))
+		freeFn, _ := c.selectFreeStrategy(condVal.Shape, analysis.EscapeNone)
+		sb.WriteString(fmt.Sprintf("    %s(%s); /* cond shape: %s */\n",
+			freeFn, condName, analysis.ShapeString(condVal.Shape)))
 	}
 	sb.WriteString(fmt.Sprintf("    %s;\n", resName))
 	sb.WriteString("})")
 
-	return CValue{Expr: sb.String(), Owned: thenVal.Owned && elseVal.Owned}, nil
+	// Merge shapes from both branches
+	resultShape := mergeShapes(thenVal.Shape, elseVal.Shape)
+	return CValue{Expr: sb.String(), Owned: thenVal.Owned && elseVal.Owned, Shape: resultShape}, nil
 }
 
 func (c *Compiler) compileDo(args *ast.Value) (CValue, error) {
@@ -496,7 +516,9 @@ func (c *Compiler) compileDo(args *ast.Value) (CValue, error) {
 		if args.Cdr != nil && !ast.IsNil(args.Cdr) {
 			sb.WriteString(fmt.Sprintf("    Obj* %s = %s;\n", tmp, cv.Expr))
 			if cv.Owned {
-				sb.WriteString(fmt.Sprintf("    dec_ref(%s);\n", tmp))
+				freeFn, _ := c.selectFreeStrategy(cv.Shape, analysis.EscapeNone)
+				sb.WriteString(fmt.Sprintf("    %s(%s); /* shape: %s */\n",
+					freeFn, tmp, analysis.ShapeString(cv.Shape)))
 			}
 		} else {
 			sb.WriteString(fmt.Sprintf("    Obj* %s = %s;\n", tmp, cv.Expr))
@@ -505,7 +527,7 @@ func (c *Compiler) compileDo(args *ast.Value) (CValue, error) {
 		args = args.Cdr
 	}
 	sb.WriteString("})")
-	return CValue{Expr: sb.String(), Owned: last.Owned}, nil
+	return CValue{Expr: sb.String(), Owned: last.Owned, Shape: last.Shape}, nil
 }
 
 func (c *Compiler) compileLet(expr *ast.Value) (CValue, error) {
@@ -540,6 +562,7 @@ func (c *Compiler) compileLet(expr *ast.Value) (CValue, error) {
 	}
 
 	// Shape analysis for each binding
+	hasCyclic := false
 	for i, val := range bindVals {
 		c.shapeCtx.AnalyzeShapes(val)
 		shape := c.shapeCtx.ResultShape
@@ -549,11 +572,24 @@ func (c *Compiler) compileLet(expr *ast.Value) (CValue, error) {
 		info := local[bindNames[i]]
 		info.MemInfo.Shape = shape
 		local[bindNames[i]] = info
+		if shape == analysis.ShapeCyclic {
+			hasCyclic = true
+		}
+	}
+
+	// Push symmetric scope if we have cyclic data
+	if hasCyclic {
+		c.symScopes = append(c.symScopes, true)
 	}
 
 	c.pushScope(local)
 	bodyVal, err := c.compileExpr(body)
 	c.popScope()
+
+	if hasCyclic {
+		c.symScopes = c.symScopes[:len(c.symScopes)-1]
+	}
+
 	if err != nil {
 		return CValue{}, err
 	}
@@ -568,8 +604,18 @@ func (c *Compiler) compileLet(expr *ast.Value) (CValue, error) {
 
 	var sb strings.Builder
 	sb.WriteString("({\n")
+
+	// Enter symmetric scope if we have cyclic data
+	if hasCyclic {
+		sb.WriteString("    sym_enter_scope(); /* cyclic data detected */\n")
+	}
+
 	for i, cName := range bindOrder {
 		sb.WriteString(fmt.Sprintf("    Obj* %s = %s;\n", cName, bindExprs[i].Expr))
+		// Own cyclic objects in symmetric scope
+		if bindExprs[i].Shape == analysis.ShapeCyclic {
+			sb.WriteString(fmt.Sprintf("    sym_alloc(%s); /* own cyclic */\n", cName))
+		}
 	}
 	sb.WriteString(fmt.Sprintf("    Obj* _res = %s;\n", bodyVal.Expr))
 
@@ -586,10 +632,20 @@ func (c *Compiler) compileLet(expr *ast.Value) (CValue, error) {
 		}
 		if bindExprs[i].Owned {
 			shape := bindExprs[i].Shape
+			// Cyclic data in symmetric scope is freed by sym_scope_exit
+			if shape == analysis.ShapeCyclic && hasCyclic {
+				sb.WriteString(fmt.Sprintf("    /* %s freed by sym_scope_exit */\n", bindOrder[i]))
+				continue
+			}
 			freeFn, _ := c.selectFreeStrategy(shape, escapeClass)
 			sb.WriteString(fmt.Sprintf("    %s(%s); /* shape: %s */\n",
 				freeFn, bindOrder[i], analysis.ShapeString(shape)))
 		}
+	}
+
+	// Exit symmetric scope if we entered one
+	if hasCyclic {
+		sb.WriteString("    sym_exit_scope(); /* release cyclic data */\n")
 	}
 
 	sb.WriteString("    _res;\n")
@@ -668,7 +724,9 @@ func (c *Compiler) emitCall(fnName string, args []CValue, summary *analysis.Func
 				consumed = summary.Params[i].Ownership == analysis.OwnerConsumed
 			}
 			if !consumed {
-				frees = append(frees, fmt.Sprintf("    dec_ref(%s);\n", name))
+				// For function arguments, always use dec_ref because callee may inc_ref
+				// free_tree is only safe for local variables that never escape
+				frees = append(frees, fmt.Sprintf("    dec_ref(%s); /* borrowed arg */\n", name))
 			}
 		}
 	}

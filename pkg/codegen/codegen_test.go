@@ -386,15 +386,19 @@ func TestFlushFreelistDecrementsChildren(t *testing.T) {
 
 	runtime := GenerateRuntime(registry)
 
-	// The flush_freelist function should decrement children before freeing
-	// This was a bug where pairs added via free_obj would leak their children
-	if !strings.Contains(runtime, "if (n->obj->is_pair)") {
-		t.Error("flush_freelist should check if object is a pair")
+	// The flush_freelist function calls release_children which handles pairs
+	// via TAG_PAIR case instead of is_pair check
+	if !strings.Contains(runtime, "release_children(n->obj)") {
+		t.Error("flush_freelist should call release_children")
 	}
-	if !strings.Contains(runtime, "dec_ref(n->obj->a)") {
-		t.Error("flush_freelist should decrement first child of pair")
+	// release_children uses TAG_PAIR switch case to decrement pair children
+	if !strings.Contains(runtime, "case TAG_PAIR:") {
+		t.Error("release_children should handle TAG_PAIR case")
 	}
-	if !strings.Contains(runtime, "dec_ref(n->obj->b)") {
-		t.Error("flush_freelist should decrement second child of pair")
+	if !strings.Contains(runtime, "dec_ref(x->a)") {
+		t.Error("release_children should decrement first child of pair")
+	}
+	if !strings.Contains(runtime, "dec_ref(x->b)") {
+		t.Error("release_children should decrement second child of pair")
 	}
 }
