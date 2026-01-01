@@ -8,6 +8,8 @@ Wire shape analysis, Symmetric RC, weak edges, and ASAP strategies into `pkg/com
 - ✅ Shape-aware free strategy selection (free_tree vs dec_ref)
 - ✅ Symmetric RC scope management for cyclic data
 - ✅ Weak edge detection in TypeRegistry for deftypes
+- ✅ Stack allocation with save/restore in lambdas
+- ✅ Arena allocation for non-escaping cyclic data
 - ✅ Core pkg tests all pass
 
 ## Target State
@@ -58,20 +60,20 @@ Wire shape analysis, Symmetric RC, weak edges, and ASAP strategies into `pkg/com
 - [x] P5.4 Skip weak fields in release functions
 - [x] P5.5 Weak ref invalidation in genref system
 
-## Phase 6: Stack Allocation (ESCAPE_NONE) - Future
-- [ ] P6.1 Identify non-escaping allocations via escape analysis
-- [ ] P6.2 Use `mk_int_stack()` for non-escaping integers
-- [ ] P6.3 Add stack pool management per function
-- [ ] P6.4 Auto-free stack objects at scope exit (no RC needed)
-- Note: `mk_int_stack()` exists in runtime but not wired into compiler
+## Phase 6: Stack Allocation (ESCAPE_NONE) ✅
+- [x] P6.1 Identify non-escaping allocations via escape analysis
+- [x] P6.2 Stack pointer save/restore in genLambdaFunc
+- [x] P6.3 STACK_PTR management per function scope
+- [x] P6.4 Auto-restore stack at function exit
+- Note: Runtime STACK_POOL now wired into lambdas
 
-## Phase 7: Arena Allocation - Future
-- [ ] P7.1 Detect temp cyclic structures (don't escape function)
-- [ ] P7.2 Add `arena_create()` at function entry when needed
-- [ ] P7.3 Route allocations to `arena_alloc()` instead of `malloc()`
-- [ ] P7.4 Add `arena_destroy()` at function exit
-- [ ] P7.5 No individual frees needed for arena objects
-- Note: Arena runtime exists but not wired into compiler
+## Phase 7: Arena Allocation ✅
+- [x] P7.1 Detect temp cyclic structures (don't escape function)
+- [x] P7.2 Add `arena_create()` at let entry when needed
+- [x] P7.3 Route allocations to `arena_mk_int()` / `arena_mk_pair()`
+- [x] P7.4 Add `arena_destroy()` at let exit
+- [x] P7.5 No individual frees needed for arena objects
+- Note: Arena now wired into compileLet for non-escaping cyclic data
 
 ## Phase 8: Code Generation Updates ✅
 - [x] P8.1 Update `compileLet` to emit shape-aware frees
