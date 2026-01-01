@@ -35,6 +35,58 @@
 
 ---
 
+# NEW: Full AST-to-C Native Compilation Plan (v0.6)
+
+Goal: Compile **AST directly to C** (no interpreter staging), emit a standalone C99 program, and build a native binary.
+
+## Phase A: Compiler Entry + Pipeline
+- [ ] A1. Add `compile` pipeline that takes parsed AST directly (no `eval`/`lift`) and routes to C codegen.
+- [ ] A2. Introduce `Compiler` wrapper that manages analysis passes: escape, liveness, shape, ownership, RCOpt, reuse.
+- [ ] A3. Add CLI flag `--native` that compiles AST to C and invokes gcc/clang to produce an executable.
+- [ ] A4. Add `jit.CompileAndRunAST(expr)` to compile AST directly for tests/benchmarks.
+
+## Phase B: Core AST -> C Expression Codegen
+- [ ] B1. Literals: int/float/char/bool/nil/symbol/string.
+- [ ] B2. Variables: map AST symbols to C identifiers with hygiene (gensym + scope stack).
+- [ ] B3. `if`: generate `({ ... })` expression or temp variable block with proper frees.
+- [ ] B4. `do`: sequential evaluation, return last value, ASAP frees for earlier temps.
+- [ ] B5. `let` / `letrec`: allocate bindings, enable reuse, run liveness, inject frees.
+- [ ] B6. `set!`: emit RC-aware overwrite and field updates (weak fields skip RC).
+
+## Phase C: Functions + Closures
+- [ ] C1. Lambda codegen: emit C function + closure env struct.
+- [ ] C2. Capture analysis: generate env structs for captured variables; skip frees in parent scope.
+- [ ] C3. Apply: call native function or closure with env; enforce ownership summaries.
+- [ ] C4. Tail-call optional: add trampoline for self recursion where safe.
+
+## Phase D: Top-Level Definitions + Program Assembly
+- [ ] D1. `define` at top-level: emit global function prototypes + definitions.
+- [ ] D2. `define` of values: emit globals with init code in `main`.
+- [ ] D3. Generate C header/structs for deftypes before functions (respect type order).
+- [ ] D4. Program main: evaluate top-level forms in order; print last value; cleanup.
+
+## Phase E: Native Build Integration
+- [ ] E1. Add `compiler` package to write C to temp file and invoke gcc/clang.
+- [ ] E2. Capture stdout/stderr, propagate compile errors into Go error.
+- [ ] E3. Add `--cc` and `--cc-flags` for custom toolchains.
+
+## Phase F: Validation & Parity
+- [ ] F1. Extend correctness tests to use AST->C pipeline (no `eval`).
+- [ ] F2. Add golden tests for C output (spot-check).
+- [ ] F3. Run ASan/TSan/Valgrind on AST->C output.
+
+## Phase G: Incremental Rollout
+- [ ] G1. Land A + B (no lambdas) behind `--native`.
+- [ ] G2. Land C (closures) behind `--native-closures`.
+- [ ] G3. Land D/E/F for full native CLI.
+
+Acceptance Criteria:
+- [ ] `purple_go --native examples/demo.purple` produces a native executable and runs successfully.
+- [ ] All existing language features compile without staging (including closures, exceptions, and channels).
+- [ ] Valgrind/ASan/TSan clean on validation suite for AST->C pipeline.
+
+---
+
 ## Dependency Graph (All Implementation Complete)
 
 ```
