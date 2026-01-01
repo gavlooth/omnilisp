@@ -22,12 +22,15 @@ func InitGlobalEnv() {
 // GetGlobalEnv returns the current global environment
 func GetGlobalEnv() *ast.Value {
 	globalMutex.RLock()
-	defer globalMutex.RUnlock()
-	if globalEnv == nil {
-		globalMutex.RUnlock()
-		InitGlobalEnv()
-		globalMutex.RLock()
+	if globalEnv != nil {
+		defer globalMutex.RUnlock()
+		return globalEnv
 	}
+	globalMutex.RUnlock()
+	// InitGlobalEnv grabs its own write lock
+	InitGlobalEnv()
+	globalMutex.RLock()
+	defer globalMutex.RUnlock()
 	return globalEnv
 }
 
