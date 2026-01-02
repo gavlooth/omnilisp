@@ -19,7 +19,7 @@ import (
 
 var (
 	compileMode = flag.Bool("c", false, "Compile to C code instead of executing")
-	interpMode  = flag.Bool("interp", false, "Use Go interpreter (legacy, slower)")
+	interpMode  = flag.Bool("interp", false, "DEPRECATED: Use Go interpreter (dev/test only, violates 'Go is compiler-only' principle)")
 	outputFile  = flag.String("o", "", "Output file (default: stdout for -c, a.out for binary)")
 	evalExpr    = flag.String("e", "", "Evaluate expression from command line")
 	verbose     = flag.Bool("v", false, "Verbose output")
@@ -90,7 +90,9 @@ func main() {
 	}
 
 	if *interpMode {
-		// Legacy Go interpreter (slower, for debugging)
+		// DEPRECATED: Legacy Go interpreter (for debugging only)
+		fmt.Fprintln(os.Stderr, "WARNING: --interp is deprecated. The Go interpreter violates 'Go is compiler-only'.")
+		fmt.Fprintln(os.Stderr, "         Use default mode (native compilation) for production.")
 		interpret(exprs)
 	} else if *compileMode {
 		// Emit C code to stdout or file

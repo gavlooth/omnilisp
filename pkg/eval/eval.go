@@ -1,3 +1,21 @@
+// Package eval provides a Go-based interpreter for Purple expressions.
+//
+// DEPRECATED: This package is for development and testing only.
+// Production execution should use the native compiler (pkg/compiler)
+// which generates C code executed via JIT or AOT compilation.
+//
+// The Go-based interpreter violates the architectural principle:
+// "Go is compiler-only - Go must NEVER be in runtime/interpretation hot paths."
+//
+// Use cases for this package:
+//   - Testing compiler output against reference implementation
+//   - Debugging AST evaluation
+//   - Development iteration (faster compile times)
+//
+// For production, use:
+//   - main.go (default mode) - compiles to C and executes
+//   - pkg/compiler - generates C code
+//   - pkg/jit - JIT compilation with caching
 package eval
 
 import (
