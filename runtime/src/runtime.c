@@ -163,6 +163,8 @@ Obj* list_reverse(Obj* xs);
 /* Type introspection forward declarations */
 Obj* ctr_tag(Obj* x);
 Obj* ctr_arg(Obj* x, Obj* idx);
+Obj* reify_env(Obj* closure);
+Obj* default_handler(Obj* name, Obj* arg);
 
 /* Character primitive forward declarations */
 Obj* char_to_int(Obj* c);
@@ -187,10 +189,16 @@ typedef enum {
     TAG_SYM,
     TAG_BOX,
     TAG_CLOSURE,
-    TAG_CHANNEL,
+    TAG_CHANNEL,        /* Pthread-based channel (OS threads) */
     TAG_ERROR,
-    TAG_ATOM,
-    TAG_THREAD
+    TAG_ATOM,           /* Pthread-based atom (OS threads) */
+    TAG_THREAD,         /* OS thread handle */
+    /* Continuation-based concurrency (green threads) */
+    TAG_GREEN_CHANNEL,  /* Continuation-based channel */
+    TAG_GENERATOR,      /* Iterator/generator */
+    TAG_PROMISE,        /* Async promise */
+    TAG_TASK,           /* Green thread task */
+    TAG_CONTINUATION    /* First-class continuation */
 } ObjTag;
 
 #define TAG_USER_BASE 1000
@@ -216,6 +224,9 @@ typedef struct Obj {
 
 /* Now that Obj is defined, include handle system for sound borrowed refs */
 #include "memory/handle.h"
+
+/* Continuation-based concurrency (green threads, generators, promises) */
+#include "memory/continuation.h"
 
 /* ========== Tagged Pointer Helper Functions ========== */
 
@@ -2456,6 +2467,43 @@ Obj* ctr_arg(Obj* x, Obj* idx) {
     }
 }
 
+/* Environment and handler primitives */
+Obj* reify_env(Obj* closure) {
+    /*
+     * Returns the captured environment of a closure as a list.
+     * Each element is the captured value at that index.
+     * Returns nil for non-closures.
+     */
+    if (!closure || closure->tag != TAG_CLOSURE) return NULL;
+
+    Closure* c = (Closure*)closure->ptr;
+    if (!c || c->capture_count == 0) return NULL;
+
+    /* Build list from captures (in reverse, then reverse for correct order) */
+    Obj* result = NULL;
+    for (int i = c->capture_count - 1; i >= 0; i--) {
+        result = mk_pair(c->captures[i], result);
+    }
+    return result;
+}
+
+Obj* default_handler(Obj* name, Obj* arg) {
+    /*
+     * Delegate to the default handler for the given operation.
+     * This is used by custom handlers to fall back to default behavior.
+     *
+     * name: Symbol naming the operation (e.g., 'lit, 'var, 'lam)
+     * arg:  The argument to the operation
+     *
+     * Returns the result of the default handling.
+     */
+    if (!name) return arg; /* No handler specified, return arg as-is */
+
+    /* For now, default handlers just return the argument unchanged.
+     * In a full implementation, this would dispatch to built-in handlers. */
+    return arg;
+}
+
 /* Character primitives */
 Obj* char_to_int(Obj* c) {
     if (obj_tag(c) != TAG_CHAR) return mk_int(0);
@@ -3557,3 +3605,268 @@ Obj* exception_get_value(void) {
 
 /* Throw macro */
 #define THROW(value) exception_throw((Obj*)(value))
+
+/* ========== Green Concurrency Primitives ========== */
+/*
+ * These wrap the continuation-based concurrency system for use from
+ * compiled code. They complement the pthread-based primitives which
+ * remain available for OS-level threading.
+ *
+ * Two-tier model:
+ * - Tier 1 (pthreads): make_channel, channel_send/recv, spawn_goroutine
+ * - Tier 2 (continuations): make_green_channel, green_send/recv, spawn_green_task
+ */
+
+/* ========== Green Channel Wrappers ========== */
+
+/* Create a green (continuation-based) channel */
+Obj* make_green_chan(int capacity) {
+    GreenChannel* ch = green_channel_create(capacity);
+    if (!ch) return NULL;
+
+    Obj* obj = malloc(sizeof(Obj));
+    if (!obj) {
+        green_channel_release(ch);
+        return NULL;
+    }
+
+    obj->mark = 1;
+    obj->tag = TAG_GREEN_CHANNEL;
+    obj->is_pair = 0;
+    obj->scc_id = -1;
+    obj->generation = ipge_evolve(0);
+    obj->ptr = ch;
+
+    return obj;
+}
+
+/* Send on green channel (parks if needed) */
+void green_send(Obj* ch_obj, Obj* value) {
+    if (!ch_obj || ch_obj->tag != TAG_GREEN_CHANNEL) return;
+    GreenChannel* ch = (GreenChannel*)ch_obj->ptr;
+    green_channel_send(ch, value);
+}
+
+/* Receive from green channel (parks if needed) */
+Obj* green_recv(Obj* ch_obj) {
+    if (!ch_obj || ch_obj->tag != TAG_GREEN_CHANNEL) return NULL;
+    GreenChannel* ch = (GreenChannel*)ch_obj->ptr;
+    return green_channel_recv(ch);
+}
+
+/* Try send (non-blocking) */
+int green_try_send(Obj* ch_obj, Obj* value) {
+    if (!ch_obj || ch_obj->tag != TAG_GREEN_CHANNEL) return 0;
+    GreenChannel* ch = (GreenChannel*)ch_obj->ptr;
+    return green_channel_try_send(ch, value) ? 1 : 0;
+}
+
+/* Try receive (non-blocking) */
+Obj* green_try_recv(Obj* ch_obj, int* ok) {
+    if (!ch_obj || ch_obj->tag != TAG_GREEN_CHANNEL) {
+        *ok = 0;
+        return NULL;
+    }
+    GreenChannel* ch = (GreenChannel*)ch_obj->ptr;
+    bool success;
+    Obj* result = green_channel_try_recv(ch, &success);
+    *ok = success ? 1 : 0;
+    return result;
+}
+
+/* Close green channel */
+void green_chan_close(Obj* ch_obj) {
+    if (!ch_obj || ch_obj->tag != TAG_GREEN_CHANNEL) return;
+    GreenChannel* ch = (GreenChannel*)ch_obj->ptr;
+    green_channel_close(ch);
+}
+
+/* Free green channel object */
+void free_green_channel_obj(Obj* ch_obj) {
+    if (!ch_obj || ch_obj->tag != TAG_GREEN_CHANNEL) return;
+    GreenChannel* ch = (GreenChannel*)ch_obj->ptr;
+    green_channel_release(ch);
+    free(ch_obj);
+}
+
+/* ========== Generator Wrappers ========== */
+
+/* Create a generator from a closure */
+Obj* make_gen(Obj* producer) {
+    Generator* g = generator_create(producer);
+    if (!g) return NULL;
+
+    Obj* obj = malloc(sizeof(Obj));
+    if (!obj) {
+        generator_release(g);
+        return NULL;
+    }
+
+    obj->mark = 1;
+    obj->tag = TAG_GENERATOR;
+    obj->is_pair = 0;
+    obj->scc_id = -1;
+    obj->generation = ipge_evolve(0);
+    obj->ptr = g;
+
+    return obj;
+}
+
+/* Get next value from generator */
+Obj* gen_next(Obj* gen_obj) {
+    if (!gen_obj || gen_obj->tag != TAG_GENERATOR) return NULL;
+    Generator* g = (Generator*)gen_obj->ptr;
+    return generator_next(g);
+}
+
+/* Check if generator is exhausted */
+int gen_done(Obj* gen_obj) {
+    if (!gen_obj || gen_obj->tag != TAG_GENERATOR) return 1;
+    Generator* g = (Generator*)gen_obj->ptr;
+    return generator_is_done(g) ? 1 : 0;
+}
+
+/* Close generator early */
+void gen_close(Obj* gen_obj) {
+    if (!gen_obj || gen_obj->tag != TAG_GENERATOR) return;
+    Generator* g = (Generator*)gen_obj->ptr;
+    generator_close(g);
+}
+
+/* Free generator object */
+void free_generator_obj(Obj* gen_obj) {
+    if (!gen_obj || gen_obj->tag != TAG_GENERATOR) return;
+    Generator* g = (Generator*)gen_obj->ptr;
+    generator_release(g);
+    free(gen_obj);
+}
+
+/* ========== Promise Wrappers ========== */
+
+/* Create a pending promise */
+Obj* make_promise_val(void) {
+    Promise* p = promise_create();
+    if (!p) return NULL;
+
+    Obj* obj = malloc(sizeof(Obj));
+    if (!obj) {
+        promise_release(p);
+        return NULL;
+    }
+
+    obj->mark = 1;
+    obj->tag = TAG_PROMISE;
+    obj->is_pair = 0;
+    obj->scc_id = -1;
+    obj->generation = ipge_evolve(0);
+    obj->ptr = p;
+
+    return obj;
+}
+
+/* Resolve promise with value */
+void promise_resolve_val(Obj* promise_obj, Obj* value) {
+    if (!promise_obj || promise_obj->tag != TAG_PROMISE) return;
+    Promise* p = (Promise*)promise_obj->ptr;
+    promise_resolve(p, value);
+}
+
+/* Reject promise with error */
+void promise_reject_val(Obj* promise_obj, Obj* error) {
+    if (!promise_obj || promise_obj->tag != TAG_PROMISE) return;
+    Promise* p = (Promise*)promise_obj->ptr;
+    promise_reject(p, error);
+}
+
+/* Await promise (parks current green task) */
+Obj* promise_await_val(Obj* promise_obj) {
+    if (!promise_obj || promise_obj->tag != TAG_PROMISE) return NULL;
+    Promise* p = (Promise*)promise_obj->ptr;
+    return promise_await(p);
+}
+
+/* Check if promise is settled */
+int promise_settled(Obj* promise_obj) {
+    if (!promise_obj || promise_obj->tag != TAG_PROMISE) return 1;
+    Promise* p = (Promise*)promise_obj->ptr;
+    return promise_is_settled(p) ? 1 : 0;
+}
+
+/* Free promise object */
+void free_promise_val(Obj* promise_obj) {
+    if (!promise_obj || promise_obj->tag != TAG_PROMISE) return;
+    Promise* p = (Promise*)promise_obj->ptr;
+    promise_release(p);
+    free(promise_obj);
+}
+
+/* ========== Green Task Wrappers ========== */
+
+/* Spawn a green thread (continuation-based) */
+Obj* spawn_green_task(Obj* thunk) {
+    Task* t = spawn_green(thunk);
+    if (!t) return NULL;
+
+    Obj* obj = malloc(sizeof(Obj));
+    if (!obj) return NULL;
+
+    obj->mark = 1;
+    obj->tag = TAG_TASK;
+    obj->is_pair = 0;
+    obj->scc_id = -1;
+    obj->generation = ipge_evolve(0);
+    obj->ptr = t;
+
+    return obj;
+}
+
+/* Spawn green thread and get completion promise */
+Obj* spawn_async_task(Obj* thunk) {
+    Promise* p = spawn_async(thunk);
+    if (!p) return NULL;
+
+    Obj* obj = malloc(sizeof(Obj));
+    if (!obj) {
+        promise_release(p);
+        return NULL;
+    }
+
+    obj->mark = 1;
+    obj->tag = TAG_PROMISE;
+    obj->is_pair = 0;
+    obj->scc_id = -1;
+    obj->generation = ipge_evolve(0);
+    obj->ptr = p;
+
+    return obj;
+}
+
+/* Yield current green task */
+void green_yield(void) {
+    yield_green();
+}
+
+/* Initialize green scheduler (call once per OS thread) */
+void green_scheduler_init(void) {
+    scheduler_init();
+}
+
+/* Run green scheduler until all tasks complete */
+void green_scheduler_run(void) {
+    scheduler_run();
+}
+
+/* Step green scheduler once */
+int green_scheduler_step(void) {
+    return scheduler_step() ? 1 : 0;
+}
+
+/* Check if green scheduler is idle */
+int green_scheduler_idle(void) {
+    return scheduler_is_idle() ? 1 : 0;
+}
+
+/* Shutdown green scheduler */
+void green_scheduler_shutdown(void) {
+    scheduler_shutdown();
+}

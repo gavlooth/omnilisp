@@ -1,6 +1,11 @@
 # Omnilisp Design Specification
 Tag: Syntax Guide
 
+See also:
+- `SUMMARY.md` for the high-level overview.
+- `SYNTAX.md` for the exhaustive examples.
+- `DESIGN_DECISIONS.md` for the decision log.
+
 ## 1. Core Philosophy
 
 ### 1.1 Paradigm
@@ -80,6 +85,38 @@ Scheme-style S-expressions with extended bracket semantics:
 | `{}` | Type annotation | Type wrapper | `{Int}`, `{Array Int}`, `{Self}` |
 | `#{}` | Expression | Dict literal | `#{:a 1 :b 2}` |
 
+Quote preserves bracketed literal structure:
+`'(...)` is a list, `'[...]` is an array, and `'#{...}` is a dict.
+
+### 1.3.1 Reader Macros (Planned)
+Reader macros are read-time shorthands that expand before macro expansion.
+
+*   `#(...)` - Anonymous function shorthand using `%` placeholders (`%`, `%1`, `%2`, `%&`).
+*   `#?` - Reader conditional keyed by feature flags or targets.
+*   `#r"..."`, `#raw"..."`, `#b"..."` - Prefixed string literals (regex, raw, bytes).
+*   `#_` - Discard the next form (commenting out code).
+*   `#| ... |#` - Block comment (nesting allowed).
+*   `#!` - Shebang at file start (ignored by reader).
+*   `#uuid"..."`, `#path"..."` - Typed literals.
+
+```lisp
+#(+ % 1)                    ; -> (lambda (x) (+ x 1))
+#(* %1 %2)                  ; -> (lambda (a b) (* a b))
+#? (:posix (use-posix) :windows (use-win) :else (use-generic))
+
+#_ (expensive-debug-print x) ; discarded
+#| multi-line
+   comment |#
+
+#!/usr/bin/env omnilisp
+
+#uuid"f81d4fae-7dec-11d0-a765-00a0c91e6bf6"
+#path"/usr/local/bin"
+```
+
+Reader conditionals select the first matching feature key; `:else` provides a fallback.
+Typed literals expand to constructor calls (e.g., `#uuid"..."` -> `(uuid "...")`).
+
 ### 1.4 Collections
 *   **Arrays:** Primary mutable sequence. `[]` literals produce mutable arrays.
 *   **Lists:** Secondary persistent linked lists.
@@ -118,8 +155,9 @@ of this document describes the intended language design.
 - Lists: `cons`, `car`, `cdr`, `null?`
 - I/O: `display`, `print`, `newline`
 
-**Truthiness**
+**Truthiness (current C runtime)**
 - Empty list and numeric zero are false; everything else is truthy.
+- Design target: only `false` and `nothing` are falsy.
 
 ---
 
@@ -151,6 +189,8 @@ Empty collections are **distinct values**, not `nothing`:
 (nothing? [])    ; -> false
 (nothing? nothing) ; -> true
 ```
+
+Omnilisp has no `nil`. Use `(list)` for the empty list.
 
 ### 2.3 Optional Values
 For optional/nullable semantics, use explicit wrapper types (see Section 6 on Sum Types):
@@ -189,6 +229,7 @@ Omnilisp unifies all top-level bindings under `define`:
 
 ### 3.2 Local Bindings (`let`)
 Omnilisp provides a unified `let` form with Clojure-style binding syntax. Bindings are in `[]` as an even number of forms (name-value pairs).
+Modifiers are expressed as metadata (`^:seq`, `^:rec`).
 
 #### Basic Let (Parallel Binding)
 All bindings are evaluated in the enclosing environment, then bound simultaneously. Supports triplets for type annotations:
@@ -199,25 +240,29 @@ All bindings are evaluated in the enclosing environment, then bound simultaneous
   (+ x y))  ; -> 3
 ```
 
-#### Sequential Let (`let*` behavior with `:seq`)
-Use `:seq` to enable sequential binding where each binding sees previous ones:
+#### Sequential Let (`let*` behavior)
+Use `^:seq` to enable sequential binding where each binding sees previous ones:
 
 ```lisp
-(let :seq [x 1
-           y (+ x 1)
-           z (+ y 1)]
+(let ^:seq [x 1
+            y (+ x 1)
+            z (+ y 1)]
   z)  ; -> 3
 ```
 
-#### Recursive Let (`letrec` behavior with `:rec`)
-...
+#### Recursive Let (`letrec` behavior)
+```lisp
+(let ^:rec [even? (lambda (n) (if (= n 0) true (odd? (- n 1))))
+            odd?  (lambda (n) (if (= n 0) false (even? (- n 1))))]
+  (even? 10))
+```
 
 #### Named Let (Loop Form)
 A `let` with a name before the bindings creates a recursive loop. Can be combined with modifiers:
 
 ```lisp
-(let :seq loop [i {Int} 0
-                acc {Int} 0]
+(let ^:seq loop [i {Int} 0
+                 acc {Int} 0]
   (if (> i 10)
       acc
       (loop (+ i 1) (+ acc i))))  ; -> 55
@@ -233,8 +278,8 @@ Both `define` and `let` support pattern destructuring:
 (let [[first .. rest] [1 2 3 4]]
   first)  ; -> 1
 
-(let :seq [[a .. bs] [1 2 3 4]
-           sum (reduce + 0 bs)]
+(let ^:seq [[a .. bs] [1 2 3 4]
+            sum (reduce + 0 bs)]
   sum)  ; -> 9
 ```
 
@@ -292,6 +337,22 @@ Semantics:
 *   Unknown named keys are an error unless `& opts` captures the rest.
 *   Duplicate named keys are an error.
 *   Named arguments do not affect arity or dispatch.
+
+### 3.8 Lambda Shorthand
+`->` is reserved for lambdas (pipeline uses `|>`):
+
+```lisp
+(-> x (+ x 1))         ; (lambda (x) (+ x 1))
+(-> (x y) (* x y))     ; (lambda (x y) (* x y))
+```
+
+Anonymous shorthand is also available via the reader macro `#(...)`:
+
+```lisp
+#(+ % 1)               ; (lambda (x) (+ x 1))
+#(* %1 %2)             ; (lambda (a b) (* a b))
+#(list %1 %2 %&)       ; (lambda (a b . rest) (list a b rest))
+```
 
 ---
 
@@ -411,7 +472,8 @@ The `else` clause becomes a wildcard `_` without a guard.
 
 #### Predicates
 ```lisp
-(satisfies pred)         ; Match if (pred value) is true
+(satisfies pred-expr)         ; pred-expr evaluated per branch
+(satisfies (lambda (n) (> n 10)))
 ```
 
 #### Rest Patterns
@@ -446,7 +508,14 @@ The `else` clause becomes a wildcard `_` without a guard.
 ;; With filter
 (for [x (range 1 100) :when (even? x)]
   x)
+
+;; Multiple bindings are nested (cartesian product)
+(for [x xs y ys]
+  (tuple x y))
 ```
+
+`for` and `foreach` use nested semantics by default. If a zip mode is added, it will
+use `^:zip` metadata (preferred) with `:zip` as sugar.
 
 ### 4.6 Delimited Continuations
 
@@ -490,19 +559,35 @@ Structs are **immutable by default**:
   [x {Float}]
   [y {Float}])
 
-(define {struct Circle :extends Shape}
+(define ^:parent {Shape} {struct Circle}
   [center {Point}]
   [radius {Float}])
 ```
 
+#### Construction
+Struct constructors accept positional arguments by default and named fields after `&`:
+
+```lisp
+(define p (Point 10.0 20.0))
+(define p2 (Point 10.0 & :y 20.0))
+(define p3 (Point 10.0 & :x 10.0 :y 20.0))
+```
+
+Rules:
+*   Positional arguments must come before `&`.
+*   Named fields follow `&` and use `:field value` pairs.
+*   Unknown or duplicate field names are errors.
+
 #### Mutable Structs
 ```lisp
 (define {struct Player}
-  [hp :mutable {Int}]
+  [^:mutable hp {Int}]
   [name {String}]
   [pos {Point}])
 
-;; Sugar: (define {mutable Player} ...) marks all fields mutable.
+;; Sugar: [hp :mutable {Int}] is equivalent to [^:mutable hp {Int}].
+;; Sugar: (define ^:mutable {struct Player} ...) marks all fields mutable.
+;; (define {mutable Player} ...) remains as legacy sugar.
 
 (define hero (Player 100 "Arthur" (Point 0 0)))
 (set! hero.hp 95)
@@ -519,12 +604,19 @@ Use `{}` for type parameters:
 ```
 
 #### Defining Parametric Types
+Parent defaults to `Any`. To specify a parent, attach `^:parent {Type}` metadata
+before the `{struct ...}` header:
+
 ```lisp
 (define {struct [Pair T]}
   [first {T}]
   [second {T}])
 
 (define {struct [Entry K V]}
+  [key {K}]
+  [value {V}])
+
+(define ^:parent {Any} {struct [Entry K V]}
   [key {K}]
   [value {V}])
 ```
@@ -547,6 +639,9 @@ Omnilisp supports algebraic data types via `enum`:
   [Green "go"]
   [Blue "wait"])
 ```
+
+Enum variants may be used unqualified when unique in scope. If ambiguous, use
+`Type.Variant` (for example, `Color.Red`).
 
 ### 6.2 Enums with Data
 ```lisp
@@ -846,11 +941,12 @@ Use `%` to control placement:
 (define ch (channel))        ; Unbuffered
 (define ch (channel 10))     ; Buffered (capacity 10)
 
-(send ch value)              ; Send (blocks if full)
+(send ch value)              ; Send (blocks if full), returns false if closed
 (recv ch)                    ; Receive (blocks if empty)
 (close ch)                   ; Close channel
 
 ;; Receive from closed channel returns nothing
+;; Send returns true on success, false if channel is closed
 ```
 
 ### 12.3 Park / Unpark
@@ -899,10 +995,12 @@ Use `%` to control placement:
 
 ### 14.2 String Prefixes
 ```lisp
-r"regex\d+"              ; Regex (Pika-powered)
-raw"C:\path\file"        ; Raw string (no escapes)
-b"binary\x00data"        ; Byte array
+#r"regex\d+"             ; Regex (Pika-powered)
+#raw"C:\path\file"       ; Raw string (no escapes)
+#b"binary\x00data"       ; Byte array
 ```
+
+`r"..."`, `raw"..."`, and `b"..."` are reserved in favor of `#`-prefixed forms.
 
 ---
 
@@ -920,7 +1018,7 @@ Type marshalling is automatic between Omnilisp and native types.
 
 ---
 
-## 16. Metadata
+## 16. Metadata & Hints
 
 ```lisp
 ^metadata object
@@ -929,9 +1027,48 @@ Type marshalling is automatic between Omnilisp and native types.
 ;; Examples
 (define ^:private ^:hot internal-fn ...)
 (define ^"Docstring here" (my-func x) ...)
+(let [^:mutable counter 0]
+  (set! counter (+ counter 1)))
+
+(define {struct Player}
+  [^:mutable hp {Int}]
+  [name {String}])
+
+(define ^:tailrec (sum [i {Int}] [acc {Int}])
+  (if (= i 0) acc (sum (- i 1) (+ acc i))))
+
+(define (copy [^:borrowed src {Bytes}] [^:consumes dst {Bytes}])
+  ...)
+
+^:unchecked arr.(i)
 ```
 
 Metadata is stored separately and does not affect identity or equality.
+Fields are immutable unless marked `^:mutable` (or `:mutable` sugar). The compiler may
+warn or error when mutating a binding or field that is not marked `^:mutable`.
+
+Common hints (non-semantic):
+*   `^:inline`, `^:noinline`
+*   `^:pure`
+*   `^:hot`, `^:cold`
+*   `^:mutable`
+*   `^:deprecated` (optional docstring payload)
+
+Ownership/lifetime hints (primarily for FFI/unsafe boundaries; advisory in core language):
+*   `^:borrowed` (does not transfer ownership)
+*   `^:consumes` (transfers ownership to callee)
+*   `^:noescape` (value does not escape scope)
+
+Safety/perf hints:
+*   `^:unchecked` (skip bounds checks or safety checks)
+*   `^:tailrec` (must compile to tail call)
+
+Form modifiers (semantic, preferred over ad-hoc keywords):
+*   `^:seq` / `^:rec` on `let`
+*   `^:zip` on `for` / `foreach` (if added)
+
+Structural metadata:
+*   `^:parent {Type}` before `{struct ...}` headers
 
 ---
 
@@ -955,14 +1092,23 @@ Metadata is stored separately and does not affect identity or equality.
 *   `|>` - Expand to nested calls
 *   User-defined macros via `define [macro ...]`
 
+### Reader Macros (handled by reader)
+*   `#(...)` - Anonymous function shorthand with `%` placeholders
+*   `#?` - Reader conditionals
+*   `#r` / `#raw` / `#b` - Prefixed string literals
+*   `#_` - Discard next form
+*   `#| |#` - Block comment
+*   `#!` - Shebang (file start)
+*   `#uuid` / `#path` - Typed literals
+
 ---
 
 ## 18. Phase-1 Scope
 
 ### Include
-*   Reader: `()`, `[]`, `{}`, `#{}`, dot access, `:sym` sugar, core literals
+*   Reader: `()`, `[]`, `{}`, `#{}`, dot access, `:sym` sugar, core literals, `#(...)`, `#?`, `#_`, `#| |#`, `#!`, `#r/#raw/#b`, `#uuid/#path`
 *   Unified `define`: values, functions, methods, macros, types
-*   `let` with `:seq` and `:rec` modifiers
+*   `let` with `^:seq` and `^:rec` metadata
 *   Type system: abstract types, structs, parametric types, enums
 *   Multiple dispatch with specificity rules
 *   `match` as special form with `[]` branches; `cond` as macro expanding to `match`

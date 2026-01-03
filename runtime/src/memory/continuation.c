@@ -1,0 +1,1235 @@
+/*
+ * Continuation-Based Concurrency Implementation
+ *
+ * This implements:
+ * - CEK-style continuation frames
+ * - Delimited continuations (prompt/control)
+ * - Green thread scheduler
+ * - Continuation-based channels
+ * - Generators/iterators
+ * - Promises (async/await)
+ */
+
+#include "continuation.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+
+/* Forward declaration - defined in runtime.c */
+extern void inc_ref(Obj* x);
+extern void dec_ref(Obj* x);
+extern Obj* call_closure(Obj* clos, Obj** args, int arg_count);
+
+/* ========== Thread-Local State ========== */
+
+static _Thread_local Scheduler* tl_scheduler = NULL;
+static _Thread_local Obj* tl_current_env = NULL;
+static _Thread_local Frame* tl_current_frame = NULL;
+static _Thread_local uint32_t tl_next_prompt_tag = PROMPT_TAG_USER_BASE;
+
+/* ========== Frame Pool ========== */
+
+#define FRAME_POOL_INITIAL_SIZE 64
+
+static Frame* frame_pool_alloc(Scheduler* sched) {
+    if (sched->frame_freelist) {
+        Frame* f = sched->frame_freelist;
+        sched->frame_freelist = f->prev;
+        sched->frame_pool_size--;
+        return f;
+    }
+    return malloc(sizeof(Frame));
+}
+
+static void frame_pool_free(Scheduler* sched, Frame* f) {
+    if (sched->frame_pool_size < FRAME_POOL_INITIAL_SIZE * 2) {
+        f->prev = sched->frame_freelist;
+        sched->frame_freelist = f;
+        sched->frame_pool_size++;
+    } else {
+        free(f);
+    }
+}
+
+/* ========== Frame Management ========== */
+
+Frame* frame_alloc(FrameTag tag) {
+    Scheduler* sched = scheduler_current();
+    Frame* f = sched ? frame_pool_alloc(sched) : malloc(sizeof(Frame));
+    if (!f) return NULL;
+
+    memset(f, 0, sizeof(Frame));
+    f->tag = tag;
+    f->refcount = 1;
+    return f;
+}
+
+void frame_free(Frame* f) {
+    if (!f) return;
+
+    /* Release referenced objects */
+    if (f->env) dec_ref(f->env);
+
+    switch (f->tag) {
+        case FRAME_APP_FN:
+        case FRAME_APP_ARGS:
+        case FRAME_APP_DONE:
+            if (f->app.fn) dec_ref(f->app.fn);
+            if (f->app.args_done) dec_ref(f->app.args_done);
+            if (f->app.args_todo) dec_ref(f->app.args_todo);
+            break;
+
+        case FRAME_IF_TEST:
+            if (f->if_test.then_branch) dec_ref(f->if_test.then_branch);
+            if (f->if_test.else_branch) dec_ref(f->if_test.else_branch);
+            break;
+
+        case FRAME_LET_BIND:
+        case FRAME_LET_BODY:
+            if (f->let.var) dec_ref(f->let.var);
+            if (f->let.body) dec_ref(f->let.body);
+            if (f->let.bindings_todo) dec_ref(f->let.bindings_todo);
+            break;
+
+        case FRAME_SEQ:
+            if (f->seq.remaining) dec_ref(f->seq.remaining);
+            break;
+
+        case FRAME_PROMPT:
+            if (f->prompt.result) dec_ref(f->prompt.result);
+            if (f->prompt.handler) dec_ref(f->prompt.handler);
+            break;
+
+        default:
+            break;
+    }
+
+    Scheduler* sched = scheduler_current();
+    if (sched) {
+        frame_pool_free(sched, f);
+    } else {
+        free(f);
+    }
+}
+
+Frame* frame_clone(Frame* f) {
+    if (!f) return NULL;
+
+    Frame* clone = frame_alloc(f->tag);
+    if (!clone) return NULL;
+
+    /* Shallow copy */
+    memcpy(clone, f, sizeof(Frame));
+    clone->refcount = 1;
+    clone->prev = NULL;
+
+    /* Increment refs on contained objects */
+    if (clone->env) inc_ref(clone->env);
+
+    switch (clone->tag) {
+        case FRAME_APP_FN:
+        case FRAME_APP_ARGS:
+        case FRAME_APP_DONE:
+            if (clone->app.fn) inc_ref(clone->app.fn);
+            if (clone->app.args_done) inc_ref(clone->app.args_done);
+            if (clone->app.args_todo) inc_ref(clone->app.args_todo);
+            break;
+
+        case FRAME_IF_TEST:
+            if (clone->if_test.then_branch) inc_ref(clone->if_test.then_branch);
+            if (clone->if_test.else_branch) inc_ref(clone->if_test.else_branch);
+            break;
+
+        case FRAME_LET_BIND:
+        case FRAME_LET_BODY:
+            if (clone->let.var) inc_ref(clone->let.var);
+            if (clone->let.body) inc_ref(clone->let.body);
+            if (clone->let.bindings_todo) inc_ref(clone->let.bindings_todo);
+            break;
+
+        case FRAME_SEQ:
+            if (clone->seq.remaining) inc_ref(clone->seq.remaining);
+            break;
+
+        case FRAME_PROMPT:
+            if (clone->prompt.result) inc_ref(clone->prompt.result);
+            if (clone->prompt.handler) inc_ref(clone->prompt.handler);
+            break;
+
+        default:
+            break;
+    }
+
+    return clone;
+}
+
+void frame_inc_ref(Frame* f) {
+    if (f) f->refcount++;
+}
+
+void frame_dec_ref(Frame* f) {
+    if (!f) return;
+    if (--f->refcount == 0) {
+        /* Recursively release chain */
+        Frame* prev = f->prev;
+        frame_free(f);
+        if (prev) frame_dec_ref(prev);
+    }
+}
+
+/* ========== Continuation Management ========== */
+
+static Continuation* continuation_alloc(void) {
+    Continuation* k = malloc(sizeof(Continuation));
+    if (!k) return NULL;
+    memset(k, 0, sizeof(Continuation));
+    k->refcount = 1;
+    return k;
+}
+
+Continuation* cont_capture(uint32_t tag) {
+    Continuation* k = continuation_alloc();
+    if (!k) return NULL;
+
+    k->prompt_tag = tag;
+    k->one_shot = false;
+    k->invoked = false;
+
+    /* Walk up frame chain, cloning frames until we hit matching prompt */
+    Frame* captured_head = NULL;
+    Frame* captured_tail = NULL;
+    Frame* current = tl_current_frame;
+
+    while (current) {
+        if (current->tag == FRAME_PROMPT &&
+            current->prompt.tag == tag) {
+            /* Found the delimiter */
+            k->prompt_env = current->env;
+            if (k->prompt_env) inc_ref(k->prompt_env);
+            break;
+        }
+
+        /* Clone this frame */
+        Frame* clone = frame_clone(current);
+        if (!clone) {
+            /* Cleanup on failure */
+            frame_dec_ref(captured_head);
+            free(k);
+            return NULL;
+        }
+
+        /* Add to captured chain */
+        if (!captured_head) {
+            captured_head = clone;
+            captured_tail = clone;
+        } else {
+            captured_tail->prev = clone;
+            captured_tail = clone;
+        }
+
+        current = current->prev;
+    }
+
+    if (!current) {
+        /* No matching prompt found */
+        frame_dec_ref(captured_head);
+        free(k);
+        return NULL;
+    }
+
+    k->frames = captured_head;
+    return k;
+}
+
+Obj* cont_invoke(Continuation* k, Obj* value) {
+    if (!k) return NULL;
+
+    if (k->one_shot && k->invoked) {
+        /* One-shot continuation already used */
+        return NULL;  /* Should return error */
+    }
+    k->invoked = true;
+
+    /* Clone frames if multi-shot (refcount > 1) */
+    Frame* frames_to_install;
+    if (k->refcount > 1 && !k->one_shot) {
+        /* Need to clone the frame chain */
+        Frame* cloned_head = NULL;
+        Frame* cloned_tail = NULL;
+        Frame* src = k->frames;
+
+        while (src) {
+            Frame* clone = frame_clone(src);
+            if (!clone) {
+                frame_dec_ref(cloned_head);
+                return NULL;
+            }
+            if (!cloned_head) {
+                cloned_head = clone;
+                cloned_tail = clone;
+            } else {
+                cloned_tail->prev = clone;
+                cloned_tail = clone;
+            }
+            src = src->prev;
+        }
+        frames_to_install = cloned_head;
+    } else {
+        /* Can use frames directly */
+        frames_to_install = k->frames;
+        frame_inc_ref(frames_to_install);
+    }
+
+    /* Find the bottom of installed frames and link to current prompt */
+    Frame* bottom = frames_to_install;
+    while (bottom && bottom->prev) {
+        bottom = bottom->prev;
+    }
+
+    /* Find matching prompt in current stack */
+    Frame* prompt_frame = tl_current_frame;
+    while (prompt_frame) {
+        if (prompt_frame->tag == FRAME_PROMPT &&
+            prompt_frame->prompt.tag == k->prompt_tag) {
+            break;
+        }
+        prompt_frame = prompt_frame->prev;
+    }
+
+    if (prompt_frame && bottom) {
+        bottom->prev = prompt_frame;
+        frame_inc_ref(prompt_frame);
+    }
+
+    /* Install new continuation */
+    tl_current_frame = frames_to_install;
+
+    /* Return value will be the result of the computation */
+    return value;
+}
+
+bool cont_is_valid(Continuation* k) {
+    if (!k) return false;
+    if (k->one_shot && k->invoked) return false;
+    return k->frames != NULL;
+}
+
+void cont_release(Continuation* k) {
+    if (!k) return;
+    if (--k->refcount == 0) {
+        frame_dec_ref(k->frames);
+        if (k->prompt_env) dec_ref(k->prompt_env);
+        free(k);
+    }
+}
+
+/* ========== Prompt Operations ========== */
+
+Obj* cont_prompt(uint32_t tag, Obj* body, Obj* env, Obj* handler) {
+    /* Push prompt frame */
+    Frame* f = frame_alloc(FRAME_PROMPT);
+    if (!f) return NULL;
+
+    f->prompt.tag = tag;
+    f->prompt.result = NULL;
+    f->prompt.handler = handler;
+    if (handler) inc_ref(handler);
+    f->env = env;
+    if (env) inc_ref(env);
+    f->prev = tl_current_frame;
+    if (tl_current_frame) frame_inc_ref(tl_current_frame);
+
+    tl_current_frame = f;
+
+    /* Set up escape point */
+    if (setjmp(f->prompt.escape) != 0) {
+        /* Returned via control */
+        Obj* result = f->prompt.result;
+        f->prompt.result = NULL;
+
+        /* Pop prompt frame */
+        Frame* old = tl_current_frame;
+        tl_current_frame = old->prev;
+        if (tl_current_frame) frame_inc_ref(tl_current_frame);
+        frame_dec_ref(old);
+
+        return result;
+    }
+
+    /* Evaluate body (caller handles this) */
+    return body;
+}
+
+uint32_t prompt_tag_generate(void) {
+    return tl_next_prompt_tag++;
+}
+
+/* ========== Scheduler ========== */
+
+void scheduler_init(void) {
+    if (tl_scheduler) return;
+
+    tl_scheduler = malloc(sizeof(Scheduler));
+    if (!tl_scheduler) return;
+
+    memset(tl_scheduler, 0, sizeof(Scheduler));
+    tl_scheduler->next_task_id = 1;
+
+    /* Pre-allocate frame pool */
+    for (int i = 0; i < FRAME_POOL_INITIAL_SIZE; i++) {
+        Frame* f = malloc(sizeof(Frame));
+        if (f) {
+            f->prev = tl_scheduler->frame_freelist;
+            tl_scheduler->frame_freelist = f;
+            tl_scheduler->frame_pool_size++;
+        }
+    }
+}
+
+void scheduler_shutdown(void) {
+    if (!tl_scheduler) return;
+
+    /* Free remaining tasks */
+    Task* t = tl_scheduler->ready_head;
+    while (t) {
+        Task* next = t->next;
+        frame_dec_ref(t->cont);
+        if (t->value) dec_ref(t->value);
+        if (t->result) dec_ref(t->result);
+        free(t);
+        t = next;
+    }
+
+    /* Free frame pool */
+    Frame* f = tl_scheduler->frame_freelist;
+    while (f) {
+        Frame* next = f->prev;
+        free(f);
+        f = next;
+    }
+
+    free(tl_scheduler);
+    tl_scheduler = NULL;
+}
+
+Scheduler* scheduler_current(void) {
+    return tl_scheduler;
+}
+
+static void scheduler_enqueue(Task* task) {
+    Scheduler* sched = tl_scheduler;
+    if (!sched) return;
+
+    task->state = TASK_READY;
+    task->next = NULL;
+    task->prev = sched->ready_tail;
+
+    if (sched->ready_tail) {
+        sched->ready_tail->next = task;
+    } else {
+        sched->ready_head = task;
+    }
+    sched->ready_tail = task;
+}
+
+static Task* scheduler_dequeue(void) {
+    Scheduler* sched = tl_scheduler;
+    if (!sched || !sched->ready_head) return NULL;
+
+    Task* task = sched->ready_head;
+    sched->ready_head = task->next;
+    if (sched->ready_head) {
+        sched->ready_head->prev = NULL;
+    } else {
+        sched->ready_tail = NULL;
+    }
+
+    task->next = NULL;
+    task->prev = NULL;
+    task->state = TASK_RUNNING;
+    return task;
+}
+
+static void scheduler_remove(Task* task) {
+    Scheduler* sched = tl_scheduler;
+    if (!sched) return;
+
+    if (task->prev) {
+        task->prev->next = task->next;
+    } else {
+        sched->ready_head = task->next;
+    }
+
+    if (task->next) {
+        task->next->prev = task->prev;
+    } else {
+        sched->ready_tail = task->prev;
+    }
+
+    task->next = NULL;
+    task->prev = NULL;
+}
+
+void scheduler_run(void) {
+    Scheduler* sched = tl_scheduler;
+    if (!sched) return;
+
+    while (sched->ready_head) {
+        if (!scheduler_step()) break;
+    }
+}
+
+bool scheduler_step(void) {
+    Scheduler* sched = tl_scheduler;
+    if (!sched) return false;
+
+    Task* task = scheduler_dequeue();
+    if (!task) return false;
+
+    sched->current = task;
+    sched->context_switches++;
+
+    /* Restore task's continuation state */
+    Frame* saved_frame = tl_current_frame;
+    Obj* saved_env = tl_current_env;
+
+    tl_current_frame = task->cont;
+    tl_current_env = task->env;
+
+    /* Resume task with value */
+    Obj* result = task->value;
+
+    /* TODO: Actually execute the task
+     * This would integrate with the evaluator:
+     * result = eval_step(task->expr, task->env, task->cont, task->value);
+     */
+
+    /* For now, mark task as done */
+    task->state = TASK_DONE;
+    task->result = result;
+
+    /* Restore previous state */
+    tl_current_frame = saved_frame;
+    tl_current_env = saved_env;
+    sched->current = NULL;
+
+    /* Complete the task */
+    if (task->completion) {
+        promise_resolve(task->completion, result);
+    }
+
+    sched->tasks_completed++;
+    sched->task_count--;
+
+    /* Free task */
+    frame_dec_ref(task->cont);
+    free(task);
+
+    return true;
+}
+
+bool scheduler_is_idle(void) {
+    Scheduler* sched = tl_scheduler;
+    return !sched || !sched->ready_head;
+}
+
+/* ========== Green Threads ========== */
+
+Task* spawn_green(Obj* thunk) {
+    Scheduler* sched = tl_scheduler;
+    if (!sched) {
+        scheduler_init();
+        sched = tl_scheduler;
+    }
+    if (!sched || !thunk) return NULL;
+
+    Task* task = malloc(sizeof(Task));
+    if (!task) return NULL;
+
+    memset(task, 0, sizeof(Task));
+    task->id = sched->next_task_id++;
+    task->state = TASK_READY;
+    task->expr = thunk;
+    if (thunk) inc_ref(thunk);
+
+    sched->tasks_created++;
+    sched->task_count++;
+
+    scheduler_enqueue(task);
+    return task;
+}
+
+Promise* spawn_async(Obj* thunk) {
+    Promise* p = promise_create();
+    if (!p) return NULL;
+
+    Task* task = spawn_green(thunk);
+    if (!task) {
+        promise_release(p);
+        return NULL;
+    }
+
+    task->completion = p;
+    p->refcount++;  /* Task holds reference */
+    return p;
+}
+
+void yield_green(void) {
+    Scheduler* sched = tl_scheduler;
+    if (!sched || !sched->current) return;
+
+    Task* current = sched->current;
+
+    /* Save current state */
+    current->cont = tl_current_frame;
+    if (tl_current_frame) frame_inc_ref(tl_current_frame);
+    current->env = tl_current_env;
+    if (tl_current_env) inc_ref(tl_current_env);
+
+    /* Re-enqueue at end */
+    scheduler_enqueue(current);
+    sched->current = NULL;
+
+    /* Context switch happens in scheduler_step return */
+}
+
+Task* task_current(void) {
+    Scheduler* sched = tl_scheduler;
+    return sched ? sched->current : NULL;
+}
+
+void task_park(void* reason, Obj* value) {
+    Scheduler* sched = tl_scheduler;
+    if (!sched || !sched->current) return;
+
+    Task* current = sched->current;
+
+    /* Save state */
+    current->cont = tl_current_frame;
+    if (tl_current_frame) frame_inc_ref(tl_current_frame);
+    current->env = tl_current_env;
+    if (tl_current_env) inc_ref(tl_current_env);
+
+    current->state = TASK_PARKED;
+    current->park_reason = reason;
+    current->park_value = value;
+    if (value) inc_ref(value);
+
+    sched->current = NULL;
+}
+
+void task_unpark(Task* t, Obj* value) {
+    if (!t || t->state != TASK_PARKED) return;
+
+    t->value = value;
+    if (value) inc_ref(value);
+    t->park_reason = NULL;
+    if (t->park_value) {
+        dec_ref(t->park_value);
+        t->park_value = NULL;
+    }
+
+    scheduler_enqueue(t);
+}
+
+/* ========== Green Channels ========== */
+
+GreenChannel* green_channel_create(int capacity) {
+    GreenChannel* ch = malloc(sizeof(GreenChannel));
+    if (!ch) return NULL;
+
+    memset(ch, 0, sizeof(GreenChannel));
+    ch->capacity = capacity;
+    ch->refcount = 1;
+
+    if (capacity > 0) {
+        ch->buffer = calloc(capacity, sizeof(Obj*));
+        if (!ch->buffer) {
+            free(ch);
+            return NULL;
+        }
+    }
+
+    return ch;
+}
+
+void green_channel_send(GreenChannel* ch, Obj* value) {
+    if (!ch || ch->closed) return;
+
+    /* Check for waiting receiver */
+    if (ch->recv_waiters) {
+        Task* receiver = ch->recv_waiters;
+        ch->recv_waiters = receiver->next;
+        if (ch->recv_waiters) {
+            ch->recv_waiters->prev = NULL;
+        }
+        receiver->next = NULL;
+
+        /* Hand off value directly */
+        task_unpark(receiver, value);
+        return;
+    }
+
+    /* Try to buffer */
+    if (ch->capacity > 0 && ch->count < ch->capacity) {
+        ch->buffer[ch->tail] = value;
+        if (value) inc_ref(value);
+        ch->tail = (ch->tail + 1) % ch->capacity;
+        ch->count++;
+        return;
+    }
+
+    /* Must wait - park sender */
+    Task* current = task_current();
+    if (!current) return;  /* Not in scheduler context */
+
+    /* Add to send waiters */
+    current->next = ch->send_waiters;
+    if (ch->send_waiters) {
+        ch->send_waiters->prev = current;
+    }
+    ch->send_waiters = current;
+
+    task_park(ch, value);
+}
+
+Obj* green_channel_recv(GreenChannel* ch) {
+    if (!ch) return NULL;
+
+    /* Check buffer first */
+    if (ch->count > 0) {
+        Obj* value = ch->buffer[ch->head];
+        ch->buffer[ch->head] = NULL;
+        ch->head = (ch->head + 1) % ch->capacity;
+        ch->count--;
+
+        /* Wake a waiting sender if any */
+        if (ch->send_waiters) {
+            Task* sender = ch->send_waiters;
+            ch->send_waiters = sender->next;
+            if (ch->send_waiters) {
+                ch->send_waiters->prev = NULL;
+            }
+            sender->next = NULL;
+
+            /* Buffer their value */
+            Obj* send_val = sender->park_value;
+            sender->park_value = NULL;
+
+            ch->buffer[ch->tail] = send_val;
+            ch->tail = (ch->tail + 1) % ch->capacity;
+            ch->count++;
+
+            task_unpark(sender, NULL);
+        }
+
+        return value;
+    }
+
+    /* Check for waiting sender (unbuffered or after buffer empty) */
+    if (ch->send_waiters) {
+        Task* sender = ch->send_waiters;
+        ch->send_waiters = sender->next;
+        if (ch->send_waiters) {
+            ch->send_waiters->prev = NULL;
+        }
+        sender->next = NULL;
+
+        Obj* value = sender->park_value;
+        sender->park_value = NULL;
+
+        task_unpark(sender, NULL);
+        return value;
+    }
+
+    /* Channel closed and empty */
+    if (ch->closed) {
+        return NULL;
+    }
+
+    /* Must wait - park receiver */
+    Task* current = task_current();
+    if (!current) return NULL;
+
+    current->next = ch->recv_waiters;
+    if (ch->recv_waiters) {
+        ch->recv_waiters->prev = current;
+    }
+    ch->recv_waiters = current;
+
+    task_park(ch, NULL);
+    return NULL;  /* Value will be set when unparked */
+}
+
+bool green_channel_try_send(GreenChannel* ch, Obj* value) {
+    if (!ch || ch->closed) return false;
+
+    /* Receiver waiting? */
+    if (ch->recv_waiters) {
+        Task* receiver = ch->recv_waiters;
+        ch->recv_waiters = receiver->next;
+        if (ch->recv_waiters) ch->recv_waiters->prev = NULL;
+        receiver->next = NULL;
+        task_unpark(receiver, value);
+        return true;
+    }
+
+    /* Buffer space? */
+    if (ch->capacity > 0 && ch->count < ch->capacity) {
+        ch->buffer[ch->tail] = value;
+        if (value) inc_ref(value);
+        ch->tail = (ch->tail + 1) % ch->capacity;
+        ch->count++;
+        return true;
+    }
+
+    return false;
+}
+
+Obj* green_channel_try_recv(GreenChannel* ch, bool* ok) {
+    *ok = false;
+    if (!ch) return NULL;
+
+    /* Buffer has data? */
+    if (ch->count > 0) {
+        Obj* value = ch->buffer[ch->head];
+        ch->buffer[ch->head] = NULL;
+        ch->head = (ch->head + 1) % ch->capacity;
+        ch->count--;
+        *ok = true;
+
+        /* Wake sender if waiting */
+        if (ch->send_waiters) {
+            Task* sender = ch->send_waiters;
+            ch->send_waiters = sender->next;
+            if (ch->send_waiters) ch->send_waiters->prev = NULL;
+            sender->next = NULL;
+
+            Obj* send_val = sender->park_value;
+            sender->park_value = NULL;
+
+            ch->buffer[ch->tail] = send_val;
+            ch->tail = (ch->tail + 1) % ch->capacity;
+            ch->count++;
+
+            task_unpark(sender, NULL);
+        }
+
+        return value;
+    }
+
+    /* Sender waiting? */
+    if (ch->send_waiters) {
+        Task* sender = ch->send_waiters;
+        ch->send_waiters = sender->next;
+        if (ch->send_waiters) ch->send_waiters->prev = NULL;
+        sender->next = NULL;
+
+        Obj* value = sender->park_value;
+        sender->park_value = NULL;
+        task_unpark(sender, NULL);
+        *ok = true;
+        return value;
+    }
+
+    return NULL;
+}
+
+void green_channel_close(GreenChannel* ch) {
+    if (!ch || ch->closed) return;
+    ch->closed = true;
+
+    /* Wake all waiting receivers with NULL */
+    Task* t = ch->recv_waiters;
+    while (t) {
+        Task* next = t->next;
+        task_unpark(t, NULL);
+        t = next;
+    }
+    ch->recv_waiters = NULL;
+
+    /* Wake all waiting senders (they'll see closed) */
+    t = ch->send_waiters;
+    while (t) {
+        Task* next = t->next;
+        if (t->park_value) {
+            dec_ref(t->park_value);
+            t->park_value = NULL;
+        }
+        task_unpark(t, NULL);
+        t = next;
+    }
+    ch->send_waiters = NULL;
+}
+
+bool green_channel_is_closed(GreenChannel* ch) {
+    return ch ? ch->closed : true;
+}
+
+void green_channel_release(GreenChannel* ch) {
+    if (!ch) return;
+    if (--ch->refcount > 0) return;
+
+    green_channel_close(ch);
+
+    /* Free buffered values */
+    while (ch->count > 0) {
+        Obj* val = ch->buffer[ch->head];
+        if (val) dec_ref(val);
+        ch->head = (ch->head + 1) % ch->capacity;
+        ch->count--;
+    }
+
+    free(ch->buffer);
+    free(ch);
+}
+
+/* ========== Generators (Iterators) ========== */
+
+Generator* generator_create(Obj* producer) {
+    Generator* g = malloc(sizeof(Generator));
+    if (!g) return NULL;
+
+    memset(g, 0, sizeof(Generator));
+    g->state = GEN_CREATED;
+    g->producer = producer;
+    if (producer) inc_ref(producer);
+    g->refcount = 1;
+
+    return g;
+}
+
+Obj* generator_next(Generator* g) {
+    if (!g) return NULL;
+
+    switch (g->state) {
+        case GEN_DONE:
+            return NULL;
+
+        case GEN_CREATED: {
+            /* First call - start the producer */
+            g->state = GEN_RUNNING;
+
+            /* Create a prompt for yields */
+            uint32_t tag = PROMPT_TAG_GENERATOR;
+
+            /* Push yield frame so generator_yield knows where we are */
+            Frame* f = frame_alloc(FRAME_YIELD);
+            if (!f) return NULL;
+            f->yield.gen = g;
+            f->prev = tl_current_frame;
+            if (tl_current_frame) frame_inc_ref(tl_current_frame);
+            tl_current_frame = f;
+
+            /* Call producer - it will call yield internally */
+            Obj* nil = NULL;
+            Obj* result = call_closure(g->producer, &nil, 0);
+
+            /* Producer finished without more yields */
+            g->state = GEN_DONE;
+            g->current = result;
+
+            /* Pop yield frame */
+            Frame* old = tl_current_frame;
+            tl_current_frame = old->prev;
+            frame_dec_ref(old);
+
+            return result;
+        }
+
+        case GEN_SUSPENDED: {
+            /* Resume from yield */
+            g->state = GEN_RUNNING;
+
+            if (g->cont) {
+                Obj* result = cont_invoke(g->cont, NULL);
+                cont_release(g->cont);
+                g->cont = NULL;
+
+                /* Check if done or yielded again */
+                if (g->state == GEN_SUSPENDED) {
+                    return g->current;
+                } else {
+                    g->state = GEN_DONE;
+                    g->current = result;
+                    return result;
+                }
+            }
+            return NULL;
+        }
+
+        case GEN_RUNNING:
+            /* Recursive call - error */
+            return NULL;
+    }
+
+    return NULL;
+}
+
+bool generator_is_done(Generator* g) {
+    return !g || g->state == GEN_DONE;
+}
+
+void generator_yield(Obj* value) {
+    /* Find the yield frame */
+    Frame* f = tl_current_frame;
+    while (f && f->tag != FRAME_YIELD) {
+        f = f->prev;
+    }
+    if (!f) return;  /* Not in generator context */
+
+    Generator* g = f->yield.gen;
+    if (!g || g->state != GEN_RUNNING) return;
+
+    /* Save current value */
+    g->current = value;
+    if (value) inc_ref(value);
+
+    /* Capture continuation for resume */
+    g->cont = cont_capture(PROMPT_TAG_GENERATOR);
+    g->state = GEN_SUSPENDED;
+
+    /* Return to generator_next via the prompt's setjmp */
+    Frame* prompt = f;
+    while (prompt && !(prompt->tag == FRAME_PROMPT &&
+                       prompt->prompt.tag == PROMPT_TAG_GENERATOR)) {
+        prompt = prompt->prev;
+    }
+
+    if (prompt) {
+        prompt->prompt.result = value;
+        longjmp(prompt->prompt.escape, 1);
+    }
+}
+
+void generator_close(Generator* g) {
+    if (!g) return;
+    g->state = GEN_DONE;
+    if (g->cont) {
+        cont_release(g->cont);
+        g->cont = NULL;
+    }
+}
+
+void generator_release(Generator* g) {
+    if (!g) return;
+    if (--g->refcount > 0) return;
+
+    if (g->producer) dec_ref(g->producer);
+    if (g->current) dec_ref(g->current);
+    if (g->cont) cont_release(g->cont);
+    free(g);
+}
+
+/* ========== Promises (Async/Await) ========== */
+
+Promise* promise_create(void) {
+    Promise* p = malloc(sizeof(Promise));
+    if (!p) return NULL;
+
+    memset(p, 0, sizeof(Promise));
+    p->state = PROMISE_PENDING;
+    p->refcount = 1;
+
+    return p;
+}
+
+void promise_resolve(Promise* p, Obj* value) {
+    if (!p || p->state != PROMISE_PENDING) return;
+
+    p->state = PROMISE_FULFILLED;
+    p->value = value;
+    if (value) inc_ref(value);
+
+    /* Wake all waiting tasks */
+    Task* t = p->waiters;
+    while (t) {
+        Task* next = t->next;
+        task_unpark(t, value);
+        t = next;
+    }
+    p->waiters = NULL;
+
+    /* Call callbacks */
+    /* TODO: Execute on_fulfill callbacks */
+}
+
+void promise_reject(Promise* p, Obj* error) {
+    if (!p || p->state != PROMISE_PENDING) return;
+
+    p->state = PROMISE_REJECTED;
+    p->error = error;
+    if (error) inc_ref(error);
+
+    /* Wake all waiting tasks with error */
+    Task* t = p->waiters;
+    while (t) {
+        Task* next = t->next;
+        task_unpark(t, error);  /* TODO: Distinguish error from value */
+        t = next;
+    }
+    p->waiters = NULL;
+
+    /* Call reject callbacks */
+    /* TODO: Execute on_reject callbacks */
+}
+
+Obj* promise_await(Promise* p) {
+    if (!p) return NULL;
+
+    /* Already settled? */
+    if (p->state == PROMISE_FULFILLED) {
+        return p->value;
+    }
+    if (p->state == PROMISE_REJECTED) {
+        return p->error;  /* TODO: Proper error handling */
+    }
+
+    /* Must wait */
+    Task* current = task_current();
+    if (!current) return NULL;
+
+    current->next = p->waiters;
+    if (p->waiters) p->waiters->prev = current;
+    p->waiters = current;
+
+    task_park(p, NULL);
+    return NULL;  /* Value set when unparked */
+}
+
+void promise_then(Promise* p, Obj* on_fulfill, Obj* on_reject) {
+    if (!p) return;
+
+    /* Already settled? Call immediately */
+    if (p->state == PROMISE_FULFILLED && on_fulfill) {
+        Obj* args[1] = { p->value };
+        call_closure(on_fulfill, args, 1);
+        return;
+    }
+    if (p->state == PROMISE_REJECTED && on_reject) {
+        Obj* args[1] = { p->error };
+        call_closure(on_reject, args, 1);
+        return;
+    }
+
+    /* Still pending - save callbacks */
+    /* TODO: Store callbacks in list */
+}
+
+bool promise_is_settled(Promise* p) {
+    return p && p->state != PROMISE_PENDING;
+}
+
+PromiseState promise_state(Promise* p) {
+    return p ? p->state : PROMISE_REJECTED;
+}
+
+void promise_release(Promise* p) {
+    if (!p) return;
+    if (--p->refcount > 0) return;
+
+    if (p->value) dec_ref(p->value);
+    if (p->error) dec_ref(p->error);
+    if (p->on_fulfill) dec_ref(p->on_fulfill);
+    if (p->on_reject) dec_ref(p->on_reject);
+
+    /* Cancel waiting tasks */
+    Task* t = p->waiters;
+    while (t) {
+        Task* next = t->next;
+        t->state = TASK_DONE;  /* TODO: Better cancellation */
+        t = next;
+    }
+
+    free(p);
+}
+
+/* ========== Select (Multi-Wait) ========== */
+
+int green_select(SelectCase* cases, int count) {
+    if (!cases || count <= 0) return -1;
+
+    /* First pass: check for immediately ready case */
+    for (int i = 0; i < count; i++) {
+        SelectCase* c = &cases[i];
+
+        if (c->op == SELECT_DEFAULT) {
+            continue;  /* Check default last */
+        }
+
+        if (c->op == SELECT_RECV) {
+            bool ok;
+            Obj* val = green_channel_try_recv(c->channel, &ok);
+            if (ok) {
+                if (c->result) *c->result = val;
+                return i;
+            }
+        } else if (c->op == SELECT_SEND) {
+            if (green_channel_try_send(c->channel, c->value)) {
+                return i;
+            }
+        }
+    }
+
+    /* Check for default case */
+    for (int i = 0; i < count; i++) {
+        if (cases[i].op == SELECT_DEFAULT) {
+            return i;
+        }
+    }
+
+    /* Must block - register on all channels */
+    Task* current = task_current();
+    if (!current) return -1;
+
+    /* TODO: Register on all channels and wait */
+    /* This is complex - need to track which channel woke us */
+
+    return -1;
+}
+
+/* ========== Timer ========== */
+
+Promise* timer_after(uint64_t ms) {
+    Promise* p = promise_create();
+    if (!p) return NULL;
+
+    /* TODO: Register with event loop */
+    /* For now, immediately resolve (placeholder) */
+    promise_resolve(p, NULL);
+
+    return p;
+}
+
+Obj* await_timeout(Promise* p, uint64_t ms) {
+    if (!p) return NULL;
+
+    if (promise_is_settled(p)) {
+        return p->value;
+    }
+
+    /* TODO: Race between promise and timer */
+    return promise_await(p);
+}
+
+/* ========== Thread-Local Accessors ========== */
+
+Obj* cont_get_env(void) {
+    return tl_current_env;
+}
+
+void cont_set_env(Obj* env) {
+    if (tl_current_env) dec_ref(tl_current_env);
+    tl_current_env = env;
+    if (env) inc_ref(env);
+}
+
+Frame* cont_get_current(void) {
+    return tl_current_frame;
+}
+
+void cont_set_current(Frame* f) {
+    if (tl_current_frame) frame_dec_ref(tl_current_frame);
+    tl_current_frame = f;
+    if (f) frame_inc_ref(f);
+}

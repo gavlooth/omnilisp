@@ -20,8 +20,9 @@ MAIN_SOURCES = $(wildcard $(SRCDIR)/*.c)
 MAIN_OBJECTS = $(MAIN_SOURCES:$(SRCDIR)/%.c=$(BUILDDIR)/%.o)
 
 # Memory module sources - slot pool for sound generational references
-MEMORY_SOURCES = $(SRCDIR)/memory/slot_pool.c $(SRCDIR)/memory/handle.c
-MEMORY_OBJECTS = $(BUILDDIR)/memory/slot_pool.o $(BUILDDIR)/memory/handle.o
+# Also includes continuation-based concurrency (green threads, generators, promises)
+MEMORY_SOURCES = $(SRCDIR)/memory/slot_pool.c $(SRCDIR)/memory/handle.c $(SRCDIR)/memory/region.c $(SRCDIR)/memory/continuation.c
+MEMORY_OBJECTS = $(BUILDDIR)/memory/slot_pool.o $(BUILDDIR)/memory/handle.o $(BUILDDIR)/memory/region.o $(BUILDDIR)/memory/continuation.o
 
 # Utility module sources - useful helpers for the runtime
 UTIL_SOURCES = $(wildcard $(SRCDIR)/util/*.c)

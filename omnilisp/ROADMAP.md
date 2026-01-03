@@ -1,73 +1,76 @@
 # Omnilisp Implementation Roadmap
 
-This roadmap outlines the steps to build the Omnilisp language using the C-based `omniruntime`.
+This roadmap outlines the steps to build the Omnilisp Go compiler that emits ANSI C99 + POSIX code and links against `omniruntime`. Prefer Go libraries (parser/CLI/collections) over bespoke implementations, and use the existing `~/code/purple_c_scratch` behavior as the parity baseline.
 
-## Phase 0: Runtime Core (C)
-**Goal:** Establish the object model and memory management.
-*   [ ] **Object Model (`types.c`):**
-    *   Define `OmniValue` (Tagged union or pointer).
-    *   Implement Primitives: `Nothing` (singleton), `Boolean`, `Int`, `Float`.
-    *   Implement `String` (using `dstring` util).
-    *   Implement `Symbol` (interned).
-*   [ ] **Collections:**
-    *   `Array` (Mutable, dynamic).
-    *   `List` (Persistent/Linked).
-    *   `Tuple` (Immutable, fixed).
-    *   Ensure empty collections are distinct from `nothing`.
-*   [ ] **Memory Management:**
-    *   Verify `arena`, `region`, and `concurrent` allocators.
-    *   Implement GC interface or RefCounting (if not using pure Arena/Region).
+## Phase 0: Compiler + Runtime Core (Go + C99 target)
+**Goal:** Establish the object model, ABI, and ASAP memory management.
+*   [ ] Define `OmniValue` and core runtime types in C (`types.c`) and mirror them in Go.
+*   [ ] Implement allocation helpers and `free_obj`; **no runtime GC**.
+*   [ ] Integrate ASAP analysis in the Go compiler (CLEAN insertion, liveness, escape, capture tracking).
+*   [ ] Validate arena/region allocators for non-escaping or cyclic data; ensure pthread usage for sync.
 
-## Phase 1: The Reader (Lexer & Parser)
-**Goal:** Convert source text into AST (S-expressions) within the C runtime (`src/runtime/reader`).
-*   [ ] **Tokenizer (C):**
-    *   Handle `(` `)` `[` `]` `{` `}` `#{` `}`.
-    *   Handle `..` and `...` (Rest/Variadic).
-    *   Handle `.` as dot-operator (distinguish from number decimal).
-    *   Handle string interpolation syntax `"$var"`.
-*   [ ] **Parser:**
-    *   Parse `[]` as Array literals (or binding/pattern specs depending on context).
-    *   Parse `{}` as Type forms.
-    *   Parse `obj.field` and `.field` syntax into access forms.
-    *   Parse `obj.(expr)` dynamic access.
+## Phase 1: Reader (Lexer & Parser)
+**Goal:** Convert source text into AST in Go.
+*   [ ] Tokenize brackets `()` `[]` `{}` `#{}` and `..`/`...` rest markers.
+*   [ ] Preserve quote semantics (`'[...]` and `'#{...}` keep structure).
+*   [ ] Parse reader macros: `#(...)`, `#?`, `#r/#raw/#b`, `#_`, `#| |#`, `#!`, `#uuid/#path`.
+*   [ ] Parse `->` lambda shorthand, `|>` pipeline, and `&` named args/constructors.
+*   [ ] Parse dot access (`obj.field`, `obj.(expr)`) and string interpolation.
 
-## Phase 2: The Evaluator (Interpreter)
-**Goal:** Execute the AST.
-*   [ ] **Environments:** Implement scopes using `hashmap`.
-*   [ ] **Special Forms:**
-    *   `define` (Global bindings).
-    *   `let`: Support `:seq`, `:rec`, and Triplet syntax `[name {Type} val]`.
-    *   `if`: Implement Lisp-style truthiness (only `false`/`nothing` are falsy).
-    *   `set!`: Mutation.
-    *   `quote`: Handling literals.
-*   [ ] **Pattern Matching (`match`):**
-    *   Implement as a special form.
-    *   Support `[]` branches.
-    *   Support `else` as sugar for `_`.
-    *   Support guards (`:when`).
-*   [ ] **Function Calls:**
-    *   Implement `lambda`.
-    *   Implement Trampoline for Tail Call Optimization (TCO).
+## Phase 2: Analyzer + IR
+**Goal:** Resolve bindings and prepare for codegen.
+*   [ ] Implement `let` modifiers via metadata (`^:seq`, `^:rec`).
+*   [ ] Enforce truthiness: only `false` and `nothing` are falsy.
+*   [ ] Honor `^:mutable` metadata for local/field mutation checks.
+*   [ ] Enforce/record hint metadata: `^:tailrec`, `^:borrowed`, `^:consumes`, `^:noescape`, `^:unchecked`, `^:deprecated`.
+*   [ ] Build CFGs for liveness-driven free insertion.
 
-## Phase 3: The Object System
-**Goal:** Implement Types, Structs, and Multiple Dispatch.
-*   [ ] **Type Registry:**
-    *   Abstract Types (`define {abstract ...}`).
-    *   Concrete Structs (`define {struct ...}`).
-    *   Interfaces (`define {interface ...}` with `{Self}`).
-*   [ ] **Generic Functions:**
-    *   Registry of Generic Functions.
-    *   Method definition `(define (name args...) ...)` (Overloads).
-*   [ ] **Dispatch Logic:**
-    *   Implement specificity sorting.
-    *   Runtime dispatch based on argument types.
+## Phase 3: Object System
+**Goal:** Types, structs, enums, and multiple dispatch.
+*   [ ] Abstract types, concrete structs, and interfaces.
+*   [ ] Parent types via `^:parent {Type}` metadata (defaults to `Any`).
+*   [ ] Struct constructors: positional args plus `&` named fields; unknown/duplicate keys error.
+*   [ ] Enum namespace rules: unqualified if unique, else `Type.Variant`.
+*   [ ] Methods with explicit `self` parameter.
 
 ## Phase 4: Sequences & Iteration
-*   [ ] **Iterators:** Define the `iterate` protocol.
-*   [ ] **Looping:** Implement `foreach` and `for` (comprehension) macros.
-*   [ ] **Ranges:** Implement `start:end` syntax for slicing.
+*   [ ] Iterator protocol (`iterate`) - **Runtime support complete (generators)**
+*   [ ] `for`/`foreach` macros (multiple bindings are nested; add `^:zip` later if needed).
+*   [ ] Support `^:zip` metadata (with `:zip` sugar) if zip semantics are added.
+*   [ ] Ranges and slicing.
+*   [x] Generator infrastructure in C runtime (`make_gen`, `gen_next`, `generator_yield`)
 
 ## Phase 5: Standard Library & Macros
-*   [ ] **Macros:** Implement hygienic macros (`syntax`, `#'`, `~`).
-*   [ ] **Core Lib:** `map`, `filter`, `reduce` implemented in Omnilisp.
-*   [ ] **Modules:** `module` and `import`.
+*   [ ] Hygienic macros and syntax objects.
+*   [ ] Core library in Omnilisp (`map`, `filter`, `reduce`, etc.).
+*   [ ] Module system (`module`, `import`).
+
+## Phase 6: Concurrency - COMPLETE (Runtime)
+**Status:** Runtime support complete, compiler integration pending.
+
+### Two-Tier Concurrency Model
+*   [x] **Tier 1 (OS Threads):** pthread-based channels, atoms, spawn_goroutine
+*   [x] **Tier 2 (Green Threads):** Continuation-based scheduling
+
+### Green Thread Features (Complete in Runtime)
+*   [x] CEK-style continuation frames
+*   [x] Delimited continuations (`prompt`/`control`)
+*   [x] Green thread scheduler with task parking
+*   [x] Continuation-based channels (`make_green_chan`, `green_send`, `green_recv`)
+*   [x] Generators/iterators via continuations
+*   [x] Promises with async/await pattern
+
+### Compiler Integration (Pending)
+*   [ ] Emit `green_scheduler_init()` in main
+*   [ ] Transform `spawn` to `spawn_green_task` vs `spawn_goroutine`
+*   [ ] Transform channel ops based on context
+*   [ ] Generator syntax sugar (`yield` expression)
+*   [ ] Async/await syntax
+
+### Performance Characteristics
+| Metric | OS Thread | Green Thread |
+|--------|-----------|--------------|
+| Creation | ~10μs | ~100ns |
+| Context switch | ~1μs | ~50ns |
+| Memory/task | ~8KB | ~100 bytes |
+| Max tasks | ~10K | ~1M+ |
