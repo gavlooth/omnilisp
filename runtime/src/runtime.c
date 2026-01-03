@@ -59,18 +59,54 @@
 #define CHAR_IMM_VALUE(p)    ((long)(((uintptr_t)(p)) >> 3))
 
 /* ========== IPGE: In-Place Generational Evolution ========== */
+/*
+ * Two modes available (controlled by IPGE_ROBUST_MODE):
+ * - COMPACT (default): 16-bit generation, 64-bit packed refs
+ * - ROBUST: 64-bit generation, 128-bit refs (more collision resistant)
+ */
+#ifndef IPGE_ROBUST_MODE
+#define IPGE_ROBUST_MODE 0
+#endif
+
+#if IPGE_ROBUST_MODE
+/* ROBUST: 64-bit generation (18 quintillion cycles) */
 #define IPGE_MULTIPLIER  0x5851f42D4C957F2DULL
 #define IPGE_INCREMENT   0x1442695040888963ULL
-
-static inline uint64_t ipge_evolve(uint64_t gen) {
+typedef uint64_t Generation;
+static inline Generation ipge_evolve(Generation gen) {
     return (gen * IPGE_MULTIPLIER) + IPGE_INCREMENT;
+}
+#else
+/* COMPACT: 16-bit generation (65K cycles per slot) */
+#define IPGE16_MULTIPLIER  0xAC4BULL
+#define IPGE16_INCREMENT   0x9E37ULL
+typedef uint16_t Generation;
+static inline Generation ipge_evolve(Generation gen) {
+    return (Generation)((gen * IPGE16_MULTIPLIER) + IPGE16_INCREMENT);
+}
+#endif
+
+/* 64-bit evolution for seed (always use full period for seeding) */
+#define IPGE64_MULTIPLIER  0x5851f42D4C957F2DULL
+#define IPGE64_INCREMENT   0x1442695040888963ULL
+static inline uint64_t ipge_evolve64(uint64_t gen) {
+    return (gen * IPGE64_MULTIPLIER) + IPGE64_INCREMENT;
 }
 
 /* Forward declarations */
 typedef struct Obj Obj;
 typedef struct GenObj GenObj;
-typedef struct BorrowRef BorrowRef;
 typedef struct Closure Closure;
+
+/* BorrowRef: Legacy heap-allocated reference for compatibility.
+ * New code should use BorrowedRef (packed 64-bit) from purple.h */
+typedef struct BorrowRef {
+    struct GenObj* target;       /* Legacy GenObj system */
+    Generation remembered_gen;   /* Snapshot of generation at borrow time */
+    const char* source_desc;     /* Debug description */
+    struct Obj* ipge_target;     /* IPGE: Direct Obj* for generation check */
+} BorrowRef;
+
 void invalidate_weak_refs_for(void* target);
 BorrowRef* borrow_create(Obj* obj, const char* source_desc);
 void borrow_invalidate_obj(Obj* obj);
@@ -155,7 +191,7 @@ typedef enum {
 
 /* Core object type */
 typedef struct Obj {
-    uint64_t generation;    /* IPGE generation ID for memory safety */
+    Generation generation;  /* IPGE generation ID for memory safety */
     int mark;               /* Reference count or mark bit */
     int tag;                /* ObjTag */
     int is_pair;            /* 1 if pair, 0 if not */
@@ -168,7 +204,7 @@ typedef struct Obj {
         void* ptr;
     };
 } Obj;
-/* Size: 40 bytes (down from 48 with gen_obj pointer) */
+/* Size: 32 bytes (compact) or 40 bytes (robust) */
 
 /* ========== Tagged Pointer Helper Functions ========== */
 
@@ -222,12 +258,14 @@ static inline int obj_tag(Obj* p) {
 /* Check if value is an integer (boxed or immediate) */
 static inline int is_int(Obj* p) {
     if (IS_IMMEDIATE_INT(p) || IS_IMMEDIATE_BOOL(p)) return 1;
+    if (IS_IMMEDIATE(p)) return 0;  /* Other immediate types (char) are not int */
     return p && p->tag == TAG_INT;
 }
 
 /* Check if value is a character (boxed or immediate) */
 static inline int is_char(Obj* p) {
     if (IS_IMMEDIATE_CHAR(p)) return 1;
+    if (IS_IMMEDIATE(p)) return 0;  /* Other immediate types are not char */
     return p && p->tag == TAG_CHAR;
 }
 
@@ -305,12 +343,14 @@ void invalidate_weak_refs_for(void* target) {
     }
 }
 
-/* IPGE generation seed - evolves with each allocation */
+/* IPGE generation seed - evolves with each allocation
+ * Uses 64-bit LCG for full randomness, truncated to Generation type.
+ * This gives each allocation a pseudo-random starting generation. */
 static uint64_t _ipge_seed = 0x123456789ABCDEF0ULL;
 
-static inline uint64_t _next_generation(void) {
-    _ipge_seed = ipge_evolve(_ipge_seed);
-    return _ipge_seed;
+static inline Generation _next_generation(void) {
+    _ipge_seed = ipge_evolve64(_ipge_seed);
+    return (Generation)_ipge_seed;  /* Truncate to 16-bit (compact) or keep 64-bit (robust) */
 }
 
 /* Object Constructors */
@@ -1482,30 +1522,30 @@ static void* region_deref(RegionRef* ref) {
 /* ========== Random Generational References (v0.5.0) ========== */
 /* Vale-style use-after-free detection */
 /* Thread-safe via pthread_rwlock (C99 + POSIX) */
+/*
+ * NOTE: This is the LEGACY system using heap-allocated BorrowRef structs.
+ * The new IPGE system uses packed 64-bit BorrowedRef (see purple.h).
+ * This legacy code is kept for compatibility but IPGE is preferred.
+ */
 
 #include <time.h>
 
-typedef uint64_t Generation;
+/* Legacy uses 64-bit generation regardless of IPGE mode */
+typedef uint64_t LegacyGeneration;
 
-typedef struct GenObj GenObj;
-typedef struct BorrowRef BorrowRef;
+/* GenObj and GenClosure are only used by legacy code paths */
 typedef struct GenClosure GenClosure;
 typedef struct LegacyGenContext LegacyGenContext;
 
 struct GenObj {
-    Generation generation;
+    LegacyGeneration generation;
     void* data;
     void (*destructor)(void*);
     int freed;
     pthread_rwlock_t rwlock;
 };
 
-struct BorrowRef {
-    GenObj* target;        /* Legacy GenObj system (not used with IPGE) */
-    Generation remembered_gen;
-    const char* source_desc;
-    Obj* ipge_target;      /* IPGE: Actual Obj* for generation comparison */
-};
+/* BorrowRef is defined in forward declarations section above */
 
 /* Closure with capture validation */
 struct GenClosure {
@@ -1524,8 +1564,8 @@ struct LegacyGenContext {
 
 static LegacyGenContext* g_legacy_ctx = NULL;
 
-/* Fast xorshift64 PRNG for generation IDs */
-static Generation legacy_random_gen(void) {
+/* Fast xorshift64 PRNG for legacy generation IDs */
+static LegacyGeneration legacy_random_gen(void) {
     static uint64_t state = 0;
     static pthread_mutex_t prng_mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&prng_mutex);
@@ -1535,7 +1575,7 @@ static Generation legacy_random_gen(void) {
     state ^= state << 13;
     state ^= state >> 7;
     state ^= state << 17;
-    Generation result = state ? state : 1;  /* Never return 0 */
+    LegacyGeneration result = state ? state : 1;  /* Never return 0 */
     pthread_mutex_unlock(&prng_mutex);
     return result;
 }
@@ -2143,20 +2183,21 @@ Obj* prim_abs(Obj* a) {
 }
 
 /* Type predicate wrappers - return Obj* for uniformity */
+/* Use obj_tag() to handle immediate values (tagged pointers) */
 Obj* prim_null(Obj* x) { return mk_int(x == NULL ? 1 : 0); }
-Obj* prim_pair(Obj* x) { return mk_int(x && x->tag == TAG_PAIR ? 1 : 0); }
-Obj* prim_int(Obj* x) { return mk_int(x && x->tag == TAG_INT ? 1 : 0); }
-Obj* prim_float(Obj* x) { return mk_int(x && x->tag == TAG_FLOAT ? 1 : 0); }
-Obj* prim_char(Obj* x) { return mk_int(x && x->tag == TAG_CHAR ? 1 : 0); }
-Obj* prim_sym(Obj* x) { return mk_int(x && x->tag == TAG_SYM ? 1 : 0); }
+Obj* prim_pair(Obj* x) { return mk_int(x && obj_tag(x) == TAG_PAIR ? 1 : 0); }
+Obj* prim_int(Obj* x) { return mk_int(obj_tag(x) == TAG_INT ? 1 : 0); }
+Obj* prim_float(Obj* x) { return mk_int(x && obj_tag(x) == TAG_FLOAT ? 1 : 0); }
+Obj* prim_char(Obj* x) { return mk_int(obj_tag(x) == TAG_CHAR ? 1 : 0); }
+Obj* prim_sym(Obj* x) { return mk_int(x && obj_tag(x) == TAG_SYM ? 1 : 0); }
 
 /* I/O Primitives */
 void print_obj(Obj* x);  /* forward declaration */
 
 /* Check if a list is a string (all chars) */
 int is_string_list(Obj* xs) {
-    while (xs && xs->tag == TAG_PAIR) {
-        if (!xs->a || xs->a->tag != TAG_CHAR) return 0;
+    while (xs && obj_tag(xs) == TAG_PAIR) {
+        if (obj_tag(xs->a) != TAG_CHAR) return 0;
         xs = xs->b;
     }
     return xs == NULL; /* Must be proper list */
@@ -2164,9 +2205,9 @@ int is_string_list(Obj* xs) {
 
 /* Print a string list as a quoted string */
 void print_string(Obj* xs) {
-    while (xs && xs->tag == TAG_PAIR) {
-        if (xs->a && xs->a->tag == TAG_CHAR) {
-            printf("%c", (char)xs->a->i);
+    while (xs && obj_tag(xs) == TAG_PAIR) {
+        if (obj_tag(xs->a) == TAG_CHAR) {
+            printf("%c", (char)obj_to_char_val(xs->a));
         }
         xs = xs->b;
     }
@@ -2283,42 +2324,42 @@ Obj* ctr_arg(Obj* x, Obj* idx) {
 
 /* Character primitives */
 Obj* char_to_int(Obj* c) {
-    if (!c || c->tag != TAG_CHAR) return mk_int(0);
-    return mk_int(c->i);
+    if (obj_tag(c) != TAG_CHAR) return mk_int(0);
+    return mk_int(obj_to_char_val(c));
 }
 
 Obj* int_to_char(Obj* n) {
     if (!n) return mk_char(0);
-    return mk_char((char)(n->tag == TAG_INT ? n->i : (long)n->f));
+    return mk_char((char)(obj_tag(n) == TAG_INT ? obj_to_int(n) : (long)n->f));
 }
 
 /* Float primitives */
 Obj* int_to_float(Obj* n) {
     if (!n) return mk_float(0.0);
-    return mk_float((double)(n->tag == TAG_INT ? n->i : n->f));
+    return mk_float((double)(obj_tag(n) == TAG_INT ? obj_to_int(n) : n->f));
 }
 
 Obj* float_to_int(Obj* f) {
     if (!f) return mk_int(0);
-    return mk_int((long)(f->tag == TAG_FLOAT ? f->f : f->i));
+    return mk_int((long)(obj_tag(f) == TAG_FLOAT ? f->f : obj_to_int(f)));
 }
 
 Obj* prim_floor(Obj* f) {
     if (!f) return mk_int(0);
-    if (f->tag == TAG_FLOAT) {
+    if (obj_tag(f) == TAG_FLOAT) {
         double v = f->f;
         return mk_float(v >= 0 ? (long)v : (long)v - (v != (long)v ? 1 : 0));
     }
-    return mk_int(f->i);
+    return mk_int(obj_to_int(f));
 }
 
 Obj* prim_ceil(Obj* f) {
     if (!f) return mk_int(0);
-    if (f->tag == TAG_FLOAT) {
+    if (obj_tag(f) == TAG_FLOAT) {
         double v = f->f;
         return mk_float(v >= 0 ? (long)v + (v != (long)v ? 1 : 0) : (long)v);
     }
-    return mk_int(f->i);
+    return mk_int(obj_to_int(f));
 }
 
 /* Higher-order function primitives */
@@ -2461,12 +2502,12 @@ Obj* list_filter(Obj* fn, Obj* xs) {
     if (!fn) return NULL;
     Obj* head = NULL;
     Obj* tail = NULL;
-    while (xs && xs->tag == TAG_PAIR) {
+    while (xs && obj_tag(xs) == TAG_PAIR) {
         Obj* args[1];
         args[0] = xs->a;
         Obj* keep = call_closure(fn, args, 1);
         /* Non-NULL and non-zero means keep */
-        int should_keep = keep && (keep->tag != TAG_INT || keep->i != 0);
+        int should_keep = keep && (obj_tag(keep) != TAG_INT || obj_to_int(keep) != 0);
         if (keep) dec_ref(keep);
         if (should_keep) {
             Obj* node = mk_pair(xs->a, NULL);

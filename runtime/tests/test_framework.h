@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+/* Note: purple.h is NOT included here because test_main.c includes runtime.c directly,
+   which provides all type definitions. Including both would cause redefinition errors. */
 
 /* Test counters - defined in test_main.c */
 extern int tests_run;
@@ -24,6 +26,11 @@ extern const char* current_suite;
     do { \
         current_suite = name; \
         printf("\n" YELLOW "=== %s ===" RESET "\n", name); \
+    } while(0)
+
+#define TEST_SECTION(name) \
+    do { \
+        printf("\n" YELLOW "--- %s ---" RESET "\n", name); \
     } while(0)
 
 #define TEST(name) \
@@ -51,6 +58,9 @@ extern const char* current_suite;
             return; \
         } \
     } while(0)
+
+#define ASSERT_TRUE(cond) ASSERT(cond)
+#define ASSERT_FALSE(cond) ASSERT(!(cond))
 
 #define ASSERT_EQ(a, b) \
     do { \
@@ -100,10 +110,13 @@ extern const char* current_suite;
 
 #define RUN_TEST(fn) \
     do { \
+        int _old_passed = tests_passed; \
+        int _old_failed = tests_failed; \
         TEST(#fn); \
         fn(); \
-        if (tests_passed == tests_run) { \
-            /* Already passed */ \
+        /* Auto-pass if no explicit PASS/FAIL was called and test didn't fail */ \
+        if (tests_passed == _old_passed && tests_failed == _old_failed) { \
+            PASS(); \
         } \
     } while(0)
 

@@ -1,5 +1,4 @@
 /* Test Object Constructors */
-#include "../include/purple.h"
 #include "test_framework.h"
 #include <limits.h>
 #include <float.h>
@@ -98,8 +97,9 @@ void test_mk_float_small(void) {
 void test_mk_char_ascii(void) {
     Obj* x = mk_char('A');
     ASSERT_NOT_NULL(x);
-    ASSERT_EQ(x->tag, TAG_CHAR);
-    ASSERT_EQ(x->i, 'A');
+    /* Characters may be immediate values - use obj_tag and obj_to_char_val */
+    ASSERT_EQ(obj_tag(x), TAG_CHAR);
+    ASSERT_EQ(obj_to_char_val(x), 'A');
     dec_ref(x);
     PASS();
 }
@@ -107,7 +107,7 @@ void test_mk_char_ascii(void) {
 void test_mk_char_zero(void) {
     Obj* x = mk_char(0);
     ASSERT_NOT_NULL(x);
-    ASSERT_EQ(x->i, 0);
+    ASSERT_EQ(obj_to_char_val(x), 0);
     dec_ref(x);
     PASS();
 }
@@ -115,7 +115,7 @@ void test_mk_char_zero(void) {
 void test_mk_char_extended(void) {
     Obj* x = mk_char(255);
     ASSERT_NOT_NULL(x);
-    ASSERT_EQ(x->i, 255);
+    ASSERT_EQ(obj_to_char_val(x), 255);
     dec_ref(x);
     PASS();
 }

@@ -1,5 +1,4 @@
 /* Test Memory Management */
-#include "../include/purple.h"
 #include "test_framework.h"
 
 /* === inc_ref / dec_ref tests === */
