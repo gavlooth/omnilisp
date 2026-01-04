@@ -19,6 +19,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <setjmp.h>
+#include <pthread.h>
 
 /* Forward declarations */
 #ifndef OMNI_OBJ_DECLARED
@@ -32,6 +33,8 @@ typedef struct Scheduler Scheduler;
 typedef struct FiberChannel FiberChannel;
 typedef struct Generator Generator;
 typedef struct Promise Promise;
+typedef struct WorkerThread WorkerThread;
+typedef struct ThreadPool ThreadPool;
 
 /* ========== Continuation Frame Types ========== */
 
@@ -177,6 +180,74 @@ struct Scheduler {
     uint64_t context_switches;
 };
 
+/* ========== Work-Stealing Deque ========== */
+
+/*
+ * Lock-free work-stealing deque (Chase-Lev style).
+ * Owner pushes/pops from bottom, thieves steal from top.
+ */
+#define DEQUE_INITIAL_SIZE 64
+
+typedef struct WorkStealDeque {
+    Fiber** buffer;             /* Circular buffer of fibers */
+    volatile int64_t top;       /* Top index (thieves steal from here) */
+    volatile int64_t bottom;    /* Bottom index (owner pushes/pops here) */
+    size_t capacity;            /* Buffer size (power of 2) */
+    pthread_mutex_t grow_lock;  /* Lock for resizing only */
+} WorkStealDeque;
+
+/* ========== Worker Thread ========== */
+
+typedef enum {
+    WORKER_IDLE,                /* Waiting for work */
+    WORKER_RUNNING,             /* Executing a fiber */
+    WORKER_STEALING,            /* Attempting to steal work */
+    WORKER_SHUTDOWN,            /* Shutting down */
+} WorkerState;
+
+struct WorkerThread {
+    pthread_t thread;           /* POSIX thread handle */
+    uint32_t id;                /* Worker ID (0 = main thread) */
+    volatile WorkerState state;
+
+    /* Local work queue (work-stealing deque) */
+    WorkStealDeque local_queue;
+
+    /* Local scheduler state */
+    Scheduler* scheduler;
+
+    /* Statistics */
+    uint64_t tasks_executed;
+    uint64_t tasks_stolen;
+    uint64_t steal_attempts;
+
+    /* Pool reference */
+    ThreadPool* pool;
+};
+
+/* ========== Thread Pool ========== */
+
+struct ThreadPool {
+    WorkerThread* workers;      /* Array of workers */
+    uint32_t num_workers;       /* Total workers including main */
+    volatile bool running;      /* Pool is active */
+    volatile bool shutdown_requested;
+
+    /* Global work queue for overflow/initial distribution */
+    Fiber* global_head;
+    Fiber* global_tail;
+    pthread_mutex_t global_lock;
+
+    /* Condition for workers waiting for work */
+    pthread_cond_t work_available;
+    pthread_mutex_t work_mutex;
+
+    /* Statistics */
+    volatile uint64_t total_tasks_spawned;
+    volatile uint64_t total_tasks_completed;
+    volatile uint64_t total_steals;
+};
+
 /* ========== Fiber Channel ========== */
 
 /*
@@ -298,6 +369,46 @@ bool scheduler_step(void);
 
 /* Is scheduler idle? */
 bool scheduler_is_idle(void);
+
+/* ========== API: Thread Pool (Work-Stealing) ========== */
+
+/* Initialize thread pool with n worker threads (0 = auto-detect CPUs) */
+void fiber_pool_init(int num_workers);
+
+/* Shutdown thread pool and wait for workers to finish */
+void fiber_pool_shutdown(void);
+
+/* Get current thread pool (NULL if not initialized) */
+ThreadPool* fiber_pool_current(void);
+
+/* Get number of workers in pool */
+int fiber_pool_size(void);
+
+/* Spawn a fiber in the thread pool */
+Fiber* fiber_pool_spawn(Obj* thunk);
+
+/* Get current worker thread (NULL if not in pool) */
+WorkerThread* fiber_pool_current_worker(void);
+
+/* ========== API: Work-Stealing Deque ========== */
+
+/* Initialize a work-stealing deque */
+void deque_init(WorkStealDeque* d);
+
+/* Destroy a work-stealing deque */
+void deque_destroy(WorkStealDeque* d);
+
+/* Push a fiber onto the bottom (owner only) */
+void deque_push(WorkStealDeque* d, Fiber* f);
+
+/* Pop a fiber from the bottom (owner only) */
+Fiber* deque_pop(WorkStealDeque* d);
+
+/* Steal a fiber from the top (thieves) */
+Fiber* deque_steal(WorkStealDeque* d);
+
+/* Check if deque is empty */
+bool deque_is_empty(WorkStealDeque* d);
 
 /* ========== API: Fibers ========== */
 

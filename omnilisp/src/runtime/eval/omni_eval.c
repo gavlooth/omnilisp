@@ -1911,7 +1911,11 @@ static Value* prim_type_q(Value* args) {
 static Value* fiber_run_queue = NULL;     // List of ready fibers
 static Value* fiber_current = NULL;       // Currently running fiber
 static int fiber_scheduler_running = 0;   // Is scheduler active?
-static ucontext_t fiber_resumer_ctx;      // Context to return to on yield
+
+// Stack of resumer contexts for nested fiber resume
+#define MAX_FIBER_DEPTH 64
+static ucontext_t fiber_resumer_stack[MAX_FIBER_DEPTH];
+static int fiber_resumer_sp = 0;  // Stack pointer (points to next free slot)
 
 // Forward declarations
 static void fiber_entry(void);
@@ -1938,8 +1942,10 @@ static void fiber_entry(void) {
     fiber->proc.result = result;
     ctx->yield_value = result;
 
-    // Switch back to resumer
-    swapcontext(&ctx->ctx, &fiber_resumer_ctx);
+    // Switch back to resumer (use top of stack)
+    if (fiber_resumer_sp > 0) {
+        swapcontext(&ctx->ctx, &fiber_resumer_stack[fiber_resumer_sp - 1]);
+    }
 }
 
 /*
@@ -1957,6 +1963,7 @@ static Value* prim_fiber(Value* args) {
 
 /*
  * Internal resume implementation using ucontext.
+ * Uses a stack of resumer contexts to support nested fiber resume.
  */
 static Value* fiber_resume_internal(Value* fiber, Value* resume_val) {
     if (fiber->proc.state == PROC_DONE) {
@@ -1966,6 +1973,11 @@ static Value* fiber_resume_internal(Value* fiber, Value* resume_val) {
     FiberContext* ctx = fiber->proc.fiber_ctx;
     if (!ctx) {
         return mk_error("fiber: missing fiber context");
+    }
+
+    // Check for stack overflow
+    if (fiber_resumer_sp >= MAX_FIBER_DEPTH) {
+        return mk_error("fiber: maximum nesting depth exceeded");
     }
 
     // Save current fiber and set this one as current
@@ -1988,19 +2000,24 @@ static Value* fiber_resume_internal(Value* fiber, Value* resume_val) {
         // Set up the fiber's stack
         ctx->ctx.uc_stack.ss_sp = ctx->stack;
         ctx->ctx.uc_stack.ss_size = FIBER_STACK_SIZE;
-        ctx->ctx.uc_link = &fiber_resumer_ctx;  // Return here on completion
+        ctx->ctx.uc_link = NULL;  // We handle return via swapcontext
 
         // Set entry point
         makecontext(&ctx->ctx, fiber_entry, 0);
     }
 
-    // Save resumer context and switch to fiber
-    if (swapcontext(&fiber_resumer_ctx, &ctx->ctx) == -1) {
+    // Push resumer context onto stack and switch to fiber
+    int my_slot = fiber_resumer_sp++;
+    if (swapcontext(&fiber_resumer_stack[my_slot], &ctx->ctx) == -1) {
+        fiber_resumer_sp--;
         fiber_current = prev_fiber;
         return mk_error("fiber: swapcontext failed");
     }
 
-    // We're back! Either fiber yielded or completed
+    // We're back! Pop the stack
+    fiber_resumer_sp--;
+
+    // Restore previous fiber
     fiber_current = prev_fiber;
 
     // Return the yield/result value
@@ -2045,12 +2062,16 @@ static Value* prim_yield(Value* args) {
         return mk_error("yield: fiber context missing");
     }
 
+    if (fiber_resumer_sp <= 0) {
+        return mk_error("yield: no resumer context");
+    }
+
     // Set yield value for resumer to receive
     ctx->yield_value = yield_val;
     fiber_current->proc.state = PROC_YIELDED;
 
-    // Switch back to resumer context
-    if (swapcontext(&ctx->ctx, &fiber_resumer_ctx) == -1) {
+    // Switch back to resumer context (top of stack)
+    if (swapcontext(&ctx->ctx, &fiber_resumer_stack[fiber_resumer_sp - 1]) == -1) {
         return mk_error("yield: swapcontext failed");
     }
 
@@ -2447,9 +2468,11 @@ static Value* prim_send(Value* args) {
         if (!ch->send_waiters) ch->send_waiters = mk_nil();
         ch->send_waiters = mk_cell(waiter, ch->send_waiters);
 
-        // Actually yield to scheduler
+        // Actually yield to scheduler (use top of resumer stack)
         ctx->yield_value = mk_nothing();
-        swapcontext(&ctx->ctx, &fiber_resumer_ctx);
+        if (fiber_resumer_sp > 0) {
+            swapcontext(&ctx->ctx, &fiber_resumer_stack[fiber_resumer_sp - 1]);
+        }
 
         // Resumed! Return ok
         return mk_sym("ok");
@@ -2517,9 +2540,11 @@ static Value* prim_recv(Value* args) {
         if (!ch->recv_waiters) ch->recv_waiters = mk_nil();
         ch->recv_waiters = mk_cell(this_fiber, ch->recv_waiters);
 
-        // Actually yield to scheduler
+        // Actually yield to scheduler (use top of resumer stack)
         ctx->yield_value = mk_nothing();
-        swapcontext(&ctx->ctx, &fiber_resumer_ctx);
+        if (fiber_resumer_sp > 0) {
+            swapcontext(&ctx->ctx, &fiber_resumer_stack[fiber_resumer_sp - 1]);
+        }
 
         // Resumed! Check if we got a direct handoff or need to read from buffer
         if (this_fiber->proc.park_value) {

@@ -1233,3 +1233,387 @@ void cont_set_current(Frame* f) {
     tl_current_frame = f;
     if (f) frame_inc_ref(f);
 }
+
+/* ========== Thread Pool Implementation ========== */
+
+#include <unistd.h>
+#include <sched.h>
+
+/* Global thread pool */
+static ThreadPool* g_pool = NULL;
+
+/* Thread-local worker reference */
+static _Thread_local WorkerThread* tl_worker = NULL;
+
+/* ========== Work-Stealing Deque ========== */
+
+void deque_init(WorkStealDeque* d) {
+    d->buffer = calloc(DEQUE_INITIAL_SIZE, sizeof(Fiber*));
+    d->top = 0;
+    d->bottom = 0;
+    d->capacity = DEQUE_INITIAL_SIZE;
+    pthread_mutex_init(&d->grow_lock, NULL);
+}
+
+void deque_destroy(WorkStealDeque* d) {
+    pthread_mutex_destroy(&d->grow_lock);
+    free(d->buffer);
+    d->buffer = NULL;
+    d->capacity = 0;
+}
+
+static void deque_grow(WorkStealDeque* d) {
+    pthread_mutex_lock(&d->grow_lock);
+
+    size_t new_capacity = d->capacity * 2;
+    Fiber** new_buffer = calloc(new_capacity, sizeof(Fiber*));
+
+    /* Copy existing elements */
+    int64_t size = d->bottom - d->top;
+    for (int64_t i = 0; i < size; i++) {
+        new_buffer[i] = d->buffer[(d->top + i) % d->capacity];
+    }
+
+    free(d->buffer);
+    d->buffer = new_buffer;
+    d->top = 0;
+    d->bottom = size;
+    d->capacity = new_capacity;
+
+    pthread_mutex_unlock(&d->grow_lock);
+}
+
+void deque_push(WorkStealDeque* d, Fiber* f) {
+    int64_t bottom = d->bottom;
+    int64_t top = d->top;
+    int64_t size = bottom - top;
+
+    /* Grow if needed */
+    if (size >= (int64_t)(d->capacity - 1)) {
+        deque_grow(d);
+        bottom = d->bottom;
+    }
+
+    d->buffer[bottom % d->capacity] = f;
+    __sync_synchronize();  /* Memory fence */
+    d->bottom = bottom + 1;
+}
+
+Fiber* deque_pop(WorkStealDeque* d) {
+    int64_t bottom = d->bottom - 1;
+    d->bottom = bottom;
+    __sync_synchronize();  /* Memory fence */
+
+    int64_t top = d->top;
+    int64_t size = bottom - top;
+
+    if (size < 0) {
+        /* Empty */
+        d->bottom = top;
+        return NULL;
+    }
+
+    Fiber* f = d->buffer[bottom % d->capacity];
+
+    if (size > 0) {
+        /* More than one element, safe to return */
+        return f;
+    }
+
+    /* Last element, race with stealer */
+    if (!__sync_bool_compare_and_swap(&d->top, top, top + 1)) {
+        /* Stealer won */
+        f = NULL;
+    }
+    d->bottom = top + 1;
+    return f;
+}
+
+Fiber* deque_steal(WorkStealDeque* d) {
+    int64_t top = d->top;
+    __sync_synchronize();  /* Memory fence */
+    int64_t bottom = d->bottom;
+
+    int64_t size = bottom - top;
+    if (size <= 0) {
+        return NULL;
+    }
+
+    Fiber* f = d->buffer[top % d->capacity];
+
+    if (!__sync_bool_compare_and_swap(&d->top, top, top + 1)) {
+        /* Another thief got it */
+        return NULL;
+    }
+
+    return f;
+}
+
+bool deque_is_empty(WorkStealDeque* d) {
+    int64_t top = d->top;
+    int64_t bottom = d->bottom;
+    return bottom <= top;
+}
+
+/* ========== Worker Thread ========== */
+
+static Fiber* worker_find_work(WorkerThread* w) {
+    ThreadPool* pool = w->pool;
+
+    /* First try local queue */
+    Fiber* f = deque_pop(&w->local_queue);
+    if (f) return f;
+
+    /* Try global queue */
+    pthread_mutex_lock(&pool->global_lock);
+    if (pool->global_head) {
+        f = pool->global_head;
+        pool->global_head = f->next;
+        if (!pool->global_head) {
+            pool->global_tail = NULL;
+        }
+        f->next = NULL;
+        f->prev = NULL;
+    }
+    pthread_mutex_unlock(&pool->global_lock);
+    if (f) return f;
+
+    /* Try to steal from other workers */
+    w->state = WORKER_STEALING;
+    uint32_t start = (w->id + 1) % pool->num_workers;
+    for (uint32_t i = 0; i < pool->num_workers - 1; i++) {
+        uint32_t victim_id = (start + i) % pool->num_workers;
+        if (victim_id == w->id) continue;
+
+        WorkerThread* victim = &pool->workers[victim_id];
+        w->steal_attempts++;
+
+        f = deque_steal(&victim->local_queue);
+        if (f) {
+            w->tasks_stolen++;
+            __sync_fetch_and_add(&pool->total_steals, 1);
+            return f;
+        }
+    }
+
+    return NULL;
+}
+
+static void worker_execute_fiber(WorkerThread* w, Fiber* f) {
+    w->state = WORKER_RUNNING;
+
+    /* Set up scheduler context */
+    Scheduler* sched = w->scheduler;
+    sched->current = f;
+    f->state = FIBER_RUNNING;
+    sched->context_switches++;
+
+    /* Save current state */
+    Frame* saved_frame = tl_current_frame;
+    Obj* saved_env = tl_current_env;
+
+    tl_current_frame = f->cont;
+    tl_current_env = f->env;
+
+    /* Execute fiber (placeholder - real impl would call evaluator) */
+    Obj* result = f->value;
+
+    /* For now mark as done */
+    f->state = FIBER_DONE;
+    f->result = result;
+
+    /* Restore state */
+    tl_current_frame = saved_frame;
+    tl_current_env = saved_env;
+    sched->current = NULL;
+
+    /* Complete fiber */
+    if (f->completion) {
+        promise_resolve(f->completion, result);
+    }
+
+    sched->fibers_completed++;
+    sched->fiber_count--;
+    w->tasks_executed++;
+    __sync_fetch_and_add(&w->pool->total_tasks_completed, 1);
+
+    /* Free fiber */
+    frame_dec_ref(f->cont);
+    free(f);
+}
+
+static void* worker_thread_main(void* arg) {
+    WorkerThread* w = (WorkerThread*)arg;
+    tl_worker = w;
+
+    /* Initialize thread-local scheduler */
+    scheduler_init();
+    w->scheduler = tl_scheduler;
+
+    while (!w->pool->shutdown_requested) {
+        Fiber* f = worker_find_work(w);
+
+        if (f) {
+            worker_execute_fiber(w, f);
+        } else {
+            /* No work available, wait */
+            w->state = WORKER_IDLE;
+            pthread_mutex_lock(&w->pool->work_mutex);
+            if (!w->pool->shutdown_requested && deque_is_empty(&w->local_queue)) {
+                /* Wait with timeout to check for shutdown periodically */
+                struct timespec ts;
+                clock_gettime(CLOCK_REALTIME, &ts);
+                ts.tv_nsec += 10000000;  /* 10ms timeout */
+                if (ts.tv_nsec >= 1000000000) {
+                    ts.tv_sec++;
+                    ts.tv_nsec -= 1000000000;
+                }
+                pthread_cond_timedwait(&w->pool->work_available, &w->pool->work_mutex, &ts);
+            }
+            pthread_mutex_unlock(&w->pool->work_mutex);
+        }
+    }
+
+    w->state = WORKER_SHUTDOWN;
+    scheduler_shutdown();
+    return NULL;
+}
+
+/* ========== Thread Pool API ========== */
+
+void fiber_pool_init(int num_workers) {
+    if (g_pool) return;  /* Already initialized */
+
+    /* Auto-detect CPU count */
+    if (num_workers <= 0) {
+        num_workers = (int)sysconf(_SC_NPROCESSORS_ONLN);
+        if (num_workers <= 0) num_workers = 4;
+    }
+
+    g_pool = malloc(sizeof(ThreadPool));
+    memset(g_pool, 0, sizeof(ThreadPool));
+
+    g_pool->num_workers = num_workers;
+    g_pool->workers = calloc(num_workers, sizeof(WorkerThread));
+    g_pool->running = true;
+    g_pool->shutdown_requested = false;
+
+    pthread_mutex_init(&g_pool->global_lock, NULL);
+    pthread_mutex_init(&g_pool->work_mutex, NULL);
+    pthread_cond_init(&g_pool->work_available, NULL);
+
+    /* Initialize main thread as worker 0 */
+    WorkerThread* main_worker = &g_pool->workers[0];
+    main_worker->id = 0;
+    main_worker->state = WORKER_IDLE;
+    main_worker->pool = g_pool;
+    deque_init(&main_worker->local_queue);
+
+    /* Initialize scheduler for main thread */
+    scheduler_init();
+    main_worker->scheduler = tl_scheduler;
+    tl_worker = main_worker;
+
+    /* Start worker threads (1 to num_workers-1) */
+    for (int i = 1; i < num_workers; i++) {
+        WorkerThread* w = &g_pool->workers[i];
+        w->id = i;
+        w->state = WORKER_IDLE;
+        w->pool = g_pool;
+        deque_init(&w->local_queue);
+
+        pthread_create(&w->thread, NULL, worker_thread_main, w);
+    }
+}
+
+void fiber_pool_shutdown(void) {
+    if (!g_pool) return;
+
+    g_pool->shutdown_requested = true;
+    g_pool->running = false;
+
+    /* Wake up all waiting workers */
+    pthread_mutex_lock(&g_pool->work_mutex);
+    pthread_cond_broadcast(&g_pool->work_available);
+    pthread_mutex_unlock(&g_pool->work_mutex);
+
+    /* Wait for worker threads to finish */
+    for (uint32_t i = 1; i < g_pool->num_workers; i++) {
+        pthread_join(g_pool->workers[i].thread, NULL);
+        deque_destroy(&g_pool->workers[i].local_queue);
+    }
+
+    /* Cleanup main worker */
+    deque_destroy(&g_pool->workers[0].local_queue);
+
+    /* Cleanup global resources */
+    pthread_mutex_destroy(&g_pool->global_lock);
+    pthread_mutex_destroy(&g_pool->work_mutex);
+    pthread_cond_destroy(&g_pool->work_available);
+
+    free(g_pool->workers);
+    free(g_pool);
+    g_pool = NULL;
+    tl_worker = NULL;
+}
+
+ThreadPool* fiber_pool_current(void) {
+    return g_pool;
+}
+
+int fiber_pool_size(void) {
+    return g_pool ? (int)g_pool->num_workers : 0;
+}
+
+WorkerThread* fiber_pool_current_worker(void) {
+    return tl_worker;
+}
+
+Fiber* fiber_pool_spawn(Obj* thunk) {
+    if (!g_pool || !thunk) return NULL;
+
+    /* Create fiber */
+    Fiber* f = malloc(sizeof(Fiber));
+    if (!f) return NULL;
+
+    memset(f, 0, sizeof(Fiber));
+
+    WorkerThread* w = tl_worker;
+    Scheduler* sched = w ? w->scheduler : tl_scheduler;
+    if (!sched) {
+        scheduler_init();
+        sched = tl_scheduler;
+    }
+
+    f->id = sched->next_fiber_id++;
+    f->state = FIBER_READY;
+    f->expr = thunk;
+    if (thunk) inc_ref(thunk);
+
+    sched->fibers_created++;
+    sched->fiber_count++;
+    __sync_fetch_and_add(&g_pool->total_tasks_spawned, 1);
+
+    /* Push to local queue if we have a worker, else global queue */
+    if (w) {
+        deque_push(&w->local_queue, f);
+    } else {
+        pthread_mutex_lock(&g_pool->global_lock);
+        f->next = NULL;
+        f->prev = g_pool->global_tail;
+        if (g_pool->global_tail) {
+            g_pool->global_tail->next = f;
+        } else {
+            g_pool->global_head = f;
+        }
+        g_pool->global_tail = f;
+        pthread_mutex_unlock(&g_pool->global_lock);
+    }
+
+    /* Signal workers that work is available */
+    pthread_mutex_lock(&g_pool->work_mutex);
+    pthread_cond_signal(&g_pool->work_available);
+    pthread_mutex_unlock(&g_pool->work_mutex);
+
+    return f;
+}
