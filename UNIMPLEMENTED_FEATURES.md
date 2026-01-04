@@ -149,16 +149,31 @@ dict.:key            ; dict access
 
 ### Concurrency
 
-**Status:** T_CHAN and T_PROCESS types exist in runtime but no evaluator support
+**Status:** Fibers fully implemented with ucontext-based stack switching
 
+**Implemented:**
 ```scheme
-(spawn (lambda () ...))  ; not wired
-(channel)                ; not wired
-(send ch val)            ; not wired
-(recv ch)                ; not wired
+(fiber (lambda () ...))  ; create fiber
+(spawn f)                ; add fiber to scheduler
+(resume f)               ; resume fiber, get yielded value
+(yield)                  ; yield control, return to resumer
+(yield val)              ; yield with value
+(join f)                 ; wait for fiber to complete
+(chan n)                 ; create buffered channel
+(send ch val)            ; send to channel (may block)
+(recv ch)                ; receive from channel (may block)
+(with-fibers body...)    ; scoped fiber execution with auto-cleanup
 ```
 
-**What's needed:** Wire up primitives in `omni_env_init()`
+**Architecture:**
+- OmniLisp: ucontext-based fibers with context stack for nested resume
+- Purple Runtime: Thread pool with work-stealing (pthread-based)
+
+**What's needed for full concurrency:**
+- System thread spawning: `(thread (lambda () ...))` for true parallelism
+- Thread-safe channels for cross-thread communication
+- Atomic operations: `(atomic-cas! ref old new)`
+- Thread-local storage primitives
 
 ---
 
@@ -285,16 +300,20 @@ None
 ## What IS Working
 
 ### Special Forms (18)
-- Control flow: `if`, `do`/`begin`, `when`, `unless`, `cond`
+- **Core pattern matching:** `match` (THE core primitive - `if`/`cond` should be macros over match)
+- Control flow:  `if`, `do`/`begin`, `when`, `unless`, `cond`
 - Bindings: `let`, `define`, `set!`
 - Functions: `lambda`, `fn`
-- Patterns: `match`
 - Collections: `array`, `dict` (creation only)
 - Iteration: `for`, `foreach`
 - Delimited continuations: `prompt`, `control`
 - Algebraic effects: `defeffect`, `handle`, `perform`, `resume`
 - Conditions/restarts: `handler-case`, `handler-bind`, `restart-case`, `with-restarts`, `call-restart`
 - Debugging: `call-stack`, `stack-trace`, `effect-trace`, `effect-stack`
+
+### Concurrency Primitives
+- Fibers: `fiber`, `spawn`, `resume`, `yield`, `join`, `with-fibers`
+- Channels: `chan`, `send`, `recv`
 
 ### Primitives (35+)
 - Arithmetic: `+`, `-`, `*`, `/`, `%`
@@ -308,6 +327,35 @@ None
 
 ### Data Types (15)
 `T_INT`, `T_SYM`, `T_CELL`, `T_NIL`, `T_NOTHING`, `T_PRIM`, `T_LAMBDA`, `T_MENV`, `T_CODE`, `T_ERROR`, `T_BOX`, `T_CONT`, `T_CHAN`, `T_PROCESS`, `T_BOUNCE`
+
+---
+
+## Architecture Notes
+
+### Match as Core Primitive
+
+`match` is the fundamental control flow primitive. It should be implemented at the C level in the evaluator. Other control flow forms should be macros:
+
+```scheme
+;; if is a macro over match
+(define-syntax if
+  (syntax-rules ()
+    [(if test then else)
+     (match test
+       [#t then]
+       [#f else])]))
+
+;; cond is a macro over match
+(define-syntax cond
+  (syntax-rules (else)
+    [(cond [else e]) e]
+    [(cond [test e] rest ...)
+     (match test
+       [#t e]
+       [#f (cond rest ...)])]))
+```
+
+**TODO:** Implement full `match` with pattern destructuring in C, then define `if`/`cond` as macros.
 
 ---
 

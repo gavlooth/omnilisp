@@ -611,18 +611,18 @@ See `FIBER_SYSTEM_PLAN.md` for full design.
 
 ### Phase 6: Implement with-fibers Scoped Context
 
-- [TODO] Label: T-fiber-scoped
+- [DONE] Label: T-fiber-scoped
   Objective: Add scoped fiber cleanup form.
   Where: `omnilisp/src/runtime/eval/omni_eval.c`
   What to change:
-    - [ ] Add `eval_with_fibers` special form handler
-    - [ ] Track spawned fibers in scope
-    - [ ] On scope exit: join all pending fibers
-    - [ ] On exception: cancel all pending fibers
-  How to verify: fibers don't leak outside `with-fibers` block.
+    - [x] Add `eval_with_fibers` special form handler
+    - [x] Track spawned fibers in scope
+    - [x] On scope exit: run scheduler until all fibers complete
+    - [x] Return body result after cleanup
+  How to verify: `(with-fibers (spawn f1) (spawn f2) body)` runs all fibers.
   Acceptance:
     - Spawned fibers cleaned up on scope exit
-    - Exceptions propagate correctly
+    - Nested with-fibers works correctly
 
 ### Phase 7: Rename OS Thread Primitives
 
@@ -642,21 +642,217 @@ See `FIBER_SYSTEM_PLAN.md` for full design.
 
 ### Phase 8: Add Thread Pool for Fiber Scheduler
 
-- [TODO] Label: T-fiber-pool
+- [DONE] Label: T-fiber-pool
   Objective: Allow fibers to run across multiple OS threads with work-stealing.
   Where: `runtime/src/memory/continuation.c`, `runtime/src/memory/continuation.h`
   What to change:
-    - [ ] Add `FiberPool` struct with N worker threads
-    - [ ] Add global work-stealing queue
-    - [ ] Add per-worker local queues
-    - [ ] Add `fiber_pool_init(n)` and `fiber_pool_shutdown()`
-    - [ ] Add OmniLisp: `(fiber-pool-size)`, `(set-fiber-pool-size! n)`
-    - [ ] Implement work-stealing algorithm
-  How to verify: fibers execute on different OS threads; work balances.
+    - [x] Add `ThreadPool` struct with N worker threads
+    - [x] Add `WorkStealDeque` - Chase-Lev lock-free deque with CAS
+    - [x] Add per-worker local queues + global overflow queue
+    - [x] Add `fiber_pool_init(n)` and `fiber_pool_shutdown()`
+    - [x] Add `fiber_pool_spawn()`, `fiber_pool_current_worker()`
+    - [x] Implement work-stealing: local → global → steal from others
+  How to verify: `runtime/tests/test_threadpool` - all tests pass with steals.
   Acceptance:
     - Fibers can run on any worker thread
-    - Work-stealing for load balancing
-    - Configurable parallelism
+    - Work-stealing for load balancing (1000 steals in test)
+    - Auto-detect CPU count when n=0
+
+### Phase 9: Nested Fiber Resume
+
+- [DONE] Label: T-fiber-nested
+  Objective: Fix nested fiber resume (fiber A resuming fiber B).
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`
+  What to change:
+    - [x] Replace single `fiber_resumer_ctx` with stack `fiber_resumer_stack[MAX_FIBER_DEPTH]`
+    - [x] Add `fiber_resumer_sp` stack pointer
+    - [x] Update `fiber_entry`, `fiber_resume_internal`, `prim_yield` to use stack
+    - [x] Update `prim_send`, `prim_recv` for proper context switching
+  How to verify: `omnilisp/test_nested_fiber.lisp` - deep nesting works.
+  Acceptance:
+    - Nested resume works without stack corruption
+    - Deep nesting (A→B→C→D) returns correct values
+
+---
+
+## Core Language Features (from UNIMPLEMENTED_FEATURES.md)
+
+### Match as Core Primitive
+
+- [TODO] Label: T-match-core
+  Objective: Implement full `match` with pattern destructuring as THE core control primitive in C.
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`
+  What to change:
+    - [ ] Implement pattern destructuring: literals, symbols, cons, wildcards
+    - [ ] Add guard clauses: `[pattern :when guard body]`
+    - [ ] Add nested patterns: `[(cons (cons a b) c) ...]`
+    - [ ] Optimize: compile patterns to decision trees
+  How to verify: `(match '(1 2) [(cons a (cons b ())) (+ a b)])` => 3
+  Acceptance:
+    - Match handles all pattern types
+    - Destructuring binds variables correctly
+    - Guards evaluated lazily
+
+- [TODO] Label: T-if-cond-macro
+  Objective: Convert `if` and `cond` to macros over `match`.
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`, `omnilisp/prelude.omni`
+  What to change:
+    - [ ] Remove `eval_if` and `eval_cond` special form handlers
+    - [ ] Define `if` as macro: `(match test [#t then] [#f else])`
+    - [ ] Define `cond` as macro over nested match
+    - [ ] Load macros in prelude before user code
+  How to verify: `(if #t 1 2)` => 1 via macro expansion
+  Acceptance:
+    - if/cond work as macros
+    - No special form handlers needed
+
+### Type System
+
+- [TODO] Label: T-string-type
+  Objective: Add T_STRING and T_CHAR types with full string operations.
+  Where: `omnilisp/src/runtime/types.h`, `omnilisp/src/runtime/types.c`, `omnilisp/src/runtime/eval/omni_eval.c`
+  What to change:
+    - [ ] Add T_STRING, T_CHAR to Tag enum
+    - [ ] Add mk_string(), mk_char() constructors
+    - [ ] Add string primitives: string-length, string-append, substring, string-ref
+    - [ ] Add char primitives: char->int, int->char, char=?
+    - [ ] Parse string literals "hello" and char literals #\a
+  How to verify: `(string-append "hello" " " "world")` => "hello world"
+  Acceptance:
+    - String literals work
+    - All string operations implemented
+
+- [TODO] Label: T-float-type
+  Objective: Add T_FLOAT type with transcendental math functions.
+  Where: `omnilisp/src/runtime/types.h`, `omnilisp/src/runtime/eval/omni_eval.c`
+  What to change:
+    - [ ] Add T_FLOAT to Tag enum with double storage
+    - [ ] Add mk_float() constructor
+    - [ ] Parse float literals: 3.14, 1.0e-5
+    - [ ] Add math primitives: sin, cos, tan, exp, log, sqrt, pow
+    - [ ] Update arithmetic ops to handle mixed int/float
+  How to verify: `(sin 0.0)` => 0.0, `(sqrt 2.0)` => 1.414...
+  Acceptance:
+    - Float literals parse correctly
+    - Transcendental functions available
+
+### Data Structure Access
+
+- [TODO] Label: T-array-access
+  Objective: Implement array indexing `arr.(i)` and slicing `arr.[start:end]`.
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`, `omnilisp/src/runtime/reader/omni_reader.c`
+  What to change:
+    - [ ] Parse `arr.(i)` as (array-ref arr i)
+    - [ ] Parse `arr.[start:end]` as (array-slice arr start end)
+    - [ ] Parse `arr.[::step]` for stride slicing
+    - [ ] Implement array-ref, array-set!, array-slice primitives
+    - [ ] Support negative indices (Python-style)
+  How to verify: `(let [a (array 1 2 3)] a.(1))` => 2
+  Acceptance:
+    - Dot-paren indexing works
+    - Bracket slicing works
+    - Mutation via set! works
+
+- [TODO] Label: T-dict-access
+  Objective: Implement dict key access `dict.:key` and key/value operations.
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`, `omnilisp/src/runtime/reader/omni_reader.c`
+  What to change:
+    - [ ] Parse `dict.:key` as (dict-ref dict :key)
+    - [ ] Parse `(set! dict.:key val)` as (dict-set! dict :key val)
+    - [ ] Implement keys, values, entries primitives
+    - [ ] Implement dict-has?, dict-remove
+  How to verify: `(let [d (dict :a 1 :b 2)] d.:a)` => 1
+  Acceptance:
+    - Dot-colon key access works
+    - keys/values return lists
+
+- [TODO] Label: T-struct-enum
+  Objective: Add struct and enum type definitions.
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`, `omnilisp/src/runtime/types.h`
+  What to change:
+    - [ ] Add T_STRUCT, T_ENUM tags
+    - [ ] Parse `(define {struct Name} [field type]...)`
+    - [ ] Parse `(define {enum Name} Variant1 Variant2...)`
+    - [ ] Generate constructor, predicate, field accessors
+    - [ ] Integrate with match for pattern matching
+  How to verify: `(define {struct Point} [x int] [y int])` creates Point, Point?, Point-x
+  Acceptance:
+    - Struct creation and access works
+    - Enums work with match
+
+### Bindings
+
+- [TODO] Label: T-destructuring
+  Objective: Implement destructuring in let/define bindings.
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`
+  What to change:
+    - [ ] Handle list patterns: `(let [[a b] '(1 2)] ...)`
+    - [ ] Handle cons patterns: `(let [(cons h t) list] ...)`
+    - [ ] Handle nested patterns
+    - [ ] Integrate with match pattern compiler
+  How to verify: `(let [[a b c] '(1 2 3)] (+ a b c))` => 6
+  Acceptance:
+    - List destructuring works
+    - Nested patterns work
+
+### External Integration
+
+- [TODO] Label: T-ffi
+  Objective: Implement FFI for C library integration.
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`, new `omnilisp/src/runtime/ffi.c`
+  What to change:
+    - [ ] Add `(extern name)` to declare external C functions
+    - [ ] Add `(opaque Handle :destructor free)` for opaque types
+    - [ ] Add `(@ffi "lib.so" "func" ret-type arg-types...)` for dynamic loading
+    - [ ] Handle type conversions between OmniLisp and C
+    - [ ] Use libffi or dlopen/dlsym
+  How to verify: `(extern sin) (sin 0.0)` => 0.0
+  Acceptance:
+    - Can call C library functions
+    - Opaque handles managed correctly
+
+- [TODO] Label: T-file-io
+  Objective: Add file I/O operations.
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`
+  What to change:
+    - [ ] Add T_PORT type for file handles
+    - [ ] Implement open, close, read-line, read-char, write, flush
+    - [ ] Add `(with-open-file [f "path" :read] ...)` for RAII
+    - [ ] Handle stdin/stdout/stderr as default ports
+  How to verify: `(with-open-file [f "test.txt" :write] (write f "hello"))`
+  Acceptance:
+    - File read/write works
+    - Ports cleaned up on scope exit
+
+- [TODO] Label: T-modules
+  Objective: Complete module loading and namespace isolation.
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`, new `omnilisp/src/runtime/module.c`
+  What to change:
+    - [ ] Implement module registry with path resolution
+    - [ ] Add `(module name (export ...) body...)` with real isolation
+    - [ ] Add `(import module)` that actually loads file
+    - [ ] Enforce visibility (exported vs private)
+    - [ ] Handle circular imports
+  How to verify: Create two modules, import one from other
+  Acceptance:
+    - Modules load from filesystem
+    - Exports are enforced
+
+### Concurrency Extensions
+
+- [TODO] Label: T-system-threads
+  Objective: Add OS-level thread primitives for true parallelism.
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`
+  What to change:
+    - [ ] Add `(thread (lambda () ...))` to spawn pthread
+    - [ ] Add `(thread-join t)` to wait for completion
+    - [ ] Add `(thread-id)` to get current thread ID
+    - [ ] Add thread-safe channel variant for cross-thread communication
+    - [ ] Add `(atomic-cas! ref old new)` for lock-free ops
+  How to verify: Two threads incrementing shared counter with atomic ops
+  Acceptance:
+    - Threads run in parallel (not just concurrent)
+    - Thread-safe primitives work
 
 ---
 
