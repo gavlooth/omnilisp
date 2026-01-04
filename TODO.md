@@ -1,6 +1,6 @@
 # OmniLisp TODO
 
-## Conditions, Restarts, and Debugging Integration
+## Conditions, Restarts, and Debugging Integration (Deprecated - superseded by Effects/Handlers)
 
 - [DONE] Label: T-cond-core-types
   Objective: Define structured condition objects and a base condition hierarchy.
@@ -105,6 +105,76 @@
     - Continuation frames appear in debug stack traces.
 
 ---
+
+## Effects/Handlers and Recovery Protocols (Supersedes restarts)
+
+- [DONE] Label: T-eff-core-types
+  Objective: Define effect and handler core types and runtime registry.
+  Where: `runtime/src/effect.c`, `runtime/src/effect.h`, `runtime/tests/test_effect.c`
+  What to change:
+    - Added C structs: Effect, EffectType, Handler, HandlerClause, Resumption, RecoveryProtocol.
+    - Implemented effect type registry with thread-safe registration and lookup.
+    - Implemented handler stack with push/pop/find operations.
+    - Added built-in effects: Fail, Ask, Emit, State, Yield, Async, Choice.
+    - Added recovery modes: ONE_SHOT, MULTI_SHOT, TAIL, ABORT.
+  How to verify: run `./tests/test_effect` - 16 tests pass.
+  Acceptance:
+    - Effects can be created and registered.
+    - Handler stack resolves the nearest matching handler.
+    - Built-in effect types available at startup.
+
+- [TODO] Label: T-eff-perform
+  Objective: Implement `perform` with continuation capture and resumption.
+  Where: `runtime/src/effect.c`, `runtime/src/memory/continuation.c`
+  What to change:
+    - Capture the delimited continuation at `perform`.
+    - Pass a resumption object to the handler.
+    - Support resuming with a value (single-shot by default).
+  How to verify: perform an effect that resumes with a value and confirm evaluation continues correctly.
+  Acceptance:
+    - `perform` transfers control to the handler and resumes deterministically.
+
+- [TODO] Label: T-eff-handler-syntax
+  Objective: Provide OmniLisp syntax for `effect`, `perform`, and `handle`.
+  Where: `csrc/parser/parser.c`, `csrc/codegen/codegen.c`, `docs/LANGUAGE_REFERENCE.md`
+  What to change:
+    - Add new forms for effect declaration and handler blocks.
+    - Generate runtime calls that push/pop handlers and perform effects.
+    - Document usage with examples.
+  How to verify: run a small OmniLisp program using `handle`/`perform`.
+  Acceptance:
+    - `handle` intercepts effects and can resume computation.
+
+- [TODO] Label: T-eff-recovery-protocols
+  Objective: Add typed recovery protocols (better than untyped restarts).
+  Where: `runtime/src/effect.c`, `runtime/src/effect.h`, `docs/LANGUAGE_REFERENCE.md`
+  What to change:
+    - Define recovery metadata: expected input/output types, one-shot vs multi-shot.
+    - Include recovery “menu” data for debugger UI.
+    - Validate recovery contracts at runtime in debug mode.
+  How to verify: attempt invalid recovery and confirm a contract violation error.
+  Acceptance:
+    - Recovery protocols are enforced and visible in diagnostics.
+
+- [TODO] Label: T-eff-restart-compat
+  Objective: Provide a compatibility layer that exposes CL-style restarts via effects.
+  Where: `runtime/src/effect.c`, `runtime/src/runtime.c`, `docs/LANGUAGE_REFERENCE.md`
+  What to change:
+    - Map `restart-case` to effect handlers with recovery protocols.
+    - Provide a user-facing restart list derived from handler metadata.
+  How to verify: run a `restart-case` example and confirm it works atop effects.
+  Acceptance:
+    - Restart compatibility works without a separate restart stack.
+
+- [TODO] Label: T-eff-debug-trace
+  Objective: Add effect traces to the logical stack and diagnostics.
+  Where: `runtime/src/debug.c`, `runtime/src/effect.c`
+  What to change:
+    - Record effect name, payload, and source span when performed.
+    - Include effect trace in error reports and debugger output.
+  How to verify: perform nested effects and confirm trace appears in diagnostics.
+  Acceptance:
+    - Effect traces appear alongside stack traces.
 
 ## Diagnostics, Introspection, and Developer UX (Missing Pieces)
 
@@ -334,6 +404,4 @@
 
 ## References
 
-- Original OmniLisp: `/home/heefoo/Documents/code/omnilisp`
 - "Collapsing Towers of Interpreters" (Amin & Rompf, POPL 2018)
-- HVM4: Higher Order Virtual Machine

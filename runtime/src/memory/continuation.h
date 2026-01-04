@@ -21,7 +21,10 @@
 #include <setjmp.h>
 
 /* Forward declarations */
+#ifndef OMNI_OBJ_DECLARED
+#define OMNI_OBJ_DECLARED
 typedef struct Obj Obj;
+#endif
 typedef struct Frame Frame;
 typedef struct Continuation Continuation;
 typedef struct Task Task;
