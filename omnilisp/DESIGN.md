@@ -1450,3 +1450,44 @@ Example - mutual recursion:
 | `bounce`/`trampoline` | Mutual recursion | O(1) - heap allocation |
 | `prompt`/`control` | Advanced control flow | O(1) - setjmp/longjmp |
 | Compiler TCO | Self-tail-recursion | O(1) - loop conversion |
+
+#### Compile-Time Tail Call Optimization
+
+The compiler automatically converts self-tail-recursive calls to loops. This is a compile-time transformation with zero runtime overhead.
+
+**What gets optimized:**
+- Self-recursive calls in tail position (last expression of function body)
+- Tail calls inside `if` branches, `do` blocks, and `let` bodies
+
+**Example:**
+```lisp
+(define (factorial-iter n acc)
+  (if (= n 0)
+      acc
+      (factorial-iter (- n 1) (* n acc))))  ; Tail call → goto
+
+(factorial-iter 1000000 1)  ; No stack overflow
+```
+
+**Generated C code structure:**
+```c
+static Obj* fn_factorial_iter(Obj* n, Obj* acc) {
+TCO_START:;
+    if (n == 0) return acc;
+    // TCO: reassign parameters and jump
+    Obj* new_n = n - 1;
+    Obj* new_acc = n * acc;
+    n = new_n;
+    acc = new_acc;
+    goto TCO_START;  // No function call!
+}
+```
+
+**Choosing the right mechanism:**
+
+| Situation | Use |
+|-----------|-----|
+| Simple self-recursion | Just write it - compiler handles TCO |
+| Mutual recursion (A calls B calls A) | `bounce`/`trampoline` |
+| Early exit, backtracking | `prompt`/`control` |
+| CPS-style code | `prompt`/`control` |
