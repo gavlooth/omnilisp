@@ -365,20 +365,21 @@ static Value* default_h_app(Value* expr, TowerMEnv* menv) {
     return tower_apply(fn, evaled, menv);
 }
 
+/* Truthiness: only false/nothing are falsy; everything else (incl. 0, ()) is truthy */
+static int tower_truthy(Value* v) {
+    if (!v) return 1;  /* empty list is truthy in Omnilisp */
+    if (v->tag == T_NOTHING) return 0;
+    if (v->tag == T_SYM && (strcmp(v->s, "false") == 0 || strcmp(v->s, "#f") == 0)) return 0;
+    return 1;
+}
+
 /* If handler: evaluate condition, then branch */
 static Value* default_h_if(Value* expr, TowerMEnv* menv) {
     /* expr = (if cond then else) */
     Value* cond = tower_eval(car(cdr(expr)), menv);
     if (is_error(cond)) return cond;
 
-    /* Truthiness: #f, false, nil, and nothing are falsy */
-    int truthy = 1;
-    if (cond->tag == T_NOTHING) truthy = 0;
-    if (cond->tag == T_NIL) truthy = 0;
-    if (cond->tag == T_SYM &&
-        (strcmp(cond->s, "#f") == 0 || strcmp(cond->s, "false") == 0)) truthy = 0;
-
-    if (truthy) {
+    if (tower_truthy(cond)) {
         return tower_eval(car(cdr(cdr(expr))), menv);
     } else {
         Value* else_branch = cdr(cdr(cdr(expr)));

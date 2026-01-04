@@ -1,4 +1,4 @@
-/* Purple Runtime Test Framework */
+/* OmniLisp Runtime Test Framework */
 #ifndef TEST_FRAMEWORK_H
 #define TEST_FRAMEWORK_H
 
@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-/* Note: purple.h is NOT included here because test_main.c includes runtime.c directly,
+/* Note: omni.h is NOT included here because test_main.c includes runtime.c directly,
    which provides all type definitions. Including both would cause redefinition errors. */
 
 /* Test counters - defined in test_main.c */

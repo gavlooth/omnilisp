@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../include/purple.h"
+#include "../include/omni.h"
 
 static int tests_run = 0;
 static int tests_failed = 0;
@@ -58,7 +58,7 @@ static void test_api_primitives(void) {
     ASSERT_EQ(obj_to_int(sum), 5);
 
     Obj* eq = prim_eq(mk_int_unboxed(5), mk_int_unboxed(5));
-    ASSERT(obj_to_int(eq) != 0);
+    ASSERT_EQ(obj_to_bool(eq), 1);
 
     dec_ref(sum);
     dec_ref(eq);

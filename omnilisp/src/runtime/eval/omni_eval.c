@@ -50,6 +50,46 @@ static Value* eval_call_restart(Value* args, Env* env);
 // Effect debugging
 static Value* eval_effect_trace(Value* args, Env* env);
 static Value* eval_effect_stack(Value* args, Env* env);
+// Call stack debugging
+static Value* eval_call_stack(Value* args, Env* env);
+static Value* eval_stack_trace(Value* args, Env* env);
+
+// -- Logical Call Stack for Debugging --
+#define MAX_CALL_STACK 256
+
+typedef struct CallFrame {
+    const char* name;       // Function/form name
+    const char* source;     // Source file (if available)
+    int line;               // Line number (if available)
+} CallFrame;
+
+static CallFrame call_stack[MAX_CALL_STACK];
+static int call_sp = 0;
+
+static void call_stack_push(const char* name, const char* source, int line) {
+    if (call_sp < MAX_CALL_STACK) {
+        call_stack[call_sp].name = name;
+        call_stack[call_sp].source = source;
+        call_stack[call_sp].line = line;
+        call_sp++;
+    }
+}
+
+static void call_stack_pop(void) {
+    if (call_sp > 0) call_sp--;
+}
+
+static void call_stack_print(void) {
+    fprintf(stderr, "Call stack (%d frames):\n", call_sp);
+    for (int i = call_sp - 1; i >= 0; i--) {
+        CallFrame* f = &call_stack[i];
+        fprintf(stderr, "  [%d] %s", call_sp - 1 - i, f->name ? f->name : "<anonymous>");
+        if (f->source && f->line > 0) {
+            fprintf(stderr, " at %s:%d", f->source, f->line);
+        }
+        fprintf(stderr, "\n");
+    }
+}
 
 // -- Prompt Stack for Delimited Continuations --
 #define MAX_PROMPT_STACK 64
@@ -74,6 +114,140 @@ static struct {
     PrimitiveFn fn;
 } primitives[MAX_PRIMITIVES];
 static int num_primitives = 0;
+
+/* ============================================================
+ * Symbol Suggestions ("did you mean?")
+ * ============================================================ */
+
+// Levenshtein edit distance between two strings
+static int edit_distance(const char* s1, const char* s2) {
+    int len1 = strlen(s1);
+    int len2 = strlen(s2);
+
+    // Use stack for small strings, or limit comparison
+    if (len1 > 50 || len2 > 50) return 100;  // Too long, don't bother
+
+    // Create DP table on stack
+    int dp[51][51];
+
+    for (int i = 0; i <= len1; i++) dp[i][0] = i;
+    for (int j = 0; j <= len2; j++) dp[0][j] = j;
+
+    for (int i = 1; i <= len1; i++) {
+        for (int j = 1; j <= len2; j++) {
+            int cost = (s1[i-1] == s2[j-1]) ? 0 : 1;
+            int del = dp[i-1][j] + 1;
+            int ins = dp[i][j-1] + 1;
+            int sub = dp[i-1][j-1] + cost;
+            dp[i][j] = del < ins ? (del < sub ? del : sub) : (ins < sub ? ins : sub);
+        }
+    }
+
+    return dp[len1][len2];
+}
+
+// Find similar symbols and append suggestions to buffer
+// Returns number of suggestions added
+static int find_similar_symbols(const char* name, Env* env, char* buf, int buf_size) {
+    #define MAX_SUGGESTIONS 3
+    const char* suggestions[MAX_SUGGESTIONS];
+    int distances[MAX_SUGGESTIONS];
+    int num_suggestions = 0;
+
+    // Initialize with high distances
+    for (int i = 0; i < MAX_SUGGESTIONS; i++) {
+        distances[i] = 999;
+        suggestions[i] = NULL;
+    }
+
+    // Helper to check if a suggestion already exists
+    #define IS_DUPLICATE(sym) ({ \
+        int dup = 0; \
+        for (int d = 0; d < num_suggestions; d++) { \
+            if (suggestions[d] && strcmp(suggestions[d], sym) == 0) { \
+                dup = 1; break; \
+            } \
+        } dup; \
+    })
+
+    // Helper to insert a suggestion
+    #define INSERT_SUGGESTION(sym, dist) do { \
+        if (!IS_DUPLICATE(sym)) { \
+            for (int j = 0; j < MAX_SUGGESTIONS; j++) { \
+                if (dist < distances[j]) { \
+                    for (int k = MAX_SUGGESTIONS - 1; k > j; k--) { \
+                        distances[k] = distances[k-1]; \
+                        suggestions[k] = suggestions[k-1]; \
+                    } \
+                    distances[j] = dist; \
+                    suggestions[j] = sym; \
+                    if (num_suggestions < MAX_SUGGESTIONS) num_suggestions++; \
+                    break; \
+                } \
+            } \
+        } \
+    } while(0)
+
+    // Check primitives first
+    for (int i = 0; i < num_primitives; i++) {
+        const char* prim_name = primitives[i].name;
+        int dist = edit_distance(name, prim_name);
+
+        // Only consider close matches (distance <= 2)
+        if (dist <= 2 && dist > 0) {
+            INSERT_SUGGESTION(prim_name, dist);
+        }
+    }
+
+    // Check environment bindings
+    Env* e = env;
+    while (e) {
+        Value* bindings = e->bindings;
+        while (!is_nil(bindings)) {
+            Value* pair = car(bindings);
+            if (pair && pair->tag == T_CELL) {
+                Value* key = car(pair);
+                if (key && key->tag == T_SYM) {
+                    int dist = edit_distance(name, key->s);
+                    if (dist <= 2 && dist > 0) {
+                        INSERT_SUGGESTION(key->s, dist);
+                    }
+                }
+            }
+            bindings = cdr(bindings);
+        }
+        e = e->parent;
+    }
+
+    #undef IS_DUPLICATE
+    #undef INSERT_SUGGESTION
+
+    // Format suggestions into buffer (avoiding duplicates in output too)
+    if (num_suggestions > 0) {
+        int pos = strlen(buf);
+        pos += snprintf(buf + pos, buf_size - pos, ". Did you mean: ");
+        int printed = 0;
+        for (int i = 0; i < MAX_SUGGESTIONS && suggestions[i]; i++) {
+            // Check if we already printed this suggestion
+            int already_printed = 0;
+            for (int p = 0; p < i; p++) {
+                if (suggestions[p] && strcmp(suggestions[p], suggestions[i]) == 0) {
+                    already_printed = 1;
+                    break;
+                }
+            }
+            if (!already_printed) {
+                if (printed > 0) pos += snprintf(buf + pos, buf_size - pos, ", ");
+                pos += snprintf(buf + pos, buf_size - pos, "'%s'", suggestions[i]);
+                printed++;
+            }
+        }
+        snprintf(buf + pos, buf_size - pos, "?");
+    }
+
+    return num_suggestions;
+    #undef MAX_SUGGESTIONS
+}
 
 // Global environment for top-level definitions
 static Env* global_env = NULL;
@@ -201,6 +375,7 @@ static int is_special_form(Value* sym) {
         "defeffect", "handle", "perform", "resume",  // Effect system (algebraic effects)
         "with-restarts", "call-restart",  // CL-style restart compatibility via effects
         "effect-trace", "effect-stack",  // Effect debugging
+        "call-stack", "stack-trace",  // Call stack debugging
         NULL
     };
     for (int i = 0; forms[i]; i++) {
@@ -242,8 +417,9 @@ Value* omni_eval(Value* expr, Env* env) {
                 }
             }
 
-            char msg[128];
+            char msg[256];
             snprintf(msg, sizeof(msg), "Undefined symbol: %s", expr->s);
+            find_similar_symbols(expr->s, env, msg, sizeof(msg));
             return mk_error(msg);
         }
 
@@ -400,6 +576,10 @@ static Value* eval_special_form(Value* op, Value* args, Env* env) {
     // Effect debugging
     if (strcmp(name, "effect-trace") == 0) return eval_effect_trace(args, env);
     if (strcmp(name, "effect-stack") == 0) return eval_effect_stack(args, env);
+
+    // Call stack debugging
+    if (strcmp(name, "call-stack") == 0) return eval_call_stack(args, env);
+    if (strcmp(name, "stack-trace") == 0) return eval_stack_trace(args, env);
 
     char msg[128];
     snprintf(msg, sizeof(msg), "Unknown special form: %s", name);
@@ -1470,6 +1650,236 @@ static Value* prim_or(Value* args) {
     return mk_sym("false");
 }
 
+/* ============================================================
+ * Type Introspection Primitives
+ * ============================================================ */
+
+/*
+ * (type-of x) -> symbol
+ *
+ * Returns a symbol representing the type of x.
+ */
+static Value* prim_type_of(Value* args) {
+    Value* v = car(args);
+    if (!v) return mk_sym("nothing");
+
+    switch (v->tag) {
+        case T_INT:     return mk_sym("integer");
+        case T_SYM:     return mk_sym("symbol");
+        case T_CELL:    return mk_sym("list");
+        case T_NIL:     return mk_sym("list");
+        case T_NOTHING: return mk_sym("nothing");
+        case T_PRIM:    return mk_sym("primitive");
+        case T_MENV:    return mk_sym("meta-env");
+        case T_CODE:    return mk_sym("code");
+        case T_LAMBDA:  return mk_sym("function");
+        case T_ERROR:   return mk_sym("error");
+        case T_BOX:     return mk_sym("box");
+        case T_CONT:    return mk_sym("continuation");
+        case T_CHAN:    return mk_sym("channel");
+        case T_PROCESS: return mk_sym("process");
+        case T_BOUNCE:  return mk_sym("bounce");
+        default:        return mk_sym("unknown");
+    }
+}
+
+/*
+ * (describe x) -> string
+ *
+ * Returns a human-readable description of x.
+ */
+static Value* prim_describe(Value* args) {
+    Value* v = car(args);
+    char buffer[512];
+
+    if (!v) {
+        snprintf(buffer, sizeof(buffer), "nothing: the unit value");
+        return mk_code(buffer);
+    }
+
+    switch (v->tag) {
+        case T_INT:
+            snprintf(buffer, sizeof(buffer),
+                     "integer: %ld (type: integer, size: 8 bytes)", v->i);
+            break;
+        case T_SYM:
+            snprintf(buffer, sizeof(buffer),
+                     "symbol: %s (interned string)", v->s);
+            break;
+        case T_CELL: {
+            int len = 0;
+            Value* p = v;
+            while (p && p->tag == T_CELL) { len++; p = cdr(p); }
+            snprintf(buffer, sizeof(buffer),
+                     "list: proper list with %d elements", len);
+            break;
+        }
+        case T_NIL:
+            snprintf(buffer, sizeof(buffer), "list: empty list ()");
+            break;
+        case T_NOTHING:
+            snprintf(buffer, sizeof(buffer),
+                     "nothing: the unit/absence value (falsy)");
+            break;
+        case T_PRIM:
+            snprintf(buffer, sizeof(buffer),
+                     "primitive: built-in function");
+            break;
+        case T_LAMBDA:
+            snprintf(buffer, sizeof(buffer),
+                     "function: user-defined lambda with captured environment");
+            break;
+        case T_ERROR:
+            snprintf(buffer, sizeof(buffer),
+                     "error: %s", v->s ? v->s : "<unknown>");
+            break;
+        case T_BOX:
+            snprintf(buffer, sizeof(buffer),
+                     "box: mutable reference cell");
+            break;
+        case T_CONT:
+            snprintf(buffer, sizeof(buffer),
+                     "continuation: captured control context (tag=%d)", v->cont.tag);
+            break;
+        case T_CHAN:
+            snprintf(buffer, sizeof(buffer),
+                     "channel: CSP channel (capacity=%d)", v->chan.capacity);
+            break;
+        case T_PROCESS:
+            snprintf(buffer, sizeof(buffer),
+                     "process: green thread (state=%d)", v->proc.state);
+            break;
+        case T_BOUNCE:
+            snprintf(buffer, sizeof(buffer),
+                     "bounce: trampoline thunk");
+            break;
+        case T_MENV:
+            snprintf(buffer, sizeof(buffer),
+                     "meta-env: meta-level environment");
+            break;
+        case T_CODE:
+            snprintf(buffer, sizeof(buffer),
+                     "code: string literal or code fragment");
+            break;
+        default:
+            snprintf(buffer, sizeof(buffer), "unknown type");
+            break;
+    }
+
+    return mk_code(buffer);
+}
+
+/*
+ * (methods-of x) -> list of symbols
+ *
+ * Returns a list of primitives/methods applicable to values of this type.
+ */
+static Value* prim_methods_of(Value* args) {
+    Value* v = car(args);
+    Value* result = mk_nil();
+
+    if (!v) {
+        // nothing has few methods
+        result = mk_cell(mk_sym("nothing?"), result);
+        return result;
+    }
+
+    switch (v->tag) {
+        case T_INT:
+            result = mk_cell(mk_sym("type-of"), result);
+            result = mk_cell(mk_sym("describe"), result);
+            result = mk_cell(mk_sym("+"), result);
+            result = mk_cell(mk_sym("-"), result);
+            result = mk_cell(mk_sym("*"), result);
+            result = mk_cell(mk_sym("/"), result);
+            result = mk_cell(mk_sym("%"), result);
+            result = mk_cell(mk_sym("<"), result);
+            result = mk_cell(mk_sym(">"), result);
+            result = mk_cell(mk_sym("="), result);
+            break;
+        case T_SYM:
+            result = mk_cell(mk_sym("type-of"), result);
+            result = mk_cell(mk_sym("describe"), result);
+            result = mk_cell(mk_sym("="), result);
+            break;
+        case T_CELL:
+        case T_NIL:
+            result = mk_cell(mk_sym("type-of"), result);
+            result = mk_cell(mk_sym("describe"), result);
+            result = mk_cell(mk_sym("car"), result);
+            result = mk_cell(mk_sym("cdr"), result);
+            result = mk_cell(mk_sym("cons"), result);
+            result = mk_cell(mk_sym("null?"), result);
+            result = mk_cell(mk_sym("length"), result);
+            result = mk_cell(mk_sym("map"), result);
+            result = mk_cell(mk_sym("filter"), result);
+            result = mk_cell(mk_sym("reduce"), result);
+            break;
+        case T_LAMBDA:
+        case T_PRIM:
+            result = mk_cell(mk_sym("type-of"), result);
+            result = mk_cell(mk_sym("describe"), result);
+            result = mk_cell(mk_sym("apply"), result);
+            break;
+        case T_BOX:
+            result = mk_cell(mk_sym("type-of"), result);
+            result = mk_cell(mk_sym("describe"), result);
+            result = mk_cell(mk_sym("box-get"), result);
+            result = mk_cell(mk_sym("box-set!"), result);
+            break;
+        case T_CHAN:
+            result = mk_cell(mk_sym("type-of"), result);
+            result = mk_cell(mk_sym("describe"), result);
+            result = mk_cell(mk_sym("send!"), result);
+            result = mk_cell(mk_sym("recv!"), result);
+            result = mk_cell(mk_sym("close!"), result);
+            break;
+        default:
+            result = mk_cell(mk_sym("type-of"), result);
+            result = mk_cell(mk_sym("describe"), result);
+            break;
+    }
+
+    return result;
+}
+
+/*
+ * (type? x type-sym) -> bool
+ *
+ * Check if x is of the given type.
+ */
+static Value* prim_type_q(Value* args) {
+    Value* v = car(args);
+    Value* type_sym = car(cdr(args));
+
+    if (!type_sym || type_sym->tag != T_SYM) {
+        return mk_sym("false");
+    }
+
+    const char* want = type_sym->s;
+    const char* have = NULL;
+
+    if (!v) have = "nothing";
+    else switch (v->tag) {
+        case T_INT:     have = "integer"; break;
+        case T_SYM:     have = "symbol"; break;
+        case T_CELL:    have = "list"; break;
+        case T_NIL:     have = "list"; break;
+        case T_NOTHING: have = "nothing"; break;
+        case T_PRIM:    have = "primitive"; break;
+        case T_LAMBDA:  have = "function"; break;
+        case T_ERROR:   have = "error"; break;
+        case T_BOX:     have = "box"; break;
+        case T_CONT:    have = "continuation"; break;
+        case T_CHAN:    have = "channel"; break;
+        case T_PROCESS: have = "process"; break;
+        case T_BOUNCE:  have = "bounce"; break;
+        default:        have = "unknown"; break;
+    }
+
+    return mk_sym(strcmp(want, have) == 0 ? "true" : "false");
+}
+
 // Initialize environment with builtins
 Env* omni_env_init(void) {
     if (global_env) return global_env;
@@ -1510,6 +1920,12 @@ Env* omni_env_init(void) {
     register_primitive("trampoline", -1, prim_trampoline);
     register_primitive("bounce?", 1, prim_bounce_p);
 
+    // Type introspection primitives
+    register_primitive("type-of", 1, prim_type_of);
+    register_primitive("describe", 1, prim_describe);
+    register_primitive("methods-of", 1, prim_methods_of);
+    register_primitive("type?", 2, prim_type_q);
+
     // Define primitive functions in environment
     for (int i = 0; i < num_primitives; i++) {
         // Create wrapper lambda for primitives
@@ -1531,13 +1947,20 @@ Value* omni_apply(Value* fn, Value* args, Env* env) {
     if (fn->tag == T_PRIM) {
         intptr_t idx = (intptr_t)fn->prim;
         if (idx >= 0 && idx < num_primitives) {
-            return primitives[idx].fn(args);
+            // Track primitive calls
+            call_stack_push(primitives[idx].name, NULL, 0);
+            Value* result = primitives[idx].fn(args);
+            call_stack_pop();
+            return result;
         }
         return mk_error("Invalid primitive index");
     }
 
     // Lambda application
     if (fn->tag == T_LAMBDA) {
+        // Track lambda calls
+        call_stack_push("<lambda>", NULL, 0);
+
         // Convert captured environment from Value* to Env*
         Env* closure_env = NULL;
         if (fn->lam.env && !is_nil(fn->lam.env)) {
@@ -1546,8 +1969,13 @@ Value* omni_apply(Value* fn, Value* args, Env* env) {
             closure_env = global_env;
         }
         Env* call_env = env_extend(closure_env, fn->lam.params, args);
-        if (!call_env) return mk_error("OOM in apply");
-        return omni_eval(fn->lam.body, call_env);
+        if (!call_env) {
+            call_stack_pop();
+            return mk_error("OOM in apply");
+        }
+        Value* result = omni_eval(fn->lam.body, call_env);
+        call_stack_pop();
+        return result;
     }
 
     return mk_error("Not a function");
@@ -2714,4 +3142,108 @@ static Value* eval_effect_stack(Value* args, Env* env) {
     }
 
     return result;
+}
+
+/* ============================================================
+ * Call Stack Debugging
+ * ============================================================ */
+
+/*
+ * (call-stack cmd)
+ *
+ * Control call stack operations:
+ *   (call-stack)        - Return call stack as a list
+ *   (call-stack :print) - Print call stack to stderr
+ *   (call-stack :depth) - Return current stack depth
+ *   (call-stack :clear) - Clear call stack (for testing)
+ */
+static Value* eval_call_stack(Value* args, Env* env) {
+    (void)env;
+
+    if (is_nil(args)) {
+        // Return call stack as a list of symbols
+        Value* result = mk_nil();
+        for (int i = call_sp - 1; i >= 0; i--) {
+            CallFrame* f = &call_stack[i];
+            Value* frame_info;
+            if (f->source && f->line > 0) {
+                // Create (name source line) tuple
+                frame_info = mk_cell(
+                    mk_sym(f->name ? f->name : "<anonymous>"),
+                    mk_cell(mk_sym(f->source),
+                    mk_cell(mk_int(f->line), mk_nil()))
+                );
+            } else {
+                // Just the name
+                frame_info = mk_sym(f->name ? f->name : "<anonymous>");
+            }
+            result = mk_cell(frame_info, result);
+        }
+        return result;
+    }
+
+    Value* cmd = car(args);
+
+    // Handle (quote symbol) form from :keyword syntax
+    const char* cmd_str = NULL;
+    if (cmd && cmd->tag == T_SYM) {
+        cmd_str = cmd->s;
+    } else if (cmd && cmd->tag == T_CELL) {
+        Value* qop = car(cmd);
+        if (qop && qop->tag == T_SYM && strcmp(qop->s, "quote") == 0) {
+            Value* quoted = car(cdr(cmd));
+            if (quoted && quoted->tag == T_SYM) {
+                cmd_str = quoted->s;
+            }
+        }
+    }
+
+    if (cmd_str) {
+        if (strcmp(cmd_str, "print") == 0) {
+            call_stack_print();
+            return mk_int(call_sp);
+        } else if (strcmp(cmd_str, "depth") == 0) {
+            return mk_int(call_sp);
+        } else if (strcmp(cmd_str, "clear") == 0) {
+            call_sp = 0;
+            return mk_sym("stack-cleared");
+        }
+    }
+
+    return mk_error("call-stack: unknown command (use :print, :depth, or :clear)");
+}
+
+/*
+ * (stack-trace)
+ *
+ * Return a formatted stack trace string.
+ * Prints to stderr and returns the trace as a string.
+ */
+static Value* eval_stack_trace(Value* args, Env* env) {
+    (void)args;
+    (void)env;
+
+    // Build formatted stack trace string
+    char buffer[4096];
+    int pos = 0;
+
+    pos += snprintf(buffer + pos, sizeof(buffer) - pos,
+                    "Stack trace (%d frames):\n", call_sp);
+
+    for (int i = call_sp - 1; i >= 0 && pos < (int)sizeof(buffer) - 100; i--) {
+        CallFrame* f = &call_stack[i];
+        pos += snprintf(buffer + pos, sizeof(buffer) - pos,
+                        "  [%d] %s", call_sp - 1 - i,
+                        f->name ? f->name : "<anonymous>");
+        if (f->source && f->line > 0) {
+            pos += snprintf(buffer + pos, sizeof(buffer) - pos,
+                            " at %s:%d", f->source, f->line);
+        }
+        pos += snprintf(buffer + pos, sizeof(buffer) - pos, "\n");
+    }
+
+    // Also print to stderr
+    fprintf(stderr, "%s", buffer);
+
+    return mk_code(buffer);
 }

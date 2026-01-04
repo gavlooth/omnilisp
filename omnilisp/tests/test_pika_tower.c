@@ -677,6 +677,43 @@ TEST(integration_if_false_branch) {
     tower_cleanup();
 }
 
+TEST(integration_truthy_zero_and_empty) {
+    /* (if 0 1 2) => 1 (0 is truthy) */
+    Value* result = tower_eval_string("(if 0 1 2)");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_INT);
+    ASSERT_EQ(result->i, 1);
+    tower_cleanup();
+
+    /* (if () 1 2) => 1 (empty list truthy) */
+    result = tower_eval_string("(if () 1 2)");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_INT);
+    ASSERT_EQ(result->i, 1);
+    tower_cleanup();
+
+    /* (if nothing 1 2) => 2 (nothing is falsy) */
+    result = tower_eval_string("(if nothing 1 2)");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_INT);
+    ASSERT_EQ(result->i, 2);
+    tower_cleanup();
+
+    /* (if false 1 2) => 2 (false is falsy) */
+    result = tower_eval_string("(if false 1 2)");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_INT);
+    ASSERT_EQ(result->i, 2);
+    tower_cleanup();
+
+    /* (if #f 1 2) => 2 (#f is falsy) */
+    result = tower_eval_string("(if #f 1 2)");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_INT);
+    ASSERT_EQ(result->i, 2);
+    tower_cleanup();
+}
+
 TEST(integration_let_binding) {
     /* (let ((x 10)) (+ x 5)) => 15 */
     Value* result = tower_eval_string("(let ((x 10)) (+ x 5))");
@@ -922,6 +959,7 @@ int main(void) {
     RUN_TEST(integration_comparison_eq);
     RUN_TEST(integration_if_true_branch);
     RUN_TEST(integration_if_false_branch);
+    RUN_TEST(integration_truthy_zero_and_empty);
     RUN_TEST(integration_let_binding);
     RUN_TEST(integration_let_multiple_bindings);
     RUN_TEST(integration_lambda_identity);

@@ -137,8 +137,6 @@ static Value* match_to_ast(const PikaMatch* match, const char* input) {
             result = mk_sym(text);
         } else if (strcmp(text, "nothing") == 0) {
             result = mk_nothing();
-        } else if (strcmp(text, "nil") == 0) {
-            result = mk_nil();
         } else {
             result = mk_sym(text);
         }

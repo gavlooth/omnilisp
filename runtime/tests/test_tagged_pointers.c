@@ -54,27 +54,27 @@ void test_imm_int_range_stress(void) {
 /* ========== Immediate Boolean Tests ========== */
 
 void test_imm_bool_true(void) {
-    ASSERT(IS_IMMEDIATE_BOOL(PURPLE_TRUE));
-    ASSERT(obj_to_bool(PURPLE_TRUE) == 1);
+    ASSERT(IS_IMMEDIATE_BOOL(OMNI_TRUE));
+    ASSERT(obj_to_bool(OMNI_TRUE) == 1);
     PASS();
 }
 
 void test_imm_bool_false(void) {
-    ASSERT(IS_IMMEDIATE_BOOL(PURPLE_FALSE));
-    ASSERT(obj_to_bool(PURPLE_FALSE) == 0);
+    ASSERT(IS_IMMEDIATE_BOOL(OMNI_FALSE));
+    ASSERT(obj_to_bool(OMNI_FALSE) == 0);
     PASS();
 }
 
 void test_imm_bool_distinct(void) {
-    ASSERT(PURPLE_TRUE != PURPLE_FALSE);
+    ASSERT(OMNI_TRUE != OMNI_FALSE);
     PASS();
 }
 
 void test_mk_bool(void) {
-    ASSERT(mk_bool(1) == PURPLE_TRUE);
-    ASSERT(mk_bool(0) == PURPLE_FALSE);
-    ASSERT(mk_bool(100) == PURPLE_TRUE);
-    ASSERT(mk_bool(-1) == PURPLE_TRUE);
+    ASSERT(mk_bool(1) == OMNI_TRUE);
+    ASSERT(mk_bool(0) == OMNI_FALSE);
+    ASSERT(mk_bool(100) == OMNI_TRUE);
+    ASSERT(mk_bool(-1) == OMNI_TRUE);
     PASS();
 }
 
@@ -138,11 +138,11 @@ void test_tag_detection_char(void) {
 }
 
 void test_tag_detection_bool(void) {
-    ASSERT(IS_IMMEDIATE(PURPLE_TRUE));
-    ASSERT(IS_IMMEDIATE_BOOL(PURPLE_TRUE));
-    ASSERT(!IS_IMMEDIATE_INT(PURPLE_TRUE));
-    ASSERT(!IS_IMMEDIATE_CHAR(PURPLE_TRUE));
-    ASSERT(!IS_BOXED(PURPLE_TRUE));
+    ASSERT(IS_IMMEDIATE(OMNI_TRUE));
+    ASSERT(IS_IMMEDIATE_BOOL(OMNI_TRUE));
+    ASSERT(!IS_IMMEDIATE_INT(OMNI_TRUE));
+    ASSERT(!IS_IMMEDIATE_CHAR(OMNI_TRUE));
+    ASSERT(!IS_BOXED(OMNI_TRUE));
     PASS();
 }
 
@@ -177,12 +177,12 @@ void test_obj_to_int_boxed(void) {
 }
 
 void test_obj_to_int_bool_true(void) {
-    ASSERT_EQ(obj_to_int(PURPLE_TRUE), 1);
+    ASSERT_EQ(obj_to_int(OMNI_TRUE), 1);
     PASS();
 }
 
 void test_obj_to_int_bool_false(void) {
-    ASSERT_EQ(obj_to_int(PURPLE_FALSE), 0);
+    ASSERT_EQ(obj_to_int(OMNI_FALSE), 0);
     PASS();
 }
 
@@ -200,12 +200,12 @@ void test_obj_to_int_null(void) {
 /* ========== obj_to_bool Tests ========== */
 
 void test_obj_to_bool_true(void) {
-    ASSERT_EQ(obj_to_bool(PURPLE_TRUE), 1);
+    ASSERT_EQ(obj_to_bool(OMNI_TRUE), 1);
     PASS();
 }
 
 void test_obj_to_bool_false(void) {
-    ASSERT_EQ(obj_to_bool(PURPLE_FALSE), 0);
+    ASSERT_EQ(obj_to_bool(OMNI_FALSE), 0);
     PASS();
 }
 
@@ -217,12 +217,19 @@ void test_obj_to_bool_int_nonzero(void) {
 
 void test_obj_to_bool_int_zero(void) {
     Obj* x = mk_int_unboxed(0);
-    ASSERT_EQ(obj_to_bool(x), 0);
+    ASSERT_EQ(obj_to_bool(x), 1);
     PASS();
 }
 
 void test_obj_to_bool_null(void) {
-    ASSERT_EQ(obj_to_bool(NULL), 0);
+    ASSERT_EQ(obj_to_bool(NULL), 1);
+    PASS();
+}
+
+void test_obj_to_bool_nothing(void) {
+    Obj* n = mk_nothing();
+    ASSERT_EQ(obj_to_bool(n), 0);
+    dec_ref(n);
     PASS();
 }
 
@@ -253,7 +260,7 @@ void test_obj_tag_imm_char(void) {
 }
 
 void test_obj_tag_imm_bool(void) {
-    ASSERT_EQ(obj_tag(PURPLE_TRUE), TAG_INT);  /* Bools treated as int-like */
+    ASSERT_EQ(obj_tag(OMNI_TRUE), TAG_INT);  /* Bools treated as int-like */
     PASS();
 }
 
@@ -294,8 +301,8 @@ void test_is_int_boxed(void) {
 }
 
 void test_is_int_bool(void) {
-    ASSERT(is_int(PURPLE_TRUE));
-    ASSERT(is_int(PURPLE_FALSE));
+    ASSERT(is_int(OMNI_TRUE));
+    ASSERT(is_int(OMNI_FALSE));
     PASS();
 }
 
@@ -542,6 +549,7 @@ void run_tagged_pointer_tests(void) {
     RUN_TEST(test_obj_to_bool_int_nonzero);
     RUN_TEST(test_obj_to_bool_int_zero);
     RUN_TEST(test_obj_to_bool_null);
+    RUN_TEST(test_obj_to_bool_nothing);
     RUN_TEST(test_obj_to_bool_boxed);
 
     TEST_SECTION("obj_tag");

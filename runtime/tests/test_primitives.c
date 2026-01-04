@@ -221,7 +221,7 @@ void test_prim_lt_true(void) {
     Obj* a = mk_int(1);
     Obj* b = mk_int(2);
     Obj* r = prim_lt(a, b);
-    ASSERT(obj_to_int(r) != 0);  /* truthy */
+    ASSERT_EQ(obj_to_bool(r), 1);
     dec_ref(a); dec_ref(b); dec_ref(r);
     PASS();
 }
@@ -230,7 +230,7 @@ void test_prim_lt_false(void) {
     Obj* a = mk_int(2);
     Obj* b = mk_int(1);
     Obj* r = prim_lt(a, b);
-    ASSERT(obj_to_int(r) == 0);  /* falsy */
+    ASSERT_EQ(obj_to_bool(r), 0);
     dec_ref(a); dec_ref(b); dec_ref(r);
     PASS();
 }
@@ -239,7 +239,7 @@ void test_prim_lt_equal(void) {
     Obj* a = mk_int(2);
     Obj* b = mk_int(2);
     Obj* r = prim_lt(a, b);
-    ASSERT(obj_to_int(r) == 0);  /* equal is not less than */
+    ASSERT_EQ(obj_to_bool(r), 0);  /* equal is not less than */
     dec_ref(a); dec_ref(b); dec_ref(r);
     PASS();
 }
@@ -248,7 +248,7 @@ void test_prim_gt_true(void) {
     Obj* a = mk_int(2);
     Obj* b = mk_int(1);
     Obj* r = prim_gt(a, b);
-    ASSERT(obj_to_int(r) != 0);
+    ASSERT_EQ(obj_to_bool(r), 1);
     dec_ref(a); dec_ref(b); dec_ref(r);
     PASS();
 }
@@ -257,7 +257,7 @@ void test_prim_gt_false(void) {
     Obj* a = mk_int(1);
     Obj* b = mk_int(2);
     Obj* r = prim_gt(a, b);
-    ASSERT(obj_to_int(r) == 0);
+    ASSERT_EQ(obj_to_bool(r), 0);
     dec_ref(a); dec_ref(b); dec_ref(r);
     PASS();
 }
@@ -266,7 +266,7 @@ void test_prim_le_true(void) {
     Obj* a = mk_int(2);
     Obj* b = mk_int(2);
     Obj* r = prim_le(a, b);
-    ASSERT(obj_to_int(r) != 0);  /* equal satisfies <= */
+    ASSERT_EQ(obj_to_bool(r), 1);  /* equal satisfies <= */
     dec_ref(a); dec_ref(b); dec_ref(r);
     PASS();
 }
@@ -275,7 +275,7 @@ void test_prim_le_false(void) {
     Obj* a = mk_int(3);
     Obj* b = mk_int(2);
     Obj* r = prim_le(a, b);
-    ASSERT(obj_to_int(r) == 0);
+    ASSERT_EQ(obj_to_bool(r), 0);
     dec_ref(a); dec_ref(b); dec_ref(r);
     PASS();
 }
@@ -284,7 +284,7 @@ void test_prim_ge_true(void) {
     Obj* a = mk_int(2);
     Obj* b = mk_int(2);
     Obj* r = prim_ge(a, b);
-    ASSERT(obj_to_int(r) != 0);  /* equal satisfies >= */
+    ASSERT_EQ(obj_to_bool(r), 1);  /* equal satisfies >= */
     dec_ref(a); dec_ref(b); dec_ref(r);
     PASS();
 }
@@ -293,7 +293,7 @@ void test_prim_ge_false(void) {
     Obj* a = mk_int(1);
     Obj* b = mk_int(2);
     Obj* r = prim_ge(a, b);
-    ASSERT(obj_to_int(r) == 0);
+    ASSERT_EQ(obj_to_bool(r), 0);
     dec_ref(a); dec_ref(b); dec_ref(r);
     PASS();
 }
@@ -302,7 +302,7 @@ void test_prim_eq_same(void) {
     Obj* a = mk_int(42);
     Obj* b = mk_int(42);
     Obj* r = prim_eq(a, b);
-    ASSERT(obj_to_int(r) != 0);
+    ASSERT_EQ(obj_to_bool(r), 1);
     dec_ref(a); dec_ref(b); dec_ref(r);
     PASS();
 }
@@ -311,7 +311,7 @@ void test_prim_eq_float_same(void) {
     Obj* a = mk_float(1.5);
     Obj* b = mk_float(1.5);
     Obj* r = prim_eq(a, b);
-    ASSERT(obj_to_int(r) != 0);
+    ASSERT_EQ(obj_to_bool(r), 1);
     dec_ref(a); dec_ref(b); dec_ref(r);
     PASS();
 }
@@ -320,7 +320,7 @@ void test_prim_eq_different(void) {
     Obj* a = mk_int(1);
     Obj* b = mk_int(2);
     Obj* r = prim_eq(a, b);
-    ASSERT(obj_to_int(r) == 0);
+    ASSERT_EQ(obj_to_bool(r), 0);
     dec_ref(a); dec_ref(b); dec_ref(r);
     PASS();
 }
@@ -328,15 +328,30 @@ void test_prim_eq_different(void) {
 void test_prim_not_truthy(void) {
     Obj* a = mk_int(1);
     Obj* r = prim_not(a);
-    ASSERT(obj_to_int(r) == 0);  /* not of truthy is falsy */
+    ASSERT_EQ(obj_to_bool(r), 0);  /* not of truthy is falsy */
     dec_ref(a); dec_ref(r);
     PASS();
 }
 
 void test_prim_not_falsy(void) {
+    Obj* a = mk_nothing();
+    Obj* r = prim_not(a);
+    ASSERT_EQ(obj_to_bool(r), 1);  /* not of falsy is truthy */
+    dec_ref(a); dec_ref(r);
+    PASS();
+}
+
+void test_prim_not_false(void) {
+    Obj* r = prim_not(OMNI_FALSE);
+    ASSERT_EQ(obj_to_bool(r), 1);
+    dec_ref(r);
+    PASS();
+}
+
+void test_prim_not_zero_truthy(void) {
     Obj* a = mk_int(0);
     Obj* r = prim_not(a);
-    ASSERT(obj_to_int(r) != 0);  /* not of falsy is truthy */
+    ASSERT_EQ(obj_to_bool(r), 0);
     dec_ref(a); dec_ref(r);
     PASS();
 }
@@ -345,7 +360,7 @@ void test_prim_not_falsy(void) {
 
 void test_prim_null_true(void) {
     Obj* r = prim_null(NULL);
-    ASSERT(obj_to_int(r) != 0);
+    ASSERT_EQ(obj_to_bool(r), 1);
     dec_ref(r);
     PASS();
 }
@@ -353,7 +368,7 @@ void test_prim_null_true(void) {
 void test_prim_null_false(void) {
     Obj* x = mk_int(42);
     Obj* r = prim_null(x);
-    ASSERT(obj_to_int(r) == 0);
+    ASSERT_EQ(obj_to_bool(r), 0);
     dec_ref(x); dec_ref(r);
     PASS();
 }
@@ -361,7 +376,7 @@ void test_prim_null_false(void) {
 void test_prim_pair_true(void) {
     Obj* p = mk_pair(mk_int(1), mk_int(2));
     Obj* r = prim_pair(p);
-    ASSERT(obj_to_int(r) != 0);
+    ASSERT_EQ(obj_to_bool(r), 1);
     dec_ref(p); dec_ref(r);
     PASS();
 }
@@ -369,7 +384,7 @@ void test_prim_pair_true(void) {
 void test_prim_pair_false(void) {
     Obj* x = mk_int(42);
     Obj* r = prim_pair(x);
-    ASSERT(obj_to_int(r) == 0);
+    ASSERT_EQ(obj_to_bool(r), 0);
     dec_ref(x); dec_ref(r);
     PASS();
 }
@@ -377,7 +392,7 @@ void test_prim_pair_false(void) {
 void test_prim_int_true(void) {
     Obj* x = mk_int(42);
     Obj* r = prim_int(x);
-    ASSERT(obj_to_int(r) != 0);
+    ASSERT_EQ(obj_to_bool(r), 1);
     dec_ref(x); dec_ref(r);
     PASS();
 }
@@ -385,7 +400,7 @@ void test_prim_int_true(void) {
 void test_prim_int_false(void) {
     Obj* x = mk_float(3.14);
     Obj* r = prim_int(x);
-    ASSERT(obj_to_int(r) == 0);
+    ASSERT_EQ(obj_to_bool(r), 0);
     dec_ref(x); dec_ref(r);
     PASS();
 }
@@ -393,7 +408,7 @@ void test_prim_int_false(void) {
 void test_prim_float_true(void) {
     Obj* x = mk_float(3.14);
     Obj* r = prim_float(x);
-    ASSERT(obj_to_int(r) != 0);
+    ASSERT_EQ(obj_to_bool(r), 1);
     dec_ref(x); dec_ref(r);
     PASS();
 }
@@ -401,7 +416,7 @@ void test_prim_float_true(void) {
 void test_prim_float_false(void) {
     Obj* x = mk_int(3);
     Obj* r = prim_float(x);
-    ASSERT(obj_to_int(r) == 0);
+    ASSERT_EQ(obj_to_bool(r), 0);
     dec_ref(x); dec_ref(r);
     PASS();
 }
@@ -409,7 +424,7 @@ void test_prim_float_false(void) {
 void test_prim_char_true(void) {
     Obj* x = mk_char('A');
     Obj* r = prim_char(x);
-    ASSERT(obj_to_int(r) != 0);
+    ASSERT_EQ(obj_to_bool(r), 1);
     dec_ref(x); dec_ref(r);
     PASS();
 }
@@ -417,7 +432,7 @@ void test_prim_char_true(void) {
 void test_prim_char_false(void) {
     Obj* x = mk_int(65);
     Obj* r = prim_char(x);
-    ASSERT(obj_to_int(r) == 0);
+    ASSERT_EQ(obj_to_bool(r), 0);
     dec_ref(x); dec_ref(r);
     PASS();
 }
@@ -425,7 +440,7 @@ void test_prim_char_false(void) {
 void test_prim_sym_true(void) {
     Obj* x = mk_sym("hello");
     Obj* r = prim_sym(x);
-    ASSERT(obj_to_int(r) != 0);
+    ASSERT_EQ(obj_to_bool(r), 1);
     dec_ref(x); dec_ref(r);
     PASS();
 }
@@ -433,7 +448,7 @@ void test_prim_sym_true(void) {
 void test_prim_sym_false(void) {
     Obj* x = mk_int(1);
     Obj* r = prim_sym(x);
-    ASSERT(obj_to_int(r) == 0);
+    ASSERT_EQ(obj_to_bool(r), 0);
     dec_ref(x); dec_ref(r);
     PASS();
 }
@@ -542,7 +557,7 @@ void test_ctr_tag_pair(void) {
     Obj* r = ctr_tag(p);
     ASSERT_NOT_NULL(r);
     ASSERT_EQ(obj_tag(r), TAG_SYM);
-    ASSERT_STR_EQ((char*)r->ptr, "cell");  /* pairs are called "cell" */
+    ASSERT_STR_EQ((char*)r->ptr, "list");  /* pairs are also lists */
     dec_ref(p); dec_ref(r);
     PASS();
 }
@@ -551,7 +566,7 @@ void test_ctr_tag_null(void) {
     Obj* r = ctr_tag(NULL);
     ASSERT_NOT_NULL(r);
     ASSERT_EQ(obj_tag(r), TAG_SYM);
-    ASSERT_STR_EQ((char*)r->ptr, "nil");
+    ASSERT_STR_EQ((char*)r->ptr, "list");  /* Empty list has type "list" */
     dec_ref(r);
     PASS();
 }
@@ -581,14 +596,26 @@ void test_ctr_arg_cdr(void) {
 /* === Truthiness tests === */
 
 void test_is_truthy_null(void) {
-    ASSERT(!is_truthy(NULL));
+    ASSERT(is_truthy(NULL));
     PASS();
 }
 
 void test_is_truthy_zero(void) {
     Obj* x = mk_int(0);
-    ASSERT(!is_truthy(x));
+    ASSERT(is_truthy(x));
     dec_ref(x);
+    PASS();
+}
+
+void test_is_truthy_false(void) {
+    ASSERT(!is_truthy(OMNI_FALSE));
+    PASS();
+}
+
+void test_is_truthy_nothing(void) {
+    Obj* n = mk_nothing();
+    ASSERT(!is_truthy(n));
+    dec_ref(n);
     PASS();
 }
 
@@ -651,6 +678,8 @@ void run_primitive_tests(void) {
     RUN_TEST(test_prim_eq_different);
     RUN_TEST(test_prim_not_truthy);
     RUN_TEST(test_prim_not_falsy);
+    RUN_TEST(test_prim_not_false);
+    RUN_TEST(test_prim_not_zero_truthy);
 
     /* Type predicates */
     RUN_TEST(test_prim_null_true);
@@ -688,6 +717,8 @@ void run_primitive_tests(void) {
     /* Truthiness */
     RUN_TEST(test_is_truthy_null);
     RUN_TEST(test_is_truthy_zero);
+    RUN_TEST(test_is_truthy_false);
+    RUN_TEST(test_is_truthy_nothing);
     RUN_TEST(test_is_truthy_nonzero);
     RUN_TEST(test_is_truthy_pair);
 }
