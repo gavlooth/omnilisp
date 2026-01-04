@@ -492,18 +492,7 @@ single-threaded case without semantic benefit.
 
 **GenRef - RWMutex Protected**
 
-```go
-type GenObj struct {
-    Generation Generation
-    mu         sync.RWMutex  // Protects generation checks
-}
-
-func (ref *GenRef) IsValid() bool {
-    ref.Target.mu.RLock()
-    defer ref.Target.mu.RUnlock()
-    return ref.RememberedGen == ref.Target.Generation
-}
-```
+[Go code removed]
 
 Multiple threads may share references to the same object. One thread might
 free an object while another checks validity - the RWMutex ensures safe
@@ -511,20 +500,7 @@ concurrent access.
 
 **Constraint - Lock-Free Atomics**
 
-```go
-type ConstraintObj struct {
-    ConstraintCount int32  // Atomic via sync/atomic
-}
-
-func (ref *ConstraintRef) Release() error {
-    // Atomic CAS prevents double-release
-    if !atomic.CompareAndSwapInt32(&ref.released, 0, 1) {
-        return fmt.Errorf("already released")
-    }
-    atomic.AddInt32(&ref.Target.ConstraintCount, -1)
-    return nil
-}
-```
+[Go code removed]
 
 Uses lock-free atomic operations for maximum performance. The CAS
 (compare-and-swap) pattern prevents double-release without locks.

@@ -257,22 +257,7 @@ For each phase:
 2. Add validation tests to `test/validation/`
 3. Verify output matches Go interpreter (reference)
 
-```go
-// Example test pattern
-func TestMatch(t *testing.T) {
-    code := "(match (cons 1 2) ((Cons h t) h) (_ 0))"
-
-    // Compile and run
-    result := compileAndRun(code)
-
-    // Compare with interpreter
-    expected := interpret(code)
-
-    if result != expected {
-        t.Errorf("match: got %v, want %v", result, expected)
-    }
-}
-```
+[Go code removed]
 
 ---
 

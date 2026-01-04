@@ -136,9 +136,6 @@ Week 5: Phase 9-10 (Runtime + Testing)
 ## Rollback Plan
 
 If issues arise, the shape analysis can be disabled by:
-```go
-// In compiler.go
-const USE_SHAPE_ANALYSIS = false // Toggle off
-```
+[Go code removed]
 
 This falls back to simple RC for everything (current behavior).

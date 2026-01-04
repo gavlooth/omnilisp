@@ -329,19 +329,7 @@ use(x);
 | V.3.3 | Property-based testing (QuickCheck-style) |
 
 **Test Harness**:
-```go
-func TestCompiledMatchesInterpreter(t *testing.T) {
-    tests := loadAllTestCases()
-    for _, tc := range tests {
-        interpResult := interpret(tc.Code)
-        compiledResult := compileAndRun(tc.Code)
-        if !equal(interpResult, compiledResult) {
-            t.Errorf("%s: interp=%v, compiled=%v",
-                tc.Name, interpResult, compiledResult)
-        }
-    }
-}
-```
+[Go code removed]
 
 ---
 

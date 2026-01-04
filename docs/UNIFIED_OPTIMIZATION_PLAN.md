@@ -596,59 +596,10 @@ IMPURE if:
 ```
 
 ### Implementation
-```go
-// pkg/analysis/purity.go
-type PurityAnalyzer struct {
-    KnownPure map[string]bool  // Built-in pure functions
-}
-
-func (a *PurityAnalyzer) IsPure(expr *ast.Value, env *PurityEnv) bool {
-    if expr == nil || ast.IsNil(expr) {
-        return true
-    }
-
-    switch expr.Tag {
-    case ast.TInt, ast.TFloat, ast.TChar, ast.TSym:
-        return true  // Literals are pure
-
-    case ast.TCell:
-        if ast.IsSym(expr.Car) {
-            op := expr.Car.Str
-
-            // Mutation operations are impure
-            if op == "set!" || op == "box-set!" ||
-               op == "chan-send!" || op == "atom-reset!" {
-                return false
-            }
-
-            // Check if known pure function
-            if a.KnownPure[op] {
-                return a.AllArgsPure(expr.Cdr, env)
-            }
-
-            // let/if/lambda - check body
-            if op == "let" || op == "if" || op == "lambda" {
-                return a.AnalyzeSpecialForm(op, expr.Cdr, env)
-            }
-        }
-        // Unknown call - conservatively impure
-        return false
-    }
-    return false
-}
-```
+[Go code removed]
 
 ### Codegen Impact
-```go
-func (g *CodeGenerator) GenerateAccess(varName string) string {
-    if g.purityCtx.IsPureContext() && g.purityCtx.IsReadOnly(varName) {
-        // Zero-cost: no IPGE check, no RC
-        return varName
-    }
-    // Normal access with safety
-    return g.GenerateSafeAccess(varName)
-}
-```
+[Go code removed]
 
 ## Phase 2: Scope Tethering (Vale-inspired)
 
@@ -706,14 +657,7 @@ Compiler tethers at scope entry for borrowed references:
 ## Phase 3: Lobster Ownership Modes (Enhanced)
 
 ### Ownership Classification
-```go
-type OwnershipMode int
-const (
-    OwnershipOwned    OwnershipMode = iota  // Caller owns, must free
-    OwnershipBorrowed                        // Temporary access, no RC
-    OwnershipConsumed                        // Ownership transfers to callee
-)
-```
+[Go code removed]
 
 ### Inference Rules
 ```
@@ -734,29 +678,7 @@ OWNED if:
 ```
 
 ### Codegen Impact
-```go
-func (g *CodeGenerator) GenerateCall(fn string, args []*ast.Value) string {
-    var argStrs []string
-    for i, arg := range args {
-        mode := g.ownershipCtx.GetParamMode(fn, i)
-        argStr := g.Generate(arg)
-
-        switch mode {
-        case OwnershipBorrowed:
-            // No RC operations
-            argStrs = append(argStrs, argStr)
-        case OwnershipConsumed:
-            // No inc_ref (ownership transfers)
-            argStrs = append(argStrs, argStr)
-            g.ownershipCtx.MarkTransferred(arg)
-        case OwnershipOwned:
-            // Normal RC
-            argStrs = append(argStrs, argStr)
-        }
-    }
-    return fmt.Sprintf("%s(%s)", fn, strings.Join(argStrs, ", "))
-}
-```
+[Go code removed]
 
 ## Phase 4: Perceus Reuse Analysis
 
@@ -777,28 +699,7 @@ Example:
 ```
 
 ### Implementation
-```go
-// pkg/analysis/reuse.go
-type ReuseAnalyzer struct {
-    PendingFrees map[string]*FreeInfo  // Variables about to be freed
-}
-
-type FreeInfo struct {
-    VarName  string
-    TypeSize int
-    Line     int
-}
-
-func (a *ReuseAnalyzer) FindReuseCandidate(allocType string, size int) *FreeInfo {
-    for _, info := range a.PendingFrees {
-        if info.TypeSize == size {
-            delete(a.PendingFrees, info.VarName)
-            return info
-        }
-    }
-    return nil
-}
-```
+[Go code removed]
 
 ### Codegen
 ```c

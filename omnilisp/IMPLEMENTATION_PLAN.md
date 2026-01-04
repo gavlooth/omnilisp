@@ -132,73 +132,11 @@ src/runtime/include/omnilisp.h  # Expose omni_read()
 
 ### 2.1 New Value Tags
 
-```go
-const (
-    // Existing
-    TInt Tag = iota
-    TSym
-    TCell
-    TNil
-    TPrim
-    TMenv
-    TCode
-    TLambda
-    TRecLambda
-    TError
-    TChar
-    TFloat
-    TBox
-    TCont
-    TChan
-    TGreenChan
-    TAtom
-    TThread
-    TProcess
-    TUserType
-
-    // New for OmniLisp
-    TArray       // Mutable array [1 2 3]
-    TDict        // Dictionary #{:a 1}
-    TTuple       // Immutable tuple (tuple 1 2 3)
-    TNamedTuple  // Named tuple (named-tuple [x 1] [y 2])
-    TNothing     // Unit value (distinct from empty list)
-    TTypeAnnot   // Type annotation {Int}
-    TStruct      // Struct instance
-    TEnum        // Enum variant
-    TInterface   // Interface/protocol
-    TMethod      // Method (dispatch table entry)
-    TGeneric     // Generic function
-)
-```
+[Go code removed]
 
 ### 2.2 Value Struct Extensions
 
-```go
-type Value struct {
-    // ... existing fields ...
-
-    // TArray
-    ArrayData []*Value
-
-    // TDict
-    DictData map[*Value]*Value  // Key-value pairs
-
-    // TTuple, TNamedTuple
-    TupleData   []*Value
-    TupleNames  []string  // For named tuples
-
-    // TStruct, TEnum
-    TypeName    string
-    TypeFields  map[string]*Value
-    EnumTag     string  // For enum variants
-
-    // TTypeAnnot
-    TypeParams  []*Value  // For parametric types {Array Int}
-
-    // TGeneric, TMethod
-    MethodTable map[string]*Value  // Type signature -> method
-}
-```
+[Go code removed]
 
 ### 2.3 Files to Modify
 
@@ -229,122 +167,19 @@ pkg/ast/types.go      # New file for type system structures
 
 ### 3.2 Match as Special Form
 
-```go
-// (match value
-//   [pattern1 result1]
-//   [pattern2 :when guard result2]
-//   [else default])
-
-func evalMatch(expr, menv *Value) *Value {
-    value := Eval(expr.Cdr.Car, menv)  // Evaluate scrutinee
-    branches := expr.Cdr.Cdr           // Branch list
-
-    for branch := branches; !IsNil(branch); branch = branch.Cdr {
-        // branch.Car is [pattern result] or [pattern :when guard result]
-        branchData := branch.Car  // Array value
-        pattern := branchData.ArrayData[0]
-
-        if len(branchData.ArrayData) == 4 {
-            // Has guard: [pattern :when guard result]
-            guard := branchData.ArrayData[2]
-            result := branchData.ArrayData[3]
-            // ...
-        } else {
-            // Simple: [pattern result]
-            result := branchData.ArrayData[1]
-            // ...
-        }
-    }
-}
-```
+[Go code removed]
 
 ### 3.3 Pattern Matching Implementation
 
-```go
-// Pattern types to support
-type PatternKind int
-const (
-    PatWildcard  // _
-    PatVariable  // x (binds value)
-    PatLiteral   // 1, "str", :sym
-    PatArray     // [p1 p2 ...]
-    PatRest      // [head .. tail]
-    PatList      // (list p1 p2)
-    PatCons      // (cons h t)
-    PatTuple     // (tuple p1 p2)
-    PatStruct    // (TypeName p1 p2)
-    PatOr        // (or p1 p2)
-    PatAnd       // (and p1 p2)
-    PatNot       // (not p)
-    PatSatisfies // (satisfies pred)
-    PatAs        // (as pattern name)
-)
-
-func matchPattern(pattern, value *Value, bindings map[string]*Value) bool {
-    // ...
-}
-```
+[Go code removed]
 
 ### 3.4 Multiple Dispatch
 
-```go
-// Generic function registry
-type GenericFn struct {
-    Name    string
-    Methods []*Method
-}
-
-type Method struct {
-    TypeSig   []string  // Parameter types
-    Impl      *Value    // Lambda implementation
-}
-
-// Dispatch algorithm
-func dispatchGeneric(gf *GenericFn, args []*Value) *Value {
-    // 1. Get runtime types of all arguments
-    types := make([]string, len(args))
-    for i, arg := range args {
-        types[i] = typeOf(arg)
-    }
-
-    // 2. Find applicable methods
-    applicable := findApplicable(gf.Methods, types)
-
-    // 3. Sort by specificity
-    sorted := sortBySpecificity(applicable)
-
-    // 4. Call most specific
-    return callMethod(sorted[0], args)
-}
-```
+[Go code removed]
 
 ### 3.5 Type System
 
-```go
-// Type hierarchy
-type TypeHierarchy struct {
-    Abstracts map[string]*AbstractType
-    Concretes map[string]*ConcreteType
-    Parametrics map[string]*ParametricType
-}
-
-type AbstractType struct {
-    Name   string
-    Parent string  // Parent abstract type
-}
-
-type ConcreteType struct {
-    Name   string
-    Parent string  // Parent abstract or concrete
-    Fields []TypeField
-    Mutable bool
-}
-
-// Check subtype relationship
-func isSubtype(child, parent string) bool {
-    // ...
-}
-```
+[Go code removed]
 
 ### 3.6 Files to Modify
 
@@ -362,43 +197,7 @@ pkg/eval/primitives.go  # Update primitives
 
 ### 4.1 Unified Define Syntax
 
-```go
-// (define x 10)                           -> value
-// (define (f x y) body)                   -> function
-// (define (f [x {Int}] [y {Int}]) {Int} body) -> typed function
-// (define {abstract Animal} Any)          -> abstract type
-// (define {struct Point Any} [x {Float}] [y {Float}]) -> struct
-// (define {enum Option T} (Some [v {T}]) None) -> enum
-// (define {interface Drawable} ...)       -> interface
-// (define [method area Circle] (c) ...)   -> method
-// (define [macro unless] (cond body) ...) -> macro
-
-func evalDefine(args, menv *Value) *Value {
-    first := args.Car
-
-    switch {
-    case IsSym(first):
-        // (define name value)
-        return defineValue(first, args.Cdr.Car, menv)
-
-    case IsCell(first):
-        // (define (name params...) body)
-        return defineFunction(first, args.Cdr, menv)
-
-    case IsTypeLit(first):
-        // (define {abstract/struct/enum/interface ...} ...)
-        return defineType(first, args.Cdr, menv)
-
-    case IsArray(first) && first.ArrayData[0].Str == "method":
-        // (define [method name Type] ...)
-        return defineMethod(first, args.Cdr, menv)
-
-    case IsArray(first) && first.ArrayData[0].Str == "macro":
-        // (define [macro name] ...)
-        return defineMacro(first, args.Cdr, menv)
-    }
-}
-```
+[Go code removed]
 
 ---
 
@@ -406,30 +205,7 @@ func evalDefine(args, menv *Value) *Value {
 
 ### 5.1 Let Modifiers
 
-```go
-// (let [x 1 y 2] body)           -> parallel binding
-// (let :seq [x 1 y (+ x 1)] body) -> sequential
-// (let :rec [even? ... odd? ...] body) -> recursive
-// (let loop [i 0 acc 0] body)    -> named let (loop form)
-// (let :seq loop [i 0] body)     -> combined
-
-func evalLet(args, menv *Value) *Value {
-    // Parse modifiers
-    modifiers := parseLetModifiers(args)
-    bindings := modifiers.Bindings  // Array value
-    body := modifiers.Body
-    name := modifiers.Name  // For named let
-
-    switch modifiers.Mode {
-    case LetParallel:
-        return evalLetParallel(bindings, body, menv)
-    case LetSequential:
-        return evalLetSeq(bindings, body, menv)
-    case LetRecursive:
-        return evalLetRec(bindings, body, menv)
-    }
-}
-```
+[Go code removed]
 
 ---
 
@@ -437,36 +213,11 @@ func evalLet(args, menv *Value) *Value {
 
 ### 6.1 Syntax Objects
 
-```go
-// Syntax object wraps datum with lexical context
-type SyntaxObject struct {
-    Datum   *Value
-    Context *MacroContext
-}
-
-type MacroContext struct {
-    DefinitionEnv *Value  // Where macro was defined
-    UseEnv        *Value  // Where macro is used
-    Marks         []int   // Hygiene marks
-}
-```
+[Go code removed]
 
 ### 6.2 Macro Expansion
 
-```go
-// (define [macro unless] (cond body)
-//   #'(if (not ~cond) ~body nothing))
-
-// #' = syntax quote (preserves lexical context)
-// ~  = unquote (evaluate and insert)
-// ~@ = unquote-splicing
-
-func expandMacro(macro *Macro, args []*Value, useMenv *Value) *Value {
-    // 1. Bind parameters to arguments (as syntax objects)
-    // 2. Evaluate transformer body in macro's definition env
-    // 3. Return expanded syntax
-}
-```
+[Go code removed]
 
 ---
 
@@ -474,22 +225,7 @@ func expandMacro(macro *Macro, args []*Value, useMenv *Value) *Value {
 
 ### 7.1 Module Structure
 
-```go
-type Module struct {
-    Name    string
-    Exports []string
-    Bindings map[string]*Value
-    Imports  []*Import
-}
-
-type Import struct {
-    Module string
-    Only   []string  // :only
-    Except []string  // :except
-    As     string    // :as (prefix)
-    Refer  []string  // :refer (bring into scope)
-}
-```
+[Go code removed]
 
 ### 7.2 Module Forms
 
@@ -513,25 +249,11 @@ type Import struct {
 
 ### 8.1 Green Threads
 
-```go
-// Existing scheduler can be reused
-// Just update API to match OmniLisp
-
-// (spawn thunk)    -> process
-// (yield)          -> cooperative yield
-// (park)           -> suspend
-// (unpark p value) -> resume
-```
+[Go code removed]
 
 ### 8.2 Channels
 
-```go
-// (channel)    -> unbuffered channel
-// (channel n)  -> buffered channel
-// (send ch v)  -> send (blocks if full)
-// (recv ch)    -> receive (blocks if empty)
-// (close ch)   -> close channel
-```
+[Go code removed]
 
 ---
 

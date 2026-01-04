@@ -282,7 +282,7 @@
   How to verify: `rg -n "\bnil\b" *.md docs omnilisp` shows only Go code and design notes.
   Acceptance:
     - All OmniLisp code examples use `()` for empty list and `nothing` for unit.
-    - Go code `nil` references preserved (correct syntax).
+    - All Go code removed from documentation.
     - Design docs correctly state "no nil" philosophy.
 
 ## Scientific Computing (BLAS & Torch)

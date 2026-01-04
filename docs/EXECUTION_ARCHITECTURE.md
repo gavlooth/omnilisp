@@ -210,41 +210,7 @@ Integrate libtcc for JIT execution.
 - cgo for Go bindings
 
 **Integration:**
-```go
-// pkg/jit/jit.go
-package jit
-
-/*
-#cgo LDFLAGS: -ltcc
-#include <libtcc.h>
-*/
-import "C"
-
-type JIT struct {
-    runtime *C.TCCState  // Pre-compiled runtime
-}
-
-func New() *JIT {
-    j := &JIT{}
-    j.runtime = C.tcc_new()
-    C.tcc_compile_string(j.runtime, runtimeCode)
-    C.tcc_relocate(j.runtime, C.TCC_RELOCATE_AUTO)
-    return j
-}
-
-func (j *JIT) Execute(userCode string) (interface{}, error) {
-    state := C.tcc_new()
-    // Add runtime symbols
-    C.tcc_add_symbol(state, "mk_int", C.tcc_get_symbol(j.runtime, "mk_int"))
-    // ... add all runtime symbols
-
-    C.tcc_compile_string(state, userCode)
-    C.tcc_relocate(state, C.TCC_RELOCATE_AUTO)
-
-    main := C.tcc_get_symbol(state, "main")
-    // Call main and get result
-}
-```
+[Go code removed]
 
 ### Phase 5: Cached Compilation (Priority: MEDIUM)
 
@@ -278,21 +244,7 @@ Once JIT is stable, deprecate Go interpreter.
 4. Eventually remove pkg/eval
 
 **Execution routing:**
-```go
-func Execute(source string, mode ExecutionMode) Result {
-    ast := parser.Parse(source)
-
-    switch mode {
-    case ModeAOT:
-        return aot.CompileAndRun(ast)
-    case ModeJIT:
-        return jit.CompileAndRun(ast)
-    case ModeJITCached:
-        return jit.CompileAndRunCached(ast)
-    // No more Go interpreter!
-    }
-}
-```
+[Go code removed]
 
 ## File Structure (Target)
 

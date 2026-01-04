@@ -38,21 +38,7 @@ Mark functions/blocks as "pure" to indicate they only READ existing data. The co
 
 ### Implementation
 
-```go
-// In analysis/pure.go
-type PureContext struct {
-    PureDepth int              // Current pure block nesting
-    FrozenVars map[string]bool // Variables frozen in current pure scope
-}
-
-func (ctx *PureContext) IsPure() bool {
-    return ctx.PureDepth > 0
-}
-
-func (ctx *PureContext) IsFrozen(varName string) bool {
-    return ctx.FrozenVars[varName]
-}
-```
+[Go code removed]
 
 ```c
 // In runtime - pure functions skip all checks
@@ -66,37 +52,7 @@ Obj* analyze_world_pure(Obj* world) {
 
 ### Codegen Changes
 
-```go
-// In codegen.go
-func (g *CodeGenerator) GeneratePureBlock(body *ast.Value, frozenVars []string) string {
-    // Mark all frozenVars as read-only
-    g.pureCtx.PureDepth++
-    for _, v := range frozenVars {
-        g.pureCtx.FrozenVars[v] = true
-    }
-
-    // Generate body - all accesses to frozen vars are zero-cost
-    code := g.Generate(body)
-
-    // Restore context
-    g.pureCtx.PureDepth--
-    for _, v := range frozenVars {
-        delete(g.pureCtx.FrozenVars, v)
-    }
-
-    return code
-}
-
-// In access generation
-func (g *CodeGenerator) GenerateVarAccess(varName string) string {
-    if g.pureCtx.IsFrozen(varName) {
-        // Zero-cost access - no IPGE check, no RC
-        return varName
-    }
-    // Normal access with safety checks
-    return fmt.Sprintf("safe_deref(%s_ref)", varName)
-}
-```
+[Go code removed]
 
 ## Phase 2: Scope Tethering (COMPLETE)
 
@@ -231,20 +187,7 @@ static RegionRef region_ref_create(Obj* obj, int current_height) {
 
 ### Codegen Context
 
-```go
-type RegionContext struct {
-    CurrentHeight int
-}
-
-func (ctx *RegionContext) EnterPure() int {
-    ctx.CurrentHeight++
-    return ctx.CurrentHeight
-}
-
-func (ctx *RegionContext) ExitPure() {
-    ctx.CurrentHeight--
-}
-```
+[Go code removed]
 
 ## Phase 5: Enhanced RC Elimination (95% Target)
 
@@ -254,39 +197,15 @@ OmniLisp's Lobster-style RC optimization achieves ~75% elimination.
 ### Additional Techniques from Vale
 
 **1. Definitely-Unique Tracking**
-```go
-// In analysis/rcopt.go
-type Uniqueness int
-const (
-    UniquenessUnknown Uniqueness = iota
-    UniquenessDefinitelyUnique    // Skip ALL RC
-    UniquenessDefinitelyShared    // Must do RC
-)
-
-func (ctx *RCOptContext) GetUniqueness(varName string) Uniqueness {
-    // Track through dataflow analysis
-    ...
-}
-```
+[Go code removed]
 
 **2. Pure Parameter Optimization**
 Parameters to pure functions never need RC operations:
-```go
-func (g *CodeGenerator) GeneratePureFunctionCall(fn, args) string {
-    // No inc_ref on arguments - they're borrowed read-only
-    // No dec_ref after call - ownership unchanged
-    return fmt.Sprintf("%s(%s)", fn, strings.Join(args, ", "))
-}
-```
+[Go code removed]
 
 **3. Known-Lifetime Elision**
 If we can prove a reference doesn't outlive its target:
-```go
-func (ctx *RCOptContext) LifetimeContained(ref, target string) bool {
-    // ref's scope ends before target's scope
-    return ctx.scopeEnd[ref] <= ctx.scopeEnd[target]
-}
-```
+[Go code removed]
 
 ## Implementation Priority
 
