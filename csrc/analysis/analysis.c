@@ -176,6 +176,10 @@ void omni_analysis_free(AnalysisContext* ctx) {
     free_thread_locality(ctx->thread_locality);
     free_thread_spawns(ctx->thread_spawns);
     free_channel_ops(ctx->channel_ops);
+    if (ctx->type_registry) {
+        omni_type_registry_free(ctx->type_registry);
+    }
+    omni_free_constructor_owners(ctx);
     free(ctx);
 }
 
@@ -706,7 +710,7 @@ void omni_analyze_ownership(AnalysisContext* ctx, OmniValue* expr) {
 
 /* Back-edge field name patterns (heuristic detection) */
 static const char* back_edge_patterns[] = {
-    "parent", "prev", "previous", "back", "up", "owner",
+    "parent", "prev", "previous", "back", "up", "owner", "container",
     NULL
 };
 
@@ -3013,4 +3017,476 @@ void omni_analyze_concurrency(AnalysisContext* ctx, OmniValue* expr) {
     for (OmniValue* rest = omni_cdr(expr); omni_is_cell(rest); rest = omni_cdr(rest)) {
         omni_analyze_concurrency(ctx, omni_car(rest));
     }
+}
+
+/* ============== Type Registry Implementation ============== */
+
+TypeRegistry* omni_type_registry_new(void) {
+    TypeRegistry* reg = malloc(sizeof(TypeRegistry));
+    if (!reg) return NULL;
+    memset(reg, 0, sizeof(TypeRegistry));
+    return reg;
+}
+
+void omni_type_registry_free(TypeRegistry* reg) {
+    if (!reg) return;
+
+    /* Free types */
+    TypeDef* t = reg->types;
+    while (t) {
+        TypeDef* next = t->next;
+        free(t->name);
+        for (size_t i = 0; i < t->field_count; i++) {
+            free(t->fields[i].name);
+            free(t->fields[i].type_name);
+        }
+        free(t->fields);
+        free(t);
+        t = next;
+    }
+
+    /* Free edges */
+    OwnershipEdge* e = reg->edges;
+    while (e) {
+        OwnershipEdge* next = e->next;
+        free(e->from_type);
+        free(e->from_field);
+        free(e->to_type);
+        free(e);
+        e = next;
+    }
+
+    free(reg);
+}
+
+static TypeDef* find_or_create_type_def(TypeRegistry* reg, const char* name) {
+    for (TypeDef* t = reg->types; t; t = t->next) {
+        if (strcmp(t->name, name) == 0) return t;
+    }
+
+    TypeDef* t = malloc(sizeof(TypeDef));
+    memset(t, 0, sizeof(TypeDef));
+    t->name = strdup(name);
+    t->field_capacity = 8;
+    t->fields = malloc(t->field_capacity * sizeof(TypeField));
+    t->next = reg->types;
+    reg->types = t;
+    reg->type_count++;
+    return t;
+}
+
+TypeDef* omni_register_type(AnalysisContext* ctx, OmniValue* type_def) {
+    /*
+     * Expected form: (deftype TypeName
+     *                   (field1 Type1)
+     *                   (field2 Type2 :weak)
+     *                   ...)
+     * or: (defstruct TypeName ...)
+     */
+    if (!ctx->type_registry) {
+        ctx->type_registry = omni_type_registry_new();
+    }
+
+    if (!omni_is_cell(type_def)) return NULL;
+
+    OmniValue* head = omni_car(type_def);
+    if (!omni_is_sym(head)) return NULL;
+
+    const char* form = head->str_val;
+    if (strcmp(form, "deftype") != 0 && strcmp(form, "defstruct") != 0) {
+        return NULL;
+    }
+
+    OmniValue* rest = omni_cdr(type_def);
+    if (!omni_is_cell(rest)) return NULL;
+
+    /* Get type name */
+    OmniValue* name_val = omni_car(rest);
+    if (!omni_is_sym(name_val)) return NULL;
+    const char* type_name = name_val->str_val;
+
+    TypeDef* type = find_or_create_type_def(ctx->type_registry, type_name);
+
+    /* Parse fields */
+    OmniValue* fields = omni_cdr(rest);
+    int field_idx = 0;
+
+    while (omni_is_cell(fields)) {
+        OmniValue* field_def = omni_car(fields);
+
+        if (omni_is_cell(field_def)) {
+            OmniValue* field_name_val = omni_car(field_def);
+
+            if (omni_is_sym(field_name_val)) {
+                const char* field_name = field_name_val->str_val;
+                const char* field_type = NULL;
+                FieldStrength strength = FIELD_STRONG;
+                bool is_mutable = true;
+
+                /* Parse field type and modifiers */
+                OmniValue* field_rest = omni_cdr(field_def);
+                if (omni_is_cell(field_rest)) {
+                    OmniValue* ft = omni_car(field_rest);
+                    if (omni_is_sym(ft)) {
+                        field_type = ft->str_val;
+                    }
+
+                    /* Check for modifiers like :weak, :borrowed, :immutable */
+                    OmniValue* mods = omni_cdr(field_rest);
+                    while (omni_is_cell(mods)) {
+                        OmniValue* mod = omni_car(mods);
+                        if (omni_is_sym(mod) || omni_is_keyword(mod)) {
+                            const char* mod_str = mod->str_val;
+                            if (strcmp(mod_str, ":weak") == 0 || strcmp(mod_str, "weak") == 0) {
+                                strength = FIELD_WEAK;
+                            } else if (strcmp(mod_str, ":borrowed") == 0 || strcmp(mod_str, "borrowed") == 0) {
+                                strength = FIELD_BORROWED;
+                            } else if (strcmp(mod_str, ":immutable") == 0 || strcmp(mod_str, "immutable") == 0) {
+                                is_mutable = false;
+                            }
+                        }
+                        mods = omni_cdr(mods);
+                    }
+                }
+
+                /* Auto-detect back-edge by naming convention if not explicitly weak */
+                if (strength == FIELD_STRONG && is_back_edge_name(field_name)) {
+                    strength = FIELD_WEAK;
+                }
+
+                omni_type_add_field(type, field_name, field_type, strength, is_mutable);
+                field_idx++;
+            }
+        }
+
+        fields = omni_cdr(fields);
+    }
+
+    /* Also run shape analysis */
+    omni_analyze_shape(ctx, type_def);
+
+    return type;
+}
+
+TypeDef* omni_get_type(AnalysisContext* ctx, const char* name) {
+    if (!ctx->type_registry) return NULL;
+
+    for (TypeDef* t = ctx->type_registry->types; t; t = t->next) {
+        if (strcmp(t->name, name) == 0) return t;
+    }
+    return NULL;
+}
+
+TypeField* omni_get_type_field(TypeDef* type, const char* field_name) {
+    if (!type) return NULL;
+
+    for (size_t i = 0; i < type->field_count; i++) {
+        if (strcmp(type->fields[i].name, field_name) == 0) {
+            return &type->fields[i];
+        }
+    }
+    return NULL;
+}
+
+void omni_type_add_field(TypeDef* type, const char* name, const char* field_type,
+                         FieldStrength strength, bool is_mutable) {
+    if (!type) return;
+
+    if (type->field_count >= type->field_capacity) {
+        type->field_capacity *= 2;
+        type->fields = realloc(type->fields, type->field_capacity * sizeof(TypeField));
+    }
+
+    TypeField* f = &type->fields[type->field_count];
+    f->name = strdup(name);
+    f->type_name = field_type ? strdup(field_type) : NULL;
+    f->strength = strength;
+    f->is_mutable = is_mutable;
+    f->index = (int)type->field_count;
+    type->field_count++;
+}
+
+void omni_build_ownership_graph(AnalysisContext* ctx) {
+    if (!ctx->type_registry) return;
+    if (ctx->type_registry->graph_built) return;
+
+    TypeRegistry* reg = ctx->type_registry;
+
+    /* Build edges from each type's fields */
+    for (TypeDef* t = reg->types; t; t = t->next) {
+        for (size_t i = 0; i < t->field_count; i++) {
+            TypeField* f = &t->fields[i];
+            if (!f->type_name) continue;
+
+            /* Check if field type is a registered type */
+            TypeDef* target = omni_get_type(ctx, f->type_name);
+            if (!target) continue;
+
+            /* Add edge */
+            OwnershipEdge* e = malloc(sizeof(OwnershipEdge));
+            e->from_type = strdup(t->name);
+            e->from_field = strdup(f->name);
+            e->to_type = strdup(f->type_name);
+            e->is_back_edge = (f->strength == FIELD_WEAK);
+            e->next = reg->edges;
+            reg->edges = e;
+        }
+    }
+
+    reg->graph_built = true;
+}
+
+/* DFS state for cycle detection */
+typedef struct {
+    char** visited;
+    size_t visited_count;
+    char** stack;
+    size_t stack_count;
+} CycleDetectState;
+
+static bool in_array(const char* name, char** arr, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        if (strcmp(arr[i], name) == 0) return true;
+    }
+    return false;
+}
+
+static bool dfs_find_cycle(AnalysisContext* ctx, const char* type_name, CycleDetectState* state) {
+    if (in_array(type_name, state->stack, state->stack_count)) {
+        return true;  /* Cycle found */
+    }
+
+    if (in_array(type_name, state->visited, state->visited_count)) {
+        return false;  /* Already processed */
+    }
+
+    /* Push to stack */
+    state->stack = realloc(state->stack, (state->stack_count + 1) * sizeof(char*));
+    state->stack[state->stack_count++] = (char*)type_name;
+
+    /* Visit neighbors */
+    for (OwnershipEdge* e = ctx->type_registry->edges; e; e = e->next) {
+        if (strcmp(e->from_type, type_name) == 0 && !e->is_back_edge) {
+            if (dfs_find_cycle(ctx, e->to_type, state)) {
+                return true;
+            }
+        }
+    }
+
+    /* Pop from stack */
+    state->stack_count--;
+
+    /* Mark visited */
+    state->visited = realloc(state->visited, (state->visited_count + 1) * sizeof(char*));
+    state->visited[state->visited_count++] = (char*)type_name;
+
+    return false;
+}
+
+void omni_analyze_back_edges(AnalysisContext* ctx) {
+    if (!ctx->type_registry) return;
+    if (ctx->type_registry->back_edges_analyzed) return;
+
+    omni_build_ownership_graph(ctx);
+
+    TypeRegistry* reg = ctx->type_registry;
+
+    /* For each type, check if removing weak edges prevents cycles */
+    for (TypeDef* t = reg->types; t; t = t->next) {
+        CycleDetectState state = {0};
+
+        /* Check if type participates in cycles */
+        if (dfs_find_cycle(ctx, t->name, &state)) {
+            t->has_cycles = true;
+            t->shape = SHAPE_CYCLIC;
+
+            /* Mark second reference to same type as back-edge */
+            int same_type_count = 0;
+            for (size_t i = 0; i < t->field_count; i++) {
+                TypeField* f = &t->fields[i];
+                if (f->type_name && strcmp(f->type_name, t->name) == 0) {
+                    same_type_count++;
+                    if (same_type_count > 1 && f->strength == FIELD_STRONG) {
+                        /* Mark as back-edge */
+                        f->strength = FIELD_WEAK;
+
+                        /* Update shape info */
+                        ShapeInfo* shape = find_or_create_shape_info(ctx, t->name);
+                        add_back_edge_field(shape, f->name);
+
+                        /* Update edge in graph */
+                        for (OwnershipEdge* e = reg->edges; e; e = e->next) {
+                            if (strcmp(e->from_type, t->name) == 0 &&
+                                strcmp(e->from_field, f->name) == 0) {
+                                e->is_back_edge = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        free(state.visited);
+        free(state.stack);
+    }
+
+    reg->back_edges_analyzed = true;
+}
+
+bool omni_is_weak_field(AnalysisContext* ctx, const char* type_name, const char* field_name) {
+    TypeDef* type = omni_get_type(ctx, type_name);
+    if (!type) return false;
+
+    TypeField* field = omni_get_type_field(type, field_name);
+    if (!field) return false;
+
+    return field->strength == FIELD_WEAK;
+}
+
+FieldStrength omni_get_field_strength(AnalysisContext* ctx, const char* type_name,
+                                       const char* field_name) {
+    TypeDef* type = omni_get_type(ctx, type_name);
+    if (!type) return FIELD_STRONG;
+
+    TypeField* field = omni_get_type_field(type, field_name);
+    if (!field) return FIELD_STRONG;
+
+    return field->strength;
+}
+
+const char* omni_field_strength_name(FieldStrength strength) {
+    switch (strength) {
+        case FIELD_STRONG: return "strong";
+        case FIELD_WEAK: return "weak";
+        case FIELD_BORROWED: return "borrowed";
+        default: return "unknown";
+    }
+}
+
+/* ============== Constructor-Level Ownership Tracking ============== */
+
+void omni_register_constructor_owner(AnalysisContext* ctx, const char* var_name,
+                                      const char* type_name, int pos) {
+    if (!ctx || !var_name || !type_name) return;
+
+    ConstructorOwnership* owner = malloc(sizeof(ConstructorOwnership));
+    owner->var_name = strdup(var_name);
+    owner->type_name = strdup(type_name);
+    owner->construct_pos = pos;
+    owner->scope_id = ctx->next_scope_id;
+    owner->is_primary_owner = true;
+    owner->next = ctx->constructor_owners;
+    ctx->constructor_owners = owner;
+}
+
+bool omni_is_primary_owner(AnalysisContext* ctx, const char* var_name) {
+    if (!ctx || !var_name) return false;
+
+    for (ConstructorOwnership* o = ctx->constructor_owners; o; o = o->next) {
+        if (strcmp(o->var_name, var_name) == 0) {
+            return o->is_primary_owner;
+        }
+    }
+    return false;
+}
+
+const char* omni_get_constructed_type(AnalysisContext* ctx, const char* var_name) {
+    if (!ctx || !var_name) return NULL;
+
+    for (ConstructorOwnership* o = ctx->constructor_owners; o; o = o->next) {
+        if (strcmp(o->var_name, var_name) == 0) {
+            return o->type_name;
+        }
+    }
+    return NULL;
+}
+
+void omni_register_field_assignment(AnalysisContext* ctx, const char* target_var,
+                                     const char* field_name, const char* value_var,
+                                     int pos) {
+    if (!ctx || !target_var || !field_name) return;
+
+    FieldAssignment* assign = malloc(sizeof(FieldAssignment));
+    assign->target_var = strdup(target_var);
+    assign->field_name = strdup(field_name);
+    assign->value_var = value_var ? strdup(value_var) : NULL;
+    assign->assign_pos = pos;
+    assign->is_back_edge = omni_is_back_edge_pattern(field_name);
+    assign->is_weak_assign = false;
+
+    /* Check if this should be a weak assignment:
+     * 1. Field is a back-edge pattern, OR
+     * 2. Value is already owned by another variable
+     */
+    if (assign->is_back_edge) {
+        assign->is_weak_assign = true;
+    } else if (value_var) {
+        /* Check if value_var is already owned by someone else */
+        for (ConstructorOwnership* o = ctx->constructor_owners; o; o = o->next) {
+            if (strcmp(o->var_name, value_var) == 0 && o->is_primary_owner) {
+                /* value_var is already owned - this should be a weak reference */
+                assign->is_weak_assign = true;
+                break;
+            }
+        }
+    }
+
+    assign->next = ctx->field_assignments;
+    ctx->field_assignments = assign;
+}
+
+bool omni_is_weak_assignment(AnalysisContext* ctx, const char* target_var,
+                              const char* field_name, const char* value_var) {
+    if (!ctx) return false;
+
+    /* First check if we've already analyzed this assignment */
+    for (FieldAssignment* a = ctx->field_assignments; a; a = a->next) {
+        if (strcmp(a->target_var, target_var) == 0 &&
+            strcmp(a->field_name, field_name) == 0) {
+            if (a->value_var && value_var && strcmp(a->value_var, value_var) == 0) {
+                return a->is_weak_assign;
+            }
+        }
+    }
+
+    /* Otherwise, check the rules directly */
+    if (omni_is_back_edge_pattern(field_name)) {
+        return true;
+    }
+
+    if (value_var && omni_is_primary_owner(ctx, value_var)) {
+        return true;
+    }
+
+    return false;
+}
+
+static void free_constructor_ownership(ConstructorOwnership* owner) {
+    while (owner) {
+        ConstructorOwnership* next = owner->next;
+        free(owner->var_name);
+        free(owner->type_name);
+        free(owner);
+        owner = next;
+    }
+}
+
+static void free_field_assignments(FieldAssignment* assign) {
+    while (assign) {
+        FieldAssignment* next = assign->next;
+        free(assign->target_var);
+        free(assign->field_name);
+        free(assign->value_var);
+        free(assign);
+        assign = next;
+    }
+}
+
+void omni_free_constructor_owners(AnalysisContext* ctx) {
+    if (!ctx) return;
+    free_constructor_ownership(ctx->constructor_owners);
+    ctx->constructor_owners = NULL;
+    free_field_assignments(ctx->field_assignments);
+    ctx->field_assignments = NULL;
 }

@@ -35,31 +35,51 @@ All 11 planned memory optimizations are **COMPLETE** (as of 2026-01-03):
 
 **Total: 65+ tests in `csrc/tests/`**
 
-## Roadmap: Post‑11 Enhancements (ASAP‑Compatible)
+## Roadmap: Post‑11 Enhancements (ASAP‑Compatible) ✅ ALL COMPLETE
 
-These are **optional** future enhancements that do **not** impose language restrictions
-and do **not** introduce stop‑the‑world GC. They build on the existing ASAP‑first base.
-Detailed sketches live in `docs/UNIFIED_OPTIMIZATION_PLAN.md`.
+All 5 post-11 enhancements have been **implemented and tested** (as of 2026-01-04).
+These do **not** impose language restrictions and do **not** introduce stop‑the‑world GC.
 
-12) **Linear/Offset Regions for Serialization & FFI**
-   - Add a region mode where pointers are stored as offsets; deref applies an adjuster.
-   - Useful for zero‑copy serialization buffers and FFI blobs.
+| # | Enhancement | Tests | Status |
+|---|-------------|-------|--------|
+| 12 | Linear/Offset Regions for FFI | 17 | ✅ |
+| 13 | Pluggable Region Backends (IRegion vtable) | 17 | ✅ |
+| 14 | Weak Ref Control Blocks | 21 | ✅ |
+| 15 | Transmigration/Isolation on Region Escape | 17 | ✅ |
+| 16 | External Handle Indexing (FFI + Determinism) | 27 | ✅ |
 
-13) **Pluggable Region Backends (IRegion‑style)**
-   - Runtime exposes a small region vtable (`alloc`, `free`, `deref`, `scan`).
-   - Compiler selects backend per allocation site (arena / pool / rc / unsafe) without user annotations.
+**Total: 99 new tests in `runtime/tests/`**
 
-14) **Weak Ref Control Blocks (Merge‑friendly)**
-   - Weak refs point to a stable control block; free sets `cb->ptr = NULL`.
-   - Region merges become no‑ops; arenas can bulk‑invalidate.
+### 12) Linear/Offset Regions for Serialization & FFI ✅
+- `OffsetRegion` stores pointers as 32-bit offsets; `offset_to_ptr()` applies adjuster
+- `LinearRegion` for fixed-capacity bump allocation
+- Supports serialization (`offset_region_serialize`) and deserialization
+- Zero-copy buffer sharing for FFI blobs
 
-15) **Transmigration / Isolation on Region Escape**
-   - When values escape a temporary region, isolate by generation‑offset or copy‑out.
-   - Prevents stale cross‑region borrows without global scans.
+### 13) Pluggable Region Backends (IRegion vtable) ✅
+- `IRegionVtable` with function pointers: `alloc`, `free_one`, `free_all`, `remaining`, `freeze`, `is_frozen`, `kind`, `clone`, `serialize`, `stats`
+- Four backends: Arena (growing), Linear (fixed), Offset (serializable), Pool (fixed-size slots)
+- `IREGION_ALLOC()` and `IREGION_ALLOC_ARRAY()` convenience macros
 
-16) **External Handle Indexing (FFI + Determinism)**
-   - Stable handle table (index+generation) for FFI or record/replay.
-   - Avoids exposing raw addresses and supports deterministic mapping.
+### 14) Weak Ref Control Blocks ✅
+- `WeakControlBlock` with target pointer, atomic weak_count, generation, destructor
+- `WeakHandle` for user-facing weak references with O(1) validity check
+- `WeakRefTable` for table-based O(1) invalidation
+- ABA protection via generation counters
+- `weak_table_global()` for convenient global table access
+
+### 15) Transmigration/Isolation on Region Escape ✅
+- `TransmigrationContext` with hash map for source→destination object mapping
+- `transmigrate()` for deep-copying object graphs between regions
+- `check_isolation()` to verify object graph containment in region
+- `RegionBoundRef` for region-validity-checked references
+
+### 16) External Handle Indexing (FFI + Determinism) ✅
+- `ExternalHandle` = 64-bit (32-bit index + 32-bit generation) for ABA protection
+- `ExternalHandleTable` with free-list slot management
+- Deterministic mode for sequential IDs (replay/debugging)
+- `ffi_obj_to_handle()` / `ffi_handle_to_obj()` convenience API
+- `external_table_iterate()` for enumeration
 
 **References (inspiration):**
 - Vale `LinearRegion` (offset pointers): `Vale/docs/LinearRegion.md`

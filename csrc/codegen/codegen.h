@@ -152,6 +152,35 @@ void omni_codegen_emit_frees(CodeGenContext* ctx, int position);
 /* Emit cleanup code for scope exit */
 void omni_codegen_emit_scope_cleanup(CodeGenContext* ctx, const char** vars, size_t count);
 
+/* ============== User Type Code Generation ============== */
+
+/* Generate C struct definition for a user type */
+void omni_codegen_type_struct(CodeGenContext* ctx, TypeDef* type);
+
+/* Generate constructor function for a user type (mk-TypeName) */
+void omni_codegen_type_constructor(CodeGenContext* ctx, TypeDef* type);
+
+/* Generate field accessor for a type (TypeName-field) */
+void omni_codegen_type_accessor(CodeGenContext* ctx, TypeDef* type, TypeField* field);
+
+/* Generate field mutator for a type (set-TypeName-field!)
+ * - Uses SET_WEAK for weak fields
+ * - Uses inc_ref/dec_ref for strong fields
+ */
+void omni_codegen_type_mutator(CodeGenContext* ctx, TypeDef* type, TypeField* field);
+
+/* Generate release function for a type (release_TypeName)
+ * - Decrements RC for strong fields only
+ * - Skips weak fields (they're borrowed, not owned)
+ */
+void omni_codegen_type_release(CodeGenContext* ctx, TypeDef* type);
+
+/* Generate all code for a user type (struct + constructor + accessors + mutators + release) */
+void omni_codegen_type_full(CodeGenContext* ctx, TypeDef* type);
+
+/* Generate type definitions for all registered types */
+void omni_codegen_all_types(CodeGenContext* ctx);
+
 /* ============== CFG-Based Code Generation ============== */
 
 /*
@@ -179,6 +208,34 @@ void omni_codegen_with_cfg(CodeGenContext* ctx, OmniValue* expr);
  * Called during CFG-aware code generation.
  */
 void omni_codegen_emit_cfg_frees(CodeGenContext* ctx, CFG* cfg, CFGNode* node);
+
+/* ============== Shape-Aware Memory Management ============== */
+
+/*
+ * Generate shape-aware free function for a type.
+ * Strategy depends on the type's shape:
+ *   - TREE: Simple recursive free (free_tree)
+ *   - DAG: Reference counting (dec_ref)
+ *   - CYCLIC + frozen: SCC-based RC
+ *   - CYCLIC + mutable: Auto-weak back-edges + dec_ref
+ *   - Unknown: Arena allocation fallback
+ */
+void omni_codegen_shape_aware_free(CodeGenContext* ctx, TypeDef* type);
+
+/*
+ * Generate the runtime helpers for shape-aware memory management:
+ *   - free_tree_TypeName: For tree-shaped types
+ *   - arena_alloc/arena_destroy: For cyclic structures
+ *   - scc_decref: For frozen cyclic structures
+ */
+void omni_codegen_shape_helpers(CodeGenContext* ctx);
+
+/*
+ * Emit the appropriate deallocation call based on type shape.
+ * Called when generating code that frees a value of a known type.
+ */
+void omni_codegen_emit_shape_free(CodeGenContext* ctx, const char* var_name,
+                                   const char* type_name);
 
 #ifdef __cplusplus
 }

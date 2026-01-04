@@ -167,6 +167,9 @@ See `ROADMAP.md` Phase 9 and `docs/UNIFIED_OPTIMIZATION_PLAN.md` for sketches.
    - Search terms: `ShapeInfo`, `ESCAPE_`, `scan_`, `release_children`
 5) External handle indexing (FFI + determinism)  
    - Search terms: `BorrowRef`, `ipge_`, `generation`, `Handle`, `tag`
+6) FFI context‑word purity (compiler‑internal only)  
+   - Requires TLS context stack + trampolines; no user‑visible params unless FFI lacks `user_data`  
+   - Search terms: `__thread`, `exception_*` (TLS pattern), `RegionContext`, `ffi`
 
 References (Vale docs):
 - `Vale/docs/LinearRegion.md`

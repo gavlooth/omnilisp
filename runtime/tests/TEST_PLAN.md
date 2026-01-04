@@ -200,6 +200,85 @@
 |----------|-----------|------------|
 | `is_truthy` | NULL, 0, non-zero, pair | |
 
+### 23. IRegion Vtable (17 functions) ✅
+| Function | Test Cases | Edge Cases |
+|----------|-----------|------------|
+| `iregion_new_arena` | normal, small block | NULL |
+| `iregion_new_linear` | normal | NULL |
+| `iregion_new_offset` | normal | NULL |
+| `iregion_new_pool` | normal | zero size/count |
+| `iregion_alloc` | normal, alignment | frozen, exhausted |
+| `iregion_free_one` | normal (pool), noop (arena) | NULL |
+| `iregion_free_all` | normal | NULL |
+| `iregion_freeze` | normal | already frozen |
+| `iregion_is_frozen` | frozen, not frozen | NULL |
+| `iregion_kind` | each kind | NULL |
+| `iregion_clone` | normal | NULL |
+| `iregion_serialize` | linear/offset | NULL, empty |
+| `iregion_remaining` | normal | NULL |
+| `iregion_stats` | normal | NULL |
+| `offset_region_serialize` | normal | empty |
+| `offset_region_deserialize` | normal | corrupted data |
+| `offset_to_ptr` | valid, OFFSET_NULL | out of bounds |
+
+### 24. Weak Reference Control Blocks (21 functions) ✅
+| Function | Test Cases | Edge Cases |
+|----------|-----------|------------|
+| `weak_cb_new` | normal, with destructor | malloc failure |
+| `weak_cb_invalidate` | normal, with weak refs | NULL |
+| `weak_cb_inc_ref` | normal | NULL |
+| `weak_cb_dec_ref` | normal, to zero | NULL |
+| `weak_cb_is_valid` | valid, invalidated | NULL |
+| `weak_cb_get_target` | valid, invalidated | NULL |
+| `weak_handle_new` | normal | NULL cb |
+| `weak_handle_clone` | normal | NULL |
+| `weak_handle_free` | normal | NULL |
+| `weak_handle_is_valid` | valid, invalidated | NULL |
+| `weak_handle_lock` | valid, invalidated | NULL |
+| `weak_object_new` | normal, with destructor | NULL |
+| `weak_object_free` | normal | NULL |
+| `weak_table_new` | normal | zero capacity |
+| `weak_table_free` | normal, with active entries | NULL |
+| `weak_table_register` | normal | full table |
+| `weak_table_get_handle` | valid | invalid index |
+| `weak_table_invalidate` | normal | invalid index |
+| `weak_table_lock` | correct gen, wrong gen | invalid index |
+| `weak_table_global` | singleton | |
+
+### 25. Transmigration/Isolation (17 functions) ✅
+| Function | Test Cases | Edge Cases |
+|----------|-----------|------------|
+| `transmigration_new` | normal | NULL dest |
+| `transmigration_free` | normal | NULL |
+| `transmigration_record` | normal, many entries | NULL |
+| `transmigration_lookup` | found, not found | NULL |
+| `transmigrate` | normal, NULL obj | frozen dest |
+| `transmigration_register_visitor` | valid types | invalid type tags |
+| `check_isolation` | isolated, escaped | NULL root/region |
+| `isolation_result_free` | normal | NULL |
+| `region_bound_ref_new` | normal | NULL region |
+| `region_bound_ref_free` | normal | NULL |
+| `region_bound_ref_deref` | valid, frozen region | NULL |
+| `region_bound_ref_is_valid` | valid, frozen | NULL |
+
+### 26. External Handle Indexing (27 functions) ✅
+| Function | Test Cases | Edge Cases |
+|----------|-----------|------------|
+| `external_table_new` | normal | zero capacity |
+| `external_table_free` | normal, with active handles | NULL |
+| `external_table_set_deterministic` | enable, disable | NULL |
+| `external_handle_create` | normal | full table, NULL |
+| `external_handle_release` | normal, with destructor | invalid, NULL |
+| `external_handle_get` | valid | invalid, NULL |
+| `external_handle_is_valid` | valid, released | NULL |
+| `external_table_clear` | normal, with destructors | NULL |
+| `external_table_count` | empty, non-empty | NULL |
+| `external_table_iterate` | normal, empty | NULL |
+| `external_table_global` | singleton | |
+| `ffi_obj_to_handle` | normal | NULL |
+| `ffi_handle_to_obj` | valid | invalid |
+| `ffi_release_handle` | normal | invalid |
+
 ## Stress Tests
 
 1. **Deep recursion** - Stack overflow handling
@@ -220,19 +299,32 @@
 
 ```
 runtime/tests/
-├── test_main.c           # Test runner
-├── test_constructors.c   # Object constructor tests
-├── test_memory.c         # Memory management tests
-├── test_primitives.c     # Primitive operation tests
-├── test_lists.c          # List operation tests
-├── test_closures.c       # Closure tests
-├── test_arena.c          # Arena allocator tests
-├── test_scc.c            # SCC detection tests
-├── test_concurrency.c    # Channel, atom, thread tests
-├── test_edge_cases.c     # Edge cases and error handling
-├── test_stress.c         # Stress tests
-└── Makefile              # Build tests
+├── test_main.c                  # Test runner (446 tests)
+├── test_constructors.c          # Object constructor tests
+├── test_memory.c                # Memory management tests
+├── test_primitives.c            # Primitive operation tests
+├── test_lists.c                 # List operation tests
+├── test_closures.c              # Closure tests
+├── test_arena.c                 # Arena allocator tests
+├── test_scc.c                   # SCC detection tests
+├── test_concurrency.c           # Channel, atom, thread tests
+├── test_edge_cases.c            # Edge cases and error handling
+├── test_stress.c                # Stress tests
+├── test_iregion.c               # IRegion vtable tests (17 tests) ✅
+├── test_weak_control_blocks.c   # Weak ref control block tests (21 tests) ✅
+├── test_transmigration.c        # Transmigration/isolation tests (17 tests) ✅
+├── test_external_handles.c      # External handle indexing tests (27 tests) ✅
+└── Makefile                     # Build tests
 ```
+
+### New Region Infrastructure Tests (99 tests total)
+
+| Test File | Tests | Categories |
+|-----------|-------|------------|
+| `test_iregion.c` | 17 | Arena, Linear, Offset, Pool region backends |
+| `test_weak_control_blocks.c` | 21 | Control blocks, handles, weak tables, stress |
+| `test_transmigration.c` | 17 | Context, isolation, region-bound refs, stress |
+| `test_external_handles.c` | 27 | Create, release, generation, deterministic, FFI |
 
 ## Coverage Target
 
@@ -240,5 +332,5 @@ runtime/tests/
 - **Branch coverage**: 100%
 - **Function coverage**: 100%
 
-Total functions to test: ~100
-Total test cases needed: ~500+
+Total functions to test: ~180 (increased with region infrastructure)
+Total test cases: **545+** (446 main + 99 region tests)

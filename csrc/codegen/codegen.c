@@ -1500,3 +1500,355 @@ void omni_codegen_with_cfg(CodeGenContext* ctx, OmniValue* expr) {
     omni_cfg_free_points_free(free_points);
     omni_cfg_free(cfg);
 }
+
+/* ============== User Type Code Generation ============== */
+
+void omni_codegen_type_struct(CodeGenContext* ctx, TypeDef* type) {
+    if (!ctx || !type) return;
+
+    omni_codegen_emit_raw(ctx, "/* User-defined type: %s */\n", type->name);
+    omni_codegen_emit_raw(ctx, "typedef struct %s {\n", type->name);
+
+    /* Standard header fields */
+    omni_codegen_emit_raw(ctx, "    int tag;        /* Type tag for RTTI */\n");
+    omni_codegen_emit_raw(ctx, "    int rc;         /* Reference count */\n");
+    omni_codegen_emit_raw(ctx, "    int gen;        /* Generation for GenRef/IPGE */\n");
+
+    /* User fields */
+    for (size_t i = 0; i < type->field_count; i++) {
+        TypeField* f = &type->fields[i];
+        const char* strength_comment = "";
+        if (f->strength == FIELD_WEAK) {
+            strength_comment = " /* weak - no RC */";
+        } else if (f->strength == FIELD_BORROWED) {
+            strength_comment = " /* borrowed */";
+        }
+        omni_codegen_emit_raw(ctx, "    Obj* %s;%s\n", f->name, strength_comment);
+    }
+
+    omni_codegen_emit_raw(ctx, "} %s;\n\n", type->name);
+
+    /* Type tag constant */
+    omni_codegen_emit_raw(ctx, "#define TAG_%s (%d)\n\n",
+                          type->name, 100 + (int)(ctx->temp_counter++));
+}
+
+void omni_codegen_type_constructor(CodeGenContext* ctx, TypeDef* type) {
+    if (!ctx || !type) return;
+
+    /* Function signature: mk_TypeName(field1, field2, ...) */
+    omni_codegen_emit_raw(ctx, "/* Constructor for %s */\n", type->name);
+    omni_codegen_emit_raw(ctx, "static %s* mk_%s(", type->name, type->name);
+
+    for (size_t i = 0; i < type->field_count; i++) {
+        if (i > 0) omni_codegen_emit_raw(ctx, ", ");
+        omni_codegen_emit_raw(ctx, "Obj* %s", type->fields[i].name);
+    }
+    if (type->field_count == 0) {
+        omni_codegen_emit_raw(ctx, "void");
+    }
+    omni_codegen_emit_raw(ctx, ") {\n");
+
+    /* Allocate */
+    omni_codegen_emit_raw(ctx, "    %s* obj = malloc(sizeof(%s));\n", type->name, type->name);
+    omni_codegen_emit_raw(ctx, "    obj->tag = TAG_%s;\n", type->name);
+    omni_codegen_emit_raw(ctx, "    obj->rc = 1;\n");
+    omni_codegen_emit_raw(ctx, "    obj->gen = 0;\n");
+
+    /* Initialize fields */
+    for (size_t i = 0; i < type->field_count; i++) {
+        TypeField* f = &type->fields[i];
+        if (f->strength == FIELD_WEAK) {
+            /* Weak field - no inc_ref, just set */
+            omni_codegen_emit_raw(ctx, "    obj->%s = %s; /* weak: no inc_ref */\n",
+                                  f->name, f->name);
+        } else {
+            /* Strong field - inc_ref */
+            omni_codegen_emit_raw(ctx, "    obj->%s = %s; if (%s) inc_ref(%s);\n",
+                                  f->name, f->name, f->name, f->name);
+        }
+    }
+
+    omni_codegen_emit_raw(ctx, "    return obj;\n");
+    omni_codegen_emit_raw(ctx, "}\n\n");
+}
+
+void omni_codegen_type_accessor(CodeGenContext* ctx, TypeDef* type, TypeField* field) {
+    if (!ctx || !type || !field) return;
+
+    /* TypeName_field(obj) -> Obj* */
+    omni_codegen_emit_raw(ctx, "/* Accessor for %s.%s */\n", type->name, field->name);
+    omni_codegen_emit_raw(ctx, "static Obj* %s_%s(%s* obj) {\n",
+                          type->name, field->name, type->name);
+    omni_codegen_emit_raw(ctx, "    return obj ? obj->%s : NIL;\n", field->name);
+    omni_codegen_emit_raw(ctx, "}\n\n");
+}
+
+void omni_codegen_type_mutator(CodeGenContext* ctx, TypeDef* type, TypeField* field) {
+    if (!ctx || !type || !field) return;
+
+    /* set_TypeName_field(obj, value) */
+    omni_codegen_emit_raw(ctx, "/* Mutator for %s.%s */\n", type->name, field->name);
+    omni_codegen_emit_raw(ctx, "static void set_%s_%s(%s* obj, Obj* val) {\n",
+                          type->name, field->name, type->name);
+    omni_codegen_emit_raw(ctx, "    if (!obj) return;\n");
+
+    if (field->strength == FIELD_WEAK) {
+        /* Weak field - use SET_WEAK macro */
+        omni_codegen_emit_raw(ctx, "    /* Weak field: register for nullification */\n");
+        omni_codegen_emit_raw(ctx, "    SET_WEAK(obj, %s, val);\n", field->name);
+    } else {
+        /* Strong field - standard RC management */
+        omni_codegen_emit_raw(ctx, "    Obj* old = obj->%s;\n", field->name);
+        omni_codegen_emit_raw(ctx, "    obj->%s = val;\n", field->name);
+        omni_codegen_emit_raw(ctx, "    if (val) inc_ref(val);\n");
+        omni_codegen_emit_raw(ctx, "    if (old) dec_ref(old);\n");
+    }
+
+    omni_codegen_emit_raw(ctx, "}\n\n");
+}
+
+void omni_codegen_type_release(CodeGenContext* ctx, TypeDef* type) {
+    if (!ctx || !type) return;
+
+    /* release_TypeName(obj) - called when RC hits 0 */
+    omni_codegen_emit_raw(ctx, "/* Release function for %s */\n", type->name);
+    omni_codegen_emit_raw(ctx, "static void release_%s(%s* obj) {\n",
+                          type->name, type->name);
+    omni_codegen_emit_raw(ctx, "    if (!obj) return;\n");
+
+    /* Nullify weak refs pointing to this object */
+    omni_codegen_emit_raw(ctx, "    weak_refs_nullify((Obj*)obj);\n");
+
+    /* Release strong fields only */
+    for (size_t i = 0; i < type->field_count; i++) {
+        TypeField* f = &type->fields[i];
+        if (f->strength == FIELD_STRONG) {
+            omni_codegen_emit_raw(ctx, "    if (obj->%s) dec_ref(obj->%s);\n",
+                                  f->name, f->name);
+        } else {
+            omni_codegen_emit_raw(ctx, "    /* skip %s: %s */\n",
+                                  f->name, omni_field_strength_name(f->strength));
+        }
+    }
+
+    omni_codegen_emit_raw(ctx, "    free(obj);\n");
+    omni_codegen_emit_raw(ctx, "}\n\n");
+}
+
+void omni_codegen_type_full(CodeGenContext* ctx, TypeDef* type) {
+    if (!ctx || !type) return;
+
+    omni_codegen_emit_raw(ctx, "/* ========== Type: %s ========== */\n\n", type->name);
+
+    /* Generate struct */
+    omni_codegen_type_struct(ctx, type);
+
+    /* Generate constructor */
+    omni_codegen_type_constructor(ctx, type);
+
+    /* Generate accessors and mutators for each field */
+    for (size_t i = 0; i < type->field_count; i++) {
+        omni_codegen_type_accessor(ctx, type, &type->fields[i]);
+        if (type->fields[i].is_mutable) {
+            omni_codegen_type_mutator(ctx, type, &type->fields[i]);
+        }
+    }
+
+    /* Generate release function */
+    omni_codegen_type_release(ctx, type);
+}
+
+void omni_codegen_all_types(CodeGenContext* ctx) {
+    if (!ctx || !ctx->analysis || !ctx->analysis->type_registry) return;
+
+    TypeRegistry* reg = ctx->analysis->type_registry;
+
+    omni_codegen_emit_raw(ctx, "/* ========== User-Defined Types ========== */\n\n");
+
+    for (TypeDef* t = reg->types; t; t = t->next) {
+        omni_codegen_type_full(ctx, t);
+    }
+}
+
+/* ============== Shape-Aware Memory Management ============== */
+
+void omni_codegen_shape_aware_free(CodeGenContext* ctx, TypeDef* type) {
+    if (!ctx || !type) return;
+
+    omni_codegen_emit_raw(ctx, "/* Shape-aware free for %s (shape: ", type->name);
+
+    switch (type->shape) {
+        case SHAPE_TREE:
+            omni_codegen_emit_raw(ctx, "TREE) */\n");
+            /* Generate tree-recursive free */
+            omni_codegen_emit_raw(ctx, "static void free_tree_%s(%s* obj) {\n",
+                                  type->name, type->name);
+            omni_codegen_emit_raw(ctx, "    if (!obj) return;\n");
+
+            /* Recursively free children first, then self */
+            for (size_t i = 0; i < type->field_count; i++) {
+                TypeField* f = &type->fields[i];
+                if (f->strength == FIELD_STRONG && f->type_name) {
+                    /* Check if field is a user type */
+                    if (ctx->analysis) {
+                        TypeDef* field_type = omni_get_type(ctx->analysis, f->type_name);
+                        if (field_type && field_type->shape == SHAPE_TREE) {
+                            omni_codegen_emit_raw(ctx, "    free_tree_%s((%s*)obj->%s);\n",
+                                                  f->type_name, f->type_name, f->name);
+                        } else {
+                            omni_codegen_emit_raw(ctx, "    if (obj->%s) dec_ref(obj->%s);\n",
+                                                  f->name, f->name);
+                        }
+                    } else {
+                        omni_codegen_emit_raw(ctx, "    if (obj->%s) dec_ref(obj->%s);\n",
+                                              f->name, f->name);
+                    }
+                }
+            }
+            omni_codegen_emit_raw(ctx, "    free(obj);\n");
+            omni_codegen_emit_raw(ctx, "}\n\n");
+            break;
+
+        case SHAPE_DAG:
+            omni_codegen_emit_raw(ctx, "DAG) */\n");
+            /* DAG uses standard dec_ref */
+            omni_codegen_emit_raw(ctx, "/* DAG shape: use standard release_%s (dec_ref) */\n\n",
+                                  type->name);
+            break;
+
+        case SHAPE_CYCLIC:
+            omni_codegen_emit_raw(ctx, "CYCLIC) */\n");
+            if (type->has_cycles) {
+                /* For cyclic types, generate arena-based allocation helper */
+                omni_codegen_emit_raw(ctx, "/* CYCLIC shape: use arena allocation or weak refs */\n");
+                omni_codegen_emit_raw(ctx, "static %s* arena_alloc_%s(Arena* arena",
+                                      type->name, type->name);
+                for (size_t i = 0; i < type->field_count; i++) {
+                    omni_codegen_emit_raw(ctx, ", Obj* %s", type->fields[i].name);
+                }
+                omni_codegen_emit_raw(ctx, ") {\n");
+                omni_codegen_emit_raw(ctx, "    %s* obj = arena_alloc(arena, sizeof(%s));\n",
+                                      type->name, type->name);
+                omni_codegen_emit_raw(ctx, "    obj->tag = TAG_%s;\n", type->name);
+                omni_codegen_emit_raw(ctx, "    obj->rc = 1;\n");
+                omni_codegen_emit_raw(ctx, "    obj->gen = 0;\n");
+                for (size_t i = 0; i < type->field_count; i++) {
+                    TypeField* f = &type->fields[i];
+                    omni_codegen_emit_raw(ctx, "    obj->%s = %s;\n", f->name, f->name);
+                }
+                omni_codegen_emit_raw(ctx, "    return obj;\n");
+                omni_codegen_emit_raw(ctx, "}\n\n");
+            }
+            break;
+
+        default:
+            omni_codegen_emit_raw(ctx, "UNKNOWN) */\n");
+            omni_codegen_emit_raw(ctx, "/* Unknown shape: use standard release_%s */\n\n",
+                                  type->name);
+            break;
+    }
+}
+
+void omni_codegen_shape_helpers(CodeGenContext* ctx) {
+    if (!ctx) return;
+
+    omni_codegen_emit_raw(ctx, "/* ========== Shape-Aware Memory Helpers ========== */\n\n");
+
+    /* Arena type definition */
+    omni_codegen_emit_raw(ctx, "/* Arena allocator for cyclic structures */\n");
+    omni_codegen_emit_raw(ctx, "typedef struct ArenaBlock {\n");
+    omni_codegen_emit_raw(ctx, "    void* data;\n");
+    omni_codegen_emit_raw(ctx, "    size_t size;\n");
+    omni_codegen_emit_raw(ctx, "    size_t used;\n");
+    omni_codegen_emit_raw(ctx, "    struct ArenaBlock* next;\n");
+    omni_codegen_emit_raw(ctx, "} ArenaBlock;\n\n");
+
+    omni_codegen_emit_raw(ctx, "typedef struct Arena {\n");
+    omni_codegen_emit_raw(ctx, "    ArenaBlock* blocks;\n");
+    omni_codegen_emit_raw(ctx, "    size_t default_size;\n");
+    omni_codegen_emit_raw(ctx, "} Arena;\n\n");
+
+    /* Arena functions */
+    omni_codegen_emit_raw(ctx, "static Arena* arena_create(size_t block_size) {\n");
+    omni_codegen_emit_raw(ctx, "    Arena* a = malloc(sizeof(Arena));\n");
+    omni_codegen_emit_raw(ctx, "    a->blocks = NULL;\n");
+    omni_codegen_emit_raw(ctx, "    a->default_size = block_size > 0 ? block_size : 4096;\n");
+    omni_codegen_emit_raw(ctx, "    return a;\n");
+    omni_codegen_emit_raw(ctx, "}\n\n");
+
+    omni_codegen_emit_raw(ctx, "static void* arena_alloc(Arena* a, size_t size) {\n");
+    omni_codegen_emit_raw(ctx, "    /* Align to 8 bytes */\n");
+    omni_codegen_emit_raw(ctx, "    size = (size + 7) & ~7;\n");
+    omni_codegen_emit_raw(ctx, "    /* Find block with space */\n");
+    omni_codegen_emit_raw(ctx, "    for (ArenaBlock* b = a->blocks; b; b = b->next) {\n");
+    omni_codegen_emit_raw(ctx, "        if (b->size - b->used >= size) {\n");
+    omni_codegen_emit_raw(ctx, "            void* ptr = (char*)b->data + b->used;\n");
+    omni_codegen_emit_raw(ctx, "            b->used += size;\n");
+    omni_codegen_emit_raw(ctx, "            return ptr;\n");
+    omni_codegen_emit_raw(ctx, "        }\n");
+    omni_codegen_emit_raw(ctx, "    }\n");
+    omni_codegen_emit_raw(ctx, "    /* Allocate new block */\n");
+    omni_codegen_emit_raw(ctx, "    size_t bsize = size > a->default_size ? size : a->default_size;\n");
+    omni_codegen_emit_raw(ctx, "    ArenaBlock* b = malloc(sizeof(ArenaBlock));\n");
+    omni_codegen_emit_raw(ctx, "    b->data = malloc(bsize);\n");
+    omni_codegen_emit_raw(ctx, "    b->size = bsize;\n");
+    omni_codegen_emit_raw(ctx, "    b->used = size;\n");
+    omni_codegen_emit_raw(ctx, "    b->next = a->blocks;\n");
+    omni_codegen_emit_raw(ctx, "    a->blocks = b;\n");
+    omni_codegen_emit_raw(ctx, "    return b->data;\n");
+    omni_codegen_emit_raw(ctx, "}\n\n");
+
+    omni_codegen_emit_raw(ctx, "static void arena_destroy(Arena* a) {\n");
+    omni_codegen_emit_raw(ctx, "    ArenaBlock* b = a->blocks;\n");
+    omni_codegen_emit_raw(ctx, "    while (b) {\n");
+    omni_codegen_emit_raw(ctx, "        ArenaBlock* next = b->next;\n");
+    omni_codegen_emit_raw(ctx, "        free(b->data);\n");
+    omni_codegen_emit_raw(ctx, "        free(b);\n");
+    omni_codegen_emit_raw(ctx, "        b = next;\n");
+    omni_codegen_emit_raw(ctx, "    }\n");
+    omni_codegen_emit_raw(ctx, "    free(a);\n");
+    omni_codegen_emit_raw(ctx, "}\n\n");
+
+    /* Generate shape-aware free for all types */
+    if (ctx->analysis && ctx->analysis->type_registry) {
+        for (TypeDef* t = ctx->analysis->type_registry->types; t; t = t->next) {
+            omni_codegen_shape_aware_free(ctx, t);
+        }
+    }
+}
+
+void omni_codegen_emit_shape_free(CodeGenContext* ctx, const char* var_name,
+                                   const char* type_name) {
+    if (!ctx || !var_name || !type_name) return;
+
+    /* Look up type shape */
+    ShapeClass shape = SHAPE_UNKNOWN;
+    if (ctx->analysis) {
+        TypeDef* type = omni_get_type(ctx->analysis, type_name);
+        if (type) {
+            shape = type->shape;
+        }
+    }
+
+    switch (shape) {
+        case SHAPE_TREE:
+            /* Use tree-recursive free */
+            omni_codegen_emit(ctx, "free_tree_%s((%s*)%s);\n",
+                              type_name, type_name, var_name);
+            break;
+
+        case SHAPE_DAG:
+        case SHAPE_CYCLIC:
+            /* Use standard dec_ref (weak refs handle cycles) */
+            omni_codegen_emit(ctx, "if (%s) dec_ref(%s); /* %s */\n",
+                              var_name, var_name,
+                              shape == SHAPE_CYCLIC ? "cyclic" : "dag");
+            break;
+
+        default:
+            /* Fall back to generic dec_ref */
+            omni_codegen_emit(ctx, "if (%s) dec_ref(%s);\n", var_name, var_name);
+            break;
+    }
+}

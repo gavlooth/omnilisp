@@ -4,6 +4,66 @@ All notable changes to Purple Go are documented in this file.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-01-04
+
+### Added - Region Infrastructure (C Runtime)
+
+All 5 backlog items from ARCHITECTURE.md implemented with 99 new tests:
+
+- **IRegion Vtable** (`runtime/src/memory/region.c`)
+  - Pluggable region backends via vtable interface
+  - Four backends: Arena (growing), Linear (fixed), Offset (serializable), Pool (fixed-size)
+  - Functions: `iregion_new_arena()`, `iregion_new_linear()`, `iregion_new_offset()`, `iregion_new_pool()`
+  - `iregion_alloc()`, `iregion_free_one()`, `iregion_free_all()`
+  - `iregion_freeze()`, `iregion_clone()`, `iregion_serialize()`, `iregion_stats()`
+  - Convenience macros: `IREGION_ALLOC()`, `IREGION_ALLOC_ARRAY()`
+  - 17 tests in `test_iregion.c`
+
+- **Linear/Offset Regions for FFI**
+  - `OffsetRegion` with 32-bit offset pointers for serialization
+  - `offset_to_ptr()` applies base adjustment
+  - `offset_region_serialize()` / `offset_region_deserialize()`
+  - Zero-copy buffer sharing for FFI blobs
+
+- **Weak Reference Control Blocks** (`runtime/src/memory/region.c`)
+  - O(1) weak reference invalidation
+  - `WeakControlBlock` with target, generation, atomic weak_count
+  - `WeakHandle` for user-facing references
+  - `WeakRefTable` for table-based management
+  - ABA protection via generation counters
+  - `weak_table_global()` for convenient access
+  - 21 tests in `test_weak_control_blocks.c`
+
+- **Transmigration/Isolation**
+  - Deep-copy object graphs between regions
+  - `TransmigrationContext` with source→dest mapping
+  - `transmigrate()`, `transmigration_lookup()`, `transmigration_record()`
+  - `check_isolation()` verifies object graph containment
+  - `RegionBoundRef` for region-validity-checked references
+  - 17 tests in `test_transmigration.c`
+
+- **External Handle Indexing (FFI + Determinism)**
+  - Stable integer handles instead of raw pointers
+  - `ExternalHandle` = 64-bit (32-bit index + 32-bit generation)
+  - ABA protection prevents stale handle access
+  - Deterministic mode for sequential IDs (replay/debugging)
+  - `ExternalHandleTable` with free-list slot management
+  - FFI convenience: `ffi_obj_to_handle()`, `ffi_handle_to_obj()`
+  - 27 tests in `test_external_handles.c`
+
+### Changed
+- Main runtime test suite now at 446 tests (all passing)
+- Region infrastructure tests add 99 more tests (82 in standalone files)
+- Total test coverage: 545+ tests
+
+### Files Added
+- `runtime/src/memory/region.c` (~2000 lines)
+- `runtime/src/memory/region.h` (~600 lines)
+- `runtime/tests/test_iregion.c`
+- `runtime/tests/test_weak_control_blocks.c`
+- `runtime/tests/test_transmigration.c`
+- `runtime/tests/test_external_handles.c`
+
 ## [0.5.0] - 2025-12-31
 
 ### Added

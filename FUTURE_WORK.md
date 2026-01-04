@@ -7,6 +7,43 @@ All items are optional enhancements - the core system is complete and functional
 
 ---
 
+## Recently Completed: Region Infrastructure (2026-01-04)
+
+All 5 backlog items from ARCHITECTURE.md have been implemented with full test coverage:
+
+| # | Feature | Tests | Implementation |
+|---|---------|-------|----------------|
+| 12 | Linear/Offset Regions for FFI | 17 | `runtime/src/memory/region.c` |
+| 13 | Pluggable Region Backends (IRegion) | 17 | `runtime/src/memory/region.c` |
+| 14 | Weak Ref Control Blocks | 21 | `runtime/src/memory/region.c` |
+| 15 | Transmigration/Isolation | 17 | `runtime/src/memory/region.c` |
+| 16 | External Handle Indexing | 27 | `runtime/src/memory/region.c` |
+
+**Total: 99 new tests**, all passing. See `runtime/tests/test_*.c` for details.
+
+### Key APIs Added
+
+**IRegion Vtable** (pluggable allocators):
+- `iregion_new_arena()`, `iregion_new_linear()`, `iregion_new_offset()`, `iregion_new_pool()`
+- `iregion_alloc()`, `iregion_free_one()`, `iregion_free_all()`
+- `iregion_freeze()`, `iregion_clone()`, `iregion_serialize()`
+
+**Weak Reference Control Blocks**:
+- `weak_cb_new()`, `weak_cb_invalidate()`, `weak_cb_is_valid()`
+- `weak_handle_new()`, `weak_handle_lock()`, `weak_handle_free()`
+- `weak_table_new()`, `weak_table_register()`, `weak_table_invalidate()`
+
+**Transmigration**:
+- `transmigration_new()`, `transmigrate()`, `transmigration_lookup()`
+- `check_isolation()`, `region_bound_ref_new()`, `region_bound_ref_deref()`
+
+**External Handles** (FFI + determinism):
+- `external_table_new()`, `external_handle_create()`, `external_handle_release()`
+- `external_handle_get()`, `external_handle_is_valid()`
+- `ffi_obj_to_handle()`, `ffi_handle_to_obj()`, `ffi_release_handle()`
+
+---
+
 ## Part 1: Future Optimizations
 
 ### O.1 Compile-Time RC Elimination (High Impact)

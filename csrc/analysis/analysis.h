@@ -115,6 +115,82 @@ typedef struct ShapeInfo {
     struct ShapeInfo* next;
 } ShapeInfo;
 
+/* ============== Type Registry ============== */
+
+/* Field ownership strength */
+typedef enum {
+    FIELD_STRONG = 0,        /* Owning reference (increment RC) */
+    FIELD_WEAK,              /* Non-owning reference (no RC) */
+    FIELD_BORROWED,          /* Borrowed reference (caller owns) */
+} FieldStrength;
+
+/* Type field definition */
+typedef struct TypeField {
+    char* name;              /* Field name */
+    char* type_name;         /* Type of field (or NULL for any) */
+    FieldStrength strength;  /* Ownership strength */
+    bool is_mutable;         /* Can be mutated after construction */
+    int index;               /* Field index for fast access */
+} TypeField;
+
+/* Type definition in the registry */
+typedef struct TypeDef {
+    char* name;              /* Type name */
+    TypeField* fields;       /* Array of fields */
+    size_t field_count;
+    size_t field_capacity;
+    ShapeClass shape;        /* Inferred shape class */
+    bool is_opaque;          /* True if implementation hidden */
+    bool has_cycles;         /* True if type can form cycles */
+    struct TypeDef* next;    /* Next in registry list */
+} TypeDef;
+
+/* Ownership edge in type graph */
+typedef struct OwnershipEdge {
+    char* from_type;         /* Source type */
+    char* from_field;        /* Source field */
+    char* to_type;           /* Target type */
+    bool is_back_edge;       /* True if detected as back-edge */
+    struct OwnershipEdge* next;
+} OwnershipEdge;
+
+/* Global type registry */
+typedef struct TypeRegistry {
+    TypeDef* types;          /* List of registered types */
+    OwnershipEdge* edges;    /* Ownership graph edges */
+    size_t type_count;
+    bool graph_built;        /* True if ownership graph computed */
+    bool back_edges_analyzed; /* True if back-edges detected */
+} TypeRegistry;
+
+/* ============== Constructor-Level Ownership Tracking ============== */
+
+/*
+ * Tracks ownership at construction sites.
+ * When (let ((x (mk-Foo ...))) ...), x owns the result.
+ * When (set! (Foo-bar obj) val), if bar is a back-edge field and
+ * val is already owned, the reference is automatically non-owning.
+ */
+
+typedef struct ConstructorOwnership {
+    char* var_name;          /* Variable that owns the constructed value */
+    char* type_name;         /* Type of constructed value */
+    int construct_pos;       /* Position where constructed */
+    int scope_id;            /* Scope in which ownership is valid */
+    bool is_primary_owner;   /* True if this is the primary owner */
+    struct ConstructorOwnership* next;
+} ConstructorOwnership;
+
+typedef struct FieldAssignment {
+    char* target_var;        /* Object being mutated */
+    char* field_name;        /* Field being set */
+    char* value_var;         /* Value being assigned */
+    int assign_pos;          /* Position of assignment */
+    bool is_back_edge;       /* True if field is a back-edge */
+    bool is_weak_assign;     /* True if assignment should be weak */
+    struct FieldAssignment* next;
+} FieldAssignment;
+
 /* ============== Reuse Analysis ============== */
 
 typedef struct ReuseCandidate {
@@ -262,6 +338,9 @@ typedef struct AnalysisContext {
     /* Function summaries */
     FunctionSummary* function_summaries;
 
+    /* Type registry */
+    TypeRegistry* type_registry;
+
     /* Concurrency tracking */
     ThreadLocalityInfo* thread_locality;
     ThreadSpawnInfo* thread_spawns;
@@ -273,6 +352,11 @@ typedef struct AnalysisContext {
 
     /* Function being analyzed */
     OmniValue* current_function;
+
+    /* Constructor-level ownership tracking */
+    ConstructorOwnership* constructor_owners;
+    FieldAssignment* field_assignments;
+    int next_scope_id;
 
     /* Analysis flags */
     bool in_lambda;
@@ -676,6 +760,98 @@ bool omni_should_free_after_send(AnalysisContext* ctx, const char* channel,
 /* Get the spawned threads that capture a variable */
 ThreadSpawnInfo** omni_get_threads_capturing(AnalysisContext* ctx, const char* var_name,
                                              size_t* count);
+
+/* ============== Type Registry Functions ============== */
+
+/* Create a new type registry */
+TypeRegistry* omni_type_registry_new(void);
+
+/* Free type registry */
+void omni_type_registry_free(TypeRegistry* reg);
+
+/* Register a type from a deftype expression */
+TypeDef* omni_register_type(AnalysisContext* ctx, OmniValue* type_def);
+
+/* Get a type definition by name */
+TypeDef* omni_get_type(AnalysisContext* ctx, const char* name);
+
+/* Get a field definition from a type */
+TypeField* omni_get_type_field(TypeDef* type, const char* field_name);
+
+/* Add a field to a type */
+void omni_type_add_field(TypeDef* type, const char* name, const char* field_type,
+                         FieldStrength strength, bool is_mutable);
+
+/* Build ownership graph from registered types */
+void omni_build_ownership_graph(AnalysisContext* ctx);
+
+/* Analyze back-edges using DFS cycle detection */
+void omni_analyze_back_edges(AnalysisContext* ctx);
+
+/* Check if a field should be treated as weak (back-edge) */
+bool omni_is_weak_field(AnalysisContext* ctx, const char* type_name, const char* field_name);
+
+/* Get field strength */
+FieldStrength omni_get_field_strength(AnalysisContext* ctx, const char* type_name,
+                                       const char* field_name);
+
+/* Get field strength name for debugging */
+const char* omni_field_strength_name(FieldStrength strength);
+
+/* Generate constructor for a type */
+void omni_gen_type_constructor(AnalysisContext* ctx, TypeDef* type);
+
+/* Generate field accessor for a type */
+void omni_gen_field_accessor(AnalysisContext* ctx, TypeDef* type, TypeField* field);
+
+/* Generate field mutator for a type (respects weak/strong) */
+void omni_gen_field_mutator(AnalysisContext* ctx, TypeDef* type, TypeField* field);
+
+/* Generate release function for a type (skips weak fields) */
+void omni_gen_type_release(AnalysisContext* ctx, TypeDef* type);
+
+/* ============== Constructor-Level Ownership API ============== */
+
+/*
+ * Register that a variable owns a constructed value.
+ * Called when analyzing (let ((x (mk-Foo ...))) ...)
+ */
+void omni_register_constructor_owner(AnalysisContext* ctx, const char* var_name,
+                                      const char* type_name, int pos);
+
+/*
+ * Check if a variable is the primary owner of its value.
+ * Used to determine if a reference should be strong or weak.
+ */
+bool omni_is_primary_owner(AnalysisContext* ctx, const char* var_name);
+
+/*
+ * Get the type name of a variable's value (if known from construction).
+ */
+const char* omni_get_constructed_type(AnalysisContext* ctx, const char* var_name);
+
+/*
+ * Register a field assignment.
+ * Called when analyzing (set! (Type-field obj) val)
+ * Automatically marks as weak if field is a back-edge and val is already owned.
+ */
+void omni_register_field_assignment(AnalysisContext* ctx, const char* target_var,
+                                     const char* field_name, const char* value_var,
+                                     int pos);
+
+/*
+ * Check if a field assignment should be treated as weak.
+ * Returns true if:
+ *   1. The field is a back-edge pattern, or
+ *   2. The value being assigned is already owned by another variable
+ */
+bool omni_is_weak_assignment(AnalysisContext* ctx, const char* target_var,
+                              const char* field_name, const char* value_var);
+
+/*
+ * Free constructor ownership tracking data.
+ */
+void omni_free_constructor_owners(AnalysisContext* ctx);
 
 #ifdef __cplusplus
 }
