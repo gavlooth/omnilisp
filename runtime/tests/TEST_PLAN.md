@@ -1,4 +1,4 @@
-# Purple Runtime Test Plan - 100% Coverage
+# OmniLisp Runtime Test Plan - 100% Coverage
 
 ## Test Categories
 

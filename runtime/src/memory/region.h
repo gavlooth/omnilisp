@@ -515,7 +515,7 @@ bool region_bound_ref_is_valid(RegionBoundRef* ref);
  * - Lookup by ID for FFI callbacks
  *
  * Use cases:
- * - FFI: Give external C code stable handles to Purple objects
+ * - FFI: Give external C code stable handles to OmniLisp objects
  * - Serialization: Deterministic object IDs across runs
  * - Debugging: Stable identifiers for logging/tracing
  * - IPC: Pass object references between processes

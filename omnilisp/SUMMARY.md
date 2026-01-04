@@ -12,7 +12,7 @@ See also:
 *   **Special forms:** `define`, `lambda`/`fn`, `let`, `let*`, `if`, `do`/`begin`
 *   **Bindings:** list-style `(let ((x 1) (y 2)) ...)` and array-style `(let [x 1 y 2] ...)`
 *   **Primitives:** `+ - * / %`, `< > <= >= =`, `cons car cdr null?`, `display print newline`
-*   **Truthiness (current runtime):** empty list and numeric zero are false; everything else is truthy
+*   **Truthiness:** only `false` and `nothing` are falsy
 
 ## Planned Design (Not Yet Implemented)
 ### Syntax & Aesthetics (planned)

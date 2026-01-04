@@ -261,7 +261,7 @@ int main(int argc, char** argv) {
             if (slash) *slash = '\0';
 
             char runtime_check[1024];
-            snprintf(runtime_check, sizeof(runtime_check), "%s/../runtime/libpurple.a", exe_dir);
+            snprintf(runtime_check, sizeof(runtime_check), "%s/../runtime/libomni.a", exe_dir);
             if (access(runtime_check, F_OK) == 0) {
                 snprintf(runtime_check, sizeof(runtime_check), "%s/../runtime", exe_dir);
                 opts.runtime_path = strdup(runtime_check);
@@ -270,7 +270,7 @@ int main(int argc, char** argv) {
         }
 
         /* Check current directory */
-        if (!opts.runtime_path && access("runtime/libpurple.a", F_OK) == 0) {
+        if (!opts.runtime_path && access("runtime/libomni.a", F_OK) == 0) {
             opts.runtime_path = "runtime";
         }
     }

@@ -15,8 +15,8 @@
  * We only need to know the size for slot allocation.
  */
 
-#ifndef PURPLE_OBJ_SIZE
-#define PURPLE_OBJ_SIZE 48
+#ifndef OMNI_OBJ_SIZE
+#define OMNI_OBJ_SIZE 48
 #endif
 
 /* Minimal Obj structure for generation access */
@@ -37,7 +37,7 @@ static bool g_initialized = false;
 void handle_system_init(void) {
     if (g_initialized) return;
 
-    g_obj_pool = slot_pool_create(PURPLE_OBJ_SIZE, 16, SLOT_POOL_BLOCK_SIZE);
+    g_obj_pool = slot_pool_create(OMNI_OBJ_SIZE, 16, SLOT_POOL_BLOCK_SIZE);
     g_initialized = true;
 }
 
@@ -132,7 +132,7 @@ Obj* handle_alloc_obj(void) {
     /* Initialize minimal fields
      * The caller will set the rest (tag, value, etc.)
      */
-    memset(obj, 0, PURPLE_OBJ_SIZE);
+    memset(obj, 0, OMNI_OBJ_SIZE);
 
     /* Copy generation from slot to obj for IPGE compatibility */
     MinimalObj* mobj = (MinimalObj*)obj;

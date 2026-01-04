@@ -53,8 +53,7 @@ foo              ; Symbol
 
 ### Truthiness
 ```lisp
-; current C runtime: empty list and numeric zero are falsy
-; design target: only false/nothing are falsy (0 and empty collections are truthy)
+; only false/nothing are falsy (0 and empty collections are truthy)
 (if 0 1 2)   ; -> 2
 (if () 1 2)  ; -> 2
 ```
@@ -284,7 +283,7 @@ Bindings are in `[]` as an even number of forms (name-value pairs):
 ### 3.5 Named Arguments
 ```lisp
 ;; Definition with named params after &
-(define (draw shape & [color :black] [stroke Int 1])
+(define (draw shape & [color :black] [stroke {Int} 1])
   ...)
 
 ;; Call with & separator
@@ -852,7 +851,132 @@ Multiple bindings are nested by default (cartesian product). If zip mode is adde
 
 ---
 
-## 15. FFI
+## 15. Type System
+
+### 15.1 Types as First-Class Objects
+
+Types are values of type `Type`. They can be passed, returned, and stored like any other value.
+
+```lisp
+;; Types are values
+Int                    ; the type Int (a value of type Type)
+String                 ; the type String
+(Option Int)           ; construct Option type parameterized by Int
+
+;; Type as a value
+(define t {Type} Int)  ; t holds the type Int
+(equal? t Int)         ; -> true
+
+;; Reflection
+(type-of 42)           ; -> Int
+(type-of "hello")      ; -> String
+(equal? (type-of 42) Int)  ; -> true
+```
+
+### 15.2 Type Annotation vs Type Construction
+
+| Syntax | Meaning | Context |
+|--------|---------|---------|
+| `{Type}` | Type annotation | Binding has this type |
+| `(TypeCtor args)` | Type construction | Build a type from constructors |
+
+```lisp
+;; Annotation: binding has a type
+[x {Int}]              ; x is annotated as Int
+[path {String}]        ; path is annotated as String
+
+;; Construction: building a type
+(Option Int)           ; Option type containing Int
+(Result String Error)  ; Result with Ok=String, Err=Error
+(Array Float 2)        ; 2D Float array
+
+;; Combined: annotation containing construction
+[result {(Option Int)}]     ; result has type (Option Int)
+[data {(Array Float 2)}]    ; data has type 2D Float array
+```
+
+### 15.3 Function Type Annotations
+
+Return type annotates the signature directly (no `->` separator needed):
+
+```lisp
+;; Basic function with types
+(define (add [x {Int}] [y {Int}]) {Int}
+  (+ x y))
+
+;; Return type is annotation after parameter list
+(define (find-user [id {Int}]) {(Option User)}
+  (if (exists? id)
+      (Some (get-user id))
+      None))
+
+;; No annotation = inferred
+(define (double x)
+  (* x 2))
+```
+
+### 15.4 Type Variables (Generics)
+
+Type variables are determined by scoping. Variables bound in the function signature are generic:
+
+```lisp
+;; A is a type variable (bound in signature)
+(define (identity {A}) {A}
+  [x {A}]
+  x)
+
+;; A, B are type variables
+(define (map {A B}) {(List B)}
+  [f {(Fn A B)}]
+  [xs {(List A)}]
+  (if (null? xs)
+      (list)
+      (cons (f (car xs)) (map f (cdr xs)))))
+
+;; Concrete types are not bound, looked up globally
+(define (parse-int [s {String}]) {(Option Int)}
+  ...)
+```
+
+### 15.5 Higher-Kinded Types
+
+For type constructors that take other type constructors:
+
+```lisp
+;; F is a type constructor (* -> *)
+(define (fmap {F A B}) {(F B)}
+  [f {(Fn A B)}]
+  [fa {(F A)}]
+  ...)
+
+;; Functor interface
+(define {interface (Functor F)}
+  (fmap [f {(Fn A B)}] [fa {(F A)}]) {(F B)})
+```
+
+### 15.6 FFI Type Declarations
+
+FFI uses the same annotation/construction distinction:
+
+```lisp
+;; External function declaration
+(define (extern torch/torch_load_tensor :null-on-error)
+  [path {CString}]                    ; annotation on binding
+  (Option (Handle Module)))           ; type construction for return
+
+;; Opaque types with destructors
+(define (opaque Tensor :destructor torch/torch_tensor_free))
+
+;; Full example
+(define (extern torch/torch_add :null-on-error)
+  [a {(Handle Tensor)}]
+  [b {(Handle Tensor)}]
+  (Option (Handle Tensor)))
+```
+
+---
+
+### 15.7 Low-Level FFI
 
 ```lisp
 (@ffi "printf" "Value: %d\n" 42)

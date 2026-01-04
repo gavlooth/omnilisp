@@ -1,2 +1,0 @@
-
-extern func UnixTimestamp() i64;

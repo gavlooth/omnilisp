@@ -1,5 +1,5 @@
-#ifndef PURPLE_SCC_H
-#define PURPLE_SCC_H
+#ifndef OMNI_SCC_H
+#define OMNI_SCC_H
 
 #include "../types.h"
 #include "../util/hashmap.h"
@@ -88,4 +88,4 @@ void gen_scc_runtime(void);
 void gen_freeze_call(const char* var);
 void gen_release_scc_call(const char* var);
 
-#endif // PURPLE_SCC_H
+#endif // OMNI_SCC_H

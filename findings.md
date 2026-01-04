@@ -1,13 +1,13 @@
 • Findings
 
-  - Critical: BorrowRef in the public header uses Generation before it is defined, so any external-runtime build that includes the header will fail to compile. runtime/include/purple.h:35 runtime/include/
-    purple.h:165
+  - Critical: BorrowRef in the public header uses Generation before it is defined, so any external-runtime build that includes the header will fail to compile. runtime/include/omnilisp.h:35 runtime/include/
+    omnilisp.h:165
   - Critical: Object layout and IPGE semantics diverge between external runtime and embedded runtime; the compiler emits tethering but runtime/src/runtime.c has no tethered field, so tethering flips scan_tag
-    bits used by SCC/scanners and can corrupt traversal state; embedded runtime hardcodes 64‑bit generations while external runtime defaults to 16‑bit. runtime/include/purple.h:219 runtime/src/runtime.c:193
+    bits used by SCC/scanners and can corrupt traversal state; embedded runtime hardcodes 64‑bit generations while external runtime defaults to 16‑bit. runtime/include/omnilisp.h:219 runtime/src/runtime.c:193
     pkg/codegen/runtime.go:299 pkg/codegen/codegen.go:786 runtime/src/runtime.c:979
   - High: Public concurrency API mismatches across header, runtime, and compiler: header exports channel_create/channel_send/thread_create/atom_compare_and_set, runtime implements make_channel (and forces
     capacity ≥1), channel_send returns bool, spawn_thread, atom_cas, while compiler emits make_channel and expects channel_send to return a value; this will fail to link or change semantics depending on runtime
-    mode. runtime/include/purple.h:518 runtime/src/runtime.c:2708 runtime/src/runtime.c:2747 runtime/src/runtime.c:3051 runtime/src/runtime.c:2983 pkg/compiler/compiler.go:1651 pkg/compiler/compiler.go:1670
+    mode. runtime/include/omnilisp.h:518 runtime/src/runtime.c:2708 runtime/src/runtime.c:2747 runtime/src/runtime.c:3051 runtime/src/runtime.c:2983 pkg/compiler/compiler.go:1651 pkg/compiler/compiler.go:1670
   - High: Concurrency safety is not enforced in the memory subsystem: atomic_dec_ref can call free_obj, which mutates global freelist state without locks; _WEAK_REF_HEAD and STACK_POOL are also global and
     unsynchronized, so concurrent frees or stack allocations can corrupt state or double‑free. runtime/src/runtime.c:272 runtime/src/runtime.c:632 runtime/src/runtime.c:2669 runtime/src/runtime.c:311 runtime/
     src/runtime.c:282

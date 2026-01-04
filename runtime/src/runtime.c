@@ -1,4 +1,4 @@
-/* Purple + ASAP C Compiler Output */
+/* OmniLisp + ASAP C Compiler Output */
 /* Primary Strategy: ASAP + ISMM 2024 (Deeply Immutable Cycles) */
 /* Generated ANSI C99 + POSIX Code */
 
@@ -54,8 +54,8 @@
 #define IMMEDIATE_VALUE(p)   INT_IMM_VALUE(p)
 
 /* Immediate Booleans */
-#define PURPLE_FALSE         ((Obj*)(((uintptr_t)0 << 3) | IMM_TAG_BOOL))
-#define PURPLE_TRUE          ((Obj*)(((uintptr_t)1 << 3) | IMM_TAG_BOOL))
+#define OMNI_FALSE         ((Obj*)(((uintptr_t)0 << 3) | IMM_TAG_BOOL))
+#define OMNI_TRUE          ((Obj*)(((uintptr_t)1 << 3) | IMM_TAG_BOOL))
 
 /* Immediate Characters */
 #define MAKE_CHAR_IMM(c)     ((Obj*)(((uintptr_t)(c) << 3) | IMM_TAG_CHAR))
@@ -102,7 +102,7 @@ typedef struct GenObj GenObj;
 typedef struct Closure Closure;
 
 /* BorrowRef: Legacy heap-allocated reference for compatibility.
- * New code should use BorrowedRef (packed 64-bit) from purple.h */
+ * New code should use BorrowedRef (packed 64-bit) from omni.h */
 typedef struct BorrowRef {
     struct GenObj* target;       /* Legacy GenObj system */
     Generation remembered_gen;   /* Snapshot of generation at borrow time */
@@ -219,8 +219,8 @@ typedef struct Obj {
     };
 } Obj;
 /* Size: 32 bytes (compact) or 40 bytes (robust) */
-#define PURPLE_OBJ_DEFINED 1
-#define PURPLE_OBJ_SIZE sizeof(Obj)
+#define OMNI_OBJ_DEFINED 1
+#define OMNI_OBJ_SIZE sizeof(Obj)
 
 /* Now that Obj is defined, include handle system for sound borrowed refs */
 #include "memory/handle.h"
@@ -237,7 +237,7 @@ static inline Obj* mk_int_unboxed(long i) {
 
 /* Unboxed boolean constructor */
 static inline Obj* mk_bool(int b) {
-    return b ? PURPLE_TRUE : PURPLE_FALSE;
+    return b ? OMNI_TRUE : OMNI_FALSE;
 }
 
 /* Unboxed character constructor */
@@ -248,14 +248,14 @@ static inline Obj* mk_char_unboxed(long c) {
 /* Safe integer extraction - works for both boxed and immediate */
 static inline long obj_to_int(Obj* p) {
     if (IS_IMMEDIATE_INT(p)) return INT_IMM_VALUE(p);
-    if (IS_IMMEDIATE_BOOL(p)) return p == PURPLE_TRUE ? 1 : 0;
+    if (IS_IMMEDIATE_BOOL(p)) return p == OMNI_TRUE ? 1 : 0;
     if (IS_IMMEDIATE_CHAR(p)) return CHAR_IMM_VALUE(p);
     return p ? p->i : 0;
 }
 
 /* Safe boolean extraction */
 static inline int obj_to_bool(Obj* p) {
-    if (IS_IMMEDIATE_BOOL(p)) return p == PURPLE_TRUE;
+    if (IS_IMMEDIATE_BOOL(p)) return p == OMNI_TRUE;
     if (IS_IMMEDIATE_INT(p)) return INT_IMM_VALUE(p) != 0;
     if (p == NULL) return 0;
     return 1;  /* Non-null is truthy */
@@ -1633,7 +1633,7 @@ static void* region_deref(RegionRef* ref) {
 /* Thread-safe via pthread_rwlock (C99 + POSIX) */
 /*
  * NOTE: This is the LEGACY system using heap-allocated BorrowRef structs.
- * The new IPGE system uses packed 64-bit BorrowedRef (see purple.h).
+ * The new IPGE system uses packed 64-bit BorrowedRef (see omni.h).
  * This legacy code is kept for compatibility but IPGE is preferred.
  */
 
@@ -2381,7 +2381,7 @@ void print_obj(Obj* x) {
         return;
     }
     if (IS_IMMEDIATE_BOOL(x)) {
-        printf("%s", x == PURPLE_TRUE ? "#t" : "#f");
+        printf("%s", x == OMNI_TRUE ? "#t" : "#f");
         return;
     }
     switch (x->tag) {

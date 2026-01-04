@@ -1,4 +1,4 @@
-# Purple Go - Gap Elimination Implementation Plan
+# OmniLisp - Gap Elimination Implementation Plan
 
 ## VERIFIED STATUS + UPDATED PLAN (2026-01-01)
 
@@ -315,7 +315,7 @@ Goal: Compile **AST directly to C** (no interpreter staging), emit a standalone 
 - [ ] G3. Land D/E/F for full native CLI.
 
 Acceptance Criteria:
-- [ ] `purple_go --native examples/demo.purple` produces a native executable and runs successfully.
+- [ ] `omnilisp --native examples/demo.omni` produces a native executable and runs successfully.
 - [ ] All existing language features compile without staging (including closures, exceptions, and channels).
 - [ ] Valgrind/ASan/TSan clean on validation suite for AST->C pipeline.
 
@@ -768,7 +768,7 @@ This phase enhanced the existing optimization infrastructure with additional fea
 
 | Task | Description |
 |------|-------------|
-| V.1 | End-to-end test: compile Purple → C → execute with valgrind |
+| V.1 | End-to-end test: compile OmniLisp → C → execute with valgrind |
 | V.2 | Concurrent test: goroutines with channel ownership transfer |
 | V.3 | Benchmark: measure reuse optimization impact |
 | V.4 | Benchmark: measure DPS allocation reduction |
@@ -914,8 +914,8 @@ def staged_power(n) =
 |------|------|-------------|
 | P.1 | `pkg/ast/expr.go` | Define AST node types using deftype |
 | P.2 | `pkg/parser/pika.go` | Implement Pika parsing algorithm |
-| P.3 | `pkg/parser/grammar.go` | Define Purple surface grammar |
-| P.4 | `pkg/parser/desugar.go` | Transform Pika AST → Purple AST nodes |
+| P.3 | `pkg/parser/grammar.go` | Define OmniLisp surface grammar |
+| P.4 | `pkg/parser/desugar.go` | Transform Pika AST → OmniLisp AST nodes |
 | P.5 | `pkg/eval/quote.go` | Implement quote/unquote for AST construction |
 | P.6 | `pkg/eval/match.go` | Pattern matching on AST nodes |
 | P.7 | `pkg/eval/eval.go` | Extend eval to interpret AST nodes |

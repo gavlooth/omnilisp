@@ -219,7 +219,7 @@ void omni_codegen_runtime_header(CodeGenContext* ctx) {
     omni_codegen_emit_raw(ctx, "/* ASAP Memory Management - Compile-Time Free Injection */\n\n");
 
     if (ctx->use_runtime && ctx->runtime_path) {
-        omni_codegen_emit_raw(ctx, "#include \"%s/include/purple.h\"\n\n", ctx->runtime_path);
+        omni_codegen_emit_raw(ctx, "#include \"%s/include/omni.h\"\n\n", ctx->runtime_path);
         /* Compatibility macros for runtime */
         omni_codegen_emit_raw(ctx, "#define NIL mk_pair(NULL, NULL)\n");
         omni_codegen_emit_raw(ctx, "#define omni_print(o) prim_print(o)\n");

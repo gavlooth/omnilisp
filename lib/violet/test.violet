@@ -19,7 +19,7 @@
   (not (or (null? x) (number? x))))
 
 (define (number? x)
-  ;; In Purple, we can try arithmetic - this is a hack
+  ;; In OmniLisp, we can try arithmetic - this is a hack
   t)  ;; assume atoms that aren't nil are numbers for comparison
 
 (define (my-and a b) (if a b nil))

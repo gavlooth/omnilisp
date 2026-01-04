@@ -1,4 +1,0 @@
-
-extern func stdinReadInt() int;
-
-extern func getch() int;

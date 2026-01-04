@@ -1,5 +1,5 @@
-#ifndef PURPLE_ARENA_H
-#define PURPLE_ARENA_H
+#ifndef OMNI_ARENA_H
+#define OMNI_ARENA_H
 
 #include "../types.h"
 
@@ -62,4 +62,4 @@ void gen_arena_scope_begin(int scope_id);
 void gen_arena_scope_end(int scope_id);
 void gen_arena_alloc(int scope_id, const char* var_name, const char* type);
 
-#endif // PURPLE_ARENA_H
+#endif // OMNI_ARENA_H

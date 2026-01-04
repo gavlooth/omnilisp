@@ -1,18 +1,19 @@
-# Purple Language Reference
+# OmniLisp Language Reference
 
-Purple is a stage-polymorphic language implementing the "Collapsing Towers of Interpreters" paradigm (Amin & Rompf, POPL 2018). It features compile-time memory management via ASAP (As Static As Possible) analysis.
+OmniLisp is a stage-polymorphic language implementing the "Collapsing Towers of Interpreters" paradigm (Amin & Rompf, POPL 2018). It features compile-time memory management via ASAP (As Static As Possible) analysis.
 
 ## Table of Contents
 
 1. [Data Types](#data-types)
-2. [Special Forms](#special-forms)
-3. [Pattern Matching](#pattern-matching)
-4. [Primitives](#primitives)
-5. [Staging (Tower of Interpreters)](#staging-tower-of-interpreters)
-6. [Handler Customization](#handler-customization)
-7. [Macro System](#macro-system)
-8. [FFI (Foreign Function Interface)](#ffi-foreign-function-interface)
-9. [Error Handling](#error-handling)
+2. [Type Hierarchy & Dispatch](#type-hierarchy--dispatch)
+3. [Special Forms](#special-forms)
+4. [Pattern Matching](#pattern-matching)
+5. [Primitives](#primitives)
+6. [Staging (Tower of Interpreters)](#staging-tower-of-interpreters)
+7. [Handler Customization](#handler-customization)
+8. [Macro System](#macro-system)
+9. [FFI (Foreign Function Interface)](#ffi-foreign-function-interface)
+10. [Error Handling](#error-handling)
 
 ---
 
@@ -62,7 +63,7 @@ nil
 ```
 
 ### Booleans
-Purple uses nil for false and any non-nil value for true. The symbol `t` is conventionally used for true.
+OmniLisp uses nil for false and any non-nil value for true. The symbol `t` is conventionally used for true.
 ```scheme
 t      ; true
 nil    ; false
@@ -79,6 +80,38 @@ Created by `lambda`:
 ```scheme
 (lambda (x) (+ x 1))
 ```
+
+---
+
+## Type Hierarchy & Dispatch
+
+OmniLisp resolves operations using a **hierarchical type lattice** with **multiple dispatch** semantics:
+the most specific implementation that matches **all** operand types is selected. If no exact match
+exists, OmniLisp walks up the type hierarchy to the nearest applicable supertype. This is the default
+behavior for OmniLisp’s own core types and should be preserved for user-defined types.
+
+### Mapping: Julia → OmniLisp (Conceptual)
+
+| Julia | OmniLisp |
+|------|----------|
+| `Any` | Any value |
+| `Number` | `Int`, `Float`, `Char` (numeric family) |
+| `AbstractArray` | `Array` (mutable), `Tuple` (immutable), `List` (linked) |
+| `Dict` | `Dict` |
+| `Bool` | `nil` (false) / `t` (true) |
+| `Nothing` | `nothing` |
+| `Function` | `lambda`, `prim` |
+
+### Dispatch Example (Conceptual)
+
+```julia
++(x::Number, y::Number) = ...
++(x::Int,    y::Int)    = ...
+```
+
+OmniLisp uses the same rule: `(Int, Int)` selects the most specific method, otherwise it falls back
+to the nearest supertype implementation (e.g., `Number, Number`). This default behavior applies to
+core operators and should be the baseline for extensions.
 
 ---
 
@@ -332,7 +365,7 @@ Created by `lambda`:
 
 ## Staging (Tower of Interpreters)
 
-Purple implements a "tower of interpreters" where each level can generate code for the level below.
+OmniLisp implements a "tower of interpreters" where each level can generate code for the level below.
 
 ### lift - Quote Value as Code
 ```scheme

@@ -1,8 +1,8 @@
-# Purple Runtime Roadmap
+# OmniLisp Runtime Roadmap
 
 ## Current Status
 
-The Purple runtime is a mature C99 + POSIX runtime with:
+The OmniLisp runtime is a mature C99 + POSIX runtime with:
 
 - **Core object model** with tagged pointers and immediate values
 - **Multiple memory strategies**: ASAP, RC, SCC, Arena, Symmetric RC
@@ -147,7 +147,7 @@ runtime/
 │       ├── region.c/h         # IRegion infrastructure
 │       └── continuation.c/h   # Green threads, generators, promises
 ├── include/
-│   └── purple.h               # Public API
+│   └── omnilisp.h               # Public API
 ├── tests/
 │   ├── test_main.c            # 446 tests
 │   └── ...

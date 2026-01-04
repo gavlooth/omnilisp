@@ -1,15 +1,15 @@
 ;;; Violet Core - Adapted from clojure.core.clj
 ;;; https://github.com/clojure/clojure/blob/master/src/clj/clojure/core.clj
 ;;;
-;;; Violet is a Clojure-like language running on Purple.
-;;; This file adapts clojure.core functions to Purple's primitives.
+;;; Violet is a Clojure-like language running on OmniLisp.
+;;; This file adapts clojure.core functions to OmniLisp's primitives.
 ;;;
-;;; Purple provides: cons, car, cdr, null?, list, +, -, *, /, %, =, <, >, <=, >=,
-;;;                  not, map, filter, fold, foldl, length, append, reverse, apply
+;;; OmniLisp provides: cons, car, cdr, null?, list, +, -, *, /, %, =, <, >, <=, >=,
+;;;                    not, map, filter, fold, foldl, length, append, reverse, apply
 ;;;
 ;;; Booleans: t = true, nil = false
 
-;;; ========== Aliases (Purple -> Clojure naming) ==========
+;;; ========== Aliases (OmniLisp -> Clojure naming) ==========
 
 (define first car)
 (define rest cdr)
@@ -504,7 +504,7 @@
 
 ;;; ========== Utility functions ==========
 
-;; apply already provided by Purple
+;; apply already provided by OmniLisp
 
 ;; str - would need string support
 ;; format - would need string support
@@ -713,12 +713,12 @@
   (and (number? n) (< n 0)))
 
 (define (number? x)
-  ;; Primitive check - assumes Purple provides this or we detect via arithmetic
+  ;; Primitive check - assumes OmniLisp provides this or we detect via arithmetic
   t)  ; Placeholder
 
 (define (string? x)
-  ;; Check if x is a string (Purple string type)
-  nil)  ; Placeholder - depends on Purple's type system
+  ;; Check if x is a string (OmniLisp string type)
+  nil)  ; Placeholder - depends on OmniLisp's type system
 
 (define (keyword? x)
   ;; Keywords start with : in our representation
@@ -761,7 +761,7 @@
 
 (define (quot n d)
   "Integer division truncating toward zero"
-  (/ n d))  ; Assumes Purple / truncates
+  (/ n d))  ; Assumes OmniLisp / truncates
 
 (define (rem n d)
   "Remainder of dividing n by d"
@@ -878,7 +878,7 @@
   (subset? s2 s1))
 
 ;;; ========== Threading Support ==========
-;;; These are normally macros - see macros.violet and preprocess.purple
+;;; These are normally macros - see macros.violet and preprocess.omni
 ;;; Here we just document them
 
 ;; -> thread-first: (-> x (f a) (g b)) => (g (f x a) b)

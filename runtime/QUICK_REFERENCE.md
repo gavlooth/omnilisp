@@ -1,4 +1,4 @@
-# Purple Runtime Quick Reference
+# OmniLisp Runtime Quick Reference
 
 ## Object Tags
 
@@ -22,7 +22,7 @@ mk_sym(const char*)  mk_box(Obj*)  mk_error(const char*)
 
 // Immediate (no allocation)
 mk_int_unboxed(long)  mk_bool(int)  mk_char_unboxed(long)
-PURPLE_TRUE  PURPLE_FALSE
+OMNI_TRUE  OMNI_FALSE
 
 // Stack pool (short-lived)
 mk_int_stack(long)  mk_float_stack(double)  mk_char_stack(long)
@@ -333,13 +333,13 @@ list_foldr(Obj* fn, Obj* init, Obj* xs)
 
 ```bash
 # Standard build
-gcc -std=c99 -pthread -o prog prog.c -lpurple
+gcc -std=c99 -pthread -o prog prog.c -lomnilisp
 
 # Robust IPGE (64-bit generation)
-gcc -std=c99 -pthread -DIPGE_ROBUST_MODE=1 -o prog prog.c -lpurple
+gcc -std=c99 -pthread -DIPGE_ROBUST_MODE=1 -o prog prog.c -lomnilisp
 
 # Debug constraint refs
-gcc -std=c99 -pthread -DCONSTRAINT_DEBUG=1 -o prog prog.c -lpurple
+gcc -std=c99 -pthread -DCONSTRAINT_DEBUG=1 -o prog prog.c -lomnilisp
 ```
 
 ## Two-Tier Concurrency: When to Use What

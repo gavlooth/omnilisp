@@ -1,8 +1,8 @@
-# Purple Runtime Optimization Plan
+# OmniLisp Runtime Optimization Plan
 
 ## Executive Summary
 
-The Purple compiler has sophisticated analysis infrastructure that is **underutilized in code generation**. This plan addresses the gaps to achieve **2-5x performance improvement**.
+The OmniLisp compiler has sophisticated analysis infrastructure that is **underutilized in code generation**. This plan addresses the gaps to achieve **2-5x performance improvement**.
 
 ## Current Performance Baseline
 
@@ -219,4 +219,4 @@ Week 3: Advanced (optional)
 | `pkg/codegen/runtime.go` | Add stack allocation functions |
 | `pkg/analysis/liveness.go` | May need API adjustments |
 | `runtime/src/runtime.c` | Add mk_float_stack, mk_char_stack |
-| `runtime/include/purple.h` | Export new functions |
+| `runtime/include/omnilisp.h` | Export new functions |

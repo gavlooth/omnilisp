@@ -1,8 +1,8 @@
-# Violet - A Clojure-like Language on Purple
+# Violet - A Clojure-like Language on OmniLisp
 
 ## Overview
 
-**Violet** is a Clojure-like language running on Purple via the tower of interpreters. It demonstrates how Purple's meta-programming capabilities enable creating entirely new languages through preprocessing and collapsing.
+**Violet** is a Clojure-like language running on OmniLisp via the tower of interpreters. It demonstrates how OmniLisp's meta-programming capabilities enable creating entirely new languages through preprocessing and collapsing.
 
 Violet provides:
 - Full Clojure core compatibility (non-Java parts)
@@ -14,7 +14,7 @@ Violet provides:
 - List comprehensions (for, doseq)
 - Optional persistent data structures via Immer FFI
 
-**Key Principle**: Violet is implemented entirely through preprocessing - no modifications to Purple's core.
+**Key Principle**: Violet is implemented entirely through preprocessing - no modifications to OmniLisp's core.
 
 ## Architecture
 
@@ -26,12 +26,12 @@ Violet provides:
 └─────────────────────────────────────────────────────────────────┘
                               ↓ uses
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Purple Core                              │
+│                         OmniLisp Core                              │
 │     (cons, car, cdr, map, filter, fold, +, -, *, /, ...)        │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
-│                   lib/immer.purple (optional)                    │
+│                   lib/immer.omni (optional)                    │
 │         Persistent vectors, maps, sets via Immer FFI            │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
@@ -43,10 +43,10 @@ Violet provides:
 
 ## Design Principles
 
-1. **Core Purple unchanged** - no new AST types, no parser changes
+1. **Core OmniLisp unchanged** - no new AST types, no parser changes
 2. **Violet adapts clojure.core** - functions ported from official Clojure source
-3. **FFI is optional** - `lib/immer.purple` for persistent data structures
-4. **Minimal Purple, maximal Violet** - Purple provides primitives, Violet builds on them
+3. **FFI is optional** - `lib/immer.omni` for persistent data structures
+4. **Minimal OmniLisp, maximal Violet** - OmniLisp provides primitives, Violet builds on them
 
 ## What's Implemented
 
@@ -75,9 +75,9 @@ int   immer_set_contains(void* s, void* elem);
 // ... etc
 ```
 
-### 2. Purple FFI Wrapper (`lib/immer.purple`)
+### 2. OmniLisp FFI Wrapper (`lib/immer.omni`)
 
-Uses Purple's existing FFI mechanism:
+Uses OmniLisp's existing FFI mechanism:
 
 ```scheme
 ;; Declare external functions
@@ -99,9 +99,9 @@ Uses Purple's existing FFI mechanism:
 ;; ... etc
 ```
 
-### 3. Clojure Core (`lib/clojure/core.purple`)
+### 3. Clojure Core (`lib/clojure/core.omni`)
 
-Pure Purple - no FFI:
+Pure OmniLisp - no FFI:
 
 ```scheme
 ;; Higher-order functions
@@ -124,8 +124,8 @@ Pure Purple - no FFI:
 
 ```scheme
 ;; Load libraries
-(load "lib/immer.purple")
-(load "lib/clojure/core.purple")
+(load "lib/immer.omni")
+(load "lib/clojure/core.omni")
 
 ;; Use persistent vectors
 (define v (vector 1 2 3 4 5))
@@ -152,13 +152,13 @@ make
 make test
 ```
 
-## Linking with Purple Programs
+## Linking with OmniLisp Programs
 
-When compiling Purple programs that use Immer:
+When compiling OmniLisp programs that use Immer:
 
 ```bash
-# Compile Purple to C
-./purple_go -c program.purple > program.c
+# Compile OmniLisp to C
+./omnilisp -c program.omni > program.c
 
 # Compile and link
 gcc -std=c99 -pthread program.c \
@@ -169,7 +169,7 @@ gcc -std=c99 -pthread program.c \
 ## Memory Management
 
 - Immer structures use structural sharing internally
-- Purple's ASAP injects `immer_*_free()` calls at scope exit
+- OmniLisp's ASAP injects `immer_*_free()` calls at scope exit
 - No garbage collection, fully deterministic
 
 ## Files
@@ -181,15 +181,15 @@ lib/
 │   ├── immer_bridge.cpp    # C++ implementation
 │   ├── Makefile            # Build system
 │   └── test_bridge.cpp     # C++ tests
-├── immer.purple            # FFI wrappers for persistent data structures
+├── immer.omni            # FFI wrappers for persistent data structures
 └── violet/
     ├── VIOLET.md           # Language documentation & directives
-    ├── preprocess.purple   # Syntax transformer (Violet → Purple)
+    ├── preprocess.omni   # Syntax transformer (Violet → OmniLisp)
     ├── core.violet         # Core functions (~900 lines, adapted from clojure.core)
     ├── protocols.violet    # Protocol system implementation
     ├── multimethods.violet # Multimethod dispatch system
     ├── macros.violet       # Macro definitions & documentation
-    ├── loader.purple       # Violet file loader
+    ├── loader.omni       # Violet file loader
     ├── examples.violet     # Example programs
     └── test.violet         # Test suite
 ```
@@ -216,4 +216,4 @@ lib/
 - Map destructuring in let bindings
 - Full transducer protocol
 - spec-like validation
-- core.async style channels (using Purple's channels)
+- core.async style channels (using OmniLisp's channels)

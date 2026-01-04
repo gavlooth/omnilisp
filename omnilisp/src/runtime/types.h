@@ -8,7 +8,7 @@
 // -- Core Value Types --
 
 typedef enum {
-    T_INT, T_SYM, T_CELL, T_NIL, T_PRIM, T_MENV, T_CODE, T_LAMBDA,
+    T_INT, T_SYM, T_CELL, T_NIL, T_NOTHING, T_PRIM, T_MENV, T_CODE, T_LAMBDA,
     T_ERROR,    // Error value
     T_BOX,      // Mutable reference cell
     T_CONT,     // First-class continuation
@@ -109,6 +109,7 @@ typedef struct Value {
 Value* alloc_val(Tag tag);
 Value* mk_int(long i);
 Value* mk_nil(void);
+Value* mk_nothing(void);
 Value* mk_sym(const char* s);
 Value* mk_cell(Value* car, Value* cdr);
 Value* mk_prim(PrimFn fn);
@@ -135,6 +136,7 @@ void box_set(Value* box, Value* val);
 
 // -- Value Helpers --
 int is_nil(Value* v);
+int is_nothing(Value* v);
 int is_code(Value* v);
 Value* car(Value* v);
 Value* cdr(Value* v);

@@ -1,4 +1,4 @@
-# Purple Quick Reference
+# OmniLisp Quick Reference
 
 ## Data Types
 ```scheme
@@ -100,12 +100,12 @@ t               ; true
 
 ## CLI
 ```bash
-purple                    # REPL
-purple -e '(+ 1 2)'       # eval expression
-purple file.purple        # run file
-purple -c file.purple     # compile to C
-purple -c -o out.c file   # compile to file
-purple -v file            # verbose mode
+omnilisp                    # REPL
+omnilisp -e '(+ 1 2)'       # eval expression
+omnilisp file.omni        # run file
+omnilisp -c file.omni     # compile to C
+omnilisp -c -o out.c file   # compile to file
+omnilisp -v file            # verbose mode
 ```
 
 ## REPL Commands

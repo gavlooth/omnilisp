@@ -1,6 +1,6 @@
-# Purple Runtime Developer Guide
+# OmniLisp Runtime Developer Guide
 
-A comprehensive guide for developers working with the Purple C runtime. This document covers the object model, memory management strategies, region infrastructure, concurrency primitives, and FFI.
+A comprehensive guide for developers working with the OmniLisp C runtime. This document covers the object model, memory management strategies, region infrastructure, concurrency primitives, and FFI.
 
 ## Table of Contents
 
@@ -20,7 +20,7 @@ A comprehensive guide for developers working with the Purple C runtime. This doc
 
 ## Overview
 
-The Purple runtime is a C99 + POSIX runtime implementing **ASAP (As Static As Possible)** memory management. Unlike garbage-collected runtimes, Purple performs all deallocation decisions at compile time, inserting `free()` calls at optimal points.
+The OmniLisp runtime is a C99 + POSIX runtime implementing **ASAP (As Static As Possible)** memory management. Unlike garbage-collected runtimes, OmniLisp performs all deallocation decisions at compile time, inserting `free()` calls at optimal points.
 
 ### Key Principles
 
@@ -33,8 +33,8 @@ The Purple runtime is a C99 + POSIX runtime implementing **ASAP (As Static As Po
 
 ```bash
 # Compile with C99 + POSIX
-gcc -std=c99 -pthread -o program program.c -L. -lpurple
-clang -std=c99 -pthread -o program program.c -L. -lpurple
+gcc -std=c99 -pthread -o program program.c -L. -lomnilisp
+clang -std=c99 -pthread -o program program.c -L. -lomnilisp
 ```
 
 ---
@@ -72,7 +72,7 @@ make clean && make
 
 ### Object Structure
 
-All Purple values are represented by the `Obj` structure:
+All OmniLisp values are represented by the `Obj` structure:
 
 ```c
 typedef struct Obj {
@@ -131,8 +131,8 @@ Small values are encoded directly in the pointer, avoiding heap allocation:
 #define INT_IMM_VALUE(p)     ((long)((intptr_t)(p) >> 3))
 
 /* Booleans */
-#define PURPLE_FALSE         ((Obj*)(((uintptr_t)0 << 3) | IMM_TAG_BOOL))
-#define PURPLE_TRUE          ((Obj*)(((uintptr_t)1 << 3) | IMM_TAG_BOOL))
+#define OMNI_FALSE         ((Obj*)(((uintptr_t)0 << 3) | IMM_TAG_BOOL))
+#define OMNI_TRUE          ((Obj*)(((uintptr_t)1 << 3) | IMM_TAG_BOOL))
 ```
 
 ### Constructors
@@ -193,7 +193,7 @@ int is_truthy(Obj* x);         /* Truthy for conditionals? */
 
 ### ASAP Strategy Overview
 
-Purple uses **ASAP (As Static As Possible)** memory management:
+OmniLisp uses **ASAP (As Static As Possible)** memory management:
 
 ```
 Compile-Time Analysis:
@@ -961,7 +961,7 @@ void ffi_release_handle(uint64_t handle);
 ### Example: C Library Integration
 
 ```c
-// Export Purple object to C callback
+// Export OmniLisp object to C callback
 void register_callback(void* context, void (*callback)(void*)) {
     ExternalHandle h = external_handle_create(
         external_table_global(),

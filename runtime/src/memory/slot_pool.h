@@ -14,8 +14,8 @@
  * Reference: docs/GENERATIONAL_MEMORY.md (Approach 3: Cached-Tag Handles)
  */
 
-#ifndef PURPLE_SLOT_POOL_H
-#define PURPLE_SLOT_POOL_H
+#ifndef OMNI_SLOT_POOL_H
+#define OMNI_SLOT_POOL_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -273,4 +273,4 @@ void slot_pool_global_destroy(void);
 }
 #endif
 
-#endif /* PURPLE_SLOT_POOL_H */
+#endif /* OMNI_SLOT_POOL_H */

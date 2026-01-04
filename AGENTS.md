@@ -1,4 +1,4 @@
-# Purple C Scratch - ASAP Memory Management
+# OmniLisp C Scratch - ASAP Memory Management
 
 ## CRITICAL: ASAP is NOT Garbage Collection
 
@@ -8,7 +8,7 @@ It does NOT use runtime garbage collection.
 
 The compiler analyzes the program and **statically inserts `free()` calls** at the optimal
 points during code generation. All deallocation decisions are made at compile time.
-There is alreay an implementation in ~/code/purple_c_scratch   rewrite it in go Use libraries to avoid exesive custom code
+There is alreay an implementation in ~/code/omnilisp_c_scratch   rewrite it in go Use libraries to avoid exesive custom code
 
 ### Target: C99 + POSIX
 
@@ -74,10 +74,73 @@ The `FREE_LIST` is an optimization for **batching frees**, not a GC mechanism:
 | 7 | Multi-Binding Let | Support `(let ((x 1) (y 2)) body)` |
 | 8 | Field-Aware Scanners | Skip non-pointer fields in traversal |
 
+## TODO/Task Flow (Directive)
+
+All agents must use this flow for TODOs and tasks, including **N/A** status.
+Tasks must be written for developers who **do not know this codebase** but are **adept builders**.
+That means each task must be explicit about *where*, *what*, *how*, and *done means*.
+
+### Required Task Granularity & Detail
+Each task must include **all** of the following:
+- **Label**: short unique ID (e.g., `T1-src-spans`).
+- **Objective**: 1 sentence describing the end state.
+- **Where**: file paths and (if known) functions or modules to touch.
+- **What to change**: concrete actions (add struct X, extend enum Y, emit call Z).
+- **How to verify**: exact command or manual step (test, sample input, expected output).
+- **Acceptance**: 1–3 bullet points that define “done”.
+
+Break work into **small, reviewable tasks**:
+- Prefer tasks that touch **1–3 files**.
+- Prefer tasks that can be completed in **≤ 1 day** by a new contributor.
+- Split tasks if they combine unrelated concerns (e.g., “parser spans” vs “diagnostic rendering”).
+
+### Task Template (Required)
+```
+- [STATUS] Label: T#-short-name
+  Objective: <one sentence end state>
+  Where: <paths + key functions/modules>
+  What to change:
+    - <concrete action 1>
+    - <concrete action 2>
+  How to verify: <command or manual step + expected outcome>
+  Acceptance:
+    - <criterion 1>
+    - <criterion 2>
+```
+
+### Status Rules
+1. **Capture**: Convert discovered TODOs into explicit tasks with short, unique labels.
+2. **Order**: Sort tasks top-to-bottom by dependency.
+3. **Status**: Every task must be marked as one of: `TODO`, `IN_PROGRESS`, `DONE`, or `N/A`.
+4. **N/A rule**: If a task is not applicable, mark it `N/A` and add a one-line reason. Do not delete it.
+5. **Closeout**: Before finishing, ensure every task is `DONE` or `N/A`.
+
+## Test-Driven Development (Directive)
+
+All agents (Claude, Gemini, Codex) must use **test-driven development** by default:
+
+1. **Write tests first** for any behavior change or new feature.
+2. **Define expected outputs** (golden files or assertions) before implementation.
+3. **Run the test suite** after changes and report results.
+4. **No test, no change** unless the task is explicitly marked `N/A` for testing, with a one-line reason.
+
+## Test Policy (Directive)
+
+**NEVER simplify tests to make them pass. Fix the underlying code instead.**
+
+- Tests define the contract. If a test fails, the **implementation is wrong**, not the test.
+- Tests should only change if the test itself is **incorrect** (wrong expected value, flawed logic).
+- When encountering test failures:
+  1. **Diagnose** the root cause in the implementation.
+  2. **Fix** the implementation to satisfy the test.
+  3. **Never** weaken, skip, or simplify tests to avoid fixing bugs.
+- If a test is genuinely wrong, document **why** it was wrong before changing it.
+- Treat test failures as **bugs to fix**, not obstacles to remove.
+
 ## Key Files
 
 - `tests.sh` - Regression tests (14 tests)
-- `examples/demo.purple` - Example programs
+- `examples/demo.omni` - Example programs
 
 ## References
 
@@ -85,6 +148,211 @@ The `FREE_LIST` is an optimization for **batching frees**, not a GC mechanism:
 - *Collapsing Towers of Interpreters* (Amin & Rompf, POPL 2018)
 - *Better Static Memory Management* (Aiken et al., PLDI 1995)
 - *Region-Based Memory Management* (Tofte & Talpin, 1997)
+
+---
+
+# CLAUDE.md (Merged)
+
+# OmniLisp - ASAP Memory Management
+
+## Implementation Status
+
+### Completed Optimizations
+
+| Phase | Feature | Description |
+|-------|---------|-------------|
+| 1 | VarUsage Infrastructure | Track variable usage, escape, capture status |
+| 2 | Liveness Analysis | Free at last-use, not just scope-end |
+| 3 | Escape Analysis | Stack-allocate non-escaping values |
+| 4 | Capture Tracking | Don't free lambda-captured variables |
+| 5 | Dynamic Free List | Linked list instead of fixed array |
+| 6 | Type-Aware Scanners | Traversal utilities (NOT GC) |
+| 7 | Multi-Binding Let | Support `(let ((x 1) (y 2)) body)` |
+| 8 | Field-Aware Scanners | Skip non-pointer fields in traversal |
+
+## TODO/Task Flow (Directive)
+
+All agents must use this flow for TODOs and tasks, including **N/A** status.
+Tasks must be written for developers who **do not know this codebase** but are **adept builders**.
+That means each task must be explicit about *where*, *what*, *how*, and *done means*.
+
+### Required Task Granularity & Detail
+Each task must include **all** of the following:
+- **Label**: short unique ID (e.g., `T1-src-spans`).
+- **Objective**: 1 sentence describing the end state.
+- **Where**: file paths and (if known) functions or modules to touch.
+- **What to change**: concrete actions (add struct X, extend enum Y, emit call Z).
+- **How to verify**: exact command or manual step (test, sample input, expected output).
+- **Acceptance**: 1–3 bullet points that define “done”.
+
+Break work into **small, reviewable tasks**:
+- Prefer tasks that touch **1–3 files**.
+- Prefer tasks that can be completed in **≤ 1 day** by a new contributor.
+- Split tasks if they combine unrelated concerns (e.g., “parser spans” vs “diagnostic rendering”).
+
+### Task Template (Required)
+```
+- [STATUS] Label: T#-short-name
+  Objective: <one sentence end state>
+  Where: <paths + key functions/modules>
+  What to change:
+    - <concrete action 1>
+    - <concrete action 2>
+  How to verify: <command or manual step + expected outcome>
+  Acceptance:
+    - <criterion 1>
+    - <criterion 2>
+```
+
+### Status Rules
+1. **Capture**: Convert discovered TODOs into explicit tasks with short, unique labels.
+2. **Order**: Sort tasks top-to-bottom by dependency.
+3. **Status**: Every task must be marked as one of: `TODO`, `IN_PROGRESS`, `DONE`, or `N/A`.
+4. **N/A rule**: If a task is not applicable, mark it `N/A` and add a one-line reason. Do not delete it.
+5. **Closeout**: Before finishing, ensure every task is `DONE` or `N/A`.
+
+
+## Test-Driven Development (Directive)
+
+All agents (Claude, Gemini, Codex) must use **test-driven development** by default:
+
+1. **Write tests first** for any behavior change or new feature.
+2. **Define expected outputs** (golden files or assertions) before implementation.
+3. **Run the test suite** after changes and report results.
+4. **No test, no change** unless the task is explicitly marked `N/A` for testing, with a one-line reason.
+
+## Test Policy (Directive)
+
+**NEVER simplify tests to make them pass. Fix the underlying code instead.**
+
+- Tests define the contract. If a test fails, the **implementation is wrong**, not the test.
+- Tests should only change if the test itself is **incorrect** (wrong expected value, flawed logic).
+- When encountering test failures:
+  1. **Diagnose** the root cause in the implementation.
+  2. **Fix** the implementation to satisfy the test.
+  3. **Never** weaken, skip, or simplify tests to avoid fixing bugs.
+
+---
+
+## CRITICAL: ASAP is NOT Garbage Collection
+
+**ASAP (As Static As Possible)** is a **compile-time static memory management** strategy.
+It does NOT use runtime garbage collection.
+
+### Core Principle
+
+The compiler analyzes the program and **statically inserts `free()` calls** at the optimal
+points during code generation. All deallocation decisions are made at compile time.
+
+### Target: C99 + POSIX
+
+The goal is to emit **ANSI C99 + POSIX** code:
+- **C99** for the core language (no C11 features like `<stdatomic.h>`)
+- **POSIX pthreads** for thread synchronization (`pthread_mutex_t`, `pthread_rwlock_t`)
+- Compile with: `gcc -std=c99 -pthread` or `clang -std=c99 -pthread`
+
+### Pure C Toolchain
+
+The entire toolchain (compiler, runtime, parser) is implemented in **pure C99**:
+- `csrc/` - Compiler (parser, AST, analysis, codegen, CLI)
+- `runtime/` - Runtime library (memory management, primitives, concurrency)
+- `third_party/` - Vendored C libraries (uthash, sds, linenoise, stb_ds)
+
+### Building
+
+```bash
+# Build the compiler
+make -C csrc
+
+# Build the runtime
+make -C runtime
+
+# Run the compiler
+./csrc/omnilisp -e '(+ 1 2)'        # Compile and run expression
+./csrc/omnilisp program.omni        # Compile and run file
+./csrc/omnilisp -c program.omni     # Emit C code
+```
+
+You can use other algorithms along ASAP as long as they don't do "stop the world". So mark/sweep and traditional garbage collection is out of the question
+as well as "cyclic collection" algorithms that stop the world (either all or most of them are)
+```
+WRONG: Runtime GC that scans heap and collects garbage
+RIGHT: Compiler injects free_obj(x) at compile time based on static analysis
+```
+
+### What ASAP Does
+
+1. **CLEAN Phase** (compile-time)
+   - Analyzes variable lifetimes statically
+   - Injects `free_obj()` calls at scope exit (or earlier based on liveness)
+   - Variables captured by closures are NOT freed (ownership transfers to closure)
+
+2. **Liveness Analysis** (compile-time)
+   - Tracks last use of each variable
+   - Can free earlier than scope exit if variable is dead
+
+3. **Escape Analysis** (compile-time)
+   - `ESCAPE_NONE`: Value stays local → can stack-allocate
+   - `ESCAPE_ARG`: Escapes via function argument → heap-allocate
+   - `ESCAPE_GLOBAL`: Escapes to return/closure → heap-allocate, careful with freeing
+
+4. **Capture Tracking** (compile-time)
+   - Identifies variables captured by lambdas/closures
+   - These variables must NOT be freed in parent scope
+
+5. **Automatic Back-Edge Detection** (compile-time) - CORE ASAP
+   - Compiler analyzes type graph to detect potential cycles
+   - Back-edge fields auto-detected via heuristics (`parent`, `prev`, `back`, etc.)
+   - DFS cycle detection as fallback
+   - Detected back-edges become weak references (no RC, no ownership)
+   - **No user annotation required** - fully automatic
+   - User CAN override with `:weak` annotation but it's optional
+   - This is CORE ASAP because it's automatic with zero language restrictions
+
+### What Scanners Are For
+
+The `scan_List()` function is a **traversal utility**, NOT a garbage collector:
+- Debugging (checking what's reachable)
+- Manual reference counting updates
+- Runtime verification in debug builds
+- Marking for other static analyses
+
+### Deferred Free List
+
+The `FREE_LIST` is an optimization for **batching frees**, not a GC mechanism:
+- Prevents issues during complex traversals
+- Allows flushing at safe points
+- NOT for mark-sweep collection
+
+## Implementation Status (2026-01-03)
+
+**All 11 planned memory optimizations are COMPLETE** with full test coverage.
+
+| # | Optimization | Tests | Key Features |
+|---|--------------|-------|--------------|
+| 1 | GenRef/IPGE Soundness Fix | - | Stable slot pool |
+| 2 | Full Liveness-Driven Free Insertion | - | CFG-based analysis |
+| 3 | Ownership-Driven Codegen | - | `free_unique`/`free_tree`/`dec_ref` |
+| 4 | Escape-Aware Stack Allocation | - | `STACK_INT`/`STACK_CELL` |
+| 5 | Shape Analysis + Weak Back-Edge | 7 | Auto cycle/weak detection |
+| 6 | Perceus Reuse Analysis | 7 | `reuse_as_*`/`REUSE_OR_NEW_*` |
+| 7 | Region-Aware RC Elision | 11 | `INC_REF_IF_NEEDED`/`REGION_LOCAL_REF` |
+| 8 | Per-Region External Refcount | 7 | `REGION_CAN_BULK_FREE` |
+| 9 | Borrow/Tether Loop Insertion | 8 | `TETHER`/`BORROW_FOR_LOOP` |
+| 10 | Interprocedural Summaries | 11 | `PARAM_BORROWED`/`RETURN_FRESH` |
+| 11 | Concurrency Ownership Inference | 14 | `ATOMIC_INC_REF`/`Channel`/`SPAWN_THREAD` |
+
+**Total: 65+ tests in `csrc/tests/`**
+
+## Key Files
+
+- `tests.sh` - Regression tests (14 tests)
+- `examples/demo.omni` - Example programs
+
+## References
+
+- *ASAP: As Static As Possible memory management* (Proust, 2017)
+- *Collapsing Towers of Interpreters* (Amin & Rompf, POPL 2018)
 
 ---
 

@@ -1,0 +1,345 @@
+; ===========================================
+; SciComp Tests - Scientific Computing Module Tests
+; ===========================================
+;
+; Run with: ./omnilisp lib/scicomp/tests.omni
+;
+; These tests verify the correctness of BLAS, Torch, and Linalg modules.
+
+(import SciComp.BLAS)
+(import SciComp.Linalg)
+
+; ===========================================
+; Test Framework
+; ===========================================
+
+(define *test-count* 0)
+(define *pass-count* 0)
+(define *fail-count* 0)
+
+(define (test name condition)
+  (set! *test-count* (+ *test-count* 1))
+  (if condition
+      (begin
+        (set! *pass-count* (+ *pass-count* 1))
+        (print "  PASS: " name "\n"))
+      (begin
+        (set! *fail-count* (+ *fail-count* 1))
+        (print "  FAIL: " name "\n"))))
+
+(define (test-approx name actual expected tol)
+  (test name (< (abs (- actual expected)) tol)))
+
+(define (test-section name)
+  (print "\n=== " name " ===\n"))
+
+(define (test-summary)
+  (print "\n--- Summary ---\n")
+  (print "Total:  " *test-count* "\n")
+  (print "Passed: " *pass-count* "\n")
+  (print "Failed: " *fail-count* "\n")
+  (if (= *fail-count* 0)
+      (print "All tests passed!\n")
+      (print "Some tests FAILED!\n")))
+
+; ===========================================
+; BLAS Vector Tests
+; ===========================================
+
+(test-section "BLAS Vector Operations")
+
+; Test vec-from-list and vec-to-list
+(let ((v (vec-from-list '(1.0 2.0 3.0))))
+  (test "vec-from-list/vec-to-list roundtrip"
+        (equal? (vec-to-list v) '(1.0 2.0 3.0)))
+  (vec-free! v))
+
+; Test vec-zeros
+(let ((v (vec-zeros 3)))
+  (test "vec-zeros creates zeros"
+        (and (= (vec-get v 0) 0.0)
+             (= (vec-get v 1) 0.0)
+             (= (vec-get v 2) 0.0)))
+  (vec-free! v))
+
+; Test vec-ones
+(let ((v (vec-ones 3)))
+  (test "vec-ones creates ones"
+        (and (= (vec-get v 0) 1.0)
+             (= (vec-get v 1) 1.0)
+             (= (vec-get v 2) 1.0)))
+  (vec-free! v))
+
+; Test vec-dot (dot product)
+(let ((x (vec-from-list '(1.0 2.0 3.0)))
+      (y (vec-from-list '(4.0 5.0 6.0))))
+  (test-approx "vec-dot computes dot product"
+               (vec-dot x y) 32.0 0.0001)
+  (vec-free! x)
+  (vec-free! y))
+
+; Test vec-norm (L2 norm)
+(let ((v (vec-from-list '(3.0 4.0))))
+  (test-approx "vec-norm computes L2 norm"
+               (vec-norm v) 5.0 0.0001)
+  (vec-free! v))
+
+; Test vec-scale!
+(let ((v (vec-from-list '(1.0 2.0 3.0))))
+  (vec-scale! 2.0 v)
+  (test "vec-scale! multiplies in place"
+        (and (= (vec-get v 0) 2.0)
+             (= (vec-get v 1) 4.0)
+             (= (vec-get v 2) 6.0)))
+  (vec-free! v))
+
+; Test vec-axpy!
+(let ((x (vec-from-list '(1.0 2.0 3.0)))
+      (y (vec-from-list '(4.0 5.0 6.0))))
+  (vec-axpy! 2.0 x y)  ; y := 2*x + y
+  (test "vec-axpy! computes axpy"
+        (and (= (vec-get y 0) 6.0)
+             (= (vec-get y 1) 9.0)
+             (= (vec-get y 2) 12.0)))
+  (vec-free! x)
+  (vec-free! y))
+
+; Test vec-add (functional)
+(let ((x (vec-from-list '(1.0 2.0 3.0)))
+      (y (vec-from-list '(4.0 5.0 6.0))))
+  (let ((z (vec-add x y)))
+    (test "vec-add computes element-wise sum"
+          (and (= (vec-get z 0) 5.0)
+               (= (vec-get z 1) 7.0)
+               (= (vec-get z 2) 9.0)))
+    (vec-free! z))
+  (vec-free! x)
+  (vec-free! y))
+
+; ===========================================
+; BLAS Matrix Tests
+; ===========================================
+
+(test-section "BLAS Matrix Operations")
+
+; Test mat-zeros
+(let ((m (mat-zeros 2 3)))
+  (test "mat-zeros creates zero matrix"
+        (and (= (mat-get m 0 0) 0.0)
+             (= (mat-get m 0 1) 0.0)
+             (= (mat-get m 1 2) 0.0)))
+  (mat-free! m))
+
+; Test mat-eye
+(let ((m (mat-eye 3)))
+  (test "mat-eye creates identity"
+        (and (= (mat-get m 0 0) 1.0)
+             (= (mat-get m 1 1) 1.0)
+             (= (mat-get m 2 2) 1.0)
+             (= (mat-get m 0 1) 0.0)
+             (= (mat-get m 1 0) 0.0)))
+  (mat-free! m))
+
+; Test mat-from-lists
+(let ((m (mat-from-lists '((1.0 2.0) (3.0 4.0)))))
+  (test "mat-from-lists creates matrix"
+        (and (= (mat-get m 0 0) 1.0)
+             (= (mat-get m 0 1) 2.0)
+             (= (mat-get m 1 0) 3.0)
+             (= (mat-get m 1 1) 4.0)))
+  (mat-free! m))
+
+; Test mat-vec-mul
+(let ((A (mat-from-lists '((1.0 2.0) (3.0 4.0))))
+      (x (vec-from-list '(1.0 1.0))))
+  (let ((y (mat-vec-mul A x)))
+    (test "mat-vec-mul computes A*x"
+          (and (= (vec-get y 0) 3.0)
+               (= (vec-get y 1) 7.0)))
+    (vec-free! y))
+  (mat-free! A)
+  (vec-free! x))
+
+; Test mat-mul
+(let ((A (mat-from-lists '((1.0 2.0) (3.0 4.0))))
+      (B (mat-from-lists '((5.0 6.0) (7.0 8.0)))))
+  (let ((C (mat-mul A B)))
+    (test "mat-mul computes A*B"
+          (and (= (mat-get C 0 0) 19.0)   ; 1*5 + 2*7
+               (= (mat-get C 0 1) 22.0)   ; 1*6 + 2*8
+               (= (mat-get C 1 0) 43.0)   ; 3*5 + 4*7
+               (= (mat-get C 1 1) 50.0))) ; 3*6 + 4*8
+    (mat-free! C))
+  (mat-free! A)
+  (mat-free! B))
+
+; Test mat-transpose
+(let ((A (mat-from-lists '((1.0 2.0 3.0) (4.0 5.0 6.0)))))
+  (let ((At (mat-transpose A)))
+    (test "mat-transpose computes A'"
+          (and (= (Matrix-rows At) 3)
+               (= (Matrix-cols At) 2)
+               (= (mat-get At 0 0) 1.0)
+               (= (mat-get At 1 0) 2.0)
+               (= (mat-get At 2 1) 6.0)))
+    (mat-free! At))
+  (mat-free! A))
+
+; ===========================================
+; Linear Algebra Tests
+; ===========================================
+
+(test-section "Linear Algebra (LAPACK)")
+
+; Test solve (A*x = b)
+(let ((A (mat-from-lists '((2.0 1.0) (1.0 3.0))))
+      (b (vec-from-list '(5.0 7.0))))
+  (let ((x (solve A b)))
+    ; Solution: x = [1.6, 1.8]
+    (test-approx "solve computes correct x[0]" (vec-get x 0) 1.6 0.001)
+    (test-approx "solve computes correct x[1]" (vec-get x 1) 1.8 0.001)
+    (vec-free! x))
+  (mat-free! A)
+  (vec-free! b))
+
+; Test det (determinant)
+(let ((A (mat-from-lists '((1.0 2.0) (3.0 4.0)))))
+  (test-approx "det computes determinant"
+               (det A) -2.0 0.001)
+  (mat-free! A))
+
+; Test inv (matrix inverse)
+(let ((A (mat-from-lists '((4.0 7.0) (2.0 6.0)))))
+  (let ((Ainv (inv A)))
+    ; A^-1 = 1/10 * [[6, -7], [-2, 4]] = [[0.6, -0.7], [-0.2, 0.4]]
+    (test-approx "inv computes A^-1[0,0]" (mat-get Ainv 0 0) 0.6 0.001)
+    (test-approx "inv computes A^-1[0,1]" (mat-get Ainv 0 1) -0.7 0.001)
+    (test-approx "inv computes A^-1[1,0]" (mat-get Ainv 1 0) -0.2 0.001)
+    (test-approx "inv computes A^-1[1,1]" (mat-get Ainv 1 1) 0.4 0.001)
+    (mat-free! Ainv))
+  (mat-free! A))
+
+; Test trace
+(let ((A (mat-from-lists '((1.0 2.0 3.0)
+                           (4.0 5.0 6.0)
+                           (7.0 8.0 9.0)))))
+  (test-approx "trace computes trace"
+               (trace A) 15.0 0.001)  ; 1+5+9
+  (mat-free! A))
+
+; Test norm-fro (Frobenius norm)
+(let ((A (mat-from-lists '((1.0 2.0) (3.0 4.0)))))
+  ; ||A||_F = sqrt(1 + 4 + 9 + 16) = sqrt(30) ≈ 5.477
+  (test-approx "norm-fro computes Frobenius norm"
+               (norm-fro A) 5.477 0.01)
+  (mat-free! A))
+
+; Test cholesky on positive definite matrix
+(let ((A (mat-from-lists '((4.0 2.0) (2.0 5.0)))))  ; SPD matrix
+  (let ((L (cholesky A)))
+    ; L should be lower triangular
+    (test "cholesky produces lower triangular"
+          (= (mat-get L 0 1) 0.0))
+    ; L*L' should equal A
+    (let ((LLt (mat-mul L (mat-transpose L))))
+      (test-approx "L*L' recovers A[0,0]" (mat-get LLt 0 0) 4.0 0.001)
+      (test-approx "L*L' recovers A[1,1]" (mat-get LLt 1 1) 5.0 0.001)
+      (mat-free! LLt))
+    (mat-free! L))
+  (mat-free! A))
+
+; Test LU decomposition
+(let ((A (mat-from-lists '((2.0 1.0) (4.0 3.0)))))
+  (let ((result (lu A)))
+    (let ((L (LU-L result))
+          (U (LU-U result)))
+      ; L should have 1s on diagonal
+      (test "LU: L has unit diagonal"
+            (= (mat-get L 0 0) 1.0))
+      ; L should be lower triangular
+      (test "LU: L is lower triangular"
+            (= (mat-get L 0 1) 0.0))
+      ; U should be upper triangular
+      (test "LU: U is upper triangular"
+            (= (mat-get U 1 0) 0.0))
+      (mat-free! L)
+      (mat-free! U)
+      (vec-free! (LU-perm result))))
+  (mat-free! A))
+
+; Test QR decomposition
+(let ((A (mat-from-lists '((1.0 1.0) (1.0 2.0) (1.0 3.0)))))
+  (let ((result (qr A)))
+    (let ((Q (QR-Q result))
+          (R (QR-R result)))
+      ; Q should be orthogonal (Q'*Q ≈ I)
+      (let ((Qt (mat-transpose Q)))
+        (let ((QtQ (mat-mul Qt Q)))
+          (test-approx "QR: Q is orthogonal (Q'Q[0,0] = 1)"
+                       (mat-get QtQ 0 0) 1.0 0.001)
+          (test-approx "QR: Q is orthogonal (Q'Q[0,1] = 0)"
+                       (mat-get QtQ 0 1) 0.0 0.001)
+          (mat-free! QtQ))
+        (mat-free! Qt))
+      ; R should be upper triangular
+      (test "QR: R is upper triangular"
+            (= (mat-get R 1 0) 0.0))
+      (mat-free! Q)
+      (mat-free! R)))
+  (mat-free! A))
+
+; Test lstsq (least squares)
+(let ((A (mat-from-lists '((1.0 1.0) (1.0 2.0) (1.0 3.0))))
+      (b (vec-from-list '(1.0 2.0 3.0))))
+  (let ((x (lstsq A b)))
+    ; Least squares fit to y = a + b*x where data is (1,1), (2,2), (3,3)
+    ; Solution: a=0, b=1
+    (test-approx "lstsq finds intercept" (vec-get x 0) 0.0 0.01)
+    (test-approx "lstsq finds slope" (vec-get x 1) 1.0 0.01)
+    (vec-free! x))
+  (mat-free! A)
+  (vec-free! b))
+
+; ===========================================
+; Utility Function Tests
+; ===========================================
+
+(test-section "Utility Functions")
+
+; Test with-vec macro (automatic cleanup)
+(test "with-vec provides scoped cleanup"
+      (let ((result (with-vec (v (vec-from-list '(1.0 2.0 3.0)))
+                      (vec-dot v v))))
+        (= result 14.0)))
+
+; Test with-mat macro (automatic cleanup)
+(test "with-mat provides scoped cleanup"
+      (let ((result (with-mat (m (mat-eye 3))
+                      (trace m))))
+        (= result 3.0)))
+
+; Test symmetric? predicate
+(let ((sym (mat-from-lists '((1.0 2.0) (2.0 3.0))))
+      (nonsym (mat-from-lists '((1.0 2.0) (3.0 4.0)))))
+  (test "symmetric? detects symmetric matrix"
+        (symmetric? sym 0.001))
+  (test "symmetric? detects non-symmetric matrix"
+        (not (symmetric? nonsym 0.001)))
+  (mat-free! sym)
+  (mat-free! nonsym))
+
+; Test positive-definite? predicate
+(let ((pd (mat-from-lists '((4.0 2.0) (2.0 5.0))))    ; SPD
+      (npd (mat-from-lists '((1.0 2.0) (2.0 1.0)))))  ; Not PD
+  (test "positive-definite? detects SPD matrix"
+        (positive-definite? pd))
+  (test "positive-definite? detects non-PD matrix"
+        (not (positive-definite? npd)))
+  (mat-free! pd)
+  (mat-free! npd))
+
+; ===========================================
+; Summary
+; ===========================================
+
+(test-summary)

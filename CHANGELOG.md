@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Purple Go are documented in this file.
+All notable changes to OmniLisp are documented in this file.
 
 ## [Unreleased]
 

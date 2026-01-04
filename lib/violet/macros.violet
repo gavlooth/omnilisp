@@ -1,7 +1,7 @@
 ;;; Violet Macros - Clojure-style macros for Violet
 ;;;
 ;;; These macros are expanded by the preprocessor before evaluation.
-;;; They transform Clojure-style syntax to Purple primitives.
+;;; They transform Clojure-style syntax to OmniLisp primitives.
 ;;;
 ;;; NOTE: These are defined as transformation rules for the preprocessor,
 ;;; not as runtime functions.
@@ -159,7 +159,7 @@
 
 ;;; try/catch/finally
 ;;; (try expr (catch ExType e handler) (finally cleanup))
-;;; Transforms to Purple's error handling
+;;; Transforms to OmniLisp's error handling
 
 ;;; throw - (throw ex) => (error ex)
 (define throw error)
@@ -395,7 +395,7 @@
       nil))
 
 ;;; locking - (locking x body) => synchronized on x
-;;; For concurrent access - maps to Purple's mutex
+;;; For concurrent access - maps to OmniLisp's mutex
 (define (locking-impl lock body-fn)
   ;; Would need mutex support
   (body-fn))

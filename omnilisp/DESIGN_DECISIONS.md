@@ -32,7 +32,7 @@ examples live in `DESIGN.md` and `SYNTAX.md`.
 *   Reader macros: `#(...)`, `#?`, `#_`, `#| |#`, `#!`, `#uuid/#path`.
 *   `for`/`foreach` multiple bindings are nested by default.
 *   Methods use explicit `self` parameter.
-*   No `nil`; empty list is `(list)`.
+*   No `nil`; empty list literal is `()`.
 *   Error handling: `error` + single `restart-case` in phase 1; full condition system deferred.
 *   Named args: `&` separates positional from named.
 *   String prefixes use `#` forms: `#r` (regex), `#raw` (raw), `#b` (bytes).

@@ -155,9 +155,8 @@ of this document describes the intended language design.
 - Lists: `cons`, `car`, `cdr`, `null?`
 - I/O: `display`, `print`, `newline`
 
-**Truthiness (current C runtime)**
-- Empty list and numeric zero are false; everything else is truthy.
-- Design target: only `false` and `nothing` are falsy.
+**Truthiness**
+- Only `false` and `nothing` are falsy.
 
 ---
 
@@ -190,7 +189,7 @@ Empty collections are **distinct values**, not `nothing`:
 (nothing? nothing) ; -> true
 ```
 
-Omnilisp has no `nil`. Use `(list)` for the empty list.
+Omnilisp has no `nil`. The empty list literal is `()`.
 
 ### 2.3 Optional Values
 For optional/nullable semantics, use explicit wrapper types (see Section 6 on Sum Types):
@@ -323,7 +322,7 @@ The symbol `&` separates positional from named parameters:
 
 ```lisp
 ;; Definition
-(define (draw shape & [color :black] [stroke Int 1])
+(define (draw shape & [color :black] [stroke {Int} 1])
   ...)
 
 ;; Call-site: & starts named argument section
@@ -655,7 +654,7 @@ Enum variants may be used unqualified when unique in scope. If ambiguous, use
 
 (define {enum List T}
   (Cons [head {T}] [tail {List T}])
-  Nil)
+  Empty)
 ```
 
 ### 6.3 Pattern Matching on Enums
@@ -1374,7 +1373,7 @@ All runtime values use tagged pointers with a 3-bit tag in the low bits:
 | `0x4` | Symbol ID | `(id << 3) \| 0x4` |
 | `0x5` | Reserved | — |
 | `0x6` | Reserved | — |
-| `0x7` | Special | nil, nothing, eof |
+| `0x7` | Special | empty-list, nothing, eof |
 
 Immediate integers fit in 61 bits (signed), avoiding heap allocation for common small values.
 

@@ -4,7 +4,7 @@
  * Immer is a header-only C++14 library providing persistent immutable
  * data structures with structural sharing.
  *
- * This wrapper exposes a C interface for Purple's FFI.
+ * This wrapper exposes a C interface for OmniLisp's FFI.
  */
 
 #include "immer_bridge.h"
@@ -16,7 +16,7 @@
 
 /*
  * We use void* as the element type for maximum flexibility.
- * Purple objects are passed as opaque pointers.
+ * OmniLisp objects are passed as opaque pointers.
  *
  * We use flex_vector instead of vector because it supports both
  * take and drop operations efficiently.

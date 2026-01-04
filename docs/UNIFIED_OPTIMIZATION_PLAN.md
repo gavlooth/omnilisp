@@ -2,7 +2,7 @@
 
 ## Design Principle: No Language Restrictions
 
-All optimizations are **inferred automatically** or enabled via optional hints. Existing Purple code works unchanged - the compiler just generates faster code when it can prove safety.
+All optimizations are **inferred automatically** or enabled via optional hints. Existing OmniLisp code works unchanged - the compiler just generates faster code when it can prove safety.
 
 ## Reclamation vs Safety (Do Not Confuse)
 
@@ -134,7 +134,7 @@ or shipping to FFI, without per‑object fixups.
 **Where to start (codebase):**
 - `runtime/src/memory/region.c` (region lifecycle + deref path)
 - `runtime/src/runtime.c` (region runtime entry points)
-- `runtime/include/purple.h` (public runtime surface)
+- `runtime/include/omnilisp.h` (public runtime surface)
 
 **Search terms:** `RegionContext`, `region_enter`, `region_alloc`,
 `region_ref_deref`, `arena_alloc`
@@ -199,7 +199,7 @@ table rewrites.
 
 **Where to start (codebase):**
 - `runtime/src/runtime.c` (weak ref handling + object lifecycle)
-- `runtime/include/purple.h` (public weak ref types)
+- `runtime/include/omnilisp.h` (public weak ref types)
 - `docs/GENERATIONAL_MEMORY.md` (soundness requirements)
 
 **Search terms:** `Weak`, `weak`, `invalidate_weak`, `BorrowRef`, `gen`
@@ -259,7 +259,7 @@ and optional deterministic mapping for record/replay.
 
 **Where to start (codebase):**
 - `runtime/src/runtime.c` (GenRef/IPGE + handle utilities)
-- `runtime/include/purple.h` (public API surface)
+- `runtime/include/omnilisp.h` (public API surface)
 - `docs/GENERATIONAL_MEMORY.md` and `new_genref.md` (handle tagging)
 
 **Search terms:** `BorrowRef`, `ipge_`, `generation`, `Handle`, `tag`
@@ -326,7 +326,7 @@ runtime hooks exist**.
 - **Runtime**: `runtime/src/runtime.c`
   - Search for: `inc_ref`, `dec_ref`, `free_obj`, `arena_`, `region_`,
     `scc_`, `sym_`, `borrow_`
-- **Runtime public header**: `runtime/include/purple.h`
+- **Runtime public header**: `runtime/include/omnilisp.h`
   - Search for: `BorrowedRef`, `ipge_`, `tether_`
 - **Tests**: `runtime/tests/*`
   - Search for: `test_*` and `BorrowRef`, `arena`, `scc`, `deferred`
@@ -381,7 +381,7 @@ Each item below gives a minimal “map” for implementation:
 8) **Borrow/tether loop insertion**
    - Entry point: loop/let codegen for borrowed vars
    - Analysis: ownership + purity/borrow classification
-   - Runtime: `tether`, `untether`, `deref_tethered` in `runtime/include/purple.h`
+   - Runtime: `tether`, `untether`, `deref_tethered` in `runtime/include/omnilisp.h`
    - Search terms: `tether`, `borrow_ref`, `deref_borrowed`
 
 9) **Interprocedural summaries (ownership/escape)**

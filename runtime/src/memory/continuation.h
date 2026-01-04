@@ -1,5 +1,5 @@
 /*
- * Continuation-Based Concurrency for Purple Runtime
+ * Continuation-Based Concurrency for OmniLisp Runtime
  *
  * This module provides:
  * - Delimited continuations (prompt/control)
@@ -12,8 +12,8 @@
  * All "stack" is heap-allocated, enabling capture without copying.
  */
 
-#ifndef PURPLE_CONTINUATION_H
-#define PURPLE_CONTINUATION_H
+#ifndef OMNI_CONTINUATION_H
+#define OMNI_CONTINUATION_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -436,4 +436,4 @@ void cont_set_env(Obj* env);
 Frame* cont_get_current(void);
 void cont_set_current(Frame* f);
 
-#endif /* PURPLE_CONTINUATION_H */
+#endif /* OMNI_CONTINUATION_H */

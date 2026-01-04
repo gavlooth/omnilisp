@@ -176,7 +176,12 @@ static int compile_expr_to_var(CompileCtx* ctx, Value* expr, char* result_var) {
 
         case T_NIL:
             emit_indent(ctx);
-            emit_fmt(ctx, "Obj* %s = NULL;\n", result_var);
+            emit_fmt(ctx, "Obj* %s = NIL_VAL;\n", result_var);
+            return 0;
+
+        case T_NOTHING:
+            emit_indent(ctx);
+            emit_fmt(ctx, "Obj* %s = NOTHING_VAL;\n", result_var);
             return 0;
 
         case T_SYM: {
@@ -206,7 +211,7 @@ static int compile_expr_to_var(CompileCtx* ctx, Value* expr, char* result_var) {
         case T_CELL: {
             if (is_nil(expr)) {
                 emit_indent(ctx);
-                emit_fmt(ctx, "Obj* %s = NULL;\n", result_var);
+                emit_fmt(ctx, "Obj* %s = NIL_VAL;\n", result_var);
                 return 0;
             }
 
@@ -803,7 +808,8 @@ static void emit_header_standalone(CompileCtx* ctx) {
     emit(ctx, "#define TAG_FLOAT 2\n");
     emit(ctx, "#define TAG_CHAR 3\n");
     emit(ctx, "#define TAG_PAIR 4\n");
-    emit(ctx, "#define TAG_SYM 5\n\n");
+    emit(ctx, "#define TAG_SYM 5\n");
+    emit(ctx, "#define TAG_NIL 6\n\n");
 
     emit(ctx, "// Tagged pointer support\n");
     emit(ctx, "#define IMM_TAG_MASK 0x7ULL\n");
@@ -819,12 +825,14 @@ static void emit_header_standalone(CompileCtx* ctx) {
     emit(ctx, "    if (IS_IMMEDIATE_INT(p)) return INT_IMM_VALUE(p);\n");
     emit(ctx, "    return p ? p->i : 0;\n");
     emit(ctx, "}\n");
-    emit(ctx, "static int is_nil(Obj* x) { return x == NULL; }\n\n");
+    emit(ctx, "static Obj omni_nil = { .tag = TAG_NIL };\n");
+    emit(ctx, "#define NIL_VAL (&omni_nil)\n");
+    emit(ctx, "#define NOTHING_VAL ((Obj*)NULL)\n");
+    emit(ctx, "static int is_nil(Obj* x) { return x == NIL_VAL; }\n\n");
 
     emit(ctx, "// Truth values\n");
     emit(ctx, "#define TRUE_VAL mk_int(1)\n");
-    emit(ctx, "#define FALSE_VAL mk_int(0)\n");
-    emit(ctx, "#define NOTHING_VAL ((Obj*)NULL)\n\n");
+    emit(ctx, "#define FALSE_VAL mk_int(0)\n\n");
 
     emit(ctx, "static Obj* prim_add(Obj* a, Obj* b) { return mk_int(obj_to_int(a) + obj_to_int(b)); }\n");
     emit(ctx, "static Obj* prim_sub(Obj* a, Obj* b) { return mk_int(obj_to_int(a) - obj_to_int(b)); }\n");
@@ -838,13 +846,14 @@ static void emit_header_standalone(CompileCtx* ctx) {
     emit(ctx, "static Obj* prim_eq(Obj* a, Obj* b) { return mk_int(obj_to_int(a) == obj_to_int(b)); }\n\n");
 
     emit(ctx, "static int obj_to_bool(Obj* p) {\n");
-    emit(ctx, "    if (p == NULL) return 0;\n");
+    emit(ctx, "    if (p == NOTHING_VAL) return 0;\n");
     emit(ctx, "    if (IS_IMMEDIATE_INT(p)) return INT_IMM_VALUE(p) != 0;\n");
-    emit(ctx, "    return 1;\n");
+    emit(ctx, "    return p != NIL_VAL; // empty list is truthy\n");
     emit(ctx, "}\n\n");
 
     emit(ctx, "static void print_obj(Obj* o) {\n");
-    emit(ctx, "    if (!o) { printf(\"()\"); return; }\n");
+    emit(ctx, "    if (o == NOTHING_VAL) { printf(\"nothing\"); return; }\n");
+    emit(ctx, "    if (o == NIL_VAL) { printf(\"()\"); return; }\n");
     emit(ctx, "    if (IS_IMMEDIATE_INT(o)) { printf(\"%ld\", INT_IMM_VALUE(o)); return; }\n");
     emit(ctx, "    if (o->tag == TAG_INT) { printf(\"%ld\", o->i); return; }\n");
     emit(ctx, "    printf(\"<obj>\");\n");

@@ -2,7 +2,7 @@
 
 ## Philosophy
 
-**Violet is not Purple.** Violet is a separate language that demonstrates the power of Purple's tower of interpreters architecture. The point of having collapsing interpreters is to create *different languages* that transform down to Purple primitives.
+**Violet is not OmniLisp.** Violet is a separate language that demonstrates the power of OmniLisp's tower of interpreters architecture. The point of having collapsing interpreters is to create *different languages* that transform down to OmniLisp primitives.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -12,7 +12,7 @@
                               │ preprocessing
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Purple                                   │
+│                         OmniLisp                                   │
 │        Minimal Lisp: cons, car, cdr, lambda, if, define         │
 └─────────────────────────────────────────────────────────────────┘
                               │ evaluation
@@ -24,12 +24,12 @@
 
 ## The Tower of Interpreters Approach
 
-Purple provides a minimal core with meta-programming capabilities. Violet uses these to build a Clojure-compatible language:
+OmniLisp provides a minimal core with meta-programming capabilities. Violet uses these to build a Clojure-compatible language:
 
-1. **Preprocessing** - Violet source is transformed to Purple before evaluation
-2. **Macros** - Complex forms expand to simple Purple primitives
-3. **Runtime Libraries** - Protocols, multimethods implemented in Purple itself
-4. **Collapsing** - All Violet constructs collapse to Purple, which collapses to native code
+1. **Preprocessing** - Violet source is transformed to OmniLisp before evaluation
+2. **Macros** - Complex forms expand to simple OmniLisp primitives
+3. **Runtime Libraries** - Protocols, multimethods implemented in OmniLisp itself
+4. **Collapsing** - All Violet constructs collapse to OmniLisp, which collapses to native code
 
 This is the power of the tower: each level can define its own semantics, and they compose cleanly.
 
@@ -48,8 +48,8 @@ This is the power of the tower: each level can define its own semantics, and the
 | `cond`, `condp`, `case` | ✓ | Macro expansion |
 | `loop`/`recur` | ✓ | Tail-call transformation |
 | Lazy sequences | ✓ | Thunks + memoization |
-| Atoms, refs | ✓ | Purple primitives |
-| Core functions | ✓ | Pure Violet/Purple |
+| Atoms, refs | ✓ | OmniLisp primitives |
+| Core functions | ✓ | Pure Violet/OmniLisp |
 
 ### Explicitly NOT Supported (Java-specific)
 
@@ -66,7 +66,7 @@ This is the power of the tower: each level can define its own semantics, and the
 ```
 lib/violet/
 ├── VIOLET.md           # This document
-├── preprocess.purple   # Syntax transformer (Violet → Purple)
+├── preprocess.omni   # Syntax transformer (Violet → OmniLisp)
 ├── core.violet         # Core functions (adapted from clojure.core)
 ├── protocols.violet    # Protocol system
 ├── multimethods.violet # Multimethod dispatch
@@ -77,14 +77,14 @@ lib/violet/
 
 ## How Preprocessing Works
 
-Violet source files (`.violet`) are preprocessed before Purple evaluation:
+Violet source files (`.violet`) are preprocessed before OmniLisp evaluation:
 
 ```scheme
 ;; Violet input
 (defn greet [name & titles]
   (str "Hello, " (apply str (interpose " " titles)) " " name))
 
-;; After preprocessing (Purple)
+;; After preprocessing (OmniLisp)
 (define greet
   (lambda (name titles)  ; titles is the rest-arg list
     (str "Hello, " (apply str (interpose " " titles)) " " name)))
@@ -175,22 +175,22 @@ Protocols use type-based dispatch tables:
 
 ```bash
 # Run a Violet file
-./purple_go --lang violet program.violet
+./omnilisp --lang violet program.violet
 
 # Or use the Violet loader
-./purple_go -e '(load-violet "program.violet")'
+./omnilisp -e '(load-violet "program.violet")'
 
 # REPL with Violet semantics
-./purple_go --lang violet --repl
+./omnilisp --lang violet --repl
 ```
 
 ## Design Principles
 
-1. **Purple stays minimal** - No changes to Purple for Violet features
-2. **Everything collapses** - All Violet constructs reduce to Purple
+1. **OmniLisp stays minimal** - No changes to OmniLisp for Violet features
+2. **Everything collapses** - All Violet constructs reduce to OmniLisp
 3. **Preprocessing over interpretation** - Transform once, run fast
 4. **Clojure semantics, not syntax** - Focus on behavior, not Java interop
-5. **Composition** - Violet features compose because Purple composes
+5. **Composition** - Violet features compose because OmniLisp composes
 
 ## CRITICAL DIRECTIVE
 
@@ -199,18 +199,18 @@ Protocols use type-based dispatch tables:
 All Violet functionality MUST be implemented through:
 - Preprocessing (syntax transformation)
 - Macros (compile-time expansion)
-- Runtime libraries (pure Purple code)
+- Runtime libraries (pure OmniLisp code)
 - The tower of interpreters mechanism
 
 The ONLY exception is if explicitly requested by the project maintainer.
 
-This is the entire point of the tower of interpreters architecture: new languages are built ON TOP of Purple, not by changing Purple. If you find yourself wanting to modify `pkg/eval/eval.go`, `pkg/parser/pika.go`, or other core files to support Violet - STOP. Find a way to do it through preprocessing or the language itself.
+This is the entire point of the tower of interpreters architecture: new languages are built ON TOP of OmniLisp, not by changing OmniLisp. If you find yourself wanting to modify `pkg/eval/eval.go`, `pkg/parser/pika.go`, or other core files to support Violet - STOP. Find a way to do it through preprocessing or the language itself.
 
 ## Extending Violet
 
 To add new Violet features:
 
-1. Define the transformation in `preprocess.purple`
+1. Define the transformation in `preprocess.omni`
 2. Add runtime support in appropriate library file
 3. Add macros in `macros.violet` if needed
 4. Test in `test.violet`

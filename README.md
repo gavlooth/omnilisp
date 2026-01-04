@@ -1,8 +1,8 @@
-# Purple Go
+# OmniLisp
 
-A Go implementation of the Purple language - a stage-polymorphic language with compile-time memory management.
+A Go implementation of the OmniLisp language - a stage-polymorphic language with compile-time memory management.
 
-Purple implements the **"Collapsing Towers of Interpreters"** paradigm from Amin & Rompf (POPL 2018), combined with **ASAP (As Static As Possible)** memory management that inserts deallocation calls at compile time.
+OmniLisp implements the **"Collapsing Towers of Interpreters"** paradigm from Amin & Rompf (POPL 2018), combined with **ASAP (As Static As Possible)** memory management that inserts deallocation calls at compile time.
 
 ## Features
 
@@ -18,44 +18,44 @@ Purple implements the **"Collapsing Towers of Interpreters"** paradigm from Amin
 
 ```bash
 # Build
-go build -o purple .
+go build -o omnilisp .
 
 # Interactive REPL
-./purple
+./omnilisp
 
 # Evaluate expression
-./purple -e '(+ 1 2)'
+./omnilisp -e '(+ 1 2)'
 
 # Run file
-./purple program.purple
+./omnilisp program.omni
 
 # Compile to C
-./purple -c program.purple -o output.c
+./omnilisp -c program.omni -o output.c
 ```
 
 ## REPL Example
 
 ```
-$ ./purple
-Purple Go REPL - Tower of Interpreters with ASAP Memory Management
+$ ./omnilisp
+OmniLisp REPL - Tower of Interpreters with ASAP Memory Management
 
   JIT: enabled (gcc found)
 
 Type 'help' for commands, 'quit' to exit
 
-purple> (+ 1 2)
+omnilisp> (+ 1 2)
 => 3
 
-purple> (map (lambda (x) (* x 2)) '(1 2 3 4 5))
+omnilisp> (map (lambda (x) (* x 2)) '(1 2 3 4 5))
 => (2 4 6 8 10)
 
-purple> (defmacro double (x) `(+ ,x ,x) (mcall double 21))
+omnilisp> (defmacro double (x) `(+ ,x ,x) (mcall double 21))
 => 42
 
-purple> (lift 42)
+omnilisp> (lift 42)
 Code: mk_int(42)
 
-purple> help
+omnilisp> help
 [comprehensive help displayed]
 ```
 
@@ -126,7 +126,7 @@ nil                   ; nil/false
 ## Project Structure
 
 ```
-purple_go/
+omnilisp/
 ├── main.go              # CLI and REPL
 ├── pkg/
 │   ├── ast/             # AST types and values
@@ -144,7 +144,7 @@ purple_go/
 
 ### Tower of Interpreters
 
-Purple's evaluator consists of 9 customizable handlers:
+OmniLisp's evaluator consists of 9 customizable handlers:
 
 | Handler | Purpose |
 |---------|---------|

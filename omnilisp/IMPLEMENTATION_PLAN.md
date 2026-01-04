@@ -161,7 +161,7 @@ const (
     TDict        // Dictionary #{:a 1}
     TTuple       // Immutable tuple (tuple 1 2 3)
     TNamedTuple  // Named tuple (named-tuple [x 1] [y 2])
-    TNothing     // Unit value (distinct from nil)
+    TNothing     // Unit value (distinct from empty list)
     TTypeAnnot   // Type annotation {Int}
     TStruct      // Struct instance
     TEnum        // Enum variant

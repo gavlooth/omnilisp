@@ -1,0 +1,2809 @@
+; ===========================================
+; SciComp.Linalg - Linear Algebra Operations
+; ===========================================
+;
+; Higher-level linear algebra built on BLAS and LAPACK.
+; Provides decompositions, solvers, and matrix operations.
+;
+; Usage:
+;   (import SciComp.Linalg)
+;   (let ((A (mat-from-lists '((1.0 2.0) (3.0 4.0))))
+;         (b (vec-from-list '(5.0 11.0))))
+;     (solve A b))  ; => [1.0, 2.0]
+
+(import SciComp.BLAS)
+
+; ===========================================
+; LAPACK FFI Declarations
+; ===========================================
+
+(import {ffi :linux "liblapack.so"
+             :darwin "liblapack.dylib"
+        :as lapack})
+
+; DGETRF: LU factorization with partial pivoting
+; A = P * L * U
+(define {extern lapack/dgetrf_}
+  [m     {CPtr CInt}]       ; rows
+  [n     {CPtr CInt}]       ; cols
+  [A     {CPtr CDouble}]    ; matrix (overwritten with L and U)
+  [lda   {CPtr CInt}]       ; leading dimension
+  [ipiv  {CPtr CInt}]       ; pivot indices (output)
+  [info  {CPtr CInt}]       ; 0 = success
+  -> {Nothing})
+
+; DGETRS: Solve A*X = B using LU factorization from DGETRF
+(define {extern lapack/dgetrs_}
+  [trans {CPtr CChar}]      ; 'N' = no transpose, 'T' = transpose
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]       ; number of right-hand sides
+  [A     {CPtr CDouble}]    ; LU factors from dgetrf
+  [lda   {CPtr CInt}]
+  [ipiv  {CPtr CInt}]       ; pivots from dgetrf
+  [B     {CPtr CDouble}]    ; RHS (overwritten with solution)
+  [ldb   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGESV: Solve A*X = B (combines dgetrf + dgetrs)
+(define {extern lapack/dgesv_}
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; matrix (overwritten with LU)
+  [lda   {CPtr CInt}]
+  [ipiv  {CPtr CInt}]       ; pivot indices (output)
+  [B     {CPtr CDouble}]    ; RHS (overwritten with solution)
+  [ldb   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DPOTRF: Cholesky factorization A = L*L' or A = U'*U
+(define {extern lapack/dpotrf_}
+  [uplo  {CPtr CChar}]      ; 'U' or 'L'
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; matrix (overwritten with factor)
+  [lda   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DPOTRS: Solve A*X = B using Cholesky from DPOTRF
+(define {extern lapack/dpotrs_}
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; Cholesky factor
+  [lda   {CPtr CInt}]
+  [B     {CPtr CDouble}]    ; RHS (overwritten with solution)
+  [ldb   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGEQRF: QR factorization A = Q*R
+(define {extern lapack/dgeqrf_}
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; matrix (overwritten)
+  [lda   {CPtr CInt}]
+  [tau   {CPtr CDouble}]    ; scalar factors (output)
+  [work  {CPtr CDouble}]    ; workspace
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DORGQR: Generate Q from QR factorization
+(define {extern lapack/dorgqr_}
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [k     {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; input from dgeqrf, output Q
+  [lda   {CPtr CInt}]
+  [tau   {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGESVD: Singular Value Decomposition A = U*S*V'
+(define {extern lapack/dgesvd_}
+  [jobu  {CPtr CChar}]      ; 'A' = all, 'S' = min(m,n), 'N' = none
+  [jobvt {CPtr CChar}]
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; matrix (destroyed)
+  [lda   {CPtr CInt}]
+  [S     {CPtr CDouble}]    ; singular values (output)
+  [U     {CPtr CDouble}]    ; left singular vectors (output)
+  [ldu   {CPtr CInt}]
+  [VT    {CPtr CDouble}]    ; right singular vectors (output)
+  [ldvt  {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DSYEV: Eigenvalue decomposition for symmetric matrices
+(define {extern lapack/dsyev_}
+  [jobz  {CPtr CChar}]      ; 'N' = values only, 'V' = values + vectors
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; matrix (overwritten with eigenvectors if jobz='V')
+  [lda   {CPtr CInt}]
+  [W     {CPtr CDouble}]    ; eigenvalues (output)
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGETRI: Matrix inverse from LU factorization
+(define {extern lapack/dgetri_}
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; LU factors in, inverse out
+  [lda   {CPtr CInt}]
+  [ipiv  {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGELS: Least squares solve min||A*X - B||
+(define {extern lapack/dgels_}
+  [trans {CPtr CChar}]
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; matrix (destroyed)
+  [lda   {CPtr CInt}]
+  [B     {CPtr CDouble}]    ; RHS (overwritten with solution)
+  [ldb   {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; ===========================================
+; Helper: Allocate scalar for LAPACK
+; ===========================================
+
+(define (make-int-ref val)
+  (let ((ptr (ffi/alloc {CInt})))
+    (ffi/poke! ptr val)
+    ptr))
+
+(define (make-char-ref val)
+  (let ((ptr (ffi/alloc {CChar})))
+    (ffi/poke! ptr val)
+    ptr))
+
+(define (get-int-ref ptr)
+  (ffi/peek ptr {CInt}))
+
+; ===========================================
+; Linear System Solvers
+; ===========================================
+
+; Solve A*x = b for general square matrix A
+; Returns solution vector x
+(define (solve A b)
+  (let ((n (Matrix-rows A)))
+    ; Validate dimensions
+    (if (not (= n (Matrix-cols A)))
+        (error "solve: matrix must be square")
+        ())
+    (if (not (= n (Vector-size b)))
+        (error "solve: dimension mismatch")
+        ())
+
+    ; Copy inputs (LAPACK destroys them)
+    (let ((A-copy (mat-copy A))
+          (x (vec-copy b)))
+
+      ; Allocate workspace
+      (let ((ipiv (ffi/alloc-array {CInt} n))
+            (n-ref (make-int-ref n))
+            (nrhs-ref (make-int-ref 1))
+            (lda-ref (make-int-ref n))
+            (ldb-ref (make-int-ref n))
+            (info-ref (make-int-ref 0)))
+
+        ; Call DGESV
+        (dgesv_ n-ref nrhs-ref
+                (Matrix-data A-copy) lda-ref
+                ipiv
+                (Vector-data x) ldb-ref
+                info-ref)
+
+        ; Check result
+        (let ((info (get-int-ref info-ref)))
+          ; Free workspace
+          (ffi/free ipiv)
+          (ffi/free n-ref)
+          (ffi/free nrhs-ref)
+          (ffi/free lda-ref)
+          (ffi/free ldb-ref)
+          (ffi/free info-ref)
+          (mat-free! A-copy)
+
+          (if (not (= info 0))
+              (error "solve: LAPACK dgesv failed")
+              x))))))
+
+; Solve A*X = B for multiple right-hand sides
+; Returns solution matrix X
+(define (solve-multi A B)
+  (let ((n (Matrix-rows A))
+        (nrhs (Matrix-cols B)))
+
+    (if (not (= n (Matrix-cols A)))
+        (error "solve-multi: A must be square")
+        ())
+    (if (not (= n (Matrix-rows B)))
+        (error "solve-multi: dimension mismatch")
+        ())
+
+    (let ((A-copy (mat-copy A))
+          (X (mat-copy B)))
+
+      (let ((ipiv (ffi/alloc-array {CInt} n))
+            (n-ref (make-int-ref n))
+            (nrhs-ref (make-int-ref nrhs))
+            (lda-ref (make-int-ref n))
+            (ldb-ref (make-int-ref n))
+            (info-ref (make-int-ref 0)))
+
+        (dgesv_ n-ref nrhs-ref
+                (Matrix-data A-copy) lda-ref
+                ipiv
+                (Matrix-data X) ldb-ref
+                info-ref)
+
+        (let ((info (get-int-ref info-ref)))
+          (ffi/free ipiv)
+          (ffi/free n-ref)
+          (ffi/free nrhs-ref)
+          (ffi/free lda-ref)
+          (ffi/free ldb-ref)
+          (ffi/free info-ref)
+          (mat-free! A-copy)
+
+          (if (not (= info 0))
+              (error "solve-multi: LAPACK dgesv failed")
+              X))))))
+
+; ===========================================
+; LU Decomposition
+; ===========================================
+
+; LU decomposition result type
+(deftype LU
+  (L    Matrix)    ; Lower triangular with unit diagonal
+  (U    Matrix)    ; Upper triangular
+  (perm Vector))   ; Permutation vector
+
+; Compute LU decomposition with partial pivoting
+; A = P * L * U
+(define (lu A)
+  (let ((m (Matrix-rows A))
+        (n (Matrix-cols A)))
+
+    (let ((A-copy (mat-copy A))
+          (ipiv (ffi/alloc-array {CInt} (min m n))))
+
+      (let ((m-ref (make-int-ref m))
+            (n-ref (make-int-ref n))
+            (lda-ref (make-int-ref m))
+            (info-ref (make-int-ref 0)))
+
+        (dgetrf_ m-ref n-ref
+                 (Matrix-data A-copy) lda-ref
+                 ipiv
+                 info-ref)
+
+        (let ((info (get-int-ref info-ref)))
+          (ffi/free m-ref)
+          (ffi/free n-ref)
+          (ffi/free lda-ref)
+          (ffi/free info-ref)
+
+          (if (not (= info 0))
+              (begin
+                (ffi/free ipiv)
+                (mat-free! A-copy)
+                (error "lu: LAPACK dgetrf failed"))
+
+              ; Extract L and U from packed result
+              (let ((min-mn (min m n)))
+                (let ((L (mat-zeros m min-mn))
+                      (U (mat-zeros min-mn n))
+                      (perm (vec-new min-mn)))
+
+                  ; Extract L (lower triangle + unit diagonal)
+                  (letrec ((fill-L-row
+                            (lambda (i)
+                              (if (>= i m)
+                                  ()
+                                  (begin
+                                    (letrec ((fill-L-col
+                                              (lambda (j)
+                                                (if (>= j min-mn)
+                                                    ()
+                                                    (begin
+                                                      (if (< j i)
+                                                          (mat-set! L i j (mat-get A-copy i j))
+                                                          (if (= j i)
+                                                              (mat-set! L i j 1.0)
+                                                              ()))
+                                                      (fill-L-col (+ j 1)))))))
+                                      (fill-L-col 0))
+                                    (fill-L-row (+ i 1)))))))
+                    (fill-L-row 0))
+
+                  ; Extract U (upper triangle)
+                  (letrec ((fill-U-row
+                            (lambda (i)
+                              (if (>= i min-mn)
+                                  ()
+                                  (begin
+                                    (letrec ((fill-U-col
+                                              (lambda (j)
+                                                (if (>= j n)
+                                                    ()
+                                                    (begin
+                                                      (if (>= j i)
+                                                          (mat-set! U i j (mat-get A-copy i j))
+                                                          ())
+                                                      (fill-U-col (+ j 1)))))))
+                                      (fill-U-col 0))
+                                    (fill-U-row (+ i 1)))))))
+                    (fill-U-row 0))
+
+                  ; Copy permutation (convert to 0-based)
+                  (letrec ((fill-perm
+                            (lambda (i)
+                              (if (>= i min-mn)
+                                  ()
+                                  (begin
+                                    (vec-set! perm i
+                                              (- (ffi/array-get ipiv i) 1))
+                                    (fill-perm (+ i 1)))))))
+                    (fill-perm 0))
+
+                  (ffi/free ipiv)
+                  (mat-free! A-copy)
+
+                  (mk-LU L U perm)))))))))
+
+; ===========================================
+; Cholesky Decomposition
+; ===========================================
+
+; Cholesky decomposition for symmetric positive-definite matrix
+; A = L * L' (lower triangular)
+(define (cholesky A)
+  (let ((n (Matrix-rows A)))
+    (if (not (= n (Matrix-cols A)))
+        (error "cholesky: matrix must be square")
+        ())
+
+    (let ((L (mat-copy A)))
+      (let ((uplo-ref (make-char-ref 76))  ; 'L' = lower
+            (n-ref (make-int-ref n))
+            (lda-ref (make-int-ref n))
+            (info-ref (make-int-ref 0)))
+
+        (dpotrf_ uplo-ref n-ref
+                 (Matrix-data L) lda-ref
+                 info-ref)
+
+        (let ((info (get-int-ref info-ref)))
+          (ffi/free uplo-ref)
+          (ffi/free n-ref)
+          (ffi/free lda-ref)
+          (ffi/free info-ref)
+
+          (if (not (= info 0))
+              (begin
+                (mat-free! L)
+                (error "cholesky: matrix not positive definite"))
+
+              ; Zero out upper triangle
+              (begin
+                (letrec ((zero-upper
+                          (lambda (i)
+                            (if (>= i n)
+                                ()
+                                (begin
+                                  (letrec ((zero-row
+                                            (lambda (j)
+                                              (if (>= j n)
+                                                  ()
+                                                  (begin
+                                                    (if (> j i)
+                                                        (mat-set! L i j 0.0)
+                                                        ())
+                                                    (zero-row (+ j 1)))))))
+                                    (zero-row 0))
+                                  (zero-upper (+ i 1)))))))
+                  (zero-upper 0))
+                L)))))))
+
+; Solve A*x = b using Cholesky (A must be symmetric positive-definite)
+(define (solve-cholesky A b)
+  (let ((n (Matrix-rows A)))
+    (if (not (= n (Vector-size b)))
+        (error "solve-cholesky: dimension mismatch")
+        ())
+
+    (let ((A-copy (mat-copy A))
+          (x (vec-copy b)))
+
+      (let ((uplo-ref (make-char-ref 76))  ; 'L'
+            (n-ref (make-int-ref n))
+            (nrhs-ref (make-int-ref 1))
+            (lda-ref (make-int-ref n))
+            (ldb-ref (make-int-ref n))
+            (info-ref (make-int-ref 0)))
+
+        ; First factorize
+        (dpotrf_ uplo-ref n-ref
+                 (Matrix-data A-copy) lda-ref
+                 info-ref)
+
+        (let ((info1 (get-int-ref info-ref)))
+          (if (not (= info1 0))
+              (begin
+                (ffi/free uplo-ref)
+                (ffi/free n-ref)
+                (ffi/free nrhs-ref)
+                (ffi/free lda-ref)
+                (ffi/free ldb-ref)
+                (ffi/free info-ref)
+                (mat-free! A-copy)
+                (vec-free! x)
+                (error "solve-cholesky: factorization failed"))
+
+              ; Then solve
+              (begin
+                (ffi/poke! info-ref 0)
+                (dpotrs_ uplo-ref n-ref nrhs-ref
+                         (Matrix-data A-copy) lda-ref
+                         (Vector-data x) ldb-ref
+                         info-ref)
+
+                (let ((info2 (get-int-ref info-ref)))
+                  (ffi/free uplo-ref)
+                  (ffi/free n-ref)
+                  (ffi/free nrhs-ref)
+                  (ffi/free lda-ref)
+                  (ffi/free ldb-ref)
+                  (ffi/free info-ref)
+                  (mat-free! A-copy)
+
+                  (if (not (= info2 0))
+                      (begin
+                        (vec-free! x)
+                        (error "solve-cholesky: solve failed"))
+                      x)))))))))
+
+; ===========================================
+; QR Decomposition
+; ===========================================
+
+(deftype QR
+  (Q Matrix)
+  (R Matrix))
+
+; Compute QR decomposition A = Q*R
+(define (qr A)
+  (let ((m (Matrix-rows A))
+        (n (Matrix-cols A)))
+    (let ((min-mn (min m n)))
+
+      (let ((A-copy (mat-copy A))
+            (tau (ffi/alloc-array {CDouble} min-mn))
+            (lwork (* 64 n))  ; workspace size
+            (work (ffi/alloc-array {CDouble} (* 64 n))))
+
+        (let ((m-ref (make-int-ref m))
+              (n-ref (make-int-ref n))
+              (lda-ref (make-int-ref m))
+              (lwork-ref (make-int-ref lwork))
+              (info-ref (make-int-ref 0)))
+
+          ; Compute QR
+          (dgeqrf_ m-ref n-ref
+                   (Matrix-data A-copy) lda-ref
+                   tau work lwork-ref info-ref)
+
+          (let ((info (get-int-ref info-ref)))
+            (if (not (= info 0))
+                (begin
+                  (ffi/free tau)
+                  (ffi/free work)
+                  (ffi/free m-ref)
+                  (ffi/free n-ref)
+                  (ffi/free lda-ref)
+                  (ffi/free lwork-ref)
+                  (ffi/free info-ref)
+                  (mat-free! A-copy)
+                  (error "qr: LAPACK dgeqrf failed"))
+
+                ; Extract R (upper triangle of A-copy)
+                (let ((R (mat-zeros min-mn n)))
+                  (letrec ((fill-R-row
+                            (lambda (i)
+                              (if (>= i min-mn)
+                                  ()
+                                  (begin
+                                    (letrec ((fill-R-col
+                                              (lambda (j)
+                                                (if (>= j n)
+                                                    ()
+                                                    (begin
+                                                      (if (>= j i)
+                                                          (mat-set! R i j (mat-get A-copy i j))
+                                                          ())
+                                                      (fill-R-col (+ j 1)))))))
+                                      (fill-R-col 0))
+                                    (fill-R-row (+ i 1)))))))
+                    (fill-R-row 0))
+
+                  ; Generate Q
+                  (let ((k-ref (make-int-ref min-mn)))
+                    (ffi/poke! info-ref 0)
+                    (dorgqr_ m-ref n-ref k-ref
+                             (Matrix-data A-copy) lda-ref
+                             tau work lwork-ref info-ref)
+
+                    (let ((info2 (get-int-ref info-ref)))
+                      (ffi/free tau)
+                      (ffi/free work)
+                      (ffi/free m-ref)
+                      (ffi/free n-ref)
+                      (ffi/free k-ref)
+                      (ffi/free lda-ref)
+                      (ffi/free lwork-ref)
+                      (ffi/free info-ref)
+
+                      (if (not (= info2 0))
+                          (begin
+                            (mat-free! A-copy)
+                            (mat-free! R)
+                            (error "qr: LAPACK dorgqr failed"))
+
+                          ; A-copy now contains Q
+                          (let ((Q (mat-new m min-mn)))
+                            (letrec ((copy-Q
+                                      (lambda (i)
+                                        (if (>= i m)
+                                            ()
+                                            (begin
+                                              (letrec ((copy-Q-col
+                                                        (lambda (j)
+                                                          (if (>= j min-mn)
+                                                              ()
+                                                              (begin
+                                                                (mat-set! Q i j (mat-get A-copy i j))
+                                                                (copy-Q-col (+ j 1)))))))
+                                                (copy-Q-col 0))
+                                              (copy-Q (+ i 1)))))))
+                              (copy-Q 0))
+                            (mat-free! A-copy)
+                            (mk-QR Q R)))))))))))))))
+
+; ===========================================
+; Matrix Inverse
+; ===========================================
+
+; Compute matrix inverse using LU decomposition
+(define (inv A)
+  (let ((n (Matrix-rows A)))
+    (if (not (= n (Matrix-cols A)))
+        (error "inv: matrix must be square")
+        ())
+
+    (let ((A-copy (mat-copy A))
+          (ipiv (ffi/alloc-array {CInt} n))
+          (lwork (* 64 n))
+          (work (ffi/alloc-array {CDouble} (* 64 n))))
+
+      (let ((n-ref (make-int-ref n))
+            (lda-ref (make-int-ref n))
+            (lwork-ref (make-int-ref lwork))
+            (info-ref (make-int-ref 0)))
+
+        ; LU factorization
+        (dgetrf_ n-ref n-ref
+                 (Matrix-data A-copy) lda-ref
+                 ipiv info-ref)
+
+        (let ((info1 (get-int-ref info-ref)))
+          (if (not (= info1 0))
+              (begin
+                (ffi/free ipiv)
+                (ffi/free work)
+                (ffi/free n-ref)
+                (ffi/free lda-ref)
+                (ffi/free lwork-ref)
+                (ffi/free info-ref)
+                (mat-free! A-copy)
+                (error "inv: LU factorization failed (singular?)"))
+
+              ; Compute inverse
+              (begin
+                (ffi/poke! info-ref 0)
+                (dgetri_ n-ref
+                         (Matrix-data A-copy) lda-ref
+                         ipiv work lwork-ref info-ref)
+
+                (let ((info2 (get-int-ref info-ref)))
+                  (ffi/free ipiv)
+                  (ffi/free work)
+                  (ffi/free n-ref)
+                  (ffi/free lda-ref)
+                  (ffi/free lwork-ref)
+                  (ffi/free info-ref)
+
+                  (if (not (= info2 0))
+                      (begin
+                        (mat-free! A-copy)
+                        (error "inv: inversion failed"))
+                      A-copy)))))))))
+
+; ===========================================
+; Determinant
+; ===========================================
+
+; Compute determinant using LU decomposition
+(define (det A)
+  (let ((n (Matrix-rows A)))
+    (if (not (= n (Matrix-cols A)))
+        (error "det: matrix must be square")
+        ())
+
+    (let ((A-copy (mat-copy A))
+          (ipiv (ffi/alloc-array {CInt} n)))
+
+      (let ((n-ref (make-int-ref n))
+            (lda-ref (make-int-ref n))
+            (info-ref (make-int-ref 0)))
+
+        (dgetrf_ n-ref n-ref
+                 (Matrix-data A-copy) lda-ref
+                 ipiv info-ref)
+
+        (let ((info (get-int-ref info-ref)))
+          (ffi/free n-ref)
+          (ffi/free lda-ref)
+          (ffi/free info-ref)
+
+          (if (not (= info 0))
+              (begin
+                (ffi/free ipiv)
+                (mat-free! A-copy)
+                0.0)  ; Singular matrix has determinant 0
+
+              ; Product of diagonal elements * sign from pivots
+              (letrec ((compute
+                        (lambda (i det-acc sign-acc)
+                          (if (>= i n)
+                              (* det-acc sign-acc)
+                              (let ((pivot (ffi/array-get ipiv i))
+                                    (diag (mat-get A-copy i i)))
+                                (compute (+ i 1)
+                                         (* det-acc diag)
+                                         (if (= pivot (+ i 1))
+                                             sign-acc
+                                             (- sign-acc))))))))
+                (let ((result (compute 0 1.0 1.0)))
+                  (ffi/free ipiv)
+                  (mat-free! A-copy)
+                  result))))))))
+
+; ===========================================
+; Least Squares
+; ===========================================
+
+; Solve min||A*x - b||_2 (overdetermined or underdetermined)
+(define (lstsq A b)
+  (let ((m (Matrix-rows A))
+        (n (Matrix-cols A)))
+
+    (if (not (= m (Vector-size b)))
+        (error "lstsq: dimension mismatch")
+        ())
+
+    (let ((A-copy (mat-copy A))
+          (b-copy (vec-new (max m n))))
+
+      ; Copy b into larger buffer
+      (letrec ((copy-b (lambda (i)
+                         (if (>= i m)
+                             ()
+                             (begin
+                               (vec-set! b-copy i (vec-get b i))
+                               (copy-b (+ i 1)))))))
+        (copy-b 0))
+
+      (let ((trans-ref (make-char-ref 78))  ; 'N'
+            (m-ref (make-int-ref m))
+            (n-ref (make-int-ref n))
+            (nrhs-ref (make-int-ref 1))
+            (lda-ref (make-int-ref m))
+            (ldb-ref (make-int-ref (max m n)))
+            (lwork (* 64 (max m n)))
+            (work (ffi/alloc-array {CDouble} (* 64 (max m n))))
+            (lwork-ref (make-int-ref lwork))
+            (info-ref (make-int-ref 0)))
+
+        (dgels_ trans-ref m-ref n-ref nrhs-ref
+                (Matrix-data A-copy) lda-ref
+                (Vector-data b-copy) ldb-ref
+                work lwork-ref info-ref)
+
+        (let ((info (get-int-ref info-ref)))
+          (ffi/free trans-ref)
+          (ffi/free m-ref)
+          (ffi/free n-ref)
+          (ffi/free nrhs-ref)
+          (ffi/free lda-ref)
+          (ffi/free ldb-ref)
+          (ffi/free work)
+          (ffi/free lwork-ref)
+          (ffi/free info-ref)
+          (mat-free! A-copy)
+
+          (if (not (= info 0))
+              (begin
+                (vec-free! b-copy)
+                (error "lstsq: LAPACK dgels failed"))
+
+              ; Extract solution (first n elements)
+              (let ((x (vec-new n)))
+                (letrec ((copy-x (lambda (i)
+                                   (if (>= i n)
+                                       ()
+                                       (begin
+                                         (vec-set! x i (vec-get b-copy i))
+                                         (copy-x (+ i 1)))))))
+                  (copy-x 0))
+                (vec-free! b-copy)
+                x)))))))
+
+; ===========================================
+; Matrix Norms
+; ===========================================
+
+; Frobenius norm: sqrt(sum of squared elements)
+(define (norm-fro A)
+  (let ((m (Matrix-rows A))
+        (n (Matrix-cols A)))
+    (letrec ((sum-sq
+              (lambda (i j acc)
+                (if (>= i m)
+                    (sqrt acc)
+                    (if (>= j n)
+                        (sum-sq (+ i 1) 0 acc)
+                        (let ((val (mat-get A i j)))
+                          (sum-sq i (+ j 1) (+ acc (* val val)))))))))
+      (sum-sq 0 0 0.0))))
+
+; 1-norm: max column sum
+(define (norm-1 A)
+  (let ((m (Matrix-rows A))
+        (n (Matrix-cols A)))
+    (letrec ((max-col-sum
+              (lambda (j max-val)
+                (if (>= j n)
+                    max-val
+                    (letrec ((col-sum
+                              (lambda (i acc)
+                                (if (>= i m)
+                                    acc
+                                    (col-sum (+ i 1)
+                                             (+ acc (abs (mat-get A i j))))))))
+                      (let ((cs (col-sum 0 0.0)))
+                        (max-col-sum (+ j 1)
+                                     (if (> cs max-val) cs max-val))))))))
+      (max-col-sum 0 0.0))))
+
+; Infinity norm: max row sum
+(define (norm-inf A)
+  (let ((m (Matrix-rows A))
+        (n (Matrix-cols A)))
+    (letrec ((max-row-sum
+              (lambda (i max-val)
+                (if (>= i m)
+                    max-val
+                    (letrec ((row-sum
+                              (lambda (j acc)
+                                (if (>= j n)
+                                    acc
+                                    (row-sum (+ j 1)
+                                             (+ acc (abs (mat-get A i j))))))))
+                      (let ((rs (row-sum 0 0.0)))
+                        (max-row-sum (+ i 1)
+                                     (if (> rs max-val) rs max-val))))))))
+      (max-row-sum 0 0.0))))
+
+; ===========================================
+; Trace
+; ===========================================
+
+(define (trace A)
+  (let ((n (min (Matrix-rows A) (Matrix-cols A))))
+    (letrec ((sum-diag
+              (lambda (i acc)
+                (if (>= i n)
+                    acc
+                    (sum-diag (+ i 1) (+ acc (mat-get A i i)))))))
+      (sum-diag 0 0.0))))
+
+; ===========================================
+; Condition Number (using SVD)
+; ===========================================
+
+; Estimate condition number (ratio of largest/smallest singular value)
+; Note: This is a simplified version; full implementation would use DGESVD
+(define (cond-est A)
+  (let ((norm-A (norm-fro A)))
+    (let ((A-inv (inv A)))
+      (let ((norm-inv (norm-fro A-inv)))
+        (mat-free! A-inv)
+        (* norm-A norm-inv)))))
+
+; ===========================================
+; Utility Functions
+; ===========================================
+
+; Check if matrix is symmetric
+(define (symmetric? A tol)
+  (let ((m (Matrix-rows A))
+        (n (Matrix-cols A)))
+    (if (not (= m n))
+        #f
+        (letrec ((check
+                  (lambda (i j)
+                    (if (>= i m)
+                        #t
+                        (if (>= j n)
+                            (check (+ i 1) 0)
+                            (if (> (abs (- (mat-get A i j) (mat-get A j i))) tol)
+                                #f
+                                (check i (+ j 1))))))))
+          (check 0 0)))))
+
+; Check if matrix is positive definite (via Cholesky)
+(define (positive-definite? A)
+  (let ((result #t))
+    (let ((L (mat-copy A)))
+      (let ((uplo-ref (make-char-ref 76))
+            (n-ref (make-int-ref (Matrix-rows A)))
+            (lda-ref (make-int-ref (Matrix-rows A)))
+            (info-ref (make-int-ref 0)))
+
+        (dpotrf_ uplo-ref n-ref (Matrix-data L) lda-ref info-ref)
+
+        (let ((info (get-int-ref info-ref)))
+          (ffi/free uplo-ref)
+          (ffi/free n-ref)
+          (ffi/free lda-ref)
+          (ffi/free info-ref)
+          (mat-free! L)
+          (= info 0))))))
+
+; ===========================================
+; Exports
+; ===========================================
+
+; Types: LU, QR, SVD, Eig, Schur (deftype)
+; Solvers: solve, solve-multi, solve-cholesky, lstsq, solve-band, solve-tridiag
+; Decompositions: lu, cholesky, qr, lq, rq, svd, svd-compact, eig, eig-sym, schur
+; Matrix operations: inv, det, trace, rank, pinv
+; Norms: norm-fro, norm-1, norm-inf, norm-2, cond, cond-est, rcond
+; Predicates: symmetric?, positive-definite?, singular?
+
+; ===========================================
+; EXHAUSTIVE LAPACK FFI DECLARATIONS
+; ===========================================
+;
+; This section provides complete bindings for all major LAPACK routines.
+; Organized by functionality:
+;   1. Linear Equation Solvers (general, symmetric, triangular, banded)
+;   2. Least Squares and Minimum Norm
+;   3. Eigenvalue Problems (symmetric and general)
+;   4. Singular Value Decomposition
+;   5. Matrix Factorizations
+;   6. Condition Number Estimation
+;   7. Matrix Norms
+;   8. Auxiliary Routines
+;
+; Reference: http://www.netlib.org/lapack/
+
+; ===========================================
+; Section 1: Additional Linear Solvers
+; ===========================================
+
+; DPOSV: Solve A*X = B using Cholesky (A symmetric positive definite)
+(define {extern lapack/dposv_}
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; Input A, output Cholesky factor
+  [lda   {CPtr CInt}]
+  [B     {CPtr CDouble}]    ; Input RHS, output solution
+  [ldb   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DSYSV: Solve A*X = B (A symmetric indefinite)
+(define {extern lapack/dsysv_}
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; Input A, output factorization
+  [lda   {CPtr CInt}]
+  [ipiv  {CPtr CInt}]       ; Pivot indices
+  [B     {CPtr CDouble}]    ; Input RHS, output solution
+  [ldb   {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DSYTRF: Symmetric indefinite factorization (Bunch-Kaufman)
+(define {extern lapack/dsytrf_}
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [ipiv  {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DSYTRS: Solve using DSYTRF factorization
+(define {extern lapack/dsytrs_}
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [ipiv  {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DSYTRI: Inverse from DSYTRF factorization
+(define {extern lapack/dsytri_}
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [ipiv  {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DPOTRI: Inverse from Cholesky factorization
+(define {extern lapack/dpotri_}
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DTRTRS: Triangular system solve
+(define {extern lapack/dtrtrs_}
+  [uplo  {CPtr CChar}]      ; 'U' or 'L'
+  [trans {CPtr CChar}]      ; 'N', 'T', or 'C'
+  [diag  {CPtr CChar}]      ; 'N' or 'U' (unit diagonal)
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DTRTRI: Triangular matrix inverse
+(define {extern lapack/dtrtri_}
+  [uplo  {CPtr CChar}]
+  [diag  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGBSV: Banded matrix solve (A*X = B)
+(define {extern lapack/dgbsv_}
+  [n     {CPtr CInt}]
+  [kl    {CPtr CInt}]       ; Number of subdiagonals
+  [ku    {CPtr CInt}]       ; Number of superdiagonals
+  [nrhs  {CPtr CInt}]
+  [AB    {CPtr CDouble}]    ; Band storage format
+  [ldab  {CPtr CInt}]
+  [ipiv  {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGBTRF: Banded LU factorization
+(define {extern lapack/dgbtrf_}
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [kl    {CPtr CInt}]
+  [ku    {CPtr CInt}]
+  [AB    {CPtr CDouble}]
+  [ldab  {CPtr CInt}]
+  [ipiv  {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGBTRS: Solve using banded LU
+(define {extern lapack/dgbtrs_}
+  [trans {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [kl    {CPtr CInt}]
+  [ku    {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [AB    {CPtr CDouble}]
+  [ldab  {CPtr CInt}]
+  [ipiv  {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DPBSV: Symmetric positive definite banded solve
+(define {extern lapack/dpbsv_}
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [kd    {CPtr CInt}]       ; Number of super/subdiagonals
+  [nrhs  {CPtr CInt}]
+  [AB    {CPtr CDouble}]
+  [ldab  {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DPBTRF: Cholesky for banded symmetric positive definite
+(define {extern lapack/dpbtrf_}
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [kd    {CPtr CInt}]
+  [AB    {CPtr CDouble}]
+  [ldab  {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DPBTRS: Solve using banded Cholesky
+(define {extern lapack/dpbtrs_}
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [kd    {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [AB    {CPtr CDouble}]
+  [ldab  {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGTSV: Tridiagonal system solve
+(define {extern lapack/dgtsv_}
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [DL    {CPtr CDouble}]    ; Subdiagonal (n-1 elements)
+  [D     {CPtr CDouble}]    ; Diagonal (n elements)
+  [DU    {CPtr CDouble}]    ; Superdiagonal (n-1 elements)
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGTTRF: Tridiagonal LU factorization
+(define {extern lapack/dgttrf_}
+  [n     {CPtr CInt}]
+  [DL    {CPtr CDouble}]
+  [D     {CPtr CDouble}]
+  [DU    {CPtr CDouble}]
+  [DU2   {CPtr CDouble}]    ; Second superdiagonal from fill-in
+  [ipiv  {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGTTRS: Solve using tridiagonal LU
+(define {extern lapack/dgttrs_}
+  [trans {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [DL    {CPtr CDouble}]
+  [D     {CPtr CDouble}]
+  [DU    {CPtr CDouble}]
+  [DU2   {CPtr CDouble}]
+  [ipiv  {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DPTSV: Symmetric positive definite tridiagonal solve
+(define {extern lapack/dptsv_}
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [D     {CPtr CDouble}]    ; Diagonal
+  [E     {CPtr CDouble}]    ; Off-diagonal (n-1 elements)
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DPTTRF: Cholesky for symmetric positive definite tridiagonal
+(define {extern lapack/dpttrf_}
+  [n     {CPtr CInt}]
+  [D     {CPtr CDouble}]
+  [E     {CPtr CDouble}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DPTTRS: Solve using tridiagonal Cholesky
+(define {extern lapack/dpttrs_}
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [D     {CPtr CDouble}]
+  [E     {CPtr CDouble}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; ===========================================
+; Section 2: Least Squares and Minimum Norm
+; ===========================================
+
+; DGELSD: SVD-based least squares (divide and conquer)
+(define {extern lapack/dgelsd_}
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [S     {CPtr CDouble}]    ; Singular values output
+  [rcond {CPtr CDouble}]    ; Cutoff for singular values
+  [rank  {CPtr CInt}]       ; Effective rank output
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [iwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGELSS: SVD-based least squares
+(define {extern lapack/dgelss_}
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [S     {CPtr CDouble}]
+  [rcond {CPtr CDouble}]
+  [rank  {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGELSY: Complete orthogonal factorization least squares
+(define {extern lapack/dgelsy_}
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [jpvt  {CPtr CInt}]       ; Column pivot indices
+  [rcond {CPtr CDouble}]
+  [rank  {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGGLSE: Equality-constrained least squares (LSE)
+; Minimize ||c - A*x||_2 subject to B*x = d
+(define {extern lapack/dgglse_}
+  [m     {CPtr CInt}]       ; Rows of A
+  [n     {CPtr CInt}]       ; Columns of A and B
+  [p     {CPtr CInt}]       ; Rows of B (constraints)
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [c     {CPtr CDouble}]    ; RHS for A
+  [d     {CPtr CDouble}]    ; RHS for constraint B*x = d
+  [x     {CPtr CDouble}]    ; Solution output
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGGGLM: Generalized linear model
+; Minimize ||y||_2 subject to d = A*x + B*y
+(define {extern lapack/dggglm_}
+  [n     {CPtr CInt}]
+  [m     {CPtr CInt}]
+  [p     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [d     {CPtr CDouble}]
+  [x     {CPtr CDouble}]
+  [y     {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; ===========================================
+; Section 3: Eigenvalue Problems
+; ===========================================
+
+; DSYEVD: Symmetric eigenvalues (divide and conquer) - faster for large matrices
+(define {extern lapack/dsyevd_}
+  [jobz  {CPtr CChar}]      ; 'N' values only, 'V' values + vectors
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; Overwritten with eigenvectors if jobz='V'
+  [lda   {CPtr CInt}]
+  [W     {CPtr CDouble}]    ; Eigenvalues (ascending order)
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [iwork {CPtr CInt}]
+  [liwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DSYEVR: Symmetric eigenvalues (relatively robust representations) - most efficient
+(define {extern lapack/dsyevr_}
+  [jobz  {CPtr CChar}]
+  [range {CPtr CChar}]      ; 'A' all, 'V' value range, 'I' index range
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [vl    {CPtr CDouble}]    ; Lower bound if range='V'
+  [vu    {CPtr CDouble}]    ; Upper bound if range='V'
+  [il    {CPtr CInt}]       ; Lower index if range='I'
+  [iu    {CPtr CInt}]       ; Upper index if range='I'
+  [abstol {CPtr CDouble}]   ; Tolerance
+  [m     {CPtr CInt}]       ; Number of eigenvalues found (output)
+  [W     {CPtr CDouble}]    ; Eigenvalues
+  [Z     {CPtr CDouble}]    ; Eigenvectors
+  [ldz   {CPtr CInt}]
+  [isuppz {CPtr CInt}]      ; Support of eigenvectors
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [iwork {CPtr CInt}]
+  [liwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DSYEVX: Symmetric eigenvalues (expert driver) - selected eigenvalues
+(define {extern lapack/dsyevx_}
+  [jobz  {CPtr CChar}]
+  [range {CPtr CChar}]
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [vl    {CPtr CDouble}]
+  [vu    {CPtr CDouble}]
+  [il    {CPtr CInt}]
+  [iu    {CPtr CInt}]
+  [abstol {CPtr CDouble}]
+  [m     {CPtr CInt}]
+  [W     {CPtr CDouble}]
+  [Z     {CPtr CDouble}]
+  [ldz   {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [iwork {CPtr CInt}]
+  [ifail {CPtr CInt}]       ; Indices of failed eigenvectors
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DSPEV: Symmetric eigenvalues (packed storage)
+(define {extern lapack/dspev_}
+  [jobz  {CPtr CChar}]
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [AP    {CPtr CDouble}]    ; Packed storage
+  [W     {CPtr CDouble}]
+  [Z     {CPtr CDouble}]
+  [ldz   {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DSBEV: Symmetric eigenvalues (band storage)
+(define {extern lapack/dsbev_}
+  [jobz  {CPtr CChar}]
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [kd    {CPtr CInt}]       ; Bandwidth
+  [AB    {CPtr CDouble}]    ; Band storage
+  [ldab  {CPtr CInt}]
+  [W     {CPtr CDouble}]
+  [Z     {CPtr CDouble}]
+  [ldz   {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DSTEV: Symmetric tridiagonal eigenvalues
+(define {extern lapack/dstev_}
+  [jobz  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [D     {CPtr CDouble}]    ; Diagonal
+  [E     {CPtr CDouble}]    ; Subdiagonal
+  [Z     {CPtr CDouble}]    ; Eigenvectors
+  [ldz   {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGEEV: General matrix eigenvalues
+(define {extern lapack/dgeev_}
+  [jobvl {CPtr CChar}]      ; 'N' or 'V' left eigenvectors
+  [jobvr {CPtr CChar}]      ; 'N' or 'V' right eigenvectors
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; Destroyed
+  [lda   {CPtr CInt}]
+  [WR    {CPtr CDouble}]    ; Real parts of eigenvalues
+  [WI    {CPtr CDouble}]    ; Imaginary parts of eigenvalues
+  [VL    {CPtr CDouble}]    ; Left eigenvectors
+  [ldvl  {CPtr CInt}]
+  [VR    {CPtr CDouble}]    ; Right eigenvectors
+  [ldvr  {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGEEVX: General eigenvalues with balancing and condition estimation
+(define {extern lapack/dgeevx_}
+  [balanc {CPtr CChar}]     ; 'N', 'P', 'S', or 'B'
+  [jobvl {CPtr CChar}]
+  [jobvr {CPtr CChar}]
+  [sense {CPtr CChar}]      ; 'N', 'E', 'V', or 'B'
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [WR    {CPtr CDouble}]
+  [WI    {CPtr CDouble}]
+  [VL    {CPtr CDouble}]
+  [ldvl  {CPtr CInt}]
+  [VR    {CPtr CDouble}]
+  [ldvr  {CPtr CInt}]
+  [ilo   {CPtr CInt}]
+  [ihi   {CPtr CInt}]
+  [scale {CPtr CDouble}]
+  [abnrm {CPtr CDouble}]    ; One-norm of balanced A
+  [rconde {CPtr CDouble}]   ; Condition numbers for eigenvalues
+  [rcondv {CPtr CDouble}]   ; Condition numbers for eigenvectors
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [iwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DSYGV: Generalized symmetric eigenvalue: A*x = lambda*B*x
+(define {extern lapack/dsygv_}
+  [itype {CPtr CInt}]       ; 1: A*x=lambda*B*x, 2: A*B*x=lambda*x, 3: B*A*x=lambda*x
+  [jobz  {CPtr CChar}]
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [B     {CPtr CDouble}]    ; Must be positive definite
+  [ldb   {CPtr CInt}]
+  [W     {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DSYGVD: Generalized symmetric eigenvalue (divide and conquer)
+(define {extern lapack/dsygvd_}
+  [itype {CPtr CInt}]
+  [jobz  {CPtr CChar}]
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [W     {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [iwork {CPtr CInt}]
+  [liwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGGEV: General generalized eigenvalue: A*x = lambda*B*x
+(define {extern lapack/dggev_}
+  [jobvl {CPtr CChar}]
+  [jobvr {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [alphar {CPtr CDouble}]   ; Real numerators
+  [alphai {CPtr CDouble}]   ; Imag numerators
+  [beta  {CPtr CDouble}]    ; Denominators (eigenvalue = alpha/beta)
+  [VL    {CPtr CDouble}]
+  [ldvl  {CPtr CInt}]
+  [VR    {CPtr CDouble}]
+  [ldvr  {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; ===========================================
+; Section 4: SVD Variants
+; ===========================================
+
+; DGESDD: SVD using divide and conquer (faster)
+(define {extern lapack/dgesdd_}
+  [jobz  {CPtr CChar}]      ; 'A' all, 'S' first min(m,n), 'O' overwrite, 'N' none
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [S     {CPtr CDouble}]    ; Singular values
+  [U     {CPtr CDouble}]
+  [ldu   {CPtr CInt}]
+  [VT    {CPtr CDouble}]
+  [ldvt  {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [iwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGESVDX: SVD with selected singular values/vectors
+(define {extern lapack/dgesvdx_}
+  [jobu  {CPtr CChar}]      ; 'V' or 'N'
+  [jobvt {CPtr CChar}]
+  [range {CPtr CChar}]      ; 'A', 'V', or 'I'
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [vl    {CPtr CDouble}]    ; Lower bound if range='V'
+  [vu    {CPtr CDouble}]    ; Upper bound if range='V'
+  [il    {CPtr CInt}]       ; Lower index if range='I'
+  [iu    {CPtr CInt}]       ; Upper index if range='I'
+  [ns    {CPtr CInt}]       ; Number of singular values found
+  [S     {CPtr CDouble}]
+  [U     {CPtr CDouble}]
+  [ldu   {CPtr CInt}]
+  [VT    {CPtr CDouble}]
+  [ldvt  {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [iwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; ===========================================
+; Section 5: Additional Factorizations
+; ===========================================
+
+; DGELQF: LQ factorization (A = L*Q)
+(define {extern lapack/dgelqf_}
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [tau   {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DORGLQ: Generate Q from LQ factorization
+(define {extern lapack/dorglq_}
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [k     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [tau   {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DORMLQ: Multiply by Q from LQ
+(define {extern lapack/dormlq_}
+  [side  {CPtr CChar}]
+  [trans {CPtr CChar}]
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [k     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [tau   {CPtr CDouble}]
+  [C     {CPtr CDouble}]
+  [ldc   {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGERQF: RQ factorization (A = R*Q)
+(define {extern lapack/dgerqf_}
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [tau   {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DORGRQ: Generate Q from RQ factorization
+(define {extern lapack/dorgrq_}
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [k     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [tau   {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGEQLF: QL factorization (A = Q*L)
+(define {extern lapack/dgeqlf_}
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [tau   {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DORGQL: Generate Q from QL factorization
+(define {extern lapack/dorgql_}
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [k     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [tau   {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGEQP3: QR with column pivoting (rank-revealing)
+(define {extern lapack/dgeqp3_}
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [jpvt  {CPtr CInt}]       ; Column pivot indices
+  [tau   {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DORMQR: Multiply by Q from QR
+(define {extern lapack/dormqr_}
+  [side  {CPtr CChar}]      ; 'L' or 'R'
+  [trans {CPtr CChar}]      ; 'N' or 'T'
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [k     {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; QR factors from dgeqrf
+  [lda   {CPtr CInt}]
+  [tau   {CPtr CDouble}]
+  [C     {CPtr CDouble}]    ; Matrix to multiply
+  [ldc   {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGEHRD: Reduce to upper Hessenberg form
+(define {extern lapack/dgehrd_}
+  [n     {CPtr CInt}]
+  [ilo   {CPtr CInt}]
+  [ihi   {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [tau   {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DORGHR: Generate orthogonal matrix Q from Hessenberg reduction
+(define {extern lapack/dorghr_}
+  [n     {CPtr CInt}]
+  [ilo   {CPtr CInt}]
+  [ihi   {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [tau   {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DHSEQR: Compute eigenvalues from Hessenberg matrix (Schur form)
+(define {extern lapack/dhseqr_}
+  [job   {CPtr CChar}]      ; 'E' eigenvalues, 'S' Schur form
+  [compz {CPtr CChar}]      ; 'N', 'I', or 'V'
+  [n     {CPtr CInt}]
+  [ilo   {CPtr CInt}]
+  [ihi   {CPtr CInt}]
+  [H     {CPtr CDouble}]    ; Hessenberg or Schur form
+  [ldh   {CPtr CInt}]
+  [WR    {CPtr CDouble}]    ; Real parts
+  [WI    {CPtr CDouble}]    ; Imaginary parts
+  [Z     {CPtr CDouble}]    ; Schur vectors
+  [ldz   {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGEES: Schur decomposition (A = Z*T*Z')
+(define {extern lapack/dgees_}
+  [jobvs {CPtr CChar}]      ; 'N' or 'V'
+  [sort  {CPtr CChar}]      ; 'N' or 'S' (sort eigenvalues)
+  [select {CPtr}]           ; External function for selection
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [sdim  {CPtr CInt}]       ; Number of selected eigenvalues
+  [WR    {CPtr CDouble}]
+  [WI    {CPtr CDouble}]
+  [VS    {CPtr CDouble}]    ; Schur vectors
+  [ldvs  {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [bwork {CPtr CInt}]       ; Boolean workspace
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DTREXC: Reorder Schur form
+(define {extern lapack/dtrexc_}
+  [compq {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [T     {CPtr CDouble}]
+  [ldt   {CPtr CInt}]
+  [Q     {CPtr CDouble}]
+  [ldq   {CPtr CInt}]
+  [ifst  {CPtr CInt}]
+  [ilst  {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DGEBRD: Bidiagonal reduction
+(define {extern lapack/dgebrd_}
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [D     {CPtr CDouble}]    ; Diagonal
+  [E     {CPtr CDouble}]    ; Off-diagonal
+  [tauq  {CPtr CDouble}]
+  [taup  {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DORGBR: Generate orthogonal matrices from bidiagonalization
+(define {extern lapack/dorgbr_}
+  [vect  {CPtr CChar}]      ; 'Q' or 'P'
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [k     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [tau   {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [lwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DBDSQR: SVD of bidiagonal matrix
+(define {extern lapack/dbdsqr_}
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [ncvt  {CPtr CInt}]
+  [nru   {CPtr CInt}]
+  [ncc   {CPtr CInt}]
+  [D     {CPtr CDouble}]
+  [E     {CPtr CDouble}]
+  [VT    {CPtr CDouble}]
+  [ldvt  {CPtr CInt}]
+  [U     {CPtr CDouble}]
+  [ldu   {CPtr CInt}]
+  [C     {CPtr CDouble}]
+  [ldc   {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; ===========================================
+; Section 6: Condition Number and Norms
+; ===========================================
+
+; DGECON: Estimate condition number of general matrix
+(define {extern lapack/dgecon_}
+  [norm  {CPtr CChar}]      ; '1' or 'I'
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; LU factored matrix
+  [lda   {CPtr CInt}]
+  [anorm {CPtr CDouble}]    ; Norm of original A
+  [rcond {CPtr CDouble}]    ; Reciprocal condition number (output)
+  [work  {CPtr CDouble}]
+  [iwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DPOCON: Condition number for positive definite
+(define {extern lapack/dpocon_}
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; Cholesky factored
+  [lda   {CPtr CInt}]
+  [anorm {CPtr CDouble}]
+  [rcond {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [iwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DSYCON: Condition number for symmetric indefinite
+(define {extern lapack/dsycon_}
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [ipiv  {CPtr CInt}]
+  [anorm {CPtr CDouble}]
+  [rcond {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [iwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DTRCON: Condition number for triangular
+(define {extern lapack/dtrcon_}
+  [norm  {CPtr CChar}]
+  [uplo  {CPtr CChar}]
+  [diag  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [rcond {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [iwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DLANGE: Matrix norm
+(define {extern lapack/dlange_}
+  [norm  {CPtr CChar}]      ; 'M' max, '1' one-norm, 'I' inf-norm, 'F' Frobenius
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [work  {CPtr CDouble}]    ; Only needed for 'I'
+  -> {CDouble})
+
+; DLANSY: Symmetric matrix norm
+(define {extern lapack/dlansy_}
+  [norm  {CPtr CChar}]
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  -> {CDouble})
+
+; DLANTR: Triangular matrix norm
+(define {extern lapack/dlantr_}
+  [norm  {CPtr CChar}]
+  [uplo  {CPtr CChar}]
+  [diag  {CPtr CChar}]
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [work  {CPtr CDouble}]
+  -> {CDouble})
+
+; ===========================================
+; Section 7: Iterative Refinement
+; ===========================================
+
+; DGERFS: Refine solution to A*X = B
+(define {extern lapack/dgerfs_}
+  [trans {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [A     {CPtr CDouble}]    ; Original matrix
+  [lda   {CPtr CInt}]
+  [AF    {CPtr CDouble}]    ; LU factored matrix
+  [ldaf  {CPtr CInt}]
+  [ipiv  {CPtr CInt}]
+  [B     {CPtr CDouble}]    ; Original RHS
+  [ldb   {CPtr CInt}]
+  [X     {CPtr CDouble}]    ; Solution (input and refined output)
+  [ldx   {CPtr CInt}]
+  [ferr  {CPtr CDouble}]    ; Forward error bound (output)
+  [berr  {CPtr CDouble}]    ; Backward error bound (output)
+  [work  {CPtr CDouble}]
+  [iwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DPORFS: Refine positive definite solution
+(define {extern lapack/dporfs_}
+  [uplo  {CPtr CChar}]
+  [n     {CPtr CInt}]
+  [nrhs  {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [AF    {CPtr CDouble}]
+  [ldaf  {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  [X     {CPtr CDouble}]
+  [ldx   {CPtr CInt}]
+  [ferr  {CPtr CDouble}]
+  [berr  {CPtr CDouble}]
+  [work  {CPtr CDouble}]
+  [iwork {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; ===========================================
+; Section 8: Auxiliary Routines
+; ===========================================
+
+; DLACPY: Copy matrix
+(define {extern lapack/dlacpy_}
+  [uplo  {CPtr CChar}]      ; 'U', 'L', or 'A'
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [B     {CPtr CDouble}]
+  [ldb   {CPtr CInt}]
+  -> {Nothing})
+
+; DLASET: Initialize matrix
+(define {extern lapack/dlaset_}
+  [uplo  {CPtr CChar}]
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [alpha {CPtr CDouble}]    ; Off-diagonal value
+  [beta  {CPtr CDouble}]    ; Diagonal value
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  -> {Nothing})
+
+; DLASWP: Row interchange
+(define {extern lapack/dlaswp_}
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [k1    {CPtr CInt}]
+  [k2    {CPtr CInt}]
+  [ipiv  {CPtr CInt}]
+  [incx  {CPtr CInt}]
+  -> {Nothing})
+
+; DLASCL: Scale matrix
+(define {extern lapack/dlascl_}
+  [type  {CPtr CChar}]
+  [kl    {CPtr CInt}]
+  [ku    {CPtr CInt}]
+  [cfrom {CPtr CDouble}]
+  [cto   {CPtr CDouble}]
+  [m     {CPtr CInt}]
+  [n     {CPtr CInt}]
+  [A     {CPtr CDouble}]
+  [lda   {CPtr CInt}]
+  [info  {CPtr CInt}]
+  -> {Nothing})
+
+; DLAMCH: Machine parameters
+(define {extern lapack/dlamch_}
+  [cmach {CPtr CChar}]      ; 'E' epsilon, 'S' safe min, 'B' base, etc.
+  -> {CDouble})
+
+; ILAENV: Environment query
+(define {extern lapack/ilaenv_}
+  [ispec {CPtr CInt}]
+  [name  {CString}]
+  [opts  {CString}]
+  [n1    {CPtr CInt}]
+  [n2    {CPtr CInt}]
+  [n3    {CPtr CInt}]
+  [n4    {CPtr CInt}]
+  -> {CInt})
+
+; ===========================================
+; Section 9: Single Precision Variants (S prefix)
+; ===========================================
+
+; Basic solvers
+(define {extern lapack/sgetrf_}
+  [m {CPtr CInt}] [n {CPtr CInt}] [A {CPtr CFloat}] [lda {CPtr CInt}]
+  [ipiv {CPtr CInt}] [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/sgetrs_}
+  [trans {CPtr CChar}] [n {CPtr CInt}] [nrhs {CPtr CInt}]
+  [A {CPtr CFloat}] [lda {CPtr CInt}] [ipiv {CPtr CInt}]
+  [B {CPtr CFloat}] [ldb {CPtr CInt}] [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/sgesv_}
+  [n {CPtr CInt}] [nrhs {CPtr CInt}] [A {CPtr CFloat}] [lda {CPtr CInt}]
+  [ipiv {CPtr CInt}] [B {CPtr CFloat}] [ldb {CPtr CInt}]
+  [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/spotrf_}
+  [uplo {CPtr CChar}] [n {CPtr CInt}] [A {CPtr CFloat}] [lda {CPtr CInt}]
+  [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/spotrs_}
+  [uplo {CPtr CChar}] [n {CPtr CInt}] [nrhs {CPtr CInt}]
+  [A {CPtr CFloat}] [lda {CPtr CInt}] [B {CPtr CFloat}] [ldb {CPtr CInt}]
+  [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/sgeqrf_}
+  [m {CPtr CInt}] [n {CPtr CInt}] [A {CPtr CFloat}] [lda {CPtr CInt}]
+  [tau {CPtr CFloat}] [work {CPtr CFloat}] [lwork {CPtr CInt}]
+  [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/sorgqr_}
+  [m {CPtr CInt}] [n {CPtr CInt}] [k {CPtr CInt}] [A {CPtr CFloat}] [lda {CPtr CInt}]
+  [tau {CPtr CFloat}] [work {CPtr CFloat}] [lwork {CPtr CInt}]
+  [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/sgesvd_}
+  [jobu {CPtr CChar}] [jobvt {CPtr CChar}] [m {CPtr CInt}] [n {CPtr CInt}]
+  [A {CPtr CFloat}] [lda {CPtr CInt}] [S {CPtr CFloat}]
+  [U {CPtr CFloat}] [ldu {CPtr CInt}] [VT {CPtr CFloat}] [ldvt {CPtr CInt}]
+  [work {CPtr CFloat}] [lwork {CPtr CInt}] [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/ssyev_}
+  [jobz {CPtr CChar}] [uplo {CPtr CChar}] [n {CPtr CInt}]
+  [A {CPtr CFloat}] [lda {CPtr CInt}] [W {CPtr CFloat}]
+  [work {CPtr CFloat}] [lwork {CPtr CInt}] [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/sgeev_}
+  [jobvl {CPtr CChar}] [jobvr {CPtr CChar}] [n {CPtr CInt}]
+  [A {CPtr CFloat}] [lda {CPtr CInt}]
+  [WR {CPtr CFloat}] [WI {CPtr CFloat}]
+  [VL {CPtr CFloat}] [ldvl {CPtr CInt}]
+  [VR {CPtr CFloat}] [ldvr {CPtr CInt}]
+  [work {CPtr CFloat}] [lwork {CPtr CInt}] [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/sgels_}
+  [trans {CPtr CChar}] [m {CPtr CInt}] [n {CPtr CInt}] [nrhs {CPtr CInt}]
+  [A {CPtr CFloat}] [lda {CPtr CInt}] [B {CPtr CFloat}] [ldb {CPtr CInt}]
+  [work {CPtr CFloat}] [lwork {CPtr CInt}] [info {CPtr CInt}] -> {Nothing})
+
+; ===========================================
+; Section 10: Complex Variants (Z prefix - double complex)
+; ===========================================
+
+; Note: Complex operations require complex array handling
+; The data format is interleaved [real1, imag1, real2, imag2, ...]
+
+(define {extern lapack/zgetrf_}
+  [m {CPtr CInt}] [n {CPtr CInt}] [A {CPtr CDouble}] [lda {CPtr CInt}]
+  [ipiv {CPtr CInt}] [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/zgetrs_}
+  [trans {CPtr CChar}] [n {CPtr CInt}] [nrhs {CPtr CInt}]
+  [A {CPtr CDouble}] [lda {CPtr CInt}] [ipiv {CPtr CInt}]
+  [B {CPtr CDouble}] [ldb {CPtr CInt}] [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/zgesv_}
+  [n {CPtr CInt}] [nrhs {CPtr CInt}] [A {CPtr CDouble}] [lda {CPtr CInt}]
+  [ipiv {CPtr CInt}] [B {CPtr CDouble}] [ldb {CPtr CInt}]
+  [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/zpotrf_}
+  [uplo {CPtr CChar}] [n {CPtr CInt}] [A {CPtr CDouble}] [lda {CPtr CInt}]
+  [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/zpotrs_}
+  [uplo {CPtr CChar}] [n {CPtr CInt}] [nrhs {CPtr CInt}]
+  [A {CPtr CDouble}] [lda {CPtr CInt}] [B {CPtr CDouble}] [ldb {CPtr CInt}]
+  [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/zheev_}
+  [jobz {CPtr CChar}] [uplo {CPtr CChar}] [n {CPtr CInt}]
+  [A {CPtr CDouble}] [lda {CPtr CInt}] [W {CPtr CDouble}]
+  [work {CPtr CDouble}] [lwork {CPtr CInt}] [rwork {CPtr CDouble}]
+  [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/zgeev_}
+  [jobvl {CPtr CChar}] [jobvr {CPtr CChar}] [n {CPtr CInt}]
+  [A {CPtr CDouble}] [lda {CPtr CInt}]
+  [W {CPtr CDouble}]  ; Complex eigenvalues
+  [VL {CPtr CDouble}] [ldvl {CPtr CInt}]
+  [VR {CPtr CDouble}] [ldvr {CPtr CInt}]
+  [work {CPtr CDouble}] [lwork {CPtr CInt}] [rwork {CPtr CDouble}]
+  [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/zgesvd_}
+  [jobu {CPtr CChar}] [jobvt {CPtr CChar}] [m {CPtr CInt}] [n {CPtr CInt}]
+  [A {CPtr CDouble}] [lda {CPtr CInt}] [S {CPtr CDouble}]
+  [U {CPtr CDouble}] [ldu {CPtr CInt}] [VT {CPtr CDouble}] [ldvt {CPtr CInt}]
+  [work {CPtr CDouble}] [lwork {CPtr CInt}] [rwork {CPtr CDouble}]
+  [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/zgeqrf_}
+  [m {CPtr CInt}] [n {CPtr CInt}] [A {CPtr CDouble}] [lda {CPtr CInt}]
+  [tau {CPtr CDouble}] [work {CPtr CDouble}] [lwork {CPtr CInt}]
+  [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/zungqr_}
+  [m {CPtr CInt}] [n {CPtr CInt}] [k {CPtr CInt}] [A {CPtr CDouble}] [lda {CPtr CInt}]
+  [tau {CPtr CDouble}] [work {CPtr CDouble}] [lwork {CPtr CInt}]
+  [info {CPtr CInt}] -> {Nothing})
+
+(define {extern lapack/zgels_}
+  [trans {CPtr CChar}] [m {CPtr CInt}] [n {CPtr CInt}] [nrhs {CPtr CInt}]
+  [A {CPtr CDouble}] [lda {CPtr CInt}] [B {CPtr CDouble}] [ldb {CPtr CInt}]
+  [work {CPtr CDouble}] [lwork {CPtr CInt}] [info {CPtr CInt}] -> {Nothing})
+
+; ===========================================
+; HIGH-LEVEL API: SVD Decomposition
+; ===========================================
+
+(deftype SVD
+  (U Matrix)      ; Left singular vectors (m x min(m,n))
+  (S Vector)      ; Singular values (min(m,n))
+  (VT Matrix))    ; Right singular vectors (min(m,n) x n)
+
+; Compute full SVD: A = U * diag(S) * VT
+(define (svd A)
+  (let ((m (Matrix-rows A))
+        (n (Matrix-cols A)))
+    (let ((min-mn (min m n)))
+      (let ((A-copy (mat-copy A))
+            (S (vec-new min-mn))
+            (U (mat-new m min-mn))
+            (VT (mat-new min-mn n))
+            (lwork (* 5 (max m n)))
+            (work (ffi/alloc-array {CDouble} (* 5 (max m n)))))
+
+        (let ((jobu-ref (make-char-ref 83))   ; 'S' = min(m,n) columns
+              (jobvt-ref (make-char-ref 83))
+              (m-ref (make-int-ref m))
+              (n-ref (make-int-ref n))
+              (lda-ref (make-int-ref m))
+              (ldu-ref (make-int-ref m))
+              (ldvt-ref (make-int-ref min-mn))
+              (lwork-ref (make-int-ref lwork))
+              (info-ref (make-int-ref 0)))
+
+          (dgesvd_ jobu-ref jobvt-ref m-ref n-ref
+                   (Matrix-data A-copy) lda-ref
+                   (Vector-data S)
+                   (Matrix-data U) ldu-ref
+                   (Matrix-data VT) ldvt-ref
+                   work lwork-ref info-ref)
+
+          (let ((info (get-int-ref info-ref)))
+            (ffi/free jobu-ref)
+            (ffi/free jobvt-ref)
+            (ffi/free m-ref)
+            (ffi/free n-ref)
+            (ffi/free lda-ref)
+            (ffi/free ldu-ref)
+            (ffi/free ldvt-ref)
+            (ffi/free work)
+            (ffi/free lwork-ref)
+            (ffi/free info-ref)
+            (mat-free! A-copy)
+
+            (if (not (= info 0))
+                (begin
+                  (mat-free! U)
+                  (vec-free! S)
+                  (mat-free! VT)
+                  (error "svd: LAPACK dgesvd failed"))
+                (mk-SVD U S VT))))))))
+
+; Compact SVD using divide-and-conquer (faster for large matrices)
+(define (svd-compact A)
+  (let ((m (Matrix-rows A))
+        (n (Matrix-cols A)))
+    (let ((min-mn (min m n)))
+      (let ((A-copy (mat-copy A))
+            (S (vec-new min-mn))
+            (U (mat-new m min-mn))
+            (VT (mat-new min-mn n))
+            (lwork (* 4 min-mn min-mn (+ 6 min-mn) (max m n)))
+            (work (ffi/alloc-array {CDouble} (max 1 lwork)))
+            (iwork (ffi/alloc-array {CInt} (* 8 min-mn))))
+
+        (let ((jobz-ref (make-char-ref 83))   ; 'S'
+              (m-ref (make-int-ref m))
+              (n-ref (make-int-ref n))
+              (lda-ref (make-int-ref m))
+              (ldu-ref (make-int-ref m))
+              (ldvt-ref (make-int-ref min-mn))
+              (lwork-ref (make-int-ref lwork))
+              (info-ref (make-int-ref 0)))
+
+          (dgesdd_ jobz-ref m-ref n-ref
+                   (Matrix-data A-copy) lda-ref
+                   (Vector-data S)
+                   (Matrix-data U) ldu-ref
+                   (Matrix-data VT) ldvt-ref
+                   work lwork-ref iwork info-ref)
+
+          (let ((info (get-int-ref info-ref)))
+            (ffi/free jobz-ref)
+            (ffi/free m-ref)
+            (ffi/free n-ref)
+            (ffi/free lda-ref)
+            (ffi/free ldu-ref)
+            (ffi/free ldvt-ref)
+            (ffi/free work)
+            (ffi/free lwork-ref)
+            (ffi/free iwork)
+            (ffi/free info-ref)
+            (mat-free! A-copy)
+
+            (if (not (= info 0))
+                (begin
+                  (mat-free! U)
+                  (vec-free! S)
+                  (mat-free! VT)
+                  (error "svd-compact: LAPACK dgesdd failed"))
+                (mk-SVD U S VT))))))))
+
+; ===========================================
+; HIGH-LEVEL API: Eigenvalue Decomposition
+; ===========================================
+
+(deftype Eig
+  (values-real Vector)   ; Real parts of eigenvalues
+  (values-imag Vector)   ; Imaginary parts
+  (vectors-left Matrix)  ; Left eigenvectors (optional)
+  (vectors-right Matrix)); Right eigenvectors
+
+; Eigenvalues and eigenvectors of general matrix
+(define (eig A)
+  (let ((n (Matrix-rows A)))
+    (if (not (= n (Matrix-cols A)))
+        (error "eig: matrix must be square")
+        ())
+
+    (let ((A-copy (mat-copy A))
+          (WR (vec-new n))
+          (WI (vec-new n))
+          (VL (mat-zeros 1 1))   ; Not computing left eigenvectors
+          (VR (mat-new n n))
+          (lwork (* 4 n))
+          (work (ffi/alloc-array {CDouble} (* 4 n))))
+
+      (let ((jobvl-ref (make-char-ref 78))  ; 'N' = no left eigenvectors
+            (jobvr-ref (make-char-ref 86))  ; 'V' = compute right eigenvectors
+            (n-ref (make-int-ref n))
+            (lda-ref (make-int-ref n))
+            (ldvl-ref (make-int-ref 1))
+            (ldvr-ref (make-int-ref n))
+            (lwork-ref (make-int-ref lwork))
+            (info-ref (make-int-ref 0)))
+
+        (dgeev_ jobvl-ref jobvr-ref n-ref
+                (Matrix-data A-copy) lda-ref
+                (Vector-data WR) (Vector-data WI)
+                (Matrix-data VL) ldvl-ref
+                (Matrix-data VR) ldvr-ref
+                work lwork-ref info-ref)
+
+        (let ((info (get-int-ref info-ref)))
+          (ffi/free jobvl-ref)
+          (ffi/free jobvr-ref)
+          (ffi/free n-ref)
+          (ffi/free lda-ref)
+          (ffi/free ldvl-ref)
+          (ffi/free ldvr-ref)
+          (ffi/free work)
+          (ffi/free lwork-ref)
+          (ffi/free info-ref)
+          (mat-free! A-copy)
+          (mat-free! VL)
+
+          (if (not (= info 0))
+              (begin
+                (vec-free! WR)
+                (vec-free! WI)
+                (mat-free! VR)
+                (error "eig: LAPACK dgeev failed"))
+              (mk-Eig WR WI (mat-zeros 0 0) VR)))))))
+
+; Eigenvalues of symmetric matrix (real eigenvalues, orthogonal eigenvectors)
+(define (eig-sym A)
+  (let ((n (Matrix-rows A)))
+    (if (not (= n (Matrix-cols A)))
+        (error "eig-sym: matrix must be square")
+        ())
+
+    (let ((A-copy (mat-copy A))
+          (W (vec-new n))
+          (lwork (* 3 n))
+          (work (ffi/alloc-array {CDouble} (* 3 n))))
+
+      (let ((jobz-ref (make-char-ref 86))   ; 'V' = compute eigenvectors
+            (uplo-ref (make-char-ref 85))   ; 'U' = upper triangle
+            (n-ref (make-int-ref n))
+            (lda-ref (make-int-ref n))
+            (lwork-ref (make-int-ref lwork))
+            (info-ref (make-int-ref 0)))
+
+        (dsyev_ jobz-ref uplo-ref n-ref
+                (Matrix-data A-copy) lda-ref
+                (Vector-data W)
+                work lwork-ref info-ref)
+
+        (let ((info (get-int-ref info-ref)))
+          (ffi/free jobz-ref)
+          (ffi/free uplo-ref)
+          (ffi/free n-ref)
+          (ffi/free lda-ref)
+          (ffi/free work)
+          (ffi/free lwork-ref)
+          (ffi/free info-ref)
+
+          (if (not (= info 0))
+              (begin
+                (vec-free! W)
+                (mat-free! A-copy)
+                (error "eig-sym: LAPACK dsyev failed"))
+              ; A-copy now contains eigenvectors
+              (mk-Eig W (vec-zeros n) (mat-zeros 0 0) A-copy)))))))
+
+; ===========================================
+; HIGH-LEVEL API: Schur Decomposition
+; ===========================================
+
+(deftype Schur
+  (T Matrix)    ; Upper quasi-triangular (Schur form)
+  (Z Matrix))   ; Orthogonal transformation matrix
+
+; Schur decomposition: A = Z * T * Z'
+(define (schur A)
+  (let ((n (Matrix-rows A)))
+    (if (not (= n (Matrix-cols A)))
+        (error "schur: matrix must be square")
+        ())
+
+    (let ((A-copy (mat-copy A))
+          (WR (vec-new n))
+          (WI (vec-new n))
+          (VS (mat-new n n))
+          (lwork (* 3 n))
+          (work (ffi/alloc-array {CDouble} (* 3 n)))
+          (bwork (ffi/alloc-array {CInt} n)))
+
+      (let ((jobvs-ref (make-char-ref 86))   ; 'V' = compute Schur vectors
+            (sort-ref (make-char-ref 78))    ; 'N' = no sorting
+            (n-ref (make-int-ref n))
+            (lda-ref (make-int-ref n))
+            (sdim-ref (make-int-ref 0))
+            (ldvs-ref (make-int-ref n))
+            (lwork-ref (make-int-ref lwork))
+            (info-ref (make-int-ref 0)))
+
+        (dgees_ jobvs-ref sort-ref 0  ; NULL select function
+                n-ref (Matrix-data A-copy) lda-ref
+                sdim-ref (Vector-data WR) (Vector-data WI)
+                (Matrix-data VS) ldvs-ref
+                work lwork-ref bwork info-ref)
+
+        (let ((info (get-int-ref info-ref)))
+          (ffi/free jobvs-ref)
+          (ffi/free sort-ref)
+          (ffi/free n-ref)
+          (ffi/free lda-ref)
+          (ffi/free sdim-ref)
+          (ffi/free ldvs-ref)
+          (ffi/free work)
+          (ffi/free lwork-ref)
+          (ffi/free bwork)
+          (ffi/free info-ref)
+          (vec-free! WR)
+          (vec-free! WI)
+
+          (if (not (= info 0))
+              (begin
+                (mat-free! A-copy)
+                (mat-free! VS)
+                (error "schur: LAPACK dgees failed"))
+              ; A-copy now contains T (Schur form)
+              (mk-Schur A-copy VS)))))))
+
+; ===========================================
+; HIGH-LEVEL API: LQ Decomposition
+; ===========================================
+
+(deftype LQ
+  (L Matrix)
+  (Q Matrix))
+
+; LQ decomposition: A = L * Q
+(define (lq A)
+  (let ((m (Matrix-rows A))
+        (n (Matrix-cols A)))
+    (let ((min-mn (min m n)))
+      (let ((A-copy (mat-copy A))
+            (tau (ffi/alloc-array {CDouble} min-mn))
+            (lwork (* 64 n))
+            (work (ffi/alloc-array {CDouble} (* 64 n))))
+
+        (let ((m-ref (make-int-ref m))
+              (n-ref (make-int-ref n))
+              (lda-ref (make-int-ref m))
+              (lwork-ref (make-int-ref lwork))
+              (info-ref (make-int-ref 0)))
+
+          ; Compute LQ factorization
+          (dgelqf_ m-ref n-ref (Matrix-data A-copy) lda-ref
+                   tau work lwork-ref info-ref)
+
+          (let ((info (get-int-ref info-ref)))
+            (if (not (= info 0))
+                (begin
+                  (ffi/free tau)
+                  (ffi/free work)
+                  (ffi/free m-ref)
+                  (ffi/free n-ref)
+                  (ffi/free lda-ref)
+                  (ffi/free lwork-ref)
+                  (ffi/free info-ref)
+                  (mat-free! A-copy)
+                  (error "lq: LAPACK dgelqf failed"))
+
+                ; Extract L (lower triangle of first m rows)
+                (let ((L (mat-zeros m min-mn)))
+                  (letrec ((fill-L
+                            (lambda (i)
+                              (if (>= i m)
+                                  ()
+                                  (begin
+                                    (letrec ((fill-L-col
+                                              (lambda (j)
+                                                (if (>= j min-mn)
+                                                    ()
+                                                    (begin
+                                                      (if (<= j i)
+                                                          (mat-set! L i j (mat-get A-copy i j))
+                                                          ())
+                                                      (fill-L-col (+ j 1)))))))
+                                      (fill-L-col 0))
+                                    (fill-L (+ i 1)))))))
+                    (fill-L 0))
+
+                  ; Generate Q
+                  (let ((k-ref (make-int-ref min-mn)))
+                    (ffi/poke! info-ref 0)
+                    (dorglq_ n-ref n-ref k-ref
+                             (Matrix-data A-copy) lda-ref
+                             tau work lwork-ref info-ref)
+
+                    (let ((info2 (get-int-ref info-ref)))
+                      (ffi/free tau)
+                      (ffi/free work)
+                      (ffi/free m-ref)
+                      (ffi/free n-ref)
+                      (ffi/free k-ref)
+                      (ffi/free lda-ref)
+                      (ffi/free lwork-ref)
+                      (ffi/free info-ref)
+
+                      (if (not (= info2 0))
+                          (begin
+                            (mat-free! A-copy)
+                            (mat-free! L)
+                            (error "lq: LAPACK dorglq failed"))
+
+                          ; Extract Q (first min-mn rows of A-copy)
+                          (let ((Q (mat-new min-mn n)))
+                            (letrec ((copy-Q
+                                      (lambda (i)
+                                        (if (>= i min-mn)
+                                            ()
+                                            (begin
+                                              (letrec ((copy-Q-col
+                                                        (lambda (j)
+                                                          (if (>= j n)
+                                                              ()
+                                                              (begin
+                                                                (mat-set! Q i j (mat-get A-copy i j))
+                                                                (copy-Q-col (+ j 1)))))))
+                                                (copy-Q-col 0))
+                                              (copy-Q (+ i 1)))))))
+                              (copy-Q 0))
+                            (mat-free! A-copy)
+                            (mk-LQ L Q)))))))))))))))
+
+; ===========================================
+; HIGH-LEVEL API: Additional Solvers
+; ===========================================
+
+; Solve tridiagonal system
+(define (solve-tridiag DL D DU b)
+  (let ((n (Vector-size D)))
+    (if (or (not (= (Vector-size DL) (- n 1)))
+            (not (= (Vector-size DU) (- n 1)))
+            (not (= (Vector-size b) n)))
+        (error "solve-tridiag: dimension mismatch")
+        ())
+
+    (let ((DL-copy (vec-copy DL))
+          (D-copy (vec-copy D))
+          (DU-copy (vec-copy DU))
+          (x (vec-copy b)))
+
+      (let ((n-ref (make-int-ref n))
+            (nrhs-ref (make-int-ref 1))
+            (ldb-ref (make-int-ref n))
+            (info-ref (make-int-ref 0)))
+
+        (dgtsv_ n-ref nrhs-ref
+                (Vector-data DL-copy)
+                (Vector-data D-copy)
+                (Vector-data DU-copy)
+                (Vector-data x) ldb-ref
+                info-ref)
+
+        (let ((info (get-int-ref info-ref)))
+          (ffi/free n-ref)
+          (ffi/free nrhs-ref)
+          (ffi/free ldb-ref)
+          (ffi/free info-ref)
+          (vec-free! DL-copy)
+          (vec-free! D-copy)
+          (vec-free! DU-copy)
+
+          (if (not (= info 0))
+              (begin
+                (vec-free! x)
+                (error "solve-tridiag: LAPACK dgtsv failed"))
+              x))))))
+
+; Triangular system solve
+(define (solve-triangular A b uplo)
+  (let ((n (Matrix-rows A)))
+    (if (or (not (= n (Matrix-cols A)))
+            (not (= n (Vector-size b))))
+        (error "solve-triangular: dimension mismatch")
+        ())
+
+    (let ((x (vec-copy b)))
+      (let ((uplo-ref (make-char-ref (if (= uplo 1) 85 76)))  ; 'U' or 'L'
+            (trans-ref (make-char-ref 78))  ; 'N'
+            (diag-ref (make-char-ref 78))   ; 'N' = not unit diagonal
+            (n-ref (make-int-ref n))
+            (nrhs-ref (make-int-ref 1))
+            (lda-ref (make-int-ref n))
+            (ldb-ref (make-int-ref n))
+            (info-ref (make-int-ref 0)))
+
+        (dtrtrs_ uplo-ref trans-ref diag-ref
+                 n-ref nrhs-ref
+                 (Matrix-data A) lda-ref
+                 (Vector-data x) ldb-ref
+                 info-ref)
+
+        (let ((info (get-int-ref info-ref)))
+          (ffi/free uplo-ref)
+          (ffi/free trans-ref)
+          (ffi/free diag-ref)
+          (ffi/free n-ref)
+          (ffi/free nrhs-ref)
+          (ffi/free lda-ref)
+          (ffi/free ldb-ref)
+          (ffi/free info-ref)
+
+          (if (not (= info 0))
+              (begin
+                (vec-free! x)
+                (error "solve-triangular: LAPACK dtrtrs failed"))
+              x))))))
+
+; ===========================================
+; HIGH-LEVEL API: Matrix Properties
+; ===========================================
+
+; Pseudo-inverse using SVD
+(define (pinv A)
+  (let ((result (svd A)))
+    (let ((U (SVD-U result))
+          (S (SVD-S result))
+          (VT (SVD-VT result)))
+      (let ((m (Matrix-rows U))
+            (n (Matrix-cols VT))
+            (k (Vector-size S)))
+
+        ; Compute pseudo-inverse: V * diag(1/s) * U'
+        ; Filter out small singular values
+        (let ((tol (* (vec-get S 0) (max m n) 1e-15)))
+
+          ; Create diagonal matrix with inverted singular values
+          (let ((S-inv (mat-zeros k k)))
+            (letrec ((invert-diag
+                      (lambda (i)
+                        (if (>= i k)
+                            ()
+                            (begin
+                              (let ((s (vec-get S i)))
+                                (if (> s tol)
+                                    (mat-set! S-inv i i (/ 1.0 s))
+                                    ()))
+                              (invert-diag (+ i 1)))))))
+              (invert-diag 0))
+
+            ; V * S-inv
+            (let ((V (mat-transpose VT)))
+              (let ((VS (mat-mul V S-inv)))
+                (mat-free! V)
+                (mat-free! S-inv)
+
+                ; VS * U'
+                (let ((UT (mat-transpose U)))
+                  (let ((pinv-result (mat-mul VS UT)))
+                    (mat-free! VS)
+                    (mat-free! UT)
+                    (mat-free! U)
+                    (vec-free! S)
+                    (mat-free! VT)
+                    pinv-result))))))))))
+
+; Matrix rank (numerical)
+(define (matrix-rank A)
+  (let ((result (svd A)))
+    (let ((S (SVD-S result)))
+      (let ((k (Vector-size S))
+            (tol (* (vec-get S 0) (max (Matrix-rows A) (Matrix-cols A)) 1e-14)))
+        (mat-free! (SVD-U result))
+        (mat-free! (SVD-VT result))
+        (letrec ((count-nonzero
+                  (lambda (i count)
+                    (if (>= i k)
+                        (begin
+                          (vec-free! S)
+                          count)
+                        (if (> (vec-get S i) tol)
+                            (count-nonzero (+ i 1) (+ count 1))
+                            (count-nonzero (+ i 1) count))))))
+          (count-nonzero 0 0))))))
+
+; Two-norm (spectral norm = largest singular value)
+(define (norm-2 A)
+  (let ((result (svd A)))
+    (let ((s-max (vec-get (SVD-S result) 0)))
+      (mat-free! (SVD-U result))
+      (vec-free! (SVD-S result))
+      (mat-free! (SVD-VT result))
+      s-max)))
+
+; Condition number (ratio of largest to smallest singular value)
+(define (cond A)
+  (let ((result (svd A)))
+    (let ((S (SVD-S result)))
+      (let ((k (Vector-size S)))
+        (let ((s-max (vec-get S 0))
+              (s-min (vec-get S (- k 1))))
+          (mat-free! (SVD-U result))
+          (vec-free! S)
+          (mat-free! (SVD-VT result))
+          (if (< s-min 1e-15)
+              1e16  ; Nearly singular
+              (/ s-max s-min)))))))
+
+; Reciprocal condition number (cheap estimate using 1-norm)
+(define (rcond A)
+  (let ((n (Matrix-rows A)))
+    (if (not (= n (Matrix-cols A)))
+        (error "rcond: matrix must be square")
+        ())
+
+    ; Compute 1-norm of A
+    (let ((anorm (norm-1 A)))
+      ; LU factorization
+      (let ((A-copy (mat-copy A))
+            (ipiv (ffi/alloc-array {CInt} n))
+            (work (ffi/alloc-array {CDouble} (* 4 n)))
+            (iwork (ffi/alloc-array {CInt} n)))
+
+        (let ((n-ref (make-int-ref n))
+              (lda-ref (make-int-ref n))
+              (info-ref (make-int-ref 0))
+              (norm-ref (make-char-ref 49))   ; '1'
+              (anorm-ref (ffi/alloc {CDouble}))
+              (rcond-ptr (ffi/alloc {CDouble})))
+
+          (ffi/poke! anorm-ref anorm)
+
+          ; LU factorization
+          (dgetrf_ n-ref n-ref (Matrix-data A-copy) lda-ref ipiv info-ref)
+
+          (let ((info (get-int-ref info-ref)))
+            (if (not (= info 0))
+                (begin
+                  (ffi/free ipiv)
+                  (ffi/free work)
+                  (ffi/free iwork)
+                  (ffi/free n-ref)
+                  (ffi/free lda-ref)
+                  (ffi/free info-ref)
+                  (ffi/free norm-ref)
+                  (ffi/free anorm-ref)
+                  (ffi/free rcond-ptr)
+                  (mat-free! A-copy)
+                  0.0)  ; Singular
+
+                ; Estimate condition number
+                (begin
+                  (ffi/poke! info-ref 0)
+                  (dgecon_ norm-ref n-ref (Matrix-data A-copy) lda-ref
+                           anorm-ref rcond-ptr work iwork info-ref)
+
+                  (let ((rcond-val (ffi/peek rcond-ptr)))
+                    (ffi/free ipiv)
+                    (ffi/free work)
+                    (ffi/free iwork)
+                    (ffi/free n-ref)
+                    (ffi/free lda-ref)
+                    (ffi/free info-ref)
+                    (ffi/free norm-ref)
+                    (ffi/free anorm-ref)
+                    (ffi/free rcond-ptr)
+                    (mat-free! A-copy)
+                    rcond-val)))))))))
+
+; Check if matrix is singular
+(define (singular? A tol)
+  (< (rcond A) tol))
+
+; ===========================================
+; HIGH-LEVEL API: Least Squares with SVD
+; ===========================================
+
+; Least squares using SVD (more robust than QR)
+(define (lstsq-svd A b rcond-thresh)
+  (let ((m (Matrix-rows A))
+        (n (Matrix-cols A)))
+
+    (if (not (= m (Vector-size b)))
+        (error "lstsq-svd: dimension mismatch")
+        ())
+
+    (let ((A-copy (mat-copy A))
+          (b-copy (vec-new (max m n)))
+          (S (vec-new (min m n))))
+
+      ; Copy b into larger buffer
+      (letrec ((copy-b (lambda (i)
+                         (if (>= i m)
+                             ()
+                             (begin
+                               (vec-set! b-copy i (vec-get b i))
+                               (copy-b (+ i 1)))))))
+        (copy-b 0))
+
+      (let ((iwork (ffi/alloc-array {CInt} (* 11 (min m n))))
+            (lwork (* 64 (max m n)))
+            (work (ffi/alloc-array {CDouble} (* 64 (max m n)))))
+
+        (let ((m-ref (make-int-ref m))
+              (n-ref (make-int-ref n))
+              (nrhs-ref (make-int-ref 1))
+              (lda-ref (make-int-ref m))
+              (ldb-ref (make-int-ref (max m n)))
+              (rcond-ref (ffi/alloc {CDouble}))
+              (rank-ref (make-int-ref 0))
+              (lwork-ref (make-int-ref lwork))
+              (info-ref (make-int-ref 0)))
+
+          (ffi/poke! rcond-ref rcond-thresh)
+
+          (dgelsd_ m-ref n-ref nrhs-ref
+                   (Matrix-data A-copy) lda-ref
+                   (Vector-data b-copy) ldb-ref
+                   (Vector-data S) rcond-ref rank-ref
+                   work lwork-ref iwork info-ref)
+
+          (let ((info (get-int-ref info-ref))
+                (rank-val (get-int-ref rank-ref)))
+            (ffi/free m-ref)
+            (ffi/free n-ref)
+            (ffi/free nrhs-ref)
+            (ffi/free lda-ref)
+            (ffi/free ldb-ref)
+            (ffi/free rcond-ref)
+            (ffi/free rank-ref)
+            (ffi/free work)
+            (ffi/free lwork-ref)
+            (ffi/free iwork)
+            (ffi/free info-ref)
+            (mat-free! A-copy)
+            (vec-free! S)
+
+            (if (not (= info 0))
+                (begin
+                  (vec-free! b-copy)
+                  (error "lstsq-svd: LAPACK dgelsd failed"))
+
+                ; Extract solution (first n elements)
+                (let ((x (vec-new n)))
+                  (letrec ((copy-x (lambda (i)
+                                     (if (>= i n)
+                                         ()
+                                         (begin
+                                           (vec-set! x i (vec-get b-copy i))
+                                           (copy-x (+ i 1)))))))
+                    (copy-x 0))
+                  (vec-free! b-copy)
+                  x))))))))
+
+; ===========================================
+; Machine Constants
+; ===========================================
+
+; Get machine epsilon
+(define (machine-epsilon)
+  (let ((cmach-ref (make-char-ref 69)))  ; 'E'
+    (let ((result (dlamch_ cmach-ref)))
+      (ffi/free cmach-ref)
+      result)))
+
+; Get safe minimum
+(define (machine-safe-min)
+  (let ((cmach-ref (make-char-ref 83)))  ; 'S'
+    (let ((result (dlamch_ cmach-ref)))
+      (ffi/free cmach-ref)
+      result)))

@@ -1,6 +1,6 @@
 ;;; Violet Multimethods - Polymorphic dispatch based on arbitrary functions
 ;;;
-;;; Implemented entirely in Purple - no core language modifications.
+;;; Implemented entirely in OmniLisp - no core language modifications.
 ;;; Uses atoms for mutable dispatch tables.
 
 ;;; ============================================================

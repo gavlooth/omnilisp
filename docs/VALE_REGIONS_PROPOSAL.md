@@ -1,4 +1,4 @@
-# Vale Region Adaptations for Purple Go
+# Vale Region Adaptations for OmniLisp
 
 ## Executive Summary
 
@@ -289,7 +289,7 @@ func (ctx *RegionContext) ExitPure() {
 ## Phase 5: Enhanced RC Elimination (95% Target)
 
 ### Current Status
-Purple's Lobster-style RC optimization achieves ~75% elimination.
+OmniLisp's Lobster-style RC optimization achieves ~75% elimination.
 
 ### Additional Techniques from Vale
 
@@ -351,9 +351,9 @@ Based on Vale's benchmarks and analysis:
 
 **Combined hot-path improvement: 3-10× for pure workloads**
 
-## Comparison: Vale vs Purple Approach
+## Comparison: Vale vs OmniLisp Approach
 
-| Aspect | Vale | Purple (Proposed) |
+| Aspect | Vale | OmniLisp (Proposed) |
 |--------|------|-------------------|
 | Generation storage | Header before alloc | Inline in Obj |
 | Generation algorithm | Random/increment | IPGE (LCG) |
@@ -368,7 +368,7 @@ Based on Vale's benchmarks and analysis:
 
 Vale's most impactful feature is **implicit read-only locking**. By proving code doesn't mutate data, all safety checks become unnecessary. This is orthogonal to IPGE/GenRef - it's a higher-level optimization that makes those checks unnecessary in the first place.
 
-Purple should prioritize:
+OmniLisp should prioritize:
 1. **Pure analysis** - determine which code is read-only
 2. **Scope tethering** - reduce repeated checks
 3. **Pool allocation** - fast allocation in pure regions

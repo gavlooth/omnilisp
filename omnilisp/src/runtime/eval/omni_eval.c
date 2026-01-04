@@ -189,7 +189,7 @@ static int is_special_form(Value* sym) {
 
 // Main evaluation function
 Value* omni_eval(Value* expr, Env* env) {
-    if (!expr) return mk_nil();
+    if (!expr) return mk_nothing();
 
     switch (expr->tag) {
         case T_INT:
@@ -200,13 +200,14 @@ Value* omni_eval(Value* expr, Env* env) {
             return expr;
 
         case T_NIL:
+        case T_NOTHING:
             return expr;
 
         case T_SYM: {
             // Special symbols
             if (strcmp(expr->s, "true") == 0) return mk_sym("true");
             if (strcmp(expr->s, "false") == 0) return mk_sym("false");
-            if (strcmp(expr->s, "nothing") == 0) return mk_nil();
+            if (strcmp(expr->s, "nothing") == 0) return mk_nothing();
 
             // Environment lookup
             Value* value = env_lookup(env, expr);
@@ -320,7 +321,7 @@ static Value* eval_special_form(Value* op, Value* args, Env* env) {
             return result;
         }
         env_free(match_env);
-        return mk_nil();
+        return mk_nothing();
     }
 
     if (strcmp(name, "unless") == 0) {
@@ -335,7 +336,7 @@ static Value* eval_special_form(Value* op, Value* args, Env* env) {
             return result;
         }
         env_free(match_env);
-        return mk_nil();
+        return mk_nothing();
     }
 
     // with-meta - metadata application
@@ -363,7 +364,7 @@ static Value* eval_special_form(Value* op, Value* args, Env* env) {
 
 // Truthiness check (only false and nothing are falsy)
 static int is_truthy(Value* v) {
-    if (!v || v->tag == T_NIL) return 0;
+    if (!v || v->tag == T_NOTHING) return 0;
     if (v->tag == T_SYM && strcmp(v->s, "false") == 0) return 0;
     return 1;
 }
@@ -378,7 +379,7 @@ static Value* eval_if(Value* args, Env* env) {
 
     Value* then_branch = car(cdr(args));
     Value* else_args = cdr(cdr(args));
-    Value* else_branch = is_nil(else_args) ? mk_nil() : car(else_args);
+    Value* else_branch = is_nil(else_args) ? mk_nothing() : car(else_args);
 
     // Use match_pattern to check against true
     Env* match_env = env_new(env);
@@ -559,7 +560,7 @@ static Value* eval_lambda(Value* args, Env* env) {
 }
 
 static Value* eval_do(Value* args, Env* env) {
-    Value* result = mk_nil();
+    Value* result = mk_nothing();
     while (!is_nil(args)) {
         result = omni_eval(car(args), env);
         if (is_error(result)) return result;
@@ -581,7 +582,7 @@ static Value* eval_set(Value* args, Env* env) {
     // Simple variable set
     if (target->tag == T_SYM) {
         env_set(env, target, value);
-        return mk_nil();
+        return mk_nothing();
     }
 
     // TODO: Handle field access (obj.field) and index access (arr.(i))
@@ -675,6 +676,11 @@ static int match_pattern(Value* pattern, Value* subject, Env* env) {
     // Literal false - matches only the symbol false
     if (pattern->tag == T_SYM && strcmp(pattern->s, "false") == 0) {
         return subject && subject->tag == T_SYM && strcmp(subject->s, "false") == 0;
+    }
+
+    // Literal nothing
+    if (pattern->tag == T_NOTHING) {
+        return subject && subject->tag == T_NOTHING;
     }
 
     // Variable binding (symbols other than true/false/_/else)
@@ -822,7 +828,7 @@ static Value* eval_cond(Value* args, Env* env) {
         args = cdr(args);
     }
 
-    return mk_nil();
+    return mk_nothing();
 }
 
 static Value* eval_array(Value* args, Env* env) {
@@ -937,7 +943,7 @@ static Value* eval_foreach(Value* args, Env* env) {
         env_free(iter_env);
     }
 
-    return mk_nil();
+    return mk_nothing();
 }
 
 // Quasiquote evaluation
@@ -1231,6 +1237,7 @@ static Value* prim_eq(Value* args) {
         case T_SYM:
         case T_CODE: return mk_sym(strcmp(a->s, b->s) == 0 ? "true" : "false");
         case T_NIL: return mk_sym("true");
+        case T_NOTHING: return mk_sym("true");
         default: return mk_sym(a == b ? "true" : "false");
     }
 }
@@ -1267,13 +1274,13 @@ static Value* prim_print(Value* args) {
         free(s);
         args = cdr(args);
     }
-    return mk_nil();
+    return mk_nothing();
 }
 
 static Value* prim_println(Value* args) {
     prim_print(args);
     printf("\n");
-    return mk_nil();
+    return mk_nothing();
 }
 
 static Value* prim_range(Value* args) {

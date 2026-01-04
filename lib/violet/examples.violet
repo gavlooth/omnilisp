@@ -1,4 +1,4 @@
-;;; Violet Examples - Demonstrating Clojure-like features on Purple
+;;; Violet Examples - Demonstrating Clojure-like features on OmniLisp
 ;;;
 ;;; These examples show Violet's preprocessor transformations in action.
 

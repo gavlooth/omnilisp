@@ -5,7 +5,8 @@
       "Bash(make clean:*)",
       "Bash(make:*)",
       "Bash(cat:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(mkdir:*)"
     ]
   }
 }

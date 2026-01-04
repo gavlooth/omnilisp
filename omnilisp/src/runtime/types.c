@@ -124,6 +124,11 @@ Value* mk_nil(void) {
     return &nil_singleton;
 }
 
+Value* mk_nothing(void) {
+    static Value nothing_singleton = { .tag = T_NOTHING };
+    return &nothing_singleton;
+}
+
 Value* mk_sym(const char* s) {
     if (!s) s = "";
     Value* v = alloc_val(T_SYM);
@@ -315,6 +320,10 @@ int is_nil(Value* v) {
     return v == NULL || v->tag == T_NIL;
 }
 
+int is_nothing(Value* v) {
+    return v != NULL && v->tag == T_NOTHING;
+}
+
 int is_code(Value* v) {
     return v && v->tag == T_CODE;
 }
@@ -374,6 +383,8 @@ char* val_to_str(Value* v) {
             return list_to_str(v);
         case T_NIL:
             return strdup("()");
+        case T_NOTHING:
+            return strdup("nothing");
         case T_PRIM:
             return strdup("#<prim>");
         case T_LAMBDA:
@@ -398,7 +409,7 @@ char* val_to_str(Value* v) {
                     free(inner);
                 }
             } else {
-                ds_append(ds, "nil");
+                ds_append(ds, "nothing");
             }
             ds_append(ds, ">");
             return ds_take(ds);

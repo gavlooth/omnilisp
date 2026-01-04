@@ -1,7 +1,7 @@
 ;;; Violet Protocols - Type-based polymorphism
 ;;;
 ;;; Protocols define a set of functions that can be implemented for different types.
-;;; Implemented entirely in Purple - no core language modifications.
+;;; Implemented entirely in OmniLisp - no core language modifications.
 
 ;;; ============================================================
 ;;; Type System
@@ -34,8 +34,8 @@
 
 (define (lambda? x)
   "Check if x is a function"
-  ;; In Purple, lambdas are opaque - we check by trying to call type-of
-  nil)  ; Conservative - can't easily detect in pure Purple
+  ;; In OmniLisp, lambdas are opaque - we check by trying to call type-of
+  nil)  ; Conservative - can't easily detect in pure OmniLisp
 
 (define (atom? x)
   "Check if x is an atom (not pair)"

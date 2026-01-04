@@ -21,8 +21,8 @@
  *   handle_free_obj(obj);
  */
 
-#ifndef PURPLE_HANDLE_H
-#define PURPLE_HANDLE_H
+#ifndef OMNI_HANDLE_H
+#define OMNI_HANDLE_H
 
 #include "slot_pool.h"
 
@@ -32,8 +32,8 @@ extern "C" {
 
 /* ============== Forward Declarations ============== */
 
-/* Obj is defined in runtime.c/purple.h */
-#ifndef PURPLE_OBJ_DEFINED
+/* Obj is defined in runtime.c/omni.h */
+#ifndef OMNI_OBJ_DEFINED
 struct Obj;
 typedef struct Obj Obj;
 #endif
@@ -161,4 +161,4 @@ void handle_get_stats(SlotPoolStats* stats);
 }
 #endif
 
-#endif /* PURPLE_HANDLE_H */
+#endif /* OMNI_HANDLE_H */

@@ -1,4 +1,4 @@
-# Purple Runtime Code Examples
+# OmniLisp Runtime Code Examples
 
 Practical examples demonstrating runtime usage patterns.
 
@@ -21,7 +21,7 @@ void basic_values(void) {
     dec_ref(big);  // Must cleanup
 
     // Booleans (immediate)
-    Obj* flag = PURPLE_TRUE;
+    Obj* flag = OMNI_TRUE;
     if (obj_to_bool(flag)) {
         printf("It's true!\n");
     }

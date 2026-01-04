@@ -469,7 +469,7 @@ static Value* read_symbol(Reader* r) {
     }
     if (strcmp(s, "nothing") == 0) {
         free(s);
-        return mk_sym("nothing");
+        return mk_nothing();
     }
 
     Value* result = mk_sym(s);

@@ -1,9 +1,9 @@
-# Purple Runtime Makefile
+# OmniLisp Runtime Makefile
 #
-# Builds the Purple runtime as a static library (libpurple.a)
+# Builds the OmniLisp runtime as a static library (libomni.a)
 # that can be linked with user-generated code.
 #
-# Now includes modular memory management from OmniLisp runtime.
+# Includes modular memory management with ASAP static analysis.
 
 CC ?= gcc
 AR ?= ar
@@ -33,8 +33,8 @@ SOURCES = $(MAIN_SOURCES) $(MEMORY_SOURCES)
 OBJECTS = $(MAIN_OBJECTS) $(MEMORY_OBJECTS)
 
 # Output
-STATIC_LIB = libpurple.a
-SHARED_LIB = libpurple.so
+STATIC_LIB = libomni.a
+SHARED_LIB = libomni.so
 
 # Default target
 all: $(BUILDDIR) $(STATIC_LIB)
@@ -44,7 +44,7 @@ $(BUILDDIR):
 	mkdir -p $(BUILDDIR) $(BUILDDIR)/util $(BUILDDIR)/memory
 
 # Compile main source files
-$(BUILDDIR)/%.o: $(SRCDIR)/%.c $(INCDIR)/purple.h
+$(BUILDDIR)/%.o: $(SRCDIR)/%.c $(INCDIR)/omni.h
 	$(CC) $(CFLAGS) -I$(INCDIR) -I$(SRCDIR) -c $< -o $@
 
 # Compile utility module files
@@ -68,9 +68,9 @@ shared: $(BUILDDIR) $(OBJECTS)
 # Install to system (optional)
 install: $(STATIC_LIB)
 	install -d $(DESTDIR)/usr/local/lib
-	install -d $(DESTDIR)/usr/local/include/purple
+	install -d $(DESTDIR)/usr/local/include/omni
 	install -m 644 $(STATIC_LIB) $(DESTDIR)/usr/local/lib/
-	install -m 644 $(INCDIR)/purple.h $(DESTDIR)/usr/local/include/purple/
+	install -m 644 $(INCDIR)/omni.h $(DESTDIR)/usr/local/include/omni/
 
 # Clean build artifacts
 clean:
@@ -80,7 +80,7 @@ clean:
 test: $(STATIC_LIB)
 	@echo "Testing runtime compilation..."
 	@echo 'int main() { return 0; }' > /tmp/test_runtime.c
-	$(CC) -I$(INCDIR) /tmp/test_runtime.c -L. -lpurple $(LDFLAGS) -o /tmp/test_runtime
+	$(CC) -I$(INCDIR) /tmp/test_runtime.c -L. -lomni $(LDFLAGS) -o /tmp/test_runtime
 	@rm -f /tmp/test_runtime /tmp/test_runtime.c
 	@echo "Runtime compiles successfully!"
 

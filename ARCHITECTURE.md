@@ -1,7 +1,7 @@
 # Architecture
 
 ## Core Idea
-Purple Go is a **stage-polymorphic evaluator**: the same evaluator interprets concrete values and compiles lifted values to C. Memory management is **ASAP first** (compile-time free insertion), and every runtime optimization sits **on top of** that baseline. The system explicitly forbids stop-the-world GC.
+OmniLisp is a **stage-polymorphic evaluator**: the same evaluator interprets concrete values and compiles lifted values to C. Memory management is **ASAP first** (compile-time free insertion), and every runtime optimization sits **on top of** that baseline. The system explicitly forbids stop-the-world GC.
 
 ## Layers (High-Level)
 
@@ -124,7 +124,7 @@ reclamation vs safety split (GenRef/IPGE requirements included).
 ```
 
 ### JIT + Cache Strategy
-1. **AOT (preferred)**: Purple → C → native binary
+1. **AOT (preferred)**: OmniLisp → C → native binary
 2. **JIT with cache**: Emit C → compile → cache `.so`/`.dylib` → dlopen
 3. **Bytecode + C VM**: Compile to bytecode → interpret in pure C VM
 
@@ -137,11 +137,11 @@ It's compiled once and used by REPL, JIT, and compiled programs.
 
 ```bash
 # Compile runtime once as library
-gcc -std=c99 -pthread -c purple_runtime.c -o purple_runtime.o
-ar rcs libpurple.a purple_runtime.o
+gcc -std=c99 -pthread -c omnilisp_runtime.c -o omnilisp_runtime.o
+ar rcs libomnilisp.a omnilisp_runtime.o
 
 # Programs link against it
-gcc -std=c99 -pthread program.c -L. -lpurple -o program
+gcc -std=c99 -pthread program.c -L. -lomnilisp -o program
 ```
 
 ### Two-Level Optimization
@@ -590,7 +590,7 @@ Compile with: `gcc -std=c99 -pthread` or `clang -std=c99 -pthread`
 ## Package Structure
 
 ```
-purple_go/
+omnilisp/
 ├── main.go                    # CLI entry point
 ├── pkg/
 │   ├── ast/
@@ -833,7 +833,7 @@ Low 3 bits | Type        | Payload          | Size
 **API:**
 ```c
 mk_int_unboxed(n)    // Zero allocation integer
-mk_bool(b)           // PURPLE_TRUE or PURPLE_FALSE
+mk_bool(b)           // OMNI_TRUE or OMNI_FALSE
 mk_char_unboxed(c)   // Unicode codepoint (0-0x10FFFF)
 IS_IMMEDIATE(p)      // Check if value is unboxed
 obj_to_int(p)        // Safe extraction (handles all types)

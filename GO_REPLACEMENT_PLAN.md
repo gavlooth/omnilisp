@@ -7,7 +7,7 @@ Goal: replace the current Go-based compiler toolchain with a C99 + POSIX impleme
 - [x] Map Go packages to C modules (parser, AST, analysis, codegen, runtime glue, CLI).
 - [x] Define feature parity targets (compiler output, diagnostics, test suite, runtime expectations).
 - [x] Decide if any Go-only features are explicitly dropped (and document them).
-- [x] Rename language and tooling from **Purple** to **OmniLisp** (CLI, docs, runtime headers, outputs).
+- [x] Rename language and tooling from **OmniLisp** to **OmniLisp** (CLI, docs, runtime headers, outputs).
 
 ## Phase 1 — C Build and Project Layout ✅
 - [x] Create a top-level C build system (Makefile or CMake) that builds:
@@ -82,7 +82,7 @@ Vendoring checklist:
 - [x] Port `pkg/compiler` behavior for compile-to-C and compile-to-binary.
 
 ## Phase 8 — Runtime Integration ✅
-- [x] Ensure generated C code links against `runtime/libpurple.a`.
+- [x] Ensure generated C code links against `runtime/libomnilisp.a`.
 - [x] Validate that runtime ABI remains consistent with codegen output.
 - [x] Add runtime API consistency tests in C.
 
@@ -95,7 +95,7 @@ Vendoring checklist:
 - [x] Remove Go sources and `go.mod` once parity is complete.
 - [x] Update docs to describe the C-only build and toolchain.
 - [x] Add a final parity checklist and signed-off verification results.
-- [x] Complete repo-wide rename: `purple` → `omnilisp` (binary name, docs, examples, file headers, tests).
+- [x] Complete repo-wide rename: `omnilisp` → `omnilisp` (binary name, docs, examples, file headers, tests).
 
 ## Optional Enhancements
 - [ ] Add a stable C API for embedding the compiler as a library.
@@ -157,15 +157,15 @@ cmake -S csrc -B build
 cmake --build build
 ```
 
-### Run the compiler (proposed CLI name: `purplec`)
+### Run the compiler (proposed CLI name: `omnilispc`)
 Emit C:
 ```
-./build/purplec -c examples/demo.purple -o demo.c
+./build/omnilispc -c examples/demo.omni -o demo.c
 ```
 
 Compile and run:
 ```
-./build/purplec examples/demo.purple -o demo
+./build/omnilispc examples/demo.omni -o demo
 ./demo
 ```
 
@@ -192,18 +192,18 @@ cp /path/to/uthash/LICENSE third_party/uthash/LICENSE
 Then record commit + URL in `third_party/README.md` and update `NOTICE`.
 
 ### Add a new runtime API and keep ABI stable
-1) Add function declaration to `runtime/include/purple.h`.
+1) Add function declaration to `runtime/include/omnilisp.h`.
 2) Implement in `runtime/src/runtime.c`.
 3) Add a test in `runtime/tests/`.
 4) Add a compiler/runtime consistency check in `csrc/runtimecheck/`.
 
 ### Diagnostics example (proposed)
 ```
-./build/purplec --diag=json examples/demo.purple > diag.json
-./build/purplec --trace-parser examples/demo.purple
+./build/omnilispc --diag=json examples/demo.omni > diag.json
+./build/omnilispc --trace-parser examples/demo.omni
 ```
 
 ### Build cache example (proposed)
 ```
-PURPLE_CACHE_DIR=.cache/purple ./build/purplec examples/demo.purple -o demo
+OMNI_CACHE_DIR=.cache/omnilisp ./build/omnilispc examples/demo.omni -o demo
 ```

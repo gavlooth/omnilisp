@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines future work for Purple Go's ASAP memory management system.
+This document outlines future work for OmniLisp's ASAP memory management system.
 All items are optional enhancements - the core system is complete and functional.
 
 ---

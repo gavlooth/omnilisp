@@ -15,11 +15,11 @@ Legend:
 - ➕ Add ASSERT_STR_NE (or explicit strcmp) for error messages where needed.
 - ➕ Add ASSERT_ALIGNED / ASSERT_TAG for tagged pointer invariants.
 - ➖ RUN_TEST macro exists but most tests call TEST() directly; consider standardizing to reduce missing PASS/FAIL paths.
-- Note: Tests include runtime.c directly (single TU). This hides header/API drift (header not used). Consider an additional test binary that includes `purple.h` + links libpurple.a to validate the public API.
+- Note: Tests include runtime.c directly (single TU). This hides header/API drift (header not used). Consider an additional test binary that includes `omnilisp.h` + links libomnilisp.a to validate the public API.
 
 ## test_main.c
 - ✅ Single compilation unit simplifies linking and symbol visibility.
-- ⚠️ Includes `runtime.c` directly, so public header/API drift is invisible. Add a second test target that compiles against `purple.h` + `libpurple.a`.
+- ⚠️ Includes `runtime.c` directly, so public header/API drift is invisible. Add a second test target that compiles against `omnilisp.h` + `libomnilisp.a`.
 - ⚠️ Concurrency tests and stress tests are commented out; for a thread‑safe runtime these should be enabled (or split into a separate `make tsan` target).
 - ➕ Add a “fast” vs “slow/tsan” test grouping so CI can run concurrency tests deterministically.
 
@@ -84,7 +84,7 @@ Legend:
 ## test_arena.c
 - ✅ Thorough coverage of arena create/reset/destroy and bulk allocation behavior.
 - ⚠️ Tests reach into Arena internals (`current`, `blocks`, `block_size`). That’s fine for internal runtime tests but will break if Arena becomes opaque; note as a coupling risk.
-- ⚠️ `arena_register_external` isn’t declared in `purple.h` (public API); tests use it anyway. This hides header/runtime mismatches.
+- ⚠️ `arena_register_external` isn’t declared in `omnilisp.h` (public API); tests use it anyway. This hides header/runtime mismatches.
 - ➕ Add tests for mixed arena/heap references (arena_mk_pair with heap children, and vice‑versa) to verify free/ownership behavior.
 - ➕ Add tests for arena usage under concurrency if arenas are expected to be thread‑local or thread‑safe.
 

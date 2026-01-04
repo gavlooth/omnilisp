@@ -1,5 +1,5 @@
-/* Simple benchmarks comparing Purple runtime vs raw C */
-#include "../include/purple.h"
+/* Simple benchmarks comparing OmniLisp runtime vs raw C */
+#include "../include/omni.h"
 #include <time.h>
 #include <stdio.h>
 
@@ -21,8 +21,8 @@ long fib_c(long n) {
     return b;
 }
 
-/* Purple runtime fibonacci (boxed integers) */
-Obj* fib_purple(long n) {
+/* OmniLisp runtime fibonacci (boxed integers) */
+Obj* fib_omni(long n) {
     if (n <= 1) return mk_int(n);
     Obj* a = mk_int(0);
     Obj* b = mk_int(1);
@@ -36,7 +36,7 @@ Obj* fib_purple(long n) {
     return b;
 }
 
-/* Purple runtime fibonacci with UNBOXED integers (tagged pointers) */
+/* OmniLisp runtime fibonacci with UNBOXED integers (tagged pointers) */
 Obj* fib_unboxed(long n) {
     if (n <= 1) return mk_int_unboxed(n);
     Obj* a = mk_int_unboxed(0);
@@ -59,8 +59,8 @@ long sum_c(long n) {
     return total;
 }
 
-/* Purple runtime sum */
-Obj* sum_purple(long n) {
+/* OmniLisp runtime sum */
+Obj* sum_omni(long n) {
     Obj* total = mk_int(0);
     for (long i = 0; i < n; i++) {
         Obj* val = mk_int(i);
@@ -72,7 +72,7 @@ Obj* sum_purple(long n) {
     return total;
 }
 
-/* Purple runtime sum with UNBOXED integers */
+/* OmniLisp runtime sum with UNBOXED integers */
 Obj* sum_unboxed(long n) {
     Obj* total = mk_int_unboxed(0);
     for (long i = 0; i < n; i++) {
@@ -84,7 +84,7 @@ Obj* sum_unboxed(long n) {
     return total;
 }
 
-/* Raw C list creation - allocate n separate objects like Purple does */
+/* Raw C list creation - allocate n separate objects like OmniLisp does */
 void list_c(long n) {
     typedef struct Node { long val; struct Node* next; } Node;
     Node* list = NULL;
@@ -102,8 +102,8 @@ void list_c(long n) {
     }
 }
 
-/* Purple runtime list creation - just create, let it leak for benchmark */
-void list_purple(long n) {
+/* OmniLisp runtime list creation - just create, let it leak for benchmark */
+void list_omni(long n) {
     Obj* list = NULL;
     for (long i = 0; i < n; i++) {
         Obj* val = mk_int(i);
@@ -123,7 +123,7 @@ double time_us(struct timespec start, struct timespec end) {
 int main(void) {
     struct timespec start, end;
 
-    printf("Purple Runtime Benchmarks\n");
+    printf("OmniLisp Runtime Benchmarks\n");
     printf("=========================\n\n");
 
     /* Fibonacci benchmark */
@@ -139,14 +139,14 @@ int main(void) {
 
     clock_gettime(CLOCK_MONOTONIC, &start);
     for (int i = 0; i < 10000; i++) {
-        Obj* r = fib_purple(40);
+        Obj* r = fib_omni(40);
         sink = obj_to_int(r);  /* Safe extraction for both boxed/unboxed */
         if (IS_BOXED(r)) dec_ref(r);
     }
     clock_gettime(CLOCK_MONOTONIC, &end);
-    double purple_fib = time_us(start, end);
-    printf("  Purple boxed: %.1f us (10000 iterations)\n", purple_fib);
-    printf("  Ratio:        %.1fx slower\n", purple_fib / c_fib);
+    double omni_fib = time_us(start, end);
+    printf("  OmniLisp boxed: %.1f us (10000 iterations)\n", omni_fib);
+    printf("  Ratio:        %.1fx slower\n", omni_fib / c_fib);
 
     clock_gettime(CLOCK_MONOTONIC, &start);
     for (int i = 0; i < 10000; i++) {
@@ -155,8 +155,8 @@ int main(void) {
     }
     clock_gettime(CLOCK_MONOTONIC, &end);
     double unboxed_fib = time_us(start, end);
-    printf("  Purple UNBOX: %.1f us (10000 iterations)\n", unboxed_fib);
-    printf("  Ratio:        %.1fx slower (%.1fx speedup!)\n\n", unboxed_fib / c_fib, purple_fib / unboxed_fib);
+    printf("  OmniLisp UNBOX: %.1f us (10000 iterations)\n", unboxed_fib);
+    printf("  Ratio:        %.1fx slower (%.1fx speedup!)\n\n", unboxed_fib / c_fib, omni_fib / unboxed_fib);
 
     /* Sum benchmark */
     printf("Sum(0..100000):\n");
@@ -169,14 +169,14 @@ int main(void) {
 
     clock_gettime(CLOCK_MONOTONIC, &start);
     for (int i = 0; i < 100; i++) {
-        Obj* r = sum_purple(100000);
+        Obj* r = sum_omni(100000);
         sink = obj_to_int(r);  /* Safe extraction for both boxed/unboxed */
         if (IS_BOXED(r)) dec_ref(r);
     }
     clock_gettime(CLOCK_MONOTONIC, &end);
-    double purple_sum = time_us(start, end);
-    printf("  Purple boxed:  %.1f us (100 iterations)\n", purple_sum);
-    printf("  Ratio:         %.1fx slower\n", purple_sum / c_sum);
+    double omni_sum = time_us(start, end);
+    printf("  OmniLisp boxed:  %.1f us (100 iterations)\n", omni_sum);
+    printf("  Ratio:         %.1fx slower\n", omni_sum / c_sum);
 
     clock_gettime(CLOCK_MONOTONIC, &start);
     for (int i = 0; i < 100; i++) {
@@ -185,8 +185,8 @@ int main(void) {
     }
     clock_gettime(CLOCK_MONOTONIC, &end);
     double unboxed_sum = time_us(start, end);
-    printf("  Purple UNBOX:  %.1f us (100 iterations)\n", unboxed_sum);
-    printf("  Ratio:         %.1fx slower (%.1fx speedup!)\n\n", unboxed_sum / c_sum, purple_sum / unboxed_sum);
+    printf("  OmniLisp UNBOX:  %.1f us (100 iterations)\n", unboxed_sum);
+    printf("  Ratio:         %.1fx slower (%.1fx speedup!)\n\n", unboxed_sum / c_sum, omni_sum / unboxed_sum);
 
     /* List creation benchmark */
     printf("Create list of %d elements:\n", LIST_SIZE);
@@ -198,16 +198,16 @@ int main(void) {
     printf("  Raw C (malloc+free):  %.1f us (1000 iterations)\n", c_list);
 
     clock_gettime(CLOCK_MONOTONIC, &start);
-    for (int i = 0; i < 1000; i++) list_purple(LIST_SIZE);
+    for (int i = 0; i < 1000; i++) list_omni(LIST_SIZE);
     clock_gettime(CLOCK_MONOTONIC, &end);
-    double purple_list = time_us(start, end);
-    printf("  Purple (alloc only):  %.1f us (1000 iterations)\n", purple_list);
-    printf("  Ratio:   %.1fx slower\n\n", purple_list / c_list);
+    double omni_list = time_us(start, end);
+    printf("  OmniLisp (alloc only):  %.1f us (1000 iterations)\n", omni_list);
+    printf("  Ratio:   %.1fx slower\n\n", omni_list / c_list);
 
     printf("Memory per integer:\n");
     printf("  Raw C:          %zu bytes\n", sizeof(long));
-    printf("  Purple boxed:   %zu bytes\n", sizeof(Obj));
-    printf("  Purple UNBOX:   %zu bytes (tagged pointer)\n", sizeof(Obj*));
+    printf("  OmniLisp boxed:   %zu bytes\n", sizeof(Obj));
+    printf("  OmniLisp UNBOX:   %zu bytes (tagged pointer)\n", sizeof(Obj*));
 
     return 0;
 }

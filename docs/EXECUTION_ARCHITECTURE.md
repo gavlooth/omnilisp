@@ -1,4 +1,4 @@
-# Purple Execution Architecture Plan
+# OmniLisp Execution Architecture Plan
 
 ## Goal
 
@@ -12,7 +12,7 @@ All execution happens via native code - either JIT compiled or AOT compiled.
 │                        CURRENT ARCHITECTURE                      │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  Source.purple ──► Go Parser ──► AST                            │
+│  Source.omni ──► Go Parser ──► AST                            │
 │                                    │                             │
 │                    ┌───────────────┼───────────────┐            │
 │                    ▼               ▼               ▼            │
@@ -64,10 +64,10 @@ All execution happens via native code - either JIT compiled or AOT compiled.
 
 ```
 Build Time:
-  runtime.c ──► GCC/Clang ──► runtime.o (shipped with purple)
+  runtime.c ──► GCC/Clang ──► runtime.o (shipped with omnilisp)
 
 Compile Time:
-  source.purple ──► Go Compiler ──► user.c
+  source.omni ──► Go Compiler ──► user.c
   user.c + runtime.o ──► GCC/Clang ──► binary
 
 Result: Standalone native binary, no dependencies
@@ -94,14 +94,14 @@ Result: Fast iteration, no disk I/O after startup
 
 ```
 First Run:
-  source.purple ──► Go Compiler ──► user.c
+  source.omni ──► Go Compiler ──► user.c
   user.c ──► libtcc ──► user.so (cached to disk)
 
 Subsequent Runs:
   Load user.so ──► execute (instant)
 
 Cache Invalidation:
-  source.purple hash changed ──► recompile
+  source.omni hash changed ──► recompile
 ```
 
 **Use case:** Scripts that run frequently, serverless
@@ -178,18 +178,18 @@ Create production-ready AOT compilation.
 **Tasks:**
 1. Pre-compile runtime.o at build time
 2. Generate user code that links with runtime.o
-3. Single command: `purple build source.purple -o binary`
+3. Single command: `omnilisp build source.omni -o binary`
 4. Support static linking (single binary output)
 
 **Build flow:**
 ```bash
-# Build purple tooling (includes pre-compiled runtime.o)
-go build -o purple .
+# Build omnilisp tooling (includes pre-compiled runtime.o)
+go build -o omnilisp .
 
 # Compile user program
-./purple build program.purple -o program
+./omnilisp build program.omni -o program
 # Internally:
-#   1. Parse program.purple → AST
+#   1. Parse program.omni → AST
 #   2. Compile AST → program.c
 #   3. gcc -c program.c -o program.o
 #   4. gcc program.o runtime.o -o program
@@ -258,7 +258,7 @@ Add caching layer for compiled code.
 
 **Cache structure:**
 ```
-~/.purple/cache/
+~/.omni/cache/
 ├── runtime.o              # Pre-compiled runtime
 ├── programs/
 │   ├── <hash1>.o          # Cached user program
@@ -297,9 +297,9 @@ func Execute(source string, mode ExecutionMode) Result {
 ## File Structure (Target)
 
 ```
-purple_go/
+omnilisp/
 ├── cmd/
-│   └── purple/
+│   └── omnilisp/
 │       └── main.go           # CLI entry point
 ├── pkg/
 │   ├── parser/               # Go: Source → AST
@@ -312,7 +312,7 @@ purple_go/
 │   └── eval/                 # DEPRECATED: Go interpreter
 ├── runtime/
 │   ├── include/
-│   │   └── purple.h          # Public runtime API
+│   │   └── omnilisp.h          # Public runtime API
 │   ├── src/
 │   │   ├── core.c            # Memory management
 │   │   ├── types.c           # Object types
@@ -323,7 +323,7 @@ purple_go/
 │   ├── Makefile
 │   └── runtime.a             # Pre-compiled static library
 ├── lib/
-│   └── violet/               # Standard library (Purple code)
+│   └── violet/               # Standard library (OmniLisp code)
 └── docs/
     └── EXECUTION_ARCHITECTURE.md  # This document
 ```
@@ -332,23 +332,23 @@ purple_go/
 
 ```bash
 # REPL with JIT (default interactive mode)
-purple
+omnilisp
 > (+ 1 2)
 3
 
 # Execute file with JIT
-purple run program.purple
+omnilisp run program.omni
 
 # AOT compile to binary
-purple build program.purple -o program
-purple build program.purple -o program --static  # Static linking
+omnilisp build program.omni -o program
+omnilisp build program.omni -o program --static  # Static linking
 
 # Emit C code (for debugging/inspection)
-purple emit program.purple -o program.c
+omnilisp emit program.omni -o program.c
 
 # Cache management
-purple cache clear
-purple cache stats
+omnilisp cache clear
+omnilisp cache stats
 ```
 
 ## Performance Targets

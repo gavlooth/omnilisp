@@ -1,4 +1,4 @@
-# Purple Go Implementation Roadmap
+# OmniLisp Implementation Roadmap
 
 ## Complete Step-by-Step Plan
 
@@ -28,8 +28,8 @@ import (
     "path/filepath"
     "testing"
 
-    "purple_go/pkg/codegen"
-    "purple_go/pkg/parser"
+    "omnilisp/pkg/codegen"
+    "omnilisp/pkg/parser"
 )
 
 func TestValgrindNoLeaks(t *testing.T) {
@@ -163,8 +163,8 @@ import (
     "path/filepath"
     "testing"
 
-    "purple_go/pkg/codegen"
-    "purple_go/pkg/parser"
+    "omnilisp/pkg/codegen"
+    "omnilisp/pkg/parser"
 )
 
 func TestAddressSanitizer(t *testing.T) {
@@ -291,9 +291,9 @@ package validation
 import (
     "testing"
 
-    "purple_go/pkg/eval"
-    "purple_go/pkg/jit"
-    "purple_go/pkg/parser"
+    "omnilisp/pkg/eval"
+    "omnilisp/pkg/jit"
+    "omnilisp/pkg/parser"
 )
 
 func TestCompiledMatchesInterpreter(t *testing.T) {
@@ -876,7 +876,7 @@ func TestInterproceduralOwnership(t *testing.T) {
 ```go
 package analysis
 
-import "purple_go/pkg/ast"
+import "omnilisp/pkg/ast"
 
 // DPSCandidate represents a function eligible for DPS transformation
 type DPSCandidate struct {
@@ -984,7 +984,7 @@ import (
     "fmt"
     "strings"
 
-    "purple_go/pkg/analysis"
+    "omnilisp/pkg/analysis"
 )
 
 // DPSCodeGenerator generates DPS function variants
@@ -1063,7 +1063,7 @@ func (g *DPSCodeGenerator) GenerateAllDPSVariants() string {
 ```go
 package analysis
 
-import "purple_go/pkg/ast"
+import "omnilisp/pkg/ast"
 
 // Region represents a memory region
 type Region struct {
@@ -1234,7 +1234,7 @@ import (
     "fmt"
     "strings"
 
-    "purple_go/pkg/analysis"
+    "omnilisp/pkg/analysis"
 )
 
 // GenerateRegionLet generates a let with region allocation
@@ -1284,9 +1284,9 @@ package benchmark
 import (
     "testing"
 
-    "purple_go/pkg/eval"
-    "purple_go/pkg/jit"
-    "purple_go/pkg/parser"
+    "omnilisp/pkg/eval"
+    "omnilisp/pkg/jit"
+    "omnilisp/pkg/parser"
 )
 
 func BenchmarkListOperations(b *testing.B) {
@@ -1712,7 +1712,7 @@ region parameters, **only when the ABI allows carrying context**.
 
 **Where to start (codebase)**:
 - `runtime/src/runtime.c` (TLS pattern; exception context uses `__thread`)
-- `runtime/include/purple.h` (public runtime hooks)
+- `runtime/include/omnilisp.h` (public runtime hooks)
 - `runtime/src/memory/region.c` (if binding context bits to region runtime)
 
 **Search terms**: `__thread`, `exception_*`, `RegionContext`, `region_enter`, `ffi`

@@ -2,7 +2,7 @@
  * immer_bridge.h - C interface to Immer persistent data structures
  *
  * This provides a C-compatible wrapper around Immer's C++ library
- * for use with Purple's FFI mechanism.
+ * for use with OmniLisp's FFI mechanism.
  *
  * All functions use void* for opaque handles to Immer structures.
  * Memory management: caller must call *_free() when done.

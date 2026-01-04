@@ -306,8 +306,8 @@ void slot_pool_get_stats(SlotPool* pool, SlotPoolStats* stats) {
 static SlotPool* g_global_slot_pool = NULL;
 
 /* Forward declaration of Obj size - will be defined in runtime.c */
-#ifndef PURPLE_OBJ_SIZE
-#define PURPLE_OBJ_SIZE 48  /* Default, should match sizeof(Obj) */
+#ifndef OMNI_OBJ_SIZE
+#define OMNI_OBJ_SIZE 48  /* Default, should match sizeof(Obj) */
 #endif
 
 SlotPool* slot_pool_global(void) {
@@ -319,7 +319,7 @@ SlotPool* slot_pool_global(void) {
 
 void slot_pool_global_init(void) {
     if (g_global_slot_pool) return;
-    g_global_slot_pool = slot_pool_create(PURPLE_OBJ_SIZE, 16, SLOT_POOL_BLOCK_SIZE);
+    g_global_slot_pool = slot_pool_create(OMNI_OBJ_SIZE, 16, SLOT_POOL_BLOCK_SIZE);
 }
 
 void slot_pool_global_destroy(void) {
