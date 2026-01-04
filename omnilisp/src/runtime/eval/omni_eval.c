@@ -39,6 +39,17 @@ static Value* eval_restart_case(Value* args, Env* env);
 static Value* eval_signal(Value* args, Env* env);
 static Value* eval_invoke_restart(Value* args, Env* env);
 static Value* eval_find_restart(Value* args, Env* env);
+// Effect system (algebraic effects)
+static Value* eval_defeffect(Value* args, Env* env);
+static Value* eval_handle(Value* args, Env* env);
+static Value* eval_perform(Value* args, Env* env);
+static Value* eval_resume(Value* args, Env* env);
+// Restart compatibility via effects
+static Value* eval_with_restarts(Value* args, Env* env);
+static Value* eval_call_restart(Value* args, Env* env);
+// Effect debugging
+static Value* eval_effect_trace(Value* args, Env* env);
+static Value* eval_effect_stack(Value* args, Env* env);
 
 // -- Prompt Stack for Delimited Continuations --
 #define MAX_PROMPT_STACK 64
@@ -187,6 +198,9 @@ static int is_special_form(Value* sym) {
         "prompt", "control",  // Delimited continuations
         "handler-case", "handler-bind", "restart-case", "signal",  // Condition system
         "invoke-restart", "find-restart",  // Restart invocation
+        "defeffect", "handle", "perform", "resume",  // Effect system (algebraic effects)
+        "with-restarts", "call-restart",  // CL-style restart compatibility via effects
+        "effect-trace", "effect-stack",  // Effect debugging
         NULL
     };
     for (int i = 0; forms[i]; i++) {
@@ -372,6 +386,20 @@ static Value* eval_special_form(Value* op, Value* args, Env* env) {
     if (strcmp(name, "signal") == 0) return eval_signal(args, env);
     if (strcmp(name, "invoke-restart") == 0) return eval_invoke_restart(args, env);
     if (strcmp(name, "find-restart") == 0) return eval_find_restart(args, env);
+
+    // Effect system (algebraic effects)
+    if (strcmp(name, "defeffect") == 0) return eval_defeffect(args, env);
+    if (strcmp(name, "handle") == 0) return eval_handle(args, env);
+    if (strcmp(name, "perform") == 0) return eval_perform(args, env);
+    if (strcmp(name, "resume") == 0) return eval_resume(args, env);
+
+    // CL-style restart compatibility via effects
+    if (strcmp(name, "with-restarts") == 0) return eval_with_restarts(args, env);
+    if (strcmp(name, "call-restart") == 0) return eval_call_restart(args, env);
+
+    // Effect debugging
+    if (strcmp(name, "effect-trace") == 0) return eval_effect_trace(args, env);
+    if (strcmp(name, "effect-stack") == 0) return eval_effect_stack(args, env);
 
     char msg[128];
     snprintf(msg, sizeof(msg), "Unknown special form: %s", name);
@@ -1984,4 +2012,706 @@ static Value* eval_find_restart(Value* args, Env* env) {
         return name_val;
     }
     return mk_nothing();
+}
+
+/* ============================================================
+ * Effect System (Algebraic Effects)
+ * ============================================================
+ *
+ * Syntax:
+ *   (defeffect name mode)  - Define an effect with recovery mode
+ *   mode is one of: :one-shot, :multi-shot, :abort, :tail
+ *
+ *   (handle body
+ *     (effect-name (payload resume) handler-body)
+ *     ...)
+ *
+ *   (perform effect-name payload)
+ *
+ *   (resume value) - inside handler, continue suspended computation
+ *
+ * Example:
+ *   (defeffect ask :one-shot)
+ *   (handle
+ *     (+ 1 (perform ask nothing))
+ *     (ask (payload _) (resume 42)))
+ *   => 43
+ */
+
+// Recovery modes for effects
+typedef enum {
+    RECOVERY_ONE_SHOT = 0,   // Can resume at most once (default)
+    RECOVERY_MULTI_SHOT,     // Can resume multiple times
+    RECOVERY_TAIL,           // Tail-resumptive (optimized)
+    RECOVERY_ABORT           // Never resumes (like exceptions)
+} RecoveryModeOmni;
+
+// Effect type definition
+typedef struct EffectTypeDef {
+    const char* name;
+    RecoveryModeOmni mode;
+    struct EffectTypeDef* next;
+} EffectTypeDef;
+
+// Effect type registry
+static EffectTypeDef* effect_type_registry = NULL;
+
+// Register or find an effect type
+static EffectTypeDef* register_effect_type(const char* name, RecoveryModeOmni mode) {
+    // Check if already exists
+    for (EffectTypeDef* t = effect_type_registry; t; t = t->next) {
+        if (strcmp(t->name, name) == 0) {
+            t->mode = mode;  // Update mode if already registered
+            return t;
+        }
+    }
+    // Create new
+    EffectTypeDef* t = malloc(sizeof(EffectTypeDef));
+    t->name = strdup(name);
+    t->mode = mode;
+    t->next = effect_type_registry;
+    effect_type_registry = t;
+    return t;
+}
+
+static EffectTypeDef* find_effect_type(const char* name) {
+    for (EffectTypeDef* t = effect_type_registry; t; t = t->next) {
+        if (strcmp(t->name, name) == 0) {
+            return t;
+        }
+    }
+    return NULL;  // Unknown effect - treated as one-shot
+}
+
+// Effect handler stack
+#define MAX_EFFECT_STACK 64
+
+typedef struct EffectFrame {
+    jmp_buf jmp;
+    Value* handlers;      // List of (effect-name handler-lambda) pairs
+    Value* result;        // Result from handler
+    Value* resume_value;  // Value passed to resume
+    Value* continuation;  // Captured continuation for resume
+    Env* env;             // Environment
+    int handled;          // Was an effect handled?
+    int resumed;          // Was resume called?
+} EffectFrame;
+
+// Current performing effect info (for resume validation)
+typedef struct {
+    const char* effect_name;
+    RecoveryModeOmni mode;
+    int resume_count;      // How many times resume has been called
+} CurrentPerformInfo;
+
+static CurrentPerformInfo current_perform = { NULL, RECOVERY_ONE_SHOT, 0 };
+
+// Effect trace buffer for debugging
+#define MAX_EFFECT_TRACE 256
+typedef struct {
+    const char* effect_name;
+    const char* source_info;  // Optional source location
+    int depth;                // Handler stack depth at time of perform
+} EffectTraceEntry;
+
+static EffectTraceEntry effect_trace_buffer[MAX_EFFECT_TRACE];
+static int effect_trace_count = 0;
+static int effect_trace_enabled = 0;
+
+static void record_effect_trace(const char* name, int depth) {
+    if (!effect_trace_enabled) return;
+    if (effect_trace_count >= MAX_EFFECT_TRACE) {
+        // Shift buffer to make room
+        memmove(&effect_trace_buffer[0], &effect_trace_buffer[1],
+                (MAX_EFFECT_TRACE - 1) * sizeof(EffectTraceEntry));
+        effect_trace_count = MAX_EFFECT_TRACE - 1;
+    }
+    effect_trace_buffer[effect_trace_count].effect_name = name;
+    effect_trace_buffer[effect_trace_count].source_info = NULL;
+    effect_trace_buffer[effect_trace_count].depth = depth;
+    effect_trace_count++;
+}
+
+static void clear_effect_trace(void) {
+    effect_trace_count = 0;
+}
+
+static EffectFrame effect_stack[MAX_EFFECT_STACK];
+static int effect_sp = 0;
+
+static EffectFrame* push_effect_frame(Value* handlers, Env* env) {
+    if (effect_sp >= MAX_EFFECT_STACK) return NULL;
+    EffectFrame* frame = &effect_stack[effect_sp++];
+    frame->handlers = handlers;
+    frame->result = mk_nothing();
+    frame->resume_value = mk_nothing();
+    frame->continuation = mk_nothing();
+    frame->env = env;
+    frame->handled = 0;
+    frame->resumed = 0;
+    return frame;
+}
+
+static void pop_effect_frame(void) {
+    if (effect_sp > 0) effect_sp--;
+}
+
+static EffectFrame* current_effect_frame(void) {
+    return effect_sp > 0 ? &effect_stack[effect_sp - 1] : NULL;
+}
+
+// Find handler for an effect name in the stack
+static Value* find_effect_handler(const char* effect_name, EffectFrame** out_frame) {
+    for (int i = effect_sp - 1; i >= 0; i--) {
+        EffectFrame* frame = &effect_stack[i];
+        Value* handlers = frame->handlers;
+        while (!is_nil(handlers)) {
+            Value* pair = car(handlers);
+            if (pair && pair->tag == T_CELL) {
+                Value* name = car(pair);
+                if (name && name->tag == T_SYM && strcmp(name->s, effect_name) == 0) {
+                    if (out_frame) *out_frame = frame;
+                    return cdr(pair);  // Return the handler lambda
+                }
+            }
+            handlers = cdr(handlers);
+        }
+    }
+    return NULL;
+}
+
+// Thread-local current resumption for resume form
+static EffectFrame* tl_current_resumption_frame = NULL;
+
+/*
+ * (defeffect name mode)
+ *
+ * Define an effect with a recovery mode.
+ * mode is one of: :one-shot, :multi-shot, :abort, :tail
+ * Default is :one-shot if not specified.
+ *
+ * Examples:
+ *   (defeffect fail :abort)      ; exception-like, never resumes
+ *   (defeffect ask :one-shot)    ; can resume at most once
+ *   (defeffect choice :multi-shot) ; can resume multiple times
+ */
+static Value* eval_defeffect(Value* args, Env* env) {
+    (void)env;
+    if (is_nil(args)) return mk_error("defeffect: missing effect name");
+
+    Value* name = car(args);
+    if (!name || name->tag != T_SYM) {
+        return mk_error("defeffect: effect name must be a symbol");
+    }
+
+    // Parse mode (default is one-shot)
+    RecoveryModeOmni mode = RECOVERY_ONE_SHOT;
+    Value* mode_arg = car(cdr(args));
+
+    // Extract mode string - handle both symbol and (quote symbol) forms
+    // The reader parses :keyword as (quote keyword)
+    const char* mode_str = NULL;
+    if (mode_arg) {
+        if (mode_arg->tag == T_SYM) {
+            mode_str = mode_arg->s;
+        } else if (mode_arg->tag == T_CELL) {
+            // Check for (quote symbol) form
+            Value* qop = car(mode_arg);
+            if (qop && qop->tag == T_SYM && strcmp(qop->s, "quote") == 0) {
+                Value* quoted = car(cdr(mode_arg));
+                if (quoted && quoted->tag == T_SYM) {
+                    mode_str = quoted->s;
+                }
+            }
+        }
+    }
+
+    if (mode_str) {
+        if (strcmp(mode_str, "one-shot") == 0) {
+            mode = RECOVERY_ONE_SHOT;
+        } else if (strcmp(mode_str, "multi-shot") == 0) {
+            mode = RECOVERY_MULTI_SHOT;
+        } else if (strcmp(mode_str, "abort") == 0) {
+            mode = RECOVERY_ABORT;
+        } else if (strcmp(mode_str, "tail") == 0) {
+            mode = RECOVERY_TAIL;
+        } else {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "defeffect: unknown mode '%s'", mode_str);
+            return mk_error(msg);
+        }
+    }
+
+    register_effect_type(name->s, mode);
+    return name;  // Return the effect name
+}
+
+/*
+ * (handle body clauses...)
+ *
+ * Each clause: (effect-name (payload resume) handler-body...)
+ */
+static Value* eval_handle(Value* args, Env* env) {
+    if (is_nil(args)) return mk_error("handle: missing body");
+
+    Value* body = car(args);
+    Value* clauses = cdr(args);
+
+    // Build handler list from clauses
+    // Each clause: (effect-name (params...) body...)
+    // effect-name is NOT evaluated, it's a literal symbol
+    Value* handlers = mk_nil();
+    while (!is_nil(clauses)) {
+        Value* clause = car(clauses);
+        if (clause && clause->tag == T_CELL) {
+            Value* effect_name = car(clause);  // Literal symbol, not evaluated
+            Value* rest = cdr(clause);
+            if (!is_nil(rest)) {
+                Value* params = car(rest);  // (payload resume) or (payload _) etc.
+                Value* handler_body = cdr(rest);
+                // Create handler lambda: (fn (payload resume) body...)
+                Value* handler_lambda = mk_lambda(params, mk_cell(mk_sym("do"), handler_body), env_to_value(env));
+                // Store as (effect-name . handler-lambda)
+                handlers = mk_cell(mk_cell(effect_name, handler_lambda), handlers);
+            }
+        }
+        clauses = cdr(clauses);
+    }
+
+    // Push effect frame
+    EffectFrame* frame = push_effect_frame(handlers, env);
+    if (!frame) return mk_error("handle: stack overflow");
+
+    if (setjmp(frame->jmp) == 0) {
+        // Normal execution - evaluate body
+        Value* result = omni_eval(body, env);
+        pop_effect_frame();
+        return result;
+    } else {
+        // Effect was performed and we jumped here
+        if (frame->resumed) {
+            // Handler called resume, continue with resume_value
+            Value* result = frame->resume_value;
+            pop_effect_frame();
+            return result;
+        } else {
+            // Handler returned without resuming
+            Value* result = frame->result;
+            pop_effect_frame();
+            return result;
+        }
+    }
+}
+
+// Per-perform jump buffer for resumption
+static jmp_buf perform_jmp;
+static Value* perform_resume_value = NULL;
+static int perform_resumed = 0;
+
+/*
+ * (perform effect-name payload)
+ *
+ * Performs an effect, transfers control to nearest handler.
+ * effect-name is a literal symbol (not evaluated).
+ * Returns the value passed to resume, or the handler's return if no resume.
+ *
+ * Recovery mode validation:
+ * - :abort effects cannot be resumed
+ * - :one-shot effects can only be resumed once
+ * - :multi-shot effects can be resumed multiple times
+ */
+static Value* eval_perform(Value* args, Env* env) {
+    if (is_nil(args)) return mk_error("perform: missing effect name");
+
+    Value* effect_name = car(args);  // Literal symbol, not evaluated
+    Value* payload_expr = car(cdr(args));
+
+    // effect-name must be a symbol
+    if (!effect_name || effect_name->tag != T_SYM) {
+        return mk_error("perform: effect name must be a symbol");
+    }
+
+    // Evaluate payload (the data to pass to the handler)
+    Value* payload = is_nil(cdr(args)) ? mk_nothing() : omni_eval(payload_expr, env);
+    if (is_error(payload)) return payload;
+
+    // Find handler
+    EffectFrame* frame = NULL;
+    Value* handler = find_effect_handler(effect_name->s, &frame);
+    if (!handler) {
+        char msg[128];
+        snprintf(msg, sizeof(msg), "perform: unhandled effect '%s'", effect_name->s);
+        return mk_error(msg);
+    }
+
+    // Look up effect type for recovery mode
+    EffectTypeDef* effect_type = find_effect_type(effect_name->s);
+    RecoveryModeOmni mode = effect_type ? effect_type->mode : RECOVERY_ONE_SHOT;
+
+    // Record in effect trace if enabled
+    record_effect_trace(effect_name->s, effect_sp);
+
+    // Set up current perform info for resume validation
+    current_perform.effect_name = effect_name->s;
+    current_perform.mode = mode;
+    current_perform.resume_count = 0;
+
+    // Set up resumption point
+    perform_resumed = 0;
+    perform_resume_value = NULL;
+
+    if (setjmp(perform_jmp) != 0) {
+        // Resume was called - return the resume value
+        // This continues the computation after (perform ...)
+        current_perform.effect_name = NULL;
+        return perform_resume_value;
+    }
+
+    // Save current frame as the resumption target
+    tl_current_resumption_frame = frame;
+
+    // Create a placeholder for resume (handler uses (resume value) form)
+    Value* resume_fn = mk_sym("__resume__");
+
+    // Apply handler: (handler payload resume)
+    Value* handler_args = mk_cell(payload, mk_cell(resume_fn, mk_nil()));
+    Value* result = omni_apply(handler, handler_args, frame->env);
+
+    tl_current_resumption_frame = NULL;
+    current_perform.effect_name = NULL;
+
+    // Handler completed without calling resume
+    // Jump back to handle with result
+    frame->result = result;
+    frame->handled = 1;
+    longjmp(frame->jmp, 1);
+
+    // Never reached
+    return result;
+}
+
+/*
+ * (resume value)
+ *
+ * Inside an effect handler, continues the suspended computation with value.
+ * Jumps back to the perform point and returns value as perform's result.
+ *
+ * Validates recovery mode:
+ * - :abort effects: resume is not allowed
+ * - :one-shot effects: resume can only be called once
+ * - :multi-shot effects: resume can be called multiple times
+ */
+static Value* eval_resume(Value* args, Env* env) {
+    if (!tl_current_resumption_frame) {
+        return mk_error("resume: not inside an effect handler");
+    }
+
+    // Validate recovery mode
+    if (current_perform.effect_name) {
+        if (current_perform.mode == RECOVERY_ABORT) {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "resume: cannot resume abortive effect '%s'",
+                     current_perform.effect_name);
+            return mk_error(msg);
+        }
+
+        if (current_perform.mode == RECOVERY_ONE_SHOT && current_perform.resume_count > 0) {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "resume: one-shot effect '%s' already resumed",
+                     current_perform.effect_name);
+            return mk_error(msg);
+        }
+
+        current_perform.resume_count++;
+    }
+
+    Value* value = is_nil(args) ? mk_nothing() : omni_eval(car(args), env);
+    if (is_error(value)) return value;
+
+    // Store the resume value and jump back to perform
+    perform_resume_value = value;
+    perform_resumed = 1;
+    tl_current_resumption_frame = NULL;
+
+    // Jump back to the perform point
+    longjmp(perform_jmp, 1);
+
+    // Never reached
+    return value;
+}
+
+/* ============================================================
+ * CL-Style Restart Compatibility via Effects
+ * ============================================================
+ *
+ * Provides Common Lisp-style restarts implemented using the effect system.
+ *
+ * Syntax:
+ *   (with-restarts ((name (value) result-body) ...)
+ *     body)
+ *
+ * This is equivalent to:
+ *   (handle body
+ *     (name (payload _) (resume result-body-with-value-bound)))
+ *
+ * To invoke a restart from a handler:
+ *   (call-restart name value)
+ *
+ * Which is equivalent to:
+ *   (perform name value)
+ *
+ * Example:
+ *   (with-restarts
+ *     ((use-value (v) v)
+ *      (skip () nothing))
+ *     (do
+ *       (println "about to fail")
+ *       (call-restart use-value 42)))
+ *   => 42
+ */
+
+/*
+ * (with-restarts ((name (params) body)...) expr)
+ *
+ * Establishes restarts using the effect system.
+ * Each restart is translated to an effect handler clause.
+ */
+static Value* eval_with_restarts(Value* args, Env* env) {
+    if (is_nil(args)) return mk_error("with-restarts: missing restart clauses");
+
+    Value* restarts = car(args);
+    Value* body = cdr(args);
+
+    // Build handler list from restart clauses
+    // Each restart: (name (params...) result-body)
+    // Becomes: (name (payload _) (resume result-body))
+    Value* handlers = mk_nil();
+    while (!is_nil(restarts)) {
+        Value* restart = car(restarts);
+        if (restart && restart->tag == T_CELL) {
+            Value* restart_name = car(restart);  // Literal symbol
+            Value* rest = cdr(restart);
+
+            if (!is_nil(rest)) {
+                Value* params = car(rest);       // (value) or ()
+                Value* result_body = cdr(rest);  // Body expressions
+
+                // Create handler: (fn (payload _) (do (let [value payload] result-body...)))
+                // Simpler: just bind payload to first param if present
+                Value* handler_params = mk_cell(mk_sym("__payload__"), mk_cell(mk_sym("_"), mk_nil()));
+
+                // Build the result body with parameter binding
+                Value* bound_body;
+                if (!is_nil(params)) {
+                    Value* first_param = car(params);
+                    // (let [param __payload__] body...)
+                    Value* bindings = mk_cell(mk_sym("array"),
+                                     mk_cell(first_param,
+                                     mk_cell(mk_sym("__payload__"), mk_nil())));
+                    bound_body = mk_cell(mk_sym("let"),
+                                 mk_cell(bindings, result_body));
+                } else {
+                    bound_body = mk_cell(mk_sym("do"), result_body);
+                }
+
+                // Wrap in (resume ...)
+                Value* resume_body = mk_cell(mk_sym("resume"), mk_cell(bound_body, mk_nil()));
+                Value* handler_body = mk_cell(resume_body, mk_nil());
+
+                Value* handler_lambda = mk_lambda(handler_params, mk_cell(mk_sym("do"), handler_body), env_to_value(env));
+                handlers = mk_cell(mk_cell(restart_name, handler_lambda), handlers);
+            }
+        }
+        restarts = cdr(restarts);
+    }
+
+    // Push effect frame and evaluate body
+    EffectFrame* frame = push_effect_frame(handlers, env);
+    if (!frame) return mk_error("with-restarts: stack overflow");
+
+    if (setjmp(frame->jmp) == 0) {
+        // Normal execution - evaluate body
+        Value* result = eval_do(body, env);
+        pop_effect_frame();
+        return result;
+    } else {
+        // Restart was invoked
+        if (frame->resumed) {
+            Value* result = frame->resume_value;
+            pop_effect_frame();
+            return result;
+        } else {
+            Value* result = frame->result;
+            pop_effect_frame();
+            return result;
+        }
+    }
+}
+
+/*
+ * (call-restart name value)
+ *
+ * Invokes a restart by name. This is simply perform with restart semantics.
+ */
+static Value* eval_call_restart(Value* args, Env* env) {
+    if (is_nil(args)) return mk_error("call-restart: missing restart name");
+
+    Value* restart_name = car(args);
+    Value* value_expr = car(cdr(args));
+
+    // restart-name must be a symbol (not evaluated)
+    if (!restart_name || restart_name->tag != T_SYM) {
+        return mk_error("call-restart: restart name must be a symbol");
+    }
+
+    // Evaluate the value to pass to the restart
+    Value* value = is_nil(cdr(args)) ? mk_nothing() : omni_eval(value_expr, env);
+    if (is_error(value)) return value;
+
+    // Find handler (restart) in effect stack
+    EffectFrame* frame = NULL;
+    Value* handler = find_effect_handler(restart_name->s, &frame);
+    if (!handler) {
+        char msg[128];
+        snprintf(msg, sizeof(msg), "call-restart: no restart named '%s'", restart_name->s);
+        return mk_error(msg);
+    }
+
+    // Record in effect trace if enabled
+    record_effect_trace(restart_name->s, effect_sp);
+
+    // Restarts are always one-shot resumable
+    current_perform.effect_name = restart_name->s;
+    current_perform.mode = RECOVERY_ONE_SHOT;
+    current_perform.resume_count = 0;
+
+    // Set up resumption point
+    perform_resumed = 0;
+    perform_resume_value = NULL;
+
+    if (setjmp(perform_jmp) != 0) {
+        current_perform.effect_name = NULL;
+        return perform_resume_value;
+    }
+
+    tl_current_resumption_frame = frame;
+
+    // Apply handler with value as payload
+    Value* handler_args = mk_cell(value, mk_cell(mk_sym("__resume__"), mk_nil()));
+    Value* result = omni_apply(handler, handler_args, frame->env);
+
+    tl_current_resumption_frame = NULL;
+    current_perform.effect_name = NULL;
+
+    frame->result = result;
+    frame->handled = 1;
+    longjmp(frame->jmp, 1);
+
+    return result;
+}
+
+/* ============================================================
+ * Effect Debugging
+ * ============================================================ */
+
+/*
+ * (effect-trace cmd)
+ *
+ * Control effect tracing:
+ *   (effect-trace :on)     - Enable tracing
+ *   (effect-trace :off)    - Disable tracing
+ *   (effect-trace :clear)  - Clear the trace buffer
+ *   (effect-trace :print)  - Print the trace
+ *   (effect-trace)         - Return trace as a list
+ */
+static Value* eval_effect_trace(Value* args, Env* env) {
+    (void)env;
+
+    if (is_nil(args)) {
+        // Return trace as a list
+        Value* result = mk_nil();
+        for (int i = effect_trace_count - 1; i >= 0; i--) {
+            EffectTraceEntry* entry = &effect_trace_buffer[i];
+            Value* item = mk_cell(
+                mk_sym(entry->effect_name ? entry->effect_name : "?"),
+                mk_int(entry->depth)
+            );
+            result = mk_cell(item, result);
+        }
+        return result;
+    }
+
+    Value* cmd = car(args);
+
+    // Handle (quote symbol) form from :keyword syntax
+    const char* cmd_str = NULL;
+    if (cmd && cmd->tag == T_SYM) {
+        cmd_str = cmd->s;
+    } else if (cmd && cmd->tag == T_CELL) {
+        Value* qop = car(cmd);
+        if (qop && qop->tag == T_SYM && strcmp(qop->s, "quote") == 0) {
+            Value* quoted = car(cdr(cmd));
+            if (quoted && quoted->tag == T_SYM) {
+                cmd_str = quoted->s;
+            }
+        }
+    }
+
+    if (cmd_str) {
+        if (strcmp(cmd_str, "on") == 0) {
+            effect_trace_enabled = 1;
+            return mk_sym("tracing-enabled");
+        } else if (strcmp(cmd_str, "off") == 0) {
+            effect_trace_enabled = 0;
+            return mk_sym("tracing-disabled");
+        } else if (strcmp(cmd_str, "clear") == 0) {
+            clear_effect_trace();
+            return mk_sym("trace-cleared");
+        } else if (strcmp(cmd_str, "print") == 0) {
+            printf("Effect trace (%d entries):\n", effect_trace_count);
+            for (int i = 0; i < effect_trace_count; i++) {
+                EffectTraceEntry* entry = &effect_trace_buffer[i];
+                printf("  [%d] perform %s (depth=%d)\n",
+                       i, entry->effect_name ? entry->effect_name : "?", entry->depth);
+            }
+            return mk_int(effect_trace_count);
+        }
+    }
+
+    return mk_error("effect-trace: unknown command (use :on, :off, :clear, or :print)");
+}
+
+/*
+ * (effect-stack)
+ *
+ * Return the current effect handler stack as a list.
+ * Each element is a list of effect names handled at that level.
+ */
+static Value* eval_effect_stack(Value* args, Env* env) {
+    (void)args;
+    (void)env;
+
+    Value* result = mk_nil();
+
+    for (int i = effect_sp - 1; i >= 0; i--) {
+        EffectFrame* frame = &effect_stack[i];
+        Value* handlers_at_level = mk_nil();
+
+        // Collect effect names from this frame
+        Value* handlers = frame->handlers;
+        while (!is_nil(handlers)) {
+            Value* pair = car(handlers);
+            if (pair && pair->tag == T_CELL) {
+                Value* name = car(pair);
+                if (name && name->tag == T_SYM) {
+                    handlers_at_level = mk_cell(mk_sym(name->s), handlers_at_level);
+                }
+            }
+            handlers = cdr(handlers);
+        }
+
+        result = mk_cell(handlers_at_level, result);
+    }
+
+    return result;
 }

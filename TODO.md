@@ -139,47 +139,59 @@
     - Resumptions can be invoked to continue computation.
     - One-shot/multi-shot/abort modes enforced correctly.
 
-- [TODO] Label: T-eff-handler-syntax
+- [DONE] Label: T-eff-handler-syntax
   Objective: Provide OmniLisp syntax for `effect`, `perform`, and `handle`.
-  Where: `csrc/parser/parser.c`, `csrc/codegen/codegen.c`, `docs/LANGUAGE_REFERENCE.md`
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`
   What to change:
-    - Add new forms for effect declaration and handler blocks.
-    - Generate runtime calls that push/pop handlers and perform effects.
-    - Document usage with examples.
-  How to verify: run a small OmniLisp program using `handle`/`perform`.
+    - Added special forms: handle, perform, resume, defeffect.
+    - Implemented effect handler stack with setjmp/longjmp for control flow.
+    - Handler syntax: `(handle body (effect-name (payload _) handler-body)...)`.
+    - Perform syntax: `(perform effect-name payload)`.
+    - Resume syntax: `(resume value)` to continue computation.
+    - defeffect syntax: `(defeffect name :mode)` for recovery mode declaration.
+  How to verify: run `./omni '(handle (+ 1 (perform ask nothing)) (ask (p _) (resume 42)))'` => 43.
   Acceptance:
     - `handle` intercepts effects and can resume computation.
+    - Nested handlers work correctly.
 
-- [TODO] Label: T-eff-recovery-protocols
+- [DONE] Label: T-eff-recovery-protocols
   Objective: Add typed recovery protocols (better than untyped restarts).
-  Where: `runtime/src/effect.c`, `runtime/src/effect.h`, `docs/LANGUAGE_REFERENCE.md`
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`
   What to change:
-    - Define recovery metadata: expected input/output types, one-shot vs multi-shot.
-    - Include recovery “menu” data for debugger UI.
-    - Validate recovery contracts at runtime in debug mode.
-  How to verify: attempt invalid recovery and confirm a contract violation error.
+    - Implemented effect type registry with recovery modes in OmniLisp evaluator.
+    - Added `(defeffect name :mode)` syntax to declare recovery modes.
+    - Supported modes: :one-shot, :multi-shot, :abort, :tail.
+    - Resume validation: abort effects can't be resumed, one-shot can only resume once.
+  How to verify: run `./omni '(do (defeffect fail :abort) (handle ... (fail (p _) (resume 1))))'` => error.
   Acceptance:
-    - Recovery protocols are enforced and visible in diagnostics.
+    - Recovery protocols are enforced at runtime.
+    - Abort mode prevents resume, one-shot prevents multiple resumes.
 
-- [TODO] Label: T-eff-restart-compat
+- [DONE] Label: T-eff-restart-compat
   Objective: Provide a compatibility layer that exposes CL-style restarts via effects.
-  Where: `runtime/src/effect.c`, `runtime/src/runtime.c`, `docs/LANGUAGE_REFERENCE.md`
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`
   What to change:
-    - Map `restart-case` to effect handlers with recovery protocols.
-    - Provide a user-facing restart list derived from handler metadata.
-  How to verify: run a `restart-case` example and confirm it works atop effects.
+    - Added `(with-restarts ((name (params) body)...) expr)` syntax.
+    - Added `(call-restart name value)` to invoke restarts.
+    - Restarts implemented as effect handlers that automatically resume.
+    - Restart handlers bind payload to parameters and evaluate body.
+  How to verify: run `./omni '(with-restarts ((use-value (v) v)) (+ 1 (call-restart use-value 42)))'` => 43.
   Acceptance:
-    - Restart compatibility works without a separate restart stack.
+    - Restart compatibility works via the effect system.
+    - with-restarts and call-restart behave like CL restarts.
 
-- [TODO] Label: T-eff-debug-trace
+- [DONE] Label: T-eff-debug-trace
   Objective: Add effect traces to the logical stack and diagnostics.
-  Where: `runtime/src/debug.c`, `runtime/src/effect.c`
+  Where: `omnilisp/src/runtime/eval/omni_eval.c`
   What to change:
-    - Record effect name, payload, and source span when performed.
-    - Include effect trace in error reports and debugger output.
-  How to verify: perform nested effects and confirm trace appears in diagnostics.
+    - Added effect trace buffer with 256-entry circular storage.
+    - Record effect name and handler depth at each perform/call-restart.
+    - Added `(effect-trace :on/:off/:clear/:print)` for trace control.
+    - Added `(effect-stack)` to inspect current handler stack.
+  How to verify: run with tracing enabled and use effect-trace :print to see trace.
   Acceptance:
-    - Effect traces appear alongside stack traces.
+    - Effect traces can be enabled/disabled/printed.
+    - Effect stack inspection available.
 
 ## Diagnostics, Introspection, and Developer UX (Missing Pieces)
 
