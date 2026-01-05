@@ -2168,8 +2168,8 @@ Omnilisp uses ASAP (As Static As Possible) memory management:
 - **Escape analysis** - Stack-allocate non-escaping values
 - **Capture tracking** - Lambda-captured variables transfer ownership
 - **Automatic weak back-edges** - Compiler detects and handles cycles
-- **Symmetric Reference Counting** - Bidirectional references for O(1) cycle reclamation
-- **Region Hierarchy** - Scope-based hierarchy validation to prevent dangling pointers
+- **Static Symmetric Reference Counting** - Bidirectional references integrated with the region hierarchy for O(1) cycle reclamation
+- **Region Hierarchy** - Scope-based hierarchy validation providing the static foundation for symmetric references
 - **Generational References (GenRef)** - Stable slot pooling and use-after-free detection
 
 See `README.md` and `SUMMARY.md` for current implementation status.

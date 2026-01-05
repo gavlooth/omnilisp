@@ -22,10 +22,7 @@ The project currently features a robust C99 + POSIX runtime and compiler subset 
 |---|---|---|
 | **Liveness-Driven Free Insertion** | ✅ | CFG-based analysis for optimal `free()` placement. |
 | **Escape-Aware Stack Allocation** | ✅ | Non-escaping values are stack-allocated (Vale/Ada style). |
-| **Symmetric Reference Counting** | ✅ | O(1) deterministic cycle collection via bidirectional refs. |
-| **Component Scope Tethering** | ✅ | Zero-cost island-based cycle reclamation. |
-| **Shape Analysis** | ✅ | Automatic detection of Trees, DAGs, and Cycles. |
-| **Perceus Reuse Analysis** | ✅ | Functional But In-Place (FBIP) optimization. |
+| **Static Symmetric RC** | ✅ | O(1) deterministic cycle collection within region hierarchy. |
 | **Region-Aware RC Elision** | ✅ | Hierarchy-based reference counting optimization. |
 | **Generational References (GenRef)** | ✅ | Vale-style use-after-free detection. |
 
@@ -70,8 +67,8 @@ OmniLisp utilizes **ASAP (As Static As Possible)** memory management. Unlike tra
 ```
 
 1.  **Liveness Analysis:** Injects `free_obj()` calls at the earliest point a variable becomes dead.
-2.  **Symmetric RC:** Handles shared objects with bidirectional references, allowing cycles to be reclaimed in O(1) without a global scan.
-3.  **Region Hierarchy:** Validates that outer scopes never point to inner scopes, preventing dangling references.
+2.  **Static Symmetric RC:** Reclaims cycles within the region hierarchy using bidirectional references, allowing for O(1) reclamation without a global heap scan.
+3.  **Region Hierarchy:** Validates that outer scopes never point to inner scopes, providing the static backbone for symmetric reference tracking.
 4.  **Generational References:** Provides safety for stable slot pooling and use-after-free detection.
 
 ---
