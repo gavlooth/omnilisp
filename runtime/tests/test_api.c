@@ -107,7 +107,7 @@ static void test_api_borrow_get(void) {
 
 static void test_api_arena(void) {
     TEST("arena");
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     ASSERT_NOT_NULL(a);
     Obj* x = arena_mk_int(a, 42);
     Obj* p = arena_mk_pair(a, x, NULL);

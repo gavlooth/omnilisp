@@ -6,6 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+
+#define ARENA_BLOCK_SIZE 4096
+
 /* Note: omni.h is NOT included here because test_main.c includes runtime.c directly,
    which provides all type definitions. Including both would cause redefinition errors. */
 

@@ -4,7 +4,7 @@
 /* ========== Arena Creation Tests ========== */
 
 void test_arena_create(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     ASSERT_NOT_NULL(a);
     ASSERT_NULL(a->current);
     ASSERT_NULL(a->blocks);
@@ -19,7 +19,7 @@ void test_arena_destroy_null(void) {
 }
 
 void test_arena_destroy_empty(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     arena_destroy(a);  /* Destroy empty arena */
     PASS();
 }
@@ -27,7 +27,7 @@ void test_arena_destroy_empty(void) {
 /* ========== Arena Allocation Tests ========== */
 
 void test_arena_mk_int(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     Obj* x = arena_mk_int(a, 42);
     ASSERT_NOT_NULL(x);
     ASSERT_EQ(x->tag, TAG_INT);
@@ -38,7 +38,7 @@ void test_arena_mk_int(void) {
 }
 
 void test_arena_mk_int_negative(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     Obj* x = arena_mk_int(a, -100);
     ASSERT_NOT_NULL(x);
     ASSERT_EQ(x->i, -100);
@@ -47,7 +47,7 @@ void test_arena_mk_int_negative(void) {
 }
 
 void test_arena_mk_int_zero(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     Obj* x = arena_mk_int(a, 0);
     ASSERT_NOT_NULL(x);
     ASSERT_EQ(x->i, 0);
@@ -56,7 +56,7 @@ void test_arena_mk_int_zero(void) {
 }
 
 void test_arena_mk_pair(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     Obj* car = arena_mk_int(a, 1);
     Obj* cdr = arena_mk_int(a, 2);
     Obj* p = arena_mk_pair(a, car, cdr);
@@ -71,7 +71,7 @@ void test_arena_mk_pair(void) {
 }
 
 void test_arena_mk_pair_null_car(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     Obj* cdr = arena_mk_int(a, 1);
     Obj* p = arena_mk_pair(a, NULL, cdr);
     ASSERT_NOT_NULL(p);
@@ -82,7 +82,7 @@ void test_arena_mk_pair_null_car(void) {
 }
 
 void test_arena_mk_pair_null_cdr(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     Obj* car = arena_mk_int(a, 1);
     Obj* p = arena_mk_pair(a, car, NULL);
     ASSERT_NOT_NULL(p);
@@ -93,7 +93,7 @@ void test_arena_mk_pair_null_cdr(void) {
 }
 
 void test_arena_mk_pair_both_null(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     Obj* p = arena_mk_pair(a, NULL, NULL);
     ASSERT_NOT_NULL(p);
     ASSERT_NULL(p->a);
@@ -105,7 +105,7 @@ void test_arena_mk_pair_both_null(void) {
 /* ========== Arena Block Management Tests ========== */
 
 void test_arena_multiple_allocations(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     Obj* objs[100];
     for (int i = 0; i < 100; i++) {
         objs[i] = arena_mk_int(a, i);
@@ -117,7 +117,7 @@ void test_arena_multiple_allocations(void) {
 }
 
 void test_arena_block_creation(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     /* Allocate enough to force multiple blocks */
     int count = (ARENA_BLOCK_SIZE / sizeof(Obj)) + 10;
     for (int i = 0; i < count; i++) {
@@ -133,14 +133,14 @@ void test_arena_block_creation(void) {
 /* ========== Arena Reset Tests ========== */
 
 void test_arena_reset_empty(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     arena_reset(a);  /* Should not crash */
     arena_destroy(a);
     PASS();
 }
 
 void test_arena_reset_with_data(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     for (int i = 0; i < 50; i++) {
         arena_mk_int(a, i);
     }
@@ -159,7 +159,7 @@ void test_arena_reset_null(void) {
 }
 
 void test_arena_reset_multiple_times(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     for (int round = 0; round < 10; round++) {
         for (int i = 0; i < 20; i++) {
             arena_mk_int(a, i + round * 100);
@@ -180,7 +180,7 @@ static void test_cleanup(void* ptr) {
 
 void test_arena_register_external(void) {
     cleanup_called = 0;
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     int dummy = 42;
     arena_register_external(a, &dummy, test_cleanup);
     arena_destroy(a);
@@ -197,7 +197,7 @@ void test_arena_register_external_null_arena(void) {
 }
 
 void test_arena_register_external_null_ptr(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     arena_register_external(a, NULL, test_cleanup);  /* Should be ignored */
     arena_destroy(a);
     PASS();
@@ -205,7 +205,7 @@ void test_arena_register_external_null_ptr(void) {
 
 void test_arena_multiple_externals(void) {
     cleanup_called = 0;
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     int d1 = 1, d2 = 2, d3 = 3;
     arena_register_external(a, &d1, test_cleanup);
     arena_register_external(a, &d2, test_cleanup);
@@ -217,7 +217,7 @@ void test_arena_multiple_externals(void) {
 
 void test_arena_external_cleanup_on_reset(void) {
     cleanup_called = 0;
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     int dummy = 42;
     arena_register_external(a, &dummy, test_cleanup);
     arena_reset(a);
@@ -229,7 +229,7 @@ void test_arena_external_cleanup_on_reset(void) {
 /* ========== Arena List Building Tests ========== */
 
 void test_arena_build_list(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     /* Build list: (1 2 3) */
     Obj* list = NULL;
     for (int i = 3; i >= 1; i--) {
@@ -244,7 +244,7 @@ void test_arena_build_list(void) {
 }
 
 void test_arena_nested_pairs(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     /* Build ((1 . 2) . (3 . 4)) */
     Obj* p1 = arena_mk_pair(a, arena_mk_int(a, 1), arena_mk_int(a, 2));
     Obj* p2 = arena_mk_pair(a, arena_mk_int(a, 3), arena_mk_int(a, 4));
@@ -260,7 +260,7 @@ void test_arena_nested_pairs(void) {
 /* ========== Arena Stress Tests ========== */
 
 void test_arena_stress_many_ints(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     for (int i = 0; i < 10000; i++) {
         Obj* x = arena_mk_int(a, i);
         ASSERT_NOT_NULL(x);
@@ -271,7 +271,7 @@ void test_arena_stress_many_ints(void) {
 }
 
 void test_arena_stress_many_pairs(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     for (int i = 0; i < 5000; i++) {
         Obj* p = arena_mk_pair(a, arena_mk_int(a, i), arena_mk_int(a, i+1));
         ASSERT_NOT_NULL(p);
@@ -281,7 +281,7 @@ void test_arena_stress_many_pairs(void) {
 }
 
 void test_arena_stress_long_list(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     Obj* list = NULL;
     for (int i = 0; i < 10000; i++) {
         list = arena_mk_pair(a, arena_mk_int(a, i), list);
@@ -299,7 +299,7 @@ void test_arena_stress_long_list(void) {
 }
 
 void test_arena_stress_deep_nesting(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     Obj* deep = arena_mk_int(a, 0);
     for (int i = 1; i <= 1000; i++) {
         deep = arena_mk_pair(a, arena_mk_int(a, i), deep);
@@ -310,7 +310,7 @@ void test_arena_stress_deep_nesting(void) {
 }
 
 void test_arena_stress_reset_cycle(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     for (int round = 0; round < 100; round++) {
         for (int i = 0; i < 100; i++) {
             arena_mk_int(a, i + round);
@@ -324,7 +324,7 @@ void test_arena_stress_reset_cycle(void) {
 /* ========== Arena Edge Cases ========== */
 
 void test_arena_allocate_after_destroy_blocks(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     /* Force block creation */
     int count = (ARENA_BLOCK_SIZE / sizeof(Obj)) + 10;
     for (int i = 0; i < count; i++) {
@@ -340,7 +340,7 @@ void test_arena_allocate_after_destroy_blocks(void) {
 }
 
 void test_arena_large_allocation(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     /* Allocate many objects to trigger multiple block allocations */
     for (int i = 0; i < 50000; i++) {
         Obj* x = arena_mk_int(a, i);

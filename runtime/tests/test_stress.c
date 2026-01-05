@@ -162,7 +162,7 @@ void test_stress_closure_with_captures(void) {
 /* ========== Arena Stress Tests ========== */
 
 void test_stress_arena_100k_allocs(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     for (int i = 0; i < 100000; i++) {
         Obj* x = arena_mk_int(a, i);
         ASSERT_NOT_NULL(x);
@@ -172,7 +172,7 @@ void test_stress_arena_100k_allocs(void) {
 }
 
 void test_stress_arena_reset_cycles(void) {
-    Arena* a = arena_create();
+    Arena* a = arena_create(ARENA_BLOCK_SIZE);
     for (int round = 0; round < 1000; round++) {
         for (int i = 0; i < 100; i++) {
             arena_mk_int(a, i + round * 100);
@@ -186,7 +186,7 @@ void test_stress_arena_reset_cycles(void) {
 void test_stress_arena_multiple_arenas(void) {
     Arena* arenas[10];
     for (int i = 0; i < 10; i++) {
-        arenas[i] = arena_create();
+        arenas[i] = arena_create(ARENA_BLOCK_SIZE);
         for (int j = 0; j < 1000; j++) {
             arena_mk_int(arenas[i], i * 1000 + j);
         }
@@ -490,7 +490,7 @@ void test_stress_channel_throughput(void) {
 
 void test_stress_integration(void) {
     /* Test combining multiple features */
-    Arena* arena = arena_create();
+    Arena* arena = arena_create(ARENA_BLOCK_SIZE);
 
     /* Create arena-allocated list */
     Obj* arena_list = NULL;
