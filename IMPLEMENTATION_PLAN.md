@@ -1,974 +1,449 @@
-# OmniLisp - Gap Elimination Implementation Plan
+# OmniLisp Implementation Plan
 
-## VERIFIED STATUS + UPDATED PLAN (2026-01-01)
+## Overview
 
-This section **supersedes** everything below. It reflects a repo audit and the current
-implementation trajectory. The legacy sections are kept for reference only.
-
-### Verified Status (repo audit)
-
-**Pipeline**
-- AST->C is **partially implemented** in `pkg/compiler/` (literals, `if`, `do`, `let`, `set!`, `define`),
-  but closures, `quote`, `and/or`, `try/error`, `letrec`, non-symbol application, and macro expansion are missing.
-- Default compile path is still **stage-polymorphic** (`eval` -> `Code` -> `pkg/codegen.GenerateProgram`).
-- `main.go` exposes `--native` but it is **not wired** yet. JIT uses staged codegen.
-
-**Runtime / C Emission**
-- C runtime now supports **Obj tags** for int/float/char/pair/box/closure/channel/error + **user types**.
-- **Randomized generational references** are present (GenRef + lazy GenObj) and are used in the closure runtime.
-- Closure runtime exists (`mk_closure`, `call_closure`, `closure_release`, GenRef validation).
-- List runtime exists for `length`, `map`, `fold`, but **append/reverse/filter** are missing.
-- No native runtime for I/O (`display`, `print`, `read`) or string utilities yet.
-
-**Memory Model**
-- ASAP is still the base rule (compile-time frees, no GC).
-- RC is present in runtime but should be **minimized via analysis**; no new runtime counters will be added.
-- Arena is optional and **not** the default model; GenRef is the current safety choice for closures.
-
-**Analysis**
-- escape/liveness/shape/ownership/rcopt/reuse exist but are **not yet fully integrated** into the new compiler.
-- concurrency analysis exists and emits atomic RC via GCC builtins (C99-compatible, no `<stdatomic.h>`).
-
-**Tests / Validation**
-- Valgrind/ASan/TSan harness exists in `test/validation/`, but targets **staged codegen** today.
+This document details the complete implementation plan for OmniLisp.
+The C runtime remains unchanged. The Go compiler frontend is rewritten 100%.
 
 ---
 
-## Updated Execution Plan (v0.7)
+## Type System: Julia-Style Optional Types
 
-This plan is intentionally **step-by-step** with checkboxes and the reasoning inline. It aims to
-deliver **full AST->C semantics** and native compilation while keeping **RC overhead low** and
-using **GenRef** for closure safety.
+**OmniLisp uses Julia's approach to types: types are OPTIONAL everywhere.**
 
-### Global Constraints (non-negotiable)
-- C99 + POSIX only (no `<stdatomic.h>`, no stop-the-world GC).
-- ASAP must remain correct with **no runtime GC**.
-- RC should be **minimized** and not dominate; prefer borrow/unique/reuse over refcount churn.
-- Arena remains opt-in; **GenRef** is the primary robustness mechanism for captures.
-- No new runtime counters; use existing `Obj.mark` RC and compile-time analysis.
+### Type Annotations Are Always Optional
 
-### Authoritative Memory Policy (do not second-guess)
+```lisp
+;; No types - fully inferred (like Julia's duck typing)
+(define (add x y)
+  (+ x y))
 
-This table is the single source of truth for "arena vs GenRef vs RC" decisions.
+;; Partial types - annotate what you want
+(define (add [x {Int}] y)
+  (+ x y))
 
-| Condition | Action | Why |
-|-----------|--------|-----|
-| Captured by closure or callback | Use GenRef for that edge | Detects UAF where lifetimes are hard |
-| Shared across threads | Use atomic RC only on shared objects | Correctness with minimal scope |
-| Shape = tree and unique | `free_unique` (no RC) | Zero RC overhead |
-| Shape = tree, not provably unique | `free_tree` with ASAP frees | Deterministic, no RC |
-| Shape = DAG or aliasing | `dec_ref` (RC) | Required for shared acyclic graphs |
-| Shape = cyclic and weak edges break cycle | `dec_ref` (RC) | Weak edges make it acyclic for ownership |
-| Shape = cyclic and unbroken, escapes | Component Tethering | Island-based units; Zero-cost tethered access |
-| Shape = cyclic and local only | Arena allocation is allowed (opt-in) | Bulk free is safe and fast |
-
-Notes:
-- Arena is not default. It is only selected for proven-local cyclic structures or explicit opt-in.
-- GenRef is targeted: only for capture/callback edges, not for every pointer.
-- RC should be kept low via uniqueness/borrowing/reuse; it is not the primary strategy.
-
----
-
-## Phase 0: Plan + Safety Alignment (1-2 commits)
-
-Reasoning: lock in the memory model and eliminate ambiguity before deep changes.
-
-- [ ] P0.1 Update `IMPLEMENTATION_PLAN.md` with this audit and plan (done here).
-- [ ] P0.2 Add a short "Native pipeline overview" section in `README.md` once compiler is wired.
-- [ ] P0.3 Add a small `docs/NATIVE_PIPELINE.md` that documents AST->C lowering and memory strategy.
-
----
-
-## Phase 1: Wire the AST->C compiler entry points
-
-Reasoning: Without a real entry point the compiler work can’t be exercised or tested.
-
-- [ ] P1.1 Add `compiler.CompileProgram` / `CompileToBinary` to the CLI behind `--native`.
-- [ ] P1.2 Add `--emit-c` (or reuse `-c` when `--native` is active) to dump AST->C output.
-- [ ] P1.3 Add `jit.CompileAndRunAST(exprs)` for tests/benchmarks (bypasses `eval`).
-- [ ] P1.4 Route native path through `compiler` (no staged `eval` in native mode).
-
----
-
-## Phase 2: Core AST -> C lowering (expressions)
-
-Reasoning: This is the minimum semantic surface needed for most programs.
-
-- [ ] P2.1 Literals: int/float/char/bool/nothing/symbol; string as list-of-chars.
-- [ ] P2.2 Variable resolution + hygiene (scope stack, gensym).
-- [ ] P2.3 `if` lowering with proper temp lifetimes (`is_truthy`).
-- [ ] P2.4 `do` lowering with ASAP frees for prior temps.
-- [ ] P2.5 `let` with boxing for mutated or captured vars.
-- [ ] P2.6 `letrec` support (self-recursive lambdas + mutual recursion).
-- [ ] P2.7 `quote` lowering (static constructors).
-- [ ] P2.8 `set!` for variables **and** field setters (deftype + box).
-
----
-
-## Phase 3: Closures + apply (full function semantics)
-
-Reasoning: Full language parity requires closures, capture tracking, and call dispatch.
-
-- [ ] P3.1 Implement capture discovery (use `analysis.FindFreeVars`).
-- [ ] P3.2 Emit closure functions: `static Obj* fn(Obj** captures, Obj** args, int n)`.
-- [ ] P3.3 Emit `mk_closure` with capture array + GenRefs (`genref_from_obj`) for safety.
-- [ ] P3.4 Apply semantics:
-  - Symbol -> known function / primitive
-  - Non-symbol -> evaluate to closure and call `call_closure`
-- [ ] P3.5 Ownership-aware argument passing using summaries (borrow/consume/fresh).
-- [ ] P3.6 Optional optimization: allow *moved* captures to skip `inc_ref` when proven dead.
-
----
-
-## Phase 4: Runtime parity for primitives
-
-Reasoning: AST->C needs runtime equivalents for all interpreter primitives.
-
-- [ ] P4.1 Arithmetic + comparison already exist; ensure parity for `%`, `not`, `abs`, etc.
-- [ ] P4.2 List ops: add `append`, `reverse`, `filter`, `foldl`, `foldr`, `length`.
-- [ ] P4.3 Higher-order ops: `apply`, `compose`, `flip` (C closures).
-- [ ] P4.4 Box ops: `box`, `unbox`, `set-box!` (already in runtime, wire in compiler).
-- [ ] P4.5 I/O: `print`, `display`, `newline`, `read`, `read-char`, `eof-object?`.
-- [ ] P4.6 String ops: `string?`, `string-length`, `string-append`, `string-ref`, `substring`
-  (as list-of-char helpers).
-- [ ] P4.7 Predicates: `null?`, `pair?`, `int?`, `float?`, `char?`, `symbol?`, `error?`, `box?`.
-- [ ] P4.8 Exceptions: map `error` to `THROW`, `try` to TRY macros (already in runtime).
-
----
-
-## Phase 5: `deftype` in native mode
-
-Reasoning: user-defined types must work with constructors/accessors/setters and weak fields.
-
-- [ ] P5.1 Parse `deftype` in compiler (not eval) and register with `TypeRegistry`.
-- [ ] P5.2 Emit constructor/accessor/setter calls using runtime `mk_Type`, `get_Type_field`, `set_Type_field`.
-- [ ] P5.3 Honor `:weak` annotation in setters (no RC update).
-- [ ] P5.4 Generate scanners and release functions (already present in runtime).
-
----
-
-## Phase 6: Control + concurrency semantics
-
-Reasoning: AST->C must match interpreter semantics for control and CSP.
-
-- [ ] P6.1 `try`/`error` compilation using exception runtime.
-- [ ] P6.2 `go`/`make-chan`/`chan-send!`/`chan-recv!`/`select` lowering.
-- [ ] P6.3 Ownership transfer rules on send/recv (integrate concurrency analysis).
-- [ ] P6.4 Continuations (`call/cc`, `prompt`, `control`):
-  - Start with single-shot continuations (setjmp/longjmp).
-  - Extend to delimited via explicit stacks / continuation objects.
-
----
-
-## Phase 7: `match` lowering
-
-Reasoning: pattern matching is a visible language feature; must compile to C conditionals.
-
-- [ ] P7.1 Compile patterns to a decision tree (nested `if` + bindings).
-- [ ] P7.2 Support list patterns, literals, `_`, `or`, `@`, and user-type constructors.
-- [ ] P7.3 Ensure bindings are scoped with ASAP frees.
-
----
-
-## Phase 8: Macro expansion in native mode
-
-Reasoning: macros transform AST before evaluation; native compilation must see expanded forms.
-
-- [ ] P8.1 Implement a macro-expansion pre-pass (reuse `eval`’s macro table).
-- [ ] P8.2 Support `defmacro`, `mcall`, `macroexpand` in compile mode.
-- [ ] P8.3 Freeze macro expansion before lowering to C.
-
----
-
-## Phase 9: Memory strategy integration (keep RC under control)
-
-Reasoning: correctness + performance. RC is a tool, not the strategy.
-
-- [ ] P9.1 Use escape + liveness to insert frees at last use (ASAP).
-- [ ] P9.2 Use shape + ownership + rcopt to select `free_tree` / `dec_ref` / `free_unique`.
-- [ ] P9.3 Use reuse analysis for Perceus-style reuse (`reuse_as_*`).
-- [ ] P9.4 Use GenRef for closure captures (random generation checks on deref).
-- [ ] P9.5 Avoid arenas by default; only enable when explicitly requested.
-
----
-
-## Phase 10: Native build + CLI polishing
-
-Reasoning: deliver a real native compiler with usable flags.
-
-- [ ] P10.1 `--native` compiles AST directly to C and a native binary.
-- [ ] P10.2 `--cc` and `--cc-flags` allow toolchain override.
-- [ ] P10.3 `--emit-c` dumps generated C for inspection.
-- [ ] P10.4 REPL: add `native` toggle to compile current exprs via compiler.
-
----
-
-## Phase 11: Validation + parity
-
-Reasoning: ensure memory correctness and semantic equivalence.
-
-- [ ] P11.1 Port validation tests (Valgrind/ASan/TSan) to AST->C pipeline.
-- [ ] P11.2 Add golden-output tests for key constructs (closures, match, channels).
-- [ ] P11.3 Compare native output vs interpreter on corpus of examples.
-
----
-
-## Delivery cadence (per user request)
-
-- [ ] Commit **after every phase** (or sub-phase) and push.
-- [ ] Use "dirty commits" for partial steps when work is large.
-- [ ] Keep commits small and clearly labeled.
-
----
-
-## Legacy Plan (pre-audit, superseded)
-
-The sections below are kept for reference. They **do not** reflect the current verified state.
-
----
-
-## Current Status (Updated: 2026-01-01)
-
-**Completed - Language Features:**
-- Mutable state (`box`, `set!`, `define`) ✅
-- I/O (`display`, `newline`, `read`) ✅
-- Continuations (`call/cc`, `prompt`/`control`) ✅
-- CSP (`go`, `make-chan`, `chan-send!`, `chan-recv!`, `select`) ✅
-- deftype with constructors/accessors/setters/predicates ✅
-- User-defined types with :weak annotation support ✅
-- Introspection primitives (`ctr-tag`, `ctr-arg`, `reify-env`) ✅
-- All 100+ tests passing ✅
-
-**Completed - Memory Infrastructure (ported from C):**
-- `pkg/memory/`: ASAP, SCC, arena, deferred, symmetric, genref, region, constraint ✅
-- `pkg/analysis/`: escape, liveness, ownership, rcopt, shape, **summary**, **concurrent**, **reuse** ✅
-- `pkg/codegen/types.go`: TypeRegistry with back-edge detection ✅
-- `pkg/codegen/runtime.go`: C runtime generation (1,900+ lines) ✅
-- `pkg/codegen/exception.go`: Exception handling with landing pads ✅
-
-**Completed - All 8 Gap Elimination Phases (Implementation):**
-- Phase 1: deftype → TypeRegistry wiring ✅
-- Phase 2: Back-edge heuristics enhancement ✅
-- Phase 3: Codegen weak field integration ✅
-- Phase 4: Exception landing pads ✅ **(NEW)**
-- Phase 5: Interprocedural analysis ✅ **(NEW)**
-- Phase 6: Concurrency ownership ✅ **(NEW)**
-- Phase 7: Shape routing & Perceus ✅ **(NEW)**
-- Phase 8: Minor primitives (ctr-tag, ctr-arg, reify-env) ✅
-
-**Remaining Work: None - All Integration Complete** ✅
-- ~~Wire concurrency/DPS runtime to `GenerateAll()`~~ ✅ Done
-- ~~Integrate analysis results into codegen transforms~~ ✅ Done
-
----
-
-# NEW: Full AST-to-C Native Compilation Plan (v0.6)
-
-## Findings / Baseline
-- Existing compile path is **staged**: AST is evaluated to `Code` values in `eval`, then `pkg/codegen.GenerateProgram` emits C. This is **not** direct AST→C.
-- Current C runtime is optimized for **`Obj` (int/pair)** plus **user-defined types**, but **does not provide native closures/boxes/channels/etc** yet.
-- `ValueToCExpr` and codegen helpers only handle ints/pairs; many primitives rely on interpreter-only behavior.
-
-This plan focuses on building a **direct AST→C lowering pipeline** and extending runtime/codegen where necessary to preserve full language semantics.
-
-Goal: Compile **AST directly to C** (no interpreter staging), emit a standalone C99 program, and build a native binary.
-
-## Phase A: Compiler Entry + Pipeline
-- [ ] A1. Add `compile` pipeline that takes parsed AST directly (no `eval`/`lift`) and routes to C codegen.
-- [ ] A2. Introduce `Compiler` wrapper that manages analysis passes: escape, liveness, shape, ownership, RCOpt, reuse.
-- [ ] A3. Add CLI flag `--native` that compiles AST to C and invokes gcc/clang to produce an executable.
-- [ ] A4. Add `jit.CompileAndRunAST(expr)` to compile AST directly for tests/benchmarks.
-
-## Phase B: Core AST -> C Expression Codegen
-- [ ] B1. Literals: int/float/char/bool/nothing/symbol/string.
-- [ ] B2. Variables: map AST symbols to C identifiers with hygiene (gensym + scope stack).
-- [ ] B3. `if`: generate `({ ... })` expression or temp variable block with proper frees.
-- [ ] B4. `do`: sequential evaluation, return last value, ASAP frees for earlier temps.
-- [ ] B5. `let` / `letrec`: allocate bindings, enable reuse, run liveness, inject frees.
-- [ ] B6. `set!`: emit RC-aware overwrite and field updates (weak fields skip RC).
-
-## Phase C: Functions + Closures
-- [ ] C1. Lambda codegen: emit C function + closure env struct.
-- [ ] C2. Capture analysis: generate env structs for captured variables; skip frees in parent scope.
-- [ ] C3. Apply: call native function or closure with env; enforce ownership summaries.
-- [ ] C4. Tail-call optional: add trampoline for self recursion where safe.
-
-## Phase D: Top-Level Definitions + Program Assembly
-- [ ] D1. `define` at top-level: emit global function prototypes + definitions.
-- [ ] D2. `define` of values: emit globals with init code in `main`.
-- [ ] D3. Generate C header/structs for deftypes before functions (respect type order).
-- [ ] D4. Program main: evaluate top-level forms in order; print last value; cleanup.
-
-## Phase E: Native Build Integration
-- [ ] E1. Add `compiler` package to write C to temp file and invoke gcc/clang.
-- [ ] E2. Capture stdout/stderr, propagate compile errors into Go error.
-- [ ] E3. Add `--cc` and `--cc-flags` for custom toolchains.
-
-## Phase F: Validation & Parity
-- [ ] F1. Extend correctness tests to use AST->C pipeline (no `eval`).
-- [ ] F2. Add golden tests for C output (spot-check).
-- [ ] F3. Run ASan/TSan/Valgrind on AST->C output.
-
-## Phase G: Incremental Rollout
-- [ ] G1. Land A + B (no lambdas) behind `--native`.
-- [ ] G2. Land C (closures) behind `--native-closures`.
-- [ ] G3. Land D/E/F for full native CLI.
-
-Acceptance Criteria:
-- [ ] `omnilisp --native examples/demo.omni` produces a native executable and runs successfully.
-- [ ] All existing language features compile without staging (including closures, exceptions, and channels).
-- [ ] Valgrind/ASan/TSan clean on validation suite for AST->C pipeline.
-
----
-
-## Dependency Graph (All Implementation Complete)
-
-```
-Phase 1 (deftype wiring) ✅
-    │
-    ▼
-Phase 2 (back-edge heuristics) ✅ ────► Phase 3 (codegen weak fields) ✅
-    │                                           │
-    ▼                                           ▼
-Phase 4 (exception landing pads) ✅ ◄──── Phase 5 (interprocedural) ✅
-    │                                           │
-    ▼                                           ▼
-Phase 6 (concurrency ownership) ✅ ────► Phase 7 (shape routing) ✅
-    │
-    ▼
-Phase 8 (minor gaps) ✅
-
-Legend: ✅ = Implementation complete
-        ⚠️ = Integration pending (Phases 5, 6, 7)
+;; Full types - for documentation or dispatch
+(define (add [x {Int}] [y {Int}]) {Int}
+  (+ x y))
 ```
 
----
+### Key Principles (from Julia)
 
-## Phase 1: deftype → TypeRegistry Wiring
+1. **Types don't affect runtime behavior** - they guide dispatch and documentation
+2. **Multiple dispatch on all arguments** - not just first argument
+3. **Parametric types** - `{Array T}`, `{Option T}`, `{Result T E}`
+4. **Abstract type hierarchy** - for organizing dispatch
+5. **No class-based OOP** - structs + multiple dispatch
 
-**Problem**: Infrastructure exists but user-defined types don't populate registry properly.
+### Syntax Forms
 
-### Current State
-- `evalDeftype` in `pkg/eval/eval.go:2126-2201` exists
-- Calls `codegen.GlobalRegistry().RegisterType()` with fields
-- Calls `BuildOwnershipGraph()` and `AnalyzeBackEdges()` after registration
-- But: No constructor primitives, no C struct generation
-
-### Tasks
-
-| Task | File | Description |
-|------|------|-------------|
-| 1.1 | `pkg/eval/primitives.go` | Add dynamic constructor primitives (`mk-Node`, `Node-value`, `Node?`) |
-| 1.2 | `pkg/eval/eval.go` | Track `DefinedTypes` slice for compilation phase |
-| 1.3 | `pkg/codegen/runtime.go` | Generate C struct forward declarations for mutual recursion |
-
-### Acceptance Criteria
-- [x] `(deftype Node (value int) (next Node))` creates callable `mk-Node`
-- [x] `(mk-Node 42 ())` returns value with correct fields
-- [x] `(Node-value n)` accesses field
-- [x] Generated C compiles for complex type hierarchies
-
----
-
-## Phase 2: Back-Edge Heuristics Enhancement
-
-**Problem**: Existing heuristics need expansion and optimization.
-
-### Current State
-- `BackEdgeHints` in `pkg/codegen/types.go:122-126`: `parent`, `owner`, `container`, `prev`, `previous`, `back`, `up`, `outer`
-- Second pointer of same type marked weak
-- DFS-based cycle detection as fallback
-
-### Tasks
-
-| Task | File | Description |
-|------|------|-------------|
-| 2.1 | `pkg/codegen/types.go` | Expand patterns: `predecessor`, `ancestor`, `enclosing`, `*_back`, `backref` |
-| 2.2 | `pkg/codegen/types.go` | Improve second-pointer detection with confidence scoring |
-| 2.3 | `pkg/codegen/types.go` | Cache DFS results, minimize cycle breaks |
-| 2.4 | `pkg/eval/eval.go` | Support `(deftype Node (prev Node :weak))` explicit annotation |
-
-### Acceptance Criteria
-- [x] All common back-edge patterns auto-detected
-- [x] User can override with `:weak` annotation
-- [x] Analysis scales to 50+ types in <100ms
-
----
-
-## Phase 3: Codegen Weak Field Integration ✅
-
-**Status**: COMPLETED
-
-### Completed Tasks
-- Release functions skip weak fields in all paths ✅
-- `GetCycleStatusForType()` and `ShouldUseArenaForType()` added to CodeGenerator ✅
-- `GenerateUserTypeScanners()` generates type-specific scanners that skip weak fields ✅
-- set! for weak fields generates no refcount changes ✅
-
-### Acceptance Criteria
-- [x] Doubly-linked list compiles without memory leaks
-- [x] Valgrind clean on cyclic structure teardown
-- [x] Generated code documents weak field handling
-
----
-
-## Phase 4: Exception Landing Pads ✅
-
-**Status**: COMPLETED
-
-### Implementation
-- `pkg/codegen/exception.go` - Full implementation with:
-  - `CleanupPoint` and `LandingPad` structures
-  - `ExceptionContext` for tracking cleanup state
-  - `ExceptionCodeGenerator` for C code emission
-- `pkg/codegen/runtime.go` - Integrated via `GenerateExceptionRuntime()`
-- Runtime features:
-  - `setjmp/longjmp` based exception handling
-  - `TRY_BEGIN`/`TRY_CATCH`/`TRY_END` macros
-  - `exception_register_cleanup()` / `exception_unregister_cleanup()`
-  - LIFO cleanup order during unwinding
-  - Thread-local exception context stack
-
-### Acceptance Criteria
-- [x] `(try (let ((x (mk-int 10))) (error "fail")) handler)` frees x
-- [x] Nested try blocks clean up properly
-- [x] No leaks when exceptions traverse multiple frames
-
----
-
-## Phase 5: Interprocedural Analysis ✅
-
-**Status**: COMPLETE (implementation + integration)
-
-### Implementation
-- `pkg/analysis/summary.go` - Full implementation with:
-  - `FunctionSummary` with params, return, effects, call graph
-  - `ParamSummary` with ownership, escape, stored-in tracking
-  - `ReturnSummary` with ownership, source param, freshness
-  - `SideEffect` flags: Allocates, Frees, Mutates, IO, Throws, Concurrent
-  - `SummaryRegistry` for caching and lookup
-  - `SummaryAnalyzer` for computing summaries from AST
-- `pkg/analysis/summary_test.go` - Comprehensive tests
-
-### Primitive Summaries (Hardcoded)
-| Primitive | Params | Return | Effects |
-|-----------|--------|--------|---------|
-| `cons` | borrowed, borrowed | fresh | allocates |
-| `car`, `cdr` | borrowed | borrowed (from param) | none |
-| `map`, `filter` | borrowed, borrowed | fresh | allocates |
-| `fold` | borrowed, borrowed, borrowed | borrowed | none |
-| `chan-send!` | borrowed, **consumed** | - | concurrent |
-| `chan-recv!` | borrowed | fresh | concurrent |
-| `error` | borrowed | - | throws |
-
-### Integration Complete
-| Task | File | Description | Status |
-|------|------|-------------|--------|
-| 5.3 | `pkg/analysis/escape.go` | Use summaries at call sites for ownership propagation | Future |
-| 5.5 | `pkg/codegen/codegen.go` | Query summaries when generating function calls | ✅ Done |
-
-### CodeGenerator Methods Added
-- `AnalyzeFunction(name, params, body)` → Returns `*FunctionSummary`
-- `GetParamOwnership(funcName, paramIdx)` → Returns ownership class
-- `GetReturnOwnership(funcName)` → Returns ownership class
-
-### Acceptance Criteria
-- [x] `(define (f x) x)` → summary: x=borrowed, return=borrowed
-- [x] `(define (g x) (cons x ()))` → summary: x=borrowed, return=fresh
-- [x] Call sites can query callee summaries via CodeGenerator
-
----
-
-## Phase 6: Concurrency Ownership Transfer ✅
-
-**Status**: COMPLETE (implementation + integration)
-
-### Implementation
-- `pkg/analysis/concurrent.go` - Full implementation with:
-  - `ThreadLocality`: ThreadLocal, Shared, Transferred, Unknown
-  - `ChannelOp`: Send (transfers ownership), Recv (receives ownership), Close
-  - `TransferPoint` for tracking ownership transfers
-  - `ConcurrencyContext` for analyzing concurrency patterns
-  - `ConcurrencyAnalyzer` for AST analysis of goroutines/channels
-  - `ConcurrencyCodeGenerator` for C code generation
-- `pkg/analysis/concurrent_test.go` - Comprehensive tests
-
-### Generated Runtime (in ConcurrencyCodeGenerator)
-| Component | Description |
-|-----------|-------------|
-| `atomic_inc_ref()` | Thread-safe reference increment (`__atomic_add_fetch`) |
-| `atomic_dec_ref()` | Thread-safe reference decrement with free |
-| `try_acquire_unique()` | Attempt to acquire unique ownership |
-| `struct Channel` | Ring buffer with pthread mutex/condvar |
-| `channel_send()` | Send with ownership transfer (no inc_ref) |
-| `channel_recv()` | Receive with ownership acquisition |
-| `spawn_goroutine()` | Launch with captured variable handling |
-
-### Ownership Transfer Model
-```
-Process A              Channel              Process B
-─────────              ───────              ─────────
-(let ((x (alloc)))     ┌─────┐
-  (chan-send! ch x) ──▶│  x  │ ──▶  (let ((y (chan-recv! ch)))
-  ;; x is DEAD here    └─────┘       (use y)
-  )                                   (free y))
-
-Sender loses ownership → Receiver gains ownership
-```
-
-### Integration Complete
-| Task | File | Description | Status |
-|------|------|-------------|--------|
-| 6.5 | `pkg/codegen/runtime.go` | Call `GenerateConcurrencyRuntime()` in `GenerateAll()` | ✅ Done |
-| 6.6 | `pkg/codegen/codegen.go` | Use `ConcurrencyAnalyzer` results for atomic RC decisions | ✅ Done |
-
-### CodeGenerator Methods Added
-- `AnalyzeConcurrency(expr)` → Performs concurrency analysis
-- `NeedsAtomicRC(varName)` → Returns true if variable needs atomic RC
-- `IsTransferred(varName)` → Returns true if ownership was transferred
-- `GenerateRCOperation(varName, op)` → Generates atomic or regular RC operation
-
-### Acceptance Criteria
-- [x] `(let ((x 1)) (go (print x)))` identifies x as shared
-- [x] `(chan-send! ch x)` marks x as transferred (dead in sender)
-- [x] `(let ((y (chan-recv! ch))) ...)` treats y as locally owned
-- [x] Generated code uses atomic RC for shared variables
-
----
-
-## Phase 7: Shape-Aware Routing & Perceus Reuse ✅
-
-**Status**: COMPLETE (implementation + integration)
-
-### Implementation
-- `pkg/analysis/reuse.go` - Full implementation with:
-  - `ReuseCandidate` for tracking reuse opportunities
-  - `ReusePattern`: None, Exact, Padded, Partial
-  - `TypeSize` for size-based reuse matching
-  - `ReuseContext` for pending frees and reuse mapping
-  - `ReuseAnalyzer` for scope-based reuse analysis
-  - `ShapeRouter` for shape-to-strategy routing
-  - `PerceusOptimizer` for FBIP reuse code generation
-  - `DPSOptimizer` for destination-passing style
-- `pkg/analysis/reuse_test.go` - Comprehensive tests
-- `pkg/codegen/runtime.go` - `GeneratePerceusRuntime()` integrated
-
-### Shape → Strategy Mapping (Implemented in ShapeRouter)
-| Shape | Strategy | Description |
-|-------|----------|-------------|
-| TREE | `free_tree` | O(n) recursive free, no back-edges |
-| DAG | `dec_ref` | Reference counting, no cycles |
-| CYCLIC | `arena_release` | Arena or weak refs |
-| UNKNOWN | `dec_ref` | Safe default |
-
-### Perceus FBIP Runtime (Generated)
-| Function | Description |
-|----------|-------------|
-| `reuse_as_int(old, value)` | Reuse int slot in-place |
-| `reuse_as_pair(old, a, b)` | Reuse pair slot in-place |
-| `reuse_as_box(old, value)` | Reuse box slot in-place |
-| `can_reuse(obj)` | Check if rc==1 (unique) |
-| `consume_for_reuse(obj)` | Return obj if reusable, else free |
-
-### DPS Runtime (Generated but not integrated)
-| Function | Description |
-|----------|-------------|
-| `map_into(dest, f, xs)` | Map with destination passing |
-| `filter_into(dest, pred, xs)` | Filter with destination passing |
-| `append_into(dest, xs, ys)` | Append with destination passing |
-
-### Integration Complete
-| Task | File | Description | Status |
-|------|------|-------------|--------|
-| 7.3 | `pkg/codegen/codegen.go` | Use `ReuseAnalyzer` to transform free+alloc → reuse | ✅ Done |
-| 7.5 | `pkg/codegen/runtime.go` | Call `GenerateDPSRuntime()` in `GenerateAll()` | ✅ Done |
-| 7.6 | `pkg/codegen/codegen.go` | Generate DPS variants for eligible functions | Future |
-
-### CodeGenerator Methods Added
-- `AnalyzeReuse(expr)` → Performs reuse analysis
-- `TryReuse(allocVar, allocType, line)` → Returns `*ReuseCandidate`
-- `GetReuseFor(allocVar)` → Returns (freeVar, ok)
-- `AddPendingFree(name, typeName)` → Marks variable for reuse
-- `GenerateAllocation(varName, allocType, allocExpr)` → Generates with optional reuse
-
-### Acceptance Criteria
-- [x] Shape analysis identifies cycles broken by weak edges
-- [x] Reuse analysis finds adjacent free-alloc patterns
-- [x] CodeGenerator can transform free+alloc → reuse via helper methods
-- [x] DPS runtime generated and available
-- [ ] All generated code passes valgrind (validation pending)
-
----
-
-## Phase 7b: Unified Optimization Plan (Vale + Lobster + Perceus) ✅
-
-**Status**: COMPLETE
-
-### Implementation Summary
-
-This phase enhanced the existing optimization infrastructure with additional features from Vale, Lobster, and Perceus research:
-
-#### Phase 2a: Lobster Ownership Modes (Enhanced) ✅
-- **File**: `pkg/analysis/ownership.go`
-- **New Ownership Class**: `OwnerConsumed` for tracking consumed (moved) values
-- **New Ownership Modes**: `ModeOwned`, `ModeBorrowed`, `ModeConsumed`
-- **Consumption Tracking**: `ConsumeOwnership()`, `IsConsumed()`, `GetConsumer()`
-- **RC Decision Helpers**: `NeedsIncRef()`, `NeedsDecRef()` based on ownership analysis
-- **Move Optimization**: `IsSingleUse()`, `GetOwnershipMode()` for detecting move opportunities
-- **Tests**: `pkg/analysis/ownership_test.go`
-
-#### Phase 2b: Perceus Reuse Analysis (Enhanced) ✅
-- **File**: `pkg/codegen/runtime.go`
-- **New Functions**: `reuse_as_box()`, `reuse_as_closure()` (in addition to existing `reuse_as_int()`, `reuse_as_pair()`)
-- **Helper Functions**: `can_reuse()`, `consume_for_reuse()` for reuse eligibility checks
-- **FBIP Support**: Full "Functional But In-Place" capability for all boxed types
-
-#### Phase 3a: Pool Allocation ✅
-- **Analysis**: `pkg/analysis/pool.go` - Pool eligibility analysis
-- **Tests**: `pkg/analysis/pool_test.go`
-- **Runtime**: `pkg/codegen/runtime.go` - `GeneratePoolRuntime()`
-- **Types**:
-  - `PoolEligibility`: `PoolIneligible`, `PoolEligible`, `PoolPreferred`
-  - `PoolCandidate`: Tracks variable eligibility with reason
-  - `PoolContext`: Integrates escape, purity, and ownership analysis
-- **Runtime Features**:
-  - Thread-local bump allocator with configurable block size (64KB default)
-  - `pool_create()`, `pool_destroy()`, `pool_reset()`
-  - `pool_mk_int()`, `pool_mk_pair()`, `pool_mk_box()` - pool-allocated constructors
-  - `pool_escape_to_heap()` - escape hatch for values leaving pool scope
-  - `pool_enter_scope()`, `pool_exit_scope()` - nested scope support
-- **Eligibility Criteria**:
-  - Non-escaping (not `EscapeGlobal` or `EscapeArg`)
-  - Not captured by closure
-  - Not borrowed
-  - Pure context → `PoolPreferred`
-
-#### Phase 3b: NaN-Boxing for Floats ✅
-- **File**: `pkg/codegen/runtime.go` - `GenerateNaNBoxingRuntime()`
-- **Technique**: IEEE 754 quiet NaN payload bits (48-bit) store pointers
-- **Constants**:
-  - `NANBOX_PREFIX`: `0x7FF8000000000000ULL` (quiet NaN marker)
-  - `NANBOX_PTR_MASK`: `0x0000FFFFFFFFFFFFULL` (48-bit pointer extraction)
-- **Functions**:
-  - `nanbox_is_float()` - Check if value is a float (not NaN-boxed pointer)
-  - `nanbox_to_obj()` - Extract Obj pointer from NaN-boxed value
-  - `nanbox_from_float()` - Create NaN-boxed float
-  - `nanbox_from_obj()` - Create NaN-boxed pointer
-- **Benefits**: Unboxed floats without heap allocation, complementing tagged pointer optimization
-
-#### BorrowRef Naming (was GenRef) ✅
-- **Change**: GenRef renamed to BorrowRef for clarity
-- **Rationale**: "BorrowRef" better describes IPGE-validated borrowed references
-- **Implementation**: Uses IPGE (In-Place Generational Evolution) for deterministic UAF detection
-
-### New Files Created
-| File | Purpose |
+| Form | Meaning |
 |------|---------|
-| `pkg/analysis/pool.go` | Pool allocation eligibility analysis |
-| `pkg/analysis/pool_test.go` | Pool analysis tests |
-| `pkg/analysis/ownership_test.go` | Ownership modes tests |
-
-### Files Modified
-| File | Changes |
-|------|---------|
-| `pkg/analysis/ownership.go` | Added Lobster ownership modes, consumption tracking |
-| `pkg/codegen/runtime.go` | Added `reuse_as_box`, `reuse_as_closure`, pool runtime, NaN-boxing |
-| `pkg/codegen/stats.go` | Added pool allocation statistics |
-| `pkg/codegen/codegen.go` | Updated to use `ConsumeOwnership` and track stats |
-
-### Stats Tracking Added
-- `PoolAllocations`: Allocations in thread-local pool
-- `PoolEligible`: Variables eligible for pool allocation
-- `PoolEscaped`: Pool values that had to escape to heap
-
-### Acceptance Criteria
-- [x] Lobster ownership modes track consumed values
-- [x] Perceus reuse extended to boxes and closures
-- [x] Pool eligibility analysis integrates escape/purity/ownership
-- [x] NaN-boxing runtime generated
-- [x] All analysis and codegen tests pass
+| `x` | Untyped parameter |
+| `[x {Int}]` | Typed parameter |
+| `[x 10]` | Parameter with default |
+| `[x {Int} 10]` | Typed parameter with default |
+| `{Int}` after params | Return type annotation |
 
 ---
 
-## Phase 8: Minor Gaps ✅
+## Architecture: What Changes
 
-**Status**: COMPLETED
-
-### Completed Tasks
-- `PrimCtrTag`: Returns constructor name as symbol ✅
-- `PrimCtrArg`: Returns nth constructor argument ✅
-- `PrimReifyEnv`: Returns current environment as assoc list ✅
-
-### Acceptance Criteria
-- [x] `(ctr-tag (cons 1 2))` → `'cell`
-- [x] `(ctr-arg (cons 1 2) 0)` → `1`
-- [x] `(let ((x 1)) (reify-env))` includes `(x . 1)`
+| Component | Change Level | Description |
+|-----------|--------------|-------------|
+| **src/runtime/reader/pika.c** | New Implementation | Pika Parser: New bracket semantics, dot notation, string interpolation (C Implementation) |
+| **pkg/ast/value.go** | 80% Rewrite | New types: Array, Dict, Tuple, Struct, Enum, TypeAnnotation |
+| **pkg/eval/eval.go** | 95% Rewrite | New special forms, multiple dispatch, match semantics |
+| **pkg/eval/primitives.go** | 60% Rewrite | New primitive operations |
+| **pkg/codegen/codegen.go** | 50% Modify | Code generation for new constructs |
+| **pkg/analysis/*.go** | 30% Modify | Adapt analysis for new AST |
+| **runtime/** | 0% | Unchanged - C runtime stays exactly the same |
 
 ---
 
-## Files Created ✅
+## Phase 1: Parser Implementation (src/runtime/reader/pika.c)
 
-| File | Phase | Status | Purpose |
-|------|-------|--------|---------|
-| `pkg/codegen/exception.go` | 4 | ✅ Complete | Landing pad generation |
-| `pkg/analysis/summary.go` | 5 | ✅ Complete | Function summaries |
-| `pkg/analysis/concurrent.go` | 6 | ✅ Complete | Concurrency ownership |
-| `pkg/analysis/reuse.go` | 7 | ✅ Complete | Perceus reuse + DPS analysis |
+We will implement the Pika parser directly in C to support the "Tower of Interpreters" model (Level 0 parsing).
 
-## Files Modified ✅
+### 1.1 C Tokenizer
 
-| File | Phases | Status | Changes |
-|------|--------|--------|---------|
-| `pkg/eval/eval.go` | 1, 2 | ✅ | Constructor primitives, `:weak` syntax |
-| `pkg/eval/primitives.go` | 1, 8 | ✅ | Dynamic type constructors, introspection |
-| `pkg/codegen/types.go` | 2 | ✅ | Enhanced heuristics |
-| `pkg/codegen/runtime.go` | 1, 3, 4, 7 | ✅ | Structs, release functions, exception, Perceus |
-| `pkg/codegen/codegen.go` | 3 | ✅ | Weak field handling |
+```c
+typedef enum {
+    TOK_LPAREN,   // (
+    TOK_RPAREN,   // )
+    TOK_LBRACKET, // [
+    TOK_RBRACKET, // ]
+    TOK_LBRACE,   // {
+    TOK_RBRACE,   // }
+    TOK_HASHBRACE,// #{
+    TOK_DOT,      // .
+    TOK_STRING,   // "..."
+    TOK_INT,      // 123
+    TOK_FLOAT,    // 123.456
+    TOK_SYMBOL,   // name
+    TOK_KEYWORD,  // :key
+    TOK_EOF
+} TokenType;
+
+// Tokenizer state
+typedef struct {
+    const char* input;
+    size_t pos;
+    size_t len;
+} Lexer;
+```
+
+### 1.2 Parser Changes (C)
+
+The parser will construct `OmniValue` objects directly using the runtime's object system.
+
+| Feature | Description |
+|---------|-------------|
+| `parse_list` | `()` -> List or Function Call |
+| `parse_array` | `[]` -> Array Object |
+| `parse_type` | `{}` -> Type Object |
+| `parse_dict` | `#{}` -> Dictionary Object |
+| `parse_dot` | `obj.field` -> Accessor form |
+
+### 1.3 Dot Notation Parsing (C)
+
+```c
+// Logic to transform tokens into 'get' forms:
+// obj.field     -> (get obj 'field)
+// obj.(expr)    -> (get obj expr)
+```
+
+### 1.4 String Interpolation (C)
+
+The C parser must handle `$` inside strings and generate `(string-concat ...)` forms.
+
+### 1.5 Files to Create/Modify
+
+```
+src/runtime/reader/pika.c       # Core parser logic
+src/runtime/reader/pika.h       # Public API
+src/runtime/reader/token.h      # Token definitions
+src/runtime/include/omnilisp.h  # Expose omni_read()
+```
 
 ---
 
-## Remaining Integration Work ✅ COMPLETE
+## Phase 2: AST Rewrite (pkg/ast/value.go)
 
-### High Priority (Required for End-to-End) ✅
+### 2.1 New Value Tags
 
-| Task | File | Description | Status |
-|------|------|-------------|--------|
-| I.1 | `pkg/codegen/runtime.go` | Add `GenerateConcurrencyRuntime()` call to `GenerateAll()` | ✅ Done |
-| I.2 | `pkg/codegen/runtime.go` | Add `GenerateDPSRuntime()` call to `GenerateAll()` | ✅ Done |
-| I.3 | `pkg/codegen/codegen.go` | Integrate `SummaryAnalyzer` for call-site ownership | ✅ Done |
-| I.4 | `pkg/codegen/codegen.go` | Integrate `ConcurrencyAnalyzer` for atomic RC decisions | ✅ Done |
-| I.5 | `pkg/codegen/codegen.go` | Integrate `ReuseAnalyzer` for free→alloc transforms | ✅ Done |
+[Go code removed]
 
-### New CodeGenerator Methods Added
+### 2.2 Value Struct Extensions
 
-| Method | Purpose |
-|--------|---------|
-| `AnalyzeFunction()` | Register function summary for interprocedural analysis |
-| `GetParamOwnership()` | Query ownership class for function parameter |
-| `GetReturnOwnership()` | Query ownership class for return value |
-| `AnalyzeConcurrency()` | Perform concurrency analysis on expression |
-| `NeedsAtomicRC()` | Check if variable needs atomic reference counting |
-| `IsTransferred()` | Check if ownership was transferred (e.g., chan-send!) |
-| `AnalyzeReuse()` | Perform reuse analysis on expression |
-| `TryReuse()` | Attempt to find reuse candidate for allocation |
-| `GetReuseFor()` | Get the variable that can be reused |
-| `AddPendingFree()` | Mark variable as available for reuse |
-| `GenerateRCOperation()` | Generate atomic/regular inc_ref/dec_ref |
-| `GenerateAllocation()` | Generate allocation with optional reuse |
+[Go code removed]
 
-### Medium Priority (Future Optimization)
+### 2.3 Files to Modify
 
-| Task | File | Description | Effort |
-|------|------|-------------|--------|
-| O.1 | `pkg/analysis/escape.go` | Query `SummaryRegistry` at call sites | Medium |
-| O.2 | `pkg/codegen/codegen.go` | Generate DPS variants for tail-recursive functions | Large |
-| O.3 | `pkg/analysis/shape.go` | Use `TypeRegistry.GetCycleStatus()` for user types | Small |
+```
+pkg/ast/value.go      # Add new tags and constructors
+pkg/ast/types.go      # New file for type system structures
+```
 
-### Validation Tasks
+---
 
-| Task | Description |
+## Phase 3: Evaluator Rewrite (pkg/eval/eval.go)
+
+### 3.1 New Special Forms
+
+| Form | Description |
 |------|-------------|
-| V.1 | End-to-end test: compile OmniLisp → C → execute with valgrind |
-| V.2 | Concurrent test: goroutines with channel ownership transfer |
-| V.3 | Benchmark: measure reuse optimization impact |
-| V.4 | Benchmark: measure DPS allocation reduction |
+| `define` | Unified binding (values, functions, types, macros) |
+| `let` | With `:seq`, `:rec`, named-let modifiers |
+| `match` | Pattern matching (special form, not macro) |
+| `if` | Binary conditional |
+| `lambda` | Anonymous function |
+| `set!` | Mutation |
+| `begin` | Sequencing |
+| `quote` | Quoting |
+| `prompt` / `control` | Delimited continuations |
+| `spawn` | Green thread |
+| `channel` | Create channel |
 
----
+### 3.2 Match as Special Form
 
-## Testing Strategy
+[Go code removed]
 
-### Unit Tests per Phase (Status)
-| Phase | Test File | Status |
-|-------|-----------|--------|
-| 1 | `test/deftype_test.go` | ✅ Exists |
-| 2 | `pkg/codegen/types_test.go` | ⚠️ Needed |
-| 3 | `pkg/codegen/codegen_test.go` | ✅ Exists |
-| 4 | `pkg/codegen/exception.go` (inline) | ✅ Tested via codegen_test |
-| 5 | `pkg/analysis/summary_test.go` | ✅ Complete (206 lines) |
-| 6 | `pkg/analysis/concurrent_test.go` | ✅ Complete (288 lines) |
-| 7 | `pkg/analysis/reuse_test.go` | ✅ Complete (296 lines) |
+### 3.3 Pattern Matching Implementation
 
-### Integration Tests (Status)
-| Test | Status | Description |
-|------|--------|-------------|
-| `test/backedge_integration_test.go` | ✅ Exists | Weak edge handling |
-| `test/memory_integration_test.go` | ⚠️ Needed | End-to-end memory validation |
-| Concurrent integration | ⚠️ Needed | Goroutines + channels |
-| Reuse integration | ⚠️ Needed | FBIP optimization validation |
+[Go code removed]
 
-### Validation Checklist
-- [ ] All generated C must pass `valgrind --leak-check=full`
-- [ ] Concurrent code must pass ThreadSanitizer
-- [ ] Benchmark suite comparing before/after optimization
-- [ ] Stress test for arena/SCC cycle handling
+### 3.4 Multiple Dispatch
 
----
+[Go code removed]
 
-## Summary
+### 3.5 Type System
 
-### Phase Status Overview
+[Go code removed]
 
-| Phase | Focus | Implementation | Integration | Tests |
-|-------|-------|----------------|-------------|-------|
-| 1 | deftype wiring | ✅ Complete | ✅ Complete | ✅ |
-| 2 | Back-edge heuristics | ✅ Complete | ✅ Complete | ⚠️ |
-| 3 | Codegen weak fields | ✅ Complete | ✅ Complete | ✅ |
-| 4 | Exception landing pads | ✅ Complete | ✅ Complete | ✅ |
-| 5 | Interprocedural analysis | ✅ Complete | ✅ Complete | ✅ |
-| 6 | Concurrency ownership | ✅ Complete | ✅ Complete | ✅ |
-| 7 | Shape routing & Perceus | ✅ Complete | ✅ Complete | ✅ |
-| 8 | Minor gaps | ✅ Complete | ✅ Complete | ✅ |
-
-### What's Done ✅ ALL COMPLETE
-- All 8 phases have complete implementations AND integration
-- Exception handling fully integrated (setjmp/longjmp)
-- Perceus runtime integrated (reuse_as_* functions)
-- Concurrency runtime integrated (atomic_inc_ref, channels, goroutines)
-- DPS runtime integrated (map_into, filter_into, append_into)
-- CodeGenerator wired to all analyzers with helper methods
-- Comprehensive test coverage for all phases
-
-### What's Remaining
-Only optional future optimizations:
-- O.1: Query SummaryRegistry in escape analysis
-- O.2: Generate DPS variants for tail-recursive functions
-- O.3: Use TypeRegistry in shape analysis
-
-**Critical Path**: ✅ Complete (Phases 1 → 2 → 3 → 4)
-**Optimization Path**: ✅ Complete (Phases 5 → 6 → 7)
-
----
-
-## NOT Included (Deferred)
-
-- Tensor/libtorch integration (see LIBTORCH_PLAN.md)
-- HVM4 interaction nets
-- De Bruijn indices
-
----
-
-## Future: Pika Parser with Lisp Semantics
-
-**Goal**: Add a user-friendly surface syntax while preserving homoiconicity and tower compatibility.
-
-### Concept
-
-Traditional Lisp uses S-expressions where lists ARE code. Pika + Lisp semantics uses AST nodes as first-class data:
+### 3.6 Files to Modify
 
 ```
-┌─────────────────────────────────────────────────┐
-│  S-expr Lisp:  (+ 1 2) is a list AND addition   │
-├─────────────────────────────────────────────────┤
-│  Pika + Lisp:  1 + 2 produces AST node data     │
-│                BinOpExpr('+, IntExpr(1), ...)   │
-└─────────────────────────────────────────────────┘
+pkg/eval/eval.go        # Major rewrite
+pkg/eval/pattern.go     # Pattern matching (expand)
+pkg/eval/dispatch.go    # New file for multiple dispatch
+pkg/eval/types.go       # New file for type system
+pkg/eval/primitives.go  # Update primitives
 ```
 
-### Why This Works with the Tower
+---
 
-- Code is still data (AST nodes instead of lists)
-- `quote` returns AST nodes, not strings
-- `unquote` (~) splices values into AST
-- Pattern matching on code structure works naturally
-- `lift`/`run`/`EM` operate on AST nodes
+## Phase 4: Define Form Implementation
 
-### Surface Syntax Examples
+### 4.1 Unified Define Syntax
 
+[Go code removed]
+
+---
+
+## Phase 5: Let Form Implementation
+
+### 5.1 Let Modifiers
+
+[Go code removed]
+
+---
+
+## Phase 6: Hygienic Macros
+
+### 6.1 Syntax Objects
+
+[Go code removed]
+
+### 6.2 Macro Expansion
+
+[Go code removed]
+
+---
+
+## Phase 7: Module System
+
+### 7.1 Module Structure
+
+[Go code removed]
+
+### 7.2 Module Forms
+
+```lisp
+(module MyModule
+  (export f1 f2 MyType)
+
+  (import [OtherModule :only (helper)])
+
+  (define (f1 x) ...)
+  (define (f2 y) ...))
+
+(import MyModule)
+(import [MyModule :as M])
+(import [MyModule :only (f1)])
 ```
--- Function definition
-def fact(n) =
-  if n == 0 then 1
-  else n * fact(n - 1)
 
--- Desugars to: (define (fact n) (if (= n 0) 1 (* n (fact (- n 1)))))
+---
 
--- Type definition with weak annotation
-type DList {
-  value: int
-  next: DList
-  prev: DList :weak
+## Phase 8: Concurrency
+
+### 8.1 Green Threads
+
+[Go code removed]
+
+### 8.2 Channels
+
+[Go code removed]
+
+---
+
+## Phase 9: Code Generation Updates
+
+### 9.1 Array Code Gen
+
+```c
+// [1 2 3] becomes:
+OmniArray* arr = omni_array_new(3);
+omni_array_set(arr, 0, mk_int(1));
+omni_array_set(arr, 1, mk_int(2));
+omni_array_set(arr, 2, mk_int(3));
+```
+
+### 9.2 Struct Code Gen
+
+```c
+// (Point 10.0 20.0) becomes:
+Obj* point = mk_struct("Point", 2);
+struct_set_field(point, 0, mk_float(10.0));
+struct_set_field(point, 1, mk_float(20.0));
+```
+
+### 9.3 Match Code Gen
+
+```c
+// Pattern matching becomes switch/if chains
+switch (get_type(value)) {
+    case TYPE_INT:
+        if (get_int(value) == 0) { ... }
+        break;
+    case TYPE_STRUCT:
+        if (strcmp(get_struct_name(value), "Point") == 0) {
+            Obj* x = struct_get_field(value, 0);
+            Obj* y = struct_get_field(value, 1);
+            ...
+        }
+        break;
 }
-
--- Desugars to: (deftype DList (value int) (next DList) (prev DList :weak))
-
--- Quoting produces AST data
-let code = quote(x => x + 1)
--- code = LamExpr(['x], BinOpExpr('+, SymExpr('x), IntExpr(1)))
-
--- Pattern matching on code
-def simplify(expr) =
-  match expr {
-    BinOpExpr('+, IntExpr(0), x) => x      -- 0 + x → x
-    BinOpExpr('+, IntExpr(n), IntExpr(m)) => IntExpr(n + m)  -- constant fold
-    _ => expr
-  }
-
--- Staging with unquote
-def staged_power(n) =
-  quote(x => ~(fold n (fn acc => quote(~acc * x)) quote(1)))
 ```
 
-### Implementation Tasks
+---
 
-| Task | File | Description |
-|------|------|-------------|
-| P.1 | `pkg/ast/expr.go` | Define AST node types using deftype |
-| P.2 | `pkg/parser/pika.go` | Implement Pika parsing algorithm |
-| P.3 | `pkg/parser/grammar.go` | Define OmniLisp surface grammar |
-| P.4 | `pkg/parser/desugar.go` | Transform Pika AST → OmniLisp AST nodes |
-| P.5 | `pkg/eval/quote.go` | Implement quote/unquote for AST construction |
-| P.6 | `pkg/eval/match.go` | Pattern matching on AST nodes |
-| P.7 | `pkg/eval/eval.go` | Extend eval to interpret AST nodes |
+## Implementation Order
 
-### AST Node Types
+### Phase 1: Parser Foundation (C) ✅
+- [ ] Implement tokenizer in C (`src/runtime/reader/`)
+- [ ] Implement array literal parsing `[]`
+- [ ] Implement type literal parsing `{}`
+- [ ] Implement dict literal parsing `#{}`
+- [ ] Implement dot notation `obj.field`
+- [ ] Implement string interpolation
+- [ ] Bind `omni_read` to runtime
 
-```scheme
-;; Core expression types (defined using deftype)
-(deftype Expr (tag sym) (data Obj))
+### Phase 2: AST Extensions ✅ COMPLETE
+- [x] Add new Value tags (TArray, TDict, TTuple, etc.)
+- [x] Implement constructors and predicates
+- [x] Add type annotation structures
+- [x] AST tests
 
-(deftype IntExpr (value int))
-(deftype FloatExpr (value float))
-(deftype SymExpr (name sym))
-(deftype BinOpExpr (op sym) (left Expr) (right Expr))
-(deftype UnaryExpr (op sym) (arg Expr))
-(deftype AppExpr (fn Expr) (args List))
-(deftype LamExpr (params List) (body Expr))
-(deftype IfExpr (cond Expr) (then Expr) (else Expr))
-(deftype LetExpr (bindings List) (body Expr))
-(deftype QuoteExpr (expr Expr))
-(deftype UnquoteExpr (expr Expr))
-(deftype MatchExpr (scrutinee Expr) (cases List))
-```
+### Phase 3: Evaluator Primitives ✅ COMPLETE
+- [x] Array operations (make-array, array-ref, etc.)
+- [x] Dict operations (make-dict, dict-ref, etc.)
+- [x] Tuple operations
+- [x] Keyword operations
+- [x] Nothing operations
+- [x] Generic get for dot notation
 
-### Pika Algorithm Key Properties
+### Phase 4: Pattern Matching ✅ COMPLETE
+- [x] Array patterns `[a b .. rest]`
+- [x] Dict patterns `#{:key pat}`
+- [x] Predicate patterns `(? pred)`
+- [x] Guards `:when`
+- [x] OmniLisp branch syntax `[pattern result]`
 
-1. **Right-to-left parsing** - Natural bottom-up construction
-2. **Left recursion handling** - `a + b + c` parses correctly
-3. **O(n) complexity** - Linear time for unambiguous grammars
-4. **Error recovery** - Better error messages than recursive descent
+### Phase 5: Multiple Dispatch ✅ COMPLETE
+- [x] Type registry (abstract, concrete, parametric)
+- [x] Subtype checking
+- [x] Multiple dispatch implementation
+- [x] Method definition and lookup
+- [x] `(define (f [x {Type}]) ...)` syntax
 
-### Architecture
+### Phase 6: Module System ✅ COMPLETE
+- [x] `(module Name (export ...) body)`
+- [x] `(import Module)`
+- [x] `:as`, `:only`, `:except`, `:refer` modifiers
+- [x] Qualified name lookup
 
-```
-User Input ──► Pika Parser ──► AST Nodes ──► Tower of Interpreters
-    │              │              │                   │
-"1 + 2"      PikaNode(...)   BinOpExpr(...)    eval/lift/run
-                                  │
-                                  └── First-class data, quotable
-```
+### Phase 7: Hygienic Macros ✅ COMPLETE
+- [x] `(define [macro name] (params) body)`
+- [x] Syntax objects with lexical context
+- [x] `#'` / `syntax-quote`
+- [x] `~` / `unquote`
+- [x] `~@` / `unquote-splicing`
 
-### Acceptance Criteria
+### Phase 8: Let Modifiers ✅ COMPLETE
+- [x] Array-style bindings `[x 1 y 2]`
+- [x] `:seq` modifier (sequential binding)
+- [x] `:rec` modifier (recursive binding)
+- [x] Named let `(let loop [i 0] ...)`
 
-- [ ] `def f(x) = x + 1` parses and evaluates correctly
-- [ ] `quote(1 + 2)` returns `BinOpExpr('+, IntExpr(1), IntExpr(2))`
-- [ ] `match expr { BinOpExpr(...) => ... }` works
-- [ ] `~x` (unquote) splices values into quoted code
-- [ ] Tower operations (lift/run/EM) work with AST nodes
-- [ ] Error messages include line/column information
+### Phase 9: Code Generation ✅ COMPLETE
+- [x] Update codegen for new AST
+- [x] Array/Dict/Tuple code generation
+- [x] Keyword/Nothing code generation
+- [x] Type literal code generation
 
-### References
+### Phase 10: Tower Semantics ✅ COMPLETE
+- [x] `lift` - value to code
+- [x] `run` - execute code at base
+- [x] `EM` - escape to meta
+- [x] `shift` - go up n levels
+- [x] Handler system (get-meta, set-meta!, with-handlers)
 
-- [Pika Parsing Paper](https://arxiv.org/abs/2005.06444) - Campagnola, 2020
-- [Sweet Expressions (SRFI-110)](https://srfi.schemers.org/srfi-110/) - Readable Lisp
-- [Julia Metaprogramming](https://docs.julialang.org/en/v1/manual/metaprogramming/) - AST as data
-- [Elixir Macros](https://elixir-lang.org/getting-started/meta/macros.html) - Quote/unquote model
+### Pending
+- [ ] Struct/Enum code generation
+- [ ] Error messages polish
+- [ ] Documentation
+- [ ] Performance tuning
+- [ ] Full test suite
+
+---
+
+## File Change Summary
+
+### Complete Rewrites
+- `pkg/eval/eval.go` - New evaluator core
+
+### New Implementations (C)
+- `src/runtime/reader/pika.c` - C Parser (Pika)
+- `src/runtime/reader/pika.h` - C Parser Headers
+
+### Major Modifications
+- `pkg/ast/value.go` - New types
+- `pkg/eval/primitives.go` - New operations
+- `pkg/codegen/codegen.go` - New constructs
+
+### New Files
+- `pkg/eval/dispatch.go` - Multiple dispatch
+- `pkg/eval/types.go` - Type system
+- `pkg/eval/module.go` - Module system
+- `pkg/eval/macro.go` - Hygienic macros
+- `pkg/ast/types.go` - Type structures
+
+### Unchanged
+- `runtime/src/*.c` - C runtime (no changes)
+- `runtime/tests/*.c` - Runtime tests (no changes)
+
+---
+
+## Verification Checklist
+
+### Parser (C)
+- [ ] `()` parses as forms
+- [ ] `[]` parses as arrays/bindings
+- [ ] `{}` parses as type forms
+- [ ] `#{}` parses as dicts
+- [ ] `:symbol` shorthand works
+- [ ] `$interpolation` works
+- [ ] `obj.field` parses correctly
+- [ ] `.field` creates accessor lambda
+
+### Evaluator ✅
+- [x] `define` handles all cases
+- [x] `let` with `:seq`, `:rec` works
+- [x] Named `let` (loop) works
+- [x] `match` with patterns works
+- [x] Guards (`:when`) work
+- [x] Multiple dispatch works
+- [x] Type hierarchy respects
+
+### Types (Partial)
+- [x] Abstract types define hierarchy
+- [ ] Structs instantiate correctly
+- [ ] Enums with data work
+- [x] Parametric types work (basic)
+- [x] Optional type annotations work
+
+### Code Gen ✅
+- [x] Arrays generate correct C
+- [x] Dicts generate correct C
+- [x] Tuples generate correct C
+- [ ] Structs generate correct C
+- [ ] Match generates efficient code
+- [x] ASAP memory management preserved
+
+### Tower Semantics ✅
+- [x] `lift` works
+- [x] `run` works
+- [x] `EM` works
+- [x] Handler system works
+- [x] `with-handlers` scoping works
