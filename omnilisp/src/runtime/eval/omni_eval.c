@@ -46,6 +46,8 @@ static Value* eval_defeffect(Value* args, Env* env);
 static Value* eval_handle(Value* args, Env* env);
 static Value* eval_perform(Value* args, Env* env);
 static Value* eval_resume(Value* args, Env* env);
+static Value* eval_try_catch(Value* args, Env* env);
+static Value* eval_with_open_file(Value* args, Env* env);
 
 // Effect type system - forward declarations for (define {effect ...})
 typedef enum {
@@ -512,12 +514,15 @@ static int is_special_form(Value* sym) {
         "prompt", "control",  // Delimited continuations
         "handler-case", "handler-bind", "restart-case", "signal",  // Condition system
         "invoke-restart", "find-restart",  // Restart invocation
+        "try",  // try/catch/finally
         "defeffect", "handle", "perform", "resume",  // Effect system (algebraic effects)
         "with-restarts", "call-restart",  // CL-style restart compatibility via effects
         "effect-trace", "effect-stack",  // Effect debugging
         "call-stack", "stack-trace",  // Call stack debugging
         "with-fibers",  // Fiber scoped construct
+        "with-open-file",  // File I/O with auto-close
         "|>", "pipe",  // Pipe/threading operator
+        "named-tuple",  // Named tuple literal
         NULL
     };
     for (int i = 0; forms[i]; i++) {
@@ -547,6 +552,9 @@ Value* omni_eval(Value* expr, Env* env) {
             if (strcmp(expr->s, "true") == 0) return mk_sym("true");
             if (strcmp(expr->s, "false") == 0) return mk_sym("false");
             if (strcmp(expr->s, "nothing") == 0) return mk_nothing();
+
+            // Keywords (symbols starting with :) are self-evaluating
+            if (expr->s[0] == ':') return expr;
 
             // Environment lookup
             Value* value = env_lookup(env, expr);
@@ -824,6 +832,40 @@ static Value* eval_special_form(Value* op, Value* args, Env* env) {
     if (strcmp(name, "signal") == 0) return eval_signal(args, env);
     if (strcmp(name, "invoke-restart") == 0) return eval_invoke_restart(args, env);
     if (strcmp(name, "find-restart") == 0) return eval_find_restart(args, env);
+
+    // try/catch/finally
+    if (strcmp(name, "try") == 0) return eval_try_catch(args, env);
+
+    // with-open-file
+    if (strcmp(name, "with-open-file") == 0) return eval_with_open_file(args, env);
+
+    // named-tuple special form
+    if (strcmp(name, "named-tuple") == 0) {
+        // (named-tuple [x 1] [y 2]) -> (__named_tuple__ (x . 1) (y . 2))
+        Value* entries = mk_nil();
+        Value** tail = &entries;
+
+        while (!is_nil(args)) {
+            Value* item = car(args);
+            // item should be (array name value) form where [x 1] parses as (array x 1)
+            if (item && item->tag == T_CELL && car(item) && car(item)->tag == T_SYM &&
+                strcmp(car(item)->s, "array") == 0) {
+                Value* name_sym = car(cdr(item));
+                Value* value_expr = car(cdr(cdr(item)));
+                if (name_sym && name_sym->tag == T_SYM) {
+                    // Evaluate only the value, not the name
+                    Value* value = omni_eval(value_expr, env);
+                    if (is_error(value)) return value;
+                    // Create (name . value) pair
+                    *tail = mk_cell(mk_cell(name_sym, value), mk_nil());
+                    tail = &((*tail)->cell.cdr);
+                }
+            }
+            args = cdr(args);
+        }
+
+        return mk_cell(mk_sym("__named_tuple__"), entries);
+    }
 
     // Effect system (algebraic effects)
     if (strcmp(name, "defeffect") == 0) return eval_defeffect(args, env);
@@ -1516,6 +1558,72 @@ static Value* eval_define(Value* args, Env* env) {
                 // Return the effect name symbol
                 return effect_name;
             }
+        }
+
+        // Check for destructuring pattern: (define [a b c] value)
+        // [a b c] parses as (array a b c) where first element is not a special keyword
+        if (head && head->tag == T_SYM && strcmp(head->s, "array") == 0) {
+            // This is a destructuring pattern
+            Value* pattern = cdr(first);  // Skip "array" marker
+            Value* value_expr = car(cdr(args));
+            Value* value = omni_eval(value_expr, env);
+            if (is_error(value)) return value;
+
+            // Bind each variable in the pattern
+            int index = 0;
+            Value* dest_p = pattern;
+            while (!is_nil(dest_p)) {
+                Value* var_name = car(dest_p);
+                if (!var_name || var_name->tag != T_SYM) {
+                    return mk_error("define: destructuring pattern must contain symbols");
+                }
+
+                // Handle rest pattern
+                if (strcmp(var_name->s, "..") == 0) {
+                    // Bind rest of values to rest_name
+                    dest_p = cdr(dest_p);
+                    if (is_nil(dest_p)) {
+                        return mk_error("define: expected name after ..");
+                    }
+                    Value* rest_name = car(dest_p);
+                    if (!rest_name || rest_name->tag != T_SYM) {
+                        return mk_error("define: expected symbol after ..");
+                    }
+
+                    // Collect remaining values
+                    Value* rest_values = mk_nil();
+                    Value** rest_tail = &rest_values;
+                    Value* v = value;
+                    int skip = index;
+                    while (!is_nil(v) && skip > 0) {
+                        v = cdr(v);
+                        skip--;
+                    }
+                    while (!is_nil(v)) {
+                        *rest_tail = mk_cell(car(v), mk_nil());
+                        rest_tail = &((*rest_tail)->cell.cdr);
+                        v = cdr(v);
+                    }
+                    env_define(env, rest_name, rest_values);
+                    break;
+                }
+
+                // Get value at index
+                Value* v = value;
+                int i = index;
+                while (!is_nil(v) && i > 0) {
+                    v = cdr(v);
+                    i--;
+                }
+                Value* elem_val = is_nil(v) ? mk_nothing() : car(v);
+                env_define(env, var_name, elem_val);
+
+                dest_p = cdr(dest_p);
+                index++;
+            }
+
+            // Return first variable name
+            return car(pattern);
         }
 
         // Regular function definition
@@ -2794,6 +2902,17 @@ static Value* prim_nothing(Value* args) {
     return mk_sym((v && v->tag == T_NOTHING) ? "true" : "false");
 }
 
+// error - create an error value with a message
+static Value* prim_error(Value* args) {
+    Value* msg = car(args);
+    if (msg && is_string(msg)) {
+        return mk_error(msg->str.data);
+    } else if (msg && msg->tag == T_SYM) {
+        return mk_error(msg->s);
+    }
+    return mk_error("error");
+}
+
 // empty? - returns true for empty list or empty string
 static Value* prim_empty(Value* args) {
     Value* v = car(args);
@@ -2861,6 +2980,87 @@ static Value* prim_string_append(Value* args) {
     Value* result = mk_string(data, len);
     free(data);
     return result;
+}
+
+// Helper to convert value to string representation for str interpolation
+static void value_to_str(Value* v, DString* ds);
+
+static Value* prim_str(Value* args) {
+    // Convert all arguments to strings and concatenate
+    DString* ds = ds_new();
+    if (!ds) return mk_error("OOM");
+
+    while (!is_nil(args)) {
+        Value* v = car(args);
+        value_to_str(v, ds);
+        args = cdr(args);
+    }
+
+    size_t len = ds_len(ds);
+    char* data = ds_take(ds);
+    Value* result = mk_string(data, len);
+    free(data);
+    return result;
+}
+
+static void value_to_str(Value* v, DString* ds) {
+    if (!v) {
+        ds_append(ds, "nil");
+        return;
+    }
+
+    char buf[64];
+    switch (v->tag) {
+        case T_INT:
+            snprintf(buf, sizeof(buf), "%ld", v->i);
+            ds_append(ds, buf);
+            break;
+        case T_FLOAT:
+            snprintf(buf, sizeof(buf), "%g", v->f);
+            ds_append(ds, buf);
+            break;
+        case T_STRING:
+            ds_append_len(ds, string_data(v), string_len(v));
+            break;
+        case T_CHAR:
+            if (v->codepoint < 128) {
+                buf[0] = (char)v->codepoint;
+                buf[1] = '\0';
+                ds_append(ds, buf);
+            } else {
+                // UTF-8 encode
+                if (v->codepoint < 0x800) {
+                    buf[0] = 0xC0 | (v->codepoint >> 6);
+                    buf[1] = 0x80 | (v->codepoint & 0x3F);
+                    buf[2] = '\0';
+                } else {
+                    buf[0] = 0xE0 | (v->codepoint >> 12);
+                    buf[1] = 0x80 | ((v->codepoint >> 6) & 0x3F);
+                    buf[2] = 0x80 | (v->codepoint & 0x3F);
+                    buf[3] = '\0';
+                }
+                ds_append(ds, buf);
+            }
+            break;
+        case T_SYM:
+            ds_append(ds, v->s);
+            break;
+        case T_NIL:
+            ds_append(ds, "()");
+            break;
+        case T_NOTHING:
+            ds_append(ds, "nothing");
+            break;
+        case T_ERROR:
+            ds_append(ds, "<error: ");
+            ds_append(ds, v->s);
+            ds_append(ds, ">");
+            break;
+        default:
+            snprintf(buf, sizeof(buf), "<object>");
+            ds_append(ds, buf);
+            break;
+    }
 }
 
 static Value* prim_string_ref(Value* args) {
@@ -3339,6 +3539,144 @@ static Value* prim_array_slice(Value* args) {
     }
 
     return mk_cell(mk_sym("__array__"), result);
+}
+
+// ===== Tuple primitives =====
+
+// Helper: check if value is a tuple (__tuple__ marker)
+static int is_tuple(Value* v) {
+    return v && v->tag == T_CELL && car(v) && car(v)->tag == T_SYM &&
+           strcmp(car(v)->s, "__tuple__") == 0;
+}
+
+// Helper: get tuple elements (skips __tuple__ marker)
+static Value* tuple_elements(Value* tuple) {
+    return is_tuple(tuple) ? cdr(tuple) : mk_nil();
+}
+
+static Value* prim_tuple(Value* args) {
+    // Build tuple from args: (tuple 1 2 3) -> (__tuple__ 1 2 3)
+    return mk_cell(mk_sym("__tuple__"), args);
+}
+
+static Value* prim_tuple_q(Value* args) {
+    return mk_sym(is_tuple(car(args)) ? "true" : "false");
+}
+
+static Value* prim_tuple_ref(Value* args) {
+    Value* tuple = car(args);
+    Value* idx = car(cdr(args));
+    if (!is_tuple(tuple)) return mk_error("tuple-ref: expected tuple");
+    if (!idx || idx->tag != T_INT) return mk_error("tuple-ref: expected integer index");
+
+    long i = idx->i;
+    if (i < 0) return mk_error("tuple-ref: negative index");
+
+    Value* elems = tuple_elements(tuple);
+    while (i > 0 && !is_nil(elems)) {
+        elems = cdr(elems);
+        i--;
+    }
+    if (is_nil(elems)) return mk_error("tuple-ref: index out of bounds");
+    return car(elems);
+}
+
+static Value* prim_tuple_length(Value* args) {
+    Value* tuple = car(args);
+    if (!is_tuple(tuple)) return mk_error("tuple-length: expected tuple");
+
+    long len = 0;
+    Value* elems = tuple_elements(tuple);
+    while (!is_nil(elems)) {
+        len++;
+        elems = cdr(elems);
+    }
+    return mk_int(len);
+}
+
+// ===== Named Tuple primitives =====
+
+// Helper: check if value is a named tuple (__named_tuple__ marker)
+static int is_named_tuple(Value* v) {
+    return v && v->tag == T_CELL && car(v) && car(v)->tag == T_SYM &&
+           strcmp(car(v)->s, "__named_tuple__") == 0;
+}
+
+static Value* prim_named_tuple(Value* args) {
+    // Build named tuple from args: (named-tuple [x 1] [y 2])
+    // Each [name value] parses as (array name value)
+    Value* entries = mk_nil();
+    Value** tail = &entries;
+
+    while (!is_nil(args)) {
+        Value* item = car(args);
+        // item should be (array name value) form
+        if (item && item->tag == T_CELL && car(item) && car(item)->tag == T_SYM &&
+            strcmp(car(item)->s, "array") == 0) {
+            Value* name = car(cdr(item));
+            Value* value = car(cdr(cdr(item)));
+            if (name && name->tag == T_SYM) {
+                // Create (name . value) pair
+                *tail = mk_cell(mk_cell(name, value), mk_nil());
+                tail = &((*tail)->cell.cdr);
+            }
+        }
+        args = cdr(args);
+    }
+
+    return mk_cell(mk_sym("__named_tuple__"), entries);
+}
+
+static Value* prim_named_tuple_q(Value* args) {
+    return mk_sym(is_named_tuple(car(args)) ? "true" : "false");
+}
+
+static Value* prim_named_tuple_ref(Value* args) {
+    Value* nt = car(args);
+    Value* key = car(cdr(args));
+    if (!is_named_tuple(nt)) return mk_error("named-tuple-ref: expected named-tuple");
+
+    Value* entries = cdr(nt);  // Skip marker
+    while (!is_nil(entries)) {
+        Value* pair = car(entries);
+        Value* k = car(pair);
+        if (k && key && k->tag == T_SYM && key->tag == T_SYM) {
+            if (strcmp(k->s, key->s) == 0) return cdr(pair);
+        }
+        entries = cdr(entries);
+    }
+    return mk_nothing();  // Key not found
+}
+
+// ===== Partial Application =====
+
+// Partial application creates a closure that captures fn and initial args
+static Value* prim_partial(Value* args) {
+    // (partial fn arg1 arg2 ...) -> closure that appends remaining args and calls fn
+    Value* fn = car(args);
+    Value* captured_args = cdr(args);
+
+    if (!fn) return mk_error("partial: expected function");
+
+    // Create a dict to hold the partial application data
+    // Structure: (__partial__ fn captured_args)
+    return mk_cell(mk_sym("__partial__"), mk_cell(fn, mk_cell(captured_args, mk_nil())));
+}
+
+static Value* prim_partial_q(Value* args) {
+    Value* v = car(args);
+    int is_partial = v && v->tag == T_CELL && car(v) && car(v)->tag == T_SYM &&
+                     strcmp(car(v)->s, "__partial__") == 0;
+    return mk_sym(is_partial ? "true" : "false");
+}
+
+// ===== compose functions =====
+static Value* prim_compose(Value* args) {
+    // (compose f g) -> (__compose__ f g)
+    Value* f = car(args);
+    Value* g = car(cdr(args));
+    if (!f || !g) return mk_error("compose: expected two functions");
+    return mk_cell(mk_sym("__compose__"), mk_cell(f, mk_cell(g, mk_nil())));
 }
 
 // ===== Dict primitives =====
@@ -5632,6 +5970,7 @@ Env* omni_env_init(void) {
     register_primitive("cdr", 1, prim_cdr);
     register_primitive("null?", 1, prim_null);
     register_primitive("nothing?", 1, prim_nothing);
+    register_primitive("error", 1, prim_error);
     register_primitive("empty?", 1, prim_empty);
     register_primitive("list", -1, prim_list);
 
@@ -5641,6 +5980,7 @@ Env* omni_env_init(void) {
     register_primitive("symbol?", 1, prim_symbol_q);
     register_primitive("string-length", 1, prim_string_length);
     register_primitive("string-append", -1, prim_string_append);
+    register_primitive("str", -1, prim_str);  // String interpolation helper
     register_primitive("string-ref", 2, prim_string_ref);
     register_primitive("substring", 3, prim_substring);
     register_primitive("string->list", 1, prim_string_to_list);
@@ -5687,6 +6027,22 @@ Env* omni_env_init(void) {
     register_primitive("array-ref", 2, prim_array_ref);
     register_primitive("array-set!", 3, prim_array_set);
     register_primitive("array-slice", -1, prim_array_slice);
+
+    // Tuple primitives
+    register_primitive("tuple", -1, prim_tuple);
+    register_primitive("tuple?", 1, prim_tuple_q);
+    register_primitive("tuple-ref", 2, prim_tuple_ref);
+    register_primitive("tuple-length", 1, prim_tuple_length);
+
+    // Named-tuple primitives
+    register_primitive("named-tuple", -1, prim_named_tuple);
+    register_primitive("named-tuple?", 1, prim_named_tuple_q);
+    register_primitive("named-tuple-ref", 2, prim_named_tuple_ref);
+
+    // Functional primitives
+    register_primitive("partial", -1, prim_partial);
+    register_primitive("partial?", 1, prim_partial_q);
+    register_primitive("compose", 2, prim_compose);
 
     // Dict primitives
     register_primitive("dict?", 1, prim_dict_q);
@@ -5811,6 +6167,80 @@ Env* omni_env_init(void) {
 
 // Fill in default values for missing arguments
 // Returns a new args list with defaults filled in
+// Helper: check if a value is a keyword symbol (starts with :)
+static int is_keyword_sym(Value* v) {
+    return v && v->tag == T_SYM && v->s[0] == ':';
+}
+
+// Helper: get the param name from a keyword arg (:foo) -> "foo"
+static const char* get_keyword_name(Value* v) {
+    if (!is_keyword_sym(v)) return NULL;
+    return v->s + 1;  // Skip the :
+}
+
+// Helper: extract keyword args from args list
+// Returns a new list of positional args, and stores keyword args in *kw_out
+// Keyword args are in pairs: :name value :name2 value2 ...
+static Value* extract_keyword_args(Value* args, Value** kw_out) {
+    Value* positional = mk_nil();
+    Value** pos_tail = &positional;
+    Value* keywords = mk_nil();
+    Value** kw_tail = &keywords;
+
+    while (!is_nil(args)) {
+        Value* arg = car(args);
+
+        // Check if this is a keyword (symbol like :foo)
+        if (is_keyword_sym(arg)) {
+            // Get the keyword name and value
+            args = cdr(args);
+            if (is_nil(args)) break;  // No value for keyword
+
+            Value* kw_val = car(args);
+            args = cdr(args);
+
+            // Store as (name . value) - extract name from :name symbol
+            Value* name_sym = mk_sym(get_keyword_name(arg));
+            Value* pair = mk_cell(name_sym, kw_val);  // (name . value)
+            *kw_tail = mk_cell(pair, mk_nil());
+            kw_tail = &((*kw_tail)->cell.cdr);
+        } else {
+            // Positional arg
+            *pos_tail = mk_cell(arg, mk_nil());
+            pos_tail = &((*pos_tail)->cell.cdr);
+            args = cdr(args);
+        }
+    }
+
+    *kw_out = keywords;
+    return positional;
+}
+
+// Helper: bind keyword args to environment by matching param names
+static void bind_keyword_args(Env* env, Value* params, Value* kw_args) {
+    while (!is_nil(kw_args)) {
+        Value* pair = car(kw_args);
+        Value* name = car(pair);
+        Value* value = cdr(pair);
+
+        // Check if this keyword matches a parameter
+        Value* p = params;
+        while (!is_nil(p)) {
+            Value* param = car(p);
+            if (param && param->tag == T_SYM && name && name->tag == T_SYM) {
+                if (strcmp(param->s, name->s) == 0) {
+                    // Match found - bind the value
+                    env_define(env, name, value);
+                    break;
+                }
+            }
+            p = cdr(p);
+        }
+
+        kw_args = cdr(kw_args);
+    }
+}
+
 static Value* fill_defaults(Value* params, Value* args, Value* defaults, Env* def_env) {
     Value* result = mk_nil();
     Value** tail = &result;
@@ -5879,10 +6309,14 @@ Value* omni_apply(Value* fn, Value* args, Env* env) {
             closure_env = global_env;
         }
 
-        // Fill in defaults for missing arguments
-        Value* effective_args = args;
+        // Extract keyword arguments from args
+        Value* kw_args = mk_nil();
+        Value* positional_args = extract_keyword_args(args, &kw_args);
+
+        // Fill in defaults for missing positional arguments
+        Value* effective_args = positional_args;
         if (fn->lam.defaults) {
-            effective_args = fill_defaults(fn->lam.params, args, fn->lam.defaults, closure_env);
+            effective_args = fill_defaults(fn->lam.params, positional_args, fn->lam.defaults, closure_env);
             if (is_error(effective_args)) {
                 call_stack_pop();
                 return effective_args;
@@ -5894,9 +6328,58 @@ Value* omni_apply(Value* fn, Value* args, Env* env) {
             call_stack_pop();
             return mk_error("OOM in apply");
         }
+
+        // Bind keyword arguments (overrides positional and defaults)
+        if (!is_nil(kw_args)) {
+            bind_keyword_args(call_env, fn->lam.params, kw_args);
+        }
+
         Value* result = omni_eval(fn->lam.body, call_env);
         call_stack_pop();
         return result;
+    }
+
+    // Partial application: (__partial__ fn captured_args)
+    if (fn->tag == T_CELL && car(fn) && car(fn)->tag == T_SYM &&
+        strcmp(car(fn)->s, "__partial__") == 0) {
+        Value* rest = cdr(fn);
+        Value* inner_fn = car(rest);
+        Value* captured = car(cdr(rest));
+
+        // Concatenate captured args with new args
+        Value* all_args = mk_nil();
+        Value** tail = &all_args;
+
+        // Add captured args first
+        while (!is_nil(captured)) {
+            *tail = mk_cell(car(captured), mk_nil());
+            tail = &((*tail)->cell.cdr);
+            captured = cdr(captured);
+        }
+
+        // Add new args
+        while (!is_nil(args)) {
+            *tail = mk_cell(car(args), mk_nil());
+            tail = &((*tail)->cell.cdr);
+            args = cdr(args);
+        }
+
+        return omni_apply(inner_fn, all_args, env);
+    }
+
+    // Compose: (__compose__ f g) => f(g(x))
+    if (fn->tag == T_CELL && car(fn) && car(fn)->tag == T_SYM &&
+        strcmp(car(fn)->s, "__compose__") == 0) {
+        Value* rest = cdr(fn);
+        Value* f = car(rest);
+        Value* g = car(cdr(rest));
+
+        // First apply g to args
+        Value* g_result = omni_apply(g, args, env);
+        if (is_error(g_result)) return g_result;
+
+        // Then apply f to g's result
+        return omni_apply(f, mk_cell(g_result, mk_nil()), env);
     }
 
     return mk_error("Not a function");
@@ -6157,6 +6640,165 @@ static Value* eval_handler_case(Value* args, Env* env) {
         pop_handler_frame();
         return result;
     }
+}
+
+/*
+ * (try expr
+ *   (catch e handler-body)
+ *   (finally cleanup-body))
+ *
+ * Simple try/catch/finally that wraps the condition system
+ */
+static Value* eval_try_catch(Value* args, Env* env) {
+    if (is_nil(args)) return mk_error("try: missing expression");
+
+    Value* expr = car(args);
+    Value* clauses = cdr(args);
+
+    // Find catch and finally clauses
+    Value* catch_var = NULL;
+    Value* catch_body = NULL;
+    Value* finally_body = NULL;
+
+    while (!is_nil(clauses)) {
+        Value* clause = car(clauses);
+        if (clause && clause->tag == T_CELL) {
+            Value* clause_head = car(clause);
+            if (clause_head && clause_head->tag == T_SYM) {
+                if (strcmp(clause_head->s, "catch") == 0) {
+                    catch_var = car(cdr(clause));
+                    catch_body = cdr(cdr(clause));
+                } else if (strcmp(clause_head->s, "finally") == 0) {
+                    finally_body = cdr(clause);
+                }
+            }
+        }
+        clauses = cdr(clauses);
+    }
+
+    // Build handler for catch clause
+    Value* handlers = mk_nil();
+    if (catch_var && catch_body) {
+        // Create a handler that binds the error to catch_var
+        Value* handler_entry = mk_cell(mk_sym(":error"),
+                                       mk_cell(catch_var, catch_body));
+        handlers = mk_cell(handler_entry, mk_nil());
+    }
+
+    // Push handler frame
+    HandlerFrame* frame = push_handler_frame(handlers);
+    if (!frame) return mk_error("try: out of memory");
+
+    Value* result = mk_nothing();
+    int caught = 0;
+
+    if (setjmp(frame->jmp) == 0) {
+        // Normal execution
+        result = omni_eval(expr, env);
+
+        // Check if result is an error that should be caught
+        if (result && result->tag == T_ERROR && catch_var && catch_body) {
+            caught = 1;
+            // Bind error to catch_var and evaluate catch_body
+            // Wrap the error as a string so it doesn't propagate through eval_list
+            Env* catch_env = env_new(env);
+            Value* error_val = mk_string_cstr(result->s);  // Convert error to string
+            env_define(catch_env, catch_var, error_val);
+
+            result = eval_do(catch_body, catch_env);
+        }
+    } else {
+        // Jumped from signal - error was caught
+        caught = 1;
+        result = frame->result;
+    }
+
+    pop_handler_frame();
+
+    // Execute finally block (always runs)
+    if (finally_body) {
+        Value* finally_result = eval_do(finally_body, env);
+        // finally result is discarded unless it's an error
+        if (is_error(finally_result)) {
+            return finally_result;
+        }
+    }
+
+    return result;
+}
+
+/*
+ * (with-open-file [f "filename" :mode] body...)
+ *
+ * Opens file, binds to f, executes body, closes file automatically
+ * Mode defaults to :read
+ */
+static Value* eval_with_open_file(Value* args, Env* env) {
+    if (is_nil(args)) return mk_error("with-open-file: missing binding");
+
+    Value* binding = car(args);
+    Value* body = cdr(args);
+
+    // binding should be [var filename] or [var filename :mode]
+    // which parses as (array var filename) or (array var filename :mode)
+    if (!binding || binding->tag != T_CELL) {
+        return mk_error("with-open-file: expected [var filename] binding");
+    }
+
+    Value* binding_head = car(binding);
+    if (!binding_head || binding_head->tag != T_SYM ||
+        strcmp(binding_head->s, "array") != 0) {
+        return mk_error("with-open-file: expected [var filename] binding");
+    }
+
+    Value* var = car(cdr(binding));
+    Value* filename_expr = car(cdr(cdr(binding)));
+    Value* mode_expr = car(cdr(cdr(cdr(binding))));
+
+    if (!var || var->tag != T_SYM) {
+        return mk_error("with-open-file: expected symbol as variable name");
+    }
+
+    // Evaluate filename
+    Value* filename = omni_eval(filename_expr, env);
+    if (is_error(filename)) return filename;
+
+    // Evaluate mode (default :read)
+    Value* mode = mk_sym(":read");
+    if (mode_expr && !is_nil(mode_expr)) {
+        mode = omni_eval(mode_expr, env);
+        if (is_error(mode)) return mode;
+    }
+
+    // Open the file
+    Value* open_args = mk_cell(filename, mk_cell(mode, mk_nil()));
+    Value* port = prim_open(open_args);
+    if (is_error(port)) return port;
+
+    // Create new environment with var bound to port
+    Env* body_env = env_new(env);
+    env_define(body_env, var, port);
+
+    // Execute body
+    Value* result = mk_nothing();
+    Value* error = NULL;
+
+    while (!is_nil(body)) {
+        result = omni_eval(car(body), body_env);
+        if (is_error(result)) {
+            error = result;
+            break;
+        }
+        body = cdr(body);
+    }
+
+    // Always close the port
+    prim_close(mk_cell(port, mk_nil()));
+
+    // Return error if one occurred
+    if (error) return error;
+
+    return result;
 }
 
 /*
