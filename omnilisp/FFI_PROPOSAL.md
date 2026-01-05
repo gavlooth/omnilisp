@@ -100,8 +100,8 @@ A comprehensive Foreign Function Interface design for Omnilisp, leveraging the C
 ;; Weak handle for callbacks
 {WeakHandle T}           ; Invalidates when target freed
 
-;; Nullable handle
-{Option {Handle T}}      ; May be null/invalid
+;; Nullable handle (wraps C NULL as None)
+{Option {Handle T}}      ; May be None (from C NULL)
 ```
 
 ---
@@ -175,8 +175,8 @@ Ownership is specified via metadata on parameters and return type:
   [flags {CInt}]
   -> {Result CInt CInt})  ; Ok(fd) or Err(errno)
 
-;; Null-returning function
-(define {extern fopen :from libc :null-on-error}
+;; C NULL-returning function (returns Nothing on NULL)
+(define {extern fopen :from libc :nothing-on-error}
   [path {CString}]
   [mode {CString}]
   -> {Option {Handle FILE}})
@@ -698,7 +698,7 @@ For replay and debugging:
 
   (define (query db sql-str)
     (with-ffi [stmt-ptr (ffi/alloc {CPtr})]
-      (let [rc (sqlite3_prepare_v2 db sql-str -1 stmt-ptr null)]
+      (let [rc (sqlite3_prepare_v2 db sql-str -1 stmt-ptr c-null)]
         (when (!= rc SQLITE_OK)
           (error "Prepare failed: $rc"))
         (let [stmt (deref stmt-ptr)

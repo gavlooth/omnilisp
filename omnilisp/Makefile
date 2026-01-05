@@ -54,7 +54,7 @@ $(LIBRARY): $(OBJS)
 	ar rcs $@ $^
 
 $(TARGET): $(LIBRARY) src/runtime/main.o
-	$(CC) $(CFLAGS) -o $@ src/runtime/main.o -L. -lomniruntime -ldl
+	$(CC) $(CFLAGS) -o $@ src/runtime/main.o -L. -lomniruntime -ldl -lm
 
 # Pattern rule for object files
 %.o: %.c

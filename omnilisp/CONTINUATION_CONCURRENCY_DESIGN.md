@@ -435,7 +435,7 @@ All built on `prompt`/`control` - no pthreads!
     (scheduler-loop)))
 
 (define (scheduler-loop)
-  (if (null? *run-queue*)
+  (if (empty? *run-queue*)
       'done
       (let ((task (dequeue!)))
         (set! *current-task* task)
@@ -472,7 +472,7 @@ All built on `prompt`/`control` - no pthreads!
 ;; Send - blocks if no receiver
 (define (chan-send ch val)
   (let ((receivers (chan-receivers ch)))
-    (if (null? receivers)
+    (if (empty? receivers)
         ;; No receiver waiting - park sender
         (control 'sched k
           (set-senders! ch (cons (cons k val) (chan-senders ch)))
@@ -485,7 +485,7 @@ All built on `prompt`/`control` - no pthreads!
 ;; Receive - blocks if no sender
 (define (chan-recv ch)
   (let ((senders (chan-senders ch)))
-    (if (null? senders)
+    (if (empty? senders)
         ;; No sender waiting - park receiver
         (control 'sched k
           (set-receivers! ch (cons k (chan-receivers ch)))
@@ -902,7 +902,7 @@ Task (80 bytes):
               (set! tasks (cons (spawn thunk) tasks))))
       ;; Wait for all tasks
       (for-each await-task tasks)
-      (if (null? errors)
+      (if (empty? errors)
           'ok
           (throw (cons 'nursery-errors errors))))))
 
@@ -970,7 +970,7 @@ With continuations, the iterator is just a suspended function:
 (define (range start end . step)
   (make-generator
     (lambda (yield)
-      (let ((s (if (null? step) 1 (car step))))
+      (let ((s (if (empty? step) 1 (car step))))
         (do ((i start (+ i s)))
             ((>= i end))
           (yield i))))))

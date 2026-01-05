@@ -51,7 +51,18 @@
     (join f)))
 (println join-result)
 
-;; Note: Nested with-fibers (fiber resuming fiber) is not supported
-;; due to single global fiber_resumer_ctx limitation
+(println "Test 5: Nested with-fibers")
+(define nested-result
+  (with-fibers
+    (define outer (fiber (lambda ()
+      (define inner-result
+        (with-fibers
+          (define inner (fiber (lambda () (* 5 5))))
+          (spawn inner)
+          (join inner)))
+      (+ inner-result 10))))
+    (spawn outer)
+    (join outer)))
+(println nested-result)
 
 (println "All with-fibers tests complete!")
