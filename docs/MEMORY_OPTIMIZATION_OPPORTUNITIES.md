@@ -53,3 +53,44 @@ Based on the v0.6.0 Component-Level Tethering architecture, the following optimi
     - **DAGs:** Eliminates 90%+ of atomic operations (internal links) and enables O(1) free.
     - **Cycles:** Eliminates overhead for clustered small cycles.
     - **Cache:** Perfect locality.
+
+## 7. Bit-Packed Object Headers
+**Target:** Runtime / Cache Efficiency
+**Problem:** The current `Obj` header is 32-40 bytes, containing redundant fields like `is_pair` and separate 4-byte integers for `tag`, `mark`, and `scc_id`.
+**Solution:**
+- Remove `is_pair` (redundant with `TAG_PAIR`).
+- Pack `tag` (8 bits), `scc_id` (16 bits), `flags` (8 bits), and `refcount` (32 bits) into a single 64-bit word.
+- Use `Generation` (16 bits) as a separate word.
+- **Benefit:** Reduces `Obj` size to 16-24 bytes, significantly improving cache line density for Cons cells and small objects.
+
+## 8. Atomic RC Elision (Thread-Local Fast Path)
+**Target:** Compiler / Performance
+**Problem:** The current runtime uses non-atomic RC by default, which is unsafe for multi-threading. Switching to atomic RC globally adds 2-5x overhead to RC operations.
+**Solution:**
+- Use the compiler's **Thread Locality Analysis**.
+- Emit `omni_inc_ref` (non-atomic) for proven `THREAD_LOCAL` variables.
+- Emit `omni_atomic_inc_ref` only for `THREAD_SHARED` variables.
+- **Benefit:** Retains C-level performance for thread-local logic while maintaining thread-safety for shared data.
+
+## 9. In-Place Slot Freelist
+**Target:** Runtime / Memory Efficiency
+**Problem:** The `SlotPool` maintains a separate `malloc`'d array of `Slot*` for its freelist.
+**Solution:**
+- When a slot is free, use its payload area to store the `next_free` pointer.
+- **Benefit:** Removes the need for a separate freelist array and the associated `realloc` calls during pool growth.
+
+## 10. Freelist Batching (Amortized Allocation)
+**Target:** Runtime / Throughput
+**Problem:** `free_obj` currently `malloc`s a `FreeNode` for every deferred free.
+**Solution:**
+- Allocate `FreeNode`s in blocks or use the `In-Place` strategy (Optimization #9) for the global deferred free list.
+- **Benefit:** Removes `malloc` from the deallocation hot path.
+
+## 11. Architectural Change: Hierarchical Slot Arenas
+**Target:** Architecture / Consistency
+**Problem:** Separate implementations for "Slot Pools" (generational) and "Arenas" (bulk-free) lead to code duplication and prevent generational safety for arena-allocated objects.
+**Solution:**
+- Unify all allocation under a block-based Slot system.
+- An **Arena** becomes a logical view over a set of Slot Blocks.
+- Closing an arena marks all its slots as `FREE` and increments their generations in bulk (vectorized).
+- **Benefit:** Provides `IPGE` (use-after-free protection) even for arena-allocated and stack-allocated objects, creating a unified safety model.
