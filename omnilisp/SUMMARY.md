@@ -8,10 +8,13 @@ See also:
 - `DESIGN_DECISIONS.md` for the decision log.
 
 ## Implemented (C Compiler)
-*   **Core syntax:** lists `(...)`, quote `'x`, comments `; ...`
-*   **Special forms:** `define`, `lambda`/`fn`, `let`, `let*`, `if`, `do`/`begin`
-*   **Bindings:** list-style `(let ((x 1) (y 2)) ...)` and array-style `(let [x 1 y 2] ...)`
-*   **Primitives:** `+ - * / %`, `< > <= >= =`, `cons car cdr null?`, `display print newline`
+*   **Core syntax:** lists `(...)`, arrays `[...]`, quote `'x`, comments `; ...`
+*   **Special forms:** `define`, `lambda`/`fn`, `let`, `let*`, `if`, `do`/`begin`, `match`, `try`/`catch`/`finally`, `with-open-file`
+*   **Bindings:** list-style `(let ((x 1) (y 2)) ...)`, array-style `(let [x 1 y 2] ...)`, destructuring `(define [a b c] xs)`
+*   **Parameters:** default values `[x default]`, keyword arguments `(f :arg value)`, variadic `.. rest`
+*   **Primitives:** `+ - * / %`, `< > <= >= =`, `cons car cdr empty?`, `print println`, `str`, `map filter reduce partial compose identity`
+*   **Data types:** tuples `(tuple ...)`, named-tuples `(named-tuple [x 1] ...)`, arrays, dicts, enums with data
+*   **Control:** `try`/`catch`/`finally` exceptions, `with-open-file` auto-close, fibers & channels
 *   **Truthiness:** only `false` and `nothing` are falsy; numeric `0` and empty lists are truthy
 
 ## Planned Design (Not Yet Implemented)

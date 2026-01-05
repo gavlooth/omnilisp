@@ -143,6 +143,9 @@ of this document describes the intended language design.
 **Binding forms**
 - List-style: `(let ((x 1) (y 2)) ...)`
 - Array-style: `(let [x 1 y 2] ...)` (used as a binding container)
+- Default parameters: `(define (f [x default]) ...)`
+- Keyword arguments: `(f :arg value)` - keywords are self-evaluating symbols
+- Destructuring: `(define [a b c] (list 1 2 3))` and `(define [x .. rest] xs)`
 
 **Literals**
 - Integers (decimal)
@@ -152,8 +155,13 @@ of this document describes the intended language design.
 **Primitives currently wired**
 - Arithmetic: `+`, `-`, `*`, `/`, `%`
 - Comparison: `<`, `>`, `<=`, `>=`, `=`
-- Lists: `cons`, `car`, `cdr`, `null?`
-- I/O: `display`, `print`, `newline`
+- Lists: `cons`, `car`, `cdr`, `empty?`, `list`, `length`
+- I/O: `display`, `print`, `println`, `newline`
+- Strings: `str`, `string-append`, `string-length`, `string-ref`, `substring`
+- Higher-order: `map`, `filter`, `reduce`, `range`, `partial`, `compose`, `identity`
+- Files: `open`, `close`, `read-line`, `read-all`, `write-string`, `write-line`
+- Tuples: `tuple`, `tuple?`, `tuple-ref`, `named-tuple`
+- Control: `try`/`catch`/`finally`, `with-open-file`, `error`
 
 **Truthiness**
 - Only `false` and `nothing` are falsy.
@@ -1011,8 +1019,8 @@ slice.(0)                ; Unchanged (slice is a copy)
 
 ;; Empty list
 (list)                   ; -> empty list (NOT nothing)
-(null? (list))           ; -> true
-(null? [])               ; -> false (use empty? for arrays)
+(empty? (list))          ; -> true
+(empty? [])              ; -> true (works for all collections)
 ```
 
 ### 8.6 Tuples
@@ -1522,7 +1530,7 @@ Tower semantics work with hygienic macros:
 ### Implemented
 - Parser: integers, symbols, lists `(...)`, arrays `[...]` (used for `let` bindings), quote `'`
 - Special forms: `define`, `lambda` / `fn`, `let`, `let*`, `if`, `do` / `begin`
-- Primitives: `+`, `-`, `*`, `/`, `%`, `<`, `>`, `<=`, `>=`, `=`, `cons`, `car`, `cdr`, `null?`
+- Primitives: `+`, `-`, `*`, `/`, `%`, `<`, `>`, `<=`, `>=`, `=`, `cons`, `car`, `cdr`, `empty?`
 - I/O: `display`, `print`, `newline`
 - ASAP analysis pass integrated into codegen for compile-time `free_obj` insertion
 
@@ -1728,12 +1736,12 @@ For non-tail recursion, use CPS transformation with `identity` as the final cont
 ```lisp
 ;; Non-tail recursion (stack grows with depth)
 (define (sum-list lst)
-  (if (null? lst) 0
+  (if (empty? lst) 0
       (+ (car lst) (sum-list (cdr lst)))))
 
 ;; CPS + trampoline (constant stack)
 (define (sum-list-k lst k)
-  (if (null? lst)
+  (if (empty? lst)
       (k 0)
       (bounce sum-list-k (cdr lst)
               (fn [rest] (k (+ (car lst) rest))))))

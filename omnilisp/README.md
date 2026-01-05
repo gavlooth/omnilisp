@@ -5,10 +5,13 @@
 The repo currently ships a small C compiler/runtime subset. The rest of the language features are the intended design.
 
 ## Current Implementation (C Compiler)
-*   **Core syntax:** lists `(...)`, quote `'x`, comments `; ...`
-*   **Special forms:** `define`, `lambda`/`fn`, `let`, `let*`, `if`, `do`/`begin`
-*   **Bindings:** list-style `(let ((x 1) (y 2)) ...)` and array-style `(let [x 1 y 2] ...)`
-*   **Primitives:** `+ - * / %`, `< > <= >= =`, `cons car cdr null?`, `display print newline`
+*   **Core syntax:** lists `(...)`, quote `'x`, comments `; ...`, arrays `[...]`
+*   **Special forms:** `define`, `lambda`/`fn`, `let`, `let*`, `if`, `do`/`begin`, `try`/`catch`/`finally`, `with-open-file`
+*   **Bindings:** list-style `(let ((x 1) (y 2)) ...)`, array-style `(let [x 1 y 2] ...)`, destructuring `(define [a b c] xs)`
+*   **Default params:** `(define (f [x default]) ...)` with keyword arguments `(f :x value)`
+*   **Primitives:** `+ - * / %`, `< > <= >= =`, `cons car cdr empty?`, `print println`, `str`, `map filter reduce partial compose`
+*   **Data types:** tuples `(tuple 1 2 3)`, named-tuples `(named-tuple [x 1] [y 2])`, arrays, dicts
+*   **Control flow:** `try`/`catch`/`finally` exception handling, `with-open-file` auto-close
 *   **Truthiness:** only `false` and `nothing` are falsy; everything else is truthy (including numeric `0` and empty lists)
 
 ## Key Design Pillars (Planned)

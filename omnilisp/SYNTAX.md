@@ -80,9 +80,10 @@ foo              ; Symbol
 ; Arrays: array? array-ref array-set! array-length array-slice
 ; Dicts: dict? dict-ref dict-set! dict-contains? keys values
 ; File I/O: open close read-line read-all write-string write-line flush port? eof? file-exists?
-; Higher-order: map filter reduce range
+; Higher-order: map filter reduce range partial compose identity
 ; I/O: print println
 ; Introspection: type-of describe keyword?
+; String: str string-append string-length
 ```
 
 ### Arrays & Dicts (Implemented)
@@ -291,6 +292,110 @@ data.items.(0)             ; nested dict then array access
 (send ch val)             ; Send to channel
 (recv ch)                 ; Receive from channel
 (with-fibers body...)     ; Scoped fiber execution
+```
+
+### Tuples & Named Tuples (Implemented)
+```lisp
+;; Tuples - immutable fixed-size collections
+(tuple 1 2 3)             ; Create tuple
+(tuple? x)                ; Type predicate
+(tuple-ref t 0)           ; Get element at index
+
+;; Named tuples - tuples with field names
+(named-tuple [x 1] [y 2]) ; Create named tuple with fields
+(get nt 'x)               ; Access by field name
+```
+
+### Partial Application & Composition (Implemented)
+```lisp
+;; Partial application - fix some arguments
+(define add5 (partial + 5))
+(add5 10)                 ; -> 15
+(map (partial * 2) [1 2 3])  ; -> (2 4 6)
+
+;; Function composition
+(define inc-then-double (compose (partial * 2) (partial + 1)))
+(inc-then-double 5)       ; -> 12 (5+1=6, 6*2=12)
+
+;; Identity function
+(identity 42)             ; -> 42
+(map identity xs)         ; -> xs
+```
+
+### try/catch/finally (Implemented)
+```lisp
+;; Basic try/catch
+(try
+  (risky-operation)
+  (catch e
+    (println "Caught:" e)
+    :default-value))
+
+;; With finally clause
+(try
+  (do
+    (open-resource)
+    (process))
+  (catch e
+    (println "Error:" e))
+  (finally
+    (close-resource)))
+
+;; Error signaling
+(error "something went wrong")
+```
+
+### with-open-file (Implemented)
+```lisp
+;; Automatic file closing
+(with-open-file [f "data.txt" :read]
+  (read-all f))
+
+;; Writing with auto-close
+(with-open-file [f "output.txt" :write]
+  (write-line f "Hello, World!"))
+
+;; Modes: :read, :write, :append
+```
+
+### String Interpolation with str (Implemented)
+```lisp
+;; str concatenates and converts to string
+(str "Hello, " name "!")  ; -> "Hello, Alice!"
+(str "Sum: " (+ 1 2))     ; -> "Sum: 3"
+(str x)                   ; Convert any value to string
+```
+
+### Keyword Arguments (Implemented)
+```lisp
+;; Keywords are symbols starting with : (self-evaluating)
+:foo                      ; -> :foo (not quoted)
+(keyword? :foo)           ; -> true
+
+;; Functions with default parameters
+(define (greet name [greeting "Hello"])
+  (str greeting ", " name "!"))
+
+;; Call with keyword argument
+(greet "Bob" :greeting "Hi")  ; -> "Hi, Bob!"
+
+;; Keywords override defaults by name
+(define (make-point [x 0] [y 0]) (list x y))
+(make-point :y 5)         ; -> (0 5)
+```
+
+### Top-Level Destructuring (Implemented)
+```lisp
+;; Basic destructuring
+(define [a b c] (list 1 2 3))
+a                         ; -> 1
+b                         ; -> 2
+c                         ; -> 3
+
+;; Rest pattern with ..
+(define [first .. rest] (list 10 20 30 40))
+first                     ; -> 10
+rest                      ; -> (20 30 40)
 ```
 
 ### Comments
