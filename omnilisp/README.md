@@ -1,32 +1,153 @@
-# Omnilisp
+# OmniLisp
 
-**Omnilisp** is a multi-paradigm Lisp dialect designed to be the ultimate developer's tool. It combines the minimalism of **Scheme**, the industrial power of **Common Lisp**, the modern type system of **Julia**, and the data-driven elegance of **Clojure**.
+**OmniLisp** is a high-performance, multi-paradigm Lisp dialect designed for systems programming and modern application development. It combines the minimalism of **Scheme**, the industrial power of **Common Lisp**, the modern type system of **Julia**, and the data-driven elegance of **Clojure**, all built on a foundation of **ASAP (As Static As Possible)** memory management.
 
-The repo currently ships a small C compiler/runtime subset. The rest of the language features are the intended design.
+## Key Design Pillars
 
-## Current Implementation (C Compiler)
-*   **Core syntax:** lists `(...)`, quote `'x`, comments `; ...`, arrays `[...]`
-*   **Special forms:** `define`, `lambda`/`fn`, `let`, `let*`, `if`, `do`/`begin`, `handle`/`perform`, `with-open-file`
-*   **Bindings:** list-style `(let ((x 1) (y 2)) ...)`, array-style `(let [x 1 y 2] ...)`, destructuring `(define [a b c] xs)`
-*   **Default params:** `(define (f [x default]) ...)` with named arguments `(f :x value)`
-*   **Primitives:** `+ - * / %`, `< > <= >= =`, `cons car cdr empty?`, `print println`, `str`, `map filter reduce partial compose`
-*   **Data types:** lists, arrays `[1 2 3]`, dicts `#{:a 1}` - dot notation `obj.field`
-*   **Control flow:** algebraic effects (`handle`/`perform`/`resume`) for all error handling, `with-open-file` auto-close
-*   **Truthiness:** only `false` and `nothing` are falsy; everything else is truthy (including numeric `0` and empty lists)
+*   **ASAP Memory Management:** Deterministic, compile-time memory management without a stop-the-world garbage collector.
+*   **Two-Tier Concurrency:** High-performance OS threads (pthreads) combined with lightweight green threads (delimited continuations).
+*   **Multiple Dispatch:** Full multiple dispatch on all arguments (Julia-style).
+*   **Algebraic Effects:** Resumable exception handling and structured control flow.
+*   **Hygienic Macros:** True syntax transformers with pattern matching and hygiene.
+*   **Modern Syntax:** S-expressions with specialized brackets (`[]` for arrays/bindings, `{}` for types/FFI, `#{}` for dicts).
 
-## Key Design Pillars (Planned)
+---
 
-*   **Syntax:** S-expressions with specialized brackets (`[]` for arrays, `{}` for types, `#{}` for dicts).
-*   **Dispatch:** Full **Multiple Dispatch** on all arguments (Julia style).
-*   **Types:** Abstract hierarchy with parametric types like `{Vector Int}`.
-*   **Access:** Native **Dot Notation** (`obj.field.subfield`) for clean nested access.
-*   **Control:** **Delimited Continuations** (`prompt`/`control`) and a resumable **Condition System**.
-*   **Hygiene:** Fully **Hygienic Macros** using syntax objects.
-*   **Matching:** **Optima-style** extensible pattern matching.
-*   **Symbols:** No separate keyword type; `:key` is sugar for `'key`.
+## Current Status (2026-01-05)
+
+The project currently features a robust C99 + POSIX runtime and compiler subset implementing the following:
+
+### Memory Management (ASAP)
+| Optimization | Status | Description |
+|---|---|---|
+| **Liveness-Driven Free Insertion** | ✅ | CFG-based analysis for optimal `free()` placement. |
+| **Escape-Aware Stack Allocation** | ✅ | Non-escaping values are stack-allocated (Vale/Ada style). |
+| **Symmetric Reference Counting** | ✅ | O(1) deterministic cycle collection via bidirectional refs. |
+| **Component Scope Tethering** | ✅ | Zero-cost island-based cycle reclamation. |
+| **Shape Analysis** | ✅ | Automatic detection of Trees, DAGs, and Cycles. |
+| **Perceus Reuse Analysis** | ✅ | Functional But In-Place (FBIP) optimization. |
+| **Region-Aware RC Elision** | ✅ | Hierarchy-based reference counting optimization. |
+| **Generational References (GenRef)** | ✅ | Vale-style use-after-free detection. |
+
+### Language Features
+*   **Special Forms:** `define`, `lambda`/`fn`, `let`, `if`, `do`/`begin`, `match`, `handle`/`perform`.
+*   **Data Types:** Integers, Floats, Symbols, Lists, Arrays, Dicts, Strings, Characters.
+*   **Concurrency:** Delimited continuations (`prompt`/`control`), Fibers (ucontext), CSP Channels.
+*   **Modules:** Full module system with `export`, `import`, and namespace aliasing.
+*   **FFI:** Handle-based Foreign Function Interface with ownership annotations.
+
+---
+
+## Memory Management: ASAP is NOT Garbage Collection
+
+OmniLisp utilizes **ASAP (As Static As Possible)** memory management. Unlike traditional garbage collection, ASAP deallocates memory at **compile-time**.
+
+### Core Strategy
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    COMPILE-TIME ANALYSIS                         │
+│  Shape Analysis ──► TREE / DAG / CYCLIC                         │
+│  Escape Analysis ──► LOCAL / ESCAPING                           │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+          ┌───────────────────┼───────────────────┐
+          ▼                   ▼                   ▼
+       **TREE**             **DAG**            **CYCLIC**
+   (Unique/Unshared)    (Shared/Acyclic)    (Back-Edges)
+          │                   │                   │
+          │                   │           ┌───────┴───────┐
+          │                   │           ▼               ▼
+          │                   │        **BROKEN**      **UNBROKEN**
+          │                   │      (Weak Refs)     (Strong Cycle)
+          │                   │           │               │
+          │                   │           │        ┌──────┴──────┐
+          │                   │           │        ▼             ▼
+          │                   │           │     **LOCAL**    **ESCAPING**
+          ▼                   ▼           ▼    (Scope-Bound) (Heap-Bound)
+      Pure ASAP           Standard RC     RC     Arena Alloc   Component
+     (free_tree)          (dec_ref)    (dec_ref) (destroy)     Tethering
+```
+
+1.  **Liveness Analysis:** Injects `free_obj()` calls at the earliest point a variable becomes dead.
+2.  **Symmetric RC:** Handles shared objects with bidirectional references, allowing cycles to be reclaimed in O(1) without a global scan.
+3.  **Region Hierarchy:** Validates that outer scopes never point to inner scopes, preventing dangling references.
+4.  **Generational References:** Provides safety for stable slot pooling and use-after-free detection.
+
+---
+
+## Concurrency & Effects
+
+OmniLisp provides structured control flow through **Delimited Continuations** and **Algebraic Effects**.
+
+```lisp
+;; Define an effect
+(define {effect ask} :one-shot (returns String))
+
+;; Handle the effect
+(handle
+  (str "Hello, " (perform ask))
+  (ask (_ resume) (resume "World")))  ; -> "Hello, World"
+```
+
+The concurrency model is two-tiered:
+- **Tier 1:** OS Threads for true parallelism and blocking I/O.
+- **Tier 2:** Lightweight green threads (Fibers) for massive concurrency using CSP channels.
+
+---
+
+## Syntax Showcase
+
+```lisp
+;; Vector bindings and dot notation
+(let [person #{:name "Alice" :age 30}]
+  (println person.name))
+
+;; Multiple dispatch method
+(define [method area Circle] [c]
+  (* π c.radius c.radius))
+
+;; Hygienic macros
+(define [syntax unless]
+  [(unless test body ...)
+   (if test nothing (do body ...))])
+
+;; FFI with ownership annotations
+(define {extern malloc :from libc}
+  [size {CSize}]
+  -> {^:owned CPtr})
+```
+
+---
+
+## References
+
+1.  *ASAP: As Static As Possible memory management* (Proust, 2017).
+2.  *Perceus: Garbage Free Reference Counting with Reuse* (Reinking et al., PLDI 2021).
+3.  *Cyclic Reference Counting by Typed Reference Fields* (Sitaram, 2011).
+4.  *Vale: Seamless, Fearless, Structured Concurrency* (Verdagon.dev).
+5.  *Region-Based Memory Management* (Tofte & Talpin, 1997).
+6.  *Abstracting Control* (Danvy & Filinski, 1990).
+7.  *Collapsing Towers of Interpreters* (Amin & Rompf, POPL 2018).
+
+---
+
+## Building & Running
+
+```bash
+# Build the compiler and runtime
+make
+
+# Run a script
+./omni examples/hello.lisp
+
+# Run an expression
+./omni -e "(+ 1 2)"
+```
 
 ## Documentation
 
+*   [SYNTAX.md](./SYNTAX.md) - Exhaustive syntax guide.
 *   [DESIGN.md](./DESIGN.md) - Full technical specification.
-*   [SUMMARY.md](./SUMMARY.md) - High-level feature overview.
-*   [ROADMAP.md](./ROADMAP.md) - Implementation plan for OmniLisp.
+*   [SUMMARY.md](./SUMMARY.md) - Feature implementation overview.
+*   [FFI_PROPOSAL.md](./FFI_PROPOSAL.md) - Foreign Function Interface design.

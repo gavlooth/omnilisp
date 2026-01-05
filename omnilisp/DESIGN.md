@@ -2136,13 +2136,43 @@ AOT executables include the full standalone runtime and require no external libr
 
 Omnilisp uses ASAP (As Static As Possible) memory management:
 
+#### Memory Strategy
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    COMPILE-TIME ANALYSIS                         │
+│  Shape Analysis ──► TREE / DAG / CYCLIC                         │
+│  Escape Analysis ──► LOCAL / ESCAPING                           │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+          ┌───────────────────┼───────────────────┐
+          ▼                   ▼                   ▼
+       **TREE**             **DAG**            **CYCLIC**
+   (Unique/Unshared)    (Shared/Acyclic)    (Back-Edges)
+          │                   │                   │
+          │                   │           ┌───────┴───────┐
+          │                   │           ▼               ▼
+          │                   │        **BROKEN**      **UNBROKEN**
+          │                   │      (Weak Refs)     (Strong Cycle)
+          │                   │           │               │
+          │                   │           │        ┌──────┴──────┐
+          │                   │           │        ▼             ▼
+          │                   │           │     **LOCAL**    **ESCAPING**
+          ▼                   ▼           ▼    (Scope-Bound) (Heap-Bound)
+      Pure ASAP           Standard RC     RC     Arena Alloc   Component
+     (free_tree)          (dec_ref)    (dec_ref) (destroy)     Tethering
+```
+
 - **No garbage collector** - All `free()` calls inserted at compile time
 - **Liveness analysis** - Free at last use, not scope exit
 - **Escape analysis** - Stack-allocate non-escaping values
 - **Capture tracking** - Lambda-captured variables transfer ownership
 - **Automatic weak back-edges** - Compiler detects and handles cycles
+- **Symmetric Reference Counting** - Bidirectional references for O(1) cycle reclamation
+- **Region Hierarchy** - Scope-based hierarchy validation to prevent dangling pointers
+- **Generational References (GenRef)** - Stable slot pooling and use-after-free detection
 
-See `CLAUDE.md` for detailed ASAP documentation.
+See `README.md` and `SUMMARY.md` for current implementation status.
 
 ### 21.7 Control Flow Primitives
 

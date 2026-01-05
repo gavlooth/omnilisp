@@ -8,6 +8,7 @@ See also:
 - `DESIGN_DECISIONS.md` for the decision log.
 
 ## Implemented (C Compiler)
+*   **Memory Management:** ASAP (As Static As Possible) - compile-time free insertion, symmetric RC for O(1) cycles, generational refs, and region hierarchy.
 *   **Core syntax:** lists `(...)`, arrays `[...]`, quote `'x`, comments `; ...`
 *   **Special forms:** `define`, `lambda`/`fn`, `let`, `let*`, `if`, `do`/`begin`, `match`, `handle`/`perform`, `with-open-file`
 *   **Bindings:** list-style `(let ((x 1) (y 2)) ...)`, array-style `(let [x 1 y 2] ...)`, destructuring `(define [a b c] xs)`
