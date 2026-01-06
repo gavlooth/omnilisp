@@ -3,6 +3,29 @@
  *
  * Defines the OmniLisp grammar using pika_c clause builders.
  * Supports dual-mode output: AST nodes (Value*) or strings.
+ *
+ * PIKA PARSER POWER HIERARCHY
+ * ===========================
+ * Pika is MORE POWERFUL than both standard PEG and traditional regex:
+ *
+ *   Formal Regex (DFA)
+ *       │  • No nesting, no recursion
+ *       ▼
+ *   Standard PEG (Packrat)
+ *       │  • NO left recursion (infinite loop)
+ *       │  • Anchored to start only
+ *       │  • First match only
+ *       ▼
+ *   PIKA PARSER  ◄── We use this
+ *       │  • LEFT RECURSION support (expr <- expr '+' term)
+ *       │  • SUBSTRING matching (find anywhere in input)
+ *       │  • ALL non-overlapping matches
+ *       │  • Grammar composition with named rules
+ *       ▼
+ *   PCRE (practical regex)
+ *       • Has backreferences (\1) - Pika lacks this only
+ *
+ * See docs/PATTERN_SYNTAX.md for full documentation.
  */
 
 #ifndef OMNI_GRAMMAR_H
@@ -81,6 +104,87 @@ PikaGrammar* omni_compile_peg(const char* peg_source, char** error_out);
 
 /* Compile single regex-like pattern */
 PikaGrammar* omni_compile_pattern(const char* pattern, char** error_out);
+
+/* ============== PIKA-SPECIFIC ADVANCED API ============== */
+/*
+ * These functions leverage Pika's unique capabilities that exceed
+ * standard PEG and regex: left recursion, substring matching,
+ * all-matches mode, and grammar composition.
+ */
+
+/* Match info with position - for find_all_with_positions */
+typedef struct {
+    char* text;          /* Matched text (owned, must free) */
+    int start;           /* Start position in input */
+    int end;             /* End position in input */
+    int line;            /* Line number (1-based) */
+    int column;          /* Column number (1-based) */
+} OmniMatchInfo;
+
+/* Result of find_all_with_positions */
+typedef struct {
+    OmniMatchInfo* matches;  /* Array of matches (owned, must free) */
+    size_t count;            /* Number of matches */
+    char* error;             /* Error message if failed (owned) */
+} OmniMatchResult;
+
+/*
+ * Grammar-based matching - LEVERAGES LEFT RECURSION
+ *
+ * Unlike standard PEG, Pika handles left-recursive grammars:
+ *   expr <- expr '+' term / term   // Works in Pika, infinite loop in packrat
+ *
+ * Example:
+ *   omni_pika_grammar_match(
+ *       "expr <- expr '+' term / term\n"
+ *       "term <- [0-9]+\n",
+ *       "expr", "1+2+3"
+ *   );
+ */
+Value* omni_pika_grammar_match(const char* grammar_spec, const char* start_rule,
+                                const char* input);
+
+/*
+ * Find all matches with position information - LEVERAGES SUBSTRING MATCHING
+ *
+ * Unlike standard PEG (anchored to start), Pika finds matches anywhere.
+ * Returns all non-overlapping matches with their positions.
+ */
+OmniMatchResult omni_pika_find_all_positions(const char* pattern, const char* input);
+
+/* Free match result */
+void omni_match_result_free(OmniMatchResult* result);
+
+/*
+ * Grammar-based find all - COMBINES LEFT RECURSION + ALL MATCHES
+ *
+ * Find all matches of a grammar rule anywhere in input.
+ * This is the most powerful matching mode.
+ */
+OmniMatchResult omni_pika_grammar_find_all(const char* grammar_spec,
+                                            const char* rule,
+                                            const char* input);
+
+/*
+ * Cached grammar compilation - for repeated use
+ *
+ * Compiles grammar once, returns handle for reuse.
+ * Much faster than recompiling for each match.
+ */
+typedef struct OmniCompiledGrammar OmniCompiledGrammar;
+
+OmniCompiledGrammar* omni_grammar_compile(const char* grammar_spec, char** error_out);
+void omni_grammar_compiled_free(OmniCompiledGrammar* compiled);
+
+/* Match using pre-compiled grammar */
+Value* omni_pika_compiled_match(OmniCompiledGrammar* compiled,
+                                 const char* start_rule,
+                                 const char* input);
+
+/* Find all using pre-compiled grammar */
+OmniMatchResult omni_pika_compiled_find_all(OmniCompiledGrammar* compiled,
+                                             const char* rule,
+                                             const char* input);
 
 #ifdef __cplusplus
 }
