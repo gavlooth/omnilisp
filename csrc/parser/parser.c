@@ -28,14 +28,19 @@ enum {
     R_ALPHA, R_ALPHA_UPPER, R_SYM_SPECIAL, R_SYM_CHAR, R_SYM_FIRST, R_SYM,
     R_KEYWORD,
 
-    R_CHAR_ESCAPE, R_CHAR_LIT, R_STRING_CHAR, R_STRING,
+    R_CHAR_ESCAPE, R_CHAR_LIT, R_STRING_CHAR, R_STRING_INNER, R_STRING,
+
+    /* String formatting */
+    R_FMT_STRING, R_CLF_STRING,
 
     R_LPAREN, R_RPAREN,
     R_LBRACKET, R_RBRACKET,
     R_LBRACE, R_RBRACE,
+    R_DOT, R_CARET, R_COLON, R_EXCLAM, R_HASH,
     R_HASHBRACE, R_HASHPAREN, R_HASHBRACKET,
+    R_HASH_FMT, R_HASH_CLF,
 
-    R_QUOTE_CHAR, R_QUASIQUOTE_CHAR, R_UNQUOTE_SPLICE_CHARS, R_UNQUOTE_CHAR,
+    R_QUOTE_CHAR, R_DQUOTE, R_QUASIQUOTE_CHAR, R_UNQUOTE_SPLICE_CHARS, R_UNQUOTE_CHAR,
 
     R_EXPR,
     R_ATOM,
@@ -45,6 +50,10 @@ enum {
 
     R_ARRAY_INNER, R_ARRAY_SEQ,
     R_ARRAY,
+
+    R_TYPE_INNER, R_TYPE,
+    R_PATH_SEGMENT, R_PATH_TAIL_ITEM, R_PATH_TAIL, R_PATH,
+    R_METADATA,
 
     R_QUOTED,
 
@@ -189,6 +198,75 @@ static OmniValue* act_quoted(PikaState* state, size_t pos, PikaMatch match) {
     return omni_nil;
 }
 
+static OmniValue* act_type(PikaState* state, size_t pos, PikaMatch match) {
+    size_t current = pos + 1; /* skip { */
+    PikaMatch* ws_m = pika_get_match(state, current, R_WS);
+    if (ws_m && ws_m->matched) current += ws_m->len;
+    
+    PikaMatch* inner_m = pika_get_match(state, current, R_TYPE_INNER);
+    if (inner_m && inner_m->matched && inner_m->val) {
+        return omni_new_cell(omni_new_sym("type"), inner_m->val);
+    }
+    return omni_new_cell(omni_new_sym("type"), omni_nil);
+}
+
+static OmniValue* act_metadata(PikaState* state, size_t pos, PikaMatch match) {
+    size_t current = pos + 1; /* skip ^ */
+    PikaMatch* ws1_m = pika_get_match(state, current, R_WS);
+    if (ws1_m && ws1_m->matched) current += ws1_m->len;
+    
+    PikaMatch* meta_m = pika_get_match(state, current, R_EXPR);
+    if (!meta_m || !meta_m->matched) return omni_nil;
+    OmniValue* meta = meta_m->val;
+    current += meta_m->len;
+    
+    PikaMatch* ws2_m = pika_get_match(state, current, R_WS);
+    if (ws2_m && ws2_m->matched) current += ws2_m->len;
+    
+    PikaMatch* obj_m = pika_get_match(state, current, R_EXPR);
+    if (!obj_m || !obj_m->matched) return meta; 
+    OmniValue* obj = obj_m->val;
+    
+    return omni_new_cell(omni_new_sym("with-meta"), 
+                         omni_new_cell(meta, omni_new_cell(obj, omni_nil)));
+}
+
+static OmniValue* act_path(PikaState* state, size_t pos, PikaMatch match) {
+    PikaMatch* root_m = pika_get_match(state, pos, R_ATOM);
+    if (!root_m || !root_m->matched) return omni_nil;
+    OmniValue* root = root_m->val;
+    
+    OmniValue* segments = omni_nil;
+    size_t current = pos + root_m->len;
+    
+    /* We need to build the list of segments in order. 
+     * Since we don't have a good way to iterate children of a repeated rule 
+     * easily in this Pika wrapper without specific rule actions, 
+     * we'll manually scan forward using pika_get_match. */
+    
+    while (current < pos + match.len) {
+        PikaMatch* dot_m = pika_get_match(state, current, R_DOT);
+        if (!dot_m || !dot_m->matched) break;
+        current += dot_m->len;
+        
+        PikaMatch* seg_m = pika_get_match(state, current, R_PATH_SEGMENT);
+        if (!seg_m || !seg_m->matched) break;
+        
+        segments = omni_new_cell(seg_m->val, segments);
+        current += seg_m->len;
+    }
+    
+    /* Reverse segments because we built them backward */
+    OmniValue* rev_segments = omni_nil;
+    while (!omni_is_nil(segments)) {
+        rev_segments = omni_new_cell(omni_car(segments), rev_segments);
+        segments = omni_cdr(segments);
+    }
+    
+    return omni_new_cell(omni_new_sym("path"), 
+                         omni_new_cell(root, rev_segments));
+}
+
 static OmniValue* act_program(PikaState* state, size_t pos, PikaMatch match) {
     size_t current = pos;
 
@@ -203,6 +281,183 @@ static OmniValue* act_program(PikaState* state, size_t pos, PikaMatch match) {
 
 static OmniValue* act_program_inner(PikaState* state, size_t pos, PikaMatch match) {
     return act_list_inner(state, pos, match);
+}
+
+/* ============== String Parsing Helper ============== */
+
+/**
+ * Extract and process string content from a matched string literal.
+ * Handles escape sequences like \n, \t, \", \\, \xNN, \uNNNN
+ * Returns an AST symbol containing the processed string content.
+ */
+static OmniValue* extract_string_content(PikaState* state, size_t pos, size_t len) {
+    if (len < 2) return omni_new_sym("");  /* Empty or invalid string */
+
+    /* Skip opening and closing quotes */
+    const char* start = state->input + pos + 1;
+    size_t content_len = len - 2;
+
+    /* Allocate buffer for processed string */
+    char* result = malloc(content_len + 1);
+    if (!result) return omni_new_sym("");
+
+    size_t result_idx = 0;
+    size_t i = 0;
+
+    while (i < content_len) {
+        if (start[i] == '\\' && i + 1 < content_len) {
+            /* Handle escape sequences */
+            switch (start[i + 1]) {
+                case 'n': result[result_idx++] = '\n'; i += 2; break;
+                case 't': result[result_idx++] = '\t'; i += 2; break;
+                case '"': result[result_idx++] = '"';  i += 2; break;
+                case '\\': result[result_idx++] = '\\'; i += 2; break;
+                case 'x': /* Hex escape \xNN */
+                    if (i + 3 < content_len && isxdigit(start[i + 2]) && isxdigit(start[i + 3])) {
+                        char hex[3] = { start[i + 2], start[i + 3], '\0' };
+                        result[result_idx++] = (char)strtol(hex, NULL, 16);
+                        i += 4;
+                    } else {
+                        result[result_idx++] = start[i + 1]; i += 2; /* Invalid, just copy */
+                    }
+                    break;
+                case 'u': /* Unicode escape \uNNNN - simplified: just copy the bytes */
+                    if (i + 5 < content_len) {
+                        /* For now, just skip the \u and copy 4 chars */
+                        /* A full implementation would decode UTF-8 properly */
+                        for (int j = 2; j <= 5 && (i + j) < content_len; j++) {
+                            result[result_idx++] = start[i + j];
+                        }
+                        i += 6;
+                    } else {
+                        result[result_idx++] = start[i + 1]; i += 2;
+                    }
+                    break;
+                default:
+                    result[result_idx++] = start[i + 1]; i += 2; /* Unknown escape, copy char */
+                    break;
+            }
+        } else {
+            result[result_idx++] = start[i++];
+        }
+    }
+
+    result[result_idx] = '\0';
+
+    /* Create a symbol to represent the string content */
+    /* Note: In a full implementation, we'd have a dedicated string type */
+    OmniValue* sym = omni_new_sym(result);
+    free(result);
+    return sym;
+}
+
+/* ============== New Semantic Actions ============== */
+
+/* String literal action: "..." -> symbol with string content */
+static OmniValue* act_string(PikaState* state, size_t pos, PikaMatch match) {
+    return extract_string_content(state, pos, match.len);
+}
+
+/* Format string action: #fmt"..." -> (fmt-string "content") */
+static OmniValue* act_fmt_string(PikaState* state, size_t pos, PikaMatch match) {
+    /* Pattern matched: HASH + SYM + DQUOTE + STRING_INNER + DQUOTE */
+    /* We need to:
+     * 1. Verify the SYM is "fmt"
+     * 2. Extract the string content from STRING_INNER
+     */
+
+    size_t current = pos;
+
+    /* Skip HASH */
+    PikaMatch* hash_m = pika_get_match(state, current, R_HASH);
+    if (!hash_m || !hash_m->matched) return omni_nil;
+    current += hash_m->len;
+
+    /* Check the symbol is "fmt" */
+    PikaMatch* sym_m = pika_get_match(state, current, R_SYM);
+    if (!sym_m || !sym_m->matched) return omni_nil;
+
+    /* Get symbol value to verify it's "fmt" */
+    OmniValue* sym_val = sym_m->val;
+    if (!omni_is_sym(sym_val)) return omni_nil;
+
+    /* Check if symbol is "fmt" */
+    const char* sym_name = sym_val->str_val;
+    if (strcmp(sym_name, "fmt") != 0) {
+        /* Not a format string, return nil to indicate no match */
+        return omni_nil;
+    }
+
+    current += sym_m->len;
+
+    /* Skip opening DQUOTE */
+    PikaMatch* quote_m = pika_get_match(state, current, R_DQUOTE);
+    if (!quote_m || !quote_m->matched) return omni_nil;
+    current += quote_m->len;
+
+    /* Get STRING_INNER match */
+    PikaMatch* inner_m = pika_get_match(state, current, R_STRING_INNER);
+    if (!inner_m || !inner_m->matched) {
+        /* Empty string content */
+        return omni_new_cell(omni_new_sym("fmt-string"),
+                             omni_new_cell(omni_new_sym(""), omni_nil));
+    }
+    current += inner_m->len;
+
+    /* Extract string content (the STRING_INNER match includes the content) */
+    OmniValue* content = extract_string_content(state, current - inner_m->len - 1, inner_m->len + 2);
+
+    return omni_new_cell(omni_new_sym("fmt-string"),
+                         omni_new_cell(content, omni_nil));
+}
+
+/* CLF format string action: #clf"..." -> (clf-string "content") */
+static OmniValue* act_clf_string(PikaState* state, size_t pos, PikaMatch match) {
+    /* Similar to #fmt but verifies symbol is "clf" */
+    size_t current = pos;
+
+    /* Skip HASH */
+    PikaMatch* hash_m = pika_get_match(state, current, R_HASH);
+    if (!hash_m || !hash_m->matched) return omni_nil;
+    current += hash_m->len;
+
+    /* Check the symbol is "clf" */
+    PikaMatch* sym_m = pika_get_match(state, current, R_SYM);
+    if (!sym_m || !sym_m->matched) return omni_nil;
+
+    /* Get symbol value to verify it's "clf" */
+    OmniValue* sym_val = sym_m->val;
+    if (!omni_is_sym(sym_val)) return omni_nil;
+
+    /* Check if symbol is "clf" */
+    const char* sym_name = sym_val->str_val;
+    if (strcmp(sym_name, "clf") != 0) {
+        /* Not a clf format string, return nil */
+        return omni_nil;
+    }
+
+    current += sym_m->len;
+
+    /* Skip opening DQUOTE */
+    PikaMatch* quote_m = pika_get_match(state, current, R_DQUOTE);
+    if (!quote_m || !quote_m->matched) return omni_nil;
+    current += quote_m->len;
+
+    /* Get STRING_INNER match */
+    PikaMatch* inner_m = pika_get_match(state, current, R_STRING_INNER);
+    if (!inner_m || !inner_m->matched) {
+        /* Empty string content */
+        return omni_new_cell(omni_new_sym("clf-string"),
+                             omni_new_cell(omni_new_sym(""), omni_nil));
+    }
+
+    /* Extract string content */
+    size_t content_start = current;
+    size_t content_len = inner_m->len;
+    OmniValue* content = extract_string_content(state, content_start - 1, content_len + 2);
+
+    return omni_new_cell(omni_new_sym("clf-string"),
+                         omni_new_cell(content, omni_nil));
 }
 
 /* ============== Grammar Initialization ============== */
@@ -260,8 +515,11 @@ void omni_grammar_init(void) {
     /* We'll define the ranges we need as temporary rules using R_SIGN, R_FLOAT_FRAC, etc. */
     /* R_SIGN (12) - range ':'  to '@' for < > = etc */
     g_rules[R_SIGN] = (PikaRule){ PIKA_RANGE, .data.range = { ':', '@' } };  /* :;<=>?@ */
-    /* R_FLOAT_FRAC (15) - range '!' to '\'' for other symbols */
-    g_rules[R_FLOAT_FRAC] = (PikaRule){ PIKA_RANGE, .data.range = { '!', '\'' } };  /* !"#$%&' */
+    /* R_FLOAT_FRAC (15) - range '!' to '!' for ! (excluding ") */
+    /* We need to exclude " (ASCII 34) from symbol characters */
+    /* Old range was '!' to '\'' (33-39) which included " (34) */
+    /* New approach: Use '!' only, and add other operators separately */
+    g_rules[R_FLOAT_FRAC] = (PikaRule){ PIKA_RANGE, .data.range = { '!', '!' } };  /* Just ! */
     /* R_SYM_SPECIAL - range '*' to '/' */
     g_rules[R_SYM_SPECIAL] = (PikaRule){ PIKA_RANGE, .data.range = { '*', '/' } };  /* *+,-./ */
 
@@ -287,8 +545,23 @@ void omni_grammar_init(void) {
 
     /* Quote characters */
     g_rules[R_QUOTE_CHAR] = (PikaRule){ PIKA_TERMINAL, .data.str = "'" };
+    g_rules[R_DQUOTE] = (PikaRule){ PIKA_TERMINAL, .data.str = "\"" };
     g_rules[R_QUASIQUOTE_CHAR] = (PikaRule){ PIKA_TERMINAL, .data.str = "`" };
     g_rules[R_UNQUOTE_CHAR] = (PikaRule){ PIKA_TERMINAL, .data.str = "," };
+    g_rules[R_DOT] = (PikaRule){ PIKA_TERMINAL, .data.str = "." };
+    g_rules[R_CARET] = (PikaRule){ PIKA_TERMINAL, .data.str = "^" };
+
+    /* New syntax characters */
+    g_rules[R_COLON] = (PikaRule){ PIKA_TERMINAL, .data.str = ":" };
+    g_rules[R_EXCLAM] = (PikaRule){ PIKA_TERMINAL, .data.str = "!" };
+    g_rules[R_HASH] = (PikaRule){ PIKA_TERMINAL, .data.str = "#" };
+
+    /* Format strings: #fmt"..." and #clf"..." */
+    g_rule_ids[R_HASH_FMT] = ids(2, R_HASH, R_SYM);
+    g_rules[R_HASH_FMT] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_HASH_FMT], 2 } };
+
+    g_rule_ids[R_HASH_CLF] = ids(2, R_HASH, R_SYM);
+    g_rules[R_HASH_CLF] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_HASH_CLF], 2 } };
 
     /* ATOM = INT / SYM */
     g_rule_ids[R_ATOM] = ids(2, R_INT, R_SYM);
@@ -318,13 +591,79 @@ void omni_grammar_init(void) {
     g_rule_ids[R_ARRAY] = ids(4, R_LBRACKET, R_WS, R_ARRAY_INNER, R_RBRACKET);
     g_rules[R_ARRAY] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_ARRAY], 4 }, .action = act_array };
 
+    /* TYPE_INNER = LIST_INNER */
+    g_rules[R_TYPE_INNER] = g_rules[R_LIST_INNER];
+
+    /* TYPE = { WS TYPE_INNER } */
+    g_rule_ids[R_TYPE] = ids(4, R_LBRACE, R_WS, R_TYPE_INNER, R_RBRACE);
+    g_rules[R_TYPE] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_TYPE], 4 }, .action = act_type };
+
+    /* PATH_SEGMENT = SYM / ARRAY */
+    g_rule_ids[R_PATH_SEGMENT] = ids(2, R_SYM, R_ARRAY);
+    g_rules[R_PATH_SEGMENT] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_PATH_SEGMENT], 2 } };
+
+    /* PATH_TAIL_ITEM = DOT PATH_SEGMENT */
+    g_rule_ids[R_PATH_TAIL_ITEM] = ids(2, R_DOT, R_PATH_SEGMENT);
+    g_rules[R_PATH_TAIL_ITEM] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_PATH_TAIL_ITEM], 2 } };
+
+    /* PATH_TAIL = PATH_TAIL_ITEM+ */
+    g_rule_ids[R_PATH_TAIL] = ids(1, R_PATH_TAIL_ITEM);
+    g_rules[R_PATH_TAIL] = (PikaRule){ PIKA_POS, .data.children = { g_rule_ids[R_PATH_TAIL], 1 } };
+
+    /* PATH = ATOM PATH_TAIL */
+    g_rule_ids[R_PATH] = ids(2, R_ATOM, R_PATH_TAIL);
+    g_rules[R_PATH] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_PATH], 2 }, .action = act_path };
+
+    /* METADATA = ^ WS EXPR WS EXPR */
+    g_rule_ids[R_METADATA] = ids(5, R_CARET, R_WS, R_EXPR, R_WS, R_EXPR);
+    g_rules[R_METADATA] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_METADATA], 5 }, .action = act_metadata };
+
     /* QUOTED = 'EXPR | `EXPR | ,EXPR */
     g_rule_ids[R_QUOTED] = ids(2, R_QUOTE_CHAR, R_EXPR);
     g_rules[R_QUOTED] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_QUOTED], 2 }, .action = act_quoted };
 
-    /* EXPR = LIST / ARRAY / QUOTED / ATOM */
-    g_rule_ids[R_EXPR] = ids(4, R_LIST, R_ARRAY, R_QUOTED, R_ATOM);
-    g_rules[R_EXPR] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_EXPR], 4 } };
+    /* ============== String Literals ============== */
+
+    /* Terminal for double quote character (for string literals) */
+    /* R_QUOTE_CHAR is for single quote (quoted expressions like 'x) */
+    /* R_DQUOTE is for double quote (string literals like "text") */
+
+    /* STRING_CHAR: matches any character that can appear in a string */
+    /* ALT of: SPACE, DIGIT, ALPHA, ALPHA_UPPER, SYM_SPECIAL, SIGN, FLOAT_FRAC, LBRACE, RBRACE */
+    /* This covers most printable characters including { } for format strings */
+    int* str_char_ids = ids(9, R_SPACE, R_DIGIT, R_ALPHA, R_ALPHA_UPPER, R_SYM_SPECIAL, R_SIGN, R_FLOAT_FRAC, R_LBRACE, R_RBRACE);
+    g_rule_ids[R_STRING_CHAR] = str_char_ids;
+    g_rules[R_STRING_CHAR] = (PikaRule){ PIKA_ALT, .data.children = { str_char_ids, 9 } };
+
+    /* STRING_INNER = STRING_CHAR* (zero or more) */
+    int* string_inner_ids = ids(1, R_STRING_CHAR);
+    g_rule_ids[R_STRING_INNER] = string_inner_ids;
+    g_rules[R_STRING_INNER] = (PikaRule){ PIKA_REP, .data.children = { string_inner_ids, 1 } };
+
+    /* STRING = DQUOTE STRING_INNER DQUOTE with semantic action for escape processing */
+    int* string_ids = ids(3, R_DQUOTE, R_STRING_INNER, R_DQUOTE);
+    g_rule_ids[R_STRING] = string_ids;
+    g_rules[R_STRING] = (PikaRule){ PIKA_SEQ, .data.children = { string_ids, 3 }, .action = act_string };
+
+    /* ============== Format Strings ============== */
+
+    /* Format strings: #fmt"..." and #clf"..." */
+    /* Pattern: HASH + SYM + DQUOTE + STRING_INNER + DQUOTE */
+    /* The semantic action will verify the SYM is "fmt" or "clf" */
+
+    int* fmt_string_ids = ids(5, R_HASH, R_SYM, R_DQUOTE, R_STRING_INNER, R_DQUOTE);
+    g_rule_ids[R_FMT_STRING] = fmt_string_ids;
+    g_rules[R_FMT_STRING] = (PikaRule){ PIKA_SEQ, .data.children = { fmt_string_ids, 5 }, .action = act_fmt_string };
+
+    int* clf_string_ids = ids(5, R_HASH, R_SYM, R_DQUOTE, R_STRING_INNER, R_DQUOTE);
+    g_rule_ids[R_CLF_STRING] = clf_string_ids;
+    g_rules[R_CLF_STRING] = (PikaRule){ PIKA_SEQ, .data.children = { clf_string_ids, 5 }, .action = act_clf_string };
+
+    /* ============== Expression ============== */
+
+    /* EXPR = PATH / LIST / ARRAY / TYPE / METADATA / QUOTED / STRING / FMT_STRING / CLF_STRING / ATOM */
+    g_rule_ids[R_EXPR] = ids(10, R_PATH, R_LIST, R_ARRAY, R_TYPE, R_METADATA, R_QUOTED, R_STRING, R_FMT_STRING, R_CLF_STRING, R_ATOM);
+    g_rules[R_EXPR] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_EXPR], 10 } };
 
     /* PROGRAM_SEQ = EXPR WS PROGRAM_INNER */
     g_rule_ids[R_PROGRAM_SEQ] = ids(3, R_EXPR, R_WS, R_PROGRAM_INNER);
