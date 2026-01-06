@@ -133,14 +133,15 @@ Break work into **small, reviewable tasks**:
 
 This directive exists because **rigorous debate produces better designs** than agreement.
 
-## Test-Driven Development (Directive)
+## Test-Driven Development (NON-NEGOTIABLE MANDATE)
 
-All agents (Claude, Gemini, Codex) must use **test-driven development** by default:
+All agents (Claude, Gemini, Codex) MUST strictly adhere to **test-driven development** WITHOUT EXCEPTION:
 
-1. **Write tests first** for any behavior change or new feature.
-2. **Define expected outputs** (golden files or assertions) before implementation.
-3. **Run the test suite** after changes and report results.
-4. **No test, no change** unless the task is explicitly marked `N/A` for testing, with a one-line reason.
+1. **Write tests first** BEFORE any code change, behavior change, or new feature.
+2. **Define expected outputs** (golden files or assertions) and verify they fail before implementation.
+3. **Run the full test suite** after every change and report the exact results.
+4. **NO TEST, NO CHANGE.** Any change without accompanying tests is a violation of the core development process, unless the task is explicitly marked `N/A` for testing with a comprehensive justification.
+5. **Regression Verification**: Every bug fix MUST include a reproduction test that failed before the fix and passes after.
 
 ## Code Commenting Directive
 
