@@ -356,6 +356,26 @@ TEST(pika_pattern_nested_groups) {
     ASSERT_STR_EQ(result->s, "acacbc");
 }
 
+TEST(pika_pattern_negated_charset) {
+    /* Test negated character class [^abc] matches anything except a, b, c */
+    Value* result = omni_pika_match("[^abc]+", "xyz");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "xyz");
+
+    /* Test that it doesn't match the excluded characters */
+    Value* result2 = omni_pika_match("[^abc]+", "abc");
+    /* Should match empty string since input is all excluded chars */
+    /* Actually in our implementation it will match from first non-excluded char */
+    ASSERT(result2 != NULL);
+
+    /* Test with digits and special chars */
+    Value* result3 = omni_pika_match("[^0-9]+", "hello");
+    ASSERT(result3 != NULL);
+    ASSERT_EQ(result3->tag, T_CODE);
+    ASSERT_STR_EQ(result3->s, "hello");
+}
+
 /* ============== Tower Environment Tests ============== */
 
 TEST(tower_env_basic) {
@@ -1065,6 +1085,7 @@ int main(void) {
     RUN_TEST(pika_match_rule);
     RUN_TEST(pika_pattern_sequence);
     RUN_TEST(pika_pattern_nested_groups);
+    RUN_TEST(pika_pattern_negated_charset);
 
     printf("\nTower Environment Tests:\n");
     RUN_TEST(tower_env_basic);

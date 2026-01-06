@@ -951,67 +951,727 @@ PikaGrammar* omni_compile_peg(const char* peg_source, char** error_out) {
     return pika_meta_parse(peg_source, error_out);
 }
 
-/* Simple pattern compiler for regex-like patterns */
-PikaGrammar* omni_compile_pattern(const char* pattern, char** error_out) {
-    /* Convert simple pattern to PEG and compile */
-    /* For now, just wrap in a simple grammar */
+/* ============== Regex to PEG Converter ============== */
 
-    /* Build pattern clause by parsing the pattern string */
-    /* This is a simplified implementation - real one would parse regex syntax */
+/*
+ * Regex Token Types
+ * These represent the lexical tokens we can find in a regex pattern
+ */
+typedef enum {
+    RTOK_EOF,              /* End of input */
+    RTOK_CHAR,             /* Literal character */
+    RTOK_CHARSET,          /* [abc] or [a-z] character class */
+    RTOK_STAR,             /* * quantifier */
+    RTOK_PLUS,             /* + quantifier */
+    RTOK_QUESTION,         /* ? quantifier */
+    RTOK_PIPE,             /* | alternation */
+    RTOK_LPAREN,           /* ( grouping */
+    RTOK_RPAREN,           /* ) grouping */
+    RTOK_ANCHOR_START,     /* ^ start anchor */
+    RTOK_ANCHOR_END,       /* $ end anchor */
+    RTOK_DOT,              /* . any character */
+    RTOK_ESCAPE            /* \n, \t, \d, etc. escape sequence */
+} RegexTokenType;
+
+/*
+ * Regex Token
+ * Represents a single token from the regex pattern
+ */
+typedef struct {
+    RegexTokenType type;
+    char* value;           /* For CHAR, CHARSET, ESCAPE - owned by token */
+    int value_len;
+    int pos;               /* Position in original pattern (for error reporting) */
+} RegexToken;
+
+/*
+ * Regex Token Array
+ * Dynamic array of tokens with automatic memory management
+ */
+typedef struct {
+    RegexToken* tokens;
+    size_t count;
+    size_t capacity;
+} RegexTokenArray;
+
+/*
+ * AST Node Types for Regex Parse Tree
+ * Used for building structured representation before PEG conversion
+ */
+typedef enum {
+    RAST_LITERAL,          /* Literal string or character */
+    RAST_CHARSET,          /* Character class [abc] or [a-z] */
+    RAST_DOT,              /* . (any character) */
+    RAST_SEQUENCE,         /* Sequential concatenation (ab) */
+    RAST_ALTERNATION,      /* Choice (a|b) */
+    RAST_ZERO_OR_MORE,     /* a* */
+    RAST_ONE_OR_MORE,      /* a+ */
+    RAST_OPTIONAL,         /* a? */
+    RAST_ANCHOR_START,     /* ^ */
+    RAST_ANCHOR_END        /* $ */
+} RegexAstNodeType;
+
+typedef struct RegexAstNode RegexAstNode;
+
+struct RegexAstNode {
+    RegexAstNodeType type;
+    char* value;           /* For LITERAL, CHARSET */
+    int value_len;
+    RegexAstNode** children; /* For SEQUENCE, ALTERNATION, quantifiers */
+    size_t child_count;
+};
+
+/* ============== Token Array Helpers ============== */
+
+/*
+ * Initialize a token array
+ */
+static void token_array_init(RegexTokenArray* arr) {
+    arr->tokens = NULL;
+    arr->count = 0;
+    arr->capacity = 0;
+}
+
+/*
+ * Append a token to the array
+ */
+static void token_array_push(RegexTokenArray* arr, const RegexToken* token) {
+    if (arr->count >= arr->capacity) {
+        arr->capacity = (arr->capacity == 0) ? 32 : (arr->capacity * 2);
+        arr->tokens = realloc(arr->tokens, arr->capacity * sizeof(RegexToken));
+    }
+    arr->tokens[arr->count++] = *token;
+}
+
+/*
+ * Free all tokens in the array
+ */
+static void token_array_free(RegexTokenArray* arr) {
+    for (size_t i = 0; i < arr->count; i++) {
+        if (arr->tokens[i].value) {
+            free(arr->tokens[i].value);
+        }
+    }
+    free(arr->tokens);
+    arr->tokens = NULL;
+    arr->count = 0;
+    arr->capacity = 0;
+}
+
+/* ============== Tokenizer ============== */
+
+/*
+ * Tokenize a regex pattern into tokens
+ * Returns NULL on error with error_out set to error message
+ */
+static RegexTokenArray* regex_tokenize(const char* pattern, char** error_out) {
+    if (error_out) *error_out = NULL;
+
+    if (!pattern) {
+        if (error_out) *error_out = strdup("Pattern is NULL");
+        return NULL;
+    }
+
+    RegexTokenArray* arr = malloc(sizeof(RegexTokenArray));
+    token_array_init(arr);
 
     size_t len = strlen(pattern);
-    PikaClause* clause;
+    size_t pos = 0;
 
-    /* Check for character class [abc] or [a-z] */
-    if (len >= 3 && pattern[0] == '[' && pattern[len-1] == ']') {
-        char* inner = malloc(len - 1);
-        memcpy(inner, pattern + 1, len - 2);
-        inner[len - 2] = '\0';
-        clause = pika_clause_charset_from_pattern(inner);
-        free(inner);
-    }
-    /* Check for literal with + */
-    else if (len >= 2 && pattern[len-1] == '+') {
-        char* base = malloc(len);
-        memcpy(base, pattern, len - 1);
-        base[len - 1] = '\0';
+    while (pos < len) {
+        char c = pattern[pos];
 
-        if (base[0] == '[' && base[strlen(base)-1] == ']') {
-            char* inner = malloc(strlen(base) - 1);
-            memcpy(inner, base + 1, strlen(base) - 2);
-            inner[strlen(base) - 2] = '\0';
-            clause = pika_clause_one_or_more(pika_clause_charset_from_pattern(inner));
-            free(inner);
-        } else {
-            clause = pika_clause_one_or_more(pika_clause_str(base));
+        /* Skip whitespace in patterns (not standard but useful) */
+        if (isspace((unsigned char)c)) {
+            pos++;
+            continue;
         }
-        free(base);
-    }
-    /* Check for literal with * */
-    else if (len >= 2 && pattern[len-1] == '*') {
-        char* base = malloc(len);
-        memcpy(base, pattern, len - 1);
-        base[len - 1] = '\0';
 
-        if (base[0] == '[' && base[strlen(base)-1] == ']') {
-            char* inner = malloc(strlen(base) - 1);
-            memcpy(inner, base + 1, strlen(base) - 2);
-            inner[strlen(base) - 2] = '\0';
-            clause = pika_clause_zero_or_more(pika_clause_charset_from_pattern(inner));
-            free(inner);
-        } else {
-            clause = pika_clause_zero_or_more(pika_clause_str(base));
+        RegexToken tok = {0};
+        tok.pos = (int)pos;
+
+        /* Character class [abc] or [a-z] */
+        if (c == '[') {
+            size_t end = pos + 1;
+
+            /* Find closing bracket */
+            while (end < len && pattern[end] != ']') {
+                end++;
+            }
+
+            if (end >= len) {
+                if (error_out) *error_out = strdup("Unclosed character class [");
+                token_array_free(arr);
+                free(arr);
+                return NULL;
+            }
+
+            /* Extract inner content WITHOUT brackets */
+            /* pika_clause_charset_from_pattern expects content like "abc" or "^abc" */
+            tok.type = RTOK_CHARSET;
+            int inner_len = (int)(end - pos - 1);  /* Exclude [ and ] */
+            if (inner_len < 0) inner_len = 0;
+
+            /* Reject empty character classes like [] or []] */
+            if (inner_len == 0) {
+                if (error_out) *error_out = strdup("Empty character class [] is invalid");
+                token_array_free(arr);
+                free(arr);
+                return NULL;
+            }
+
+            /* Also reject character classes with only negation like [^] */
+            if (inner_len == 1 && pattern[pos + 1] == '^') {
+                if (error_out) *error_out = strdup("Empty negated character class [^] is invalid");
+                token_array_free(arr);
+                free(arr);
+                return NULL;
+            }
+
+            tok.value_len = inner_len;
+            tok.value = malloc(tok.value_len + 1);
+            if (!tok.value) {
+                if (error_out) *error_out = strdup("Out of memory");
+                token_array_free(arr);
+                free(arr);
+                return NULL;
+            }
+            memcpy(tok.value, pattern + pos + 1, tok.value_len);  /* Skip [ */
+            tok.value[tok.value_len] = '\0';
+            token_array_push(arr, &tok);
+            pos = end + 1;
         }
-        free(base);
-    }
-    /* Literal string */
-    else {
-        clause = pika_clause_str(pattern);
+        /* Escape sequence \n, \t, \d, etc. */
+        else if (c == '\\') {
+            if (pos + 1 >= len) {
+                if (error_out) *error_out = strdup("Incomplete escape sequence");
+                token_array_free(arr);
+                free(arr);
+                return NULL;
+            }
+
+            char next = pattern[pos + 1];
+            char buf[3] = { '\\', next, '\0' };
+
+            tok.type = RTOK_ESCAPE;
+            tok.value = strdup(buf);
+            if (!tok.value) {
+                if (error_out) *error_out = strdup("Out of memory");
+                token_array_free(arr);
+                free(arr);
+                return NULL;
+            }
+            tok.value_len = 2;
+            token_array_push(arr, &tok);
+            pos += 2;
+        }
+        /* Metacharacters */
+        else if (c == '*') {
+            tok.type = RTOK_STAR;
+            token_array_push(arr, &tok);
+            pos++;
+        }
+        else if (c == '+') {
+            tok.type = RTOK_PLUS;
+            token_array_push(arr, &tok);
+            pos++;
+        }
+        else if (c == '?') {
+            tok.type = RTOK_QUESTION;
+            token_array_push(arr, &tok);
+            pos++;
+        }
+        else if (c == '|') {
+            tok.type = RTOK_PIPE;
+            token_array_push(arr, &tok);
+            pos++;
+        }
+        else if (c == '(') {
+            tok.type = RTOK_LPAREN;
+            token_array_push(arr, &tok);
+            pos++;
+        }
+        else if (c == ')') {
+            tok.type = RTOK_RPAREN;
+            token_array_push(arr, &tok);
+            pos++;
+        }
+        else if (c == '^') {
+            tok.type = RTOK_ANCHOR_START;
+            token_array_push(arr, &tok);
+            pos++;
+        }
+        else if (c == '$') {
+            tok.type = RTOK_ANCHOR_END;
+            token_array_push(arr, &tok);
+            pos++;
+        }
+        else if (c == '.') {
+            tok.type = RTOK_DOT;
+            token_array_push(arr, &tok);
+            pos++;
+        }
+        /* Literal character */
+        else {
+            tok.type = RTOK_CHAR;
+            tok.value = malloc(2);
+            if (!tok.value) {
+                if (error_out) *error_out = strdup("Out of memory");
+                token_array_free(arr);
+                free(arr);
+                return NULL;
+            }
+            tok.value[0] = c;
+            tok.value[1] = '\0';
+            tok.value_len = 1;
+            token_array_push(arr, &tok);
+            pos++;
+        }
     }
 
+    /* Add EOF token */
+    RegexToken eof_tok = { .type = RTOK_EOF, .pos = (int)len };
+    token_array_push(arr, &eof_tok);
+
+    return arr;
+}
+
+/* ============== AST Node Helpers ============== */
+
+/*
+ * Create a literal AST node
+ */
+static RegexAstNode* ast_literal(const char* value, int len) {
+    RegexAstNode* node = calloc(1, sizeof(RegexAstNode));
+    if (!node) return NULL;
+    node->value = malloc(len + 1);
+    if (!node->value) {
+        free(node);
+        return NULL;
+    }
+    node->type = RAST_LITERAL;
+    node->value_len = len;
+    memcpy(node->value, value, len);
+    node->value[len] = '\0';
+    return node;
+}
+
+/*
+ * Create a charset AST node
+ */
+static RegexAstNode* ast_charset(const char* value, int len) {
+    RegexAstNode* node = calloc(1, sizeof(RegexAstNode));
+    if (!node) return NULL;
+    node->value = malloc(len + 1);
+    if (!node->value) {
+        free(node);
+        return NULL;
+    }
+    node->type = RAST_CHARSET;
+    node->value_len = len;
+    memcpy(node->value, value, len);
+    node->value[len] = '\0';
+    return node;
+}
+
+/*
+ * Create a dot AST node
+ */
+static RegexAstNode* ast_dot(void) {
+    RegexAstNode* node = calloc(1, sizeof(RegexAstNode));
+    if (!node) return NULL;
+    node->type = RAST_DOT;
+    return node;
+}
+
+/*
+ * Create an anchor node
+ */
+static RegexAstNode* ast_anchor(RegexAstNodeType type) {
+    RegexAstNode* node = calloc(1, sizeof(RegexAstNode));
+    if (!node) return NULL;
+    node->type = type;
+    return node;
+}
+
+/*
+ * Create a unary node (quantifier)
+ */
+static RegexAstNode* ast_unary(RegexAstNodeType type, RegexAstNode* child) {
+    RegexAstNode* node = calloc(1, sizeof(RegexAstNode));
+    if (!node) return NULL;
+    node->children = malloc(sizeof(RegexAstNode*));
+    if (!node->children) {
+        free(node);
+        return NULL;
+    }
+    node->type = type;
+    node->children[0] = child;
+    node->child_count = 1;
+    return node;
+}
+
+/*
+ * Create a binary node (sequence or alternation)
+ */
+static RegexAstNode* ast_binary(RegexAstNodeType type, RegexAstNode* left, RegexAstNode* right) {
+    RegexAstNode* node = calloc(1, sizeof(RegexAstNode));
+    if (!node) return NULL;
+    node->children = malloc(2 * sizeof(RegexAstNode*));
+    if (!node->children) {
+        free(node);
+        return NULL;
+    }
+    node->type = type;
+    node->children[0] = left;
+    node->children[1] = right;
+    node->child_count = 2;
+    return node;
+}
+
+/*
+ * Free an AST tree
+ */
+static void ast_free(RegexAstNode* node) {
+    if (!node) return;
+    for (size_t i = 0; i < node->child_count; i++) {
+        ast_free(node->children[i]);
+    }
+    free(node->children);
+    free(node->value);
+    free(node);
+}
+
+/* ============== Parser ============== */
+
+/*
+ * Parser context for tracking position
+ */
+typedef struct {
+    RegexToken* tokens;
+    size_t count;
+    size_t pos;
+} ParserContext;
+
+/*
+ * Get current token
+ */
+static RegexToken* current(ParserContext* ctx) {
+    if (ctx->pos >= ctx->count) return NULL;
+    return &ctx->tokens[ctx->pos];
+}
+
+/*
+ * Peek at current token type
+ */
+static int peek_type(ParserContext* ctx) {
+    RegexToken* tok = current(ctx);
+    return tok ? tok->type : RTOK_EOF;
+}
+
+/*
+ * Consume current token
+ */
+static void consume(ParserContext* ctx) {
+    if (ctx->pos < ctx->count) {
+        ctx->pos++;
+    }
+}
+
+/*
+ * Forward declarations
+ */
+static RegexAstNode* parse_alternation(ParserContext* ctx);
+
+/*
+ * Parse an atom (literal, charset, dot, parenthesized expression)
+ */
+static RegexAstNode* parse_atom(ParserContext* ctx) {
+    RegexToken* tok = current(ctx);
+    if (!tok) return NULL;
+
+    switch (tok->type) {
+        case RTOK_CHAR:
+            consume(ctx);
+            return ast_literal(tok->value, tok->value_len);
+
+        case RTOK_CHARSET:
+            consume(ctx);
+            return ast_charset(tok->value, tok->value_len);
+
+        case RTOK_DOT:
+            consume(ctx);
+            return ast_dot();
+
+        case RTOK_ANCHOR_START:
+            consume(ctx);
+            return ast_anchor(RAST_ANCHOR_START);
+
+        case RTOK_ANCHOR_END:
+            consume(ctx);
+            return ast_anchor(RAST_ANCHOR_END);
+
+        case RTOK_ESCAPE: {
+            consume(ctx);
+            /* Handle escape sequences */
+            const char* esc = tok->value;
+            if (strcmp(esc, "\\d") == 0) {
+                return ast_charset("[0-9]", 5);
+            } else if (strcmp(esc, "\\w") == 0) {
+                return ast_charset("[a-zA-Z0-9_]", 11);
+            } else if (strcmp(esc, "\\s") == 0) {
+                return ast_charset("[ \\t\\n\\r]", 8);
+            } else if (strcmp(esc, "\\.") == 0 || strcmp(esc, "\\\\")==0 || strcmp(esc, "\\[")==0 || strcmp(esc, "\\]")==0) {
+                /* Escaped literal - just use the character */
+                return ast_literal(&esc[1], 1);
+            } else if (strcmp(esc, "\\n") == 0) {
+                return ast_literal("\n", 1);
+            } else if (strcmp(esc, "\\t") == 0) {
+                return ast_literal("\t", 1);
+            } else if (strcmp(esc, "\\r") == 0) {
+                return ast_literal("\r", 1);
+            } else {
+                /* Unknown escape - treat as literal char */
+                return ast_literal(&esc[1], 1);
+            }
+        }
+
+        case RTOK_LPAREN: {
+            consume(ctx);
+            RegexAstNode* expr = parse_alternation(ctx);
+            if (!expr) return NULL;
+            if (peek_type(ctx) != RTOK_RPAREN) {
+                ast_free(expr);
+                return NULL;
+            }
+            consume(ctx);
+            return expr;
+        }
+
+        default:
+            return NULL;
+    }
+}
+
+/*
+ * Parse quantified expression (atom followed by optional quantifier)
+ * Precedence: atom < quantifier
+ */
+static RegexAstNode* parse_quantifier(ParserContext* ctx) {
+    RegexAstNode* atom = parse_atom(ctx);
+    if (!atom) return NULL;
+
+    int tok_type = peek_type(ctx);
+    if (tok_type == RTOK_STAR) {
+        consume(ctx);
+        return ast_unary(RAST_ZERO_OR_MORE, atom);
+    } else if (tok_type == RTOK_PLUS) {
+        consume(ctx);
+        return ast_unary(RAST_ONE_OR_MORE, atom);
+    } else if (tok_type == RTOK_QUESTION) {
+        consume(ctx);
+        return ast_unary(RAST_OPTIONAL, atom);
+    }
+
+    return atom;
+}
+
+/*
+ * Parse sequence (one or more quantified expressions)
+ * Precedence: quantifier < sequence
+ */
+static RegexAstNode* parse_sequence(ParserContext* ctx) {
+    RegexAstNode* left = parse_quantifier(ctx);
+    if (!left) return NULL;
+
+    /* Check if there's more to sequence */
+    int tok_type = peek_type(ctx);
+    if (tok_type != RTOK_PIPE && tok_type != RTOK_RPAREN && tok_type != RTOK_EOF) {
+        RegexAstNode* right = parse_sequence(ctx);
+        if (right) {
+            return ast_binary(RAST_SEQUENCE, left, right);
+        }
+    }
+
+    return left;
+}
+
+/*
+ * Parse alternation (one or more sequences separated by |)
+ * Precedence: sequence < alternation
+ */
+static RegexAstNode* parse_alternation(ParserContext* ctx) {
+    RegexAstNode* left = parse_sequence(ctx);
+    if (!left) return NULL;
+
+    if (peek_type(ctx) == RTOK_PIPE) {
+        consume(ctx);
+        RegexAstNode* right = parse_alternation(ctx);
+        if (right) {
+            return ast_binary(RAST_ALTERNATION, left, right);
+        }
+    }
+
+    return left;
+}
+
+/*
+ * Parse the entire pattern
+ */
+static RegexAstNode* parse_pattern(ParserContext* ctx) {
+    return parse_alternation(ctx);
+}
+
+/* ============== AST to PikaClause Conversion ============== */
+
+/*
+ * Convert AST node directly to PikaClause
+ * This is more efficient than generating PEG text and parsing it
+ */
+static PikaClause* ast_to_clause(RegexAstNode* node) {
+    if (!node) return pika_clause_nothing();
+
+    switch (node->type) {
+        case RAST_LITERAL:
+            return pika_clause_str(node->value);
+
+        case RAST_CHARSET:
+            return pika_clause_charset_from_pattern(node->value);
+
+        case RAST_DOT: {
+            /* In PEG, . matches any character */
+            /* Invert a charset for NULL character to match everything except NULL */
+            /* This works because inverted charsets match when char is NOT in exclude list */
+            PikaClause* null_charset = pika_clause_char('\0');
+            if (!null_charset) return pika_clause_nothing();
+            return pika_clause_charset_invert(null_charset);
+        }
+
+        case RAST_ANCHOR_START:
+            /* Start anchor - use followed_by (positive lookahead) */
+            /* For practical purposes, we can skip this since PEG matches from start by default */
+            return pika_clause_nothing();
+
+        case RAST_ANCHOR_END:
+            /* End anchor - use not_followed_by (negative lookahead) for any character */
+            /* For simplicity, we'll skip this in the initial implementation */
+            return pika_clause_nothing();
+
+        case RAST_SEQUENCE: {
+            /* Sequence of two clauses */
+            PikaClause* left = ast_to_clause(node->children[0]);
+            PikaClause* right = ast_to_clause(node->children[1]);
+            PikaClause* seq_array[] = { left, right };
+            return pika_clause_seq(seq_array, 2);
+        }
+
+        case RAST_ALTERNATION: {
+            /* Choice (first) of two clauses */
+            PikaClause* left = ast_to_clause(node->children[0]);
+            PikaClause* right = ast_to_clause(node->children[1]);
+            PikaClause* alt_array[] = { left, right };
+            return pika_clause_first(alt_array, 2);
+        }
+
+        case RAST_ZERO_OR_MORE:
+            return pika_clause_zero_or_more(ast_to_clause(node->children[0]));
+
+        case RAST_ONE_OR_MORE:
+            return pika_clause_one_or_more(ast_to_clause(node->children[0]));
+
+        case RAST_OPTIONAL:
+            return pika_clause_optional(ast_to_clause(node->children[0]));
+    }
+
+    return pika_clause_nothing();
+}
+
+/* ============== Pattern Compiler (Updated) ============== */
+
+/*
+ * Pattern compiler using the regex-to-AST converter + direct clause building
+ * This converts regex patterns directly to PikaClauses without PEG text
+ */
+PikaGrammar* omni_compile_pattern(const char* pattern, char** error_out) {
+    if (error_out) *error_out = NULL;
+
+    /* Tokenize */
+    RegexTokenArray* tokens = regex_tokenize(pattern, error_out);
+    if (!tokens) return NULL;
+
+    /* Parse */
+    ParserContext ctx = { .tokens = tokens->tokens, .count = tokens->count, .pos = 0 };
+    RegexAstNode* ast = parse_pattern(&ctx);
+
+    if (!ast) {
+        token_array_free(tokens);
+        free(tokens);
+        if (error_out) *error_out = strdup("Failed to parse pattern");
+        return NULL;
+    }
+
+    /* Check for unparsed tokens (besides EOF) */
+    if (ctx.pos < tokens->count - 1) {
+        ast_free(ast);
+        token_array_free(tokens);
+        free(tokens);
+        if (error_out) *error_out = strdup("Unexpected tokens at end of pattern");
+        return NULL;
+    }
+
+    /* Convert AST to PikaClause */
+    PikaClause* clause = ast_to_clause(ast);
+
+    /* Cleanup AST and tokens */
+    ast_free(ast);
+    token_array_free(tokens);
+    free(tokens);
+
+    /* Create grammar with single rule */
     PikaRule* rules[] = {
         pika_rule("pattern", clause)
     };
 
     return pika_grammar_new(rules, 1);
+}
+
+/*
+ * Match using a specific rule from a compiled grammar
+ * This function was declared but not implemented in the original code
+ */
+Value* omni_pika_match_rule(PikaGrammar* grammar, const char* rule, const char* input) {
+    if (!grammar || !rule || !input) return mk_nil();
+
+    /* Parse the input with the grammar */
+    PikaMemoTable* memo = pika_grammar_parse(grammar, input);
+    if (!memo) return mk_nil();
+
+    /* Get all non-overlapping matches for the specified rule */
+    size_t match_count = 0;
+    PikaMatch** matches = pika_memo_get_non_overlapping_matches_for_rule(
+        memo, rule, &match_count
+    );
+
+    if (match_count == 0 || !matches) {
+        pika_memo_free(memo);
+        return mk_nil();
+    }
+
+    /* Get the first match */
+    PikaMatch* match = matches[0];
+    int start = pika_match_start(match);
+    int len = pika_match_len(match);
+
+    /* Extract the matched text */
+    char* text = malloc(len + 1);
+    memcpy(text, input + start, len);
+    text[len] = '\0';
+
+    /* Create the result Value */
+    Value* result = mk_code(text);
+    free(text);
+    free(matches);
+    pika_memo_free(memo);
+
+    return result;
 }

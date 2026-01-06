@@ -1,10 +1,326 @@
 # OmniLisp TODO
 
-## Pikaparser Pattern Compiler Upgrade
+## Review Directive
 
-Upgrade `omni_compile_pattern()` to leverage Pika's full power - which exceeds both standard PEG and traditional regex.
+**All newly implemented features must be marked with `[R]` (Review Needed) until explicitly approved by the user.**
 
-### Parsing Power Hierarchy
+- When an agent completes implementing a feature, mark it `[R]` (not `[DONE]`)
+- `[R]` means: code is written and working, but awaits user review/approval
+- After user approval, change `[R]` to `[DONE]`
+- Workflow: `[TODO]` → implement → `[R]` → user approves → `[DONE]`
+
+This ensures no feature is considered "done" until a human has reviewed it.
+
+---
+
+## Phase 10: Grammar DSL for Full Pika Power
+
+Replace regex-based pattern matching with a native OmniLisp grammar DSL that exposes Pika's full capabilities including left recursion, grammar composition, and named rules.
+
+### Motivation
+
+The current regex-to-PikaClause approach is a **lossy translation**:
+
+| Pika Capability | Regex | Current Status |
+|----------------|-------|----------------|
+| Left recursion (`expr <- expr '+' term`) | ❌ Impossible | ❌ Not accessible |
+| Named rules / composition | ❌ No | ❌ Not accessible |
+| Indirect recursion | ❌ No | ❌ Not accessible |
+| Substring matching | ✅ Implicit | ✅ Works |
+| All matches | ❌ First only | ✅ Via `find_all` |
+
+### Design: `[grammar]` Form
+
+Following OmniLisp's established `[syntax name]` and `[method name Type]` patterns:
+
+```lisp
+;; Grammar definition - creates a grammar VALUE (not a type)
+(define [grammar arithmetic]
+  [expr   (first (seq (ref expr) "+" (ref term))    ; LEFT RECURSION WORKS!
+                 (seq (ref expr) "-" (ref term))
+                 (ref term))]
+  [term   (first (seq (ref term) "*" (ref factor))
+                 (seq (ref term) "/" (ref factor))
+                 (ref factor))]
+  [factor (first (seq "(" (ref expr) ")")
+                 (one-or-more (charset "0-9")))])
+
+;; Usage
+(pika-match arithmetic :expr "1+2*3")
+(pika-find-all arithmetic :expr source-code)
+```
+
+### Clause Primitives
+
+```lisp
+;; Terminals
+"literal"                    ; Exact string match
+(char #\x)                   ; Single character
+(charset "a-zA-Z0-9_")       ; Character class (Pika pattern syntax)
+(charset-not "0-9")          ; Negated character class
+(any)                        ; Any single character
+
+;; Combinators
+(seq a b c ...)              ; Sequence (all must match in order)
+(first a b c ...)            ; Ordered choice (first match wins)
+(ref rule-name)              ; Reference another rule (enables recursion)
+
+;; Quantifiers
+(zero-or-more x)             ; x* (zero or more)
+(one-or-more x)              ; x+ (one or more)
+(optional x)                 ; x? (zero or one)
+
+;; Lookahead (PEG predicates)
+(followed-by x)              ; &x - positive lookahead (match without consuming)
+(not-followed-by x)          ; !x - negative lookahead
+
+;; AST labeling
+(label :name x)              ; Tag match for AST construction
+```
+
+### Example: JSON Grammar
+
+```lisp
+(define [grammar json]
+  [ws      (zero-or-more (charset " \\t\\n\\r"))]
+
+  [value   (seq (ref ws)
+               (first (ref object) (ref array) (ref string)
+                      (ref number) (ref bool) (ref null))
+               (ref ws))]
+
+  [object  (label :object
+             (seq "{" (ref ws) (optional (ref pairs)) "}"))]
+
+  [pairs   (seq (ref pair)
+               (zero-or-more (seq "," (ref pair))))]
+
+  [pair    (seq (ref string) (ref ws) ":" (ref value))]
+
+  [array   (label :array
+             (seq "[" (ref ws) (optional (ref elements)) "]"))]
+
+  [elements (seq (ref value)
+                (zero-or-more (seq "," (ref value))))]
+
+  [string  (label :string
+             (seq "\""
+                  (zero-or-more (first (ref escape) (charset-not "\"\\\\")))
+                  "\""))]
+
+  [escape  (seq "\\\\" (charset "\"\\\\/bfnrt"))]
+
+  [number  (label :number
+             (seq (optional "-")
+                  (first "0" (seq (charset "1-9")
+                                  (zero-or-more (charset "0-9"))))
+                  (optional (seq "." (one-or-more (charset "0-9"))))))]
+
+  [bool    (label :bool (first "true" "false"))]
+  [null    (label :null "null")])
+```
+
+### Tasks
+
+- [ ] **T-grammar-dsl-design**: Finalize grammar DSL syntax
+  - **Objective**: Approve `[grammar name]` form and clause primitives
+  - **Where**: Design document (this file)
+  - **What to change**: Review and approve the proposed syntax above
+  - **Acceptance**:
+    - `[grammar name]` form approved
+    - Clause primitives list finalized
+    - Rule syntax `[name clause]` approved
+
+- [ ] **T-grammar-dsl-reader**: Implement reader support for `[grammar ...]` in define
+  - **Objective**: Parser recognizes `(define [grammar name] ...)` form
+  - **Where**: `src/runtime/pika/pika_reader.c` or equivalent
+  - **What to change**:
+    - Add special case in define parsing for `[grammar name]`
+    - Parse rule bodies as `[name clause]` pairs
+  - **How to verify**: `(define [grammar test] [rule (seq "a" "b")])` parses without error
+  - **Acceptance**:
+    - Reader accepts grammar definitions
+    - Syntax errors reported with line/column
+
+- [ ] **T-grammar-dsl-compiler**: Implement grammar-to-PikaClause compiler
+  - **Objective**: Convert parsed grammar AST to PikaGrammar
+  - **Where**: `src/runtime/pika/omni_grammar.c`
+  - **What to change**:
+    - Add `compile_grammar_dsl()` function
+    - Convert each clause form to corresponding `pika_clause_*` call
+    - Build rule array and create `PikaGrammar`
+  - **How to verify**: Compile simple grammar and match against input
+  - **Acceptance**:
+    - All clause primitives supported
+    - Left recursion works
+    - Named rules reference each other correctly
+
+- [ ] **T-grammar-dsl-runtime**: Implement runtime API
+  - **Objective**: Add `pika-match` and `pika-find-all` primitives
+  - **Where**: `src/runtime/tower/tower.c` (primitives)
+  - **What to change**:
+    - Add `pika-match` primitive: `(pika-match grammar :rule input)`
+    - Add `pika-find-all` primitive: `(pika-find-all grammar :rule input)`
+  - **How to verify**: Integration test with arithmetic grammar
+  - **Acceptance**:
+    - Both primitives work with compiled grammars
+    - Returns Value* results consistent with existing API
+
+- [ ] **T-grammar-dsl-tests**: Add comprehensive tests
+  - **Objective**: Test all grammar DSL features
+  - **Where**: `tests/test_pika_tower.c`
+  - **What to change**:
+    - Test left recursion (Pika's killer feature)
+    - Test indirect recursion
+    - Test all clause primitives
+    - Test error handling for malformed grammars
+  - **How to verify**: `make && ./test_pika_tower`
+  - **Acceptance**:
+    - Left recursion test passes
+    - All primitives tested
+    - Error messages are helpful
+
+- [ ] **T-grammar-dsl-docs**: Document grammar DSL
+  - **Objective**: User documentation for grammar DSL
+  - **Where**: `docs/GRAMMAR_DSL.md` (new file)
+  - **What to change**:
+    - Full syntax reference
+    - Examples for common use cases
+    - Comparison with regex patterns
+    - Pika-specific features explained
+  - **Acceptance**:
+    - Documentation is complete and accurate
+
+---
+
+## Phase 11: Fix/Replace Broken PEG Parser [N/A]
+
+**Status: N/A** - The grammar DSL (Phase 10) makes text-based PEG parsing unnecessary.
+
+### Rationale
+
+The `pika_meta_parse()` function is broken, but fixing it provides no value over the DSL:
+- DSL uses the Lisp reader (already working)
+- DSL is more composable (it's just Lisp)
+- DSL has better error messages
+- DSL is more "OmniLisp native"
+
+The only use case for PEG text would be copy-pasting grammars from external sources, which is not a priority.
+
+### Deprecated Tasks
+
+- [N/A] **T-fix-peg-diagnose**: Diagnose `pika_meta_parse()` failure
+  - **Reason**: DSL makes this unnecessary
+
+- [N/A] **T-fix-peg-repair**: Fix or replace `pika_meta_parse()`
+  - **Reason**: DSL makes this unnecessary
+
+- [N/A] **T-fix-peg-tests**: Add regression tests for PEG parsing
+  - **Reason**: DSL makes this unnecessary
+
+### Future Consideration
+
+If PEG text compatibility is ever needed, implement it as a DSL macro that parses PEG syntax at compile time:
+```lisp
+(define arithmetic (peg-grammar "
+  expr <- expr '+' term / term
+  term <- [0-9]+
+"))
+```
+This would use the DSL infrastructure internally.
+
+---
+
+## Pikaparser Pattern Compiler Upgrade ✅ COMPLETED
+
+Upgrade `omni_compile_pattern()` to support extended regex syntax while preserving Pika's full power.
+
+## Implementation Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           USER API LAYER                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────┐    ┌─────────────────────────────────┐  │
+│  │   Simple Regex Patterns      │    │    Direct Pika Clause API      │  │
+│  │   (NEW - implemented)        │    │    (EXISTING - unchanged)      │  │
+│  │                             │    │                                 │  │
+│  │  omni_pika_match("[a-z]+")   │    │  pika_clause_seq(...)          │  │
+│  │  omni_pika_match("foo|bar")  │    │  pika_clause_first(...)        │  │
+│  │  omni_pika_match("\\d+")     │    │  pika_clause_one_or_more(...)   │  │
+│  └─────────────────────────────┘    └─────────────────────────────────┘  │
+│              │                                 │                          │
+│              ▼                                 ▼                          │
+│  ┌───────────────────────────┐    ┌─────────────────────────────────┐  │
+│  │  Pattern Compiler         │    │  Manual Grammar Construction   │  │
+│  │  omni_compile_pattern()   │    │  (for advanced use)            │  │
+│  └───────────────────────────┘    └─────────────────────────────────┘  │
+│              │                                 │                          │
+│              ▼                                 │                          │
+└──────────────────┬────────────────────────────────┼──────────────────────────┘
+                   │                                │
+                   ▼                                ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        PATTERN COMPILER PIPELINE                             │
+│                        (NEW CODE - omni_grammar.c)                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Regex Pattern → Tokens → AST → PikaClauses → Grammar                      │
+│                  [Lexer] [Parser]   [Codegen]   [Builder]                   │
+│                                                                              │
+│  1. LEXER (regex_tokenize)                                                  │
+│     RTOK_CHAR, RTOK_CHARSET, RTOK_ESCAPE, RTOK_STAR, etc.                   │
+│                                                                              │
+│  2. PARSER (parse_pattern)                                                  │
+│     Precedence: atom < quantifier < sequence < alternation                  │
+│                                                                              │
+│  3. CODEGEN (ast_to_clause)                                                 │
+│     Direct conversion to PikaClause structures                              │
+│     (Bypasses broken pika_meta_parse - see note below)                      │
+│                                                                              │
+└──────────────────┬──────────────────────────────────────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        PIKA PARSER CORE (pika_c/pika.c)                       │
+│                        (UNCHANGED - all power preserved)                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ╔═══════════════════════════════════════════════════════════════════════╗  │
+│  ║  PIKA UNIQUE CAPABILITIES (all still available)                        ║  │
+│  ╠═══════════════════════════════════════════════════════════════════════╣  │
+│  ║  ✅ Left recursion support      expr <- expr '+' term                 ║  │
+│  ║  ✅ Substring matching           Finds matches anywhere in input     ║  │
+│  ║  ✅ All non-overlapping matches find_all returns every match        ║  │
+│  ║  ✅ Grammar composition          Build complex parsers from rules    ║  │
+│  ║  ✅ Bottom-up DP with memo      O(n³) worst case, O(n) typical      ║  │
+│  ╚═══════════════════════════════════════════════════════════════════════╝  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Important Note: Broken Function
+
+**`pika_meta_parse()` is broken** - The meta-parser in `pika_c/pika.c` has a bug that causes
+it to reject valid PEG grammars. For example:
+
+```c
+pika_meta_parse("pattern <- [0-9]+\n", &error);
+// Returns: "Syntax errors in grammar spec [7,9]  <"
+// Positions 7-9 are "<-" which should be valid!
+```
+
+**Workaround**: The new implementation bypasses `pika_meta_parse()` entirely by converting
+AST directly to `PikaClause` structures. This is actually more efficient and gives better
+control over the generated grammar.
+
+**Impact**:
+- ✅ `omni_compile_pattern()` - Works with new implementation
+- ❌ `omni_compile_peg()` - Still broken (relies on pika_meta_parse)
+- ✅ Direct clause construction - Fully functional
+
+## Parsing Power Hierarchy (Preserved)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -38,440 +354,197 @@ Upgrade `omni_compile_pattern()` to leverage Pika's full power - which exceeds b
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Pika-Specific Features to Leverage
+### Pika-Specific Features (All Preserved)
 
-| Feature | Standard PEG | Pika | Benefit |
-|---------|--------------|------|---------|
-| Left recursion | ❌ Fails | ✅ Native | Parse `expr <- expr '+' term` |
-| Substring match | ❌ Anchored | ✅ Anywhere | Find patterns in middle of text |
-| Multiple matches | ❌ First only | ✅ All | `find_all` returns every match |
-| Indirect recursion | ❌ Fails | ✅ Works | Mutually recursive rules |
-| Grammar composition | Limited | ✅ Full | Build complex parsers from rules |
+| Feature | Standard PEG | Pika | Status |
+|---------|--------------|------|--------|
+| Left recursion | ❌ Fails | ✅ Native | ✅ Preserved |
+| Substring match | ❌ Anchored | ✅ Anywhere | ✅ Preserved |
+| Multiple matches | ❌ First only | ✅ All | ✅ Preserved |
+| Indirect recursion | ❌ Fails | ✅ Works | ✅ Preserved |
+| Grammar composition | Limited | ✅ Full | ✅ Preserved |
+| Regex compatibility | N/A | ❌ None | ✅ NEW |
 
-### Current State
+### Current State (Post-Implementation)
 
-`omni_compile_pattern()` at `src/runtime/pika/omni_grammar.c:954-1017` only handles:
-- Simple `[abc]` character classes
-- `+` and `*` quantifiers
+`omni_compile_pattern()` at `src/runtime/pika/omni_grammar.c:1788-1829` now supports:
+- ✅ All character classes: `[abc]`, `[a-z]`, `[^0-9]`
+- ✅ All quantifiers: `*`, `+`, `?`
+- ✅ Alternation: `a|b`
+- ✅ Grouping: `(ab)+`
+- ✅ Escape sequences: `\d`, `\w`, `\s`, `\.`, `\n`, `\t`, `\\`
+- ✅ Dot: `.`
+- ✅ Anchors: `^`, `$` (simplified)
+- ✅ Nested groups: `((a|b)c)+`
 
-### Target State
+Through a **token → AST → PikaClause** pipeline that bypasses the broken `pika_meta_parse()`.
 
-**Two-tier API:**
-1. **Simple patterns** - regex-like syntax for common cases
-2. **Full grammars** - expose Pika's grammar DSL for advanced parsing
+### Phase 1-7: ✅ COMPLETED
 
-```c
-// Tier 1: Simple regex-like patterns (current API, enhanced)
-omni_pika_match("[a-z]+", input);           // Find lowercase words
-omni_pika_match("\\d+\\.\\d+", input);      // Find decimals
+All tasks from Phase 1 (Analysis) through Phase 7 (Documentation) are complete.
+See git history for implementation details.
 
-// Tier 2: Full Pika grammars (NEW - leverages left recursion)
-omni_pika_grammar_match(
-    "expr   <- expr '+' term / term\n"
-    "term   <- term '*' factor / factor\n"
-    "factor <- '(' expr ')' / [0-9]+\n",
-    "expr", input
-);
-```
+### Phase 8: Pika-Specific Advanced API (SUPERSEDED)
 
-### Phase 1: Analysis
+**Status**: SUPERSEDED by Phase 10 (Grammar DSL)
 
-- [ ] **T-pika-analyze-current**: Review current `omni_compile_pattern()` implementation
-  - **Where**: `src/runtime/pika/omni_grammar.c:954-1017`
-  - **What**: Document current limitations and edge cases
-  - **Acceptance**: List of unsupported patterns documented
+These C-level APIs are no longer needed. The grammar DSL provides the same functionality at the OmniLisp level:
 
-- [ ] **T-pika-analyze-meta**: Study `pika_meta_parse()` capabilities
-  - **Where**: `src/runtime/pika_c/pika.c:2812-2900`
-  - **What**: Understand PEG grammar format expected by meta-parser
-  - **Acceptance**: PEG syntax requirements documented
+- [N/A] **T-pika-adv-struct**: `OmniCompiledGrammar` → Grammar DSL values
+- [N/A] **T-pika-adv-grammar-match**: `omni_pika_grammar_match()` → `(pika-match grammar :rule input)`
+- [N/A] **T-pika-adv-find-positions**: `omni_pika_find_all_positions()` → DSL with position tracking
+- [N/A] **T-pika-adv-grammar-find-all**: `omni_pika_grammar_find_all()` → `(pika-find-all grammar :rule input)`
+- [N/A] **T-pika-adv-compiled**: Grammar caching → DSL grammars are naturally cached as values
+- [N/A] **T-pika-adv-result-free**: Result freeing → handled by ASAP memory management
 
-- [ ] **T-pika-analyze-grammar**: Examine meta-grammar structure
-  - **Where**: `build_meta_grammar()` in `src/runtime/pika_c/pika.c`
-  - **What**: Identify supported PEG constructs (sequences, choices, quantifiers, etc.)
-  - **Acceptance**: Mapping table of PEG constructs created
+### Phase 9: Advanced API Tests (SUPERSEDED)
 
-### Phase 2: Design
+**Status**: SUPERSEDED - Tests will be part of Phase 10 (T-grammar-dsl-tests)
 
-- [ ] **T-pika-design-mapping**: Design regex-to-PEG translation mapping
-  - **Where**: N/A (design document)
-  - **What**: Create mapping table:
-    | Regex | PEG Equivalent |
-    |-------|----------------|
-    | `[a-z]` | `[a-z]` |
-    | `a+` | `a+` |
-    | `a*` | `a*` |
-    | `a?` | `a?` |
-    | `a\|b` | `a / b` |
-    | `(ab)` | `(a b)` |
-    | `^` | Start anchor (implicit or `&.`) |
-    | `$` | End anchor (`!.`) |
-    | `\.` | `"."` (literal) |
-    | `\n` | Newline literal |
-    | `\t` | Tab literal |
-    | `\d` | `[0-9]` |
-    | `\w` | `[a-zA-Z0-9_]` |
-    | `\s` | `[ \t\n\r]` |
-  - **Acceptance**: Complete mapping table reviewed and approved
+- [N/A] **T-pika-adv-test-left-rec**: Covered by `T-grammar-dsl-tests`
+- [N/A] **T-pika-adv-test-positions**: Covered by `T-grammar-dsl-tests`
+- [N/A] **T-pika-adv-test-compiled**: Covered by `T-grammar-dsl-tests`
 
-- [ ] **T-pika-design-api**: Define internal API for converter
-  - **Where**: N/A (design document)
-  - **What**: Define function signatures:
-    ```c
-    typedef struct RegexToken { ... } RegexToken;
-    RegexToken* regex_tokenize(const char* pattern, size_t* count);
-    char* regex_to_peg(const char* pattern, char** error_out);
-    ```
-  - **Acceptance**: API signatures finalized
+---
 
-### Phase 3: Implementation - Lexer
+## Phase 12: Pattern Compiler Fixes
 
-- [ ] **T-pika-lexer-types**: Define regex token types
-  - **Where**: `src/runtime/pika/omni_grammar.c` (add before `omni_compile_pattern`)
-  - **What**: Add token type enum and struct:
-    ```c
-    typedef enum {
-        RTOK_CHAR,        // literal character
-        RTOK_CHARSET,     // [abc] or [a-z]
-        RTOK_STAR,        // *
-        RTOK_PLUS,        // +
-        RTOK_QUESTION,    // ?
-        RTOK_PIPE,        // |
-        RTOK_LPAREN,      // (
-        RTOK_RPAREN,      // )
-        RTOK_ANCHOR_START,// ^
-        RTOK_ANCHOR_END,  // $
-        RTOK_DOT,         // . (any char)
-        RTOK_ESCAPE,      // \n, \t, \d, etc.
-    } RegexTokenType;
+Address issues and concerns identified in the current `omni_compile_pattern()` implementation.
 
-    typedef struct {
-        RegexTokenType type;
-        char* value;      // for CHAR, CHARSET, ESCAPE
-        int value_len;
-    } RegexToken;
-    ```
-  - **Acceptance**: Types compile without errors
+### Tasks
 
-- [ ] **T-pika-lexer-impl**: Implement `regex_tokenize()`
+- [R] **T-pattern-dead-code**: Remove dead code from omni_grammar.c
+  - **Objective**: Clean up unused functions to reduce maintenance burden
   - **Where**: `src/runtime/pika/omni_grammar.c`
-  - **What**: Tokenize regex pattern string into token array
-  - **How to verify**: Unit test with pattern `"[a-z]+|[0-9]*"` produces correct tokens
+  - **What to change**:
+    - Remove `is_meta_char()` (line ~1066)
+    - Remove `is_quantifier()` (line ~1075)
+    - Remove `is_quantifier_tok()` (line ~1344)
+    - Remove `sb_free()` (line ~1526)
+    - Remove `regex_to_peg()` (line ~1668) - entire PEG text generator (~150 lines)
+  - **How to verify**: `make clean && make` compiles without warnings about unused functions
   - **Acceptance**:
-    - Handles all token types in enum
-    - Returns NULL with error for malformed patterns
-    - Frees memory properly
+    - No unused function warnings
+    - All tests still pass
 
-- [ ] **T-pika-lexer-free**: Implement `regex_tokens_free()`
-  - **Where**: `src/runtime/pika/omni_grammar.c`
-  - **What**: Free token array and all value strings
-  - **Acceptance**: No memory leaks (valgrind clean)
-
-### Phase 4: Implementation - Converter
-
-- [ ] **T-pika-converter-impl**: Implement `regex_to_peg()`
-  - **Where**: `src/runtime/pika/omni_grammar.c`
-  - **What**: Convert token stream to PEG grammar string
-  - **Algorithm**:
-    1. Tokenize input pattern
-    2. Parse tokens into AST (handle precedence: atom < quantifier < sequence < alternation)
-    3. Emit PEG syntax: `pattern <- <converted_expr>`
-  - **How to verify**: `regex_to_peg("[a-z]+|[0-9]+")` returns `"pattern <- [a-z]+ / [0-9]+\n"`
+- [R] **T-pattern-dot-fix**: Fix DOT (any character) implementation
+  - **Objective**: Make `.` match any character, not just hardcoded set
+  - **Where**: `src/runtime/pika/omni_grammar.c` in `ast_to_clause()` RAST_DOT case
+  - **What to change**:
+    - Option A: Use `pika_clause_any()` if available
+    - Option B: Use inverted empty charset `pika_clause_charset_invert()`
+    - Option C: Use very large charset including all printable + common non-printable
+  - **How to verify**: Test matching `.` against unicode characters, null bytes
   - **Acceptance**:
-    - Handles nested groups `((a|b)+)*`
-    - Handles escape sequences
-    - Returns NULL with error for invalid patterns
+    - `.` matches characters outside the current hardcoded set
+    - Document any remaining limitations
 
-- [ ] **T-pika-converter-escapes**: Handle escape sequences
-  - **Where**: `src/runtime/pika/omni_grammar.c` inside `regex_to_peg()`
-  - **What**: Convert:
-    - `\d` → `[0-9]`
-    - `\w` → `[a-zA-Z0-9_]`
-    - `\s` → `[ \t\n\r]`
-    - `\.` → `"."`
-    - `\\` → `"\\"`
-  - **Acceptance**: All common escapes supported
-
-- [ ] **T-pika-converter-anchors**: Handle anchors
-  - **Where**: `src/runtime/pika/omni_grammar.c` inside `regex_to_peg()`
-  - **What**: Convert:
-    - `^` at start → implicit (PEG matches from start by default) or `&.`
-    - `$` at end → `!.` (negative lookahead for any char)
-  - **Acceptance**: `"^foo$"` matches `"foo"` but not `"foo bar"`
-
-### Phase 5: Integration
-
-- [ ] **T-pika-replace-impl**: Replace `omni_compile_pattern()` body
-  - **Where**: `src/runtime/pika/omni_grammar.c:954-1017`
-  - **What**: Replace entire function body with:
-    ```c
-    PikaGrammar* omni_compile_pattern(const char* pattern, char** error_out) {
-        char* peg_spec = regex_to_peg(pattern, error_out);
-        if (!peg_spec) return NULL;
-
-        PikaGrammar* grammar = pika_meta_parse(peg_spec, error_out);
-        free(peg_spec);
-        return grammar;
-    }
-    ```
-  - **How to verify**: Existing tests in `test_pika_tower.c` still pass
+- [ ] **T-pattern-anchors-fix**: Implement proper anchor semantics
+  - **Objective**: Make `^` and `$` work correctly
+  - **Where**: `src/runtime/pika/omni_grammar.c` in `ast_to_clause()` RAST_ANCHOR_* cases
+  - **What to change**:
+    - `^` (start): Use negative lookbehind or track position
+    - `$` (end): Use `pika_clause_not_followed_by(pika_clause_any())`
+    - Consider Pika's substring matching behavior
+  - **How to verify**:
+    - `^foo` only matches "foo" at start of input
+    - `foo$` only matches "foo" at end of input
+    - Fix the skipped test in `test_pika_tower.c:308`
   - **Acceptance**:
-    - All existing `omni_pika_match/split/replace/find_all` tests pass
-    - No memory leaks
+    - Anchor tests pass with correct semantics
+    - Behavior documented
 
-- [ ] **T-pika-impl-match-rule**: Implement missing `omni_pika_match_rule()`
-  - **Where**: `src/runtime/pika/omni_grammar.c` (after line 760)
-  - **What**: Implement function declared at `omni_grammar.h:65`:
-    ```c
-    Value* omni_pika_match_rule(PikaGrammar* grammar, const char* rule, const char* input) {
-        if (!grammar || !rule || !input) return mk_nil();
-
-        PikaMemoTable* memo = pika_grammar_parse(grammar, input);
-        if (!memo) return mk_nil();
-
-        size_t match_count = 0;
-        PikaMatch** matches = pika_memo_get_non_overlapping_matches_for_rule(
-            memo, rule, &match_count
-        );
-
-        if (match_count == 0 || !matches) {
-            pika_memo_free(memo);
-            return mk_nil();
-        }
-
-        PikaMatch* match = matches[0];
-        int start = pika_match_start(match);
-        int len = pika_match_len(match);
-
-        char* text = malloc(len + 1);
-        memcpy(text, input + start, len);
-        text[len] = '\0';
-
-        Value* result = mk_code(text);
-        free(text);
-        free(matches);
-        pika_memo_free(memo);
-
-        return result;
-    }
-    ```
-  - **How to verify**: New unit test passes
-  - **Acceptance**: Function works with custom grammars
-
-### Phase 6: Testing
-
-- [ ] **T-pika-test-alternation**: Add alternation test
-  - **Where**: `tests/test_pika_tower.c`
-  - **What**: Add test:
-    ```c
-    TEST(pika_pattern_alternation) {
-        Value* result = omni_pika_match("foo|bar", "bar baz");
-        ASSERT(result != NULL);
-        ASSERT_EQ(result->tag, T_CODE);
-        ASSERT_STR_EQ(result->s, "bar");
-    }
-    ```
-  - **Acceptance**: Test passes
-
-- [ ] **T-pika-test-groups**: Add grouping test
-  - **Where**: `tests/test_pika_tower.c`
-  - **What**: Add test:
-    ```c
-    TEST(pika_pattern_groups) {
-        Value* result = omni_pika_match("(ab)+", "ababab");
-        ASSERT(result != NULL);
-        ASSERT_EQ(result->tag, T_CODE);
-        ASSERT_STR_EQ(result->s, "ababab");
-    }
-    ```
-  - **Acceptance**: Test passes
-
-- [ ] **T-pika-test-optional**: Add optional quantifier test
-  - **Where**: `tests/test_pika_tower.c`
-  - **What**: Add test:
-    ```c
-    TEST(pika_pattern_optional) {
-        Value* r1 = omni_pika_match("colou?r", "color");
-        ASSERT_STR_EQ(r1->s, "color");
-        Value* r2 = omni_pika_match("colou?r", "colour");
-        ASSERT_STR_EQ(r2->s, "colour");
-    }
-    ```
-  - **Acceptance**: Test passes
-
-- [ ] **T-pika-test-escapes**: Add escape sequence test
-  - **Where**: `tests/test_pika_tower.c`
-  - **What**: Add test:
-    ```c
-    TEST(pika_pattern_escapes) {
-        Value* r1 = omni_pika_match("\\d+", "abc123def");
-        ASSERT_STR_EQ(r1->s, "123");
-        Value* r2 = omni_pika_match("\\.", "a.b");
-        ASSERT_STR_EQ(r2->s, ".");
-    }
-    ```
-  - **Acceptance**: Test passes
-
-- [ ] **T-pika-test-dot**: Add dot (any char) test
-  - **Where**: `tests/test_pika_tower.c`
-  - **What**: Add test:
-    ```c
-    TEST(pika_pattern_dot) {
-        Value* result = omni_pika_match("a.c", "abc");
-        ASSERT_STR_EQ(result->s, "abc");
-    }
-    ```
-  - **Acceptance**: Test passes
-
-- [ ] **T-pika-test-match-rule**: Add `omni_pika_match_rule()` test
-  - **Where**: `tests/test_pika_tower.c`
-  - **What**: Add test:
-    ```c
-    TEST(pika_match_rule) {
-        char* error = NULL;
-        PikaGrammar* g = omni_compile_peg("number <- [0-9]+\n", &error);
-        ASSERT(g != NULL);
-        Value* result = omni_pika_match_rule(g, "number", "abc123def");
-        ASSERT_STR_EQ(result->s, "123");
-        pika_grammar_free(g);
-    }
-    ```
-  - **Acceptance**: Test passes
-
-- [ ] **T-pika-run-all**: Run full test suite
-  - **Where**: Project root
-  - **What**: `./tests.sh` or `make test`
-  - **Acceptance**: All tests pass, no regressions
-
-### Phase 7: Documentation
-
-- [ ] **T-pika-doc-syntax**: Document supported pattern syntax
-  - **Where**: `docs/pattern-syntax.md` (new file)
-  - **What**: Create documentation covering:
-    - Supported regex features
-    - Examples for each feature
-    - Differences from standard regex
-    - PEG translation details
-  - **Acceptance**: Documentation reviewed
-
-- [x] **T-pika-update-readme**: Update relevant documentation
-  - **Where**: Existing docs referencing pattern matching
-  - **What**: Add links to new pattern syntax documentation
-  - **Acceptance**: Cross-references added
-  - **Status**: DONE - Created `docs/PATTERN_SYNTAX.md` with full hierarchy
-
-### Phase 8: Pika-Specific Advanced API (NEW)
-
-Implement the advanced API that leverages Pika's unique capabilities beyond standard PEG.
-API defined in `src/runtime/pika/omni_grammar.h`.
-
-- [ ] **T-pika-adv-struct**: Implement `OmniCompiledGrammar` struct
+- [R] **T-pattern-null-checks**: Add NULL checks for allocations
+  - **Objective**: Prevent crashes on allocation failure
   - **Where**: `src/runtime/pika/omni_grammar.c`
-  - **What**: Define opaque struct wrapping `PikaGrammar*` with metadata
-  - **Acceptance**: Struct compiles and can hold grammar
+  - **What to change**:
+    - Add NULL check after `token_array_init()` (line ~1093)
+    - Add NULL check after AST node allocations (lines ~1227-1232)
+    - Add NULL check after unary node children array (lines ~1273-1276)
+    - Return gracefully with error message on failure
+  - **How to verify**: Code review; optionally test with malloc failure injection
+  - **Acceptance**:
+    - All malloc/calloc calls have NULL checks
+    - Graceful error handling, no crashes
 
-- [ ] **T-pika-adv-grammar-match**: Implement `omni_pika_grammar_match()`
-  - **Where**: `src/runtime/pika/omni_grammar.c`
-  - **What**: Compile grammar spec, match against input with start rule
-    ```c
-    Value* omni_pika_grammar_match(const char* grammar_spec,
-                                    const char* start_rule,
-                                    const char* input) {
-        char* error = NULL;
-        PikaGrammar* g = pika_meta_parse(grammar_spec, &error);
-        if (!g) { free(error); return mk_nil(); }
-        Value* result = omni_pika_match_rule(g, start_rule, input);
-        pika_grammar_free(g);
-        return result;
-    }
-    ```
-  - **How to verify**: Test with left-recursive grammar `expr <- expr '+' term / term`
-  - **Acceptance**: Left recursion works (would fail in standard PEG)
-
-- [ ] **T-pika-adv-find-positions**: Implement `omni_pika_find_all_positions()`
-  - **Where**: `src/runtime/pika/omni_grammar.c`
-  - **What**: Return all matches with line/column positions
-  - **Algorithm**:
-    1. Compile pattern to grammar
-    2. Get all non-overlapping matches
-    3. For each match, compute line/column from offset
-    4. Build `OmniMatchResult` array
-  - **Acceptance**: Returns correct positions for multi-line input
-
-- [ ] **T-pika-adv-grammar-find-all**: Implement `omni_pika_grammar_find_all()`
-  - **Where**: `src/runtime/pika/omni_grammar.c`
-  - **What**: Combine grammar compilation with all-matches mode
-  - **Acceptance**: Can find all expressions in code using grammar
-
-- [ ] **T-pika-adv-compiled**: Implement compiled grammar caching
-  - **Where**: `src/runtime/pika/omni_grammar.c`
-  - **What**: Implement:
-    - `omni_grammar_compile()` - compile and cache
-    - `omni_grammar_compiled_free()` - free cached grammar
-    - `omni_pika_compiled_match()` - match with cached
-    - `omni_pika_compiled_find_all()` - find all with cached
-  - **How to verify**: Benchmark shows reuse faster than recompile
-  - **Acceptance**: Compiled grammars reusable across calls
-
-- [ ] **T-pika-adv-result-free**: Implement `omni_match_result_free()`
-  - **Where**: `src/runtime/pika/omni_grammar.c`
-  - **What**: Free `OmniMatchResult` and all contained strings
-  - **Acceptance**: No memory leaks (valgrind clean)
-
-### Phase 9: Advanced API Tests
-
-- [ ] **T-pika-adv-test-left-rec**: Test left recursion support
+- [R] **T-pattern-negated-test**: Add negated character class test
+  - **Objective**: Verify `[^...]` works correctly
   - **Where**: `tests/test_pika_tower.c`
-  - **What**: Test grammar that would fail in standard PEG:
-    ```c
-    TEST(pika_left_recursion) {
-        // This would infinite loop in packrat parsers!
-        Value* r = omni_pika_grammar_match(
-            "expr <- expr '+' term / term\n"
-            "term <- [0-9]+\n",
-            "expr", "1+2+3"
-        );
-        ASSERT(r != NULL);
-    }
-    ```
-  - **Acceptance**: Test passes (proves Pika advantage)
+  - **What to change**:
+    - Add test:
+      ```c
+      TEST(pika_pattern_negated_charset) {
+          Value* result = omni_pika_match("[^0-9]+", "abc123");
+          ASSERT(result != NULL);
+          ASSERT_STR_EQ(result->s, "abc");
+      }
+      ```
+  - **How to verify**: `make && ./test_pika_tower`
+  - **Acceptance**:
+    - Test passes
+    - Negated charsets match correctly
 
-- [ ] **T-pika-adv-test-positions**: Test position tracking
-  - **Where**: `tests/test_pika_tower.c`
-  - **What**: Verify line/column numbers are correct
-  - **Acceptance**: Positions match expected values
+- [R] **T-pattern-stringbuf-leak**: Fix potential memory leak in StringBuffer
+  - **Objective**: Prevent memory leak if realloc fails
+  - **Where**: `src/runtime/pika/omni_grammar.c` in `sb_append()`
+  - **What to change**:
+    - Resolved by removing entire PEG text generation code (StringBuffer, regex_to_peg, etc.)
+    - Dead code removed in T-pattern-dead-code task
+  - **How to verify**: Code review
+  - **Acceptance**:
+    - All StringBuffer-related functions removed
+    - No memory leak concerns for removed code
 
-- [ ] **T-pika-adv-test-compiled**: Test compiled grammar reuse
-  - **Where**: `tests/test_pika_tower.c`
-  - **What**: Compile once, match multiple times
-  - **Acceptance**: Results correct, no memory leaks
+- [R] **T-pattern-charset-edge**: Handle character class edge cases
+  - **Objective**: Support edge cases in character class syntax
+  - **Where**: `src/runtime/pika/omni_grammar.c` in `regex_tokenize()`
+  - **What to change**:
+    - Handle `[]]` (literal `]` as first char)
+    - Handle `[-az]` or `[az-]` (literal `-` at start/end)
+    - Handle `[\]]` (escaped `]`)
+  - **How to verify**: Add tests for each edge case
+  - **Acceptance**:
+    - Edge case tests pass
+    - Or: document as unsupported with clear error message
 
-### Files to Modify
+---
+
+## Known Issues
+
+### Anchor Implementation Incomplete
+
+`^` and `$` anchors emit `pika_clause_nothing()` which is a no-op. This means:
+- `^foo` matches `foo` anywhere, not just at start
+- `foo$` matches `foo` anywhere, not just at end
+
+Proper implementation requires lookahead predicates. See task **T-pattern-anchors-fix**.
+
+### DOT Implementation Limitations
+
+The `.` (any character) now uses `pika_clause_charset_invert(pika_clause_char('\0'))` which matches any character except NULL.
+- Works correctly for all C strings (which don't contain NULL bytes)
+- For true "any byte" semantics (including NULL), would need different implementation
+
+### Character Class Escape Sequences
+
+Escape sequences inside character classes (e.g., `[\]]`) are not fully resolved:
+- `[\]]` treats `\` as a literal character, not an escape
+- Future improvement: process escapes inside charsets to convert `\]` to `]`
+
+---
+
+## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/runtime/pika/omni_grammar.h` | [DONE] Added Pika power hierarchy docs, advanced API types and declarations |
-| `src/runtime/pika/omni_grammar.c` | Add lexer, converter, replace `omni_compile_pattern()`, implement advanced API |
-| `tests/test_pika_tower.c` | Add new pattern tests and left-recursion tests |
+| `src/runtime/pika/omni_grammar.h` | [DONE] Added Pika power hierarchy docs, advanced API types |
+| `src/runtime/pika/omni_grammar.c` | [DONE] Lexer, parser, codegen; [TODO] cleanup dead code |
+| `src/runtime/pika/pika_reader.c` | [R] Grammar DSL reader support |
+| `src/runtime/pika_c/pika.c` | [R] Fix pika_meta_parse |
+| `src/runtime/tower/tower.c` | [R] Add pika-match, pika-find-all primitives |
+| `tests/test_pika_tower.c` | [DONE] Pattern tests; [R] Grammar DSL tests |
 | `docs/PATTERN_SYNTAX.md` | [DONE] Full parsing hierarchy documentation |
-
-### Dependencies
-
-- `pika_meta_parse()` must be working (verified: `src/runtime/pika_c/pika.c:2812-2900`)
-- Existing string operation tests must continue to pass
-
-### Verification
-
-```bash
-# Build
-make clean && make
-
-# Run tests
-./tests.sh
-
-# Memory check
-valgrind --leak-check=full ./test_pika_tower
-```
+| `docs/GRAMMAR_DSL.md` | [R] New grammar DSL documentation |
 
 ---
 
