@@ -84,6 +84,7 @@ void arena_reset(Arena *a);
 void arena_rewind(Arena *a, Arena_Mark m);
 void arena_free(Arena *a);
 void arena_trim(Arena *a);
+void arena_promote(Arena *dest, Arena *src);
 
 #ifndef ARENA_DA_INIT_CAP
 #define ARENA_DA_INIT_CAP 256
@@ -446,6 +447,19 @@ void arena_trim(Arena *a){
         free_chunk(r0);
     }
     a->end->next = NULL;
+}
+
+void arena_promote(Arena *dest, Arena *src) {
+    if (!src->begin) return;
+    if (dest->end) {
+        dest->end->next = src->begin;
+        dest->end = src->end;
+    } else {
+        dest->begin = src->begin;
+        dest->end = src->end;
+    }
+    src->begin = NULL;
+    src->end = NULL;
 }
 
 #endif // ARENA_IMPLEMENTATION

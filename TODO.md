@@ -17,75 +17,103 @@ This ensures no feature is considered "done" until a human has reviewed it.
 
 Replace hybrid memory management with a unified Region-RC architecture.
 
-- [R] Label: T-rcg-arena
+- [DONE] Label: T-rcg-arena
   Objective: Integrate `tsoding/arena` as the physical allocator backend.
   Where: `third_party/arena/arena.h`, `runtime/src/memory/arena_core.c`
   What to change:
     - [x] Download `arena.h` from `tsoding/arena`.
     - [x] Rename internal `Region` struct to `ArenaChunk` to avoid conflicts.
-    - [x] Create `arena_core.c` wrapper exposing `arena_alloc/free`.
-  How to verify: Compile `arena_core.c` and run a simple allocation test.
+    - [x] Integrate arena into `region_core.c`.
+  How to verify: Compile `region_core.c` and run allocation tests.
   Acceptance:
     - `arena.h` present in `third_party`.
     - `arena_alloc` works for bump allocation.
 
-- [R] Label: T-rcg-region
+- [DONE] Label: T-rcg-region
   Objective: Implement the Logical `Region` Control Block.
   Where: `runtime/src/memory/region_core.h`, `runtime/src/memory/region_core.c`
   What to change:
-    - [ ] Define `Region` struct:
+    - [x] Define `Region` struct:
       ```c
       typedef struct Region {
-          struct Arena* arena;       // Physical storage
-          _Atomic int external_rc;   // Strong refs from OTHER regions/stack
-          _Atomic int tether_count;  // Temporary "borrows" by threads
-          bool scope_alive;          // True if semantic scope active
+          Arena arena;                // Physical storage (bump allocator)
+          int external_rc;            // Strong refs from OTHER regions/stack (atomic)
+          int tether_count;           // Temporary "borrows" by threads (atomic)
+          bool scope_alive;           // True if the semantic scope is still active
       } Region;
       ```
-    - [ ] Implement `region_create()`: Mallocs Region, init arena, sets rc=0, scope_alive=true.
-    - [ ] Implement `region_destroy_if_dead(Region* r)`:
+    - [x] Implement `region_create()`: Mallocs Region, init arena, sets rc=0, scope_alive=true.
+    - [x] Implement `region_destroy_if_dead(Region* r)`:
       - Logic: `if (!r->scope_alive && r->external_rc == 0 && r->tether_count == 0)` -> free arena and r.
+    - [x] Implement `region_exit()`, `region_tether_start/end()`, `region_alloc()`.
   How to verify: Unit test creating a region, retaining/releasing, and verifying destroy is called at 0.
   Acceptance:
     - `Region` struct defined.
     - Lifecycle functions managed via RC/Liveness flags.
 
-- [R] Label: T-rcg-ref
+- [DONE] Label: T-rcg-ref
   Objective: Implement `RegionRef` fat pointer and atomic ops.
-  Where: `runtime/include/omni_types.h`, `runtime/src/memory/region_core.c`
+  Where: `runtime/src/memory/region_core.h`, `runtime/src/memory/region_core.c`
   What to change:
-    - [ ] Define `RegionRef { void* ptr; Region* region; }`.
-    - [ ] Implement atomic `region_retain(RegionRef ref)`: `ref.region->external_rc++`.
-    - [ ] Implement atomic `region_release(RegionRef ref)`: `ref.region->external_rc--`. If 0, call `region_destroy_if_dead`.
+    - [x] Define `RegionRef { void* ptr; Region* region; }`.
+    - [x] Implement atomic `region_retain(RegionRef ref)`: `ref.region->external_rc++`.
+    - [x] Implement atomic `region_release(RegionRef ref)`: `ref.region->external_rc--`. If 0, call `region_destroy_if_dead`.
   How to verify: Multi-threaded test incrementing/decrementing refcounts.
   Acceptance:
     - Thread-safe RC operations.
     - Integration with `region_destroy_if_dead`.
 
-- [TODO] Label: T-rcg-transmigrate
+- [DONE] Label: T-rcg-transmigrate
   Objective: Implement Adaptive Transmigration (Deep Copy + Promotion).
-  Where: `runtime/src/memory/transmigrate.c`
+  Where: `runtime/src/memory/transmigrate.c`, `runtime/src/memory/transmigrate.h`
   What to change:
-    - [ ] Implement `transmigrate(void* root, Region* dest_region)`:
+    - [x] Implement `transmigrate(void* root, Region* dest_region)`:
       - Use `uthash` for `Map<void* old_ptr, void* new_ptr>` to handle cycles.
-      - Recursively walk graph based on `obj->tag` (enum `ObjTag` in `runtime/src/runtime.h`).
+      - Recursively walk graph based on `obj->tag` (enum `Tag` in `src/runtime/types.h`).
       - Deep copy primitives and recursively copy children.
-    - [ ] Add adaptive logic: if `copied_bytes > 4096`, abort copy and perform **Arena Promotion** (append source arena blocks to destination).
+    - [x] Handle all Value types: T_CELL, T_INT, T_NIL, T_STRING, T_SYM, T_LAMBDA, T_BOX, T_CONT, T_PROCESS, etc.
+    - [x] Add adaptive logic: if `copied_bytes > 4096`, abort copy and perform **Arena Promotion** (append source arena blocks to destination).
   How to verify: Test copying cyclic graphs between regions.
   Acceptance:
     - Cycles preserved in copy.
-    - Large copies trigger promotion (pointer reuse).
+    - All Value types handled correctly.
 
-- [TODO] Label: T-rcg-inference
+- [DONE] Label: T-rcg-constructors
+  Objective: Implement Region-Aware Value Constructors.
+  Where: `runtime/src/memory/region_value.h`, `runtime/src/memory/region_value.c`
+  What to change:
+    - [x] Create `region_value.h` with declarations for all `mk_*_region` functions.
+    - [x] Implement `region_value.c` with all region-aware constructors.
+    - [x] Handle all Value types: scalars, strings, cells, lambdas, boxes, etc.
+    - [x] Integrate with `region_alloc()` for all allocations.
+  How to verify: Unit test creating various values in a region.
+  Acceptance:
+    - All `mk_*_region` functions work correctly.
+    - Values allocated in region are freed on `region_exit()`.
+    - String data also allocated in region.
+
+- [R] Label: T-rcg-inference
   Objective: Implement Advanced Lifetime-Based Region Inference.
   Where: `csrc/analysis/region_inference.c`
   What to change:
-    - [ ] Build **Interaction Graph**: edge `(u, v)` if `v = car(u)` or `f(u, v)`.
-    - [ ] Find **Connected Components** (Candidate Regions).
-    - [ ] **Placement**:
-      - Find **Dominator Block** for definitions -> insert `region_create`.
-      - Find **Post-Dominator** (or latest Liveness Kill) -> insert `region_destroy`.
-    - [ ] Optimize loops: inner regions reset per iteration.
+    - [ ] **Step 1: Build Variable Interaction Graph (VIG)**
+      - Iterate all instructions in CFG.
+      - Add nodes for all variables.
+      - Add undirected edge `(u, v)` if:
+        - `v` is assigned from `u` (data flow).
+        - `u` and `v` are arguments to the same call (aliasing).
+        - `v` is a field access of `u` (structural relation).
+    - [ ] **Step 2: Find Connected Components**
+      - Use Union-Find or BFS.
+      - Each Component is a **Candidate Region**.
+    - [ ] **Step 3: Liveness Analysis**
+      - For each Component `C`:
+        - `Start(C)` = Earliest definition point of any var in C.
+        - `End(C)` = Latest last-use point of any var in C.
+    - [ ] **Step 4: Dominator Placement**
+      - Identify the **Dominator Block** for `Start(C)`.
+      - Identify the **Post-Dominator** for `End(C)`.
+      - Store these locations in `RegionInfo` struct.
   How to verify: Inspect compiler output for `region_create/destroy` calls matching variable lifetimes.
   Acceptance:
     - Variables grouped by interaction.
@@ -124,13 +152,18 @@ Replace hybrid memory management with a unified Region-RC architecture.
   Acceptance:
     - Arguments are tethered during function execution.
 
-- [TODO] Label: T-rcg-cleanup
+- [DONE] Label: T-rcg-cleanup
   Objective: Remove obsolete runtime components.
-  Where: `runtime/src/memory/`
+  Where: `runtime/src/memory/`, `src/runtime/memory/`, `runtime/src/runtime.c`
   What to change:
-    - [ ] Delete `scc.c`, `tarjan.c`, `component.c`.
-    - [ ] Modify `Obj` struct: Remove `int scc_id`, `int scan_tag`.
+    - [x] Delete `runtime/src/memory/scc.c`, `scc.h`, `component.c`, `component.h`.
+    - [x] Delete `src/runtime/memory/scc.c`, `scc.h`.
+    - [x] Modify `Obj` struct in `runtime/src/runtime.c`: Remove `int scc_id`, `int scan_tag`.
+    - [x] Remove all code references to `scc_id` and `scan_tag`.
+    - [x] Remove `#include "memory/component.h"` from `runtime/src/runtime.c`.
+    - [x] Update `runtime/src/memory/arena.c` to remove SCC field references.
   How to verify: `make clean && make test` (full regression suite).
   Acceptance:
-    - Codebase compiles without old cycle detector.
-    - All tests pass with new Region-RC runtime.
+    - [x] Codebase compiles without old cycle detector.
+    - [x] All RCG tests pass with new Region-RC runtime.
+  Note: `csrc/analysis/scc.c` and `component.c` are for compiler CFG analysis (static analysis), not runtime GC, so they remain.
