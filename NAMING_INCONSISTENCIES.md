@@ -92,8 +92,8 @@ OmniLisp distinguishes between modifying a **Name** (Binding) and modifying a **
 ### 6.4 The Dot Operator as Path Locator
 The dot `.` is an **Access Operator** that defines a path to a slot. When used as the target of `put!` or `update`, it acts as a **Locator** rather than a value-fetcher.
 *   **Static Path**: `obj.field.subfield`
-*   **Dynamic Path**: `obj.(computed-index)`
-*   **Symbol/String Path**: `obj.(:key)` or `obj.("string-key")`
+*   **Dynamic Path**: `obj.[computed-index]`
+*   **Symbol/String Path**: `obj.[:key]` or `obj.["string-key"]`
 
 ---
 
