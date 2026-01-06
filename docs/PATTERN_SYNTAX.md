@@ -117,6 +117,8 @@ For common string operations, use the simple pattern syntax:
 
 #### Supported Pattern Syntax
 
+The `omni_compile_pattern()` function now supports an extended regex-like syntax through a token → AST → PikaClause pipeline:
+
 | Pattern | Meaning | Example |
 |---------|---------|---------|
 | `[abc]` | Character class | `[aeiou]` matches vowels |
@@ -128,10 +130,20 @@ For common string operations, use the simple pattern syntax:
 | `?` | Zero or one | `colou?r` matches "color", "colour" |
 | `\|` | Alternation | `cat\|dog` matches "cat" or "dog" |
 | `(...)` | Grouping | `(ab)+` matches "ab", "abab" |
-| `\d` | Digit | `\d+` matches "123" |
-| `\w` | Word char | `\w+` matches "hello_123" |
-| `\s` | Whitespace | `\s+` matches spaces/tabs/newlines |
+| `\d` | Digit shorthand | `\d+` matches "123" (equivalent to `[0-9]+`) |
+| `\w` | Word char shorthand | `\w+` matches "hello_123" (equivalent to `[a-zA-Z0-9_]+`) |
+| `\s` | Whitespace shorthand | `\s+` matches spaces/tabs/newlines (equivalent to `[ \t\n\r]+`) |
+| `\n`, `\t`, `\r` | Escape sequences | `\n` matches newline |
+| `\\` | Literal backslash | `\\` matches a single backslash |
 | `\.` | Literal dot | `3\.14` matches "3.14" |
+| `^` | Start anchor | `^foo` matches "foo" at start (currently simplified) |
+| `$` | End anchor | `foo$` matches "foo" at end (currently simplified) |
+
+**Implementation Notes:**
+- Patterns are tokenized into a stream of tokens (literals, charsets, operators, escapes)
+- Tokens are parsed into an AST following regex precedence (alternation < sequence < quantifier < atom)
+- AST nodes are converted directly to PikaClause structures (no PEG text intermediate)
+- Anchors (`^`, `$`) are currently simplified - start anchors are implicit in PEG matching
 
 ### Tier 2: Full Pika Grammars (Advanced)
 
@@ -228,17 +240,41 @@ This is the only significant feature PCRE has that Pika lacks. For most use case
 ## Implementation Details
 
 The pattern matching system is implemented in:
-- `src/runtime/pika/omni_grammar.c` - Grammar definition and parsing
+- `src/runtime/pika/omni_grammar.c` - Grammar definition, pattern compiler, regex-to-AST converter
 - `src/runtime/pika/omni_grammar.h` - Public API
 - `src/runtime/pika_c/pika.c` - Core Pika parser implementation
+
+### Architecture
+
+The upgraded `omni_compile_pattern()` function follows a three-stage pipeline:
+
+```
+Regex Pattern → Tokens → AST → PikaClauses → Grammar
+                [Lexer]   [Parser]   [Codegen]  [Builder]
+```
+
+1. **Lexer (`regex_tokenize`)**: Scans the regex pattern into tokens
+   - Literal characters, character classes, operators, escapes
+   - Reports syntax errors with position information
+
+2. **Parser (`parse_pattern`)**: Builds an AST following regex precedence
+   - Atom: literals, charsets, dot, escapes, parenthesized expressions
+   - Quantifier: `*`, `+`, `?` bind to preceding atom
+   - Sequence: implicit concatenation (e.g., `abc` is `(ab)c`)
+   - Alternation: `|` has lowest precedence
+
+3. **Codegen (`ast_to_clause`)**: Converts AST to PikaClause structures
+   - Direct clause construction (no PEG text intermediate)
+   - Bypasses the broken `pika_meta_parse()` function
 
 Key functions:
 - `omni_pika_match()` - Match pattern against string
 - `omni_pika_find_all()` - Find all matches
 - `omni_pika_split()` - Split by pattern
 - `omni_pika_replace()` - Search and replace
-- `omni_compile_peg()` - Compile full PEG grammar
-- `pika_meta_parse()` - Parse grammar specification
+- `omni_pika_match_rule()` - Match using a specific rule from a grammar
+- `omni_compile_pattern()` - Compile regex-like pattern (NEW: uses token → AST → clause pipeline)
+- `omni_compile_peg()` - Compile full PEG grammar (currently relies on broken `pika_meta_parse`)
 
 ## References
 

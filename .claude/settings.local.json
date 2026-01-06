@@ -6,7 +6,17 @@
       "Bash(make:*)",
       "Bash(cat:*)",
       "Bash(find:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(xargs:*)",
+      "Bash(./test_pika_tower:*)",
+      "Bash(gdb:*)",
+      "Bash(echo:*)",
+      "Bash(gcc:*)",
+      "Bash(./test_simple_pattern:*)",
+      "Bash(./test_compile:*)",
+      "Bash(nm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
