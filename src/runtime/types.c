@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "types.h"
+#include "pika_c/pika.h"
 #include "util/dstring.h"
 #include <string.h>
 
@@ -364,6 +365,17 @@ Value* mk_syntax(const char* name, Value* literals, Value* rules, Value* def_env
     return v;
 }
 
+Value* mk_grammar(struct PikaGrammar* grammar, const char* name) {
+    Value* v = alloc_val(T_GRAMMAR);
+    if (!v) return NULL;
+    v->grammar.grammar = grammar;
+    v->grammar.name = name ? strdup(name) : NULL;
+    if (v->grammar.name && compiler_arena_current) {
+        compiler_arena_register_string(v->grammar.name);
+    }
+    return v;
+}
+
 Value* mk_ffi_lib(void* handle, const char* name) {
     Value* v = alloc_val(T_FFI_LIB);
     if (!v) return NULL;
@@ -442,6 +454,10 @@ int is_port(Value* v) {
 
 int is_syntax(Value* v) {
     return v != NULL && v->tag == T_SYNTAX;
+}
+
+int is_grammar(Value* v) {
+    return v != NULL && v->tag == T_GRAMMAR;
 }
 
 int is_ffi_lib(Value* v) {
@@ -585,7 +601,25 @@ char* val_to_str(Value* v) {
         case T_SYM:
             return v->s ? strdup(v->s) : NULL;
         case T_CODE:
-            return v->s ? strdup(v->s) : NULL;
+            ds = ds_new();
+            if (!ds) return NULL;
+            ds_append_char(ds, '"');
+            if (v->s) {
+                // Escape special characters
+                for (size_t i = 0; v->s[i]; i++) {
+                    char c = v->s[i];
+                    switch (c) {
+                        case '\n': ds_append(ds, "\\n"); break;
+                        case '\t': ds_append(ds, "\\t"); break;
+                        case '\r': ds_append(ds, "\\r"); break;
+                        case '"':  ds_append(ds, "\\\""); break;
+                        case '\\': ds_append(ds, "\\\\"); break;
+                        default:   ds_append_char(ds, c); break;
+                    }
+                }
+            }
+            ds_append_char(ds, '"');
+            return ds_take(ds);
         case T_CELL:
             return list_to_str(v);
         case T_NIL:
@@ -690,6 +724,12 @@ char* val_to_str(Value* v) {
             if (!ds) return NULL;
             ds_printf(ds, "#<syntax:%s>",
                       v->syntax.name ? v->syntax.name : "?");
+            return ds_take(ds);
+        case T_GRAMMAR:
+            ds = ds_new();
+            if (!ds) return NULL;
+            ds_printf(ds, "#<grammar:%s>",
+                      v->grammar.name ? v->grammar.name : "?");
             return ds_take(ds);
         case T_FFI_LIB:
             ds = ds_new();

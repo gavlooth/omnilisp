@@ -89,6 +89,10 @@ static Value* match_to_ast(const PikaMatch* match, const char* input) {
         int lstart = pika_match_start(labeled_match);
         int llen = pika_match_len(labeled_match);
         char* text = malloc(llen + 1);
+        if (!text) {
+            free(subs);
+            return mk_nil();
+        }
         memcpy(text, input + lstart, llen);
         text[llen] = '\0';
         long val = strtol(text, NULL, 10);
@@ -102,6 +106,10 @@ static Value* match_to_ast(const PikaMatch* match, const char* input) {
         int lstart = pika_match_start(labeled_match);
         int llen = pika_match_len(labeled_match);
         char* text = malloc(llen + 1);
+        if (!text) {
+            free(subs);
+            return mk_nil();
+        }
         memcpy(text, input + lstart, llen);
         text[llen] = '\0';
         long val = strtol(text + 2, NULL, 16); /* Skip 0x */
@@ -115,6 +123,10 @@ static Value* match_to_ast(const PikaMatch* match, const char* input) {
         int lstart = pika_match_start(labeled_match);
         int llen = pika_match_len(labeled_match);
         char* text = malloc(llen + 1);
+        if (!text) {
+            free(subs);
+            return mk_nil();
+        }
         memcpy(text, input + lstart, llen);
         text[llen] = '\0';
         Value* result = mk_sym(text);  /* #t or #f as symbol */
@@ -128,6 +140,10 @@ static Value* match_to_ast(const PikaMatch* match, const char* input) {
         int lstart = pika_match_start(labeled_match);
         int llen = pika_match_len(labeled_match);
         char* text = malloc(llen + 1);
+        if (!text) {
+            free(subs);
+            return mk_nil();
+        }
         memcpy(text, input + lstart, llen);
         text[llen] = '\0';
 
@@ -151,6 +167,10 @@ static Value* match_to_ast(const PikaMatch* match, const char* input) {
         int llen = pika_match_len(labeled_match);
         /* Extract string content (skip quotes, handle escapes) */
         char* text = malloc(llen + 1);
+        if (!text) {
+            free(subs);
+            return mk_nil();
+        }
         int j = 0;
         for (int i = 1; i < llen - 1; i++) { /* Skip quotes */
             char c = input[lstart + i];
@@ -293,6 +313,10 @@ static Value* match_to_ast(const PikaMatch* match, const char* input) {
 
     /* Fallback: return matched text as symbol */
     char* text = malloc(len + 1);
+    if (!text) {
+        free(subs);
+        return mk_nil();
+    }
     memcpy(text, input + start, len);
     text[len] = '\0';
     Value* result = mk_sym(text);
@@ -718,11 +742,9 @@ void omni_parse_result_free(OmniParseResult* result) {
 
 Value* omni_pika_match(const char* pattern, const char* input) {
     char* error = NULL;
+    bool require_start = false;
 
-    /* Check if pattern requires start anchor (^) */
-    bool require_start = (pattern[0] == '^');
-
-    PikaGrammar* grammar = omni_compile_pattern(pattern, &error);
+    PikaGrammar* grammar = omni_compile_pattern_ext(pattern, &error, &require_start);
     if (!grammar) {
         if (error) free(error);
         return mk_nil();
@@ -759,6 +781,12 @@ Value* omni_pika_match(const char* pattern, const char* input) {
     }
 
     char* text = malloc(len + 1);
+    if (!text) {
+        free(matches);
+        pika_memo_free(memo);
+        pika_grammar_free(grammar);
+        return mk_nil();
+    }
     memcpy(text, input + start, len);
     text[len] = '\0';
 
@@ -1085,6 +1113,10 @@ static RegexTokenArray* regex_tokenize(const char* pattern, char** error_out) {
     }
 
     RegexTokenArray* arr = malloc(sizeof(RegexTokenArray));
+    if (!arr) {
+        if (error_out) *error_out = strdup("Out of memory");
+        return NULL;
+    }
     token_array_init(arr);
 
     size_t len = strlen(pattern);
@@ -1398,6 +1430,31 @@ static void ast_free(RegexAstNode* node) {
     free(node);
 }
 
+/*
+ * Check if the AST has a start anchor at the beginning
+ */
+static bool ast_has_start_anchor(RegexAstNode* node) {
+    if (!node) return false;
+
+    switch (node->type) {
+        case RAST_ANCHOR_START:
+            return true;
+
+        case RAST_SEQUENCE:
+            /* In a sequence, only the first element counts for start anchor */
+            return ast_has_start_anchor(node->children[0]);
+
+        case RAST_ALTERNATION:
+            /* In an alternation, if ANY branch has a start anchor, it's anchored */
+            /* Actually, this is tricky. Usually ^(a|b) is what people want. */
+            /* For now, we only support it if it's at the very start of the top-level form. */
+            return ast_has_start_anchor(node->children[0]) || ast_has_start_anchor(node->children[1]);
+
+        default:
+            return false;
+    }
+}
+
 /* ============== Parser ============== */
 
 /*
@@ -1649,11 +1706,11 @@ static PikaClause* ast_to_clause(RegexAstNode* node) {
 /* ============== Pattern Compiler (Updated) ============== */
 
 /*
- * Pattern compiler using the regex-to-AST converter + direct clause building
- * This converts regex patterns directly to PikaClauses without PEG text
+ * Internal extended pattern compiler that also returns anchor information
  */
-PikaGrammar* omni_compile_pattern(const char* pattern, char** error_out) {
+PikaGrammar* omni_compile_pattern_ext(const char* pattern, char** error_out, bool* has_start_anchor) {
     if (error_out) *error_out = NULL;
+    if (has_start_anchor) *has_start_anchor = false;
 
     /* Tokenize */
     RegexTokenArray* tokens = regex_tokenize(pattern, error_out);
@@ -1679,6 +1736,11 @@ PikaGrammar* omni_compile_pattern(const char* pattern, char** error_out) {
         return NULL;
     }
 
+    /* Extract anchor information if requested */
+    if (has_start_anchor) {
+        *has_start_anchor = ast_has_start_anchor(ast);
+    }
+
     /* Convert AST to PikaClause */
     PikaClause* clause = ast_to_clause(ast);
 
@@ -1693,6 +1755,14 @@ PikaGrammar* omni_compile_pattern(const char* pattern, char** error_out) {
     };
 
     return pika_grammar_new(rules, 1);
+}
+
+/*
+ * Pattern compiler using the regex-to-AST converter + direct clause building
+ * This converts regex patterns directly to PikaClauses without PEG text
+ */
+PikaGrammar* omni_compile_pattern(const char* pattern, char** error_out) {
+    return omni_compile_pattern_ext(pattern, error_out, NULL);
 }
 
 /*
@@ -1724,6 +1794,11 @@ Value* omni_pika_match_rule(PikaGrammar* grammar, const char* rule, const char* 
 
     /* Extract the matched text */
     char* text = malloc(len + 1);
+    if (!text) {
+        free(matches);
+        pika_memo_free(memo);
+        return mk_nil();
+    }
     memcpy(text, input + start, len);
     text[len] = '\0';
 
@@ -1734,4 +1809,448 @@ Value* omni_pika_match_rule(PikaGrammar* grammar, const char* rule, const char* 
     pika_memo_free(memo);
 
     return result;
+}
+
+/* ============== Grammar DSL Compiler ============== */
+
+/*
+ * Forward declaration for clause compiler
+ */
+static PikaClause* compile_grammar_clause(Value* clause_expr, char** error_out);
+
+/*
+ * Count the number of elements in a list
+ */
+static size_t list_length(Value* list) {
+    size_t len = 0;
+    while (!is_nil(list)) {
+        len++;
+        list = cdr(list);
+    }
+    return len;
+}
+
+/*
+ * Compile a grammar clause from OmniLisp Value* to PikaClause*
+ *
+ * Supported clause forms:
+ * - "literal"         -> pika_clause_str()
+ * - (char #\x)         -> pika_clause_char()
+ * - (charset "a-z")    -> pika_clause_charset_from_pattern()
+ * - (charset-not "0-9")-> pika_clause_charset_invert()
+ * - (any)              -> pika_clause_charset_invert(char('\0'))
+ * - (seq a b c)        -> pika_clause_seq()
+ * - (first a b c)      -> pika_clause_first()
+ * - (ref rule)         -> pika_clause_rule_ref()
+ * - (zero-or-more x)   -> pika_clause_zero_or_more()
+ * - (one-or-more x)    -> pika_clause_one_or_more()
+ * - (optional x)       -> pika_clause_optional()
+ * - (followed-by x)    -> pika_clause_followed_by()
+ * - (not-followed-by x)-> pika_clause_not_followed_by()
+ * - (label :name x)    -> pika_clause_ast_label()
+ */
+static PikaClause* compile_grammar_clause(Value* clause_expr, char** error_out) {
+    if (!clause_expr) {
+        if (error_out) *error_out = strdup("NULL clause");
+        return NULL;
+    }
+
+    /* String literal */
+    if (clause_expr->tag == T_CODE) {
+        return pika_clause_str(clause_expr->s);
+    }
+
+    /* Symbol (for things like (ref rule-name)) */
+    if (clause_expr->tag == T_SYM) {
+        /* Just a symbol by itself - treat as literal for keywords */
+        return pika_clause_str(clause_expr->s);
+    }
+
+    /* Integer/Char - for (char #\x) form */
+    if (clause_expr->tag == T_INT) {
+        return pika_clause_char((char)clause_expr->i);
+    }
+
+    /* List expression */
+    if (clause_expr->tag == T_CELL) {
+        Value* head = car(clause_expr);
+        if (!head || head->tag != T_SYM) {
+            if (error_out) *error_out = strdup("Clause must start with a symbol");
+            return NULL;
+        }
+
+        const char* op = head->s;
+        Value* args = cdr(clause_expr);
+
+        /* (seq a b c ...) - Sequence */
+        if (strcmp(op, "seq") == 0) {
+            size_t len = list_length(args);
+            if (len == 0) {
+                if (error_out) *error_out = strdup("seq requires at least one argument");
+                return NULL;
+            }
+
+            /* Build array of clauses */
+            PikaClause** clauses = malloc(len * sizeof(PikaClause*));
+            if (!clauses) {
+                if (error_out) *error_out = strdup("Out of memory");
+                return NULL;
+            }
+
+            size_t i = 0;
+            Value* rest = args;
+            while (!is_nil(rest)) {
+                char* err = NULL;
+                clauses[i++] = compile_grammar_clause(car(rest), &err);
+                if (!clauses[i-1]) {
+                    if (error_out) *error_out = err;
+                    /* Free already allocated clauses */
+                    for (size_t j = 0; j < i - 1; j++) {
+                        /* Note: PikaClauses are owned by the parent, so we don't free them here */
+                    }
+                    free(clauses);
+                    return NULL;
+                }
+                rest = cdr(rest);
+            }
+
+            PikaClause* result = pika_clause_seq(clauses, len);
+            free(clauses);
+            return result;
+        }
+
+        /* (first a b c ...) - Ordered choice */
+        if (strcmp(op, "first") == 0) {
+            size_t len = list_length(args);
+            if (len == 0) {
+                if (error_out) *error_out = strdup("first requires at least one argument");
+                return NULL;
+            }
+
+            /* Build array of clauses */
+            PikaClause** clauses = malloc(len * sizeof(PikaClause*));
+            if (!clauses) {
+                if (error_out) *error_out = strdup("Out of memory");
+                return NULL;
+            }
+
+            size_t i = 0;
+            Value* rest = args;
+            while (!is_nil(rest)) {
+                char* err = NULL;
+                clauses[i++] = compile_grammar_clause(car(rest), &err);
+                if (!clauses[i-1]) {
+                    if (error_out) *error_out = err;
+                    free(clauses);
+                    return NULL;
+                }
+                rest = cdr(rest);
+            }
+
+            PikaClause* result = pika_clause_first(clauses, len);
+            free(clauses);
+            return result;
+        }
+
+        /* (ref rule-name) - Rule reference */
+        if (strcmp(op, "ref") == 0) {
+            if (is_nil(args) || list_length(args) != 1) {
+                if (error_out) *error_out = strdup("ref requires exactly one argument (rule name)");
+                return NULL;
+            }
+            Value* rule_name = car(args);
+            if (!rule_name || rule_name->tag != T_SYM) {
+                if (error_out) *error_out = strdup("ref argument must be a symbol (rule name)");
+                return NULL;
+            }
+            return pika_clause_rule_ref(rule_name->s);
+        }
+
+        /* (zero-or-more x) - Kleene star */
+        if (strcmp(op, "zero-or-more") == 0 || strcmp(op, "*") == 0) {
+            if (is_nil(args) || list_length(args) != 1) {
+                if (error_out) *error_out = strdup("zero-or-more requires exactly one argument");
+                return NULL;
+            }
+            PikaClause* inner = compile_grammar_clause(car(args), error_out);
+            if (!inner) return NULL;
+            return pika_clause_zero_or_more(inner);
+        }
+
+        /* (one-or-more x) - Positive closure */
+        if (strcmp(op, "one-or-more") == 0 || strcmp(op, "+") == 0) {
+            if (is_nil(args) || list_length(args) != 1) {
+                if (error_out) *error_out = strdup("one-or-more requires exactly one argument");
+                return NULL;
+            }
+            PikaClause* inner = compile_grammar_clause(car(args), error_out);
+            if (!inner) return NULL;
+            return pika_clause_one_or_more(inner);
+        }
+
+        /* (optional x) - Optional */
+        if (strcmp(op, "optional") == 0 || strcmp(op, "?") == 0) {
+            if (is_nil(args) || list_length(args) != 1) {
+                if (error_out) *error_out = strdup("optional requires exactly one argument");
+                return NULL;
+            }
+            PikaClause* inner = compile_grammar_clause(car(args), error_out);
+            if (!inner) return NULL;
+            return pika_clause_optional(inner);
+        }
+
+        /* (followed-by x) - Positive lookahead */
+        if (strcmp(op, "followed-by") == 0 || strcmp(op, "&") == 0) {
+            if (is_nil(args) || list_length(args) != 1) {
+                if (error_out) *error_out = strdup("followed-by requires exactly one argument");
+                return NULL;
+            }
+            PikaClause* inner = compile_grammar_clause(car(args), error_out);
+            if (!inner) return NULL;
+            return pika_clause_followed_by(inner);
+        }
+
+        /* (not-followed-by x) - Negative lookahead */
+        if (strcmp(op, "not-followed-by") == 0 || strcmp(op, "!") == 0) {
+            if (is_nil(args) || list_length(args) != 1) {
+                if (error_out) *error_out = strdup("not-followed-by requires exactly one argument");
+                return NULL;
+            }
+            PikaClause* inner = compile_grammar_clause(car(args), error_out);
+            if (!inner) return NULL;
+            return pika_clause_not_followed_by(inner);
+        }
+
+        /* (label :name x) - AST labeling */
+        if (strcmp(op, "label") == 0) {
+            if (list_length(args) != 2) {
+                if (error_out) *error_out = strdup("label requires exactly two arguments (:name and clause)");
+                return NULL;
+            }
+            Value* label_name = car(args);
+            Value* label_clause = car(cdr(args));
+
+            if (!label_name || label_name->tag != T_SYM) {
+                if (error_out) *error_out = strdup("label name must be a symbol starting with :");
+                return NULL;
+            }
+
+            const char* name = label_name->s;
+            if (name[0] != ':') {
+                if (error_out) *error_out = strdup("label name must start with :");
+                return NULL;
+            }
+
+            PikaClause* inner = compile_grammar_clause(label_clause, error_out);
+            if (!inner) return NULL;
+            return pika_clause_ast_label(name + 1, inner);  /* Skip the leading ':' */
+        }
+
+        /* (charset "pattern") - Character class */
+        if (strcmp(op, "charset") == 0) {
+            if (is_nil(args) || list_length(args) != 1) {
+                if (error_out) *error_out = strdup("charset requires exactly one argument (pattern string)");
+                return NULL;
+            }
+            Value* pattern = car(args);
+            if (!pattern || pattern->tag != T_CODE) {
+                if (error_out) *error_out = strdup("charset argument must be a string");
+                return NULL;
+            }
+            return pika_clause_charset_from_pattern(pattern->s);
+        }
+
+        /* (charset-not "pattern") - Negated character class */
+        if (strcmp(op, "charset-not") == 0) {
+            if (is_nil(args) || list_length(args) != 1) {
+                if (error_out) *error_out = strdup("charset-not requires exactly one argument (pattern string)");
+                return NULL;
+            }
+            Value* pattern = car(args);
+            if (!pattern || pattern->tag != T_CODE) {
+                if (error_out) *error_out = strdup("charset-not argument must be a string");
+                return NULL;
+            }
+            PikaClause* base = pika_clause_charset_from_pattern(pattern->s);
+            if (!base) {
+                if (error_out) *error_out = strdup("Failed to create charset for negation");
+                return NULL;
+            }
+            return pika_clause_charset_invert(base);
+        }
+
+        /* (char c) - Single character */
+        if (strcmp(op, "char") == 0) {
+            if (is_nil(args) || list_length(args) != 1) {
+                if (error_out) *error_out = strdup("char requires exactly one argument (character)");
+                return NULL;
+            }
+            Value* ch = car(args);
+            if (!ch) {
+                if (error_out) *error_out = strdup("char argument is NULL");
+                return NULL;
+            }
+            /* Support both integer and single-character string */
+            if (ch->tag == T_INT) {
+                return pika_clause_char((char)ch->i);
+            } else if (ch->tag == T_CODE) {
+                const char* s = ch->s;
+                if (strlen(s) != 1) {
+                    if (error_out) *error_out = strdup("char string argument must be exactly one character");
+                    return NULL;
+                }
+                return pika_clause_char(s[0]);
+            } else if (ch->tag == T_CHAR) {
+                return pika_clause_char((char)ch->codepoint);
+            }
+            if (error_out) *error_out = strdup("char argument must be an integer or string");
+            return NULL;
+        }
+
+        /* (any) - Any character except NULL */
+        if (strcmp(op, "any") == 0) {
+            PikaClause* null_char = pika_clause_char('\0');
+            if (!null_char) {
+                if (error_out) *error_out = strdup("Failed to create NULL charset for any");
+                return NULL;
+            }
+            return pika_clause_charset_invert(null_char);
+        }
+
+        /* Unknown clause form */
+        {
+            char buf[256];
+            snprintf(buf, sizeof(buf), "Unknown clause form: %s", op);
+            if (error_out) *error_out = strdup(buf);
+            return NULL;
+        }
+    }
+
+    if (error_out) *error_out = strdup("Invalid clause type");
+    return NULL;
+}
+
+/*
+ * Compile a grammar from a list of rule definitions
+ *
+ * Input format: list of [rule-name clause] pairs
+ *   Each rule is: (array rule-name clause)
+ *
+ * Example:
+ *   (define [grammar arithmetic]
+ *     [expr (first (seq (ref expr) "+" (ref term)) (ref term))]
+ *     [term (ref factor)])
+ *
+ * The args to define would be:
+ *   ((array grammar arithmetic) (array expr ...) (array term ...))
+ *
+ * This function receives the list of (array name clause) pairs.
+ */
+PikaGrammar* omni_compile_grammar_from_value(Value* rules_list, char** error_out) {
+    if (error_out) *error_out = NULL;
+
+    if (!rules_list || is_nil(rules_list)) {
+        if (error_out) *error_out = strdup("Grammar rules list is empty");
+        return NULL;
+    }
+
+    /* First pass: count rules and collect rule names */
+    size_t rule_count = 0;
+    Value* rest = rules_list;
+    while (!is_nil(rest)) {
+        rule_count++;
+        rest = cdr(rest);
+    }
+
+    if (rule_count == 0) {
+        if (error_out) *error_out = strdup("Grammar must have at least one rule");
+        return NULL;
+    }
+
+    /* Allocate arrays for rules and names */
+    PikaRule** rules = malloc(rule_count * sizeof(PikaRule*));
+    if (!rules) {
+        if (error_out) *error_out = strdup("Out of memory");
+        return NULL;
+    }
+
+    /* Second pass: compile each rule */
+    size_t idx = 0;
+    rest = rules_list;
+    char* compile_error = NULL;
+
+    while (!is_nil(rest)) {
+        Value* rule_form = car(rest);
+
+        /* Each rule should be [name clause] which parses as (array name clause) */
+        if (!rule_form || rule_form->tag != T_CELL) {
+            compile_error = strdup("Each rule must be a list [name clause]");
+            goto error;
+        }
+
+        Value* head = car(rule_form);
+        if (!head || head->tag != T_SYM || strcmp(head->s, "array") != 0) {
+            compile_error = strdup("Each rule must use array syntax [name clause]");
+            goto error;
+        }
+
+        Value* arr_contents = cdr(rule_form);
+        if (is_nil(arr_contents) || is_nil(cdr(arr_contents))) {
+            compile_error = strdup("Rule array must have exactly two elements [name clause]");
+            goto error;
+        }
+
+        /* Extract rule name and clause */
+        Value* rule_name = car(arr_contents);
+        Value* rule_clause = car(cdr(arr_contents));
+
+        if (!rule_name || rule_name->tag != T_SYM) {
+            compile_error = strdup("Rule name must be a symbol");
+            goto error;
+        }
+
+        /* Compile the clause */
+        char* clause_error = NULL;
+        PikaClause* clause = compile_grammar_clause(rule_clause, &clause_error);
+        if (!clause) {
+            if (clause_error) {
+                char buf[512];
+                snprintf(buf, sizeof(buf), "Failed to compile rule '%s': %s", rule_name->s, clause_error);
+                free(clause_error);
+                compile_error = strdup(buf);
+            } else {
+                char buf[256];
+                snprintf(buf, sizeof(buf), "Failed to compile rule '%s'", rule_name->s);
+                compile_error = strdup(buf);
+            }
+            goto error;
+        }
+
+        /* Create the rule */
+        rules[idx++] = pika_rule(rule_name->s, clause);
+        rest = cdr(rest);
+    }
+
+    /* Create the grammar */
+    PikaGrammar* grammar = pika_grammar_new((PikaRule**)rules, rule_count);
+    if (!grammar) {
+        compile_error = strdup("Failed to create Pika grammar");
+        goto error;
+    }
+
+    /* Free the rules array (grammar owns the individual rules now) */
+    free(rules);
+    return grammar;
+
+error:
+    if (error_out) *error_out = compile_error;
+    /* Note: PikaRules are owned by the grammar once created,
+     * but if we failed before creating grammar, we need to clean up */
+    if (rules) {
+        for (size_t i = 0; i < idx; i++) {
+            /* Rules are owned by pika, no individual free */
+        }
+        free(rules);
+    }
+    return NULL;
 }

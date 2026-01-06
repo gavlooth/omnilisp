@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "omni_eval.h"
 #include "../reader/omni_reader.h"
+#include "../pika/omni_grammar.h"
 #include "../util/dstring.h"
 #include <stdlib.h>
 #include <string.h>
@@ -1159,6 +1160,58 @@ static Value* eval_define(Value* args, Env* env) {
                 Value* syntax = mk_syntax(name->s, literals, rules, env_to_value(env));
                 env_define(env, name, syntax);
                 return name;
+            }
+
+            // Check for grammar definition: (define [grammar name] [rule1 clause] [rule2 clause] ...)
+            // [grammar name] parses as (array grammar name)
+            if (!is_nil(arr_contents) && car(arr_contents) &&
+                car(arr_contents)->tag == T_SYM &&
+                strcmp(car(arr_contents)->s, "grammar") == 0) {
+                // It's a grammar definition!
+                Value* name = car(cdr(arr_contents));
+                if (!name || name->tag != T_SYM) {
+                    return mk_error("define [grammar ...]: expected name");
+                }
+
+                // Collect all rule definitions: each is [rule-name clause]
+                Value* rules_list = mk_nil();
+                Value** rules_tail = &rules_list;
+
+                Value* rest = cdr(args);
+                while (!is_nil(rest)) {
+                    Value* rule_form = car(rest);
+                    // Each rule should be a list
+                    if (rule_form && rule_form->tag == T_CELL) {
+                        *rules_tail = mk_cell(rule_form, mk_nil());
+                        rules_tail = &((*rules_tail)->cell.cdr);
+                    }
+                    rest = cdr(rest);
+                }
+
+                // Compile the grammar from rules
+                char* error = NULL;
+                PikaGrammar* grammar = omni_compile_grammar_from_value(rules_list, &error);
+
+                if (!grammar) {
+                    if (error) {
+                        Value* err = mk_error(error);
+                        free(error);
+                        return err;
+                    }
+                    return mk_error("Failed to compile grammar");
+                }
+
+                // Create grammar value
+                Value* grammar_val = mk_grammar(grammar, name->s);
+                if (!grammar_val) {
+                    pika_grammar_free(grammar);
+                    if (error) free(error);
+                    return mk_error("Failed to create grammar value");
+                }
+
+                // Define in environment
+                env_define(env, name, grammar_val);
+                return grammar_val;
             }
         }
 

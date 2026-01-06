@@ -18,7 +18,6 @@
 
   Open Questions
 
-  - Do you intend to keep both embedded and external runtime modes? If yes, should the header/library be generated from the same source as pkg/codegen/runtime.go to prevent drift?
   - Which concurrency API names and return conventions are canonical (channel_create vs make_channel, thread_create vs spawn_thread, void vs bool channel_send)?
   - Should channels support true unbuffered semantics (capacity 0), or is “capacity 1” the intended model?
   - Do you want thread‑safe RC/free‑list/weak‑ref handling, or should concurrency be limited to strict ownership transfer with no shared objects?

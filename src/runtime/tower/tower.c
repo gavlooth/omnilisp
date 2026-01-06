@@ -8,6 +8,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "tower.h"
 #include "../pika/pika_reader.h"
+#include "../pika/omni_grammar.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -168,6 +169,141 @@ static Value* prim_print(Value* args, Value* menv) {
     printf("%s\n", s);
     free(s);
     return v;
+}
+
+/* ============== Grammar DSL Primitives ============== */
+
+/*
+ * (pika-match grammar rule input)
+ *
+ * Match input against a grammar rule.
+ *
+ * Arguments:
+ *   grammar - A T_GRAMMAR value
+ *   rule   - A symbol specifying the rule name (e.g., expr)
+ *   input   - A string to match
+ *
+ * Returns:
+ *   Matched string as T_CODE value, or nil if no match
+ */
+static Value* prim_pika_match(Value* args, Value* menv) {
+    (void)menv;
+    if (is_nil(args) || is_nil(cdr(args)) || is_nil(cdr(cdr(args)))) {
+        return mk_error("pika-match requires 3 arguments: grammar rule input");
+    }
+
+    Value* grammar_val = car(args);
+    Value* rule_sym = car(cdr(args));
+    Value* input_val = car(cdr(cdr(args)));
+
+    /* Validate grammar */
+    if (!is_grammar(grammar_val)) {
+        return mk_error("pika-match: first argument must be a grammar");
+    }
+
+    /* Validate and extract rule name */
+    if (!rule_sym || rule_sym->tag != T_SYM) {
+        return mk_error("pika-match: rule name must be a symbol");
+    }
+    const char* rule_name = rule_sym->s;
+
+    /* Validate and extract input string */
+    if (!input_val || input_val->tag != T_CODE) {
+        return mk_error("pika-match: input must be a string");
+    }
+
+    /* Perform the match */
+    PikaGrammar* grammar = grammar_val->grammar.grammar;
+    Value* result = omni_pika_match_rule(grammar, rule_name, input_val->s);
+
+    return result ? result : mk_nil();
+}
+
+/*
+ * (pika-find-all grammar rule input)
+ *
+ * Find all non-overlapping matches of a grammar rule in input.
+ *
+ * Arguments:
+ *   grammar - A T_GRAMMAR value
+ *   rule   - A symbol specifying the rule name (e.g., expr)
+ *   input   - A string to search
+ *
+ * Returns:
+ *   List of matched strings as T_CODE values, or nil if no matches
+ */
+static Value* prim_pika_find_all(Value* args, Value* menv) {
+    (void)menv;
+    if (is_nil(args) || is_nil(cdr(args)) || is_nil(cdr(cdr(args)))) {
+        return mk_error("pika-find-all requires 3 arguments: grammar rule input");
+    }
+
+    Value* grammar_val = car(args);
+    Value* rule_sym = car(cdr(args));
+    Value* input_val = car(cdr(cdr(args)));
+
+    /* Validate grammar */
+    if (!is_grammar(grammar_val)) {
+        return mk_error("pika-find-all: first argument must be a grammar");
+    }
+
+    /* Validate and extract rule name */
+    if (!rule_sym || rule_sym->tag != T_SYM) {
+        return mk_error("pika-find-all: rule name must be a symbol");
+    }
+    const char* rule_name = rule_sym->s;
+
+    /* Validate and extract input string */
+    if (!input_val || input_val->tag != T_CODE) {
+        return mk_error("pika-find-all: input must be a string");
+    }
+
+    /* Parse the input with the grammar */
+    PikaGrammar* grammar = grammar_val->grammar.grammar;
+    PikaMemoTable* memo = pika_grammar_parse(grammar, input_val->s);
+    if (!memo) {
+        return mk_nil();
+    }
+
+    /* Get all non-overlapping matches for the specified rule */
+    size_t match_count = 0;
+    PikaMatch** matches = pika_memo_get_non_overlapping_matches_for_rule(
+        memo, rule_name, &match_count
+    );
+
+    if (match_count == 0 || !matches) {
+        pika_memo_free(memo);
+        return mk_nil();
+    }
+
+    /* Build list of matched strings */
+    Value* result = mk_nil();
+    Value** tail = &result;
+
+    for (size_t i = 0; i < match_count; i++) {
+        int start = pika_match_start(matches[i]);
+        int len = pika_match_len(matches[i]);
+
+        char* text = malloc(len + 1);
+        if (!text) {
+            free(matches);
+            pika_memo_free(memo);
+            return mk_error("pika-find-all: out of memory");
+        }
+        memcpy(text, input_val->s + start, len);
+        text[len] = '\0';
+
+        Value* match_val = mk_code(text);
+        free(text);
+
+        *tail = mk_cell(match_val, mk_nil());
+        tail = &((*tail)->cell.cdr);
+    }
+
+    free(matches);
+    pika_memo_free(memo);
+
+    return result;
 }
 
 /* ============== Environment Implementation ============== */
@@ -700,6 +836,66 @@ Value* tower_eval(Value* expr, TowerMEnv* menv) {
             if (strcmp(special, "define") == 0) {
                 Value* first = car(cdr(expr));
                 if (first && first->tag == T_CELL) {
+                    /* Check if it's an array syntax: [grammar name], [syntax name], etc. */
+                    Value* head = car(first);
+                    if (head && head->tag == T_SYM && strcmp(head->s, "array") == 0) {
+                        /* Array syntax - could be grammar, syntax, struct, enum definition */
+                        Value* arr_contents = cdr(first);
+                        if (!is_nil(arr_contents) && car(arr_contents) &&
+                            car(arr_contents)->tag == T_SYM) {
+                            const char* arr_type = car(arr_contents)->s;
+
+                            /* Grammar definition: [grammar name rule1 rule2 ...] */
+                            if (strcmp(arr_type, "grammar") == 0) {
+                                Value* name = car(cdr(arr_contents));
+                                if (!name || name->tag != T_SYM) {
+                                    return mk_error("define [grammar ...]: expected name");
+                                }
+
+                                /* Collect all rule definitions: each is [rule-name clause] */
+                                Value* rules_list = cdr(cdr(expr));  /* Rest of the define form */
+                                Value* rules = mk_nil();
+                                Value** rules_tail = &rules;
+
+                                Value* rest = rules_list;
+                                while (!is_nil(rest)) {
+                                    Value* rule_form = car(rest);
+                                    if (rule_form && rule_form->tag == T_CELL) {
+                                        *rules_tail = mk_cell(rule_form, mk_nil());
+                                        rules_tail = &((*rules_tail)->cell.cdr);
+                                    }
+                                    rest = cdr(rest);
+                                }
+
+                                /* Compile the grammar from rules */
+                                char* error = NULL;
+                                PikaGrammar* grammar = omni_compile_grammar_from_value(rules, &error);
+
+                                if (!grammar) {
+                                    if (error) {
+                                        Value* err = mk_error(error);
+                                        free(error);
+                                        return err;
+                                    }
+                                    return mk_error("Failed to compile grammar");
+                                }
+
+                                /* Create grammar value */
+                                Value* grammar_val = mk_grammar(grammar, name->s);
+                                if (!grammar_val) {
+                                    pika_grammar_free(grammar);
+                                    if (error) free(error);
+                                    return mk_error("Failed to create grammar value");
+                                }
+
+                                /* Define in environment */
+                                tower_env_define(menv->env, name, grammar_val);
+                                return grammar_val;
+                            }
+                        }
+                        /* Fall through to function definition for other array types */
+                    }
+
                     /* Function definition */
                     Value* name = car(first);
                     Value* params = cdr(first);
@@ -958,6 +1154,11 @@ TowerMEnv* tower_init(void) {
     tower_env_define(env, mk_sym("list"), mk_prim(prim_list));
     tower_env_define(env, mk_sym("not"), mk_prim(prim_not));
     tower_env_define(env, mk_sym("print"), mk_prim(prim_print));
+
+    /* Grammar DSL primitives */
+    tower_env_define(env, mk_sym("pika-match"), mk_prim(prim_pika_match));
+    tower_env_define(env, mk_sym("pika-find-all"), mk_prim(prim_pika_find_all));
+
     /* Boolean constants */
     tower_env_define(env, mk_sym("#t"), mk_sym("#t"));
     tower_env_define(env, mk_sym("#f"), mk_sym("#f"));

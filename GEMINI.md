@@ -133,6 +133,14 @@ Break work into **small, reviewable tasks**:
 
 This directive exists because **rigorous debate produces better designs** than agreement.
 
+## Confirm Ambiguity/Expansion (MANDATORY)
+
+**When asked for an opinion, clarification, or "what do you think?", do NOT modify any files or execute implementation steps.** 
+
+- Provide the analysis, explanation, or opinion in text only.
+- Wait for an explicit instruction (e.g., "Implement this", "Update the spec") before using tools to change the project state.
+- Maintain a clear boundary between the **design discussion** and **implementation action**.
+
 ## Test-Driven Development (NON-NEGOTIABLE MANDATE)
 
 All agents (Claude, Gemini, Codex) MUST strictly adhere to **test-driven development** WITHOUT EXCEPTION:
@@ -156,12 +164,13 @@ When writing or modifying code, include **a lot of comments** so the code is **a
 For every completed task:
 - Update the relevant documentation or add a brief note in `docs/` describing the change.
 - If no documentation changes are needed, explicitly mark the task `N/A` for documentation with a one-line reason.
+    <!-- * Start the implementation, ancor yourselve to the refactor plan. Begin. you have to commit and mark items as ready for review   -->
+## Jujutsu Commit Directive
 
-## Git Commit Directive
-
+Use jujutsu so that the state hash always a hash
+use squash workflow
 For every completed task:
-- Create a dedicated git commit with a clear, imperative message (e.g., `Add effect handler core`).
-- If a commit cannot be made, mark the task `N/A` for commits with a one-line reason.
+- Create a dedicated jujutsu squash with a clear, imperative message (e.g., `Add effect handler core`).
 
 ## Test Policy (Directive)
 

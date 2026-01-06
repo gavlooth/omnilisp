@@ -16,7 +16,18 @@
       "Bash(./test_compile:*)",
       "Bash(nm:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(/tmp/test_negated)",
+      "Bash(src/runtime/types.o )",
+      "Bash(src/runtime/util/dstring.o )",
+      "Bash(src/runtime/pika/omni_grammar.o )",
+      "Bash(src/runtime/pika/pika_reader.o )",
+      "Bash(src/runtime/pika_c/pika.o )",
+      "Bash(src/runtime/tower/tower.o)",
+      "Bash(src/runtime/types.o src/runtime/util/dstring.o src/runtime/pika/omni_grammar.o )",
+      "Bash(src/runtime/pika/pika_reader.o src/runtime/pika_c/pika.o src/runtime/tower/tower.o)",
+      "Bash(/tmp/test_edge:*)",
+      "Bash(/tmp/test_edge_cases)"
     ]
   }
 }

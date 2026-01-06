@@ -23,12 +23,15 @@ typedef enum {
     T_FLOAT,    // IEEE 754 double precision float
     T_PORT,     // File I/O port
     T_SYNTAX,   // Hygienic syntax transformer (macro)
+    T_GRAMMAR,  // Pika grammar (for grammar DSL)
     T_FFI_LIB,  // Foreign library handle (dlopen)
     T_FFI_PTR,  // Foreign pointer (opaque handle)
     T_THREAD    // System thread (pthread)
 } Tag;
 
+// Forward declarations
 struct Value;
+struct PikaGrammar;  // Forward declaration for Pika grammar
 
 // Function pointer types
 typedef struct Value* (*PrimFn)(struct Value* args, struct Value* menv);
@@ -144,6 +147,10 @@ typedef struct Value {
             struct Value* rules;         // List of (pattern template) pairs
             struct Value* def_env;       // Definition-time environment (for hygiene)
         } syntax;
+        struct {                         // T_GRAMMAR - Pika grammar
+            struct PikaGrammar* grammar; // Compiled Pika grammar
+            char* name;                  // Grammar name for error messages
+        } grammar;
         struct {                         // T_FFI_LIB - foreign library
             void* handle;                // dlopen handle
             char* name;                  // Library name for error messages
@@ -187,6 +194,7 @@ Value* mk_char(long codepoint);
 Value* mk_float(double f);
 Value* mk_port(FILE* fp, const char* filename, int mode);
 Value* mk_syntax(const char* name, Value* literals, Value* rules, Value* def_env);
+Value* mk_grammar(struct PikaGrammar* grammar, const char* name);
 Value* mk_ffi_lib(void* handle, const char* name);
 Value* mk_ffi_ptr(void* ptr, const char* type_name, int owned);
 Value* mk_thread(Value* thunk);
@@ -203,6 +211,7 @@ int is_char(Value* v);
 int is_float(Value* v);
 int is_port(Value* v);
 int is_syntax(Value* v);
+int is_grammar(Value* v);
 int is_ffi_lib(Value* v);
 int is_ffi_ptr(Value* v);
 int is_thread(Value* v);

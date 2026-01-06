@@ -861,6 +861,300 @@ TEST(tower_eval_string_api) {
     tower_cleanup();
 }
 
+/* ============== Grammar DSL Tests ============== */
+
+/*
+ * Test: Grammar DSL - Simple pattern matching
+ *
+ * Defines a simple grammar and tests matching with pika-match primitive.
+ */
+TEST(grammar_dsl_simple_pattern) {
+    /* Define a simple grammar that matches "hello" */
+    const char* program =
+        "(define [grammar simple]"
+        "  [greeting \"hello\"])";
+
+    Value* result = tower_eval_string(program);
+    ASSERT(result != NULL);
+    /* Note: Don't call tower_cleanup() here - we need the grammar for the next call */
+
+    /* Now test matching with the grammar */
+    result = tower_eval_string("(pika-match simple greeting \"helloworld\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "hello");
+    tower_cleanup();
+}
+
+/*
+ * Test: Grammar DSL - Left recursion (Pika's killer feature)
+ *
+ * Tests that left-recursive grammars work correctly.
+ * This is the key feature that distinguishes Pika from standard PEG.
+ */
+TEST(grammar_dsl_left_recursion) {
+    /* Define arithmetic grammar with left recursion */
+    const char* program =
+        "(define [grammar arithmetic]"
+        "  [expr (first (seq (ref expr) \"+\" (ref term))"
+        "               (ref term))]"
+        "  [term (first (seq (ref term) \"*\" (ref factor))"
+        "               (ref factor))]"
+        "  [factor (first \"(\" (seq (ref expr) \")\")"
+        "                  (one-or-more (charset \"0-9\")))])";
+
+    Value* result = tower_eval_string(program);
+    ASSERT(result != NULL);
+    /* Don't call tower_cleanup() - we need the grammar for the next calls */
+
+    /* Test left-recursive matching: 1+2+3 */
+    result = tower_eval_string("(pika-match arithmetic expr \"1+2+3\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "1+2+3");
+
+    /* Test with precedence: 1+2*3 should match fully */
+    result = tower_eval_string("(pika-match arithmetic expr \"1+2*3\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "1+2*3");
+    tower_cleanup();
+}
+
+/*
+ * Test: Grammar DSL - Clause primitives (seq, first, ref)
+ *
+ * Tests basic clause combinators.
+ */
+TEST(grammar_dsl_clause_primitives) {
+    /* Define grammar using various clause primitives */
+    const char* program =
+        "(define [grammar clauses]"
+        "  [sequence (seq \"a\" \"b\" \"c\")]"
+        "  [choice (first \"x\" \"y\" \"z\")]"
+        "  [combined (seq (ref choice) (ref sequence))])";
+
+    Value* result = tower_eval_string(program);
+    ASSERT(result != NULL);
+    tower_cleanup();
+
+    /* Test sequence matching */
+    result = tower_eval_string("(pika-match clauses sequence \"abc\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "abc");
+    tower_cleanup();
+
+    /* Test choice matching */
+    result = tower_eval_string("(pika-match clauses choice \"y\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "y");
+    tower_cleanup();
+
+    /* Test combined grammar */
+    result = tower_eval_string("(pika-match clauses combined \"yabc\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "yabc");
+    tower_cleanup();
+}
+
+/*
+ * Test: Grammar DSL - Quantifiers (zero-or-more, one-or-more, optional)
+ *
+ * Tests Kleene star, positive closure, and optional.
+ */
+TEST(grammar_dsl_quantifiers) {
+    const char* program =
+        "(define [grammar quantifiers]"
+        "  [zeros (zero-or-more \"0\")]"
+        "  [ones (one-or-more \"1\")]"
+        "  [maybe-optional (optional \"opt\")]"
+        "  [mixed (seq (ref ones) (ref zeros) (ref maybe-optional))])";
+
+    Value* result = tower_eval_string(program);
+    ASSERT(result != NULL);
+    tower_cleanup();
+
+    /* Test zero-or-more: matches empty string */
+    result = tower_eval_string("(pika-match quantifiers zeros \"\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "");
+    tower_cleanup();
+
+    /* Test zero-or-more: matches multiple */
+    result = tower_eval_string("(pika-match quantifiers zeros \"00000\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "00000");
+    tower_cleanup();
+
+    /* Test one-or-more */
+    result = tower_eval_string("(pika-match quantifiers ones \"1111\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "1111");
+    tower_cleanup();
+
+    /* Test optional with value */
+    result = tower_eval_string("(pika-match quantifiers maybe-optional \"opt\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "opt");
+    tower_cleanup();
+
+    /* Test optional without value */
+    result = tower_eval_string("(pika-match quantifiers maybe-optional \"\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "");
+    tower_cleanup();
+
+    /* Test combined: 111000opt */
+    result = tower_eval_string("(pika-match quantifiers mixed \"111000opt\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "111000opt");
+    tower_cleanup();
+}
+
+/*
+ * Test: Grammar DSL - Character classes
+ *
+ * Tests charset and charset-not clauses.
+ */
+TEST(grammar_dsl_charset) {
+    const char* program =
+        "(define [grammar charsets]"
+        "  [digit (charset \"0-9\")]"
+        "  [not-digit (charset-not \"0-9\")]"
+        "  [hex (charset \"0-9a-fA-F\")]"
+        "  [word (charset \"a-zA-Z0-9_\")]"
+        "  [identifier (seq (ref word) (zero-or-more (ref word)))])";
+
+    Value* result = tower_eval_string(program);
+    ASSERT(result != NULL);
+    tower_cleanup();
+
+    /* Test digit charset */
+    result = tower_eval_string("(pika-match charsets digit \"5\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "5");
+    tower_cleanup();
+
+    /* Test negated charset */
+    result = tower_eval_string("(pika-match charsets not-digit \"a\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "a");
+    tower_cleanup();
+
+    /* Test hex charset */
+    result = tower_eval_string("(pika-match charsets hex \"F\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "F");
+    tower_cleanup();
+
+    /* Test identifier */
+    result = tower_eval_string("(pika-match charsets identifier \"foo_bar123\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "foo_bar123");
+    tower_cleanup();
+}
+
+/*
+ * Test: Grammar DSL - pika-find-all primitive
+ *
+ * Tests finding all non-overlapping matches.
+ */
+TEST(grammar_dsl_find_all) {
+    const char* program =
+        "(define [grammar numbers]"
+        "  [number (one-or-more (charset \"0-9\"))])";
+
+    Value* result = tower_eval_string(program);
+    ASSERT(result != NULL);
+    tower_cleanup();
+
+    /* Find all numbers in input */
+    result = tower_eval_string("(pika-find-all numbers number \"abc123def456ghi789\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CELL);  /* Should return a list */
+
+    /* Check that we got 3 matches */
+    int count = 0;
+    Value* rest = result;
+    while (!is_nil(rest)) {
+        count++;
+        Value* item = car(rest);
+        ASSERT(item != NULL);
+        ASSERT_EQ(item->tag, T_CODE);
+        rest = cdr(rest);
+    }
+    ASSERT_EQ(count, 3);
+    tower_cleanup();
+}
+
+/*
+ * Test: Grammar DSL - Lookahead predicates
+ *
+ * Tests positive and negative lookahead.
+ */
+TEST(grammar_dsl_lookahead) {
+    const char* program =
+        "(define [grammar lookahead]"
+        "  [not-following-number (seq (charset \"a-z\") (not-followed-by (charset \"0-9\")))]"
+        "  [following-number (seq (charset \"a-z\") (followed-by (charset \"0-9\")))])";
+
+    Value* result = tower_eval_string(program);
+    ASSERT(result != NULL);
+    tower_cleanup();
+
+    /* Test negative lookahead: should match when NOT followed by digit */
+    result = tower_eval_string("(pika-match lookahead not-following-number \"ax\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "a");
+    tower_cleanup();
+
+    /* Test positive lookahead: should match when followed by digit */
+    result = tower_eval_string("(pika-match lookahead following-number \"a5\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "a");
+    tower_cleanup();
+}
+
+/*
+ * Test: Grammar DSL - Label extraction
+ *
+ * Tests AST labeling for structured parsing.
+ */
+TEST(grammar_dsl_label) {
+    const char* program =
+        "(define [grammar labeled]"
+        "  [pair (seq (label key (one-or-more (charset \"a-z\")))"
+        "             \":\""
+        "             (label value (one-or-more (charset \"0-9\"))))])";
+
+    Value* result = tower_eval_string(program);
+    ASSERT(result != NULL);
+    tower_cleanup();
+
+    /* Test labeled matching - though we can't easily test label extraction
+       without more API, the match should still work */
+    result = tower_eval_string("(pika-match labeled pair \"age:42\")");
+    ASSERT(result != NULL);
+    ASSERT_EQ(result->tag, T_CODE);
+    ASSERT_STR_EQ(result->s, "age:42");
+    tower_cleanup();
+}
+
 TEST(integration_arithmetic_add) {
     /* (+ 1 2 3) => 6 */
     Value* result = tower_eval_string("(+ 1 2 3)");
@@ -1242,6 +1536,17 @@ int main(void) {
     printf("\nIntegration Tests:\n");
     RUN_TEST(pika_tower_integration);
     RUN_TEST(tower_eval_string_api);
+
+    printf("\nGrammar DSL Tests:\n");
+    RUN_TEST(grammar_dsl_simple_pattern);
+    RUN_TEST(grammar_dsl_left_recursion);
+    RUN_TEST(grammar_dsl_clause_primitives);
+    RUN_TEST(grammar_dsl_quantifiers);
+    RUN_TEST(grammar_dsl_charset);
+    RUN_TEST(grammar_dsl_find_all);
+    RUN_TEST(grammar_dsl_lookahead);
+    RUN_TEST(grammar_dsl_label);
+
     RUN_TEST(integration_arithmetic_add);
     RUN_TEST(integration_arithmetic_sub);
     RUN_TEST(integration_arithmetic_mul);

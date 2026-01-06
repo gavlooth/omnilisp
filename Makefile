@@ -30,11 +30,6 @@ SRCS = $(RUNTIME_DIR)/types.c \
        $(COMPILER_DIR)/omni_compile.c \
        $(UTIL_DIR)/dstring.c \
        $(UTIL_DIR)/hashmap.c \
-       $(RUNTIME_DIR)/memory/deferred.c \
-       $(RUNTIME_DIR)/memory/arena.c \
-       $(RUNTIME_DIR)/memory/region.c \
-       $(RUNTIME_DIR)/memory/genref.c \
-       $(RUNTIME_DIR)/memory/constraint.c \
        $(RUNTIME_DIR)/memory/exception.c \
        $(RUNTIME_DIR)/memory/concurrent.c \
        runtime/src/memory/arena_core.c \

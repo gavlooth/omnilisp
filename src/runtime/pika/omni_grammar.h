@@ -104,6 +104,24 @@ PikaGrammar* omni_compile_peg(const char* peg_source, char** error_out);
 
 /* Compile single regex-like pattern */
 PikaGrammar* omni_compile_pattern(const char* pattern, char** error_out);
+PikaGrammar* omni_compile_pattern_ext(const char* pattern, char** error_out, bool* has_start_anchor);
+
+/* ============== Grammar DSL Compilation ============== */
+
+/*
+ * Compile a grammar from OmniLisp Value* list of rule definitions
+ *
+ * Input format: list of [rule-name clause] pairs
+ *   Each rule is: (array rule-name clause)
+ *
+ * Example:
+ *   (define [grammar arithmetic]
+ *     [expr (first (seq (ref expr) "+" (ref term)) (ref term))]
+ *     [term (ref factor)])
+ *
+ * Returns: PikaGrammar* on success, NULL on error (error_out set)
+ */
+PikaGrammar* omni_compile_grammar_from_value(Value* rules_list, char** error_out);
 
 /* ============== PIKA-SPECIFIC ADVANCED API ============== */
 /*

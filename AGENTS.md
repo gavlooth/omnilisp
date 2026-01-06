@@ -133,6 +133,14 @@ Break work into **small, reviewable tasks**:
 
 This directive exists because **rigorous debate produces better designs** than agreement.
 
+## Confirm Ambiguity/Expansion (MANDATORY)
+
+**When asked for an opinion, clarification, or "what do you think?", do NOT modify any files or execute implementation steps.** 
+
+- Provide the analysis, explanation, or opinion in text only.
+- Wait for an explicit instruction (e.g., "Implement this", "Update the spec") before using tools to change the project state.
+- Maintain a clear boundary between the **design discussion** and **implementation action**.
+
 ## Test-Driven Development (NON-NEGOTIABLE MANDATE)
 
 All agents (Claude, Gemini, Codex) MUST strictly adhere to **test-driven development** WITHOUT EXCEPTION:
