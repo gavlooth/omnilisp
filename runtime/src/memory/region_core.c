@@ -84,3 +84,13 @@ void region_tether_end(Region* r) {
 void* region_alloc(Region* r, size_t size) {
     return arena_alloc(&r->arena, size);
 }
+
+// -- RegionRef Implementation --
+
+void region_retain(RegionRef ref) {
+    region_retain_internal(ref.region);
+}
+
+void region_release(RegionRef ref) {
+    region_release_internal(ref.region);
+}

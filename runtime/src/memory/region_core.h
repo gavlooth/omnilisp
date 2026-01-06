@@ -33,4 +33,14 @@ void region_tether_end(Region* r);
 // Allocation
 void* region_alloc(Region* r, size_t size);
 
+// -- Region Reference (Smart Pointer) --
+typedef struct RegionRef {
+    void* ptr;          // The actual object
+    Region* region;     // The region keeping it alive
+} RegionRef;
+
+// Atomic RC operations on the RegionRef
+void region_retain(RegionRef ref);
+void region_release(RegionRef ref);
+
 #endif // OMNI_REGION_CORE_H

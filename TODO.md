@@ -50,7 +50,7 @@ Replace hybrid memory management with a unified Region-RC architecture.
     - `Region` struct defined.
     - Lifecycle functions managed via RC/Liveness flags.
 
-- [TODO] Label: T-rcg-ref
+- [R] Label: T-rcg-ref
   Objective: Implement `RegionRef` fat pointer and atomic ops.
   Where: `runtime/include/omni_types.h`, `runtime/src/memory/region_core.c`
   What to change:
