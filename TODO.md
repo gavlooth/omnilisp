@@ -54,6 +54,7 @@ Replace hybrid memory management with a unified Region-RC architecture.
 
 - [TODO] Label: T1-analysis-scoped-escape
   Objective: Implement hierarchical, branch-level escape analysis to support "Region Narrowing", allowing temporary variables in non-escaping branches to be allocated on the stack or scratchpad instead of the parent region.
+  Reference: docs/BRANCH_LEVEL_REGION_NARROWING.md
   Where: csrc/analysis/analysis.h, csrc/analysis/analysis.c
   Why:
     Currently, escape analysis (`EscapeClass`) is likely function-global. If a variable escapes *anywhere* in the function, it's marked as escaping.
@@ -160,6 +161,7 @@ Replace hybrid memory management with a unified Region-RC architecture.
     - Variables that leave a branch (e.g. via return or assignment to outer var) are flagged as escaping.
 - [TODO] Label: T2-codegen-narrowing
   Objective: Update code generation to utilize scoped escape analysis, emitting stack/scratch allocations for non-escaping variables and inserting precise cleanup at branch exits.
+  Reference: docs/BRANCH_LEVEL_REGION_NARROWING.md
   Where: csrc/codegen/codegen.c, csrc/codegen/cleanup.c, csrc/analysis/analysis.h
   Why:
     Once we know a variable `x` doesn't escape its branch (T1), we must ensure:

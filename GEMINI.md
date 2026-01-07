@@ -87,12 +87,13 @@ TODO.md must be updated when task are complete
 Every task added to `TODO.md` MUST be written with sufficient detail that a developer with **zero context** could implement it immediately without asking clarifying questions.
 
 **A task is INCOMPLETE if it lacks:**
-1.  **Context/Why:** Explain the architectural goal. *Why* are we doing this? What problem does it solve?
-2.  **Implementation Details:**
+1.  **Reference:** A link to the specific documentation file (e.g., `docs/BRANCH_LEVEL_REGION_NARROWING.md`) that explains the theory/design. **The developer is explicitly required to study this document before starting.**
+2.  **Context/Why:** Explain the architectural goal. *Why* are we doing this? What problem does it solve?
+3.  **Implementation Details:**
     *   **File Paths:** Exact files to modify.
     *   **Data Structures:** The exact C structs, Enums, or Lisp forms to be added. **Include code snippets.**
     *   **Logic Flow:** A step-by-step description of the algorithm or logic changes.
-3.  **Verification Plan:** A concrete test case (source code + expected output) that proves success.
+4.  **Verification Plan:** A concrete test case (source code + expected output) that proves success.
 
 **BAD Example:**
 ```text
@@ -106,6 +107,7 @@ Every task added to `TODO.md` MUST be written with sufficient detail that a deve
 ```text
 - [TODO] Label: T1-analysis-scoped-escape
   Objective: Implement hierarchical, branch-level escape analysis to support "Region Narrowing".
+  Reference: docs/BRANCH_LEVEL_REGION_NARROWING.md (Study Section 3 "Allocation Matrix" carefully)
   Where: csrc/analysis/analysis.h, csrc/analysis/analysis.c
   Why:
     Currently, escape analysis is function-global. We need to know if a variable escapes *its specific branch* to enable stack allocation in non-escaping branches.
