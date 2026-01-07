@@ -95,12 +95,143 @@ Replace hybrid memory management with a unified Region-RC architecture.
 
 
 
-## Phase 15: Advanced Region Optimization
+## Phase 15: Branch-Level Region Narrowing
 
+**Objective:** Reduce RC overhead by keeping branch-local data out of RC-managed regions.
+**Reference:** `docs/BRANCH_LEVEL_REGION_NARROWING.md`
 
+- [TODO] Label: T-narrow-scoped-escape
+  Objective: Implement branch-scoped escape analysis.
+  Where: `csrc/analysis/analysis.c`, `csrc/analysis/escape.c`
+  What to change:
+    - [ ] Extend escape analysis to track escape at branch granularity (not just function level).
+    - [ ] Identify data that escapes the branch vs data local to the branch.
+    - [ ] Handle partial escape (some bindings escape, others don't).
+  How to verify: Compile a function with if/match branches; verify escape classification per-branch in debug output.
+  Acceptance:
+    - Branch-local data correctly identified as non-escaping.
+    - Escaping data (phi-node, closure capture, return) correctly identified.
+
+- [TODO] Label: T-narrow-scoped-shape
+  Objective: Implement branch-scoped shape analysis.
+  Where: `csrc/analysis/shape.c`
+  What to change:
+    - [ ] Compute shape (TREE/DAG/CYCLIC) within branch scope only.
+    - [ ] Reuse existing shape analysis infrastructure with scope boundary awareness.
+  How to verify: Compile branches with different shapes; verify correct shape classification per-branch.
+  Acceptance:
+    - Shape computed independently for each branch.
+    - Non-escaping TREE branches identified for stack allocation.
+
+- [TODO] Label: T-narrow-alloc-routing
+  Objective: Route allocations based on narrowing decision.
+  Where: `csrc/codegen/codegen.c`
+  What to change:
+    - [ ] Non-escaping TREE: Stack allocation + `free_tree` at branch exit.
+    - [ ] Non-escaping DAG/CYCLIC: Scratch arena + bulk free at branch exit.
+    - [ ] Escaping: Parent region (existing behavior).
+  How to verify: Compile program with mixed branches; verify correct allocation targets in generated C.
+  Acceptance:
+    - Branch-local TREE data never touches RC.
+    - Branch-local DAG/CYCLIC uses scratch arena, not parent region.
+
+- [TODO] Label: T-narrow-nested
+  Objective: Apply narrowing recursively to nested branches.
+  Where: `csrc/analysis/analysis.c`, `csrc/codegen/codegen.c`
+  What to change:
+    - [ ] Recursively analyze nested control flow (if inside if, match inside let, etc.).
+    - [ ] Each nesting level independently decides narrowing strategy.
+  How to verify: Compile deeply nested control flow; verify each level uses appropriate strategy.
+  Acceptance:
+    - Nested non-escaping branches use pure ASAP regardless of parent's strategy.
+    - No unnecessary region allocation for purely local nested computations.
+
+- [TODO] Label: T-narrow-lifecycle-classes
+  Objective: Implement lifecycle-based region partitioning for escaping data.
+  Where: `csrc/analysis/escape.c`, `csrc/analysis/analysis.c`
+  What to change:
+    - [ ] Extend escape analysis to classify escape targets: CALLER, CAPTURED(closure_id), GLOBAL.
+    - [ ] Group escaping data by lifecycle class rather than lumping into single parent region.
+    - [ ] Handle closure lifetime inference (static when possible, conservative fallback).
+  How to verify: Compile function with mixed escapes (return + closure + global); verify separate region assignment per class.
+  Acceptance:
+    - Escaping data partitioned by lifecycle, not lumped together.
+    - Data freed at minimal lifetime boundary (not held until longest-lived region dies).
+
+- [TODO] Label: T-narrow-lifecycle-codegen
+  Objective: Generate region assignments based on lifecycle classes.
+  Where: `csrc/codegen/codegen.c`
+  What to change:
+    - [ ] CALLER class: allocate in caller-provided region or create region with caller lifetime.
+    - [ ] CAPTURED class: allocate in closure's region (create if needed).
+    - [ ] GLOBAL class: allocate in global region.
+    - [ ] Emit appropriate region_retain/release for cross-region references.
+  How to verify: Inspect generated C for correct region assignments per lifecycle class.
+  Acceptance:
+    - Each lifecycle class uses appropriately-scoped region.
+    - No unnecessary transmigration between lifecycle-aligned regions.
+
+---
+
+## Phase 15b: Adaptive Region Sizing
+
+**Objective:** Scale region overhead with actual data size to reduce penalty for small lifecycle groups.
+**Reference:** `docs/BRANCH_LEVEL_REGION_NARROWING.md` (Section 12)
+
+- [TODO] Label: T-adaptive-size-classes
+  Objective: Implement region size classes (TINY/SMALL/MEDIUM/LARGE).
+  Where: `src/runtime/memory/region_core.c`, `src/runtime/memory/region.h`
+  What to change:
+    - [ ] Define RegionLite struct (~16 bytes) for TINY/SMALL regions.
+    - [ ] Define size class thresholds: TINY ≤256B, SMALL ≤4KB, MEDIUM ≤64KB, LARGE >64KB.
+    - [ ] Implement region_create_adaptive(size_hint) to select appropriate class.
+  How to verify: Create regions with different size hints; verify correct struct type selected.
+  Acceptance:
+    - Small lifecycle groups use lightweight RegionLite.
+    - Overhead scales with actual data size.
+
+- [TODO] Label: T-adaptive-promotion
+  Objective: Implement promotion from RegionLite to full Region.
+  Where: `src/runtime/memory/region_core.c`
+  What to change:
+    - [ ] Detect promotion triggers: RC overflow, multi-block needed, bitmap needed.
+    - [ ] Implement promote_to_full() that migrates RegionLite state to full Region.
+    - [ ] Ensure promotion is transparent to callers (same handle, different backing).
+  How to verify: Create TINY region, force promotion via RC overflow; verify data integrity.
+  Acceptance:
+    - Promotion is seamless and preserves all allocated data.
+    - Most small regions never promote (common case stays lightweight).
+
+- [TODO] Label: T-adaptive-geometric-arena
+  Objective: Implement geometric arena growth for adaptive block sizing.
+  Where: `src/runtime/memory/arena_core.c`
+  What to change:
+    - [ ] Replace fixed block size with initial size + doubling on exhaustion.
+    - [ ] Initial block: 256 bytes, max block: 64KB (configurable).
+    - [ ] Track block count for O(log n) overhead accounting.
+  How to verify: Allocate varying amounts in region; verify block sizes follow geometric growth.
+  Acceptance:
+    - Small regions use small blocks (reduced memory waste).
+    - Large regions grow efficiently via doubling.
+    - Amortized O(1) allocation maintained.
+
+- [TODO] Label: T-adaptive-non-atomic-tiny
+  Objective: Use non-atomic RC for TINY regions (single-threaded optimization).
+  Where: `src/runtime/memory/region_core.c`
+  What to change:
+    - [ ] TINY regions use plain uint16_t for external_rc (not atomic).
+    - [ ] Promotion to SMALL+ converts to atomic RC.
+    - [ ] Add thread-safety assertion in debug mode for TINY region cross-thread access.
+  How to verify: Benchmark TINY region RC operations; verify no atomic overhead.
+  Acceptance:
+    - TINY regions avoid atomic operations entirely.
+    - Promotion to atomic RC on thread escape or size growth.
+
+---
+
+## Phase 16: Advanced Region Optimization
 
 **Objective:** Implement high-performance transmigration and tethering algorithms.
-
 **Reference:** `docs/ADVANCED_REGION_ALGORITHMS.md`
 
 

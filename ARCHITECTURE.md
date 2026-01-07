@@ -61,6 +61,8 @@ OmniLisp uses a **Region-Based Reference Counting (RC-G)** architecture. Memory 
 ### A. Scoped Regions (Pure ASAP)
 For data that doesn't escape its scope, the compiler inserts static `region_create()` and `region_exit()` calls. The region uses an **Arena Backend** (Bump pointer), making both allocation and deallocation O(1).
 
+**Branch-Level Narrowing:** Within functions, branches are analyzed independently. Non-escaping branches use stack allocation (TREE shape) or scratch arenas (DAG/CYCLIC shape), avoiding the parent region entirely. This keeps RC regions tight and reclaims branch-local memory early. See `docs/BRANCH_LEVEL_REGION_NARROWING.md`.
+
 ### B. Escaping Regions (Region-RC)
 If data escapes to the heap or another thread, the Region transitions to reference counting. 
 - **`external_rc`**: Tracks strong references to the Region handle.
