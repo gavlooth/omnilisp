@@ -523,6 +523,7 @@ static int is_special_form(Value* sym) {
         "if", "let", "define", "lambda", "fn", "λ", "do", "begin",
         "quote", "set!", "match", "cond", "when", "unless",
         "array", "dict", "type", "for", "foreach", "->",
+        "put!", "update!", "update", "path",
         "quasiquote", "with-meta", "module", "import", "export",
         "prompt", "control",  // Delimited continuations
         "handler-case", "handler-bind", "restart-case", "signal",  // Condition system
@@ -575,7 +576,7 @@ Value* omni_eval(Value* expr, Env* env) {
             // Check primitives
             for (int i = 0; i < num_primitives; i++) {
                 if (strcmp(primitives[i].name, expr->s) == 0) {
-                    return mk_prim(NULL); // Return marker, actual lookup in apply
+                    return mk_prim((void*)(intptr_t)i); // Return actual index
                 }
             }
 
@@ -768,7 +769,12 @@ static Value* eval_special_form(Value* op, Value* args, Env* env) {
     if (strcmp(name, "dict") == 0) return eval_dict(args, env);
     if (strcmp(name, "for") == 0) return eval_for(args, env);
     if (strcmp(name, "foreach") == 0) return eval_foreach(args, env);
-    if (strcmp(name, "put!") == 0) return eval_put_bang(args, env);
+    if (strcmp(name, "put!") == 0) {
+        Value* target = car(args);
+        Value* val = omni_eval(car(cdr(args)), env);
+        if (is_error(val)) return val;
+        return eval_put_bang(mk_cell(target, mk_cell(val, mk_nil())), env);
+    }
     if (strcmp(name, "update!") == 0) return eval_update_bang(args, env);
     if (strcmp(name, "update") == 0) return eval_update(args, env);
     if (strcmp(name, "path") == 0) return eval_path(args, env);
@@ -1579,67 +1585,85 @@ static Value* eval_define(Value* args, Env* env) {
         // Check for destructuring pattern: (define [a b c] value)
         // [a b c] parses as (array a b c) where first element is not a special keyword
         if (head && head->tag == T_SYM && strcmp(head->s, "array") == 0) {
-            // This is a destructuring pattern
-            Value* pattern = cdr(first);  // Skip "array" marker
-            Value* value_expr = car(cdr(args));
-            Value* value = omni_eval(value_expr, env);
-            if (is_error(value)) return value;
+                /* Destructuring fallback: (define [a b] value) */
+                Value* pattern = cdr(first);
+                Value* value_expr = car(cdr(args));
+                Value* value = omni_eval(value_expr, env);
+                if (is_error(value)) return value;
 
-            // Bind each variable in the pattern
-            int index = 0;
-            Value* dest_p = pattern;
-            while (!is_nil(dest_p)) {
-                Value* var_name = car(dest_p);
-                if (!var_name || var_name->tag != T_SYM) {
-                    return mk_error("define: destructuring pattern must contain symbols");
+                // If value is an array literal (array ...) or evaled array (__array__ ...), skip the marker
+                Value* val_items = value;
+                if (value && value->tag == T_CELL && car(value) && 
+                    car(value)->tag == T_SYM && 
+                    (strcmp(car(value)->s, "array") == 0 || strcmp(car(value)->s, "__array__") == 0)) {
+                    val_items = cdr(value);
                 }
 
-                // Handle rest pattern
-                if (strcmp(var_name->s, "..") == 0) {
-                    // Bind rest of values to rest_name
+                int index = 0;
+                Value* dest_p = pattern;
+                while (!is_nil(dest_p)) {
+                    Value* var_name = car(dest_p);
+                    if (!var_name || var_name->tag != T_SYM) return mk_error("define: destructuring pattern must contain symbols");
+                    if (strcmp(var_name->s, "..") == 0) {
+                        dest_p = cdr(dest_p);
+                        if (is_nil(dest_p)) return mk_error("define: expected name after ..");
+                        Value* rest_name = car(dest_p);
+                        if (!rest_name || rest_name->tag != T_SYM) return mk_error("define: expected symbol after ..");
+                        Value* rest_values = mk_nil();
+                        Value** rest_tail = &rest_values;
+                        Value* v = val_items;
+                        int skip = index;
+                        while (!is_nil(v) && skip > 0) { v = cdr(v); skip--; }
+                        while (!is_nil(v)) { *rest_tail = mk_cell(car(v), mk_nil()); rest_tail = &((*rest_tail)->cell.cdr); v = cdr(v); }
+                        env_define(env, rest_name, rest_values);
+                        break;
+                    }
+                    Value* v = val_items;
+                    int i = index;
+                    while (!is_nil(v) && i > 0) { v = cdr(v); i--; }
+                    Value* elem_val = is_nil(v) ? mk_nothing() : car(v);
+                    env_define(env, var_name, elem_val);
                     dest_p = cdr(dest_p);
-                    if (is_nil(dest_p)) {
-                        return mk_error("define: expected name after ..");
-                    }
-                    Value* rest_name = car(dest_p);
-                    if (!rest_name || rest_name->tag != T_SYM) {
-                        return mk_error("define: expected symbol after ..");
-                    }
-
-                    // Collect remaining values
-                    Value* rest_values = mk_nil();
-                    Value** rest_tail = &rest_values;
-                    Value* v = value;
-                    int skip = index;
-                    while (!is_nil(v) && skip > 0) {
-                        v = cdr(v);
-                        skip--;
-                    }
-                    while (!is_nil(v)) {
-                        *rest_tail = mk_cell(car(v), mk_nil());
-                        rest_tail = &((*rest_tail)->cell.cdr);
-                        v = cdr(v);
-                    }
-                    env_define(env, rest_name, rest_values);
-                    break;
+                    index++;
                 }
 
-                // Get value at index
-                Value* v = value;
-                int i = index;
-                while (!is_nil(v) && i > 0) {
-                    v = cdr(v);
-                    i--;
-                }
-                Value* elem_val = is_nil(v) ? mk_nothing() : car(v);
-                env_define(env, var_name, elem_val);
 
-                dest_p = cdr(dest_p);
-                index++;
-            }
 
             // Return first variable name
             return car(pattern);
+        }
+
+        /* SCHEME-STYLE HEADER: (define (name params...) body...) */
+        if (head && head->tag == T_SYM) {
+            Value* name = head;
+            Value* params = cdr(first);
+            Value* rest = cdr(args);
+
+            // Handle (define (f [x y]) ...) where params is ((array x y))
+            if (!is_nil(params) && is_nil(cdr(params))) {
+                Value* first_p = car(params);
+                if (first_p && first_p->tag == T_CELL && car(first_p)->tag == T_SYM &&
+                    strcmp(car(first_p)->s, "array") == 0) {
+                    params = cdr(first_p); // Unwrap the array
+                }
+            }
+
+            // Check for optional return type hint: (define (f x) {Int} body)
+            if (!is_nil(rest)) {
+                Value* maybe_type = car(rest);
+                if (maybe_type && maybe_type->tag == T_CELL &&
+                    car(maybe_type) && car(maybe_type)->tag == T_SYM &&
+                    strcmp(car(maybe_type)->s, "type") == 0) {
+                    rest = cdr(rest); // Skip return type
+                }
+            }
+
+            // Create lambda from params and remaining body
+            Value* lambda = eval_lambda(mk_cell(params, rest), env);
+            if (is_error(lambda)) return lambda;
+            if (define_metadata) metadata_set(lambda, define_metadata);
+            env_define(env, name, lambda);
+            return name;
         }
     }
 
@@ -1697,6 +1721,13 @@ static Value* eval_lambda(Value* args, Env* env) {
     Value* p = params;
     while (!is_nil(p)) {
         Value* param = car(p);
+
+        // Skip type annotations: {Type} parses as (type Type)
+        if (param && param->tag == T_CELL && car(param) &&
+            car(param)->tag == T_SYM && strcmp(car(param)->s, "type") == 0) {
+            p = cdr(p);
+            continue;
+        }
 
         if (param && param->tag == T_CELL) {
             Value* head = car(param);
@@ -1882,7 +1913,8 @@ static int match_pattern(Value* pattern, Value* subject, Env* env) {
         else if (clean_op && clean_op->tag == T_SYM && strcmp(clean_op->s, "array") == 0) {
             if (subject && subject->tag == T_CELL) {
                 Value* subj_items = subject;
-                if (car(subject)->tag == T_SYM && strcmp(car(subject)->s, "array") == 0) {
+                if (car(subject) && car(subject)->tag == T_SYM && 
+                    (strcmp(car(subject)->s, "array") == 0 || strcmp(car(subject)->s, "__array__") == 0)) {
                     subj_items = cdr(subject);
                 }
                 matched = match_list_pattern(cdr(clean_pattern), subj_items, env);
@@ -2514,42 +2546,60 @@ static Value* eval_foreach(Value* args, Env* env) {
 
 static Value* eval_put_bang(Value* args, Env* env) {
     Value* target_expr = car(args);
-    Value* value_expr = car(cdr(args));
-    Value* value = omni_eval(value_expr, env);
-    if (is_error(value)) return value;
+    Value* value = car(cdr(args)); // Already evaluated by caller or special handling needed
 
-    if (target_expr->tag == T_CELL && car(target_expr)->tag == T_SYM && strcmp(car(target_expr)->s, "path") == 0) {
-        Value* path_args = cdr(target_expr);
-        Value* root_expr = car(path_args);
-        Value* segments = cdr(path_args);
-        
-        Value* root = omni_eval(root_expr, env);
-        if (is_error(root)) return root;
-        
-        Value* current = root;
-        while (!is_nil(segments) && !is_nil(cdr(segments))) {
-            Value* seg = car(segments);
-            Value* key = (seg->tag == T_SYM) ? seg : omni_eval(car(cdr(seg)), env);
-            Value* get_args = mk_cell(current, mk_cell(key, mk_nil()));
-            current = prim_get(get_args);
-            if (is_error(current)) return current;
-            segments = cdr(segments);
+    if (target_expr->tag == T_CELL && car(target_expr)->tag == T_SYM) {
+        Value* op = car(target_expr);
+        if (strcmp(op->s, "path") == 0) {
+            Value* path_args = cdr(target_expr);
+            Value* root_expr = car(path_args);
+            Value* segments = cdr(path_args);
+            
+            Value* root = omni_eval(root_expr, env);
+            if (is_error(root)) return root;
+            
+            Value* current = root;
+            while (!is_nil(segments) && !is_nil(cdr(segments))) {
+                Value* seg = car(segments);
+                Value* key = (seg->tag == T_SYM) ? seg : omni_eval(car(cdr(seg)), env);
+                Value* get_args = mk_cell(current, mk_cell(key, mk_nil()));
+                current = prim_get(get_args);
+                if (is_error(current)) return current;
+                segments = cdr(segments);
+            }
+            
+            Value* final_seg = car(segments);
+            Value* final_key = (final_seg->tag == T_SYM) ? final_seg : omni_eval(car(cdr(final_seg)), env);
+            
+            if (is_dict(current)) {
+                prim_dict_set(mk_cell(current, mk_cell(final_key, mk_cell(value, mk_nil()))));
+            } else if (is_array(current)) {
+                prim_array_set(mk_cell(current, mk_cell(final_key, mk_cell(value, mk_nil()))));
+            } else {
+                return mk_error("put!: target is not a mutable collection");
+            }
+            return root;
+        } else if (strcmp(op->s, "get") == 0) {
+            /* (get root key) - single level path */
+            Value* root_expr = car(cdr(target_expr));
+            Value* key_expr = car(cdr(cdr(target_expr)));
+            
+            Value* root = omni_eval(root_expr, env);
+            if (is_error(root)) return root;
+            Value* key = omni_eval(key_expr, env);
+            if (is_error(key)) return key;
+            
+            if (is_dict(root)) {
+                prim_dict_set(mk_cell(root, mk_cell(key, mk_cell(value, mk_nil()))));
+            } else if (is_array(root)) {
+                prim_array_set(mk_cell(root, mk_cell(key, mk_cell(value, mk_nil()))));
+            } else {
+                return mk_error("put!: target is not a mutable collection");
+            }
+            return root;
         }
-        
-        Value* final_seg = car(segments);
-        Value* final_key = (final_seg->tag == T_SYM) ? final_seg : omni_eval(car(cdr(final_seg)), env);
-        
-        // Unified set logic
-        if (is_dict(current)) {
-            prim_dict_set(mk_cell(current, mk_cell(final_key, mk_cell(value, mk_nil()))));
-        } else if (is_array(current)) {
-            prim_array_set(mk_cell(current, mk_cell(final_key, mk_cell(value, mk_nil()))));
-        } else {
-            return mk_error("put!: target is not a mutable collection");
-        }
-        return root;
     }
-    return mk_error("put!: target must be a path");
+    return mk_error("put!: target must be a path or get form");
 }
 
 static Value* eval_update_bang(Value* args, Env* env) {

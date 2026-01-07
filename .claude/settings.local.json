@@ -27,7 +27,10 @@
       "Bash(src/runtime/types.o src/runtime/util/dstring.o src/runtime/pika/omni_grammar.o )",
       "Bash(src/runtime/pika/pika_reader.o src/runtime/pika_c/pika.o src/runtime/tower/tower.o)",
       "Bash(/tmp/test_edge:*)",
-      "Bash(/tmp/test_edge_cases)"
+      "Bash(/tmp/test_edge_cases)",
+      "Bash(tree:*)",
+      "Bash(git rm:*)",
+      "Bash(rm:*)"
     ]
   }
 }

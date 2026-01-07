@@ -134,13 +134,37 @@ int main(int argc, char** argv) {
             free(s);
         } else {
             // Try to evaluate as file
-            Value* result = omni_eval_file(argv[1]);
-            if (is_error(result)) {
-                printf("Error: %s\n", result->s);
+            FILE* f = fopen(argv[1], "r");
+            if (!f) {
+                fprintf(stderr, "Error: Cannot open file %s\n", argv[1]);
                 return 1;
             }
+            fseek(f, 0, SEEK_END);
+            long size = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            char* content = malloc(size + 1);
+            fread(content, 1, size, f);
+            content[size] = '\0';
+            fclose(f);
+
+            Value* exprs = omni_parse_all(content);
+            free(content);
+            if (is_error(exprs)) {
+                printf("Parse error: %s\n", exprs->s);
+                return 1;
+            }
+
+            Value* result = mk_nil();
+            while (!is_nil(exprs)) {
+                result = omni_eval(car(exprs), env);
+                if (is_error(result)) {
+                    printf("Error: %s\n", result->s);
+                    return 1;
+                }
+                exprs = cdr(exprs);
+            }
             char* s = val_to_str(result);
-            printf("%s\n", s);
+            printf("=> %s\n", s);
             free(s);
         }
         return 0;

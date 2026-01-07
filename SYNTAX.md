@@ -10,8 +10,8 @@ To ensure consistency, every delimiter has a fixed semantic "Charge".
 
 | Character | Domain | Purpose |
 | :--- | :--- | :--- |
-| **`()`** | **Flow** | Execution of logic, function calls, special forms, and **Persistent Linked Lists**. |
-| **`[]`** | **Slot** | Argument vectors, `let` bindings, contiguous **Realized Arrays**, and Path indexing. |
+| **`()`** | **Flow** | Execution of logic, function calls, and **Flow Templates** (headers). |
+| **`[]`** | **Slot** | Argument vectors, `let` bindings, and contiguous **Realized Arrays**. |
 | **`{}`** | **Kind** | Type system names, annotations, and parametric type construction. |
 | **`.`**  | **Path** | The access operator used to reach or locate data. Bridges Flow and Slot. |
 | **`^`**  | **Tag**  | Out-of-band metadata, visibility hints, and compiler instructions. |
@@ -22,15 +22,28 @@ To ensure consistency, every delimiter has a fixed semantic "Charge".
 ## 2. Bindings & Functions
 
 ### 2.1 Function Definitions
-Functions use the **Argument Vector `[]`** to clearly separate names from logic.
+Functions use a **Flow Template** header to clearly separate the function's identity and parameters from its logic. This header mirrors the call site.
 
 ```lisp
-;; Standard definition
-(define add [x y] (+ x y))
+;; 1. Standard Scheme-style (Flow Parity)
+;; The () here represents the "Flow" pattern being defined.
+(define (add x y) (+ x y))
 
-;; With type annotations (Kinds in {})
-(define add [x {Int} y {Int}] {Int}
+;; 2. Flow header with explicit Slot vector []
+;; Explicitly marks the parameter list as a "Slot" to be filled.
+(define (add [x y]) (+ x y))
+
+;; 3. With type annotations (Kinds in {})
+;; Return type follows the header.
+(define (add x {Int} y {Int}) {Int}
   (+ x y))
+
+;; 4. Combined style (Preferred for explicit slots)
+(define (add [x {Int} y {Int}]) {Int}
+  (+ x y))
+
+;; 5. Original flat style (Clojure-consistent)
+(define add [x y] (+ x y))
 
 ;; Lambda shorthand
 (lambda [x] (* x x))
@@ -113,19 +126,6 @@ The dot `.` identifies a location in memory.
 {Option (List Int)}          ; Nested application
 ```
 
-### 5.2 Higher-Kinded Types
-Use nested `{}` when passing a type constructor (not a fully applied type).
-```lisp
-{Functor {List}}             ; Functor applied to List constructor
-```
-
-### 5.3 Explicit Type Arguments
-Optional `[]` syntax for disambiguation.
-```lisp
-{Array [Float] 2}            ; Type param + dimension param
-(None [Int])                 ; Explicit value-level type application
-```
-
 ---
 
 ## 6. Pattern Matching
@@ -157,26 +157,6 @@ Define high-performance, left-recursive grammars directly in code.
   ...)
 ```
 
-### 7.2 Clause Forms
-| Clause | Description | Example |
-| :--- | :--- | :--- |
-| `"str"` | Literal string | `"hello"` |
-| `(char c)` | Single character | `(char #\a)` |
-| `(seq a b)` | Sequence | `(seq "a" "b")` |
-| `(first a b)`| Ordered Choice | `(first "x" "y")` |
-| `(ref rule)` | Rule reference | `(ref expr)` |
-| `(* x)` | Zero-or-more | `(* (charset "0-9"))` |
-| `(+ x)` | One-or-more | `(+ (charset "a-z"))` |
-| `(? x)` | Optional | `(? "opt")` |
-| `(charset p)`| Char range | `(charset "a-z")` |
-| `(& x)` | Positive Lookahead | `(& "prefix")` |
-| `(! x)` | Negative Lookahead | `(! "forbidden")` |
-| `(label :L x)`| AST Node Label | `(label :val (ref factor))` |
-
-### 7.3 Runtime API
-*   `(pika-match grammar rule input)`: Returns matched string or nil.
-*   `(pika-find-all grammar rule input)`: Returns list of non-overlapping matches.
-
 ---
 
 ## 8. Metadata (`^`)
@@ -185,3 +165,13 @@ The `^` tag is for "Extra-Logic" metadata (hints, visibility).
 ```lisp
 (define ^:private ^:hot [version {Float} 1.0])
 ```
+
+---
+
+## 9. Deprecated Namespaces
+
+The following namespaces are currently **DEPRECATED** and will be revisited in a future refactor:
+*   `violet.*`: Legacy standard library and preprocessor.
+*   `scicomp.*`: Legacy scientific computing and BLAS/Torch bindings.
+
+Do not use these in new code. Rely on the core runtime primitives.

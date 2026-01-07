@@ -1856,8 +1856,9 @@ static PikaClause* compile_grammar_clause(Value* clause_expr, char** error_out) 
     }
 
     /* String literal */
-    if (clause_expr->tag == T_CODE) {
-        return pika_clause_str(clause_expr->s);
+    if (clause_expr->tag == T_CODE || clause_expr->tag == T_STRING) {
+        const char* s = (clause_expr->tag == T_CODE) ? clause_expr->s : clause_expr->str.data;
+        return pika_clause_str(s);
     }
 
     /* Symbol (for things like (ref rule-name)) */
