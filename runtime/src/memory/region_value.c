@@ -1,19 +1,7 @@
 /*
- * region_value.c - Implementation of Region-Aware Value Constructors
+ * region_value.c - Implementation of Region-Aware Obj Constructors
  *
- * This file implements all the mk_*_region functions that allocate
- * Values in a specific Region.
- *
- * Integration with ASAP:
- * - The compiler will emit calls to these functions when region management
- *   is enabled
- * - Each allocation goes through region_alloc(), which uses the bump
- *   allocator in the Region
- * - String allocations also go through region_alloc()
- *
- * Note: Some external resources (Channel, FiberContext, etc.) still use
- * malloc because they have complex lifecycle requirements beyond simple
- * region management.
+ * This file implements mk_*_region functions for the new Obj type.
  */
 
 #include "region_value.h"
@@ -22,391 +10,183 @@
 // Primitive Allocator
 // ============================================================================
 
-Value* alloc_val_region(Region* r, Tag tag) {
+Obj* alloc_obj_region(Region* r, int tag) {
     if (!r) {
         // Fallback to malloc if no region (shouldn't happen in practice)
-        Value* v = malloc(sizeof(Value));
-        if (!v) return NULL;
-        v->mark = 0;
-        v->tag = tag;
-        v->type = NULL;
-        return v;
+        Obj* o = malloc(sizeof(Obj));
+        if (!o) return NULL;
+        o->mark = 0;
+        o->tag = tag;
+        o->generation = 0;
+        o->tethered = 0;
+        return o;
     }
 
-    Value* v = region_alloc(r, sizeof(Value));
-    if (!v) return NULL;
-    v->mark = 0;
-    v->tag = tag;
-    v->type = NULL;
-    return v;
+    Obj* o = region_alloc(r, sizeof(Obj));
+    if (!o) return NULL;
+    o->mark = 0;
+    o->tag = tag;
+    o->generation = 0; // Should ideally use region's generation or global
+    o->tethered = 0;
+    return o;
 }
 
 // ============================================================================
-// Singleton Values (no allocation needed)
+// Singleton Values
 // ============================================================================
 
-Value* mk_nil_region(Region* r) {
-    (void)r;  // Unused
-    static Value nil_singleton = { .mark = 0, .tag = T_NIL, .type = NULL };
-    return &nil_singleton;
+Obj* mk_nil_region(Region* r) {
+    (void)r;
+    return NULL; // NIL is NULL in new runtime
 }
 
-Value* mk_nothing_region(Region* r) {
-    (void)r;  // Unused
-    static Value nothing_singleton = { .mark = 0, .tag = T_NOTHING, .type = NULL };
-    return &nothing_singleton;
+static Obj nothing_obj = { .tag = TAG_NOTHING };
+Obj* mk_nothing_region(Region* r) {
+    (void)r;
+    return &nothing_obj;
 }
 
 // ============================================================================
 // Scalar Value Constructors
 // ============================================================================
 
-Value* mk_int_region(Region* r, long i) {
-    Value* v = alloc_val_region(r, T_INT);
-    if (!v) return NULL;
-    v->i = i;
-    return v;
+Obj* mk_int_region(Region* r, long i) {
+    Obj* o = alloc_obj_region(r, TAG_INT);
+    if (!o) return NULL;
+    o->i = i;
+    return o;
 }
 
-Value* mk_char_region(Region* r, long codepoint) {
-    Value* v = alloc_val_region(r, T_CHAR);
-    if (!v) return NULL;
-    v->codepoint = codepoint;
-    return v;
+Obj* mk_char_region(Region* r, long codepoint) {
+    // Note: runtime often uses immediates for char, this is for boxed backup
+    Obj* o = alloc_obj_region(r, TAG_CHAR);
+    if (!o) return NULL;
+    o->i = codepoint; // Use i for codepoint storage in boxed char
+    return o;
 }
 
-Value* mk_float_region(Region* r, double f) {
-    Value* v = alloc_val_region(r, T_FLOAT);
-    if (!v) return NULL;
-    v->f = f;
-    return v;
+Obj* mk_float_region(Region* r, double f) {
+    Obj* o = alloc_obj_region(r, TAG_FLOAT);
+    if (!o) return NULL;
+    o->f = f;
+    return o;
 }
 
 // ============================================================================
-// String-Allocating Constructors
+// String/Sym Constructors
 // ============================================================================
 
-Value* mk_sym_region(Region* r, const char* s) {
+Obj* mk_sym_region(Region* r, const char* s) {
     if (!s) s = "";
-    Value* v = alloc_val_region(r, T_SYM);
-    if (!v) return NULL;
-
-    // Allocate string in region
-    size_t len = strlen(s);
-    v->s = region_alloc(r, len + 1);
-    if (!v->s) return NULL;
-    strcpy(v->s, s);
-    return v;
-}
-
-Value* mk_code_region(Region* r, const char* s) {
-    if (!s) s = "";
-    Value* v = alloc_val_region(r, T_CODE);
-    if (!v) return NULL;
+    Obj* o = alloc_obj_region(r, TAG_SYM);
+    if (!o) return NULL;
 
     size_t len = strlen(s);
-    v->s = region_alloc(r, len + 1);
-    if (!v->s) return NULL;
-    strcpy(v->s, s);
-    return v;
+    char* buf = region_alloc(r, len + 1);
+    if (!buf) return NULL;
+    strcpy(buf, s);
+    o->ptr = buf;
+    return o;
 }
 
-Value* mk_string_region(Region* r, const char* s, size_t len) {
-    Value* v = alloc_val_region(r, T_STRING);
-    if (!v) return NULL;
-
-    // Allocate string data in region (no null terminator needed for T_STRING)
-    v->str.data = region_alloc(r, len);
-    if (!v->str.data) return NULL;
-    memcpy(v->str.data, s, len);
-    v->str.len = len;
-    return v;
+// Map string to sym for now as new runtime lacks TAG_STRING
+Obj* mk_string_region(Region* r, const char* s, size_t len) {
+    return mk_sym_region(r, s); // TODO: Proper string type
 }
 
-Value* mk_string_cstr_region(Region* r, const char* s) {
-    if (!s) return mk_string_region(r, "", 0);
-    return mk_string_region(r, s, strlen(s));
+Obj* mk_string_cstr_region(Region* r, const char* s) {
+    return mk_sym_region(r, s);
 }
 
-Value* mk_error_region(Region* r, const char* msg) {
+Obj* mk_code_region(Region* r, const char* s) {
+    // Map to SYM for now, or add TAG_CODE to omni.h
+    return mk_sym_region(r, s);
+}
+
+Obj* mk_error_region(Region* r, const char* msg) {
     if (!msg) msg = "unknown error";
-    Value* v = alloc_val_region(r, T_ERROR);
-    if (!v) return NULL;
+    Obj* o = alloc_obj_region(r, TAG_ERROR);
+    if (!o) return NULL;
 
     size_t len = strlen(msg);
-    v->s = region_alloc(r, len + 1);
-    if (!v->s) return NULL;
-    strcpy(v->s, msg);
-    return v;
+    char* buf = region_alloc(r, len + 1);
+    if (!buf) return NULL;
+    strcpy(buf, msg);
+    o->ptr = buf;
+    return o;
 }
 
 // ============================================================================
-// Pair/Cell Constructor
+// Cell/Box Constructors
 // ============================================================================
 
-Value* mk_cell_region(Region* r, Value* car, Value* cdr) {
-    Value* v = alloc_val_region(r, T_CELL);
-    if (!v) return NULL;
-    v->cell.car = car;
-    v->cell.cdr = cdr;
-    return v;
+Obj* mk_cell_region(Region* r, Obj* car, Obj* cdr) {
+    Obj* o = alloc_obj_region(r, TAG_PAIR); // TAG_PAIR = T_CELL legacy
+    if (!o) return NULL;
+    o->a = car;
+    o->b = cdr;
+    o->is_pair = 1;
+    return o;
+}
+
+Obj* mk_box_region(Region* r, Obj* initial) {
+    Obj* o = alloc_obj_region(r, TAG_BOX);
+    if (!o) return NULL;
+    o->a = initial; // Store value in 'a'
+    return o;
 }
 
 // ============================================================================
-// Lambda/Closure Constructors
+// Lambda/Closure - Simplified/Stubs
 // ============================================================================
 
-Value* mk_lambda_region(Region* r, Value* params, Value* body, Value* env) {
-    Value* v = alloc_val_region(r, T_LAMBDA);
-    if (!v) return NULL;
-    v->lam.params = params;
-    v->lam.body = body;
-    v->lam.env = env;
-    v->lam.defaults = NULL;
-    return v;
+// Legacy mk_lambda was for AST interpreter. 
+// New runtime uses compiled closures via mk_closure (not region-specific yet).
+Obj* mk_lambda_region(Region* r, Obj* params, Obj* body, Obj* env) {
+    (void)r; (void)params; (void)body; (void)env;
+    return NULL; // Deprecated
 }
 
-Value* mk_lambda_with_defaults_region(Region* r, Value* params, Value* body, Value* env, Value* defaults) {
-    Value* v = alloc_val_region(r, T_LAMBDA);
-    if (!v) return NULL;
-    v->lam.params = params;
-    v->lam.body = body;
-    v->lam.env = env;
-    v->lam.defaults = defaults;
-    return v;
+Obj* mk_lambda_with_defaults_region(Region* r, Obj* params, Obj* body, Obj* env, Obj* defaults) {
+    (void)r; (void)params; (void)body; (void)env; (void)defaults;
+    return NULL; // Deprecated
 }
 
 // ============================================================================
-// Box Constructor
+// Other Stubs
 // ============================================================================
 
-Value* mk_box_region(Region* r, Value* initial) {
-    Value* v = alloc_val_region(r, T_BOX);
-    if (!v) return NULL;
-    v->box_value = initial;
-    return v;
+Obj* mk_cont_region(Region* r, ContFn fn, Obj* menv, int tag) {
+    (void)r; (void)fn; (void)menv; (void)tag;
+    return NULL;
 }
 
-// ============================================================================
-// Continuation Constructor
-// ============================================================================
-
-Value* mk_cont_region(Region* r, ContFn fn, Value* menv, int tag) {
-    Value* v = alloc_val_region(r, T_CONT);
-    if (!v) return NULL;
-    v->cont.fn = fn;
-    v->cont.menv = menv;
-    v->cont.tag = tag;
-    return v;
+Obj* mk_prim_region(Region* r, PrimFn fn) {
+    (void)r; (void)fn;
+    return NULL;
 }
 
-// ============================================================================
-// Primitive Constructor
-// ============================================================================
-
-Value* mk_prim_region(Region* r, PrimFn fn) {
-    Value* v = alloc_val_region(r, T_PRIM);
-    if (!v) return NULL;
-    v->prim = fn;
-    return v;
+Obj* mk_thread_region(Region* r, Obj* thunk) {
+    (void)r; (void)thunk;
+    return NULL;
 }
 
-// ============================================================================
-// Complex Constructors (use malloc for external resources)
-// ============================================================================
-
-Value* mk_chan_region(Region* r, int capacity) {
-    Value* v = alloc_val_region(r, T_CHAN);
-    if (!v) return NULL;
-
-    // Channel structure itself is allocated with malloc
-    // because it has complex lifecycle (shared between processes)
-    Channel* ch = malloc(sizeof(Channel));
-    if (!ch) return NULL;
-
-    ch->capacity = capacity;
-    ch->head = 0;
-    ch->tail = 0;
-    ch->count = 0;
-    ch->closed = 0;
-    ch->send_waiters = NULL;
-    ch->recv_waiters = NULL;
-
-    // Allocate buffer for buffered channels
-    if (capacity > 0) {
-        ch->buffer = malloc(sizeof(Value*) * capacity);
-        if (!ch->buffer) {
-            free(ch);
-            return NULL;
-        }
-        for (int i = 0; i < capacity; i++) {
-            ch->buffer[i] = NULL;
-        }
-    } else {
-        ch->buffer = NULL;
-    }
-
-    v->chan.ch = ch;
-    v->chan.capacity = capacity;
-    return v;
+Obj* mk_port_region(Region* r, FILE* fp, const char* filename, int mode) {
+    (void)r; (void)fp; (void)filename; (void)mode;
+    return NULL;
 }
 
-Value* mk_process_region(Region* r, Value* thunk) {
-    Value* v = alloc_val_region(r, T_PROCESS);
-    if (!v) return NULL;
-
-    v->proc.thunk = thunk;
-    v->proc.cont = NULL;
-    v->proc.menv = NULL;
-    v->proc.result = NULL;
-    v->proc.park_value = NULL;
-    v->proc.state = PROC_READY;
-
-    // Fiber context uses malloc (complex lifecycle with ucontext)
-    FiberContext* ctx = malloc(sizeof(FiberContext));
-    if (!ctx) return NULL;
-
-    ctx->stack = malloc(FIBER_STACK_SIZE);
-    if (!ctx->stack) {
-        free(ctx);
-        return NULL;
-    }
-    ctx->yield_value = NULL;
-    ctx->started = 0;
-    v->proc.fiber_ctx = ctx;
-
-    return v;
+Obj* mk_syntax_region(Region* r, const char* name, Obj* literals, Obj* rules, Obj* def_env) {
+    (void)r; (void)name; (void)literals; (void)rules; (void)def_env;
+    return NULL;
 }
 
-Value* mk_bounce_region(Region* r, Value* fn, Value* args) {
-    Value* v = alloc_val_region(r, T_BOUNCE);
-    if (!v) return NULL;
-    v->bounce.fn = fn;
-    v->bounce.args = args;
-    return v;
+Obj* mk_ffi_lib_region(Region* r, void* handle, const char* name) {
+    (void)r; (void)handle; (void)name;
+    return NULL;
 }
 
-// ============================================================================
-// Port and Syntax Constructors
-// ============================================================================
-
-Value* mk_port_region(Region* r, FILE* fp, const char* filename, int mode) {
-    Value* v = alloc_val_region(r, T_PORT);
-    if (!v) return NULL;
-
-    v->port.fp = fp;
-    v->port.mode = mode;
-    v->port.closed = 0;
-
-    // Copy filename string into region
-    if (filename) {
-        size_t len = strlen(filename);
-        v->port.filename = region_alloc(r, len + 1);
-        if (!v->port.filename) return NULL;
-        strcpy(v->port.filename, filename);
-    } else {
-        v->port.filename = NULL;
-    }
-
-    return v;
-}
-
-Value* mk_syntax_region(Region* r, const char* name, Value* literals, Value* rules, Value* def_env) {
-    Value* v = alloc_val_region(r, T_SYNTAX);
-    if (!v) return NULL;
-
-    // Copy name string into region
-    if (name) {
-        size_t len = strlen(name);
-        v->syntax.name = region_alloc(r, len + 1);
-        if (!v->syntax.name) return NULL;
-        strcpy(v->syntax.name, name);
-    } else {
-        v->syntax.name = NULL;
-    }
-
-    v->syntax.literals = literals;
-    v->syntax.rules = rules;
-    v->syntax.def_env = def_env;
-
-    return v;
-}
-
-// ============================================================================
-// Grammar and FFI Constructors
-// ============================================================================
-
-Value* mk_grammar_region(Region* r, struct PikaGrammar* grammar, const char* name) {
-    Value* v = alloc_val_region(r, T_GRAMMAR);
-    if (!v) return NULL;
-
-    v->grammar.grammar = grammar;
-
-    // Copy name string into region
-    if (name) {
-        size_t len = strlen(name);
-        v->grammar.name = region_alloc(r, len + 1);
-        if (!v->grammar.name) return NULL;
-        strcpy(v->grammar.name, name);
-    } else {
-        v->grammar.name = NULL;
-    }
-
-    return v;
-}
-
-Value* mk_ffi_lib_region(Region* r, void* handle, const char* name) {
-    Value* v = alloc_val_region(r, T_FFI_LIB);
-    if (!v) return NULL;
-
-    v->ffi_lib.handle = handle;
-
-    // Copy name string into region
-    if (name) {
-        size_t len = strlen(name);
-        v->ffi_lib.name = region_alloc(r, len + 1);
-        if (!v->ffi_lib.name) return NULL;
-        strcpy(v->ffi_lib.name, name);
-    } else {
-        v->ffi_lib.name = NULL;
-    }
-
-    return v;
-}
-
-Value* mk_ffi_ptr_region(Region* r, void* ptr, const char* type_name, int owned) {
-    Value* v = alloc_val_region(r, T_FFI_PTR);
-    if (!v) return NULL;
-
-    v->ffi_ptr.ptr = ptr;
-    v->ffi_ptr.owned = owned;
-
-    // Copy type_name string into region
-    if (type_name) {
-        size_t len = strlen(type_name);
-        v->ffi_ptr.type_name = region_alloc(r, len + 1);
-        if (!v->ffi_ptr.type_name) return NULL;
-        strcpy(v->ffi_ptr.type_name, type_name);
-    } else {
-        v->ffi_ptr.type_name = NULL;
-    }
-
-    return v;
-}
-
-// ============================================================================
-// Thread Constructor
-// ============================================================================
-
-Value* mk_thread_region(Region* r, Value* thunk) {
-    Value* v = alloc_val_region(r, T_THREAD);
-    if (!v) return NULL;
-
-    v->thread.thunk = thunk;
-    v->thread.result = NULL;
-    v->thread.started = 0;
-    v->thread.joined = 0;
-    v->thread.done = 0;
-
-    return v;
+Obj* mk_ffi_ptr_region(Region* r, void* ptr, const char* type_name, int owned) {
+    (void)r; (void)ptr; (void)type_name; (void)owned;
+    return NULL;
 }

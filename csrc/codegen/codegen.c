@@ -1236,7 +1236,7 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
         omni_codegen_emit(ctx, "Region* _local_region = region_create();\n");
         omni_codegen_emit(ctx, "region_tether_start(_caller_region);\n");
         OmniValue* last = NULL;
-        Value* b = rest;
+        OmniValue* b = rest;
         while (!omni_is_nil(b) && omni_is_cell(b)) {
             last = omni_car(b); b = omni_cdr(b);
             if (!omni_is_nil(b)) { omni_codegen_emit(ctx, ""); codegen_expr(ctx, last); omni_codegen_emit_raw(ctx, ";\n"); }
@@ -1253,9 +1253,10 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
         free(c_name);
     }
 }
-}
 
 /* ============== New Special Form Implementations ============== */
+
+static void codegen_apply(CodeGenContext* ctx, OmniValue* expr);
 
 /* Pattern matching: (match expr pattern1 result1 pattern2 result2 ... else-result) */
 static void codegen_match(CodeGenContext* ctx, OmniValue* expr) {
@@ -1882,15 +1883,6 @@ void omni_codegen_emit_frees(CodeGenContext* ctx, int position) {
     free(vars);
 }
 
-void omni_codegen_emit_scope_cleanup(CodeGenContext* ctx, const char** vars, size_t count) {
-    for (size_t i = 0; i < count; i++) {
-        const char* c_name = lookup_symbol(ctx, vars[i]);
-        if (c_name) {
-            emit_ownership_free(ctx, vars[i], c_name);
-        }
-    }
-}
-
 /* ============== CFG-Based Code Generation ============== */
 
 /*
@@ -2381,4 +2373,302 @@ void omni_codegen_emit_shape_free(CodeGenContext* ctx, const char* var_name,
             omni_codegen_emit(ctx, "if (%s) dec_ref(%s);\n", var_name, var_name);
             break;
     }
+}
+
+/* ============== Phase 15: Branch-Level Region Narrowing Codegen ============== */
+
+/*
+ * This section implements code generation for scoped escape analysis.
+ * Variables that don't escape their branch/let scope can be allocated
+ * on the stack or in a scratch arena instead of the parent RC region.
+ */
+
+/*
+ * omni_codegen_emit_narrowed_alloc - Emit allocation based on scoped escape analysis
+ *
+ * If the variable doesn't escape its current scope (ESCAPE_TARGET_NONE),
+ * emit a stack allocation. Otherwise, use the default region allocation.
+ */
+void omni_codegen_emit_narrowed_alloc(CodeGenContext* ctx, const char* var_name,
+                                      const char* type_name) {
+    if (!ctx || !var_name) return;
+
+    /* Check if we have scoped escape analysis */
+    if (!ctx->analysis || !ctx->analysis->current_scope) {
+        /* No scoped analysis - use default region allocation */
+        omni_codegen_emit(ctx, "%s %s = region_alloc(_local_region, sizeof(%s));\n",
+                          type_name, var_name, type_name);
+        return;
+    }
+
+    /* Get escape target for this variable */
+    EscapeTarget escape = omni_scope_get_escape_target(ctx->analysis, var_name);
+
+    if (escape == ESCAPE_TARGET_NONE) {
+        /* Variable doesn't escape - use stack allocation */
+        omni_codegen_emit(ctx, "/* narrowed: stack-allocated (non-escaping) */\n");
+        omni_codegen_emit(ctx, "%s _stack_%s = {0};\n", type_name, var_name);
+        omni_codegen_emit(ctx, "%s* %s = &_stack_%s;\n", type_name, var_name, var_name);
+    } else {
+        /* Variable escapes - use region allocation */
+        omni_codegen_emit(ctx, "/* narrowed: region-allocated (escaping to %s) */\n",
+                          omni_escape_target_name(escape));
+        omni_codegen_emit(ctx, "%s* %s = region_alloc(_local_region, sizeof(%s));\n",
+                          type_name, var_name, type_name);
+    }
+}
+
+/*
+ * omni_codegen_emit_scope_cleanup - Emit cleanup code for scope exit
+ *
+ * Frees variables that don't escape the scope. Called at the end of
+ * if branches, let bodies, etc.
+ */
+void omni_codegen_emit_scope_cleanup(CodeGenContext* ctx, ScopeInfo* scope) {
+    if (!ctx || !scope) return;
+
+    /* Get variables that need cleanup */
+    size_t cleanup_count = 0;
+    char** cleanup_vars = omni_scope_get_cleanup_vars(scope, &cleanup_count);
+
+    if (cleanup_count == 0 || !cleanup_vars) {
+        return;
+    }
+
+    omni_codegen_emit(ctx, "/* Phase 15: scope cleanup for %d variables */\n",
+                      (int)cleanup_count);
+
+    for (size_t i = 0; i < cleanup_count; i++) {
+        const char* var_name = cleanup_vars[i];
+
+        /* Get the shape info for this variable */
+        ScopedVarInfo* var_info = omni_scope_find_var_in_scope(scope, var_name);
+        if (var_info) {
+            switch (var_info->shape) {
+                case SHAPE_TREE:
+                    /* Tree-shaped: use free_tree */
+                    omni_codegen_emit(ctx, "free_tree(%s); /* tree cleanup */\n", var_name);
+                    break;
+
+                case SHAPE_DAG:
+                case SHAPE_CYCLIC:
+                    /* These should have escaped - shouldn't be in cleanup list */
+                    omni_codegen_emit(ctx, "/* unexpected: %s has shape %s in cleanup */\n",
+                                      var_name,
+                                      var_info->shape == SHAPE_DAG ? "DAG" : "CYCLIC");
+                    break;
+
+                default:
+                    /* Unknown shape - use conservative cleanup */
+                    omni_codegen_emit(ctx, "if (%s) dec_ref(%s);\n", var_name, var_name);
+                    break;
+            }
+        }
+
+        free(cleanup_vars[i]);
+    }
+
+    free(cleanup_vars);
+}
+
+/*
+ * omni_codegen_if_narrowed - Generate code for 'if' with branch-level narrowing
+ *
+ * Each branch gets its own scope. Non-escaping variables in each branch
+ * are stack-allocated and cleaned up at the end of the branch.
+ *
+ * We use the AST node to scope mapping created during analysis to find
+ * the correct scope for each branch.
+ *
+ * Note: This generates a ternary expression where each branch is self-contained.
+ * For complex branches with cleanup needs, consider using block statements instead.
+ */
+void omni_codegen_if_narrowed(CodeGenContext* ctx, OmniValue* expr) {
+    if (!ctx || !expr) return;
+
+    OmniValue* args = omni_cdr(expr);
+    if (omni_is_nil(args)) return;
+
+    OmniValue* cond = omni_car(args);
+    args = omni_cdr(args);
+    OmniValue* then_branch = omni_is_nil(args) ? NULL : omni_car(args);
+    args = omni_cdr(args);
+    OmniValue* else_branch = omni_is_nil(args) ? NULL : omni_car(args);
+
+    /* Find the then and else branch scopes using the AST node mapping */
+    ScopeInfo* then_scope = NULL;
+    ScopeInfo* else_scope = NULL;
+
+    if (ctx->analysis) {
+        if (then_branch) {
+            then_scope = omni_scope_find_by_ast_node(ctx->analysis, then_branch);
+        }
+        if (else_branch) {
+            else_scope = omni_scope_find_by_ast_node(ctx->analysis, else_branch);
+        }
+    }
+
+    omni_codegen_emit_raw(ctx, "(is_truthy(");
+    codegen_expr(ctx, cond);
+    omni_codegen_emit_raw(ctx, ") ? (");
+
+    /* Generate then branch with scope tracking */
+    if (then_branch) {
+        /* Save current scope and set to then scope */
+        ScopeInfo* saved_scope = ctx->analysis ? ctx->analysis->current_scope : NULL;
+        if (ctx->analysis) ctx->analysis->current_scope = then_scope;
+
+        codegen_expr(ctx, then_branch);
+
+        /* Restore scope */
+        if (ctx->analysis) ctx->analysis->current_scope = saved_scope;
+    } else {
+        omni_codegen_emit_raw(ctx, "NOTHING");
+    }
+
+    omni_codegen_emit_raw(ctx, ") : (");
+
+    /* Generate else branch with scope tracking */
+    if (else_branch) {
+        /* Save current scope and set to else scope */
+        ScopeInfo* saved_scope = ctx->analysis ? ctx->analysis->current_scope : NULL;
+        if (ctx->analysis) ctx->analysis->current_scope = else_scope;
+
+        codegen_expr(ctx, else_branch);
+
+        /* Restore scope */
+        if (ctx->analysis) ctx->analysis->current_scope = saved_scope;
+    } else {
+        omni_codegen_emit_raw(ctx, "NOTHING");
+    }
+
+    omni_codegen_emit_raw(ctx, "))");
+}
+
+/*
+ * omni_codegen_let_narrowed - Generate code for 'let' with scope-aware allocation
+ *
+ * Variables in the let that don't escape the let body are stack-allocated.
+ * Cleanup is emitted at the end of the let block.
+ *
+ * We use the AST node to scope mapping created during analysis to find
+ * the correct scope for the let expression.
+ */
+void omni_codegen_let_narrowed(CodeGenContext* ctx, OmniValue* expr) {
+    if (!ctx || !expr) return;
+
+    OmniValue* args = omni_cdr(expr);
+    if (omni_is_nil(args)) return;
+
+    OmniValue* bindings = omni_car(args);
+    OmniValue* body = omni_cdr(args);
+
+    omni_codegen_emit_raw(ctx, "({ /* narrowed let */\n");
+    omni_codegen_indent(ctx);
+
+    /* Find the let scope using the AST node mapping */
+    ScopeInfo* let_scope = NULL;
+    if (ctx->analysis) {
+        let_scope = omni_scope_find_by_ast_node(ctx->analysis, expr);
+    }
+
+    /* Emit bindings with narrowed allocation */
+    if (omni_is_array(bindings)) {
+        /* Array-style: [x 1 y 2] */
+        for (size_t i = 0; i + 1 < bindings->array.len; i += 2) {
+            OmniValue* name = bindings->array.data[i];
+            OmniValue* val = bindings->array.data[i + 1];
+            if (omni_is_sym(name)) {
+                char* c_name = omni_codegen_mangle(name->str_val);
+
+                /* Check if this variable escapes */
+                EscapeTarget escape = ESCAPE_TARGET_GLOBAL;  /* Conservative default */
+                if (ctx->analysis) {
+                    escape = omni_scope_get_escape_target(ctx->analysis, name->str_val);
+                }
+
+                if (escape == ESCAPE_TARGET_NONE) {
+                    /* Stack allocate */
+                    omni_codegen_emit(ctx, "Obj _stack_%s = {0};\n", c_name);
+                    omni_codegen_emit(ctx, "Obj* %s = &_stack_%s; /* narrowed: non-escaping */\n",
+                                      c_name, c_name);
+                } else {
+                    /* Region allocate */
+                    omni_codegen_emit(ctx, "Obj* %s = region_alloc(_local_region, sizeof(Obj)); /* narrowed: escaping to %s */\n",
+                                      c_name, omni_escape_target_name(escape));
+                }
+
+                omni_codegen_emit(ctx, "%s = ", c_name);
+                codegen_expr(ctx, val);
+                omni_codegen_emit_raw(ctx, ";\n");
+
+                register_symbol(ctx, name->str_val, c_name);
+                free(c_name);
+            }
+        }
+    } else if (omni_is_cell(bindings)) {
+        /* List-style: ((x 1) (y 2)) */
+        while (!omni_is_nil(bindings) && omni_is_cell(bindings)) {
+            OmniValue* binding = omni_car(bindings);
+            if (omni_is_cell(binding)) {
+                OmniValue* name = omni_car(binding);
+                OmniValue* val = omni_car(omni_cdr(binding));
+                if (omni_is_sym(name)) {
+                    char* c_name = omni_codegen_mangle(name->str_val);
+
+                    /* Check if this variable escapes */
+                    EscapeTarget escape = ESCAPE_TARGET_GLOBAL;  /* Conservative default */
+                    if (ctx->analysis) {
+                        escape = omni_scope_get_escape_target(ctx->analysis, name->str_val);
+                    }
+
+                    if (escape == ESCAPE_TARGET_NONE) {
+                        /* Stack allocate */
+                        omni_codegen_emit(ctx, "Obj _stack_%s = {0};\n", c_name);
+                        omni_codegen_emit(ctx, "Obj* %s = &_stack_%s; /* narrowed: non-escaping */\n",
+                                          c_name, c_name);
+                    } else {
+                        /* Region allocate */
+                        omni_codegen_emit(ctx, "Obj* %s = region_alloc(_local_region, sizeof(Obj)); /* narrowed: escaping to %s */\n",
+                                          c_name, omni_escape_target_name(escape));
+                    }
+
+                    omni_codegen_emit(ctx, "%s = ", c_name);
+                    codegen_expr(ctx, val);
+                    omni_codegen_emit_raw(ctx, ";\n");
+
+                    register_symbol(ctx, name->str_val, c_name);
+                    free(c_name);
+                }
+            }
+            bindings = omni_cdr(bindings);
+        }
+    }
+
+    /* Emit body */
+    OmniValue* result = NULL;
+    while (!omni_is_nil(body) && omni_is_cell(body)) {
+        result = omni_car(body);
+        body = omni_cdr(body);
+        if (!omni_is_nil(body)) {
+            omni_codegen_emit(ctx, "");
+            codegen_expr(ctx, result);
+            omni_codegen_emit_raw(ctx, ";\n");
+        }
+    }
+
+    /* Last expression is the result */
+    if (result) {
+        omni_codegen_emit(ctx, "");
+        codegen_expr(ctx, result);
+        omni_codegen_emit_raw(ctx, ";\n");
+    }
+
+    /* Emit scope cleanup for non-escaping variables */
+    if (let_scope) {
+        omni_codegen_emit_scope_cleanup(ctx, let_scope);
+    }
+
+    omni_codegen_dedent(ctx);
+    omni_codegen_emit(ctx, "})");
 }

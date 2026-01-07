@@ -53,7 +53,7 @@ struct ArenaChunk {
     uintptr_t data[];
 };
 
-typedef struct {
+typedef struct Arena {
     ArenaChunk *begin, *end;
 } Arena;
 

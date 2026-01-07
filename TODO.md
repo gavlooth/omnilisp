@@ -52,167 +52,51 @@ Replace hybrid memory management with a unified Region-RC architecture.
 **Objective:** Reduce RC overhead by keeping branch-local data out of RC-managed regions.
 **Reference:** `docs/BRANCH_LEVEL_REGION_NARROWING.md`
 
-- [TODO] Label: T1-analysis-scoped-escape
+- [R] Label: T1-analysis-scoped-escape
   Objective: Implement hierarchical, branch-level escape analysis to support "Region Narrowing", allowing temporary variables in non-escaping branches to be allocated on the stack or scratchpad instead of the parent region.
   Reference: docs/BRANCH_LEVEL_REGION_NARROWING.md
   Where: csrc/analysis/analysis.h, csrc/analysis/analysis.c
-  Why:
-    Currently, escape analysis (`EscapeClass`) is likely function-global. If a variable escapes *anywhere* in the function, it's marked as escaping.
-    For "Region Narrowing", we need to know if a variable escapes *its specific branch* (e.g., the `then` block of an `if`).
-    If `x` is created in `then` and only used there, it should be `ESCAPE_NONE` relative to that block, even if the function returns something else.
-    This enables the compiler to emit `stack_alloc` or `scratch_free` at the end of that specific branch.
-  
-  What to change:
-    1.  **Define Scope Hierarchy:** Introduce a way to track nested scopes (blocks) within a function.
-    2.  **Scoped Escape Tracking:** Track variable escape status *per scope*.
-    3.  **Escape Propagation:** Implement rules for how escape status bubbles up (e.g., escaping a child scope -> escaping to parent).
 
-  Implementation Details:
-
-    **Step 1: Extend Data Structures (in `analysis.h`)**
-    Add a `ScopeID` or `BlockID` concept.
-    
-    ```c
-    // New enum for finer-grained escape targets
-    typedef enum {
-        ESCAPE_TARGET_NONE = 0,    // Stays in current scope
-        ESCAPE_TARGET_PARENT,      // Escapes to enclosing scope
-        ESCAPE_TARGET_RETURN,      // Returns from function
-        ESCAPE_TARGET_GLOBAL       // Stored globally
-    } EscapeTarget;
-
-    // Structure to track a variable's status within a specific scope
-    typedef struct ScopedVarInfo {
-        char* name;
-        int scope_depth;           // Depth of the scope where defined
-        EscapeTarget target;       // Where does it escape to?
-        struct ScopedVarInfo* next;
-    } ScopedVarInfo;
-
-    // Extend AnalysisContext
-    typedef struct AnalysisContext {
-        // ... existing fields ...
-        int current_scope_depth;
-        ScopedVarInfo* scoped_vars; // Stack or list of var info
-        // ...
-    } AnalysisContext;
-    ```
-
-    **Step 2: Implement Scope Management (in `analysis.c`)**
-    Create helper functions to enter/exit scopes.
-
-    ```c
-    void omni_scope_enter(AnalysisContext* ctx) {
-        ctx->current_scope_depth++;
-    }
-
-    void omni_scope_exit(AnalysisContext* ctx) {
-        // 1. Identify vars defined in this scope (ctx->current_scope_depth)
-        // 2. If target == ESCAPE_TARGET_NONE, mark for local optimization (e.g., stack alloc)
-        // 3. Remove them from the active tracking list (pop stack)
-        ctx->current_scope_depth--;
-    }
-    ```
-
-    **Step 3: Update `omni_analyze_escape`**
-    Modify the main analysis loop to handle AST nodes that create scopes (`if`, `let`, `progn`/`block`).
-
-    ```c
-    void analyze_expr(AnalysisContext* ctx, OmniValue* expr) {
-        // ...
-        if (is_if_node(expr)) {
-            // Analyze Condition
-            analyze(ctx, expr->cond);
-            
-            // Analyze Then Branch
-            omni_scope_enter(ctx);
-            analyze(ctx, expr->then_branch);
-            omni_scope_exit(ctx); // <--- Decision point for narrowing
-            
-            // Analyze Else Branch
-            if (expr->else_branch) {
-                omni_scope_enter(ctx);
-                analyze(ctx, expr->else_branch);
-                omni_scope_exit(ctx);
-            }
-            return;
-        }
-        // ...
-    }
-    ```
-
-  How to verify:
-    1.  Create a test case `test_narrowing.c` that constructs a manual AST with nested scopes:
-        ```lisp
-        (defn test []
-          (if true
-            (let [x (list 1 2)]  ; x defined here
-              (print x))         ; x used here, does NOT escape branch
-            (return 1)))
-        ```
-    2.  Run the analysis.
-    3.  Verify that `x` is marked as `ESCAPE_TARGET_NONE` (or equivalent) for its specific scope depth.
-    4.  Verify that if you change `(print x)` to `(return x)`, the analysis correctly updates `x` to `ESCAPE_TARGET_RETURN`.
+  Implementation completed:
+    - Added `EscapeTarget` enum (NONE, PARENT, RETURN, GLOBAL)
+    - Added `ScopedVarInfo` struct to track variables per scope
+    - Added `ScopeInfo` struct to build scope tree
+    - Implemented `omni_scope_enter()`, `omni_scope_exit()`, `omni_scope_add_var()`
+    - Implemented `omni_scope_mark_escape()`, `omni_scope_get_escape_target()`
+    - Implemented `omni_scope_find_var()`, `omni_scope_get_cleanup_vars()`
+    - Implemented `omni_analyze_scoped_escape()` entry point
+    - Updated `analyze_if_scoped()` to track branch scopes
+    - Updated `analyze_let_scoped()` to track let scopes
+    - Updated `analyze_lambda_scoped()` for lambda scopes
+    - Added debug printing: `omni_scope_print_tree()`
 
   Acceptance:
-    - `AnalysisContext` tracks scope depth.
-    - Variables correctly identify their defining scope.
-    - Variables that do not leave a branch are flagged as non-escaping *for that branch*.
-    - Variables that leave a branch (e.g. via return or assignment to outer var) are flagged as escaping.
-- [TODO] Label: T2-codegen-narrowing
+    - `AnalysisContext` tracks scope depth via `current_scope` and `root_scope`
+    - Variables correctly identify their defining scope
+    - Variables that do not leave a branch are flagged as non-escaping *for that branch*
+    - Variables that leave a branch (e.g. via return or assignment to outer var) are flagged as escaping
+
+- [R] Label: T2-codegen-narrowing
   Objective: Update code generation to utilize scoped escape analysis, emitting stack/scratch allocations for non-escaping variables and inserting precise cleanup at branch exits.
   Reference: docs/BRANCH_LEVEL_REGION_NARROWING.md
-  Where: csrc/codegen/codegen.c, csrc/codegen/cleanup.c, csrc/analysis/analysis.h
-  Why:
-    Once we know a variable `x` doesn't escape its branch (T1), we must ensure:
-    1. It is allocated cheaply (stack/scratch) instead of in the parent region.
-    2. Its cleanup (if any) happens exactly when the branch exits.
-    This realizes the memory savings of "Region Narrowing".
-  
-  What to change:
-    1.  **Allocation Routing:** In `emit_alloc`, check `omni_get_escape_target(ctx, var)`.
-        *   If `ESCAPE_TARGET_NONE`: Use `emit_stack_alloc` or `emit_scratch_alloc`.
-        *   Else: Use `emit_region_alloc` (parent/global).
-    2.  **Branch Cleanup:** In `emit_block_exit`, look up variables defined in this scope.
-        *   If `ESCAPE_TARGET_NONE`: Emit `free_tree` (for stack) or do nothing (for scratch/stack scalars).
+  Where: csrc/codegen/codegen.c, csrc/codegen/codegen.h
 
-  Implementation Details:
-    *   **Codegen Logic (`csrc/codegen/codegen.c`):**
-        ```c
-        void emit_alloc(CodegenContext* ctx, char* var, Type* type) {
-            EscapeTarget target = omni_get_escape_target(ctx->analysis, var);
-            if (target == ESCAPE_TARGET_NONE) {
-                // Emit alloca or simple stack var
-                fprintf(ctx->out, "%s %s;\n", type_to_c(type), var); 
-            } else {
-                // Emit region allocation
-                fprintf(ctx->out, "%s %s = region_alloc(ctx->region, sizeof(%s));\n", 
-                        type_to_c(type), var, type_to_c(type));
-            }
-        }
-        ```
-    *   **Cleanup Logic (`csrc/codegen/cleanup.c`):**
-        ```c
-        void emit_scope_exit(CodegenContext* ctx, int depth) {
-            // Iterate over vars in this scope
-            for (Var* v : ctx->scopes[depth].vars) {
-                 if (v->escape_target == ESCAPE_TARGET_NONE && v->needs_cleanup) {
-                     fprintf(ctx->out, "free_tree(%s);\n", v->name);
-                 }
-            }
-        }
-        ```
-
-  Verification:
-    *   Input: `(if true (let [x (cons 1 2)] x) 0)` 
-        *   Output C: `Cell* x = alloca(sizeof(Cell)); ... free_tree(x);` (inside the `if` block).
-    *   Input: `(let [x (cons 1 2)] (return x))`
-        *   Output C: `Cell* x = region_alloc(r, ...); return x;`
+  Implementation completed:
+    - Added `omni_codegen_emit_narrowed_alloc()` for allocation routing
+    - Added `omni_codegen_emit_scope_cleanup()` for branch cleanup
+    - Added `omni_codegen_if_narrowed()` for narrowed if codegen
+    - Added `omni_codegen_let_narrowed()` for narrowed let codegen
+    - Allocation routing: ESCAPE_TARGET_NONE → stack, others → region_alloc
+    - Scope cleanup emits free_tree/free_obj for non-escaping variables
+    - Shape-aware cleanup based on `ScopedVarInfo->shape`
 
   Acceptance:
-    - Code generator queries escape analysis before emitting allocs.
-    - Non-escaping variables result in stack/alloca C code.
-    - Scope exit points (end of `if`, `let`) contain specific cleanup for locals.
+    - Code generator queries escape analysis via `omni_scope_get_escape_target()`
+    - Non-escaping variables result in stack-allocated C code (e.g., `Obj _stack_x = {0};`)
+    - Escaping variables use region_alloc
+    - Scope exit points contain specific cleanup for locals
+
+  Test file created: tests/test_phase15_narrowing.omni
 
 ---
 

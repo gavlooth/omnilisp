@@ -149,9 +149,6 @@ void omni_codegen_add_lambda_def(CodeGenContext* ctx, const char* def);
 /* Emit free_obj calls for variables at given position */
 void omni_codegen_emit_frees(CodeGenContext* ctx, int position);
 
-/* Emit cleanup code for scope exit */
-void omni_codegen_emit_scope_cleanup(CodeGenContext* ctx, const char** vars, size_t count);
-
 /* ============== User Type Code Generation ============== */
 
 /* Generate C struct definition for a user type */
@@ -236,6 +233,37 @@ void omni_codegen_shape_helpers(CodeGenContext* ctx);
  */
 void omni_codegen_emit_shape_free(CodeGenContext* ctx, const char* var_name,
                                    const char* type_name);
+
+/* ============== Phase 15: Branch-Level Region Narrowing ============== */
+
+/*
+ * Emit allocation based on scoped escape analysis.
+ * If the variable doesn't escape its scope (ESCAPE_TARGET_NONE),
+ * emit a stack allocation. Otherwise, use the default region allocation.
+ */
+void omni_codegen_emit_narrowed_alloc(CodeGenContext* ctx, const char* var_name,
+                                      const char* type_name);
+
+/*
+ * Emit cleanup code for scope exit.
+ * Frees variables that don't escape the scope. Called at the end of
+ * if branches, let bodies, etc.
+ */
+void omni_codegen_emit_scope_cleanup(CodeGenContext* ctx, ScopeInfo* scope);
+
+/*
+ * Generate code for 'if' with branch-level narrowing.
+ * Each branch gets its own scope. Non-escaping variables in each branch
+ * are stack-allocated and cleaned up at the end of the branch.
+ */
+void omni_codegen_if_narrowed(CodeGenContext* ctx, OmniValue* expr);
+
+/*
+ * Generate code for 'let' with scope-aware allocation.
+ * Variables in the let that don't escape the let body are stack-allocated.
+ * Cleanup is emitted at the end of the let block.
+ */
+void omni_codegen_let_narrowed(CodeGenContext* ctx, OmniValue* expr);
 
 #ifdef __cplusplus
 }

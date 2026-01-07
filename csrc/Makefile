@@ -4,7 +4,7 @@
 CC = gcc
 # Note: -pedantic removed to allow anonymous unions (widely supported extension)
 CFLAGS = -std=c99 -Wall -Wextra -g -O2 -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
-CFLAGS += -I. -I../third_party -I../runtime/include -I../omnilisp/src/runtime
+CFLAGS += -I. -I../third_party -I../runtime/include
 
 LDFLAGS = -lpthread
 
@@ -17,7 +17,7 @@ UBSAN_FLAGS = -fsanitize=undefined
 AST_SRCS = ast/ast.c
 PARSER_SRCS = parser/parser.c parser/pika_core.c
 ANALYSIS_SRCS = analysis/analysis.c analysis/dominator.c analysis/scc.c analysis/static_sym.c analysis/component.c analysis/tether_elision.c analysis/region_inference.c
-CODEGEN_SRCS = codegen/codegen.c
+CODEGEN_SRCS = codegen/codegen.c codegen/region_codegen.c
 COMPILER_SRCS = compiler/compiler.c
 CLI_SRCS = cli/main.c
 
@@ -30,11 +30,6 @@ COMPILER_OBJS = $(COMPILER_SRCS:.c=.o)
 CLI_OBJS = $(CLI_SRCS:.c=.o)
 
 ALL_LIB_OBJS = $(AST_OBJS) $(PARSER_OBJS) $(ANALYSIS_OBJS) $(CODEGEN_OBJS) $(COMPILER_OBJS)
-
-# Pika parser (from omnilisp - optional, we have embedded parser)
-PIKA_DIR = ../omnilisp/src/runtime/pika_c
-PIKA_SRC = $(PIKA_DIR)/pika.c
-PIKA_OBJ = $(PIKA_DIR)/pika.o
 
 # Static library
 LIBRARY = libomnilisp.a
@@ -111,17 +106,11 @@ test: $(TARGET)
 # Clean
 clean:
 	rm -f $(ALL_LIB_OBJS) $(CLI_OBJS) $(LIBRARY) $(TARGET)
-	rm -f $(PIKA_OBJ)
 
 # Dependencies
 ast/ast.o: ast/ast.c ast/ast.h
 parser/parser.o: parser/parser.c parser/parser.h ast/ast.h
 analysis/analysis.o: analysis/analysis.c analysis/analysis.h ast/ast.h
-analysis/dominator.o: analysis/dominator.c analysis/analysis.h
-analysis/scc.o: analysis/scc.c analysis/analysis.h
-analysis/static_sym.o: analysis/static_sym.c analysis/analysis.h
-analysis/component.o: analysis/component.c analysis/analysis.h
-analysis/tether_elision.o: analysis/tether_elision.c analysis/analysis.h
 codegen/codegen.o: codegen/codegen.c codegen/codegen.h ast/ast.h analysis/analysis.h
 compiler/compiler.o: compiler/compiler.c compiler/compiler.h parser/parser.h analysis/analysis.h codegen/codegen.h
 cli/main.o: cli/main.c compiler/compiler.h

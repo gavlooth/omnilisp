@@ -3538,3 +3538,770 @@ void omni_free_constructor_owners(AnalysisContext* ctx) {
     free_field_assignments(ctx->field_assignments);
     ctx->field_assignments = NULL;
 }
+
+/* ============== Phase 15: Scoped Escape Analysis ============== */
+
+/*
+ * This section implements branch-level region narrowing.
+ * Variables defined in non-escaping branches can be allocated on the stack
+ * or in a scratch arena instead of the parent RC-managed region.
+ */
+
+/* ============== Debug/Utility Functions ============== */
+
+const char* omni_escape_target_name(EscapeTarget target) {
+    switch (target) {
+        case ESCAPE_TARGET_NONE:   return "NONE";
+        case ESCAPE_TARGET_PARENT: return "PARENT";
+        case ESCAPE_TARGET_RETURN: return "RETURN";
+        case ESCAPE_TARGET_GLOBAL: return "GLOBAL";
+        default:                   return "UNKNOWN";
+    }
+}
+
+/* ============== Scope Tree Management ============== */
+
+/*
+ * omni_scope_enter - Enter a new scope (branch, let body, etc.)
+ *
+ * Creates a new ScopeInfo node and links it into the scope tree.
+ * Called when entering:
+ *   - if/then branch
+ *   - if/else branch
+ *   - let body
+ *   - lambda body
+ *   - loop body
+ */
+ScopeInfo* omni_scope_enter(AnalysisContext* ctx, const char* scope_type) {
+    if (!ctx) return NULL;
+
+    ScopeInfo* scope = malloc(sizeof(ScopeInfo));
+    memset(scope, 0, sizeof(ScopeInfo));
+
+    scope->scope_id = ctx->next_scope_id_counter++;
+    scope->start_position = ctx->position;
+    scope->end_position = -1;  /* Will be set on exit */
+    scope->variables = NULL;
+    scope->parent = ctx->current_scope;
+    scope->children = NULL;
+    scope->next_sibling = NULL;
+
+    /* Calculate depth */
+    if (ctx->current_scope) {
+        scope->scope_depth = ctx->current_scope->scope_depth + 1;
+
+        /* Add to parent's children list */
+        ScopeInfo* sibling = ctx->current_scope->children;
+        if (!sibling) {
+            ctx->current_scope->children = scope;
+        } else {
+            while (sibling->next_sibling) {
+                sibling = sibling->next_sibling;
+            }
+            sibling->next_sibling = scope;
+        }
+    } else {
+        scope->scope_depth = 0;
+
+        /* This is the root scope */
+        if (!ctx->root_scope) {
+            ctx->root_scope = scope;
+        }
+    }
+
+    /* Update current scope */
+    ctx->current_scope = scope;
+
+    return scope;
+}
+
+/*
+ * omni_scope_exit - Exit the current scope
+ *
+ * Finalizes the current scope and moves back to the parent.
+ * Called when exiting a branch, let body, etc.
+ */
+void omni_scope_exit(AnalysisContext* ctx) {
+    if (!ctx || !ctx->current_scope) return;
+
+    /* Set end position */
+    ctx->current_scope->end_position = ctx->position;
+
+    /* Move to parent scope */
+    ctx->current_scope = ctx->current_scope->parent;
+}
+
+/*
+ * omni_get_current_scope - Get the current scope during analysis
+ */
+ScopeInfo* omni_get_current_scope(AnalysisContext* ctx) {
+    return ctx ? ctx->current_scope : NULL;
+}
+
+/* ============== Scoped Variable Tracking ============== */
+
+/*
+ * omni_scope_add_var - Add a variable to the current scope
+ *
+ * Creates a ScopedVarInfo entry for the variable in the current scope.
+ * Initially marked as ESCAPE_TARGET_NONE (doesn't escape).
+ */
+ScopedVarInfo* omni_scope_add_var(AnalysisContext* ctx, const char* var_name,
+                                  int def_position, bool is_param) {
+    if (!ctx || !ctx->current_scope || !var_name) return NULL;
+
+    /* Check if variable already exists in this scope */
+    for (ScopedVarInfo* v = ctx->current_scope->variables; v; v = v->next) {
+        if (strcmp(v->var_name, var_name) == 0) {
+            return v;  /* Already exists */
+        }
+    }
+
+    ScopedVarInfo* var = malloc(sizeof(ScopedVarInfo));
+    var->var_name = strdup(var_name);
+    var->defining_scope_depth = ctx->current_scope->scope_depth;
+    var->escape_target = ESCAPE_TARGET_NONE;  /* Initially doesn't escape */
+    var->def_position = def_position;
+    var->is_param = is_param;
+    var->needs_cleanup = !is_param;  /* Parameters don't need cleanup */
+    var->shape = SHAPE_UNKNOWN;
+    var->next = ctx->current_scope->variables;
+
+    ctx->current_scope->variables = var;
+
+    return var;
+}
+
+/*
+ * omni_scope_mark_escape - Mark a variable as escaping to a specific target
+ *
+ * Updates the escape target for a variable, taking the maximum
+ * (i.e., if already marked as ESCAPE_TARGET_RETURN, don't downgrade to ESCAPE_TARGET_PARENT).
+ */
+void omni_scope_mark_escape(AnalysisContext* ctx, const char* var_name,
+                            EscapeTarget target) {
+    if (!ctx || !var_name) return;
+
+    /* Search for the variable in the scope tree (starting from current) */
+    ScopedVarInfo* var = omni_scope_find_var(ctx, var_name);
+    if (var) {
+        /* Take the maximum escape target */
+        if (target > var->escape_target) {
+            var->escape_target = target;
+        }
+    }
+}
+
+/*
+ * omni_scope_get_escape_target - Get the escape target for a variable
+ */
+EscapeTarget omni_scope_get_escape_target(AnalysisContext* ctx, const char* var_name) {
+    if (!ctx || !var_name) return ESCAPE_TARGET_GLOBAL;  /* Conservative default */
+
+    ScopedVarInfo* var = omni_scope_find_var(ctx, var_name);
+    if (var) {
+        return var->escape_target;
+    }
+
+    return ESCAPE_TARGET_GLOBAL;  /* Unknown variable - assume it escapes */
+}
+
+/*
+ * omni_scope_get_defining_scope - Find the scope where a variable was defined
+ */
+ScopeInfo* omni_scope_get_defining_scope(AnalysisContext* ctx, const char* var_name) {
+    if (!ctx || !var_name) return NULL;
+
+    /* Search up the scope tree */
+    for (ScopeInfo* scope = ctx->current_scope; scope; scope = scope->parent) {
+        for (ScopedVarInfo* v = scope->variables; v; v = v->next) {
+            if (strcmp(v->var_name, var_name) == 0) {
+                return scope;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+/* ============== Scoped Variable Query Functions ============== */
+
+/*
+ * omni_scope_find_var - Find a variable by name (searches up the scope tree)
+ *
+ * Searches from the current scope up through parent scopes.
+ * Returns NULL if not found.
+ */
+ScopedVarInfo* omni_scope_find_var(AnalysisContext* ctx, const char* var_name) {
+    if (!ctx || !var_name) return NULL;
+
+    /* Search up the scope tree */
+    for (ScopeInfo* scope = ctx->current_scope; scope; scope = scope->parent) {
+        for (ScopedVarInfo* v = scope->variables; v; v = v->next) {
+            if (strcmp(v->var_name, var_name) == 0) {
+                return v;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+/*
+ * omni_scope_find_var_in_scope - Find a variable in a specific scope
+ */
+ScopedVarInfo* omni_scope_find_var_in_scope(ScopeInfo* scope, const char* var_name) {
+    if (!scope || !var_name) return NULL;
+
+    for (ScopedVarInfo* v = scope->variables; v; v = v->next) {
+        if (strcmp(v->var_name, var_name) == 0) {
+            return v;
+        }
+    }
+
+    return NULL;
+}
+
+/*
+ * omni_scope_get_cleanup_vars - Get variables that need cleanup at scope exit
+ *
+ * Returns an array of variable names that should be freed/cleaned up
+ * when exiting this scope. Only includes variables that:
+ *   1. Don't escape (ESCAPE_TARGET_NONE)
+ *   2. Are not parameters
+ *   3. Have needs_cleanup = true
+ */
+char** omni_scope_get_cleanup_vars(ScopeInfo* scope, size_t* out_count) {
+    if (!scope) {
+        if (out_count) *out_count = 0;
+        return NULL;
+    }
+
+    /* Count variables that need cleanup */
+    size_t count = 0;
+    for (ScopedVarInfo* v = scope->variables; v; v = v->next) {
+        if (v->needs_cleanup && v->escape_target == ESCAPE_TARGET_NONE && !v->is_param) {
+            count++;
+        }
+    }
+
+    if (count == 0) {
+        if (out_count) *out_count = 0;
+        return NULL;
+    }
+
+    /* Allocate array */
+    char** vars = malloc(count * sizeof(char*));
+    size_t i = 0;
+
+    for (ScopedVarInfo* v = scope->variables; v; v = v->next) {
+        if (v->needs_cleanup && v->escape_target == ESCAPE_TARGET_NONE && !v->is_param) {
+            vars[i++] = strdup(v->var_name);
+        }
+    }
+
+    if (out_count) *out_count = count;
+    return vars;
+}
+
+/* ============== Scope Tree Cleanup ============== */
+
+static void free_scoped_var(ScopedVarInfo* var) {
+    while (var) {
+        ScopedVarInfo* next = var->next;
+        free(var->var_name);
+        free(var);
+        var = next;
+    }
+}
+
+void omni_scope_free(ScopeInfo* scope) {
+    if (!scope) return;
+
+    /* Free children first (recursive) */
+    ScopeInfo* child = scope->children;
+    while (child) {
+        ScopeInfo* next_child = child->next_sibling;
+        omni_scope_free(child);
+        child = next_child;
+    }
+
+    /* Free variables */
+    free_scoped_var(scope->variables);
+
+    free(scope);
+}
+
+void omni_scope_free_tree(AnalysisContext* ctx) {
+    if (!ctx) return;
+
+    if (ctx->root_scope) {
+        omni_scope_free(ctx->root_scope);
+        ctx->root_scope = NULL;
+    }
+
+    ctx->current_scope = NULL;
+}
+
+/* ============== Debug Printing ============== */
+
+static void indent_for_depth(int depth) {
+    for (int i = 0; i < depth; i++) {
+        printf("  ");
+    }
+}
+
+static void print_scope_tree(ScopeInfo* scope, int depth) {
+    if (!scope) return;
+
+    indent_for_depth(depth);
+    printf("Scope %d (depth %d, pos %d-%d):\n",
+           scope->scope_id, scope->scope_depth,
+           scope->start_position, scope->end_position);
+
+    /* Print variables */
+    for (ScopedVarInfo* v = scope->variables; v; v = v->next) {
+        indent_for_depth(depth + 1);
+        printf("  %s: escape=%s, param=%d, cleanup=%d\n",
+               v->var_name,
+               omni_escape_target_name(v->escape_target),
+               v->is_param,
+               v->needs_cleanup);
+    }
+
+    /* Print children */
+    for (ScopeInfo* child = scope->children; child; child = child->next_sibling) {
+        print_scope_tree(child, depth + 1);
+    }
+}
+
+void omni_scope_print_tree(AnalysisContext* ctx) {
+    if (!ctx || !ctx->root_scope) {
+        printf("(no scope tree)\n");
+        return;
+    }
+
+    printf("=== Scope Tree ===\n");
+    print_scope_tree(ctx->root_scope, 0);
+    printf("==================\n");
+}
+
+/* ============== AST Node to Scope Mapping ============== */
+
+/*
+ * omni_scope_map_ast_node - Store a mapping from AST node to scope.
+ *
+ * This is called during analysis when we enter a new scope for a specific
+ * AST node (e.g., the then branch of an if). Later during codegen,
+ * we can look up the scope for an AST node.
+ */
+void omni_scope_map_ast_node(AnalysisContext* ctx, OmniValue* node, ScopeInfo* scope) {
+    if (!ctx || !node || !scope) return;
+
+    /* Check if a mapping already exists for this node */
+    for (ASTNodeScopeMap* map = ctx->ast_scope_map; map; map = map->next) {
+        if (map->ast_node == node) {
+            map->scope = scope;  /* Update existing mapping */
+            return;
+        }
+    }
+
+    /* Create new mapping */
+    ASTNodeScopeMap* map = malloc(sizeof(ASTNodeScopeMap));
+    map->ast_node = node;
+    map->scope = scope;
+    map->next = ctx->ast_scope_map;
+    ctx->ast_scope_map = map;
+}
+
+/*
+ * omni_scope_find_by_ast_node - Find the scope associated with an AST node.
+ *
+ * During code generation, we look up the scope that was created for a
+ * specific AST node (e.g., the then branch of an if expression).
+ */
+ScopeInfo* omni_scope_find_by_ast_node(AnalysisContext* ctx, OmniValue* node) {
+    if (!ctx || !node) return NULL;
+
+    for (ASTNodeScopeMap* map = ctx->ast_scope_map; map; map = map->next) {
+        if (map->ast_node == node) {
+            return map->scope;
+        }
+    }
+
+    return NULL;
+}
+
+/*
+ * omni_scope_free_ast_map - Free the AST node to scope mapping.
+ */
+void omni_scope_free_ast_map(AnalysisContext* ctx) {
+    if (!ctx) return;
+
+    ASTNodeScopeMap* map = ctx->ast_scope_map;
+    while (map) {
+        ASTNodeScopeMap* next = map->next;
+        free(map);
+        map = next;
+    }
+
+    ctx->ast_scope_map = NULL;
+}
+
+/* ============== Scope Lookup by Position ============== */
+
+/*
+ * Helper: Recursively search for a scope containing the given position.
+ * Returns the deepest (most specific) scope that contains the position.
+ */
+static ScopeInfo* find_scope_containing(ScopeInfo* scope, int position) {
+    if (!scope) return NULL;
+
+    /* Check if this scope contains the position */
+    if (position < scope->start_position ||
+        (scope->end_position >= 0 && position > scope->end_position)) {
+        return NULL;
+    }
+
+    /* Search children first - return the deepest matching scope */
+    for (ScopeInfo* child = scope->children; child; child = child->next_sibling) {
+        ScopeInfo* result = find_scope_containing(child, position);
+        if (result) return result;
+    }
+
+    /* This scope contains the position and no deeper scope does */
+    return scope;
+}
+
+/*
+ * omni_scope_find_by_position - Find the scope that contains a given position.
+ *
+ * During code generation, we need to find which scope was active during
+ * analysis for a given AST node. This function looks up the scope by
+ * the node's position in the source.
+ */
+ScopeInfo* omni_scope_find_by_position(AnalysisContext* ctx, int position) {
+    if (!ctx || !ctx->root_scope) return NULL;
+
+    return find_scope_containing(ctx->root_scope, position);
+}
+
+/* ============== Scoped Escape Analysis Entry Point ============== */
+
+/*
+ * Forward declarations for the recursive analysis functions
+ */
+static void analyze_expr_scoped(AnalysisContext* ctx, OmniValue* expr);
+static void analyze_if_scoped(AnalysisContext* ctx, OmniValue* expr);
+static void analyze_let_scoped(AnalysisContext* ctx, OmniValue* expr);
+static void analyze_lambda_scoped(AnalysisContext* ctx, OmniValue* expr);
+static void analyze_symbol_scoped(AnalysisContext* ctx, OmniValue* expr);
+static void analyze_application_scoped(AnalysisContext* ctx, OmniValue* expr);
+
+/*
+ * omni_analyze_scoped_escape - Main entry point for scoped escape analysis
+ *
+ * This is a separate analysis pass that builds the scope tree and tracks
+ * which variables escape their defining scope. Results are used by the
+ * code generator to implement "Region Narrowing".
+ */
+void omni_analyze_scoped_escape(AnalysisContext* ctx, OmniValue* expr) {
+    if (!ctx || !expr) return;
+
+    /* Initialize scope tree if not already initialized */
+    if (!ctx->root_scope) {
+        /* Create root scope for the function/program */
+        omni_scope_enter(ctx, "root");
+    }
+
+    /* Run the analysis */
+    analyze_expr_scoped(ctx, expr);
+}
+
+/*
+ * analyze_expr_scoped - Analyze an expression with scope tracking
+ */
+static void analyze_expr_scoped(AnalysisContext* ctx, OmniValue* expr) {
+    if (!expr || omni_is_nil(expr)) {
+        ctx->position++;
+        return;
+    }
+
+    switch (expr->tag) {
+        case OMNI_INT:
+        case OMNI_FLOAT:
+        case OMNI_CHAR:
+        case OMNI_KEYWORD:
+            ctx->position++;
+            break;
+
+        case OMNI_SYM:
+            analyze_symbol_scoped(ctx, expr);
+            break;
+
+        case OMNI_CELL:
+            /* Check for special forms */
+            if (omni_is_cell(expr) && omni_is_sym(omni_car(expr))) {
+                const char* head = omni_car(expr)->str_val;
+
+                if (strcmp(head, "if") == 0) {
+                    analyze_if_scoped(ctx, expr);
+                    return;
+                }
+                if (strcmp(head, "let") == 0 || strcmp(head, "let*") == 0 ||
+                    strcmp(head, "letrec") == 0) {
+                    analyze_let_scoped(ctx, expr);
+                    return;
+                }
+                if (strcmp(head, "lambda") == 0 || strcmp(head, "fn") == 0) {
+                    analyze_lambda_scoped(ctx, expr);
+                    return;
+                }
+            }
+            /* Regular application */
+            analyze_application_scoped(ctx, expr);
+            break;
+
+        case OMNI_ARRAY:
+            for (size_t i = 0; i < expr->array.len; i++) {
+                analyze_expr_scoped(ctx, expr->array.data[i]);
+            }
+            break;
+
+        case OMNI_DICT:
+            for (size_t i = 0; i < expr->dict.len; i++) {
+                analyze_expr_scoped(ctx, expr->dict.keys[i]);
+                analyze_expr_scoped(ctx, expr->dict.values[i]);
+            }
+            break;
+
+        default:
+            ctx->position++;
+            break;
+    }
+}
+
+/*
+ * analyze_symbol_scoped - Analyze a symbol reference
+ *
+ * When we see a symbol being used, we check if it's escaping to the
+ * current position. For example, if we're in return position and
+ * see a variable, that variable escapes via return.
+ */
+static void analyze_symbol_scoped(AnalysisContext* ctx, OmniValue* expr) {
+    const char* name = expr->str_val;
+
+    /* If in return position, mark as escaping via return */
+    if (ctx->in_return_position) {
+        omni_scope_mark_escape(ctx, name, ESCAPE_TARGET_RETURN);
+    }
+
+    ctx->position++;
+}
+
+/*
+ * analyze_if_scoped - Analyze an if expression with scope tracking
+ *
+ * Key insight: Each branch gets its own scope. Variables defined in
+ * a branch that don't escape that branch can be stack-allocated.
+ *
+ * We also map the branch AST nodes to their scopes so that during
+ * codegen we can look up the correct scope for each branch.
+ */
+static void analyze_if_scoped(AnalysisContext* ctx, OmniValue* expr) {
+    /* (if cond then else) */
+    OmniValue* args = omni_cdr(expr);
+    if (omni_is_nil(args)) return;
+
+    OmniValue* cond = omni_car(args);
+    args = omni_cdr(args);
+    OmniValue* then_branch = omni_is_nil(args) ? NULL : omni_car(args);
+    args = omni_cdr(args);
+    OmniValue* else_branch = omni_is_nil(args) ? NULL : omni_car(args);
+
+    bool old_return_pos = ctx->in_return_position;
+    ctx->in_return_position = false;
+
+    /* Analyze condition in current scope */
+    analyze_expr_scoped(ctx, cond);
+
+    /* Analyze then branch in its own scope */
+    if (then_branch) {
+        ctx->in_return_position = old_return_pos;
+        omni_scope_enter(ctx, "if-then");
+        /* Map the then branch AST node to this scope */
+        omni_scope_map_ast_node(ctx, then_branch, ctx->current_scope);
+        analyze_expr_scoped(ctx, then_branch);
+        omni_scope_exit(ctx);
+    }
+
+    /* Analyze else branch in its own scope */
+    if (else_branch) {
+        ctx->in_return_position = old_return_pos;
+        omni_scope_enter(ctx, "if-else");
+        /* Map the else branch AST node to this scope */
+        omni_scope_map_ast_node(ctx, else_branch, ctx->current_scope);
+        analyze_expr_scoped(ctx, else_branch);
+        omni_scope_exit(ctx);
+    }
+
+    ctx->in_return_position = old_return_pos;
+}
+
+/*
+ * analyze_let_scoped - Analyze a let expression with scope tracking
+ *
+ * The let body gets its own scope. Variables defined in the let are
+ * tracked in that scope. If they don't escape the let body, they can
+ * be cleaned up at the end of the let.
+ *
+ * We map the let expression AST node to its scope so that during
+ * codegen we can look up the correct scope.
+ */
+static void analyze_let_scoped(AnalysisContext* ctx, OmniValue* expr) {
+    /* (let ((x val) (y val)) body...) */
+    OmniValue* args = omni_cdr(expr);
+    if (omni_is_nil(args)) return;
+
+    OmniValue* bindings = omni_car(args);
+    OmniValue* body = omni_cdr(args);
+
+    /* Enter new scope for the let */
+    omni_scope_enter(ctx, "let");
+    /* Map the let expression to this scope */
+    omni_scope_map_ast_node(ctx, expr, ctx->current_scope);
+
+    /* Process bindings */
+    if (omni_is_array(bindings)) {
+        /* [x 1 y 2] style */
+        for (size_t i = 0; i + 1 < bindings->array.len; i += 2) {
+            OmniValue* name = bindings->array.data[i];
+            OmniValue* val = bindings->array.data[i + 1];
+
+            if (omni_is_sym(name)) {
+                int def_pos = ctx->position++;
+                omni_scope_add_var(ctx, name->str_val, def_pos, false);
+                analyze_expr_scoped(ctx, val);
+            }
+        }
+    } else if (omni_is_cell(bindings)) {
+        /* ((x 1) (y 2)) style */
+        while (!omni_is_nil(bindings) && omni_is_cell(bindings)) {
+            OmniValue* binding = omni_car(bindings);
+
+            if (omni_is_cell(binding)) {
+                OmniValue* name = omni_car(binding);
+                OmniValue* val = omni_cdr(binding);
+                if (omni_is_cell(val)) val = omni_car(val);  /* cadr */
+
+                if (omni_is_sym(name)) {
+                    int def_pos = ctx->position++;
+                    omni_scope_add_var(ctx, name->str_val, def_pos, false);
+                    if (val) analyze_expr_scoped(ctx, val);
+                }
+            }
+
+            bindings = omni_cdr(bindings);
+        }
+    }
+
+    /* Analyze body in return position (last expression) */
+    bool old_return_pos = ctx->in_return_position;
+    while (!omni_is_nil(body) && omni_is_cell(body)) {
+        ctx->in_return_position = old_return_pos && omni_is_nil(omni_cdr(body));
+        analyze_expr_scoped(ctx, omni_car(body));
+        body = omni_cdr(body);
+    }
+    ctx->in_return_position = old_return_pos;
+
+    /* Exit let scope */
+    omni_scope_exit(ctx);
+}
+
+/*
+ * analyze_lambda_scoped - Analyze a lambda expression
+ *
+ * Lambda parameters are added to a new scope for the lambda body.
+ * Variables from outer scopes that are referenced are marked as
+ * escaping to a closure.
+ *
+ * We map the lambda expression to its scope for codegen lookup.
+ */
+static void analyze_lambda_scoped(AnalysisContext* ctx, OmniValue* expr) {
+    /* (lambda (params...) body...) */
+    OmniValue* args = omni_cdr(expr);
+    if (omni_is_nil(args)) return;
+
+    OmniValue* params = omni_car(args);
+    OmniValue* body = omni_cdr(args);
+
+    /* Enter new scope for the lambda */
+    omni_scope_enter(ctx, "lambda");
+    /* Map the lambda expression to this scope */
+    omni_scope_map_ast_node(ctx, expr, ctx->current_scope);
+
+    /* Mark that we're in a lambda (for closure capture detection) */
+    bool old_in_lambda = ctx->in_lambda;
+    ctx->in_lambda = true;
+
+    /* Add parameters to scope */
+    if (omni_is_cell(params)) {
+        while (!omni_is_nil(params) && omni_is_cell(params)) {
+            OmniValue* param = omni_car(params);
+            if (omni_is_sym(param)) {
+                int def_pos = ctx->position++;
+                omni_scope_add_var(ctx, param->str_val, def_pos, true);  /* is_param = true */
+            }
+            params = omni_cdr(params);
+        }
+    }
+
+    /* Analyze body */
+    bool old_return_pos = ctx->in_return_position;
+    while (!omni_is_nil(body) && omni_is_cell(body)) {
+        ctx->in_return_position = omni_is_nil(omni_cdr(body));
+        analyze_expr_scoped(ctx, omni_car(body));
+        body = omni_cdr(body);
+    }
+    ctx->in_return_position = old_return_pos;
+
+    ctx->in_lambda = old_in_lambda;
+
+    /* Exit lambda scope */
+    omni_scope_exit(ctx);
+}
+
+/*
+ * analyze_application_scoped - Analyze a function application
+ *
+ * Arguments passed to a function escape to that function.
+ * We mark them as ESCAPE_TARGET_PARENT (escaping to caller scope).
+ */
+static void analyze_application_scoped(AnalysisContext* ctx, OmniValue* expr) {
+    /* (func arg1 arg2 ...) */
+    OmniValue* func = omni_car(expr);
+    OmniValue* args = omni_cdr(expr);
+
+    bool old_return_pos = ctx->in_return_position;
+    ctx->in_return_position = false;
+
+    /* Analyze function */
+    analyze_expr_scoped(ctx, func);
+
+    /* Analyze arguments - they escape to the function */
+    while (!omni_is_nil(args) && omni_is_cell(args)) {
+        OmniValue* arg = omni_car(args);
+
+        /* If argument is a symbol, mark it as escaping */
+        if (omni_is_sym(arg)) {
+            omni_scope_mark_escape(ctx, arg->str_val, ESCAPE_TARGET_PARENT);
+        } else {
+            analyze_expr_scoped(ctx, arg);
+        }
+
+        args = omni_cdr(args);
+    }
+
+    ctx->in_return_position = old_return_pos;
+    ctx->position++;
+}

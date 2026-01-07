@@ -207,6 +207,65 @@ typedef struct ReuseCandidate {
     struct ReuseCandidate* next;
 } ReuseCandidate;
 
+/* ============== Scoped Escape Analysis (Phase 15: Branch-Level Region Narrowing) ============== */
+
+/*
+ * EscapeTarget - Where does a variable escape to?
+ * This is finer-grained than EscapeClass for branch-level narrowing.
+ */
+typedef enum {
+    ESCAPE_TARGET_NONE = 0,      /* Stays in current scope (best case) */
+    ESCAPE_TARGET_PARENT,        /* Escapes to immediate parent scope */
+    ESCAPE_TARGET_RETURN,        /* Escapes via return value */
+    ESCAPE_TARGET_GLOBAL,        /* Escapes to global/module scope */
+} EscapeTarget;
+
+/*
+ * ScopedVarInfo - Tracks a variable's escape status within a specific scope.
+ * For each variable, we track which scope it belongs to and where it escapes to.
+ * This enables "Region Narrowing" where branch-local data can be allocated
+ * on the stack or scratch arena instead of the parent RC-managed region.
+ */
+typedef struct ScopedVarInfo {
+    char* var_name;              /* Variable name */
+    int defining_scope_depth;    /* Depth of scope where variable was defined */
+    EscapeTarget escape_target;  /* Where does this variable escape? */
+    int def_position;            /* Position where variable was defined */
+    bool is_param;               /* Is this a function parameter */
+    bool needs_cleanup;          /* True if needs cleanup at scope exit */
+    ShapeClass shape;            /* Shape of the data structure */
+    struct ScopedVarInfo* next;  /* Next variable in this scope */
+} ScopedVarInfo;
+
+/*
+ * ScopeInfo - Represents a single lexical scope in the program.
+ * Scopes form a tree matching the program's lexical structure.
+ * Each scope tracks its variables and can determine if they escape.
+ */
+typedef struct ScopeInfo {
+    int scope_id;                /* Unique scope identifier */
+    int scope_depth;             /* Nesting depth (0 = function root) */
+    int start_position;          /* First position in this scope */
+    int end_position;            /* Last position in this scope */
+    ScopedVarInfo* variables;    /* Variables defined in this scope */
+    struct ScopeInfo* parent;    /* Enclosing scope (NULL for function root) */
+    struct ScopeInfo* children;  /* Child scopes (linked list) */
+    struct ScopeInfo* next_sibling; /* Next sibling at same depth */
+} ScopeInfo;
+
+/*
+ * ASTNodeScopeMap - Maps AST node pointers to their corresponding scopes.
+ *
+ * During analysis, when we create a new scope for an AST node (like the
+ * then/else branches of an if), we store the mapping so that during codegen
+ * we can look up the correct scope for each AST node.
+ */
+typedef struct ASTNodeScopeMap {
+    OmniValue* ast_node;        /* The AST node (e.g., if/then/else/let) */
+    ScopeInfo* scope;           /* The scope created for this node */
+    struct ASTNodeScopeMap* next;
+} ASTNodeScopeMap;
+
 /* ============== Region Analysis ============== */
 
 typedef struct RegionInfo {
@@ -383,11 +442,18 @@ typedef struct AnalysisContext {
     FieldAssignment* field_assignments;
     int next_scope_id;
 
+    /* ============== Phase 15: Scoped Escape Analysis ============== */
+    /* Scope tree tracking for branch-level region narrowing */
+    ScopeInfo* root_scope;        /* Root scope of current function */
+    ScopeInfo* current_scope;     /* Current scope during analysis */
+    int next_scope_id_counter;    /* Counter for generating unique scope IDs */
+    ASTNodeScopeMap* ast_scope_map; /* Maps AST nodes to their scopes */
+
     /* Analysis flags */
     bool in_lambda;
     bool in_return_position;
     bool in_loop;
-    int scope_depth;
+    int scope_depth;              /* Legacy: use current_scope->scope_depth instead */
 } AnalysisContext;
 
 /* ============== Analysis API ============== */
@@ -901,6 +967,89 @@ bool omni_is_weak_assignment(AnalysisContext* ctx, const char* target_var,
  * Free constructor ownership tracking data.
  */
 void omni_free_constructor_owners(AnalysisContext* ctx);
+
+/* ============== Phase 15: Scoped Escape Analysis API ============== */
+
+/*
+ * Scope Management Functions
+ * These functions manage the scope tree for branch-level escape analysis.
+ */
+
+/* Enter a new scope (e.g., when entering an if/then/else branch or let body) */
+ScopeInfo* omni_scope_enter(AnalysisContext* ctx, const char* scope_type);
+
+/* Exit the current scope and return to parent */
+void omni_scope_exit(AnalysisContext* ctx);
+
+/* Get the current scope */
+ScopeInfo* omni_get_current_scope(AnalysisContext* ctx);
+
+/*
+ * Scoped Variable Tracking
+ * Track variables and their escape status within scopes.
+ */
+
+/* Add a variable to the current scope */
+ScopedVarInfo* omni_scope_add_var(AnalysisContext* ctx, const char* var_name,
+                                  int def_position, bool is_param);
+
+/* Mark a variable as escaping to a specific target */
+void omni_scope_mark_escape(AnalysisContext* ctx, const char* var_name,
+                            EscapeTarget target);
+
+/* Get escape target for a variable in the current scope */
+EscapeTarget omni_scope_get_escape_target(AnalysisContext* ctx, const char* var_name);
+
+/* Get the defining scope for a variable */
+ScopeInfo* omni_scope_get_defining_scope(AnalysisContext* ctx, const char* var_name);
+
+/*
+ * Scoped Variable Query Functions
+ * Query variable information from the scope tree.
+ */
+
+/* Get ScopedVarInfo for a variable by name (searches up the scope tree) */
+ScopedVarInfo* omni_scope_find_var(AnalysisContext* ctx, const char* var_name);
+
+/* Get ScopedVarInfo for a variable in a specific scope */
+ScopedVarInfo* omni_scope_find_var_in_scope(ScopeInfo* scope, const char* var_name);
+
+/* Get all variables that should be freed at scope exit */
+char** omni_scope_get_cleanup_vars(ScopeInfo* scope, size_t* out_count);
+
+/* Find a scope by position (for codegen lookup) */
+ScopeInfo* omni_scope_find_by_position(AnalysisContext* ctx, int position);
+
+/* Find a scope by AST node pointer (for codegen lookup) */
+ScopeInfo* omni_scope_find_by_ast_node(AnalysisContext* ctx, OmniValue* node);
+
+/* Store a mapping from AST node to scope */
+void omni_scope_map_ast_node(AnalysisContext* ctx, OmniValue* node, ScopeInfo* scope);
+
+/* Free a scope and all its children */
+void omni_scope_free(ScopeInfo* scope);
+
+/* Free the entire scope tree */
+void omni_scope_free_tree(AnalysisContext* ctx);
+
+/* Free the AST node scope map */
+void omni_scope_free_ast_map(AnalysisContext* ctx);
+
+/*
+ * Debug/Utility Functions
+ */
+
+/* Get the name of an EscapeTarget for debugging */
+const char* omni_escape_target_name(EscapeTarget target);
+
+/* Print the scope tree (for debugging) */
+void omni_scope_print_tree(AnalysisContext* ctx);
+
+/*
+ * Scoped Escape Analysis Entry Point
+ * Run the full scoped escape analysis on an expression.
+ */
+void omni_analyze_scoped_escape(AnalysisContext* ctx, OmniValue* expr);
 
 #ifdef __cplusplus
 }

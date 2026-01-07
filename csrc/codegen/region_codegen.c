@@ -173,7 +173,7 @@ void omni_codegen_alloc_in_region(CodeGenContext* ctx,
     }
 
     /* Emit allocation with region parameter */
-    omni_codegen_emit(ctx, "Value* %s = %s(%s, %s);\n",
+    omni_codegen_emit(ctx, "Obj* %s = %s(%s, %s);\n",
                       var_name,
                       constructor ? constructor : "mk_int_region",
                       region_name,

@@ -47,11 +47,19 @@
 ;; 4.2 Update Functional
 (define person2 (update person.age (lambda [x] (+ x 1))))
 (println "update functional: " person2.age)
-(println "\n--- Testing 5. Type System ---") 
-;; Verification of annotation parsing (evaluator skips them) 
-(define x-typed {Int} 42) 
-(println "Typed var: " x-typed) 
+(println "\n--- Testing 5. Type System ---")
+;; Verification of annotation parsing (evaluator skips them)
+(define x-typed {Int} 42)
+(println "Typed var {Int}: " x-typed)
 
+;; 5.4 First-Class Kinds
+(define my-type Int)
+(println "First-class Kind reference: " my-type)
+(println "type? with Kind object: " (type? 100 my-type))
+
+(define (get-string-type) String)
+(println "Kind returned from function: " (get-string-type))
+(println "type? with returned Kind: " (type? "hello" (get-string-type)))
 (println "\n--- Testing 6. Pattern Matching ---") 
 (println "match simple: " 
   (match 1 

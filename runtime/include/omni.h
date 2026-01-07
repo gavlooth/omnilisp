@@ -8,8 +8,6 @@
 #ifndef OMNI_RUNTIME_H
 #define OMNI_RUNTIME_H
 
-#define _POSIX_C_SOURCE 200112L
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -218,7 +216,7 @@ static inline uint64_t ipge_evolve64(uint64_t gen) {
 
 /* ========== Core Object Type ========== */
 
-typedef struct Obj {
+struct Obj {
     Generation generation;  /* IPGE generation ID for memory safety */
     int mark;               /* Reference count or mark bit */
     int tag;                /* ObjTag */
@@ -232,7 +230,7 @@ typedef struct Obj {
         struct { struct Obj *a, *b; };
         void* ptr;
     };
-} Obj;
+};
 /* Size: 32 bytes (compact mode) or 40 bytes (robust mode) */
 
 /* Boolean extraction (only false and nothing are falsy; empty list is truthy) */
@@ -585,6 +583,38 @@ void safe_point(void);
 extern Obj STACK_POOL[];
 extern int STACK_PTR;
 #define STACK_POOL_SIZE 256
+
+/* ========== Region-RC: Region-based memory management ========== */
+
+typedef struct Region Region;
+
+// Lifecycle
+Region* region_create(void);
+void region_destroy_if_dead(Region* r);
+
+// Scope Management
+void region_exit(Region* r);
+
+// RC Management (Internal - use RegionRef for high level)
+void region_retain_internal(Region* r);
+void region_release_internal(Region* r);
+
+// Tethering
+void region_tether_start(Region* r);
+void region_tether_end(Region* r);
+
+// Allocation
+void* region_alloc(Region* r, size_t size);
+void* transmigrate(void* root, Region* src_region, Region* dest_region);
+
+/* Region-aware constructors */
+Obj* mk_int_region(Region* r, long i);
+Obj* mk_char_region(Region* r, long codepoint);
+Obj* mk_float_region(Region* r, double f);
+Obj* mk_sym_region(Region* r, const char* s);
+Obj* mk_cell_region(Region* r, Obj* car, Obj* cdr);
+Obj* mk_box_region(Region* r, Obj* initial);
+Obj* mk_error_region(Region* r, const char* msg);
 
 #ifdef __cplusplus
 }

@@ -30,7 +30,8 @@
       "Bash(/tmp/test_edge_cases)",
       "Bash(tree:*)",
       "Bash(git rm:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(git push:*)"
     ]
   }
 }

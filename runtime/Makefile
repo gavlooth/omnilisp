@@ -19,18 +19,17 @@ BUILDDIR = build
 MAIN_SOURCES = $(wildcard $(SRCDIR)/*.c)
 MAIN_OBJECTS = $(MAIN_SOURCES:$(SRCDIR)/%.c=$(BUILDDIR)/%.o)
 
-# Memory module sources - slot pool for sound generational references
-# Also includes continuation-based concurrency (green threads, generators, promises)
-MEMORY_SOURCES = $(SRCDIR)/memory/slot_pool.c $(SRCDIR)/memory/handle.c $(SRCDIR)/memory/region_core.c $(SRCDIR)/memory/continuation.c $(SRCDIR)/memory/arena_core.c $(SRCDIR)/memory/transmigrate.c $(SRCDIR)/memory/region_value.c
-MEMORY_OBJECTS = $(BUILDDIR)/memory/slot_pool.o $(BUILDDIR)/memory/handle.o $(BUILDDIR)/memory/region_core.o $(BUILDDIR)/memory/continuation.o $(BUILDDIR)/memory/arena_core.o $(BUILDDIR)/memory/transmigrate.o $(BUILDDIR)/memory/region_value.o
+# Memory module sources
+MEMORY_SOURCES = $(wildcard $(SRCDIR)/memory/*.c)
+MEMORY_OBJECTS = $(MEMORY_SOURCES:$(SRCDIR)/memory/%.c=$(BUILDDIR)/memory/%.o)
 
-# Utility module sources - useful helpers for the runtime
+# Utility module sources
 UTIL_SOURCES = $(wildcard $(SRCDIR)/util/*.c)
 UTIL_OBJECTS = $(UTIL_SOURCES:$(SRCDIR)/util/%.c=$(BUILDDIR)/util/%.o)
 
-# All source files (including memory module for sound generational refs)
-SOURCES = $(MAIN_SOURCES) $(MEMORY_SOURCES)
-OBJECTS = $(MAIN_OBJECTS) $(MEMORY_OBJECTS)
+# All source files
+SOURCES = $(MAIN_SOURCES) $(MEMORY_SOURCES) $(UTIL_SOURCES)
+OBJECTS = $(MAIN_OBJECTS) $(MEMORY_OBJECTS) $(UTIL_OBJECTS)
 
 # Output
 STATIC_LIB = libomni.a
@@ -51,8 +50,8 @@ $(BUILDDIR)/%.o: $(SRCDIR)/%.c $(INCDIR)/omni.h
 $(BUILDDIR)/util/%.o: $(SRCDIR)/util/%.c
 	$(CC) $(CFLAGS) -I$(INCDIR) -I$(SRCDIR) -c $< -o $@
 
-# Compile memory module files (stable slot pool for sound generational refs)
-$(BUILDDIR)/memory/%.o: $(SRCDIR)/memory/%.c $(SRCDIR)/memory/slot_pool.h $(SRCDIR)/memory/component.h $(SRCDIR)/memory/symmetric.h $(SRCDIR)/memory/arena.h
+# Compile memory module files
+$(BUILDDIR)/memory/%.o: $(SRCDIR)/memory/%.c
 	$(CC) $(CFLAGS) -I$(INCDIR) -I$(SRCDIR) -I$(SRCDIR)/memory -c $< -o $@
 
 # Build static library
@@ -65,31 +64,8 @@ shared: $(BUILDDIR) $(OBJECTS)
 	$(CC) -shared $(OBJECTS) -o $(SHARED_LIB) $(LDFLAGS)
 	@echo "Built shared library: $(SHARED_LIB)"
 
-# Install to system (optional)
-install: $(STATIC_LIB)
-	install -d $(DESTDIR)/usr/local/lib
-	install -d $(DESTDIR)/usr/local/include/omni
-	install -m 644 $(STATIC_LIB) $(DESTDIR)/usr/local/lib/
-	install -m 644 $(INCDIR)/omni.h $(DESTDIR)/usr/local/include/omni/
-
 # Clean build artifacts
 clean:
 	rm -rf $(BUILDDIR) $(STATIC_LIB) $(SHARED_LIB)
 
-# Test compilation
-test: $(STATIC_LIB)
-	@echo "Testing runtime compilation..."
-	@echo 'int main() { return 0; }' > /tmp/test_runtime.c
-	$(CC) -I$(INCDIR) /tmp/test_runtime.c -L. -lomni $(LDFLAGS) -o /tmp/test_runtime
-	@rm -f /tmp/test_runtime /tmp/test_runtime.c
-	@echo "Runtime compiles successfully!"
-
-# Debug build
-debug: CFLAGS += -g -DDEBUG
-debug: clean all
-
-# Optimized build
-release: CFLAGS += -O3 -DNDEBUG
-release: clean all
-
-.PHONY: all clean install test debug release shared
+.PHONY: all clean shared
