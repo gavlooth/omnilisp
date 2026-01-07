@@ -82,35 +82,51 @@ That means each task must be explicit about *where*, *what*, *how*, and *done me
 use SYNTAX.md so you understand OmniLisp syntax
 TODO.md must be updated when task are complete
 
-### Required Task Granularity & Detail
-Each task must include **all** of the following:
-- **Label**: short unique ID (e.g., `T1-src-spans`).
-- **Objective**: 1 sentence describing the end state.
-- **Where**: file paths and (if known) functions or modules to touch.
-- **What to change**: concrete actions (add struct X, extend enum Y, emit call Z).
-- **How to verify**: exact command or manual step (test, sample input, expected output).
-- **Acceptance**: 1–3 bullet points that define “done”.
+### High-Granularity Task Directive (MANDATORY)
 
-Break work into **small, reviewable tasks**:
-- Prefer tasks that touch **1–3 files**.
-- Prefer tasks that can be completed in **≤ 1 day** by a new contributor.
-- Split tasks if they combine unrelated concerns (e.g., “parser spans” vs “diagnostic rendering”).
+Every task added to `TODO.md` MUST be written with sufficient detail that a developer with **zero context** could implement it immediately without asking clarifying questions.
 
-### Task Template (Required)
+**A task is INCOMPLETE if it lacks:**
+1.  **Context/Why:** Explain the architectural goal. *Why* are we doing this? What problem does it solve?
+2.  **Implementation Details:**
+    *   **File Paths:** Exact files to modify.
+    *   **Data Structures:** The exact C structs, Enums, or Lisp forms to be added. **Include code snippets.**
+    *   **Logic Flow:** A step-by-step description of the algorithm or logic changes.
+3.  **Verification Plan:** A concrete test case (source code + expected output) that proves success.
+
+**BAD Example:**
+```text
+- [TODO] Label: T-fix-escape
+  Objective: Fix escape analysis for branches.
+  Where: analysis.c
+  What: Update the escape analysis to handle if statements.
 ```
-- [STATUS] Label: T#-short-name
-  Objective: <one sentence end state>
-  Where: <paths + key functions/modules>
+
+**GOOD Example:**
+```text
+- [TODO] Label: T1-analysis-scoped-escape
+  Objective: Implement hierarchical, branch-level escape analysis to support "Region Narrowing".
+  Where: csrc/analysis/analysis.h, csrc/analysis/analysis.c
+  Why:
+    Currently, escape analysis is function-global. We need to know if a variable escapes *its specific branch* to enable stack allocation in non-escaping branches.
+  
   What to change:
-    - [ ] <implementation step 1>
-    - [ ] <implementation step 2>
-  (Optional) Implementation Checklist:
-    - <concrete action 1>
-    - <concrete action 2>
-  How to verify: <command or manual step + expected outcome>
-  Acceptance:
-    - <criterion 1>
-    - <criterion 2>
+    1.  **Define Scope Hierarchy:** Track nested scopes.
+    2.  **Scoped Escape Tracking:** Track variable escape status *per scope*.
+
+  Implementation Details:
+    *   **Structs (analysis.h):**
+        ```c
+        typedef enum { ESCAPE_TARGET_NONE, ESCAPE_TARGET_PARENT, ... } EscapeTarget;
+        typedef struct ScopedVarInfo { ... } ScopedVarInfo;
+        ```
+    *   **Logic (analysis.c):**
+        *   Implement `omni_scope_enter()` and `omni_scope_exit()`.
+        *   Update `analyze_expr` to call these around branch bodies.
+
+  Verification:
+    *   Input: `(if true (let [x 1] x) 0)` -> x should be ESCAPE_TARGET_NONE.
+    *   Input: `(if true (let [x 1] (return x)) 0)` -> x should be ESCAPE_TARGET_RETURN.
 ```
 
 ### Status Rules

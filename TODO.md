@@ -11,6 +11,11 @@
 
 ---
 
+## STANDBY Notice
+Phases marked with **[STANDBY]** are implementation-complete or architecturally stable but are currently deprioritized to focus on **Phase 17: Runtime Bridge & Feature Wiring**. This ensures the language is usable and "wired" before further optimizing the memory substrate.
+
+---
+
 ## Phase 13: Region-Based Reference Counting (RC-G) Refactor
 
 Replace hybrid memory management with a unified Region-RC architecture.
@@ -30,498 +35,282 @@ Replace hybrid memory management with a unified Region-RC architecture.
 
 ---
 
-## Phase 14: ASAP Region Management (Static Lifetimes)
+## Phase 14: ASAP Region Management (Static Lifetimes) [STANDBY]
 
 **Objective:** Implement static liveness analysis to drive region deallocation, with RC as a fallback only.
 **Reference:** `docs/STATIC_REGION_LIFETIME_ARCHITECTURE.md`
 
 - [TODO] Label: T-asap-region-liveness
-  Objective: Implement static liveness analysis for inferred Region Handles.
-  Where: `csrc/analysis/region_inference.c`, `csrc/analysis/analysis.c`
-  What to change:
-    - [ ] Calculate the **Last Use Point** of each inferred Region.
-    - [ ] Mark Regions as `LIFETIME_STATIC` (default) or `LIFETIME_DYNAMIC` (if escaping).
-  How to verify: Inspect compiler debug logs for correctly identified region death points.
-  Acceptance:
-    - Regions tracked as first-class analysis entities.
-    - Last use points accurately calculated across control flow.
-
-- [TODO] Label: T-asap-region-codegen
-  Objective: Emit static deallocation calls (`region_destroy`).
-  Where: `csrc/codegen/codegen.c`
-  What to change:
-    - [ ] For `LIFETIME_STATIC` regions, emit `region_destroy()` at the last use point.
-    - [ ] Remove `external_rc` increments/decrements for static regions.
-  How to verify: Compile a local-only Lisp program; verify the generated C has NO refcounting calls, only create/destroy.
-  Acceptance:
-    - Zero-overhead static cleanup for local regions.
-
-- [TODO] Label: T-asap-region-fallback
-  Objective: Wire the RC fallback for escaping regions.
-  Where: `csrc/codegen/codegen.c`
-  What to change:
-    - [ ] At escape points (return/global store), emit `region_retain()`.
-    - [ ] Emit `RegionRef` wrapping for escaping data.
-  How to verify: Compile a function returning data; verify RC is enabled only for that return path.
-  Acceptance:
-    - Seamless transition from Static to RC on escape.
-
-- [TODO] Label: T-asap-region-subsumption
-  Objective: Implement Region Subsumption (Flattening) pass.
-  Where: `csrc/analysis/region_inference.c`
-  What to change:
-    - [ ] Identify candidate regions whose lifetimes are strictly nested within a parent.
-    - [ ] Merge nested regions into their parents to eliminate redundant RCBs and arenas.
-  How to verify: Compile nested let-blocks and verify only one region is created in the generated C.
-  Acceptance:
-    - Reduced region cardinality for nested lifecycles.
-    - No loss of safety for cyclic data within merged regions.
-
+...
 - [TODO] Label: T-asap-region-main
-
-  Objective: Bootstrap the Root Region in the interpreter.
-
-  Where: `src/runtime/main.c`
-
-  What to change:
-
-    - [ ] Implement `region_create()` at main start and `region_destroy()` at exit.
-
-  How to verify: Run interpreter; verify all top-level values are reclaimed.
-
-
+...
 
 ---
 
-
-
-## Phase 15: Branch-Level Region Narrowing
+## Phase 15: Branch-Level Region Narrowing [STANDBY]
 
 **Objective:** Reduce RC overhead by keeping branch-local data out of RC-managed regions.
 **Reference:** `docs/BRANCH_LEVEL_REGION_NARROWING.md`
 
-- [TODO] Label: T-narrow-scoped-escape
-  Objective: Implement branch-scoped escape analysis.
-  Where: `csrc/analysis/analysis.c`, `csrc/analysis/escape.c`
+- [TODO] Label: T1-analysis-scoped-escape
+  Objective: Implement hierarchical, branch-level escape analysis to support "Region Narrowing", allowing temporary variables in non-escaping branches to be allocated on the stack or scratchpad instead of the parent region.
+  Where: csrc/analysis/analysis.h, csrc/analysis/analysis.c
+  Why:
+    Currently, escape analysis (`EscapeClass`) is likely function-global. If a variable escapes *anywhere* in the function, it's marked as escaping.
+    For "Region Narrowing", we need to know if a variable escapes *its specific branch* (e.g., the `then` block of an `if`).
+    If `x` is created in `then` and only used there, it should be `ESCAPE_NONE` relative to that block, even if the function returns something else.
+    This enables the compiler to emit `stack_alloc` or `scratch_free` at the end of that specific branch.
+  
   What to change:
-    - [ ] Extend escape analysis to track escape at branch granularity (not just function level).
-    - [ ] Identify data that escapes the branch vs data local to the branch.
-    - [ ] Handle partial escape (some bindings escape, others don't).
-  How to verify: Compile a function with if/match branches; verify escape classification per-branch in debug output.
-  Acceptance:
-    - Branch-local data correctly identified as non-escaping.
-    - Escaping data (phi-node, closure capture, return) correctly identified.
+    1.  **Define Scope Hierarchy:** Introduce a way to track nested scopes (blocks) within a function.
+    2.  **Scoped Escape Tracking:** Track variable escape status *per scope*.
+    3.  **Escape Propagation:** Implement rules for how escape status bubbles up (e.g., escaping a child scope -> escaping to parent).
 
-- [TODO] Label: T-narrow-scoped-shape
-  Objective: Implement branch-scoped shape analysis.
-  Where: `csrc/analysis/shape.c`
-  What to change:
-    - [ ] Compute shape (TREE/DAG/CYCLIC) within branch scope only.
-    - [ ] Reuse existing shape analysis infrastructure with scope boundary awareness.
-  How to verify: Compile branches with different shapes; verify correct shape classification per-branch.
-  Acceptance:
-    - Shape computed independently for each branch.
-    - Non-escaping TREE branches identified for stack allocation.
+  Implementation Details:
 
-- [TODO] Label: T-narrow-alloc-routing
-  Objective: Route allocations based on narrowing decision.
-  Where: `csrc/codegen/codegen.c`
-  What to change:
-    - [ ] Non-escaping TREE: Stack allocation + `free_tree` at branch exit.
-    - [ ] Non-escaping DAG/CYCLIC: Scratch arena + bulk free at branch exit.
-    - [ ] Escaping: Parent region (existing behavior).
-  How to verify: Compile program with mixed branches; verify correct allocation targets in generated C.
-  Acceptance:
-    - Branch-local TREE data never touches RC.
-    - Branch-local DAG/CYCLIC uses scratch arena, not parent region.
+    **Step 1: Extend Data Structures (in `analysis.h`)**
+    Add a `ScopeID` or `BlockID` concept.
+    
+    ```c
+    // New enum for finer-grained escape targets
+    typedef enum {
+        ESCAPE_TARGET_NONE = 0,    // Stays in current scope
+        ESCAPE_TARGET_PARENT,      // Escapes to enclosing scope
+        ESCAPE_TARGET_RETURN,      // Returns from function
+        ESCAPE_TARGET_GLOBAL       // Stored globally
+    } EscapeTarget;
 
-- [TODO] Label: T-narrow-nested
-  Objective: Apply narrowing recursively to nested branches.
-  Where: `csrc/analysis/analysis.c`, `csrc/codegen/codegen.c`
-  What to change:
-    - [ ] Recursively analyze nested control flow (if inside if, match inside let, etc.).
-    - [ ] Each nesting level independently decides narrowing strategy.
-  How to verify: Compile deeply nested control flow; verify each level uses appropriate strategy.
-  Acceptance:
-    - Nested non-escaping branches use pure ASAP regardless of parent's strategy.
-    - No unnecessary region allocation for purely local nested computations.
+    // Structure to track a variable's status within a specific scope
+    typedef struct ScopedVarInfo {
+        char* name;
+        int scope_depth;           // Depth of the scope where defined
+        EscapeTarget target;       // Where does it escape to?
+        struct ScopedVarInfo* next;
+    } ScopedVarInfo;
 
-- [TODO] Label: T-narrow-lifecycle-classes
-  Objective: Implement lifecycle-based region partitioning for escaping data.
-  Where: `csrc/analysis/escape.c`, `csrc/analysis/analysis.c`
-  What to change:
-    - [ ] Extend escape analysis to classify escape targets: CALLER, CAPTURED(closure_id), GLOBAL.
-    - [ ] Group escaping data by lifecycle class rather than lumping into single parent region.
-    - [ ] Handle closure lifetime inference (static when possible, conservative fallback).
-  How to verify: Compile function with mixed escapes (return + closure + global); verify separate region assignment per class.
-  Acceptance:
-    - Escaping data partitioned by lifecycle, not lumped together.
-    - Data freed at minimal lifetime boundary (not held until longest-lived region dies).
+    // Extend AnalysisContext
+    typedef struct AnalysisContext {
+        // ... existing fields ...
+        int current_scope_depth;
+        ScopedVarInfo* scoped_vars; // Stack or list of var info
+        // ...
+    } AnalysisContext;
+    ```
 
-- [TODO] Label: T-narrow-lifecycle-codegen
-  Objective: Generate region assignments based on lifecycle classes.
-  Where: `csrc/codegen/codegen.c`
-  What to change:
-    - [ ] CALLER class: allocate in caller-provided region or create region with caller lifetime.
-    - [ ] CAPTURED class: allocate in closure's region (create if needed).
-    - [ ] GLOBAL class: allocate in global region.
-    - [ ] Emit appropriate region_retain/release for cross-region references.
-  How to verify: Inspect generated C for correct region assignments per lifecycle class.
+    **Step 2: Implement Scope Management (in `analysis.c`)**
+    Create helper functions to enter/exit scopes.
+
+    ```c
+    void omni_scope_enter(AnalysisContext* ctx) {
+        ctx->current_scope_depth++;
+    }
+
+    void omni_scope_exit(AnalysisContext* ctx) {
+        // 1. Identify vars defined in this scope (ctx->current_scope_depth)
+        // 2. If target == ESCAPE_TARGET_NONE, mark for local optimization (e.g., stack alloc)
+        // 3. Remove them from the active tracking list (pop stack)
+        ctx->current_scope_depth--;
+    }
+    ```
+
+    **Step 3: Update `omni_analyze_escape`**
+    Modify the main analysis loop to handle AST nodes that create scopes (`if`, `let`, `progn`/`block`).
+
+    ```c
+    void analyze_expr(AnalysisContext* ctx, OmniValue* expr) {
+        // ...
+        if (is_if_node(expr)) {
+            // Analyze Condition
+            analyze(ctx, expr->cond);
+            
+            // Analyze Then Branch
+            omni_scope_enter(ctx);
+            analyze(ctx, expr->then_branch);
+            omni_scope_exit(ctx); // <--- Decision point for narrowing
+            
+            // Analyze Else Branch
+            if (expr->else_branch) {
+                omni_scope_enter(ctx);
+                analyze(ctx, expr->else_branch);
+                omni_scope_exit(ctx);
+            }
+            return;
+        }
+        // ...
+    }
+    ```
+
+  How to verify:
+    1.  Create a test case `test_narrowing.c` that constructs a manual AST with nested scopes:
+        ```lisp
+        (defn test []
+          (if true
+            (let [x (list 1 2)]  ; x defined here
+              (print x))         ; x used here, does NOT escape branch
+            (return 1)))
+        ```
+    2.  Run the analysis.
+    3.  Verify that `x` is marked as `ESCAPE_TARGET_NONE` (or equivalent) for its specific scope depth.
+    4.  Verify that if you change `(print x)` to `(return x)`, the analysis correctly updates `x` to `ESCAPE_TARGET_RETURN`.
+
   Acceptance:
-    - Each lifecycle class uses appropriately-scoped region.
-    - No unnecessary transmigration between lifecycle-aligned regions.
+    - `AnalysisContext` tracks scope depth.
+    - Variables correctly identify their defining scope.
+    - Variables that do not leave a branch are flagged as non-escaping *for that branch*.
+    - Variables that leave a branch (e.g. via return or assignment to outer var) are flagged as escaping.
+- [TODO] Label: T2-codegen-narrowing
+  Objective: Update code generation to utilize scoped escape analysis, emitting stack/scratch allocations for non-escaping variables and inserting precise cleanup at branch exits.
+  Where: csrc/codegen/codegen.c, csrc/codegen/cleanup.c, csrc/analysis/analysis.h
+  Why:
+    Once we know a variable `x` doesn't escape its branch (T1), we must ensure:
+    1. It is allocated cheaply (stack/scratch) instead of in the parent region.
+    2. Its cleanup (if any) happens exactly when the branch exits.
+    This realizes the memory savings of "Region Narrowing".
+  
+  What to change:
+    1.  **Allocation Routing:** In `emit_alloc`, check `omni_get_escape_target(ctx, var)`.
+        *   If `ESCAPE_TARGET_NONE`: Use `emit_stack_alloc` or `emit_scratch_alloc`.
+        *   Else: Use `emit_region_alloc` (parent/global).
+    2.  **Branch Cleanup:** In `emit_block_exit`, look up variables defined in this scope.
+        *   If `ESCAPE_TARGET_NONE`: Emit `free_tree` (for stack) or do nothing (for scratch/stack scalars).
+
+  Implementation Details:
+    *   **Codegen Logic (`csrc/codegen/codegen.c`):**
+        ```c
+        void emit_alloc(CodegenContext* ctx, char* var, Type* type) {
+            EscapeTarget target = omni_get_escape_target(ctx->analysis, var);
+            if (target == ESCAPE_TARGET_NONE) {
+                // Emit alloca or simple stack var
+                fprintf(ctx->out, "%s %s;\n", type_to_c(type), var); 
+            } else {
+                // Emit region allocation
+                fprintf(ctx->out, "%s %s = region_alloc(ctx->region, sizeof(%s));\n", 
+                        type_to_c(type), var, type_to_c(type));
+            }
+        }
+        ```
+    *   **Cleanup Logic (`csrc/codegen/cleanup.c`):**
+        ```c
+        void emit_scope_exit(CodegenContext* ctx, int depth) {
+            // Iterate over vars in this scope
+            for (Var* v : ctx->scopes[depth].vars) {
+                 if (v->escape_target == ESCAPE_TARGET_NONE && v->needs_cleanup) {
+                     fprintf(ctx->out, "free_tree(%s);\n", v->name);
+                 }
+            }
+        }
+        ```
+
+  Verification:
+    *   Input: `(if true (let [x (cons 1 2)] x) 0)` 
+        *   Output C: `Cell* x = alloca(sizeof(Cell)); ... free_tree(x);` (inside the `if` block).
+    *   Input: `(let [x (cons 1 2)] (return x))`
+        *   Output C: `Cell* x = region_alloc(r, ...); return x;`
+
+  Acceptance:
+    - Code generator queries escape analysis before emitting allocs.
+    - Non-escaping variables result in stack/alloca C code.
+    - Scope exit points (end of `if`, `let`) contain specific cleanup for locals.
 
 ---
 
-## Phase 15b: Adaptive Region Sizing
+## Phase 15b: Adaptive Region Sizing [STANDBY]
 
 **Objective:** Scale region overhead with actual data size to reduce penalty for small lifecycle groups.
 **Reference:** `docs/BRANCH_LEVEL_REGION_NARROWING.md` (Section 12)
 
 - [TODO] Label: T-adaptive-size-classes
-  Objective: Implement region size classes (TINY/SMALL/MEDIUM/LARGE).
-  Where: `src/runtime/memory/region_core.c`, `src/runtime/memory/region.h`
-  What to change:
-    - [ ] Define RegionLite struct (~16 bytes) for TINY/SMALL regions.
-    - [ ] Define size class thresholds: TINY ≤256B, SMALL ≤4KB, MEDIUM ≤64KB, LARGE >64KB.
-    - [ ] Implement region_create_adaptive(size_hint) to select appropriate class.
-  How to verify: Create regions with different size hints; verify correct struct type selected.
-  Acceptance:
-    - Small lifecycle groups use lightweight RegionLite.
-    - Overhead scales with actual data size.
-
-- [TODO] Label: T-adaptive-promotion
-  Objective: Implement promotion from RegionLite to full Region.
-  Where: `src/runtime/memory/region_core.c`
-  What to change:
-    - [ ] Detect promotion triggers: RC overflow, multi-block needed, bitmap needed.
-    - [ ] Implement promote_to_full() that migrates RegionLite state to full Region.
-    - [ ] Ensure promotion is transparent to callers (same handle, different backing).
-  How to verify: Create TINY region, force promotion via RC overflow; verify data integrity.
-  Acceptance:
-    - Promotion is seamless and preserves all allocated data.
-    - Most small regions never promote (common case stays lightweight).
-
-- [TODO] Label: T-adaptive-size-analysis
-  Objective: Implement compile-time size analysis for static region sizing.
-  Where: `csrc/analysis/size.c` (new), `csrc/analysis/analysis.c`
-  What to change:
-    - [ ] Add size analysis pass that computes allocation sizes per lifecycle group.
-    - [ ] Classify allocations as STATIC (known size) or DYNAMIC (runtime-dependent).
-    - [ ] Sum static sizes per lifecycle group for exact allocation.
-    - [ ] Track dynamic allocation patterns for fallback strategy selection.
-  How to verify: Compile programs with known allocation patterns; verify correct size classification.
-  Acceptance:
-    - cons/list/record allocations classified as STATIC with correct sizes.
-    - map/filter/read-file classified as DYNAMIC.
-    - Per-group size totals computed for static portions.
-
-- [TODO] Label: T-adaptive-exact-alloc
-  Objective: Implement exact static allocation for fully-static lifecycle groups.
-  Where: `csrc/codegen/codegen.c`, `src/runtime/memory/region_core.c`
-  What to change:
-    - [ ] Add region_create_exact(size) that allocates single block of exact size.
-    - [ ] Emit exact allocation for groups where all allocations are STATIC.
-    - [ ] Use bump allocation within the exact-sized block.
-  How to verify: Compile fully-static function; verify single allocation of exact computed size.
-  Acceptance:
-    - O(1) metadata (single block).
-    - O(1) slack (alignment padding only).
-    - No runtime growth logic for static groups.
-
-- [TODO] Label: T-adaptive-vm-reservation
-  Objective: Implement VM reservation strategy for dynamic allocations.
-  Where: `src/runtime/memory/arena_core.c`
-  What to change:
-    - [ ] Add region_create_vm(max_size) using mmap with PROT_NONE.
-    - [ ] Implement on-demand page commit via mprotect or SIGSEGV handler.
-    - [ ] Cap virtual reservation at reasonable limit (e.g., 16MB default).
-    - [ ] Graceful fallback to polynomial growth if mmap unavailable.
-  How to verify: Allocate varying amounts; verify physical memory usage tracks actual data.
-  Acceptance:
-    - O(1) metadata (single reservation).
-    - O(page_size) slack (4KB max on most systems).
-    - Zero-copy growth (no realloc/memcpy).
-
-- [TODO] Label: T-adaptive-polynomial-fallback
-  Objective: Implement polynomial (√n) growth as fallback for non-VM systems.
-  Where: `src/runtime/memory/arena_core.c`
-  What to change:
-    - [ ] Implement polynomial growth: block sizes b, b·√n, b·n (2-3 blocks typical).
-    - [ ] Use when VM reservation unavailable and size is dynamic.
-    - [ ] Cap individual blocks at 64KB, link blocks beyond that.
-  How to verify: Disable VM reservation; verify polynomial block sizing.
-  Acceptance:
-    - O(1) metadata (2-3 blocks typical).
-    - O(√n) slack (sublinear).
-    - Fallback only - prefer static sizing or VM reservation.
-
+...
 - [TODO] Label: T-adaptive-non-atomic-tiny
-  Objective: Use non-atomic RC for TINY regions (single-threaded optimization).
-  Where: `src/runtime/memory/region_core.c`
-  What to change:
-    - [ ] TINY regions use plain uint16_t for external_rc (not atomic).
-    - [ ] Promotion to SMALL+ converts to atomic RC.
-    - [ ] Add thread-safety assertion in debug mode for TINY region cross-thread access.
-  How to verify: Benchmark TINY region RC operations; verify no atomic overhead.
-  Acceptance:
-    - TINY regions avoid atomic operations entirely.
-    - Promotion to atomic RC on thread escape or size growth.
+...
 
 ---
 
-## Phase 16: Advanced Region Optimization
+## Phase 16: Advanced Region Optimization [STANDBY]
 
 **Objective:** Implement high-performance transmigration and tethering algorithms.
 **Reference:** `docs/ADVANCED_REGION_ALGORITHMS.md`
 
-
-
 - [DONE] Label: T-opt-bitmap-cycle
-
-
-
-  Objective: Implement Bitmap-based Cycle Detection for transmigration.
-
-
-
-
-
-
-
-  Where: `runtime/src/memory/region_core.c`, `runtime/src/memory/transmigrate.c`
-
-
-
-  What to change:
-
-
-
-    - [x] Add `RegionBitmap` utility to track visited addresses within a region.
-
-
-
-    - [x] Replace `uthash` in `transmigrate.c` with bitmap lookup for internal pointers.
-
-
-
-  How to verify: Run `test_rcg_transmigrate` with large cyclic graphs; verify speedup and reduced allocations.
-
-
-
-  Acceptance:
-
-
-
-    - Zero `malloc` calls for cycle detection during intra-region transmigration.
-
-
-
-
-
-
-
-- [DONE] Label: T-opt-iterative-trans
-
-
-
-
-
-
-
-  Objective: Implement Iterative Worklist Transmigration.
-
-
-
-
-
-
-
-
-
-
-
-  Where: `runtime/src/memory/transmigrate.c`
-
-
-
-  What to change:
-
-
-
-    - [x] Replace recursive `copy_value` with an explicit worklist (stack).
-
-
-
-    - [x] Implement tail-recursion optimization for `T_CELL` chains.
-
-
-
-  How to verify: Run transmigration on a list of 1M elements; verify it doesn't segfault.
-
-
-
-  Acceptance:
-
-
-
-    - O(1) stack usage for deep object graphs.
-
-
-
-
-
-
-
-- [DONE] Label: T-opt-metadata-trace
-
-
-
-
-
-
-
-  Objective: Implement Metadata-Driven Traversal (Trace functions).
-
-
-
-
-
-
-
-
-
-
-
-  Where: `runtime/src/runtime.c`, `runtime/src/memory/transmigrate.c`
-
-
-
-  What to change:
-
-
-
-    - [x] Add `TraceFn` pointer to `TypeInfo` or `Value` structure.
-
-
-
-    - [x] Update `transmigrate.c` to use `obj->trace()` instead of large switch.
-
-
-
-  How to verify: Add a new custom type and verify it can be transmigrated without modifying `transmigrate.c`.
-
-
-
-  Acceptance:
-
-
-
-    - Traversal logic decoupled from the core transmigration loop.
-
-
-
-
-
-
-
-- [DONE] Label: T-opt-region-splicing
-
-
-
-
-
-
-
-  Objective: Implement Block-level Region Splicing.
-
-
-
-
-
-
-
-
-
-
-
-  Where: `runtime/src/memory/arena_core.c`, `runtime/src/memory/region_core.c`
-
-
-
-  What to change:
-
-
-
-    - [x] Modify `Arena` to support detaching and attaching individual memory blocks.
-
-
-
-    - [x] Implement `region_splice(src, dest, blocks)` to move chunks of memory between regions.
-
-
-
-  How to verify: Perform a large transmigration and verify that blocks are moved O(1) instead of copied.
-
-
-
-  Acceptance:
-
-
-
-    - Zero-copy movement of large contiguous data segments between regions.
-
-
-
-
-
-
-
+...
 - [DONE] Label: T-opt-tether-cache
+...
 
+---
 
+## Phase 17: Runtime Bridge & Feature Wiring
 
+**Objective:** Complete the wiring of core language features into the evaluator and environment.
 
-
-
-
-  Objective: Implement Thread-Local Tether Caching.
-
-
-
-
-
-
-
-
-
-
-
-  Where: `runtime/src/memory/region_core.c`
-
-
-
+- [TODO] Label: T-wire-multiple-dispatch
+  Objective: Implement robust Multiple Dispatch selection logic.
+  Where: `src/runtime/eval/omni_eval.c`, `omni_apply`
   What to change:
-
-
-
-    - [x] Add `__thread` local cache for active regions.
-
-
-
-    - [x] Update `region_tether_start/end` to use local cache before atomics.
-
-
-
-  How to verify: Benchmark multi-threaded access to a shared region; verify reduced cache contention.
-
-
-
+    - [ ] Update `env_define` behavior to automatically convert `T_LAMBDA` to `T_GENERIC` on redefinition.
+    - [ ] Implement Julia-style specificity sorting for methods (more specific Kinds before more general ones).
+  How to verify: Run `tests/unwired_features.omni`; verify correct method selected for different Kinds.
   Acceptance:
+    - Redefining a function with different types adds to the method table instead of overwriting.
+    - Dispatch selects the most specific match.
 
+- [TODO] Label: T-wire-parametric-subtyping
+  Objective: Implement subtyping logic for parametric Kinds.
+  Where: `src/runtime/eval/omni_eval.c`, `is_subtype`
+  What to change:
+    - [ ] Implement recursive comparison of Kind parameters in `is_subtype`.
+    - [ ] Support covariance for immutable structures (e.g., `{List Int} <: {List Any}`).
+  How to verify: `(type? {List Int} {List Any})` returns `true`.
+  Acceptance:
+    - Parametric types correctly identified in the subtype hierarchy.
 
+- [TODO] Label: T-wire-pika-api
+  Objective: Bridge Pika Grammar engine to Lisp environment.
+  Where: `src/runtime/eval/omni_eval.c`
+  What to change:
+    - [ ] Register `pika-match` primitive (takes grammar, rule-name, string).
+    - [ ] Register `pika-find-all` primitive.
+  How to verify: Run `tests/unwired_features.omni`; verify grammar definition can be used to parse.
+  Acceptance:
+    - Pika engine functions accessible from Lisp.
 
-    - Reduced atomic operations for redundant tethers in the same thread.
+- [TODO] Label: T-wire-deep-put
+  Objective: Support recursive path mutation in `put!`.
+  Where: `src/runtime/eval/omni_eval.c`, `eval_put_bang`
+  What to change:
+    - [ ] Rewrite `eval_put_bang` to traverse deep paths (`a.b.c`) and perform mutation at the leaf.
+  How to verify: Mutate a nested dict field and verify the update reflects in the parent.
+  Acceptance:
+    - Deep path mutation works for both Arrays and Dicts.
+
+- [TODO] Label: T-wire-iter-ext
+  Objective: Implement `iterate` and `take` for infinite sequence support.
+  Where: `src/runtime/eval/omni_eval.c`
+  What to change:
+    - [ ] Implement `prim_iterate` (lazy generator from function + seed).
+    - [ ] Implement `prim_take` (lazy limiter for iterators).
+  How to verify: `(collect-list (take 5 (iterate inc 0)))` returns `(0 1 2 3 4)`.
+  Acceptance:
+    - System supports infinite lazy sequences.
+
+- [TODO] Label: T-wire-reader-macros
+  Objective: Implement Sign `#` dispatch for literals.
+  Where: `src/runtime/reader/omni_reader.c`
+  What to change:
+    - [ ] Add support for named characters: `#\newline`, `#\space`, `#\tab`.
+    - [ ] Add support for `#fmt` interpolated strings.
+  How to verify: Read `#\newline` and verify it produces character code 10.
+  Acceptance:
+    - Authoritative reader support for all Sign-prefixed literals.
+
+- [TODO] Label: T-wire-modules
+  Objective: Implement basic Module isolation.
+  Where: `src/runtime/eval/omni_eval.c`, `eval_module`, `eval_import`
+  What to change:
+    - [ ] Wire `module` to create a fresh environment.
+    - [ ] Wire `import` to selectively map symbols between environments.
+  How to verify: Define a module, export a function, and import it into another scope.
+  Acceptance:
+    - Functional module system with namespace isolation.
 
 
 
