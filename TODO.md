@@ -52,7 +52,7 @@ Replace hybrid memory management with a unified Region-RC architecture.
 **Objective:** Reduce RC overhead by keeping branch-local data out of RC-managed regions.
 **Reference:** `docs/BRANCH_LEVEL_REGION_NARROWING.md`
 
-- [R] Label: T1-analysis-scoped-escape
+- [DONE] Label: T1-analysis-scoped-escape
   Objective: Implement hierarchical, branch-level escape analysis to support "Region Narrowing", allowing temporary variables in non-escaping branches to be allocated on the stack or scratchpad instead of the parent region.
   Reference: docs/BRANCH_LEVEL_REGION_NARROWING.md
   Where: csrc/analysis/analysis.h, csrc/analysis/analysis.c
@@ -76,7 +76,7 @@ Replace hybrid memory management with a unified Region-RC architecture.
     - Variables that do not leave a branch are flagged as non-escaping *for that branch*
     - Variables that leave a branch (e.g. via return or assignment to outer var) are flagged as escaping
 
-- [R] Label: T2-codegen-narrowing
+- [DONE] Label: T2-codegen-narrowing
   Objective: Update code generation to utilize scoped escape analysis, emitting stack/scratch allocations for non-escaping variables and inserting precise cleanup at branch exits.
   Reference: docs/BRANCH_LEVEL_REGION_NARROWING.md
   Where: csrc/codegen/codegen.c, csrc/codegen/codegen.h
@@ -126,24 +126,25 @@ Replace hybrid memory management with a unified Region-RC architecture.
 
 ## Phase 17: Runtime Bridge & Feature Wiring
 
-**Objective:** Complete the wiring of core language features into the evaluator and environment.
+**Objective:** Complete the wiring of core language features into the compiler codegen and modern runtime.
+**Note:** Legacy evaluator `src/runtime` has been removed. Features must be implemented via compiler intrinsics (`csrc/codegen`) or runtime library functions (`runtime/src`).
 
 - [TODO] Label: T-wire-multiple-dispatch
   Objective: Implement robust Multiple Dispatch selection logic.
-  Where: `src/runtime/eval/omni_eval.c`, `omni_apply`
+  Where: `csrc/codegen/codegen.c`, `runtime/src/runtime.c` (method tables)
   What to change:
-    - [ ] Update `env_define` behavior to automatically convert `T_LAMBDA` to `T_GENERIC` on redefinition.
-    - [ ] Implement Julia-style specificity sorting for methods (more specific Kinds before more general ones).
+    - [ ] Update `define` codegen to automatically convert `TAG_CLOSURE` to `TAG_GENERIC` on redefinition.
+    - [ ] Implement Julia-style specificity sorting for methods (more specific Kinds before more general ones) in runtime.
   How to verify: Run `tests/unwired_features.omni`; verify correct method selected for different Kinds.
   Acceptance:
     - Redefining a function with different types adds to the method table instead of overwriting.
-    - Dispatch selects the most specific match.
+    - Dispatch selects the most specific match at runtime.
 
 - [TODO] Label: T-wire-parametric-subtyping
   Objective: Implement subtyping logic for parametric Kinds.
-  Where: `src/runtime/eval/omni_eval.c`, `is_subtype`
+  Where: `runtime/src/runtime.c` (`is_subtype` implementation)
   What to change:
-    - [ ] Implement recursive comparison of Kind parameters in `is_subtype`.
+    - [ ] Implement recursive comparison of Kind parameters in `is_subtype` runtime function.
     - [ ] Support covariance for immutable structures (e.g., `{List Int} <: {List Any}`).
   How to verify: `(type? {List Int} {List Any})` returns `true`.
   Acceptance:
@@ -151,57 +152,50 @@ Replace hybrid memory management with a unified Region-RC architecture.
 
 - [TODO] Label: T-wire-pika-api
   Objective: Bridge Pika Grammar engine to Lisp environment.
-  Where: `src/runtime/eval/omni_eval.c`
+  Where: `runtime/src/runtime.c`
   What to change:
-    - [ ] Register `pika-match` primitive (takes grammar, rule-name, string).
-    - [ ] Register `pika-find-all` primitive.
+    - [ ] Port Pika parser C implementation to modern runtime.
+    - [ ] Implement `prim_pika_match` primitive (takes grammar, rule-name, string).
+    - [ ] Implement `prim_pika_find_all` primitive.
   How to verify: Run `tests/unwired_features.omni`; verify grammar definition can be used to parse.
   Acceptance:
-    - Pika engine functions accessible from Lisp.
+    - Pika engine functions accessible from Lisp via runtime primitives.
 
 - [TODO] Label: T-wire-deep-put
   Objective: Support recursive path mutation in `put!`.
-  Where: `src/runtime/eval/omni_eval.c`, `eval_put_bang`
+  Where: `csrc/codegen/codegen.c` (`codegen_put_bang`)
   What to change:
-    - [ ] Rewrite `eval_put_bang` to traverse deep paths (`a.b.c`) and perform mutation at the leaf.
+    - [ ] Rewrite `codegen_put_bang` to traverse deep paths (`a.b.c`) and perform mutation at the leaf.
   How to verify: Mutate a nested dict field and verify the update reflects in the parent.
   Acceptance:
     - Deep path mutation works for both Arrays and Dicts.
 
 - [TODO] Label: T-wire-iter-ext
   Objective: Implement `iterate` and `take` for infinite sequence support.
-  Where: `src/runtime/eval/omni_eval.c`
+  Where: `runtime/src/runtime.c` (or new `runtime/src/iter.c`)
   What to change:
     - [ ] Implement `prim_iterate` (lazy generator from function + seed).
     - [ ] Implement `prim_take` (lazy limiter for iterators).
   How to verify: `(collect-list (take 5 (iterate inc 0)))` returns `(0 1 2 3 4)`.
   Acceptance:
-    - System supports infinite lazy sequences.
+    - System supports infinite lazy sequences via runtime primitives.
 
 - [TODO] Label: T-wire-reader-macros
   Objective: Implement Sign `#` dispatch for literals.
-  Where: `src/runtime/reader/omni_reader.c`
+  Where: `csrc/parser/parser.c` (Reader macros handled at compile time)
   What to change:
     - [ ] Add support for named characters: `#\newline`, `#\space`, `#\tab`.
-    - [ ] Add support for `#fmt` interpolated strings.
+    - [ ] Add support for `#fmt` interpolated strings parsing.
   How to verify: Read `#\newline` and verify it produces character code 10.
   Acceptance:
     - Authoritative reader support for all Sign-prefixed literals.
 
 - [TODO] Label: T-wire-modules
   Objective: Implement basic Module isolation.
-  Where: `src/runtime/eval/omni_eval.c`, `eval_module`, `eval_import`
+  Where: `csrc/compiler/compiler.c`, `csrc/codegen/codegen.c`
   What to change:
-    - [ ] Wire `module` to create a fresh environment.
-    - [ ] Wire `import` to selectively map symbols between environments.
+    - [ ] Implement module namespacing in symbol table/codegen mangling.
+    - [ ] Implement `import` to selectively map symbols between namespaces.
   How to verify: Define a module, export a function, and import it into another scope.
   Acceptance:
-    - Functional module system with namespace isolation.
-
-
-
-
-
-
-
-
+    - Functional module system with namespace isolation at compile time.

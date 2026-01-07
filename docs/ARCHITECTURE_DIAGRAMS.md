@@ -1,38 +1,26 @@
-# Architecture Diagrams: Current vs. Proposed (RC-G)
+# Architecture Diagrams (RC-G)
 
-## 1. Current Hybrid Memory Strategy (v0.6.0)
+## 1. Compilation Pipeline
 
-This is the existing "Decision Tree" model where the compiler picks a strategy based on Shape and Escape analysis.
+OmniLisp utilizes a distinct Compiler (`csrc`) and Runtime (`libomni.a`) architecture.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    COMPILE-TIME ANALYSIS                         │
-│                                                                  │
-│  Shape Analysis ──► TREE / DAG / CYCLIC                         │
-│  Escape Analysis ──► LOCAL / ESCAPING                           │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-          ┌───────────────────┼───────────────────┐
-          ▼                   ▼                   ▼
-       **TREE**             **DAG**            **CYCLIC**
-   (Unique/Unshared)    (Shared/Acyclic)    (Back-Edges)
-          │                   │                   │
-          │                   │           ┌───────┴───────┐
-          │                   │           ▼               ▼
-          │                   │        **BROKEN**      **UNBROKEN**
-          │                   │      (Weak Refs)     (Strong Cycle)
-          │                   │           │               │
-          │                   │           │        ┌──────┴──────┐
-          │                   │           ▼             ▼
-          │                   │     **LOCAL**    **ESCAPING**
-          ▼                   ▼    (Scope-Bound) (Heap-Bound)
-      Pure ASAP           Standard RC     RC     Component/Tarjan
-     (free_tree)          (dec_ref)    (dec_ref) (release_scc)
+```mermaid
+graph TD
+    A[Source.omni] --> B(OmniLisp Compiler 'omnilisp')
+    B --> C{Static Analysis}
+    C -->|Escape Analysis| D[Region Inference]
+    C -->|Branch Narrowing| E[Scope Tree]
+    D --> F[Codegen 'csrc/codegen']
+    E --> F
+    F --> G[Output.c]
+    G --> H((C Compiler 'gcc/clang'))
+    I[Runtime 'libomni.a'] --> H
+    H --> J[Executable Binary]
 ```
 
-## 2. Proposed Region-Based RC (RC-G) Architecture
+## 2. Implemented Memory Architecture (Region-RC)
 
-This model unifies the strategies under the concept of **Regions**. Every object belongs to a Region (Logical Group). The "Escape" path now leads to **Region-RC** instead of individual object RC.
+This model is fully implemented. It unifies memory management under **Regions**, controlled by static analysis and runtime topology.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -45,7 +33,7 @@ This model unifies the strategies under the concept of **Regions**. Every object
           ┌───────────────────┴───────────────────┐
           ▼                                       ▼
     **NO ESCAPE**                           **ESCAPES**
- (Local Scratchpad)                      (Shared / Returned)
+ (Local Scratchpad/Stack)                (Shared / Returned)
           │                                       │
           │                               ┌───────┴───────┐
           │                               ▼               ▼
@@ -60,46 +48,61 @@ This model unifies the strategies under the concept of **Regions**. Every object
                                     Mutation            Reclaimed
 ```
 
-## 3. The "Tarjan vs. Region" Deallocation Showdown
+## 3. Branch-Level Region Narrowing (Phase 15)
 
-This diagram specifically illustrates *why* Tarjan is slower and why Regions are faster.
+Implemented in `csrc/analysis` and `csrc/codegen`.
 
-### A. Current: Tarjan (SCC) Deallocation
-*Constraint:* Must discover the cycle shape at runtime.
-
-```text
-       Step 1: RC=0       Step 2: Traverse (DFS)      Step 3: Free
-      (Trigger)          (Cache Miss City!)          (One by one)
-
-      [Root] --.          [Root]?-> [A]?              Free([Root])
-                \             |      |                Free([A])
-                 v            v      v                Free([B])
-                [A] <------> [B] -> [C]?              Free([C])
-                 |            ^      |                Free([D])
-                 v            |      v
-                [D] ----------'     [D]?
-
-    * Latency: O(N) - proportional to graph size.
-    * Cache:   Thrashing (chasing pointers).
-    * Logic:   Complex (Stack, LowLinks, Indices).
+```
+Function Scope
+┌─────────────────────────────────────────────────────────┐
+│  Region R_Func                                          │
+│                                                         │
+│  (let [x (heavy-computation)]                           │
+│     (if (condition)                                     │
+│         ┌─────────────────────────┐                     │
+│         │ Branch A (Escaping)     │                     │
+│         │ [Allocates in R_Func]   │                     │
+│         │ Returns x               │                     │
+│         └─────────────────────────┘                     │
+│         ┌─────────────────────────┐                     │
+│         │ Branch B (Local)        │                     │
+│         │ [Stack / Temp Region]   │◄── OPTIMIZED        │
+│         │ (print "debug")         │    Allocations here │
+│         │ Returns 0               │    do NOT pollute   │
+│         └─────────────────────────┘    R_Func           │
+│     ))                                                  │
+└─────────────────────────────────────────────────────────┘
 ```
 
-### B. Proposed: Region-Hybrid Deallocation
-*Constraint:* Structure is pre-grouped.
+## 4. Concurrency Model
 
 ```text
-       Step 1: RC=0       Step 2: Drop Block          Step 3: Done.
-      (Trigger)          (Pointer Arithmetic)
-
-      [Region RCB] --.    [ Arena Block 1 ]  ---->  (Return to OS/Pool)
-       (Count=0)      \
-                       \
-                        ->[ Arena Block 2 ]  ---->  (Return to OS/Pool)
-                          (Contains Root, A,
-                           B, C, D packed
-                           contiguously)
-
-    * Latency: O(1) - proportional to number of blocks (usually 1 or 2).
-    * Cache:   Hot (Only touched the Header).
-    * Logic:   Trivial (free(ptr)).
+┌─────────────────────────────────────────────────────────────────┐
+│ Thread Local Storage (TLS)                                      │
+│ ┌─────────────────────────────────────────────────────────────┐ │
+│ │ Tether Cache (MAX=16)                                       │ │
+│ │ ├─ [Region A]: Count 3  ───┐                                │ │
+│ │ └─ [Region B]: Count 1  ───│──┐                             │ │
+│ └────────────────────────────│──│─────────────────────────────┘ │
+└──────────────────────────────│──│───────────────────────────────┘
+                               │  │
+        Refers to/Pins         │  │
+                               ▼  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Region Control Block (RCB)                                      │
+│ ├─ external_rc:  [Atomic] (Strong refs from other regions/stack)│
+│ ├─ tether_count: [Atomic] (Sum of all active thread borrows)    │
+│ ├─ scope_alive:  [Bool]   (Static liveness signal from ASAP)    │
+│ └─ arena:        [Arena]  (Physical bump allocator)             │
+└───────────────────────────────────────┬─────────────────────────┘
+                                        │
+                                        │ owns
+                                        ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Arena (Linked Physical Blocks)                                  │
+│ ┌──────────────┐      ┌──────────────┐      ┌──────────────┐    │
+│ │ Block 1      │───▶  │ Block 2      │───▶  │ Block 3 (End)│    │
+│ │ [Obj][Obj]   │      │ [Obj][String]│      │ [Free Space] │    │
+│ └──────────────┘      └──────────────┘      └──────────────┘    │
+└─────────────────────────────────────────────────────────────────┘
 ```
