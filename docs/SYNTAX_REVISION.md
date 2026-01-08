@@ -15,13 +15,50 @@ This document defines the definitive syntax for OmniLisp, adhering strictly to t
 
 ## 2. Bindings & Function Definitions
 
-Functions follow a strict Flow template. Parameters are Slots `[]` containing typed/untyped names.
+Functions use Slot `[]` syntax for parameters, with **optional** type annotations in Kind `{}`.
 
-### 2.1 Basic Definition
+### 2.1 Function Definition Syntax
+
+**Two forms are supported:**
+
+#### Traditional Shorthand (Ergonomic Default)
 ```lisp
-;; (define [parameters] {return-type} (body))
-(define [x {Int} y {Int}] {Int}
+;; No types - concise for prototyping
+(define add x y
   (+ x y))
+
+;; Single parameter
+(define square x
+  (* x x))
+
+;; Equivalent to:
+(define add [x] [y]
+  (+ x y))
+```
+
+#### Slot Syntax (Explicit/Typed)
+```lisp
+;; All parameters typed
+(define add [x {Int}] [y {Int}] {Int}
+  (+ x y))
+
+;; Mixed - some typed, some not
+(define map [fn] [xs {List}] {List}
+  (fn xs))
+
+;; All parameters in Slots, types optional
+(define process [x] [y {Int}] [z {Float}]
+  (body))
+```
+
+**Syntax Pattern:**
+```lisp
+(define function-name
+  [param1 {Type}?]    ;; Slot with optional type
+  param2              ;; Shorthand: param without Slot = untyped
+  [param3 {Type}?]
+  {ReturnType}?        ;; Optional return type
+  body)
 ```
 
 ### 2.2 Diagonal Dispatch & Constraints (`^:where`)
@@ -29,10 +66,33 @@ To enforce that multiple arguments share the same type or to restrict generics.
 
 ```lisp
 ;; x and y MUST be the same T, where T is a Number
-(define ^:where [T {Number}] 
-  [x {T} y {T}] {T}
+(define ^:where [T {Number}]
+  [x {T}] [y {T}] {T}
   (+ x y))
 ```
+
+### 2.3 Lambda Shorthands (`fn` and `λ`)
+The symbols `fn` and `λ` use the same Slot pattern.
+
+```lisp
+;; Untyped parameters (shorthand)
+(fn x y
+  (+ x y))
+
+;; Single parameter
+(fn [x] (* x x))
+(λ [x] (* x x))
+
+;; Typed parameters
+(fn [x {Int}] [y {Int}] {Int}
+  (+ x y))
+
+;; Mixed types
+(fn [x] [y {String}] {String}
+  (concat x y))
+```
+
+**Consistency Note:** Lambdas follow the same pattern as `define` - Slots `[]` for parameters, optional types in `{}`.
 
 ---
 
@@ -55,22 +115,30 @@ The bit-width is passed as Slot data `[]` to the constructor.
 ```
 
 ### 3.3 Composite Types (Structs)
-Fields are defined in a Slot `[]`.
+Fields are defined in a Slot `[]`, following the same pattern: `[field {Type}?]`
 
 ```lisp
-;; Immutable Struct
+;; Immutable Struct - all fields typed
 (define ^:parent {Any} {struct Point}
-  [x {Float64} y {Float64}])
+  [x {Float64}] [y {Float64}])
+
+;; Mixed - some typed, some not
+(define {struct Person}
+  [name]               ;; untyped field
+  [age {Int}]           ;; typed field
+  [email {String}])
 
 ;; Mutable Struct (Field-level)
 (define {struct Player}
-  [^:mutable hp {Int32} 
-   name {String}])
+  [^:mutable hp {Int32}]
+  [name {String}])
 
 ;; Global Mutability Sugar
 (define ^:mutable {struct AtomicState}
   [value {Any}])
 ```
+
+**Consistency:** Struct fields use the same `[name {Type}?]` pattern as function parameters.
 
 ### 3.4 Parametric Types & Variance
 Parameters are Slots. Variance is metadata on the parameter.
@@ -147,58 +215,6 @@ Slot-based containers (Arrays, Mutable Structs) are **Invariant**.
 
 ---
 
-## 2. Bindings & Function Definitions
-
-### 2.3 Lambda Shorthands (`fn` and `λ`)
-The symbols `fn` and `λ` are reserved for lambda construction.
-
-```lisp
-;; Single argument
-(fn [x] (* x x))
-(λ [x] (* x x))
-
-;; Multiple arguments
-(fn [x y] (+ x y))
-```
-
----
-
-## 3. The Type System (Julia-Style)
-
-### 3.5 Struct Construction
-Structs support positional arguments, named arguments via `&`, or a mix.
-
-```lisp
-;; Definition
-(define {struct Point} [x {Float64} y {Float64}])
-
-;; Positional
-(Point 10.0 20.0)
-
-;; Named (using &)
-(Point & :x 10.0 :y 20.0)
-
-;; Mixed
-(Point 10.0 & :y 20.0)
-```
-
-### 3.6 Multiple Dispatch (Julia-Style)
-OmniLisp does not have class-based methods or an implicit `self`. Instead, it uses multiple dispatch on regular functions.
-
-```lisp
-;; Define a generic function for Circle
-(define [c {Circle}] {Float64}
-  (area c)
-  (* 3.14 (* c.radius c.radius)))
-
-;; Define the same function for Rectangle
-(define [r {Rect}] {Float64}
-  (area r)
-  (* r.width r.height))
-```
-
----
-
 ## 4. Type Algebra & Parser Modes
 
 ### 4.3 Pika Parser Modes
@@ -270,14 +286,27 @@ Branches are Slot pairs `[]` within the Flow.
 ```
 
 ### 6.2 `let` (Local Bindings)
+Let bindings use Slot `[]` syntax with optional types: `[name {Type}? value]`
+
 ```lisp
-(let [x 10 y {Int} 20]
+;; Untyped bindings (shorthand)
+(let [x 10] [y 20]
   (+ x y))
 
-;; Sequential let
-(let ^:seq [x 1 y (+ x 1)]
+;; Typed bindings
+(let [x {Int} 10] [y {Int} 20]
+  (+ x y))
+
+;; Mixed - some typed, some not
+(let [x 10] [y {Int} 20]
+  (+ x y))
+
+;; Sequential let (each binding sees previous ones)
+(let ^:seq [x 1] [y (+ x 1)]
   y)
 ```
+
+**Consistency:** Let bindings follow the same `[name {Type}?]` pattern as function parameters.
 
 ---
 
