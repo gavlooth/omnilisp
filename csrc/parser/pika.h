@@ -30,6 +30,12 @@ typedef struct PikaMatch {
 /* Semantic action callback */
 typedef OmniValue* (*PikaActionFn)(struct PikaState* state, size_t pos, PikaMatch match);
 
+/* Output mode for parser */
+typedef enum {
+    PIKA_OUTPUT_AST,      /* Default: Return processed AST nodes (via semantic actions) */
+    PIKA_OUTPUT_STRING    /* Return raw matched text as OMNI_STRING */
+} PikaOutputMode;
+
 /* Rule types */
 typedef enum {
     PIKA_TERMINAL,  /* Literal string */
@@ -66,6 +72,9 @@ typedef struct PikaState {
     int num_rules;
     PikaRule* rules;
 
+    /* Output mode: AST (default) or STRING (raw text) */
+    PikaOutputMode output_mode;
+
     /* Memoization table: [input_len + 1][num_rules] */
     PikaMatch* table;
 } PikaState;
@@ -77,6 +86,9 @@ PikaState* pika_new(const char* input, PikaRule* rules, int num_rules);
 
 /* Free parser state */
 void pika_free(PikaState* state);
+
+/* Set the output mode for the parser */
+void pika_set_output_mode(PikaState* state, PikaOutputMode mode);
 
 /* Run the parser and return the result of the root rule at position 0 */
 OmniValue* pika_run(PikaState* state, int root_rule_id);

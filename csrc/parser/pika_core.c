@@ -17,6 +17,7 @@ PikaState* pika_new(const char* input, PikaRule* rules, int num_rules) {
     state->input_len = strlen(input);
     state->num_rules = num_rules;
     state->rules = rules;
+    state->output_mode = PIKA_OUTPUT_AST;  /* Default to AST mode */
 
     size_t table_size = (state->input_len + 1) * num_rules;
     state->table = calloc(table_size, sizeof(PikaMatch));
@@ -32,6 +33,11 @@ void pika_free(PikaState* state) {
     if (!state) return;
     if (state->table) free(state->table);
     free(state);
+}
+
+void pika_set_output_mode(PikaState* state, PikaOutputMode mode) {
+    if (!state) return;
+    state->output_mode = mode;
 }
 
 PikaMatch* pika_get_match(PikaState* state, size_t pos, int rule_id) {
@@ -200,7 +206,8 @@ OmniValue* pika_run(PikaState* state, int root_rule_id) {
 
                 if (result.matched != existing->matched || result.len != existing->len) {
                     *existing = result;
-                    if (result.matched && state->rules[r].action) {
+                    /* Only run semantic actions in AST mode */
+                    if (result.matched && state->rules[r].action && state->output_mode == PIKA_OUTPUT_AST) {
                         existing->val = state->rules[r].action(state, (size_t)pos, result);
                     }
                     changed = true;
@@ -211,8 +218,19 @@ OmniValue* pika_run(PikaState* state, int root_rule_id) {
 
     PikaMatch* root = get_match(state, 0, root_rule_id);
     if (root && root->matched) {
+        /* In STRING mode, return raw matched text as OMNI_STRING */
+        if (state->output_mode == PIKA_OUTPUT_STRING) {
+            char* s = malloc(root->len + 1);
+            memcpy(s, state->input, root->len);
+            s[root->len] = '\0';
+            OmniValue* v = omni_new_string(s);
+            free(s);
+            return v;
+        }
+
+        /* In AST mode (default), return processed AST node */
         if (root->val) return root->val;
-        /* Return matched text as symbol if no action */
+        /* Fallback: return matched text as symbol if no action */
         char* s = malloc(root->len + 1);
         memcpy(s, state->input, root->len);
         s[root->len] = '\0';

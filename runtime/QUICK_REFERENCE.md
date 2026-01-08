@@ -86,6 +86,31 @@ void arena_destroy(Arena*);
 void arena_register_external(Arena*, void*, void(*)(void*));
 ```
 
+## Region-RC (RC-G) Core Operations
+
+```c
+// Region lifecycle (with pool optimization - Phase 24)
+region_create(void)
+region_exit(Region* r)
+region_destroy_if_dead(Region* r)
+
+// Reference counting
+region_retain(RegionRef ref)
+region_release(RegionRef ref)
+
+// Thread-safe tethering (for concurrent access)
+region_tether_start(Region* r)
+region_tether_end(Region* r)
+
+// Allocation (inline fastpath - Phase 24)
+region_alloc(Region* r, size_t size)  // static inline
+
+// Transmigration with bitmap cycle detection
+transmigrate(void* root, Region* src, Region* dest)
+transmigrate_incremental(void* root, Region* src, Region* dest, int chunk_size)
+region_splice(Region* dest, Region* src, void* start_ptr, void* end_ptr)
+```
+
 ## IRegion Interface
 
 ```c
@@ -241,13 +266,36 @@ closure_validate(Closure*)         // Check captures valid
 closure_release(Closure*)
 ```
 
-## Component Tethering (Cyclic Islands)
-- `sym_component_new()`: Create unit of reclamation
-- `sym_acquire_handle(c)`: Increment handle count (ASAP managed)
-- `sym_release_handle(c)`: Decrement handle count
-- `sym_tether_begin(c)`: Zero-cost scoped access
-- `sym_tether_end(t)`: Release scope tether
-- `sym_component_add_member(c, obj)`: Add object to island
+## Region-RC (RC-G) Optimized Constructors
+
+```c
+// Batch list allocation (Phase 24 optimized)
+mk_list_region(Region* r, int n)
+mk_list_from_array_region(Region* r, Obj** values, int n)
+
+// Batch tree allocation (Phase 24 optimized)
+mk_tree_region(Region* r, int depth)
+
+// Single-allocation Array+data (Phase 24 optimized)
+mk_array_region_batch(Region* r, int capacity)
+mk_array_of_ints_region(Region* r, long* values, int count)
+
+// Single-allocation Dict+buckets (Phase 24 optimized)
+mk_dict_region_batch(Region* r, int initial_buckets)
+```
+
+## Optimized Transmigration (Phase 24)
+
+```c
+// Standard transmigration with bitmap cycle detection
+transmigrate(void* root, Region* src, Region* dest)
+
+// Incremental (batched) transmigration for sparse access patterns
+transmigrate_incremental(void* root, Region* src, Region* dest, int chunk_size)
+
+// O(1) region splicing (automatic for result-only regions)
+region_splice(Region* dest, Region* src, void* start_ptr, void* end_ptr)
+```
 
 ## SCC-Based RC
 
