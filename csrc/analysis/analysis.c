@@ -320,40 +320,142 @@ static void analyze_symbol(AnalysisContext* ctx, OmniValue* expr) {
     ctx->position++;
 }
 
+/* Helper: Extract parameter name from a Slot or symbol
+ * Returns NULL if not a valid parameter form
+ * Supports:
+ *   - Plain symbol: x
+ *   - Slot array: [x]
+ *   - Slot with type: [x {Int}]
+ */
+static OmniValue* extract_param_name(OmniValue* param) {
+    if (omni_is_sym(param)) {
+        /* Plain symbol: x */
+        return param;
+    }
+    if (omni_is_array(param) && param->array.len > 0) {
+        /* Slot: [x] or [x {Type}] - first element is the name */
+        OmniValue* first = omni_array_get(param, 0);
+        if (omni_is_sym(first)) {
+            return first;
+        }
+    }
+    return NULL;
+}
+
 static void analyze_define(AnalysisContext* ctx, OmniValue* expr) {
-    /* (define name value) or (define (name params...) body) */
+    /* Multiple forms supported:
+     *   - Simple define: (define x value)
+     *   - Traditional function: (define (f x y) body)
+     *   - Slot shorthand: (define f x y body)
+     *   - Slot syntax: (define f [x] [y] body)
+     *   - Slot with types: (define f [x {Int}] [y {String}] body)
+     *   - Mixed syntax: (define f x [y {Int}] z body)
+     */
     OmniValue* args = omni_cdr(expr);
     if (omni_is_nil(args)) return;
 
     OmniValue* name_or_sig = omni_car(args);
-    OmniValue* body = omni_cdr(args);
+    OmniValue* rest = omni_cdr(args);
 
     if (omni_is_sym(name_or_sig)) {
+        /* Check if this is (define f x y body...) - Slot shorthand form
+         * vs (define x value) - Simple define form
+         *
+         * Distinguish by checking if:
+         * - rest has multiple elements (params + body)
+         * - next elements look like parameters (symbols or arrays)
+         */
+        if (!omni_is_nil(rest) && omni_is_cell(rest)) {
+            OmniValue* maybe_param = omni_car(rest);
+            OmniValue* name_val = extract_param_name(maybe_param);
+
+            if (name_val != NULL) {
+                /* Slot shorthand: (define f x y body...) or (define f [x] [y] body...) */
+                mark_var_write(ctx, name_or_sig->str_val);
+                ctx->position++;
+
+                /* Mark parameters until we hit the body (last element or until we see a non-param) */
+                /* For now, assume all but last are params, last is body */
+                OmniValue* params_list = rest;
+                int param_count = 0;
+
+                /* Count parameters (all but last element) */
+                while (!omni_is_nil(params_list) && omni_is_cell(params_list)) {
+                    if (omni_is_nil(omni_cdr(params_list))) {
+                        /* Last element - this is the body, not a parameter */
+                        break;
+                    }
+                    param_count++;
+                    params_list = omni_cdr(params_list);
+                }
+
+                /* Now process the parameters */
+                params_list = rest;
+                int i = 0;
+                while (!omni_is_nil(params_list) && omni_is_cell(params_list) && i < param_count) {
+                    OmniValue* param = omni_car(params_list);
+                    OmniValue* param_name = extract_param_name(param);
+
+                    if (param_name) {
+                        VarUsage* u = find_or_create_var_usage(ctx, param_name->str_val);
+                        u->is_param = true;
+                        u->def_pos = ctx->position;
+                        ctx->position++;
+                    }
+                    /* TODO: If param is array with 2 elements [name {Type}], store type info */
+
+                    i++;
+                    params_list = omni_cdr(params_list);
+                }
+
+                /* Analyze body in return position */
+                bool old_return_pos = ctx->in_return_position;
+                ctx->in_return_position = true;
+                ctx->scope_depth++;
+
+                /* The last element is the body */
+                while (!omni_is_nil(params_list) && omni_is_cell(params_list)) {
+                    OmniValue* body_expr = omni_car(params_list);
+                    ctx->in_return_position = omni_is_nil(omni_cdr(params_list));
+                    analyze_expr(ctx, body_expr);
+                    params_list = omni_cdr(params_list);
+                }
+
+                ctx->scope_depth--;
+                ctx->in_return_position = old_return_pos;
+                return;
+            }
+        }
+
         /* Simple define: (define x value) */
         mark_var_write(ctx, name_or_sig->str_val);
         ctx->position++;
 
-        if (!omni_is_nil(body)) {
-            analyze_expr(ctx, omni_car(body));
+        if (!omni_is_nil(rest)) {
+            analyze_expr(ctx, omni_car(rest));
         }
     } else if (omni_is_cell(name_or_sig)) {
-        /* Function define: (define (f x y) body) */
+        /* Traditional function define: (define (f x y) body) */
         OmniValue* fname = omni_car(name_or_sig);
         if (omni_is_sym(fname)) {
             mark_var_write(ctx, fname->str_val);
         }
         ctx->position++;
 
-        /* Mark parameters */
+        /* Mark parameters - support both plain symbols and Slot syntax */
         OmniValue* params = omni_cdr(name_or_sig);
         while (!omni_is_nil(params) && omni_is_cell(params)) {
             OmniValue* param = omni_car(params);
-            if (omni_is_sym(param)) {
-                VarUsage* u = find_or_create_var_usage(ctx, param->str_val);
+            OmniValue* param_name = extract_param_name(param);
+
+            if (param_name) {
+                VarUsage* u = find_or_create_var_usage(ctx, param_name->str_val);
                 u->is_param = true;
                 u->def_pos = ctx->position;
                 ctx->position++;
             }
+            /* TODO: If param is array with 2 elements [name {Type}], store type info */
+
             params = omni_cdr(params);
         }
 
@@ -362,11 +464,11 @@ static void analyze_define(AnalysisContext* ctx, OmniValue* expr) {
         ctx->in_return_position = true;
         ctx->scope_depth++;
 
-        while (!omni_is_nil(body) && omni_is_cell(body)) {
+        while (!omni_is_nil(rest) && omni_is_cell(rest)) {
             /* Last expr is in return position */
-            ctx->in_return_position = omni_is_nil(omni_cdr(body));
-            analyze_expr(ctx, omni_car(body));
-            body = omni_cdr(body);
+            ctx->in_return_position = omni_is_nil(omni_cdr(rest));
+            analyze_expr(ctx, omni_car(rest));
+            rest = omni_cdr(rest);
         }
 
         ctx->scope_depth--;
@@ -4622,20 +4724,16 @@ TypeDef* omni_register_struct_type(AnalysisContext* ctx, const char* name,
 /* Add type parameter to a type definition */
 void omni_type_add_param(TypeDef* type, const char* param_name, VarianceKind variance) {
     if (!type || !param_name) return;
+    (void)variance;  /* TODO: Store variance info per parameter */
 
-    /* Allocate or expand type params array */
-    if (!type->type_params) {
-        type->type_param_capacity = 4;
-        type->type_params = malloc(type->type_param_capacity * sizeof(char*));
-    }
+    /* Allocate or expand type params array using realloc */
+    size_t new_count = type->type_param_count + 1;
+    char** new_params = realloc(type->type_params, new_count * sizeof(char*));
+    if (!new_params) return;  /* Allocation failed */
 
-    if (type->type_param_count >= type->type_param_capacity) {
-        type->type_param_capacity *= 2;
-        type->type_params = realloc(type->type_params,
-                                     type->type_param_capacity * sizeof(char*));
-    }
-
-    type->type_params[type->type_param_count++] = strdup(param_name);
+    type->type_params = new_params;
+    type->type_params[type->type_param_count] = strdup(param_name);
+    type->type_param_count = new_count;
 }
 
 /* Get variance of a type parameter */
