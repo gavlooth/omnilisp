@@ -8,7 +8,9 @@
 #include "../src/memory/region_core.c"
 #include "../src/memory/transmigrate.c"
 #include "../src/memory/region_value.c"
+#include "../src/memory/region_metadata.c"
 #include "../src/runtime.c"
+#include "../src/math_numerics.c"
 
 /* Test counter definitions */
 int tests_run = 0;

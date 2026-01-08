@@ -210,7 +210,7 @@ Flow-based containers (Lists, Tuples) are **Covariant**.
 
 ### 4.2 Invariance (The `[]` Rule)
 Slot-based containers (Arrays, Mutable Structs) are **Invariant**.
-*   `[Array {Int}]` **is NOT a subtype of** `[Array {Any}]`.
+*   `(Array {Int})` **is NOT a subtype of** `(Array {Any})`.
 *   Reason: If you treat an `Array{Int}` as an `Array{Any}`, you might try to push a `String` into it, which violates memory safety.
 
 ---

@@ -2628,3 +2628,82 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
 9. T-wire-iterator-01 through 03: Iterators
 10. T-wire-fmt-string-01: Format strings
 
+---
+
+## Phase 26: Runtime Test Suite Build Fixes
+
+**Objective:** Fix linker errors in the runtime test suite caused by missing source file includes.
+
+- [R] Label: T-test-build-math-numerics
+  Objective: Include math_numerics.c and region_metadata.c in test suite compilation.
+  Reference: runtime/src/runtime.c:581-614 (arithmetic primitives commented out with #if 0)
+  Where: runtime/tests/test_main.c, runtime/src/math_numerics.c
+  Why: The arithmetic primitives (prim_add, prim_sub, prim_mul, prim_div, prim_mod, prim_abs)
+       were moved from runtime.c to math_numerics.c. The test suite includes runtime.c but
+       not math_numerics.c, causing undefined reference linker errors. Also region_metadata.c
+       was missing for type_metadata_init/get functions.
+  What: Add missing includes to test_main.c, add M_PI/M_E fallback definitions.
+
+  Implementation Details:
+    * Added to runtime/tests/test_main.c:
+      ```c
+      #include "../src/memory/region_metadata.c"
+      #include "../src/math_numerics.c"
+      ```
+    * Added fallback definitions to runtime/src/math_numerics.c:
+      ```c
+      #ifndef M_PI
+      #define M_PI 3.14159265358979323846
+      #endif
+      #ifndef M_E
+      #define M_E 2.71828182845904523536
+      #endif
+      ```
+    * This provides definitions for:
+      - prim_add(), prim_sub(), prim_mul(), prim_div(), prim_mod(), prim_abs()
+      - type_metadata_init(), type_metadata_get()
+      - M_PI, M_E constants (for strict C99 mode)
+
+  Verification:
+    * Test Input: `clang -std=c99 -pthread -I../include -I../src/memory -Wall -o test_runner test_main.c -lm`
+    * Previous Behavior: Linker errors - undefined reference to prim_add, type_metadata_init
+    * Current Behavior: Successful link with 0 errors, tests running
+
+- [R] Label: T-test-build-float-corruption
+  Objective: Fix memory corruption when allocating/freeing large numbers of floats.
+  Reference: runtime/tests/test_performance.c:57-74 (test_perf_alloc_float)
+  Where: runtime/src/memory/region_metadata.c (init_core_type_metadata)
+  Why: Running `test_perf_alloc_float` which allocates 5M floats then frees them causes
+       "malloc(): corrupted top size" error. This indicates heap corruption during either
+       allocation or deallocation of float objects.
+  What: Debug and fix the memory corruption in float object lifecycle.
+
+  Root Cause:
+    TypeMetadata for INT, FLOAT, and CHAR had incorrect .size values:
+    - TYPE_ID_INT had `.size = sizeof(long)` (8 bytes)
+    - TYPE_ID_FLOAT had `.size = sizeof(double)` (8 bytes)
+    - TYPE_ID_CHAR had `.size = sizeof(long)` (8 bytes)
+    But alloc_obj_typed writes to a full Obj struct (~40 bytes), causing buffer overflow.
+
+  Fix Applied:
+    Changed all three types in region_metadata.c to use `.size = sizeof(struct Obj)`:
+    ```c
+    r->type_table[TYPE_ID_INT] = (TypeMetadata){
+        .size = sizeof(struct Obj),  /* Was: sizeof(long) */
+        ...
+    };
+    r->type_table[TYPE_ID_FLOAT] = (TypeMetadata){
+        .size = sizeof(struct Obj),  /* Was: sizeof(double) */
+        ...
+    };
+    r->type_table[TYPE_ID_CHAR] = (TypeMetadata){
+        .size = sizeof(struct Obj),  /* Was: sizeof(long) */
+        ...
+    };
+    ```
+
+  Verification:
+    * Test Input: `RUNTIME_TEST_LEVEL=slow ./test_runner`
+    * Previous Behavior: Crashes with "malloc(): corrupted top size"
+    * Current Behavior: test_perf_alloc_float passes (27M+ ops/sec)
+

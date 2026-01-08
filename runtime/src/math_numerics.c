@@ -20,6 +20,14 @@
 #include "../include/omni.h"
 #include "internal_types.h"
 
+/* Ensure M_PI and M_E are defined (not always available in strict C99 mode) */
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+#ifndef M_E
+#define M_E 2.71828182845904523536
+#endif
+
 /* ============== Helper Functions ============== */
 
 /*

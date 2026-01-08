@@ -1953,6 +1953,7 @@ typedef struct {
     int iterations;
     double elapsed_us;
     long ops;
+    void* user_data;  /* For passing arbitrary data to threads */
 } ThreadPerfData;
 
 static void* thread_alloc_free(void* arg) {
@@ -2378,7 +2379,7 @@ void test_perf_conc_contention_test(void) {
 
 static void* thread_producer(void* arg) {
     ThreadPerfData* data = (ThreadPerfData*)arg;
-    Obj** queue = (Obj**)data->thread_id;  /* Abuse field for queue ptr */
+    Obj** queue = (Obj**)data->user_data;
     double start = perf_get_time_us();
 
     for (int i = 0; i < data->iterations; i++) {
@@ -2392,7 +2393,7 @@ static void* thread_producer(void* arg) {
 
 static void* thread_consumer(void* arg) {
     ThreadPerfData* data = (ThreadPerfData*)arg;
-    Obj** queue = (Obj**)data->thread_id;
+    Obj** queue = (Obj**)data->user_data;
     double start = perf_get_time_us();
 
     for (int i = 0; i < data->iterations; i++) {
@@ -2411,8 +2412,8 @@ static void* thread_consumer(void* arg) {
 void test_perf_conc_producer_consumer(void) {
     Obj** queue = calloc(1000, sizeof(Obj*));
 
-    ThreadPerfData prod_data = { .thread_id = (int)(intptr_t)queue, .iterations = 100000 };
-    ThreadPerfData cons_data = { .thread_id = (int)(intptr_t)queue, .iterations = 100000 };
+    ThreadPerfData prod_data = { .thread_id = 0, .iterations = 100000, .user_data = queue };
+    ThreadPerfData cons_data = { .thread_id = 1, .iterations = 100000, .user_data = queue };
     pthread_t producer, consumer;
 
     double start = perf_get_time_us();
@@ -3093,6 +3094,7 @@ void test_perf_cache_type_segregated(void) {
 void test_perf_cache_tree_depth_first(void) {
     /* Depth-first tree traversal */
     const int DEPTH = 15;  /* 2^15 - 1 = 32767 nodes */
+    (void)DEPTH;  /* Comment explains the node count */
 
     /* Build complete binary tree */
     Obj** nodes = malloc(sizeof(Obj*) * 32768);

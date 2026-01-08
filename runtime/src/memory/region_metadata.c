@@ -33,7 +33,7 @@ static void init_core_type_metadata(Region* r) {
     r->type_table[TYPE_ID_INT] = (TypeMetadata){
         .name = "Int",
         .type_id = TYPE_ID_INT,
-        .size = sizeof(long),
+        .size = sizeof(struct Obj),  /* Must be full Obj size, not just payload */
         .alignment = 8,
         .num_pointer_fields = 0,
         .pointer_offsets = {0},
@@ -50,7 +50,7 @@ static void init_core_type_metadata(Region* r) {
     r->type_table[TYPE_ID_FLOAT] = (TypeMetadata){
         .name = "Float",
         .type_id = TYPE_ID_FLOAT,
-        .size = sizeof(double),
+        .size = sizeof(struct Obj),  /* Must be full Obj size, not just payload */
         .alignment = 8,
         .num_pointer_fields = 0,
         .pointer_offsets = {0},
@@ -67,7 +67,7 @@ static void init_core_type_metadata(Region* r) {
     r->type_table[TYPE_ID_CHAR] = (TypeMetadata){
         .name = "Char",
         .type_id = TYPE_ID_CHAR,
-        .size = sizeof(long),
+        .size = sizeof(struct Obj),  /* Must be full Obj size, not just payload */
         .alignment = 8,
         .num_pointer_fields = 0,
         .pointer_offsets = {0},

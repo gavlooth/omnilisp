@@ -27,11 +27,41 @@ OmniLisp aims to combine the best of three worlds:
 
 **Type system features:**
 - Parameters in Slots `[]`, types in Kinds `{}` (optional)
-- Variance: `[^:covar T]` or `[^:contra T]`
+- Variance: `^:covar` or `^:covariant` (metadata on type parameters)
 - Unions: `(union [{Int} {String}])`
 - Abstract types: `{abstract Name}`
 - Structs: `{struct Name}`
-- Parent: `^:parent {ParentType}`
+- Parent: `^:parent {ParentType}` (metadata)
+
+**Dispatch in OmniLisp:**
+Multiple dispatch is achieved through **multiple `define` declarations** with the same name but different type constraints:
+
+```omnilisp
+;; Multiple defines = multiple dispatch methods
+(define process [x {Int}] {String}
+  "int method")
+
+(define process [x {Float}] {String}
+  "float method")
+
+;; Compiler analyzes all definitions and selects most specific
+```
+
+**Match expressions:**
+Pattern matching uses single `[]` brackets for pattern-result pairs:
+
+```omnilisp
+;; Single bracket syntax for match
+(match value
+  [(Cons head tail) (head)]
+  [_ value])
+
+;; Guards with :when
+(match x
+  [{Int} :when (> x 0) "positive"]
+  [{Int} "non-positive"]
+  [_ "not an integer"])
+```
 
 ---
 
@@ -46,18 +76,21 @@ OmniLisp aims to combine the best of three worlds:
 (define ^:parent {Number} {abstract Float} [])
 
 ;; Define covariant container
-(define {struct [^:covar T]} {Vector} [])
+(define {struct [^:covar T]} {Vector}
+  [data {T}])
 
 ;; Now we have:
-;; Vector{Int} ⊑ Vector{Number}  ✓  (covariant!)
+;; (Vector {Int}) ⊑ (Vector {Number})  ✓  (covariant!)
 
-;; Multiple dispatch via define patterns:
-(define foo
-  [[x {(Vector {Int})}]]      "int method"
-  [[x {(Vector {Number})}]]   "number method")
+;; Multiple dispatch via multiple defines:
+(define foo [x {(Vector {Int})}] {String}
+  "int method")
 
-;; Question: Which method for Vector{Int}?
-;; Answer: Vector{Int} method (more specific)
+(define foo [x {(Vector {Number})}] {String}
+  "number method")
+
+;; Question: Which method for (Vector {Int})?
+;; Answer: First method (Int is more specific than Number)
 ```
 
 **The conflict:** Covariant subtyping creates a **lattice** of types, not a tree. Multiple dispatch over this lattice can have ambiguous cases where no unique "most specific" method exists.
@@ -65,13 +98,15 @@ OmniLisp aims to combine the best of three worlds:
 ### Concrete Ambiguity Example
 
 ```omnilisp
-;; Ambiguous definition - no fallback:
-(define bar
-  [[x {(Vector {Int})}]]      1
-  [[x {(Vector {Float})}]]    2)
-  ;; No Vector{Number} method!
+;; Ambiguous definitions - no fallback:
+(define bar [x {(Vector {Int})}] {Int}
+  1)
 
-;; What if argument is Vector{Number} (abstract supertype)?
+(define bar [x {(Vector {Float})}] {Int}
+  2)
+  ;; No method for (Vector {Number})!
+
+;; What if argument is (Vector {Number}) (abstract supertype)?
 ;; Both methods are applicable, neither is more specific
 ;; → Compile-time error OR explicit disambiguation needed
 ```
@@ -125,6 +160,31 @@ This lattice encodes:
 ;; Union types
 (define {IntOrString} (union [{Int32} {String}]))
 ```
+
+**Character Calculus Note:**
+- `()` = Flow (execution, type construction): `(List T)` applies T to List
+- `[]` = Slot (data, parameters): `[head T]` is a field with type
+- `{}` = Kind (types, blueprints): `{T}` is the type T itself
+- `^` = Metadata (instructions): `^:parent {Number}` sets parent
+
+### Dispatch is Multiple `define` Declarations
+
+```omnilisp
+;; OmniLisp achieves multiple dispatch through multiple definitions:
+(define compute [x {Int}] {Int}
+  (* x 2))
+
+(define compute [x {Float}] {Float}
+  (* x 2.0))
+
+(define compute [x {Number}] {Number}
+  x)
+
+;; Call: (compute 42) → selects Int version
+;; Call: (compute 3.14) → selects Float version
+```
+
+The compiler collects all `define` forms with the same name and builds a dispatch table.
 
 ### Ambiguity Detection Algorithm
 
@@ -269,7 +329,7 @@ The algorithm extends naturally to multiple parameters:
 
 ;; This means:
 ;; (Vector {Int}) ⊑ (Vector {Number})  ✓ (covariant)
-;; [Array {Int}] ⊑ [Array {Number}]  ✗ (invariant)
+;; (Array {Int}) ⊑ (Array {Number})  ✗ (invariant)
 
 ;; Union types
 (define {IntOrString}
@@ -280,47 +340,71 @@ The algorithm extends naturally to multiple parameters:
 
 ```omnilisp
 ;; Compiler verifies: no ambiguity!
-(define foo
-  [[x {(Vector {Int})}]]      "int"
-  [[x {(Vector {Float})}]]    "float"
-  [[x {(Vector {Number})}]]   "number")  ; Fallback
+(define foo [x {(Vector {Int})}] {String}
+  "int")
+
+(define foo [x {(Vector {Float})}] {String}
+  "float")
+
+(define foo [x {(Vector {Number})}] {String}
+  "number")
 
 ;; Dispatch is guaranteed unambiguous:
-(foo (Vector {Int} [1 2 3]))    ; → "int"
-(foo (Vector {Float} [1.0]))    ; → "float"
-(foo (Vector {Number} [...]))   ; → "number"
+;; Call with (Vector {Int} ...) → first method
+;; Call with (Vector {Float} ...) → second method
+;; Call with other Vector subtypes → third method
 ```
 
 ### Handling Ambiguity in OmniLisp
 
 ```omnilisp
 ;; Compiler detects ambiguity:
-(define bar
-  [[x {(Vector {Int})}]]      1
-  [[x {(Vector {Float})}]]    2)
-  ;; ERROR: Ambiguous for (Vector {Number})
+(define bar [x {(Vector {Int})}] {Int}
+  1)
+
+(define bar [x {(Vector {Float})}] {Int}
+  2)
+;; ERROR: Ambiguous for (Vector {Number}) - no fallback
 
 ;; Solution 1: Add fallback method
-(define bar
-  [[x {(Vector {Int})}]]      1
-  [[x {(Vector {Float})}]]    2
-  [[x {(Vector {Number})}]]   3)  ; OK!
+(define bar [x {(Vector {Int})}] {Int}
+  1)
+
+(define bar [x {(Vector {Float})}] {Int}
+  2)
+
+(define bar [x {(Vector {Number})}] {Int}
+  3)
+;; OK!
 
 ;; Solution 2: Explicit priority (metadata)
-(define ^:priority [{(Vector {Int})} {(Vector {Float})}] bar
-  [[x {(Vector {Int})}]]      1
-  [[x {(Vector {Float})}]]    2)
+;; Attach to one of the definitions:
+(define ^:priority ((Vector {Int}) (Vector {Float})) bar
+  [x {(Vector {Int})}] {Int}
+  1)
 
-;; Solution 3: Runtime check (metadata)
-(define ^:ambiguous :runtime bar
-  [[x {(Vector {Int})}]]      1
-  [[x {(Vector {Float})}]]    2)
-
-;; Solution 4: Ambiguity handler (metadata)
 (define bar
-  [[x {(Vector {Int})}]]      1
-  [[x {(Vector {Float})}]]    2
-  ^:on-ambiguous [x] (error "Ambiguous dispatch for ~A" x))
+  [x {(Vector {Float})}] {Int}
+  2)
+
+;; Solution 3: Runtime resolution (metadata)
+(define ^:ambiguous :runtime bar
+  [x {(Vector {Int})}] {Int}
+  1)
+
+(define bar
+  [x {(Vector {Float})}] {Int}
+  2)
+
+;; Solution 4: Custom ambiguity handler (metadata)
+(define bar
+  [x {(Vector {Int})}] {Int}
+  1)
+
+(define ^:ambiguous (fn [x] {Int} (error "Ambiguous dispatch for ~A" x))
+  bar
+  [x {(Vector {Float})}] {Int}
+  2)
 ```
 
 ---
@@ -393,11 +477,13 @@ The algorithm extends naturally to multiple parameters:
 
 ```omnilisp
 ;; Union types interact with dispatch:
-(define foo
-  [[x {Int}]] 1
-  [[x {String}]] 2)
+(define foo [x {Int}] {Int}
+  1)
 
-;; What about (union [{Int} {String}).
+(define foo [x {String}] {Int}
+  2)
+
+;; What about (union [{Int} {String}])?
 ;; Both applicable - which wins?
 ;; Solution: Add Union case or use ^:priority metadata
 ```
@@ -411,9 +497,11 @@ The algorithm extends naturally to multiple parameters:
   [data {T}])
 
 ;; How does this interact with dispatch?
-(define bar
-  [[x {(NumericVector {Int})}]] ...
-  [[x {(NumericVector {Number})}]] ...)
+(define process [x {(NumericVector {Int})}] {String}
+  "int vector")
+
+(define process [x {(NumericVector {Number})}] {String}
+  "number vector")
 ```
 
 ### 3. Gradual typing integration?
@@ -421,11 +509,14 @@ The algorithm extends naturally to multiple parameters:
 ```omnilisp
 ;; How do static and dynamic types interact?
 ;; Untyped parameters (Slot without Kind):
-(define baz
-  [[x {(Vector {Int})}]] ...     ; Static
-  [[x]] ...)                       ; Dynamic (untyped)
+(define baz [x {(Vector {Int})}] {Int}
+  42)
+
+(define baz [x] {Int}  ; Dynamic (untyped)
+  x)
 
 ;; Can we infer the second from the first?
+;; Or do they coexist as separate methods?
 ```
 
 ### 4. Module system interactions?
@@ -433,13 +524,16 @@ The algorithm extends naturally to multiple parameters:
 ```omnilisp
 ;; How does ambiguity work across modules?
 ;; Module A defines:
-(define foo [[x {(Vector {Int})}]] ...)
+(define foo [x {(Vector {Int})}] {Int}
+  1)
 
 ;; Module B defines:
-(define foo [[x {(Vector {Float})}]] ...)
+(define foo [x {(Vector {Float})}] {Int}
+  2)
 
 ;; When both are imported - is this ambiguous?
 ;; Can we detect at module load time?
+;; Solution: Module-level disambiguation metadata
 ```
 
 ---
@@ -450,7 +544,7 @@ OmniLisp can achieve the **best of both worlds**:
 
 1. **Flexibility of Lisp** - Runtime dynamism when needed
 2. **Safety of static types** - Compile-time ambiguity detection
-3. **Power of multiple dispatch** - Composable polymorphism
+3. **Power of multiple dispatch** - Composable polymorphism via multiple `define`
 4. **Intuition of covariance** - Natural subtyping for containers
 
 The key insight: **Analyze what you can at compile time, fall back to runtime when you can't.**
@@ -469,6 +563,7 @@ This positions OmniLisp as:
 
 - Julia Type System: [A Type System for Julia](https://arxiv.org/abs/2009.07583)
 - OmniLisp Syntax Revision: `docs/SYNTAX_REVISION.md`
+- OmniLisp Language Reference: `docs/QUICK_REFERENCE.md`
 - Common Lisp CLOS: Chapters on Multiple Dispatch
 - Covariance and Subtyping: "On Variance and Subtyping"
 - Type Lattice Algorithms: "Lattice-based Type Inference"
