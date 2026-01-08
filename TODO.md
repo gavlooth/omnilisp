@@ -726,7 +726,7 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
 
 **Reference:** docs/ARCHITECTURE.md (Clarified Terminology section)
 
-- [TODO] Label: T-opt-compiler-type-inference-integration
+- [R] Label: T-opt-compiler-type-inference-integration
   Objective: Integrate type_id assignment into type inference pass.
   Reference: csrc/analysis/analysis.c (current type inference)
   Where: csrc/analysis/analysis.c
@@ -761,7 +761,7 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
     - Test: Variables in let bindings have type_id set
     - Test: Unknown types default to TYPE_ID_GENERIC
 
-- [TODO] Label: T-opt-compiler-codegen-direct-typed-alloc
+- [R] Label: T-opt-compiler-codegen-direct-typed-alloc
   Objective: Generate alloc_obj_typed() calls instead of constructor functions.
   Reference: csrc/codegen/codegen.c (current code generation)
   Where: csrc/codegen/codegen.c
@@ -799,7 +799,7 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
     - Test: Generated code compiles and runs correctly
     - Benchmark: Compare performance (should be same or slightly faster)
 
-- [TODO] Label: T-opt-compiler-escape-driven-allocation
+- [R] Label: T-opt-compiler-escape-driven-allocation
   Objective: Integrate escape analysis with inline allocation decisions.
   Reference: csrc/analysis/analysis.c (escape analysis), csrc/codegen/codegen.c (codegen)
   Where: csrc/codegen/codegen.c
@@ -836,7 +836,7 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
     - Test: Large escaping variables use arena
     - Benchmark: Measure allocation speedup
 
-- [TODO] Label: T-opt-compiler-type-coverage
+- [R] Label: T-opt-compiler-type-coverage
   Objective: Ensure type_id coverage for all 19 core types.
   Reference: runtime/src/memory/region_metadata.c (type definitions)
   Where: csrc/analysis/type_id.c (type mapping)
@@ -869,7 +869,7 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
     - Test: Type inference works for all types
     - Test: Codegen generates correct type_id for all types
 
-- [TODO] Label: T-opt-compiler-benchmark-typed-codegen
+- [R] Label: T-opt-compiler-benchmark-typed-codegen
   Objective: Benchmark the direct typed allocation codegen.
   Reference: runtime/bench/BENCHMARK_RESULTS_METADATA.md
   Where: Create csrc/bench/bench_typed_codegen.c
