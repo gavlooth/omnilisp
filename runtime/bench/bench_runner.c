@@ -27,6 +27,7 @@ extern int main_inline_alloc(int argc, char** argv);
 extern int main_specialized(int argc, char** argv);
 extern int main_batched_transmigrate(int argc, char** argv);
 extern int main_fat_baseline(int argc, char** argv);
+extern int main_typed_codegen(int argc, char** argv);
 
 typedef struct {
     const char* name;
@@ -84,6 +85,11 @@ static BenchmarkSuite suites[] = {
         "fat_baseline",
         "Fat pointer baseline (establish BEFORE implementing fat pointers)",
         main_fat_baseline
+    },
+    {
+        "typed_codegen",
+        "Typed allocation codegen benchmark (T-opt-compiler-benchmark-typed-codegen)",
+        main_typed_codegen
     },
     { NULL, NULL, NULL }
 };

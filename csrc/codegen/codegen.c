@@ -978,6 +978,11 @@ static void codegen_sym(CodeGenContext* ctx, OmniValue* expr) {
         else if (strcmp(name, "car") == 0) omni_codegen_emit_raw(ctx, "prim_car");
         else if (strcmp(name, "cdr") == 0) omni_codegen_emit_raw(ctx, "prim_cdr");
         else if (strcmp(name, "null?") == 0) omni_codegen_emit_raw(ctx, "prim_null");
+        else if (strcmp(name, "type?") == 0) omni_codegen_emit_raw(ctx, "prim_type_is");
+        else if (strcmp(name, "Int") == 0) omni_codegen_emit_raw(ctx, "o_Int");
+        else if (strcmp(name, "String") == 0) omni_codegen_emit_raw(ctx, "o_String");
+        else if (strcmp(name, "Any") == 0) omni_codegen_emit_raw(ctx, "o_Any");
+        else if (strcmp(name, "Nothing") == 0) omni_codegen_emit_raw(ctx, "o_Nothing");
         else {
             char* mangled = omni_codegen_mangle(name);
             omni_codegen_emit_raw(ctx, "%s", mangled);

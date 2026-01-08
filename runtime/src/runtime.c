@@ -1303,7 +1303,8 @@ Obj* prim_type_is(Obj* value, Obj* type_obj) {
 
     /* If type_obj is a Kind object, compare type names */
     if (IS_BOXED(type_obj) && type_obj->tag == TAG_KIND) {
-        const char* expected_type = (const char*)type_obj->ptr;
+        Kind* kind = (Kind*)type_obj->ptr;
+        const char* expected_type = kind->name;
         const char* actual_type = NULL;
 
         /* Get the actual type of the value */
