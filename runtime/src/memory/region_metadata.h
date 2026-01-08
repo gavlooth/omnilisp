@@ -20,7 +20,14 @@
 
 /* ========== Type ID Constants ========== */
 
-/* Core type IDs (compile-time constants) */
+/*
+ * Core type IDs (compile-time constants)
+ *
+ * Note: TypeID is defined in omni.h (public API). If omni.h is not included,
+ * we define it here for internal use.
+ */
+#ifndef OMNI_TYPE_ID_DEFINED
+#define OMNI_TYPE_ID_DEFINED
 typedef enum {
     TYPE_ID_INT = 0,
     TYPE_ID_FLOAT,
@@ -43,6 +50,7 @@ typedef enum {
     TYPE_ID_NOTHING,
     TYPE_ID_MAX
 } TypeID;
+#endif
 
 /* ========== Type Metadata Structure ========== */
 

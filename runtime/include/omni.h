@@ -29,6 +29,43 @@ typedef struct Region Region;
 /* Forward declaration for internal GenObj (legacy) */
 struct GenObj;
 
+/* ========== Type ID Constants (Phase 24: Region-Level Metadata) ========== */
+
+/*
+ * TypeID - Compile-time type identifier constants
+ *
+ * These values enable the compiler and runtime to use optimized allocation
+ * strategies based on type-specific metadata (size, pointer fields, inline
+ * capability, etc.).
+ *
+ * Aligned with TypeID enum in runtime/src/memory/region_metadata.h
+ */
+#ifndef OMNI_TYPE_ID_DEFINED
+#define OMNI_TYPE_ID_DEFINED
+typedef enum {
+    TYPE_ID_INT = 0,
+    TYPE_ID_FLOAT,
+    TYPE_ID_CHAR,
+    TYPE_ID_PAIR,      /* Cons cell */
+    TYPE_ID_ARRAY,
+    TYPE_ID_STRING,
+    TYPE_ID_SYMBOL,
+    TYPE_ID_DICT,
+    TYPE_ID_CLOSURE,
+    TYPE_ID_BOX,
+    TYPE_ID_CHANNEL,
+    TYPE_ID_THREAD,
+    TYPE_ID_ERROR,
+    TYPE_ID_ATOM,
+    TYPE_ID_TUPLE,
+    TYPE_ID_NAMED_TUPLE,
+    TYPE_ID_GENERIC,
+    TYPE_ID_KIND,
+    TYPE_ID_NOTHING,
+    TYPE_ID_MAX
+} TypeID;
+#endif
+
 /* Forward declaration for Generation type (used by BorrowRef).
  * Actual definition is later, conditional on IPGE_ROBUST_MODE. */
 #ifndef IPGE_ROBUST_MODE
@@ -870,6 +907,31 @@ void region_tether_end(struct Region* r);
 
 // Allocation (region_alloc is static inline in region_core.h)
 void* transmigrate(void* root, struct Region* src_region, struct Region* dest_region);
+
+/* Phase 24: Type-metadata-based allocation */
+/*
+ * alloc_obj_typed - Allocate an Obj using compile-time type_id
+ *
+ * This function uses region-level type metadata to determine the optimal
+ * allocation strategy:
+ * - Inline buffer: For small objects (when type->can_inline and space available)
+ * - Arena allocator: For larger objects
+ *
+ * The type_id enables compile-time optimization (no per-object tag overhead)
+ * and centralized metadata per region.
+ *
+ * Args:
+ *   r: Region to allocate in (must be valid)
+ *   type_id: Compile-time TypeID constant (e.g., TYPE_ID_INT, TYPE_ID_PAIR)
+ *
+ * Returns:
+ *   Pointer to allocated Obj, or NULL on failure
+ *
+ * Example:
+ *   Obj* int_obj = alloc_obj_typed(region, TYPE_ID_INT);
+ *   int_obj->i = 42;
+ */
+Obj* alloc_obj_typed(struct Region* r, TypeID type_id);
 
 /* Region-aware constructors */
 Obj* mk_int_region(struct Region* r, long i);
