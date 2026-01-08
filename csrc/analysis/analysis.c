@@ -477,29 +477,106 @@ static void analyze_define(AnalysisContext* ctx, OmniValue* expr) {
 }
 
 static void analyze_let(AnalysisContext* ctx, OmniValue* expr) {
-    /* (let ((x val) (y val)) body...) or (let [x val y val] body...) */
+    /* Multiple forms supported:
+     *   - List style: (let ((x val) (y val)) body...)
+     *   - Array style (old): (let [x val y val] body...)
+     *   - Slot syntax: (let [x val] [y val] body...)
+     *   - Slot with types: (let [x {Int} val] [y {String} val] body...)
+     *   - Mixed: (let [x val] [y {Int} val] body...)
+     */
     OmniValue* args = omni_cdr(expr);
     if (omni_is_nil(args)) return;
 
-    OmniValue* bindings = omni_car(args);
-    OmniValue* body = omni_cdr(args);
+    OmniValue* first = omni_car(args);
+    OmniValue* rest = omni_cdr(args);
 
     ctx->scope_depth++;
 
-    /* Handle array-style bindings [x 1 y 2] */
-    if (omni_is_array(bindings)) {
-        for (size_t i = 0; i + 1 < bindings->array.len; i += 2) {
-            OmniValue* name = bindings->array.data[i];
-            OmniValue* val = bindings->array.data[i + 1];
-            if (omni_is_sym(name)) {
-                mark_var_write(ctx, name->str_val);
-                ctx->position++;
+    /* Check if first element is an array - could be new Slot syntax or old array style */
+    if (omni_is_array(first)) {
+        /* Check if it's a single-element array [x val] -> Slot syntax
+         * or multi-element [x val y val] -> old array style */
+        if (omni_array_len(first) == 2 || omni_array_len(first) == 3) {
+            /* Likely Slot syntax: (let [x val] [y val] body...) */
+
+            /* Need to find where bindings end and body begins.
+             * Scan through list until we find a non-array element.
+             * For simplicity, assume all arrays until we run out are bindings,
+             * and the remaining elements form the body.
+             */
+            OmniValue* current = first;  /* Start with first binding */
+
+            /* Process bindings as long as they're arrays */
+            while (current && !omni_is_nil(current) && omni_is_cell(current)) {
+                OmniValue* elem = omni_car(current);
+
+                if (!omni_is_array(elem)) {
+                    /* Not an array - we've hit the body */
+                    break;
+                }
+
+                /* Process array binding: [name] or [name type] or [name val] or [name type val] */
+                size_t len = omni_array_len(elem);
+                if (len >= 1) {
+                    OmniValue* name_val = omni_array_get(elem, 0);
+                    if (omni_is_sym(name_val)) {
+                        mark_var_write(ctx, name_val->str_val);
+                        ctx->position++;
+                    }
+
+                    /* Analyze the value (last element if len >= 2, otherwise it's uninitialized) */
+                    if (len == 2) {
+                        /* [name val] */
+                        analyze_expr(ctx, omni_array_get(elem, 1));
+                    } else if (len == 3) {
+                        /* [name type val] - skip type, analyze val */
+                        analyze_expr(ctx, omni_array_get(elem, 2));
+                    }
+                    /* len == 1: [name] - uninitialized, don't analyze */
+                }
+
+                current = omni_cdr(current);
             }
-            analyze_expr(ctx, val);
+
+            /* The remaining elements form the body */
+            OmniValue* body = current;
+            bool old_return_pos = ctx->in_return_position;
+            while (!omni_is_nil(body) && omni_is_cell(body)) {
+                ctx->in_return_position = old_return_pos && omni_is_nil(omni_cdr(body));
+                analyze_expr(ctx, omni_car(body));
+                body = omni_cdr(body);
+            }
+            ctx->in_return_position = old_return_pos;
+        } else {
+            /* Old array style: (let [x val y val] body...) */
+            OmniValue* bindings = first;
+            OmniValue* body = rest;
+
+            for (size_t i = 0; i + 1 < bindings->array.len; i += 2) {
+                OmniValue* name = bindings->array.data[i];
+                OmniValue* val = bindings->array.data[i + 1];
+                if (omni_is_sym(name)) {
+                    mark_var_write(ctx, name->str_val);
+                    ctx->position++;
+                }
+                analyze_expr(ctx, val);
+            }
+
+            /* Analyze body */
+            bool old_return_pos = ctx->in_return_position;
+            while (!omni_is_nil(body) && omni_is_cell(body)) {
+                ctx->in_return_position = old_return_pos && omni_is_nil(omni_cdr(body));
+                analyze_expr(ctx, omni_car(body));
+                body = omni_cdr(body);
+            }
+            ctx->in_return_position = old_return_pos;
         }
     }
-    /* Handle list-style bindings ((x 1) (y 2)) */
-    else if (omni_is_cell(bindings)) {
+    /* Handle list-style bindings ((x 1) (y 2)) - first element is a list */
+    else if (omni_is_cell(first)) {
+        OmniValue* bindings = first;
+        OmniValue* body = rest;
+
         while (!omni_is_nil(bindings) && omni_is_cell(bindings)) {
             OmniValue* binding = omni_car(bindings);
             if (omni_is_cell(binding)) {
@@ -513,16 +590,16 @@ static void analyze_let(AnalysisContext* ctx, OmniValue* expr) {
             }
             bindings = omni_cdr(bindings);
         }
-    }
 
-    /* Analyze body */
-    bool old_return_pos = ctx->in_return_position;
-    while (!omni_is_nil(body) && omni_is_cell(body)) {
-        ctx->in_return_position = old_return_pos && omni_is_nil(omni_cdr(body));
-        analyze_expr(ctx, omni_car(body));
-        body = omni_cdr(body);
+        /* Analyze body */
+        bool old_return_pos = ctx->in_return_position;
+        while (!omni_is_nil(body) && omni_is_cell(body)) {
+            ctx->in_return_position = old_return_pos && omni_is_nil(omni_cdr(body));
+            analyze_expr(ctx, omni_car(body));
+            body = omni_cdr(body);
+        }
+        ctx->in_return_position = old_return_pos;
     }
-    ctx->in_return_position = old_return_pos;
 
     ctx->scope_depth--;
 }

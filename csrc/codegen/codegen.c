@@ -968,31 +968,121 @@ static void codegen_if(CodeGenContext* ctx, OmniValue* expr) {
 }
 
 static void codegen_let(CodeGenContext* ctx, OmniValue* expr) {
-    /* (let ((x val) ...) body) */
+    /* Multiple forms supported:
+     *   - List style: (let ((x val) (y val)) body...)
+     *   - Array style (old): (let [x val y val] body...)
+     *   - Slot syntax: (let [x val] [y val] body...)
+     *   - Slot with types: (let [x {Int} val] [y {String} val] body...)
+     *   - Mixed: (let [x val] [y {Int} val] body...)
+     */
     OmniValue* args = omni_cdr(expr);
-    OmniValue* bindings = omni_car(args);
-    OmniValue* body = omni_cdr(args);
+    OmniValue* first = omni_car(args);
+    OmniValue* rest = omni_cdr(args);
 
     omni_codegen_emit_raw(ctx, "({\n");
     omni_codegen_indent(ctx);
 
-    /* Emit bindings */
-    if (omni_is_array(bindings)) {
-        /* Array-style: [x 1 y 2] */
-        for (size_t i = 0; i + 1 < bindings->array.len; i += 2) {
-            OmniValue* name = bindings->array.data[i];
-            OmniValue* val = bindings->array.data[i + 1];
-            if (omni_is_sym(name)) {
-                char* c_name = omni_codegen_mangle(name->str_val);
-                omni_codegen_emit(ctx, "Obj* %s = ", c_name);
-                codegen_expr(ctx, val);
+    /* Check if first element is an array - could be new Slot syntax or old array style */
+    if (omni_is_array(first)) {
+        /* Check if it's a single-element array [x val] -> Slot syntax
+         * or multi-element [x val y val] -> old array style */
+        if (omni_array_len(first) == 2 || omni_array_len(first) == 3) {
+            /* Slot syntax: (let [x val] [y val] body...) */
+            OmniValue* current = first;
+
+            /* Process bindings as long as they're arrays */
+            while (current && !omni_is_nil(current) && omni_is_cell(current)) {
+                OmniValue* elem = omni_car(current);
+
+                if (!omni_is_array(elem)) {
+                    /* Not an array - we've hit the body */
+                    break;
+                }
+
+                /* Process array binding: [name val] or [name type val] */
+                size_t len = omni_array_len(elem);
+                if (len >= 2) {
+                    OmniValue* name_val = omni_array_get(elem, 0);
+                    if (omni_is_sym(name_val)) {
+                        char* c_name = omni_codegen_mangle(name_val->str_val);
+                        omni_codegen_emit(ctx, "Obj* %s = ", c_name);
+
+                        /* Get the value - last element */
+                        if (len == 2) {
+                            codegen_expr(ctx, omni_array_get(elem, 1));
+                        } else if (len == 3) {
+                            /* [name type val] - skip type at index 1, use val at index 2 */
+                            codegen_expr(ctx, omni_array_get(elem, 2));
+                        }
+
+                        omni_codegen_emit_raw(ctx, ";\n");
+                        register_symbol(ctx, name_val->str_val, c_name);
+                        free(c_name);
+                    }
+                }
+
+                current = omni_cdr(current);
+            }
+
+            /* Emit body */
+            OmniValue* result = NULL;
+            OmniValue* body = current;
+            while (!omni_is_nil(body) && omni_is_cell(body)) {
+                result = omni_car(body);
+                body = omni_cdr(body);
+                if (!omni_is_nil(body)) {
+                    omni_codegen_emit(ctx, "");
+                    codegen_expr(ctx, result);
+                    omni_codegen_emit_raw(ctx, ";\n");
+                }
+            }
+
+            if (result) {
+                omni_codegen_emit(ctx, "");
+                codegen_expr(ctx, result);
                 omni_codegen_emit_raw(ctx, ";\n");
-                register_symbol(ctx, name->str_val, c_name);
-                free(c_name);
+            }
+        } else {
+            /* Old array style: (let [x val y val] body...) */
+            OmniValue* bindings = first;
+            OmniValue* body = rest;
+
+            for (size_t i = 0; i + 1 < bindings->array.len; i += 2) {
+                OmniValue* name = bindings->array.data[i];
+                OmniValue* val = bindings->array.data[i + 1];
+                if (omni_is_sym(name)) {
+                    char* c_name = omni_codegen_mangle(name->str_val);
+                    omni_codegen_emit(ctx, "Obj* %s = ", c_name);
+                    codegen_expr(ctx, val);
+                    omni_codegen_emit_raw(ctx, ";\n");
+                    register_symbol(ctx, name->str_val, c_name);
+                    free(c_name);
+                }
+            }
+
+            /* Emit body */
+            OmniValue* result = NULL;
+            while (!omni_is_nil(body) && omni_is_cell(body)) {
+                result = omni_car(body);
+                body = omni_cdr(body);
+                if (!omni_is_nil(body)) {
+                    omni_codegen_emit(ctx, "");
+                    codegen_expr(ctx, result);
+                    omni_codegen_emit_raw(ctx, ";\n");
+                }
+            }
+
+            if (result) {
+                omni_codegen_emit(ctx, "");
+                codegen_expr(ctx, result);
+                omni_codegen_emit_raw(ctx, ";\n");
             }
         }
-    } else if (omni_is_cell(bindings)) {
-        /* List-style: ((x 1) (y 2)) */
+    } else if (omni_is_cell(first)) {
+        /* List-style bindings: ((x 1) (y 2)) */
+        OmniValue* bindings = first;
+        OmniValue* body = rest;
+
         while (!omni_is_nil(bindings) && omni_is_cell(bindings)) {
             OmniValue* binding = omni_car(bindings);
             if (omni_is_cell(binding)) {
@@ -1009,25 +1099,24 @@ static void codegen_let(CodeGenContext* ctx, OmniValue* expr) {
             }
             bindings = omni_cdr(bindings);
         }
-    }
 
-    /* Emit body */
-    OmniValue* result = NULL;
-    while (!omni_is_nil(body) && omni_is_cell(body)) {
-        result = omni_car(body);
-        body = omni_cdr(body);
-        if (!omni_is_nil(body)) {
+        /* Emit body */
+        OmniValue* result = NULL;
+        while (!omni_is_nil(body) && omni_is_cell(body)) {
+            result = omni_car(body);
+            body = omni_cdr(body);
+            if (!omni_is_nil(body)) {
+                omni_codegen_emit(ctx, "");
+                codegen_expr(ctx, result);
+                omni_codegen_emit_raw(ctx, ";\n");
+            }
+        }
+
+        if (result) {
             omni_codegen_emit(ctx, "");
             codegen_expr(ctx, result);
             omni_codegen_emit_raw(ctx, ";\n");
         }
-    }
-
-    /* Last expression is the result */
-    if (result) {
-        omni_codegen_emit(ctx, "");
-        codegen_expr(ctx, result);
-        omni_codegen_emit_raw(ctx, ";\n");
     }
 
     omni_codegen_dedent(ctx);
