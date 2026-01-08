@@ -349,6 +349,11 @@ static OmniValue* extract_param_name(OmniValue* param) {
 
 static void analyze_define(AnalysisContext* ctx, OmniValue* expr) {
     /* Multiple forms supported:
+     *   - Type definitions: (define {abstract Name} [])
+     *   - Type definitions: (define ^:parent {Any} {abstract Number} [])
+     *   - Type definitions: (define {primitive Float64} [64])
+     *   - Type definitions: (define {struct Point} [x {Float}] [y {Float}])
+     *   - Type definitions: (define {struct [^:covar T]} {List} [head {T}] [tail {List T}])
      *   - Simple define: (define x value)
      *   - Traditional function: (define (f x y) body)
      *   - Slot shorthand: (define f x y body)
@@ -361,6 +366,151 @@ static void analyze_define(AnalysisContext* ctx, OmniValue* expr) {
 
     OmniValue* name_or_sig = omni_car(args);
     OmniValue* rest = omni_cdr(args);
+
+    /* Phase 22: Type Definition Support */
+    /* Check if this is a type definition: (define {Kind Name} params...) */
+    if (omni_is_type_lit(name_or_sig)) {
+        const char* kind = name_or_sig->type_lit.type_name;
+
+        /* Extract metadata that may appear before the type literal */
+        /* Example: ^:parent {Number} {abstract Int} [] */
+        /* The parser should have already attached metadata to the expr */
+
+        /* Handle abstract types: (define {abstract Name} []) */
+        if (strcmp(kind, "abstract") == 0) {
+            if (name_or_sig->type_lit.param_count < 1) {
+                fprintf(stderr, "Error: abstract type requires a name\n");
+                return;
+            }
+            OmniValue* name_param = name_or_sig->type_lit.params[0];
+            const char* type_name = NULL;
+
+            /* Name could be a type literal or symbol */
+            if (omni_is_type_lit(name_param)) {
+                type_name = name_param->type_lit.type_name;
+            } else if (omni_is_sym(name_param)) {
+                type_name = name_param->str_val;
+            } else {
+                fprintf(stderr, "Error: abstract type name must be a symbol or type literal\n");
+                return;
+            }
+
+            /* Extract parent from metadata if present */
+            const char* parent = "Any";  /* Default parent */
+            /* TODO: Extract ^:parent metadata from expr */
+
+            /* Register the abstract type */
+            omni_register_abstract_type(ctx, type_name, parent);
+
+            /* Abstract types have no fields */
+            ctx->position++;  /* Count the definition */
+            return;
+        }
+
+        /* Handle primitive types: (define {primitive Name} [bit_width]) */
+        if (strcmp(kind, "primitive") == 0) {
+            if (name_or_sig->type_lit.param_count < 1) {
+                fprintf(stderr, "Error: primitive type requires a name\n");
+                return;
+            }
+            OmniValue* name_param = name_or_sig->type_lit.params[0];
+            const char* type_name = NULL;
+
+            if (omni_is_type_lit(name_param)) {
+                type_name = name_param->type_lit.type_name;
+            } else if (omni_is_sym(name_param)) {
+                type_name = name_param->str_val;
+            } else {
+                fprintf(stderr, "Error: primitive type name must be a symbol or type literal\n");
+                return;
+            }
+
+            /* Extract bit width from rest (should be an array) */
+            int bit_width = 0;
+            const char* parent = "Any";  /* Default parent for primitives */
+            if (!omni_is_nil(rest) && omni_is_cell(rest)) {
+                OmniValue* width_expr = omni_car(rest);
+                if (omni_is_array(width_expr) && width_expr->array.len > 0) {
+                    OmniValue* width_val = width_expr->array.data[0];
+                    if (omni_is_int(width_val)) {
+                        bit_width = (int)width_val->int_val;
+                    }
+                }
+            }
+
+            /* Register the primitive type */
+            omni_register_primitive_type(ctx, type_name, parent, bit_width);
+
+            ctx->position++;
+            return;
+        }
+
+        /* Handle struct types: (define {struct Name} [field1 {Type1}] [field2 {Type2}] ...) */
+        /* Or parametric: (define {struct [^:covar T]} {List} [head {T}] [tail {List T}]) */
+        if (strcmp(kind, "struct") == 0) {
+            if (name_or_sig->type_lit.param_count < 1) {
+                fprintf(stderr, "Error: struct type requires a name\n");
+                return;
+            }
+            OmniValue* name_param = name_or_sig->type_lit.params[0];
+            const char* type_name = NULL;
+
+            /* Name could be a symbol or type literal */
+            if (omni_is_type_lit(name_param)) {
+                type_name = name_param->type_lit.type_name;
+            } else if (omni_is_sym(name_param)) {
+                type_name = name_param->str_val;
+            } else if (omni_is_array(name_param)) {
+                /* Parametric type: [^:covar T] - extract type params */
+                /* The name will be the second parameter to the struct type constructor */
+                if (name_or_sig->type_lit.param_count >= 2) {
+                    OmniValue* actual_name_param = name_or_sig->type_lit.params[1];
+                    if (omni_is_type_lit(actual_name_param)) {
+                        type_name = actual_name_param->type_lit.type_name;
+                    } else if (omni_is_sym(actual_name_param)) {
+                        type_name = actual_name_param->str_val;
+                    }
+                }
+            }
+
+            if (!type_name) {
+                fprintf(stderr, "Error: struct type name must be a symbol or type literal\n");
+                return;
+            }
+
+            /* Check if this is a parametric type by examining name_param */
+            if (omni_is_array(name_param) && name_param->array.len >= 1) {
+                /* Extract type parameters with variance from array */
+                /* Example: [^:covar T] or [^:invariant T] */
+                for (size_t i = 0; i < name_param->array.len; i++) {
+                    OmniValue* param_elem = name_param->array.data[i];
+                    if (omni_is_sym(param_elem)) {
+                        const char* param_name = param_elem->str_val;
+                        /* Default to invariant */
+                        VarianceKind variance = VARIANCE_INVARIANT;
+                        /* TODO: Check for metadata ^:covar or ^:contra before this param */
+                        /* For now, just add the parameter */
+                        TypeDef* temp_type = omni_get_type(ctx, type_name);
+                        if (temp_type) {
+                            omni_type_add_param(temp_type, param_name, variance);
+                        }
+                    }
+                }
+            }
+
+            /* Register the struct type - pass the rest list which contains field definitions */
+            const char* parent = "Any";  /* Default parent */
+            /* TODO: Extract ^:parent metadata */
+            omni_register_struct_type(ctx, type_name, parent, rest);
+
+            ctx->position++;
+            return;
+        }
+
+        /* Unknown type kind */
+        fprintf(stderr, "Warning: Unknown type kind '%s' in type definition\n", kind);
+        return;
+    }
 
     if (omni_is_sym(name_or_sig)) {
         /* Check if this is (define f x y body...) - Slot shorthand form
@@ -765,7 +915,8 @@ static void analyze_list(AnalysisContext* ctx, OmniValue* expr) {
             analyze_let(ctx, expr);
             return;
         }
-        if (strcmp(name, "lambda") == 0 || strcmp(name, "fn") == 0) {
+        if (strcmp(name, "lambda") == 0 || strcmp(name, "fn") == 0 ||
+            strcmp(name, "λ") == 0) {  /* Greek letter lambda (U+03BB) */
             analyze_lambda(ctx, expr);
             return;
         }
@@ -1233,7 +1384,8 @@ void omni_analyze_reuse(AnalysisContext* ctx, OmniValue* expr) {
     }
 
     /* Handle lambda - analyze body */
-    if (strcmp(form, "lambda") == 0 || strcmp(form, "fn") == 0) {
+    if (strcmp(form, "lambda") == 0 || strcmp(form, "fn") == 0 ||
+        strcmp(form, "λ") == 0) {
         OmniValue* body = caddr(expr);
         omni_analyze_reuse(ctx, body);
         return;
@@ -1407,7 +1559,10 @@ static TypeID infer_type_from_expr(OmniValue* init) {
         }
 
         /* Check if it's a lambda/closure */
-        if (omni_is_sym(head) && strcmp(head->str_val, "lambda") == 0) {
+        if (omni_is_sym(head) &&
+            (strcmp(head->str_val, "lambda") == 0 ||
+             strcmp(head->str_val, "fn") == 0 ||
+             strcmp(head->str_val, "λ") == 0)) {
             return TYPE_ID_CLOSURE;
         }
 
@@ -1939,7 +2094,8 @@ static CFGNode* build_cfg_expr(CFG* cfg, OmniValue* expr, CFGNode* current) {
             strcmp(name, "letrec") == 0) {
             return build_cfg_let(cfg, expr, current);
         }
-        if (strcmp(name, "lambda") == 0 || strcmp(name, "fn") == 0) {
+        if (strcmp(name, "lambda") == 0 || strcmp(name, "fn") == 0 ||
+            strcmp(name, "λ") == 0) {
             return build_cfg_lambda(cfg, expr, current);
         }
         if (strcmp(name, "define") == 0) {
@@ -5022,33 +5178,83 @@ TypeDef* omni_register_struct_type(AnalysisContext* ctx, const char* name,
     type->field_capacity = 8;
     type->fields = malloc(type->field_capacity * sizeof(TypeField));
 
-    /* Parse fields from Slot [] syntax */
+    /* Phase 22: Parse fields from new [name {Type}] array syntax */
     if (fields && omni_is_cell(fields)) {
-        /* Fields are alternating name/type pairs */
-        OmniValue* f = fields;
-        while (!omni_is_nil(f) && omni_is_cell(f)) {
-            OmniValue* field_name = omni_car(f);
-            OmniValue* field_type = omni_car(omni_cdr(f));
+        /* Check if this is the new array syntax or old alternating pairs */
+        OmniValue* first = omni_car(fields);
+        if (omni_is_array(first)) {
+            /* New syntax: each field is [name {Type}] array */
+            OmniValue* f = fields;
+            while (!omni_is_nil(f) && omni_is_cell(f)) {
+                OmniValue* field_array = omni_car(f);
 
-            if (omni_is_sym(field_name)) {
-                TypeField tf;
-                tf.name = strdup(field_name->str_val);
-                tf.type_name = (field_type && omni_is_sym(field_type)) ?
-                               strdup(field_type->str_val) : NULL;
-                tf.strength = FIELD_STRONG;
-                tf.is_mutable = false;
-                tf.index = type->field_count;
-                tf.variance = VARIANCE_INVARIANT;
+                if (omni_is_array(field_array) && field_array->array.len >= 1) {
+                    const char* field_name = NULL;
+                    const char* field_type = NULL;
 
-                if (type->field_count >= type->field_capacity) {
-                    type->field_capacity *= 2;
-                    type->fields = realloc(type->fields,
-                                          type->field_capacity * sizeof(TypeField));
+                    /* Extract field name (first element) */
+                    OmniValue* name_elem = field_array->array.data[0];
+                    if (omni_is_sym(name_elem)) {
+                        field_name = name_elem->str_val;
+                    }
+
+                    /* Extract field type (second element, if present) */
+                    if (field_array->array.len >= 2) {
+                        OmniValue* type_elem = field_array->array.data[1];
+                        if (omni_is_type_lit(type_elem)) {
+                            field_type = type_elem->type_lit.type_name;
+                        } else if (omni_is_sym(type_elem)) {
+                            field_type = type_elem->str_val;
+                        }
+                    }
+
+                    if (field_name) {
+                        TypeField tf;
+                        tf.name = strdup(field_name);
+                        tf.type_name = field_type ? strdup(field_type) : NULL;
+                        tf.strength = FIELD_STRONG;
+                        tf.is_mutable = false;
+                        tf.index = type->field_count;
+                        tf.variance = VARIANCE_INVARIANT;
+
+                        if (type->field_count >= type->field_capacity) {
+                            type->field_capacity *= 2;
+                            type->fields = realloc(type->fields,
+                                                  type->field_capacity * sizeof(TypeField));
+                        }
+                        type->fields[type->field_count++] = tf;
+                    }
                 }
-                type->fields[type->field_count++] = tf;
-            }
 
-            f = omni_cdr(omni_cdr(f));  /* Skip name and type */
+                f = omni_cdr(f);
+            }
+        } else {
+            /* Old syntax: alternating name/type pairs */
+            OmniValue* f = fields;
+            while (!omni_is_nil(f) && omni_is_cell(f)) {
+                OmniValue* field_name = omni_car(f);
+                OmniValue* field_type = omni_car(omni_cdr(f));
+
+                if (omni_is_sym(field_name)) {
+                    TypeField tf;
+                    tf.name = strdup(field_name->str_val);
+                    tf.type_name = (field_type && omni_is_sym(field_type)) ?
+                                   strdup(field_type->str_val) : NULL;
+                    tf.strength = FIELD_STRONG;
+                    tf.is_mutable = false;
+                    tf.index = type->field_count;
+                    tf.variance = VARIANCE_INVARIANT;
+
+                    if (type->field_count >= type->field_capacity) {
+                        type->field_capacity *= 2;
+                        type->fields = realloc(type->fields,
+                                              type->field_capacity * sizeof(TypeField));
+                    }
+                    type->fields[type->field_count++] = tf;
+                }
+
+                f = omni_cdr(omni_cdr(f));  /* Skip name and type */
+            }
         }
     }
 

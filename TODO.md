@@ -2707,3 +2707,1956 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
     * Previous Behavior: Crashes with "malloc(): corrupted top size"
     * Current Behavior: test_perf_alloc_float passes (27M+ ops/sec)
 
+---
+
+## Phase 27: Julia-Level Type Specialization [ACTIVE]
+
+**Objective:** Implement Julia-style type specialization to eliminate boxing overhead and achieve native performance for numeric operations. **"OmniLisp is not fast because of ASAP, it's fast because of function specialization and type inference."**
+
+### Priority 1: Core Type Infrastructure
+
+- [R] Label: T-spec-type-env-01
+  Objective: Implement TypeEnv for tracking concrete types during analysis.
+  Reference: docs/TYPE_SPECIALIZATION_DESIGN.md (Phase 1: Type Inference Enhancement)
+  Where: csrc/analysis/type_env.h, csrc/analysis/type_env.c
+  Why: Need richer type representation than TypeID enum for specialization decisions.
+  What: Create type environment that tracks concrete types for variables in nested scopes.
+
+  Implementation Details:
+    * **Structs (type_env.h):**
+      ```c
+      typedef enum {
+          TYPE_KIND_PRIMITIVE,     /* Int, Float, Char, Bool */
+          TYPE_KIND_ARRAY,         /* Typed array */
+          TYPE_KIND_CLOSURE,       /* Function */
+          TYPE_KIND_ANY,           /* Unknown/generic */
+      } TypeKind;
+
+      typedef struct ConcreteType {
+          TypeKind kind;
+          union {
+              struct { PrimitiveType prim; int bit_width; } primitive;
+              struct { struct ConcreteType* element_type; int rank; bool is_mutable; } array;
+              struct { struct ConcreteType** param_types; int param_count; struct ConcreteType* return_type; } closure;
+          };
+      } ConcreteType;
+
+      typedef struct TypeBinding {
+          char* var_name;
+          ConcreteType* type;
+          struct TypeBinding* next;
+      } TypeBinding;
+
+      typedef struct TypeEnv {
+          TypeBinding* bindings;
+          struct TypeEnv* parent;  /* For nested scopes */
+      } TypeEnv;
+      ```
+    * **Functions (type_env.c):**
+      ```c
+      TypeEnv* type_env_new(TypeEnv* parent);
+      void type_env_bind(TypeEnv* env, const char* name, ConcreteType* type);
+      ConcreteType* type_env_lookup(TypeEnv* env, const char* name);
+      TypeEnv* type_env_push(TypeEnv* env);
+      void type_env_pop(TypeEnv* env);
+      ```
+
+  Verification:
+    * Test Input: (let ((x 42) (y 3.14)) body)
+    * Expected: x → ConcreteType(PRIMITIVE_INT64), y → ConcreteType(PRIMITIVE_FLOAT64)
+    * Current Behavior: TypeEnv implemented with nested scope support and reference counting
+
+- [R] Label: T-spec-type-infer-01
+  Objective: Implement type inference for expressions.
+  Reference: docs/TYPE_SPECIALIZATION_DESIGN.md (Phase 1: Type Inference Enhancement)
+  Where: csrc/analysis/type_infer.c, csrc/analysis/type_infer.h
+  Why: Need to infer concrete types for expressions to drive specialization decisions.
+  What: Implement infer_expr, infer_binop, and type compatibility functions.
+
+  Implementation Details:
+    * **Functions (type_infer.h):**
+      ```c
+      /* Infer the type of an expression */
+      ConcreteType* infer_expr(AnalysisContext* ctx, TypeEnv* env, OmniValue* expr);
+
+      /* Infer the type of a binary operation */
+      ConcreteType* infer_binop(AnalysisContext* ctx, TypeEnv* env,
+                               const char* op,
+                               ConcreteType* left,
+                               ConcreteType* right);
+
+      /* Check if two types are compatible */
+      bool type_is_compatible(ConcreteType* a, ConcreteType* b);
+
+      /* Compute the result type of a binary operation */
+      ConcreteType* compute_binop_result(const char* op,
+                                        ConcreteType* left,
+                                        ConcreteType* right);
+      ```
+    * **Inference rules:**
+      ```lisp
+      ;; Constant literals
+      (infer-type 42)     → PRIMITIVE_INT64
+      (infer-type 3.14)   → PRIMITIVE_FLOAT64
+      (infer-type \a)     → PRIMITIVE_CHAR
+
+      ;; Arithmetic operations
+      (infer-type (+ x y))
+        where x: Int, y: Int → Int
+        where x: Float, y: Float → Float
+        where x: Int, y: Float → Float  (promotion)
+
+      ;; Comparison operations
+      (infer-type (< x y)) → Bool
+      ```
+
+  Verification:
+    * Test Input: (infer-type (+ 42 3.14)) → PRIMITIVE_FLOAT64
+    * Test Input: (infer-type (< 1 2)) → PRIMITIVE_BOOL
+    * Current Behavior: Type inference implemented for literals, variables, binops, and function applications
+
+### Priority 2: Specialization Decision Engine
+
+- [R] Label: T-spec-db-01
+  Objective: Implement SpecDB for tracking function specializations.
+  Reference: docs/TYPE_SPECIALIZATION_DESIGN.md (Phase 2: Specialization Decision Engine)
+  Where: csrc/codegen/spec_db.h, csrc/codegen/spec_db.c
+  Why: Need to track which specializations exist, are needed, and have been generated.
+  What: Create specialization database with hash map for O(1) lookup.
+
+  Implementation Details:
+    * **Structs (spec_db.h):**
+      ```c
+      typedef struct SpecSignature {
+          char* func_name;           /* "add", "square", etc. */
+          ConcreteType** param_types; /* Array of parameter types */
+          int param_count;
+          ConcreteType* return_type;
+          char* mangled_name;        /* "add_Int_Int", "square_Float", etc. */
+          bool is_generated;         /* Has code been emitted? */
+          struct SpecSignature* next;
+      } SpecSignature;
+
+      typedef struct SpecDB {
+          SpecSignature* signatures;
+          SpecSignature** sig_table;  /* Hash map for O(1) lookup */
+          int table_size;
+      } SpecDB;
+      ```
+    * **Functions (spec_db.c):**
+      ```c
+      SpecDB* spec_db_new(void);
+      void spec_db_register(SpecDB* db, const char* func_name,
+                           ConcreteType** param_types, int param_count,
+                           ConcreteType* return_type);
+      SpecSignature* spec_db_lookup(SpecDB* db, const char* func_name,
+                                   ConcreteType** param_types, int param_count);
+      char* spec_mangle_name(const char* base, ConcreteType** types, int count);
+      ```
+
+  Verification:
+    * Test Input: spec_db_register(db, "add", [Int, Int], Int)
+    * Expected: Creates signature with mangled name "add_Int_Int"
+    * Current Behavior: SpecDB implemented with hash table and O(1) lookup
+
+- [R] Label: T-spec-decision-01
+  Objective: Implement specialization decision algorithm.
+  Reference: docs/TYPE_SPECIALIZATION_DESIGN.md (Phase 2: Specialization Decision Engine)
+  Where: csrc/codegen/spec_decision.c
+  Why: Need to decide which functions should be specialized and for which type signatures.
+  What: Implement should_specialize and is_worth_specializing functions.
+
+  Implementation Details:
+    * **Policies (spec_decision.c):**
+      ```c
+      typedef enum {
+          SPEC_ALWAYS,       /* Always specialize (arithmetic primitives) */
+          SPEC_HOT,          /* Specialize if called frequently */
+          SPEC_NEVER,        /* Never specialize (generic functions) */
+          SPEC_MAYBE,        /* Decide based on heuristics */
+      } SpecPolicy;
+
+      SpecPolicy get_specialization_policy(AnalysisContext* ctx,
+                                           const char* func_name);
+      bool is_worth_specializing(AnalysisContext* ctx,
+                                const char* func_name,
+                                ConcreteType** param_types,
+                                int param_count);
+      int estimate_speedup(ConcreteType** from_types,
+                          ConcreteType** to_types,
+                          int param_count);
+      ```
+    * **Criteria:**
+      1. All parameter types are known (no generic parameters)
+      2. The function is a primitive (arithmetic, comparison) → SPEC_ALWAYS
+      3. The function is "hot" (called frequently) → SPEC_HOT
+      4. Performance benefit > code size cost
+
+  Verification:
+    * Test Input: should_specialize(ctx, "+", [Float, Float], 2)
+    * Expected: Returns true (SPEC_ALWAYS)
+    * Test Input: should_specialize(ctx, "unknown-func", [Any, Any], 2)
+    * Expected: Returns false (SPEC_NEVER)
+    * Current Behavior: Decision algorithm implemented with policy-based classification
+
+### Priority 3: Specialized Code Generation
+
+- [R] Label: T-spec-codegen-01
+  Objective: Implement specialized code generator for primitive operations.
+  Reference: docs/TYPE_SPECIALIZATION_DESIGN.md (Phase 3: Specialized Code Generation)
+  Where: csrc/codegen/spec_codegen.c, csrc/codegen/spec_codegen.h
+  Why: Need to generate native C code that uses unboxed primitive values.
+  What: Implement generate_specialized_function and unboxed operation generation.
+
+  Implementation Details:
+    * **Functions (spec_codegen.h):**
+      ```c
+      void generate_specialized_function(CodeGenContext* ctx,
+                                        SpecSignature* sig,
+                                        OmniValue* func_body);
+      void generate_spec_prologue(CodeGenContext* ctx, SpecSignature* sig);
+      void generate_spec_epilogue(CodeGenContext* ctx, SpecSignature* sig);
+      void generate_unboxed_binop(CodeGenContext* ctx, const char* op,
+                                 const char* left, const char* right,
+                                 ConcreteType* result_type,
+                                 const char* result_var);
+      void generate_unbox(CodeGenContext* ctx, const char* obj_var,
+                         ConcreteType* type, const char* unboxed_var);
+      void generate_box(CodeGenContext* ctx, const char* unboxed_var,
+                       ConcreteType* type, const char* obj_var);
+      ```
+    * **Generated code pattern:**
+      ```c
+      /* Instead of: Obj* add(Obj* a, Obj* b) { ... } */
+      /* Specialized version: */
+      int64_t add_Int_Int(int64_t a, int64_t b) {
+          return a + b;
+      }
+      double add_Float_Float(double a, double b) {
+          return a + b;
+      }
+      ```
+
+  Verification:
+    * Test Input: (define (add [x {Float}] [y {Float}]) {Float} (+ x y))
+    * Expected Output: Generates add_Float_Float(double x, double y) { return x + y; }
+    * Current Behavior: Specialized code generator implemented with prologue/epilogue and unboxed operations
+
+- [R] Label: T-spec-primitives-01
+  Objective: Generate specialized versions of all arithmetic primitives.
+  Reference: docs/TYPE_SPECIALIZATION_DESIGN.md (Phase 3: Primitive Specializations)
+  Where: runtime/src/primitives_specialized.c
+  Why: Arithmetic operations are the most common and benefit most from specialization.
+  What: Add specialized primitive functions for Int and Float operations.
+
+  Implementation Details:
+    * **File (primitives_specialized.c):**
+      ```c
+      /* Arithmetic - Int */
+      int64_t prim_add_Int_Int(int64_t a, int64_t b);
+      int64_t prim_sub_Int_Int(int64_t a, int64_t b);
+      int64_t prim_mul_Int_Int(int64_t a, int64_t b);
+      int64_t prim_div_Int_Int(int64_t a, int64_t b);
+      int64_t prim_mod_Int_Int(int64_t a, int64_t b);
+
+      /* Arithmetic - Float */
+      double prim_add_Float_Float(double a, double b);
+      double prim_sub_Float_Float(double a, double b);
+      double prim_mul_Float_Float(double a, double b);
+      double prim_div_Float_Float(double a, double b);
+
+      /* Mixed (promotion) */
+      double prim_add_Int_Float(int64_t a, double b);
+      double prim_add_Float_Int(double a, int64_t b);
+
+      /* Comparison */
+      bool prim_lt_Int_Int(int64_t a, int64_t b);
+      bool prim_lt_Float_Float(double a, double b);
+      bool prim_lt_Int_Float(int64_t a, double b);
+      ```
+
+  Verification:
+    * Test Input: (bench (+ 1.0 2.0) 1000000)
+    * Expected Speedup: ~25x faster than generic version
+    * Current Behavior: All arithmetic, comparison, and math primitives implemented with specialized versions
+
+### Priority 4: Typed Arrays
+
+- [R] Label: T-spec-typed-array-01
+  Objective: Implement typed array runtime.
+  Reference: docs/TYPE_SPECIALIZATION_DESIGN.md (Phase 4: Typed Arrays)
+  Where: runtime/src/typed_array.h, runtime/src/typed_array.c
+  Why: Even with function specialization, storing values in generic arrays requires boxing.
+  What: Implement TypedArray struct that stores unboxed primitive values.
+
+  Implementation Details:
+    * **Structs (typed_array.h):**
+      ```c
+      typedef enum {
+          ARRAY_TYPE_INT64,
+          ARRAY_TYPE_FLOAT64,
+          ARRAY_TYPE_CHAR,
+          ARRAY_TYPE_BOOL,
+      } ArrayElementType;
+
+      typedef struct TypedArray {
+          ArrayElementType element_type;
+          int rank;           /* 1 for vector, 2 for matrix, etc. */
+          int* dimensions;    /* Size of each dimension */
+          int total_size;
+          void* data;         /* Raw data: int64_t[], double[], etc. */
+          Region* region;     /* Owning region */
+      } TypedArray;
+      ```
+    * **Functions (typed_array.c):**
+      ```c
+      TypedArray* omni_typed_array_create(Region* r, const char* type_name,
+                                         int rank, int* dimensions);
+      Obj* omni_typed_array_ref(TypedArray* arr, int* indices);
+      void omni_typed_array_set(TypedArray* arr, int* indices, Obj* value);
+      int64_t omni_typed_array_get_int(TypedArray* arr, int* indices);
+      double omni_typed_array_get_float(TypedArray* arr, int* indices);
+      void omni_typed_array_set_int(TypedArray* arr, int* indices, int64_t value);
+      void omni_typed_array_set_float(TypedArray* arr, int* indices, double value);
+      ```
+
+  Verification:
+    * Test Input: (typed-array 100 {Float64})
+    * Expected: Creates array with 100 unboxed double values
+    * Current Behavior: TypedArray runtime implemented with get/set operations for all primitive types
+
+- [R] Label: T-spec-typed-array-02
+  Objective: Implement typed array codegen.
+  Reference: docs/TYPE_SPECIALIZATION_DESIGN.md (Phase 4: Typed Array Codegen)
+  Where: csrc/codegen/typed_array_codegen.c
+  Why: Compiler needs to generate code for typed array operations.
+  What: Implement codegen for typed array construction and access.
+
+  Implementation Details:
+    * **Functions (typed_array_codegen.c):**
+      ```c
+      void generate_typed_array_alloc(CodeGenContext* ctx,
+                                     const char* var_name,
+                                     const char* type_name,
+                                     int rank,
+                                     int* dimensions);
+      void generate_typed_array_get(CodeGenContext* ctx,
+                                    const char* result_var,
+                                    const char* array_var,
+                                    const char** indices,
+                                    ConcreteType* elem_type);
+      void generate_typed_array_set(CodeGenContext* ctx,
+                                    const char* array_var,
+                                    const char** indices,
+                                    const char* value_var,
+                                    ConcreteType* elem_type);
+      ```
+
+  Verification:
+    * Test Input: (let ((arr (typed-array 100 {Float})))
+                 (array-set arr 0 3.14)
+                 (array-ref arr 0))
+    * Expected Output: Generates typed array access with no boxing
+    * Current Behavior: Typed array codegen implemented with alloc/get/set/fill operations
+
+### Priority 5: Integration and Testing
+
+- [TODO] Label: T-spec-integration-01
+  Objective: Integrate specialization with existing multiple dispatch.
+  Reference: docs/TYPE_SPECIALIZATION_DESIGN.md (Phase 6: Integration with Existing Systems)
+  Where: csrc/codegen/codegen.c, runtime/src/generic.c
+  Why: Specialization must work with existing multiple dispatch system.
+  What: Update dispatch to use specialized functions when types are known.
+
+  Implementation Details:
+    * Update omni_generic_lookup to check for specialized versions
+    * Fall back to generic when no specialization exists
+    * Maintain compatibility with existing generic operations
+
+  Verification:
+    * Test Input: Multiple definitions with different type signatures
+    * Expected: Specialized versions selected for known types, generic fallback for unknown
+    * Current Behavior: Only generic dispatch exists
+
+- [R] Label: T-spec-bench-01
+  Objective: Create benchmark suite for specialization.
+  Where: tests/bench_specialization.omni
+  Why: Need to verify performance improvement claims (25x speedup target).
+  What: Add benchmarks for numeric operations, array access, etc.
+
+  Implementation Details:
+    * Benchmarks for:
+      - Float add/mul/div operations
+      - Array access patterns
+      - Map/reduce over typed arrays
+      - Mixed generic/specialized code
+    * Report Before/After timings
+
+  Verification:
+    * Test Input: (run-benchmarks)
+    * Expected: 20-30x speedup on numeric operations
+    * Current Behavior: Benchmark suite created with tests for float/int/mixed operations and math functions
+
+---
+
+*Note: This phase represents a major architectural enhancement. Implementation should proceed incrementally,
+starting with Priority 1 (Core Type Infrastructure), then Priority 2 (Decision Engine), before generating
+any specialized code. Each priority builds on the previous one.*
+
+*Reference: docs/TYPE_SPECIALIZATION_DESIGN.md for complete design specification.*
+
+---
+
+## Phase 28: Foreign Function Interface (FFI) Implementation [TODO]
+
+**Objective:** Implement a multi-tiered FFI system for OmniLisp following the Hybrid Multi-Modal design
+specified in docs/FFI_DESIGN_PROPOSALS.md. The implementation follows a three-tier approach:
+
+**Tier 3 (Foundation):** Explicit extern declarations with ownership annotations (FFI_PROPOSAL.md)
+**Tier 1 (Quick Calls):** Julia-style inline ccall/@ccall for REPL and prototyping
+**Tier 2 (Bulk Import):** Zig-style c/import for automated header translation
+
+### Tier 3: Explicit Extern Declarations (Foundation)
+
+- [TODO] Label: T-ffi-t3-c-types-01
+  Objective: Define C primitive types in OmniLisp type system.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:443-464, FFI_PROPOSAL.md:49-73
+  Where: csrc/ast/ast.h, csrc/analysis/type_id.h, runtime/src/types.h
+  Why: OmniLisp needs a complete set of C types to map between C and OmniLisp values.
+       Without these types, we cannot represent C function signatures or struct layouts.
+  What: Add C primitive type constructors to the Kind domain ({CInt}, {CDouble}, etc.).
+
+  Implementation Details:
+    *   **File Paths:**
+        - csrc/ast/ast.h: Add `enum omni_kind_type` entries for C types
+        - csrc/analysis/type_id.h: Add TYPE_ID entries for C types
+        - runtime/src/types.h: Add C type validation functions
+
+    *   **Data Structures (ast.h):**
+        ```c
+        enum omni_kind_type {
+            // Existing types...
+            KIND_C_INT,
+            KIND_C_INT8, KIND_C_INT16, KIND_C_INT32, KIND_C_INT64,
+            KIND_C_UINT, KIND_C_UINT8, KIND_C_UINT16, KIND_C_UINT32, KIND_C_UINT64,
+            KIND_C_FLOAT, KIND_C_DOUBLE, KIND_C_BOOL,
+            KIND_C_CHAR, KIND_C_SIZE, KIND_C_SSIZE,
+            KIND_C_PTR,          // void*
+            KIND_C_STRING,       // char*
+            KIND_C_ARRAY,        // Fixed array [T; N]
+            KIND_C_CONST,        // const T
+        };
+        ```
+
+    *   **Parser Recognition:** Parse `{CInt}`, `{CDouble}`, `{CPtr}` as Kind nodes
+    *   **Type Size Constants:** Map each C type to sizeof() values
+    *   **Alignment Requirements:** Store alignof() for each type
+
+  Verification:
+    *   Test Input: `(define x {CInt} 42)` and `(define y {CDouble} 3.14)`
+    *   Expected Output: Variables typed as C values with correct size/alignment
+    *   Current Behavior: C types are not recognized, causes parse error
+
+- [TODO] Label: T-ffi-t3-c-types-02
+  Objective: Implement derived C types (pointers, arrays, const).
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:467-482
+  Where: csrc/parser/parser.c, csrc/ast/ast.c
+  Why: C APIs use pointers (int*), arrays (int[10]), and const qualifiers.
+       These are essential for representing real-world C signatures.
+  What: Add parsing and type construction for {CPtr T}, {CArray T N}, {CConst T}.
+
+  Implementation Details:
+    *   **Parser Pattern (parser.c):**
+        - Recognize `{CPtr <Type>}` for typed pointers
+        - Recognize `{CArray <Type> <N>}` for fixed arrays
+        - Recognize `{CConst <Type>}` for const-qualified types
+        - Recursively parse nested types like `{CPtr {CPtr CChar}}`
+
+    *   **AST Node (ast.c):**
+        ```c
+        typedef struct OmniKindDerived {
+            enum omni_kind_type base;  // KIND_C_PTR, KIND_C_ARRAY, KIND_C_CONST
+            OmniValue* inner_type;     // The type being wrapped
+            int array_size;            // For KIND_C_ARRAY
+        } OmniKindDerived;
+        ```
+
+  Verification:
+    *   Test Input: `(define ptr {CPtr CInt})`, `(define arr {CArray CInt 10})`
+    *   Expected Output: Types correctly represented with size info
+    *   Current Behavior: Parser does not recognize derived type syntax
+
+- [TODO] Label: T-ffi-t3-handle-types-01
+  Objective: Implement Handle types for safe C pointer wrapping.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:485-496, FFI_PROPOSAL.md:94-106
+  Where: runtime/src/memory/handle.h, runtime/src/memory/handle.c, csrc/analysis/type_id.h
+  Why: Raw C pointers are unsafe (use-after-free, type confusion). Handles provide:
+       - Generation counters for ABA protection
+       - Type safety (Handle<T> is distinct from Handle<U>)
+       - Deterministic cleanup integration with ASAP
+  What: Add {Handle T} type that wraps ExternalHandleTable indices.
+
+  Implementation Details:
+    *   **File Paths:**
+        - runtime/src/memory/handle.h: Extend ExternalHandleTable with typed handles
+        - csrc/analysis/type_id.h: Add TYPE_ID_HANDLE constructor
+        - csrc/codegen/codegen.c: Generate handle unwrap/wrap code
+
+    *   **Data Structures (handle.h):**
+        ```c
+        typedef struct {
+            uint32_t index;    // Slot in external table
+            uint32_t generation;  // Generation counter for ABA
+            TypeID inner_type;  // Type of wrapped value
+        } TypedHandle;
+
+        // Wrap external pointer in typed handle
+        uint64_t wrap_external_handle(void* ptr, TypeID type, Region* r);
+
+        // Unwrap handle, returns NULL if invalid/mismatched
+        void* unwrap_external_handle(uint64_t handle_val, TypeID expected_type);
+        ```
+
+    *   **Code Generation:** When returning {Handle T} from extern:
+        1. Call wrap_external_handle(result, TYPE_ID_T, region)
+        2. Return uint64_t handle value to OmniLisp
+
+    *   **Code Generation:** When passing {Handle T} to extern:
+        1. Extract uint64_t from handle value
+        2. Call unwrap_external_handle(handle, TYPE_ID_T)
+        3. Pass raw pointer to C function
+
+  Verification:
+    *   Test Input:
+        ```lisp
+        (define {extern malloc} [size {CSize}] {^:owned CPtr})
+        (let [h (malloc 100)]
+          (free h)
+          (free h))  ; Should detect double-free via generation counter
+        ```
+    *   Expected Output: Second free should safely error (generation mismatch)
+    *   Current Behavior: No handle system exists
+
+- [TODO] Label: T-ffi-t3-ownership-01
+  Objective: Implement ownership metadata parsing and validation.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:499-508, FFI_PROPOSAL.md:134-158
+  Where: csrc/parser/parser.c, csrc/analysis/analysis.c
+  Why: Ownership annotations (^:owned, ^:borrowed, ^:consumed, ^:escapes) are critical
+       for memory safety with C. They tell the compiler who frees what.
+  What: Parse ownership metadata and integrate with ASAP CLEAN phase.
+
+  Implementation Details:
+    *   **Metadata Parsing (parser.c):**
+        - Recognize `^:owned`, `^'owned` on return types
+        - Recognize `^:borrowed`, `^'borrowed` on parameters
+        - Recognize `^:consumed`, `^'consumed` on parameters
+        - Recognize `^:escapes`, `^'escapes` on parameters
+
+    *   **Ownership Enum (analysis.h):**
+        ```c
+        typedef enum {
+            OWNERSHIP_DEFAULT,   // Default: borrowed for params, owned for returns
+            OWNERSHIP_OWNED,     // Caller receives ownership
+            OWNERSHIP_BORROWED,  // Callee borrows, no ownership transfer
+            OWNERSHIP_CONSUMED,  // Callee takes ownership, param invalid after call
+            OWNERSHIP_ESCAPES    // Callee may store reference, keep alive
+        } OwnershipClass;
+
+        typedef struct {
+            OwnershipClass ownership;
+            bool is_nullable;     // ^:nothing-on-null
+            bool may_fail;        // ^:may-fail (returns Result)
+        } ParamInfo;
+        ```
+
+    *   **ASAP Integration:**
+        - OWNERSHIP_OWNED returns: Insert free_obj() at variable's last use
+        - OWNERSHIP_CONSUMED params: Do NOT free after call (ownership transferred)
+        - OWNERSHIP_ESCAPES params: Extend variable lifetime to end of scope
+        - OWNERSHIP_BORROWED params: Normal liveness analysis applies
+
+  Verification:
+    *   Test Input:
+        ```lisp
+        (define {extern create} [] {^:owned CPtr})
+        (define {extern consume} [^:consumed p {CPtr}] {Nothing})
+        (let [x (create)]
+          (consume x)
+          (consume x))  ; Should error: use after consumed
+        ```
+    *   Expected Output: Compile error on second consume (x already consumed)
+    *   Current Behavior: Ownership metadata not parsed
+
+- [TODO] Label: T-ffi-t3-extern-decl-01
+  Objective: Implement {extern ...} function declaration syntax.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:510-543, FFI_PROPOSAL.md:110-191
+  Where: csrc/parser/parser.c, csrc/ast/ast.h
+  Why: OmniLisp needs a way to declare C function signatures that will be called.
+       This is the foundation of all FFI - without it, we can't call any C code.
+  What: Parse (define {extern fn ^:from lib} [params] {ReturnType}) syntax.
+
+  Implementation Details:
+    *   **Parser (parser.c):**
+        - Recognize `(define {extern NAME ^:from LIBNAME} ...)` pattern
+        - Parse parameter list with types: `[name {Type}]`
+        - Parse return type: `{Type}` or `{^:owned Type}`
+        - Parse variadic flag: `^'variadic` or `^:variadic`
+        - Parse error flags: `^:may-fail`, `^'nothing-on-null`
+        - Parse destructors: `^'destructor SYMBOL`
+
+    *   **AST Node (ast.h):**
+        ```c
+        typedef struct OmniExternDecl {
+            Symbol* name;              // Function name in C
+            Symbol* libname;           // Library name (or NULL for default)
+            TypeID return_type;        // Return TypeID
+            ParamInfo* params;         // Array of parameter info
+            int num_params;
+            bool is_variadic;
+            bool may_fail;
+            bool nothing_on_null;
+            Symbol* destructor;        // Destructor symbol for Handle types
+        } OmniExternDecl;
+        ```
+
+    *   **Library Loading:**
+        - Store extern declarations in module symbol table
+        - On first call: dlopen(libname) and dlsym(name)
+        - Cache function pointer for subsequent calls
+
+  Verification:
+    *   Test Input:
+        ```lisp
+        (define {extern puts ^:from libc}
+          [s {CString}]
+          {CInt})
+        (puts "Hello, FFI!")
+        ```
+    *   Expected Output: Prints "Hello, FFI!" and returns integer
+    *   Current Behavior: Parser does not recognize extern syntax
+
+- [TODO] Label: T-ffi-t3-extern-call-01
+  Objective: Implement code generation for extern function calls.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:249-274, FFI_PROPOSAL.md:249-294
+  Where: csrc/codegen/codegen.c
+  Why: After parsing extern declarations, we need to generate C code that actually
+       calls the foreign function through dlsym. This is the "wiring" phase.
+  What: Generate thunk functions that convert OmniLisp values to C values.
+
+  Implementation Details:
+    *   **File Paths:**
+        - csrc/codegen/codegen.c: codegen_extern_call() function
+        - runtime/src/runtime.c: ffi_call_trampoline() for dynamic dispatch
+
+    *   **Generated Thunk Pattern:**
+        ```c
+        // For: (define {extern strlen} [s {CString}] {CSize})
+        static Obj* thunk_strlen(Region* r, Obj** args, int argc) {
+            // 1. Validate argc
+            if (argc != 1) return error("wrong arity");
+
+            // 2. Extract and convert arguments
+            Obj* arg0 = args[0];
+            const char* c_str = omnilisp_to_c_string(arg0);  // Copy/buffer
+
+            // 3. Call C function
+            size_t result = strlen(c_str);
+
+            // 4. Convert result to OmniLisp
+            return mk_int(r, (int64_t)result);
+        }
+        ```
+
+    *   **Type Conversion Functions (runtime.c):**
+        ```c
+        const char* omnilisp_to_c_string(Obj* str);  // Allocates in temp region
+        int64_t omnilisp_to_c_int(Obj* n);
+        double omnilisp_to_c_double(Obj* n);
+        void* omnilisp_to_c_ptr(Obj* handle);
+        ```
+
+    *   **Variadic Handling:** Use stdarg.h for variadic externs
+    *   **Error Handling:** Wrap calls in try/catch for ^:may-fail functions
+
+  Verification:
+    *   Test Input: Same as T-ffi-t3-extern-decl-01 verification
+    *   Expected Output: Code compiles and runs, prints "Hello, FFI!"
+    *   Current Behavior: No code generation for extern calls
+
+- [TODO] Label: T-ffi-t3-struct-def-01
+  Objective: Implement C struct definition syntax.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:546-567, FFI_PROPOSAL.md:196-245
+  Where: csrc/parser/parser.c, csrc/analysis/type_id.h
+  Why: C APIs pass and receive structs by value. Without struct support, we can
+       only call functions with primitive types, severely limiting FFI utility.
+  What: Parse (define {struct ^:ffi Name} [field {Type}] ...) syntax.
+
+  Implementation Details:
+    *   **Parser (parser.c):**
+        - Recognize `(define {struct ^:ffi NAME} [field {Type}] ...)` pattern
+        - Parse `^:packed` flag (no padding)
+        - Parse `^'align-N` flag (explicit alignment)
+        - Compute struct size and field offsets
+
+    *   **Struct Metadata (type_id.h):**
+        ```c
+        typedef struct {
+            const char* name;
+            StructField* fields;
+            int num_fields;
+            size_t size;
+            size_t alignment;
+            bool is_packed;
+        } StructLayout;
+
+        typedef struct {
+            const char* name;
+            TypeID type;
+            size_t offset;
+        } StructField;
+        ```
+
+    *   **Layout Computation:**
+        - For each field: offset = ALIGN(current_offset, alignof(type))
+        - Add sizeof(type) to current_offset
+        - Final size = ALIGN(current_offset, struct_alignment)
+        - Handle ^:packed: No padding between fields
+        - Handle ^'align-N: Force alignment to N bytes
+
+    *   **Code Generation:** Generate struct typedefs in output C code
+        ```c
+        typedef struct {
+            double x;  // offset 0
+            double y;  // offset 8
+        } omni_Point;  // sizeof = 16
+        ```
+
+  Verification:
+    *   Test Input:
+        ```lisp
+        (define {struct ^:ffi Point}
+          [x {CDouble}]
+          [y {CDouble}])
+        ```
+    *   Expected Output: Struct layout with correct offsets (x@0, y@8, size=16)
+    *   Current Behavior: Struct syntax not recognized
+
+- [TODO] Label: T-ffi-t3-struct-ops-01
+  Objective: Implement struct field access (deref, set!).
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:596-615, FFI_PROPOSAL.md:301-364
+  Where: csrc/codegen/codegen.c, runtime/src/runtime.c
+  Why: After defining structs, we need to read and write their fields to
+       actually use them in C APIs.
+  What: Implement (.struct field) syntax and deref operations.
+
+  Implementation Details:
+    *   **Field Access Syntax:**
+        - Read: `(deref struct-value).field` or `(.- struct-value field)`
+        - Write: `(set! (deref h).field value)` or `(.=- h field value)`
+
+    *   **Code Generation (codegen.c):**
+        ```c
+        // For: (deref my-point).x
+        // Generate:
+        result = mk_double(r, my_point->x);
+
+        // For: (set! (deref h).x 10.0)
+        // Generate:
+        h->x = 10.0;
+        ```
+
+    *   **Handle Structs:** When {Handle T} is dereferenced:
+        ```c
+        // For: (deref my-handle).field
+        // Generate:
+        StructT* ptr = unwrap_handle(my_handle, TYPE_ID_T);
+        result = convert_to_omnilisp(ptr->field);
+        ```
+
+    *   **Bitfields:** Mark as opaque if struct contains bitfields
+    *   **Unions:** Parse with (define {union ^:ffi Name} ...) syntax
+
+  Verification:
+    *   Test Input:
+        ```lisp
+        (let [p (ffi/alloc {Point})]
+          (set! (deref p).x 10.0)
+          (deref p).x)
+        ```
+    *   Expected Output: Returns 10.0 (stored field value)
+    *   Current Behavior: Field access not implemented
+
+- [TODO] Label: T-ffi-t3-callback-01
+  Objective: Implement callback type definitions.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:569-591, FFI_PROPOSAL.md:369-435
+  Where: csrc/parser/parser.c, runtime/src/runtime.c
+  Why: C APIs often take function pointers (callbacks) for event handling,
+       comparison, async notification. Without callbacks, FFI is half-duplex only.
+  What: Parse {callback Name} [params] {ReturnType} and generate trampolines.
+
+  Implementation Details:
+    *   **Parser (parser.c):**
+        - Recognize `(define {callback NAME} [params] {ReturnType})` pattern
+        - Store callback signature for later use in extern declarations
+
+    *   **Callback Metadata (ast.h):**
+        ```c
+        typedef struct {
+            const char* name;
+            TypeID return_type;
+            ParamInfo* params;
+            int num_params;
+        } CallbackInfo;
+        ```
+
+    *   **Trampoline Generation (codegen.c):**
+        ```c
+        // For each callback type, generate a C trampoline:
+        static int trampoline_Comparator(void* a, void* b) {
+            // 1. Convert C params to OmniLisp values
+            Obj* omni_a = c_ptr_to_omnilisp(a);
+            Obj* omni_b = c_ptr_to_omnilisp(b);
+
+            // 2. Call OmniLisp closure (stored in user_data)
+            Obj* closure = (Obj*)user_data;
+            Obj* result = omnilisp_call(closure, 2, (Obj*[]){omni_a, omni_b});
+
+            // 3. Convert result back to C
+            return (int)omnilisp_to_c_int(result);
+        }
+        ```
+
+    *   **Closure Management:** Store closure pointer in user_data parameter
+    *   **Weak Handles:** For long-lived callbacks, use WeakHandle for safety
+
+  Verification:
+    *   Test Input:
+        ```lisp
+        (define {callback Comparator}
+          [a {CPtr}] [b {CPtr}]
+          {CInt})
+
+        (define {extern qsort ^:from libc}
+          [base {CPtr}] [nmemb {CSize}] [size {CSize}]
+          [compar {Callback Comparator}]
+          {Nothing})
+
+        (qsort arr n (sizeof CInt)
+          (fn [a {CPtr}] [b {CPtr}] {CInt}
+            (- (deref {CPtr CInt} a)
+               (deref {CPtr CInt} b))))
+        ```
+    *   Expected Output: Array sorted in ascending order
+    *   Current Behavior: Callbacks not supported
+
+### Tier 1: Inline ccall/@ccall (Quick Calls)
+
+- [TODO] Label: T-ffi-t1-ccall-01
+  Objective: Implement (ccall lib fn [arg {Type}]...) syntax.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:22-88
+  Where: csrc/parser/parser.c, csrc/codegen/codegen.c
+  Why: REPL exploration and quick tests need FFI without declaring externs.
+       The "Julia-style" ccall enables calling any C function inline.
+  What: Parse inline ccall and generate thunk at compile time.
+
+  Implementation Details:
+    *   **Parser (parser.c):**
+        - Recognize `(ccall LIBNAME FNAME [arg {Type}]... {RetType})` pattern
+        - Recognize `(@ccall LIBNAME/FNAME arg...)` shorthand macro form
+        - Store library symbol reference for lazy loading
+
+    *   **Macro Expansion (for @ccall):**
+        ```lisp
+        ;; @ccall libc/strlen "hello"
+        ;; Expands to:
+        (ccall libc strlen ["hello" {CString}] {CSize})
+        ```
+
+    *   **Code Generation:**
+        - Generate anonymous extern thunk at call site
+        - No persistent symbol table entry needed
+        - dlopen/dlsym performed at call time (cached per library)
+
+    *   **Library Loading (runtime.c):**
+        ```c
+        static void* load_library(const char* name) {
+            static HashTable* lib_cache = NULL;
+            if (!lib_cache) lib_cache = hashtable_new();
+
+            void* handle = hashtable_get(lib_cache, name);
+            if (!handle) {
+                handle = dlopen(name, RTLD_LAZY);
+                hashtable_put(lib_cache, name, handle);
+            }
+            return handle;
+        }
+        ```
+
+  Verification:
+    *   Test Input (in REPL):
+        ```lisp
+        > (ccall libc puts ["Hello!" {CString}] {CInt})
+        Hello!
+        6
+        ```
+    *   Expected Output: Prints "Hello!" and returns 6
+    *   Current Behavior: ccall syntax not recognized
+
+- [TODO] Label: T-ffi-t1-ccall-02
+  Objective: Implement type inference for @ccall shorthand.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:50-62
+  Where: csrc/parser/parser.c, csrc/analysis/analysis.c
+  Why: The @ccall macro form should infer types from argument values when
+       possible, reducing boilerplate for simple calls.
+  What: Auto-infer C types from OmniLisp value types.
+
+  Implementation Details:
+    *   **Type Inference Rules (analysis.c):**
+        - OmniLisp Int → {CInt} or {CSize} (if result used as size)
+        - OmniLisp Float → {CDouble}
+        - OmniLisp String → {CString}
+        - OmniLisp Bool → {CBool}
+        - Explicit {Type} annotation overrides inference
+
+    *   **Macro Expansion Pattern:**
+        ```lisp
+        ;; Input: (@ccall libc/puts "Hello!")
+        ;; Expands to: (ccall libc puts ["Hello!" {CString}] {CInt})
+
+        ;; Input: (@ccall libm/sin 3.14159)
+        ;; Expands to: (ccall libm/sin [3.14159 {CDouble}] {CDouble})
+
+        ;; Input: (@ccall libc/malloc 1024 {CSize})  ; explicit type
+        ;; Expands to: (ccall libc/malloc [1024 {CSize}] {CPtr})
+        ```
+
+    *   **Return Type Inference:**
+        - If unknown, default to {CInt}
+        - Or parse optional trailing `{Type}` in @ccall
+
+  Verification:
+    *   Test Input:
+        ```lisp
+        > (@ccall libc/puts "inferred")
+        inferred
+        > (@ccall libm/sin 0.0)
+        0.0
+        ```
+    *   Expected Output: Both calls work without explicit type annotations
+    *   Current Behavior: @ccall macro not implemented
+
+### Tier 2: Header Translation (c/import)
+
+- [TODO] Label: T-ffi-t2-libclang-01
+  Objective: Integrate libclang for C header parsing.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:222-235
+  Where: csrc/parser/, third_party/
+  Why: Parsing C headers with libclang allows automatic generation of FFI bindings
+       from existing C libraries. Without this, users must manually declare every function.
+  What: Add libclang dependency and build infrastructure.
+
+  Implementation Details:
+    *   **Dependency:**
+        - Add libclang-dev to build system
+        - Link with -lclang in csrc/Makefile
+        - Add clang-c/Index.h include path
+
+    *   **Build Integration (csrc/Makefile):**
+        ```makefile
+        # Detect libclang
+        CFLAGS += $(shell llvm-config --cflags)
+        LDFLAGS += $(shell llvm-config --libs clang)
+        ```
+
+    *   **Fallback if libclang not found:**
+        - Tier 2 becomes optional (document as requires libclang)
+        - Tier 1 and Tier 3 still work without libclang
+
+  Verification:
+    *   Test Input: Build with libclang present
+    *   Expected Output: clang-c/Index.h found, libclang links successfully
+    *   Current Behavior: No libclang integration
+
+- [TODO] Label: T-ffi-t2-translate-01
+  Objective: Implement (c/import "<header.h>") syntax.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:157-210
+  Where: csrc/parser/parser.c, csrc/parser/translate_c.c
+  Why: Users should be able to import C headers directly and get auto-generated
+       OmniLisp bindings. This is the "Zig-style" approach.
+  What: Parse c/import and use libclang to generate extern declarations.
+
+  Implementation Details:
+    *   **Parser (parser.c):**
+        - Recognize `(c/import "<header.h>")` pattern
+        - Recognize `(define lib (c/import "<header.h>"))` form
+        - Parse optional `^:only [sym1 sym2...]` to filter symbols
+        - Parse optional `^:defines [KEY VAL]...` for preprocessor defines
+
+    *   **Translation Unit (translate_c.c):**
+        ```c
+        typedef struct {
+            const char* header_path;
+            Symbol** filter_symbols;    // NULL = import all
+            int num_filters;
+            KeyValue* defines;          // Preprocessor defines
+            int num_defines;
+        } ImportConfig;
+
+        // Parse header with libclang
+        OmniExternDecl* translate_header(ImportConfig* config, int* num_decls);
+        ```
+
+    *   **libclang Integration:**
+        ```c
+        CXIndex index = clang_createIndex(0, 0);
+        CXTranslationUnit unit = clang_parseTranslationUnit(
+            index,
+            config->header_path,
+            /* args */ clang_args,
+            /* num_args */ num_args,
+            /* unsaved_files */ NULL,
+            /* num_unsaved_files */ 0,
+            CXTranslationUnit_None
+        );
+
+        // Iterate through declarations
+        CXCursor cursor = clang_getTranslationUnitCursor(unit);
+        clang_visitChildren(cursor, visit_function, &context);
+        ```
+
+    *   **Symbol Filtering:** Only export functions/types in filter list (if provided)
+    *   **Name Mangling:** Strip leading underscores if present
+
+  Verification:
+    *   Test Input:
+        ```lisp
+        (define stdio (c/import "<stdio.h>" ^'only [printf puts]))
+        (printf "Imported!\n")
+        ```
+    *   Expected Output: printf and puts available as OmniLisp functions
+    *   Current Behavior: c/import not recognized
+
+- [TODO] Label: T-ffi-t2-translate-02
+  Objective: Implement command-line translate-c tool.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:183-210
+  Where: csrc/cli/main.c
+  Why: Users should be able to pre-generate binding files (.omni) from headers
+       for faster compilation and version control.
+  What: Add `omnilisp translate-c <header> -o <output.omni>` command.
+
+  Implementation Details:
+    *   **CLI Integration (main.c):**
+        ```c
+        if (argc > 1 && strcmp(argv[1], "translate-c") == 0) {
+            if (argc < 4) {
+                fprintf(stderr, "Usage: omnilisp translate-c <header> -o <output>\n");
+                return 1;
+            }
+            const char* header = argv[2];
+            const char* output = argv[4];  // after -o flag
+
+            translate_header_to_file(header, output);
+            return 0;
+        }
+        ```
+
+    *   **Output Format (.omni file):**
+        ```lisp
+        ;; AUTO-GENERATED from <SDL2/SDL.h>
+        ;; DO NOT EDIT
+
+        (module SDL2/Auto
+          (define SDL_INIT_VIDEO 0x00000020)
+          (define SDL_WINDOW_SHOWN 0x00000004)
+
+          (define {extern SDL_Init ^'from "libSDL2.so"}
+            [flags {CUInt32}]
+            {CInt})
+
+          (define {extern SDL_CreateWindow ^'from "libSDL2.so"}
+            [title {CString}]
+            [x {CInt}] [y {CInt}]
+            [w {CInt}] [h {CInt}]
+            [flags {CUInt32}]
+            {^'owned (CPtr SDL_Window)})
+
+          ...)
+        ```
+
+    *   **Macro Handling:** Try to evaluate constant macros, otherwise fail gracefully
+    *   **Struct Layout:** Emit struct definitions with computed field offsets
+
+  Verification:
+    *   Test Input: `omnilisp translate-c /usr/include/stdio.h -o stdio.omni`
+    *   Expected Output: Generates stdio.omni with extern declarations for printf, etc.
+    *   Current Behavior: No translate-c command exists
+
+- [TODO] Label: T-ffi-t2-harden-01
+  Objective: Implement ffi harden tool for Tier 3 generation.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:419-429
+  Where: csrc/cli/main.c
+  Why: Auto-generated bindings (Tier 2) lack ownership annotations. Users should
+       be able to generate a "Tier 3 skeleton" with ownership annotations to fill in.
+  What: Add `omnilisp ffi harden <input.omni> -o <output.omni>` command.
+
+  Implementation Details:
+    *   **CLI Command:**
+        ```bash
+        omnilisp ffi harden lib/sdl2.omni -o lib/sdl2-safe.omni
+        ```
+
+    *   **Transformation Rules:**
+        - Change all {CPtr T} returns to {^'owned (Handle T)} with TODO comment
+        - Add `^'destructor ???` TODO comments for Handle types
+        - Mark pointer params as `^:borrowed` by default
+        - Add `^:may-fail` TODO comments for functions returning error codes
+
+    *   **Output Format:**
+        ```lisp
+        ;; Input: (define {extern SDL_Init} [flags {CUInt32}] {CInt})
+
+        ;; Output:
+        ;; TODO: Review ownership - should this return Result?
+        (define {extern SDL_Init ^'from "libSDL2.so"}
+          [^:borrowed flags {CUInt32}]  ; TODO: Verify borrowed
+          {CInt})  ; TODO: Change to {Result CInt CInt} if may-fail
+        ```
+
+    *   **Documentation Generation:** Add comments with original C signature
+
+  Verification:
+    *   Test Input: `omnilisp ffi harden stdio.omni -o stdio-safe.omni`
+    *   Expected Output: Generates stdio-safe.omni with ownership annotations as TODOs
+    *   Current Behavior: No harden command exists
+
+### FFI Runtime & Testing
+
+- [TODO] Label: T-ffi-runtime-ffi-alloc-01
+  Objective: Implement ffi/alloc primitive for FFI-managed memory.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:596-615
+  Where: runtime/src/runtime.c
+  Why: FFI often requires allocating memory that C will manage (or vice versa).
+       The ffi/alloc primitive allocates memory in a region compatible with C.
+  What: Add prim_ffi_alloc that returns {CPtr} for FFI use.
+
+  Implementation Details:
+    *   **Function Signature:**
+        ```c
+        Obj* prim_ffi_alloc(Region* r, Obj* type, Obj* size_obj);
+        ```
+
+    *   **Implementation:**
+        ```c
+        Obj* prim_ffi_alloc(Region* r, Obj* type, Obj* size_obj) {
+            // type is a Kind object like {Point} or {Array CInt 10}
+            TypeID type_id = get_type_id(type);
+            const TypeMetadata* meta = type_metadata_get(r, type_id);
+
+            // Allocate memory for the type
+            void* ptr = region_alloc(r, meta->size, meta->alignment);
+
+            // Return as handle (not raw pointer - for safety)
+            uint64_t handle = wrap_external_handle(ptr, type_id, r);
+            return mk_uint64(r, handle);
+        }
+        ```
+
+    *   **Zero Initialization:** Initialize allocated memory to zeros
+    *   **Alignment:** Use type's metadata alignment for proper struct layout
+
+  Verification:
+    *   Test Input:
+        ```lisp
+        (let [h (ffi/alloc {Point})]
+          (set! (deref h).x 10.0)
+          (deref h).x)
+        ```
+    *   Expected Output: Returns 10.0
+    *   Current Behavior: prim_ffi_alloc not implemented
+
+- [TODO] Label: T-ffi-runtime-ffi-free-01
+  Objective: Implement ffi/free primitive for explicit cleanup.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:596-615
+  Where: runtime/src/runtime.c
+  Why: Memory allocated with ffi/alloc must be freed when no longer needed.
+       This integrates with ASAP for automatic free insertion.
+  What: Add prim_ffi_free that releases FFI-managed memory.
+
+  Implementation Details:
+    *   **Function Signature:**
+        ```c
+        Obj* prim_ffi_free(Region* r, Obj* handle_obj);
+        ```
+
+    *   **Implementation:**
+        ```c
+        Obj* prim_ffi_free(Region* r, Obj* handle_obj) {
+            uint64_t handle_val = handle_obj->u64;
+            void* ptr = unwrap_external_handle(handle_val, NULL);  // Any type OK
+
+            if (ptr) {
+                // Mark handle as invalid (increment generation)
+                invalidate_external_handle(handle_val);
+
+                // Free the underlying memory
+                free(ptr);  // Or region_dealloc if allocated in region
+            }
+
+            return NOTHING;
+        }
+        ```
+
+    *   **Handle Invalidation:** Must update generation counter to catch use-after-free
+    *   **ASAP Integration:** CLEAN phase inserts free at end of scope or last use
+
+  Verification:
+    *   Test Input:
+        ```lisp
+        (let [h (ffi/alloc {CInt})]
+          (set! (deref h) 42)
+          (ffi/free h)
+          (deref h))  ; Should error - use after free
+        ```
+    *   Expected Output: Runtime error on second deref (handle invalidated)
+    *   Current Behavior: prim_ffi_free not implemented
+
+- [TODO] Label: T-ffi-test-stdlib-01
+  Objective: Create comprehensive FFI tests using C standard library.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:546-718
+  Where: tests/ffi/, examples/ffi/
+  Why: The C standard library is available everywhere and provides a good test
+       surface for FFI (strings, file I/O, math, memory allocation).
+  What: Write test suite covering all FFI features using libc functions.
+
+  Implementation Details:
+    *   **Test File Structure:**
+        ```
+        tests/ffi/
+          test_ffi_primitives.omni   - Test ccall with simple functions
+          test_ffi_structs.omni      - Test struct passing/receiving
+          test_ffi_callbacks.omni    - Test qsort with comparator callback
+          test_ffi_handles.omni      - Test handle lifecycle
+          test_ffi_ownership.omni    - Test owned/borrowed/consumed
+        ```
+
+    *   **Test Coverage:**
+        - test_ffi_primitives.omni:
+          ```lisp
+          (assert-eq (@ccall libc/strlen "hello") 5)
+          (assert-eq (@ccall libc/atoi "123") 123)
+          (assert (> (@ccall libm/sin 3.14159) 0.0))
+          ```
+        - test_ffi_structs.omni:
+          ```lisp
+          (define {struct ^:ffi Point} [x {CDouble}] [y {CDouble}])
+          (let [p (ffi/alloc {Point})]
+            (set! (deref p).x 10.0)
+            (assert-eq (deref p).x 10.0))
+          ```
+        - test_ffi_callbacks.omni:
+          ```lisp
+          (define arr (make-array 10))
+          (fill-with-random arr)
+          (qsort arr 10 (sizeof CInt)
+            (fn [a {CPtr}] [b {CPtr}] {CInt}
+              (- (deref {CPtr CInt} a)
+                 (deref {CPtr CInt} b))))
+          (assert (is-sorted? arr))
+          ```
+        - test_ffi_handles.omni:
+          ```lisp
+          (let [h (ffi/alloc {CInt})]
+            (set! (deref h) 42)
+            (ffi/free h)
+            ;; This should error (use-after-free)
+            (assert-error (deref h)))
+          ```
+
+  Verification:
+    *   Test Input: `./omnilisp tests/ffi/test_ffi_primitives.omni`
+    *   Expected Output: All FFI tests pass
+    *   Current Behavior: No FFI tests exist
+
+- [TODO] Label: T-ffi-example-sdl2-01
+  Objective: Create SDL2 binding example demonstrating full FFI.
+  Reference: docs/FFI_DESIGN_PROPOSALS.md:619-718
+  Where: examples/ffi/sdl2/
+  Why: SDL2 is a real-world C library that demonstrates all FFI features:
+       opaque types, structs, callbacks, ownership, handles. A working example
+       validates the entire FFI design.
+  What: Implement complete SDL2 bindings and example program.
+
+  Implementation Details:
+    *   **Tier 2 Auto-Generated (sdl2_auto.omni):**
+        ```bash
+        omnilisp translate-c /usr/include/SDL2/SDL.h -o sdl2_auto.omni
+        ```
+
+    *   **Tier 3 Hand-Crafted (sdl2_safe.omni):**
+        - Run `omnilisp ffi harden sdl2_auto.omni -o sdl2_safe.omni`
+        - Fill in ownership annotations:
+        ```lisp
+        (define {opaque SDL_Window ^'destructor SDL_DestroyWindow})
+        (define {opaque SDL_Renderer ^:destructor SDL_DestroyRenderer})
+
+        (define {extern SDL_CreateWindow ^:from "libSDL2.so"}
+          [^:borrowed title {CString}]
+          [x {CInt}] [y {CInt}]
+          [w {CInt}] [h {CInt}]
+          [flags {CUInt32}]
+          {^:owned (Handle SDL_Window)})
+        ```
+
+    *   **High-Level API (sdl2.omni):**
+        ```lisp
+        (define (with-sdl body)
+          (SDL_Init SDL_INIT_VIDEO)
+          (try
+            (body)
+            (finally (SDL_Quit))))
+
+        (define (with-window title w h body)
+          (let [win (SDL_CreateWindow title 100 100 w h SDL_WINDOW_SHOWN)]
+            (try
+              (body win)
+              (finally nil))))  ; Handle auto-freed via destructor
+        ```
+
+    *   **Example Program (demo.omni):**
+        ```lisp
+        (import SDL2)
+
+        (with-sdl
+          (with-window "Hello OmniLisp FFI!" 800 600
+            (fn [win]
+              (with-renderer win
+                (fn [ren]
+                  (SDL_SetRenderDrawColor ren 64 128 255 255)
+                  (SDL_RenderClear ren)
+                  (SDL_RenderPresent ren)
+                  (sleep 2000))))))
+        ```
+
+  Verification:
+    *   Test Input: `./omnilisp examples/ffi/sdl2/demo.omni`
+    *   Expected Output: Window opens, displays blue screen for 2 seconds, closes cleanly
+    *   Current Behavior: No SDL2 example exists
+
+- [TODO] Label: T-ffi-docs-integration-01
+  Objective: Update language documentation with FFI syntax.
+  Reference: docs/SYNTAX.md, docs/FFI_DESIGN_PROPOSALS.md
+  Where: docs/SYNTAX.md
+  Why: The FFI design proposals are comprehensive but need to be integrated
+       into the main language syntax documentation for users.
+  What: Add FFI section to SYNTAX.md with all three tiers.
+
+  Implementation Details:
+    *   **Add new section to docs/SYNTAX.md:**
+        ```markdown
+        ## Foreign Function Interface (FFI)
+
+        OmniLisp provides a three-tiered FFI system:
+
+        ### Tier 1: Inline ccall (Quick Exploration)
+
+        ### Tier 2: Header Import (Bulk Bindings)
+
+        ### Tier 3: Extern Declarations (Production Safety)
+        ```
+
+    *   **Cross-Reference:** Link to docs/FFI_DESIGN_PROPOSALS.md for details
+    *   **Examples:** Include working examples for each tier
+    *   **Cheat Sheet:** Quick reference table of common patterns
+
+  Verification:
+    *   Test Input: Check that docs/SYNTAX.md has FFI section
+    *   Expected Output: FFI section exists with syntax examples
+    *   Current Behavior: No FFI documentation in SYNTAX.md
+
+### Summary: Implementation Priority Order
+
+**PHASE 1 - Tier 3 Foundation (MUST COMPLETE FIRST):**
+1. T-ffi-t3-c-types-01: C primitive types
+2. T-ffi-t3-c-types-02: Derived C types
+3. T-ffi-t3-handle-types-01: Handle types for safety
+4. T-ffi-t3-ownership-01: Ownership metadata
+5. T-ffi-t3-extern-decl-01: Extern declaration syntax
+6. T-ffi-t3-extern-call-01: Extern call codegen
+7. T-ffi-t3-struct-def-01: C struct definitions
+8. T-ffi-t3-struct-ops-01: Struct field access
+9. T-ffi-t3-callback-01: Callback definitions
+
+**PHASE 2 - Tier 1 Quick Calls (HIGH VALUE, LOW EFFORT):**
+10. T-ffi-t1-ccall-01: ccall syntax
+11. T-ffi-t1-ccall-02: @ccall type inference
+
+**PHASE 3 - Tier 2 Header Translation (REQUIRES LIBCLANG):**
+12. T-ffi-t2-libclang-01: libclang integration
+13. T-ffi-t2-translate-01: c/import syntax
+14. T-ffi-t2-translate-02: translate-c command
+15. T-ffi-t2-harden-01: harden command
+
+**PHASE 4 - Runtime & Testing (VALIDATION):**
+16. T-ffi-runtime-ffi-alloc-01: ffi/alloc primitive
+17. T-ffi-runtime-ffi-free-01: ffi/free primitive
+18. T-ffi-test-stdlib-01: Comprehensive test suite
+19. T-ffi-example-sdl2-01: SDL2 example
+20. T-ffi-docs-integration-01: Update documentation
+
+**Estimated Total:** 20 tasks across 4 phases
+
+**Dependencies:**
+- All Tier 1 tasks depend on Tier 3 completion
+- All Tier 2 tasks depend on Tier 3 completion
+- Testing tasks depend on Tier 3 + Tier 1 completion
+
+
+---
+
+## Phase 22: Language Reference Alignment [ACTIVE]
+
+**Objective:** Implement remaining features from `docs/SYNTAX_REVISION.md` and `docs/QUICK_REFERENCE.md` to achieve full parity with the language specification.
+
+**Context:** The language reference defines OmniLisp syntax using the Character Calculus rules (`[]` = Slot, `{}` = Kind, `()` = Flow, `^` = Metadata). Several features documented in the reference are not yet wired in the compiler/runtime.
+
+### 22.1 Type Definitions (Julia-Style)
+
+- [TODO] Label: T-ref-type-abstract
+  Objective: Implement abstract type definitions with metadata.
+  Reference: docs/SYNTAX_REVISION.md Section 3.1
+  Where: csrc/parser/parser.c, csrc/analysis/analysis.c, csrc/codegen/codegen.c
+  Why: Abstract types form the base of Julia-style type hierarchy.
+  What: Parse and analyze `(define ^:parent {Any} {abstract Number} [])`.
+  
+  Implementation Details:
+    * **Parser (parser.c):**
+      - Extend `analyze_define` to detect `{abstract ...}` as first argument
+      - Check for OMNI_TYPE_LIT with type_name == "abstract"
+      - Extract parent from ^:parent metadata (if present)
+      - Create TypeDef with is_abstract = true
+    
+    * **Analyzer (analysis.c):**
+      - Add `omni_register_abstract_type(char* name, char* parent)`
+      - Store in TypeRegistry with is_abstract flag set
+      - Validate: no fields allowed for abstract types
+      - Validate: parent must exist or be "Any"
+    
+    * **Codegen (codegen.c):**
+      - Emit C typedef or forward declaration
+      - For abstract types: `typedef struct TypeAbstract TypeAbstract;`
+      - No field layout needed (no instance creation)
+  
+  Verification:
+    - Input: `(define ^:parent {Any} {abstract Number} [])`
+    - Expected: TypeDef registered with name="Number", parent="Any", is_abstract=true
+    - Test: `(type? (Number) Int)` returns false (Int is not abstract)
+
+- [TODO] Label: T-ref-type-primitive
+  Objective: Implement primitive type definitions with bit width.
+  Reference: docs/SYNTAX_REVISION.md Section 3.2
+  Where: csrc/parser/parser.c, csrc/analysis/analysis.c, csrc/codegen/codegen.c
+  Why: Primitive types map directly to C machine types.
+  What: Parse and analyze `(define ^:parent {Real} {primitive Float64} [64])`.
+  
+  Implementation Details:
+    * **Parser (parser.c):**
+      - Detect `{primitive ...}` pattern in define
+      - Extract type name from type literal (e.g., "Float64")
+      - Extract bit width from Slot array parameter (e.g., [64])
+    
+    * **Analyzer (analysis.c):**
+      - Add `omni_register_primitive_type(char* name, char* parent, int bit_width)`
+      - Store bit_width in TypeDef
+      - Map bit widths to C types:
+        - 32 -> int32_t, float
+        - 64 -> int64_t, double
+      - Validate: no fields allowed (primitives are opaque)
+    
+    * **Codegen (codegen.c):**
+      - Emit C typedef based on bit_width
+      - Example: `typedef double TypeFloat64;` or `typedef int64_t TypeInt64;`
+  
+  Verification:
+    - Input: `(define ^:parent {Real} {primitive Float64} [64])`
+    - Expected: TypeDef with name="Float64", parent="Real", bit_width=64, is_primitive=true
+    - Generated C: `typedef double TypeFloat64;`
+
+- [TODO] Label: T-ref-type-struct
+  Objective: Implement composite type definitions (structs).
+  Reference: docs/SYNTAX_REVISION.md Section 3.3
+  Where: csrc/parser/parser.c, csrc/analysis/analysis.c, csrc/codegen/codegen.c
+  Why: Structs are the primary user-defined composite type.
+  What: Parse and analyze `(define ^:parent {Any} {struct Point} [x {Float64}] [y {Float64}])`.
+  
+  Implementation Details:
+    * **Parser (parser.c):**
+      - Detect `{struct ...}` pattern in define
+      - Extract struct name from type literal
+      - Parse field slots: `[name {Type}?]`
+      - Extract field names and optional type annotations
+    
+    * **Analyzer (analysis.c):**
+      - Add `omni_register_struct_type(char* name, TypeField* fields, size_t count)`
+      - Store fields in TypeDef
+      - For each field: extract name, type_name, is_mutable, variance
+      - Validate: at least one field required
+      - Validate: no cycles in field type references (or mark as has_cycles=true)
+    
+    * **Codegen (codegen.c):**
+      - Emit C struct definition:
+        ```c
+        typedef struct TypePoint {
+            OmniValue* x;  // Float64
+            OmniValue* y;  // Float64
+        } TypePoint;
+        ```
+      - Include field types as comments for documentation
+  
+  Verification:
+    - Input: `(define ^:parent {Any} {struct Point} [x {Float64}] [y {Float64}])`
+    - Expected: TypeDef with name="Point", fields=[{name="x", type_name="Float64"}, {name="y", type_name="Float64"}]
+    - Generated C: struct with two OmniValue* fields
+
+- [TODO] Label: T-ref-type-parametric
+  Objective: Implement parametric types with variance annotations.
+  Reference: docs/SYNTAX_REVISION.md Section 3.4
+  Where: csrc/parser/parser.c, csrc/analysis/analysis.c
+  Why: Parametric types enable generic containers (List, Vector, etc.).
+  What: Parse and analyze `(define {struct [^:covar T]} {List} [head {T}] [tail {List T}])`.
+  
+  Implementation Details:
+    * **Parser (parser.c):**
+      - Detect metadata ^:covar or ^:contra in struct parameters
+      - Extract type parameter name (e.g., "T")
+      - Extract variance from metadata
+    
+    * **Analyzer (analysis.c):**
+      - Add `omni_register_parametric_type(char* name, char** type_params, VarianceKind* variances)`
+      - Store type_params and variance info in TypeDef
+      - For fields with parametric types {T}, store as type_name="T"
+      - Track variance per parameter for later subtype checking
+    
+    * **Variance checking (future task):**
+      - Use variance in omni_type_is_subtype for parametric types
+      - Example: (List Int) ⊑ (List Any) because List is covariant
+  
+  Verification:
+    - Input: `(define {struct [^:covar T]} {List} [head {T}] [tail {List T}])`
+    - Expected: TypeDef with type_params=["T"], variances=[VARIANCE_COVARIANT]
+
+### 22.2 Metadata Attachment
+
+- [TODO] Label: T-ref-metadata-attach-define
+  Objective: Attach metadata to definitions during parsing.
+  Reference: docs/SYNTAX_REVISION.md Section 5
+  Where: csrc/parser/parser.c, csrc/ast/ast.c
+  Why: Metadata (^:parent, ^:where, etc.) modifies definition behavior.
+  What: Extract metadata from define forms and attach to AST nodes.
+  
+  Implementation Details:
+    * **Current state:**
+      - Parser has `act_metadata` that parses `^ key value` forms
+      - Returns a list (meta-keyword obj) but doesn't attach it
+    
+    * **Problem:**
+      - Metadata appears BEFORE the definition it modifies
+      - Example: `^:parent {Number} (define {abstract Int} [])`
+      - Current parser treats metadata as separate expression
+    
+    * **Solution:**
+      - Modify `act_metadata` to look ahead for following define/lambda
+      - Attach metadata to the following definition's AST node
+      - Or: Parse metadata as part of define form (prefix metadata)
+    
+    * **Implementation:**
+      - In parser.c, modify grammar to allow metadata prefix:
+        ```
+        DEFINE_WITH_META = METADATA* DEFINE
+        ```
+      - In `act_define_with_meta`, collect all metadata entries
+      - Attach to OmniValue->metadata (new field in OmniValue struct)
+      - Pass metadata to analyzer as part of the definition
+  
+  Verification:
+    - Input: `^:parent {Number} (define {abstract Int} [])`
+    - Expected: AST node for abstract Int has metadata entry {META_PARENT, value={Number}}
+    - Test: `omni_get_metadata(define_ast, "parent")` returns {Number}
+
+- [TODO] Label: T-ref-metadata-where
+  Objective: Implement ^:where constraints for diagonal dispatch.
+  Reference: docs/SYNTAX_REVISION.md Section 2.2
+  Where: csrc/analysis/analysis.c
+  Why: ^:where enforces that multiple arguments share the same type.
+  What: Parse and analyze `(define ^:where [T {Number}] [x {T}] [y {T}] {T} (+ x y))`.
+  
+  Implementation Details:
+    * **Parser:**
+      - Extract ^:where metadata from define
+      - Parse constraint list: `[T {Number}]` means "T is subtype of Number"
+    
+    * **Analyzer:**
+      - Add `omni_check_where_constraints(ParamSummary* params, MetadataEntry* where_meta)`
+      - For each constraint `[T {UpperBound}]`:
+        - Collect all parameters with type annotation {T}
+        - Verify they have the same concrete type
+        - Verify that type is a subtype of {UpperBound}
+      - Emit error if constraints are violated
+    
+    * **Dispatch integration:**
+      - Use ^:where constraints in generic function lookup
+      - Only select methods where all constraints are satisfied
+  
+  Verification:
+    - Input: `(define ^:where [T {Number}] [x {T}] [y {T}] {T} (+ x y))`
+    - Call: `(add-generic 1 2)` - should match (both Int, Int ⊑ Number)
+    - Call: `(add-generic "a" "b")` - should error (String not ⊑ Number)
+
+### 22.3 Lambda Syntax Variants
+
+- [TODO] Label: T-ref-lambda-fn
+  Objective: Implement `fn` as lambda shorthand.
+  Reference: docs/SYNTAX_REVISION.md Section 2.3
+  Where: csrc/parser/parser.c, csrc/analysis/analysis.c
+  Why: `fn` is more ergonomic than `lambda` and aligns with modern Lisps.
+  What: Parse `(fn [x] (* x x))` as equivalent to `(lambda [x] (* x x))`.
+  
+  Implementation Details:
+    * **Parser (parser.c):**
+      - Detect "fn" as list head in parser
+      - Treat identically to "lambda" keyword
+      - No grammar changes needed (just symbol check)
+    
+    * **Analyzer (analysis.c):**
+      - In `analyze_lambda`, already handles lambda
+      - Just ensure "fn" is recognized as lambda synonym
+      - Search for `strcmp(name, "lambda")` and add `|| strcmp(name, "fn") == 0`
+  
+  Verification:
+    - Input: `(fn [x] (* x x))`
+    - Expected: Same AST as `(lambda [x] (* x x))`
+    - Call: `((fn [x] (* x x)) 5)` => 25
+
+- [TODO] Label: T-ref-lambda-lambda
+  Objective: Implement `λ` (Greek letter) as lambda shorthand.
+  Reference: docs/SYNTAX_REVISION.md Section 2.3
+  Where: csrc/parser/parser.c
+  Why: Mathematical notation, even more concise.
+  What: Parse `(λ [x] (* x x))` as lambda.
+  
+  Implementation Details:
+    * **Parser (parser.c):**
+      - Ensure UTF-8 support for λ (U+03BB)
+      - In symbol reader, recognize λ as valid symbol character
+      - In analyzer, treat λ as lambda synonym (like `fn`)
+    
+    * **Note:**
+      - May require reader encoding verification
+      - Test with UTF-8 source files
+  
+  Verification:
+    - Input: `(λ [x] (* x x))`
+    - Expected: Same AST as `(lambda [x] (* x x))`
+
+### 22.4 Match Expression
+
+- [TODO] Label: T-ref-match-parse
+  Objective: Implement match expression parsing.
+  Reference: docs/SYNTAX_REVISION.md Section 6.1
+  Where: csrc/parser/parser.c
+  Why: Pattern matching is fundamental for destructuring and control flow.
+  What: Parse `(match val [pattern result] [pattern :when guard result] [else default])`.
+  
+  Implementation Details:
+    * **Parser (parser.c):**
+      - Add grammar rule for MATCH:
+        ```
+        MATCH = "match" WS EXPR WS MATCH_CLAUSE+
+        MATCH_CLAUSE = "[" WS EXPR WS (":when" WS EXPR WS)? EXPR "]"
+        ```
+      - Distinguish patterns from expressions:
+        - Patterns: symbols (variables), literals (42, "foo"), arrays `[x y]`, lists `(cons a b)`
+        - Results: arbitrary expressions
+    
+    * **AST representation:**
+      - Create OMNI_MATCH tag in ast.h
+      - Store: value_expr, clauses array
+      - Each clause: pattern, guard (optional), result_expr
+  
+  Verification:
+    - Input: `(match 1 [1 "one"] [2 "two"] [_ "other"])`
+    - Expected: AST with OMNI_MATCH tag, 3 clauses
+
+- [TODO] Label: T-ref-match-analyze
+  Objective: Implement match expression analysis.
+  Reference: csrc/analysis/analysis.c
+  Where: csrc/analysis/analysis.c
+  Why: Need to track variable bindings and liveness in match patterns.
+  What: Analyze variable scope and usage in match clauses.
+  
+  Implementation Details:
+    * **Analyzer (analysis.c):**
+      - Add `analyze_match(AnalysisContext* ctx, OmniValue* expr)`
+      - Analyze value_expr first
+      - For each clause:
+        - Extract variable bindings from pattern
+        - Create new scope for pattern variables
+        - Mark variable writes for pattern bindings
+        - Analyze guard (if present)
+        - Analyze result_expr
+        - Track last-use for cleanup
+      - Handle wildcards `_` (no binding)
+    
+    * **Pattern variable extraction:**
+      - Symbols in patterns are variable bindings
+      - Literals (int, string) are not bindings
+      - Nested patterns: `[x y]` binds x and y
+      - Constructor patterns: `(Cons h t)` binds h and t
+  
+  Verification:
+    - Input: `(match [1 2] [[x y] (+ x y)] [_ 0])`
+    - Expected: Variables x and y marked as written, used in (+ x y)
+    - Liveness: x and y can be freed after (+ x y)
+
+- [TODO] Label: T-ref-match-codegen
+  Objective: Implement match expression code generation.
+  Reference: csrc/codegen/codegen.c
+  Where: csrc/codegen/codegen.c
+  Why: Generate efficient C code for pattern matching.
+  What: Emit if-else chain or switch for match clauses.
+  
+  Implementation Details:
+    * **Codegen (codegen.c):**
+      - Add `codegen_match(CodegenContext* ctx, OmniValue* expr)`
+      - Generate if-else chain:
+        ```c
+        // Simple strategy: linear search
+        if (match_clause1(value)) { return result1; }
+        else if (match_clause2(value)) { return result2; }
+        else { return default_result; }
+        ```
+      - For integer literals: use switch statement for efficiency
+      - For type patterns: use tag checking
+    
+    * **Pattern matching runtime:**
+      - Need helper functions for each pattern type
+      - `match_int(value, target)` - compare integers
+      - `match_cons(value)` - check if cons cell
+      - `match_array(value, expected_len)` - check array length
+  
+  Verification:
+    - Input: `(match x [42 "answer"] [_ "other"])`
+    - Generated C:
+      ```c
+      if (omni_is_int(x) && omni_int_val(x) == 42) {
+          return omni_new_string("answer");
+      } else {
+          return omni_new_string("other");
+      }
+      ```
+
+- [TODO] Label: T-ref-match-guards
+  Objective: Implement :when guards in match clauses.
+  Reference: docs/SYNTAX_REVISION.md Section 6.1
+  Where: csrc/codegen/codegen.c
+  Why: Guards enable conditional pattern matching.
+  What: Generate guard checks before executing clause body.
+  
+  Implementation Details:
+    * **Codegen:**
+      - For clauses with `:when guard`, emit guard check
+      - Only execute result if guard evaluates to true
+      - Fall through to next clause if guard fails
+    
+    * **Generated C pattern:**
+      ```c
+      // [pattern :when guard result]
+      if (matches_pattern(value)) {
+          if (eval_guard(value)) {  // guard expression
+              return result_expr;
+          }
+      } else {
+          // next clause
+      }
+      ```
+  
+  Verification:
+    - Input: `(match n [{Int} :when (> n 0) "positive"] [_ "non-positive"])`
+    - Expected: Guard `n > 0` checked before returning "positive"
+
+### 22.5 Let Variants
+
+- [TODO] Label: T-ref-let-seq
+  Objective: Implement ^:seq metadata for sequential let (let*).
+  Reference: docs/SYNTAX_REVISION.md Section 6.2
+  Where: csrc/analysis/analysis.c, csrc/codegen/codegen.c
+  Why: let* allows each binding to see previous bindings (useful for computation chains).
+  What: Parse and analyze `(let ^:seq [x 1] [y (+ x 1)] y)`.
+  
+  Implementation Details:
+    * **Parser:**
+      - Detect ^:seq metadata on let form
+      - Pass to analyzer as metadata flag
+    
+    * **Analyzer:**
+      - In `analyze_let`, check for META_SEQ metadata
+      - If ^:seq present:
+        - Create nested scopes (each binding in separate scope)
+        - Each binding sees previous bindings
+        - Equivalent to expanding to nested lets:
+          ```
+          (let [x 1]
+            (let [y (+ x 1)]
+              y))
+          ```
+      - If no ^:seq:
+        - All bindings in same scope (parallel let)
+  
+  Verification:
+    - Input: `(let ^:seq [x 1] [y (+ x 1)] y)` => 2
+    - Input: `(let [x 1] [y (+ x 1)] y)` => error (x not visible in y's init)
+
+- [TODO] Label: T-ref-let-rec
+  Objective: Implement ^:rec metadata for recursive let (letrec).
+  Reference: docs/SYNTAX_REVISION.md Section 6.2
+  Where: csrc/analysis/analysis.c, csrc/codegen/codegen.c
+  Why: letrec enables mutually recursive definitions.
+  What: Parse and analyze `(let ^:rec [is-even (fn [n] (if (= n 0) true (is-odd (- n 1)))) ...)`).
+  
+  Implementation Details:
+    * **Analyzer:**
+      - In `analyze_let`, check for META_REC metadata
+      - If ^:rec present:
+        - Create placeholder bindings first (uninitialized)
+        - Then analyze init expressions (can reference placeholders)
+        - Mark all bindings as mutually recursive
+      - Escape analysis:
+        - Recursive bindings escape (can't be stack-allocated)
+        - Disable inlining for recursive functions
+    
+    * **Codegen:**
+      - Generate forward declarations for all bindings
+      - Then initialize in sequence
+      - For closures: fix up references to recursive functions
+  
+  Verification:
+    - Input: `(let ^:rec [is-even (fn [n] ...)] [is-odd (fn [n] ...)] (is-even 5))`
+    - Expected: is-even can call is-odd and vice versa
+
+### 22.6 Union Types
+
+- [TODO] Label: T-ref-union-parse
+  Objective: Implement union type parsing.
+  Reference: docs/SYNTAX_REVISION.md Section 4.1
+  Where: csrc/parser/parser.c
+  Why: Union types enable expressing "either A or B" types.
+  What: Parse `(union [{Int32} {String}])` as type constructor.
+  
+  Implementation Details:
+    * **Parser:**
+      - Detect "union" symbol in type position
+      - Parse as Flow constructor: `(union [type1 type2 ...])`
+      - Return as OMNI_TYPE_LIT with type_name="union" and params=[type1, type2, ...]
+    
+    * **Type representation:**
+      - Store union as special TypeDef
+      - Or: Store as type reference to built-in Union type
+      - Track member types in type_params array
+  
+  Verification:
+    - Input: `(define {IntOrString} (union [{Int32} {String}]))`
+    - Expected: TypeDef with name="IntOrString", kind=UNION, members=[Int32, String]
+
+- [TODO] Label: T-ref-union-subtype
+  Objective: Implement union type subtype checking.
+  Reference: docs/TYPE_SYSTEM_DESIGN.md (Open Questions section)
+  Where: csrc/analysis/analysis.c
+  Why: Need to check if a type is a member of a union.
+  What: Update `omni_type_is_subtype` to handle unions.
+  
+  Implementation Details:
+    * **Subtype rule:**
+      - T ⊑ (union A B C) iff T ⊑ A OR T ⊑ B OR T ⊑ C
+      - In other words: T is a subtype of union if T is subtype of ANY member
+    
+    * **Implementation:**
+      - In `omni_type_is_subtype`:
+        - If type_b is a union:
+          - Check if type_a is subtype of any union member
+          - Return true if any match
+      - If type_a is a union:
+        - Not directly supported (union as argument)
+        - Would require union type dispatch
+  
+  Verification:
+    - Input: `omni_type_is_subtype("Int", "IntOrString")` where IntOrString = (union Int String)
+    - Expected: true (Int is member of union)
+
+- [TODO] Label: T-ref-union-dispatch
+  Objective: Implement dispatch on union types.
+  Reference: docs/TYPE_SYSTEM_DESIGN.md Section "Open Questions"
+  Where: csrc/analysis/analysis.c, runtime/src/generic.c
+  Why: Multiple dispatch over union types needs special handling.
+  What: Select method when argument type is a union.
+  
+  Implementation Details:
+    * **Dispatch strategy:**
+      - When argument is a union value:
+        - Check actual runtime type of value
+        - Use that type for method selection
+        - Not the union type itself
+    
+    * **Alternative:**
+      - Treat union as "any of these types"
+      - Method selection based on most specific member type
+      - Example: For (union Int String), prefer Int method over Any method
+  
+  Verification:
+    - Input: Define methods for Int, String, Any. Call with union value containing Int.
+    - Expected: Int method selected (based on actual value type)
+
+### 22.7 Function Types
+
+- [TODO] Label: T-ref-fn-type-parse
+  Objective: Implement function type parsing.
+  Reference: docs/SYNTAX_REVISION.md Section 4.2
+  Where: csrc/parser/parser.c
+  Why: Function types enable higher-order functions with type annotations.
+  What: Parse `(fn [[{Int32}] {Int32}])` as function type.
+  
+  Implementation Details:
+    * **Parser:**
+      - Detect "fn" in type position (inside `{}`)
+      - Parse as: `(fn [[params] {return}])`
+      - Return as OMNI_TYPE_LIT with type_name="fn" and special structure
+    
+    * **Type representation:**
+      - Store as FunctionType struct (add to analysis.h)
+      - Fields: param_types (array), return_type
+  
+  Verification:
+    - Input: `(define [f {(fn [{Int32}] {Int32})}] ...)`
+    - Expected: Parameter f has function type (Int32 -> Int32)
+
+### 22.8 Documentation Updates
+
+- [TODO] Label: T-ref-docs-status
+  Objective: Update documentation to reflect implementation status.
+  Reference: docs/QUICK_REFERENCE.md, docs/SYNTAX_REVISION.md
+  Where: docs/
+  Why: Users need to know which features are actually implemented.
+  What: Add implementation status markers to documentation.
+  
+  Implementation Details:
+    * **For each feature in QUICK_REFERENCE.md:**
+      - Add [IMPLEMENTED] or [DESIGN TARGET] marker
+      - Update based on Phase 22 completion status
+    
+    * **Create implementation tracking:**
+      - Table mapping feature -> task label
+      - Update as tasks are completed
+  
+  Verification:
+    - docs/QUICK_REFERENCE.md has status for each major feature
+    - Status matches actual implementation (test by trying examples)
+
+---

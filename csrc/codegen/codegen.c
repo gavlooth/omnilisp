@@ -65,6 +65,14 @@ void omni_codegen_free(CodeGenContext* ctx) {
         omni_analysis_free(ctx->analysis);
     }
 
+    /* Phase 27: Clean up specialization resources */
+    if (ctx->spec_db) {
+        spec_db_free(ctx->spec_db);
+    }
+    if (ctx->type_env) {
+        type_env_free(ctx->type_env);
+    }
+
     free(ctx->output_buffer);
     free(ctx);
 }
@@ -2156,7 +2164,8 @@ static void codegen_list(CodeGenContext* ctx, OmniValue* expr) {
             codegen_let(ctx, expr);
             return;
         }
-        if (strcmp(name, "lambda") == 0 || strcmp(name, "fn") == 0) {
+        if (strcmp(name, "lambda") == 0 || strcmp(name, "fn") == 0 ||
+            strcmp(name, "λ") == 0) {  /* Greek letter lambda */
             codegen_lambda(ctx, expr);
             return;
         }

@@ -64,6 +64,9 @@ enum {
     R_PATH_SEGMENT, R_PATH_TAIL_ITEM, R_PATH_TAIL, R_PATH,
     R_METADATA,
 
+    R_MATCH, R_MATCH_CLAUSE, R_MATCH_CLAUSES,
+    R_WHEN,
+
     R_QUOTED,
 
     R_PROGRAM_INNER, R_PROGRAM_SEQ,
@@ -292,8 +295,57 @@ static OmniValue* act_path(PikaState* state, size_t pos, PikaMatch match) {
         segments = omni_cdr(segments);
     }
     
-    return omni_new_cell(omni_new_sym("path"), 
+    return omni_new_cell(omni_new_sym("path"),
                          omni_new_cell(root, rev_segments));
+}
+
+/* Phase 22: Match expression semantic action */
+static OmniValue* act_match(PikaState* state, size_t pos, PikaMatch match) {
+    /* (match value [pattern result] ...) */
+    size_t current = pos;
+
+    /* Skip "match" symbol */
+    PikaMatch* sym_m = pika_get_match(state, current, R_SYM);
+    if (!sym_m || !sym_m->matched) return omni_nil;
+    current += sym_m->len;
+
+    /* Skip whitespace */
+    PikaMatch* ws_m = pika_get_match(state, current, R_WS);
+    if (ws_m && ws_m->matched) current += ws_m->len;
+
+    /* Get the value expression */
+    PikaMatch* val_m = pika_get_match(state, current, R_EXPR);
+    if (!val_m || !val_m->matched) return omni_nil;
+    OmniValue* value_expr = val_m->val;
+    current += val_m->len;
+
+    /* Skip whitespace */
+    ws_m = pika_get_match(state, current, R_WS);
+    if (ws_m && ws_m->matched) current += ws_m->len;
+
+    /* Get match clauses */
+    PikaMatch* clauses_m = pika_get_match(state, current, R_MATCH_CLAUSES);
+    OmniValue* clauses = (clauses_m && clauses_m->matched) ? clauses_m->val : omni_nil;
+
+    /* Build match expression: (match value clause1 clause2 ...) */
+    return omni_new_cell(omni_new_sym("match"),
+                        omni_new_cell(value_expr,
+                                     clauses));
+}
+
+/* Match clause semantic action */
+static OmniValue* act_match_clause(PikaState* state, size_t pos, PikaMatch match) {
+    /* [pattern result] or [pattern :when guard result] */
+    /* For now, we treat the clause as an array */
+    /* The analyzer will destructure it */
+    return omni_new_array(0);  /* Placeholder */
+}
+
+/* Match clauses list action */
+static OmniValue* act_match_clauses(PikaState* state, size_t pos, PikaMatch match) {
+    /* Build a list of clauses */
+    /* For now, return nil - analyzer will parse from list structure */
+    return omni_nil;
 }
 
 static OmniValue* act_program(PikaState* state, size_t pos, PikaMatch match) {

@@ -304,6 +304,120 @@ void omni_codegen_if_narrowed(CodeGenContext* ctx, OmniValue* expr);
  */
 void omni_codegen_let_narrowed(CodeGenContext* ctx, OmniValue* expr);
 
+/* ============== Phase 27: Type Specialization Integration ============== */
+
+/*
+ * Initialize type specialization for code generation.
+ *
+ * Creates SpecDB and TypeEnv for tracking specializations and types.
+ * Call this at the start of code generation to enable specialization.
+ *
+ * Args:
+ *   ctx: Codegen context to initialize
+ *
+ * Returns:
+ *   true on success, false on failure
+ */
+bool omni_codegen_init_specialization(CodeGenContext* ctx);
+
+/*
+ * Clean up type specialization resources.
+ *
+ * Frees SpecDB and TypeEnv. Call after code generation completes.
+ *
+ * Args:
+ *   ctx: Codegen context to clean up
+ */
+void omni_codegen_cleanup_specialization(CodeGenContext* ctx);
+
+/*
+ * Enable or disable type specialization.
+ *
+ * Args:
+ *   ctx: Codegen context
+ *   enable: true to enable, false to disable
+ */
+void omni_codegen_set_specialization(CodeGenContext* ctx, bool enable);
+
+/*
+ * Generate code for a function call with type dispatch.
+ *
+ * Automatically chooses between specialized and generic versions
+ * based on argument types.
+ *
+ * Args:
+ *   ctx: Codegen context
+ *   func_name: Function name
+ *   args: Argument expressions
+ *   arg_types: Known types of arguments (can be NULL for unknown)
+ *   arg_count: Number of arguments
+ *
+ * Emits:
+ *   Specialized call if types known and specialization exists
+ *   Generic call otherwise
+ */
+void omni_codegen_dispatch_call(CodeGenContext* ctx,
+                              const char* func_name,
+                              OmniValue** args,
+                              ConcreteType** arg_types,
+                              int arg_count);
+
+/*
+ * Get the type of an expression during code generation.
+ *
+ * Uses the type environment to look up variable types and
+ * infer expression types.
+ *
+ * Args:
+ *   ctx: Codegen context
+ *   expr: Expression to analyze
+ *
+ * Returns:
+ *   Inferred type (borrowed reference, valid while type_env exists)
+ */
+ConcreteType* omni_codegen_get_expr_type(CodeGenContext* ctx, OmniValue* expr);
+
+/*
+ * Register a function specialization.
+ *
+ * Records that a specialized version of a function exists for
+ * specific parameter types.
+ *
+ * Args:
+ *   ctx: Codegen context
+ *   func_name: Function name
+ *   param_types: Parameter types
+ *   param_count: Number of parameters
+ *   return_type: Return type
+ *   is_builtin: true for builtin primitives
+ *
+ * Returns:
+ *   SpecSignature for the specialization
+ */
+SpecSignature* omni_codegen_register_specialization(CodeGenContext* ctx,
+                                                   const char* func_name,
+                                                   ConcreteType** param_types,
+                                                   int param_count,
+                                                   ConcreteType* return_type,
+                                                   bool is_builtin);
+
+/*
+ * Check if a specialized version exists for a function call.
+ *
+ * Args:
+ *   ctx: Codegen context
+ *   func_name: Function name
+ *   arg_types: Argument types
+ *   arg_count: Number of arguments
+ *
+ * Returns:
+ *   SpecSignature if specialization exists, NULL otherwise
+ */
+SpecSignature* omni_codegen_lookup_specialization(CodeGenContext* ctx,
+                                                const char* func_name,
+                                                ConcreteType** arg_types,
+                                                int arg_count);
+
 #ifdef __cplusplus
 }
 #endif
