@@ -150,32 +150,32 @@ Replace hybrid memory management with a unified Region-RC architecture.
   Objective: Flow constructors (union, fn) implemented.
   Status: prim_union, prim_fn in runtime.c complete.
 
-- [TODO] Label: T-syntax-slot-params
+- [R] Label: T-syntax-slot-params
   Objective: Update define parameter parsing for Slot `[]` syntax.
   Reference: docs/SYNTAX_REVISION.md Section 2.1
-  Where: csrc/codegen/codegen.c
-  What: Change (define (f params...) body) to (define [params...] {ret} body).
-  How: Parse params as Slot instead of list.
+  Where: csrc/analysis/analysis.c, csrc/codegen/codegen.c
+  What: Support traditional shorthand (define f x y body) and Slot syntax (define f [x] [y] body).
+  How: Added extract_param_name helpers, updated analyze_define and codegen_define.
 
-- [TODO] Label: T-syntax-slot-let
+- [R] Label: T-syntax-slot-let
   Objective: Update let binding parsing for Slot triplet syntax.
   Reference: docs/SYNTAX_REVISION.md Section 6.2
-  Where: csrc/codegen/codegen.c
-  What: Parse (let [x {Type} val] body) instead of (let ((x val)) body).
-  How: Extend analyze_let to handle name-type-value triplets.
+  Where: csrc/analysis/analysis.c, csrc/codegen/codegen.c
+  What: Support (let [x val] [y val] body) and (let [x {Type} val] body).
+  How: Extended analyze_let and codegen_let to handle Slot triplet syntax.
 
-- [TODO] Label: T-syntax-reader-val
+- [R] Label: T-syntax-reader-val
   Objective: Implement #val reader tag for literal values.
-  Reference: docs/SYNTAX_REVISION.md Section 6
+  Reference: docs/SYNTAX_REVISION.md Section 3.7
   Where: csrc/parser/parser.c
-  What: Add Pika rule for #val(...) reader macro.
-  How: Expand to value creation during parsing.
+  What: Add R_HASH_VAL rule with act_hash_val semantic action.
+  How: #val <value> expands to (value->type <value>) during parsing.
 
-- [TODO] Label: T-syntax-pika-ast
+- [R] Label: T-syntax-pika-ast
   Objective: Add AST output mode to Pika parser.
-  Where: csrc/parser/pika_core.c
-  What: Return OmniValue AST instead of string.
-  How: Modify semantic actions to build AST nodes.
+  Where: csrc/parser/pika.h, csrc/parser/pika_core.c
+  What: Add PIKA_OUTPUT_AST and PIKA_OUTPUT_STRING modes.
+  How: Added pika_set_output_mode() and updated pika_run() to respect mode.
 
 - [TODO] Label: T-syntax-dispatch-types
   Objective: Wire type system with multiple dispatch.
