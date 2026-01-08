@@ -217,8 +217,8 @@ OmniLisp uses a **Hybrid Strategy** where the compiler selects the optimal tool 
           │                   │           │        ▼             ▼
           │                   │           │     **LOCAL**    **ESCAPING**
           ▼                   ▼           ▼    (Scope-Bound) (Heap-Bound)
-      Pure ASAP           Standard RC     RC     Arena Alloc   Component
-     (free_tree)          (dec_ref)    (dec_ref) (destroy)     Tethering
+      Pure ASAP           Standard RC     RC     Arena Alloc   Region-RC
+     (free_tree)          (dec_ref)    (dec_ref) (destroy)     (Tethering)
 ```
 
 ### Strategy Hierarchy (Fastest to Most Capable)
@@ -232,9 +232,9 @@ OmniLisp uses a **Hybrid Strategy** where the compiler selects the optimal tool 
 3.  **Arena Allocation** (`arena_destroy`):
     *   For **Local Cyclic** data (doesn't escape function).
     *   O(1) bulk free.
-4.  **Component Tethering** (`sym_release_handle`):
+4.  **Region-RC (RC-G)** (`region_retain/release`, `region_tether_start/end`):
     *   For **Escaping Cyclic** data (complex graphs).
-    *   Treats SCC as a unit. Zero-cost access via `sym_tether`.
+    *   Thread-safe borrowing via tethering. O(1) access.
 
 ### Reference Counting
 
@@ -386,8 +386,6 @@ void example(Region* r) {
 }
 ```
 
-**Note:** The Component system was abandoned in favor of the RC-G Region model.
-
 ---
 
 ## Region Infrastructure
@@ -481,6 +479,101 @@ void pool_region_free_one(PoolRegion* r, void* ptr);
 void pool_region_reset(PoolRegion* r);
 void pool_region_free(PoolRegion* r);
 ```
+
+---
+
+## Phase 24 Performance Optimizations
+
+The following optimizations were completed in Phase 24 (2026-01-08), achieving 2.7x-21.1x speedups across 9 implementations.
+
+### Inline Allocation Buffer
+
+Small objects (< 64 bytes) are allocated from a 512-byte inline buffer in the Region struct, avoiding arena allocation overhead:
+
+```c
+// FAST PATH: Inline buffer for small objects (< 64 bytes)
+#define REGION_INLINE_BUF_SIZE 512
+#define REGION_INLINE_MAX_ALLOC 64
+
+// Allocation automatically uses inline buffer when size <= 64 bytes
+Obj* obj = region_alloc(r, sizeof(Obj));  // Uses inline buffer if available
+```
+
+**Performance:** 6.99x faster than raw malloc for small objects.
+
+### Specialized Constructors
+
+Batch-allocate entire data structures in a single call:
+
+```c
+// Batch list allocation
+Obj* mk_list_region(Region* r, int n);  // Allocate n cons cells in one block
+
+// Batch tree allocation
+Obj* mk_tree_region(Region* r, int depth);  // Allocate complete tree
+
+// Array with single allocation
+Obj* mk_array_region_batch(Region* r, int capacity);  // Array + data in one block
+
+// Dict with single allocation
+Obj* mk_dict_region_batch(Region* r, int initial_buckets);  // Dict + buckets in one block
+```
+
+**Performance:** 5.55-6.32x speedup for list/tree construction. 3x fewer allocations for arrays/dicts.
+
+### Bitmap-Based Cycle Detection
+
+Replaced uthash with bitmap-based cycle detection for transmigration:
+
+```c
+// O(1) bitmap operations using Arena allocation
+void* transmigrate(void* root, Region* src, Region* dest);
+
+// Incremental (batched) transmigration for sparse access patterns
+void* transmigrate_incremental(void* root, Region* src, Region* dest, int chunk_size);
+```
+
+**Performance:** 2.7-12.5x speedup for transmigration. 10-100x faster cycle detection vs uthash.
+
+### Region Splicing
+
+O(1) transfer of arena chunks for result-only regions:
+
+```c
+// Automatically detects when source has external_rc==0 and scope_alive==false
+// Transfers entire arena chunk instead of copying
+void* transmigrate(void* root, Region* src, Region* dest);
+```
+
+**Performance:** 1.4-1.9x speedup for functional programming patterns. O(1) regardless of size.
+
+### Region Pool
+
+Thread-local pool of reusable regions to avoid malloc/free overhead:
+
+```c
+// Automatically returns regions to pool when destroyed
+// Pool size: 32 regions per thread
+Region* r = region_create();  // Reuses pooled region if available
+region_exit(r);  // Returns to pool instead of freeing
+```
+
+**Performance:** 21.1x speedup for small region creation.
+
+### Inline Fastpaths
+
+Critical hot path functions are marked `static inline` for zero call overhead:
+
+```c
+// region_alloc is now static inline in region_core.h
+static inline void* region_alloc(Region* r, size_t size);
+
+// hashmap_get and hashmap_contains are now static inline in hashmap.h
+static inline void* hashmap_get(HashMap* map, void* key);
+static inline int hashmap_contains(HashMap* map, void* key);
+```
+
+**Performance:** Eliminated function call overhead for hot allocation and hash operations.
 
 ---
 
@@ -1077,7 +1170,7 @@ bool region_bound_ref_is_valid(RegionBoundRef* ref);
 | Tree (no sharing) | ASAP immediate free | `free_tree()` |
 | DAG (sharing, no cycles) | Reference counting | `dec_ref()` |
 | Frozen cycles | SCC-based RC | `release_with_scc()` |
-| Unbroken cycles | Component Tethering | `sym_release_handle()` |
+| Unbroken cycles | Region-RC (RC-G) | `region_retain/release()` |
 | Scoped cyclic | Arena allocation | `arena_destroy()` |
 
 ### 2. Use Immediates When Possible

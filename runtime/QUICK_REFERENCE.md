@@ -73,7 +73,7 @@ flush_freelist()      // Process pending frees
 | Tree | ASAP | `free_tree()` |
 | DAG | RC | `dec_ref()` |
 | Frozen cycle | SCC | `release_with_scc()` |
-| Unbroken cycle | SymRC | `sym_exit_scope()` |
+| Unbroken cycle | Region-RC (RC-G) | `region_retain/release()` |
 | Scoped cyclic | Arena | `arena_destroy()` |
 
 ## Arena Allocator

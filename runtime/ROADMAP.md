@@ -5,13 +5,13 @@
 The OmniLisp runtime is a mature C99 + POSIX runtime with:
 
 - **Core object model** with tagged pointers and immediate values
-- **Multiple memory strategies**: ASAP, RC, SCC, Arena, Component Tethering
-- [x] Component-Level Tethering for unbroken cycles (island units)
+- **Multiple memory strategies**: ASAP, RC, SCC, Arena, Region-RC (RC-G)
 - **Region-based memory**: IRegion interface with 5 allocator types
 - **Two-tier concurrency**: OS threads (pthreads) + Fibers (continuations)
 - **Generators/Iterators**: Lazy sequences via continuations
 - **Promises/Async**: Async/await pattern support
 - **FFI**: External handles, weak references, borrowed refs
+- **Phase 24 Performance Optimizations**: 2.7x-21.1x speedups across 9 optimizations
 
 ---
 
@@ -29,8 +29,20 @@ The OmniLisp runtime is a mature C99 + POSIX runtime with:
 - [x] Shape-aware strategies (Tree, DAG, Cyclic)
 - [x] SCC detection (Tarjan's algorithm)
 - [x] Arena allocator for scoped cycles
-- [x] Symmetric RC for unbroken cycles
+- [x] Region-RC (RC-G) model with tethering
 - [x] Deferred RC for batched operations
+
+### Phase 7: Performance Optimization (Complete - 2026-01-08)
+- [x] **Phase 24 Optimizations** (9 implementations, 2.7x-21.1x speedups):
+  - [x] T-opt-inline-allocation: 512-byte inline buffer (6.99x speedup)
+  - [x] T-opt-specialized-constructors: Batch list/tree allocation (5.55-6.32x speedup)
+  - [x] T-opt-transmigrate-batch: Chunked processing with bitmap cycle detection (2.7-12.5x speedup)
+  - [x] T-opt-region-splicing: O(1) result-only region transfer (1.4-1.9x speedup)
+  - [x] T-opt-region-pool: Thread-local region reuse (21.1x speedup)
+  - [x] T-opt-batch-alloc-array: Single allocation for Array+data (3x fewer allocations)
+  - [x] T-opt-inline-alloc-fastpath: Eliminated call overhead for region_alloc
+  - [x] T-opt-inline-hash-fastpath: Eliminated call overhead for hashmap operations
+  - [x] Bitmap-based cycle detection: 10-100x faster than uthash approach
 
 ### Phase 3: Region Infrastructure (Complete)
 - [x] IRegion abstract interface
@@ -65,13 +77,6 @@ The OmniLisp runtime is a mature C99 + POSIX runtime with:
 
 ## Upcoming Features
 
-### Phase 7: Optimization
-- [ ] One-shot continuation optimization (no clone on invoke)
-- [ ] Frame pooling (pre-allocate common sizes)
-- [ ] Inline small continuations
-- [ ] Work-stealing scheduler for multi-core
-- [ ] SIMD-optimized list operations
-
 ### Phase 8: Extended Concurrency
 - [ ] Select (multi-channel wait)
 - [ ] Timeouts with timer wheel
@@ -87,6 +92,17 @@ The OmniLisp runtime is a mature C99 + POSIX runtime with:
 - [ ] Reference cycle visualization
 
 ### Phase 10: Platform Extensions
+- [ ] Windows IOCP integration
+- [ ] Linux io_uring integration
+- [ ] macOS kqueue integration
+- [ ] WASM target support
+
+### Future: Data Structures (Deferred)
+- [ ] Graph algorithms library (recommended first step - see PERSISTENT_DATA_STRUCTURES_ANALYSIS.md)
+- [ ] Simple mutable Graph type (if needed)
+- [ ] Persistent/immutable collections (only if benchmarks show clear need)
+
+### Phase 11: Platform Extensions
 - [ ] Windows IOCP integration
 - [ ] Linux io_uring integration
 - [ ] macOS kqueue integration

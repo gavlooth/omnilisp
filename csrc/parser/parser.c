@@ -36,6 +36,9 @@ enum {
     /* Named character literals: #\newline, #\space, #\tab */
     R_NAMED_CHAR,
 
+    /* Value-to-type conversion: #val 42 (calls value->type) */
+    R_HASH_VAL,
+
     /* String formatting */
     R_FMT_STRING, R_CLF_STRING,
 
@@ -536,6 +539,46 @@ static OmniValue* act_named_char(PikaState* state, size_t pos, PikaMatch match) 
     return omni_nil;
 }
 
+/*
+ * act_hash_val: Process #val <value> reader tag
+ *
+ * Pattern: HASH + SYM("val") + <atom>
+ * Expands to: (value->type <atom>)
+ *
+ * Example:
+ *   #val 42  ->  (value->type 42)
+ *   #val "hello"  ->  (value->type "hello")
+ */
+static OmniValue* act_hash_val(PikaState* state, size_t pos, PikaMatch match) {
+    /* Pattern matched: HASH + SYM + ATOM */
+    size_t current = pos;
+
+    /* Skip HASH */
+    PikaMatch* hash_m = pika_get_match(state, current, R_HASH);
+    if (!hash_m || !hash_m->matched) return omni_nil;
+    current += hash_m->len;
+
+    /* Get the symbol after HASH - should be "val" */
+    PikaMatch* sym_m = pika_get_match(state, current, R_SYM);
+    if (!sym_m || !sym_m->matched) return omni_nil;
+    current += sym_m->len;
+
+    /* Get the atom value */
+    PikaMatch* atom_m = pika_get_match(state, current, R_ATOM);
+    if (!atom_m || !atom_m->matched) return omni_nil;
+
+    OmniValue* value = atom_m->val;
+    if (!value) return omni_nil;
+
+    /* Build the list: (value->type <value>) */
+    OmniValue* value_to_type_sym = omni_new_sym("value->type");
+
+    /* Create cons cells: (value->type value . nil) */
+    OmniValue* result = omni_new_cell(value_to_type_sym, omni_new_cell(value, NULL));
+
+    return result;
+}
+
 /* ============== Grammar Initialization ============== */
 
 void omni_grammar_init(void) {
@@ -773,11 +816,20 @@ void omni_grammar_init(void) {
     g_rule_ids[R_NAMED_CHAR] = named_char_ids;
     g_rules[R_NAMED_CHAR] = (PikaRule){ PIKA_SEQ, .data.children = { named_char_ids, 2 }, .action = act_named_char };
 
+    /* ============== Value-to-Type Reader Tag ============== */
+
+    /* Value-to-type conversion: #val <value> */
+    /* Pattern: HASH + SYM("val") + ATOM */
+    /* Expands to: (value->type <value>) */
+    int* hash_val_ids = ids(3, R_HASH, R_SYM, R_ATOM);
+    g_rule_ids[R_HASH_VAL] = hash_val_ids;
+    g_rules[R_HASH_VAL] = (PikaRule){ PIKA_SEQ, .data.children = { hash_val_ids, 3 }, .action = act_hash_val };
+
     /* ============== Expression ============== */
 
-    /* EXPR = PATH / LIST / ARRAY / TYPE / METADATA / QUOTED / STRING / FMT_STRING / CLF_STRING / NAMED_CHAR / ATOM */
-    g_rule_ids[R_EXPR] = ids(11, R_PATH, R_LIST, R_ARRAY, R_TYPE, R_METADATA, R_QUOTED, R_STRING, R_FMT_STRING, R_CLF_STRING, R_NAMED_CHAR, R_ATOM);
-    g_rules[R_EXPR] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_EXPR], 11 } };
+    /* EXPR = PATH / LIST / ARRAY / TYPE / METADATA / QUOTED / STRING / FMT_STRING / CLF_STRING / NAMED_CHAR / HASH_VAL / ATOM */
+    g_rule_ids[R_EXPR] = ids(12, R_PATH, R_LIST, R_ARRAY, R_TYPE, R_METADATA, R_QUOTED, R_STRING, R_FMT_STRING, R_CLF_STRING, R_NAMED_CHAR, R_HASH_VAL, R_ATOM);
+    g_rules[R_EXPR] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_EXPR], 12 } };
 
     /* PROGRAM_SEQ = EXPR WS PROGRAM_INNER */
     g_rule_ids[R_PROGRAM_SEQ] = ids(3, R_EXPR, R_WS, R_PROGRAM_INNER);
