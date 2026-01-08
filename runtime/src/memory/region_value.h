@@ -20,6 +20,7 @@
 // Use the clean public API definition of Obj
 #include "../../include/omni.h"
 #include "region_core.h"
+#include "region_metadata.h"  /* For TypeID and TypeMetadata */
 
 // ============================================================================
 // Region-Aware Value Constructors
@@ -31,6 +32,25 @@
  * This is the primitive that all other mk_*_region functions use.
  */
 Obj* alloc_obj_region(Region* r, int tag);
+
+/*
+ * alloc_obj_typed - Allocate an Obj in the given region using type_id
+ *
+ * OPTIMIZATION (T-opt-region-metadata): This is the new allocation API
+ * that uses compile-time type_id instead of runtime tag.
+ *
+ * @param r: The region to allocate from
+ * @param type_id: Compile-time type identifier (TYPE_ID_INT, TYPE_ID_PAIR, etc.)
+ * @return: Pointer to allocated Obj, or NULL on failure
+ *
+ * This function looks up the TypeMetadata for the given type_id and allocates
+ * the object with the correct size. It also sets the tag field for compatibility
+ * with existing code (mapped from type_id).
+ *
+ * Future optimization: Once all code uses type_id, we can eliminate the tag field
+ * entirely and rely solely on compile-time type information.
+ */
+Obj* alloc_obj_typed(Region* r, TypeID type_id);
 
 /*
  * Scalar value constructors (no child allocations)

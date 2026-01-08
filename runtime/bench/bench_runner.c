@@ -26,6 +26,7 @@ extern int main_complex(int argc, char** argv);
 extern int main_inline_alloc(int argc, char** argv);
 extern int main_specialized(int argc, char** argv);
 extern int main_batched_transmigrate(int argc, char** argv);
+extern int main_fat_baseline(int argc, char** argv);
 
 typedef struct {
     const char* name;
@@ -78,6 +79,11 @@ static BenchmarkSuite suites[] = {
         "batched_transmigrate",
         "Batched transmigration optimization (T-opt-transmigrate-batch)",
         main_batched_transmigrate
+    },
+    {
+        "fat_baseline",
+        "Fat pointer baseline (establish BEFORE implementing fat pointers)",
+        main_fat_baseline
     },
     { NULL, NULL, NULL }
 };

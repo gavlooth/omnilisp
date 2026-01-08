@@ -11,6 +11,38 @@
 // Primitive Allocator
 // ============================================================================
 
+/*
+ * Mapping from TypeID to ObjTag for compatibility with existing code.
+ *
+ * This mapping allows us to use the new type_id-based allocation while
+ * maintaining compatibility with code that still uses tag-based operations.
+ * Eventually, all code will use type_id and we can eliminate the tag field.
+ */
+static int type_id_to_tag(TypeID type_id) {
+    switch (type_id) {
+        case TYPE_ID_INT:      return TAG_INT;
+        case TYPE_ID_FLOAT:    return TAG_FLOAT;
+        case TYPE_ID_CHAR:     return TAG_CHAR;
+        case TYPE_ID_PAIR:     return TAG_PAIR;
+        case TYPE_ID_ARRAY:    return TAG_ARRAY;
+        case TYPE_ID_STRING:   return TAG_STRING;
+        case TYPE_ID_SYMBOL:   return TAG_SYM;
+        case TYPE_ID_DICT:     return TAG_DICT;
+        case TYPE_ID_CLOSURE:  return TAG_CLOSURE;
+        case TYPE_ID_BOX:      return TAG_BOX;
+        case TYPE_ID_CHANNEL:  return TAG_CHANNEL;
+        case TYPE_ID_THREAD:   return TAG_THREAD;
+        case TYPE_ID_ERROR:    return TAG_ERROR;
+        case TYPE_ID_ATOM:     return TAG_ATOM;
+        case TYPE_ID_TUPLE:    return TAG_TUPLE;
+        case TYPE_ID_NAMED_TUPLE: return TAG_NAMED_TUPLE;
+        case TYPE_ID_GENERIC:  return TAG_GENERIC;
+        case TYPE_ID_KIND:     return TAG_KIND;
+        case TYPE_ID_NOTHING:  return TAG_NOTHING;
+        default:               return TAG_INT;  /* Fallback */
+    }
+}
+
 Obj* alloc_obj_region(Region* r, int tag) {
     if (!r) {
         // Fallback to malloc if no region (shouldn't happen in practice)
@@ -29,6 +61,48 @@ Obj* alloc_obj_region(Region* r, int tag) {
     o->tag = tag;
     o->generation = 0; // Should ideally use region's generation or global
     o->tethered = 0;
+    return o;
+}
+
+/*
+ * alloc_obj_typed - Allocate an Obj using compile-time type_id
+ *
+ * OPTIMIZATION (T-opt-region-metadata): Uses region-level type metadata
+ * to determine allocation strategy based on type-specific properties.
+ *
+ * This function now uses region_alloc_typed() which considers:
+ * - can_inline: Whether the type can use inline buffer
+ * - inline_threshold: Maximum size for inline allocation
+ * - size: The actual size of the object
+ */
+Obj* alloc_obj_typed(Region* r, TypeID type_id) {
+    if (!r) {
+        // Fallback to malloc if no region (shouldn't happen in practice)
+        Obj* o = malloc(sizeof(Obj));
+        if (!o) return NULL;
+        o->mark = 0;
+        o->tag = type_id_to_tag(type_id);
+        o->generation = 0;
+        o->tethered = 0;
+        return o;
+    }
+
+    /* Look up metadata to get size */
+    const TypeMetadata* meta = type_metadata_get(r, type_id);
+    size_t size = meta ? meta->size : sizeof(Obj);
+
+    /* Use metadata-aware allocation (checks can_inline and inline_threshold) */
+    Obj* o = region_alloc_typed(r, type_id, size);
+    if (!o) return NULL;
+
+    o->mark = 1;
+    o->tag = type_id_to_tag(type_id);  /* Set tag for compatibility */
+    o->generation = 0;
+    o->tethered = 0;
+
+    /* TODO: Future optimization - store type_id instead of tag */
+    /* For now, we maintain both for compatibility during transition */
+
     return o;
 }
 
@@ -90,13 +164,26 @@ Obj* mk_sym_region(Region* r, const char* s) {
     return o;
 }
 
-// Map string to sym for now as new runtime lacks TAG_STRING
+/* Proper string type implementation (T-wire-string-literal-02/03) */
 Obj* mk_string_region(Region* r, const char* s, size_t len) {
-    return mk_sym_region(r, s); // TODO: Proper string type
+    if (!s) return NULL;
+    Obj* o = alloc_obj_region(r, TAG_STRING);
+    if (!o) return NULL;
+
+    /* Allocate space for the string (including null terminator) */
+    char* buf = (char*)region_alloc(r, len + 1);
+    if (!buf) return NULL;
+
+    /* Copy the string data */
+    memcpy(buf, s, len);
+    buf[len] = '\0';
+    o->ptr = buf;
+    return o;
 }
 
 Obj* mk_string_cstr_region(Region* r, const char* s) {
-    return mk_sym_region(r, s);
+    if (!s) return NULL;
+    return mk_string_region(r, s, strlen(s));
 }
 
 Obj* mk_code_region(Region* r, const char* s) {

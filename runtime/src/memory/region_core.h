@@ -22,10 +22,20 @@ typedef struct {
 typedef struct Region {
     Arena arena;                // The physical storage (bump allocator)
     InlineBuffer inline_buf;    // Fast inline buffer for small objects (< 64 bytes)
+
+    /* OPTIMIZATION (T-opt-region-metadata): Region-level type metadata */
+    struct TypeMetadata* type_table;   /* Centralized metadata (one per region) */
+    uint32_t num_types;          /* Number of types in type_table */
+
+    /* OPTIMIZATION (T-opt-region-metadata-pointer-masking): Region ID for pointer masking */
+    uint16_t region_id;          /* Unique region identifier (for encoded pointers) */
+
     int external_rc;            // Strong refs from OTHER regions/stack (atomic)
     int tether_count;           // Temporary "borrows" by threads (atomic)
     bool scope_alive;           // True if the semantic scope is still active
 } Region;
+
+#include "region_metadata.h"  /* Region-level type metadata (must come after Region typedef) */
 
 // Lifecycle
 Region* region_create(void);
@@ -61,10 +71,15 @@ static inline void* region_alloc(Region* r, size_t size) {
     if (size <= REGION_INLINE_MAX_ALLOC && r) {
         InlineBuffer* buf = &r->inline_buf;
 
+        // ALIGNMENT: Ensure 8-byte alignment for all allocations
+        // This is critical for the tagged pointer system to work correctly
+        // (low 3 bits of pointer must be 0 for heap objects)
+        size_t aligned_size = (size + 7) & ~7ULL;  // Round up to multiple of 8
+
         // Check if we have space in the inline buffer
-        if (buf->offset + size <= buf->capacity) {
+        if (buf->offset + aligned_size <= buf->capacity) {
             void* ptr = &buf->buffer[buf->offset];
-            buf->offset += size;
+            buf->offset += aligned_size;
             return ptr;
         }
         // Fall through to arena if inline buffer is exhausted
@@ -75,6 +90,53 @@ static inline void* region_alloc(Region* r, size_t size) {
 }
 
 void region_splice(Region* dest, Region* src, void* start_ptr, void* end_ptr);
+
+/*
+ * region_alloc_typed - Allocate memory using type metadata
+ *
+ * OPTIMIZATION (T-opt-region-metadata): Uses TypeMetadata to determine
+ * allocation strategy based on type-specific inline thresholds.
+ *
+ * @param r: The region to allocate from
+ * @param type_id: Compile-time type identifier
+ * @param size: Requested allocation size
+ * @return: Pointer to allocated memory, or NULL on failure
+ *
+ * This function combines the speed of inline allocation with type-specific
+ * knowledge. For types with can_inline=true and small inline_threshold,
+ * it uses the inline buffer. For larger types or those that can't be inlined,
+ * it falls back to arena allocation.
+ *
+ * Example:
+ *   Obj* obj = region_alloc_typed(r, TYPE_ID_INT, sizeof(Obj));
+ *   // Uses inline buffer because TYPE_ID_INT has can_inline=true
+ *   // and inline_threshold=16 (larger than sizeof(Obj)=8)
+ */
+static inline void* region_alloc_typed(Region* r, TypeID type_id, size_t size) {
+    if (!r) return NULL;
+
+    /* Look up metadata to check if this type can be inlined */
+    const TypeMetadata* meta = type_metadata_get(r, type_id);
+
+    /* FAST PATH: Use inline buffer for small, inlineable types */
+    if (meta && meta->can_inline && size <= meta->inline_threshold) {
+        InlineBuffer* buf = &r->inline_buf;
+
+        /* ALIGNMENT: Ensure 8-byte alignment */
+        size_t aligned_size = (size + 7) & ~7ULL;
+
+        /* Check inline buffer capacity */
+        if (buf->offset + aligned_size <= buf->capacity) {
+            void* ptr = &buf->buffer[buf->offset];
+            buf->offset += aligned_size;
+            return ptr;
+        }
+        /* Fall through to arena if inline buffer exhausted */
+    }
+
+    /* SLOW PATH: Arena allocation for large or non-inlineable types */
+    return arena_alloc(&r->arena, size);
+}
 
 // -- Region Reference (Smart Pointer) --
 typedef struct RegionRef {

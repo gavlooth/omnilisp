@@ -158,6 +158,36 @@ void omni_codegen_add_lambda_def(CodeGenContext* ctx, const char* def);
 /* Emit free_obj calls for variables at given position */
 void omni_codegen_emit_frees(CodeGenContext* ctx, int position);
 
+/* ============== Phase 24: Region-Level Metadata Codegen ============== */
+
+/*
+ * Emit allocation using alloc_obj_typed() with type_id
+ *
+ * Generates: Obj* var = alloc_obj_typed(region, TYPE_ID_XXX);
+ *
+ * Args:
+ *   ctx: Codegen context
+ *   var_name: Variable name to allocate
+ *   region_name: Region to allocate from (e.g., "_local_region")
+ *   type_id: TypeID enum value (compile-time constant)
+ *
+ * Example:
+ *   omni_codegen_emit_typed_alloc(ctx, "x", "_local_region", TYPE_ID_INT);
+ *   // Generates: Obj* x = alloc_obj_typed(_local_region, TYPE_ID_INT);
+ */
+void omni_codegen_emit_typed_alloc(CodeGenContext* ctx,
+                                   const char* var_name,
+                                   const char* region_name,
+                                   int type_id);
+
+/*
+ * Get type_id for a variable from analysis context
+ *
+ * Returns the TypeID enum value assigned during type inference,
+ * or TYPE_ID_GENERIC if unknown.
+ */
+int omni_codegen_get_var_type_id(CodeGenContext* ctx, const char* var_name);
+
 /* ============== User Type Code Generation ============== */
 
 /* Generate C struct definition for a user type */

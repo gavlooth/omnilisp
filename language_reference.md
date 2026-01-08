@@ -4,6 +4,38 @@ This is the authoritative reference for the OmniLisp language, its "Character Ca
 
 ---
 
+## Revision Tracking
+
+This section tracks known inconsistencies and pending revisions to ensure OmniLisp's type system is correct, consistent, and well-documented.
+
+### Open Questions & Inconsistencies
+
+| Issue | Status | Expected Behavior | Current State | Action Needed |
+|-------|--------|-------------------|---------------|---------------|
+| **Top type** | ✅ VERIFIED | `Any` is the universal supertype of all types | `prim_kind_any()` implemented in runtime | **OK** |
+| **Bottom type** | ✅ VERIFIED | Empty union is the bottom type (no values) | `(union [])` returns bottom type | **OK** |
+| **Nothing type** | ✅ FIXED | `Nothing` is a singleton type with value `nothing` | Comment correctly says "singleton type" | **OK** |
+| **Type parameters** | ✅ VERIFIED | Parametric types use `{struct [T]}` syntax | Parser handles correctly | **OK** |
+| **Type predicate** | ✅ ADDED | `type?` predicate for runtime type checking | `prim_type_is()` implemented | **OK** |
+
+### Type System Design Principles
+- **Top type:** `Any` - all types are subtypes of `Any`
+- **Bottom type:** Empty union `(union [])` - no values can have this type
+- **Nothing:** A concrete singleton type with single value `nothing`
+- **Abstract types:** Cannot be instantiated (e.g., `Number`, `Shape`)
+- **Concrete types:** Can be instantiated (e.g., `Int`, `String`, `Point`)
+- **Type parameters:** Declared as `{struct [Pair T]}` where `T` is a parameter
+- **Variance:** Immutable containers are covariant, mutable are invariant
+
+### Implementation Notes
+- `prim_kind_any()` (runtime.c:1191) - Returns the Any Kind object (top type)
+- `prim_kind_nothing()` (runtime.c:1199) - Returns the Nothing Kind object (singleton type)
+- `prim_type_is()` (runtime.c:1218) - Check if a value is of a specific type
+- `prim_union()` (runtime.c:722) - Creates union types; empty list returns bottom type
+- Empty union syntax: `(union [])` creates bottom type
+
+---
+
 ## 1. The Character Calculus (Delimiters)
 
 OmniLisp uses a fixed semantic "Charge" for every delimiter to ensure absolute consistency across the value and type domains.
@@ -19,59 +51,132 @@ OmniLisp uses a fixed semantic "Charge" for every delimiter to ensure absolute c
 
 ---
 
-## 2. Bindings & Functions
+## 2. Bindings & Function Definitions
 
-### 2.1 Function Definitions
-Functions are defined using a **Flow Template** header that mirrors the call site.
+Functions use Slot `[]` syntax for parameters, with **optional** type annotations in Kind `{}`.
 
+### 2.1 Function Definition Syntax
+
+**Two forms are supported:**
+
+#### Traditional Shorthand (Ergonomic Default)
 ```lisp
-;; 1. Implicit Any (Julia-style flexibility)
-(define (add x y) (+ x y))
+;; No types - concise for prototyping
+(define add x y
+  (+ x y))
 
-;; 2. Explicit Type Hints
-(define (mul x {Int} y {Int}) {Int} (* x y))
+;; Single parameter
+(define square x
+  (* x x))
 
-;; 3. Explicit Slot brackets (optional container)
-(define (sub [x y]) (- x y))
-
-;; 4. Combined style
-(define (div [x {Int} y {Int}]) {Int} (/ x y))
-
-;; 5. Flat Clojure-style (Backward compatibility)
-(define fact [n] (if (<= n 1) 1 (* n (fact (- n 1)))))
-```
-
-### 2.2 Local Bindings (`let`)
-`let` uses flat, even-numbered pairs inside a Slot `[]`.
-
-```lisp
-(let [x 10
-      y {Int} 20]
+;; Equivalent to:
+(define add [x] [y]
   (+ x y))
 ```
 
-### 2.3 Type Enforcement
+#### Slot Syntax (Explicit/Typed)
+```lisp
+;; All parameters typed
+(define add [x {Int}] [y {Int}] {Int}
+  (+ x y))
+
+;; Mixed - some typed, some not
+(define map [fn] [xs {List}] {List}
+  (fn xs))
+
+;; All parameters in Slots, types optional
+(define process [x] [y {Int}] [z {Float}]
+  (body))
+```
+
+**Syntax Pattern:**
+```lisp
+(define function-name
+  [param1 {Type}?]    ;; Slot with optional type
+  param2              ;; Shorthand: param without Slot = untyped
+  [param3 {Type}?]
+  {ReturnType}?        ;; Optional return type
+  body)
+```
+
+### 2.2 Diagonal Dispatch & Constraints (`^:where`)
+To enforce that multiple arguments share the same type or to restrict generics.
+
+```lisp
+;; x and y MUST be the same T, where T is a Number
+(define ^:where [T {Number}]
+  [x {T}] [y {T}] {T}
+  (+ x y))
+```
+
+### 2.3 Lambda Shorthands (`fn` and `λ`)
+The symbols `fn` and `λ` use the same Slot pattern.
+
+```lisp
+;; Untyped parameters (shorthand)
+(fn x y
+  (+ x y))
+
+;; Single parameter
+(fn [x] (* x x))
+(λ [x] (* x x))
+
+;; Typed parameters
+(fn [x {Int}] [y {Int}] {Int}
+  (+ x y))
+
+;; Mixed types
+(fn [x] [y {String}] {String}
+  (concat x y))
+```
+
+**Consistency Note:** Lambdas follow the same pattern as `define` - Slots `[]` for parameters, optional types in `{}`.
+
+### 2.4 Local Bindings (`let`)
+Let bindings use Slot `[]` syntax with optional types: `[name {Type}? value]`
+
+```lisp
+;; Untyped bindings (shorthand)
+(let [x 10] [y 20]
+  (+ x y))
+
+;; Typed bindings
+(let [x {Int} 10] [y {Int} 20]
+  (+ x y))
+
+;; Mixed - some typed, some not
+(let [x 10] [y {Int} 20]
+  (+ x y))
+
+;; Sequential let (each binding sees previous ones)
+(let ^:seq [x 1] [y (+ x 1)]
+  y)
+```
+
+**Consistency:** Let bindings follow the same `[name {Type}?]` pattern as function parameters.
+
+### 2.5 Type Enforcement
 Every variable has an associated Kind. If no Kind is specified, it defaults to **`Any`**.
 *   **Assignments:** `define`, `let`, and `set!` validate values against the Kind blueprint.
 *   **Application:** `omni_apply` validates arguments against parameter Kinds and the result against the return Kind.
 
-### 2.4 Multiple Dispatch & Multi-arity
+### 2.6 Multiple Dispatch & Multi-arity
 OmniLisp functions support **Multiple Dispatch**, allowing a single name to refer to multiple implementations (methods). Dispatch is determined by:
 1.  **Arity:** The number of arguments provided.
 2.  **Specificity:** The Kind of each argument (Most specific match wins).
 
 ```lisp
 ;; 1. Multi-arity (different argument counts)
-(define (area) 0)                      ; 0 args
-(define (area r) (* 3.14 (* r r)))     ; 1 arg
+(define area 0)                      ; 0 args
+(define area [r] (* 3.14 (* r r)))   ; 1 arg
 
 ;; 2. Type Specialization (Multiple Dispatch)
-(define (describe x {Int}) "An integer")
-(define (describe x {String}) "A string")
+(define describe [x {Int}] "An integer")
+(define describe [x {String}] "A string")
 
 ;; 3. Combined Dispatch
-(define (add x {Int} y {Int}) (+ x y))
-(define (add x {String} y {String}) (string-append x y))
+(define add [x {Int}] [y {Int}] (+ x y))
+(define add [x {String}] [y {String}] (string-append x y))
 ```
 
 ---
@@ -89,8 +194,8 @@ Abstract types cannot be instantiated. They serve as nodes in the type graph.
 ;; Abstract type 'Number'
 (define {abstract Number})
 
-;; Abstract type with parent
-(define {abstract Integer :< Number})
+;; Abstract type with parent (using metadata)
+(define ^:parent {Number} {abstract Integer} [])
 ```
 
 #### Primitive Types
@@ -98,15 +203,15 @@ Types with a fixed bit-width representation, usually provided by the host/compil
 
 ```lisp
 ;; Define a 64-bit primitive type
-(define {primitive Int64 :< Integer} 64)
+(define ^:parent {Integer} {primitive Int64} [64])
 ```
 
 #### Composite Types (Structs)
 Product types that hold named fields. Immutable by default.
 
 ```lisp
-;; Immutable Struct
-(define {struct Point :< Any}
+;; Immutable Struct (with parent type)
+(define ^:parent {Any} {struct Point}
   [x {Int}]
   [y {Int}])
 
@@ -117,11 +222,29 @@ Product types that hold named fields. Immutable by default.
 ```
 
 #### Union Types
-Represents a value that can be one of several types.
+Represents a value that can be one of several types. Unions are **Flow constructors** that return a Kind.
 
 ```lisp
-(define {union IntOrString} {Int} {String})
+;; Create a union type (Flow constructor)
+(union [{Int} {String}])
+
+;; Type alias: name the union
+(define {IntOrString}
+  (union [{Int} {String}]))
+
+;; Empty union is the Bottom type (no values possible)
+;; Equivalent to Julia's Union{}
+(define {Bottom}
+  (union []))  ; No values can have this type
+
+;; Using union in annotations
+(define process [val {(union [{Int} {String}])}]
+  (match val
+    [x {Int} (* x 2)]
+    [s {String} (string-length s)]))
 ```
+
+**Note:** The empty union `(union [])` is the **bottom type** (called `Union{}` in Julia). No value can have this type, making it useful for type theory and proving impossibility.
 
 #### Parametric Types
 Types that take type parameters (Generics).
@@ -152,11 +275,88 @@ Base types (`Int`, `String`, `Array`, `Any`, etc.) are physical Kind objects sto
 
 ### 3.4 Subtyping
 OmniLisp uses a nominative subtype hierarchy. **`Any`** is the universal supertype.
-*   `Int <: Any`
-*   `String <: Any`
-*   `Nothing` is the universal subtype (bottom).
 
----
+Subtype relationships are declared using `^:parent` metadata:
+
+```lisp
+;; Int is a subtype of Number
+(define ^:parent {Number} {abstract Int} [])
+
+;; Number is a subtype of Any (implicit, as Any is root)
+(define {abstract Number} [])
+```
+
+*   **`Any`** is the universal supertype (root of the type hierarchy)
+*   **`Union{}`** (empty union) is the universal subtype (bottom type, has no values)
+*   **`Nothing`** is a concrete singleton type with the single value `nothing` (similar to Julia)
+
+### 3.5 Types as Values (First-Class Kinds)
+
+In OmniLisp, types themselves are values that can be passed around, stored, and referenced. This leads to three distinct patterns in definitions:
+
+#### Pattern 1: Type Inheritance (Metadata)
+Use `^:parent` to declare that a type is a subtype of another:
+```lisp
+;; Integer IS-A Number (inheritance)
+(define ^:parent {Number} {abstract Integer} [])
+```
+
+#### Pattern 2: Type Annotation (Kind)
+Use `{}` to annotate that a value must conform to a type:
+```lisp
+;; my-number must be an Int (annotation)
+(define my-number {Int} 42)
+
+;; Function parameter with type constraint
+(define process [x {String}] {Int}
+  (string-length x))
+```
+
+#### Pattern 3: Type Objects as Values
+A type object can be the **value** of a definition (not annotated, not metadata):
+```lisp
+;; IntType is a variable whose VALUE is the Int type object
+(define IntType Int)
+
+;; AnimalType holds the Animal type object
+(define AnimalType Animal)
+
+;; Using type objects for dispatch
+(define check [value {Any} type-check {(Type {Int})}]
+  (if (type? value type-check)
+      "is an integer"
+      "not an integer"))
+```
+
+**Key Distinction:**
+- `^:parent {Parent}` = Metadata (declares inheritance)
+- `{Type}` = Annotation (constrains a value)
+- `Type` (no braces) = Value (the type object itself)
+
+### 3.6 Type Predicates
+
+OmniLisp provides predicates for checking types at runtime.
+
+#### `type?` Predicate
+Check if a value is of a specific type:
+
+```lisp
+;; Check against Kind objects
+(type? 42 Int)         ; => true
+(type? "hello" Int)    ; => false
+(type? "hello" String) ; => true
+(type? [1 2 3] Array)  ; => true
+
+;; Works with subtype relationships
+(type? 5 Number)       ; => true (Int is a subtype of Number)
+(type? 5 Any)          ; => true (everything is a subtype of Any)
+
+;; Using type objects as values
+(define IntType Int)
+(type? 42 IntType)     ; => true
+```
+
+**Note:** The `type?` predicate uses the runtime type registry for subtype checking. Values of a subtype will return `true` when checked against their parent types.
 
 ## 4. Sequences & Iterators
 
@@ -197,7 +397,7 @@ OmniLisp uses **Algebraic Effects** as its primary mechanism for non-local contr
 *   **`resume`**: Resumes the suspended computation from within a handler.
 
 ```lisp
-(define {effect ask} :one-shot)
+(define ^:one-shot {effect ask})
 
 (handle
   (+ 1 (perform ask nothing))
@@ -263,6 +463,27 @@ For dynamic data, OmniLisp uses **Region-Based Reference Counting**.
 *   **Transmigration**: The system can move objects between regions to optimize locality and clear cycles.
 *   **Tethers**: Thread-local references that prevent premature deallocation while a value is in active use.
 
+#### Phase 24 Performance Optimizations (2026-01-08)
+
+The RC-G model has been heavily optimized with 9 major improvements achieving 2.7x-21.1x speedups:
+
+| Optimization | Benefit |
+|--------------|---------|
+| Inline allocation buffer | 6.99x faster for small objects (< 64 bytes) |
+| Specialized constructors | 5.55-6.32x faster batch list/tree allocation |
+| Bitmap-based cycle detection | 2.7-12.5x faster transmigration |
+| Region splicing | O(1) result-only region transfer (1.4-1.9x faster) |
+| Region pooling | 21.1x faster small region creation |
+| Inline fastpaths | Zero call overhead for hot operations |
+
+**Key implementation details:**
+- Regions use a 512-byte inline buffer for small object allocation
+- Bitmap-based cycle detection replaces hash tables for O(1) visited tracking
+- Thread-local region pool (32 regions per thread) eliminates malloc overhead
+- Region splicing provides O(1) arena chunk transfer for functional patterns
+
+See `runtime/bench/BENCHMARK_RESULTS.md` for detailed performance data.
+
 ---
 
 ## 9. Deprecated Namespaces
@@ -271,18 +492,19 @@ The following are legacy and should not be used:
 *   `violet.*`: Use core primitives instead.
 *   `scicomp.*`: Pending modern refactor.
 
+---
 
-### Revisions
+## Appendix A: Type Definition Reference
 
 The `(define ...)` form unifies all top-level definitions.
 
-#### Abstract Types
+### Abstract Types
 ```lisp
-(define {abstract Animal} Any)            
-(define {abstract Mammal} Animal)
+(define {abstract Animal} [])
+(define ^:parent {Animal} {abstract Mammal} [])
 ```
 
-#### Concrete Structs (Immutable Default)
+### Concrete Structs (Immutable Default)
 ```lisp
 (define {struct Point}
   [x {Float}]
@@ -294,7 +516,7 @@ The `(define ...)` form unifies all top-level definitions.
   [radius {Float}])
 ```
 
-#### Parametric Types
+### Parametric Types
 ```lisp
 (define {struct [Pair T]}
   [first {T}]
@@ -306,7 +528,7 @@ The `(define ...)` form unifies all top-level definitions.
   [value {V}])
 ```
 
-#### Mutable Structs
+### Mutable Structs
 ```lisp
 (define {struct Player}
   [^:mutable hp {Int}]  ; Field-level mutability
@@ -316,7 +538,7 @@ The `(define ...)` form unifies all top-level definitions.
 (define ^:mutable {struct Player} ...)
 ```
 
-#### Enums (Sum Types)
+### Enums (Sum Types)
 ```lisp
 (define {enum Color} Red Green Blue)
 
@@ -327,11 +549,8 @@ The `(define ...)` form unifies all top-level definitions.
 
 ---
 
+## Appendix B: Function Parameter Forms
 
-## 2. Function Definitions & Signatures
-
-use these
-### 2.1 Parameter Forms
 | Syntax | Meaning |
 |--------|---------|
 | `x` | Untyped parameter |

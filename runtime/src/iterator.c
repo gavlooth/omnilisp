@@ -230,70 +230,99 @@ Obj* prim_take(long n, Obj* seq) {
  * Args:
  *   - seq: Iterator or list
  *   - kind: Symbol indicating collection type ('list, 'array, 'string)
+ *           Default (NULL or omitted): 'array per SYNTAX_REVISION.md
  *
  * Returns: Collected elements in specified collection type
  *
  * Example:
  *   (collect (range 10)) = array [0, 1, 2, ..., 9]
+ *   (collect (range 10) 'array) = array [0, 1, 2, ..., 9]
  *   (collect (range 10) 'list) = list (0 1 2 ... 9)
  */
 Obj* prim_collect(Obj* seq, Obj* kind) {
     if (!seq) return NULL;
 
-    /* Determine collection type (default: list) */
-    int is_list = 1;  /* Default */
-    int is_array = 0;
-    int is_string = 0;
+    /* Determine collection type (default: array per SYNTAX_REVISION.md) */
+    int is_list = 0;
+    int is_array = 1;  /* Default per spec */
 
     if (kind && IS_BOXED(kind) && kind->tag == TAG_SYM) {
         const char* kind_str = (const char*)kind->ptr;
-        if (strcmp(kind_str, "array") == 0) {
+        if (strcmp(kind_str, "list") == 0) {
+            is_list = 1;
+            is_array = 0;
+        } else if (strcmp(kind_str, "array") == 0) {
             is_array = 1;
-            is_list = 0;
-        } else if (strcmp(kind_str, "string") == 0) {
-            is_string = 1;
             is_list = 0;
         }
     }
 
+    omni_ensure_global_region();
+
+    /* First, collect all elements into a temporary list */
+    Obj* temp_list = NULL;
+    Obj* tail = NULL;
+    int count = 0;
+
     /* Check if it's an iterator (pair with closure) */
     if (IS_BOXED(seq) && seq->tag == TAG_PAIR &&
         IS_BOXED(seq->b) && seq->b->tag == TAG_CLOSURE) {
-        /* Collect from iterator - for now, just collect into list */
-        /* A full implementation would need to handle array/string */
-        Obj* result = NULL;
-        Obj* tail = NULL;
-
-        /* Limit iterations to avoid infinite loops */
-        int max_iters = 1000;
+        /* Collect from iterator */
+        Obj* iter = seq;
+        int max_iters = 1000;  /* Limit to avoid infinite loops */
         int i = 0;
 
-        Obj* iter = seq;
         while (i < max_iters) {
             Obj* val = prim_iter_next(iter);
             if (!val) break;
 
             Obj* new_pair = mk_pair(val, NULL);
-            if (!result) {
-                result = new_pair;
+            if (!temp_list) {
+                temp_list = new_pair;
                 tail = new_pair;
             } else {
                 tail->b = new_pair;
                 tail = new_pair;
             }
+            count++;
             i++;
+        }
+    } else {
+        /* For lists, use as-is (but we may need to convert) */
+        temp_list = seq;
+        /* Count elements */
+        Obj* curr = temp_list;
+        while (IS_BOXED(curr) && curr->tag == TAG_PAIR) {
+            count++;
+            curr = curr->b;
+        }
+    }
+
+    /* Now convert to the requested collection type */
+    if (is_list) {
+        /* Return as-is (already a list) */
+        return temp_list;
+    }
+
+    if (is_array) {
+        /* Convert list to array */
+        /* First, create an empty array */
+        Obj* result = mk_array(count);
+        if (!result) return NULL;
+
+        /* Fill the array with elements */
+        Obj* curr = temp_list;
+        for (int i = 0; i < count && IS_BOXED(curr) && curr->tag == TAG_PAIR; i++) {
+            /* Use array_set to add elements */
+            array_push(result, curr->a);
+            curr = curr->b;
         }
 
         return result;
     }
 
-    /* For lists: return as-is for list type */
-    if (is_list) {
-        return seq;
-    }
-
-    /* For other types, just return the list for now */
-    return seq;
+    /* Default: return as-is (list) */
+    return temp_list;
 }
 
 /* ============== Range ============== */

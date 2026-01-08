@@ -82,6 +82,36 @@ That means each task must be explicit about *where*, *what*, *how*, and *done me
 use SYNTAX.md so you understand OmniLisp syntax
 TODO.md must be updated when task are complete
 
+### Pre-Task Checklist (MANDATORY)
+
+**Before beginning ANY implementation subtask, you MUST:**
+
+1. **Run `jj describe`** to see the current working state
+2. **Read the description** to understand what changes are in progress
+3. **Confirm alignment** with the task you're about to implement
+4. **If mismatch**: Either `jj squash` to consolidate or `jj new` to start fresh
+
+```bash
+# ALWAYS run this first
+jj describe
+
+# Example output:
+# "Add region metadata type structures
+#
+# Working on:
+# - Define TypeMetadata struct
+# - Modify Region to include type_table
+# - Update Obj to use type_id"
+#
+# If this matches your task, proceed. If not, resolve mismatch first.
+```
+
+**Why this matters:**
+- Prevents working on stale/abandoned changes
+- Ensures atomic, focused commits
+- Makes `jj squash` meaningful (one semantic change per description)
+- Enables clean history with descriptive commits
+
 ### High-Granularity Task Directive (MANDATORY)
 
 Every task added to `TODO.md` MUST be written with sufficient detail that a developer with **zero context** could implement it immediately without asking clarifying questions.
@@ -111,7 +141,7 @@ Every task added to `TODO.md` MUST be written with sufficient detail that a deve
   Where: csrc/analysis/analysis.h, csrc/analysis/analysis.c
   Why:
     Currently, escape analysis is function-global. We need to know if a variable escapes *its specific branch* to enable stack allocation in non-escaping branches.
-  
+
   What to change:
     1.  **Define Scope Hierarchy:** Track nested scopes.
     2.  **Scoped Escape Tracking:** Track variable escape status *per scope*.
@@ -129,6 +159,96 @@ Every task added to `TODO.md` MUST be written with sufficient detail that a deve
   Verification:
     *   Input: `(if true (let [x 1] x) 0)` -> x should be ESCAPE_TARGET_NONE.
     *   Input: `(if true (let [x 1] (return x)) 0)` -> x should be ESCAPE_TARGET_RETURN.
+```
+
+### Enhanced Format for Stub/Unimplemented Feature Discovery
+
+When discovering unimplemented, stubbed, or missing features, break them down using this enhanced format:
+
+```text
+- [TODO] Label: T-category-specific-name
+  Objective: Brief single-line description of what needs implementing.
+  Reference: file:line_number or docs/FILE.md (if applicable)
+  Where: path/to/file.c, path/to/file.h
+  Why: Explain the architectural goal or what problem this solves. Include current broken behavior if applicable.
+  What: High-level description of what needs to be added/fixed.
+
+  Implementation Details:
+    *   **File Paths:** Exact files to modify.
+    *   **Data Structures:** The exact C structs, Enums, or Lisp forms to be added. **Include code snippets.**
+    *   **Logic Flow:** Step-by-step algorithm or logic changes.
+    *   **Code Examples:** Show before/after or exact code to add.
+
+  Verification:
+    *   Test Input: Example code that should work after implementation
+    *   Expected Output: What the test should produce
+    *   Current Behavior: What happens now (error, crash, wrong result)
+```
+
+**Example for Stub Implementation:**
+```text
+- [TODO] Label: T-wire-string-literal-01
+  Objective: Fix string literal generation in codegen.
+  Reference: csrc/codegen/codegen.c:891-894
+  Where: csrc/codegen/codegen.c (codegen_string function)
+  Why: Strings currently emit as symbols (mk_sym), causing type confusion and breaking println.
+  What: Replace mk_sym() with proper string constructor that creates TAG_STRING values.
+
+  Implementation Details:
+    *   **Current stub code:**
+        ```c
+        static void codegen_string(CodeGenContext* ctx, OmniValue* expr) {
+            /* TODO: Use mk_string when runtime support is complete */
+            omni_codegen_emit_raw(ctx, "mk_sym(\"%s\")", expr->str_val);
+        }
+        ```
+    *   **Fixed code:**
+        ```c
+        static void codegen_string(CodeGenContext* ctx, OmniValue* expr) {
+            omni_codegen_emit_raw(ctx, "mk_string_region(_local_region, \"%s\", %d)",
+                                 expr->str_val, strlen(expr->str_val));
+        }
+        ```
+    *   **Dependencies:** Requires T-wire-string-literal-02 (TAG_STRING support)
+
+  Verification:
+    *   Test Input: (println "hello")
+    *   Current Behavior: Prints as symbol or crashes
+    *   Expected Output: Prints "hello" as string
+```
+
+**Example for Missing Primitive:**
+```text
+- [TODO] Label: T-wire-println-01
+  Objective: Implement println as variadic print function.
+  Reference: csrc/codegen/codegen.c:1992-2004 (display/print/newline handling)
+  Where: runtime/src/runtime.c (add prim_println)
+  Why: println is standard Lisp I/O, currently unimplemented. Blocks end-to-end testing.
+  What: Add variadic println that prints all args separated by spaces, then newline.
+
+  Implementation Details:
+    *   **Function signature:**
+        ```c
+        Obj* prim_println(Obj* args);
+        ```
+    *   **Implementation:**
+        ```c
+        Obj* prim_println(Obj* args) {
+            while (!is_nil(args)) {
+                prim_print(car(args));
+                args = cdr(args);
+                if (!is_nil(args)) printf(" ");
+            }
+            printf("\n");
+            return NOTHING;
+        }
+        ```
+    *   **Registration:** Add to primitive table in runtime initialization
+
+  Verification:
+    *   Test Input: (println 1 "two" 3)
+    *   Expected Output: "1 two 3\n"
+    *   Current Behavior: "Error: implicit declaration of function 'o_println'"
 ```
 
 ### Status Rules
@@ -183,12 +303,32 @@ For every completed task:
 - Update the relevant documentation or add a brief note in `docs/` describing the change.
 - If no documentation changes are needed, explicitly mark the task `N/A` for documentation with a one-line reason.
     <!-- * Start the implementation, ancor yourselve to the refactor plan. Begin. you have to commit and mark items as ready for review   -->
-## Jujutsu Commit Directive
+## Jujutsu Commit Directive (MANDATORY)
 
-Use jujutsu so that the state hash always a hash
-use squash workflow
-For every completed task:
-- Create a dedicated jujutsu squash with a clear, imperative message (e.g., `Add effect handler core`).
+**Use Jujutsu (jj) for ALL version control operations.**
+
+- **Use jj (not git)**: All commits must be made using `jj` commands
+- **Squash workflow**: Use `jj squash` to combine related changes before committing
+- **Immutable history**: JJ's model ensures the state hash is always a true hash
+- **For every completed task:**
+  - Create a dedicated jujutsu squash with a clear, imperative message (e.g., `Add effect handler core`)
+  - Use `jj squash` to consolidate related changes
+  - Use `jj commit` with descriptive messages following conventional commit format
+  - Mark task as `[R]` in TODO.md after committing
+
+**Why Jujutsu:**
+- Immutable, reproducible state hashes
+- Better branchless workflow
+- Automatic change tracking
+- Safer operations with easy undo via `jj undo`
+
+**Basic workflow:**
+```bash
+jj status                    # Check status
+jj squash                    # Combine staged changes
+jj commit -m "feat: Add X"   # Commit changes
+jj undo                      # Undo if needed
+```
 
 ## Test Policy (Directive)
 

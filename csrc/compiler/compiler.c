@@ -229,7 +229,7 @@ bool omni_compiler_compile_to_binary(Compiler* compiler, const char* source, con
 
     if (compiler->options.runtime_path) {
         snprintf(cmd, sizeof(cmd),
-                 "%s -std=c99 -pthread -O%d %s%s%s -I%s/include -o %s %s -L%s -lomni",
+                 "%s -std=c99 -pthread -lm -O%d %s%s%s -I%s/include -o %s %s -L%s -lomni",
                  cc,
                  compiler->options.opt_level,
                  compiler->options.emit_debug_info ? "-g " : "",
@@ -241,7 +241,7 @@ bool omni_compiler_compile_to_binary(Compiler* compiler, const char* source, con
                  compiler->options.runtime_path);
     } else {
         snprintf(cmd, sizeof(cmd),
-                 "%s -std=c99 -pthread -O%d %s%s%s -o %s %s",
+                 "%s -std=c99 -pthread -lm -O%d %s%s%s -o %s %s",
                  cc,
                  compiler->options.opt_level,
                  compiler->options.emit_debug_info ? "-g " : "",

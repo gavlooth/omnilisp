@@ -38,6 +38,10 @@ typedef struct VarUsage {
     int last_use;        /* Position of last use */
     int def_pos;         /* Position where defined */
     bool is_param;       /* Is this a function parameter */
+
+    /* OPTIMIZATION (T-opt-region-metadata-compiler): Type ID for compile-time type resolution */
+    int type_id;         /* TypeID enum value (e.g., TYPE_ID_INT, TYPE_ID_PAIR) */
+
     struct VarUsage* next;
 } VarUsage;
 
@@ -391,6 +395,7 @@ typedef enum {
 
 typedef struct ParamSummary {
     char* name;
+    char* type_annotation;   /* Type annotation from Slot syntax (e.g., "Int", "String") */
     ParamOwnership ownership;
     int passthrough_index;   /* If PARAM_PASSTHROUGH, which param passes through */
     struct ParamSummary* next;
@@ -400,6 +405,7 @@ typedef struct FunctionSummary {
     char* name;              /* Function name */
     ParamSummary* params;    /* Parameter summaries */
     size_t param_count;
+    char* return_type;       /* Return type annotation (NULL if not specified) */
     ReturnOwnership return_ownership;
     int return_param_index;  /* If RETURN_PASSTHROUGH, which param is returned */
     bool allocates;          /* Does this function allocate? */
@@ -537,6 +543,20 @@ void omni_analyze_reuse(AnalysisContext* ctx, OmniValue* expr);
 
 /* Get variable usage info */
 VarUsage* omni_get_var_usage(AnalysisContext* ctx, const char* name);
+
+/* ============== Type ID Query Functions (Phase 24) ============== */
+
+/*
+ * Get type_id for a variable
+ * Returns the TypeID enum value assigned during type inference
+ */
+int omni_get_var_type_id(AnalysisContext* ctx, const char* name);
+
+/*
+ * Set type_id for a variable
+ * Called during type inference to assign compile-time type constant
+ */
+void omni_set_var_type_id(AnalysisContext* ctx, const char* name, int type_id);
 
 /* Get escape classification for a variable */
 EscapeClass omni_get_escape_class(AnalysisContext* ctx, const char* name);
@@ -1163,6 +1183,24 @@ void omni_scope_print_tree(AnalysisContext* ctx);
  * Run the full scoped escape analysis on an expression.
  */
 void omni_analyze_scoped_escape(AnalysisContext* ctx, OmniValue* expr);
+
+/*
+ * Type-Based Dispatch Support (Phase 19)
+ * These functions support type checking and type-based dispatch.
+ */
+
+/* Look up a function signature by name */
+FunctionSummary* omni_lookup_function_signature(AnalysisContext* ctx, const char* func_name);
+
+/* Extract type annotation from a parameter node (e.g., [x {Int}] => "Int") */
+char* omni_extract_type_annotation(OmniValue* param_node);
+
+/* Check if an argument node is compatible with a parameter type */
+bool omni_check_argument_type_compatibility(AnalysisContext* ctx, const char* param_type,
+                                           OmniValue* arg_node);
+
+/* Get parameter by index from function summary */
+ParamSummary* omni_get_param_by_index(FunctionSummary* func, int index);
 
 #ifdef __cplusplus
 }

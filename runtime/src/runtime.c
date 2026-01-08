@@ -27,10 +27,14 @@ void free_obj(Obj* x) { (void)x; }
 /* NOTE: Made non-static for use by other runtime modules (regex.c, string_utils.c) */
 Region* _global_region = NULL;
 
+/* Global Type Objects for Runtime Type Operations */
+Obj* o_Int = NULL;    /* Int type object */
+Obj* o_String = NULL; /* String type object */
+Obj* o_Any = NULL;    /* Any type object (top type) */
+Obj* o_Nothing = NULL; /* Nothing type object */
+
 void _ensure_global_region(void) {
     if (!_global_region) {
-        printf("[debug] creating global region\n");
-        fflush(stdout);
         _global_region = region_create();
     }
 }
@@ -43,6 +47,52 @@ void omni_ensure_global_region(void) {
 Region* omni_get_global_region(void) {
     _ensure_global_region();
     return _global_region;
+}
+
+/* Initialize global type objects */
+void omni_init_type_objects(void) {
+    /* Ensure global region exists first */
+    omni_ensure_global_region();
+
+    /* Initialize type objects if not already initialized */
+    if (!o_Int) {
+        o_Int = prim_kind_int();
+    }
+    if (!o_String) {
+        o_String = prim_kind_string();
+    }
+    if (!o_Any) {
+        o_Any = prim_kind_any();
+    }
+    if (!o_Nothing) {
+        o_Nothing = prim_kind_nothing();
+    }
+}
+
+/*
+ * omni_lookup_type - Lookup a type object by name
+ * Used for type-based dispatch and type checking
+ * Args: name - Type name (e.g., "Int", "String", "Any")
+ * Returns: Type object or NULL if not found
+ */
+Obj* omni_lookup_type(const char* name) {
+    /* Ensure type objects are initialized */
+    omni_init_type_objects();
+
+    /* Check name against known types */
+    /* Type objects are Kind objects with a 'name' field */
+    if (strcmp(name, "Int") == 0) {
+        return o_Int;
+    } else if (strcmp(name, "String") == 0) {
+        return o_String;
+    } else if (strcmp(name, "Any") == 0) {
+        return o_Any;
+    } else if (strcmp(name, "Nothing") == 0) {
+        return o_Nothing;
+    }
+
+    /* Type not found */
+    return NULL;
 }
 
 /* Helpers */
@@ -70,6 +120,7 @@ Obj* mk_pair(Obj* a, Obj* b) { _ensure_global_region(); return mk_cell_region(_g
 Obj* mk_cell(Obj* a, Obj* b) { return mk_pair(a, b); }
 
 Obj* mk_sym(const char* s) { _ensure_global_region(); return mk_sym_region(_global_region, s); }
+Obj* mk_string(const char* s) { _ensure_global_region(); return mk_string_cstr_region(_global_region, s); }
 Obj* mk_nothing(void) { return &omni_nothing_obj; }
 Obj* mk_box(Obj* v) { _ensure_global_region(); return mk_box_region(_global_region, v); }
 Obj* mk_error(const char* msg) { _ensure_global_region(); return mk_error_region(_global_region, msg); }
@@ -623,7 +674,8 @@ Obj* obj_cdr(Obj* p) { return (p && IS_BOXED(p) && p->tag == TAG_PAIR) ? p->b : 
 
 /* I/O */
 void print_obj(Obj* x) {
-    if (!x) { printf("()\n"); return; }
+    if (!x) { printf("()"); return; }
+    if (is_nothing(x)) { printf("nothing"); return; }
     if (IS_IMMEDIATE_INT(x)) { printf("%ld", (long)INT_IMM_VALUE(x)); return; }
     if (IS_IMMEDIATE_CHAR(x)) { printf("%c", (char)CHAR_IMM_VALUE(x)); return; }
     if (IS_IMMEDIATE_BOOL(x)) { printf("%s", x == OMNI_TRUE ? "true" : "false"); return; }
@@ -631,12 +683,14 @@ void print_obj(Obj* x) {
         case TAG_INT: printf("%ld", x->i); break;
         case TAG_FLOAT: printf("%g", x->f); break;
         case TAG_SYM: printf("%s", (char*)x->ptr); break;
+        case TAG_STRING: printf("\"%s\"", (char*)x->ptr); break; /* Print strings with quotes */
         case TAG_KEYWORD: printf(":%s", (char*)x->ptr); break;
         case TAG_PAIR: printf("("); print_obj(x->a); printf(" . "); print_obj(x->b); printf(")"); break;
         case TAG_ARRAY: printf("[...]"); break; // TODO: iter
         case TAG_DICT: printf("#{...}"); break; // TODO: iter
         case TAG_TUPLE: printf("{...}"); break; // TODO: iter
         case TAG_NAMED_TUPLE: printf("#(:...)"); break;
+        case TAG_NOTHING: printf("nothing"); break; /* Should be caught by is_nothing above */
         default: printf("#<obj:%d>", x->tag); break;
     }
 }
@@ -644,6 +698,35 @@ void print_obj(Obj* x) {
 Obj* prim_display(Obj* x) { print_obj(x); return mk_nothing(); }
 Obj* prim_print(Obj* x) { print_obj(x); printf("\n"); return mk_nothing(); }
 Obj* prim_newline(void) { printf("\n"); return mk_nothing(); }
+
+/*
+ * prim_println: Variadic print function
+ * Prints all arguments separated by spaces, followed by newline
+ * Args: List of values to print
+ * Returns: NOTHING
+ */
+Obj* prim_println(Obj* args) {
+    if (!args || is_nil(args)) {
+        printf("\n");
+        return mk_nothing();
+    }
+
+    /* Print each argument separated by space */
+    while (!is_nil(args)) {
+        Obj* current = obj_car(args);
+        if (current) {
+            print_obj(current);
+        } else {
+            printf("(null)");
+        }
+        args = obj_cdr(args);
+        if (!is_nil(args)) {
+            printf(" ");
+        }
+    }
+    printf("\n");
+    return mk_nothing();
+}
 
 /* Stubs/Shims for legacy GC logic */
 static Obj* _deferred_list[4096];
@@ -1194,9 +1277,81 @@ Obj* prim_kind_any(void) {
 }
 
 /*
- * prim_kind_nothing: Get the Nothing Kind object (bottom type)
+ * prim_kind_nothing: Get the Nothing Kind object (singleton type with value 'nothing')
  */
 Obj* prim_kind_nothing(void) {
     omni_ensure_global_region();
     return mk_kind_region(omni_get_global_region(), "Nothing", NULL, 0);
+}
+
+/*
+ * prim_type_is: Check if a value is of a specific type
+ *
+ * Args:
+ *   value - The value to check
+ *   type_obj - A Kind object representing the type to check against
+ *
+ * Returns: Bool indicating if value is of the specified type
+ *
+ * Example:
+ *   (type? 5 Int) => true
+ *   (type? "hello" Int) => false
+ *   (type? [1 2 3] Array) => true
+ */
+Obj* prim_type_is(Obj* value, Obj* type_obj) {
+    if (!type_obj) return mk_bool(0);
+
+    /* If type_obj is a Kind object, compare type names */
+    if (IS_BOXED(type_obj) && type_obj->tag == TAG_KIND) {
+        const char* expected_type = (const char*)type_obj->ptr;
+        const char* actual_type = NULL;
+
+        /* Get the actual type of the value */
+        if (!value) {
+            actual_type = "Null";
+        } else if (IS_IMMEDIATE(value)) {
+            /* Immediate values (int, char, bool) */
+            if (IS_IMMEDIATE_INT(value)) {
+                actual_type = "Int";
+            } else if (IS_IMMEDIATE_CHAR(value)) {
+                actual_type = "Char";
+            } else if (IS_IMMEDIATE_BOOL(value)) {
+                actual_type = "Bool";
+            }
+        } else if (IS_BOXED(value)) {
+            /* Boxed values */
+            switch (value->tag) {
+                case TAG_INT:    actual_type = "Int"; break;
+                case TAG_FLOAT:  actual_type = "Float"; break;
+                case TAG_STRING: actual_type = "String"; break;
+                case TAG_SYM:    actual_type = "Symbol"; break;
+                case TAG_PAIR:   actual_type = "Pair"; break;
+                case TAG_ARRAY:  actual_type = "Array"; break;
+                case TAG_CLOSURE: actual_type = "Function"; break;
+                case TAG_KIND:   actual_type = "Kind"; break;
+                default:         actual_type = "Any"; break;
+            }
+        }
+
+        /* Check for subtype relationships */
+        if (strcmp(expected_type, "Any") == 0) {
+            return mk_bool(1);  /* Everything is a subtype of Any */
+        }
+
+        /* Direct type match */
+        if (actual_type && strcmp(actual_type, expected_type) == 0) {
+            return mk_bool(1);
+        }
+
+        /* Subtype checks (simplified - full implementation would use type registry) */
+        if (strcmp(expected_type, "Number") == 0) {
+            return mk_bool(actual_type != NULL &&
+                          (strcmp(actual_type, "Int") == 0 ||
+                           strcmp(actual_type, "Float") == 0));
+        }
+
+        return mk_bool(0);
+    }
+
+    return mk_bool(0);
 }

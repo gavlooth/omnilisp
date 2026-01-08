@@ -8,6 +8,7 @@
 #include "codegen.h"
 #include "region_codegen.h"  /* Region-RC code generation extensions */
 #include "../analysis/region_inference.h"  /* Region inference pass */
+#include "../analysis/type_id.h"  /* Phase 24: Type ID constants */
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
@@ -235,6 +236,13 @@ void omni_codegen_runtime_header(CodeGenContext* ctx) {
         omni_codegen_emit_raw(ctx, "#define NOTHING mk_nothing()\n");
         omni_codegen_emit_raw(ctx, "#define omni_print(o) prim_print(o)\n");
         omni_codegen_emit_raw(ctx, "#define car(o) obj_car(o)\n");
+        /* Type objects - extern declarations for runtime type system */
+        omni_codegen_emit_raw(ctx, "\n/* Runtime Type Objects */\n");
+        omni_codegen_emit_raw(ctx, "extern Obj* o_Int;    /* Int type object */\n");
+        omni_codegen_emit_raw(ctx, "extern Obj* o_String; /* String type object */\n");
+        omni_codegen_emit_raw(ctx, "extern Obj* o_Any;    /* Any type object */\n");
+        omni_codegen_emit_raw(ctx, "extern Obj* o_Nothing; /* Nothing type object */\n");
+        omni_codegen_emit_raw(ctx, "\n");
         omni_codegen_emit_raw(ctx, "#define cdr(o) obj_cdr(o)\n");
         omni_codegen_emit_raw(ctx, "#define mk_cell(a, b) mk_pair(a, b)\n");
         omni_codegen_emit_raw(ctx, "#define prim_cons(a, b) mk_pair(a, b)\n\n");
@@ -889,8 +897,8 @@ static void codegen_sym(CodeGenContext* ctx, OmniValue* expr) {
 }
 
 static void codegen_string(CodeGenContext* ctx, OmniValue* expr) {
-    /* TODO: Use mk_string when runtime support is complete */
-    omni_codegen_emit_raw(ctx, "mk_sym(\"%s\")", expr->str_val);
+    /* Emit string literal using mk_string (proper TAG_STRING support) */
+    omni_codegen_emit_raw(ctx, "mk_string(\"%s\")", expr->str_val);
 }
 
 static void codegen_type_lit(CodeGenContext* ctx, OmniValue* expr) {
@@ -1998,6 +2006,40 @@ static void codegen_apply(CodeGenContext* ctx, OmniValue* expr) {
             return;
         }
 
+        /* Check for println - variadic print with newline */
+        if (strcmp(name, "println") == 0) {
+            /* Build argument list for prim_println using nested mk_pair calls */
+            omni_codegen_emit_raw(ctx, "(prim_println(");
+
+            /* If no args, pass NULL */
+            if (omni_is_nil(args)) {
+                omni_codegen_emit_raw(ctx, "NULL");
+            } else {
+                /* Build list using nested mk_pair calls */
+                /* Emit: mk_pair(arg1, mk_pair(arg2, mk_pair(arg3, NULL))) */
+                omni_codegen_emit_raw(ctx, "mk_pair(");
+                codegen_expr(ctx, omni_car(args));
+
+                OmniValue* current = omni_cdr(args);
+                while (!omni_is_nil(current)) {
+                    omni_codegen_emit_raw(ctx, ", mk_pair(");
+                    codegen_expr(ctx, omni_car(current));
+                    current = omni_cdr(current);
+                }
+                /* Close all the mk_pair calls and end with NULL */
+                omni_codegen_emit_raw(ctx, ", NULL");
+                /* Close each mk_pair - one for each arg */
+                current = args;
+                while (!omni_is_nil(current)) {
+                    omni_codegen_emit_raw(ctx, ")");
+                    current = omni_cdr(current);
+                }
+            }
+
+            omni_codegen_emit_raw(ctx, "), NOTHING)");
+            return;
+        }
+
         if (strcmp(name, "newline") == 0) {
             omni_codegen_emit_raw(ctx, "(printf(\"\\n\"), NOTHING)");
             return;
@@ -2221,6 +2263,11 @@ void omni_codegen_main(CodeGenContext* ctx, OmniValue** exprs, size_t count) {
     /* Region-RC: Create global region for main's scope */
     omni_codegen_emit(ctx, "/* Region-RC: Create global region for main() */\n");
     omni_codegen_emit(ctx, "struct Region* _local_region = region_create();\n");
+    omni_codegen_emit(ctx, "\n");
+
+    /* Initialize runtime type objects */
+    omni_codegen_emit(ctx, "/* Initialize type objects for dispatch */\n");
+    omni_codegen_emit(ctx, "omni_init_type_objects();\n");
     omni_codegen_emit(ctx, "\n");
 
     for (size_t i = 0; i < count; i++) {
@@ -3160,19 +3207,54 @@ void omni_codegen_let_narrowed(CodeGenContext* ctx, OmniValue* expr) {
                     }
 
                     if (escape == ESCAPE_TARGET_NONE) {
-                        /* Stack allocate */
+                        /* OPTIMIZATION (T-opt-region-metadata-escape-alloc): Stack allocation for non-escaping variables */
+                        omni_codegen_emit(ctx, "/* Stack allocation: non-escaping variable */\n");
                         omni_codegen_emit(ctx, "Obj _stack_%s = {0};\n", c_name);
-                        omni_codegen_emit(ctx, "Obj* %s = &_stack_%s; /* narrowed: non-escaping */\n",
+                        omni_codegen_emit(ctx, "Obj* %s = &_stack_%s; /* escape: none, alloc: stack */\n",
                                           c_name, c_name);
-                    } else {
-                        /* Region allocate */
-                        omni_codegen_emit(ctx, "Obj* %s = region_alloc(_local_region, sizeof(Obj)); /* narrowed: escaping to %s */\n",
-                                          c_name, omni_escape_target_name(escape));
-                    }
 
-                    omni_codegen_emit(ctx, "%s = ", c_name);
-                    codegen_expr(ctx, val);
-                    omni_codegen_emit_raw(ctx, ";\n");
+                        /* Initialize the value */
+                        omni_codegen_emit(ctx, "%s = ", c_name);
+                        codegen_expr(ctx, val);
+                        omni_codegen_emit_raw(ctx, ";\n");
+                    } else {
+                        /* OPTIMIZATION (T-opt-region-metadata-codegen): Use typed allocation with metadata */
+                        int type_id = omni_codegen_get_var_type_id(ctx, name->str_val);
+
+                        if (type_id != TYPE_ID_GENERIC) {
+                            /* Use alloc_obj_typed() with compile-time type constant */
+                            /* This will automatically use inline buffer when appropriate based on metadata */
+                            bool can_inline = type_id_can_inline(type_id);
+                            size_t threshold = type_id_inline_threshold(type_id);
+
+                            omni_codegen_emit(ctx, "/* Region allocation: type=%s, escape=%s",
+                                            type_id_to_name(type_id),
+                                            omni_escape_target_name(escape));
+                            if (can_inline) {
+                                omni_codegen_emit_raw(ctx, ", inline: yes (threshold=%zu) */\n", threshold);
+                            } else {
+                                omni_codegen_emit_raw(ctx, ", inline: no */\n");
+                            }
+
+                            omni_codegen_emit_typed_alloc(ctx, c_name, "_local_region", type_id);
+
+                            /* Initialize the value */
+                            omni_codegen_emit(ctx, "%s = ", c_name);
+                            codegen_expr(ctx, val);
+                            omni_codegen_emit_raw(ctx, ";\n");
+                        } else {
+                            /* Fallback to generic region allocation */
+                            omni_codegen_emit(ctx, "/* Region allocation: unknown type, escape=%s */\n",
+                                            omni_escape_target_name(escape));
+                            omni_codegen_emit(ctx, "Obj* %s = region_alloc(_local_region, sizeof(Obj));\n",
+                                              c_name);
+
+                            /* Initialize the value */
+                            omni_codegen_emit(ctx, "%s = ", c_name);
+                            codegen_expr(ctx, val);
+                            omni_codegen_emit_raw(ctx, ";\n");
+                        }
+                    }
 
                     register_symbol(ctx, name->str_val, c_name);
                     free(c_name);
@@ -3208,4 +3290,65 @@ void omni_codegen_let_narrowed(CodeGenContext* ctx, OmniValue* expr) {
 
     omni_codegen_dedent(ctx);
     omni_codegen_emit(ctx, "})");
+}
+
+/* ============== Phase 24: Region-Level Metadata Codegen ============== */
+
+/*
+ * Emit allocation using alloc_obj_typed() with type_id
+ *
+ * Generates: Obj* var = alloc_obj_typed(region, TYPE_ID_XXX);
+ */
+void omni_codegen_emit_typed_alloc(CodeGenContext* ctx,
+                                   const char* var_name,
+                                   const char* region_name,
+                                   int type_id) {
+    if (!ctx || !var_name) return;
+
+    /* Use default region if none specified */
+    const char* region = region_name ? region_name : "_local_region";
+
+    /* Convert type_id to constant name for codegen */
+    const char* type_const = "TYPE_ID_GENERIC";
+    switch (type_id) {
+        case 0:  type_const = "TYPE_ID_INT";         break;
+        case 1:  type_const = "TYPE_ID_FLOAT";       break;
+        case 2:  type_const = "TYPE_ID_CHAR";        break;
+        case 3:  type_const = "TYPE_ID_PAIR";        break;
+        case 4:  type_const = "TYPE_ID_ARRAY";       break;
+        case 5:  type_const = "TYPE_ID_STRING";      break;
+        case 6:  type_const = "TYPE_ID_SYMBOL";      break;
+        case 7:  type_const = "TYPE_ID_DICT";        break;
+        case 8:  type_const = "TYPE_ID_CLOSURE";     break;
+        case 9:  type_const = "TYPE_ID_BOX";         break;
+        case 10: type_const = "TYPE_ID_CHANNEL";     break;
+        case 11: type_const = "TYPE_ID_THREAD";      break;
+        case 12: type_const = "TYPE_ID_ERROR";       break;
+        case 13: type_const = "TYPE_ID_ATOM";        break;
+        case 14: type_const = "TYPE_ID_TUPLE";       break;
+        case 15: type_const = "TYPE_ID_NAMED_TUPLE"; break;
+        case 16: type_const = "TYPE_ID_GENERIC";     break;
+        case 17: type_const = "TYPE_ID_KIND";        break;
+        case 18: type_const = "TYPE_ID_NOTHING";     break;
+        default: type_const = "TYPE_ID_GENERIC";     break;
+    }
+
+    /* Emit the allocation call */
+    omni_codegen_emit(ctx, "Obj* %s = alloc_obj_typed(%s, %s);\n",
+                      var_name, region, type_const);
+}
+
+/*
+ * Get type_id for a variable from analysis context
+ *
+ * Returns the TypeID enum value assigned during type inference,
+ * or TYPE_ID_GENERIC (-1) if unknown.
+ */
+int omni_codegen_get_var_type_id(CodeGenContext* ctx, const char* var_name) {
+    if (!ctx || !ctx->analysis || !var_name) {
+        return TYPE_ID_GENERIC;
+    }
+
+    /* Query analysis context for type_id */
+    return omni_get_var_type_id(ctx->analysis, var_name);
 }

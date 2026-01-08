@@ -5,6 +5,7 @@
  */
 
 #include "analysis.h"
+#include "type_id.h"  /* Phase 24: Type ID constants */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -113,6 +114,7 @@ static void free_param_summaries(ParamSummary* p) {
     while (p) {
         ParamSummary* next = p->next;
         free(p->name);
+        free(p->type_annotation);  /* Free type annotation string if present */
         free(p);
         p = next;
     }
@@ -122,6 +124,7 @@ static void free_function_summaries(FunctionSummary* f) {
     while (f) {
         FunctionSummary* next = f->next;
         free(f->name);
+        free(f->return_type);      /* Free return type annotation if present */
         free_param_summaries(f->params);
         free(f);
         f = next;
@@ -221,6 +224,8 @@ static VarUsage* find_or_create_var_usage(AnalysisContext* ctx, const char* name
     u->last_use = -1;
     u->def_pos = -1;
     u->is_param = false;
+    /* OPTIMIZATION (T-opt-region-metadata-compiler): Initialize type_id */
+    u->type_id = TYPE_ID_GENERIC;  /* Default to generic until type inference */
     u->next = ctx->var_usages;
     ctx->var_usages = u;
     return u;
@@ -683,17 +688,41 @@ static void analyze_application(AnalysisContext* ctx, OmniValue* expr) {
 
     analyze_expr(ctx, func);
 
+    /* Type-based dispatch: Look up function signature if available */
+    FunctionSummary* func_sig = NULL;
+    if (omni_is_sym(func)) {
+        func_sig = omni_lookup_function_signature(ctx, func->str_val);
+    }
+
     /* Arguments escape to the function */
-    while (!omni_is_nil(args) && omni_is_cell(args)) {
-        OmniValue* arg = omni_car(args);
+    int arg_index = 0;
+    OmniValue* current_arg = args;
+    while (!omni_is_nil(current_arg) && omni_is_cell(current_arg)) {
+        OmniValue* arg = omni_car(current_arg);
         analyze_expr(ctx, arg);
+
+        /* Type checking: If function signature is available, check argument compatibility */
+        if (func_sig && arg_index < (int)func_sig->param_count) {
+            /* Get the parameter type annotation for this argument */
+            ParamSummary* param = omni_get_param_by_index(func_sig, arg_index);
+            if (param && param->type_annotation) {
+                /* Check if argument is compatible with parameter type */
+                bool compatible = omni_check_argument_type_compatibility(
+                    ctx, param->type_annotation, arg);
+
+                /* TODO: Store or report type incompatibility */
+                /* For now, we just compute it - later tasks will use this for dispatch */
+                (void)compatible;  /* Suppress unused warning until we integrate further */
+            }
+        }
 
         /* Mark as escaping via argument */
         if (omni_is_sym(arg)) {
             set_escape_class(ctx, arg->str_val, ESCAPE_ARG);
         }
 
-        args = omni_cdr(args);
+        current_arg = omni_cdr(current_arg);
+        arg_index++;
     }
 
     ctx->in_return_position = old_return_pos;
@@ -1127,16 +1156,27 @@ void omni_analyze_reuse(AnalysisContext* ctx, OmniValue* expr) {
                             const char* init_form = init_head->str_val;
                             const char* alloc_type = NULL;
 
+                            /* OPTIMIZATION (T-opt-region-metadata-compiler): Type ID tracking */
+                            TypeID type_id = TYPE_ID_GENERIC;
+
                             if (strcmp(init_form, "cons") == 0 ||
                                 strcmp(init_form, "pair") == 0 ||
                                 strcmp(init_form, "list") == 0) {
                                 alloc_type = "Cell";
+                                type_id = TYPE_ID_PAIR;
                             } else if (strcmp(init_form, "mk-int") == 0 ||
                                        strcmp(init_form, "int") == 0) {
                                 alloc_type = "Int";
+                                type_id = TYPE_ID_INT;
                             } else if (strcmp(init_form, "mk-float") == 0 ||
                                        strcmp(init_form, "float") == 0) {
                                 alloc_type = "Float";
+                                type_id = TYPE_ID_FLOAT;
+                            }
+
+                            /* Assign type_id to the variable */
+                            if (type_id != TYPE_ID_GENERIC) {
+                                omni_set_var_type_id(ctx, var->str_val, type_id);
                             }
 
                             if (alloc_type) {
@@ -1208,6 +1248,34 @@ OwnerInfo* omni_get_owner_info(AnalysisContext* ctx, const char* name) {
         if (strcmp(o->name, name) == 0) return o;
     }
     return NULL;
+}
+
+/* ============== Type ID Query Functions (Phase 24) ============== */
+
+/*
+ * Get type_id for a variable
+ * Returns the TypeID enum value assigned during type inference
+ * Returns TYPE_ID_GENERIC (-1) if variable not found or type_id not set
+ */
+int omni_get_var_type_id(AnalysisContext* ctx, const char* name) {
+    VarUsage* u = omni_get_var_usage(ctx, name);
+    if (u) {
+        return u->type_id;
+    }
+    return TYPE_ID_GENERIC;  /* Default to generic for unknown variables */
+}
+
+/*
+ * Set type_id for a variable
+ * Called during type inference to assign compile-time type constant
+ */
+void omni_set_var_type_id(AnalysisContext* ctx, const char* name, int type_id) {
+    VarUsage* u = omni_get_var_usage(ctx, name);
+    if (u) {
+        u->type_id = type_id;
+    }
+    /* Note: If variable not found, this is a no-op.
+     * The variable should already exist from earlier analysis passes. */
 }
 
 const char* omni_free_strategy_name(FreeStrategy strategy) {
@@ -2568,9 +2636,11 @@ static FunctionSummary* find_or_create_function_summary(AnalysisContext* ctx, co
     return f;
 }
 
-static ParamSummary* add_param_summary(FunctionSummary* func, const char* param_name) {
+static ParamSummary* add_param_summary(FunctionSummary* func, const char* param_name,
+                                     const char* type_annotation) {
     ParamSummary* p = malloc(sizeof(ParamSummary));
     p->name = strdup(param_name);
+    p->type_annotation = type_annotation ? strdup(type_annotation) : NULL;
     p->ownership = PARAM_BORROWED;  /* Default: borrowed */
     p->passthrough_index = -1;
     p->next = func->params;
@@ -2586,7 +2656,7 @@ static ParamSummary* get_param_by_name(FunctionSummary* func, const char* param_
     return NULL;
 }
 
-static ParamSummary* get_param_by_index(FunctionSummary* func, int index) {
+ParamSummary* omni_get_param_by_index(FunctionSummary* func, int index) {
     int i = func->param_count - 1;  /* Params are prepended, so reverse order */
     for (ParamSummary* p = func->params; p; p = p->next) {
         if (i == index) return p;
@@ -2808,19 +2878,47 @@ void omni_analyze_function_summary(AnalysisContext* ctx, OmniValue* func_def) {
     /* Create function summary */
     FunctionSummary* summary = find_or_create_function_summary(ctx, func_name);
 
-    /* Add parameter summaries */
+    /* Add parameter summaries - supports both plain symbols and Slot syntax */
     if (omni_is_cell(params)) {
         for (OmniValue* p = params; omni_is_cell(p); p = omni_cdr(p)) {
             OmniValue* param = omni_car(p);
+
+            /* Extract parameter name (handles both symbols and Slot syntax) */
+            OmniValue* param_name_val = NULL;
             if (omni_is_sym(param)) {
-                add_param_summary(summary, param->str_val);
+                param_name_val = param;
+            } else if (omni_is_array(param)) {
+                /* Slot syntax: [x] or [x {Type}] - first element is the name */
+                if (param->array.len > 0) {
+                    param_name_val = param->array.data[0];
+                }
+            }
+
+            if (param_name_val && omni_is_sym(param_name_val)) {
+                /* Extract type annotation from Slot syntax */
+                char* type_annotation = omni_extract_type_annotation(param);
+                add_param_summary(summary, param_name_val->str_val, type_annotation);
             }
         }
     } else if (omni_is_array(params)) {
         for (size_t i = 0; i < params->array.len; i++) {
             OmniValue* param = params->array.data[i];
+
+            /* Extract parameter name (handles both symbols and Slot syntax) */
+            OmniValue* param_name_val = NULL;
             if (omni_is_sym(param)) {
-                add_param_summary(summary, param->str_val);
+                param_name_val = param;
+            } else if (omni_is_array(param)) {
+                /* Slot syntax: [x] or [x {Type}] - first element is the name */
+                if (param->array.len > 0) {
+                    param_name_val = param->array.data[0];
+                }
+            }
+
+            if (param_name_val && omni_is_sym(param_name_val)) {
+                /* Extract type annotation from Slot syntax */
+                char* type_annotation = omni_extract_type_annotation(param);
+                add_param_summary(summary, param_name_val->str_val, type_annotation);
             }
         }
     }
@@ -2873,7 +2971,7 @@ bool omni_caller_should_free_arg(AnalysisContext* ctx, const char* func_name,
     FunctionSummary* f = omni_get_function_summary(ctx, func_name);
     if (!f) return true;  /* Default: caller should free (borrowed semantics) */
 
-    ParamSummary* p = get_param_by_index(f, arg_index);
+    ParamSummary* p = omni_get_param_by_index(f, arg_index);
     if (!p) return true;
 
     /* Caller should NOT free if:
@@ -4620,6 +4718,9 @@ bool omni_type_is_subtype(AnalysisContext* ctx, const char* type_a, const char* 
         return omni_type_is_subtype(ctx, type_def->parent, type_b);
     }
 
+    /* No explicit parent means it's a direct subtype of Any */
+    /* So if type_b is "Any", this should return true (already handled above) */
+    /* If we reach here and type has no parent, it's only a subtype of Any */
     return false;
 }
 
@@ -4905,4 +5006,124 @@ TypeDef* omni_make_parametric_instance(AnalysisContext* ctx, const char* base_ty
     ctx->type_registry->type_count++;
 
     return instance;
+}
+
+/* ============== Type-Based Dispatch Support (Phase 19) ============== */
+
+/*
+ * omni_lookup_function_signature: Look up a function's signature by name
+ *
+ * Args:
+ *   ctx - Analysis context
+ *   func_name - Name of the function to look up
+ *
+ * Returns: FunctionSummary* if found, NULL otherwise
+ */
+FunctionSummary* omni_lookup_function_signature(AnalysisContext* ctx, const char* func_name) {
+    if (!ctx || !func_name) return NULL;
+
+    FunctionSummary* f = ctx->function_summaries;
+    while (f) {
+        if (strcmp(f->name, func_name) == 0) {
+            return f;
+        }
+        f = f->next;
+    }
+    return NULL;
+}
+
+/*
+ * extract_type_annotation: Extract type annotation from an AST node
+ *
+ * Args:
+ *   param_node - AST node (could be a Slot [x {Type}] or bare symbol)
+ *
+ * Returns: Type annotation string (e.g., "Int", "String") or NULL if not annotated
+ *
+ * Examples:
+ *   [x {Int}] => "Int"
+ *   [x]      => NULL
+ *   x        => NULL
+ */
+char* omni_extract_type_annotation(OmniValue* param_node) {
+    if (!param_node) return NULL;
+
+    /* Check if it's a Slot (array) with type annotation */
+    if (omni_is_array(param_node) && param_node->array.len > 0) {
+        /* Slot format: [name] or [name {Type}] */
+        /* Check if second element is a type annotation {Type} */
+        if (param_node->array.len >= 2 &&
+            omni_is_type_lit(param_node->array.data[1])) {
+            /* Return type name from type literal */
+            return param_node->array.data[1]->type_lit.type_name;
+        }
+    }
+
+    return NULL;
+}
+
+/*
+ * omni_check_argument_type_compatibility: Check if argument type is compatible with parameter type
+ *
+ * Args:
+ *   ctx - Analysis context
+ *   param_type - Expected parameter type (e.g., "Int")
+ *   arg_node - Argument AST node
+ *
+ * Returns: true if compatible, false otherwise
+ */
+bool omni_check_argument_type_compatibility(AnalysisContext* ctx, const char* param_type, OmniValue* arg_node) {
+    if (!param_type) return true;  /* No type constraint = any type OK */
+    if (!arg_node) return false;
+
+    /* If parameter expects Any, always compatible */
+    if (strcmp(param_type, "Any") == 0) {
+        return true;
+    }
+
+    /* For symbols, check if they have type annotations and do subtype checking */
+    if (omni_is_sym(arg_node)) {
+        /* Check for boolean literals first */
+        const char* name = arg_node->str_val;
+        if (strcmp(param_type, "Bool") == 0) {
+            if (strcmp(name, "true") == 0 || strcmp(name, "false") == 0) {
+                return true;
+            }
+        }
+
+        /* Look up variable's type annotation from analysis context */
+        /* TODO: This would require tracking variable types during analysis */
+        /* For now, we can't do subtype checking on untyped symbols */
+        /* Be conservative and allow the call */
+        return true;
+    }
+
+    /* For literals, do exact type matching */
+    /* If parameter expects Int, check if argument is an integer literal */
+    if (strcmp(param_type, "Int") == 0) {
+        return omni_is_int(arg_node);
+    }
+
+    /* If parameter expects String, check if argument is a string literal */
+    if (strcmp(param_type, "String") == 0) {
+        return omni_is_string(arg_node);
+    }
+
+    /* If parameter expects Bool, check if argument is a boolean */
+    if (strcmp(param_type, "Bool") == 0) {
+        /* Allow integers 0 and 1 as booleans (truthy/falsy values) */
+        if (omni_is_int(arg_node)) {
+            int val = arg_node->int_val;
+            return (val == 0 || val == 1);
+        }
+        return false;
+    }
+
+    /* Subtype checking: Check if parameter type is a supertype of a known argument type */
+    /* For example: param_type="Number", arg is Int -> check if Int <: Number */
+    /* This would require inferring arg_node's type, which is not fully implemented yet */
+
+    /* TODO: Add more sophisticated type inference and subtype checking */
+    /* For now, be conservative and allow the check */
+    return true;
 }

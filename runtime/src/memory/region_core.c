@@ -21,6 +21,9 @@ typedef struct {
 
 static __thread RegionPool g_region_pool = { .count = 0 };
 
+// Global region ID counter (OPTIMIZATION: T-opt-region-metadata-pointer-masking)
+static uint16_t g_next_region_id = 1;  // Start at 1 (0 is reserved for NULL/global
+
 // Reset a region for reuse (fast path)
 static inline void region_reset(Region* r) {
     if (!r) return;
@@ -28,6 +31,9 @@ static inline void region_reset(Region* r) {
     arena_free(&r->arena);
     // Reset inline buffer (OPTIMIZATION: T-opt-inline-allocation)
     r->inline_buf.offset = 0;
+    // Reset type metadata (OPTIMIZATION: T-opt-region-metadata)
+    // Note: We preserve type_table for reused regions, just clear it
+    // if (r->type_table) { free(r->type_table); r->type_table = NULL; }
     // Reset control block
     r->external_rc = 0;
     r->tether_count = 0;
@@ -40,6 +46,7 @@ Region* region_create(void) {
         Region* r = g_region_pool.regions[--g_region_pool.count];
         // Region is already reset, just mark it as alive
         r->scope_alive = true;
+        // Note: region_id is preserved from previous lifetime (acceptable)
         return r;
     }
 
@@ -63,6 +70,12 @@ Region* region_create(void) {
     // Initialize inline buffer (OPTIMIZATION: T-opt-inline-allocation)
     r->inline_buf.offset = 0;
     r->inline_buf.capacity = REGION_INLINE_BUF_SIZE;
+
+    // Initialize type metadata (OPTIMIZATION: T-opt-region-metadata)
+    type_metadata_init(r);
+
+    // Assign region ID (OPTIMIZATION: T-opt-region-metadata-pointer-masking)
+    r->region_id = __atomic_fetch_add(&g_next_region_id, 1, __ATOMIC_SEQ_CST);
 
     // Initialize Control Block
     r->external_rc = 0;
@@ -95,6 +108,14 @@ void region_destroy_if_dead(Region* r) {
 
         // Pool full, actually free (SLOW: requires malloc next time)
         arena_free(&r->arena);
+
+        // Free type metadata (OPTIMIZATION: T-opt-region-metadata)
+        if (r->type_table) {
+            free(r->type_table);
+            r->type_table = NULL;
+            r->num_types = 0;
+        }
+
         free(r);
     }
 }

@@ -471,6 +471,7 @@ Obj* mk_float(double f);
 Obj* mk_char(long c);
 Obj* mk_pair(Obj* a, Obj* b);
 Obj* mk_sym(const char* s);
+Obj* mk_string(const char* s);
 Obj* mk_box(Obj* v);
 Obj* mk_error(const char* msg);
 Obj* mk_nothing(void);
@@ -555,6 +556,7 @@ Obj* ctr_arg(Obj* x, Obj* idx);
 
 Obj* prim_display(Obj* x);
 Obj* prim_print(Obj* x);
+Obj* prim_println(Obj* args);
 Obj* prim_newline(void);
 
 /* ========== Character/String Primitives ========== */
@@ -627,6 +629,9 @@ int is_subtype(Obj* kind_a, Obj* kind_b);
 /* Return the type of a value at runtime */
 Obj* prim_value_to_type(Obj* value);
 
+/* Check if a value is of a specific type (equivalent to Julia's isa()) */
+Obj* prim_type_is(Obj* value, Obj* type_obj);
+
 /* Get Kind objects for basic types */
 Obj* prim_kind_int(void);
 Obj* prim_kind_string(void);
@@ -639,6 +644,18 @@ Obj* prim_kind_float(void);
 Obj* prim_kind_function(void);
 Obj* prim_kind_any(void);
 Obj* prim_kind_nothing(void);
+
+/* Global Type Objects for Runtime Type Operations */
+extern Obj* o_Int;    /* Int type object */
+extern Obj* o_String; /* String type object */
+extern Obj* o_Any;    /* Any type object (top type) */
+extern Obj* o_Nothing; /* Nothing type object */
+
+/* Initialize global type objects (call before using type objects) */
+void omni_init_type_objects(void);
+
+/* Lookup type object by name (for type-based dispatch) */
+Obj* omni_lookup_type(const char* name);
 
 /* ========== Pika Grammar Engine Integration ========== */
 

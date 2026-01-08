@@ -24,32 +24,18 @@
 
 /*
  * Helper: Extract double value from Obj
+ * Uses obj_to_float from omni.h which correctly handles immediate values
  */
 static double obj_to_double(Obj* obj) {
-    if (!obj) return 0.0;
-    if (IS_IMMEDIATE(obj)) {
-        if (obj->tag == TAG_INT) return (double)obj->i;
-    }
-    if (IS_BOXED(obj)) {
-        if (obj->tag == TAG_INT) return (double)obj->i;
-        if (obj->tag == TAG_FLOAT) return obj->f;
-    }
-    return 0.0;
+    return obj_to_float(obj);
 }
 
 /*
  * Helper: Extract long value from Obj
+ * Uses obj_to_int from omni.h which correctly handles immediate values
  */
 static long obj_to_long(Obj* obj) {
-    if (!obj) return 0;
-    if (IS_IMMEDIATE(obj)) {
-        if (obj->tag == TAG_INT) return obj->i;
-    }
-    if (IS_BOXED(obj)) {
-        if (obj->tag == TAG_INT) return obj->i;
-        if (obj->tag == TAG_FLOAT) return (long)obj->f;
-    }
-    return 0;
+    return obj_to_int(obj);
 }
 
 /*
