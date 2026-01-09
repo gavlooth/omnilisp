@@ -4841,3 +4841,44 @@ specified in docs/FFI_DESIGN_PROPOSALS.md. The implementation follows a three-ti
   Where: runtime/src/memory/region_value.c
   Why: Benchmarks showed a 0.68x slowdown in symbol allocation with the new typed codegen. This is likely due to excessive `strdup` or copying in the new path.
   What: Profile and optimize `alloc_obj_typed` for TAG_SYM/TAG_STRING.
+
+- [TODO] Label: T-syntax-path-vs-symbol-dots
+  Objective: Remove `.` from symbol characters; make paths a separate syntactic construct.
+  Reference: csrc/parser/parser.c (R_SYM_FIRST, R_SYM_CHAR, R_DOT rules)
+  Where: csrc/parser/parser.c
+  Why:
+    Currently, symbols CAN contain dots (e.g., `my.field` is a valid symbol), but
+    dots are ALSO used for path expressions (`object.field`). This creates ambiguity
+    and complexity in parsing. Removing dots from symbols makes the language clearer.
+
+  Current Problems:
+    - Ambiguity: Is `my.field` a symbol or a path to `field`?
+    - Float-path confusion: `1.5` vs `1.field` (fixed by float rule priority, but still complex)
+    - Parser complexity: Need priority rules to disambiguate
+
+  Proposed Solution:
+    Remove `.` from R_SYM_FIRST and R_SYM_CHAR. Make paths a separate syntax:
+    - Symbols: Cannot contain dots (my-field, my_field, myField are valid)
+    - Paths: Explicit dot delimiter only (object.field, module.submodule.fn)
+    - Floats: Unambiguous (1.5 is always float, 1.field is always path)
+
+  Benefits:
+    1. Clear semantics - Symbol vs Path is unambiguous
+    2. Simpler parsing - No need for complex priority rules
+    3. Better error messages - Can detect 1.5 as float immediately
+    4. Consistent with Julia - Julia uses . for field access and module paths
+    5. No float-path ambiguity
+
+  Implementation:
+    1. Remove R_DOT from R_SYM_FIRST and R_SYM_CHAR arrays
+    2. Keep R_DOT as terminal for path delimiter only
+    3. Verify PATH expressions still work: object.field, module.submodule.fn
+    4. Add tests for edge cases: 1.field, obj.1.field
+    5. Update documentation
+
+  Verification:
+    - my.field should NOT be a single symbol (should be path or error)
+    - object.field should parse as path (access field of object)
+    - 1.5 should parse as float
+    - 1.field should parse as path (field of integer 1)
+
