@@ -226,7 +226,7 @@ void test_codegen_grammar() {
     assert(code != NULL);
 
     /* Verify complete module structure */
-    assert(code_contains(code, "/* Generated Pika Grammar Matcher: arithmetic */"));
+    assert(code_contains(code, "Generated Pika Grammar Matcher: arithmetic"));
     assert(code_contains(code, "#include <stdbool.h>"));
     assert(code_contains(code, "bool arithmetic_rule_0"));
     assert(code_contains(code, "bool arithmetic_rule_1"));

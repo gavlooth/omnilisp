@@ -261,34 +261,33 @@ Types that take type parameters (Generics).
   [next  {Option {Node T}}])
 ```
 
-#### Variance
-Parametric types have **variance** that determines subtyping relationships:
+#### Variance (Orthogonal Types)
+Variance annotations hint how parametric types relate in the subtyping lattice. This follows Julia's type system conventions.
 
 ```lisp
-;; Covariant container (immutable) - subtyping follows parameter
-(define {struct [^:covar T]} {List}
-  [head {T}]
-  [tail {(List T)}])
-;; (List {Integer}) ⊑ (List {Number}) because Integer ⊑ Number
+;; Covariant - subtyping follows parameter
+(define {struct [^:covariant T]} {Tuple}
+  [elements {T}])
+;; (Tuple {Integer}) ⊑ (Tuple {Number}) because Integer ⊑ Number
 
-;; Invariant container (mutable) - no subtyping relationship
-(define {struct [^:invariant T]} {Array}
-  [data {T}]
-  [capacity {Int}])
-;; (Array {Integer}) is NOT a subtype of (Array {Number})
+;; Invariant - orthogonal types (no subtyping relationship)
+(define {struct [^:invariant T]} {Vector}
+  [data {T}])
+;; (Vector {Integer}) and (Vector {Number}) are orthogonal
+;; Neither is a subtype of the other
 
-;; Contravariant (input positions)
-(define {abstract [^:contra T]} {Consumer}
+;; Contravariant - subtyping is reversed
+(define {abstract [^:contravariant T]} {Consumer}
   [accept [self {Self}] [val {T}]])
 ;; (Consumer {Number}) ⊑ (Consumer {Integer})
 ```
 
-**Variance Rules:**
-- **Covariant (`^:covar`)**: Immutable/output positions. If `A ⊑ B`, then `F{A} ⊑ F{B}`
-- **Invariant (`^:invariant`)**: Mutable positions. No subtyping relationship
-- **Contravariant (`^:contra`)**: Input positions. If `A ⊑ B`, then `F{B} ⊑ F{A}`
+**Variance in the Type Lattice:**
+- **Covariant (`^:covariant`)**: If `A ⊑ B`, then `F{A} ⊑ F{B}`. Subtyping follows the parameter.
+- **Invariant (`^:invariant`)**: `F{A}` and `F{B}` are **orthogonal** - neither is a subtype of the other, even if `A ⊑ B`.
+- **Contravariant (`^:contravariant`)**: If `A ⊑ B`, then `F{B} ⊑ F{A}`. Subtyping is reversed.
 
-**Default variance:** Immutable containers (Flow `()`) are covariant by default. Mutable containers (Slot `[]`) are invariant by default.
+**Note:** Invariant types are orthogonal in the type lattice. This is a property of the type relationships, not a statement about mutability.
 
 ### 3.2 Annotations vs. Constructors
 *   **Annotation `{}`**: Used in definitions to restrict a slot.

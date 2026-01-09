@@ -2371,11 +2371,46 @@ static void codegen_match(CodeGenContext* ctx, OmniValue* expr) {
                 omni_codegen_emit(ctx, "} else ");
             }
 
-            /* For now, emit a comment placeholder */
-            /* Full pattern matching would require destructuring logic here */
-            omni_codegen_emit(ctx, "/* pattern: ");
-            codegen_expr(ctx, pattern);
-            omni_codegen_emit_raw(ctx, " */\n");
+            /*
+             * Phase 26: Guard Detection (& syntax)
+             *
+             * Check if pattern contains a guard: [pattern-elements & guard-expr]
+             *
+             * Examples:
+             * - [n {Int} & (> n 10)]     -> guard is (> n 10)
+             * - [x y & (> x y)]          -> guard is (> x y)
+             * - [& (empty? nums)]         -> guard is (empty? nums)
+             */
+            OmniValue* guard_expr = NULL;
+
+            /* Check if pattern is an array with & guard */
+            if (omni_is_array(pattern)) {
+                /* Scan array for & symbol */
+                for (size_t i = 0; i < pattern->array.len; i++) {
+                    OmniValue* elem = pattern->array.data[i];
+                    if (omni_is_sym(elem) && strcmp(elem->str_val, "&") == 0) {
+                        /* Found & guard - everything after is the guard expression */
+                        if (i + 1 < pattern->array.len) {
+                            /* Build guard expression from remaining elements */
+                            /* For now, just take the next element as the guard */
+                            guard_expr = pattern->array.data[i + 1];
+
+                            /* Emit comment about guard */
+                            omni_codegen_emit(ctx, "/* pattern: ");
+                            codegen_expr(ctx, pattern);
+                            omni_codegen_emit_raw(ctx, " (with guard) */\n");
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (!guard_expr) {
+                /* No guard - emit regular pattern comment */
+                omni_codegen_emit(ctx, "/* pattern: ");
+                codegen_expr(ctx, pattern);
+                omni_codegen_emit_raw(ctx, " */\n");
+            }
 
             if (omni_is_sym(pattern) && strcmp(pattern->str_val, "_") == 0) {
                 /* Wildcard - else clause */
@@ -2387,6 +2422,13 @@ static void codegen_match(CodeGenContext* ctx, OmniValue* expr) {
                 codegen_expr(ctx, pattern);
                 omni_codegen_emit_raw(ctx, ", _match_value)) {\n");
                 omni_codegen_indent(ctx);
+
+                /* If there's a guard, add && condition */
+                if (guard_expr) {
+                    omni_codegen_emit_raw(ctx, "&& is_truthy(");
+                    codegen_expr(ctx, guard_expr);
+                    omni_codegen_emit_raw(ctx, ") /* guard */\n");
+                }
             }
 
             omni_codegen_emit(ctx, "Obj* _result = ");

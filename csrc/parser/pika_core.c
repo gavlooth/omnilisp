@@ -9,6 +9,207 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* ============== Pattern Cache (T-wire-pika-compile-03) ============== */
+
+/*
+ * Pattern cache entry for storing compiled patterns.
+ * Uses string-based keys to cache PikaState objects for identical patterns.
+ *
+ * Cache key: Combination of pattern string + rules array hash
+ * Cache value: PikaState* (compiled pattern ready for matching)
+ */
+typedef struct PatternCacheEntry {
+    char* pattern;                    /* Pattern string (cache key part 1) */
+    size_t rules_hash;                /* Hash of rules array (cache key part 2) */
+    PikaState* compiled_state;        /* Cached compiled parser state */
+    struct PatternCacheEntry* next;   /* Next entry in bucket (for chaining) */
+} PatternCacheEntry;
+
+/*
+ * Pattern cache structure.
+ * Simple hash table with string keys and chaining for collision resolution.
+ */
+typedef struct PatternCache {
+    PatternCacheEntry** buckets;
+    size_t bucket_count;
+    size_t entry_count;
+} PatternCache;
+
+/* Global pattern cache instance */
+static PatternCache* g_pattern_cache = NULL;
+
+/* Initial number of buckets for the pattern cache */
+#define PATTERN_CACHE_INITIAL_BUCKETS 32
+
+/* String hashing function (djb2 algorithm) */
+static size_t hash_string(const char* str) {
+    if (!str) return 0;
+    size_t hash = 5381;
+    int c;
+    while ((c = *str++)) {
+        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    }
+    return hash;
+}
+
+/* Compute hash for a rules array */
+static size_t hash_rules(PikaRule* rules, int num_rules) {
+    if (!rules || num_rules <= 0) return 0;
+
+    /* Simple hash combining rule types and key data */
+    size_t hash = 0;
+    for (int i = 0; i < num_rules; i++) {
+        /* Hash the rule type */
+        hash = (hash << 5) + hash + (size_t)rules[i].type;
+
+        /* Hash relevant data based on rule type */
+        switch (rules[i].type) {
+            case PIKA_TERMINAL:
+                if (rules[i].data.str) {
+                    hash = (hash << 5) + hash + hash_string(rules[i].data.str);
+                }
+                break;
+            case PIKA_RANGE:
+                hash = (hash << 5) + hash + rules[i].data.range.min;
+                hash = (hash << 5) + hash + rules[i].data.range.max;
+                break;
+            case PIKA_SEQ:
+            case PIKA_ALT:
+                hash = (hash << 5) + hash + rules[i].data.children.count;
+                break;
+            case PIKA_REF:
+                hash = (hash << 5) + hash + rules[i].data.ref.subrule;
+                break;
+            default:
+                /* For other rule types, just use type */
+                break;
+        }
+    }
+    return hash;
+}
+
+/* Initialize the global pattern cache */
+static void pattern_cache_init(void) {
+    if (g_pattern_cache) return; /* Already initialized */
+
+    g_pattern_cache = malloc(sizeof(PatternCache));
+    if (!g_pattern_cache) return;
+
+    g_pattern_cache->bucket_count = PATTERN_CACHE_INITIAL_BUCKETS;
+    g_pattern_cache->entry_count = 0;
+
+    g_pattern_cache->buckets = calloc(PATTERN_CACHE_INITIAL_BUCKETS, sizeof(PatternCacheEntry*));
+    if (!g_pattern_cache->buckets) {
+        free(g_pattern_cache);
+        g_pattern_cache = NULL;
+    }
+}
+
+/* Clean up the global pattern cache */
+static void pattern_cache_cleanup(void) {
+    if (!g_pattern_cache) return;
+
+    /* Free all entries, their pattern strings, and cached PikaState objects */
+    for (size_t i = 0; i < g_pattern_cache->bucket_count; i++) {
+        PatternCacheEntry* entry = g_pattern_cache->buckets[i];
+        while (entry) {
+            PatternCacheEntry* next = entry->next;
+            free(entry->pattern);
+            /* Free the cached PikaState object */
+            if (entry->compiled_state) {
+                pika_free(entry->compiled_state);
+            }
+            free(entry);
+            entry = next;
+        }
+        g_pattern_cache->buckets[i] = NULL;
+    }
+
+    free(g_pattern_cache->buckets);
+    free(g_pattern_cache);
+    g_pattern_cache = NULL;
+}
+
+/* Look up a pattern in the cache */
+static PikaState* pattern_cache_get(const char* pattern, PikaRule* rules, int num_rules) {
+    if (!g_pattern_cache || !pattern || !rules || num_rules <= 0) {
+        return NULL;
+    }
+
+    /* Compute cache key: hash of pattern string + rules hash */
+    size_t pattern_hash = hash_string(pattern);
+    size_t rules_hash_val = hash_rules(rules, num_rules);
+    size_t combined_hash = pattern_hash ^ rules_hash_val;
+
+    size_t bucket = combined_hash % g_pattern_cache->bucket_count;
+
+    /* Search for matching entry in bucket */
+    PatternCacheEntry* entry = g_pattern_cache->buckets[bucket];
+    while (entry) {
+        /* Check if this entry matches our pattern and rules */
+        if (entry->rules_hash == rules_hash_val &&
+            strcmp(entry->pattern, pattern) == 0) {
+            /* Found cached compiled state */
+            return entry->compiled_state;
+        }
+        entry = entry->next;
+    }
+
+    return NULL; /* Not found in cache */
+}
+
+/* Add a compiled pattern to the cache */
+static void pattern_cache_put(const char* pattern, PikaRule* rules, int num_rules, PikaState* compiled) {
+    if (!g_pattern_cache || !pattern || !rules || num_rules <= 0 || !compiled) {
+        return;
+    }
+
+    /* Compute cache key */
+    size_t pattern_hash = hash_string(pattern);
+    size_t rules_hash_val = hash_rules(rules, num_rules);
+    size_t combined_hash = pattern_hash ^ rules_hash_val;
+
+    size_t bucket = combined_hash % g_pattern_cache->bucket_count;
+
+    /* Create new cache entry */
+    PatternCacheEntry* entry = malloc(sizeof(PatternCacheEntry));
+    if (!entry) return;
+
+    /* Duplicate pattern string for cache key */
+    entry->pattern = strdup(pattern);
+    if (!entry->pattern) {
+        free(entry);
+        return;
+    }
+
+    entry->rules_hash = rules_hash_val;
+    entry->compiled_state = compiled;
+
+    /* Add to bucket (at head of chain) */
+    entry->next = g_pattern_cache->buckets[bucket];
+    g_pattern_cache->buckets[bucket] = entry;
+    g_pattern_cache->entry_count++;
+}
+
+/* Clear the pattern cache (useful for testing or memory management) */
+void pika_pattern_cache_clear(void) {
+    pattern_cache_cleanup();
+}
+
+/* Get pattern cache statistics (for debugging/monitoring) */
+void pika_pattern_cache_stats(PatternCacheStats* stats) {
+    if (!stats) return;
+    if (!g_pattern_cache) {
+        stats->entry_count = 0;
+        stats->bucket_count = 0;
+        return;
+    }
+    stats->entry_count = g_pattern_cache->entry_count;
+    stats->bucket_count = g_pattern_cache->bucket_count;
+}
+
+/* ============== End Pattern Cache (T-wire-pika-compile-03) ============== */
+
 PikaState* pika_new(const char* input, PikaRule* rules, int num_rules) {
     PikaState* state = malloc(sizeof(PikaState));
     if (!state) return NULL;
@@ -314,8 +515,26 @@ PikaState* omni_compile_pattern(const char* pattern, PikaRule* rules, int num_ru
         return NULL;
     }
 
-    /* Create and return parser state */
-    return pika_new(pattern, rules, num_rules);
+    /* T-wire-pika-compile-03: Initialize pattern cache on first use */
+    pattern_cache_init();
+
+    /* T-wire-pika-compile-03: Check if we have a cached compiled state */
+    PikaState* cached = pattern_cache_get(pattern, rules, num_rules);
+    if (cached) {
+        /* Return cached compiled state (no need to recompile) */
+        return cached;
+    }
+
+    /* Not in cache - create new parser state */
+    PikaState* state = pika_new(pattern, rules, num_rules);
+    if (!state) {
+        return NULL;
+    }
+
+    /* T-wire-pika-compile-03: Cache the newly compiled state */
+    pattern_cache_put(pattern, rules, num_rules, state);
+
+    return state;
 }
 
 /* Extract captured substrings from match results

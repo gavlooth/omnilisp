@@ -43,7 +43,7 @@ However, it requires **explicit declaration of every function and type**, which 
             [100 {CInt}] [100 {CInt}]
             [800 {CInt}] [600 {CInt}]
             [0 {CUInt32}]
-            {^'owned (Handle SDL_Window)})]
+            {^:owned {Handle SDL_Window}})]
   (use-window win))
 ```
 
@@ -172,12 +172,12 @@ However, it requires **explicit declaration of every function and type**, which 
   (sdl.SDL_DestroyWindow win))
 
 ;; Can also translate specific headers
-(define stdio (c/import "<stdio.h>" ^'only [printf puts fopen fclose]))
+(define stdio (c/import "<stdio.h>" ^:only [printf puts fopen fclose]))
 
 ;; With custom defines
 (define mylib (c/import "mylib.h"
                 ^:defines [DEBUG 1] [VERSION "2.0"]
-                ^'include-paths ["/usr/local/include"]))
+                ^:include-paths ["/usr/local/include"]))
 ```
 
 ### translate-c Command
@@ -204,7 +204,7 @@ Produces:
     [x {CInt}] [y {CInt}]
     [w {CInt}] [h {CInt}]
     [flags {CUInt32}]
-    {^'owned (CPtr SDL_Window)})
+    {^:owned {CPtr SDL_Window}})
 
   ...)
 ```
@@ -498,12 +498,12 @@ omnilisp ffi check lib/sdl2-safe.omni
 ### Ownership Metadata
 
 ```lisp
-;; Return type annotations (^:sym and ^'sym are equivalent)
-{^:owned CPtr}           ; Caller receives ownership, must free
-{^'borrowed CPtr}        ; Callee borrows temporarily (default for params)
+;; Return type annotations
+{^:owned {CPtr}}         ; Caller receives ownership, must free
+{^:borrowed {CPtr}}      ; Callee borrows temporarily (default for params)
 
 ;; Parameter annotations
-[^'consumed ptr {CPtr}]  ; Callee takes ownership, don't use after call
+[^:consumed ptr {CPtr}]  ; Callee takes ownership, don't use after call
 [^:escapes cb {Handle}]  ; Callee may store reference, keep alive
 ```
 
@@ -511,32 +511,32 @@ omnilisp ffi check lib/sdl2-safe.omni
 
 ```lisp
 ;; Basic extern declaration
-(define {extern puts ^:from libc}
+(define ^:from libc {extern puts}
   [s {CString}]
   {CInt})
 
 ;; With ownership annotations
-(define {extern malloc ^'from libc}
+(define ^:from libc {extern malloc}
   [size {CSize}]
-  {^'owned CPtr})
+  {^:owned {CPtr}})
 
-(define {extern free ^:from libc}
-  [^'consumed ptr {CPtr}]
+(define ^:from libc {extern free}
+  [^:consumed ptr {CPtr}]
   {Nothing})
 
 ;; Variadic function
-(define {extern printf ^:from libc ^'variadic}
+(define ^:from libc ^:variadic {extern printf}
   [format {CString}]
   {CInt})
 
 ;; With error handling
-(define {extern open ^'from libc ^:may-fail}
+(define ^:from libc ^:may-fail {extern open}
   [path {CString}]
   [flags {CInt}]
   {(Result {CInt} {CInt})})  ; Ok(fd) or Err(errno)
 
 ;; NULL-returning function
-(define {extern fopen ^:from libc ^'nothing-on-null}
+(define ^:from libc ^:nothing-on-null {extern fopen}
   [path {CString}]
   [mode {CString}]
   {Option {Handle FILE}})
@@ -551,14 +551,14 @@ omnilisp ffi check lib/sdl2-safe.omni
   [y {CFloat}])
 
 ;; Packed struct (no padding)
-(define {struct ^'ffi ^:packed PacketHeader}
+(define ^:packed {struct ^:ffi PacketHeader}
   [magic {CUInt32}]
   [length {CUInt16}]
   [flags {CUInt8}]
   [checksum {CUInt8}])
 
 ;; With explicit alignment
-(define {struct ^:ffi ^'align-16 AlignedData}
+(define ^:align-16 {struct ^:ffi AlignedData}
   [data {CArray CFloat 4}])
 
 ;; Opaque type (size unknown, always pointer)
@@ -569,18 +569,18 @@ omnilisp ffi check lib/sdl2-safe.omni
 ### Callback Definitions
 
 ```lisp
-;; Define callback type
-(define {callback Comparator}
+;; Define callback type using CFn (C Function pointer)
+(define {CFn Comparator}
   [a {CPtr}]
   [b {CPtr}]
   {CInt})
 
 ;; Function taking callback
-(define {extern qsort ^:from libc}
+(define ^:from libc {extern qsort}
   [base {CPtr}]
   [nmemb {CSize}]
   [size {CSize}]
-  [compar {Callback Comparator}]
+  [compar {CFn Comparator}]
   {Nothing})
 
 ;; Pass OmniLisp function as callback
@@ -642,37 +642,37 @@ omnilisp ffi check lib/sdl2-safe.omni
     [b {CUInt8}] [a {CUInt8}])
 
   ;; Functions
-  (define {extern SDL_Init ^'from "libSDL2.so"}
+  (define ^:from "libSDL2.so" {extern SDL_Init}
     [flags {CUInt32}]
     {CInt})
 
-  (define {extern SDL_Quit ^:from "libSDL2.so"}
+  (define ^:from "libSDL2.so" {extern SDL_Quit}
     {Nothing})
 
-  (define {extern SDL_CreateWindow ^:from "libSDL2.so"}
+  (define ^:from "libSDL2.so" {extern SDL_CreateWindow}
     [title {CString}]
     [x {CInt}] [y {CInt}]
     [w {CInt}] [h {CInt}]
     [flags {CUInt32}]
-    {^'owned (Handle SDL_Window)})
+    {^:owned {Handle SDL_Window}})
 
-  (define {extern SDL_CreateRenderer ^'from "libSDL2.so"}
+  (define ^:from "libSDL2.so" {extern SDL_CreateRenderer}
     [window {Handle SDL_Window}]
     [index {CInt}]
     [flags {CUInt32}]
-    {^:owned (Handle SDL_Renderer)})
+    {^:owned {Handle SDL_Renderer}})
 
-  (define {extern SDL_SetRenderDrawColor ^:from "libSDL2.so"}
+  (define ^:from "libSDL2.so" {extern SDL_SetRenderDrawColor}
     [renderer {Handle SDL_Renderer}]
     [r {CUInt8}] [g {CUInt8}]
     [b {CUInt8}] [a {CUInt8}]
     {CInt})
 
-  (define {extern SDL_RenderClear ^:from "libSDL2.so"}
+  (define ^:from "libSDL2.so" {extern SDL_RenderClear}
     [renderer {Handle SDL_Renderer}]
     {CInt})
 
-  (define {extern SDL_RenderPresent ^:from "libSDL2.so"}
+  (define ^:from "libSDL2.so" {extern SDL_RenderPresent}
     [renderer {Handle SDL_Renderer}]
     {Nothing})
 

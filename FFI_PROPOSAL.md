@@ -139,7 +139,7 @@ Ownership is specified via metadata on parameters and return type:
 ;; Caller owns returned pointer (must free)
 (define ^:from libc {extern malloc}
   [size {CSize}]
-  {^:owned CPtr})
+  {^:owned {CPtr}})
 
 ;; Function consumes (takes ownership of) parameter
 (define ^:from libc {extern free}
@@ -153,7 +153,7 @@ Ownership is specified via metadata on parameters and return type:
 
 ;; Function may store reference (escapes)
 (define {extern set_callback}
-  [^:escapes cb {Handle Callback}]
+  [^:escapes cb {Handle CFn}]
   {Nothing})
 ```
 
@@ -276,7 +276,7 @@ Ownership is specified via metadata on parameters and return type:
 ### 5.3 Error Handling
 
 ```lisp
-;; Functions marked :may-fail return Result
+;; Functions marked ^:may-fail return Result
 (match (open "/etc/passwd" O_RDONLY)
   [(Ok fd)
    (let [buf (make-buffer 1024)]
@@ -833,9 +833,9 @@ The Omnilisp compiler generates:
 
 ```lisp
 ;; Automatic struct conversion
-(define {struct :ffi :mirror Point}
-  [x {Float -> CFloat}]
-  [y {Float -> CFloat}])
+(define {struct ^:ffi ^:mirror Point}
+  [x {CFloat}]  ; Converted from Float
+  [y {CFloat}])
 
 ;; Omnilisp Point <-> C Point automatically
 ```

@@ -51,7 +51,7 @@ int main(void) {
             } else {
                 printf("  FAIL\n");
             }
-            pika_free(compiled);
+            /* Note: Don't free compiled - cache owns it now */
         }
     }
 
@@ -68,7 +68,6 @@ int main(void) {
             printf("  PASS (correctly returned NULL)\n");
         } else {
             printf("  FAIL (should have returned NULL)\n");
-            pika_free(compiled);
         }
     }
 
@@ -82,7 +81,6 @@ int main(void) {
             printf("  PASS (correctly returned NULL)\n");
         } else {
             printf("  FAIL (should have returned NULL)\n");
-            pika_free(compiled);
         }
     }
 
@@ -105,7 +103,7 @@ int main(void) {
             } else {
                 printf("  FAIL\n");
             }
-            pika_free(compiled);
+            /* Note: Don't free compiled - cache owns it now */
         }
     }
 
@@ -131,7 +129,7 @@ int main(void) {
             } else {
                 printf("  FAIL\n");
             }
-            pika_free(compiled);
+            /* Note: Don't free compiled - cache owns it now */
         }
     }
 
@@ -157,9 +155,12 @@ int main(void) {
             } else {
                 printf("  FAIL\n");
             }
-            pika_free(compiled);
+            /* Note: Don't free compiled - cache owns it now */
         }
     }
+
+    /* Clean up cache at end */
+    pika_pattern_cache_clear();
 
     /* Summary */
     printf("\n========================================\n");

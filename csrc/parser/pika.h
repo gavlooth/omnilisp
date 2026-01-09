@@ -142,6 +142,15 @@ OmniValue* pika_extract_captures(PikaState* state, int* rule_ids, size_t* positi
  * This function creates a parser state from a pattern string and returns it.
  * The returned parser state can be used with pika_run for matching.
  *
+ * **CACHE BEHAVIOR (T-wire-pika-compile-03):**
+ * This function uses an internal cache to avoid recreating parser states
+ * for identical (pattern, rules) combinations. If the same pattern and rules
+ * are requested again, the cached PikaState is returned.
+ *
+ * **IMPORTANT:** Due to caching, the caller should NOT free the returned
+ * PikaState. Use pika_pattern_cache_clear() to clean up all cached states
+ * when done (e.g., at program exit or between test runs).
+ *
  * Parameters:
  *   - pattern: Pattern string to compile (input text for the parser)
  *   - rules: Array of PikaRule definitions
@@ -151,16 +160,15 @@ OmniValue* pika_extract_captures(PikaState* state, int* rule_ids, size_t* positi
  *   - PikaState* representing the compiled pattern (ready for matching)
  *   - NULL if allocation failed
  *
- * Note: Caller is responsible for freeing the returned PikaState with pika_free()
- *
  * Example:
  *   PikaRule rules[] = { ... pattern rules ... };
  *   PikaState* compiled = omni_compile_pattern("hello", rules, 1);
  *   if (compiled) {
  *       OmniValue* result = pika_run(compiled, 0);
  *       // ... use result ...
- *       pika_free(compiled);
+ *       // DO NOT call pika_free(compiled) - it's managed by the cache
  *   }
+ *   pika_pattern_cache_clear();  // Clean up when done
  */
 PikaState* omni_compile_pattern(const char* pattern, PikaRule* rules, int num_rules);
 
@@ -210,6 +218,43 @@ char* pika_codegen_rule(PikaRule* rule, int rule_id, const char* name);
  *   free(code);
  */
 char* pika_codegen_grammar(PikaRule* rules, int num_rules, const char* name);
+
+/* ============== Pattern Cache API (T-wire-pika-compile-03) ============== */
+
+/*
+ * Pattern cache statistics structure
+ * Used for monitoring cache usage and effectiveness
+ */
+typedef struct {
+    size_t entry_count;  /* Number of cached patterns */
+    size_t bucket_count; /* Number of buckets in the hash table */
+} PatternCacheStats;
+
+/*
+ * Clear the pattern cache
+ * Frees all cached patterns and resets the cache to empty state.
+ * Useful for testing or memory management in long-running applications.
+ *
+ * Example:
+ *   pika_pattern_cache_clear();  // Clear all cached patterns
+ */
+void pika_pattern_cache_clear(void);
+
+/*
+ * Get pattern cache statistics
+ * Retrieves information about the current state of the pattern cache.
+ *
+ * Parameters:
+ *   - stats: Pointer to PatternCacheStats structure to fill
+ *
+ * Example:
+ *   PatternCacheStats stats;
+ *   pika_pattern_cache_stats(&stats);
+ *   printf("Cached patterns: %zu\n", stats.entry_count);
+ */
+void pika_pattern_cache_stats(PatternCacheStats* stats);
+
+/* ============== End Pattern Cache API ============== */
 
 #ifdef __cplusplus
 }

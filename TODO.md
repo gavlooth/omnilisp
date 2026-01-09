@@ -161,20 +161,40 @@ Replace hybrid memory management with a unified Region-RC architecture.
 
   Verification: omni_compile_pattern("hello", rules, 1) returns PikaState* ready for matching
 
-- [TODO] Label: T-wire-pika-compile-02
+- [DONE] Label: T-wire-pika-compile-02
   Objective: Implement grammar-to-code transformation.
   Reference: docs/SYNTAX_REVISION.md (Pika Grammar DSL)
   Where: csrc/parser/pika.h, csrc/parser/pika_core.c
   Why: Convert Pika grammar rules into executable code at runtime.
   What: Add pika_codegen_rule function.
-  Implementation Details:
-    - Input: PikaRule struct with type (SEQ, ALT, REP, etc.)
-    - Output: C function pointer or bytecode representation
-    - Recursively process child rules
-    - Generate code for each PEG operator
-  Verification: (define [grammar expr] ...) should generate executable matcher.
 
-- [TODO] Label: T-wire-pika-compile-03
+  Implementation (2026-01-09):
+  - Created csrc/parser/pika_codegen.c with code generation implementation
+  - Added pika_codegen_rule() to generate C code for single PikaRule
+  - Added pika_codegen_grammar() to generate complete C module for all rules
+  - Supports all PEG operators: TERMINAL, RANGE, ANY, SEQ, ALT, REP, POS, OPT, NOT, AND, REF
+  - Generates functions with signature: bool <name>_rule_<id>(input, input_len, result_pos)
+  - Includes forward declarations and convenience wrapper function
+  - Added comprehensive test suite: tests/test_pika_codegen.c (10 tests, all passing)
+  - Updated csrc/Makefile to include pika_codegen.c in build
+  - Added function declarations to pika.h
+
+  Verification:
+  - All 10 tests pass:
+    * Test 1: Terminal rule code generation ✓
+    * Test 2: Range rule code generation ✓
+    * Test 3: Sequence rule code generation ✓
+    * Test 4: Alternation rule code generation ✓
+    * Test 5: Repetition rule code generation (A*) ✓
+    * Test 6: Positive lookahead rule code generation (&A) ✓
+    * Test 7: Negative lookahead rule code generation (!A) ✓
+    * Test 8: Complete grammar code generation ✓
+    * Test 9: Error handling for NULL rule ✓
+    * Test 10: Error handling for NULL name ✓
+  - Generated code compiles and can be used as standalone matcher
+  - (define [grammar expr] ...) can generate executable matcher code
+
+- [DONE] Label: T-wire-pika-compile-03
   Objective: Add pattern cache/optimization for repeated compilation.
   Reference: csrc/parser/pika_core.c (memoization table)
   Where: csrc/parser/pika.h, csrc/parser/pika_core.c
@@ -186,6 +206,18 @@ Replace hybrid memory management with a unified Region-RC architecture.
     - Cache value: compiled PikaRule struct
     - Add pika_get_cached and pika_set_cached functions
   Verification: Compiling same pattern twice should return cached version (no recompilation).
+
+  Implementation (2026-01-09):
+  - Added pattern cache with string-keyed hash table to csrc/parser/pika_core.c
+  - Cache uses combination of pattern string hash + rules array hash as key
+  - Returns cached PikaState* for identical (pattern, rules) combinations
+  - Added public API: pika_pattern_cache_clear() and pika_pattern_cache_stats()
+  - Updated omni_compile_pattern to check cache before creating new state
+  - Cache owns PikaState objects - caller should not free them
+  - All tests pass (6/6):
+    * test_omni_compile_pattern: 6/6 passed
+    * test_pika_pattern_cache: 6/6 passed
+  Verification: Compiling same pattern twice returns same pointer (cache hit).
 
 - [TODO] Label: T-wire-pika-compile-04
   Objective: Integrate pattern compilation with runtime evaluation.
