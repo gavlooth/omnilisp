@@ -763,6 +763,20 @@ Obj* prim_deep_put(Obj* root, const char* path_str, Obj* new_value);
  */
 Obj* prim_match_pattern(Obj* input_obj, Obj* pattern_obj);
 
+/*
+ * Compile a pattern string for later use
+ * Args:
+ *   - pattern_obj: Pattern string to compile
+ * Returns:
+ *   - Pattern object (string containing the pattern)
+ *   - NULL (nil) if input is invalid
+ *
+ * Example:
+ *   prim_compile_pattern(mk_string("[0-9]+"))
+ *   => "[0-9]+"
+ */
+Obj* prim_compile_pattern(Obj* pattern_obj);
+
 /* ========== Infinite Iterators ========== */
 
 /*

@@ -1238,6 +1238,31 @@ static void codegen_match_pattern(CodeGenContext* ctx, OmniValue* expr) {
     omni_codegen_emit_raw(ctx, ")");
 }
 
+/* T-wire-pika-compile-04: Pattern compilation codegen */
+/* Generate code for pattern compilation: (compile-pattern pattern) */
+static void codegen_compile_pattern(CodeGenContext* ctx, OmniValue* expr) {
+    /* Compile pattern form: (compile-pattern <pattern-string>) */
+    /* Example: (compile-pattern "[0-9]+") */
+
+    /* Get the pattern argument */
+    OmniValue* args = omni_cdr(expr);
+    if (omni_is_nil(args)) {
+        omni_codegen_emit_raw(ctx, "NIL");
+        return;
+    }
+
+    OmniValue* pattern_expr = omni_car(args);
+    if (!pattern_expr) {
+        omni_codegen_emit_raw(ctx, "NIL");
+        return;
+    }
+
+    /* Generate code to call prim_compile_pattern */
+    omni_codegen_emit_raw(ctx, "prim_compile_pattern(");
+    codegen_expr(ctx, pattern_expr);
+    omni_codegen_emit_raw(ctx, ")");
+}
+
 /* T-codegen-array-01: Array literal codegen */
 /* Generate code to create an array from literal syntax [elem1 elem2 ...] */
 static void codegen_array(CodeGenContext* ctx, OmniValue* expr) {
@@ -2803,6 +2828,11 @@ static void codegen_list(CodeGenContext* ctx, OmniValue* expr) {
         /* T-wire-pika-exec-04: Runtime pattern matching */
         if (strcmp(name, "match-pattern") == 0) {
             codegen_match_pattern(ctx, expr);
+            return;
+        }
+        /* T-wire-pika-compile-04: Pattern compilation */
+        if (strcmp(name, "compile-pattern") == 0) {
+            codegen_compile_pattern(ctx, expr);
             return;
         }
     }

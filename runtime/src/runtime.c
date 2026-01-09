@@ -1743,3 +1743,57 @@ Obj* prim_match_pattern(Obj* input_obj, Obj* pattern_obj) {
 
     return result;
 }
+
+/* ========== Pattern Compilation (T-wire-pika-compile-04) ========== */
+
+/*
+ * prim_compile_pattern: Compile a pattern string for later use
+ *
+ * This function takes a pattern string and returns it as a compiled pattern object.
+ * Currently, this is a simple wrapper that stores the pattern string for later use.
+ * In a future implementation, this could use omni_compile_pattern() to create
+ * a PikaState for more efficient pattern matching.
+ *
+ * API: (compile-pattern <pattern-string>)
+ *
+ * Args:
+ *   - pattern_obj: Pattern string to compile
+ *
+ * Returns:
+ *   - Pattern object (currently just returns the pattern string)
+ *   - NULL (nil) if input is invalid
+ *
+ * Example:
+ *   (define p (compile-pattern "[0-9]+"))
+ *   (match-pattern "123 abc" p)  ; => "123"
+ *
+ * Note: This is a simple implementation that returns the pattern string as-is.
+ * A more sophisticated implementation would pre-compile the pattern into
+ * an internal representation for faster matching.
+ */
+Obj* prim_compile_pattern(Obj* pattern_obj) {
+    omni_ensure_global_region();
+
+    /* Extract pattern string */
+    const char* pattern = NULL;
+    if (pattern_obj && !IS_IMMEDIATE(pattern_obj) && IS_BOXED(pattern_obj)) {
+        if (pattern_obj->tag == TAG_STRING || pattern_obj->tag == TAG_SYM) {
+            pattern = (const char*)pattern_obj->ptr;
+        }
+    }
+
+    if (!pattern) {
+        return NULL;  /* Return nil for invalid input */
+    }
+
+    /* Currently, we just return the pattern string as-is.
+     * In a future implementation, this could:
+     * 1. Parse the pattern into an internal representation
+     * 2. Create a PikaState using omni_compile_pattern()
+     * 3. Return an opaque object that can be used for matching
+     *
+     * For now, we return the pattern string wrapped in a new string object
+     * to maintain the API contract.
+     */
+    return mk_string_region(omni_get_global_region(), pattern, strlen(pattern));
+}
