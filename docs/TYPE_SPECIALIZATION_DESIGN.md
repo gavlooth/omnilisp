@@ -23,7 +23,7 @@ Float boxing costs ~18 ns per operation due to heap allocation and indirection.
 
 ### The Solution: Type Specialization
 
-**"OmniLisp is not fast because of ASAP, it's fast because of function specialization and type inference."**
+**"OmniLisp is not fast because of CTRR alone; it's fast because of function specialization and type inference."**
 
 Instead of runtime tagged value operations:
 1. **Infer types at compile time** via type inference
@@ -668,9 +668,9 @@ void generate_generic_call(CodeGenContext* ctx,
 
 ## Phase 6: Integration with Existing Systems
 
-### ASAP Memory Management
+### CTRR Memory Management
 
-Specialized functions must still respect the ASAP memory management contract:
+Specialized functions must still respect the CTRR memory management contract:
 
 1. **No allocation in hot paths** - Specialized code shouldn't allocate
 2. **Region-aware boxing** - When boxing, use the current region

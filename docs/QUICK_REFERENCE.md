@@ -157,7 +157,7 @@ Pull symbols by name from dictionaries or property lists:
 ;; Equivalent to: x = my-dict[:x], y = my-dict[:y]
 ```
 
-**Note:** In OmniLisp, `:x` creates a symbol (equivalent to `'x`), not a keyword. The destructuring pattern `(:x :y)` extracts the values associated with those symbols from the dictionary.
+**Note:** In OmniLisp, `:x` is pure reader sugar for `'x` (no separate keyword type). The destructuring pattern `(:x :y)` extracts values associated with those symbols. For canonicalization/pretty-printing, prefer the `'x` form.
 
 ### 2.5 Type Enforcement
 Every variable has an associated Kind. If no Kind is specified, it defaults to **`Any`**.
@@ -337,6 +337,8 @@ A type object can be the **value** of a definition (not annotated, not metadata)
 - `{Type}` = Annotation (constrains a value)
 - `Type` (no braces) = Value (the type object itself)
 
+**Metadata Rule:** If the same metadata key appears multiple times (e.g. `^:parent` twice), the **last occurrence wins**.
+
 ### 3.6 Type Predicates
 
 OmniLisp provides predicates for checking types at runtime.
@@ -454,39 +456,22 @@ Define high-performance PEG grammars directly in the Flow domain.
 
 ---
 
-## 8. Memory Management (ASAP & RC-G)
+## 8. Memory Management (CTRR)
 
-OmniLisp utilizes a unique, garbage-collection-free memory model designed for predictability and performance.
+OmniLisp uses **CTRR (Compile-Time Region Reclamation)**: a deterministic,
+garbage-collection-free model where the compiler schedules region lifetimes and
+inserts explicit operations for escapes and borrows.
 
-### 8.1 ASAP (As Static As Possible)
-The compiler statically analyzes variable lifetimes and automatically injects deallocation calls. This minimizes runtime overhead and eliminates "stop-the-world" pauses.
+- **Regions:** Most allocations are bump/arena allocations in a region.
+- **Transmigration (escapes):** Values that cross a region boundary are repaired
+  by moving/copying their object graph into an outliving region.
+- **Tethering (borrows):** Borrow windows pin regions so they cannot be reclaimed
+  while in use.
 
-### 8.2 RC-G (Region-Based Reference Counting)
-For dynamic data, OmniLisp uses **Region-Based Reference Counting**.
-*   **Regions**: Objects are allocated into regions (arenas) that track their own internal connectivity.
-*   **Transmigration**: The system can move objects between regions to optimize locality and clear cycles.
-*   **Tethers**: Thread-local references that prevent premature deallocation while a value is in active use.
+Canonical references:
 
-#### Phase 24 Performance Optimizations (2026-01-08)
-
-The RC-G model has been heavily optimized with 9 major improvements achieving 2.7x-21.1x speedups:
-
-| Optimization | Benefit |
-|--------------|---------|
-| Inline allocation buffer | 6.99x faster for small objects (< 64 bytes) |
-| Specialized constructors | 5.55-6.32x faster batch list/tree allocation |
-| Bitmap-based cycle detection | 2.7-12.5x faster transmigration |
-| Region splicing | O(1) result-only region transfer (1.4-1.9x faster) |
-| Region pooling | 21.1x faster small region creation |
-| Inline fastpaths | Zero call overhead for hot operations |
-
-**Key implementation details:**
-- Regions use a 512-byte inline buffer for small object allocation
-- Bitmap-based cycle detection replaces hash tables for O(1) visited tracking
-- Thread-local region pool (32 regions per thread) eliminates malloc overhead
-- Region splicing provides O(1) arena chunk transfer for functional patterns
-
-See `runtime/bench/BENCHMARK_RESULTS.md` for detailed performance data.
+- `docs/CTRR.md` (short, normative spec)
+- `runtime/docs/CTRR_TRANSMIGRATION.md` (detailed transmigration contract)
 
 ---
 
@@ -618,6 +603,7 @@ null?              ; ? at end
 !not               ; ! at start
 ?maybe             ; ? at start
 *                  ; single operator
++                  ; single operator
 <=                 ; comparison operators
 ==                 ; equality
 50%off             ; % in middle
@@ -645,7 +631,7 @@ comment;more       ; ; for comments
 'foo            ; symbol
 #\a #\newline   ; character
 '(1 2 3)        ; list
-()              ; empty list
+()              ; empty list (truthy)
 nothing         ; nothing (falsy)
 false           ; false (falsy)
 true            ; true

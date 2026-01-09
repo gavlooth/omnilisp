@@ -23,15 +23,47 @@ enum {
     R_COMMENT,
     R_WS_ITEM,
     R_WS,
+    /*
+     * R_WS1: one-or-more whitespace items.
+     *
+     * IMPORTANT:
+     *   R_WS is intentionally "zero-or-more" to make many grammar productions
+     *   tolerant of formatting differences.
+     *
+     *   Some constructs, however, must force a separator to avoid ambiguity.
+     *   Example: we must prevent `^:parent {Any}` from being parsed as the
+     *   generic metadata form `^ <expr> <expr>`; `^:parent` is a reserved token
+     *   used as a standalone metadata key marker in `define`, `let`, etc.
+     */
+    R_WS1,
 
     R_DIGIT, R_DIGIT1, R_INT, R_SIGN, R_SIGNED_INT,
     R_LT, R_GT, R_EQ, R_QUESTION, R_AT,
     R_FLOAT_FRAC, R_FLOAT,
 
     R_ALPHA, R_ALPHA_UPPER,
-    R_SYM_ASTERISK, R_SYM_MINUS, R_SYM_UNDERSCORE, R_SYM_PERCENT, R_SYM_SLASH,
+    R_SYM_ASTERISK, R_SYM_PLUS, R_SYM_MINUS, R_SYM_UNDERSCORE, R_SYM_PERCENT, R_SYM_SLASH,
     R_SYM_SPECIAL, R_SYM_CHAR, R_SYM_FIRST, R_SYM,
-    R_KEYWORD,
+    /*
+     * Reserved reader sugar:
+     * - :name  => (quote name)
+     *
+     * IMPORTANT:
+     *   This is intentionally NOT a normal symbol token, because ':' is reserved syntax.
+     *   We normalize the AST toward the explicit quote form so printing can prefer `'name`.
+     */
+    R_COLON_QUOTED_SYMBOL,
+
+    /*
+     * Reserved metadata key tokens:
+     * - ^:parent, ^:where, ^:seq, ...
+     *
+     * IMPORTANT:
+     *   Metadata keys are NOT normal symbols because '^' and ':' are reserved syntax.
+     *   We still represent the key in the AST as an OMNI_SYM whose string is "^:<key>"
+     *   so later phases can recognize metadata markers by the "^:" prefix.
+     */
+    R_META_KEY,
 
     R_CHAR_ESCAPE, R_CHAR_LIT, R_NOT_DQUOTE, R_STRING_CHAR, R_STRING_INNER, R_STRING,
 
@@ -55,6 +87,7 @@ enum {
 
     R_EXPR,
     R_ATOM,
+    R_PATH_ROOT,
 
     R_LIST_INNER, R_LIST_SEQ,
     R_LIST,
@@ -114,9 +147,87 @@ static OmniValue* act_sym(PikaState* state, size_t pos, PikaMatch match) {
     char* s = malloc(match.len + 1);
     memcpy(s, state->input + pos, match.len);
     s[match.len] = '\0';
-    OmniValue* v = (strcmp(s, "nothing") == 0) ? omni_nothing : omni_new_sym(s);
+    /*
+     * Literal symbols with special runtime meaning.
+     *
+     * NOTE:
+     *   These are not "keywords" in the Clojure sense; they are reserved names
+     *   that evaluate to dedicated singleton values.
+     */
+    OmniValue* v =
+        (strcmp(s, "nothing") == 0) ? omni_nothing :
+        (strcmp(s, "nil") == 0) ? omni_nil :
+        omni_new_sym(s);
     free(s);
     return v;
+}
+
+/*
+ * act_colon_quoted_symbol
+ *
+ * Canonical syntax decision:
+ *   :name is pure reader sugar for 'name, and normalizes to (quote name).
+ *
+ * Why we do this in the parser:
+ *   - We explicitly do NOT want a separate keyword type in the surface language.
+ *   - We want printing/normalization to prefer `'name` as the canonical representation.
+ */
+static OmniValue* act_colon_quoted_symbol(PikaState* state, size_t pos, PikaMatch match) {
+    /* Pattern: ':' SYM */
+    size_t current = pos;
+
+    /* Skip ':' */
+    PikaMatch* colon_m = pika_get_match(state, current, R_COLON);
+    if (!colon_m || !colon_m->matched) return omni_nil;
+    current += colon_m->len;
+
+    /* Parse the symbol name */
+    PikaMatch* sym_m = pika_get_match(state, current, R_SYM);
+    if (!sym_m || !sym_m->matched || !sym_m->val) return omni_nil;
+
+    OmniValue* sym = sym_m->val;
+    if (!omni_is_sym(sym)) return omni_nil;
+
+    /* Expand to: (quote <sym>) */
+    return omni_new_cell(omni_new_sym("quote"), omni_new_cell(sym, omni_nil));
+}
+
+/*
+ * act_meta_key
+ *
+ * Canonical syntax decision:
+ *   ^:key is reserved metadata syntax and must be parseable even though '^' and ':'
+ *   are not permitted in normal symbols.
+ *
+ * Representation:
+ *   We represent the metadata marker as an OMNI_SYM whose string is "^:<key>".
+ *   This allows later phases to recognize metadata markers by prefix without
+ *   introducing a new AST node kind.
+ */
+static OmniValue* act_meta_key(PikaState* state, size_t pos, PikaMatch match) {
+    /* Pattern: '^' ':' SYM */
+    size_t current = pos;
+
+    /* Skip '^' */
+    PikaMatch* caret_m = pika_get_match(state, current, R_CARET);
+    if (!caret_m || !caret_m->matched) return omni_nil;
+    current += caret_m->len;
+
+    /* Skip ':' */
+    PikaMatch* colon_m = pika_get_match(state, current, R_COLON);
+    if (!colon_m || !colon_m->matched) return omni_nil;
+    current += colon_m->len;
+
+    /* Read the key name */
+    PikaMatch* key_m = pika_get_match(state, current, R_SYM);
+    if (!key_m || !key_m->matched || !key_m->val) return omni_nil;
+    OmniValue* key_sym = key_m->val;
+    if (!omni_is_sym(key_sym) || !key_sym->str_val) return omni_nil;
+
+    /* Build "^:<key>" string */
+    char buf[256];
+    snprintf(buf, sizeof(buf), "^:%s", key_sym->str_val);
+    return omni_new_sym(buf);
 }
 
 static OmniValue* act_list(PikaState* state, size_t pos, PikaMatch match) {
@@ -274,7 +385,11 @@ static OmniValue* act_metadata(PikaState* state, size_t pos, PikaMatch match) {
 }
 
 static OmniValue* act_path(PikaState* state, size_t pos, PikaMatch match) {
-    PikaMatch* root_m = pika_get_match(state, pos, R_ATOM);
+    /*
+     * PATH roots are restricted to normal atoms (ints or symbols), not metadata markers.
+     * Keep this consistent with the grammar's PATH_ROOT rule.
+     */
+    PikaMatch* root_m = pika_get_match(state, pos, R_PATH_ROOT);
     if (!root_m || !root_m->matched) return omni_nil;
     OmniValue* root = root_m->val;
     
@@ -371,7 +486,37 @@ static OmniValue* act_program(PikaState* state, size_t pos, PikaMatch match) {
 }
 
 static OmniValue* act_program_inner(PikaState* state, size_t pos, PikaMatch match) {
-    return act_list_inner(state, pos, match);
+    /*
+     * PROGRAM_INNER has the same *shape* as LIST_INNER (a sequence of EXPRs
+     * separated by whitespace), but it must recurse through PROGRAM_INNER, not
+     * LIST_INNER.
+     *
+     * A historical bug here caused omni_parser_parse_all() to return 0
+     * expressions for valid programs, which then surfaced as:
+     *   "Error: No expressions to compile"
+     *
+     * We implement the same cell-building logic as act_list_inner(), but with
+     * PROGRAM_INNER as the recursive tail rule.
+     */
+    if (match.len == 0) return omni_nil;
+
+    size_t current = pos;
+
+    /* EXPR */
+    PikaMatch* expr_m = pika_get_match(state, current, R_EXPR);
+    if (!expr_m || !expr_m->matched) return omni_nil;
+    OmniValue* head = expr_m->val;
+    current += expr_m->len;
+
+    /* WS */
+    PikaMatch* ws_m = pika_get_match(state, current, R_WS);
+    if (ws_m && ws_m->matched) current += ws_m->len;
+
+    /* Recursive tail */
+    PikaMatch* rest_m = pika_get_match(state, current, R_PROGRAM_INNER);
+    OmniValue* tail = (rest_m && rest_m->matched && rest_m->val) ? rest_m->val : omni_nil;
+
+    return omni_new_cell(head, tail);
 }
 
 /* ============== String Parsing Helper ============== */
@@ -704,6 +849,10 @@ void omni_grammar_init(void) {
     g_rule_ids[R_WS] = ids(1, R_WS_ITEM);
     g_rules[R_WS] = (PikaRule){ PIKA_REP, .data.children = { g_rule_ids[R_WS], 1 } };
 
+    /* Whitespace sequence (one-or-more) */
+    g_rule_ids[R_WS1] = ids(1, R_WS_ITEM);
+    g_rules[R_WS1] = (PikaRule){ PIKA_POS, .data.children = { g_rule_ids[R_WS1], 1 } };
+
     /* Digits */
     g_rules[R_DIGIT] = (PikaRule){ PIKA_RANGE, .data.range = { '0', '9' } };
     g_rules[R_DIGIT1] = (PikaRule){ PIKA_RANGE, .data.range = { '1', '9' } };
@@ -728,7 +877,7 @@ void omni_grammar_init(void) {
 
     /* Single-character operators for symbols
      * Based on T-syntax-symbol-rules specification:
-     * START WITH: a-z A-Z * ! - _ ? % / = < >
+     * START WITH: a-z A-Z * + ! - _ ? % / = < >
      * MIDDLE: All of above + digits (0-9)
      * EXCLUDE: . @ # & : ; (reserved for syntax)
      */
@@ -739,10 +888,11 @@ void omni_grammar_init(void) {
     g_rules[R_QUESTION] = (PikaRule){ PIKA_TERMINAL, .data.str = "?" };     /* Question mark */
     g_rules[R_AT] = (PikaRule){ PIKA_TERMINAL, .data.str = "@" };           /* At sign (metadata) - NOT in symbols */
 
-    /* Symbol operators: * ! - _ ? % / = < >
+    /* Symbol operators: * + ! - _ ? % / = < >
      * Each defined separately for clarity
      */
     g_rules[R_SYM_ASTERISK] = (PikaRule){ PIKA_TERMINAL, .data.str = "*" };    /* Multiplication */
+    g_rules[R_SYM_PLUS] = (PikaRule){ PIKA_TERMINAL, .data.str = "+" };        /* Addition */
     g_rules[R_SYM_MINUS] = (PikaRule){ PIKA_TERMINAL, .data.str = "-" };       /* Minus/separator */
     g_rules[R_SYM_UNDERSCORE] = (PikaRule){ PIKA_TERMINAL, .data.str = "_" };  /* Underscore */
     g_rules[R_SYM_PERCENT] = (PikaRule){ PIKA_TERMINAL, .data.str = "%" };     /* Percent */
@@ -750,22 +900,22 @@ void omni_grammar_init(void) {
 
     /* R_SYM_FIRST: first char of symbol (CANNOT start with digit, ., @, #, &, :, ;) */
     /* Includes: a-z A-Z * ! - _ ? % / = < > */
-    g_rule_ids[R_SYM_FIRST] = ids(12,
+    g_rule_ids[R_SYM_FIRST] = ids(13,
         R_ALPHA, R_ALPHA_UPPER,
-        R_SYM_ASTERISK, R_EXCLAM, R_SYM_MINUS, R_SYM_UNDERSCORE,
+        R_SYM_ASTERISK, R_SYM_PLUS, R_EXCLAM, R_SYM_MINUS, R_SYM_UNDERSCORE,
         R_QUESTION, R_SYM_PERCENT, R_SYM_SLASH,
         R_LT, R_GT, R_EQ);
-    g_rules[R_SYM_FIRST] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_SYM_FIRST], 12 } };
+    g_rules[R_SYM_FIRST] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_SYM_FIRST], 13 } };
 
     /* R_SYM_CHAR: all symbol characters (for middle positions) */
     /* Includes: R_SYM_FIRST + digits (0-9) */
     /* EXCLUDES: . @ # & : ; (not in symbol definitions above) */
-    g_rule_ids[R_SYM_CHAR] = ids(13,
+    g_rule_ids[R_SYM_CHAR] = ids(14,
         R_ALPHA, R_ALPHA_UPPER,
-        R_SYM_ASTERISK, R_EXCLAM, R_SYM_MINUS, R_SYM_UNDERSCORE,
+        R_SYM_ASTERISK, R_SYM_PLUS, R_EXCLAM, R_SYM_MINUS, R_SYM_UNDERSCORE,
         R_QUESTION, R_SYM_PERCENT, R_SYM_SLASH,
         R_LT, R_GT, R_EQ, R_DIGIT);
-    g_rules[R_SYM_CHAR] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_SYM_CHAR], 13 } };
+    g_rules[R_SYM_CHAR] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_SYM_CHAR], 14 } };
 
     /* Symbol: first char then rest */
     g_rule_ids[R_SYM] = ids(1, R_SYM_CHAR);
@@ -800,9 +950,34 @@ void omni_grammar_init(void) {
     g_rule_ids[R_HASH_CLF] = ids(2, R_HASH, R_SYM);
     g_rules[R_HASH_CLF] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_HASH_CLF], 2 } };
 
-    /* ATOM = INT / SYM */
-    g_rule_ids[R_ATOM] = ids(2, R_INT, R_SYM);
-    g_rules[R_ATOM] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_ATOM], 2 } };
+    /* Reserved metadata keys: ^:parent, ^:where, ... */
+    int* meta_key_ids = ids(3, R_CARET, R_COLON, R_SYM);
+    g_rule_ids[R_META_KEY] = meta_key_ids;
+    g_rules[R_META_KEY] = (PikaRule){ PIKA_SEQ, .data.children = { meta_key_ids, 3 }, .action = act_meta_key };
+
+    /*
+     * :name sugar:
+     *   :foo  =>  (quote foo)
+     */
+    int* colon_quote_ids = ids(2, R_COLON, R_SYM);
+    g_rule_ids[R_COLON_QUOTED_SYMBOL] = colon_quote_ids;
+    g_rules[R_COLON_QUOTED_SYMBOL] = (PikaRule){ PIKA_SEQ, .data.children = { colon_quote_ids, 2 }, .action = act_colon_quoted_symbol };
+
+    /*
+     * ATOM:
+     *   We include R_META_KEY so metadata markers can appear as standalone items
+     *   in special forms (define/let), without weakening normal symbol rules.
+     */
+    g_rule_ids[R_ATOM] = ids(3, R_INT, R_META_KEY, R_SYM);
+    g_rules[R_ATOM] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_ATOM], 3 } };
+
+    /*
+     * PATH_ROOT:
+     *   Paths should be rooted in normal atoms (ints or symbols), not metadata keys.
+     *   This prevents nonsense parses like ^:parent.foo becoming a path expression.
+     */
+    g_rule_ids[R_PATH_ROOT] = ids(2, R_INT, R_SYM);
+    g_rules[R_PATH_ROOT] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_PATH_ROOT], 2 } };
 
     /* LIST_SEQ = EXPR WS LIST_INNER */
     g_rule_ids[R_LIST_SEQ] = ids(3, R_EXPR, R_WS, R_LIST_INNER);
@@ -847,12 +1022,19 @@ void omni_grammar_init(void) {
     g_rule_ids[R_PATH_TAIL] = ids(1, R_PATH_TAIL_ITEM);
     g_rules[R_PATH_TAIL] = (PikaRule){ PIKA_POS, .data.children = { g_rule_ids[R_PATH_TAIL], 1 } };
 
-    /* PATH = ATOM PATH_TAIL */
-    g_rule_ids[R_PATH] = ids(2, R_ATOM, R_PATH_TAIL);
+    /* PATH = PATH_ROOT PATH_TAIL */
+    g_rule_ids[R_PATH] = ids(2, R_PATH_ROOT, R_PATH_TAIL);
     g_rules[R_PATH] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_PATH], 2 }, .action = act_path };
 
-    /* METADATA = ^ WS EXPR WS EXPR */
-    g_rule_ids[R_METADATA] = ids(5, R_CARET, R_WS, R_EXPR, R_WS, R_EXPR);
+    /*
+     * METADATA = ^ WS1 EXPR WS1 EXPR
+     *
+     * This is the *general* metadata attachment form.
+     *
+     * We REQUIRE whitespace separators so that reserved metadata key tokens
+     * like `^:parent` can exist without being swallowed as `^ <expr> <expr>`.
+     */
+    g_rule_ids[R_METADATA] = ids(5, R_CARET, R_WS1, R_EXPR, R_WS1, R_EXPR);
     g_rules[R_METADATA] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_METADATA], 5 }, .action = act_metadata };
 
     /* QUOTED = 'EXPR | `EXPR | ,EXPR */
@@ -916,12 +1098,12 @@ void omni_grammar_init(void) {
 
     /* ============== Expression ============== */
 
-    /* EXPR = FLOAT / PATH / LIST / ARRAY / TYPE / METADATA / QUOTED / STRING / FMT_STRING / CLF_STRING / NAMED_CHAR / HASH_VAL / ATOM
+    /* EXPR = FLOAT / PATH / LIST / ARRAY / TYPE / METADATA / QUOTED / :SYMBOL / STRING / FMT_STRING / CLF_STRING / NAMED_CHAR / HASH_VAL / ATOM
      * IMPORTANT: FLOAT must come BEFORE PATH so that "1.5" is parsed as a float literal,
      * not as a path expression "1 . 5" (integer 1, dot, integer 5)
      */
-    g_rule_ids[R_EXPR] = ids(13, R_FLOAT, R_PATH, R_LIST, R_ARRAY, R_TYPE, R_METADATA, R_QUOTED, R_STRING, R_FMT_STRING, R_CLF_STRING, R_NAMED_CHAR, R_HASH_VAL, R_ATOM);
-    g_rules[R_EXPR] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_EXPR], 13 } };
+    g_rule_ids[R_EXPR] = ids(14, R_FLOAT, R_PATH, R_LIST, R_ARRAY, R_TYPE, R_METADATA, R_QUOTED, R_COLON_QUOTED_SYMBOL, R_STRING, R_FMT_STRING, R_CLF_STRING, R_NAMED_CHAR, R_HASH_VAL, R_ATOM);
+    g_rules[R_EXPR] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_EXPR], 14 } };
 
     /* PROGRAM_SEQ = EXPR WS PROGRAM_INNER */
     g_rule_ids[R_PROGRAM_SEQ] = ids(3, R_EXPR, R_WS, R_PROGRAM_INNER);

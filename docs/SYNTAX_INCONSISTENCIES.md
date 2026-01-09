@@ -11,8 +11,8 @@ This document tracks identified inconsistencies in the language syntax, document
 
 ## 2. "Truthiness" Semantics
 
-*   **Current Behavior:** `0` and `()` (empty list) are **truthy**. Only `false` and `nothing` are falsy.
-*   **Documentation:** `SYNTAX.md` and `LANGUAGE_REFERENCE.md` confirm this.
+*   **Current Behavior (canonical):** `0` and `()` (empty list) are **truthy**. Only `false` and `nothing` are falsy.
+*   **Documentation:** `SYNTAX.md` and `language_reference.md` confirm this.
 *   **Inconsistency:** This deviates from standard Lisp dialects:
     *   **Scheme:** `#f` is the only false value. `()` is true.
     *   **Common Lisp:** `()` and `nil` are false.

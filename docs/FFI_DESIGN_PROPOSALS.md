@@ -730,7 +730,7 @@ omnilisp ffi check lib/sdl2-safe.omni
 | **REPL ergonomics** | ★★★★★ | ★★★☆☆ | ★★☆☆☆ | ★★★☆☆ | ★★★★★ |
 | **C programmer familiarity** | ★★★☆☆ | ★★★★★ | ★★★★★ | ★★☆☆☆ | ★★★★☆ |
 | **Implementation complexity** | ★★★☆☆ | ★★★★☆ | ★★★★★ | ★★☆☆☆ | ★★★★★ |
-| **Fits ASAP model** | ★★★☆☆ | ★★☆☆☆ | ★★★☆☆ | ★★★★☆ | ★★★★★ |
+| **Fits CTRR model** | ★★★☆☆ | ★★☆☆☆ | ★★★☆☆ | ★★★★☆ | ★★★★★ |
 
 ---
 
@@ -853,14 +853,14 @@ omnilisp ffi check lib/sdl2-safe.omni
 1. **Generation counters** catch use-after-free at runtime
 2. **Type safety** - handles are typed, casts explicit
 3. **Deterministic mode** enables replay debugging
-4. **Fits ASAP** - compile-time free insertion still works
+4. **Fits CTRR** - compile-time region scheduling still works
 
 ### Why Ownership Annotations
 
 1. **Explicit is better** - no guessing who frees what
 2. **Enables static analysis** - compiler can warn on leaks
 3. **Documentation** - signature tells the story
-4. **Fits ASAP** - informs CLEAN phase decisions
+4. **Fits CTRR** - informs region/escape scheduling decisions
 
 ### Why Multiple Tiers
 

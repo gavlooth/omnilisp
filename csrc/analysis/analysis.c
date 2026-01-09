@@ -365,11 +365,72 @@ static void analyze_define(AnalysisContext* ctx, OmniValue* expr) {
     OmniValue* args = omni_cdr(expr);
     if (omni_is_nil(args)) return;
 
-    /* Phase 22: Extract metadata from with-meta form if present */
-    /* Check if the first element of args is a with-meta form */
+    /*
+     * Phase 22: Extract definition-level metadata.
+     *
+     * OmniLisp uses ^:key markers as *prefix modifiers* in definitions:
+     *   (define ^:parent {Any} {abstract Number} [])
+     *
+     * These are NOT part of the "name/signature" proper; they must be peeled off
+     * before we decide whether this is a type definition or a function/value define.
+     */
     MetadataEntry* metadata = NULL;
-    OmniValue* name_or_sig = omni_car(args);
 
+    OmniValue* scan = args;
+    while (!omni_is_nil(scan) && omni_is_cell(scan)) {
+        OmniValue* item = omni_car(scan);
+
+        /* Check for metadata marker (^:parent, ^:where, etc.). */
+        if (!(omni_is_sym(item) && item->str_val &&
+              item->str_val[0] == '^' && item->str_val[1] == ':')) {
+            break;
+        }
+
+        /* Metadata markers are key/value pairs: ^:key <value>. */
+        OmniValue* value_cell = omni_cdr(scan);
+        if (omni_is_nil(value_cell) || !omni_is_cell(value_cell)) {
+            /* Malformed key without a value; stop to avoid crashing. */
+            break;
+        }
+
+        const char* meta_key = item->str_val + 2; /* Skip "^:" */
+        OmniValue* meta_value = omni_car(value_cell);
+
+        /*
+         * Deterministic "double metadata" semantics:
+         *   We scan left-to-right but PREPEND entries. This makes the last textual
+         *   occurrence the first entry in the linked list, and omni_get_metadata()
+         *   returns the first match => last-wins.
+         */
+        MetadataEntry* entry = malloc(sizeof(MetadataEntry));
+        entry->key = strdup(meta_key);
+
+        if (strcmp(meta_key, "parent") == 0) entry->type = META_PARENT;
+        else if (strcmp(meta_key, "where") == 0) entry->type = META_WHERE;
+        else if (strcmp(meta_key, "mutable") == 0) entry->type = META_MUTABLE;
+        else if (strcmp(meta_key, "covar") == 0) entry->type = META_COVAR;
+        else if (strcmp(meta_key, "contra") == 0) entry->type = META_CONTRA;
+        else if (strcmp(meta_key, "seq") == 0) entry->type = META_SEQ;
+        else if (strcmp(meta_key, "rec") == 0) entry->type = META_REC;
+        else entry->type = META_NONE;
+
+        entry->value = meta_value;
+        entry->next = metadata;
+        metadata = entry;
+
+        /* Skip both the key and its value. */
+        scan = omni_cdr(value_cell);
+    }
+
+    /* First non-metadata element is the "name or signature" position. */
+    OmniValue* name_or_sig = omni_is_cell(scan) ? omni_car(scan) : omni_nil;
+    OmniValue* rest = omni_is_cell(scan) ? omni_cdr(scan) : omni_nil;
+
+    /*
+     * Alternate representation: explicit (with-meta ...) wrapper.
+     * Example from comment header:
+     *   (define (with-meta (^:parent {Number}) {abstract Real}) [])
+     */
     if (omni_is_cell(name_or_sig) && omni_is_sym(omni_car(name_or_sig))) {
         OmniValue* first = omni_car(name_or_sig);
         if (strcmp(first->str_val, "with-meta") == 0) {
@@ -377,8 +438,19 @@ static void analyze_define(AnalysisContext* ctx, OmniValue* expr) {
             OmniValue* meta_pair = omni_cdr(name_or_sig);
             if (!omni_is_nil(meta_pair) && omni_is_cell(meta_pair)) {
                 OmniValue* meta_expr = omni_car(meta_pair);
-                /* meta_expr could be (^:parent {Number}) or a list of metadata */
-                metadata = omni_extract_metadata(meta_expr);
+                MetadataEntry* extracted = omni_extract_metadata(meta_expr);
+
+                /*
+                 * Merge extracted metadata in front of prefix metadata.
+                 * Since the (with-meta ...) wrapper occurs after any peeled prefix pairs,
+                 * this preserves "last-wins" at the definition level.
+                 */
+                if (extracted) {
+                    MetadataEntry* tail = extracted;
+                    while (tail->next) tail = tail->next;
+                    tail->next = metadata;
+                    metadata = extracted;
+                }
 
                 /* Get the actual object (name_or_sig without metadata) */
                 OmniValue* obj_pair = omni_cdr(meta_pair);
@@ -388,47 +460,6 @@ static void analyze_define(AnalysisContext* ctx, OmniValue* expr) {
             }
         }
     }
-
-    /* Also scan the args list for standalone metadata entries */
-    /* This handles cases like (^:parent {Number}) appearing as a separate item */
-    OmniValue* metadata_scan = args;
-    while (!omni_is_nil(metadata_scan) && omni_is_cell(metadata_scan)) {
-        OmniValue* item = omni_car(metadata_scan);
-        /* Check if this is a metadata marker (^:parent, ^:where, etc.) */
-        if (omni_is_sym(item) && strlen(item->str_val) > 1 &&
-            item->str_val[0] == '^' && item->str_val[1] == ':') {
-            /* This is a metadata entry, extract it and the following value */
-            const char* meta_key = item->str_val + 2;  /* Skip "^:" */
-            OmniValue* rest_scan = omni_cdr(metadata_scan);
-            if (!omni_is_nil(rest_scan) && omni_is_cell(rest_scan)) {
-                OmniValue* meta_value = omni_car(rest_scan);
-                /* Create metadata entry */
-                MetadataEntry* entry = malloc(sizeof(MetadataEntry));
-                entry->key = strdup(meta_key);
-
-                /* Determine metadata type */
-                if (strcmp(meta_key, "parent") == 0) entry->type = META_PARENT;
-                else if (strcmp(meta_key, "where") == 0) entry->type = META_WHERE;
-                else if (strcmp(meta_key, "mutable") == 0) entry->type = META_MUTABLE;
-                else if (strcmp(meta_key, "covar") == 0) entry->type = META_COVAR;
-                else if (strcmp(meta_key, "contra") == 0) entry->type = META_CONTRA;
-                else if (strcmp(meta_key, "seq") == 0) entry->type = META_SEQ;
-                else if (strcmp(meta_key, "rec") == 0) entry->type = META_REC;
-                else entry->type = META_NONE;
-
-                entry->value = meta_value;
-                entry->next = metadata;
-                metadata = entry;
-
-                /* Skip the metadata value in the args */
-                metadata_scan = omni_cdr(rest_scan);
-                continue;
-            }
-        }
-        metadata_scan = omni_cdr(metadata_scan);
-    }
-
-    OmniValue* rest = omni_cdr(args);
 
     /* Phase 22: Type Definition Support */
     /* Check if this is a type definition: (define {Kind Name} params...) */
@@ -1023,9 +1054,9 @@ static OmniValue* desugar_if_to_match(OmniValue* if_expr) {
 
     OmniValue* cond = omni_car(args);
     args = omni_cdr(args);
-    OmniValue* then_branch = omni_is_nil(args) ? omni_new_sym("nil") : omni_car(args);
+    OmniValue* then_branch = omni_is_nil(args) ? omni_nil : omni_car(args);
     args = omni_cdr(args);
-    OmniValue* else_branch = omni_is_nil(args) ? omni_new_sym("nil") : omni_car(args);
+    OmniValue* else_branch = omni_is_nil(args) ? omni_nil : omni_car(args);
 
     /* Build match expression: (match cond true then false else) */
     OmniValue* match_sym = omni_new_sym("match");
@@ -1033,11 +1064,11 @@ static OmniValue* desugar_if_to_match(OmniValue* if_expr) {
     OmniValue* false_sym = omni_new_sym("false");
 
     /* Create clause pairs: (true then) and (false else) */
-    OmniValue* true_clause = omni_new_cell(true_sym, omni_new_cell(then_branch, omni_new_sym("nil")));
-    OmniValue* false_clause = omni_new_cell(false_sym, omni_new_cell(else_branch, omni_new_sym("nil")));
+    OmniValue* true_clause = omni_new_cell(true_sym, omni_new_cell(then_branch, omni_nil));
+    OmniValue* false_clause = omni_new_cell(false_sym, omni_new_cell(else_branch, omni_nil));
 
     /* Build list of clauses: ((true then) (false else)) */
-    OmniValue* clauses = omni_new_cell(true_clause, omni_new_cell(false_clause, omni_new_sym("nil")));
+    OmniValue* clauses = omni_new_cell(true_clause, omni_new_cell(false_clause, omni_nil));
 
     /* Build final match expression: (match cond (true then) (false else)) */
     OmniValue* match_expr = omni_new_cell(match_sym, omni_new_cell(cond, clauses));
@@ -5135,7 +5166,6 @@ MetadataEntry* omni_extract_metadata(OmniValue* form) {
     if (!form || !omni_is_cell(form)) return NULL;
 
     MetadataEntry* head = NULL;
-    MetadataEntry* tail = NULL;
     OmniValue* current = form;
 
     while (!omni_is_nil(current) && omni_is_cell(current)) {
@@ -5166,14 +5196,21 @@ MetadataEntry* omni_extract_metadata(OmniValue* form) {
                 entry->type = meta_type;
                 entry->key = strdup(meta_key);
                 entry->value = meta_value;
-                entry->next = NULL;
-
-                if (!head) {
-                    head = entry;
-                } else {
-                    tail->next = entry;
-                }
-                tail = entry;
+                /*
+                 * Canonical "double metadata" policy: last-wins.
+                 *
+                 * We implement this by PREPENDING entries as we traverse the
+                 * metadata list left-to-right. This makes later textual entries
+                 * appear earlier in the linked list, and omni_get_metadata()
+                 * (which returns the first match) will pick the last occurrence.
+                 *
+                 * NOTE:
+                 *   This reverses the order of the metadata list. Today, metadata
+                 *   is treated as an unordered set of key/value annotations, so
+                 *   preserving source order is not required.
+                 */
+                entry->next = head;
+                head = entry;
             }
         }
 

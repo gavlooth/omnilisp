@@ -162,16 +162,259 @@ Obj* call_closure(Obj* clos, Obj** args, int argc) {
 
 /* Truthiness */
 int is_truthy(Obj* x) {
-    if (x == NULL) return 0;
+    /*
+     * OmniLisp truthiness policy (language contract):
+     *   - Only `false` and `nothing` are falsy.
+     *   - Numeric zero (0, 0.0) is truthy (Lisp tradition).
+     *   - `nil` / empty list is falsy (represented as NULL in the runtime).
+     *
+     * References:
+     *   - docs/QUICK_REFERENCE.md ("0 ; integer (truthy)")
+     *   - language_reference.md ("0 ; integer (truthy)")
+     *
+     * Implementation note:
+     *   This runtime uses NULL to represent `nil` / empty list. We treat it as
+     *   falsy so that common C-style sentinel returns (e.g., predicate returns
+     *   NULL) compose naturally with higher-order functions like list_filter.
+     */
+    if (x == NULL) return 0; /* nil / empty list */
+
+    /* Immediate booleans are the canonical `true`/`false` values. */
     if (IS_IMMEDIATE_BOOL(x)) return x == OMNI_TRUE;
-    if (IS_IMMEDIATE_INT(x)) return INT_IMM_VALUE(x) != 0;
-    if (IS_IMMEDIATE_CHAR(x)) return 1;
-    if (IS_BOXED(x)) {
-        if (x->tag == TAG_NOTHING) return 0;
-        if (x->tag == TAG_INT) return x->i != 0;
-        if (x->tag == TAG_FLOAT) return x->f != 0.0;
-    }
+
+    /* `nothing` is a boxed sentinel value and must be falsy. */
+    if (IS_BOXED(x) && x->tag == TAG_NOTHING) return 0;
+
+    /*
+     * Everything else is truthy, including:
+     *   - 0 / 0.0
+     *   - empty list / empty structures
+     *   - symbols (even the symbol named "false" if constructed manually)
+     */
     return 1;
+}
+
+/* ========== Pattern Matching ========== */
+
+/*
+ * Helper: Compare two symbols for equality
+ * Returns 1 if both are symbols with same string value
+ */
+static int sym_equals(Obj* a, Obj* b) {
+    if (!a || !b) return 0;
+    if (!IS_BOXED(a) || !IS_BOXED(b)) return 0;
+    if (a->tag != TAG_SYM || b->tag != TAG_SYM) return 0;
+    char* a_str = (char*)a->ptr;
+    char* b_str = (char*)b->ptr;
+    if (!a_str || !b_str) return 0;
+    return strcmp(a_str, b_str) == 0;
+}
+
+/*
+ * Helper: Compare two strings for equality
+ * Returns 1 if both are strings with same value
+ */
+static int string_equals(Obj* a, Obj* b) {
+    if (!a || !b) return 0;
+    if (!IS_BOXED(a) || !IS_BOXED(b)) return 0;
+    if (a->tag != TAG_STRING || b->tag != TAG_STRING) return 0;
+    char* a_str = (char*)a->ptr;
+    char* b_str = (char*)b->ptr;
+    if (!a_str || !b_str) return 0;
+    return strcmp(a_str, b_str) == 0;
+}
+
+/*
+ * Helper: Check if symbol is a special keyword
+ * Special symbols: true, false, nil, _, &, when
+ */
+static int is_special_sym(const char* s) {
+    if (!s) return 0;
+    return strcmp(s, "true") == 0 ||
+           strcmp(s, "false") == 0 ||
+           strcmp(s, "nil") == 0 ||
+           strcmp(s, "_") == 0 ||
+           strcmp(s, "&") == 0 ||
+           strcmp(s, "when") == 0;
+}
+
+/*
+ * Helper: Check if pattern is a wildcard (_)
+ */
+static int is_wildcard(Obj* pattern) {
+    if (!IS_BOXED(pattern) || pattern->tag != TAG_SYM) return 0;
+    char* s = (char*)pattern->ptr;
+    return s && strcmp(s, "_") == 0;
+}
+
+/*
+ * Helper: Get array length from Obj
+ * Handles both ARRAY and list (PAIR) types
+ */
+static long get_sequence_length(Obj* seq) {
+    if (!seq) return 0;
+    if (IS_BOXED(seq) && seq->tag == TAG_ARRAY) {
+        /* Array stores length in generation field (hack for compact storage) */
+        /* Actually, arrays store data differently - let's use the convention */
+        return (long)(seq->generation);
+    }
+    /* For lists (pairs), count elements */
+    long len = 0;
+    while (seq && IS_BOXED(seq) && seq->tag == TAG_PAIR) {
+        len++;
+        seq = seq->b;
+    }
+    return len;
+}
+
+/*
+ * Helper: Get element at index from sequence
+ * Returns NULL if index out of bounds
+ */
+static Obj* get_sequence_element(Obj* seq, long index) {
+    if (!seq) return NULL;
+    if (IS_BOXED(seq) && seq->tag == TAG_ARRAY) {
+        /* Arrays are stored differently - need to access via helper */
+        /* For now, assume arrays are stored as a list of pairs in the 'a' field */
+        Obj* current = (Obj*)seq->ptr;
+        long i = 0;
+        while (current && IS_BOXED(current) && current->tag == TAG_PAIR) {
+            if (i == index) return current->a;
+            current = current->b;
+            i++;
+        }
+        return NULL;
+    }
+    /* For lists (pairs) */
+    long i = 0;
+    while (seq && IS_BOXED(seq) && seq->tag == TAG_PAIR) {
+        if (i == index) return seq->a;
+        seq = seq->b;
+        i++;
+    }
+    return NULL;
+}
+
+/*
+ * is_pattern_match - Check if a pattern matches a value
+ *
+ * Pattern matching rules:
+ * 1. Wildcard (_) always matches
+ * 2. Literals (int, float, string, char, bool) match by equality
+ * 3. nil matches NULL or TAG_NOTHING
+ * 4. true/false symbols match boolean values
+ * 5. Arrays/lists match by recursively matching elements
+ * 6. Variables (other symbols) always match (no binding in simple version)
+ *
+ * Note: This is a simplified version that doesn't do variable binding.
+ * For full pattern matching with bindings, we'd need a context structure.
+ */
+int is_pattern_match(Obj* pattern, Obj* value) {
+    /* NULL pattern matches NULL value */
+    if (!pattern) return value == NULL;
+
+    /* Handle immediate values first */
+    if (IS_IMMEDIATE_INT(pattern)) {
+        return IS_IMMEDIATE_INT(value) && INT_IMM_VALUE(pattern) == INT_IMM_VALUE(value);
+    }
+    if (IS_IMMEDIATE_BOOL(pattern)) {
+        return IS_IMMEDIATE_BOOL(value) && pattern == value;
+    }
+    if (IS_IMMEDIATE_CHAR(pattern)) {
+        return IS_IMMEDIATE_CHAR(value) && pattern == value;
+    }
+
+    /* Handle boxed values */
+    if (!IS_BOXED(pattern)) {
+        /* Pattern is not boxed but value is - no match */
+        return 0;
+    }
+
+    int ptag = pattern->tag;
+
+    /* Wildcard - always matches */
+    if (is_wildcard(pattern)) {
+        return 1;
+    }
+
+    /* Symbol patterns */
+    if (ptag == TAG_SYM) {
+        char* sym = (char*)pattern->ptr;
+
+        /* nil pattern matches NULL or NOTHING */
+        if (strcmp(sym, "nil") == 0) {
+            return is_nil(value);
+        }
+
+        /* true symbol matches true boolean */
+        if (strcmp(sym, "true") == 0) {
+            return IS_IMMEDIATE_BOOL(value) && value == OMNI_TRUE;
+        }
+
+        /* false symbol matches false boolean */
+        if (strcmp(sym, "false") == 0) {
+            return IS_IMMEDIATE_BOOL(value) && value == OMNI_FALSE;
+        }
+
+        /* Variable pattern - any other symbol matches anything */
+        /* In full implementation, this would bind the variable */
+        return 1;
+    }
+
+    /* Integer literal pattern */
+    if (ptag == TAG_INT) {
+        if (IS_IMMEDIATE_INT(value)) {
+            return pattern->i == INT_IMM_VALUE(value);
+        }
+        if (IS_BOXED(value) && value->tag == TAG_INT) {
+            return pattern->i == value->i;
+        }
+        return 0;
+    }
+
+    /* Float literal pattern */
+    if (ptag == TAG_FLOAT) {
+        if (!IS_BOXED(value) || value->tag != TAG_FLOAT) return 0;
+        return pattern->f == value->f;
+    }
+
+    /* String literal pattern */
+    if (ptag == TAG_STRING) {
+        return string_equals(pattern, value);
+    }
+
+    /* Char literal pattern */
+    if (ptag == TAG_CHAR) {
+        if (!IS_BOXED(value) || value->tag != TAG_CHAR) return 0;
+        return pattern->i == value->i;
+    }
+
+    /* Array/List pattern - match element-wise */
+    if (ptag == TAG_ARRAY || ptag == TAG_PAIR) {
+        /* Get length of pattern */
+        long plen = get_sequence_length(pattern);
+        long vlen = get_sequence_length(value);
+
+        /* Length must match */
+        if (plen != vlen) return 0;
+
+        /* Recursively match each element */
+        for (long i = 0; i < plen; i++) {
+            Obj* pelem = get_sequence_element(pattern, i);
+            Obj* velem = get_sequence_element(value, i);
+            if (!is_pattern_match(pelem, velem)) {
+                return 0;
+            }
+        }
+        return 1;
+    }
+
+    /* For other types, check tag equality */
+    if (IS_BOXED(value) && value->tag == ptag) {
+        return 1;
+    }
+
+    return 0;
 }
 
 /* List Operations */

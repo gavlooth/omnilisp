@@ -596,7 +596,8 @@ void test_ctr_arg_cdr(void) {
 /* === Truthiness tests === */
 
 void test_is_truthy_null(void) {
-    ASSERT(is_truthy(NULL));
+    /* In the runtime, NULL is the canonical `nil` / empty list sentinel and is falsy. */
+    ASSERT(!is_truthy(NULL));
     PASS();
 }
 

@@ -258,7 +258,16 @@ void omni_codegen_runtime_header(CodeGenContext* ctx) {
     if (ctx->use_runtime && ctx->runtime_path) {
         omni_codegen_emit_raw(ctx, "#include \"%s/include/omni.h\"\n\n", ctx->runtime_path);
         /* Compatibility macros for runtime */
-        omni_codegen_emit_raw(ctx, "#define NIL mk_pair(NULL, NULL)\n");
+        /*
+         * Runtime list representation:
+         *   The external runtime uses NULL to represent the empty list / nil.
+         *
+         * IMPORTANT:
+         *   Do NOT construct a "sentinel pair" for NIL (e.g., mk_pair(NULL, NULL)).
+         *   That creates a real pair node and breaks list semantics (printing `()`
+         *   becomes `(() . ())`, list_length becomes 1, etc.).
+         */
+        omni_codegen_emit_raw(ctx, "#define NIL NULL\n");
         omni_codegen_emit_raw(ctx, "#define NOTHING mk_nothing()\n");
         omni_codegen_emit_raw(ctx, "#define omni_print(o) prim_print(o)\n");
         omni_codegen_emit_raw(ctx, "#define car(o) obj_car(o)\n");
@@ -2379,6 +2388,8 @@ static void codegen_match(CodeGenContext* ctx, OmniValue* expr) {
     omni_codegen_emit(ctx, "Obj* _match_value = ");
     codegen_expr(ctx, value_expr);
     omni_codegen_emit_raw(ctx, ";\n");
+    /* Declare result variable, initialize to NIL in case nothing matches */
+    omni_codegen_emit(ctx, "Obj* _result = NIL;\n");
     omni_codegen_emit_raw(ctx, "\n");
 
     /* Generate if-else chain for pattern matching */
@@ -2392,10 +2403,6 @@ static void codegen_match(CodeGenContext* ctx, OmniValue* expr) {
             OmniValue* result_expr = omni_car(c);
             c = omni_cdr(c);
 
-            if (pairs_processed > 0) {
-                omni_codegen_emit(ctx, "} else ");
-            }
-
             /*
              * Phase 26: Guard Detection (& syntax)
              *
@@ -2405,6 +2412,9 @@ static void codegen_match(CodeGenContext* ctx, OmniValue* expr) {
              * - [n {Int} & (> n 10)]     -> guard is (> n 10)
              * - [x y & (> x y)]          -> guard is (> x y)
              * - [& (empty? nums)]         -> guard is (empty? nums)
+             *
+             * Note: Guards are detected but full guard evaluation requires
+             * binding support which is a future enhancement.
              */
             OmniValue* guard_expr = NULL;
 
@@ -2437,30 +2447,41 @@ static void codegen_match(CodeGenContext* ctx, OmniValue* expr) {
                 omni_codegen_emit_raw(ctx, " */\n");
             }
 
+            /* Emit the else or start of if chain */
+            if (pairs_processed > 0) {
+                omni_codegen_emit_raw(ctx, "else ");
+            }
+
             if (omni_is_sym(pattern) && strcmp(pattern->str_val, "_") == 0) {
-                /* Wildcard - else clause */
+                /* Wildcard - always matches, no if needed */
                 omni_codegen_emit(ctx, "{\n");
                 omni_codegen_indent(ctx);
                 omni_codegen_emit(ctx, "/* wildcard */\n");
+                omni_codegen_emit(ctx, "_result = ");
+                codegen_expr(ctx, result_expr);
+                omni_codegen_emit_raw(ctx, ";\n");
+                omni_codegen_dedent(ctx);
+                omni_codegen_emit_raw(ctx, "}\n");
             } else {
+                /* Regular pattern - use is_pattern_match */
                 omni_codegen_emit(ctx, "if (is_pattern_match(");
                 codegen_expr(ctx, pattern);
-                omni_codegen_emit_raw(ctx, ", _match_value)) {\n");
+                omni_codegen_emit_raw(ctx, ", _match_value)");
+
+                /* If there's a guard, add && condition to the if statement */
+                if (guard_expr) {
+                    omni_codegen_emit_raw(ctx, " && is_truthy(");
+                    codegen_expr(ctx, guard_expr);
+                    omni_codegen_emit_raw(ctx, ") /* guard */");
+                }
+
+                omni_codegen_emit_raw(ctx, ") {\n");
                 omni_codegen_indent(ctx);
 
-                /* If there's a guard, add && condition */
-                if (guard_expr) {
-                    omni_codegen_emit_raw(ctx, "&& is_truthy(");
-                    codegen_expr(ctx, guard_expr);
-                    omni_codegen_emit_raw(ctx, ") /* guard */\n");
-                }
-            }
+                omni_codegen_emit(ctx, "_result = ");
+                codegen_expr(ctx, result_expr);
+                omni_codegen_emit_raw(ctx, ";\n");
 
-            omni_codegen_emit(ctx, "Obj* _result = ");
-            codegen_expr(ctx, result_expr);
-            omni_codegen_emit_raw(ctx, ";\n");
-
-            if (!(omni_is_sym(pattern) && strcmp(pattern->str_val, "_") == 0)) {
                 omni_codegen_dedent(ctx);
                 omni_codegen_emit_raw(ctx, "}\n");
             }
@@ -2469,7 +2490,8 @@ static void codegen_match(CodeGenContext* ctx, OmniValue* expr) {
         }
     }
 
-    omni_codegen_emit(ctx, "return _result;\n");
+    /* In a statement expression, the last expression becomes the return value */
+    omni_codegen_emit(ctx, "_result;  /* match result */\n");
     omni_codegen_dedent(ctx);
     omni_codegen_emit_raw(ctx, "})\n");
 }

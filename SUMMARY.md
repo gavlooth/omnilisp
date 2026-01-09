@@ -3,13 +3,13 @@
 Omnilisp is a modern Lisp dialect that synthesizes the best features of Scheme, Common Lisp, Julia, and Clojure. This repo currently ships a small C compiler/runtime subset; the rest is the target design.
 
 See also:
-- `DESIGN.md` for the full specification.
-- `SYNTAX.md` for exhaustive examples.
-- `DESIGN_DECISIONS.md` for the decision log.
+- `docs/SYNTAX.md` for syntax examples and conventions.
+- `language_reference.md` for language-level reference notes.
+- `docs/CTRR.md` for the CTRR memory model contract.
 
 ## Implemented (C Implementation)
 *   **Toolchain:** Unified C99 pipeline including Pika parser, static analysis, and code generator.
-*   **Memory Management:** ASAP (As Static As Possible) - compile-time free placement, RC-G (Region-Based Reference Counting) with iterative transmigration, bitmap cycle detection, and thread-local tether caching.
+*   **Memory Management:** CTRR (Compile-Time Region Reclamation) - compiler-scheduled region lifetimes, escape repair via transmigration, and borrow pinning via tethering (no stop-the-world GC).
 *   **Core syntax:** lists `(...)`, arrays `[...]`, types `{}`.
 *   **Special forms:** `define`, `lambda`, `let`, `if`, `match`, `handle`/`perform`.
 *   **Primitives:** `+ - * / %`, `< > <= >= =`, `cons car cdr empty?`, `print println`, `str`, `map filter reduce`.

@@ -171,9 +171,22 @@ Obj* mk_float_region(Region* r, double f) {
 // ============================================================================
 
 Obj* mk_sym_region(Region* r, const char* s) {
-    if (!s) return NULL;
+    /*
+     * Defensive constructor:
+     *   Treat NULL as a valid symbol object with a NULL payload pointer.
+     *
+     * Rationale:
+     *   Several parts of the runtime/test-suite assume mk_sym(NULL) produces a
+     *   valid symbol object (useful for OOM/edge-case testing without crashing),
+     *   and that the underlying payload pointer remains NULL.
+     */
     Obj* o = alloc_obj_region(r, TAG_SYM);
     if (!o) return NULL;
+
+    if (!s) {
+        o->ptr = NULL;
+        return o;
+    }
 
     size_t len = strlen(s);
     char* buf = (char*)region_alloc(r, len + 1);
@@ -211,9 +224,21 @@ Obj* mk_code_region(Region* r, const char* s) {
 }
 
 Obj* mk_error_region(Region* r, const char* msg) {
-    if (!msg) return NULL;
+    /*
+     * Defensive constructor:
+     *   Treat NULL as a valid error object with a NULL payload pointer.
+     *
+     * This keeps error reporting code simple: callers can always expect an error
+     * object back from mk_error(), even in edge-case tests, and the tests assert
+     * that the underlying message pointer is NULL when constructed from NULL.
+     */
     Obj* o = alloc_obj_region(r, TAG_ERROR);
     if (!o) return NULL;
+
+    if (!msg) {
+        o->ptr = NULL;
+        return o;
+    }
 
     size_t len = strlen(msg);
     char* buf = (char*)region_alloc(r, len + 1);

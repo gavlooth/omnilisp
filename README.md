@@ -1,10 +1,10 @@
 # OmniLisp
 
-**OmniLisp** is a high-performance, multi-paradigm Lisp dialect designed for systems programming and modern application development. It combines the minimalism of **Scheme**, the industrial power of **Common Lisp**, the modern type system of **Julia**, and the data-driven elegance of **Clojure**, all built on a foundation of **ASAP (As Static As Possible)** memory management.
+**OmniLisp** is a high-performance, multi-paradigm Lisp dialect designed for systems programming and modern application development. It combines the minimalism of **Scheme**, the industrial power of **Common Lisp**, the modern type system of **Julia**, and the data-driven elegance of **Clojure**, all built on a foundation of **CTRR (Compile-Time Region Reclamation)**.
 
 ## Key Design Pillars
 
-*   **ASAP Memory Management:** Deterministic, compile-time memory management without a stop-the-world garbage collector.
+*   **CTRR Memory Model:** Deterministic region-based reclamation scheduled at compile time (no stop-the-world GC).
 *   **Two-Tier Concurrency:** High-performance OS threads (pthreads) combined with lightweight green threads (delimited continuations).
 *   **Multiple Dispatch:** Full multiple dispatch on all arguments (Julia-style).
 *   **Algebraic Effects:** Resumable exception handling and structured control flow.
@@ -17,14 +17,13 @@
 
 The project features a unified C99 + POSIX toolchain (parser, analysis, codegen) and runtime implementing:
 
-### Memory Management (ASAP + RC-G)
+### Memory Management (CTRR)
 | Optimization | Status | Description |
 |---|---|---|
-| **Liveness-Driven Free Insertion** | ✅ | CFG-based analysis for optimal `free()` placement. |
-| **Iterative Transmigration** | ✅ | Worklist-based deep copy with O(1) **Bitmap Cycle Detection**. |
-| **Region Splicing** | ✅ | O(1) block-level movement of physical memory between regions. |
-| **Thread-Local Tethering** | ✅ | TLS-based caches to elide atomic operations on shared regions. |
-| **Generational References** | ✅ | Sound generational validation via stable slot pools. |
+| **Region Lifetime Scheduling** | ✅ | Compiler schedules `region_create` / `region_exit` at scope boundaries. |
+| **Transmigration on Escape** | ✅ | Explicit escape repair: copy/move graphs between regions. |
+| **Thread-Safe Tethering** | ✅ | Borrow-window pinning to prevent region reclamation during calls. |
+| **Metadata-Driven Transmigration** | 🚧 | Required by the CTRR contract; spec is written, implementation is pending. |
 
 ### Language Features
 *   **Special Forms:** `define`, `lambda`/`fn`, `let`, `if`, `do`/`begin`, `match`, `handle`/`perform`.
@@ -35,43 +34,17 @@ The project features a unified C99 + POSIX toolchain (parser, analysis, codegen)
 
 ---
 
-## Memory Management: ASAP is NOT Garbage Collection
+## Memory Management: CTRR is NOT Garbage Collection
 
-OmniLisp utilizes **ASAP (As Static As Possible)** memory management. Unlike traditional garbage collection, ASAP deallocates memory at **compile-time**.
+OmniLisp uses **CTRR (Compile-Time Region Reclamation)**: the compiler schedules
+region lifetimes and inserts explicit runtime operations for **escapes**
+(transmigration) and **borrows** (tethering). There is **no stop-the-world
+tracing collector**.
 
-### Core Strategy
+Canonical references:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    COMPILE-TIME ANALYSIS                         │
-│  Shape Analysis ──► TREE / DAG / CYCLIC                         │
-│  Escape Analysis ──► LOCAL / ESCAPING                           │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-          ┌───────────────────┼───────────────────┐
-          ▼                   ▼                   ▼
-       **TREE**                 **DAG**                  **CYCLIC**
-   (Unique/Unshared)        (Shared/Acyclic)            (Back-Edges)
-          │                       │                         │
-          │            [Region-Aware RC Elision]    [Static Symmetric RC]
-          │               ┌───────┴───────┐         ┌───────┴───────┐
-          │               ▼               ▼         ▼               ▼
-          │            **LOCAL**      **ESCAPING**   **BROKEN**    **UNBROKEN**
-          │            (Elided)          (RC)      (Weak Refs)   (Strong Cycle)
-          │               │               │             │             │
-          │               │               │             │      [Region/Arena Strategy]
-          │               │               │             │      ┌──────┴──────┐
-          │               │               │             │      ▼             ▼
-          │               │               │             │   **LOCAL**    **ESCAPING**
-          ▼               ▼               ▼             ▼  (Scope-Bound) (Heap-Bound)
-      Pure ASAP         No-Op         Standard      Standard  Arena Alloc   Region
-     (free_tree)       (Borrow)       (dec_ref)     (dec_ref) (bulk_free)   Ext RC
-```
-
-1.  **Liveness Analysis:** Injects `free_obj()` calls at the earliest point a variable becomes dead.
-2.  **Static Symmetric RC:** Reclaims cycles within the region hierarchy using bidirectional references, allowing for O(1) reclamation without a global heap scan.
-3.  **Region Hierarchy:** Validates that outer scopes never point to inner scopes, providing the static backbone for symmetric reference tracking.
-4.  **Generational References:** Provides safety for stable slot pooling and use-after-free detection.
+- `docs/CTRR.md` (short, normative contract)
+- `runtime/docs/CTRR_TRANSMIGRATION.md` (detailed transmigration contract)
 
 ---
 
@@ -121,7 +94,7 @@ The concurrency model is two-tiered:
 
 ## References
 
-1.  *ASAP: As Static As Possible memory management* (Proust, 2017).
+1.  *ASAP (paper terminology): As Static As Possible memory management* (Proust, 2017).
 2.  *Perceus: Garbage Free Reference Counting with Reuse* (Reinking et al., PLDI 2021).
 3.  *Cyclic Reference Counting by Typed Reference Fields* (Sitaram, 2011).
 4.  *Vale: Seamless, Fearless, Structured Concurrency* (Verdagon.dev).

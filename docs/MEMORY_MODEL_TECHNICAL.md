@@ -1,4 +1,7 @@
-# Memory Model Technical Reference (RC-G)
+# Memory Model Technical Reference (CTRR + Region Control Blocks)
+
+> **Normative spec:** `docs/CTRR.md`  
+> **Transmigration spec (detailed):** `runtime/docs/CTRR_TRANSMIGRATION.md`
 
 ## 1. Object Layout
 
@@ -41,6 +44,11 @@ typedef struct Region {
 } Region;
 ```
 
+> Note: this is a simplified view of the runtime `Region` control block. The
+> implementation also contains optimization fields (inline buffers, region IDs,
+> thread-local fast paths, and per-region type metadata). See
+> `runtime/src/memory/region_core.h`.
+
 ## 3. Allocation Strategy
 
 1.  **Stack Allocation (`ESCAPE_TARGET_NONE`)**:
@@ -68,6 +76,11 @@ When an object needs to move between regions (e.g., returning a complex result f
 1.  **Deep Copy**: The object graph is traversed.
 2.  **Cycle Detection**: A bitmap-based visited set handles cycles during traversal.
 3.  **Region Splicing**: If the source region contains *only* the result data (common in pure functions), the underlying Arena blocks are simply unlinked from the Source and linked to the Destination. Cost: O(1).
+
+> Important: CTRR requires transmigration to be **total** over all runtime tags
+> (no “unknown tag” shallow-copy fallback) to satisfy the “everything can escape”
+> guarantee. The detailed contract and current implementation status live in
+> `runtime/docs/CTRR_TRANSMIGRATION.md`.
 
 ## 6. Safety (IPGE)
 

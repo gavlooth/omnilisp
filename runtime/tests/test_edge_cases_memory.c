@@ -1069,6 +1069,7 @@ void test_mk_bool_edge_cases(void) {
 /* ========== Truthiness Edge Cases ========== */
 
 void test_truthiness_null(void) {
+    /* NULL is `nil` in the runtime and is falsy (Clojure-style semantics). */
     ASSERT(!is_truthy(NULL));
     PASS();
 }
@@ -1092,7 +1093,7 @@ void test_truthiness_true_bool(void) {
 }
 
 void test_truthiness_empty_list(void) {
-    /* Empty list (NULL) is truthy in this implementation */
+    /* Empty list (nil/NULL) is falsy in this implementation */
     ASSERT(!is_truthy(NULL));
     PASS();
 }

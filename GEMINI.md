@@ -1,48 +1,64 @@
-# OmniLisp C Scratch - ASAP Memory Management
+# OmniLisp C Scratch - CTRR Memory Model
 
-## CRITICAL: ASAP is NOT Garbage Collection
+## CRITICAL: CTRR is NOT Garbage Collection
 
-**ASAP (As Static As Possible)** is a **compile-time static memory management** strategy.
-It does NOT use runtime garbage collection.
+**CTRR (Compile-Time Region Reclamation)** is a **compile-time scheduled, region-based**
+memory model.
+It does **NOT** use runtime garbage collection.
 ### Core Principle
 
-The compiler analyzes the program and **statically inserts `free()` calls** at the optimal
-points during code generation. All deallocation decisions are made at compile time.
-There is already an implementation in ~/code/omnilisp_c_scratch.
+The compiler analyzes the program and **statically schedules region lifetimes**
+and explicit runtime operations:
 
-### Target: C99 + POSIX
+- `region_create(...)` / `region_exit(...)` for scope lifetimes
+- `transmigrate(...)` at escape boundaries
+- `region_tether_start/end(...)` for borrow windows
 
-The goal is to emit **ANSI C99 + POSIX** code:
+All *deallocation decisions* are made at compile time; the runtime does not run a
+heap-wide collector.
+
+### Target: C99 + POSIX (+ common extensions)
+
+The goal is to emit **C99 + POSIX** code while allowing practical low-level
+extensions commonly supported by GCC/Clang:
 - **C99** for the core language (no C11 features like `<stdatomic.h>`)
 - **POSIX pthreads** for thread synchronization (`pthread_mutex_t`, `pthread_rwlock_t`)
+- **Compiler extensions** where they are performance-critical and ubiquitous (e.g., TLS via `__thread`, atomics via `__atomic_*`)
 - Compile with: `gcc -std=c99 -pthread` or `clang -std=c99 -pthread`
 
-You can use other algorithms along ASAP as long as they don't do "stop the world". So mark/sweep and traditional garbage collection is out of the question
+You can use other algorithms alongside CTRR as long as they don't do "stop the world". So mark/sweep and traditional garbage collection is out of the question
 as well as "cyclic collection" algorithms that stop the world 
 ```
 WRONG: Runtime GC that scans heap and collects garbage
-RIGHT: Compiler injects free_obj(x) at compile time based on static analysis
+RIGHT: Compiler injects region_exit/transmigrate/tether operations at compile time based on static analysis
 ```
 
-### What ASAP Does
+### Terminology note: ASAP is a paper term
+
+The literature uses **ASAP (As Static As Possible)** for a specific approach.
+In OmniLisp, **CTRR** is the project’s term for the region-based contract.
+
+### What CTRR Does
 
 1. **CLEAN Phase** (compile-time)
    - Analyzes variable lifetimes statically
-   - Injects `free_obj()` calls at scope exit (or earlier based on liveness)
-   - Variables captured by closures are NOT freed (ownership transfers to closure)
+   - Schedules `region_exit()` at scope exit (or earlier based on liveness)
+   - Inserts `transmigrate(...)` at escape boundaries (return/capture/global store)
+   - Variables captured by closures are NOT freed in the parent scope (they escape)
 
 2. **Liveness Analysis** (compile-time)
    - Tracks last use of each variable
-   - Can free earlier than scope exit if variable is dead
+   - Can end region lifetimes earlier than scope exit if a region becomes dead
 
 3. **Escape Analysis** (compile-time)
-   - `ESCAPE_NONE`: Value stays local → can stack-allocate
-   - `ESCAPE_ARG`: Escapes via function argument → heap-allocate
-   - `ESCAPE_GLOBAL`: Escapes to return/closure → heap-allocate, careful with freeing
+   - `ESCAPE_TARGET_NONE`: Value stays local → can stack-allocate or allocate in a scratch region
+   - `ESCAPE_TARGET_PARENT`: Escapes to parent scope → allocate in parent region or transmigrate
+   - `ESCAPE_TARGET_RETURN`: Escapes via return → transmigrate into caller/outliving region
+   - `ESCAPE_TARGET_GLOBAL`: Escapes to global/module scope → allocate in a global/outliving region (or transmigrate)
 
 4. **Capture Tracking** (compile-time)
    - Identifies variables captured by lambdas/closures
-   - These variables must NOT be freed in parent scope
+   - These variables must NOT be freed/exited in the parent scope
 
 ### What Scanners Are For
 
@@ -50,6 +66,7 @@ The `scan_List()` function is a **traversal utility**, NOT a garbage collector:
 - Debugging (checking what's reachable)
 - Manual reference counting updates
 - Runtime verification in debug builds
+- Runtime verification of the Region Closure Property (no pointers into dead regions)
 - Marking for other static analyses
 
 ### Deferred Free List
@@ -211,7 +228,9 @@ For every completed task:
 
 ## References
 
-- *ASAP: As Static As Possible memory management* (Proust, 2017)
+- `docs/CTRR.md` - CTRR contract (project spec)
+- `runtime/docs/CTRR_TRANSMIGRATION.md` - transmigration contract (runtime spec)
+- *ASAP (paper term): As Static As Possible memory management* (Proust, 2017)
 - *Collapsing Towers of Interpreters* (Amin & Rompf, POPL 2018)
 - *Better Static Memory Management* (Aiken et al., PLDI 1995)
 - *Region-Based Memory Management* (Tofte & Talpin, 1997)

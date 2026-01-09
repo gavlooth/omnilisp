@@ -138,12 +138,20 @@ Hex characters:
 - `#\x41` - Character with hex code 41 ('A')
 - `#\x00` - Null character
 
-### Keywords
+### Colon-Quoted Symbols (`:name`)
 
-Keywords are symbols prefixed with `:` and evaluate to themselves.
+OmniLisp does **not** have a separate "keyword" type.
+Instead, `:name` is **pure reader sugar** for a quoted symbol:
 
 ```
-<keyword> ::= ':' <symbol>
+:name  ≡  'name  ≡  (quote name)
+```
+
+This choice matches the language reference: `:x` creates a symbol (equivalent to `'x`), not a keyword.
+
+Grammar:
+```
+<colon-quoted-symbol> ::= ':' <symbol>
 ```
 
 Examples: `:foo`, `:my-keyword`
@@ -160,7 +168,8 @@ Examples: `:foo`, `:my-keyword`
 | **Character** | Single Unicode codepoint | `#\a`, `#\newline` |
 | **Symbol** | Identifier/symbol | `'foo`, `bar` |
 | **Boolean** | True or false | `true`, `false` |
-| **Nothing** | Singleton nil value | `nothing` |
+| **Nothing** | Singleton "no value" value | `nothing` |
+| **Empty List** | Empty list value | `()` |
 
 ---
 
@@ -174,19 +183,20 @@ Examples: `:foo`, `:my-keyword`
 "hello"     ; string
 #\a         ; character
 'foo        ; symbol
-true        ; boolean
-false       ; boolean
-nothing     ; nothing
+	true        ; boolean
+	false       ; boolean
+	nothing     ; nothing
 ```
 
 ### Lists
 
 ```lisp
 ()                    ; empty list
-'(1 2 3)             ; list of integers
-(list 1 2 3)         ; same, using function
-'(a b c)             ; list of symbols
-```
+'()                   ; quote empty list
+ '(1 2 3)             ; list of integers
+ (list 1 2 3)         ; same, using function
+ '(a b c)             ; list of symbols
+ ```
 
 ### Arrays
 
@@ -200,7 +210,7 @@ nothing     ; nothing
 
 ```lisp
 #{}                  ; empty dictionary
-#{:a 1 :b 2}         ; dictionary with keys :a, :b
+#{:a 1 :b 2}         ; dictionary with keys :a, :b (i.e., 'a and 'b)
 ```
 
 ---

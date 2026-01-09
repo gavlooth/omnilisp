@@ -157,7 +157,7 @@ Pull symbols by name from dictionaries or property lists:
 ;; Equivalent to: x = my-dict[:x], y = my-dict[:y]
 ```
 
-**Note:** In OmniLisp, `:x` creates a symbol (equivalent to `'x`), not a keyword. The destructuring pattern `(:x :y)` extracts the values associated with those symbols from the dictionary.
+**Note:** In OmniLisp, `:x` is pure reader sugar for `'x` (no separate keyword type). The destructuring pattern `(:x :y)` extracts values associated with those symbols. For canonicalization/pretty-printing, prefer the `'x` form.
 
 ### 2.5 Type Enforcement
 Every variable has an associated Kind. If no Kind is specified, it defaults to **`Any`**.
@@ -366,6 +366,8 @@ A type object can be the **value** of a definition (not annotated, not metadata)
 - `{Type}` = Annotation (constrains a value)
 - `Type` (no braces) = Value (the type object itself)
 
+**Metadata Rule:** If the same metadata key appears multiple times (e.g. `^:parent` twice), the **last occurrence wins**.
+
 ### 3.6 Type Predicates
 
 OmniLisp provides predicates for checking types at runtime.
@@ -554,7 +556,7 @@ Capture remaining elements with `..`:
 ```lisp
 (match my-list
   [x y .. rest] (cons x (cons y rest))  ; Bind first two, capture rest
-  _ nil)
+  _ nothing)
 ```
 
 ##### 5. Type Constraints
@@ -826,6 +828,7 @@ null?              ; ? at end
 !not               ; ! at start
 ?maybe             ; ? at start
 *                  ; single operator
++                  ; single operator
 <=                 ; comparison operators
 ==                 ; equality
 50%off             ; % in middle
@@ -853,7 +856,7 @@ comment;more       ; ; for comments
 'foo            ; symbol
 #\a #\newline   ; character
 '(1 2 3)        ; list
-()              ; empty list
+()              ; empty list (truthy)
 nothing         ; nothing (falsy)
 false           ; false (falsy)
 true            ; true
@@ -927,7 +930,7 @@ true            ; true
 ;; Splicing patterns
 (match my-list
   [x y .. rest] (cons x (cons y rest))  ; Bind first two, capture rest
-  _ nil)
+  _ nothing)
 
 ; Quoting
 (quote x) / 'x                       ; Quote

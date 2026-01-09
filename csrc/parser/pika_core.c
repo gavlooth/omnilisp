@@ -405,7 +405,45 @@ OmniValue* pika_run(PikaState* state, int root_rule_id) {
                 PikaMatch result = evaluate_rule(state, (size_t)pos, r);
                 PikaMatch* existing = get_match(state, (size_t)pos, r);
 
-                if (result.matched != existing->matched || result.len != existing->len) {
+                /*
+                 * IMPORTANT: Value propagation for non-action rules.
+                 *
+                 * The parser computes (matched,len) via a fixpoint. Semantic actions
+                 * run only when (matched,len) changes to avoid infinite loops caused
+                 * by actions allocating fresh AST nodes each time.
+                 *
+                 * However, rules WITHOUT semantic actions (e.g. high-level wrapper
+                 * rules like R_EXPR) depend on their children's `val` fields for the
+                 * final AST.
+                 *
+                 * Because rule evaluation runs in numeric rule-id order, it is very
+                 * common that a wrapper rule like R_EXPR becomes (matched,len) stable
+                 * *before* its child rule (like R_LIST) has had a chance to run its
+                 * semantic action and populate `val`.
+                 *
+                 * If we only update memo entries when (matched,len) changes, those
+                 * wrapper rules can remain with `val == NULL` forever, which makes
+                 * pika_run() fall back to "matched text as symbol" or causes the
+                 * compiler front-end to see an empty program.
+                 *
+                 * Fix:
+                 *   For rules that DO NOT have semantic actions, treat a change in
+                 *   the propagated `val` pointer as a change that should update the
+                 *   memo table entry.
+                 *
+                 * We intentionally do NOT do this for action rules because their
+                 * actions allocate fresh objects; pointer inequality would prevent
+                 * convergence.
+                 */
+                bool val_changed = false;
+                if (state->output_mode == PIKA_OUTPUT_AST &&
+                    result.matched &&
+                    state->rules[r].action == NULL &&
+                    result.val != existing->val) {
+                    val_changed = true;
+                }
+
+                if (result.matched != existing->matched || result.len != existing->len || val_changed) {
                     *existing = result;
                     /* Only run semantic actions in AST mode */
                     if (result.matched && state->rules[r].action && state->output_mode == PIKA_OUTPUT_AST) {
@@ -413,6 +451,40 @@ OmniValue* pika_run(PikaState* state, int root_rule_id) {
                     }
                     changed = true;
                 }
+            }
+        }
+    }
+
+    /*
+     * Semantic stabilization pass (AST mode only)
+     *
+     * Even with value propagation for non-action rules, action rules can still
+     * produce "early" placeholder values if they ran before wrapper rules like
+     * R_EXPR had a chance to propagate their child values.
+     *
+     * Example failure mode:
+     *   - R_PROGRAM_INNER matches the input early (matched,len stabilized),
+     *   - act_program_inner runs before R_EXPR has a usable `.val`,
+     *   - act_program_inner returns OMNI_NIL,
+     *   - later iterations fix R_EXPR.val, but R_PROGRAM_INNER does not re-run
+     *     its action because (matched,len) didn't change.
+     *
+     * This pass re-runs ALL semantic actions once after the structural
+     * (matched,len) fixpoint has converged, ensuring actions see the stabilized
+     * values of their children.
+     *
+     * Important:
+     *   We do NOT attempt to treat semantic pointer changes as part of the main
+     *   convergence metric because actions allocate fresh AST nodes; pointer
+     *   equality is not a meaningful notion of convergence for action rules.
+     */
+    if (state->output_mode == PIKA_OUTPUT_AST) {
+        for (ptrdiff_t pos = (ptrdiff_t)state->input_len; pos >= 0; pos--) {
+            for (int r = 0; r < state->num_rules; r++) {
+                PikaMatch* m = get_match(state, (size_t)pos, r);
+                if (!m || !m->matched) continue;
+                if (!state->rules[r].action) continue;
+                m->val = state->rules[r].action(state, (size_t)pos, *m);
             }
         }
     }

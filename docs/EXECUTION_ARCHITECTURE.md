@@ -1,12 +1,12 @@
 # OmniLisp Execution Architecture
 
-OmniLisp uses a high-performance, GC-less execution model based on **As Static As Possible (ASAP)** memory management and **Region-Based Reference Counting (RC-G)**.
+OmniLisp uses a high-performance, GC-less execution model based on **CTRR (Compile-Time Region Reclamation)** and region control blocks (regions reclaimed in bulk).
 
 ---
 
 ## 1. Unified Pipeline (C99)
 
-The OmniLisp toolchain is implemented in pure ANSI C99 + POSIX, ensuring portability and minimal overhead.
+The OmniLisp toolchain targets **C99 + POSIX + extensions**, ensuring portability while allowing practical low-level optimizations (e.g., TLS).
 
 ```text
 Source.omni ──► Pika Parser ──► AST (Value*) ──► Region Inference ──► Codegen ──► Binary
@@ -15,14 +15,14 @@ Source.omni ──► Pika Parser ──► AST (Value*) ──► Region Infere
 ### Key Stages:
 1.  **Pika Parser**: A bottom-up dynamic programming parser that handles left recursion natively and provides optimal error recovery.
 2.  **Region Inference**: A static analysis pass that identifies object lifetimes and groups them into Regions.
-3.  **ASAP Analysis**: Determines the "Last Use Point" for every Region and individual object, injecting static `free` or `region_exit` calls.
+3.  **CTRR Scheduling**: Determines region lifetimes and escape points, injecting `region_exit` and escape repair (e.g., `transmigrate`) at the right boundaries.
 4.  **Codegen**: Translates the annotated AST into optimized C code linked against the OmniLisp Runtime.
 
 ---
 
-## 2. Runtime Model (RC-G)
+## 2. Runtime Model (CTRR)
 
-The runtime provides the physical foundation for the ASAP model.
+The runtime provides the physical foundation for CTRR.
 
 - **Regions**: Logical owners of memory blocks.
 - **Arenas**: physical storage backend (bump-pointer allocation).

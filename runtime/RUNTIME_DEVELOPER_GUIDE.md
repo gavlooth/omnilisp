@@ -20,14 +20,18 @@ A comprehensive guide for developers working with the OmniLisp C runtime. This d
 
 ## Overview
 
-The OmniLisp runtime is a C99 + POSIX runtime implementing **ASAP (As Static As Possible)** memory management. Unlike garbage-collected runtimes, OmniLisp performs all deallocation decisions at compile time, inserting `free()` calls at optimal points.
+The OmniLisp runtime targets **C99 + POSIX + extensions** and implements
+**CTRR (Compile-Time Region Reclamation)**. Unlike garbage-collected runtimes,
+OmniLisp does not perform heap-wide tracing. Instead, the compiler schedules
+region lifetimes and inserts explicit runtime operations for **escapes**
+(transmigration) and **borrows** (tethering).
 
 ### Key Principles
 
 - **No stop-the-world GC**: All memory management is deterministic
-- **No heap scanning**: O(1) or O(cycle_size) operations only
-- **Compile-time analysis**: Shape analysis determines deallocation strategy
-- **Tiered safety**: Different strategies for different data patterns
+- **No heap scanning**: no collector that searches for garbage globally
+- **Compile-time scheduling**: regions, escape repair, and borrows are explicit
+- **Local work only**: per-region / per-root operations, not global pauses
 
 ### Target Platform
 
@@ -53,7 +57,7 @@ make clean && make
 ```bash
 cd runtime/tests
 make clean && make
-./run_tests        # Run all 446 tests
+./run_tests        # Run all tests
 ```
 
 ### Test Files
@@ -192,292 +196,133 @@ int is_truthy(Obj* x);         /* Truthy for conditionals? */
 
 ## Memory Management
 
-### ASAP Strategy Overview
+> **Normative CTRR contract:** `docs/CTRR.md`  
+> **Transmigration contract (detailed):** `runtime/docs/CTRR_TRANSMIGRATION.md`
 
-OmniLisp uses a **Hybrid Strategy** where the compiler selects the optimal tool for the data shape:
+The runtime implements **CTRR (Compile-Time Region Reclamation)**. CTRR is not a
+garbage collector:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    COMPILE-TIME ANALYSIS                         │
-│  Shape Analysis ──► TREE / DAG / CYCLIC                         │
-│  Escape Analysis ──► LOCAL / ESCAPING                           │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-          ┌───────────────────┼───────────────────┐
-          ▼                   ▼                   ▼
-       **TREE**             **DAG**            **CYCLIC**
-   (Unique/Unshared)    (Shared/Acyclic)    (Back-Edges)
-          │                   │                   │
-          │                   │           ┌───────┴───────┐
-          │                   │           ▼               ▼
-          │                   │        **BROKEN**      **UNBROKEN**
-          │                   │      (Weak Refs)     (Strong Cycle)
-          │                   │           │               │
-          │                   │           │        ┌──────┴──────┐
-          │                   │           │        ▼             ▼
-          │                   │           │     **LOCAL**    **ESCAPING**
-          ▼                   ▼           ▼    (Scope-Bound) (Heap-Bound)
-      Pure ASAP           Standard RC     RC     Arena Alloc   Region-RC
-     (free_tree)          (dec_ref)    (dec_ref) (destroy)     (Tethering)
-```
+- There is no runtime “scan the heap and collect garbage” phase.
+- Memory work is explicit and local: per-region, per-root transmigration, and
+  per-borrow pinning.
 
-### Strategy Hierarchy (Fastest to Most Capable)
+### What the compiler relies on (the real contract)
 
-1.  **Pure ASAP** (`free_tree`):
-    *   For **Trees** (lists, records).
-    *   **Zero overhead**. Static recursive free.
-2.  **Standard RC** (`dec_ref`):
-    *   For **DAGs** (shared data) or Cycles broken by **Weak Refs**.
-    *   Standard atomic refcounting.
-3.  **Arena Allocation** (`arena_destroy`):
-    *   For **Local Cyclic** data (doesn't escape function).
-    *   O(1) bulk free.
-4.  **Region-RC (RC-G)** (`region_retain/release`, `region_tether_start/end`):
-    *   For **Escaping Cyclic** data (complex graphs).
-    *   Thread-safe borrowing via tethering. O(1) access.
-
-### Reference Counting
+1) **Region scope**
 
 ```c
-/* Standard reference counting */
-void inc_ref(Obj* x);    /* Increment reference count */
-void dec_ref(Obj* x);    /* Decrement, free if zero */
-
-/* Direct free for proven-unique references (Lobster-style) */
-void free_unique(Obj* x);  /* Skip RC check, free immediately */
-
-/* Tree deallocation (recursive free) */
-void free_tree(Obj* x);    /* Free tree structure immediately */
-
-/* Deferred/SCC release */
-void deferred_release(Obj* x);  /* Add to free list */
-void release_with_scc(Obj* obj);/* Handle SCC membership */
+Region* region_create(void);
+void region_exit(Region* r);
 ```
 
-### Deferred Reference Counting
-
-For complex structures, decrements can be deferred to safe points:
+2) **Escape repair**
 
 ```c
-/* Defer a decrement operation */
-void defer_decrement(Obj* obj);
-
-/* Process up to batch_size decrements (bounded work) */
-void process_deferred(void);
-
-/* Flush all pending decrements */
-void flush_deferred(void);
-
-/* Check if processing needed */
-int should_process_deferred(void);
-
-/* Call at function boundaries */
-void safe_point(void);
-
-/* Configure batch size */
-void set_deferred_batch_size(int size);
+void* transmigrate(void* root, Region* src_region, Region* dest_region);
 ```
 
-### Free List
+3) **Borrow windows (pinning)**
 
 ```c
-/* Add to dynamic free list */
-void free_obj(Obj* x);
-
-/* Process all pending frees */
-void flush_freelist(void);
-```
-
-### Arena Allocator
-
-For cyclic structures that don't escape their scope:
-
-```c
-/* Create arena with default block size */
-Arena* arena_create(void);
-
-/* Allocate within arena (8-byte aligned) */
-void* arena_alloc(Arena* a, size_t size);
-
-/* Register external pointer for cleanup */
-void arena_register_external(Arena* a, void* ptr, void (*cleanup)(void*));
-
-/* Reset arena for reuse (doesn't free memory) */
-void arena_reset(Arena* a);
-
-/* Destroy arena and all allocations */
-void arena_destroy(Arena* a);
-```
-
-Example usage:
-
-```c
-void process_graph(void) {
-    Arena* arena = arena_create();
-
-    // All allocations from arena
-    Obj* node1 = arena_mk_pair(arena, arena_mk_int(arena, 1), NULL);
-    Obj* node2 = arena_mk_pair(arena, arena_mk_int(arena, 2), node1);
-    node1->b = node2;  // Cycle! No problem with arenas.
-
-    // Use the graph...
-    analyze(node1);
-
-    // O(1) bulk deallocation
-    arena_destroy(arena);
-}
-```
-
-### SCC-Based Reference Counting
-
-For frozen (immutable) cyclic structures:
-
-```c
-/* Create an SCC (Strongly Connected Component) */
-SCC* create_scc(void);
-
-/* Add object to SCC */
-void scc_add_member(SCC* scc, Obj* obj);
-
-/* Freeze SCC (mark as immutable) */
-void freeze_scc(SCC* scc);
-
-/* Find SCC by ID */
-SCC* find_scc(int id);
-
-/* Release SCC (decrements ref count, frees if zero) */
-void release_scc(SCC* scc);
-
-/* Detect and freeze SCCs starting from root */
-void detect_and_freeze_sccs(Obj* root);
-```
-
-### Region-Level Tethering (RC-G Model)
-
-The RC-G (Region Control Block) model provides thread-safe borrowing via tethering:
-
-```c
-/* Region Tethering - Thread-safe borrowing */
 void region_tether_start(Region* r);
 void region_tether_end(Region* r);
-
-/* Region Reference Counting */
-void region_inc_ref(Region* r);
-void region_dec_ref(Region* r);
-
-/* Transmigration - Move object graphs between regions */
-void* transmigrate(void* root, Region* src, Region* dest);
 ```
 
-**Key insight:** Tethering provides zero-cost access to region data during temporary borrows.
-The `tether_count` prevents region deallocation while threads are borrowing data.
+4) **External region liveness (cross-scope / cross-thread reachability)**
 
 ```c
-void example(Region* r) {
-    // Borrow region data safely
-    region_tether_start(r);
-
-    // Access r's data without incrementing external_rc
-    Obj* data = region_alloc(r, sizeof(Obj));
-    process(data);
-
-    // Release borrow - allows region to be freed if external_rc == 0
-    region_tether_end(r);
-}
+void region_retain_internal(Region* r);
+void region_release_internal(Region* r);
 ```
+
+### What makes a region reclaimable
+
+The runtime may reclaim/reuse a region’s storage only when all of these are
+true:
+
+- the region has exited (`scope_alive == false`)
+- there are no external owners (`external_rc == 0`)
+- there are no active borrows (`tether_count == 0`)
+
+### Clarifying legacy APIs (do not build new features on these)
+
+The public header (`runtime/include/omni.h`) still exposes object-level helpers
+like `inc_ref`, `dec_ref`, `free_tree`, `free_unique`, and `flush_freelist`.
+
+In the current runtime implementation (`runtime/src/runtime.c`), these are not
+the primary correctness mechanism for reclamation (some are stubs / do not free
+objects).
+
+New work should treat **regions + transmigration + tethering** as the required
+foundation.
 
 ---
 
 ## Region Infrastructure
 
-The region system provides Vale/Ada/SPARK-style scope hierarchy validation.
+This section documents the concrete Region control block used by CTRR codegen.
 
-### IRegion Interface
+**Primary implementation files (authoritative):**
 
-Pluggable region backends via vtable:
+- `runtime/src/memory/region_core.h` / `runtime/src/memory/region_core.c`
+- `runtime/src/memory/region_value.c` (region-aware constructors)
+- `runtime/src/memory/transmigrate.c` (escape repair)
+- `runtime/src/memory/region_metadata.h` / `runtime/src/memory/region_metadata.c`
+
+### Region control block (RCB)
+
+At runtime, a `Region` owns:
+
+- an arena allocator for bulk storage (`Arena arena`)
+- an inline buffer fast path for tiny allocations
+- escape/borrow state used to decide when it is safe to reclaim/reuse:
+  - `external_rc` (strong references keeping the region alive)
+  - `tether_count` (active borrows pinning the region)
+  - `scope_alive` (compiler-scheduled scope state)
+
+See the real struct definition in `runtime/src/memory/region_core.h`.
+
+### Allocation (`region_alloc`)
+
+`region_alloc(r, size)` is defined as `static inline` in
+`runtime/src/memory/region_core.h` and is expected to be on the hot path:
+
+- <= 64 bytes: allocate from the inline buffer (8-byte aligned)
+- otherwise: allocate from the arena
+
+### Retain/release (external liveness)
+
+Regions that are referenced across scopes/threads must be retained:
 
 ```c
-typedef enum {
-    REGION_KIND_ARENA,   /* Bulk alloc/free */
-    REGION_KIND_LINEAR,  /* Bump allocator */
-    REGION_KIND_OFFSET,  /* Position-independent */
-    REGION_KIND_SCOPED,  /* Scope hierarchy */
-    REGION_KIND_POOL,    /* Fixed-size objects */
-    REGION_KIND_CUSTOM   /* User-defined */
-} RegionKind;
-
-/* Create regions */
-IRegion* iregion_new_arena(size_t initial_size);
-IRegion* iregion_new_linear(size_t size);
-IRegion* iregion_new_offset(size_t size);
-IRegion* iregion_new_pool(size_t object_size, size_t count);
-
-/* Core operations */
-void* iregion_alloc(IRegion* r, size_t size, size_t alignment);
-void iregion_free_one(IRegion* r, void* ptr);  /* May be no-op */
-void iregion_free_all(IRegion* r);             /* Bulk deallocation */
-
-/* State */
-void iregion_freeze(IRegion* r);       /* No more allocations */
-bool iregion_is_frozen(IRegion* r);
-size_t iregion_remaining(IRegion* r);
-
-/* Advanced */
-IRegion* iregion_clone(IRegion* r);    /* Deep copy */
-void* iregion_serialize(IRegion* r, size_t* out_size);
-void iregion_stats(IRegion* r, size_t* alloc_count,
-                   size_t* bytes_used, size_t* bytes_total);
-
-/* Convenience macros */
-#define IREGION_ALLOC(r, type) \
-    ((type*)iregion_alloc((r), sizeof(type), _Alignof(type)))
-
-#define IREGION_ALLOC_ARRAY(r, type, count) \
-    ((type*)iregion_alloc((r), sizeof(type) * (count), _Alignof(type)))
+void region_retain_internal(Region* r);
+void region_release_internal(Region* r);
 ```
 
-### Linear Regions
+### Tethering (borrow pinning)
 
-For FFI buffers and contiguous memory:
+Borrow windows pin regions:
 
 ```c
-LinearRegion* linear_region_new(size_t size);
-void* linear_region_alloc(LinearRegion* r, size_t size, size_t alignment);
-size_t linear_region_remaining(LinearRegion* r);
-void linear_region_freeze(LinearRegion* r);  /* Ready for FFI */
-void linear_region_free(LinearRegion* r);
+void region_tether_start(Region* r);
+void region_tether_end(Region* r);
 ```
 
-### Offset Regions
+Implementation uses C “extensions” that are standard practice in GCC/Clang:
 
-For serialization and position-independent data:
+- `__atomic_*` builtins for atomics (C99-compatible)
+- `__thread` TLS for per-thread tether caches and region pools
 
-```c
-typedef int32_t OffsetPtr;  /* Relative pointer */
-#define OFFSET_NULL 0
-
-OffsetRegion* offset_region_new(size_t size);
-OffsetPtr offset_region_alloc(OffsetRegion* r, size_t size, size_t alignment);
-void offset_region_store_ptr(OffsetRegion* r, OffsetPtr* dest, OffsetPtr target);
-void* offset_to_ptr(OffsetRegion* r, OffsetPtr offset);
-OffsetPtr ptr_to_offset(OffsetRegion* r, void* ptr);
-
-/* Serialization */
-void* offset_region_serialize(OffsetRegion* r, size_t* out_size);
-OffsetRegion* offset_region_deserialize(void* data, size_t size);
-void offset_region_free(OffsetRegion* r);
-```
-
-### Pool Regions
-
-For fixed-size objects with O(1) alloc/free:
+### RegionRef (fat pointer keepalive)
 
 ```c
-PoolRegion* pool_region_new(size_t object_size, size_t count);
-void* pool_region_alloc(PoolRegion* r);
-void pool_region_free_one(PoolRegion* r, void* ptr);
-void pool_region_reset(PoolRegion* r);
-void pool_region_free(PoolRegion* r);
+typedef struct RegionRef {
+    void*  ptr;
+    Region* region;
+} RegionRef;
+
+void region_retain(RegionRef ref);
+void region_release(RegionRef ref);
 ```
 
 ---
@@ -1103,87 +948,50 @@ ffi_release_handle(h);
 
 ### Transmigration
 
-Deep copy object graphs between regions:
+The CTRR escape repair operation is transmigration:
 
 ```c
-/* Create transmigration context */
-TransmigrationContext* transmigration_new(IRegion* dest);
-void transmigration_free(TransmigrationContext* ctx);
-
-/* Register custom type visitors */
-void transmigration_register_visitor(TransmigrationContext* ctx,
-                                     int type_tag,
-                                     TransmigrationVisitor visitor);
-
-/* Core transmigration (deep copy) */
-void* transmigrate(TransmigrationContext* ctx, void* source,
-                   TransmigrationError* err);
-
-/* Lookup already-copied object (for cycle handling) */
-void* transmigration_lookup(TransmigrationContext* ctx, void* source);
-
-/* Record source -> dest mapping */
-void transmigration_record(TransmigrationContext* ctx, void* source, void* dest);
+void* transmigrate(void* root, Region* src_region, Region* dest_region);
 ```
 
-### Isolation Checking
+Notes:
 
-Verify object graph is contained in single region:
+- This is **not** GC: it is an explicit operation on a single root.
+- The compiler inserts calls at escape boundaries (return/capture/global store).
+- The runtime may use O(1) splicing fast paths when safe; otherwise it performs a
+  deep copy with cycle/sharing preservation.
 
-```c
-typedef struct IsolationResult {
-    bool is_isolated;
-    int escape_count;
-    void** escaping_refs;
-    int escaping_capacity;
-} IsolationResult;
-
-IsolationResult* check_isolation(void* root, IRegion* expected_region);
-void isolation_result_free(IsolationResult* result);
-```
-
-### Region-Bound References
-
-References that carry region context:
-
-```c
-typedef struct RegionBoundRef {
-    void* target;
-    IRegion* region;
-    uint64_t region_epoch;  /* Staleness detection */
-} RegionBoundRef;
-
-RegionBoundRef* region_bound_ref_new(void* target, IRegion* region);
-void region_bound_ref_free(RegionBoundRef* ref);
-void* region_bound_ref_deref(RegionBoundRef* ref);  /* NULL if region frozen */
-bool region_bound_ref_is_valid(RegionBoundRef* ref);
-```
+Canonical reference: `runtime/docs/CTRR_TRANSMIGRATION.md`.
 
 ---
 
 ## Best Practices
 
-### 1. Choose the Right Memory Strategy
+### 1. Treat CTRR as the default
 
-| Data Shape | Strategy | Function |
-|------------|----------|----------|
-| Tree (no sharing) | ASAP immediate free | `free_tree()` |
-| DAG (sharing, no cycles) | Reference counting | `dec_ref()` |
-| Frozen cycles | SCC-based RC | `release_with_scc()` |
-| Unbroken cycles | Region-RC (RC-G) | `region_retain/release()` |
-| Scoped cyclic | Arena allocation | `arena_destroy()` |
+If you are unsure which memory “strategy” applies, assume CTRR and use regions:
+
+| Scenario | What to do | Runtime primitive |
+|---|---|---|
+| Scope ends | make region reclaimable | `region_exit(r)` |
+| Value must outlive its region | repair escape by copying/moving | `transmigrate(root, src, dst)` |
+| Temporary cross-thread/cross-scope borrow | pin during the borrow window | `region_tether_start/end(r)` |
+| Long-lived root needs keepalive | retain/release region | `region_retain/_internal`, `region_release/_internal` |
+
+Avoid building new features on object-level `dec_ref/free_tree` behavior; the
+region model is the core contract.
 
 ### 2. Use Immediates When Possible
 
 ```c
-// BAD: Heap allocation for small integer
-Obj* x = mk_int(42);
+// Boxed integer (allocates an Obj in a region)
+Obj* x = mk_int_region(r, 42);
 // ... use x ...
-dec_ref(x);
+// Lifetime is governed by the region, not per-object frees.
 
-// GOOD: No allocation, no cleanup
-Obj* x = mk_int_unboxed(42);
-// ... use x - no cleanup needed!
+// Immediate integer (no allocation)
+Obj* y = mk_int_unboxed(42);
+// ... use y - no cleanup needed!
 ```
 
 ### 3. Prefer Stack Pool for Short-Lived Values
@@ -1323,16 +1131,14 @@ region_exit();  // inner invalidated
 
 | Function | Description |
 |----------|-------------|
-| `iregion_new_arena(size_t)` | Create arena region |
-| `iregion_new_linear(size_t)` | Create linear region |
-| `iregion_new_offset(size_t)` | Create offset region |
-| `iregion_new_pool(size_t, size_t)` | Create pool region |
-| `iregion_alloc(...)` | Allocate from region |
-| `iregion_free_one(...)` | Free single allocation |
-| `iregion_free_all(...)` | Free entire region |
-| `iregion_freeze(...)` | Freeze region |
-| `iregion_clone(...)` | Deep copy region |
-| `iregion_serialize(...)` | Serialize to buffer |
+| `region_create()` | Create a new region (may reuse pooled region) |
+| `region_exit(Region*)` | Mark region scope as exited (reclaimable when unpinned) |
+| `region_tether_start(Region*)` | Pin region for a borrow window |
+| `region_tether_end(Region*)` | Unpin region after borrow window |
+| `region_retain(RegionRef)` | Keep region alive via fat pointer |
+| `region_release(RegionRef)` | Release keepalive |
+| `transmigrate(root, src, dst)` | Escape repair: move/copy graph to `dst` |
+| `omni_get_global_region()` | Access the global compatibility region |
 
 ### Handle Operations
 
@@ -1360,7 +1166,8 @@ region_exit();  // inner invalidated
 | `atom_deref(Obj*)` | Read atom value |
 | `atom_reset(Obj*, Obj*)` | Set atom value |
 | `atom_cas(Obj*, Obj*, Obj*)` | Compare-and-swap |
-| `spawn_goroutine(...)` | Spawn thread |
+| `spawn_thread(Obj*)` | Spawn OS thread |
+| `thread_join(Obj*)` | Join OS thread |
 
 ### External Handles
 
@@ -1380,7 +1187,9 @@ region_exit();  // inner invalidated
 
 ## Further Reading
 
-- [ASAP: As Static As Possible](https://www.cl.cam.ac.uk/techreports/UCAM-CL-TR-908.pdf) - Proust, 2017
+- `docs/CTRR.md` - CTRR contract (project spec)
+- `runtime/docs/CTRR_TRANSMIGRATION.md` - transmigration contract (runtime spec)
+- [ASAP (paper term): As Static As Possible](https://www.cl.cam.ac.uk/techreports/UCAM-CL-TR-908.pdf) - Proust, 2017
 - [Perceus: Garbage Free Reference Counting](https://dl.acm.org/doi/10.1145/3453483.3454032) - PLDI 2021
 - [Shape Analysis](https://www.semanticscholar.org/paper/Is-it-a-tree,-a-DAG,-or-a-cyclic-graph-Ghiya-Hendren/115be3be1d6df75ff4defe0d7810ca6e45402040) - Ghiya & Hendren, POPL 1996
 - [Region-Based Memory Management](https://elsman.com/mlkit/) - Tofte & Talpin / MLKit

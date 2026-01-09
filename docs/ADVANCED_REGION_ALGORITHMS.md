@@ -41,7 +41,7 @@ Instead of a `switch(tag)`:
 - **Benefit:** Reduces branching and allows the compiler to generate optimized transmigration code for custom types/FFI.
 
 ### 2.5 Linear Ownership Transfer (Zero-Copy)
-If the ASAP compiler can prove that the source region has **exactly one** external reference (the one being returned), and the region is "mostly" composed of the result:
+If the CTRR compiler can prove that the source region has **exactly one** external reference (the one being returned), and the region is "mostly" composed of the result:
 - **Algorithm:** Transfer the entire Region Control Block (RCB) ownership to the caller.
 - **Rename:** Instead of copying data *out* of the region, we "adopt" the region into the parent's scope.
 

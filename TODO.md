@@ -77,6 +77,34 @@ Phases marked with **[STANDBY]** are implementation-complete or architecturally 
 
 ---
 
+## Documentation / Terminology
+
+- [DONE] Label: T-doc-ctrr-contract
+  Objective: Rename the project’s memory model term to **CTRR** and publish the CTRR contracts as explicit, normative documentation.
+  Reference:
+    - `docs/CTRR.md` (Study Sections 2–5 carefully: Region Closure Property, “everything can escape”, compiler/runtime responsibilities)
+    - `runtime/docs/CTRR_TRANSMIGRATION.md` (Study Sections 2–6 carefully: total/metadata-driven transmigration and forbidden fallbacks)
+  Why:
+    The term “ASAP” already has a specific meaning in the literature (Proust 2017). Using “CTRR” avoids terminology drift and clarifies that OmniLisp’s core guarantee depends on **regions + explicit escape repair (transmigration) + borrow pinning (tethering)** rather than a stop-the-world collector.
+
+    This doc work also establishes a hard contract that transmigration + tethering must be sound/total (“everything can escape”), which is foundational for correctness and completeness.
+  Where:
+    - `docs/CTRR.md`
+    - `runtime/docs/CTRR_TRANSMIGRATION.md`
+    - `README.md`, `SUMMARY.md`, `docs/QUICK_REFERENCE.md`, `docs/MEMORY_MODEL_TECHNICAL.md`, `runtime/RUNTIME_DEVELOPER_GUIDE.md`
+    - Remove obsolete docs: `old_architecture.md`, `docs/ASAP_REGION_INTEGRATION.md`, `docs/REGION_RC_ARCHITECTURE.md`
+  What changed:
+    - Replace “ASAP (project term)” with “CTRR” and keep “ASAP” only as a paper reference.
+    - Add/refresh canonical references so developers know which docs are normative.
+    - Remove/retire obsolete “old model” docs that claim incorrect repository status.
+  Verification:
+    1. `rg -n "\\bASAP\\b" README.md SUMMARY.md docs runtime/docs runtime/RUNTIME_DEVELOPER_GUIDE.md` only finds “ASAP” in literature references (not as the project term).
+    2. `docs/CTRR.md` clearly states the Region Closure Property and “everything can escape”.
+    3. `runtime/docs/CTRR_TRANSMIGRATION.md` explicitly forbids shallow-copy fallbacks for unknown tags.
+  Testing: N/A (documentation-only change; no runtime/compiler behavior modified).
+
+---
+
 ## Phase 13: Region-Based Reference Counting (RC-G) Refactor
 
 Replace hybrid memory management with a unified Region-RC architecture.
@@ -98,9 +126,9 @@ Replace hybrid memory management with a unified Region-RC architecture.
 
 ---
 
-## Phase 14: ASAP Region Management (Static Lifetimes) [STANDBY]
+## Phase 14: CTRR Region Scheduling (Static Lifetimes) [STANDBY]
 
-**Objective:** Implement static liveness analysis to drive region deallocation, with RC as a fallback only.
+**Objective:** Implement static liveness analysis to drive region lifetime scheduling (`region_exit`), using runtime escape repair (transmigration) where required.
 
 - [TODO] Label: T-asap-region-liveness
 - [TODO] Label: T-asap-region-main
@@ -244,91 +272,50 @@ Replace hybrid memory management with a unified Region-RC architecture.
   - (let [p (compile-pattern "[a-z]+")] (match-pattern "hello" p)) => "he"
   - Works with let binding (define has pre-existing bug with this pattern)
 
-- [TODO] Label: T-wire-pattern-match-01
+- [R] Label: T-wire-pattern-match-01
   Objective: Implement is_pattern_match runtime function for match expressions.
   Reference: docs/SYNTAX_REVISION.md (Pattern Matching), language_reference.md Section 6.3
-  Where: runtime/src/runtime.c or runtime/src/match.c (new file)
-  Why: Match expressions cannot execute without pattern matching runtime. Currently codegen generates calls to is_pattern_match but function doesn't exist.
-  What: Implement is_pattern_match function with support for literals, variables, destructuring, guards.
+  Where: runtime/src/runtime.c, csrc/codegen/codegen.c
+  Why: Match expressions cannot execute without pattern matching runtime. Currently codegen generates calls to is_pattern_match.
 
-  Implementation Details:
-    - **Function signature**: bool is_pattern_match(Obj* pattern, Obj* value)
-    - **Pattern types to support**:
-      * Literals: Int, Float, String, Char, Bool (true/false symbols), Nil
-      * Variables: Any symbol (except true/false/nil/_/&/when) binds and returns true
-      * Wildcard: _ symbol always matches
-      * Arrays: [x y z] destructuring (recursively call is_pattern_match)
-      * Guards: & syntax - evaluate guard expression after pattern match
+  Implementation Status (2026-01-09):
+  - ✅ CORE IMPLEMENTATION COMPLETE: is_pattern_match exists in runtime/src/runtime.c (lines 292-400)
+  - ✅ CODEGEN INTEGRATION COMPLETE: Match expressions compile and execute correctly
+  - ✅ if → match desugaring working (all if expressions work)
+  - ✅ Binary boolean match optimization (emits branchless ternary)
+  - ✅ Supports: Literals (Int, Float, String, Char, Bool, Nil), Variables, Wildcard (_), Arrays
+  - ✅ Function signature: int is_pattern_match(Obj* pattern, Obj* value)
+  - ⚠️ Variable bindings NOT IMPLEMENTED (variables match but don't bind)
+  - ⚠️ Guard evaluation NOT IMPLEMENTED (& syntax detected but not executed)
 
-    - **Algorithm**:
-      1. Check pattern type (symbol vs array vs literal)
-      2. For symbols:
-         - _ → always return true
-         - true/false → compare with bool_value
-         - nil → compare with is_nil(value)
-         - other → bind as variable (return true, side effect binding)
-      3. For arrays:
-         - Value must be array/list with same length
-         - Recursively match each element
-         - Handle nested arrays
-      4. For literals:
-         - Direct equality comparison (== for ints, strcmp for strings, etc.)
-      5. Guards (& syntax):
-         - After pattern matches, evaluate guard expression
-         - Return is_truthy(guard_result)
+  What's Implemented:
+    - is_pattern_match() handles immediate ints, bools, chars, boxed values
+    - Special symbols: _ (wildcard), true/false/nil (boolean literals)
+    - Variable patterns (any symbol matches but doesn't bind yet)
+    - Integer, Float, String, Char literal patterns
+    - Array/List patterns with recursive element matching
+    - Uses get_sequence_length() and get_sequence_element() for sequences
+    - Codegen generates proper if-else chains for pattern matching
+    - Statement expression pattern for match result values
+    - Proper result variable handling (declared once, assigned in branches)
 
-    - **Binding handling**:
-      - Pattern matching needs to support variable bindings
-      - Use a thread-local binding stack or pass binding context
-      - Bindings are visible in result expression and guard
-      - Example: (match [1 2] [x y] (+ x y)) → x=1, y=2
+  What's NOT Implemented Yet:
+    - Variable bindings (pattern matches but variable not accessible in result)
+    - Guard evaluation (& syntax detected but not functional)
+    - Complex destructuring with nested patterns
 
-    - **Code structure**:
-      ```c
-      // runtime/src/match.c
-      typedef struct PatternMatchContext {
-          HashTable* bindings;  // Variable bindings from pattern
-          Region* region;       // Region for allocations
-      } PatternMatchContext;
+  Working Test Cases:
+    - Literal: (match 1 1 "yes" _ "no") → "yes" ✅
+    - Non-matching: (match 1 2 "yes" _ "no") → "no" ✅
+    - Boolean: (match true true "yes" false "no") → "yes" ✅
+    - Multiple clauses: (match 3 1 "one" 2 "two" 3 "three" _ "other") → "three" ✅
+    - Wildcard: (match 42 _ "caught") → "caught" ✅
+    - if desugaring: (if true 42 0) → 42 ✅
 
-      bool is_pattern_match(Obj* pattern, Obj* value, PatternMatchContext* ctx);
-      bool match_literal(Obj* pattern, Obj* value);
-      bool match_array(Obj* pattern, Obj* value, PatternMatchContext* ctx);
-      bool match_guard(Obj* guard_expr, PatternMatchContext* ctx);
-      ```
-
-    - **Dependencies**:
-      - Hashtable for bindings (use existing runtime/src/hashtable.c if available)
-      - Region for temporary allocations
-      - is_truthy() predicate (already exists)
-
-    - **Test cases**:
-      ```lisp
-      ;; Literals
-      (match 1 1 "yes" _ "no") → "yes"
-      (match 1 2 "yes" _ "no") → "no"
-
-      ;; Variables
-      (match 42 x x) → 42
-      (match [1 2] [x y] (+ x y)) → 3
-
-      ;; Arrays
-      (match [1 2] [x y] (+ x y)) → 3
-      (match (list 1 (list 2 3)) [1 [x y]] (+ x y)) → 5
-
-      ;; Guards (when & is implemented)
-      (match 15 [n & (> n 10)] "large" [n] "small") → "large"
-
-      ;; Wildcard
-      (match anything _ "caught") → "caught"
-      ```
-
-  Verification:
-    - Input: (match 1 1 "one" _ "other") should return "one"
-    - Input: (match 42 x x) should return 42
-    - Input: (match [1 2 3] [x y z] (+ x y)) should return 3
-    - Current Behavior: Compilation error "implicit declaration of function 'is_pattern_match'"
-    - Expected After: Match expressions execute correctly
+  Next Steps:
+    1. Add binding context to is_pattern_match for variable access
+    2. Implement guard evaluation in match clauses
+    3. Add tests for complex destructuring patterns
 
 - [DONE] Label: T-wire-pika-exec-01
   Objective: Expose pattern matching API from Pika parser.
@@ -493,6 +480,70 @@ Replace hybrid memory management with a unified Region-RC architecture.
   Where: csrc/parser/parser.c
   What: Add R_HASH_VAL rule with act_hash_val semantic action.
   How: #val <value> expands to (value->type <value>) during parsing.
+
+- [DONE] Label: T-syntax-colon-quote-sugar
+  Objective: Standardize `:name` as pure reader sugar for `'name`.
+  Reference: language_reference.md (Dictionary/Plist Destructuring note on `:x`), docs/QUICK_REFERENCE.md (same note), docs/SYNTAX.md (Colon-Quoted Symbols section).
+  Where: csrc/parser/parser.c, csrc/tests/test_syntax_sugar.c, docs/SYNTAX.md
+  Why:
+    The codebase historically used "keyword" terminology in some docs, but the language reference treats `:x` as a quoted symbol. This standardizes the surface syntax to avoid a split type-system (`KEYWORD` vs `SYM`) and keeps dictionary keys uniform.
+  What:
+    - Parse `:foo` as `(quote foo)` (the same AST shape as `'foo`).
+    - Keep `:` reserved (not part of normal symbols); `:name` only exists as reader sugar.
+  Verification:
+    - csrc/tests/test_syntax_sugar.c asserts `:foo` and `'foo` both parse to `(quote foo)`.
+
+- [DONE] Label: T-syntax-meta-key-token
+  Objective: Make `^:key` parse as a reserved metadata marker token (not a generic `^ <expr> <expr>` form), and ensure `define` consumes prefix metadata correctly.
+  Reference: language_reference.md (metadata examples such as `^:parent`, `^:where`), docs/QUICK_REFERENCE.md (metadata section).
+  Where: csrc/parser/parser.c, csrc/analysis/analysis.c, csrc/tests/test_syntax_sugar.c
+  Why:
+    `define`/`let` forms rely on prefix metadata markers like `^:parent {Any}`. A generic `^ <expr> <expr>` parse would incorrectly swallow `^:parent {Any}` as a single expression, breaking type definitions and metadata extraction.
+  What:
+    - Parser: Add a dedicated `R_META_KEY` production that parses `^:parent` / `^:where` / etc as a single marker symbol (`OMNI_SYM "^:parent"`).
+    - Parser: Require whitespace separators for the generic metadata form so it cannot conflict with `^:key`.
+    - Analyzer: Peel off leading `^:key <value>` pairs in `analyze_define` so type definitions like `(define ^:parent {Any} {abstract X} [])` work.
+  Verification:
+    - csrc/tests/test_syntax_sugar.c parses `(define ^:parent {Any} {abstract X} [])` and asserts the 2nd list item is `^:parent`.
+    - csrc/tests/test_syntax_sugar.c asserts duplicate `^:parent` resolves deterministically via last-wins.
+
+- [DONE] Label: T-syntax-metadata-last-wins
+  Objective: Standardize "double metadata" resolution to last-wins for both prefix metadata and `(with-meta ...)` forms.
+  Reference: language_reference.md (Metadata Rule note), docs/QUICK_REFERENCE.md (Metadata Rule note).
+  Where: csrc/analysis/analysis.c, csrc/tests/test_syntax_sugar.c
+  Why:
+    The codebase had inconsistent behavior: prefix metadata in `(define ^:parent {A} ^:parent {B} ...)` behaved as last-wins, while list-based metadata extraction could behave as first-wins. This creates non-deterministic-looking behavior for users.
+  What:
+    - Update `omni_extract_metadata` to build metadata lists in a way that makes `omni_get_metadata` pick the last textual occurrence.
+    - Add a regression test using `(with-meta ((^:parent {A}) (^:parent {B})) ...)`.
+  Verification:
+    - csrc/tests/test_syntax_sugar.c asserts `parent == "B"` in both prefix and with-meta list forms.
+
+- [DONE] Label: T-syntax-program-parse-all
+  Objective: Fix the whole-program parser entrypoint (`omni_parser_parse_all`) to return expressions correctly.
+  Reference: csrc/parser/parser.c (R_PROGRAM / R_PROGRAM_INNER grammar).
+  Where: csrc/parser/parser.c, csrc/tests/test_parse_all.c, csrc/Makefile
+  Why:
+    The CLI/compiler uses `omni_parser_parse_all()` for stdin/file input. A bug in PROGRAM_INNER list building caused it to return 0 expressions for valid programs, producing "No expressions to compile".
+  What:
+    - Implement `act_program_inner` to recurse through `R_PROGRAM_INNER` (not `R_LIST_INNER`).
+    - Add regression tests for single- and multi-expression programs.
+  Verification:
+    - `make -C csrc test` runs `tests/test_parse_all` and passes.
+
+- [DONE] Label: T-syntax-nil-empty-list
+  Objective: Standardize `nil` and `()` as the same empty list value in the C compiler/runtime pipeline.
+  Reference: runtime/include/omni.h (`is_nil`), docs/SYNTAX.md (Nil / Empty List), language_reference.md / docs/QUICK_REFERENCE.md (Data Types section).
+  Where: csrc/parser/parser.c, csrc/codegen/codegen.c, csrc/analysis/analysis.c, csrc/Makefile
+  Why:
+    The compiler previously emitted a "sentinel pair" for `()`, which broke list printing/semantics (`()` printed as `(() . ())`). Also, the symbol `nil` did not compile as the empty list and could produce undefined identifiers.
+  What:
+    - Parse the token `nil` as the nil/empty-list value (same as `()`).
+    - When using the external runtime, emit `#define NIL NULL` (the runtime's nil representation).
+    - Fix if→match desugaring to use the real nil value, not a `"nil"` symbol.
+    - Add basic CLI tests that `()` and `nil` both print as `()`.
+  Verification:
+    - `make -C csrc test` includes "PASS: empty list literal" and "PASS: nil literal".
 
 - [DONE] Label: T-syntax-pika-ast
   Objective: Add AST output mode to Pika parser.
@@ -1164,7 +1215,7 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
   - See runtime/src/memory/region_value.h lines 60-83, runtime/src/memory/region_value.c lines 146-298
 
 - [N/A] Label: T-opt-transmigrate-lazy
-  Reason: Lazy transmigration conflicts with ASAP's immediate deallocation model and requires changing the object access ABI. Batched transmigration (DONE) already achieves equivalent performance.
+  Reason: Lazy transmigration conflicts with CTRR’s Region Closure Property guarantee (values must not retain pointers into a dead/reused region). Batched transmigration (DONE) already achieves the bounded-work performance goal without weakening escape soundness.
   Objective: Implement lazy on-demand transmigration.
   Where: runtime/src/memory/transmigrate.c
   What: Transmigrate objects only when accessed.
@@ -1269,7 +1320,7 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
     Current implementation stores tag field (8 bytes) in every object. Region-level metadata stores this information once per region, reducing memory overhead and enabling compile-time type resolution. This replaces the abandoned fat pointer approach with a simpler design that:
     - Eliminates per-object tag field (saves 4-8 bytes per object)
     - Enables inline allocation for small objects without fat pointers
-    - Uses compile-time type_id constants (aligned with ASAP philosophy)
+    - Uses compile-time type_id constants (aligned with CTRR’s “decide as much as possible at compile time” philosophy)
     - Integrates cleanly with existing RC-G memory model
 
   What to change:
@@ -1397,7 +1448,7 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
 
 - [TODO] Label: T-opt-region-metadata-inline
   Objective: Add inline allocation path in region_alloc() using escape analysis.
-  Reference: ASAP escape analysis (ESCAPE_NONE, ESCAPE_RETURN, etc.)
+  Reference: CTRR escape analysis (`ESCAPE_TARGET_NONE`, `ESCAPE_TARGET_PARENT`, `ESCAPE_TARGET_RETURN`, `ESCAPE_TARGET_GLOBAL`)
   Where: runtime/src/memory/region_core.c, runtime/src/memory/region_core.h
   Why: Enable zero-allocation overhead for small, non-escaping objects.
   What: Extend inline buffer to support parent-relative inline allocation.
@@ -2993,7 +3044,7 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
 
 ## Phase 27: Julia-Level Type Specialization [ACTIVE]
 
-**Objective:** Implement Julia-style type specialization to eliminate boxing overhead and achieve native performance for numeric operations. **"OmniLisp is not fast because of ASAP, it's fast because of function specialization and type inference."**
+**Objective:** Implement Julia-style type specialization to eliminate boxing overhead and achieve native performance for numeric operations. **"OmniLisp is not fast because of CTRR; it's fast because of function specialization and type inference."**
 
 ### Priority 1: Core Type Infrastructure
 
@@ -3484,7 +3535,7 @@ specified in docs/FFI_DESIGN_PROPOSALS.md. The implementation follows a three-ti
   Why: Raw C pointers are unsafe (use-after-free, type confusion). Handles provide:
        - Generation counters for ABA protection
        - Type safety (Handle<T> is distinct from Handle<U>)
-       - Deterministic cleanup integration with ASAP
+       - Deterministic cleanup integration with CTRR scheduling
   What: Add {Handle T} type that wraps ExternalHandleTable indices.
 
   Implementation Details:
@@ -3534,7 +3585,7 @@ specified in docs/FFI_DESIGN_PROPOSALS.md. The implementation follows a three-ti
   Where: csrc/parser/parser.c, csrc/analysis/analysis.c
   Why: Ownership annotations (^:owned, ^:borrowed, ^:consumed, ^:escapes) are critical
        for memory safety with C. They tell the compiler who frees what.
-  What: Parse ownership metadata and integrate with ASAP CLEAN phase.
+  What: Parse ownership metadata and integrate with CTRR CLEAN phase.
 
   Implementation Details:
     *   **Metadata Parsing (parser.c):**
@@ -3560,7 +3611,7 @@ specified in docs/FFI_DESIGN_PROPOSALS.md. The implementation follows a three-ti
         } ParamInfo;
         ```
 
-    *   **ASAP Integration:**
+    *   **CTRR Integration:**
         - OWNERSHIP_OWNED returns: Insert free_obj() at variable's last use
         - OWNERSHIP_CONSUMED params: Do NOT free after call (ownership transferred)
         - OWNERSHIP_ESCAPES params: Extend variable lifetime to end of scope
@@ -4170,7 +4221,7 @@ specified in docs/FFI_DESIGN_PROPOSALS.md. The implementation follows a three-ti
   Reference: docs/FFI_DESIGN_PROPOSALS.md:596-615
   Where: runtime/src/runtime.c
   Why: Memory allocated with ffi/alloc must be freed when no longer needed.
-       This integrates with ASAP for automatic free insertion.
+       This integrates with CTRR scheduling for automatic cleanup insertion.
   What: Add prim_ffi_free that releases FFI-managed memory.
 
   Implementation Details:
@@ -4198,7 +4249,7 @@ specified in docs/FFI_DESIGN_PROPOSALS.md. The implementation follows a three-ti
         ```
 
     *   **Handle Invalidation:** Must update generation counter to catch use-after-free
-    *   **ASAP Integration:** CLEAN phase inserts free at end of scope or last use
+    *   **CTRR Integration:** CLEAN phase inserts cleanup at end of scope or last use
 
   Verification:
     *   Test Input:
@@ -5034,16 +5085,16 @@ specified in docs/FFI_DESIGN_PROPOSALS.md. The implementation follows a three-ti
     We need clear, documented rules that match Lisp conventions while
     supporting OmniLisp's unique syntax (paths, types, metadata).
 
-  Symbol Character Rules (Final):
+	  Symbol Character Rules (Final):
 
-    START WITH (first character):
-      Letters:     a-z, A-Z
-      Operators:   * ! - _ ? % / = < >
+	    START WITH (first character):
+	      Letters:     a-z, A-Z
+	      Operators:   * + ! - _ ? % / = < >
 
-      EXCLUDE:     . @ # & : ; 0-9
+	      EXCLUDE:     . @ # & : ; 0-9
 
-    MIDDLE (subsequent characters):
-      All of START + digits (0-9)
+	    MIDDLE (subsequent characters):
+	      All of START + digits (0-9)
 
       EXCLUDE:     . @ # & : ;
 
@@ -5060,13 +5111,13 @@ specified in docs/FFI_DESIGN_PROPOSALS.md. The implementation follows a three-ti
     4. Add comprehensive tests for valid/invalid symbols [DONE - tests/test_symbol_rules.omni created]
     5. Document in QUICK_REFERENCE.md and create SYNTAX.md [DONE - Already documented in QUICK_REFERENCE.md:609-671, SYNTAX.md created]
 
-  Examples:
-    Valid:
-      foo, foo-bar, foo123, x1_y2
-      *, -, _, %, /, =, <=, ==
-      set!, define!, null?, empty?
-      !not, !null, ?maybe, ?value
-      50%off, 3/4
+	  Examples:
+	    Valid:
+	      foo, foo-bar, foo123, x1_y2
+	      +, *, -, _, %, /, =, <=, ==
+	      set!, define!, null?, empty?
+	      !not, !null, ?maybe, ?value
+	      50%off, 3/4
 
     Invalid (can't start with digits):
       123foo, 3d, 7up
@@ -5091,3 +5142,860 @@ specified in docs/FFI_DESIGN_PROPOSALS.md. The implementation follows a three-ti
     - Created standalone SYNTAX.md with complete syntax reference
     - All examples from verification section are covered in tests
 
+---
+
+## Phase 30: Critical CTRR Compliance [ACTIVE]
+
+**Objective:** Ensure the runtime fully complies with the CTRR memory model contract, specifically regarding safe escape repair and total transmigration coverage.
+
+- [TODO] Label: T-opt-transmigrate-metadata
+  Objective: Upgrade transmigration to be fully metadata-driven (Trace/Clone) as per CTRR spec.
+  Reference: runtime/docs/CTRR_TRANSMIGRATION.md (Sections 3-10), docs/CTRR.md, CLAUDE.md (CTRR Memory Model section)
+  Where: runtime/src/memory/region_metadata.h, runtime/src/memory/region_metadata.c, runtime/src/memory/transmigrate.c
+  Why:
+    The current `switch`-based implementation in `transmigrate.c` is brittle, hard to extend, and violates the CTRR contract by allowing shallow-copy fallbacks for unknown tags. Metadata-driven transmigration ensures all types are correctly handled and makes "missing support" explicit.
+
+  Current State Analysis (as of 2026-01-09):
+    - region_metadata.h (lines 63-88):
+      * Has TypeMetadata with trace signature: `void (*trace)(struct Obj* obj, void (*visit)(struct Obj**))`
+      * MISSING: CloneFn pointer
+      * WRONG: trace signature doesn't match CTRR spec (missing ctx parameter)
+    - region_metadata.c:
+      * Initializes all types but ALL trace/clone functions are NULL
+      * No implementation of type-specific callbacks
+    - transmigrate.c (lines 269-344):
+      * Uses switch(old_obj->tag) dispatch
+      * FORBIDDEN: Lines 202-204 (returns root if bitmap fails)
+      * FORBIDDEN: Lines 340-343 (default case shallow copy)
+      * MISSING: TAG_ARRAY, TAG_DICT, TAG_TUPLE, TAG_NAMED_TUPLE, TAG_ATOM, TAG_KEYWORD, TAG_GENERIC, TAG_KIND
+
+  ============================================================================
+  IMPLEMENTATION STEPS (11 Subtasks - MUST BE COMPLETED SEQUENTIALLY)
+  ============================================================================
+
+  --------------------------------------------------------------------------
+  Subtask 1: Extend TypeMetadata Structure with Correct Signatures
+  --------------------------------------------------------------------------
+  File: runtime/src/memory/region_metadata.h
+  Location: After line 22 (before TypeID enum), and lines 63-88 (TypeMetadata struct)
+
+  What to add:
+    Add the correct function pointer typedefs (from CTRR_TRANSMIGRATION.md Section 4.1):
+
+    ```c
+    /* Forward declarations */
+    struct Obj;
+    struct Region;
+
+    /* Visitor function pointer - called for each Obj* slot */
+    typedef void (*OmniVisitSlotFn)(struct Obj** slot, void* ctx);
+
+    /*
+     * TraceFn enumerates all child Obj* slots reachable from obj.
+     * IMPORTANT: Must trace pointers inside payload buffers (arrays/dicts),
+     *            not just fields in the Obj union itself.
+     */
+    typedef void (*TraceFn)(struct Obj* obj, OmniVisitSlotFn visit_slot, void* ctx);
+
+    /*
+     * CloneFn allocates a copy of old_obj into dest_region.
+     * - Allocates destination Obj in dest_region
+     * - Allocates/copies payload structs/buffers into dest_region
+     * - Copies scalar fields
+     * - MUST NOT recursively transmigrate children (generic loop handles this)
+     * - Returns new object with old pointers initially (will be rewritten)
+     */
+    typedef struct Obj* (*CloneFn)(struct Obj* old_obj, struct Region* dest_region, void* tmp_ctx);
+    ```
+
+  Then update TypeMetadata struct (line 63):
+
+    ```c
+    typedef struct TypeMetadata {
+        /* Type identification */
+        const char* name;
+        TypeID type_id;
+
+        /* Memory layout */
+        size_t size;
+        size_t alignment;
+
+        /* GC/RC tracing information (DEPRECATED - kept for compat, remove later) */
+        uint8_t num_pointer_fields;
+        uint8_t pointer_offsets[8];
+
+        /* Inline allocation info */
+        bool can_inline;
+        size_t inline_threshold;
+
+        /* CTRR Metadata Operations (NEW - required for transmigration) */
+        CloneFn clone;              /* Clone function for transmigration */
+        TraceFn trace;              /* Trace function with ctx parameter */
+
+        /* Other operations (not used by transmigration) */
+        void (*destroy)(struct Obj* obj);
+        bool (*equals)(struct Obj* a, struct Obj* b);
+        size_t (*hash)(struct Obj* obj);
+
+        /* Debug info */
+        const char* debug_info;
+    } TypeMetadata;
+    ```
+
+  Verification:
+    - Compile passes: `gcc -c runtime/src/memory/region_metadata.h`
+    - TypeMetadata struct has clone and trace fields
+    - trace signature includes ctx parameter
+
+  --------------------------------------------------------------------------
+  Subtask 2: Implement Clone and Trace for Immediate Types
+  --------------------------------------------------------------------------
+  File: runtime/src/memory/region_metadata.c
+  Location: Add before init_core_type_metadata (around line 12)
+
+  Types: TAG_INT, TAG_FLOAT, TAG_CHAR, TAG_NOTHING
+
+  What to add:
+    ```c
+    /* ============================================================================
+     * IMMEDIATE TYPES (no heap allocation, no child pointers)
+     * ============================================================================
+     * For immediate types, clone returns the same object (no copy needed).
+     * trace is a no-op (no child pointers to visit).
+     */
+
+    static Obj* clone_immutable(Obj* old_obj, Region* dest, void* tmp_ctx) {
+        (void)dest;
+        (void)tmp_ctx;
+        /* Immediate values are embedded in pointer, no allocation needed */
+        return old_obj;
+    }
+
+    static void trace_noop(Obj* obj, OmniVisitSlotFn visit_slot, void* ctx) {
+        (void)obj;
+        (void)visit_slot;
+        (void)ctx;
+        /* No child pointers to trace */
+    }
+    ```
+
+  Then update metadata initialization for TYPE_ID_INT (around line 32):
+    ```c
+    r->type_table[TYPE_ID_INT] = (TypeMetadata){
+        .name = "Int",
+        .type_id = TYPE_ID_INT,
+        .size = sizeof(struct Obj),
+        .alignment = 8,
+        .num_pointer_fields = 0,
+        .pointer_offsets = {0},
+        .can_inline = true,
+        .inline_threshold = 16,
+        .clone = clone_immutable,      /* NEW */
+        .trace = trace_noop,           /* NEW */
+        .destroy = NULL,
+        .equals = NULL,
+        .hash = NULL,
+        .debug_info = "Integer type (stored in immediate or heap)"
+    };
+    ```
+
+  Repeat for TYPE_ID_FLOAT (line 50), TYPE_ID_CHAR (line 67), TYPE_ID_NOTHING.
+
+  Verification:
+    - Compile passes
+    - TypeMetadata dump shows clone/trace are set for immediate types
+
+  --------------------------------------------------------------------------
+  Subtask 3: Implement Clone and Trace for TAG_PAIR
+  --------------------------------------------------------------------------
+  File: runtime/src/memory/region_metadata.c
+  Location: Add after clone_immutable/trace_noop (around line 50)
+
+  What to add:
+    ```c
+    /* ============================================================================
+     * TAG_PAIR (cons cell)
+     * ============================================================================
+     * Layout: obj->a and obj->b are both Obj* pointers
+     */
+
+    static Obj* clone_pair(Obj* old_obj, Region* dest, void* tmp_ctx) {
+        (void)tmp_ctx;
+
+        /* Allocate new Pair in destination region */
+        Obj* new_obj = region_alloc(dest, sizeof(Obj));
+        if (!new_obj) return NULL;
+
+        /* Copy scalar fields (tag, etc.) */
+        new_obj->tag = old_obj->tag;
+
+        /* Copy a and b as OLD pointers (will be rewritten by generic loop) */
+        new_obj->a = old_obj->a;
+        new_obj->b = old_obj->b;
+
+        return new_obj;
+    }
+
+    static void trace_pair(Obj* obj, OmniVisitSlotFn visit_slot, void* ctx) {
+        /* Visit both child slots */
+        visit_slot(&obj->a, ctx);
+        visit_slot(&obj->b, ctx);
+    }
+    ```
+
+  Then update TYPE_ID_PAIR metadata (around line 84):
+    ```c
+    r->type_table[TYPE_ID_PAIR] = (TypeMetadata){
+        .name = "Pair",
+        .type_id = TYPE_ID_PAIR,
+        .size = sizeof(struct Obj),
+        .alignment = 8,
+        .num_pointer_fields = 2,
+        .pointer_offsets = {offsetof(struct Obj, a), offsetof(struct Obj, b)},
+        .can_inline = true,
+        .inline_threshold = 56,
+        .clone = clone_pair,      /* NEW */
+        .trace = trace_pair,      /* NEW */
+        .destroy = NULL,
+        .equals = NULL,
+        .hash = NULL,
+        .debug_info = "Cons cell (pair)"
+    };
+    ```
+
+  Verification:
+    - Compile passes
+    - Test: `(let ((x '(1 . 2)) (y (transmigrate x src dst))) (car y))` => 1
+
+  --------------------------------------------------------------------------
+  Subtask 4: Implement Clone and Trace for TAG_BOX
+  --------------------------------------------------------------------------
+  File: runtime/src/memory/region_metadata.c
+  Location: Add after trace_pair (around line 90)
+
+  What to add:
+    ```c
+    /* ============================================================================
+     * TAG_BOX
+     * ============================================================================
+     * Layout: obj->a contains the boxed value (based on region_metadata.c:192)
+     *         CRITICAL: Verify canonical layout - some code uses ptr, some uses a
+     *         Check runtime/include/omni.h for mk_box implementation
+     */
+
+    static Obj* clone_box(Obj* old_obj, Region* dest, void* tmp_ctx) {
+        (void)tmp_ctx;
+
+        Obj* new_obj = region_alloc(dest, sizeof(Obj));
+        if (!new_obj) return NULL;
+
+        new_obj->tag = old_obj->tag;
+        new_obj->a = old_obj->a;  /* Copy as old pointer */
+
+        return new_obj;
+    }
+
+    static void trace_box(Obj* obj, OmniVisitSlotFn visit_slot, void* ctx) {
+        visit_slot(&obj->a, ctx);
+    }
+    ```
+
+  Then update TYPE_ID_BOX metadata (around line 186):
+    ```c
+    r->type_table[TYPE_ID_BOX] = (TypeMetadata){
+        .name = "Box",
+        .type_id = TYPE_ID_BOX,
+        .size = sizeof(struct Obj),
+        .alignment = 8,
+        .num_pointer_fields = 1,
+        .pointer_offsets = {offsetof(struct Obj, a)},
+        .can_inline = true,
+        .inline_threshold = 32,
+        .clone = clone_box,       /* NEW */
+        .trace = trace_box,       /* NEW */
+        .destroy = NULL,
+        .equals = NULL,
+        .hash = NULL,
+        .debug_info = "Boxed value"
+    };
+    ```
+
+  Verification:
+    - Compile passes
+    - Check omni.h: mk_box uses consistent field (should use .a)
+    - Test: `(let ((x (box 42)) (y (transmigrate x src dst))) (unbox y))` => 42
+
+  --------------------------------------------------------------------------
+  Subtask 5: Implement Clone and Trace for TAG_STRING, TAG_SYM, TAG_KEYWORD
+  --------------------------------------------------------------------------
+  File: runtime/src/memory/region_metadata.c
+  Location: Add after trace_box (around line 120)
+
+  What to add:
+    ```c
+    /* ============================================================================
+     * TAG_STRING, TAG_SYM, TAG_KEYWORD
+     * ============================================================================
+     * Layout: obj->ptr points to null-terminated char array
+     * Note: These have NO child Obj* pointers (just char data)
+     */
+
+    static Obj* clone_string_like(Obj* old_obj, Region* dest, void* tmp_ctx) {
+        (void)tmp_ctx;
+
+        Obj* new_obj = region_alloc(dest, sizeof(Obj));
+        if (!new_obj) return NULL;
+
+        new_obj->tag = old_obj->tag;
+
+        /* Deep copy the string data into destination region */
+        if (old_obj->ptr) {
+            const char* s = (const char*)old_obj->ptr;
+            size_t len = strlen(s);
+            char* s_copy = region_alloc(dest, len + 1);
+            strcpy(s_copy, s);
+            new_obj->ptr = s_copy;
+        }
+
+        return new_obj;
+    }
+
+    static void trace_string_like(Obj* obj, OmniVisitSlotFn visit_slot, void* ctx) {
+        (void)obj;
+        (void)visit_slot;
+        (void)ctx;
+        /* No Obj* child pointers - string data is just chars */
+    }
+    ```
+
+  Then update TYPE_ID_STRING metadata (around line 118):
+    ```c
+    r->type_table[TYPE_ID_STRING] = (TypeMetadata){
+        .name = "String",
+        .type_id = TYPE_ID_STRING,
+        .size = sizeof(struct Obj),
+        .alignment = 8,
+        .num_pointer_fields = 0,
+        .pointer_offsets = {0},
+        .can_inline = false,
+        .inline_threshold = 0,
+        .clone = clone_string_like,  /* NEW */
+        .trace = trace_string_like,  /* NEW */
+        .destroy = NULL,
+        .equals = NULL,
+        .hash = NULL,
+        .debug_info = "String type"
+    };
+    ```
+
+  Repeat for TYPE_ID_SYMBOL (line 135) and add TYPE_ID_KEYWORD if not present.
+
+  Verification:
+    - Compile passes
+    - Test: `(let ((x "hello") (y (transmigrate x src dst))) y)` => "hello"
+    - Test: `(let ((x 'foo) (y (transmigrate x src dst))) y)` => foo
+
+  --------------------------------------------------------------------------
+  Subtask 6: Implement Clone and Trace for TAG_CLOSURE
+  --------------------------------------------------------------------------
+  File: runtime/src/memory/region_metadata.c
+  Location: Add after trace_string_like (around line 180)
+
+  CRITICAL PRE-REQUISITE: Check runtime/include/omni.h for struct Closure layout!
+
+  What to add (verify Closure struct first):
+    ```c
+    /* ============================================================================
+     * TAG_CLOSURE
+     * ============================================================================
+     * Layout: obj->ptr points to Closure struct with capture array
+     *
+     * Canonical layout assumption (VERIFY in omni.h):
+     *   struct Closure {
+     *       void* func_ptr;
+     *       Obj** captures;       Array of Obj* pointers
+     *       int capture_count;
+     *   };
+     */
+
+    static Obj* clone_closure(Obj* old_obj, Region* dest, void* tmp_ctx) {
+        (void)tmp_ctx;
+
+        Obj* new_obj = region_alloc(dest, sizeof(Obj));
+        if (!new_obj) return NULL;
+
+        new_obj->tag = old_obj->tag;
+
+        if (old_obj->ptr) {
+            Closure* old_c = (Closure*)old_obj->ptr;
+
+            /* Allocate new Closure struct in destination */
+            Closure* new_c = region_alloc(dest, sizeof(Closure));
+            if (!new_c) return NULL;
+
+            /* Copy scalar fields */
+            *new_c = *old_c;
+
+            /* Allocate new capture array in destination */
+            if (old_c->capture_count > 0) {
+                new_c->captures = region_alloc(dest, sizeof(Obj*) * old_c->capture_count);
+                /* Copy capture pointers as OLD pointers (will be rewritten) */
+                for (int i = 0; i < old_c->capture_count; i++) {
+                    new_c->captures[i] = old_c->captures[i];
+                }
+            }
+
+            new_obj->ptr = new_c;
+        }
+
+        return new_obj;
+    }
+
+    static void trace_closure(Obj* obj, OmniVisitSlotFn visit_slot, void* ctx) {
+        if (obj->ptr) {
+            Closure* c = (Closure*)obj->ptr;
+            /* Visit each capture slot */
+            for (int i = 0; i < c->capture_count; i++) {
+                visit_slot(&c->captures[i], ctx);
+            }
+        }
+    }
+    ```
+
+  Then update TYPE_ID_CLOSURE metadata (around line 169):
+    ```c
+    r->type_table[TYPE_ID_CLOSURE] = (TypeMetadata){
+        .name = "Closure",
+        .type_id = TYPE_ID_CLOSURE,
+        .size = sizeof(struct Obj),
+        .alignment = 8,
+        .num_pointer_fields = 1,
+        .pointer_offsets = {offsetof(struct Obj, ptr)},
+        .can_inline = false,
+        .inline_threshold = 0,
+        .clone = clone_closure,   /* NEW */
+        .trace = trace_closure,   /* NEW */
+        .destroy = NULL,
+        .equals = NULL,
+        .hash = NULL,
+        .debug_info = "Function closure"
+    };
+    ```
+
+  Verification:
+    - Compile passes
+    - Test: `(let ((x (lambda () 42)) (y (transmigrate x src dst)) (y))` => 42
+    - Test with captured variables
+
+  --------------------------------------------------------------------------
+  Subtask 7: Implement Clone and Trace for TAG_ARRAY
+  --------------------------------------------------------------------------
+  File: runtime/src/memory/region_metadata.c
+  Location: Add after trace_closure (around line 250)
+
+  CRITICAL PRE-REQUISITE: Check runtime/include/omni.h for struct Array layout!
+
+  What to add (verify Array struct first):
+    ```c
+    /* ============================================================================
+     * TAG_ARRAY
+     * ============================================================================
+     * Layout: obj->ptr points to Array struct
+     *   struct Array {
+     *       Obj** data;      Array of Obj* pointers
+     *       int len;
+     *       int capacity;
+     *   };
+     */
+
+    static Obj* clone_array(Obj* old_obj, Region* dest, void* tmp_ctx) {
+        (void)tmp_ctx;
+
+        Obj* new_obj = region_alloc(dest, sizeof(Obj));
+        if (!new_obj) return NULL;
+
+        new_obj->tag = old_obj->tag;
+
+        if (old_obj->ptr) {
+            Array* old_a = (Array*)old_obj->ptr;
+
+            /* Allocate new Array struct */
+            Array* new_a = region_alloc(dest, sizeof(Array));
+            if (!new_a) return NULL;
+
+            *new_a = *old_a;
+
+            /* Allocate new data buffer sized to capacity */
+            if (old_a->capacity > 0) {
+                new_a->data = region_alloc(dest, sizeof(Obj*) * old_a->capacity);
+                /* Copy pointers as OLD pointers */
+                for (int i = 0; i < old_a->len; i++) {
+                    new_a->data[i] = old_a->data[i];
+                }
+            }
+
+            new_obj->ptr = new_a;
+        }
+
+        return new_obj;
+    }
+
+    static void trace_array(Obj* obj, OmniVisitSlotFn visit_slot, void* ctx) {
+        if (obj->ptr) {
+            Array* a = (Array*)obj->ptr;
+            /* CRITICAL: Trace through payload buffer, not just Obj fields */
+            for (int i = 0; i < a->len; i++) {
+                visit_slot(&a->data[i], ctx);
+            }
+        }
+    }
+    ```
+
+  Then update TYPE_ID_ARRAY metadata (around line 101):
+    ```c
+    r->type_table[TYPE_ID_ARRAY] = (TypeMetadata){
+        .name = "Array",
+        .type_id = TYPE_ID_ARRAY,
+        .size = sizeof(struct Obj),
+        .alignment = 8,
+        .num_pointer_fields = 1,
+        .pointer_offsets = {offsetof(struct Obj, ptr)},
+        .can_inline = false,
+        .inline_threshold = 0,
+        .clone = clone_array,     /* NEW */
+        .trace = trace_array,     /* NEW */
+        .destroy = NULL,
+        .equals = NULL,
+        .hash = NULL,
+        .debug_info = "Array type"
+    };
+    ```
+
+  Verification:
+    - Compile passes
+    - Test: `(let ((x [1 2 3]) (y (transmigrate x src dst))) y)` => [1 2 3]
+    - Test with nested arrays: `[[1 2] [3 4]]`
+
+  --------------------------------------------------------------------------
+  Subtask 8: Implement Clone and Trace for Remaining Types
+  --------------------------------------------------------------------------
+  File: runtime/src/memory/region_metadata.c
+  Location: Add after trace_array (around line 320)
+
+  Types to implement:
+    - TAG_DICT (check struct Dict layout in omni.h)
+    - TAG_TUPLE (likely uses obj->a and obj->b)
+    - TAG_NAMED_TUPLE (check struct NamedTuple layout)
+    - TAG_ERROR (check if Error struct exists)
+    - TAG_CHANNEL (thread channel, likely no Obj* children)
+    - TAG_THREAD (thread handle, likely no Obj* children)
+    - TAG_ATOM (symbol-like, likely no Obj* children)
+    - TAG_GENERIC (parametric type, check struct)
+    - TAG_KIND (type object, check struct)
+
+  Implementation pattern (adapt for each type):
+    1. Understand struct layout in runtime/include/omni.h
+    2. Implement clone_* to allocate in dest and copy old pointers
+    3. Implement trace_* to visit all Obj* slots (including payload buffers)
+
+  Example for TAG_DICT (verify Dict struct first):
+    ```c
+    static Obj* clone_dict(Obj* old_obj, Region* dest, void* tmp_ctx);
+    static void trace_dict(Obj* obj, OmniVisitSlotFn visit_slot, void* ctx);
+    ```
+
+  Update metadata for each type with clone and trace pointers.
+
+  Verification:
+    - Compile passes
+    - Each type has non-NULL clone and trace in metadata dump
+    - Tests for each type
+
+  --------------------------------------------------------------------------
+  Subtask 9: Add TAG_* to TypeID Mapping Function
+  --------------------------------------------------------------------------
+  File: runtime/src/memory/transmigrate.c OR runtime/include/omni.h
+  Location: In transmigrate.c, add before transmigrate function (around line 90)
+
+  What to add:
+    ```c
+    /* ============================================================================
+     * TAG_* to TypeID Mapping
+     * ============================================================================
+     * Maps runtime TAG_* enum values to TypeID enum values for metadata lookup.
+     *
+     * TODO: Ideally, make TAG_* and TypeID enum values align so this becomes
+     *       a simple cast: (TypeID)obj->tag
+     */
+
+    static TypeID tag_to_type_id(int tag) {
+        switch (tag) {
+            case TAG_INT:         return TYPE_ID_INT;
+            case TAG_FLOAT:       return TYPE_ID_FLOAT;
+            case TAG_CHAR:        return TYPE_ID_CHAR;
+            case TAG_PAIR:        return TYPE_ID_PAIR;
+            case TAG_ARRAY:       return TYPE_ID_ARRAY;
+            case TAG_STRING:      return TYPE_ID_STRING;
+            case TAG_SYM:         return TYPE_ID_SYMBOL;
+            case TAG_DICT:        return TYPE_ID_DICT;
+            case TAG_CLOSURE:     return TYPE_ID_CLOSURE;
+            case TAG_BOX:         return TYPE_ID_BOX;
+            case TAG_CHANNEL:     return TYPE_ID_CHANNEL;
+            case TAG_THREAD:      return TYPE_ID_THREAD;
+            case TAG_ERROR:       return TYPE_ID_ERROR;
+            case TAG_ATOM:        return TYPE_ID_ATOM;
+            case TAG_TUPLE:       return TYPE_ID_TUPLE;
+            case TAG_NAMED_TUPLE: return TYPE_ID_NAMED_TUPLE;
+            case TAG_GENERIC:     return TYPE_ID_GENERIC;
+            case TAG_KIND:        return TYPE_ID_KIND;
+            case TAG_NOTHING:     return TYPE_ID_NOTHING;
+            case TAG_KEYWORD:     return TYPE_ID_SYMBOL;  /* Keywords share symbol metadata */
+            default:              return TYPE_ID_MAX;      /* Invalid */
+        }
+    }
+    ```
+
+  Verification:
+    - Compile passes
+    - All TAG_* values from omni.h are covered
+
+  --------------------------------------------------------------------------
+  Subtask 10: Refactor transmigrate.c to Use Metadata (REMOVE switch)
+  --------------------------------------------------------------------------
+  File: runtime/src/memory/transmigrate.c
+  Location: Lines 268-344 (replace switch statement)
+
+  What to change:
+
+  Step 10a: Add metadata lookup helper (after tag_to_type_id function):
+    ```c
+    /* Get TypeMetadata for an object's tag */
+    static inline const TypeMetadata* meta_for_obj(Obj* obj, Region* r) {
+        if (!obj || !r) return NULL;
+
+        TypeID type_id = tag_to_type_id(obj->tag);
+        if (type_id >= TYPE_ID_MAX) return NULL;
+
+        return type_metadata_get(r, type_id);
+    }
+    ```
+
+  Step 10b: Replace switch loop with metadata loop (around line 268-344):
+
+  BEFORE (current code - DELETE THIS):
+    ```c
+    // Copy everything first (shallow)
+    memcpy(new_obj, old_obj, sizeof(Obj));
+
+    // Dispatch based on tag
+    switch (old_obj->tag) {
+        case TAG_INT:
+        case TAG_FLOAT:
+        case TAG_CHAR:
+        case TAG_NOTHING:
+            // Scalar values, shallow copy is enough
+            break;
+
+        case TAG_PAIR: {
+            // Manual push for children
+            transmigrate_visitor(&new_obj->a, &trace_ctx);
+            transmigrate_visitor(&new_obj->b, &trace_ctx);
+            break;
+        }
+
+        // ... more cases ...
+
+        default:
+            // For unknown types, we default to shallow copy.
+            // Warning: if they contain pointers, they will point to old region!
+            break;
+    }
+    ```
+
+  AFTER (metadata-driven - ADD THIS):
+    ```c
+    /* ========================================================================
+     * METADATA-DRIVEN TRANSMIGRATION (CTRR compliant)
+     * ======================================================================== */
+
+    /* Look up metadata for this object's type */
+    const TypeMetadata* meta = meta_for_obj(old_obj, src_region);
+
+    /* CTRR REQUIREMENT: Fail loudly for missing metadata */
+    if (!meta || !meta->clone || !meta->trace) {
+        fprintf(stderr,
+                "[FATAL] transmigrate: missing metadata for tag %d (type_id %d)\n",
+                old_obj->tag, tag_to_type_id(old_obj->tag));
+        fprintf(stderr, "  meta=%p, clone=%p, trace=%p\n",
+                (void*)meta, meta ? (void*)meta->clone : NULL,
+                meta ? (void*)meta->trace : NULL);
+        abort();  /* In debug builds: assert(false && "Missing metadata"); */
+    }
+
+    /* Clone the object using metadata callback */
+    Obj* new_obj = meta->clone(old_obj, dest_region, &tmp_arena);
+
+    if (!new_obj) {
+        fprintf(stderr, "[FATAL] transmigrate: clone failed for tag %d\n", old_obj->tag);
+        abort();
+    }
+
+    /* Register in visited and update slot */
+    *current->slot = new_obj;
+    bitmap_set(bitmap, old_obj);
+    add_remap(&trace_ctx, old_obj, new_obj);
+
+    /* Trace children - this schedules them for rewriting */
+    meta->trace(new_obj, transmigrate_visitor, &trace_ctx);
+    ```
+
+  Step 10c: Remove forbidden fallbacks:
+    - DELETE lines 202-204 (bitmap_create failure fallback):
+      ```c
+      // DELETE THIS:
+      if (!bitmap) {
+          fprintf(stderr, "[WARNING] bitmap_create failed, falling back to shallow copy\n");
+          return root;
+      }
+      ```
+      REPLACE WITH:
+      ```c
+      if (!bitmap) {
+          fprintf(stderr, "[FATAL] bitmap_create failed - cannot proceed safely\n");
+          abort();
+      }
+      ```
+
+    - DELETE entire switch statement (lines 269-344)
+    - DELETE default case (lines 340-343)
+
+  Verification:
+    - Compile passes
+    - transmigrate() contains NO switch statement on tags
+    - grep -n "switch.*tag" runtime/src/memory/transmigrate.c returns nothing
+
+  --------------------------------------------------------------------------
+  Subtask 11: Write Comprehensive Tests
+  --------------------------------------------------------------------------
+  File: tests/test_transmigrate_metadata.omni (CREATE NEW FILE)
+
+  Tests to write:
+
+  Test 1: Simple types
+    ```lisp
+    ;; Test immediate values (no allocation)
+    (assert (= (transmigrate 42 src dst) 42))
+    (assert (= (transmigrate 3.14 src dst) 3.14))
+    (assert (= (transmigrate #\a src dst) #\a))
+    ```
+
+  Test 2: Pairs and lists
+    ```lisp
+    ;; Test pair transmigration
+    (let ((x '(1 . 2))
+          (y (transmigrate x src dst)))
+      (assert (= (car y) 1))
+      (assert (= (cdr y) 2)))
+
+    ;; Test longer list
+    (let ((x '(1 2 3 4 5))
+          (y (transmigrate x src dst)))
+      (assert (= (car y) 1))
+      (assert (= (cadr y) 2)))
+    ```
+
+  Test 3: Strings and symbols
+    ```lisp
+    (assert (string= (transmigrate "hello" src dst) "hello"))
+    (assert (eq (transmigrate 'foo src dst) 'foo))
+    ```
+
+  Test 4: Arrays (including nested)
+    ```lisp
+    (let ((x [1 2 3])
+          (y (transmigrate x src dst)))
+      (assert (= (aref y 0) 1))
+      (assert (= (aref y 1) 2)))
+
+    ;; Nested arrays
+    (let ((x [[1 2] [3 4]])
+          (y (transmigrate x src dst)))
+      (assert (= (aref (aref y 0) 0) 1)))
+    ```
+
+  Test 5: Closures with captures
+    ```lisp
+    (let ((x 42)
+          (f (lambda () x))
+          (g (transmigrate f src dst)))
+      (assert (= (g) 42)))
+    ```
+
+  Test 6: Shared structure (verify sharing is preserved)
+    ```lisp
+    (let ((shared '(1 2 3))
+          (x (cons shared shared))
+          (y (transmigrate x src dst)))
+      ;; Both car and cdr should point to same array
+      (assert (eq (car y) (cdr y))))
+    ```
+
+  Test 7: Cycles (verify cycles are preserved)
+    ```lisp
+    (let ((x (list 1 2 3)))
+      (set-cdr! (cddr x) x)  ; Create cycle
+      (let ((y (transmigrate x src dst)))
+        ;; Verify cycle exists in copy
+        (assert (eq (car y) 1))
+        (assert (eq (caddr y) y))))
+    ```
+
+  Test 8: Complex mixed graph
+    ```lisp
+    (let ((x (make-dict))
+          (arr [1 2 3])
+          (lst '(a b c)))
+      (dict-set! x "arr" arr)
+      (dict-set! x "lst" lst)
+      (let ((y (transmigrate x src dst)))
+        (assert (= (aref (dict-get y "arr") 0) 1))
+        (assert (eq (dict-get y "lst") lst))))
+    ```
+
+  Test 9: Missing metadata causes abort (debug mode)
+    ```lisp
+    ;; This should cause a runtime error if TAG_FOO has no metadata
+    ;; (depends on having an unhandled tag)
+    ```
+
+  Verification:
+    - All tests pass
+    - Run: ./omni tests/test_transmigrate_metadata.omni
+
+  ============================================================================
+  VERIFICATION CHECKLIST (Run after completing all subtasks)
+  ============================================================================
+
+  1. Code Verification:
+     [ ] grep -n "switch.*tag" runtime/src/memory/transmigrate.c -> no results
+     [ ] grep -n "default:" runtime/src/memory/transmigrate.c -> only in non-transmigrate code
+     [ ] type_metadata_dump shows all types have non-NULL clone and trace
+     [ ] No shallow-copy fallbacks remain (no "return root" on error)
+
+  2. Compile Verification:
+     [ ] gcc -std=c99 -pthread -c runtime/src/memory/*.c succeeds
+     [ ] No warnings about missing function pointers
+
+  3. Runtime Verification:
+     [ ] All tests in test_transmigrate_metadata.omni pass
+     [ ] Complex graphs (arrays + dicts + closures) transmigrate correctly
+     [ ] Shared structure is preserved (eq test)
+     [ ] Cycles are preserved (no infinite loops)
+
+  4. Debug Verification:
+     [ ] Transmigrating object with missing metadata causes abort()
+     [ ] Error message includes tag number and type_id
+
+  5. Documentation Verification:
+     [ ] Update CTRR_TRANSMIGRATION.md Section 11 (status) with "COMPLETED"
+     [ ] Update TODO.md task status to DONE

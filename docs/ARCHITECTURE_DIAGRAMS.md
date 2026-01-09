@@ -1,4 +1,4 @@
-# Architecture Diagrams (RC-G)
+# Architecture Diagrams (CTRR / Region Control Blocks)
 
 ## 1. Compilation Pipeline
 
@@ -40,7 +40,7 @@ This model is fully implemented. It unifies memory management under **Regions**,
           │                        **WHOLE**           **PARTIAL**
           │                     (Region Promoted)    (Subset Escapes)
           ▼                               │               │
-      **PURE ASAP**                       │               ▼
+      **CTRR-local (scratch)**            │               ▼
    (Static Region Free)                   ▼        **TRANSMIGRATION**
     - Arena Backend                **REGION RC**    (Eager Deep Copy)
     - Zero Runtime Cost           (Refcounted RCB)    - Copy to Dest
@@ -92,7 +92,7 @@ Function Scope
 │ Region Control Block (RCB)                                      │
 │ ├─ external_rc:  [Atomic] (Strong refs from other regions/stack)│
 │ ├─ tether_count: [Atomic] (Sum of all active thread borrows)    │
-│ ├─ scope_alive:  [Bool]   (Static liveness signal from ASAP)    │
+│ ├─ scope_alive:  [Bool]   (Static liveness signal from CTRR compiler) │
 │ └─ arena:        [Arena]  (Physical bump allocator)             │
 └───────────────────────────────────────┬─────────────────────────┘
                                         │

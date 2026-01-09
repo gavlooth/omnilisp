@@ -33,7 +33,8 @@ Without narrowing, all objects within a function tend to be allocated into the s
 
 ## 2. Solution: Branch-Level Narrowing
 
-Analyze each branch independently. Non-escaping branches use **pure ASAP** (stack or scratch arena), avoiding the parent RC region entirely.
+Analyze each branch independently. Non-escaping branches use **CTRR-local scratch**
+(stack or scratch arena), avoiding the parent region entirely.
 
 ```text
 ┌─────────────────────────────────────────┐
@@ -41,12 +42,12 @@ Analyze each branch independently. Non-escaping branches use **pure ASAP** (stac
 │                                         │
 │  if branch1:                            │
 │    ┌─────────────────────┐              │
-│    │ Scratch/Stack       │ ← Pure ASAP  │
+│    │ Scratch/Stack       │ ← CTRR-local │
 │    │ temp1, temp2, temp3 │   (freed at  │
 │    └─────────────────────┘    branch    │
 │  else branch2:                 exit)    │
 │    ┌─────────────────────┐              │
-│    │ Scratch/Stack       │ ← Pure ASAP  │
+│    │ Scratch/Stack       │ ← CTRR-local │
 │    │ temp4, temp5        │              │
 │    └─────────────────────┘              │
 │  end                                    │
@@ -69,8 +70,8 @@ The decision of where to allocate an object is determined by its **Shape**, **Es
 | Shape | Escape Scope | Size (Heuristic) | **Allocation Strategy** |
 | :--- | :--- | :--- | :--- |
 | **TREE** | **Local** | Small (Static) | **Stack** (alloca) |
-| **TREE/DAG** | **Local** | Any | **Scratch Arena** (pure ASAP) |
-| **CYCLIC** | **Local** | Any | **Scratch Arena** (pure ASAP) |
+| **TREE/DAG** | **Local** | Any | **Scratch Arena** (CTRR-local) |
+| **CYCLIC** | **Local** | Any | **Scratch Arena** (CTRR-local) |
 | | | | |
 | **TREE/DAG** | **Escaping** | Small (< 64B) | **Scratch -> Transmigrate** (Copy to parent) |
 | **TREE/DAG** | **Escaping** | Large (> 64B) | **Detached** (Direct `malloc` + RC) |
@@ -145,7 +146,7 @@ Determines whether branch data escapes to:
 - A return statement within the branch
 - A global/mutable reference
 
-If **any** data escapes, that data must go to the parent region. Non-escaping data stays in pure ASAP.
+If **any** data escapes, that data must go to the parent region. Non-escaping data stays CTRR-local.
 
 ### 5.2 Shape Analysis (The Optimizer)
 
