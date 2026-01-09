@@ -18,9 +18,25 @@ typedef struct {
     size_t capacity;                      // Total capacity (REGION_INLINE_BUF_SIZE)
 } InlineBuffer;
 
+/* Region is part of the public runtime API. Many translation units include:
+ * - internal headers (region_core.h) and
+ * - the public header (runtime/include/omni.h)
+ *
+ * To keep the build warning-clean under C99 + extensions, we must NOT
+ * redefine typedefs depending on include order.
+ *
+ * Canonical rule:
+ * - If the typedef already exists, do not re-typedef it here.
+ * - Always define the struct layout here (internal ownership).
+ */
+#ifndef OMNI_REGION_TYPEDEF
+#define OMNI_REGION_TYPEDEF 1
+typedef struct Region Region;
+#endif
+
 // Region Control Block (RCB)
 // The logical owner of a memory region.
-typedef struct Region {
+struct Region {
     Arena arena;                // The physical storage (bump allocator)
     InlineBuffer inline_buf;    // Fast inline buffer for small objects (< 64 bytes)
 
@@ -39,7 +55,7 @@ typedef struct Region {
     int external_rc;            // Strong refs from OTHER regions/stack (atomic)
     int tether_count;           // Temporary "borrows" by threads (atomic)
     bool scope_alive;           // True if the semantic scope is still active
-} Region;
+};
 
 #include "region_metadata.h"  /* Region-level type metadata (must come after Region typedef) */
 
@@ -100,6 +116,31 @@ static inline void* region_alloc(Region* r, size_t size) {
 }
 
 void region_splice(Region* dest, Region* src, void* start_ptr, void* end_ptr);
+
+/*
+ * region_can_splice_arena_only - Check if splice fast-path is sound
+ *
+ * OPTIMIZATION (T-opt-transmigrate-soundness): The splice optimization
+ * (O(1) arena chunk transfer) is only safe when NO allocations were made
+ * to the inline buffer, because inline buffer allocations would NOT be
+ * transferred by the arena splice.
+ *
+ * This predicate makes the splice rule self-documenting and prevents
+ * silent dangling pointer bugs.
+ *
+ * @param r: Region to check
+ * @return: true if inline_buf.offset == 0 (no inline allocations made)
+ *
+ * Usage in transmigrate.c:
+ *   if (src_region && src_region->external_rc == 0 && !src_region->scope_alive) {
+ *       if (region_can_splice_arena_only(src_region)) {
+ *           // Safe to splice arena chunks only
+ *       }
+ *   }
+ */
+static inline bool region_can_splice_arena_only(const Region* r) {
+    return r && (r->inline_buf.offset == 0);
+}
 
 /*
  * region_alloc_typed - Allocate memory using type metadata

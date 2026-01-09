@@ -21,8 +21,7 @@ extern "C" {
 #endif
 
 /* ============== Forward Declarations ============== */
-
-typedef struct Region Region;
+/* Region is defined/typedef'd by omni.h (included above). */
 
 /* ============== Array Element Type Enumeration ============== */
 

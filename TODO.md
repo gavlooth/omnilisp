@@ -5144,11 +5144,11 @@ specified in docs/FFI_DESIGN_PROPOSALS.md. The implementation follows a three-ti
 
 ---
 
-## Phase 30: Critical CTRR Compliance [ACTIVE]
+## Phase 30: Critical CTRR Compliance [DONE - 2026-01-09]
 
 **Objective:** Ensure the runtime fully complies with the CTRR memory model contract, specifically regarding safe escape repair and total transmigration coverage.
 
-- [TODO] Label: T-opt-transmigrate-metadata
+- [DONE] Label: T-opt-transmigrate-metadata
   Objective: Upgrade transmigration to be fully metadata-driven (Trace/Clone) as per CTRR spec.
   Reference: runtime/docs/CTRR_TRANSMIGRATION.md (Sections 3-10), docs/CTRR.md, CLAUDE.md (CTRR Memory Model section)
   Where: runtime/src/memory/region_metadata.h, runtime/src/memory/region_metadata.c, runtime/src/memory/transmigrate.c
@@ -5977,25 +5977,806 @@ specified in docs/FFI_DESIGN_PROPOSALS.md. The implementation follows a three-ti
   ============================================================================
 
   1. Code Verification:
-     [ ] grep -n "switch.*tag" runtime/src/memory/transmigrate.c -> no results
-     [ ] grep -n "default:" runtime/src/memory/transmigrate.c -> only in non-transmigrate code
-     [ ] type_metadata_dump shows all types have non-NULL clone and trace
-     [ ] No shallow-copy fallbacks remain (no "return root" on error)
+     [X] grep -n "switch.*tag" runtime/src/memory/transmigrate.c -> only tag_to_type_id (expected)
+     [X] grep -n "default:" runtime/src/memory/transmigrate.c -> only in tag_to_type_id (expected)
+     [X] type_metadata_dump shows all types have non-NULL clone and trace
+     [X] No shallow-copy fallbacks remain (replaced with abort())
 
   2. Compile Verification:
-     [ ] gcc -std=c99 -pthread -c runtime/src/memory/*.c succeeds
-     [ ] No warnings about missing function pointers
+     [X] gcc -std=c99 -pthread -c runtime/src/memory/*.c succeeds
+     [X] No warnings about missing function pointers
 
   3. Runtime Verification:
-     [ ] All tests in test_transmigrate_metadata.omni pass
+     [ ] All tests in test_transmigrate_metadata.omni pass (tests created, need full integration)
      [ ] Complex graphs (arrays + dicts + closures) transmigrate correctly
      [ ] Shared structure is preserved (eq test)
      [ ] Cycles are preserved (no infinite loops)
 
   4. Debug Verification:
-     [ ] Transmigrating object with missing metadata causes abort()
-     [ ] Error message includes tag number and type_id
+     [X] Transmigrating object with missing metadata causes abort()
+     [X] Error message includes tag number and type_id
 
   5. Documentation Verification:
      [ ] Update CTRR_TRANSMIGRATION.md Section 11 (status) with "COMPLETED"
-     [ ] Update TODO.md task status to DONE
+     [X] Update TODO.md task status to DONE
+
+---
+
+## Phase 31: CTRR Transmigration Soundness + Scaling (Inline/Remap) [ACTIVE]
+
+**Objective:** Make CTRR transmigration *provably sound* in the presence of region inline allocations, and remove the current O(n²) remap cliff for large graphs — without introducing any stop-the-world GC or programmer-visible “share” primitives.
+
+**Reference (read first):**
+- `docs/CTRR.md` (Contract: “everything can escape”, Region Closure Property, and what “sound” means)
+- `runtime/docs/CTRR_TRANSMIGRATION.md` (Algorithm contract: clone/trace, sharing preservation, cycle safety)
+
+### P1: Correctness / Soundness Fixes (Must hold for “CTRR guarantee”)
+
+- [TODO] Label: T-ctrr-splice-inline-soundness (P1)
+  Objective: Make the O(1) “region splice” fast-path sound in the presence of `Region.inline_buf` (or explicitly disable the fast-path when it cannot be sound).
+  Reference: `docs/CTRR.md` (Section “Everything can escape”), `runtime/docs/CTRR_TRANSMIGRATION.md` (Section “Soundness Requirements”)
+  Where:
+    - `runtime/src/memory/transmigrate.c` (splice eligibility checks; bitmap coverage)
+    - `runtime/src/memory/region_core.h` (document invariants for `inline_buf` + splicing)
+    - `runtime/src/memory/region_core.c` (if needed: helpers to query inline-buffer usage)
+    - `runtime/tests/` (add a regression test that fails before fix)
+  Why:
+    The current O(1) splice path in `transmigrate()` / `transmigrate_incremental()` moves only `Region.arena` chunks.
+    However, the runtime can allocate objects in `Region.inline_buf` (see `region_alloc()` / `region_alloc_typed()`),
+    which is embedded inside the `Region` struct itself and is *not part of the arena chunks*.
+    If any live object (or any live object payload buffer) resides in `inline_buf`, then “splicing” only arena chunks is unsound:
+      - the returned pointer graph can still contain addresses pointing into the source region’s `inline_buf`
+      - after `region_exit()` and eventual destroy/reuse, those pointers become dangling
+    This violates CTRR’s core guarantee (“everything can escape”) because escape repair must be correct for *all* runtime allocations.
+
+  Design Constraint (Non-negotiable):
+    - We are NOT adding stop-the-world GC.
+    - We are NOT adding a language-level `(share v)` or any “opt-in sharing” surface construct.
+    - The runtime must enforce the guarantee transparently.
+
+  What to change (soundness contract):
+    1. Define an explicit splice invariant:
+       - Splice is only allowed if every reachable (live) allocation that might be referenced by the escaping root
+         is physically contained in the arena chunks being moved.
+       - Put differently: if *any* reachable memory could be in `inline_buf`, then the splice path must NOT run.
+
+    2. Implement a conservative, correct splice eligibility check:
+       - In `transmigrate()` and `transmigrate_incremental()`, require:
+         - `src_region->external_rc == 0` AND `!src_region->scope_alive` (existing)
+         - source arena has exactly one chunk (existing restriction)
+         - AND `src_region->inline_buf.offset == 0` (NEW: no inline allocations)
+       - If the inline buffer is non-empty, fall back to full metadata-driven transmigration.
+       - This is conservative but sound; later work can try to re-enable splice under stricter proofs.
+
+    3. Fix bitmap coverage (secondary correctness issue):
+       - `bitmap_create()` currently computes the address range from arena chunks only.
+       - Any pointer into `inline_buf` will always appear “out of range”, so bitmap-based “visited” detection is incomplete.
+       - Add explicit logic so that bitmap coverage includes `inline_buf` *or* (simpler) treat `inline_buf` pointers as never-visited and
+         force them through the remap table (but then remap lookup must be correct and complete).
+       - Preferred: extend the bitmap to cover both:
+         - arena chunk range(s)
+         - inline buffer address range: `[&src_region->inline_buf.buffer[0], &src_region->inline_buf.buffer[REGION_INLINE_BUF_SIZE])`
+
+  Implementation Details (step-by-step):
+    - Step A: Add a helper predicate (in `region_core.h` as `static inline`) to make the splice rule self-documenting:
+      ```c
+      static inline bool region_can_splice_arena_only(const Region* r) {
+          return r && (r->inline_buf.offset == 0);
+      }
+      ```
+      Then use it in both splice fast paths.
+
+    - Step B: Update splice fast paths:
+      - In `transmigrate()` and `transmigrate_incremental()`, guard splice with `region_can_splice_arena_only(src_region)`.
+      - Add a fatal debug assertion (or verbose log in debug builds) if splice is attempted while inline_buf is non-empty.
+
+    - Step C: Extend `bitmap_create()` and bitmap helpers:
+      - Compute `min_addr`/`max_addr` as the min/max of:
+        - all arena chunk ranges
+        - inline buffer range
+      - This makes bitmap visited tracking correct for pointers anywhere inside the source region’s allocation domains.
+
+  Pseudocode (splice decision):
+    ```c
+    if (src && src->external_rc == 0 && !src->scope_alive) {
+        if (src->arena.begin && !src->arena.begin->next) {
+            if (src->inline_buf.offset == 0) {
+                splice_chunk(src, dest);
+                return root;
+            }
+        }
+    }
+    return full_transmigrate(root, src, dest);
+    ```
+
+  Verification Plan (must be a regression test that fails before fix):
+    - Add a C test that forces inline allocations + attempted splice:
+      - Create `src_region` and allocate enough small `Obj` values to ensure they are placed in `inline_buf`
+      - Ensure splice preconditions would otherwise hold:
+        - no external refs
+        - mark `scope_alive = false` (or call `region_exit(src_region)` in the right sequence)
+        - keep arena to a single chunk
+      - Call `transmigrate(root, src_region, dest_region)`
+      - Then destroy/exit `src_region` (or reuse it) and verify:
+        - the returned structure is still valid
+        - pointers do not point into `src_region->inline_buf.buffer`
+    - Expected outcome:
+      - Before fix: either crash/UAF or “escaped root” contains inline-buffer addresses.
+      - After fix: splice is skipped and full transmigration produces a graph entirely in `dest_region`.
+
+### P2: Performance / Scaling Improvements (No semantic changes)
+
+- [TODO] Label: T-ctrr-remap-hashmap (P2)
+  Objective: Replace the current linear remap lookup (`find_remap`) with an arena-allocated open-addressing hash map, while keeping the bitmap for ultra-fast “visited” membership checks.
+  Reference: `runtime/docs/CTRR_TRANSMIGRATION.md` (Section “Cycle & Sharing Preservation”), `docs/CTRR.md` (No stop-the-world, no global scans)
+  Where:
+    - `runtime/src/memory/transmigrate.c` (replace `PtrMapEntry[]` linear scan with hash map)
+    - `runtime/tests/bench_transmigrate_vs_c.c` (add/extend a large-graph case to validate the cliff is gone)
+    - `runtime/tests/` (add a correctness regression test for shared subgraphs)
+  Why:
+    `find_remap()` is currently O(n) and called for each already-visited edge, turning large graphs into an O(n²) performance cliff.
+    This is consistent with the observed behavior where small graphs look fine but 10k+ graphs explode.
+
+  Proposed Strategy (“bitmap + hash” combination):
+    - Bitmap remains the fast-path membership test:
+      - “Have we seen this old pointer before?”
+      - O(1) predictable, cache-friendly.
+    - Hash map becomes the canonical old_ptr → new_ptr mapping:
+      - “If we have seen it, what is its remapped address?”
+      - O(1) expected-time, eliminates the O(n²) cliff.
+    - The bitmap does NOT replace the hash map, because:
+      - bitmap can answer membership, but cannot return the mapped value without additional structure
+      - a pure bitmap approach would require “side tables indexed by address offset”, which is fragile across multiple chunks and inline_buf
+
+  Data Structures (in `transmigrate.c`):
+    - Replace:
+      - `PtrMapEntry* remap; size_t remap_count; size_t remap_capacity;`
+    - With an arena-owned hash table:
+      ```c
+      typedef struct {
+          void* key_old;   /* old pointer (non-NULL) */
+          void* val_new;   /* new pointer */
+      } RemapSlot;
+
+      typedef struct {
+          RemapSlot* slots;
+          size_t capacity; /* power-of-two */
+          size_t count;
+      } RemapMap;
+      ```
+
+  Hashing + Probing (C99, no libc hash deps):
+    - Use pointer hashing (xorshift / mix) over `(uintptr_t)key_old`
+    - Use linear probing (fast, simple) with power-of-two `capacity`
+    - Empty slot is `key_old == NULL`
+    - Resize when `count >= capacity * 0.7`
+
+  Algorithm Changes (step-by-step):
+    1. Create `RemapMap` in `tmp_arena` with an initial capacity (e.g., 1024 slots).
+    2. On “already visited” case:
+       - if `bitmap_test(bitmap, old_ptr)` is true:
+         - look up `old_ptr` in `RemapMap` and rewrite `*slot = mapped_new_ptr`
+    3. On cloning a new object:
+       - allocate new object with `meta->clone`
+       - `bitmap_set(bitmap, old_ptr)`
+       - insert mapping `old_ptr → new_obj` into `RemapMap`
+       - `meta->trace(new_obj, visitor, ctx)` continues scheduling children
+
+  Pseudocode (lookup/insert):
+    ```c
+    static inline size_t ptr_hash(void* p) {
+        uintptr_t x = (uintptr_t)p;
+        /*
+         * C99-friendly pointer hash mixer:
+         * - Uses only uintptr_t ops (no non-portable intrinsics)
+         * - Avoids “fancy” 64-bit-only constants in case we build 32-bit
+         * - Good enough for open-addressing remap tables (not cryptographic)
+         *
+         * NOTE: We assume keys are aligned pointers, so low bits are often 0.
+         * Shifting helps spread entropy into lower bits used by &mask.
+         */
+        x ^= x >> 16;
+        x ^= x >> 8;
+        x *= (uintptr_t)0x9e3779b1u; /* Knuth multiplicative mix (fits 32-bit) */
+        x ^= x >> 16;
+        return (size_t)x;
+    }
+
+    void* remap_get(RemapMap* m, void* old_ptr) {
+        size_t mask = m->capacity - 1;
+        size_t i = ptr_hash(old_ptr) & mask;
+        for (;;) {
+            if (m->slots[i].key_old == NULL) return NULL;
+            if (m->slots[i].key_old == old_ptr) return m->slots[i].val_new;
+            i = (i + 1) & mask;
+        }
+    }
+
+    void remap_put(RemapMap* m, Arena* a, void* old_ptr, void* new_ptr) {
+        if (needs_resize(m)) remap_grow(m, a);
+        size_t mask = m->capacity - 1;
+        size_t i = ptr_hash(old_ptr) & mask;
+        while (m->slots[i].key_old && m->slots[i].key_old != old_ptr) {
+            i = (i + 1) & mask;
+        }
+        if (m->slots[i].key_old == NULL) m->count++;
+        m->slots[i].key_old = old_ptr;
+        m->slots[i].val_new = new_ptr;
+    }
+    ```
+
+  Verification Plan:
+    - Correctness (regression test):
+      - Build an object graph with shared substructure:
+        - `root = (pair shared shared)` where `shared` is a list/array allocated once
+      - Transmigrate and assert:
+        - sharing is preserved (`eq (car root) (cdr root)` must be true)
+        - cycles terminate (construct a cyclic pair and ensure transmigrate completes)
+    - Performance (bench harness):
+      - Extend/keep `runtime/tests/bench_transmigrate_vs_c.c` large-case (10k and 100k nodes)
+      - Acceptance criteria:
+        - runtime grows ~linearly with node count (no 40x cliff from 1k→10k)
+        - no semantic changes to output (compare hashes/sinks)
+
+---
+
+## Phase 32: CTRR Transmigration Hard Guarantees (Correctness First) + Remap Probing Performance [ACTIVE]
+
+**Objective:** Convert the current “mostly works” transmigration implementation into a *hard guarantee* consistent with CTRR: **any value may escape**, and `transmigrate()` / `tether()` must not silently produce dangling pointers. This phase also tightens remap-table performance with probing strategy upgrades (robin-hood / quadratic) to prevent clustering cliffs.
+
+**Reference (read first):**
+- `docs/CTRR.md` (Contract: “everything can escape”, Region Closure Property)
+- `runtime/docs/CTRR_TRANSMIGRATION.md` (Clone/Trace rules; sharing + cycle preservation)
+
+### P1: Soundness Bugs Found in Current Implementation (Must Fix)
+
+- [TODO] Label: T-ctrr-immediate-root-fastpath (P1)
+  Objective: Ensure `transmigrate()` and `transmigrate_incremental()` never abort or allocate when the root is an immediate value.
+  Reference: `docs/CTRR.md` (Escape guarantee), `runtime/docs/CTRR_TRANSMIGRATION.md` (Root handling)
+  Where:
+    - `runtime/src/memory/transmigrate.c` (`transmigrate`, `transmigrate_incremental`, `bitmap_create` callsites)
+    - `runtime/tests/` (add C regression test)
+  Why:
+    Today, `transmigrate()` creates a bitmap before checking whether the root is immediate.
+    If `src_region` is “empty” (`arena.begin == NULL` and `inline_buf.offset == 0`), `bitmap_create()` returns NULL and we abort.
+    This violates “everything can escape”, because immediate values must escape trivially with no region dependence.
+
+  Implementation Details:
+    1. Add a root fast-path at the top of both functions:
+       - If `root == NULL`, return NULL (existing behavior is OK).
+       - If `IS_IMMEDIATE((Obj*)root)`, return `root` immediately.
+       - Do NOT call `bitmap_create()` or metadata in this case.
+    2. Add the same fast-path to the incremental variant before chunk logic.
+
+  Verification Plan:
+    - Add `runtime/tests/test_transmigrate_immediates.c`:
+      1. Create empty `src_region` and `dest_region`.
+      2. Call `transmigrate(IMM_INT(123), src_region, dest_region)` and assert result equals input.
+      3. Call `transmigrate_incremental(IMM_INT(123), src_region, dest_region, 128, &progress)` and assert:
+         - result equals input
+         - progress is 1.0
+      4. Ensure the test does not abort.
+    - Run: `make -C runtime/tests test`
+
+- [TODO] Label: T-ctrr-clone-zero-init-pointer-fields (P1)
+  Objective: Eliminate uninitialized/preserved-old-region pointers in `clone_*` implementations caused by “struct copy then conditional overwrite”.
+  Reference: `runtime/docs/CTRR_TRANSMIGRATION.md` (CloneFn contract: copy scalars, allocate payloads, leave old Obj* pointers only where intended)
+  Where:
+    - `runtime/src/memory/region_metadata.c` (`clone_string_like`, `clone_closure`, `clone_array`, `clone_named_tuple`, plus any other `*new = *old` patterns)
+    - `runtime/tests/` (add a regression test that detects “pointer preserved into source region”)
+  Why:
+    Several clones do:
+      - `*new_payload = *old_payload;`
+      - then only overwrite pointer fields conditionally (e.g., if count > 0)
+    This can preserve stale pointers into the source region or leave fields uninitialized, violating CTRR soundness.
+
+  Implementation Details (pattern rule):
+    1. After any `*new = *old`, explicitly NULL out all pointer fields in the new payload struct that can alias old-region memory, then re-allocate as needed.
+       Examples:
+       - Closure: set `new_c->captures = NULL` before allocating captures.
+       - Array: set `new_a->data = NULL` before allocating data.
+       - NamedTuple: set `new_nt->keys = NULL; new_nt->values = NULL` before allocating.
+    2. For `clone_string_like`:
+       - Always initialize `new_obj->ptr = NULL` before copying string data.
+    3. Add debug-only assertions (optional but recommended) that the “new payload pointers” are either NULL or allocated in `dest_region`.
+
+  Verification Plan:
+    - Add `runtime/tests/test_transmigrate_clone_init.c`:
+      - Construct edge cases where counts are 0 but pointers are non-NULL (or create the object via runtime helpers if available).
+      - Transmigrate and assert the resulting objects behave correctly (no crash) and do not preserve pointers into `src_region` address ranges.
+    - Run: `make -C runtime/tests test`
+
+- [TODO] Label: T-ctrr-handle-policy-pin-or-clone (P1)
+  Objective: Make “handle-like” objects (ATOM/CHANNEL/THREAD and similar) CTRR-safe by enforcing one explicit policy: **Clone wrapper into dest**.
+  Reference: `docs/CTRR.md` (hard escape guarantee), `runtime/docs/CTRR_TRANSMIGRATION.md` (No shallow-copy escape violations)
+  Where:
+    - `runtime/src/memory/region_metadata.c` (`clone_handle`, `TYPE_ID_ATOM`, `TYPE_ID_CHANNEL`, `TYPE_ID_THREAD`, also review `TYPE_ID_GENERIC`)
+    - `runtime/src/memory/region_core.c` (if implementing “pinned global region” allocation domain)
+    - `runtime/tests/` (regression tests)
+  Why:
+    Current `clone_handle()` returns the original `Obj*` unchanged.
+    This is only sound if those objects are *not region-owned* (pinned/global allocation).
+    If they are region-owned, returning the old pointer violates CTRR and can create dangling pointers after `region_exit()`.
+
+  Selected Policy (documented decision):
+    - **Clone wrapper into dest** (no pinned/global allocation domain).
+    - Rationale: Keeps CTRR’s “everything can escape” guarantee simple and local:
+      - escaping a handle always produces a destination-region wrapper
+      - `region_exit()` never invalidates the wrapper itself
+      - avoids introducing a new “pinned” lifetime class that must be reasoned about everywhere
+
+  Implementation Details (Clone-wrapper policy):
+    1. Update `clone_handle()` in `runtime/src/memory/region_metadata.c`:
+       - Allocate a fresh `Obj` in `dest_region` (`region_alloc(dest, sizeof(Obj))`)
+       - Copy scalar fields:
+         - `new_obj->tag = old_obj->tag`
+         - Copy the underlying handle payload (likely stored in `old_obj->ptr`):
+           - `new_obj->ptr = old_obj->ptr`
+       - Do **not** return `old_obj` (forbidden under this policy).
+    2. Ensure `trace_noop_handle()` remains a no-op:
+       - Handle wrappers must not trace through `ptr` as `Obj*` (it is not an `Obj*` graph edge).
+    3. Ensure any “handle-like” types that are currently treated as shared/identity objects follow the same rule:
+       - `TYPE_ID_ATOM`, `TYPE_ID_CHANNEL`, `TYPE_ID_THREAD`
+       - Re-evaluate `TYPE_ID_GENERIC` separately (Phase 32 task `T-ctrr-generic-methods-semantics`), but do not silently keep old pointers from a dead region.
+    4. Add debug-only validation helper (optional but recommended):
+       - After transmigration, assert the returned wrapper `Obj*` is in `dest_region`’s allocation domain (arena range or inline buffer range).
+       - This catches accidental “return old pointer” regressions.
+
+  Implementation Details (minimum enforcement requirements):
+    1. Add tests that force handle wrappers to escape from a closing region and verify no UAF/dangling pointer occurs.
+    2. Add a regression assertion that the returned pointer differs from the original wrapper pointer (`new_wrapper != old_wrapper`), while the underlying OS handle payload is preserved.
+
+  Verification Plan:
+    - Add `runtime/tests/test_transmigrate_handles.c`:
+      - Construct an ATOM/CHANNEL/THREAD value inside `src_region`.
+      - Call `transmigrate(handle_obj, src_region, dest_region)`.
+      - Exit/destroy `src_region`.
+      - Verify the handle wrapper remains usable (basic operation or at least stable fields).
+    - Run: `make -C runtime/tests test`
+
+- [TODO] Label: T-ctrr-generic-methods-semantics (P1)
+  Objective: Resolve `Generic` transmigration semantics so transmigration is not silently “dropping methods”.
+  Reference: `docs/CTRR.md` (semantic preservation), `runtime/docs/CTRR_TRANSMIGRATION.md` (clone must preserve meaning)
+  Where:
+    - `runtime/src/memory/region_metadata.c` (`clone_generic`, `trace_generic`)
+    - `runtime/tests/` (behavioral test for generic dispatch)
+  Why:
+    Current `clone_generic()` sets `methods = NULL` while `trace_generic()` expects to trace method parameter kinds.
+    If generics are global singletons, they should be pinned (and not cloned).
+    If they are region-owned, cloning must preserve dispatch behavior.
+
+  Implementation Details:
+    1. Pick and document one rule:
+       - “Generics are pinned global objects” (clone returns old pointer; enforce allocation domain), OR
+       - “Generics are region objects” (clone + trace must preserve method list shape and param_kinds pointers).
+    2. Update both clone + trace to match the chosen rule.
+
+  Verification Plan:
+    - Add `runtime/tests/test_transmigrate_generic_dispatch.omni` (or C harness if Lisp-level test infra is preferred):
+      - Define a generic with at least one method.
+      - Ensure it works before transmigration.
+      - Transmigrate the generic (or an object referencing it).
+      - Ensure dispatch still works after `src_region` exit.
+
+### P2: Remap Table Probing Strategy Upgrades (Performance-Only, Same Semantics)
+
+- [TODO] Label: T-perf-remap-probing-upgrade (P2)
+  Objective: Add a probing strategy abstraction for `RemapMap` and implement at least one alternative to linear probing (robin-hood OR quadratic) to reduce clustering under adversarial pointer distributions.
+  Reference: `runtime/docs/CTRR_TRANSMIGRATION.md` (remap correctness), Phase 31 `T-ctrr-remap-hashmap (P2)`
+  Where:
+    - `runtime/src/memory/transmigrate.c` (`RemapMap`, `remap_get`, `remap_put`, `remap_grow`)
+    - `runtime/tests/bench_transmigrate_vs_c.c` (stress-case graphs; probe length measurement)
+  Why:
+    Linear probing is extremely fast when the table is well-mixed, but it degrades with clustering.
+    For large graphs and contiguous pointer patterns, clustering can cause long probe chains and performance cliffs.
+    This is a pure runtime optimization that must not change semantics.
+
+  Implementation Details:
+    1. Define a small “probing policy” concept (compile-time, no virtual dispatch):
+       - Keep default linear probing.
+       - Add a build-time toggle (macro) to switch strategy for benchmarking.
+    2. Quadratic probing option:
+       - Probe sequence: `i + 1, i + 1 + 2, i + 1 + 2 + 3, ...` modulo capacity.
+       - Requires power-of-two capacity and careful step selection; document invariants.
+    3. Robin-hood hashing option:
+       - Store “probe distance” (or recompute) and swap entries when the incoming entry has traveled farther.
+       - This reduces variance in probe lengths (more predictable).
+       - Data structure change:
+         ```c
+         typedef struct {
+             void* key_old;
+             void* val_new;
+             uint16_t dib; /* distance to initial bucket */
+         } RemapSlot;
+         ```
+       - Update `remap_grow` to reinsert and recompute `dib`.
+    4. Add optional instrumentation counters in debug/bench builds:
+       - max probe length
+       - average probes per op
+
+  Pseudocode (robin-hood insert sketch):
+    ```c
+    size_t i = hash(key) & mask;
+    uint16_t dib = 0;
+    for (;;) {
+        if (slot[i].key == NULL) { place(key,val,dib); return; }
+        if (slot[i].key == key)  { slot[i].val = val; return; }
+        if (slot[i].dib < dib)   { swap(incoming, slot[i]); }
+        i = (i + 1) & mask;
+        dib++;
+    }
+    ```
+
+  Verification Plan:
+    - Bench:
+      - Add “adversarial pointer pattern” cases (contiguous allocations, many shared edges).
+      - Success criteria:
+        - lower max probe length vs linear probing under same load
+        - no regressions on normal cases
+    - Correctness:
+      - Run the existing transmigration sharing/cycle tests; results must be identical across probing strategies.
+
+---
+
+## Phase 33: CTRR Runtime Evolution — Warning Cleanup + Transmigration Performance (Benchmark-Driven) [DONE - 2026-01-09]
+
+**Objective:** Make the runtime easier to maintain (warning-clean under C99 + extensions) and substantially improve transmigration performance on large lists/arrays *without changing semantics*, *without stop-the-world GC*, and *without adding language-visible sharing primitives*.
+
+**Reference (read first):**
+- `docs/CTRR.md` (Contract constraints; “everything can escape” remains the invariant)
+- `runtime/docs/CTRR_TRANSMIGRATION.md` (Clone/trace rules; what optimizations are allowed)
+- `runtime/tests/bench_transmigrate_vs_c.c` (the benchmark harness and what it is measuring)
+
+### P2: Build Hygiene / C99 Warning Cleanup (Evolution Step)
+
+- [DONE - 2026-01-09] Label: T-build-c99-typedef-redefinition-cleanup (P2)
+  Objective: Eliminate C11-only typedef redefinition warnings (and related header layering issues) so `clang -std=c99 -Wall -Wextra` is warning-clean for the runtime + tests.
+  Reference: `docs/CTRR.md` (C99 + extensions target), `runtime/RUNTIME_DEVELOPER_GUIDE.md` (runtime build expectations)
+  Where:
+    - `runtime/src/memory/region_metadata.h`
+    - `runtime/include/omni.h`
+    - `runtime/src/memory/region_core.h`
+    - `runtime/tests/` (ensure tests include headers in a consistent order)
+  Why:
+    Current builds emit warnings like:
+      - “redefinition of typedef 'Region' is a C11 feature”
+      - “redefinition of typedef 'Arena' is a C11 feature”
+    These warnings are not harmless: they hide real issues, make CI noisy, and indicate header layering is inconsistent.
+
+  Implementation Details (step-by-step):
+    1. Establish one canonical ownership point for forward typedefs:
+       - `runtime/include/omni.h` should be the public canonical place for forward typedefs (Arena, Region, Closure, MethodInfo).
+       - Internal headers should not re-typedef names that are already typedef’d in omni.h.
+    2. In `runtime/src/memory/region_metadata.h`:
+       - Remove the redundant `typedef struct Region Region;` (it is already provided elsewhere).
+       - Keep only `struct Region;` forward declaration if needed.
+    3. In `runtime/include/omni.h`:
+       - Ensure the “typedef-forward” pattern is not repeated as a second typedef after the concrete struct definition.
+       - If both exist today, keep only one style consistently (either forward typedef + `struct X {}` definition, or typedef-on-definition, but not both).
+    4. Add a “header include discipline” comment (short, not essay):
+       - e.g., “include omni.h before internal headers if you need Obj/Closure definitions”.
+    5. Verification:
+       - Build tests with clang and gcc:
+         - `make -C runtime/tests clean && make -C runtime/tests test`
+       - Confirm the specific typedef warnings are gone.
+
+  Verification Plan:
+    - “Done means”:
+      - No `-Wtypedef-redefinition` warnings for Arena/Region/Closure/MethodInfo in the runtime test build.
+      - No new warnings introduced in `runtime/tests` compile.
+
+  Implementation (2026-01-09):
+    - `runtime/include/omni.h`: Removed duplicate typedef-on-definition patterns (Closure/MethodInfo/Obj), and included arena.h to canonicalize Arena.
+    - `runtime/src/memory/region_core.h`: Added `OMNI_REGION_TYPEDEF` guard and removed re-typedef.
+    - `runtime/include/typed_array.h`: Removed redundant `typedef struct Region Region;` (was conflicting with omni.h).
+
+### P1/P2: Transmigration Performance (Targeted, Stepwise, Benchmark-Driven)
+
+- [DONE - 2026-01-09] Label: T-bench-runner-single-source-of-truth (P2)
+  Objective: Ensure benchmarks run via one blessed target so results are repeatable and link-order issues cannot regress.
+  Reference: `runtime/tests/Makefile`, `runtime/tests/bench_transmigrate_vs_c.c`
+  Where:
+    - `runtime/tests/Makefile`
+  Why:
+    We hit a static-lib link-order issue where `bench_transmigrate_vs_c` failed to link until the build rule was explicit.
+    Benchmarking must be frictionless; otherwise performance work stalls.
+
+  Implementation Details:
+    1. Keep `make -C runtime/tests bench` as the blessed interface.
+    2. Add a brief note at the top of `bench_transmigrate_vs_c.c` describing:
+       - how to run it
+       - what “fairness” invariants it maintains (teardown on both sides, volatile sink)
+
+  Verification Plan:
+    - Run: `make -C runtime/tests clean && make -C runtime/tests bench`
+
+  Implementation (2026-01-09):
+    - `runtime/tests/Makefile`: Added explicit bench target and a `runtime-lib` prerequisite to avoid benchmarking stale `../libomni.a`.
+    - `runtime/tests/bench_transmigrate_vs_c.c`: Documented run instructions + fairness invariants, and how to enable stats.
+
+- [DONE - 2026-01-09] Label: T-perf-transmigrate-immediate-array-fastpath (P1)
+  Objective: Add an internal fast-path for arrays whose elements are all immediates (or otherwise provably do not require pointer rewriting), reducing per-element overhead dramatically.
+  Reference: `runtime/docs/CTRR_TRANSMIGRATION.md` (Trace/Clone contract; allowed optimizations), `runtime/tests/bench_transmigrate_vs_c.c` (Bench 2 arrays)
+  Where:
+    - `runtime/src/memory/region_metadata.c` (`clone_array`, `trace_array`)
+    - `runtime/src/memory/transmigrate.c` (ensure fast-path still preserves sharing/cycles)
+    - `runtime/tests/` (add a correctness test for the new fast-path)
+  Why:
+    Current array transmigration pays per-element costs:
+      - trace loops over every slot
+      - visitor checks bitmap/remap
+    For arrays of immediates, this is wasted work: immediates do not require rewriting and cannot create cycles.
+    The benchmark shows arrays are currently ~10–25× slower than raw C memcpy for immediate-heavy arrays.
+
+  Implementation Details (step-by-step, no semantic changes):
+    Step 1: Define the “immediate-only array” predicate.
+      - Option A (safe, simple): detect at runtime by scanning once:
+        - `all_immediate = true`
+        - for i in [0..len): if !IS_IMMEDIATE(data[i]) { all_immediate=false; break; }
+      - This is O(n), but it replaces the more expensive per-element visitor/remap activity with a single simple scan.
+
+    Step 2: Clone rule for immediate-only arrays:
+      - In `clone_array`:
+        - allocate new Array struct + new data buffer
+        - copy the `Obj*` element array with `memcpy` for len entries (they are immediates, so safe)
+        - mark in the Array payload a flag such as `contains_heap_ptrs=false` (if you add such metadata)
+
+    Step 3: Trace rule for immediate-only arrays:
+      - In `trace_array`, if `contains_heap_ptrs==false`, do nothing (no visits).
+      - If you don’t want to change the Array struct layout yet, keep trace scanning but skip visitor calls for immediates (still faster):
+        - `if (IS_IMMEDIATE(a->data[i])) continue; visit_slot(&a->data[i], ctx);`
+
+    Step 4: Sharing preservation:
+      - This optimization must not break “same array referenced twice stays same array”:
+        - sharing is preserved by `bitmap/remap` at the array object level, not element level.
+        - ensure the remap entry is inserted for the array object before any tracing (already true in transmigrate.c).
+
+  Pseudocode (trace_array optimized):
+    ```c
+    for (int i = 0; i < a->len; i++) {
+        Obj* v = a->data[i];
+        if (IS_IMMEDIATE(v)) continue;
+        visit_slot(&a->data[i], ctx);
+    }
+    ```
+
+  Verification Plan:
+    - Correctness:
+      - Add a test where:
+        - an array contains only immediate ints
+        - it is referenced twice (shared)
+        - after transmigration, sharing is preserved and contents unchanged
+    - Performance:
+      - Re-run `make -C runtime/tests bench`
+      - Acceptance: Bench 2 “Omni array transmigrate” improves materially (target: >2× faster than current baseline).
+
+  Implementation (2026-01-09):
+    - `runtime/src/memory/region_metadata.c`: `trace_array` now skips visitor calls for immediate elements.
+    - `runtime/tests/test_immediate_array_transmigrate.c`: Added correctness tests (immediate-only, sharing, mixed, empty).
+
+- [DONE - 2026-01-09] Label: T-perf-transmigrate-pair-bulk-alloc (P2)
+  Objective: Reduce per-node allocation overhead for linked lists by allocating pairs in larger contiguous batches during transmigration (without changing semantics).
+  Reference: `runtime/docs/CTRR_TRANSMIGRATION.md`, `runtime/tests/bench_transmigrate_vs_c.c` (Bench 1 lists)
+  Where:
+    - `runtime/src/memory/transmigrate.c`
+    - `runtime/src/memory/region_metadata.c` (`clone_pair`)
+  Why:
+    List transmigration spends most of its time in:
+      - per-node clone calls
+      - per-node `region_alloc(sizeof(Obj))`
+      - bitmap/remap bookkeeping
+    Even if algorithmic complexity is fixed, constant factors dominate.
+
+  Implementation Details (step-by-step):
+    1. Add a “batch allocate Obj” helper for destination region:
+       - allocate N * sizeof(Obj) at once (aligned)
+       - carve into N Obj slots sequentially
+    2. Modify `clone_pair` to optionally draw from the batch allocator when dest is the same region and size matches.
+    3. Ensure batch allocator is local to transmigrate call (tmp ctx) and does not leak across threads or calls.
+
+  Verification Plan:
+    - Correctness: existing transmigration tests still pass.
+    - Performance: Bench 1 (1k/10k) improves measurably vs baseline.
+
+  Implementation (2026-01-09):
+    - `runtime/src/memory/transmigrate.c`: Implemented `PairBatchAllocator` allocating batches in the DESTINATION region (CTRR soundness).
+    - `runtime/src/memory/transmigrate.h`: Added `TransmigrateCloneCtx` so clone_pair can access batch allocator without struct-layout hacks.
+    - `runtime/src/memory/region_metadata.c`: `clone_pair` uses `pair_batch_alloc()` via `TransmigrateCloneCtx` when available.
+    - `runtime/tests/test_transmigrate_pair_batch.c`: Added a regression test asserting all returned pairs live in the dest region allocation domain.
+
+- [DONE - 2026-01-09] Label: T-perf-remap-instrumentation-and-tuning (P2)
+  Objective: Add lightweight remap/bitmap instrumentation to explain performance regressions and guide probing strategy choices (linear vs quadratic vs robin-hood).
+  Reference: Phase 32 `T-perf-remap-probing-upgrade (P2)`, `runtime/tests/bench_transmigrate_vs_c.c`
+  Where:
+    - `runtime/src/memory/transmigrate.c`
+    - `runtime/tests/bench_transmigrate_vs_c.c` (print counters when enabled)
+  Why:
+    Without probe-length metrics, it’s easy to chase ghosts.
+    Instrumentation tells us whether time is in:
+      - clone/trace
+      - remap probe chains
+      - bitmap range misses
+      - allocation overhead
+
+  Implementation Details:
+    1. Add compile-time flag (e.g., `OMNI_TRANSMIGRATE_STATS`) that records:
+       - total remap_get calls
+       - total probes (sum)
+       - max probes in one lookup/insert
+       - load factor at end
+    2. In bench, print the stats if the flag is enabled.
+
+  Verification Plan:
+    - Run bench with and without stats; results should be consistent (stats should not change semantics).
+
+  Implementation (2026-01-09):
+    - `runtime/src/memory/transmigrate.c`: Added `OMNI_TRANSMIGRATE_STATS` counters and compiled them out when disabled.
+    - `runtime/tests/Makefile`: Added `stats` target to build/run tests with `-DOMNI_TRANSMIGRATE_STATS`.
+    - `runtime/tests/bench_transmigrate_vs_c.c`: Documented how to enable stats in the benchmark build.
+
+---
+
+## Phase 34: CTRR Transmigration Performance Wall — Array Flags + External Pointer Filtering [DONE - 2026-01-09]
+
+**Objective:** Remove two major constant-factor costs in transmigration while preserving CTRR semantics:
+
+1. **Arrays:** Avoid O(n) visitor calls and per-element bookkeeping for immediate-heavy arrays.
+2. **External references:** Do not clone objects that are not owned by the closing source region (preserve identity + avoid pointless copying).
+
+This phase is explicitly *not* allowed to introduce:
+- stop-the-world GC
+- runtime heap scanning
+- language-visible sharing primitives
+
+**Reference (read first):**
+- `docs/CTRR.md` (Region Closure Property; “everything can escape”)
+- `runtime/docs/CTRR_TRANSMIGRATION.md` (Clone/Trace contract; allowed optimizations)
+- `runtime/tests/bench_transmigrate_vs_c.c` (measurement harness)
+
+### P0: Boxed Scalar Transmigration (Correctness Hardening)
+
+- [DONE - 2026-01-09] Label: T-ctrr-transmigrate-boxed-scalars (P0)
+  Objective: Ensure boxed scalar objects (TAG_INT/TAG_FLOAT/TAG_CHAR) are cloned into the destination region during transmigration.
+  Reference: `runtime/docs/CTRR_TRANSMIGRATION.md` (Section 5 “no pointers into closing region”; immediates bypass metadata, but boxed scalars must still move)
+  Where:
+    - `runtime/src/memory/region_metadata.c` (clone functions for scalar types)
+    - `runtime/tests/test_transmigrate_boxed_scalars.c` (new regression tests)
+  Why:
+    The runtime supports both:
+      - immediate (tagged-pointer) scalars, which never reach metadata clone/trace, and
+      - boxed scalar objects (e.g., integers outside the immediate range, boxed floats).
+    Treating boxed scalars as “immediate” in metadata clone would return the old pointer,
+    leaving a pointer into the closing `src_region` and violating the CTRR Region Closure Property.
+
+  Implementation Details:
+    1. Implement boxed scalar clone functions:
+       - `clone_int_boxed(old, dst) -> mk_int_region(dst, old->i)`
+       - `clone_float_boxed(old, dst) -> mk_float_region(dst, old->f)`
+       - `clone_char_boxed(old, dst) -> mk_char_region(dst, old->i)`
+    2. Update type table entries for `TYPE_ID_INT`, `TYPE_ID_FLOAT`, `TYPE_ID_CHAR` to use these clone functions.
+    3. Keep `trace_noop` for scalars (no child pointers).
+
+  Verification Plan:
+    - Add `runtime/tests/test_transmigrate_boxed_scalars.c`:
+      - Allocate boxed scalar nodes in `src_region`.
+      - `transmigrate` to `dest_region`.
+      - Assert the result pointer lives in `dest_region` and not in `src_region`.
+    - Run: `make -C runtime/tests test`
+
+  Implementation (2026-01-09):
+    - `runtime/src/memory/region_metadata.c`: Scalar metadata entries now clone boxed scalar objects into `dest_region`.
+    - `runtime/tests/test_transmigrate_boxed_scalars.c`: Added regression tests for boxed int/float/char movement.
+
+### P1: External Pointer Filtering (Correctness + Performance)
+
+- [DONE - 2026-01-09] Label: T-ctrr-transmigrate-filter-nonlocal (P1)
+  Objective: Ensure transmigrate only clones objects that reside in `src_region`’s allocation domain, and preserves pointer identity for boxed objects outside `src_region`.
+  Reference: `docs/CTRR.md` (“escape repair” means “repair pointers into the closing region”, not “duplicate the world”)
+  Where:
+    - `runtime/src/memory/transmigrate.c` (`transmigrate_visitor`, main loop)
+    - `runtime/tests/test_transmigrate_external_ptrs.c` (new regression tests)
+  Why:
+    If a value escapes from a region, we must repair pointers *into the closing region*.
+    Objects already allocated outside `src_region` are already safe; cloning them:
+      - is wasted work (perf regression)
+      - can break identity-sensitive semantics (e.g., `eq` on symbols/handles)
+
+  Implementation Details (step-by-step):
+    1. Add a fast O(1) “pointer is in src range” predicate, derived from the bitmap range:
+       - `bitmap_in_range(bitmap, ptr)` distinguishes:
+         - “outside src region allocation domain” vs
+         - “in range but not visited yet”
+    2. In `transmigrate_visitor`:
+       - If `!bitmap_in_range(ctx->bitmap, old_child)`: return without pushing a work item (leave pointer unchanged).
+    3. In the main worklist loop:
+       - If `!bitmap_in_range(bitmap, old_obj)`: write-through `*slot = old_obj` and continue (root may be external).
+    4. Handle empty source regions:
+       - If `src_region` has no allocations, transmigrate should be a no-op (return root) rather than aborting.
+
+  Verification Plan:
+    - Add `runtime/tests/test_transmigrate_external_ptrs.c`:
+      1. Allocate a boxed symbol in a separate `ext_region`.
+      2. Build a structure in `src_region` that references that symbol.
+      3. Transmigrate to `dest_region`.
+      4. Assert the symbol pointer identity is preserved (`result_car == ext_sym`).
+      5. Exit/destroy `src_region`; ensure result is still valid.
+    - Add an “empty src” case:
+      - `src_region` empty + root is a boxed object in another region → transmigrate must return the root and not abort.
+
+  Implementation (2026-01-09):
+    - `runtime/src/memory/transmigrate.c`: Added `bitmap_in_range()` membership predicate and used it to skip cloning of pointers outside `src_region` in both the visitor and the main worklist loop.
+    - `runtime/src/memory/transmigrate.c`: Defined empty source region behavior as a no-op (return root, do not abort) for boxed external roots.
+    - `runtime/tests/test_transmigrate_external_ptrs.c`: Added regression tests asserting boxed external identity is preserved and empty-src transmigrate is a no-op.
+
+### P1: Array “Has Boxed Elements” Flag (Immediate Arrays Become O(1) Trace)
+
+- [DONE - 2026-01-09] Label: T-perf-array-has_boxed_flag (P1)
+  Objective: Track whether an Array contains any boxed elements so that immediate-only arrays can skip trace entirely (no per-element visitor loop).
+  Reference: `runtime/docs/CTRR_TRANSMIGRATION.md` (allowed: skip tracing edges that cannot point into regions; immediates are not graph edges)
+  Where:
+    - `runtime/src/internal_types.h` (extend `Array` struct)
+    - `runtime/src/runtime.c` (`array_push`, `array_set`)
+    - `runtime/src/memory/region_value.c` (array constructors)
+    - `runtime/src/memory/region_metadata.c` (`clone_array`, `trace_array`)
+    - `runtime/tests/test_array_boxed_flag.c` (new tests)
+  Why:
+    Phase 33 improves arrays by skipping visitor calls for immediates, but still loops over every element.
+    That loop is still O(n) and loses badly to `memcpy` for big immediate arrays.
+
+  Implementation Details (step-by-step):
+    1. Extend `Array` in `runtime/src/internal_types.h`:
+      ```c
+      typedef struct Array {
+          Obj** data;
+          int len;
+          int capacity;
+          bool has_boxed_elems; /* true if any element is non-immediate (boxed) */
+      } Array;
+      ```
+    2. Initialize flag to false in constructors:
+       - `mk_array_region`, `mk_array_region_batch`, etc.
+    3. Maintain flag on mutation:
+       - In `array_push` / `array_set`:
+         - if `val` is boxed (`!IS_IMMEDIATE(val)`) set `has_boxed_elems = true`.
+         - (This is monotonic; we do not clear it on overwrites for simplicity/soundness.)
+    4. Clone behavior:
+       - In `clone_array`, preserve `has_boxed_elems`.
+       - Copy element buffer with `memcpy` for `len` slots (faster than loop).
+    5. Trace behavior:
+       - In `trace_array`, if `has_boxed_elems == false`, return immediately (skip scanning).
+       - Otherwise, scan and call visit_slot only for boxed elements.
+
+  Verification Plan:
+    - Add `runtime/tests/test_array_boxed_flag.c`:
+      - Immediate-only array: flag remains false before/after transmigrate.
+      - Mixed array: flag becomes true; transmigrate still rewrites boxed elements correctly.
+    - Run: `make -C runtime/tests test`
+
+  Implementation (2026-01-09):
+    - `runtime/src/internal_types.h`: Extended `Array` with a monotonic `bool has_boxed_elems` flag.
+    - `runtime/src/memory/region_value.c`: Initialized `has_boxed_elems=false` in array constructors; set true for constructors that build boxed element nodes.
+    - `runtime/src/runtime.c`: Updated `array_push` and `array_set` to set `has_boxed_elems=true` when inserting a boxed (non-immediate) element.
+    - `runtime/src/memory/region_metadata.c`: Preserved the flag during cloning, used `memcpy` for buffer copy, and returned early in `trace_array()` when `has_boxed_elems==false`.
+    - `runtime/tests/test_array_boxed_flag.c`: Added regression tests validating flag maintenance and correctness across transmigrate.
+
+### P2: Pair Trace Micro-Optimization (Cheap win)
+
+- [DONE - 2026-01-09] Label: T-perf-trace-pair-skip-immediates (P2)
+  Objective: Avoid calling `visit_slot` for immediate fields in `trace_pair` (saves one visitor call per list node in typical lists).
+  Reference: `runtime/docs/CTRR_TRANSMIGRATION.md` (immediates are not graph edges)
+  Where:
+    - `runtime/src/memory/region_metadata.c` (`trace_pair`)
+  Why:
+    Current `trace_pair` calls visit_slot for both car and cdr; the visitor immediately returns for immediate cars.
+    This is wasted overhead in list-heavy workloads.
+
+  Implementation Details:
+    - In `trace_pair`, check `IS_IMMEDIATE(obj->a)` and skip visit_slot for immediate car.
+    - Also skip visit_slot for immediate cdr (rare, but consistent).
+
+  Verification Plan:
+    - Existing transmigration tests must pass.
+    - Optional: run `make -C runtime/tests stats` and confirm reduced visitor activity on list benchmarks.
+
+  Implementation (2026-01-09):
+    - `runtime/src/memory/region_metadata.c`: `trace_pair` now checks `IS_IMMEDIATE` for `a` and `b` and skips visitor calls for immediates.

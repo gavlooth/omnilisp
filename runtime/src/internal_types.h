@@ -12,6 +12,16 @@ typedef struct Array {
     Obj** data;
     int len;
     int capacity;
+    /* Phase 34.2: Monotonic flag indicating whether this array may contain
+     * any boxed (non-immediate) elements.
+     *
+     * Why:
+     * - If false, the array cannot contain region pointers and can skip trace
+     *   entirely during transmigration (fast-path for immediate-only arrays).
+     * - If true, trace must scan elements and visit boxed slots for rewrite.
+     *
+     * NOTE: This is monotonic under mutation: once true, it stays true. */
+    bool has_boxed_elems;
 } Array;
 
 // Dict: Region-resident HashMap

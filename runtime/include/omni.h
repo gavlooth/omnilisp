@@ -15,16 +15,35 @@
 #include <pthread.h>
 #include <stdbool.h>
 
+/* OmniLisp runtime uses the third-party arena implementation as its Arena type.
+ * Include it here so the public API sees a single canonical Arena definition. */
+#include "../../third_party/arena/arena.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* ========== Forward Declarations ========== */
-
+/*
+ * Header include discipline:
+ * Include omni.h before internal headers if you need Obj/Closure/Region definitions.
+ *
+ * C99 Compatibility: To avoid typedef redefinition warnings, we use the
+ * "forward typedef + struct definition without typedef" pattern.
+ * - Forward typedefs are declared here
+ * - Struct definitions use plain "struct X { ... };" without typedef suffix
+ * - This works because C99 allows forward typedefs to match later struct definitions
+ */
 typedef struct Obj Obj;
 typedef struct Closure Closure;
-typedef struct Arena Arena;
+typedef struct MethodInfo MethodInfo;
+
+/* Region is part of the public API but its struct layout lives in internal headers.
+ * Use a typedef guard so include order (omni.h vs region_core.h) is warning-clean. */
+#ifndef OMNI_REGION_TYPEDEF
+#define OMNI_REGION_TYPEDEF 1
 typedef struct Region Region;
+#endif
 
 /* Forward declaration for internal GenObj (legacy) */
 struct GenObj;
@@ -95,25 +114,25 @@ typedef Obj* (*ClosureFn)(Obj** captures, Obj** args, int argc);
  * Closure - Single-dispatch function (traditional Lisp)
  * Stored in an Obj with tag=TAG_CLOSURE, using the obj->a field for the closure pointer.
  */
-typedef struct Closure {
+struct Closure {
     ClosureFn fn;           /* Function pointer */
     Obj** captures;         /* Captured variables (boxed array) */
     int capture_count;      /* Number of captures */
     int arity;              /* Expected number of arguments */
     const char* name;      /* Function name (for debugging) */
-} Closure;
+};
 
 /*
  * MethodInfo - A single method in a generic function's method table.
  * Methods are specialized for specific argument types.
  */
-typedef struct MethodInfo {
+struct MethodInfo {
     Obj** param_kinds;     /* Array of Kind objects for each parameter */
     int param_count;        /* Number of parameters */
     ClosureFn impl;         /* Method implementation */
     int specificity;        /* Specificity score (higher = more specific) */
     struct MethodInfo* next; /* Next method in the table */
-} MethodInfo;
+};
 
 /*
  * Generic - Multi-dispatch generic function.
@@ -633,7 +652,6 @@ Obj* generic_add_method(Obj* generic_obj, Obj** param_kinds, int param_count, Cl
 Obj* call_generic(Obj* generic_obj, Obj** args, int argc);
 
 /* Lookup the most specific method for arguments */
-typedef struct MethodInfo MethodInfo;
 MethodInfo* omni_generic_lookup(Obj* generic_obj, Obj** args, int argc);
 
 /* Invoke a generic function with arguments */

@@ -48,6 +48,13 @@ static int run_slow_tests_enabled(void) {
 #include "test_performance.c"
 #include "test_stress_comprehensive.c"
 #include "test_performance_comprehensive.c"
+#include "test_inline_buf_splice.c"
+#include "test_transmigrate_immediates.c"
+#include "test_immediate_array_transmigrate.c"
+#include "test_transmigrate_pair_batch.c"
+#include "test_transmigrate_external_ptrs.c"
+#include "test_array_boxed_flag.c"
+#include "test_transmigrate_boxed_scalars.c"
 
 int main(int argc, char** argv) {
     (void)argc;
@@ -89,6 +96,27 @@ int main(int argc, char** argv) {
         run_comprehensive_stress_tests();  /* 400+ new stress tests */
         run_comprehensive_performance_tests();  /* 200+ new performance tests */
     }
+
+    /* Phase 31.4: Inline Buf Splice Soundness Tests */
+    run_inline_buf_splice_tests();
+
+    /* Phase 32.1: Immediate Root Fast-Path Tests */
+    run_transmigrate_immediates_tests();
+
+    /* Phase 33.3: Immediate Array Transmigration Fast-Path Tests */
+    run_immediate_array_transmigrate_tests();
+
+    /* Phase 33.4: Pair Batch Allocator Soundness Tests */
+    run_transmigrate_pair_batch_tests();
+
+    /* Phase 34.1: External Pointer Filtering Tests */
+    run_transmigrate_external_ptrs_tests();
+
+    /* Phase 34.2: Array Boxed Flag Tests */
+    run_array_boxed_flag_tests();
+
+    /* Correctness: Boxed Scalar Transmigration */
+    run_transmigrate_boxed_scalars_tests();
 
     TEST_EXIT();
 }

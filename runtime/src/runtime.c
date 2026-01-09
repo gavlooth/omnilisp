@@ -750,6 +750,11 @@ void array_push(Obj* arr, Obj* val) {
     // For global region usage we assume realloc works or fails
     if (a->len < a->capacity) {
         a->data[a->len++] = val;
+        /* Phase 34.2: Maintain monotonic boxed-element flag.
+         * If we ever insert a boxed element, the array may need tracing. */
+        if (val && !IS_IMMEDIATE(val)) {
+            a->has_boxed_elems = true;
+        }
     } else {
         // Simple realloc for global region (unsafe if region allocator doesn't support realloc)
         // Since we are in global region (malloc-based arena maybe?), we can't easily realloc in place.
@@ -768,7 +773,13 @@ Obj* array_get(Obj* arr, int idx) {
 void array_set(Obj* arr, int idx, Obj* val) {
     if (!arr || !IS_BOXED(arr) || arr->tag != TAG_ARRAY) return;
     Array* a = (Array*)arr->ptr;
-    if (idx >= 0 && idx < a->len) a->data[idx] = val;
+    if (idx >= 0 && idx < a->len) {
+        a->data[idx] = val;
+        /* Phase 34.2: Monotonic boxed-element flag. */
+        if (val && !IS_IMMEDIATE(val)) {
+            a->has_boxed_elems = true;
+        }
+    }
 }
 
 int array_length(Obj* arr) {

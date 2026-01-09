@@ -18,6 +18,51 @@
  * - Centralized metadata per region (not per object)
  */
 
+/* ========== Forward Declarations ========== */
+
+struct Obj;  /* Obj is defined in omni.h */
+struct Region;  /* Region typedef is in omni.h (canonical public API) */
+
+/* ========== CTRR Transmetadata Function Pointers ========== */
+
+/*
+ * OmniVisitSlotFn - Visitor function pointer for tracing.
+ * Called for each Obj* slot reachable from an object.
+ *
+ * @param slot: Pointer to the Obj* slot (allows rewriting)
+ * @param ctx: User context passed to trace function
+ */
+typedef void (*OmniVisitSlotFn)(struct Obj** slot, void* ctx);
+
+/*
+ * TraceFn - Enumerate all child Obj* slots reachable from obj.
+ *
+ * IMPORTANT: Must trace pointers inside payload buffers (arrays/dicts),
+ *            not just fields in the Obj union itself.
+ *
+ * @param obj: The object to trace
+ * @param visit_slot: Function to call for each Obj* slot
+ * @param ctx: Context passed to visit_slot function
+ */
+typedef void (*TraceFn)(struct Obj* obj, OmniVisitSlotFn visit_slot, void* ctx);
+
+/*
+ * CloneFn - Allocate a copy of old_obj into dest_region.
+ *
+ * CloneFn MUST:
+ * - Allocate the destination Obj in dest_region
+ * - Allocate/copy any payload structs/buffers into dest_region
+ * - Copy scalar fields and install pointers to the newly copied payload
+ * - MUST NOT recursively transmigrate children (generic loop handles this)
+ * - Return new object with old pointers initially (will be rewritten)
+ *
+ * @param old_obj: Source object to copy
+ * @param dest_region: Region to allocate into
+ * @param tmp_ctx: Temporary allocation context (Arena*)
+ * @return: Newly allocated object with old pointers
+ */
+typedef struct Obj* (*CloneFn)(struct Obj* old_obj, struct Region* dest_region, void* tmp_ctx);
+
 /* ========== Type ID Constants ========== */
 
 /*
@@ -64,25 +109,28 @@ typedef struct TypeMetadata {
     /* Type identification */
     const char* name;               /* "Int", "Pair", "Array", ... */
     TypeID type_id;                 /* Numeric type identifier */
-    
+
     /* Memory layout */
     size_t size;                    /* Object size in bytes */
     size_t alignment;               /* Alignment requirement */
-    
-    /* GC/RC tracing information */
+
+    /* GC/RC tracing information (DEPRECATED - kept for compat, remove later) */
     uint8_t num_pointer_fields;     /* Number of pointer fields */
     uint8_t pointer_offsets[8];     /* Offsets of pointer fields within object */
-    
+
     /* Inline allocation info */
     bool can_inline;                /* Can this type be inlined in parent? */
     size_t inline_threshold;        /* Max size for inlining */
-    
-    /* Operations (function pointers) */
-    void (*trace)(struct Obj* obj, void (*visit)(struct Obj**));
+
+    /* CTRR Metadata Operations (required for transmigration) */
+    CloneFn clone;                  /* Clone function for transmigration */
+    TraceFn trace;                  /* Trace function with ctx parameter */
+
+    /* Other operations (not used by transmigration) */
     void (*destroy)(struct Obj* obj);
     bool (*equals)(struct Obj* a, struct Obj* b);
     size_t (*hash)(struct Obj* obj);
-    
+
     /* Debug info */
     const char* debug_info;         /* Additional debug information */
 } TypeMetadata;

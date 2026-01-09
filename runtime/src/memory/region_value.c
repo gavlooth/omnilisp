@@ -449,6 +449,7 @@ Obj* mk_array_region(Region* r, int capacity) {
     arr->capacity = capacity > 0 ? capacity : 8;
     arr->len = 0;
     arr->data = region_alloc(r, arr->capacity * sizeof(Obj*));
+    arr->has_boxed_elems = false; /* Phase 34.2: assume immediate-only until proven otherwise */
 
     o->ptr = arr;
     return o;
@@ -484,6 +485,7 @@ Obj* mk_array_region_batch(Region* r, int capacity) {
     arr->capacity = actual_capacity;
     arr->len = 0;
     arr->data = data;
+    arr->has_boxed_elems = false; /* Phase 34.2 */
 
     // Allocate Obj wrapper
     Obj* o = alloc_obj_region(r, TAG_ARRAY);
@@ -534,6 +536,11 @@ Obj* mk_array_of_ints_region(Region* r, long* values, int count) {
     arr->capacity = capacity;
     arr->len = count;
     arr->data = data;
+    /* Phase 34.2:
+     * This constructor creates boxed integer Obj nodes and stores Obj* pointers
+     * in the data buffer. Therefore the array contains boxed elements and must
+     * be traced during transmigration. */
+    arr->has_boxed_elems = true;
 
     // Allocate Obj wrapper
     Obj* o = alloc_obj_region(r, TAG_ARRAY);

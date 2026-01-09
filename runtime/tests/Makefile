@@ -10,29 +10,36 @@ TESTS = test_main.c
 # Output
 TEST_BIN = run_tests
 API_TEST_BIN = run_tests_api
+BENCH_BIN = bench_transmigrate_vs_c
 
 # Sanitizer builds
 ASAN_FLAGS = -fsanitize=address -fno-omit-frame-pointer
 TSAN_FLAGS = -fsanitize=thread
 UBSAN_FLAGS = -fsanitize=undefined
 
-.PHONY: all clean test fast slow api asan tsan ubsan asan-slow tsan-slow ubsan-slow
+.PHONY: all clean test fast slow api bench asan tsan ubsan asan-slow tsan-slow ubsan-slow stats runtime-lib
+
+# Build runtime library (always consult runtime/Makefile for staleness).
+# This avoids benchmarking against a stale ../libomni.a when runtime sources changed.
+runtime-lib:
+	$(MAKE) -C ..
 
 # Default: build and run tests
 all: $(TEST_BIN)
 	./$(TEST_BIN)
 
+# Build test binary with stats enabled (PHASE 33.5)
+stats: CFLAGS += -DOMNI_TRANSMIGRATE_STATS
+stats: $(TEST_BIN)
+	./$(TEST_BIN)
+
 # Build test binary
-$(TEST_BIN): $(TESTS) ../libomni.a
+$(TEST_BIN): $(TESTS) runtime-lib
 	$(CC) $(CFLAGS) -o $@ $(TESTS) $(LDFLAGS)
 
 # Build public-API test binary (header + library only)
-$(API_TEST_BIN): test_api.c ../libomni.a
+$(API_TEST_BIN): test_api.c runtime-lib
 	$(CC) $(CFLAGS) -o $@ test_api.c $(LDFLAGS)
-
-# Build runtime if needed
-../libomni.a:
-	$(MAKE) -C ..
 
 # Run tests
 test: $(TEST_BIN)
@@ -48,30 +55,40 @@ slow: $(TEST_BIN)
 api: $(API_TEST_BIN)
 	./$(API_TEST_BIN)
 
+# Benchmarks
+#
+# IMPORTANT: For static libraries, link order matters.
+# The objects (bench source) must come BEFORE $(LDFLAGS) so -lomni is searched last.
+$(BENCH_BIN): bench_transmigrate_vs_c.c runtime-lib
+	$(CC) $(CFLAGS) -o $@ bench_transmigrate_vs_c.c $(LDFLAGS)
+
+bench: $(BENCH_BIN)
+	./$(BENCH_BIN)
+
 # AddressSanitizer build
-asan: $(TESTS) ../libomni.a
+asan: $(TESTS) runtime-lib
 	$(CC) $(CFLAGS) $(ASAN_FLAGS) -o $(TEST_BIN)_asan $(TESTS) $(LDFLAGS)
 	./$(TEST_BIN)_asan
 
-asan-slow: $(TESTS) ../libomni.a
+asan-slow: $(TESTS) runtime-lib
 	$(CC) $(CFLAGS) $(ASAN_FLAGS) -o $(TEST_BIN)_asan $(TESTS) $(LDFLAGS)
 	RUNTIME_TEST_LEVEL=slow ./$(TEST_BIN)_asan
 
 # ThreadSanitizer build
-tsan: $(TESTS) ../libomni.a
+tsan: $(TESTS) runtime-lib
 	$(CC) $(CFLAGS) $(TSAN_FLAGS) -o $(TEST_BIN)_tsan $(TESTS) $(LDFLAGS)
 	./$(TEST_BIN)_tsan
 
-tsan-slow: $(TESTS) ../libomni.a
+tsan-slow: $(TESTS) runtime-lib
 	$(CC) $(CFLAGS) $(TSAN_FLAGS) -o $(TEST_BIN)_tsan $(TESTS) $(LDFLAGS)
 	RUNTIME_TEST_LEVEL=slow ./$(TEST_BIN)_tsan
 
 # UndefinedBehaviorSanitizer build
-ubsan: $(TESTS) ../libomni.a
+ubsan: $(TESTS) runtime-lib
 	$(CC) $(CFLAGS) $(UBSAN_FLAGS) -o $(TEST_BIN)_ubsan $(TESTS) $(LDFLAGS)
 	./$(TEST_BIN)_ubsan
 
-ubsan-slow: $(TESTS) ../libomni.a
+ubsan-slow: $(TESTS) runtime-lib
 	$(CC) $(CFLAGS) $(UBSAN_FLAGS) -o $(TEST_BIN)_ubsan $(TESTS) $(LDFLAGS)
 	RUNTIME_TEST_LEVEL=slow ./$(TEST_BIN)_ubsan
 
@@ -81,7 +98,7 @@ valgrind: $(TEST_BIN)
 
 # Clean
 clean:
-	rm -f $(TEST_BIN) $(API_TEST_BIN) $(TEST_BIN)_asan $(TEST_BIN)_tsan $(TEST_BIN)_ubsan
+	rm -f $(TEST_BIN) $(API_TEST_BIN) $(BENCH_BIN) $(TEST_BIN)_asan $(TEST_BIN)_tsan $(TEST_BIN)_ubsan
 
 # Help
 help:
