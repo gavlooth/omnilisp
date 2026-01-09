@@ -4882,3 +4882,62 @@ specified in docs/FFI_DESIGN_PROPOSALS.md. The implementation follows a three-ti
     - 1.5 should parse as float
     - 1.field should parse as path (field of integer 1)
 
+- [TODO] Label: T-syntax-symbol-rules
+  Objective: Define and implement comprehensive symbol character rules.
+  Reference: docs/QUICK_REFERENCE.md
+  Where: csrc/parser/parser.c (R_SYM_FIRST, R_SYM_CHAR rules)
+  Why:
+    Currently, the parser has inconsistent and overly permissive symbol rules.
+    We need clear, documented rules that match Lisp conventions while
+    supporting OmniLisp's unique syntax (paths, types, metadata).
+
+  Symbol Character Rules (Final):
+
+    START WITH (first character):
+      Letters:     a-z, A-Z
+      Operators:   * ! - _ ? % / = < >
+
+      EXCLUDE:     . @ # & : ; 0-9
+
+    MIDDLE (subsequent characters):
+      All of START + digits (0-9)
+
+      EXCLUDE:     . @ # & : ;
+
+    Convention (not enforced by parser):
+      ! and ? are typically only at START or END of symbols:
+        - At end: set!, define!, null?, empty?
+        - At start: !not, !null, ?maybe, ?value
+        - NOT in middle: foo!bar, set!value (conventionally weird)
+
+  Implementation:
+    1. Update R_SYM_FIRST to include: a-z, A-Z, *, !, -, _, ?, %, /, =, <, >
+    2. Update R_SYM_CHAR to include all of above + digits (0-9)
+    3. Ensure . @ # & : ; are NOT in either rule
+    4. Add comprehensive tests for valid/invalid symbols
+    5. Document in QUICK_REFERENCE.md and create SYNTAX.md
+
+  Examples:
+    Valid:
+      foo, foo-bar, foo123, x1_y2
+      *, -, _, %, /, =, <=, ==
+      set!, define!, null?, empty?
+      !not, !null, ?maybe, ?value
+      50%off, 3/4
+
+    Invalid (can't start with digits):
+      123foo, 3d, 7up
+
+    Invalid (reserved for syntax):
+      .foo, foo.bar         ; . for paths
+      @meta                 ; @ for metadata
+      #reader              ; # for reader macros
+      &and                  ; & excluded
+      :type                 ; : for types
+      comment;more          ; ; for comments
+
+  Verification:
+    - Parse all valid examples successfully
+    - Reject all invalid examples with clear error messages
+    - Test edge cases: single-char symbols, !/? at start/end
+

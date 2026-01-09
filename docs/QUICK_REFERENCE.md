@@ -1,6 +1,70 @@
 # OmniLisp Quick Reference
 
-**Implementation status:** this quick reference reflects the **current C compiler/runtime** unless a section is explicitly marked “Design Target” (see `omnilisp/SUMMARY.md` and `docs/LANGUAGE_PARITY_PLAN.md`).
+**Implementation status:** this quick reference reflects the **current C compiler/runtime** unless a section is explicitly marked "Design Target" (see `omnilisp/SUMMARY.md` and `docs/LANGUAGE_PARITY_PLAN.md`).
+
+## Lexical Rules
+
+### Symbol Character Rules
+
+Symbols can contain letters and certain operators, but have specific rules about which characters can appear where.
+
+**Start with (first character):**
+- Letters: `a-z`, `A-Z`
+- Operators: `*`, `!`, `-`, `_`, `?`, `%`, `/`, `=`, `<`, `>`
+
+**Excluded from start:**
+- Digits: `0-9` (to avoid confusion with integers)
+- Reserved syntax: `.`, `@`, `#`, `&`, `:`, `;`
+
+**Middle/subsequent characters:**
+- All of the above (letters + operators)
+- **Plus:** Digits `0-9`
+
+**Excluded entirely:**
+- `.` - Used for module paths (`Math.sin`)
+- `@` - Used for metadata (`^:where`)
+- `#` - Used for reader macros (`#val`, `#\newline`)
+- `&` - Excluded
+- `:` - Used for type annotations (`{Type}`)
+- `;` - Used for comments
+
+**Convention (not enforced):**
+`!` and `?` are typically only at the **start or end** of symbols:
+- At end: `set!`, `define!`, `null?`, `empty?`
+- At start: `!not`, `!null`, `?maybe`, `?value`
+- Not in middle: `foo!bar`, `set!value` (conventionally weird)
+
+**Examples:**
+```scheme
+; Valid symbols
+foo                ; letters
+foo-bar            ; - as separator
+foo123             ; digits in middle
+x1_y2              ; _ as separator
+set!               ; ! at end
+null?              ; ? at end
+!not               ; ! at start
+?maybe             ; ? at start
+*                  ; single operator
+<=                 ; comparison operators
+==                 ; equality
+50%off             ; % in middle
+3/4                ; / in middle
+
+; Invalid (can't start with digits)
+123foo             ; integer, not symbol
+3d                 ; digit first
+7up                ; digit first
+
+; Invalid (reserved for syntax)
+.foo               ; . for paths
+foo.bar            ; . for paths (not a single symbol)
+@meta              ; @ for metadata
+#reader           ; # for reader macros
+&and               ; & excluded
+:type              ; : for types
+comment;more       ; ; for comments
+```
 
 ## Data Types
 ```scheme
