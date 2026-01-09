@@ -2457,7 +2457,7 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
   - Note: Parser still needs to be fixed to parse float literals (currently treats 1.5 as path expression)
   - Once parser is fixed, generated code will correctly handle float arithmetic
 
-- [TODO] Label: T-codegen-params-01
+- [R] Label: T-codegen-params-01
   Objective: Handle more than 4 function parameters.
   Reference: csrc/codegen/codegen.c:1602
   Where: csrc/codegen/codegen.c (codegen_call_with_region)
@@ -2468,6 +2468,15 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
     - Or increase limit to reasonable number (e.g., 16)
     - Generate code that handles N parameters
   Verification: (defunc f a b c d e g (+ a b c d e g)) should work
+
+  Implementation (2026-01-09):
+  Extended parameter limit from 4 to 16 by adding explicit cases for 5-16 parameters.
+  Updated 4 locations in codegen.c:
+  - First definition trampoline (line ~1774)
+  - Redefinition trampoline (line ~1838)
+  - Old array syntax first definition (line ~1592)
+  - Old array syntax redefinition (line ~1865)
+  Tests: Functions with 5-16 parameters now compile and run correctly.
 
 - [TODO] Label: T-codegen-update-01
   Objective: Implement in-place update (update!).
@@ -2495,17 +2504,25 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
     - Preserves original
   Verification: (update obj.field value) should return new obj
 
-- [TODO] Label: T-codegen-array-01
+- [R] Label: T-codegen-array-01
   Objective: Implement array literal syntax.
-  Reference: csrc/codegen/codegen.c:2202
+  Reference: csrc/codegen/codegen.c:1000-1022
   Where: csrc/codegen/codegen.c
   Why: Array literals marked TODO
   What: Parse and generate array literals
   Implementation Details:
-    - Parser: recognize [1 2 3] as array (not params)
-    - Codegen: emit mk_array_region call
-    - Handle nested arrays
-  Verification: [1 2 3] should create array
+    - Added codegen_array() function to generate C code for array literals
+    - Parser already recognizes [1 2 3] as OMNI_ARRAY
+    - Codegen emits mk_array_region(_local_region, len) call
+    - Generates array_push() calls for each element
+    - Returns array variable reference
+  Verification: [1 2 3] generates:
+    Obj* _t0 = mk_array_region(_local_region, 3);
+    array_push(_t0, mk_int(1));
+    array_push(_t0, mk_int(2));
+    array_push(_t0, mk_int(3));
+    _t0
+  Status: COMPLETED - codegen_array implemented in codegen.c:1000-1022
 
 ### Category F: Runtime Primitives (TESTED BUT UNWIRED)
 

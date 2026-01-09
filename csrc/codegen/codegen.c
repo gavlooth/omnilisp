@@ -1564,8 +1564,32 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
                         omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2]);\n", impl_name);
                     } else if (param_count == 4) {
                         omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3]);\n", impl_name);
+                    } else if (param_count == 5) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4]);\n", impl_name);
+                    } else if (param_count == 6) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5]);\n", impl_name);
+                    } else if (param_count == 7) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6]);\n", impl_name);
+                    } else if (param_count == 8) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);\n", impl_name);
+                    } else if (param_count == 9) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);\n", impl_name);
+                    } else if (param_count == 10) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9]);\n", impl_name);
+                    } else if (param_count == 11) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10]);\n", impl_name);
+                    } else if (param_count == 12) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11]);\n", impl_name);
+                    } else if (param_count == 13) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12]);\n", impl_name);
+                    } else if (param_count == 14) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13]);\n", impl_name);
+                    } else if (param_count == 15) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14]);\n", impl_name);
+                    } else if (param_count == 16) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15]);\n", impl_name);
                     } else {
-                        omni_codegen_emit(ctx, "return mk_error(\"too many parameters\");\n");
+                        omni_codegen_emit(ctx, "return mk_error(\"too many parameters (max 16)\");\n");
                     }
 
                     omni_codegen_dedent(ctx);
@@ -1596,8 +1620,32 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
                         omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2]);\n", impl_name);
                     } else if (param_count == 4) {
                         omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3]);\n", impl_name);
+                    } else if (param_count == 5) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4]);\n", impl_name);
+                    } else if (param_count == 6) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5]);\n", impl_name);
+                    } else if (param_count == 7) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6]);\n", impl_name);
+                    } else if (param_count == 8) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);\n", impl_name);
+                    } else if (param_count == 9) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);\n", impl_name);
+                    } else if (param_count == 10) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9]);\n", impl_name);
+                    } else if (param_count == 11) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10]);\n", impl_name);
+                    } else if (param_count == 12) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11]);\n", impl_name);
+                    } else if (param_count == 13) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12]);\n", impl_name);
+                    } else if (param_count == 14) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13]);\n", impl_name);
+                    } else if (param_count == 15) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14]);\n", impl_name);
+                    } else if (param_count == 16) {
+                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15]);\n", impl_name);
                     } else {
-                        omni_codegen_emit(ctx, "return mk_error(\"too many parameters\");\n");
+                        omni_codegen_emit(ctx, "return mk_error(\"too many parameters (max 16)\");\n");
                     }
                     omni_codegen_dedent(ctx);
                     omni_codegen_emit(ctx, "}\n\n");
@@ -1725,10 +1773,32 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
                     omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2]);\n", impl_name);
                 } else if (param_count == 4) {
                     omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3]);\n", impl_name);
+                } else if (param_count == 5) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4]);\n", impl_name);
+                } else if (param_count == 6) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5]);\n", impl_name);
+                } else if (param_count == 7) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6]);\n", impl_name);
+                } else if (param_count == 8) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);\n", impl_name);
+                } else if (param_count == 9) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);\n", impl_name);
+                } else if (param_count == 10) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9]);\n", impl_name);
+                } else if (param_count == 11) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10]);\n", impl_name);
+                } else if (param_count == 12) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11]);\n", impl_name);
+                } else if (param_count == 13) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12]);\n", impl_name);
+                } else if (param_count == 14) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13]);\n", impl_name);
+                } else if (param_count == 15) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14]);\n", impl_name);
+                } else if (param_count == 16) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15]);\n", impl_name);
                 } else {
-                    /* For more params, emit a loop to build array - not ideal but works */
-                    omni_codegen_emit(ctx, "/* TODO: Handle more than 4 parameters */\n");
-                    omni_codegen_emit(ctx, "return mk_error(\"too many parameters\");\n");
+                    omni_codegen_emit(ctx, "return mk_error(\"too many parameters (max 16)\");\n");
                 }
 
                 omni_codegen_dedent(ctx);
@@ -1767,8 +1837,32 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
                     omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2]);\n", impl_name);
                 } else if (param_count == 4) {
                     omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3]);\n", impl_name);
+                } else if (param_count == 5) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4]);\n", impl_name);
+                } else if (param_count == 6) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5]);\n", impl_name);
+                } else if (param_count == 7) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6]);\n", impl_name);
+                } else if (param_count == 8) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);\n", impl_name);
+                } else if (param_count == 9) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);\n", impl_name);
+                } else if (param_count == 10) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9]);\n", impl_name);
+                } else if (param_count == 11) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10]);\n", impl_name);
+                } else if (param_count == 12) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11]);\n", impl_name);
+                } else if (param_count == 13) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12]);\n", impl_name);
+                } else if (param_count == 14) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13]);\n", impl_name);
+                } else if (param_count == 15) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14]);\n", impl_name);
+                } else if (param_count == 16) {
+                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15]);\n", impl_name);
                 } else {
-                    omni_codegen_emit(ctx, "return mk_error(\"too many parameters\");\n");
+                    omni_codegen_emit(ctx, "return mk_error(\"too many parameters (max 16)\");\n");
                 }
                 omni_codegen_dedent(ctx);
                 omni_codegen_emit(ctx, "}\n\n");
