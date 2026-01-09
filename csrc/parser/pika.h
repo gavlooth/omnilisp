@@ -112,6 +112,32 @@ PikaMatch* pika_get_match(PikaState* state, size_t pos, int rule_id);
  */
 OmniValue* omni_pika_match(const char* input, PikaRule* rules, int num_rules, int root_rule);
 
+/* Extract captured substrings from match results
+ * This function extracts the matched text for specified sub-rules at their respective positions.
+ * Useful for extracting capture groups from complex pattern matches.
+ *
+ * Parameters:
+ *   - state: Parser state (must have already run pika_run)
+ *   - rule_ids: Array of rule IDs to extract (indices into state->rules)
+ *   - positions: Array of positions where each rule was matched (same length as rule_ids)
+ *   - num_captures: Number of rule IDs in the array
+ *
+ * Returns:
+ *   - OmniValue* representing an array of captured strings (OMNI_ARRAY)
+ *   - Each element is an OMNI_STRING containing the matched text
+ *   - NULL if state is invalid or allocation failed
+ *   - Empty array if captures array is NULL or num_captures is 0
+ *
+ * Example:
+ *   // After matching email pattern "user@host", extract user and host parts
+ *   // Rule 1 (user) matches at position 0, Rule 2 (host) matches at position 5
+ *   int capture_ids[] = {1, 2};        // Rule IDs for "user" and "host"
+ *   size_t positions[] = {0, 5};       // Positions where each rule matched
+ *   OmniValue* captures = pika_extract_captures(state, capture_ids, positions, 2);
+ *   // captures->array.data[0] = "user", captures->array.data[1] = "host"
+ */
+OmniValue* pika_extract_captures(PikaState* state, int* rule_ids, size_t* positions, int num_captures);
+
 #ifdef __cplusplus
 }
 #endif

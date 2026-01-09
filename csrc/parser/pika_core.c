@@ -285,3 +285,87 @@ OmniValue* omni_pika_match(const char* input, PikaRule* rules, int num_rules, in
 
     return result;
 }
+
+/* Extract captured substrings from match results
+ * This function extracts the matched text for specified sub-rules at their respective positions.
+ *
+ * Implementation Notes:
+ * - Uses the memoization table to retrieve match results for each rule at each position
+ * - Extracts substrings from the input using position and length information
+ * - Returns an OMNI_ARRAY of OMNI_STRING values
+ */
+OmniValue* pika_extract_captures(PikaState* state, int* rule_ids, size_t* positions, int num_captures) {
+    /* Validate input parameters */
+    if (!state) {
+        return omni_new_error("pika_extract_captures: state is NULL");
+    }
+    if (!state->input) {
+        return omni_new_error("pika_extract_captures: state input is NULL");
+    }
+    if (!rule_ids || !positions || num_captures <= 0) {
+        /* Return empty array for no captures requested */
+        return omni_new_array(0);
+    }
+
+    /* Create array to hold captured strings */
+    OmniValue* result = omni_new_array(num_captures);
+    if (!result) {
+        return omni_new_error("pika_extract_captures: failed to allocate result array");
+    }
+
+    /* Set the array length to match num_captures (omni_new_array creates with len=0) */
+    result->array.len = num_captures;
+
+    /* Extract each capture */
+    for (int i = 0; i < num_captures; i++) {
+        int rule_id = rule_ids[i];
+        size_t pos = positions[i];
+
+        /* Validate rule_id */
+        if (rule_id < 0 || rule_id >= state->num_rules) {
+            /* Add error string as placeholder */
+            result->array.data[i] = omni_new_string("<invalid rule id>");
+            continue;
+        }
+
+        /* Validate position */
+        if (pos > state->input_len) {
+            result->array.data[i] = omni_new_string("<position out of bounds>");
+            continue;
+        }
+
+        /* Get match result for this rule at the specified position */
+        PikaMatch* match = pika_get_match(state, pos, rule_id);
+
+        if (!match || !match->matched || match->len == 0) {
+            /* No match for this rule - add empty string */
+            result->array.data[i] = omni_new_string("");
+            continue;
+        }
+
+        /* Extract the matched substring from input */
+        /* Safety check: ensure we don't read past input end */
+        size_t end_pos = pos + match->len;
+        if (end_pos > state->input_len) {
+            end_pos = state->input_len;
+        }
+
+        /* Allocate buffer for the substring */
+        size_t capture_len = end_pos - pos;
+        char* capture_str = malloc(capture_len + 1);
+        if (!capture_str) {
+            result->array.data[i] = omni_new_string("<malloc failed>");
+            continue;
+        }
+
+        /* Copy the matched substring */
+        memcpy(capture_str, state->input + pos, capture_len);
+        capture_str[capture_len] = '\0';
+
+        /* Create string value and add to result array */
+        result->array.data[i] = omni_new_string(capture_str);
+        free(capture_str);  /* omni_new_string makes its own copy */
+    }
+
+    return result;
+}

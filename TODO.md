@@ -207,18 +207,39 @@ Replace hybrid memory management with a unified Region-RC architecture.
     - Handle both AST and STRING output modes
   Verification: (pika-match "hello" my-rules 0) should return match result.
 
-- [TODO] Label: T-wire-pika-exec-02
+- [DONE] Label: T-wire-pika-exec-02
   Objective: Implement match runtime with value extraction.
   Reference: language_reference.md (Section 7: Pika Grammar DSL)
   Where: csrc/parser/pika.h, csrc/parser/pika_core.c
   Why: Pattern matching needs to extract captured groups/values.
   What: Add pika_extract_captures function.
-  Implementation Details:
-    - Input: PikaMatch result from pika_run
-    - Output: OmniValue array of captured substrings
-    - Use input position and length to extract matched text
-    - Return NULL if no captures
-  Verification: (define [grammar email] ...) matching "user@host" should extract ["user" "host"].
+
+  Implementation (2026-01-09):
+  - Added `pika_extract_captures()` function to pika.h and pika_core.c
+  - Function signature: `OmniValue* pika_extract_captures(PikaState* state, int* rule_ids, size_t* positions, int num_captures)`
+  - Returns OMNI_ARRAY of OMNI_STRING values
+  - Uses memoization table to retrieve match results at specified positions
+  - Extracts substrings from input using position and length information
+  - Handles error cases: NULL state, invalid rule IDs, out-of-bounds positions
+  - Returns empty strings for non-matching rules
+
+  Verification:
+  - Created comprehensive test suite: tests/test_pika_extract_captures.c
+  - All 7 tests pass:
+    * Test 1: Simple terminal captures
+    * Test 2: Email pattern (user@host) extraction
+    * Test 3: NULL state handling
+    * Test 4: Empty captures array
+    * Test 5: Invalid rule ID
+    * Test 6: Position out of bounds
+    * Test 7: No match at specified position
+  - Existing tests still pass (test_omni_pika_match: 10/10)
+
+  Example usage:
+    int rule_ids[] = {1, 3};        // Rule IDs for "user" and "host"
+    size_t positions[] = {0, 5};     // Positions where each rule matched
+    OmniValue* captures = pika_extract_captures(state, rule_ids, positions, 2);
+    // captures->array.data[0] = "user", captures->array.data[1] = "host"
 
 - [R] Label: T-wire-pika-exec-03
   Objective: Add backtracking support for complex patterns.
