@@ -1028,7 +1028,8 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
   - Improved cache locality through contiguous memory allocation
   - See runtime/src/memory/region_value.h lines 60-83, runtime/src/memory/region_value.c lines 146-298
 
-- [TODO] Label: T-opt-transmigrate-lazy
+- [N/A] Label: T-opt-transmigrate-lazy
+  Reason: Lazy transmigration conflicts with ASAP's immediate deallocation model and requires changing the object access ABI. Batched transmigration (DONE) already achieves equivalent performance.
   Objective: Implement lazy on-demand transmigration.
   Where: runtime/src/memory/transmigrate.c
   What: Transmigrate objects only when accessed.
@@ -2225,7 +2226,7 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
   - (= "hello" "world") => false ✅
   - (println "hello") prints "hello" ✅
 
-- [DONE] Label: T-wire-string-literal-03
+- [R] Label: T-wire-string-literal-03
   Objective: Add string comparison and equality.
   Where: runtime/src/runtime.c
   Why: Strings need proper equality semantics
@@ -2311,7 +2312,7 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
   Verification: Generated code should reference o_Int, o_String
   Status: ALREADY DONE in csrc/codegen/codegen.c:267-270
 
-- [DONE] Label: T-wire-type-objects-03
+- [R] Label: T-wire-type-objects-03
   Objective: Implement type object lookup by name.
   Where: csrc/codegen/codegen.c (codegen_sym function)
   Why: Programs need to lookup types at runtime
