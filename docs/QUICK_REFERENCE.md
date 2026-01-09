@@ -83,18 +83,42 @@ true            ; true
 ## Special Forms
 **Implemented subset (current C compiler/runtime):** `define`, `lambda`/`fn`, `let`, `let*`, `if`, `do`/`begin`, and `quote`. Other forms listed below are design target.
 ```scheme
-(lambda (x) body)              ; function
-(lambda self (x) body)         ; recursive function
-(let ((x val)) body)           ; local binding
-(letrec ((f fn)) body)         ; recursive binding
-(if cond then else)            ; conditional
-(and e1 e2 ...)                ; short-circuit and
-(or e1 e2 ...)                 ; short-circuit or
-(do e1 e2 ... en)              ; sequence, return last
-(quote x) / 'x                 ; quote
-(quasiquote x) / `x            ; quasiquote
-(unquote x) / ,x               ; unquote in quasiquote
-(unquote-splicing x) / ,@x     ; splice in quasiquote
+; Let bindings with destructuring
+(let [x 10] [y 20]                    ; Simple bindings
+  (+ x y))
+
+(let [[x y z] my-vec]                 ; Array destructuring
+  (+ x y z))
+
+(let [(Point x y) my-point]            ; Constructor destructuring
+  (* x y))
+
+(let [x {Int} 10] [y {Int} 20]        ; Typed bindings
+  (+ x y))
+
+(let ^:seq [x 1] [y (+ x 1)]         ; Sequential (like let*)
+  (* x y))
+
+; Traditional list-style also supported
+(let ((x 10) (y 20))
+  (+ x y))
+
+; Lambda/function
+(lambda (x) body)                    ; Function
+(lambda self (x) body)               ; Recursive function
+(fn x y (* x y))                     ; Shorthand (without parens)
+
+; Conditionals and control flow
+(if cond then else)                  ; Conditional
+(and e1 e2 ...)                      ; Short-circuit and
+(or e1 e2 ...)                       ; Short-circuit or
+(do e1 e2 ... en)                    ; Sequence, return last
+
+; Quoting
+(quote x) / 'x                       ; Quote
+(quasiquote x) / `x                  ; Quasiquote
+(unquote x) / ,x                     ; Unquote in quasiquote
+(unquote-splicing x) / ,@x           ; Splice in quasiquote
 ```
 
 ## Pattern Matching (Design Target)
