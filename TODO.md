@@ -1503,7 +1503,7 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
 
 ### Thread-Local RC Optimization
 
-- [TODO] Label: T-opt-thread-local-rc-detect
+- [R] Label: T-opt-thread-local-rc-detect
   Objective: Implement thread-local region detection.
   Reference: docs/PERFORMANCE_OPTIMIZATION_OPPORTUNITIES.md (Priority 2: Thread-Local RC Optimization)
   Where: runtime/src/memory/region_core.c, runtime/src/memory/region_core.h
@@ -1575,6 +1575,26 @@ Reference: docs/ARCHITECTURE.md - Complete system architecture documentation
     - Unit test: Multi-threaded access still uses atomic operations
     - Stress test: No data races in concurrent scenarios
     - Measure: Before/after RC operation latency
+
+  Implementation (2026-01-09):
+  - Added pthread_t owner_thread, bool is_thread_local, bool has_external_refs to Region struct
+  - Initialize owner_thread in region_create() and region_reset()
+  - Implemented region_is_thread_local() with fast cached path
+  - Implemented region_mark_external_ref() to mark cross-thread references
+  - Updated region_retain_internal/release_internal to use non-atomic ops when thread-local
+  - Added comprehensive benchmark (bench_thread_local_rc.c)
+
+  Benchmark Results:
+  - Pure non-atomic: 0.23 ns/op (baseline)
+  - Pure atomic: 4.24 ns/op
+  - Thread-local RC: 1.85 ns/op (**2.29x faster** than atomic)
+  - Shared RC: 7.40 ns/op (includes check overhead)
+
+  Files modified:
+  - runtime/src/memory/region_core.h: Added pthread.h include, thread tracking fields
+  - runtime/src/memory/region_core.c: Implemented detection logic and updated RC operations
+  - runtime/bench/bench_runner.c: Added thread_local_rc suite
+  - runtime/bench/bench_thread_local_rc.c: New benchmark file
 
 - [TODO] Label: T-opt-thread-local-rc-tether
   Objective: Track tether origins to detect cross-thread access.
