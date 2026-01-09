@@ -100,6 +100,14 @@ static OmniValue* act_int(PikaState* state, size_t pos, PikaMatch match) {
     return omni_new_int(atol(buf));
 }
 
+static OmniValue* act_float(PikaState* state, size_t pos, PikaMatch match) {
+    char buf[64];
+    size_t len = match.len > 63 ? 63 : match.len;
+    memcpy(buf, state->input + pos, len);
+    buf[len] = '\0';
+    return omni_new_float(atof(buf));
+}
+
 static OmniValue* act_sym(PikaState* state, size_t pos, PikaMatch match) {
     char* s = malloc(match.len + 1);
     memcpy(s, state->input + pos, match.len);
@@ -705,6 +713,13 @@ void omni_grammar_init(void) {
     /* Signed integer */
     g_rules[R_SIGNED_INT] = g_rules[R_INT];
 
+    /* Float literal: <INT> "." <INT> (e.g., 1.5, 3.14, 0.5)
+     * IMPORTANT: This must come BEFORE R_PATH in EXPR alternatives
+     * so that "1.5" is parsed as a float, not as a path expression "1 . 5"
+     */
+    g_rule_ids[R_FLOAT] = ids(3, R_INT, R_DOT, R_INT);
+    g_rules[R_FLOAT] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_FLOAT], 3 }, .action = act_float };
+
     /* Alphabetic */
     g_rules[R_ALPHA] = (PikaRule){ PIKA_RANGE, .data.range = { 'a', 'z' } };
     g_rules[R_ALPHA_UPPER] = (PikaRule){ PIKA_RANGE, .data.range = { 'A', 'Z' } };
@@ -895,9 +910,12 @@ void omni_grammar_init(void) {
 
     /* ============== Expression ============== */
 
-    /* EXPR = PATH / LIST / ARRAY / TYPE / METADATA / QUOTED / STRING / FMT_STRING / CLF_STRING / NAMED_CHAR / HASH_VAL / ATOM */
-    g_rule_ids[R_EXPR] = ids(12, R_PATH, R_LIST, R_ARRAY, R_TYPE, R_METADATA, R_QUOTED, R_STRING, R_FMT_STRING, R_CLF_STRING, R_NAMED_CHAR, R_HASH_VAL, R_ATOM);
-    g_rules[R_EXPR] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_EXPR], 12 } };
+    /* EXPR = FLOAT / PATH / LIST / ARRAY / TYPE / METADATA / QUOTED / STRING / FMT_STRING / CLF_STRING / NAMED_CHAR / HASH_VAL / ATOM
+     * IMPORTANT: FLOAT must come BEFORE PATH so that "1.5" is parsed as a float literal,
+     * not as a path expression "1 . 5" (integer 1, dot, integer 5)
+     */
+    g_rule_ids[R_EXPR] = ids(13, R_FLOAT, R_PATH, R_LIST, R_ARRAY, R_TYPE, R_METADATA, R_QUOTED, R_STRING, R_FMT_STRING, R_CLF_STRING, R_NAMED_CHAR, R_HASH_VAL, R_ATOM);
+    g_rules[R_EXPR] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_EXPR], 13 } };
 
     /* PROGRAM_SEQ = EXPR WS PROGRAM_INNER */
     g_rule_ids[R_PROGRAM_SEQ] = ids(3, R_EXPR, R_WS, R_PROGRAM_INNER);
