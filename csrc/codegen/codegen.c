@@ -997,6 +997,30 @@ static void codegen_string(CodeGenContext* ctx, OmniValue* expr) {
     omni_codegen_emit_raw(ctx, "mk_string(\"%s\")", expr->str_val);
 }
 
+/* T-codegen-array-01: Array literal codegen */
+/* Generate code to create an array from literal syntax [elem1 elem2 ...] */
+static void codegen_array(CodeGenContext* ctx, OmniValue* expr) {
+    size_t len = omni_array_len(expr);
+
+    /* Create a temporary variable name for the array */
+    char* arr_var = omni_codegen_temp(ctx);
+
+    /* Allocate array with capacity equal to the number of elements */
+    omni_codegen_emit(ctx, "Obj* %s = mk_array_region(_local_region, %zu);\n", arr_var, len);
+
+    /* Fill the array with elements using array_push */
+    for (size_t i = 0; i < len; i++) {
+        OmniValue* elem = omni_array_get(expr, i);
+        omni_codegen_emit(ctx, "array_push(%s, ", arr_var);
+        codegen_expr(ctx, elem);
+        omni_codegen_emit_raw(ctx, ");\n");
+    }
+
+    /* Reference the array variable */
+    omni_codegen_emit_raw(ctx, arr_var);
+    free(arr_var);
+}
+
 static void codegen_type_lit(CodeGenContext* ctx, OmniValue* expr) {
     if (expr->type_lit.param_count == 0) {
         omni_codegen_emit_raw(ctx, "mk_kind(\"%s\", NULL, 0)", expr->type_lit.type_name);
@@ -2338,8 +2362,7 @@ static void codegen_expr(CodeGenContext* ctx, OmniValue* expr) {
         codegen_list(ctx, expr);
         break;
     case OMNI_ARRAY:
-        /* TODO: Array literals */
-        omni_codegen_emit_raw(ctx, "NIL");
+        codegen_array(ctx, expr);
         break;
     default:
         omni_codegen_emit_raw(ctx, "NIL");
