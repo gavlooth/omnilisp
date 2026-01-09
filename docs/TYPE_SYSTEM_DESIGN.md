@@ -50,21 +50,6 @@ Multiple dispatch is achieved through **multiple `define` declarations** with th
 **Match expressions:**
 Pattern matching uses single `[]` brackets for pattern-result pairs:
 
-```omnilisp
-;; Single bracket syntax for match
-(match value
-  [(Cons head tail) (head)]
-  [_ value])
-
-;; Guards with :when
-(match x
-  [{Integer} :when (> x 0) "positive"]
-  [{Integer} "non-positive"]
-  [_ "not an integer"])
-```
-
----
-
 ## The Problem: Multiple Dispatch + Covariant Containers
 
 ### The Core Conflict

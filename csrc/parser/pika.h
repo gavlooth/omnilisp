@@ -164,6 +164,53 @@ OmniValue* pika_extract_captures(PikaState* state, int* rule_ids, size_t* positi
  */
 PikaState* omni_compile_pattern(const char* pattern, PikaRule* rules, int num_rules);
 
+/* Generate C code for a single Pika grammar rule
+ *
+ * This function generates a C function that implements pattern matching
+ * for the given PikaRule. The generated code can be compiled separately
+ * for better performance than the runtime interpreter.
+ *
+ * Parameters:
+ *   - rule: The PikaRule to generate code for
+ *   - rule_id: Unique ID for this rule (used in function naming)
+ *   - name: Base name for the generated function (e.g., "my_grammar")
+ *
+ * Returns:
+ *   - Newly allocated string containing the generated C code
+ *   - NULL if code generation failed
+ *
+ * Caller is responsible for freeing the returned string with free().
+ *
+ * Example:
+ *   char* code = pika_codegen_rule(&rules[0], 0, "arithmetic");
+ *   // Use or compile the generated code...
+ *   free(code);
+ */
+char* pika_codegen_rule(PikaRule* rule, int rule_id, const char* name);
+
+/* Generate C code for an entire grammar (array of rules)
+ *
+ * This function generates complete C code for all rules in a grammar,
+ * creating a standalone matcher module.
+ *
+ * Parameters:
+ *   - rules: Array of PikaRule structures
+ *   - num_rules: Number of rules in the array
+ *   - name: Base name for the generated functions
+ *
+ * Returns:
+ *   - Newly allocated string containing the complete generated C code
+ *   - NULL if code generation failed
+ *
+ * Caller is responsible for freeing the returned string with free().
+ *
+ * Example:
+ *   char* code = pika_codegen_grammar(rules, 3, "arithmetic");
+ *   // Save to file, compile, or use the generated code...
+ *   free(code);
+ */
+char* pika_codegen_grammar(PikaRule* rules, int num_rules, const char* name);
+
 #ifdef __cplusplus
 }
 #endif

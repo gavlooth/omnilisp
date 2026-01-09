@@ -112,12 +112,12 @@ A comprehensive Foreign Function Interface design for Omnilisp, leveraging the C
 
 ```lisp
 ;; Declare foreign function
-(define {extern puts ^:from libc}
+(define ^:from libc {extern puts}
   [s {CString}]
   {CInt})
 
 ;; Multiple parameters
-(define {extern fwrite ^:from libc}
+(define ^:from libc {extern fwrite}
   [ptr {CPtr}]
   [size {CSize}]
   [nmemb {CSize}]
@@ -125,7 +125,7 @@ A comprehensive Foreign Function Interface design for Omnilisp, leveraging the C
   {CSize})
 
 ;; Variadic function
-(define {extern printf ^:from libc ^:variadic}
+(define ^:from libc ^:variadic {extern printf}
   [format {CString}]
   [.. args]
   {CInt})
@@ -137,24 +137,24 @@ Ownership is specified via metadata on parameters and return type:
 
 ```lisp
 ;; Caller owns returned pointer (must free)
-(define {extern malloc ^:from libc}
+(define ^:from libc {extern malloc}
   [size {CSize}]
   {^:owned CPtr})
 
 ;; Function consumes (takes ownership of) parameter
-(define {extern free ^:from libc}
+(define ^:from libc {extern free}
   [^:consumed ptr {CPtr}]
   {Nothing})
 
 ;; Function borrows parameter (doesn't affect ownership)
-(define {extern strlen ^:from libc}
+(define ^:from libc {extern strlen}
   [^:borrowed s {CString}]
   {CSize})
 
 ;; Function may store reference (escapes)
 (define {extern set_callback}
   [^:escapes cb {Handle Callback}]
-  -> {Nothing})
+  {Nothing})
 ```
 
 **Ownership Classes:**
@@ -170,19 +170,19 @@ Ownership is specified via metadata on parameters and return type:
 
 ```lisp
 ;; Function that may fail (returns -1 on error)
-(define {extern open ^:from libc ^:may-fail}
+(define ^:from libc ^:may-fail {extern open}
   [path {CString}]
   [flags {CInt}]
   {(Result CInt CInt)})  ; Ok(fd) or Err(errno)
 
 ;; C NULL-returning function (returns Nothing on NULL)
-(define {extern fopen ^:from libc ^:nothing-on-error}
+(define ^:from libc ^:nothing-on-error {extern fopen}
   [path {CString}]
   [mode {CString}]
   {Option {Handle FILE}})
 
 ;; Custom error check
-(define {extern custom_api ^:from libfoo}
+(define ^:from libfoo {extern custom_api}
   [x {CInt}]
   {CInt}
   ^:error-when (fn [r] (< r 0))
@@ -213,7 +213,7 @@ Ownership is specified via metadata on parameters and return type:
   [data {CArray CFloat 4}])
 
 ;; Nested struct
-(define {struct :ffi Rect}
+(define {struct ^:ffi Rect}
   [origin {Point}]
   [size {Point}])
 ```
@@ -370,32 +370,32 @@ Using the IRegion infrastructure:
 ### 7.1 Callback Type Declaration
 
 ```lisp
-;; Define callback type
-(define {callback Comparator}
+;; Define callback type using CFn (C Function pointer type)
+(define {CFn Comparator}
   [a {CPtr}]
   [b {CPtr}]
-  -> {CInt})
+  {CInt})
 
-(define {callback EventHandler}
+(define {CFn EventHandler}
   [event {Handle Event}]
   [user_data {Handle}]
-  -> {Nothing})
+  {Nothing})
 ```
 
 ### 7.2 Passing Callbacks
 
 ```lisp
 ;; Declare function taking callback
-(define {extern qsort :from libc}
+(define ^:from libc {extern qsort}
   [base {CPtr}]
   [nmemb {CSize}]
   [size {CSize}]
-  [compar {Callback Comparator}]
-  -> {Nothing})
+  [compar {CFn Comparator}]
+  {Nothing})
 
 ;; Pass Omnilisp function as callback
 (qsort arr n (sizeof CInt)
-  (-> (a b)
+  (fn [a {CPtr}] [b {CPtr}] {CInt}
     (- (deref {CPtr CInt} a)
        (deref {CPtr CInt} b))))
 ```
@@ -405,15 +405,15 @@ Using the IRegion infrastructure:
 ```lisp
 ;; Register callback that outlives the call
 (define {extern set_event_handler}
-  [^:escapes handler {Callback EventHandler}]
+  [^:escapes handler {CFn EventHandler}]
   [^:escapes user_data {Handle}]
-  -> {Nothing})
+  {Nothing})
 
 ;; Must use explicit handle management
 (let [my-data (to-handle {:count 0})]
   ;; Register - callback must be kept alive
   (let [cb-handle (ffi/register-callback
-                    (-> (event user)
+                    (fn [event] [user]
                       (let [data (from-handle user)]
                         (set! data.count (+ data.count 1)))))]
     (set_event_handler cb-handle my-data)
@@ -549,75 +549,75 @@ For replay and debugging:
 
 ```lisp
 (module SDL2
-  (import {ffi "libSDL2.so" :as sdl})
+  (import {ffi "libSDL2.so" ^:as sdl})
 
   ;; Constants
   (define SDL_INIT_VIDEO 0x00000020)
   (define SDL_WINDOW_SHOWN 0x00000004)
 
   ;; Opaque types
-  (define {opaque Window :destructor sdl/SDL_DestroyWindow})
-  (define {opaque Renderer :destructor sdl/SDL_DestroyRenderer})
-  (define {opaque Surface :destructor sdl/SDL_FreeSurface})
+  (define {opaque Window ^:destructor sdl/SDL_DestroyWindow})
+  (define {opaque Renderer ^:destructor sdl/SDL_DestroyRenderer})
+  (define {opaque Surface ^:destructor sdl/SDL_FreeSurface})
 
   ;; Structs
-  (define {struct :ffi Rect}
+  (define {struct ^:ffi Rect}
     [x {CInt}] [y {CInt}]
     [w {CInt}] [h {CInt}])
 
-  (define {struct :ffi Color}
+  (define {struct ^:ffi Color}
     [r {CUInt8}] [g {CUInt8}]
     [b {CUInt8}] [a {CUInt8}])
 
   ;; Functions
   (define {extern sdl/SDL_Init}
     [flags {CUInt32}]
-    -> {CInt})
+    {CInt})
 
   (define {extern sdl/SDL_Quit}
-    -> {Nothing})
+    {Nothing})
 
   (define {extern sdl/SDL_CreateWindow}
     [title {CString}]
     [x {CInt}] [y {CInt}]
     [w {CInt}] [h {CInt}]
     [flags {CUInt32}]
-    -> {^:owned Handle Window})
+    {^:owned {Handle Window}})
 
   (define {extern sdl/SDL_CreateRenderer}
     [window {Handle Window}]
     [index {CInt}]
     [flags {CUInt32}]
-    -> {^:owned Handle Renderer})
+    {^:owned {Handle Renderer}})
 
   (define {extern sdl/SDL_SetRenderDrawColor}
     [renderer {Handle Renderer}]
     [r {CUInt8}] [g {CUInt8}]
     [b {CUInt8}] [a {CUInt8}]
-    -> {CInt})
+    {CInt})
 
   (define {extern sdl/SDL_RenderClear}
     [renderer {Handle Renderer}]
-    -> {CInt})
+    {CInt})
 
   (define {extern sdl/SDL_RenderPresent}
     [renderer {Handle Renderer}]
-    -> {Nothing})
+    {Nothing})
 
   ;; High-level API
-  (define (with-sdl body)
+  (define (with-sdl [body {(fn [] {Any})}])
     (SDL_Init SDL_INIT_VIDEO)
     (try
       (body)
       (finally (SDL_Quit))))
 
-  (define (with-window title w h body)
+  (define (with-window [title {String}] [w {Int}] [h {Int}] [body {(fn [{Handle Window}] {Any})}])
     (let [win (SDL_CreateWindow title 100 100 w h SDL_WINDOW_SHOWN)]
       (try
         (body win)
         (finally (SDL_DestroyWindow win)))))
 
-  (define (with-renderer win body)
+  (define (with-renderer [win {Handle Window}] [body {(fn [{Handle Renderer}] {Any})}])
     (let [ren (SDL_CreateRenderer win -1 0)]
       (try
         (body ren)
@@ -634,21 +634,22 @@ For replay and debugging:
 (import SDL2)
 
 (with-sdl
-  (with-window "Hello SDL" 800 600
-    (-> win
-      (with-renderer win
-        (-> ren
-          (SDL_SetRenderDrawColor ren 64 128 255 255)
-          (SDL_RenderClear ren)
-          (SDL_RenderPresent ren)
-          (sleep 2000))))))
+  (fn []
+    (with-window "Hello SDL" 800 600
+      (fn [win]
+        (with-renderer win
+          (fn [ren]
+            (SDL_SetRenderDrawColor ren 64 128 255 255)
+            (SDL_RenderClear ren)
+            (SDL_RenderPresent ren)
+            (sleep 2000)))))))
 ```
 
 ### 10.2 SQLite Bindings
 
 ```lisp
 (module SQLite
-  (import {ffi "libsqlite3.so" :as sql})
+  (import {ffi "libsqlite3.so" ^:as sql})
 
   (define SQLITE_OK 0)
   (define SQLITE_ROW 100)
@@ -657,14 +658,14 @@ For replay and debugging:
   (define {opaque Database})
   (define {opaque Statement})
 
-  (define {extern sql/sqlite3_open :may-fail}
+  (define ^:may-fail {extern sql/sqlite3_open}
     [filename {CString}]
     [^:owned db-out {CPtr {Handle Database}}]
-    -> {Result {Handle Database} CInt})
+    {(Result {Handle Database} CInt)})
 
   (define {extern sql/sqlite3_close}
     [^:consumed db {Handle Database}]
-    -> {CInt})
+    {CInt})
 
   (define {extern sql/sqlite3_prepare_v2}
     [db {Handle Database}]
@@ -672,20 +673,20 @@ For replay and debugging:
     [nbyte {CInt}]
     [^:owned stmt-out {CPtr {Handle Statement}}]
     [tail {CPtr CString}]
-    -> {CInt})
+    {CInt})
 
   (define {extern sql/sqlite3_step}
     [stmt {Handle Statement}]
-    -> {CInt})
+    {CInt})
 
   (define {extern sql/sqlite3_column_text}
     [stmt {Handle Statement}]
     [col {CInt}]
-    -> {CString})
+    {CString})
 
   (define {extern sql/sqlite3_finalize}
     [^:consumed stmt {Handle Statement}]
-    -> {CInt})
+    {CInt})
 
   ;; High-level API
   (define (with-db path body)
@@ -722,16 +723,16 @@ For replay and debugging:
 
 ```lisp
 (module SignalHandler
-  (import {ffi "libc.so.6" :as libc})
+  (import {ffi "libc.so.6" ^:as libc})
 
-  (define {callback SigHandler}
+  (define {CFn SigHandler}
     [signum {CInt}]
-    -> {Nothing})
+    {Nothing})
 
   (define {extern libc/signal}
     [signum {CInt}]
-    [^:escapes handler {Callback SigHandler}]
-    -> {Callback SigHandler})
+    [^:escapes handler {CFn SigHandler}]
+    {CFn SigHandler})
 
   (define SIGINT 2)
   (define SIGTERM 15)
@@ -741,8 +742,8 @@ For replay and debugging:
 
   (define (setup-signal-handler sig)
     (let [cb (ffi/register-callback
-               (-> (signum)
-                 (swap! *caught-signals* (-> s (push s signum)))))]
+               (fn [signum]
+                 (swap! *caught-signals* (fn [s] (push s signum)))))]
       (signal sig cb)
       cb))
 

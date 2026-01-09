@@ -261,6 +261,35 @@ Types that take type parameters (Generics).
   [next  {Option {Node T}}])
 ```
 
+#### Variance
+Parametric types have **variance** that determines subtyping relationships:
+
+```lisp
+;; Covariant container (immutable) - subtyping follows parameter
+(define {struct [^:covar T]} {List}
+  [head {T}]
+  [tail {(List T)}])
+;; (List {Integer}) ⊑ (List {Number}) because Integer ⊑ Number
+
+;; Invariant container (mutable) - no subtyping relationship
+(define {struct [^:invariant T]} {Array}
+  [data {T}]
+  [capacity {Int}])
+;; (Array {Integer}) is NOT a subtype of (Array {Number})
+
+;; Contravariant (input positions)
+(define {abstract [^:contra T]} {Consumer}
+  [accept [self {Self}] [val {T}]])
+;; (Consumer {Number}) ⊑ (Consumer {Integer})
+```
+
+**Variance Rules:**
+- **Covariant (`^:covar`)**: Immutable/output positions. If `A ⊑ B`, then `F{A} ⊑ F{B}`
+- **Invariant (`^:invariant`)**: Mutable positions. No subtyping relationship
+- **Contravariant (`^:contra`)**: Input positions. If `A ⊑ B`, then `F{B} ⊑ F{A}`
+
+**Default variance:** Immutable containers (Flow `()`) are covariant by default. Mutable containers (Slot `[]`) are invariant by default.
+
 ### 3.2 Annotations vs. Constructors
 *   **Annotation `{}`**: Used in definitions to restrict a slot.
 *   **Constructor `()`**: Used at the value level to create instances.
@@ -518,13 +547,13 @@ Patterns can include type annotations using `{}`:
   _ 0)
 ```
 
-##### 6. Guards (`when`)
-Add additional conditions to patterns:
+##### 6. Guards (`&`)
+Add additional conditions to patterns using the `&` symbol:
 
 ```lisp
 (match x
-  [n {Int}] (when (> n 10)) "large"
-  [n {Int}] (when (< n 0)) "negative"
+  [n {Int} & (> n 10)] "large"
+  [n {Int} & (< n 0)] "negative"
   [n {Int}] "small or zero"
   _ "not an integer")
 ```
@@ -533,6 +562,13 @@ Add additional conditions to patterns:
 - Guards are evaluated **after** the pattern matches
 - If the guard is false, matching continues to the next clause
 - Guards can reference bindings from the pattern
+- Multiple guards can be chained: `[n {Int} & (> n 0) & (< n 100)] "in range"`
+
+**Why `&`?**
+- Preserves the `pattern result` alternation in match clauses
+- Keeps guard inside the pattern specification (Slot domain `[]`)
+- `&` means "and also" - pattern matches AND guard passes
+- Common in other languages (Rust's `if`, Scala's `guard`, Elixir's `when`)
 
 #### `if` as Derived Form
 
@@ -579,8 +615,8 @@ When the compiler proves `x` is dead after the match, it can reuse `x`'s memory 
 ;; List processing with guards
 (define sum-positive [nums {List}] {Int}
   (match nums
-    _ (when (empty? nums)) 0
-    [head .. tail] (when (> head 0)) (+ head (sum-positive tail))
+    [& (empty? nums)] 0
+    [head .. tail & (> head 0)] (+ head (sum-positive tail))
     [head .. tail] (sum-positive tail)))
 
 ;; Type-safe option handling
@@ -737,7 +773,8 @@ Symbols can contain letters and certain operators, but have specific rules about
 
 **Excluded from start:**
 - Digits: `0-9` (to avoid confusion with integers)
-- Reserved syntax: `.`, `@`, `#`, `&`, `:`, `;`
+- Reserved syntax: `.`, `@`, `#`, `:`, `;`
+- Note: `&` is reserved for pattern guards in match expressions
 
 **Middle/subsequent characters:**
 - All of the above (letters + operators)
@@ -747,7 +784,7 @@ Symbols can contain letters and certain operators, but have specific rules about
 - `.` - Used for module paths (`Math.sin`)
 - `@` - Used for metadata (`^:where`)
 - `#` - Used for reader macros (`#val`, `#\newline`)
-- `&` - Excluded
+- `&` - Used for pattern guards: `[x & (> x 10)]`
 - `:` - Used for type annotations (`{Type}`)
 - `;` - Used for comments
 
@@ -856,9 +893,9 @@ true            ; true
   [x y z] (+ x y z)                  ; Bind x=1, y=2, z=3
   _ 0)
 
-;; Guards (when clauses)
+;; Guards (& clauses)
 (match x
-  [n {Int}] (when (> n 10)) "large"  ; Type constraint + guard
+  [n {Int} & (> n 10)] "large"       ; Type constraint + guard
   [n {Int}] "small"
   _ "not an int")
 

@@ -97,10 +97,10 @@
 ;;     [n {Int}] "is integer"
 ;;     _ "not integer"))
 
-;; 6.5 Guards (when supported)
+;; 6.5 Guards (& syntax)
 ;; (println "match with guard: "
 ;;   (match 15
-;;     [n {Int}] (when (> n 10)) "large"
+;;     [n {Int} & (> n 10)] "large"
 ;;     [n {Int}] "small"
 ;;     _ "not integer")) 
 

@@ -15,7 +15,7 @@ UBSAN_FLAGS = -fsanitize=undefined
 
 # Source files
 AST_SRCS = ast/ast.c
-PARSER_SRCS = parser/parser.c parser/pika_core.c
+PARSER_SRCS = parser/parser.c parser/pika_core.c parser/pika_codegen.c
 ANALYSIS_SRCS = analysis/analysis.c analysis/dominator.c analysis/scc.c analysis/static_sym.c analysis/component.c analysis/tether_elision.c analysis/region_inference.c analysis/type_id.c analysis/type_env.c analysis/type_infer.c
 CODEGEN_SRCS = codegen/codegen.c codegen/region_codegen.c codegen/spec_db.c codegen/spec_decision.c codegen/spec_codegen.c codegen/typed_array_codegen.c
 COMPILER_SRCS = compiler/compiler.c
@@ -110,6 +110,8 @@ clean:
 # Dependencies
 ast/ast.o: ast/ast.c ast/ast.h
 parser/parser.o: parser/parser.c parser/parser.h ast/ast.h
+parser/pika_core.o: parser/pika_core.c parser/pika.h ast/ast.h
+parser/pika_codegen.o: parser/pika_codegen.c parser/pika.h ast/ast.h
 analysis/analysis.o: analysis/analysis.c analysis/analysis.h ast/ast.h
 analysis/type_id.o: analysis/type_id.c analysis/type_id.h analysis/analysis.h
 codegen/codegen.o: codegen/codegen.c codegen/codegen.h ast/ast.h analysis/analysis.h analysis/type_id.h

@@ -46,7 +46,8 @@
       "Bash(do:*)",
       "Bash(done)",
       "Bash(chmod:*)",
-      "Bash(/home/heefoo/Documents/code/OmniLisp/tests/benchmark_omnilisp.sh:*)"
+      "Bash(/home/heefoo/Documents/code/OmniLisp/tests/benchmark_omnilisp.sh:*)",
+      "Bash(sort:*)"
     ]
   }
 }
