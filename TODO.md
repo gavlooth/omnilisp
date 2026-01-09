@@ -219,7 +219,7 @@ Replace hybrid memory management with a unified Region-RC architecture.
     * test_pika_pattern_cache: 6/6 passed
   Verification: Compiling same pattern twice returns same pointer (cache hit).
 
-- [DONE] Label: T-wire-pika-compile-04
+- [R] Label: T-wire-pika-compile-04
   Objective: Integrate pattern compilation with runtime evaluation.
   Reference: runtime/src/runtime.c (prim_eval)
   Where: csrc/parser/pika_core.c, runtime/src/runtime.c
