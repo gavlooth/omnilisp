@@ -1,3 +1,0 @@
-;; Test array literal codegen (T-codegen-array-01)
-;; Direct array literal usage
-(println [1 2 3])
