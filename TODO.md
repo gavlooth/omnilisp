@@ -7689,3 +7689,135 @@ Phase 37 successfully implemented three worklist optimization techniques:
 - Profile and eliminate other overhead sources
 
 ---
+
+## Phase 38: CTRR Transmigration Hot-Tag Inline Dispatch (Devirtualize Trace) [TODO]
+
+**Objective:** Reduce transmigration overhead for the hottest object tags (especially `TAG_PAIR`) by removing the indirect function-pointer `meta->trace` call from the hot path and tightening edge rewrite logic, while preserving the exact CTRR correctness contract (single `remap(src)` identity + metadata-governed edge semantics + external-root non-rewrite rule).
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ Phase 37 follow-up (must be acknowledged before starting Phase 38):          │
+│                                                                              │
+│ Phase 37 P2 (“Metadata Lookup Cache”) describes `type_metadata_get()` as a   │
+│ “hash lookup”. That assumption is likely wrong in our runtime because        │
+│ metadata is typically an O(1) table lookup (tag/type_id indexing).           │
+│                                                                              │
+│ Directive: Phase 38 must NOT add more hashing for “metadata lookup”.         │
+│ Target the real bottleneck: dispatch + branchy edge processing in trace.     │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+**Reference (read first):**
+- `docs/CTRR.md` (normative contract; Region Closure Property; “everything can escape”)
+- `runtime/docs/CTRR_TRANSMIGRATION.md` (clone/trace contract; external-root rule)
+- `runtime/docs/CTRR_REMAP_FORWARDING_TABLE.md` (remap identity; forwarding table behavior)
+- `runtime/docs/ARCHITECTURE.md` (CTRR vs Region-RC/RC-G responsibilities)
+- `TODO.md` (Head-of-file “Transmigration Directive” correctness invariant)
+
+**Constraints (non-negotiable):**
+- No stop-the-world GC; no heap-wide scanning collectors.
+- No language-visible sharing primitive (`(share v)` or similar is forbidden).
+- No alternate transmigrate implementation / shape-special-case walker that bypasses metadata clone/trace.
+- Optimizations must live **inside** the existing metadata-driven transmigration loop (dispatch/worklist/remap), and be covered by tests.
+
+**Baseline / ROI (measured 2026-01-10):**
+- Current benchmark (`make -C runtime/tests bench`) shows linked-list transmigration remains ~3.8× slower than raw C at 1k–10k elements.
+  - Raw C 10k list: ~110,421 ns/op
+  - OmniLisp 10k list: ~422,368 ns/op
+- Hypothesis: the next dominant overhead is **dispatch + branchy edge processing**, not remap complexity (Phase 35) and not worklist churn (Phase 37).
+- Phase 38 is considered a success if the 10k list transmigration ns/op improves by **≥ 20%** without correctness regressions.
+
+---
+
+### P0: Measure the Indirect-Call Tax (Instrumentation-First) [TODO]
+
+- [TODO] Label: T38-dispatch-metrics (P0)
+  Objective: Add lightweight counters so we can quantify the ROI of devirtualizing trace dispatch before/after Phase 38 changes.
+  Reference: `runtime/docs/CTRR_TRANSMIGRATION.md` (must not change semantics)
+  Where:
+    - `runtime/src/memory/transmigrate.c` (increment counters in the core loop)
+    - `runtime/include/` (export debug getters if needed)
+    - `runtime/tests/bench_transmigrate_vs_c.c` (print counters in a debug build or behind a flag)
+  Why:
+    Without numbers, it’s easy to accidentally “optimize” a cold path or regress correctness. We need to measure:
+      - how many trace dispatches occur per tag (especially `TAG_PAIR`)
+      - how many times we call through `meta->trace` (indirect calls)
+      - how many edges we process (car/cdr/array elems)
+  What to change:
+    1. Add counters guarded by a compile-time knob (so release builds can compile them out):
+       - `OMNI_TRANSMIGRATE_METRICS` (default: off)
+    2. Increment counters for:
+       - `g_trace_calls_total`
+       - `g_trace_calls_pair`
+       - `g_trace_calls_array`
+       - `g_trace_calls_indirect` (count only `meta->trace` calls)
+       - `g_edges_processed_total` (optional but useful)
+    3. Provide a way to read/print them from the bench harness when enabled.
+  Verification plan:
+    - Build and run `make -C runtime/tests bench` with metrics enabled (exact knob name in code).
+    - Confirm counters are non-zero and consistent (e.g., 10k list → ~10k pair traces).
+
+---
+
+### P1: Hot-Tag Inline Dispatch (TAG_PAIR first; TAG_ARRAY optional) [TODO]
+
+- [TODO] Label: T38-hot-tag-inline-dispatch (P1)
+  Objective: Remove the function-pointer call overhead for the hottest tag(s) by dispatching `TAG_PAIR` (and optionally `TAG_ARRAY`) via an inline trace routine inside the existing transmigration loop.
+  Reference: `runtime/docs/CTRR_TRANSMIGRATION.md` (sharing/cycle preservation; external-root non-rewrite)
+  Where:
+    - `runtime/src/memory/transmigrate.c` (core loop dispatch site)
+    - `runtime/src/memory/region_metadata.c` / metadata definitions (only if needed for parity; do not fork semantics)
+  Why:
+    Lists are dominated by pairs. Today the hot path pays an indirect function pointer call for every pair trace. This blocks inlining and adds branch/mispredict cost. Devirtualizing the trace for hot tags should reduce constant-factor overhead for list-heavy graphs.
+  Implementation sketch (must remain within the same machinery):
+    1. In the “process work item” loop, replace “lookup meta → call `meta->trace`” with:
+       ```c
+       switch (src->tag) {
+         case TAG_PAIR:
+           omni_trace_pair_inline(ctx, dst, src);
+           break;
+         case TAG_ARRAY:
+           omni_trace_array_inline(ctx, dst, src);
+           break;
+         default:
+           meta = omni_meta_for_tag(ctx, src->tag);   // existing O(1) lookup
+           meta->trace(ctx, dst, src);                // fallback for everything else
+           break;
+       }
+       ```
+    2. `omni_trace_pair_inline(ctx, dst, src)` must implement *exactly* the same semantics as the metadata trace:
+       - For each candidate child pointer:
+         - If immediate → skip (no work item, no remap).
+         - If not in `src_region` → treat as external root and do **not** rewrite.
+         - If in `src_region` → `child_dst = remap(child_src)` and write `dst->field = child_dst`.
+    3. Keep `src_region->start/end` (or equivalent) in locals to reduce repeated loads.
+  Performance plan:
+    - Baseline: current `bench` output for 10k lists (record ns/op and counters from P0).
+    - Target: ≥ 20% improvement for 10k list ns/op; `g_trace_calls_indirect` should drop significantly for pair-heavy graphs.
+  Verification plan:
+    - Run `make -C runtime/tests test` and ensure all tests pass.
+    - Run `make -C runtime/tests bench` and compare numbers against baseline.
+
+---
+
+### P2: Correctness Guards for Inline Dispatch (Cycles + External Roots) [TODO]
+
+- [TODO] Label: T38-inline-dispatch-correctness-tests (P2)
+  Objective: Add regression tests that fail if the inline dispatch accidentally violates the transmigration contract (cycle preservation, sharing identity, external-root non-rewrite).
+  Reference: `runtime/docs/CTRR_TRANSMIGRATION.md` (must preserve sharing/cycles; external-root rule)
+  Where:
+    - `runtime/tests/` (new test file; wire into `runtime/tests/test_main.c` as needed)
+  Why:
+    Inline implementations are high-risk: a single missed edge case silently breaks Region Closure Property or sharing/cycle invariants. Tests must lock the contract.
+  What to add (minimum):
+    1. **Cycle preservation test:**
+       - Build a cyclic pair structure (cdr points back into the list) allocated in a source region.
+       - Transmigrate; assert the cycle is preserved in the destination graph (identity checks).
+    2. **External-root non-rewrite test:**
+       - Allocate a “foreign” `Obj*` outside the source region.
+       - Construct a pair in the source region that references the foreign pointer in `car` or `cdr`.
+       - Transmigrate; assert that destination’s corresponding field still equals the foreign pointer (not cloned/rewritten).
+    3. **Inline-path exercised test (“tripwire”):**
+       - Add a compile-time knob (e.g., `OMNI_TRANSMIGRATE_FORCE_INLINE_PAIR_TRACE`) that increments a counter when the inline path runs.
+       - Test asserts the counter is > 0 for a pair-heavy transmigration. This prevents “dead inline code” that is never actually used.
+  Verification plan:
+    - `make -C runtime/tests test`
+    - `make -C runtime/tests test` with the inline-force knob enabled (exact flag name in implementation).
