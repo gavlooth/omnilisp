@@ -8252,3 +8252,154 @@ while preserving CTRR’s correctness invariant (unique `remap(src)` identity, c
       - Omni 10k array ns/op (regression guard)
   Done means:
     - Phase 41 section includes dated “Measured Results” for both modes.
+
+---
+
+## Phase 42: CTRR Transmigration — Single Edge-Rewrite Choke Point + Tooling/Stress Gates [TODO]
+
+**Objective:** Improve transmigration robustness and performance by forcing all pointer rewrites/scheduling through one shared “edge rewrite” choke point, then instrument and harden it so future optimizations cannot regress correctness or reintroduce per-edge allocations. Add tooling/stress gates (ASAN/TSAN) focused specifically on transmigration safety.
+
+**Big Idea (what changes):**
+- Today, edge-handling logic is duplicated across:
+  - metadata visitor paths,
+  - specializations (e.g., TAG_PAIR inline dispatch),
+  - array/vector traces.
+- Duplication causes two recurring failures:
+  1. Performance regressions (someone reintroduces per-edge allocations in one path).
+  2. Correctness drift (external-root non-rewrite, inline_buf domain coverage, or forwarding semantics get implemented inconsistently).
+- Phase 42 introduces a single internal API that performs:
+  - immediate detection,
+  - in-region classification,
+  - forwarding/remap lookup (and/or forwarding-as-visited logic when enabled),
+  - worklist scheduling (Phase 37 inline worklist only),
+  - and slot rewrite.
+
+**Reference (read first):**
+- `runtime/docs/CTRR_TRANSMIGRATION.md` (normative runtime contract for clone/trace + external-root rule)
+- `runtime/docs/CTRR_REMAP_FORWARDING_TABLE.md` (forwarding semantics; thresholds; forced mode)
+- `docs/CTRR.md` (Region Closure Property; “everything can escape”)
+- `TODO.md` (Head-of-file “Transmigration Directive” correctness invariant)
+
+**Constraints (non-negotiable):**
+- No stop-the-world GC; no heap-wide scanning collectors.
+- No language-visible sharing primitive (`(share v)` or similar is forbidden).
+- No alternate transmigrate implementation / bypass walkers.
+- No per-edge `arena_alloc(sizeof(WorkItem))` in the hot path (Phase 37 worklist remains authoritative).
+- Benchmark claims must use Phase 39 protocol (`bench-dbg` and `bench-rel`).
+
+**Success definition:**
+- All pointer discovery/rewrites (including TAG_PAIR specialization) call the same edge helper.
+- In forced-forwarding mode, the helper demonstrates (via counters) that it does not use slow fallbacks in the hot path.
+- ASAN/TSAN targets run without transmigration-specific regressions (within the scope of the focused tests added here).
+
+---
+
+### P0: Define the Edge Rewrite API and Its Contract (Documentation + Header) [TODO]
+
+- [TODO] Label: T42-edge-rewrite-api-contract (P0)
+  Objective: Define a single internal helper API (signature + behavior contract) used everywhere edges are processed during transmigration.
+  Reference: `runtime/docs/CTRR_TRANSMIGRATION.md`
+  Where:
+    - `runtime/src/memory/transmigrate.c` (helper definition and usage)
+    - `runtime/src/memory/transmigrate.h` (if shared across compilation units)
+  What to define (example signature; final signature may differ):
+    ```c
+    // Returns 1 if slot was rewritten immediately, 0 if scheduled for later.
+    static inline int omni_rewrite_or_schedule_edge(
+        TransmigrateCtx* ctx,
+        Obj** slot,          // destination slot to rewrite
+        Obj* child_src        // source pointer currently stored in slot
+    );
+    ```
+  Required semantics:
+    1. If `child_src == NULL` → no-op
+    2. If `child_src` is immediate → no-op (do not schedule)
+    3. If `child_src` is outside the src-region domain → treat as external root; no rewrite
+    4. If `child_src` is in-region:
+       - if already remapped → rewrite slot immediately
+       - else → schedule via Phase 37 inline worklist (no per-edge allocation)
+  Verification plan:
+    - Add a small comment block above the helper describing the contract and linking the relevant docs.
+
+---
+
+### P1: Refactor All Edge Sites to Use the Helper (Eliminate Duplication) [TODO]
+
+- [TODO] Label: T42-edge-rewrite-refactor (P1)
+  Objective: Replace duplicated edge-processing logic with calls to `omni_rewrite_or_schedule_edge()` across:
+  - metadata visitor callback path,
+  - TAG_PAIR specialization,
+  - any array/vector boxed-edge loops.
+  Reference: `runtime/docs/CTRR_TRANSMIGRATION.md`
+  Where:
+    - `runtime/src/memory/transmigrate.c` (all edge sites)
+  Why:
+    This is the primary “robustness” lever: once all edges go through one choke point, later performance changes can be implemented once and validated once.
+  Implementation details:
+    - Identify every location where the code currently does:
+      - `IS_IMMEDIATE` / `bitmap_in_range` / `bitmap_test` / `fwd_get` / `remap_get` / `worklist_push`
+    - Replace with:
+      - `omni_rewrite_or_schedule_edge(ctx, slot, child_src)`
+    - Ensure the helper is used in both `transmigrate()` and `transmigrate_incremental()`.
+  Verification plan:
+    - `make -C runtime/tests test`
+    - `make -C runtime/tests test-fwd` (ensure forced forwarding mode still works)
+
+---
+
+### P2: Regression Tripwires (No Per-Edge Alloc + Correct External-Root Handling) [TODO]
+
+- [TODO] Label: T42-edge-rewrite-tripwires (P2)
+  Objective: Add tests/guards that fail if:
+  - per-edge allocations return in the hot path,
+  - external-root non-rewrite is violated,
+  - forwarding/remap identity breaks sharing/cycles.
+  Reference: `runtime/docs/CTRR_TRANSMIGRATION.md`, `runtime/docs/CTRR_REMAP_FORWARDING_TABLE.md`
+  Where:
+    - `runtime/tests/` (new focused test file)
+    - `runtime/tests/test_main.c` (include new test)
+  What to add (minimum):
+    1. A forced-forwarding run that transmigrates a 10k list and asserts:
+       - forwarding was used (existing debug knobs/counters if available),
+       - slow fallback counters are ~0 in the hot path (if Phase 40/metrics exist).
+    2. External-root test: foreign `Obj*` referenced by a pair remains identical after transmigrate.
+    3. Cycle+sharing tests: must pass under forced forwarding and normal mode.
+  Verification plan:
+    - `make -C runtime/tests test`
+    - `make -C runtime/tests test-fwd`
+
+---
+
+### P3: Tooling Gates (ASAN/TSAN Smoke Tests Focused on Transmigration) [TODO]
+
+- [TODO] Label: T42-transmigrate-tooling-gates (P3)
+  Objective: Add a small focused stress test (or reuse existing ones) that exercises transmigration heavily and is run under ASAN/TSAN targets, to catch memory issues and data races early.
+  Reference: `runtime/tests/Makefile` (asan/tsan targets), `runtime/docs/ARCHITECTURE.md` (threading model assumptions)
+  Where:
+    - `runtime/tests/` (new stress test or extend existing stress suite)
+    - `runtime/tests/Makefile` (ensure a target exists to run the focused transmigrate stress under sanitizers)
+  Notes / constructive criticism:
+    - TSAN will report races if transmigration is called concurrently without locks. This phase must explicitly document the intended contract:
+      - either “transmigrate is not thread-safe; must be called under the owning runtime lock”
+      - or “transmigrate is thread-safe with respect to X/Y/Z shared counters”
+    - Tests must match the intended contract (don’t generate false failures by violating the contract).
+  Verification plan:
+    - `make -C runtime/tests asan` (or `asan-slow` if needed)
+    - `make -C runtime/tests tsan` (if TSAN is usable on this platform/toolchain)
+
+---
+
+### P4: Benchmark Reporting (Phase 39 Protocol) [TODO]
+
+- [TODO] Label: T42-bench-reporting (P4)
+  Objective: Report whether the refactor preserved or improved performance (it should not regress list sentinels).
+  Reference: Phase 39 benchmark consistency protocol
+  Protocol:
+    - `make -C runtime/tests bench-rel`
+    - `make -C runtime/tests bench-dbg`
+  Record:
+    - Raw C vs Omni 1k list ns/op
+    - Raw C vs Omni 10k list ns/op
+    - Omni 10k array ns/op (regression guard)
+  Done means:
+    - Phase 42 section includes dated “Measured Results” for both modes.
