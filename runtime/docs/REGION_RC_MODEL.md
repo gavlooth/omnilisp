@@ -7,6 +7,19 @@
 
 ---
 
+## Terminology (Pinned)
+
+This project reserves **Region** for the semantic meaning:
+
+> **Region (canonical):** a collection of objects with the same lifetime.
+
+This document describes **Region‑RC**, which is the runtime liveness mechanism applied to the **ArenaRegion/RCB** that implements a Region.
+
+For unambiguous terms and a code map, see:
+- `runtime/docs/MEMORY_TERMINOLOGY.md`
+
+---
+
 ## 1) What is Region-RC?
 
 **Region-RC** is OmniLisp's coarse-grained reference counting model applied at the **region granularity**, not per-object. It is the runtime mechanism that allows regions to outlive their lexical scope while maintaining CTRR's "everything can escape" guarantee.
@@ -22,6 +35,32 @@ Region-RC applies RC only to **regions**:
 - No per-object RC overhead (objects inside regions are bulk-freed)
 - RC operations only at escape boundaries (return, capture, global store)
 - Cycles within regions are safe (entire cycle dies with region)
+
+**Important implementation requirement (enforcement):**
+- “RC operations only at escape boundaries” is only meaningful if the runtime can identify an object's owning ArenaRegion (`region_of(obj)`) and if mutation-time stores are mediated by a store barrier.
+- This is tracked as required work in `TODO.md`:
+  - Issue 1 / Amendment A: `I1-region-of-obj-mechanism` (completed 2026-01-10)
+  - Issue 2 / Amendment A: `I2-store-barrier-choke-point`
+
+---
+
+### 1.1.1 Implementation Decision: Option A (Per-Object Owner Pointer) Chosen
+
+**Decision (2026-01-10):** OmniLisp implemented **Option A (tooling-first, simplest)** for `region_of(obj)`.
+
+**Rationale:**
+- **ASAN/TSAN compatibility:** Option A works directly with ASAN and TSAN without requiring custom suppression rules or fighting with non-canonical pointers
+- **Simplicity:** No complex masking/unmasking rules at every API boundary
+- **Debuggability:** Straightforward pointer tracing in debuggers
+
+**Implementation:**
+- Added `Region* owner_region;` field to `struct Obj` in `runtime/include/omni.h`
+- Set `owner_region` in `alloc_obj_typed()` for all boxed objects
+- Implemented `static inline Region* omni_obj_region(Obj* o)` that returns NULL for immediates
+- Verified with comprehensive test suite in `runtime/tests/test_region_of_obj.c`
+
+**Alternatives Considered and Rejected:**
+- **Option B (pointer masking):** Would encode `region_id` into high bits of pointer. Rejected due to ASAN/UBSAN compatibility issues and complexity of enforcing masking rules at all API boundaries.
 
 ### 1.2 Relationship to CTRR
 

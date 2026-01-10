@@ -18,8 +18,13 @@ repair”.
 
 ## 1) Glossary (precise meanings)
 
-- **Region**: a bulk allocation domain (arena/bump) reclaimed as a unit.
-- **Region lifetime**: the interval during which region memory is valid.
+- **Region (canonical)**: a **semantic lifetime class**: “a collection of objects with the same lifetime”.
+  - Regions are inferred/scheduled by the compiler (CTRR analysis) and then **implemented** by the runtime.
+  - **Important:** a Region is *not* synonymous with an Arena allocator.
+  - See `runtime/docs/MEMORY_TERMINOLOGY.md` (pinned project-wide terminology).
+- **Arena**: a physical bump/chunk allocator used to implement bulk allocation (not a semantic lifetime class).
+- **ArenaRegion / RCB**: the runtime container that owns an Arena and implements Region‑RC + tethering (currently `struct Region` in `runtime/src/memory/region_core.h`).
+- **Region lifetime**: the interval during which a Region (semantic) is valid; it is realized as “ArenaRegion storage remains valid”.
 - **Escape**: a value outlives the region where it was allocated (return, closure
   capture, global store, cross-thread send, etc.).
 - **Borrow**: a temporary reference bounded by a window (typically a call).
@@ -41,6 +46,13 @@ For any region `Rsrc`:
 > owned by `Rsrc`.**
 
 This is the foundation of CTRR. Violations are use-after-free by construction.
+
+**Enforcement note (pinned to the canonical Region definition):**
+- In a real Lisp, runtime mutation and cross-thread/global structures can create new escape edges dynamically.
+- Therefore, “Region = lifetime class” is only a guarantee if the implementation provides:
+  1. **Region identity** (`region_of(obj)` / owning ArenaRegion metadata), and
+  2. a **store barrier** (mutation-time auto-repair: transmigrate or adopt/merge).
+- See `runtime/docs/MEMORY_TERMINOLOGY.md` (“Enforcement Requirements”) and `TODO.md` Issue 1 / Issue 2 amendments.
 
 ### 2.2 “Everything can escape” (language-level guarantee)
 
@@ -115,4 +127,3 @@ Transmigration must be **metadata-driven**:
 Missing metadata for a tag that can escape must fail loudly in debug builds.
 
 See `runtime/docs/CTRR_TRANSMIGRATION.md` for the detailed runtime contract.
-

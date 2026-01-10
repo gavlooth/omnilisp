@@ -12,15 +12,18 @@ The OmniLisp runtime uses a **hybrid memory system** that combines:
 
 - **CTRR (compile-time scheduling)**: Compiler decides region lifetimes and injects
   `region_exit()` and escape repair (`transmigrate()`) at the right boundaries.
-- **Regions (bulk reclamation)**: Most allocation is bump-allocated and reclaimed in bulk.
-- **Region-RC (RC-G)**: Regions that must outlive their lexical scope are reference counted
-  at the *region* granularity (coarse-grained RC), not per object.
+- **Regions (canonical: lifetime classes)**: A Region is a **semantic lifetime class** (“objects that die together”).
+- **Arenas (implementation)**: Most allocation is bump-allocated in an Arena and reclaimed in bulk.
+- **ArenaRegions / RCBs (runtime containers)**: The runtime container (currently `struct Region`) that owns an Arena + liveness counters.
+- **Region-RC (coarse-grained RC)**: ArenaRegions that must outlive their lexical scope are reference counted
+  at the *ArenaRegion* granularity (coarse-grained RC), not per object.
 - **Tethering**: Bounded borrows keep a region alive without copying.
 - **Metadata-driven transmigration**: Type metadata defines how to clone/trace values so
   escaping graphs can be repaired soundly without stop-the-world GC.
 
 **Documentation Hierarchy:**
 - This document: Overall runtime architecture
+- `runtime/docs/MEMORY_TERMINOLOGY.md` - **Pinned terminology** (Region vs Arena vs ArenaRegion/RCB)
 - `runtime/docs/REGION_RC_MODEL.md` - **Normative specification** of Region-RC semantics, external pointers, and auto-repair
 - `runtime/docs/CTRR_TRANSMIGRATION.md` - Transmigration implementation contract
 - `docs/CTRR.md` - High-level CTRR contract and Region Closure Property
@@ -109,7 +112,10 @@ Benefits:
 ```
 
 Implementation note:
-- Regions are implemented as a bump-allocated arena plus a small inline-buffer fast path
+- **Terminology clarification:** The runtime “bucket” is an **ArenaRegion/RCB** (currently `struct Region`).
+  The canonical **Region** term is reserved for semantic lifetime classes.
+  See `runtime/docs/MEMORY_TERMINOLOGY.md`.
+- ArenaRegions are implemented as a bump-allocated Arena plus a small inline-buffer fast path
   for very small objects (`runtime/src/memory/region_core.h`).
 
 ---
@@ -147,6 +153,36 @@ Lifecycle:
 
 This is "Region-RC": regions + reference counting on regions (coarse-grained, not per-object)
 ```
+
+---
+
+## Enforcing “Region = lifetime class” (required in a real Lisp)
+
+This project pins **Region** to the semantic meaning: “objects with the same lifetime”.
+
+That definition is **not automatically preserved** once we have:
+- runtime mutation (arrays/dicts/atoms/etc),
+- long-lived global containers (`_global_region`),
+- and concurrency primitives (channels, threads).
+
+Therefore, CTRR + Region‑RC is only a *guarantee* if the implementation includes:
+
+1. **Region identity (`region_of(obj)`)**
+   - The runtime must be able to map a boxed `Obj*` to its owning **ArenaRegion/RCB** in O(1).
+   - Without this, the runtime cannot soundly implement `external_rc` updates or store-barrier repair.
+
+2. **A store barrier (mutation-time auto-repair)**
+   - All pointer stores must go through a single helper that repairs illegal lifetime edges immediately:
+     - small graphs ⇒ transmigrate
+     - large regions ⇒ adopt/merge/splice when safe, otherwise fallback to transmigrate
+   - No stop-the-world collectors are allowed.
+
+Planned work is explicitly tracked in `TODO.md`:
+- Issue 1 / Amendment A: `I1-region-of-obj-mechanism`, `I1-ctrr-external-rc-insertion`
+- Issue 2 / Amendment A: `I2-store-barrier-choke-point`, `I2-region-merge-policy`
+
+See also:
+- `runtime/docs/MEMORY_TERMINOLOGY.md` (canonical terms + code map)
 
 This model name is used throughout the repository as **runtime** memory model:
 - `docs/UNIFIED_REGION_ARCHITECTURE.md` calls lifecycle "Refcounted (Region-RC)"

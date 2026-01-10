@@ -5,6 +5,9 @@
 **Last Updated:** 2026-01-10  
 **Related:** `runtime/docs/REGION_RC_MODEL.md` (Region-RC model), `runtime/docs/ARCHITECTURE.md` (architecture)
 
+**Terminology:** This document counts metrics on the runtime **ArenaRegion/RCB** (currently `struct Region`).
+Canonical “Region” terminology is pinned in `runtime/docs/MEMORY_TERMINOLOGY.md`.
+
 ---
 
 ## 1) Purpose

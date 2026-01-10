@@ -103,6 +103,7 @@ Obj* alloc_obj_typed(Region* r, TypeID type_id) {
         o->tag = type_id_to_tag(type_id);
         o->generation = 0;
         o->tethered = 0;
+        o->owner_region = NULL;  /* No owning region for malloc'd objects */
         return o;
     }
 
@@ -118,6 +119,7 @@ Obj* alloc_obj_typed(Region* r, TypeID type_id) {
     o->tag = type_id_to_tag(type_id);  /* Set tag for compatibility */
     o->generation = 0;
     o->tethered = 0;
+    o->owner_region = r;  /* Issue 1 P1: Set owning region */
 
     /* TODO: Future optimization - store type_id instead of tag */
     /* For now, we maintain both for compatibility during transition */

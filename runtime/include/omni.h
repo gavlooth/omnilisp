@@ -339,6 +339,7 @@ struct Obj {
     int scc_id;             /* SCC identifier for cycle detection (-1 = none) */
     unsigned int scan_tag : 31;  /* Scanner mark (separate from RC) */
     unsigned int tethered : 1;   /* Scope tethering bit (Vale-style) */
+    Region* owner_region;    /* Issue 1 P1: Owning region for region_of(obj) */
     union {
         long i;
         double f;
@@ -1270,6 +1271,33 @@ Obj* prim_require(Obj* name_obj);
 
 /* Qualified name resolution */
 Obj* prim_resolve(Obj* qualified_name);
+
+/* ========== Issue 1 P1: region_of(obj) mechanism ========== */
+
+/*
+ * omni_obj_region - Get the owning Region of a boxed object
+ *
+ * This function maps any boxed Obj* to its owning Region in O(1).
+ * It returns NULL for immediates (ints, chars, bools) and NULL pointers.
+ *
+ * This is the foundation for Region-RC, enabling:
+ * - retain/release operations at external boundaries
+ * - store-barrier auto-repair (mutation-time lifetime checks)
+ * - region accounting diagnostics
+ *
+ * Implementation: Uses the owner_region field added to struct Obj.
+ * Option A (tooling-first) was chosen over pointer masking for ASAN/TSAN compatibility.
+ *
+ * @param o: The object to query
+ * @return: The owning Region* for boxed objects, NULL for immediates or NULL
+ */
+static inline Region* omni_obj_region(Obj* o) {
+    if (!o || IS_IMMEDIATE(o)) return NULL;
+    return o->owner_region;
+}
+
+/* Define this so test files know the feature is implemented */
+#define OMNI_OBJ_REGION_IMPLEMENTED 1
 
 #ifdef __cplusplus
 }

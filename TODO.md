@@ -7,12 +7,12 @@ Backup of the previous `TODO.md` (full history):
 
 ## Review Directive
 
-**All newly implemented features must be marked with `[DONE]` (Review Needed) until explicitly approved by the user.**
+**All newly implemented features must be marked with `[DONE] (Review Needed)` until explicitly approved by the user.**
 
-- When an agent completes implementing a feature, mark it `[DONE]` (not `[DONE]`)
-- `[DONE]` means: code is written and working, but awaits user review/approval
-- After user approval, change `[DONE]` to `[DONE]`
-- Workflow: `[TODO]` → implement → `[DONE]` → user approves → `[DONE]`
+- When an agent completes implementing a feature, mark it `[DONE] (Review Needed)` (not `[DONE]`)
+- `[DONE] (Review Needed)` means: code is written and working, but awaits user review/approval
+- After user approval, change `[DONE] (Review Needed)` → `[DONE]`
+- Workflow: `[TODO]` → implement → `[DONE] (Review Needed)` → user approves → `[DONE]`
 
 ---
 
@@ -21,6 +21,9 @@ Backup of the previous `TODO.md` (full history):
 **Correctness invariant (must always hold):** For every in-region heap object `src` reached during transmigration, `remap(src)` yields exactly one stable destination `dst`, and all pointer discovery/rewrites happen only via metadata-driven `clone/trace` (no ad-hoc shape walkers); external/non-region pointers are treated as roots and never rewritten.
 
 **Do not bypass the metadata-driven transmigration machinery for “fast paths”.**
+
+**Pinned terminology (required reading):**
+- `runtime/docs/MEMORY_TERMINOLOGY.md` (Region = lifetime class; ArenaRegion/RCB = runtime container; enforcement requires region identity + store barrier)
 
 Rationale:
 - Fast paths that “special-case” one shape (e.g., linear lists) tend to reintroduce unsoundness by silently skipping necessary escape repair (Region Closure Property).
@@ -162,6 +165,103 @@ jj describe
   Verification plan:
     - Provide at least one example per boundary in the doc (source + expected runtime operation). ✅
 
+### Amendment A (2026-01-10): Doc→Code conformance + “make Region‑RC real”
+
+**Problem statement (constructive criticism):** Right now, Region‑RC is mostly a *documented intent*, not a complete runtime/CTRR guarantee, because neither the runtime nor the compiler has a reliable, cheap way to answer “which region owns this `Obj*`?”. Without that, we cannot soundly update `external_rc` at real escape boundaries, nor implement the mutation-time auto-repair barrier (Issue 2).
+
+**Reality check (what exists in code today):**
+- ✅ Region control block and liveness fields exist: `runtime/src/memory/region_core.h` (`external_rc`, `tether_count`, `scope_alive`, `owner_thread`, `region_id`).
+- ✅ Region liveness ops exist: `runtime/src/memory/region_core.c` (`region_exit`, `region_destroy_if_dead`, `region_retain_internal`, `region_release_internal`, `region_tether_start/end`).
+- ✅ Compiler emits region lifecycle + some tethering: `csrc/codegen/region_codegen.c`, `csrc/codegen/codegen.c`.
+- ❌ No stable “owning region” metadata on `Obj` (or fully-integrated pointer-encoding) to implement `region_of(obj)` cheaply.
+- ❌ No compile-time insertion of `region_retain/region_release` at return/capture/global/channel boundaries (search in `csrc/` finds none).
+- ❌ Runtime primitives store pointers freely (channels/atoms/arrays/dicts) without a store barrier (Issue 2).
+
+#### P1: Implement `region_of(obj)` (foundation for RC + store barrier) [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: I1-region-of-obj-mechanism (P1)
+  Objective: Add a **single, audited** mechanism to map any boxed `Obj*` to its owning `Region*` in O(1), so that `external_rc` updates and mutation auto-repair are implementable without heap scanning.
+  Reference (read first):
+    - `runtime/docs/REGION_RC_MODEL.md` (Sections 2–3 “External references”)
+    - `runtime/docs/CTRR_TRANSMIGRATION.md` (external-root rule + remap identity)
+    - `runtime/docs/ARCHITECTURE.md` (“Region‑RC = when regions escape”)
+  Constraints:
+    - Tooling matters: the default approach must work with ASAN/TSAN builds.
+    - No heap-wide scanning to find an owning region.
+  Where (expected touchpoints):
+    - `runtime/include/omni.h` (define/gate the chosen mechanism; add `omni_obj_region()` API)
+    - `runtime/src/memory/region_value.c` (set owner metadata on allocation)
+    - `runtime/src/memory/transmigrate.c` (use `region_of()` when correctness requires, not only “range checks”)
+    - Optional: `runtime/src/memory/region_pointer.h` (only if pointer-masking is selected)
+  Why:
+    Without `region_of(obj)`, the runtime cannot:
+      - retain/release the correct region at external boundaries,
+      - implement store-barrier auto-repair,
+      - make channel/atom safe without transmigrating everything into global region.
+  What to change (choose ONE approach and document the decision in `runtime/docs/REGION_RC_MODEL.md`):
+    1. **Option A (tooling-first, simplest): per-object owner pointer**
+       - Add `struct Region* owner_region;` to `struct Obj` (boxed only).
+       - Set it in `alloc_obj_typed()` and all region constructors.
+       - Provide `static inline Region* omni_obj_region(Obj* o)` that returns NULL for immediates.
+    2. **Option B (perf-first, risky): pointer masking using `Region.region_id`**
+       - Encode region_id into pointer high bits (see `runtime/src/memory/region_pointer.h`).
+       - Requires strict masking/unmasking rules at every API boundary; known to fight ASAN/UBSAN and non-canonical pointers.
+  Implementation details (pseudocode):
+    ```c
+    static inline Region* omni_obj_region(Obj* o) {
+      if (!o || IS_IMMEDIATE(o)) return NULL;
+      return o->owner_region;  // Option A
+    }
+    ```
+  Verification plan (tests must fail before fix, pass after):
+    - Add `runtime/tests/test_region_of_obj.c`:
+      1. allocate in `R1`, assert `omni_obj_region(obj) == R1`
+      2. allocate in `R2`, assert `omni_obj_region(obj) == R2`
+      3. immediates return NULL
+    - Commands:
+      - `make -C runtime/tests test`
+      - `make -C runtime/tests asan`
+
+#### P2: Make Region‑RC escape boundaries compile-time actionable (retain/release insertion plan) [TODO]
+
+- [TODO] Label: I1-ctrr-external-rc-insertion (P2)
+  Objective: Extend CTRR so that when it chooses “**retain region**” (instead of transmigrate), it also emits **matching** `region_retain_internal()` and `region_release_internal()` at compile time based on last-use, so regions can outlive scope safely without leaks.
+  Reference (read first):
+    - `runtime/docs/REGION_RC_MODEL.md` (Section 3.3 external boundaries)
+    - `docs/CTRR.md` (“everything can escape”; last-use insertion is the whole point)
+    - `csrc/analysis/analysis.h` (`RegionInfo`, escape/capture tracking; liveness infra)
+  Where:
+    - `csrc/analysis/analysis.c` (decide retain vs transmigrate per escape site)
+    - `csrc/codegen/region_codegen.c` (emit retain/release sites)
+    - `csrc/codegen/codegen.c` (ensure all exit paths release)
+  Why:
+    The spec says “caller releases when done”, but OmniLisp has no explicit “drop”.
+    The only sound path is: **compiler inserts releases at last use**, like ASAP/CTRR inserts `free()`.
+  What to change:
+    1. Define an analysis-level escape-repair tag per escaping binding:
+       - `ESCAPE_REPAIR_TRANSMIGRATE` vs `ESCAPE_REPAIR_RETAIN_REGION`.
+    2. When `RETAIN_REGION` is chosen:
+       - Emit `region_retain_internal(omni_obj_region(x))` at escape boundary.
+       - Emit `region_release_internal(omni_obj_region(x))` at the *last use* of `x` in the outliving scope.
+  Implementation details (pseudocode):
+    ```c
+    if (plan == RETAIN_REGION) {
+      region_retain_internal(omni_obj_region(x));
+      return x;
+    } else {
+      return transmigrate(x, _local_region, _caller_region);
+    }
+    // ...later, at last use of x...
+    region_release_internal(omni_obj_region(x));
+    ```
+  Verification plan:
+    - Add `csrc/tests/test_codegen_region_retain_release.c`: compile a small program; assert generated C contains retain/release at the expected points.
+    - Add `runtime/tests/test_region_rc_liveness.c`:
+      - Build value in region `R`, `region_exit(R)`, retain it, verify region isn’t reclaimed until release happens.
+    - Commands:
+      - `make -C csrc/tests test`
+      - `make -C runtime/tests test`
+
 ---
 
 ## Issue 2: Pool/arena practice + region accounting + auto-repair threshold tuning (Internet-Informed 11.3) [TODO]
@@ -223,6 +323,108 @@ jj describe
     - Define a benchmark scenario and what would constitute a "win".
   **Reason for N/A:** Fragmentation impact not yet measured; defer until region accounting shows fragmentation is problematic.
 
+### Amendment A (2026-01-10): Region accounting + mutation auto-repair are not implemented yet
+
+**Reality check (constructive criticism):** `runtime/docs/REGION_ACCOUNTING.md` is normative, but `struct Region` currently has none of the required accounting fields, and the runtime has multiple pointer-storing primitives (arrays/dicts/atoms/channels) that bypass any “auto-repair” barrier. That means the *contract* is not currently enforced.
+
+#### P3: Implement per-region accounting counters (minimal, deterministic, low overhead) [TODO]
+
+- [TODO] Label: I2-impl-region-accounting-counters (P3)
+  Objective: Implement the **required** per-region accounting counters described in `runtime/docs/REGION_ACCOUNTING.md`, including a way to count arena chunk growth without heap scanning.
+  Reference (read first):
+    - `runtime/docs/REGION_ACCOUNTING.md` (Sections 2–4)
+    - `runtime/src/memory/region_core.h` (`region_alloc` fast path + arena slow path)
+    - `third_party/arena/arena.h` (ArenaChunk list structure)
+  Where:
+    - `runtime/src/memory/region_core.h` (add fields to `struct Region`; update inline alloc)
+    - `runtime/src/memory/region_core.c` (initialize/reset counters; include region-pool reset path)
+  What to change (required `struct Region` fields; names may be adjusted but MUST exist):
+    ```c
+    size_t bytes_allocated_total;
+    size_t bytes_allocated_peak;
+    size_t inline_buf_used_bytes;
+    size_t escape_repair_count;
+    size_t chunk_count;
+    ArenaChunk* last_arena_end;  // internal: detect chunk growth without touching third_party
+    ```
+  Implementation details (chunk_count without modifying `third_party/arena`):
+    - In `region_alloc` slow-path:
+      - `ArenaChunk* before = r->arena.end;`
+      - `ptr = arena_alloc(&r->arena, size);`
+      - If `r->arena.end != before` then `r->chunk_count++`
+  Verification plan:
+    - Add `runtime/tests/test_region_accounting.c`:
+      1. Allocate known sizes; assert `bytes_allocated_total` matches sum of requested sizes (or aligned sizes if documented).
+      2. Force arena growth; assert `chunk_count` increments.
+      3. Force inline allocations; assert `inline_buf_used_bytes` tracks peak offset.
+    - Commands:
+      - `make -C runtime/tests test`
+
+#### P4: Define + implement the mutation store barrier choke point (auto-repair at runtime) [TODO]
+
+- [TODO] Label: I2-store-barrier-choke-point (P4)
+  Objective: Add a single runtime helper that *all* pointer-storing primitives must use, enforcing Region Closure by **automatic** repair of illegal lifetime edges at mutation time (no “abort as semantics”).
+  Reference (read first):
+    - `docs/CTRR.md` (Region Closure Property; mutation is a new escape boundary)
+    - `runtime/docs/REGION_RC_MODEL.md` (mutation-time repair contract)
+    - `runtime/docs/REGION_ACCOUNTING.md` (size heuristic inputs)
+  Constraints:
+    - No stop-the-world GC.
+    - No new language-visible sharing primitive.
+    - Debug-only aborts permitted as diagnostics, not as the semantic contract.
+  Where (minimum call sites; inventory must be completed as part of this task):
+    - `runtime/src/runtime.c`: `array_set`, `dict_set`, atom writes (`atom_reset`, `atom_swap`, `atom_cas`), channel enqueue (`channel_send`), box setters
+    - `runtime/src/typed_array.c`: `omni_typed_array_set` (when storing boxed values)
+  What to change:
+    1. Introduce a single helper (name is illustrative; enforce usage everywhere):
+       ```c
+       Obj* omni_store_repair(Obj* container, Obj** slot, Obj* new_value);
+       ```
+    2. Required logic (high-level):
+       - If `new_value` is immediate/NULL → store directly.
+       - `Region* src = omni_obj_region(new_value)`, `Region* dst = omni_obj_region(container)` (requires Issue 1 P1).
+       - If `src == NULL || dst == NULL || src == dst` → store directly.
+       - If the store would create a younger→older (or shorter-lived→longer-lived) edge:
+         - Choose repair strategy via accounting:
+           - small ⇒ `transmigrate(new_value, src, dst)` and store moved pointer
+           - large ⇒ merge/coalesce/promote if permitted, else fallback to transmigrate
+       - Update `escape_repair_count`.
+  Verification plan (must include ASAN):
+    - Add `runtime/tests/test_store_barrier_autorepair.c`:
+      1. Create `dst` region and a container allocated in `dst`.
+      2. Create `src` region and allocate a nested value graph in `src`.
+      3. Store the value into the container via the public API.
+      4. `region_exit(src); region_destroy_if_dead(src);`
+      5. Read through the container; must still be valid (no UAF).
+    - Commands:
+      - `make -C runtime/tests test`
+      - `make -C runtime/tests asan`
+
+#### P5: Define “merge/coalesce/promote” behavior (tests first; avoid silent dangling pointers) [TODO]
+
+- [TODO] Label: I2-region-merge-policy (P5)
+  Objective: Specify and implement the “large ⇒ merge/coalesce/promote” half of auto-repair in a way compatible with the allocator constraints (inline buffer + arena chunks) and threading/ownership rules.
+  Reference (read first):
+    - `runtime/docs/REGION_RC_MODEL.md` (auto-repair contract)
+    - `runtime/src/memory/region_core.h` (`region_can_splice_arena_only` and inline buffer constraints)
+    - `runtime/src/memory/region_core.c` (`region_splice`)
+  Why:
+    `region_splice()` exists but only transfers arena chunks; it does NOT move inline-buffer allocations.
+    A naïve “merge region” will silently create dangling pointers.
+  What to change (step-by-step):
+    1. Define an explicit “merge permitted” predicate:
+       - merge permitted only when `region_can_splice_arena_only(src)` is true OR src has no inline allocations.
+    2. Minimal safe merge path:
+       - splice arena chunks from `src` into `dst` and mark `src` drained (cannot allocate further).
+       - otherwise fallback to transmigrate for the specific value graph.
+    3. Threading gates:
+       - If `src.owner_thread != dst.owner_thread`, merge forbidden → transmigrate fallback.
+  Verification plan:
+    - Extend `runtime/tests/test_store_barrier_autorepair.c` with a forced-merge case:
+      - Ensure src is arena-only (no inline allocations)
+      - Set threshold low to force merge
+      - Verify values remain valid after `region_exit(src)` and `region_destroy_if_dead(src)`
+
 ---
 
 ## Issue 3: Non-lexical regions + splitting ideas as CTRR roadmap (Internet-Informed 11.2) [TODO]
@@ -254,6 +456,49 @@ jj describe
     - Interaction with mutation auto-repair policy (Issue 2 in review_todo.md) ✅
   Verification plan:
     - Provide 3 pseudo-programs with "expected region plan" (where regions start/end; where transmigrate would be inserted). ✅
+
+### Amendment A (2026-01-10): Turn roadmap into implementable compiler milestones
+
+#### P1: Inventory what codegen already emits (region lifecycle, tether, transmigrate) [TODO]
+
+- [TODO] Label: I3-ctrr-emission-inventory (P1)
+  Objective: Produce an explicit “what codegen currently emits” inventory so later phases don’t assume features that aren’t present (retain/release insertion, precise tethering, etc.).
+  Reference (read first):
+    - `docs/CTRR_REGION_INFERENCE_ROADMAP.md`
+    - `csrc/codegen/region_codegen.c`
+    - `csrc/codegen/codegen.c`
+  Where:
+    - Update: `docs/CTRR_REGION_INFERENCE_ROADMAP.md` (append “Current Implementation Status” section)
+  What to include (minimum checklist):
+    1. Where `_local_region` is created and destroyed.
+    2. Where `transmigrate()` is emitted (return, args, closure captures, globals?) and what decides it.
+    3. Where tethering is emitted and whether it is precise or conservative.
+    4. Confirm that no `region_retain/region_release` insertion exists yet (Issue 1 P2 will add it).
+  Verification plan:
+    - Add `csrc/tests/test_codegen_region_emission_inventory.c`:
+      - Compile a small OmniLisp snippet and assert specific emitted lines exist in generated C.
+
+#### P2: Implement “non-lexical region end” for straight-line liveness (no branches yet) [TODO]
+
+- [TODO] Label: I3-nonlexical-region-end-straightline (P2)
+  Objective: Implement the simplest non-lexical region end insertion: in straight-line code, if all values allocated in `_local_region` are dead before function end, emit `region_exit/_destroy_if_dead` at the last-use point.
+  Reference (read first):
+    - `docs/CTRR_REGION_INFERENCE_ROADMAP.md` (non-lexical end section)
+    - `csrc/analysis/analysis.h` (liveness tracking)
+  Where:
+    - `csrc/analysis/analysis.c` (compute last-use for region-owned locals)
+    - `csrc/codegen/codegen.c` (emit early region exit at that last-use position)
+  Implementation details (pseudocode):
+    ```c
+    // After analysis: last_use_pos for region R is computed.
+    // Codegen: when emitting node for last_use_pos:
+    emit("region_exit(_local_region);");
+    emit("region_destroy_if_dead(_local_region);");
+    ```
+  Verification plan:
+    - Add `csrc/tests/test_nonlexical_region_end_straightline.c` with:
+      - Input: `(let ((x (pair 1 2))) 0)`
+      - Expected: generated C includes `region_exit(_local_region)` before the final `return`.
 
 ---
 
@@ -308,3 +553,41 @@ jj describe
   Verification plan:
     - Decision matrix includes "how to test" and "what to measure" for each alternative. ✅
     - Decision matrix includes “how to test” and “what to measure” for each alternative.
+
+### Amendment A (2026-01-10): Implementation gating + pick a first SMR target
+
+**Constructive criticism:** SMR is only worth implementing if we pick a concrete structure with a measured contention profile. Otherwise we’ll add complexity and still pay locks. Also: do not let SMR work distract from the immediate transmigration + store-barrier correctness work (Issues 1–2).
+
+#### P3: Add a minimal atomic policy layer (C99 + compiler builtins) [TODO]
+
+- [TODO] Label: I4-atomic-policy-wrapper (P3)
+  Objective: Route all atomic ops used by Region‑RC/tethering (and future SMR) through one header so we can audit memory orders, add TSAN annotations, and keep C99+extensions consistent.
+  Reference (read first):
+    - `runtime/docs/REGION_THREADING_MODEL.md` (atomic expectations)
+  Where:
+    - Add: `runtime/include/omni_atomic.h` (preferred; used by both runtime + tests)
+    - Update: `runtime/src/memory/region_core.c` (replace direct `__atomic_*` calls)
+  Why:
+    Today we directly call `__atomic_*` builtins in multiple places. That makes it hard to:
+      - reason about memory ordering,
+      - add consistent debug assertions,
+      - and evolve toward “C99 + extensions” vs “C11 atomics” intentionally.
+  Verification plan:
+    - Build must be warning-clean under `-std=c99 -Wall -Wextra -pthread`.
+    - `make -C runtime/tests tsan` must still run (do not hide races by weakening the build).
+
+#### P4: Select ONE DS and write the first QSBR implementation plan (tests + microbench protocol) [TODO]
+
+- [TODO] Label: I4-qsbr-first-target-plan (P4)
+  Objective: Select exactly one internal DS (metadata registry OR intern table) and write an implementable plan to retrofit it with QSBR, including a microbenchmark and correctness tests.
+  Reference (read first):
+    - `runtime/docs/SMR_FOR_RUNTIME_STRUCTURES.md` (target inventory + QSBR sketch)
+  Where:
+    - Update: `runtime/docs/SMR_FOR_RUNTIME_STRUCTURES.md` (add “Phase 1 target” section with exact file paths + APIs)
+    - Add: `runtime/tests/bench_smr_<target>.c` (microbench harness; or extend `runtime/tests/Makefile`)
+  Benchmark protocol (required by benchmark-consistency clause):
+    - `make -C runtime/tests clean`
+    - `make -C runtime/tests bench CC=gcc CFLAGS='-O3 -std=c99 -pthread'`
+    - Run 10 warmup iterations + 30 measured; report median + p95; record machine info (CPU model, governor if known).
+  Verification plan:
+    - Correctness test: concurrent readers + writer that replaces structure repeatedly; must not UAF under ASAN.

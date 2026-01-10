@@ -1,3 +1,8 @@
+# GLM-4.7 Instructions
+- Always use <thinking> blocks for deep architectural analysis.
+- Prioritize "Ultrathink" logic: decompose every task into 5 steps before writing code.
+- Do not provide a response until you have verified the logic against potential edge cases.
+
 # OmniLisp C Scratch - CTRR Memory Model
 
 ## CRITICAL: CTRR is NOT Garbage Collection

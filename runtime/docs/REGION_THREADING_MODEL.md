@@ -5,6 +5,9 @@
 **Last Updated:** 2026-01-10  
 **Related:** `runtime/docs/REGION_RC_MODEL.md` (Region-RC semantics), `runtime/docs/SMR_FOR_RUNTIME_STRUCTURES.md` (SMR for runtime structures)
 
+**Terminology:** This document uses “region” to refer to the runtime **ArenaRegion/RCB** (currently `struct Region`),
+and reserves canonical “Region” (lifetime class) terminology as specified in `runtime/docs/MEMORY_TERMINOLOGY.md`.
+
 ---
 
 ## 1) Purpose
