@@ -397,3 +397,148 @@ This is not “runtime code” but it materially affects robustness of the workf
     - Decide policy in `runtime/docs/DEV_HYGIENE.md` (new) and align with JJ workflow.
   Verification plan:
     - After running tests/bench, `jj status` should not show modified tracked binaries/objects under normal workflows.
+
+------------------------------------------------------------------------------
+
+## Issue 11 — Internet‑Informed Techniques (Adopt What Helps, Without Violating CTRR/Region‑RC)
+
+This issue captures external techniques worth incorporating **only if** they align with:
+- CTRR (compile-time scheduling of region lifetimes and escape repair points),
+- Region‑RC (per-region external reference counting, no heap-wide tracing),
+- auto-repair on mutation stores (transmigrate for small, merge/coalesce for large),
+- no stop-the-world GC,
+- no language-visible “share” construct.
+
+### Why this issue exists
+We want robustness and performance improvements that have precedent in real systems and the literature, but we must:
+1) avoid importing techniques that are secretly “GC in disguise” (heap scanning),
+2) avoid techniques that require language surface changes,
+3) keep concurrency/tooling explicit and testable.
+
+---
+
+### 11.1 Region‑RC precedent: “RC” safe C dialect (external pointer counting)
+
+- [TODO] Label: R11-rc-model-crosscheck
+  Objective: Cross-check OmniLisp’s Region‑RC model against the “RC” safe C dialect’s definition of “external pointers”, and extract what applies to OmniLisp.
+  Reference:
+    - RC overview: https://www.barnowl.org/research/rc/index.html
+    - `runtime/docs/REGION_RC_MODEL.md` (to be written by Issue 1)
+  Where:
+    - Add appendix: `runtime/docs/REGION_RC_MODEL.md` (“Related work: RC dialect; differences in a mutable Lisp”)
+  Why:
+    RC’s core claim is: “per-region refcount of pointers not stored within the region” prevents premature frees. That maps directly to our external_rc concept, but OmniLisp needs mutation auto-repair, so the store barrier is non-optional.
+  What to write:
+    - Define “external pointer” in OmniLisp terms (stored outside region, or crossing region ownership boundary).
+    - Explain why OmniLisp cannot rely on programmer-visible `alias_refptr/drop_refptr` style APIs (no surface changes).
+    - Explain why mutation barrier + auto-repair replaces RC’s “abort on delete with non-zero refcount”.
+  Verification plan:
+    - Doc section includes at least 2 concrete examples (illegal younger→older store; channel handoff) showing how OmniLisp handles cases RC handles via explicit operations.
+
+---
+
+### 11.2 Non‑lexical regions, splitting, and sized allocations (compile-time inspiration)
+
+- [TODO] Label: R11-nonlexical-region-inference-notes
+  Objective: Extract actionable ideas from “Better Static Memory Management” and Spegion (non-lexical regions, splitting, sized allocations) and map them to CTRR roadmap items.
+  Reference:
+    - Aiken/Fähndrich/Levien 1995 tech report: https://digicoll.lib.berkeley.edu/record/139069
+    - Tofte/Talpin 1997: https://www.sciencedirect.com/science/article/pii/S0890540196926139
+    - Spegion (ECOOP 2025 LIPIcs): https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.ECOOP.2025.15
+    - `docs/CTRR.md`
+  Where:
+    - New doc: `docs/CTRR_REGION_INFERENCE_ROADMAP.md`
+  Why:
+    Even with runtime repair (transmigrate/merge), compile-time improvements reduce the rate of repairs and shrink region lifetimes (robustness + performance).
+  What to write (concrete CTRR-aligned ideas; no new language syntax):
+    - Non-lexical region end insertion driven by liveness (CTRR already does liveness; document explicit goals).
+    - “Splittable regions” as an internal representation trick: allow the compiler/runtime to create subregions under one logical region, enabling later coalescence decisions (ties to your size heuristic).
+    - Sized allocations: use runtime accounting to inform compile-time heuristics (e.g., predict big allocations; allocate directly into parent/global to avoid later repair).
+  Verification plan:
+    - Include 3 “before/after” pseudo examples: (1) early region end, (2) avoiding transmigration by allocating in outliving region, (3) how split regions could reduce copying during coalescence.
+
+---
+
+### 11.3 Pool/arena practice: shortest-lived pool guidance + “freeze/thaw” compaction analogue
+
+- [TODO] Label: R11-pool-practice-guidance
+  Objective: Incorporate “shortest-lived pool” guidance (from APR pools) into OmniLisp docs and diagnostic tooling, and evaluate whether a safe compaction/coalescence step (freeze/thaw style) applies to long-lived regions.
+  Reference:
+    - APR pools guidance: https://perl.apache.org/docs/2.0/user/performance/prevent.html
+    - APR::Pool overview: https://perl.apache.org/docs/2.0/api/APR/Pool.html
+    - MemArena freeze/thaw coalescence: https://docs.trafficserver.apache.org/en/10.1.x/developer-guide/internal-libraries/MemArena.en.html
+    - `runtime/docs/REGION_ACCOUNTING.md` (Issue 6)
+  Where:
+    - Update: `runtime/docs/REGION_ACCOUNTING.md` (“Retention cliffs and pool lifetime mismatches”)
+    - New doc: `runtime/docs/REGION_COALESCE_POLICY.md` (if warranted)
+  Why:
+    Pool systems show the main failure mode of region allocators in real code: allocating into too-long-lived pools causes “leaks by retention”. Your auto-repair heuristic is exactly a runtime enforcement of “pick shortest lived pool”.
+  What to do (tasks, not implementation here):
+    1. Define diagnostics:
+       - warn if a region becomes long-lived and is receiving many allocations that never escape (retention smell)
+    2. Evaluate a “coalesce after init” operation for long-lived regions:
+       - Not a GC: only done at explicit safe points (end of init phase).
+       - Coalesce by copying known-live data into one chunk and releasing old chunks (like MemArena freeze/thaw).
+       - Must be opt-in and benchmarked; may be DEFER if complexity outweighs gains.
+  Verification plan:
+    - Provide a toy “server init then steady-state” scenario and expected accounting output showing reduced fragmentation after coalesce.
+
+---
+
+### 11.4 Concurrency: Safe Memory Reclamation (SMR) for internal runtime structures (not heap GC)
+
+These techniques are for **internal concurrent data structures** (e.g., lock-free queues/maps used by the runtime). They do not replace CTRR/Region‑RC, but can reduce locking and improve robustness.
+
+- [TODO] Label: R11-rcu-qsbr-evaluation
+  Objective: Evaluate whether QSBR/Userspace RCU-style quiescent states can be mapped onto OmniLisp’s tethering/borrow windows to protect internal read-mostly structures (metadata tables, interned symbol tables) without STW GC.
+  Reference:
+    - Userspace RCU docs: https://liburcu.org/
+    - QSBR overview (LWN): https://lwn.net/Articles/573424/
+    - `runtime/docs/REGION_THREADING_MODEL.md` (Issue 3)
+  Where:
+    - New doc: `runtime/docs/SMR_FOR_RUNTIME_STRUCTURES.md`
+  Why:
+    If concurrency matters, we need a plan for safely reclaiming nodes in internal structures without global locks. QSBR is fast but requires explicit quiescent state reporting — conceptually similar to “no borrows held / tether windows ended”.
+  What to define:
+    - Which runtime structures would benefit (list them explicitly).
+    - Where quiescent states would be reported (end of bytecode instruction? end of GC-free safe point? end of tether?).
+    - Why this is not heap GC: only internal DS nodes are reclaimed.
+  Verification plan:
+    - Provide at least one test scenario in the doc: concurrent reads, writer retires nodes, reclaim after quiescent period.
+    - Tie to TSAN expectations (Issue 9).
+
+- [TODO] Label: R11-hazard-pointers-and-variants-review
+  Objective: Review hazard pointers and newer variants (e.g., publish-on-ping) as alternatives to QSBR for internal runtime structures, focusing on overhead vs robustness tradeoffs.
+  Reference:
+    - Publish on Ping (2025): https://arxiv.org/abs/2501.04250
+    - Hyaline (2019): https://arxiv.org/abs/1905.07903
+    - `runtime/docs/ATOMIC_POLICY.md` (Issue 4)
+  Where:
+    - `runtime/docs/SMR_FOR_RUNTIME_STRUCTURES.md` (appendix “Alternatives”)
+  Why:
+    QSBR is fast but can retain memory if threads don’t report quiescent states. Hazard-pointer families are more robust but can impose per-read overhead. We need an explicit choice per structure.
+  What to produce:
+    - A decision matrix for:
+      - read-mostly global tables (prefer QSBR/RCU)
+      - lock-free linked structures with heavy traversal (consider variants that reduce per-read fences)
+  Verification plan:
+    - Include a minimal microbenchmark plan for one internal DS (not the heap), gated by Issue 8 benchmark protocol.
+
+------------------------------------------------------------------------------
+
+## External References (Internet / Literature)
+
+These are the external sources referenced in Issue 11 tasks above. Prefer primary sources (papers, official docs) when implementing.
+
+1. RC safe C dialect (region external pointer counting): https://www.barnowl.org/research/rc/index.html
+2. Cyclone manual section on regions: https://www.cs.cornell.edu/Projects/cyclone/online-manual/main-screen008.html
+3. Userspace RCU (liburcu) official site/docs: https://liburcu.org/
+4. LWN overview of Userspace RCU flavors (QSBR): https://lwn.net/Articles/573424/
+5. Hyaline SMR paper (2019): https://arxiv.org/abs/1905.07903
+6. Publish on Ping SMR paper (2025): https://arxiv.org/abs/2501.04250
+7. Better Static Memory Management (Aiken/Fähndrich/Levien, 1995): https://digicoll.lib.berkeley.edu/record/139069
+8. Region-Based Memory Management (Tofte/Talpin, 1997): https://www.sciencedirect.com/science/article/pii/S0890540196926139
+9. Spegion (ECOOP 2025, LIPIcs): https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.ECOOP.2025.15
+10. mod_perl: Proper Memory Pools Usage: https://perl.apache.org/docs/2.0/user/performance/prevent.html
+11. mod_perl: APR::Pool API: https://perl.apache.org/docs/2.0/api/APR/Pool.html
+12. Apache Traffic Server MemArena (freeze/thaw coalescence): https://docs.trafficserver.apache.org/en/10.1.x/developer-guide/internal-libraries/MemArena.en.html
