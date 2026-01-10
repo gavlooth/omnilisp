@@ -460,9 +460,9 @@ jj describe
 
 ### Amendment A (2026-01-10): Turn roadmap into implementable compiler milestones
 
-#### P1: Inventory what codegen already emits (region lifecycle, tether, transmigrate) [TODO]
+#### P1: Inventory what codegen already emits (region lifecycle, tether, transmigrate) [DONE] (Review Needed)
 
-- [TODO] Label: I3-ctrr-emission-inventory (P1)
+- [DONE] (Review Needed) Label: I3-ctrr-emission-inventory (P1)
   Objective: Produce an explicit “what codegen currently emits” inventory so later phases don’t assume features that aren’t present (retain/release insertion, precise tethering, etc.).
   Reference (read first):
     - `docs/CTRR_REGION_INFERENCE_ROADMAP.md`

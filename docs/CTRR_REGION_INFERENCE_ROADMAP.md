@@ -578,11 +578,79 @@ Extend Phase 4 to:
 After all phases, add a global optimization pass to:
 - Reorder operations to reduce region lifetimes
 - Coalesce small regions into larger regions
-- Eliminate unnecessary `region_create()` / `region_exit()` pairs
+ - Eliminate unnecessary `region_create()` / `region_exit()` pairs
+---
+
+## 9) Current Implementation Status (Issue 3 P1)
+
+This section tracks what code generation currently emits for CTRR features.
+
+### 9.1 Where `_local_region` is created and destroyed
+
+**Status:** ✅ IMPLEMENTED
+
+**Locations:**
+- `csrc/codegen/region_codegen.c` - `omni_codegen_region_create()` emits region creation
+- `csrc/codegen/codegen.c` - `omni_codegen_region_destroy()` emits region cleanup
+
+**Generated Code Pattern:**
+```c
+struct Region* _local_region = region_create();
+// ... local allocations use _local_region ...
+region_exit(_local_region);  // Marks scope as inactive
+region_destroy_if_dead(_local_region);  // Frees if no external refs
+```
+
+### 9.2 Where `transmigrate()` is emitted
+
+**Status:** ✅ IMPLEMENTED (transmigrate only, no retain/release yet)
+
+**Locations:**
+- `csrc/codegen/region_codegen.c` - `omni_codegen_transmigrate_on_escape()` emits transmigrate calls
+- `csrc/codegen/codegen.c` - `omni_codegen_transmigrate_return()` emits transmigrate at return
+
+**Generated Code Pattern (returns):**
+```c
+Obj* result = mk_pair_region(_local_region, 1, 2);
+return transmigrate(result, _local_region, _caller_region);
+```
+
+**Decision Point:** `omni_should_transmigrate()` decides based on escape class:
+- ESCAPE_RETURN, ESCAPE_CLOSURE, ESCAPE_GLOBAL → transmigrate
+
+**TODO:** Issue 1 P2 (retain/release insertion) will add RETAIN_REGION option
+
+### 9.3 Where tethering is emitted
+
+**Status:** ✅ IMPLEMENTED
+
+**Locations:**
+- `csrc/codegen/region_codegen.c` - `omni_codegen_tether_params()` emits tether_start/tether_end for RegionRef arguments
+- `csrc/codegen/region_codegen.c` - `omni_codegen_tether_start()`, `omni_codegen_tether_end()` functions exist
+
+**Generated Code Pattern:**
+```c
+// Function entry for RegionRef arguments
+region_tether_start(arg_region);
+// ... function body with ArgRegion ...
+region_tether_end(arg_region);  // Release borrow
+```
+
+**Precision:** Currently conservative (all RegionRef parameters), not precise
+
+### 9.4 Confirm that no `region_retain/region_release` insertion exists yet
+
+**Status:** ✅ CORRECT (none implemented yet)
+
+**Finding:**
+- Searched entire codebase for `region_retain_internal()` and `region_release_internal()` calls in generated code
+- **Result:** No retain/release insertion found in code generation
+
+**Reason:** Issue 1 P2 will implement retain/release insertion as an alternative to transmigrate for large/escaping graphs.
 
 ---
 
-## 9) References
+## 10) References
 
 - `docs/CTRR.md` - CTRR contract and Region Closure Property
 - `runtime/docs/REGION_RC_MODEL.md` - Region-RC model and external pointers
