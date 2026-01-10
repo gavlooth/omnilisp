@@ -1,8 +1,8 @@
 # OmniLisp Runtime Architecture
 
-**Version:** 2.2 (CTRR + Region-RC clarified)
-**Last Updated:** 2026-01-09
-**Phase:** 34 - CTRR Transmigration performance + correctness hardening
+**Version:** 2.3 (Region-RC model specified)
+**Last Updated:** 2026-01-10
+**Phase:** 35 - Region-RC model specification and conformance
 
 ---
 
@@ -10,14 +10,20 @@
 
 The OmniLisp runtime uses a **hybrid memory system** that combines:
 
-- **CTRR (compile-time scheduling)**: the compiler decides region lifetimes and injects
+- **CTRR (compile-time scheduling)**: Compiler decides region lifetimes and injects
   `region_exit()` and escape repair (`transmigrate()`) at the right boundaries.
-- **Regions (bulk reclamation)**: most allocation is bump-allocated and reclaimed in bulk.
-- **Region-RC (RC-G)**: regions that must outlive their lexical scope are reference counted
+- **Regions (bulk reclamation)**: Most allocation is bump-allocated and reclaimed in bulk.
+- **Region-RC (RC-G)**: Regions that must outlive their lexical scope are reference counted
   at the *region* granularity (coarse-grained RC), not per object.
-- **Tethering**: bounded borrows keep a region alive without copying.
-- **Metadata-driven transmigration**: type metadata defines how to clone/trace values so
+- **Tethering**: Bounded borrows keep a region alive without copying.
+- **Metadata-driven transmigration**: Type metadata defines how to clone/trace values so
   escaping graphs can be repaired soundly without stop-the-world GC.
+
+**Documentation Hierarchy:**
+- This document: Overall runtime architecture
+- `runtime/docs/REGION_RC_MODEL.md` - **Normative specification** of Region-RC semantics, external pointers, and auto-repair
+- `runtime/docs/CTRR_TRANSMIGRATION.md` - Transmigration implementation contract
+- `docs/CTRR.md` - High-level CTRR contract and Region Closure Property
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -125,28 +131,41 @@ Solution: Reference count the region
 Region struct:
   • arena           → Memory storage
   • type_table      → Type metadata (Phase 24)
-  • external_rc     → Reference count (NEW!)
+  • external_rc     → Reference count for external pointers
   • scope_alive     → Is scope still active?
+  • tether_count    → Active bounded borrows
+
+**For the complete Region-RC specification (external pointers, auto-repair, conformance), see:**
+  → `runtime/docs/REGION_RC_MODEL.md` (normative)
 
 Lifecycle:
-  1. region_create()      → external_rc = 0, scope_alive = true
-  2. region_retain(r)     → external_rc++ (when object escapes)
+  1. region_create()      → external_rc = 0, scope_alive = true, tether_count = 0
+  2. region_retain(r)     → external_rc++ (when external reference created)
   3. region_exit(r)       → scope_alive = false
   4. region_release(r)    → external_rc--
-  5. When external_rc == 0 && !scope_alive → FREE!
+  5. Reclaimable iff: external_rc == 0 && scope_alive == false && tether_count == 0
 
-This is "Region-RC": regions + reference counting on regions
+This is "Region-RC": regions + reference counting on regions (coarse-grained, not per-object)
 ```
 
-This model name is used throughout the repository as the **runtime** memory model:
-- `docs/UNIFIED_REGION_ARCHITECTURE.md` calls the lifecycle “Refcounted (Region-RC)”
-- `runtime/src/runtime.c` calls it “RC-G Runtime: Standard RC is now Region-RC (Coarse-grained)”
+This model name is used throughout the repository as **runtime** memory model:
+- `docs/UNIFIED_REGION_ARCHITECTURE.md` calls lifecycle "Refcounted (Region-RC)"
+- `runtime/src/runtime.c` calls it "RC-G Runtime: Standard RC is now Region-RC (Coarse-grained)"
+
+**Region-RC specification (normative):**
+  See `runtime/docs/REGION_RC_MODEL.md` for:
+  - Formal definition of "external pointer" (aligned with RC dialect literature)
+  - All external reference boundaries (return, capture, global, channel, mutation)
+  - Auto-repair strategies for younger→older stores (transmigrate vs. retain)
+  - Tethering semantics (bounded borrows vs. RC sharing)
+  - Conformance checklist for implementation verification
 
 Region-RC is intentionally **not** per-object RC:
 - objects inside regions are generally not individually freed
-- the region is reclaimed when it is both:
+- The region is reclaimed when it is both:
   - logically closed (`scope_alive == false`) and
-  - not externally referenced (`external_rc == 0`)
+  - not externally referenced (`external_rc == 0`) and
+  - no active borrows (`tether_count == 0`)
 
 ---
 
@@ -205,8 +224,8 @@ Region-RC is intentionally **not** per-object RC:
 
 ## Escape Repair: Transmigration (CTRR Runtime Contract)
 
-When data escapes a closing region, the runtime must ensure **Region Closure**:
-no reachable value contains pointers into the closing region after it is reclaimed.
+When data escapes a closing region, runtime must ensure **Region Closure**:
+no reachable value contains pointers into a closing region after it is reclaimed.
 
 OmniLisp enforces this with **metadata-driven transmigration**:
 
@@ -219,6 +238,7 @@ Each runtime type registers:
 This is documented in detail in:
 - `docs/CTRR.md` (normative contract)
 - `runtime/docs/CTRR_TRANSMIGRATION.md` (detailed runtime behavior)
+- `runtime/docs/REGION_RC_MODEL.md` (relationship between transmigration and Region-RC)
 
 Non-goals (explicitly prohibited):
 - stop-the-world GC
@@ -822,8 +842,27 @@ Example 3: Large array (escapes)
 3. **Pointer masking is free** - Bit operations have zero runtime cost
 4. **Compiler integration works** - Type constants flow from compiler to runtime
 5. **Phase 24 is complete** - All 3 tasks done and tested
+6. **Region-RC is specified** - External pointer semantics documented and aligned with RC dialect
 
 ---
 
-**Status:** ✅ COMPLETE
-**Next Phase:** Compiler optimizations for better type inference
+## Further Documentation
+
+- **Region-RC Specification (Normative):** `runtime/docs/REGION_RC_MODEL.md`
+  - External pointer definition and boundaries
+  - Auto-repair strategies (transmigrate vs. retain)
+  - Tethering semantics vs. RC sharing
+  - Conformance checklist for implementation verification
+
+- **Transmigration Contract:** `runtime/docs/CTRR_TRANSMIGRATION.md`
+  - Metadata-driven implementation requirements
+  - Region Closure Property enforcement
+
+- **High-Level CTRR:** `docs/CTRR.md`
+  - Compiler responsibilities (liveness, escape, capture tracking)
+  - Runtime responsibilities (safe reclamation, tethering, transmigration)
+
+---
+
+**Status:** ✅ COMPLETE (Phase 35: Region-RC model specification added)
+**Next Phase:** Region accounting diagnostics (Issue 2 in TODO.md)

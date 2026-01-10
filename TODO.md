@@ -87,7 +87,8 @@ Required “agent-proof” structure for new issues/tasks:
 
 **Before beginning ANY implementation subtask, you MUST:**
 
-1. **Run `jj describe`** to see the current working state
+1. **Run `jj describe -m "sample message here"`** to save the current working state
+1. **Run `jj log`** to see the current working state
 2. **Read the description** to understand what changes are in progress
 3. **Confirm alignment** with the task you're about to implement
 4. **If mismatch**: Either `jj squash` to consolidate or `jj new` to start fresh
@@ -122,44 +123,44 @@ jj describe
 - No programmer-visible RC APIs (we use CTRR insertion + runtime barriers).
 - The runtime contract must be “always safe”; debug aborts may exist as diagnostics only, not as the semantic contract.
 
-### P0: Write the Region‑RC model spec (external pointers, liveness, invariants) [TODO]
+### P0: Write the Region‑RC model spec (external pointers, liveness, invariants) [DONE] (Review Needed)
 
-- [TODO] Label: I1-region-rc-model-doc (P0)
-  Objective: Create a single authoritative doc defining Region‑RC and “external pointer” semantics in OmniLisp terms.
+- [DONE] Label: I1-region-rc-model-doc (P0)
+  Objective: Create a single authoritative doc defining Region‑RC and "external pointer" semantics in OmniLisp terms.
   Where:
-    - Add: `runtime/docs/REGION_RC_MODEL.md`
-    - Update: `runtime/docs/ARCHITECTURE.md` (link + terminology alignment)
+    - Add: `runtime/docs/REGION_RC_MODEL.md` ✅
+    - Update: `runtime/docs/ARCHITECTURE.md` (link + terminology alignment) ✅
   Why:
-    “Per-region RC” is ambiguous unless we explicitly define what increments/decrements region external refs and what it means for safe reclamation.
+    "Per-region RC" is ambiguous unless we explicitly define what increments/decrements region external refs and what it means for safe reclamation.
   What to write:
     1. Region liveness rule:
        - Alive iff `scope_alive == true || external_rc > 0`.
        - Reclaimable iff `scope_alive == false && external_rc == 0`.
-    2. Definition of “external pointer / external reference”:
+    2. Definition of "external pointer / external reference":
        - in OmniLisp: pointers into region `R` stored *outside `R`* in a way that can outlive `R` (older region, global, other thread, etc.).
     3. Relationship to transmigration:
        - transmigrate repairs escape edges so Region Closure holds (no pointers into dead regions).
     4. Relationship to mutation auto-repair (Issue 2 tasks are in `review_todo.md`):
        - illegal younger→older stores must be repaired (copy or merge) so the model stays sound without GC.
   Verification plan:
-    - Doc includes a “Conformance Checklist” referencing:
-      - “external-root non-rewrite rule” (transmigration)
-      - “mutation barrier inventory complete” (review_todo Issue 2)
+    - Doc includes a "Conformance Checklist" referencing:
+      - "external-root non-rewrite rule" (transmigration)
+      - "mutation barrier inventory complete" (review_todo Issue 2)
 
-- [TODO] Label: I1-external-ref-boundary-inventory (P0)
-  Objective: Enumerate all runtime/compile-time “escape boundaries” that can create external references to a region.
+- [DONE] Label: I1-external-ref-boundary-inventory (P0)
+  Objective: Enumerate all runtime/compile-time "escape boundaries" that can create external references to a region.
   Where:
-    - Add section: `runtime/docs/REGION_RC_MODEL.md` (“External reference boundaries”)
+    - Add section: `runtime/docs/REGION_RC_MODEL.md` ("External reference boundaries") ✅
   Why:
     If even one boundary is missed, region external_rc becomes meaningless and reclaim can be unsafe.
   What to list (minimum categories):
-    - return to caller/outliving scope
-    - closure capture
-    - global/module store
-    - channel send/recv (cross-thread)
-    - mutation store into older region containers (must auto-repair; see Issue 2 in review_todo.md)
+    - return to caller/outliving scope ✅
+    - closure capture ✅
+    - global/module store ✅
+    - channel send/recv (cross-thread) ✅
+    - mutation store into older region containers (must auto-repair; see Issue 2 in review_todo.md) ✅
   Verification plan:
-    - Provide at least one example per boundary in the doc (source + expected runtime operation).
+    - Provide at least one example per boundary in the doc (source + expected runtime operation). ✅
 
 ---
 
@@ -177,40 +178,40 @@ jj describe
 - No language-visible share primitive.
 - Diagnostics must be deterministic and cheap enough for debug builds.
 
-### P0: Region accounting doc + required counters [TODO]
+### P0: Region accounting doc + required counters [DONE] (Review Needed)
 
-- [TODO] Label: I2-region-accounting-doc (P0)
+- [DONE] Label: I2-region-accounting-doc (P0)
   Objective: Specify which counters are required per region (bytes, chunks, inline usage, peak) and how they power the size heuristic for store auto-repair.
   Where:
-    - Add: `runtime/docs/REGION_ACCOUNTING.md`
+    - Add: `runtime/docs/REGION_ACCOUNTING.md` ✅
   Why:
-    The “size heuristic” must be tunable and reproducible; region bytes/chunks are the best low-cost proxy.
+    The "size heuristic" must be tunable and reproducible; region bytes/chunks are the best low-cost proxy.
   What to define:
-    - `bytes_allocated_total`, `bytes_allocated_peak`
-    - `chunk_count`, `inline_buf_used_bytes`
-    - optional: `escape_repair_count` (how often this region forced repair)
+    - `bytes_allocated_total`, `bytes_allocated_peak` ✅
+    - `chunk_count`, `inline_buf_used_bytes` ✅
+    - optional: `escape_repair_count` (how often this region forced repair) ✅
   Verification plan:
-    - Doc includes example output format and thresholds.
+    - Doc includes example output format and thresholds. ✅
 
-### P1: Retention diagnostics plan (shortest-lived pool enforcement without language changes) [TODO]
+### P1: Retention diagnostics plan (shortest-lived pool enforcement without language changes) [DONE] (Review Needed)
 
-- [TODO] Label: I2-retention-diagnostics-plan (P1)
-  Objective: Define the diagnostics that identify “allocating into too-long-lived region” retention smells, and how they should be reported.
+- [DONE] Label: I2-retention-diagnostics-plan (P1)
+  Objective: Define the diagnostics that identify "allocating into too-long-lived region" retention smells, and how they should be reported.
   Where:
-    - Add section: `runtime/docs/REGION_ACCOUNTING.md` (“Retention cliffs”)
-    - Optionally add doc: `runtime/docs/REGION_DIAGNOSTICS.md`
+    - Add section: `runtime/docs/REGION_ACCOUNTING.md` ("Retention cliffs") ✅
+    - Optionally add doc: `runtime/docs/REGION_DIAGNOSTICS.md` (N/A - covered in REGION_ACCOUNTING.md)
   Why:
-    Pool practice shows the #1 failure mode: memory “leaks” are often retention due to lifetime mismatch. We want the runtime to make this visible.
+    Pool practice shows the #1 failure mode: memory "leaks" are often retention due to lifetime mismatch. We want the runtime to make this visible.
   What to report (examples):
-    - “Region R is long-lived and received X allocations but only Y escapes; consider allocating in shorter-lived region”
-    - “Auto-repair triggered N times (M transmigrates, K merges); threshold tuning suggested”
+    - "Region R is long-lived and received X allocations but only Y escapes; consider allocating in shorter-lived region" ✅
+    - "Auto-repair triggered N times (M transmigrates, K merges); threshold tuning suggested" ✅
   Verification plan:
-    - Define a toy workload and expected diagnostics output.
+    - Define a toy workload and expected diagnostics output. ✅
 
-### P2: Optional “freeze/thaw” coalesce-at-safe-point evaluation [TODO - only if fragmentation proves to matter]
+### P2: Optional "freeze/thaw" coalesce-at-safe-point evaluation [N/A - Fragmentation not yet measured]
 
-- [TODO] Label: I2-freeze-thaw-eval (P2)
-  Objective: Evaluate whether a safe-point “coalesce/compact” step for long-lived regions (freeze/thaw style) is beneficial, without becoming a GC.
+- [N/A] Label: I2-freeze-thaw-eval (P2)
+  Objective: Evaluate whether a safe-point "coalesce/compact" step for long-lived regions (freeze/thaw style) is beneficial, without becoming a GC.
   Where:
     - Add: `runtime/docs/REGION_COALESCE_POLICY.md` (evaluation + decision)
   Why:
@@ -219,7 +220,8 @@ jj describe
     - Only at explicit safe points (e.g., end of init), not background.
     - Only touches explicitly selected regions; no heap scanning beyond known live roots for that safe point.
   Verification plan:
-    - Define a benchmark scenario and what would constitute a “win”.
+    - Define a benchmark scenario and what would constitute a "win".
+  **Reason for N/A:** Fragmentation impact not yet measured; defer until region accounting shows fragmentation is problematic.
 
 ---
 
@@ -237,21 +239,21 @@ jj describe
 - No STW GC; no runtime heap scanning.
 - No new language surface constructs required for users.
 
-### P0: CTRR inference roadmap doc [TODO]
+### P0: CTRR inference roadmap doc [DONE] (Review Needed)
 
-- [TODO] Label: I3-ctrr-roadmap-doc (P0)
+- [DONE] Label: I3-ctrr-roadmap-doc (P0)
   Objective: Write a roadmap doc that maps research ideas into concrete CTRR phases OmniLisp could implement.
   Where:
-    - Add: `docs/CTRR_REGION_INFERENCE_ROADMAP.md`
+    - Add: `docs/CTRR_REGION_INFERENCE_ROADMAP.md` ✅
   Why:
     Compiler improvements reduce runtime repair pressure and improve robustness (fewer opportunities for dynamic lifetime changes).
   What to include:
-    - Non-lexical region ends (liveness-driven end-of-region insertion)
-    - Allocate-into-outliving-region when escape is provable (avoid transmigrate)
-    - Internal “splittable regions” representation (to support later merges without copying)
-    - Interaction with the mutation auto-repair policy (Issue 2 in review_todo.md)
+    - Non-lexical region ends (liveness-driven end-of-region insertion) ✅
+    - Allocate-into-outliving-region when escape is provable (avoid transmigrate) ✅
+    - Internal "splittable regions" representation (to support later merges without copying) ✅
+    - Interaction with mutation auto-repair policy (Issue 2 in review_todo.md) ✅
   Verification plan:
-    - Provide 3 pseudo-programs with “expected region plan” (where regions start/end; where transmigrate would be inserted).
+    - Provide 3 pseudo-programs with "expected region plan" (where regions start/end; where transmigrate would be inserted). ✅
 
 ---
 
@@ -270,38 +272,39 @@ jj describe
 - No STW “scan and collect”.
 - Must align with the threading/ownership contract (documented first).
 
-### P0: SMR target inventory + decision matrix [TODO]
+### P0: SMR target inventory + decision matrix [DONE] (Review Needed)
 
-- [TODO] Label: I4-smr-target-inventory (P0)
+- [DONE] Label: I4-smr-target-inventory (P0)
   Objective: Identify which internal runtime structures would benefit from SMR and create a decision matrix (QSBR vs lock vs hazard-pointer family).
   Where:
-    - Add: `runtime/docs/SMR_FOR_RUNTIME_STRUCTURES.md`
+    - Add: `runtime/docs/SMR_FOR_RUNTIME_STRUCTURES.md` ✅
   Why:
     Adopting SMR without a clear target is complexity without payoff. We must start with concrete structures.
   What to include:
-    - List candidate structures (e.g., metadata registry, intern table, global module map).
-    - For each, note read/write ratio, expected contention, and preferred approach.
+    - List candidate structures (e.g., metadata registry, intern table, global module map). ✅
+    - For each, note read/write ratio, expected contention, and preferred approach. ✅
   Verification plan:
-    - Include a microbenchmark plan for one structure (not the heap) following the benchmark protocol clause.
+    - Include a microbenchmark plan for one structure (not the heap) following the benchmark protocol clause. ✅
 
-### P1: QSBR mapping to OmniLisp “quiescent points” [TODO]
+### P1: QSBR mapping to OmniLisp "quiescent points" [DONE] (Review Needed)
 
-- [TODO] Label: I4-qsbr-quiescent-points (P1)
+- [DONE] Label: I4-qsbr-quiescent-points (P1)
   Objective: Define where quiescent states would be reported in OmniLisp (end of bytecode step, end of tether window, safe points), and how that interacts with region ownership.
   Where:
-    - `runtime/docs/SMR_FOR_RUNTIME_STRUCTURES.md` (QSBR design)
-    - `runtime/docs/REGION_THREADING_MODEL.md` (tie-in)
+    - `runtime/docs/SMR_FOR_RUNTIME_STRUCTURES.md` (QSBR design) ✅
+    - `runtime/docs/REGION_THREADING_MODEL.md` (tie-in) ✅
   Verification plan:
-    - Provide at least one concurrency scenario (reader/writer) and explain when reclamation is permitted.
+    - Provide at least one concurrency scenario (reader/writer) and explain when reclamation is permitted. ✅
 
-### P2: Alternatives review (hazard pointers / Hyaline / publish-on-ping) [TODO - only if QSBR is a poor fit]
+### P2: Alternatives review (hazard pointers / Hyaline / publish-on-ping) [DONE] (Review Needed)
 
-- [TODO] Label: I4-alternatives-review (P2)
+- [DONE] Label: I4-alternatives-review (P2)
   Objective: Document alternatives to QSBR and when they should be chosen (only if QSBR is unsuitable due to stalled threads or missing quiescent points).
   Reference:
     - Publish on Ping (2025): https://arxiv.org/abs/2501.04250
     - Hyaline (2019): https://arxiv.org/abs/1905.07903
   Where:
-    - `runtime/docs/SMR_FOR_RUNTIME_STRUCTURES.md` (appendix)
+    - `runtime/docs/SMR_FOR_RUNTIME_STRUCTURES.md` (appendix) ✅
   Verification plan:
+    - Decision matrix includes "how to test" and "what to measure" for each alternative. ✅
     - Decision matrix includes “how to test” and “what to measure” for each alternative.
