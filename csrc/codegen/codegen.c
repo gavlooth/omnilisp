@@ -1632,23 +1632,49 @@ static void codegen_lambda(CodeGenContext* ctx, OmniValue* expr) {
         codegen_expr(tmp, result);
         omni_codegen_emit_raw(tmp, ";\n");
 
-        /* Get the result expression code */
-        char* result_code = omni_codegen_get_output(tmp);
-        if (result_code) {
-            /* Strip trailing newline for cleaner code */
-            size_t len = strlen(result_code);
-            if (len > 0 && result_code[len-1] == '\n') {
-                result_code[len-1] = '\0';
-            }
-            p += sprintf(p, "%s", result_code);
-            free(result_code);
+	        /* Get the result expression code */
+	        char* result_code = omni_codegen_get_output(tmp);
+	        if (result_code) {
+	            /* Strip trailing newline for cleaner code */
+	            size_t len = strlen(result_code);
+	            if (len > 0 && result_code[len-1] == '\n') {
+	                result_code[len-1] = '\0';
+	            }
+	            p += sprintf(p, "%s", result_code);
+	            free(result_code);
+	        }
+
+	        /*
+	         * Issue 1 P2 regression fix:
+	         *
+	         * `tmp` is reused to emit escape-repair statements via
+	         * omni_codegen_escape_repair(). If we do not clear the buffer,
+	         * the later omni_codegen_get_output(tmp) will include both the
+	         * return-expression statement and the escape-repair statements.
+	         *
+	         * That would re-emit the return expression as a standalone
+	         * statement in the lambda body, duplicating evaluation (and
+	         * duplicating side effects like (print ...)).
+	         */
+	        if (tmp->output_buffer) {
+	            tmp->output_size = 0;
+	            tmp->output_buffer[0] = '\0';
+	        }
+
+	        /* Issue 1 P2: Emit escape repair (transmigrate or retain based on strategy) */
+	        /* TODO: Read OMNILISP_REPAIR_STRATEGY environment variable to choose between
+	         *       ESCAPE_REPAIR_TRANSMIGRATE and ESCAPE_REPAIR_RETAIN_REGION.
+	         *       For now, default to TRANSMIGRATE (conservative, maintains current behavior). */
+	        omni_codegen_escape_repair(tmp, "_result", "_caller_region", ESCAPE_REPAIR_TRANSMIGRATE);
+
+        /* Get the escape repair code */
+        char* repair_code = omni_codegen_get_output(tmp);
+        if (repair_code) {
+            p += sprintf(p, "%s", repair_code);
+            free(repair_code);
         }
         omni_codegen_free(tmp);
 
-        /* Region-RC: Transmigrate result to caller region before cleanup */
-        p += sprintf(p, "    \n");
-        p += sprintf(p, "    /* Region-RC: Transmigrate result to caller region */\n");
-        p += sprintf(p, "    Obj* _transmigrated = transmigrate(_result, _local_region, _caller_region);\n");
         p += sprintf(p, "    \n");
 
         /* Issue 3 P2: Non-lexical region end (straight-line only) */
@@ -1663,7 +1689,7 @@ static void codegen_lambda(CodeGenContext* ctx, OmniValue* expr) {
         p += sprintf(p, "    /* Region-RC: Release tether on caller region */\n");
         p += sprintf(p, "    region_tether_end(_caller_region);\n");
         p += sprintf(p, "    \n");
-        p += sprintf(p, "    return _transmigrated;\n");
+        p += sprintf(p, "    return _result;  /* Repaired by omni_codegen_escape_repair() */\n");
     } else {
         p += sprintf(p, "    /* Region-RC: Exit local region */\n");
         p += sprintf(p, "    region_exit(_local_region);\n");
@@ -1839,11 +1865,12 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
                     omni_codegen_emit(ctx, "Obj* _result = ");
                     codegen_expr(ctx, last_expr);
                     omni_codegen_emit_raw(ctx, ";\n");
-                    omni_codegen_emit(ctx, "Obj* _trans = transmigrate(_result, _local_region, _caller_region);\n");
+                    /* Issue 1 P2: Emit escape repair at return boundary */
+                    omni_codegen_escape_repair(ctx, "_result", "_caller_region", ESCAPE_REPAIR_TRANSMIGRATE);
                     omni_codegen_emit(ctx, "region_exit(_local_region);\n");
                     omni_codegen_emit(ctx, "region_destroy_if_dead(_local_region);\n");
                     omni_codegen_emit(ctx, "region_tether_end(_caller_region);\n");
-                    omni_codegen_emit(ctx, "return _trans;\n");
+                    omni_codegen_emit(ctx, "return _result;  /* Repaired by omni_codegen_escape_repair() */\n");
                 } else {
                     omni_codegen_emit(ctx, "region_exit(_local_region);\n");
                     omni_codegen_emit(ctx, "region_destroy_if_dead(_local_region);\n");
@@ -2040,11 +2067,12 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
                 omni_codegen_emit(ctx, "Obj* _result = ");
                 codegen_expr(ctx, last_expr);
                 omni_codegen_emit_raw(ctx, ";\n");
-                omni_codegen_emit(ctx, "Obj* _trans = transmigrate(_result, _local_region, _caller_region);\n");
+                /* Issue 1 P2: Emit escape repair at return boundary */
+                omni_codegen_escape_repair(ctx, "_result", "_caller_region", ESCAPE_REPAIR_TRANSMIGRATE);
                 omni_codegen_emit(ctx, "region_exit(_local_region);\n");
                 omni_codegen_emit(ctx, "region_destroy_if_dead(_local_region);\n");
                 omni_codegen_emit(ctx, "region_tether_end(_caller_region);\n");
-                omni_codegen_emit(ctx, "return _trans;\n");
+                omni_codegen_emit(ctx, "return _result;  /* Repaired by omni_codegen_escape_repair() */\n");
             } else {
                 omni_codegen_emit(ctx, "region_exit(_local_region);\n");
                 omni_codegen_emit(ctx, "region_destroy_if_dead(_local_region);\n");
@@ -2292,9 +2320,10 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
         }
         if (last) {
             omni_codegen_emit(ctx, "Obj* _res = "); codegen_expr(ctx, last); omni_codegen_emit_raw(ctx, ";\n");
-            omni_codegen_emit(ctx, "Obj* _tr = transmigrate(_res, _local_region, _caller_region);\n");
+            /* Issue 1 P2: Emit escape repair at return boundary */
+            omni_codegen_escape_repair(ctx, "_res", "_caller_region", ESCAPE_REPAIR_TRANSMIGRATE);
             omni_codegen_emit(ctx, "region_exit(_local_region); region_destroy_if_dead(_local_region); region_tether_end(_caller_region);\n");
-            omni_codegen_emit(ctx, "return _tr;\n");
+            omni_codegen_emit(ctx, "return _res;  /* Repaired by omni_codegen_escape_repair() */\n");
         } else {
             omni_codegen_emit(ctx, "region_exit(_local_region); region_destroy_if_dead(_local_region); region_tether_end(_caller_region); return NOTHING;\n");
         }
