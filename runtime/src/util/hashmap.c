@@ -6,14 +6,28 @@
 #define INITIAL_BUCKETS 64
 #define MAX_LOAD_FACTOR 0.75f
 
-// Hash function for pointers (uses FNV-1a style mixing)
-static size_t hash_ptr(void* ptr) {
-    uintptr_t x = (uintptr_t)ptr;
-    // Mix the bits
-    x = ((x >> 16) ^ x) * 0x45d9f3b;
-    x = ((x >> 16) ^ x) * 0x45d9f3b;
-    x = (x >> 16) ^ x;
-    return (size_t)x;
+/*
+ * Hash function for pointer keys.
+ *
+ * CRITICAL: This MUST match the inline fast-path hash in
+ * `runtime/src/util/hashmap.h` (`hashmap_get`), otherwise lookups
+ * will fail (put uses one hash, get uses another).
+ *
+ * The project uses a small "FNV-like" mixing sequence for pointer keys:
+ *   hash = (size_t)key;
+ *   hash ^= hash >> 7;
+ *   hash *= 0x100000001b3;
+ *   hash ^= hash >> 11;
+ */
+static size_t hash_ptr(void* ptr)
+{
+    size_t hash = (size_t)ptr;
+
+    hash ^= hash >> 7;
+    hash *= 0x100000001b3;
+    hash ^= hash >> 11;
+
+    return hash;
 }
 
 // Create with default capacity

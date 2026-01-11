@@ -62,6 +62,7 @@ static int run_slow_tests_enabled(void) {
 #include "test_store_barrier_rank_autorepair.c"
 #include "test_channel_send_autorepair.c"
 #include "test_store_barrier_merge.c"
+#include "test_dict_insert_autorepair.c"
 
 int main(int argc, char** argv) {
     (void)argc;
@@ -145,6 +146,9 @@ int main(int argc, char** argv) {
 
     /* Issue 2 P5: Merge Support Tests */
     run_store_barrier_merge_tests();
+
+    /* Issue 2 P4.4: Dict Insert Autorepair Tests */
+    run_dict_insert_autorepair_tests();
 
     TEST_EXIT();
 }
