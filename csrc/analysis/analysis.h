@@ -187,6 +187,23 @@ typedef struct MetadataEntry {
     struct MetadataEntry* next;
 } MetadataEntry;
 
+/* ============== Phase 22: ^:where Type Constraints ============== */
+
+/*
+ * TypeConstraint - A type variable constraint from ^:where
+ *
+ * Example: ^:where [T {Number}]
+ * Creates: TypeConstraint { name="T", bound="Number", variance=0 }
+ *
+ * Used for diagonal dispatch where multiple parameters share a type variable.
+ */
+typedef struct TypeConstraint {
+    char* name;              /* Type variable name (e.g., "T") */
+    char* bound;             /* Upper bound type (e.g., "Number"), NULL if none */
+    int variance;            /* 0=invariant, +1=covariant, -1=contravariant */
+    struct TypeConstraint* next;
+} TypeConstraint;
+
 /* Type definition in the registry */
 typedef struct TypeDef {
     char* name;              /* Type name */
@@ -421,6 +438,7 @@ typedef struct FunctionSummary {
     int return_param_index;  /* If RETURN_PASSTHROUGH, which param is returned */
     bool allocates;          /* Does this function allocate? */
     bool has_side_effects;   /* Does this function have side effects? */
+    TypeConstraint* constraints; /* ^:where constraints for diagonal dispatch */
     struct FunctionSummary* next;
 } FunctionSummary;
 
@@ -1078,6 +1096,37 @@ TypeDef* omni_type_get_parent(AnalysisContext* ctx, TypeDef* type);
 
 /* Check if type_a is a subtype of type_b */
 bool omni_type_is_subtype(AnalysisContext* ctx, const char* type_a, const char* type_b);
+
+/* ============== Phase 22: Bottom Type Support ============== */
+
+/* Check if a type is the bottom type (never returns) */
+bool omni_is_bottom_type(const char* type_name);
+
+/* Check if a function returns bottom (diverges) */
+bool omni_function_returns_bottom(AnalysisContext* ctx, const char* func_name);
+
+/* Enhanced subtype check with bottom support */
+bool omni_is_subtype_with_bottom(AnalysisContext* ctx, const char* type_a, const char* type_b);
+
+/* ============== Phase 22: ^:where Constraint Functions ============== */
+
+/* Parse ^:where [T {Bound}] and return TypeConstraint list */
+TypeConstraint* omni_parse_where_constraints(OmniValue* where_value);
+
+/* Variance-aware parametric subtype check */
+bool omni_is_parametric_subtype(AnalysisContext* ctx, TypeDef* base_type,
+                                const char** params_a, size_t count_a,
+                                const char** params_b, size_t count_b);
+
+/* Get variance for a type parameter at index */
+VarianceKind omni_get_type_param_variance_by_index(TypeDef* type, size_t index);
+
+/* Check if concrete types satisfy constraints (diagonal dispatch) */
+bool omni_check_constraints(AnalysisContext* ctx, TypeConstraint* constraints,
+                            const char** arg_types, size_t arg_count);
+
+/* Free constraint list */
+void omni_free_constraints(TypeConstraint* constraints);
 
 /* Compute specificity score for method dispatch (higher = more specific) */
 int omni_compute_specificity(AnalysisContext* ctx, TypeDef* type);

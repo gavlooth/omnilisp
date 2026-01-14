@@ -1,0 +1,13 @@
+#V2
+INFO FOR ROOT;
+USE NS codegraph DB main; INFO FOR DATABASE;
+USE NS codegraph DB main; SELECT * FROM project_metadata;
+USE NS codegraph DB main; DEFINE TABLE project_metadata SCHEMALESS PERMISSIONS FOR select full, FOR create full, FOR update full, FOR delete full;
+USE NS codegraph DB main; REMOVE TABLE project_metadata; DEFINE TABLE project_metadata SCHEMALESS PERMISSIONS FULL;
+USE NS codegraph; DEFINE NAMESPACE codegraph;
+REMOVE NAMESPACE codegraph; DEFINE NAMESPACE codegraph; USE NS codegraph DB main; DEFINE TABLE project_metadata SCHEMALESS PERMISSIONS FULL; DEFINE TABLE nodes SCHEMALESS PERMISSIONS FULL; DEFINE TABLE edges SCHEMALESS PERMISSIONS FULL; DEFINE TABLE file_metadata SCHEMALESS PERMISSIONS FULL;
+USE NS codegraph DB main; INFO FOR TABLE project_metadata;
+INFO FOR DB;
+SELECT * FROM nodes WHERE name CONTAINS 'omni' LIMIT 5;
+SELECT count() FROM nodes GROUP ALL;
+SELECT name, node_type FROM nodes;

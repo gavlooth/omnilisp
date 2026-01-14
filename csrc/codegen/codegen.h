@@ -78,6 +78,7 @@ typedef struct CodeGenContext {
     bool generating_header;
     bool use_runtime;         /* Use external runtime library */
     const char* runtime_path;
+    bool first_pass;          /* True during first pass (emit funcs only, no init code) */
 
     /* Phase 27: Type Specialization */
     SpecDB* spec_db;           /* Database of function specializations */

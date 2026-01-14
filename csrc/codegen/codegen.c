@@ -123,10 +123,32 @@ static void buffer_append(CodeGenContext* ctx, const char* s) {
 }
 
 void omni_codegen_emit_raw(CodeGenContext* ctx, const char* fmt, ...) {
-    char buf[4096];
     va_list args;
     va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
+
+    /* Check if output would exceed static buffer - use dynamic allocation */
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int needed = vsnprintf(NULL, 0, fmt, args_copy);
+    va_end(args_copy);
+
+    char stack_buf[4096];
+    char* buf = stack_buf;
+    char* heap_buf = NULL;
+
+    if (needed >= (int)sizeof(stack_buf)) {
+        /* Need dynamic allocation for large output */
+        heap_buf = malloc(needed + 1);
+        if (heap_buf) {
+            buf = heap_buf;
+            vsnprintf(buf, needed + 1, fmt, args);
+        } else {
+            /* Fallback to truncated output */
+            vsnprintf(stack_buf, sizeof(stack_buf), fmt, args);
+        }
+    } else {
+        vsnprintf(stack_buf, sizeof(stack_buf), fmt, args);
+    }
     va_end(args);
 
     if (ctx->output) {
@@ -134,6 +156,8 @@ void omni_codegen_emit_raw(CodeGenContext* ctx, const char* fmt, ...) {
     } else if (ctx->output_buffer) {
         buffer_append(ctx, buf);
     }
+
+    free(heap_buf);
 }
 
 void omni_codegen_emit(CodeGenContext* ctx, const char* fmt, ...) {
@@ -1003,10 +1027,58 @@ static void codegen_sym(CodeGenContext* ctx, OmniValue* expr) {
     }
 }
 
+/* Helper: escape a string for C string literal */
+static char* escape_string_for_c(const char* s) {
+    if (!s) return strdup("");
+
+    /* First pass: calculate needed size */
+    size_t len = 0;
+    for (const char* p = s; *p; p++) {
+        switch (*p) {
+            case '\n': case '\r': case '\t': case '\\': case '"':
+                len += 2;  /* \n, \r, \t, \\, \" */
+                break;
+            default:
+                if ((unsigned char)*p < 32) {
+                    len += 4;  /* \xNN */
+                } else {
+                    len += 1;
+                }
+                break;
+        }
+    }
+
+    char* result = malloc(len + 1);
+    if (!result) return strdup(s);
+
+    char* out = result;
+    for (const char* p = s; *p; p++) {
+        switch (*p) {
+            case '\n': *out++ = '\\'; *out++ = 'n'; break;
+            case '\r': *out++ = '\\'; *out++ = 'r'; break;
+            case '\t': *out++ = '\\'; *out++ = 't'; break;
+            case '\\': *out++ = '\\'; *out++ = '\\'; break;
+            case '"':  *out++ = '\\'; *out++ = '"'; break;
+            default:
+                if ((unsigned char)*p < 32) {
+                    sprintf(out, "\\x%02x", (unsigned char)*p);
+                    out += 4;
+                } else {
+                    *out++ = *p;
+                }
+                break;
+        }
+    }
+    *out = '\0';
+    return result;
+}
+
 static void codegen_string(CodeGenContext* ctx, OmniValue* expr) {
     /* Emit string literal using mk_string wrapper (proper TAG_STRING support) */
     /* T-wire-string-literal-01: mk_string wrapper uses mk_string_cstr_region(_local_region, ...) */
-    omni_codegen_emit_raw(ctx, "mk_string(\"%s\")", expr->str_val);
+    char* escaped = escape_string_for_c(expr->str_val);
+    omni_codegen_emit_raw(ctx, "mk_string(\"%s\")", escaped);
+    free(escaped);
 }
 
 /* T-wire-fmt-string-01: Format string codegen */
@@ -1276,44 +1348,86 @@ static void codegen_compile_pattern(CodeGenContext* ctx, OmniValue* expr) {
 }
 
 /* T-codegen-array-01: Array literal codegen */
-/* Generate code to create an array from literal syntax [elem1 elem2 ...] */
+/* Generate code to create an array from literal syntax [elem1 elem2 ...]
+ * Uses GCC statement expressions ({...}) to allow array literals in expression context.
+ */
 static void codegen_array(CodeGenContext* ctx, OmniValue* expr) {
     size_t len = omni_array_len(expr);
 
     /* Create a temporary variable name for the array */
     char* arr_var = omni_codegen_temp(ctx);
 
-    /* Allocate array with capacity equal to the number of elements */
-    omni_codegen_emit(ctx, "Obj* %s = mk_array_region(_local_region, %zu);\n", arr_var, len);
+    /* Use GCC statement expression to allow multi-statement code in expression position */
+    omni_codegen_emit_raw(ctx, "({ Obj* %s = mk_array_region(_local_region, %zu); ", arr_var, len);
 
     /* Fill the array with elements using array_push */
     for (size_t i = 0; i < len; i++) {
         OmniValue* elem = omni_array_get(expr, i);
-        omni_codegen_emit(ctx, "array_push(%s, ", arr_var);
+        omni_codegen_emit_raw(ctx, "array_push(%s, ", arr_var);
         codegen_expr(ctx, elem);
-        omni_codegen_emit_raw(ctx, ");\n");
+        omni_codegen_emit_raw(ctx, "); ");
     }
 
-    /* Reference the array variable */
-    omni_codegen_emit_raw(ctx, arr_var);
+    /* Return the array as the expression result */
+    omni_codegen_emit_raw(ctx, "%s; })", arr_var);
     free(arr_var);
+}
+
+/* Forward declaration for mutual recursion */
+static void codegen_type_lit(CodeGenContext* ctx, OmniValue* expr);
+
+/* Helper: Generate code for a type parameter.
+ * Type parameters in Kind literals may be:
+ *   - Symbols (type names): Int -> mk_kind("Int", NULL, 0)
+ *   - Type literals: {List [Int]} -> recursive mk_kind call
+ *   - Array slots [T]: Slot containing type names, convert to Kind(s)
+ */
+static void codegen_type_param(CodeGenContext* ctx, OmniValue* param) {
+    if (omni_is_sym(param)) {
+        /* Symbol reference to a type - look up or create Kind */
+        omni_codegen_emit_raw(ctx, "mk_kind(\"%s\", NULL, 0)", param->str_val);
+    } else if (omni_is_type_lit(param)) {
+        /* Nested type literal - recursive codegen */
+        codegen_type_lit(ctx, param);
+    } else if (omni_is_array(param)) {
+        /* Array slot [T] or [T1 T2] - convert contents to Kind(s)
+         * In Character Calculus, [] inside {} represents a type slot.
+         * [Int] -> mk_kind("Int", NULL, 0)
+         * [Int Float] -> multiple params (flattened)
+         */
+        size_t len = omni_array_len(param);
+        if (len == 1) {
+            /* Single element: [Int] -> just the type */
+            OmniValue* elem = omni_array_get(param, 0);
+            codegen_type_param(ctx, elem);
+        } else if (len > 1) {
+            /* Multiple elements: create tuple or handle specially */
+            /* For now, just use the first element */
+            OmniValue* elem = omni_array_get(param, 0);
+            codegen_type_param(ctx, elem);
+        } else {
+            /* Empty slot [] -> Unit type */
+            omni_codegen_emit_raw(ctx, "mk_kind(\"Unit\", NULL, 0)");
+        }
+    } else {
+        /* Fallback: emit as regular expression */
+        codegen_expr(ctx, param);
+    }
 }
 
 static void codegen_type_lit(CodeGenContext* ctx, OmniValue* expr) {
     if (expr->type_lit.param_count == 0) {
         omni_codegen_emit_raw(ctx, "mk_kind(\"%s\", NULL, 0)", expr->type_lit.type_name);
     } else {
-        /* Emit code to create parameter array */
-        char* params_name = omni_codegen_temp(ctx);
-        omni_codegen_emit(ctx, "Obj* %s[] = {", params_name);
+        /* Use C99 compound literal to create parameter array inline.
+         * This makes the entire expression valid as an r-value.
+         */
+        omni_codegen_emit_raw(ctx, "mk_kind(\"%s\", (Obj*[]){", expr->type_lit.type_name);
         for (size_t i = 0; i < expr->type_lit.param_count; i++) {
             if (i > 0) omni_codegen_emit_raw(ctx, ", ");
-            codegen_expr(ctx, expr->type_lit.params[i]);
+            codegen_type_param(ctx, expr->type_lit.params[i]);
         }
-        omni_codegen_emit_raw(ctx, "};\n");
-        omni_codegen_emit(ctx, "mk_kind(\"%s\", %s, %zu)", 
-                         expr->type_lit.type_name, params_name, expr->type_lit.param_count);
-        free(params_name);
+        omni_codegen_emit_raw(ctx, "}, %zu)", expr->type_lit.param_count);
     }
 }
 
@@ -1374,12 +1488,10 @@ static void codegen_if(CodeGenContext* ctx, OmniValue* expr) {
 }
 
 static void codegen_let(CodeGenContext* ctx, OmniValue* expr) {
-    /* Multiple forms supported:
+    /* Strict Character Calculus let forms:
      *   - List style: (let ((x val) (y val)) body...)
-     *   - Array style (old): (let [x val y val] body...)
      *   - Slot syntax: (let [x val] [y val] body...)
      *   - Slot with types: (let [x {Int} val] [y {String} val] body...)
-     *   - Mixed: (let [x val] [y {Int} val] body...)
      */
     OmniValue* args = omni_cdr(expr);
     OmniValue* first = omni_car(args);
@@ -1388,26 +1500,32 @@ static void codegen_let(CodeGenContext* ctx, OmniValue* expr) {
     omni_codegen_emit_raw(ctx, "({\n");
     omni_codegen_indent(ctx);
 
-    /* Check if first element is an array - could be new Slot syntax or old array style */
+    /* Slot syntax: (let [x val] [y val] body...) */
     if (omni_is_array(first)) {
-        /* Check if it's a single-element array [x val] -> Slot syntax
-         * or multi-element [x val y val] -> old array style */
-        if (omni_array_len(first) == 2 || omni_array_len(first) == 3) {
-            /* Slot syntax: (let [x val] [y val] body...) */
-            /* Process first binding */
-            size_t len = omni_array_len(first);
+        /* Process all array bindings */
+        OmniValue* current = args;
+        while (current && !omni_is_nil(current) && omni_is_cell(current)) {
+            OmniValue* elem = omni_car(current);
+
+            if (!omni_is_array(elem)) {
+                /* Not an array - we've hit the body */
+                break;
+            }
+
+            /* Process array binding: [name val] or [name type val] */
+            size_t len = omni_array_len(elem);
             if (len >= 2) {
-                OmniValue* name_val = omni_array_get(first, 0);
+                OmniValue* name_val = omni_array_get(elem, 0);
                 if (omni_is_sym(name_val)) {
                     char* c_name = omni_codegen_mangle(name_val->str_val);
                     omni_codegen_emit(ctx, "Obj* %s = ", c_name);
 
                     /* Get the value - last element */
                     if (len == 2) {
-                        codegen_expr(ctx, omni_array_get(first, 1));
+                        codegen_expr(ctx, omni_array_get(elem, 1));
                     } else if (len == 3) {
                         /* [name type val] - skip type at index 1, use val at index 2 */
-                        codegen_expr(ctx, omni_array_get(first, 2));
+                        codegen_expr(ctx, omni_array_get(elem, 2));
                     }
 
                     omni_codegen_emit_raw(ctx, ";\n");
@@ -1416,94 +1534,26 @@ static void codegen_let(CodeGenContext* ctx, OmniValue* expr) {
                 }
             }
 
-            /* Process remaining bindings from rest */
-            OmniValue* current = rest;
-            while (current && !omni_is_nil(current) && omni_is_cell(current)) {
-                OmniValue* elem = omni_car(current);
+            current = omni_cdr(current);
+        }
 
-                if (!omni_is_array(elem)) {
-                    /* Not an array - we've hit the body */
-                    break;
-                }
-
-                /* Process array binding: [name val] or [name type val] */
-                size_t len = omni_array_len(elem);
-                if (len >= 2) {
-                    OmniValue* name_val = omni_array_get(elem, 0);
-                    if (omni_is_sym(name_val)) {
-                        char* c_name = omni_codegen_mangle(name_val->str_val);
-                        omni_codegen_emit(ctx, "Obj* %s = ", c_name);
-
-                        /* Get the value - last element */
-                        if (len == 2) {
-                            codegen_expr(ctx, omni_array_get(elem, 1));
-                        } else if (len == 3) {
-                            /* [name type val] - skip type at index 1, use val at index 2 */
-                            codegen_expr(ctx, omni_array_get(elem, 2));
-                        }
-
-                        omni_codegen_emit_raw(ctx, ";\n");
-                        register_symbol(ctx, name_val->str_val, c_name);
-                        free(c_name);
-                    }
-                }
-
-                current = omni_cdr(current);
-            }
-
-            /* Emit body */
-            OmniValue* result = NULL;
-            OmniValue* body = current;
-            while (!omni_is_nil(body) && omni_is_cell(body)) {
-                result = omni_car(body);
-                body = omni_cdr(body);
-                if (!omni_is_nil(body)) {
-                    omni_codegen_emit(ctx, "");
-                    codegen_expr(ctx, result);
-                    omni_codegen_emit_raw(ctx, ";\n");
-                }
-            }
-
-            if (result) {
+        /* Emit body */
+        OmniValue* result = NULL;
+        OmniValue* body = current;
+        while (body && !omni_is_nil(body) && omni_is_cell(body)) {
+            result = omni_car(body);
+            body = omni_cdr(body);
+            if (!omni_is_nil(body)) {
                 omni_codegen_emit(ctx, "");
                 codegen_expr(ctx, result);
                 omni_codegen_emit_raw(ctx, ";\n");
             }
-        } else {
-            /* Old array style: (let [x val y val] body...) */
-            OmniValue* bindings = first;
-            OmniValue* body = rest;
+        }
 
-            for (size_t i = 0; i + 1 < bindings->array.len; i += 2) {
-                OmniValue* name = bindings->array.data[i];
-                OmniValue* val = bindings->array.data[i + 1];
-                if (omni_is_sym(name)) {
-                    char* c_name = omni_codegen_mangle(name->str_val);
-                    omni_codegen_emit(ctx, "Obj* %s = ", c_name);
-                    codegen_expr(ctx, val);
-                    omni_codegen_emit_raw(ctx, ";\n");
-                    register_symbol(ctx, name->str_val, c_name);
-                    free(c_name);
-                }
-            }
-
-            /* Emit body */
-            OmniValue* result = NULL;
-            while (!omni_is_nil(body) && omni_is_cell(body)) {
-                result = omni_car(body);
-                body = omni_cdr(body);
-                if (!omni_is_nil(body)) {
-                    omni_codegen_emit(ctx, "");
-                    codegen_expr(ctx, result);
-                    omni_codegen_emit_raw(ctx, ";\n");
-                }
-            }
-
-            if (result) {
-                omni_codegen_emit(ctx, "");
-                codegen_expr(ctx, result);
-                omni_codegen_emit_raw(ctx, ";\n");
-            }
+        if (result) {
+            omni_codegen_emit(ctx, "");
+            codegen_expr(ctx, result);
+            omni_codegen_emit_raw(ctx, ";\n");
         }
     } else if (omni_is_cell(first)) {
         /* List-style bindings: ((x 1) (y 2)) */
@@ -1554,9 +1604,13 @@ static void codegen_lambda(CodeGenContext* ctx, OmniValue* expr) {
     /* Generate lambda as a static function with region lifecycle */
     int lambda_id = ctx->lambda_counter++;
 
+    OmniValue* head = omni_car(expr);
     OmniValue* args = omni_cdr(expr);
-    OmniValue* params = omni_car(args);
-    OmniValue* body = omni_cdr(args);
+
+    /* Check if this is -> syntax (multiple slot params) */
+    bool is_arrow_syntax = omni_is_sym(head) && strcmp(head->str_val, "->") == 0;
+
+    OmniValue* body = NULL;
 
     /* Generate lambda function name */
     char fn_name[64];
@@ -1570,20 +1624,71 @@ static void codegen_lambda(CodeGenContext* ctx, OmniValue* expr) {
     p += sprintf(p, "static Obj* %s(struct Region* _caller_region", fn_name);
 
     /* Parameters - register them before generating body */
-    bool first = false;  /* Already have _caller_region */
-    OmniValue* param_list = params;
-    if (omni_is_cell(param_list)) {
-        while (!omni_is_nil(param_list) && omni_is_cell(param_list)) {
-            if (!first) p += sprintf(p, ", ");
-            first = false;
-            OmniValue* param = omni_car(param_list);
-            if (omni_is_sym(param)) {
-                char* c_name = omni_codegen_mangle(param->str_val);
-                p += sprintf(p, "Obj* %s", c_name);
-                register_symbol(ctx, param->str_val, c_name);
-                free(c_name);
+    bool first_param = false;  /* Already have _caller_region */
+
+    if (is_arrow_syntax) {
+        /* Arrow syntax: (-> [x] [y] ... body) - multiple slots then body */
+        OmniValue* rest = args;
+        while (!omni_is_nil(rest) && omni_is_cell(rest)) {
+            OmniValue* elem = omni_car(rest);
+            if (!omni_is_array(elem)) {
+                /* First non-array is the body */
+                body = rest;
+                break;
             }
-            param_list = omni_cdr(param_list);
+            /* Process this slot array for params */
+            size_t len = omni_array_len(elem);
+            for (size_t i = 0; i < len; i++) {
+                OmniValue* param = omni_array_get(elem, i);
+                /* Skip type annotations {Type} */
+                if (omni_is_type_lit(param)) continue;
+                if (omni_is_sym(param)) {
+                    if (!first_param) p += sprintf(p, ", ");
+                    first_param = false;
+                    char* c_name = omni_codegen_mangle(param->str_val);
+                    p += sprintf(p, "Obj* %s", c_name);
+                    register_symbol(ctx, param->str_val, c_name);
+                    free(c_name);
+                }
+            }
+            rest = omni_cdr(rest);
+        }
+    } else {
+        /* Standard lambda/fn syntax */
+        OmniValue* params = omni_car(args);
+        body = omni_cdr(args);
+
+        OmniValue* param_list = params;
+        if (omni_is_cell(param_list)) {
+            /* List-style: (lambda (x y) body) */
+            while (!omni_is_nil(param_list) && omni_is_cell(param_list)) {
+                if (!first_param) p += sprintf(p, ", ");
+                first_param = false;
+                OmniValue* param = omni_car(param_list);
+                if (omni_is_sym(param)) {
+                    char* c_name = omni_codegen_mangle(param->str_val);
+                    p += sprintf(p, "Obj* %s", c_name);
+                    register_symbol(ctx, param->str_val, c_name);
+                    free(c_name);
+                }
+                param_list = omni_cdr(param_list);
+            }
+        } else if (omni_is_array(params)) {
+            /* Slot syntax: (lambda [x] body) - single array with one param */
+            size_t len = omni_array_len(params);
+            for (size_t i = 0; i < len; i++) {
+                OmniValue* param = omni_array_get(params, i);
+                /* Skip type annotations {Type} */
+                if (omni_is_type_lit(param)) continue;
+                if (omni_is_sym(param)) {
+                    if (!first_param) p += sprintf(p, ", ");
+                    first_param = false;
+                    char* c_name = omni_codegen_mangle(param->str_val);
+                    p += sprintf(p, "Obj* %s", c_name);
+                    register_symbol(ctx, param->str_val, c_name);
+                    free(c_name);
+                }
+            }
         }
     }
     p += sprintf(p, ") {\n");
@@ -1774,15 +1879,52 @@ static OmniValue* codegen_extract_param_name(OmniValue* param) {
     return NULL;
 }
 
+/* Helper: Check if a define expression is a function definition
+ * Returns true for:
+ *   - Traditional Scheme style: (define (f x y) body)
+ *   - Slot syntax: (define f [x] [y] body)
+ * Returns false for:
+ *   - Variable defines: (define x 42)
+ *   - Type alias defines: (define T1 {Int})
+ */
+static bool is_function_define(OmniValue* expr) {
+    if (!omni_is_cell(expr) || !omni_is_sym(omni_car(expr))) return false;
+    if (strcmp(omni_car(expr)->str_val, "define") != 0) return false;
+
+    OmniValue* args = omni_cdr(expr);
+    if (omni_is_nil(args)) return false;
+
+    OmniValue* name_or_sig = omni_car(args);
+
+    /* Traditional Scheme style: (define (f x y) body) */
+    if (omni_is_cell(name_or_sig)) {
+        return true;
+    }
+
+    /* Slot syntax: (define f [x] [y] body) */
+    if (omni_is_sym(name_or_sig)) {
+        OmniValue* rest = omni_cdr(args);
+        if (!omni_is_nil(rest)) {
+            OmniValue* maybe_param = omni_car(rest);
+            OmniValue* param_name = codegen_extract_param_name(maybe_param);
+            if (param_name != NULL) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
     /* Multiple forms supported:
      *   - Simple define: (define x value)
      *   - Traditional function: (define (f x y) body)
-     *   - Old array syntax: (define f [x y] body)
      *   - Slot shorthand: (define f x y body)
      *   - Slot syntax: (define f [x] [y] body)
      *   - Slot with types: (define f [x {Int}] [y {String}] body)
      *   - Mixed syntax: (define f x [y {Int}] z body)
+     * NOTE: Old array syntax (define f [x y] body) is no longer supported.
      */
     OmniValue* args = omni_cdr(expr);
     OmniValue* first = omni_car(args);
@@ -1801,22 +1943,17 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
                 OmniValue* fname = first;
                 char* c_name = omni_codegen_mangle(fname->str_val);
 
-                /* Check if this is a redefinition (multiple dispatch) */
-                int definition_count = check_function_defined(ctx, c_name);
-                track_function_definition(ctx, c_name);
-
-                register_symbol(ctx, fname->str_val, c_name);
-
-                /* For redefinitions, use a unique internal name for the implementation */
-                char* impl_name;
-                if (definition_count > 0) {
-                    impl_name = malloc(strlen(c_name) + 32);
-                    sprintf(impl_name, "%s_method_%d", c_name, definition_count);
-                } else {
-                    impl_name = strdup(c_name);
+                /* Slot-syntax function: emit like traditional Scheme-style function.
+                 * Just a static function, no closure machinery. Calls are direct.
+                 * Only process during first pass - skip in main pass.
+                 */
+                if (!ctx->first_pass) {
+                    /* Main pass: nothing to emit for functions */
+                    free(c_name);
+                    return;
                 }
 
-                /* Collect parameters - all but last element are parameters */
+                /* Count parameters - all but last element are parameters */
                 size_t param_count = 0;
                 OmniValue* params_iter = rest;
                 while (!omni_is_nil(params_iter) && omni_is_cell(params_iter)) {
@@ -1828,8 +1965,10 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
                     params_iter = omni_cdr(params_iter);
                 }
 
-                /* Emit function implementation with Region-RC support */
-                omni_codegen_emit(ctx, "static Obj* %s(Region* _caller_region", impl_name);
+                /* Register symbol and emit static function */
+                register_symbol(ctx, fname->str_val, c_name);
+
+                omni_codegen_emit(ctx, "static Obj* %s(Region* _caller_region", c_name);
 
                 /* Emit parameters */
                 params_iter = rest;
@@ -1850,9 +1989,7 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
 
                 /* Region-RC prologue */
                 omni_codegen_emit(ctx, "struct Region* _local_region = region_create();\n");
-                /* Issue 2 P4.2: Assign lifetime_rank based on caller region (outlives depth) */
                 omni_codegen_emit(ctx, "omni_region_set_lifetime_rank(_local_region, omni_region_get_lifetime_rank(_caller_region) + 1);\n");
-                /* Issue 2 P4.3b: Assign parent linkage (outlives ancestry) */
                 omni_codegen_emit(ctx, "omni_region_set_parent(_local_region, _caller_region);\n");
                 omni_codegen_emit(ctx, "region_tether_start(_caller_region);\n\n");
 
@@ -1868,14 +2005,12 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
                     omni_codegen_emit(ctx, "Obj* _result = ");
                     codegen_expr(ctx, last_expr);
                     omni_codegen_emit_raw(ctx, ";\n");
-                    /* Issue 1 P2: Emit escape repair at return boundary */
-                    /* Select strategy based on environment variable or analysis */
                     EscapeRepairStrategy strategy = omni_choose_escape_repair_strategy(ctx, "_result");
                     omni_codegen_escape_repair(ctx, "_result", "_caller_region", strategy);
                     omni_codegen_emit(ctx, "region_exit(_local_region);\n");
                     omni_codegen_emit(ctx, "region_destroy_if_dead(_local_region);\n");
                     omni_codegen_emit(ctx, "region_tether_end(_caller_region);\n");
-                    omni_codegen_emit(ctx, "return _result;  /* Repaired by omni_codegen_escape_repair() */\n");
+                    omni_codegen_emit(ctx, "return _result;\n");
                 } else {
                     omni_codegen_emit(ctx, "region_exit(_local_region);\n");
                     omni_codegen_emit(ctx, "region_destroy_if_dead(_local_region);\n");
@@ -1885,359 +2020,34 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
 
                 omni_codegen_dedent(ctx);
                 omni_codegen_emit(ctx, "}\n\n");
-
-                /* Emit trampoline and initialization code */
-                if (definition_count == 0) {
-                    omni_codegen_emit(ctx, "/* Trampoline: converts ClosureFn to Region* signature */\n");
-                    omni_codegen_emit(ctx, "static Obj* %s_trampoline(Obj** captures, Obj** args, int argc) {\n", impl_name);
-                    omni_codegen_indent(ctx);
-                    omni_codegen_emit(ctx, "(void)captures;\n");
-                    omni_codegen_emit(ctx, "Region* _r = region_get_or_create();\n");
-                    omni_codegen_emit(ctx, "if (argc != %zu) return mk_error(\"arity mismatch\");\n", param_count);
-
-                    if (param_count == 0) {
-                        omni_codegen_emit(ctx, "return %s(_r);\n", impl_name);
-                    } else if (param_count == 1) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0]);\n", impl_name);
-                    } else if (param_count == 2) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1]);\n", impl_name);
-                    } else if (param_count == 3) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2]);\n", impl_name);
-                    } else if (param_count == 4) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3]);\n", impl_name);
-                    } else if (param_count == 5) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4]);\n", impl_name);
-                    } else if (param_count == 6) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5]);\n", impl_name);
-                    } else if (param_count == 7) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6]);\n", impl_name);
-                    } else if (param_count == 8) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);\n", impl_name);
-                    } else if (param_count == 9) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);\n", impl_name);
-                    } else if (param_count == 10) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9]);\n", impl_name);
-                    } else if (param_count == 11) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10]);\n", impl_name);
-                    } else if (param_count == 12) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11]);\n", impl_name);
-                    } else if (param_count == 13) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12]);\n", impl_name);
-                    } else if (param_count == 14) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13]);\n", impl_name);
-                    } else if (param_count == 15) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14]);\n", impl_name);
-                    } else if (param_count == 16) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15]);\n", impl_name);
-                    } else {
-                        omni_codegen_emit(ctx, "return mk_error(\"too many parameters (max 16)\");\n");
-                    }
-
-                    omni_codegen_dedent(ctx);
-                    omni_codegen_emit(ctx, "}\n\n");
-
-                    omni_codegen_emit(ctx, "/* First definition: wrap trampoline as closure */\n");
-                    omni_codegen_emit(ctx, "static Obj* %s_closure = NULL;\n", c_name);
-                    omni_codegen_emit(ctx, "if (%s_closure == NULL) {\n", c_name);
-                    omni_codegen_indent(ctx);
-                    omni_codegen_emit(ctx, "%s_closure = mk_closure(%s_trampoline, NULL, NULL, 0, %d);\n", c_name, impl_name, (int)param_count);
-                    omni_codegen_dedent(ctx);
-                    omni_codegen_emit(ctx, "}\n");
-                    omni_codegen_emit(ctx, "Obj* %s = %s_closure;\n\n", c_name, c_name);
-                } else {
-                    omni_codegen_emit(ctx, "/* Redefinition #%d: add method to generic */\n", definition_count);
-                    omni_codegen_emit(ctx, "static Obj* %s_trampoline_m%d(Obj** captures, Obj** args, int argc) {\n", impl_name, definition_count);
-                    omni_codegen_indent(ctx);
-                    omni_codegen_emit(ctx, "(void)captures;\n");
-                    omni_codegen_emit(ctx, "Region* _r = region_get_or_create();\n");
-                    omni_codegen_emit(ctx, "if (argc != %zu) return mk_error(\"arity mismatch\");\n", param_count);
-                    if (param_count == 0) {
-                        omni_codegen_emit(ctx, "return %s(_r);\n", impl_name);
-                    } else if (param_count == 1) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0]);\n", impl_name);
-                    } else if (param_count == 2) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1]);\n", impl_name);
-                    } else if (param_count == 3) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2]);\n", impl_name);
-                    } else if (param_count == 4) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3]);\n", impl_name);
-                    } else if (param_count == 5) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4]);\n", impl_name);
-                    } else if (param_count == 6) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5]);\n", impl_name);
-                    } else if (param_count == 7) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6]);\n", impl_name);
-                    } else if (param_count == 8) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);\n", impl_name);
-                    } else if (param_count == 9) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);\n", impl_name);
-                    } else if (param_count == 10) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9]);\n", impl_name);
-                    } else if (param_count == 11) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10]);\n", impl_name);
-                    } else if (param_count == 12) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11]);\n", impl_name);
-                    } else if (param_count == 13) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12]);\n", impl_name);
-                    } else if (param_count == 14) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13]);\n", impl_name);
-                    } else if (param_count == 15) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14]);\n", impl_name);
-                    } else if (param_count == 16) {
-                        omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15]);\n", impl_name);
-                    } else {
-                        omni_codegen_emit(ctx, "return mk_error(\"too many parameters (max 16)\");\n");
-                    }
-                    omni_codegen_dedent(ctx);
-                    omni_codegen_emit(ctx, "}\n\n");
-
-                    omni_codegen_emit(ctx, "static Obj* %s_generic = NULL;\n", c_name);
-                    omni_codegen_emit(ctx, "if (%s_generic == NULL) {\n", c_name);
-                    omni_codegen_indent(ctx);
-                    omni_codegen_emit(ctx, "%s_generic = mk_generic(\"%s\");\n", c_name, fname->str_val);
-                    omni_codegen_dedent(ctx);
-                    omni_codegen_emit(ctx, "}\n");
-                    omni_codegen_emit(ctx, "generic_add_method(%s_generic, NULL, 0, (ClosureFn)%s_trampoline_m%d);\n",
-                                     c_name, impl_name, definition_count);
-                    omni_codegen_emit(ctx, "Obj* %s = %s_generic;\n\n", c_name, c_name);
-                }
-
-                free(impl_name);
                 free(c_name);
                 return;
             }
         }
 
-        /* Check for old array syntax: (define name [args] body...) where [args] is an array */
-        if (next && omni_is_array(next) && !omni_is_nil(omni_cdr(rest))) {
-            OmniValue* fname = first;
-            OmniValue* params = next;
-            OmniValue* fbody = omni_cdr(rest);
+        /* OLD ARRAY SYNTAX REMOVED: (define name [args] body...) is no longer supported.
+         * Use slot syntax: (define name [x] [y] body) or traditional: (define (name x y) body)
+         * This block was ~220 lines of dead code that handled the deprecated syntax.
+         */
 
-            char* c_name = omni_codegen_mangle(fname->str_val);
-
-            /* Check if this is a redefinition (multiple dispatch) */
-            int definition_count = check_function_defined(ctx, c_name);
-            track_function_definition(ctx, c_name);
-
-            register_symbol(ctx, fname->str_val, c_name);
-
-            /* For redefinitions, use a unique internal name for the implementation */
-            char* impl_name;
-            if (definition_count > 0) {
-                /* Subsequent definition: append method number to internal name */
-                impl_name = malloc(strlen(c_name) + 32);
-                sprintf(impl_name, "%s_method_%d", c_name, definition_count);
-            } else {
-                /* First definition: use the original name */
-                impl_name = strdup(c_name);
-            }
-
-            /* Emit function implementation with Region-RC support */
-            omni_codegen_emit(ctx, "static Obj* %s(Region* _caller_region", impl_name);
-
-            /* Parameters from array */
-            for (size_t i = 0; i < omni_array_len(params); i++) {
-                OmniValue* param = omni_array_get(params, i);
-                if (omni_is_sym(param)) {
-                    char* param_name = omni_codegen_mangle(param->str_val);
-                    omni_codegen_emit_raw(ctx, ", Obj* %s", param_name);
-                    register_symbol(ctx, param->str_val, param_name);
-                    free(param_name);
-                }
-            }
-
-            omni_codegen_emit_raw(ctx, ") {\n");
-            omni_codegen_indent(ctx);
-
-            /* Region-RC prologue */
-            omni_codegen_emit(ctx, "struct Region* _local_region = region_create();\n");
-            /* Issue 2 P4.2: Assign lifetime_rank based on caller region (outlives depth) */
-            omni_codegen_emit(ctx, "omni_region_set_lifetime_rank(_local_region, omni_region_get_lifetime_rank(_caller_region) + 1);\n");
-            /* Issue 2 P4.3b: Assign parent linkage (outlives ancestry) */
-            omni_codegen_emit(ctx, "omni_region_set_parent(_local_region, _caller_region);\n");
-            omni_codegen_emit(ctx, "region_tether_start(_caller_region);\n\n");
-
-            /* Body */
-            OmniValue* last_expr = NULL;
-            while (!omni_is_nil(fbody) && omni_is_cell(fbody)) {
-                last_expr = omni_car(fbody);
-                fbody = omni_cdr(fbody);
-                if (!omni_is_nil(fbody)) {
-                    omni_codegen_emit(ctx, "");
-                    codegen_expr(ctx, last_expr);
-                    omni_codegen_emit_raw(ctx, ";\n");
-                }
-            }
-
-            if (last_expr) {
-                omni_codegen_emit(ctx, "Obj* _result = ");
-                codegen_expr(ctx, last_expr);
-                omni_codegen_emit_raw(ctx, ";\n");
-                /* Issue 1 P2: Emit escape repair at return boundary */
-                /* Select strategy based on environment variable or analysis */
-                EscapeRepairStrategy strategy = omni_choose_escape_repair_strategy(ctx, "_result");
-                omni_codegen_escape_repair(ctx, "_result", "_caller_region", strategy);
-                omni_codegen_emit(ctx, "region_exit(_local_region);\n");
-                omni_codegen_emit(ctx, "region_destroy_if_dead(_local_region);\n");
-                omni_codegen_emit(ctx, "region_tether_end(_caller_region);\n");
-                omni_codegen_emit(ctx, "return _result;  /* Repaired by omni_codegen_escape_repair() */\n");
-            } else {
-                omni_codegen_emit(ctx, "region_exit(_local_region);\n");
-                omni_codegen_emit(ctx, "region_destroy_if_dead(_local_region);\n");
-                omni_codegen_emit(ctx, "region_tether_end(_caller_region);\n");
-                omni_codegen_emit(ctx, "return NOTHING;\n");
-            }
-
-            omni_codegen_dedent(ctx);
-            omni_codegen_emit(ctx, "}\n\n");
-
-            /* Emit initialization code based on whether this is first or redefinition */
-            if (definition_count == 0) {
-                /* First definition: For multiple dispatch, we emit a wrapper trampoline
-                 * that converts from ClosureFn signature to Region* signature.
-                 * The trampoline has signature: Obj* tramp(Obj** captures, Obj** args, int argc)
-                 * and calls: Obj* impl(Region* _caller_region, Obj* arg1, Obj* arg2, ...) */
-
-                /* Generate parameter count for the trampoline */
-                size_t param_count = omni_array_len(params);
-
-                /* Emit trampoline function with ClosureFn signature */
-                omni_codegen_emit(ctx, "/* Trampoline for multiple dispatch: converts ClosureFn to Region* signature */\n");
-                omni_codegen_emit(ctx, "static Obj* %s_trampoline(Obj** captures, Obj** args, int argc) {\n", impl_name);
-                omni_codegen_indent(ctx);
-                omni_codegen_emit(ctx, "(void)captures;  /* No captures */\n");
-                omni_codegen_emit(ctx, "Region* _r = region_get_or_create();\n");
-                omni_codegen_emit(ctx, "if (argc != %zu) return mk_error(\"arity mismatch\");\n", param_count);
-
-                /* Emit call to implementation with unpacked arguments */
-                if (param_count == 0) {
-                    omni_codegen_emit(ctx, "return %s(_r);\n", impl_name);
-                } else if (param_count == 1) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0]);\n", impl_name);
-                } else if (param_count == 2) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1]);\n", impl_name);
-                } else if (param_count == 3) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2]);\n", impl_name);
-                } else if (param_count == 4) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3]);\n", impl_name);
-                } else if (param_count == 5) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4]);\n", impl_name);
-                } else if (param_count == 6) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5]);\n", impl_name);
-                } else if (param_count == 7) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6]);\n", impl_name);
-                } else if (param_count == 8) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);\n", impl_name);
-                } else if (param_count == 9) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);\n", impl_name);
-                } else if (param_count == 10) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9]);\n", impl_name);
-                } else if (param_count == 11) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10]);\n", impl_name);
-                } else if (param_count == 12) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11]);\n", impl_name);
-                } else if (param_count == 13) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12]);\n", impl_name);
-                } else if (param_count == 14) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13]);\n", impl_name);
-                } else if (param_count == 15) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14]);\n", impl_name);
-                } else if (param_count == 16) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15]);\n", impl_name);
-                } else {
-                    omni_codegen_emit(ctx, "return mk_error(\"too many parameters (max 16)\");\n");
-                }
-
-                omni_codegen_dedent(ctx);
-                omni_codegen_emit(ctx, "}\n\n");
-
-                /* First definition: wrap trampoline in TAG_CLOSURE */
-                omni_codegen_emit(ctx, "/* First definition of %s: wrap trampoline as closure */\n", c_name);
-                omni_codegen_emit(ctx, "static Obj* %s_closure = NULL;\n", c_name);
-                omni_codegen_emit(ctx, "if (%s_closure == NULL) {\n", c_name);
-                omni_codegen_indent(ctx);
-                omni_codegen_emit(ctx, "%s_closure = mk_closure(%s_trampoline, NULL, NULL, 0, %d);\n", c_name, impl_name, (int)param_count);
-                omni_codegen_dedent(ctx);
-                omni_codegen_emit(ctx, "}\n");
-                omni_codegen_emit(ctx, "Obj* %s = %s_closure;\n\n", c_name, c_name);
-            } else {
-                /* Redefinition: convert to TAG_GENERIC and add method */
-                omni_codegen_emit(ctx, "/* Redefinition #%d of %s: add method to generic */\n", definition_count, c_name);
-
-                /* Generate parameter count */
-                size_t param_count = omni_array_len(params);
-
-                /* Emit trampoline for this method */
-                omni_codegen_emit(ctx, "/* Trampoline for method #%d */\n", definition_count);
-                omni_codegen_emit(ctx, "static Obj* %s_trampoline_m%d(Obj** captures, Obj** args, int argc) {\n", impl_name, definition_count);
-                omni_codegen_indent(ctx);
-                omni_codegen_emit(ctx, "(void)captures;\n");
-                omni_codegen_emit(ctx, "Region* _r = region_get_or_create();\n");
-                omni_codegen_emit(ctx, "if (argc != %zu) return mk_error(\"arity mismatch\");\n", param_count);
-                if (param_count == 0) {
-                    omni_codegen_emit(ctx, "return %s(_r);\n", impl_name);
-                } else if (param_count == 1) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0]);\n", impl_name);
-                } else if (param_count == 2) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1]);\n", impl_name);
-                } else if (param_count == 3) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2]);\n", impl_name);
-                } else if (param_count == 4) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3]);\n", impl_name);
-                } else if (param_count == 5) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4]);\n", impl_name);
-                } else if (param_count == 6) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5]);\n", impl_name);
-                } else if (param_count == 7) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6]);\n", impl_name);
-                } else if (param_count == 8) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);\n", impl_name);
-                } else if (param_count == 9) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);\n", impl_name);
-                } else if (param_count == 10) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9]);\n", impl_name);
-                } else if (param_count == 11) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10]);\n", impl_name);
-                } else if (param_count == 12) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11]);\n", impl_name);
-                } else if (param_count == 13) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12]);\n", impl_name);
-                } else if (param_count == 14) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13]);\n", impl_name);
-                } else if (param_count == 15) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14]);\n", impl_name);
-                } else if (param_count == 16) {
-                    omni_codegen_emit(ctx, "return %s(_r, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11], args[12], args[13], args[14], args[15]);\n", impl_name);
-                } else {
-                    omni_codegen_emit(ctx, "return mk_error(\"too many parameters (max 16)\");\n");
-                }
-                omni_codegen_dedent(ctx);
-                omni_codegen_emit(ctx, "}\n\n");
-
-                omni_codegen_emit(ctx, "static Obj* %s_generic = NULL;\n", c_name);
-                omni_codegen_emit(ctx, "if (%s_generic == NULL) {\n", c_name);
-                omni_codegen_indent(ctx);
-                /* First redefinition: create generic function */
-                omni_codegen_emit(ctx, "%s_generic = mk_generic(\"%s\");\n", c_name, fname->str_val);
-                omni_codegen_dedent(ctx);
-                omni_codegen_emit(ctx, "}\n");
-                /* Add the new method (using the trampoline) */
-                omni_codegen_emit(ctx, "generic_add_method(%s_generic, NULL, 0, (ClosureFn)%s_trampoline_m%d);\n",
-                                 c_name, impl_name, definition_count);
-                omni_codegen_emit(ctx, "Obj* %s = %s_generic;\n\n", c_name, c_name);
-            }
-
-            free(impl_name);
-            free(c_name);
-            return;
-        }
-
-        /* Variable define: (define name value) */
+        /* Variable define: (define name value) or (define name {Type} value) */
         char* c_name = omni_codegen_mangle(first->str_val);
         omni_codegen_emit(ctx, "Obj* %s = ", c_name);
         if (!omni_is_nil(rest)) {
-            codegen_expr(ctx, omni_car(rest));
+            OmniValue* maybe_type = omni_car(rest);
+            if (omni_is_type_lit(maybe_type)) {
+                /* Typed variable: (define name {Type} value)
+                 * Skip the type annotation, use the value after it */
+                OmniValue* value_rest = omni_cdr(rest);
+                if (!omni_is_nil(value_rest)) {
+                    codegen_expr(ctx, omni_car(value_rest));
+                } else {
+                    omni_codegen_emit_raw(ctx, "NOTHING");
+                }
+            } else {
+                /* Simple variable: (define name value) */
+                codegen_expr(ctx, maybe_type);
+            }
         } else {
             omni_codegen_emit_raw(ctx, "NOTHING");
         }
@@ -2576,13 +2386,9 @@ static void codegen_set_bang(CodeGenContext* ctx, OmniValue* expr) {
     }
 
     char* c_name = omni_codegen_mangle(var->str_val);
-    omni_codegen_emit(ctx, "/* set! */\n");
-    omni_codegen_emit(ctx, "%s = ", c_name);
+    omni_codegen_emit_raw(ctx, "(%s = ", c_name);
     codegen_expr(ctx, value);
-    omni_codegen_emit_raw(ctx, ";\n");
-    omni_codegen_emit(ctx, "return ");
-    omni_codegen_emit_raw(ctx, "%s", c_name);
-    omni_codegen_emit_raw(ctx, ";");
+    omni_codegen_emit_raw(ctx, ")");
     free(c_name);
 }
 
@@ -2700,6 +2506,15 @@ static void codegen_apply(CodeGenContext* ctx, OmniValue* expr) {
             return;
         }
 
+        /* Check for range - takes a long argument, not Obj* */
+        if (strcmp(name, "range") == 0) {
+            omni_codegen_emit_raw(ctx, "prim_range(obj_to_int(");
+            if (!omni_is_nil(args)) codegen_expr(ctx, omni_car(args));
+            else omni_codegen_emit_raw(ctx, "mk_int(0)");
+            omni_codegen_emit_raw(ctx, "))");
+            return;
+        }
+
         /* Check for println - variadic print with newline */
         if (strcmp(name, "println") == 0) {
             /* Build argument list for prim_println using nested mk_pair calls */
@@ -2765,6 +2580,28 @@ static void codegen_apply(CodeGenContext* ctx, OmniValue* expr) {
             }
             omni_codegen_emit_raw(ctx, ")");
             return;
+        }
+    }
+
+    /* Check for inline lambda application: ((lambda ...) args...) */
+    if (omni_is_cell(func)) {
+        OmniValue* func_head = omni_car(func);
+        if (omni_is_sym(func_head)) {
+            const char* fn_name = func_head->str_val;
+            if (strcmp(fn_name, "lambda") == 0 || strcmp(fn_name, "fn") == 0 ||
+                strcmp(fn_name, "->") == 0 || strcmp(fn_name, "λ") == 0) {
+                /* Inline lambda application */
+                /* codegen_lambda emits _lambda_N(_local_region */
+                codegen_expr(ctx, func);
+                /* Now add the arguments */
+                while (!omni_is_nil(args) && omni_is_cell(args)) {
+                    omni_codegen_emit_raw(ctx, ", ");
+                    codegen_expr(ctx, omni_car(args));
+                    args = omni_cdr(args);
+                }
+                omni_codegen_emit_raw(ctx, ")");
+                return;
+            }
         }
     }
 
@@ -2851,7 +2688,7 @@ static void codegen_list(CodeGenContext* ctx, OmniValue* expr) {
             return;
         }
         if (strcmp(name, "lambda") == 0 || strcmp(name, "fn") == 0 ||
-            strcmp(name, "λ") == 0) {  /* Greek letter lambda */
+            strcmp(name, "λ") == 0 || strcmp(name, "->") == 0) {  /* Lambda forms */
             codegen_lambda(ctx, expr);
             return;
         }
@@ -3006,6 +2843,7 @@ void omni_codegen_main(CodeGenContext* ctx, OmniValue** exprs, size_t count) {
 
         if (omni_is_cell(expr) && omni_is_sym(omni_car(expr)) &&
             strcmp(omni_car(expr)->str_val, "define") == 0) {
+            /* Defines are not printed, so don't count them */
             continue;
         }
         exec_total++;
@@ -3015,14 +2853,21 @@ void omni_codegen_main(CodeGenContext* ctx, OmniValue** exprs, size_t count) {
     for (size_t i = 0; i < count; i++) {
         OmniValue* expr = exprs[i];
 
-        /* Check if it's a define - emit at top level */
-        if (omni_is_cell(expr) && omni_is_sym(omni_car(expr)) &&
-            strcmp(omni_car(expr)->str_val, "define") == 0) {
-            /* Already emitted as top-level function */
+        /* Check if it's a function define - skip in main (already emitted at file scope) */
+        if (is_function_define(expr)) {
             continue;
         }
 
-        /* Regular expression - emit in main */
+        /* Check if it's a variable define - emit directly without print wrapper */
+        bool is_var_define = omni_is_cell(expr) && omni_is_sym(omni_car(expr)) &&
+                             strcmp(omni_car(expr)->str_val, "define") == 0;
+        if (is_var_define) {
+            /* Variable define - emit the definition statement directly */
+            codegen_expr(ctx, expr);
+            continue;
+        }
+
+        /* Regular expression - emit in main with print wrapper */
         omni_codegen_emit(ctx, "{\n");
         omni_codegen_indent(ctx);
         omni_codegen_emit(ctx, "Obj* _result = ");
@@ -3072,6 +2917,7 @@ void omni_codegen_program(CodeGenContext* ctx, OmniValue** exprs, size_t count) 
     omni_codegen_runtime_header(ctx);
 
     /* First pass: collect defines and emit as top-level functions */
+    ctx->first_pass = true;
     for (size_t i = 0; i < count; i++) {
         OmniValue* expr = exprs[i];
         if (omni_is_cell(expr) && omni_is_sym(omni_car(expr)) &&
@@ -3081,10 +2927,23 @@ void omni_codegen_program(CodeGenContext* ctx, OmniValue** exprs, size_t count) 
 
             /* Only emit function defines at top level */
             if (omni_is_cell(name_or_sig)) {
+                /* Traditional Scheme style: (define (f x y) body) */
                 codegen_define(ctx, expr);
+            } else if (omni_is_sym(name_or_sig)) {
+                /* Check for slot-syntax: (define f [x] [y] body) or (define f x y body) */
+                OmniValue* rest = omni_cdr(args);
+                if (!omni_is_nil(rest)) {
+                    OmniValue* maybe_param = omni_car(rest);
+                    OmniValue* param_name = codegen_extract_param_name(maybe_param);
+                    if (param_name != NULL) {
+                        /* This is a slot-syntax function definition */
+                        codegen_define(ctx, expr);
+                    }
+                }
             }
         }
     }
+    ctx->first_pass = false;
 
     /* Generate main() to a buffer first to collect lambdas */
     CodeGenContext* main_ctx = omni_codegen_new_buffer();
@@ -3952,8 +3811,7 @@ void omni_codegen_let_narrowed(CodeGenContext* ctx, OmniValue* expr) {
     OmniValue* args = omni_cdr(expr);
     if (omni_is_nil(args)) return;
 
-    OmniValue* bindings = omni_car(args);
-    OmniValue* body = omni_cdr(args);
+    OmniValue* first = omni_car(args);
 
     omni_codegen_emit_raw(ctx, "({ /* narrowed let */\n");
     omni_codegen_indent(ctx);
@@ -3964,42 +3822,62 @@ void omni_codegen_let_narrowed(CodeGenContext* ctx, OmniValue* expr) {
         let_scope = omni_scope_find_by_ast_node(ctx->analysis, expr);
     }
 
+    OmniValue* body = NULL;
+
     /* Emit bindings with narrowed allocation */
-    if (omni_is_array(bindings)) {
-        /* Array-style: [x 1 y 2] */
-        for (size_t i = 0; i + 1 < bindings->array.len; i += 2) {
-            OmniValue* name = bindings->array.data[i];
-            OmniValue* val = bindings->array.data[i + 1];
-            if (omni_is_sym(name)) {
-                char* c_name = omni_codegen_mangle(name->str_val);
+    if (omni_is_array(first)) {
+        /* Slot syntax: (let [x val] [y val] body...) */
+        OmniValue* current = args;
+        while (current && !omni_is_nil(current) && omni_is_cell(current)) {
+            OmniValue* elem = omni_car(current);
 
-                /* Check if this variable escapes */
-                EscapeTarget escape = ESCAPE_TARGET_GLOBAL;  /* Conservative default */
-                if (ctx->analysis) {
-                    escape = omni_scope_get_escape_target(ctx->analysis, name->str_val);
-                }
-
-                if (escape == ESCAPE_TARGET_NONE) {
-                    /* Stack allocate */
-                    omni_codegen_emit(ctx, "Obj _stack_%s = {0};\n", c_name);
-                    omni_codegen_emit(ctx, "Obj* %s = &_stack_%s; /* narrowed: non-escaping */\n",
-                                      c_name, c_name);
-                } else {
-                    /* Region allocate */
-                    omni_codegen_emit(ctx, "Obj* %s = region_alloc(_local_region, sizeof(Obj)); /* narrowed: escaping to %s */\n",
-                                      c_name, omni_escape_target_name(escape));
-                }
-
-                omni_codegen_emit(ctx, "%s = ", c_name);
-                codegen_expr(ctx, val);
-                omni_codegen_emit_raw(ctx, ";\n");
-
-                register_symbol(ctx, name->str_val, c_name);
-                free(c_name);
+            if (!omni_is_array(elem)) {
+                /* Not an array - we've hit the body */
+                break;
             }
+
+            /* Process array binding: [name val] or [name type val] */
+            size_t len = omni_array_len(elem);
+            if (len >= 2) {
+                OmniValue* name = omni_array_get(elem, 0);
+                OmniValue* val = (len == 2) ? omni_array_get(elem, 1) : omni_array_get(elem, 2);
+
+                if (omni_is_sym(name)) {
+                    char* c_name = omni_codegen_mangle(name->str_val);
+
+                    /* Check if this variable escapes */
+                    EscapeTarget escape = ESCAPE_TARGET_GLOBAL;  /* Conservative default */
+                    if (ctx->analysis) {
+                        escape = omni_scope_get_escape_target(ctx->analysis, name->str_val);
+                    }
+
+                    if (escape == ESCAPE_TARGET_NONE) {
+                        /* Stack allocate */
+                        omni_codegen_emit(ctx, "Obj _stack_%s = {0};\n", c_name);
+                        omni_codegen_emit(ctx, "Obj* %s = &_stack_%s; /* narrowed: non-escaping */\n",
+                                          c_name, c_name);
+                    } else {
+                        /* Region allocate */
+                        omni_codegen_emit(ctx, "Obj* %s = region_alloc(_local_region, sizeof(Obj)); /* narrowed: escaping to %s */\n",
+                                          c_name, omni_escape_target_name(escape));
+                    }
+
+                    omni_codegen_emit(ctx, "%s = ", c_name);
+                    codegen_expr(ctx, val);
+                    omni_codegen_emit_raw(ctx, ";\n");
+
+                    register_symbol(ctx, name->str_val, c_name);
+                    free(c_name);
+                }
+            }
+
+            current = omni_cdr(current);
         }
-    } else if (omni_is_cell(bindings)) {
+        body = current;
+    } else if (omni_is_cell(first)) {
         /* List-style: ((x 1) (y 2)) */
+        OmniValue* bindings = first;
+        body = omni_cdr(args);
         while (!omni_is_nil(bindings) && omni_is_cell(bindings)) {
             OmniValue* binding = omni_car(bindings);
             if (omni_is_cell(binding)) {

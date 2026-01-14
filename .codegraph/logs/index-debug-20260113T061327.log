@@ -1,0 +1,494 @@
+2026-01-13T06:13:27.035443Z  INFO codegraph_mcp::indexer: 🔧 Rayon threads capped to 12 (workers/env)
+2026-01-13T06:13:27.035698Z  INFO codegraph_mcp::indexer: 🗄️ Connecting to SurrealDB: ws://127.0.0.1:3004/rpc namespace=codegraph database=main
+2026-01-13T06:13:27.035715Z  INFO codegraph_graph::surrealdb_storage: Initializing SurrealDB storage with connection: ws://127.0.0.1:3004/rpc
+2026-01-13T06:13:27.053598Z  INFO codegraph_graph::surrealdb_storage: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T06:13:27.053633Z  INFO codegraph_mcp::indexer: 🗄️ SurrealDB connection established: ws://127.0.0.1:3004/rpc namespace=codegraph database=main
+2026-01-13T06:13:27.149044Z  INFO codegraph_vector::embedding: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T06:13:27.149065Z  INFO codegraph_vector::embedding: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T06:13:27.149071Z  INFO codegraph_vector::embedding: ✅ 'ollama' feature is ENABLED
+2026-01-13T06:13:27.149079Z  INFO codegraph_vector::embedding: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T06:13:27.251257Z  INFO codegraph_vector::embedding: 🔍 Checking Ollama availability...
+2026-01-13T06:13:27.253622Z  INFO codegraph_vector::ollama_embedding_provider: nomic-embed-text availability: true
+2026-01-13T06:13:27.253635Z  INFO codegraph_vector::embedding: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T06:13:27.253645Z  INFO codegraph_vector::embedding: ✅ ollama_provider successfully set!
+2026-01-13T06:13:27.253649Z  INFO codegraph_mcp::indexer: Active embeddings: ollama (batch_size: 128, max_concurrent: 10)
+2026-01-13T06:13:27.253653Z  INFO codegraph_mcp::indexer: 🧭 Embedding dimension resolved from provider (ollama): 768 → Surreal column embedding_768
+2026-01-13T06:13:27.253667Z  INFO codegraph_mcp::indexer: Starting project indexing: "/home/heefoo/code/OmniLisp"
+2026-01-13T06:13:27.253676Z  INFO codegraph_mcp::indexer: 🗄️ SurrealDB (pre-parse): target=ws://127.0.0.1:3004/rpc namespace=codegraph database=main auth=credentials configured
+2026-01-13T06:13:27.256338Z  INFO codegraph_parser::file_collect: Collecting source files from: "/home/heefoo/code/OmniLisp"
+2026-01-13T06:13:27.268603Z  INFO codegraph_parser::file_collect: File collection complete: 4438 files found, 1014 passed filters
+2026-01-13T06:13:27.268622Z  INFO codegraph_mcp::indexer: 🧭 Indexing tier: Fast | analyzers: build_context=false lsp=off enrichment=false module_linking=false dataflow=false docs_contracts=false architecture=false
+2026-01-13T06:13:27.269660Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/my_proposal.txt
+2026-01-13T06:13:27.269667Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/Makefile
+2026-01-13T06:13:27.269670Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/ROADMAP.md
+2026-01-13T06:13:27.269672Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/test_float_check.omni
+2026-01-13T06:13:27.269674Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/examples/demo.omni
+2026-01-13T06:13:27.269677Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/examples/scicomp_demo.omni
+2026-01-13T06:13:27.269679Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/TODO_ARCHIVE/TODO.md.backup.2026-01-10_140054
+2026-01-13T06:13:27.269682Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/TODO_ARCHIVE/TODO.md.backup.2026-01-10_120111
+2026-01-13T06:13:27.269745Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/third_party/sds/LICENSE
+2026-01-13T06:13:27.282639Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/third_party/micro-arena.h/Makefile
+2026-01-13T06:13:27.283193Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/third_party/micro-arena.h/LICENSE
+2026-01-13T06:13:27.283201Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/third_party/micro-arena.h/.gitignore
+2026-01-13T06:13:27.283204Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/third_party/micro-arena.h/.github/workflows/build-clang.yml
+2026-01-13T06:13:27.283207Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/third_party/micro-arena.h/.github/workflows/build-gcc.yml
+2026-01-13T06:13:27.284885Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/third_party/micro-arena.h/README
+2026-01-13T06:13:27.284893Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/third_party/README.md
+2026-01-13T06:13:27.284896Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/third_party/linenoise/LICENSE
+2026-01-13T06:13:27.288529Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/third_party/stb_ds/LICENSE
+2026-01-13T06:13:27.291550Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/third_party/uthash/LICENSE
+2026-01-13T06:13:27.291555Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/language_reference.md
+2026-01-13T06:13:27.291558Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/LLM_REVIEW_SUMMARY.md
+2026-01-13T06:13:27.291560Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/flags
+2026-01-13T06:13:27.291562Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/SUMMARY.md
+2026-01-13T06:13:27.291565Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/ACM-Reference-Format.bst
+2026-01-13T06:13:27.291568Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/ANTLR-vs-pika-Java.pdf
+2026-01-13T06:13:27.291571Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/acmart.cls
+2026-01-13T06:13:27.291573Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/Levenshtein.pdf
+2026-01-13T06:13:27.291578Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/Pika-vs-len-expr.pdf
+2026-01-13T06:13:27.291580Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/ANTLR-vs-pika-expr.pdf
+2026-01-13T06:13:27.291583Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/main.bib
+2026-01-13T06:13:27.291586Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/Pika-vs-len-Java.pdf
+2026-01-13T06:13:27.291589Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/ParsingSteps.pdf
+2026-01-13T06:13:27.291602Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/LeftAndRightRecursiveRule.pdf
+2026-01-13T06:13:27.291604Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/AST.pdf
+2026-01-13T06:13:27.291608Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/Parboiled-vs-pika-Java.pdf
+2026-01-13T06:13:27.291611Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/main.tex
+2026-01-13T06:13:27.291614Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/Parboiled-vs-pika-expr.pdf
+2026-01-13T06:13:27.291616Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/ParsingRecurrence.pdf
+2026-01-13T06:13:27.291620Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/paper/SyntaxError.pdf
+2026-01-13T06:13:27.291623Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/LICENSE
+2026-01-13T06:13:27.292793Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/src/test/resources/arithmetic.grammar
+2026-01-13T06:13:27.292797Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/src/test/resources/Java.1.8.original_without_comments.peg
+2026-01-13T06:13:27.292800Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/src/test/resources/arithmetic.input
+2026-01-13T06:13:27.292803Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/src/test/resources/Java.1.8.peg
+2026-01-13T06:13:27.292805Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/src/test/resources/Java.1.8.peg.-LICENSE.txt
+2026-01-13T06:13:27.304038Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/pom.xml
+2026-01-13T06:13:27.304043Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/.classpath
+2026-01-13T06:13:27.304046Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/.gitignore
+2026-01-13T06:13:27.304049Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/.project
+2026-01-13T06:13:27.304054Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/README.md
+2026-01-13T06:13:27.304057Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/docs/ParseTree2.png
+2026-01-13T06:13:27.304060Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/docs/AST.png
+2026-01-13T06:13:27.304062Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/docs/ParseTree1.png
+2026-01-13T06:13:27.304065Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/out/test/pikaparser/arithmetic.grammar
+2026-01-13T06:13:27.304067Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/pikaparser/out/test/pikaparser/arithmetic.input
+2026-01-13T06:13:27.304077Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/review_todo.md
+2026-01-13T06:13:27.304082Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/SCIENTIFIC_COMPUTING_PLAN.md
+2026-01-13T06:13:27.304084Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/FUTURE_WORK.md
+2026-01-13T06:13:27.304086Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/scripts/claude-loop.prompt
+2026-01-13T06:13:27.304089Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/scripts/claude-loop.sh
+2026-01-13T06:13:27.304091Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/csrc/Makefile
+2026-01-13T06:13:27.339770Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/csrc/omnilisp
+2026-01-13T06:13:27.341596Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/csrc/tests/Makefile
+2026-01-13T06:13:27.354103Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.gitignore
+2026-01-13T06:13:27.354113Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/-
+2026-01-13T06:13:27.354116Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/performance.md
+2026-01-13T06:13:27.354118Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/TEST_RETAIN_RELEASE_WORK_SUMMARY.md
+2026-01-13T06:13:27.354121Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/crush.json
+2026-01-13T06:13:27.354123Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/GEMINI.md
+2026-01-13T06:13:27.354126Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/compile_commands.json
+2026-01-13T06:13:27.354128Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/history.txt
+2026-01-13T06:13:27.354130Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/AGENTS.md
+2026-01-13T06:13:27.354132Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/TODO.md
+2026-01-13T06:13:27.354134Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/Makefile
+2026-01-13T06:13:27.354137Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/ROADMAP.md
+2026-01-13T06:13:27.356990Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/bench/BENCHMARK_RESULTS.md
+2026-01-13T06:13:27.356998Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/bench/BENCHMARK_RESULTS_POINTER_MASKING.md
+2026-01-13T06:13:27.357001Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/bench/BENCHMARK_RESULTS_TYPED_CODEGEN.md
+2026-01-13T06:13:27.361908Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/bench/BENCHMARK_RESULTS_METADATA.md
+2026-01-13T06:13:27.372962Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/src/memory/region_value.h.bak
+2026-01-13T06:13:27.383589Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/src/memory/region_value.c.bak
+2026-01-13T06:13:27.386962Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/QUICK_REFERENCE.md
+2026-01-13T06:13:27.386967Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/RUNTIME_DEVELOPER_GUIDE.md
+2026-01-13T06:13:27.386970Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/EXAMPLES.md
+2026-01-13T06:13:27.386973Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/docs/REGION_THREADING_MODEL.md
+2026-01-13T06:13:27.386976Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/docs/CTRR_TRANSMIGRATION.md
+2026-01-13T06:13:27.386978Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/docs/PERFORMANCE_OPTIMIZATION_OPPORTUNITIES.md
+2026-01-13T06:13:27.386981Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/docs/ARCHITECTURE.md
+2026-01-13T06:13:27.386983Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/docs/MEMORY_SAFETY_RESEARCH_UPDATE_2024_2025.md
+2026-01-13T06:13:27.386986Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/docs/SMR_FOR_RUNTIME_STRUCTURES.md
+2026-01-13T06:13:27.386988Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/docs/CTRR_REMAP_FORWARDING_TABLE.md
+2026-01-13T06:13:27.386990Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/docs/ABLATIVE_FAT_POINTER_PROTOTYPE.md
+2026-01-13T06:13:27.386993Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/docs/PERSISTENT_DATA_STRUCTURES_ANALYSIS.md
+2026-01-13T06:13:27.386996Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/docs/MEMORY_TERMINOLOGY.md
+2026-01-13T06:13:27.386998Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/docs/REGION_RC_MODEL.md
+2026-01-13T06:13:27.387001Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/docs/REGION_ACCOUNTING.md
+2026-01-13T06:13:27.387006Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/tests/Makefile
+2026-01-13T06:13:27.402740Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/tests/TEST_FIXES.md
+2026-01-13T06:13:27.417955Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/tests/test_store_barrier_merge.c.old
+2026-01-13T06:13:27.421258Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/tests/memory_coverage_report.txt
+2026-01-13T06:13:27.425044Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/tests/test_store_barrier_merge.c.old2
+2026-01-13T06:13:27.427989Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/tests/test_store_barrier_merge.c.old3
+2026-01-13T06:13:27.427994Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/tests/test_region_rc_liveness
+2026-01-13T06:13:27.435262Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/tests/TEST_REVIEW.md
+2026-01-13T06:13:27.443136Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/tests/TEST_PLAN.md
+2026-01-13T06:13:27.451747Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/runtime/tests/COVERAGE_PLAN.md
+2026-01-13T06:13:27.452360Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/FFI_PROPOSAL.md
+2026-01-13T06:13:27.452364Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/state
+2026-01-13T06:13:27.452367Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/sessions
+2026-01-13T06:13:27.452370Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/test_nested_fiber.lisp
+2026-01-13T06:13:27.452373Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/CRUSH.md
+2026-01-13T06:13:27.452376Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/README.md
+2026-01-13T06:13:27.452379Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/REGION_RELEASE_SUMMARY.md
+2026-01-13T06:13:27.452381Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/test_yield.lisp
+2026-01-13T06:13:27.452384Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/CHANGELOG.md
+2026-01-13T06:13:27.452387Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer.omni
+2026-01-13T06:13:27.452389Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/Makefile
+2026-01-13T06:13:27.452392Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/test_bridge
+2026-01-13T06:13:27.453371Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/.gitmodules
+2026-01-13T06:13:27.453377Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/codecov.yml
+2026-01-13T06:13:27.453511Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/CMakeLists.txt
+2026-01-13T06:13:27.453530Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/extra/fuzzer/CMakeLists.txt
+2026-01-13T06:13:27.457655Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/extra/fuzzer/persist/CMakeLists.txt
+2026-01-13T06:13:27.458583Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/extra/python/CMakeLists.txt
+2026-01-13T06:13:27.459296Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/extra/python/README.rst
+2026-01-13T06:13:27.461054Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/extra/guile/CMakeLists.txt
+2026-01-13T06:13:27.461058Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/extra/guile/benchmark.scm
+2026-01-13T06:13:27.461115Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/extra/guile/immer.scm.in
+2026-01-13T06:13:27.461118Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/extra/guile/example.scm
+2026-01-13T06:13:27.461121Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/extra/guile/README.rst
+2026-01-13T06:13:27.461123Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/extra/js/index.tpl.html
+2026-01-13T06:13:27.461729Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/extra/js/makefile
+2026-01-13T06:13:27.472697Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/justfile
+2026-01-13T06:13:27.489095Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/benchmark/vector/branching/push.ipp
+2026-01-13T06:13:27.491323Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/benchmark/vector/branching/access.ipp
+2026-01-13T06:13:27.491442Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/benchmark/vector/branching/assoc.ipp
+2026-01-13T06:13:27.491446Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/benchmark/vector/branching/concat.ipp
+2026-01-13T06:13:27.493006Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/benchmark/CMakeLists.txt
+2026-01-13T06:13:27.494680Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/benchmark/set/string-short/generator.ipp
+2026-01-13T06:13:27.495672Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/benchmark/set/iter.ipp
+2026-01-13T06:13:27.495675Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/benchmark/set/access.ipp
+2026-01-13T06:13:27.496234Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/benchmark/set/string-box/generator.ipp
+2026-01-13T06:13:27.496678Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/benchmark/set/insert.ipp
+2026-01-13T06:13:27.496922Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/benchmark/set/string-long/generator.ipp
+2026-01-13T06:13:27.497729Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/benchmark/set/erase.ipp
+2026-01-13T06:13:27.497873Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/benchmark/set/unsigned/generator.ipp
+2026-01-13T06:13:27.497918Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/LICENSE
+2026-01-13T06:13:27.497921Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/.gdbinit
+2026-01-13T06:13:27.497923Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/WORKSPACE
+2026-01-13T06:13:27.497926Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/flake.nix
+2026-01-13T06:13:27.497939Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/.gitignore
+2026-01-13T06:13:27.497942Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/.github/FUNDING.yml
+2026-01-13T06:13:27.497945Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/.github/workflows/test.yml
+2026-01-13T06:13:27.497947Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/.github/workflows/cifuzz.yml
+2026-01-13T06:13:27.500301Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/example/CMakeLists.txt
+2026-01-13T06:13:27.501479Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/nix/immer.nix
+2026-01-13T06:13:27.501483Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/nix/docs.nix
+2026-01-13T06:13:27.501487Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/nix/cereal.nix
+2026-01-13T06:13:27.501490Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/nix/catch2_3.nix
+2026-01-13T06:13:27.501492Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/nix/benchmarks.nix
+2026-01-13T06:13:27.501495Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/cmake/ImmerUtils.cmake
+2026-01-13T06:13:27.501497Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/cmake/FindBoehmGC.cmake
+2026-01-13T06:13:27.501500Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/cmake/FindRRB.cmake
+2026-01-13T06:13:27.501606Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/shell.nix
+2026-01-13T06:13:27.580673Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/tools/reproduce-paper-results.bash
+2026-01-13T06:13:27.580691Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/tools/scala/version.sbt
+2026-01-13T06:13:27.580694Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/tools/scala/build.sbt
+2026-01-13T06:13:27.580697Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/tools/scala/src/test/scala/org/immer/benchmarks.scala
+2026-01-13T06:13:27.580700Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/tools/scala/README.md
+2026-01-13T06:13:27.581183Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/tools/include/nonius.h++
+2026-01-13T06:13:27.581186Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/tools/include/.clang-format
+2026-01-13T06:13:27.581508Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/tools/docker/icfp17/Dockerfile
+2026-01-13T06:13:27.581523Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/tools/with-tee.bash
+2026-01-13T06:13:27.581526Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/tools/clojure/project.clj
+2026-01-13T06:13:27.581529Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/tools/clojure/src/immer_benchmark.clj
+2026-01-13T06:13:27.581533Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/tools/clojure/README.md
+2026-01-13T06:13:27.583160Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/vector/generic.ipp
+2026-01-13T06:13:27.584349Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/CMakeLists.txt
+2026-01-13T06:13:27.584947Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/extra/persist/CMakeLists.txt
+2026-01-13T06:13:27.597411Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/extra/persist/valgrind.supp
+2026-01-13T06:13:27.597748Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/extra/persist/suppr.txt
+2026-01-13T06:13:27.599227Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/vector_transient/generic.ipp
+2026-01-13T06:13:27.599482Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/atom/generic.ipp
+2026-01-13T06:13:27.600108Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/map/generic.ipp
+2026-01-13T06:13:27.600760Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/set/generic.ipp
+2026-01-13T06:13:27.603782Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/table_transient/generic.ipp
+2026-01-13T06:13:27.604268Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/map_transient/generic.ipp
+2026-01-13T06:13:27.604929Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/flex_vector/generic.ipp
+2026-01-13T06:13:27.608899Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/flex_vector_transient/generic.ipp
+2026-01-13T06:13:27.609364Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/table/generic.ipp
+2026-01-13T06:13:27.609795Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/box/generic.ipp
+2026-01-13T06:13:27.610117Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/set_transient/generic.ipp
+2026-01-13T06:13:27.610335Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/valgrind_suppress.txt
+2026-01-13T06:13:27.616324Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-5078027885871104.fuzz
+2026-01-13T06:13:27.616359Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-4872518268354560
+2026-01-13T06:13:27.616365Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-map-gc-5748495613689856
+2026-01-13T06:13:27.616371Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-set-gc-5709797958352896
+2026-01-13T06:13:27.616376Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-5660697665732608
+2026-01-13T06:13:27.616381Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-array-5722369596063744
+2026-01-13T06:13:27.616386Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-6299398922043392
+2026-01-13T06:13:27.616391Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-6265466893631488
+2026-01-13T06:13:27.616397Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-6017886557306880
+2026-01-13T06:13:27.616402Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-4806287339290624.fuzz
+2026-01-13T06:13:27.616407Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-map-st-5193157168594944
+2026-01-13T06:13:27.616412Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-map-6457979420934144
+2026-01-13T06:13:27.616417Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-5120685673021440
+2026-01-13T06:13:27.616422Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-5651513180160000
+2026-01-13T06:13:27.616427Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-array-gc-5983642523009024
+2026-01-13T06:13:27.616433Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/crash-dc9dad6beae69a6bb8ffd6d203b95032f445ec9b
+2026-01-13T06:13:27.616438Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-5123086366801920
+2026-01-13T06:13:27.616443Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-set-st-4717454829420544
+2026-01-13T06:13:27.616452Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-5151861104181248
+2026-01-13T06:13:27.616457Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-5428967461617664
+2026-01-13T06:13:27.616462Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-6237969917411328
+2026-01-13T06:13:27.616467Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-5194423089233920
+2026-01-13T06:13:27.616472Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-5127731734642688
+2026-01-13T06:13:27.616477Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-bo-6038320384311296
+2026-01-13T06:13:27.616482Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-5068547731226624
+2026-01-13T06:13:27.616488Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-set-gc-5193673156067328
+2026-01-13T06:13:27.616493Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-map-st-5313188008165376
+2026-01-13T06:13:27.616498Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/crash-2838943da19b47c02dcff313e523eead0e2e8635
+2026-01-13T06:13:27.616503Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-5682145239236608
+2026-01-13T06:13:27.616508Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-4855756386729984
+2026-01-13T06:13:27.616513Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-map-st-6242663155761152
+2026-01-13T06:13:27.616518Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-6595824679911424
+2026-01-13T06:13:27.616524Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/crash-6698cd314d474bc6d857cf84e4c68d5965dae9e3
+2026-01-13T06:13:27.616529Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-5676111456108544
+2026-01-13T06:13:27.616535Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-5635385259196416
+2026-01-13T06:13:27.616540Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/test/oss-fuzz/data/clusterfuzz-testcase-minimized-flex-vector-gc-4787718039797760
+2026-01-13T06:13:27.617137Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/.clang-format
+2026-01-13T06:13:27.617144Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/BUILD
+2026-01-13T06:13:27.617149Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/flake.lock
+2026-01-13T06:13:27.617153Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/default.nix
+2026-01-13T06:13:27.617157Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/README.rst
+2026-01-13T06:13:27.617162Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/.devcontainer/devcontainer.json
+2026-01-13T06:13:27.617166Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/.devcontainer/Dockerfile
+2026-01-13T06:13:27.617171Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/shell-compat.nix
+2026-01-13T06:13:27.617175Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/Makefile
+2026-01-13T06:13:27.617179Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/index.rst
+2026-01-13T06:13:27.617184Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/guile.rst
+2026-01-13T06:13:27.617188Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/CMakeLists.txt
+2026-01-13T06:13:27.617193Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/python.rst
+2026-01-13T06:13:27.617198Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/sphinx-html-hack.bash
+2026-01-13T06:13:27.617203Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/memory.rst
+2026-01-13T06:13:27.617208Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/containers.rst
+2026-01-13T06:13:27.617213Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/transients.rst
+2026-01-13T06:13:27.617217Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/doxygen.config
+2026-01-13T06:13:27.617222Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/_static/logo-black.svg
+2026-01-13T06:13:27.617227Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/_static/patreon.svg
+2026-01-13T06:13:27.617231Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/_static/logo.svg
+2026-01-13T06:13:27.617236Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/_static/sinusoidal-badge.svg
+2026-01-13T06:13:27.617240Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/_static/logo-front.svg
+2026-01-13T06:13:27.617264Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/introduction.rst
+2026-01-13T06:13:27.617269Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/persist-transformation.rst
+2026-01-13T06:13:27.617274Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/persist-reference.rst
+2026-01-13T06:13:27.617278Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/implementation.rst
+2026-01-13T06:13:27.617285Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/design.rst
+2026-01-13T06:13:27.617289Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/utilities.rst
+2026-01-13T06:13:27.617295Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/algorithms.rst
+2026-01-13T06:13:27.617300Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/persist-serialization.rst
+2026-01-13T06:13:27.617304Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/requirements.txt
+2026-01-13T06:13:27.617309Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/doc/persist-introduction.rst
+2026-01-13T06:13:27.617488Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/lib/immer/immer/.dir-locals.el
+2026-01-13T06:13:27.617493Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/test_with_fibers.lisp
+2026-01-13T06:13:27.617498Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/OPTIMIZATIONS.md
+2026-01-13T06:13:27.617506Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/CTRR_REGION_INFERENCE_ROADMAP.md
+2026-01-13T06:13:27.617511Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/ARCHITECTURE_DIAGRAMS.md
+2026-01-13T06:13:27.617517Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/MEMORY_OPTIMIZATIONS.md
+2026-01-13T06:13:27.617522Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/EXECUTION_ARCHITECTURE.md
+2026-01-13T06:13:27.617528Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/MEMORY_MODEL_TECHNICAL.md
+2026-01-13T06:13:27.617534Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/UNDOCUMENTED_FEATURES.md
+2026-01-13T06:13:27.617540Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/SYNTAX.md
+2026-01-13T06:13:27.617545Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/BUILD_AND_TEST.md
+2026-01-13T06:13:27.617551Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/SYNTAX_REVISION.md
+2026-01-13T06:13:27.617556Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/CTRR.md
+2026-01-13T06:13:27.617567Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/SYNTAX_INCONSISTENCIES.md
+2026-01-13T06:13:27.617572Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/PATTERN_SYNTAX.md
+2026-01-13T06:13:27.617577Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/QUICK_REFERENCE.md
+2026-01-13T06:13:27.617582Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/BRANCH_LEVEL_REGION_NARROWING.md
+2026-01-13T06:13:27.617587Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/FFI_DESIGN_PROPOSALS.md
+2026-01-13T06:13:27.617592Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/TYPE_SYSTEM_DESIGN.md
+2026-01-13T06:13:27.617596Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/UNIFIED_REGION_ARCHITECTURE.md
+2026-01-13T06:13:27.617601Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/LANGUAGE_COMPLETENESS_REPORT.md
+2026-01-13T06:13:27.617606Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/ADVANCED_REGION_ALGORITHMS.md
+2026-01-13T06:13:27.617611Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/docs/TYPE_SPECIALIZATION_DESIGN.md
+2026-01-13T06:13:27.617615Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/FINAL_WORK_SUMMARY.md
+2026-01-13T06:13:27.617620Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/unwired_features.omni
+2026-01-13T06:13:27.617624Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_string_eq_simple.omni
+2026-01-13T06:13:27.617870Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/Makefile
+2026-01-13T06:13:27.618634Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/bench_numeric.omni
+2026-01-13T06:13:27.619153Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_concurrency_race
+2026-01-13T06:13:27.619160Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/simple_test.omni
+2026-01-13T06:13:27.620400Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_pika_extract_captures
+2026-01-13T06:13:27.622161Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/bench_specialization.omni
+2026-01-13T06:13:27.622170Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_julia_flex.omni
+2026-01-13T06:13:27.623293Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_phase15_narrowing.omni
+2026-01-13T06:13:27.623314Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/fix_tests.sh
+2026-01-13T06:13:27.623320Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/bench_runtime.omni
+2026-01-13T06:13:27.623324Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_symbol_rules.omni
+2026-01-13T06:13:27.623346Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/simple_comment.omni
+2026-01-13T06:13:27.624444Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/bench_simple.omni
+2026-01-13T06:13:27.625465Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/syntax_suite.omni
+2026-01-13T06:13:27.625474Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_simple
+2026-01-13T06:13:27.625479Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_array_literal_simple.omni
+2026-01-13T06:13:27.625689Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_conditions.lisp
+2026-01-13T06:13:27.626634Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/unwired_part1.omni
+2026-01-13T06:13:27.626641Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_kinds.omni
+2026-01-13T06:13:27.626646Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/benchmark_omnilisp.sh
+2026-01-13T06:13:27.626651Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_string_equality.omni
+2026-01-13T06:13:27.626655Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_array_literal.omni
+2026-01-13T06:13:27.626659Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_simple.omni
+2026-01-13T06:13:27.626664Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_nested_fiber.lisp
+2026-01-13T06:13:27.627174Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/verify_findings.sh
+2026-01-13T06:13:27.627699Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_yield.lisp
+2026-01-13T06:13:27.628606Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_kinds_final.omni
+2026-01-13T06:13:27.629090Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_omni_pika_match
+2026-01-13T06:13:27.630442Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_iterators.omni
+2026-01-13T06:13:27.630470Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_with_fibers.lisp
+2026-01-13T06:13:27.630891Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/test_type_dispatch.omni
+2026-01-13T06:13:27.630895Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/tests/layout_output.txt
+2026-01-13T06:13:27.631155Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T000115Z.json
+2026-01-13T06:13:27.631158Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T233425Z.json
+2026-01-13T06:13:27.631161Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T022128Z.json
+2026-01-13T06:13:27.631175Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T010656Z.json
+2026-01-13T06:13:27.631177Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T232655Z.json
+2026-01-13T06:13:27.631180Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T020103Z.json
+2026-01-13T06:13:27.631183Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T004530Z.json
+2026-01-13T06:13:27.631185Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T220756Z.json
+2026-01-13T06:13:27.631188Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T022505Z.json
+2026-01-13T06:13:27.631190Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T225315Z.json
+2026-01-13T06:13:27.631193Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T001743Z.json
+2026-01-13T06:13:27.631195Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T005238Z.json
+2026-01-13T06:13:27.631197Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T013214Z.json
+2026-01-13T06:13:27.631200Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T021805Z.json
+2026-01-13T06:13:27.631203Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T013912Z.json
+2026-01-13T06:13:27.631206Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T020435Z.json
+2026-01-13T06:13:27.631208Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T221147Z.json
+2026-01-13T06:13:27.631211Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T222630Z.json
+2026-01-13T06:13:27.631214Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T021434Z.json
+2026-01-13T06:13:27.631216Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T020813Z.json
+2026-01-13T06:13:27.631219Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T231206Z.json
+2026-01-13T06:13:27.631221Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T015014Z.json
+2026-01-13T06:13:27.631224Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T231414Z.json
+2026-01-13T06:13:27.631227Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T232023Z.json
+2026-01-13T06:13:27.631229Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T224828Z.json
+2026-01-13T06:13:27.631233Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T021019Z.json
+2026-01-13T06:13:27.631245Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T023024Z.json
+2026-01-13T06:13:27.631248Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T005944Z.json
+2026-01-13T06:13:27.631250Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T015735Z.json
+2026-01-13T06:13:27.631253Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T003458Z.json
+2026-01-13T06:13:27.631255Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T012117Z.json
+2026-01-13T06:13:27.631259Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T010322Z.json
+2026-01-13T06:13:27.631261Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T003118Z.json
+2026-01-13T06:13:27.631264Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T224308Z.json
+2026-01-13T06:13:27.631269Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T002752Z.json
+2026-01-13T06:13:27.631271Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T015401Z.json
+2026-01-13T06:13:27.631274Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T234937Z.json
+2026-01-13T06:13:27.631277Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T005612Z.json
+2026-01-13T06:13:27.631279Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T222237Z.json
+2026-01-13T06:13:27.631282Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T230548Z.json
+2026-01-13T06:13:27.631284Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T223307Z.json
+2026-01-13T06:13:27.631287Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T014249Z.json
+2026-01-13T06:13:27.631289Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T021020Z.json
+2026-01-13T06:13:27.631292Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T220137Z.json
+2026-01-13T06:13:27.631294Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T002423Z.json
+2026-01-13T06:13:27.631297Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T013539Z.json
+2026-01-13T06:13:27.631300Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T012504Z.json
+2026-01-13T06:13:27.631302Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T021021Z.json
+2026-01-13T06:13:27.631305Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T022837Z.json
+2026-01-13T06:13:27.631310Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T014623Z.json
+2026-01-13T06:13:27.631312Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T001135Z.json
+2026-01-13T06:13:27.631315Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T011744Z.json
+2026-01-13T06:13:27.631317Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T004158Z.json
+2026-01-13T06:13:27.631320Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T012836Z.json
+2026-01-13T06:13:27.631322Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T223946Z.json
+2026-01-13T06:13:27.631325Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T011406Z.json
+2026-01-13T06:13:27.631327Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T003828Z.json
+2026-01-13T06:13:27.631330Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T004910Z.json
+2026-01-13T06:13:27.631332Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T021101Z.json
+2026-01-13T06:13:27.631335Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T023025Z.json
+2026-01-13T06:13:27.631337Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T225934Z.json
+2026-01-13T06:13:27.631340Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260106T011036Z.json
+2026-01-13T06:13:27.631342Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/runs/run_20260105T234344Z.json
+2026-01-13T06:13:27.631345Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/.claude/settings.local.json
+2026-01-13T06:13:27.631347Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/report.md
+2026-01-13T06:13:27.631350Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: /home/heefoo/code/OmniLisp/THIRD_PARTY_NOTICES
+2026-01-13T06:13:27.634792Z  INFO codegraph_mcp::estimation: 🌳 UNIFIED AST EXTRACTION COMPLETE:
+2026-01-13T06:13:27.634796Z  INFO codegraph_mcp::estimation:    📊 Files processed: 628/1014 (61.9% success rate)
+2026-01-13T06:13:27.634798Z  INFO codegraph_mcp::estimation:    🌳 Semantic nodes extracted: 15659 (functions, structs, classes, imports, etc.)
+2026-01-13T06:13:27.634800Z  INFO codegraph_mcp::estimation:    🔗 Code relationships found: 57120 (function calls, imports, dependencies)
+2026-01-13T06:13:27.634803Z  INFO codegraph_mcp::estimation:    ⚡ Processing performance: 1719.9 files/s | 0 lines/s
+2026-01-13T06:13:27.634805Z  INFO codegraph_mcp::estimation:    🎯 Extraction efficiency: 24.9 nodes/file | 91.0 edges/file
+2026-01-13T06:13:27.634808Z  WARN codegraph_mcp::estimation:    ⚠️ Parse failures: 386 files failed TreeSitter analysis
+2026-01-13T06:13:27.635234Z  INFO codegraph_mcp::indexer: 🧹 Tier edge filter removed 45 edges (tier: Fast)
+2026-01-13T06:15:43.091878Z  INFO codegraph_mcp::indexer: 🌳 TreeSitter AST parsing results:
+2026-01-13T06:15:43.091916Z  INFO codegraph_mcp::indexer:    📊 Semantic nodes extracted: 15659 (functions, structs, classes, etc.)
+2026-01-13T06:15:43.091918Z  INFO codegraph_mcp::indexer:    🔗 Code relationships extracted: 57075 (calls, imports, dependencies)
+2026-01-13T06:15:43.091920Z  INFO codegraph_mcp::indexer:    📈 Extraction efficiency: 24.9 nodes/file | 90.9 edges/file
+2026-01-13T06:15:43.091924Z  INFO codegraph_mcp::indexer:    🎯 Sample nodes: [SharedStr("code"), SharedStr("OmniLisp"), SharedStr("third_party")]
+2026-01-13T06:15:43.091938Z  INFO codegraph_mcp::indexer: 🗄️ SurrealDB (post-parse): target=ws://127.0.0.1:3004/rpc namespace=codegraph database=main auth=credentials configured
+2026-01-13T06:15:44.636389Z  INFO codegraph_mcp::indexer: 🗄️ SurrealDB nodes persisted: 15324 (expected ≈ 15659)
+2026-01-13T06:15:44.636442Z  INFO codegraph_mcp::indexer:    ⚙️ Effective embedding batch size: 128 (CODEGRAPH_EMBEDDINGS_BATCH_SIZE clamped to 512 for DB writes)
+2026-01-13T06:15:44.636444Z  INFO codegraph_mcp::indexer: 💾 Starting semantic embedding generation:
+2026-01-13T06:15:44.636446Z  INFO codegraph_mcp::indexer:    🤖 Provider: ollama (768-dimensional embeddings)
+2026-01-13T06:15:44.636448Z  INFO codegraph_mcp::indexer:    🗄️ SurrealDB column: embedding_768
+2026-01-13T06:15:44.636450Z  INFO codegraph_mcp::indexer:    📊 Nodes to embed: 15659 semantic entities
+2026-01-13T06:15:44.636505Z  INFO codegraph_mcp::indexer:    ⚡ Batch size: 128 (optimized for 78GB system)
+2026-01-13T06:15:44.636507Z  INFO codegraph_mcp::indexer:    🎯 Target: Enable similarity search and AI-powered analysis
+2026-01-13T07:12:28.440442Z  INFO codegraph_mcp::indexer: 🧩 SurrealDB chunks persisted: 16740 (expected ≈ 17075)
+2026-01-13T07:12:28.440477Z  INFO codegraph_mcp::indexer: 💾 Semantic embedding generation results:
+2026-01-13T07:12:28.440482Z  INFO codegraph_mcp::indexer:    🎯 Vector search enabled: 17075 nodes embedded for similarity matching
+2026-01-13T07:12:28.440486Z  INFO codegraph_mcp::indexer:    📐 Embedding dimensions: 768
+2026-01-13T07:12:28.440490Z  INFO codegraph_mcp::indexer:    🤖 Provider performance: ollama with batch optimization
+2026-01-13T07:12:28.440494Z  INFO codegraph_mcp::indexer:    🔍 Capabilities unlocked: Vector search, semantic analysis, AI-powered tools
+2026-01-13T07:12:28.440498Z  INFO codegraph_mcp::indexer: 🔧 Preserving working ONNX embedder session for AI semantic matching
+2026-01-13T07:12:28.440502Z  INFO codegraph_mcp::indexer: Vector indexing handled by SurrealDB; local FAISS generation removed
+2026-01-13T07:12:28.440534Z  INFO codegraph_mcp::indexer: 🔗 Starting dependency relationship storage:
+2026-01-13T07:12:28.440538Z  INFO codegraph_mcp::indexer:    📊 Raw relationships extracted: 57075 (calls, imports, dependencies)
+2026-01-13T07:12:28.440542Z  INFO codegraph_mcp::indexer:    🎯 Symbol resolution map: 24542 unique symbols available
+2026-01-13T07:12:28.440545Z  INFO codegraph_mcp::indexer:    🧠 AI-enhanced resolution: Semantic similarity feature active
+2026-01-13T07:12:28.440550Z  INFO codegraph_mcp::indexer:    🔍 Resolution methods: Exact match → Simple name → Case variants → AI similarity
+2026-01-13T07:12:28.440553Z  INFO codegraph_mcp::indexer:    🚀 M4 Max optimization: Parallel processing with bulk database operations
+2026-01-13T07:12:28.440560Z  INFO codegraph_mcp::indexer: ⚡ Parallel processing: 58 edge chunks across 22 cores
+2026-01-13T07:12:28.440564Z  INFO codegraph_mcp::indexer: 🚀 INITIALIZING REVOLUTIONARY 2-PHASE AI SEMANTIC MATCHING
+2026-01-13T07:12:28.440568Z  INFO codegraph_mcp::indexer: 🔧 Phase 1: Pre-computing embeddings for 24542 known symbols
+2026-01-13T07:12:28.440572Z  INFO codegraph_mcp::indexer: 🧠 Pre-computing symbol embeddings for M4 Max AI optimization
+2026-01-13T07:12:28.440575Z  INFO codegraph_mcp::indexer: 🔧 DEBUG: precompute_symbol_embeddings called with 24542 symbols
+2026-01-13T07:12:28.444390Z  INFO codegraph_mcp::indexer: 📊 Selected 24542 top symbols for AI embedding pre-computation
+2026-01-13T07:12:28.444420Z  INFO codegraph_mcp::indexer: 🤖 Using configured embedder (ollama) for AI semantic matching
+2026-01-13T07:12:28.444428Z  INFO codegraph_mcp::indexer: ✅ Using working embedder session (guaranteed real embeddings)
+2026-01-13T07:12:28.444441Z  INFO codegraph_mcp::indexer: ⚡ Embedding batch size: 128 symbols (192 batches, max 10 concurrent)
+2026-01-13T07:29:22.421708Z  INFO codegraph_mcp::indexer: 🧠 Pre-computed 24542 symbol embeddings for fast AI resolution
+2026-01-13T07:29:22.421731Z  INFO codegraph_mcp::indexer: ✅ AI semantic matching ready with 100.0% coverage (24542/24542)
+2026-01-13T07:29:22.421733Z  INFO codegraph_mcp::indexer: 🤖 AI SEMANTIC MATCHING ACTIVATED: First call with 24542 pre-computed embeddings
+2026-01-13T07:29:22.421931Z  INFO codegraph_mcp::indexer: ✅ Known symbol embeddings ready: 24542 pre-computed
+2026-01-13T07:29:22.421934Z  INFO codegraph_mcp::indexer: 🔧 Phase 2: Pre-computing embeddings for unresolved edge targets
+2026-01-13T07:29:22.426255Z  INFO codegraph_mcp::indexer: 📊 Discovered 4351 unique unresolved symbols for AI embedding
+2026-01-13T07:29:22.426267Z  INFO codegraph_mcp::indexer: 🧠 Pre-computing unresolved symbol embeddings for professional-grade AI
+2026-01-13T07:29:22.426269Z  INFO codegraph_mcp::indexer: 🔧 Processing 4351 unique unresolved symbols
+2026-01-13T07:29:22.426400Z  INFO codegraph_mcp::indexer: ⚡ Unresolved embedding batch size: 128 symbols (34 batches, max 10 concurrent)
+2026-01-13T07:32:43.430449Z  INFO codegraph_mcp::indexer: 🧠 Pre-computed 4351 unresolved symbol embeddings for professional AI matching
+2026-01-13T07:32:43.430480Z  INFO codegraph_mcp::indexer: ✅ Professional AI semantic matching ready with 100.0% unresolved coverage (4351/4351)
+2026-01-13T07:32:43.430611Z  INFO codegraph_mcp::indexer: ✅ Unresolved symbol embeddings ready: 4351 pre-computed
+2026-01-13T07:32:43.430618Z  INFO codegraph_mcp::indexer: symbol resolver: embeddings prepared (known=24542, unresolved=4351, total=28893)
+2026-01-13T07:32:43.864442Z  INFO codegraph_mcp::indexer: 🎯 AI FUZZY MATCH: 'free' → known symbol with 85.0% confidence
+2026-01-13T07:32:43.871103Z  INFO codegraph_mcp::indexer: 🎯 AI FUZZY MATCH: 'b.call' → known symbol with 85.0% confidence
+2026-01-13T07:32:43.872544Z  INFO codegraph_mcp::indexer: 🎯 AI FUZZY MATCH: 'sprintf' → known symbol with 85.0% confidence
+2026-01-13T07:32:43.874479Z  INFO codegraph_mcp::indexer: 🎯 AI FUZZY MATCH: 'ASSERT' → known symbol with 85.0% confidence
+2026-01-13T07:32:43.875965Z  INFO codegraph_mcp::indexer: 🎯 AI FUZZY MATCH: 'realloc' → known symbol with 85.0% confidence
+2026-01-13T07:32:43.879795Z  INFO codegraph_mcp::indexer: 🎯 AI FUZZY MATCH: 'realloc' → known symbol with 85.0% confidence
+2026-01-13T07:32:43.894993Z  INFO codegraph_mcp::indexer: 🎯 AI FUZZY MATCH: 'cassert' → known symbol with 85.0% confidence
+2026-01-13T07:32:43.899083Z  INFO codegraph_mcp::indexer: 🎯 AI FUZZY MATCH: 'ASSERT' → known symbol with 85.0% confidence
+2026-01-13T07:32:43.917337Z  INFO codegraph_mcp::indexer: 🎯 AI FUZZY MATCH: 'SDS_TYPE_5_LEN' → known symbol with 85.0% confidence
+2026-01-13T07:32:43.934848Z  INFO codegraph_mcp::indexer: 🎯 AI FUZZY MATCH: 'java.util.NavigableMap' → known symbol with 85.0% confidence
+2026-01-13T07:33:19.386727Z  INFO codegraph_mcp::indexer: ⚡ M4 Max parallel: 15/58 chunks | 112 edges/s | ETA: 472.3s
+2026-01-13T07:34:04.341373Z  INFO codegraph_mcp::indexer: ⚡ M4 Max parallel: 30/58 chunks | 111 edges/s | ETA: 430.3s
+2026-01-13T07:35:09.099414Z  INFO codegraph_mcp::indexer: ⚡ M4 Max parallel: 45/58 chunks | 96 edges/s | ETA: 447.2s
+2026-01-13T07:40:07.738379Z  INFO codegraph_mcp::indexer: 🔗 M4 MAX PARALLEL PROCESSING RESULTS:
+2026-01-13T07:40:07.738408Z  INFO codegraph_mcp::indexer:    ✅ Successfully stored: 56841 edges (99.6% of extracted relationships)
+2026-01-13T07:40:07.738434Z  INFO codegraph_mcp::indexer:    🎯 Exact matches: 34230 (direct symbol found)
+2026-01-13T07:40:07.738437Z  INFO codegraph_mcp::indexer:    🔄 Pattern matches: 0 (simplified/cleaned symbols)
+2026-01-13T07:40:07.738440Z  INFO codegraph_mcp::indexer:    🧠 AI semantic matches: 22611 (similarity-based resolution)
+2026-01-13T07:40:07.738442Z  INFO codegraph_mcp::indexer:    ❌ Unresolved: 234 (external dependencies/dynamic calls)
+2026-01-13T07:40:07.738450Z  INFO codegraph_mcp::indexer:    ⚡ M4 Max performance: 129 edges/s (22 cores utilized)
+2026-01-13T07:40:07.738455Z  INFO codegraph_mcp::indexer:    🚀 Parallel efficiency: 58 chunks processed across 22 cores
+2026-01-13T07:40:07.738458Z  INFO codegraph_mcp::indexer: 🎉 EXCELLENT: 99.6% resolution rate achieved!
+2026-01-13T07:40:11.969425Z  INFO codegraph_mcp::indexer: 🗄️ SurrealDB edges persisted: 56841 (expected ≈ 56841)
+2026-01-13T07:40:11.970385Z  INFO codegraph_mcp::indexer: 💾 Updating file metadata for change tracking
+2026-01-13T07:40:11.992903Z  INFO codegraph_mcp::indexer: 💾 Persisted metadata for 1014 files
+2026-01-13T07:40:12.092840Z  INFO codegraph_mcp::indexer: 🎉 INDEXING COMPLETE
+2026-01-13T07:40:12.092858Z  INFO codegraph_mcp::indexer: 📂 Files 628 (386 skipped) | Lines 209667 | Time 5204.8s
+2026-01-13T07:40:12.092861Z  INFO codegraph_mcp::indexer: 🌳 Graph coverage: nodes 15659 | edges 56841 | nodes/file 24.9 | edges/file 90.9 | resolved 99.6%
+2026-01-13T07:40:12.092864Z  INFO codegraph_mcp::indexer: 🧠 Embeddings: chunks 17075 | dim 768 | provider ollama | per-node 1.1
+2026-01-13T07:40:12.092867Z  INFO codegraph_mcp::indexer: ⚡ Throughput: 0.1 files/s | 3.0 nodes/s | 10.9 edges/s

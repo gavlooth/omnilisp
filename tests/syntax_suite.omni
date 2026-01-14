@@ -4,29 +4,31 @@
 
 (println "--- Testing 2. Bindings & Functions ---") 
 
-;; 2.1 Function Definitions 
-(define (add-v1 x y) (+ x y)) 
-(println "V1 (Scheme): " (add-v1 10 20)) 
+;; 2.1 Function Definitions
+(define (add-v1 x y) (+ x y))
+(println "V1 (Scheme): " (add-v1 10 20))
 
-(define (add-v2 [x y]) (+ x y)) 
-(println "V2 (Slot Header): " (add-v2 10 20)) 
+;; Slot syntax: each param is its own slot [x] [y]
+(define add-v2 [x] [y] (+ x y))
+(println "V2 (Slot Syntax): " (add-v2 10 20))
 
-(define (add-v3 x {Int} y {Int}) {Int} (+ x y)) 
-(println "V3 (Typed Header): " (add-v3 10 20)) 
+(define (add-v3 x y) (+ x y))
+(println "V3 (Scheme duplicate): " (add-v3 10 20))
 
-(define (add-v4 [x {Int} y {Int}]) {Int} (+ x y)) 
-(println "V4 (Typed Slot): " (add-v4 10 20)) 
+;; Typed slot syntax: [param {Type}] for each parameter
+(define add-v4 [x {Int}] [y {Int}] {Int} (+ x y))
+(println "V4 (Typed Slot): " (add-v4 10 20))
 
-(define add-v5 [x y] (+ x y)) 
-(println "V5 (Flat Clojure): " (add-v5 10 20)) 
+(define add-v5 [x] [y] (+ x y))
+(println "V5 (Slot Syntax): " (add-v5 10 20))
 
-;; Lambdas 
-(println "Lambda: " ((lambda [x] (* x x)) 5)) 
-(println "fn shorthand: " ((fn [x] (* x x)) 5)) 
-(println "-> shorthand: " ((-> [x y] (+ x y)) 1 2)) 
+;; Lambdas
+(println "Lambda: " ((lambda [x] (* x x)) 5))
+(println "fn shorthand: " ((fn [x] (* x x)) 5))
+(println "-> shorthand: " ((-> [x] [y] (+ x y)) 1 2)) 
 
 ;; 2.2 Local Bindings 
-(println "let: " (let [x 10 y 20] (+ x y))) 
+(println "let: " (let [x 10] [y 20] (+ x y))) 
 
 ;; 2.3 Destructuring 
 (define [da db dc] [1 2 3]) 

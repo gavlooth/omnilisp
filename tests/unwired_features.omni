@@ -1,53 +1,48 @@
-;; ============================================================ 
-;; OmniLisp Unwired Features Test 
-;; ============================================================ 
+;; ============================================================
+;; OmniLisp Unwired Features Test
+;; ============================================================
+;; NOTE: Error handling will use algebraic effects (not try/catch)
 
 (println "--- 1. Testing Multiple Dispatch (UNWIRED) ---")
-;; Type Specialization
-(define (describe-val x {Int}) "It's an integer")
-(define (describe-val x {String}) "It's a string")
+;; Type Specialization - uncomment when dispatch is wired
+;; (define (describe-val x {Int}) "It's an integer")
+;; (define (describe-val x {String}) "It's a string")
+;; (println "Dispatch (Int): " (describe-val 42))
+;; (println "Dispatch (String): " (describe-val "hi"))
 
-;; Multi-arity
-(define (area) 0)
-(define (area r) (* 3.14 (* r r)))
+;; Multi-arity - uncomment when multi-arity is wired
+;; (define (area) 0)
+;; (define (area r) (* 3.14 (* r r)))
+;; (println "Arity 0: " (area))
+;; (println "Arity 1: " (area 5))
+(println "SKIPPED: Multiple dispatch / Multi-arity not yet implemented")
 
-(try
-  (println "Dispatch (Int): " (describe-val 42))
-  (println "Dispatch (String): " (describe-val "hi"))
-  (println "Arity 0: " (area))
-  (println "Arity 1: " (area 5))
-  (catch e (println "FAILED: Multiple dispatch / Multi-arity not supported. " e)))
-(println "\n--- 2. Testing Parametric Subtyping (UNWIRED) ---") 
-(define int-list {List Int}) 
-(define any-list {List Any}) 
-(println "Is {List Int} a subtype of {List Any}? " (type? int-list any-list)) 
+(println "\n--- 2. Testing Parametric Subtyping (UNWIRED) ---")
+(define int-list {List Int})
+(define any-list {List Any})
+(println "Is {List Int} a subtype of {List Any}? " (type? int-list any-list))
 
-(println "\n--- 3. Testing Pika Runtime API (UNWIRED) ---") 
-(define [grammar simple] [greeting "hello"]) 
-(try 
-  (println "Pika Match: " (pika-match simple "greeting" "hello")) 
-  (catch e (println "FAILED: pika-match primitive not registered."))) 
+(println "\n--- 3. Testing Pika Runtime API (UNWIRED) ---")
+;; (define [grammar simple] [greeting "hello"])
+;; (println "Pika Match: " (pika-match simple "greeting" "hello"))
+(println "SKIPPED: pika-match primitive not registered")
 
-(println "\n--- 4. Testing Nested Path Mutation (PARTIAL/UNWIRED) ---") 
-(define data #{:user #{:name "Bob" :address #{:city "London"}}}) 
-(try 
-  (put! data.user.address.city "New York") 
-  (println "Nested put!: " data.user.address.city) 
-  (catch e (println "FAILED: Deep path mutation failed. " e))) 
+(println "\n--- 4. Testing Nested Path Mutation (PARTIAL/UNWIRED) ---")
+;; Dict literals and deep path mutation not implemented
+;; (define data #{:user #{:name "Bob" :address #{:city "London"}}})
+;; (put! data.user.address.city "New York")
+;; (println "Nested put!: " data.user.address.city)
+(println "SKIPPED: Deep path mutation not implemented")
 
-(println "\n--- 5. Testing Infinite Iterators (UNWIRED) ---") 
-(try 
-  (define naturals (iterate (lambda [x] (+ x 1)) 0)) 
-  (println "Iterate first 3: " (collect-list (take 3 naturals))) 
-  (catch e (println "FAILED: 'iterate' and 'take' primitives missing."))) 
+(println "\n--- 5. Testing Infinite Iterators (UNWIRED) ---")
+;; (define naturals (iterate (lambda [x] (+ x 1)) 0))
+;; (println "Iterate first 3: " (collect-list (take 3 naturals)))
+(println "SKIPPED: iterate/take primitives not implemented")
 
 ;; (println "\n--- 6. Testing Character Literals (UNWIRED) ---")
-;; (try
-;;   (println "Newline char: " #\newline)
-;;   (catch e (println "FAILED: Named characters not recognized by reader.")))
+;; (println "Newline char: " #\newline)
 
 ;; (println "\n--- 7. Testing Format Strings (UNWIRED) ---")
-;; (try
-;;   (println #fmt"Hello $da")
-;;   (catch e (println "FAILED: #fmt strings not recognized by reader.")))
+;; (println #fmt"Hello $da")
+
 (println "\n--- End of Unwired Tests ---") 

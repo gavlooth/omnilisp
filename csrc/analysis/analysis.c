@@ -817,12 +817,10 @@ static void analyze_define(AnalysisContext* ctx, OmniValue* expr) {
 }
 
 static void analyze_let(AnalysisContext* ctx, OmniValue* expr) {
-    /* Multiple forms supported:
+    /* Strict Character Calculus let forms:
      *   - List style: (let ((x val) (y val)) body...)
-     *   - Array style (old): (let [x val y val] body...)
      *   - Slot syntax: (let [x val] [y val] body...)
      *   - Slot with types: (let [x {Int} val] [y {String} val] body...)
-     *   - Mixed: (let [x val] [y {Int} val] body...)
      *   - With metadata: (let ^:seq [(x 1) (y x)] ...) for sequential bindings
      *   - With metadata: (let ^:rec [(f (lambda ...))] ...) for recursive bindings
      */
@@ -850,105 +848,77 @@ static void analyze_let(AnalysisContext* ctx, OmniValue* expr) {
 
     OmniValue* rest = omni_cdr(args);
 
-    /* TODO: Use is_sequential and is_recursive to modify let behavior */
-    /* For now, suppress unused variable warnings */
+    /*
+     * ^:seq (sequential) and ^:rec (recursive) are handled in codegen:
+     *   - ^:seq is the default behavior (each binding sees previous ones)
+     *   - ^:rec forward-declares all bindings before initialization
+     *
+     * Analysis-level handling: Both behave the same for liveness/escape
+     * since all bindings are in scope for the body.
+     */
     (void)is_sequential;
     (void)is_recursive;
 
     ctx->scope_depth++;
 
-    /* Check if first element is an array - could be new Slot syntax or old array style */
+    /* Slot syntax: (let [x val] [y val] body...) */
     if (omni_is_array(first)) {
-        /* Check if it's a single-element array [x val] -> Slot syntax
-         * or multi-element [x val y val] -> old array style */
-        if (omni_array_len(first) == 2 || omni_array_len(first) == 3) {
-            /* Likely Slot syntax: (let [x val] [y val] body...) */
+        /* Need to find where bindings end and body begins.
+         * Scan through list until we find a non-array element.
+         * For simplicity, assume all arrays until we run out are bindings,
+         * and the remaining elements form the body.
+         */
+        OmniValue* current = args;  /* Start with first binding */
 
-            /* Need to find where bindings end and body begins.
-             * Scan through list until we find a non-array element.
-             * For simplicity, assume all arrays until we run out are bindings,
-             * and the remaining elements form the body.
-             */
-            OmniValue* current = first;  /* Start with first binding */
+        /* Process bindings as long as they're arrays */
+        while (current && !omni_is_nil(current) && omni_is_cell(current)) {
+            OmniValue* elem = omni_car(current);
 
-            /* Process bindings as long as they're arrays */
-            while (current && !omni_is_nil(current) && omni_is_cell(current)) {
-                OmniValue* elem = omni_car(current);
-
-                if (!omni_is_array(elem)) {
-                    /* Not an array - we've hit the body */
-                    break;
-                }
-
-                /* Process array binding: [name] or [name type] or [name val] or [name type val] */
-                size_t len = omni_array_len(elem);
-                if (len >= 1) {
-                    OmniValue* name_val = omni_array_get(elem, 0);
-                    if (omni_is_sym(name_val)) {
-                        mark_var_write(ctx, name_val->str_val);
-                        ctx->position++;
-                    }
-
-                    /* Analyze the value (last element if len >= 2, otherwise it's uninitialized) */
-                    OmniValue* init_expr = NULL;
-                    if (len == 2) {
-                        /* [name val] */
-                        init_expr = omni_array_get(elem, 1);
-                        analyze_expr(ctx, init_expr);
-                    } else if (len == 3) {
-                        /* [name type val] - skip type, analyze val */
-                        init_expr = omni_array_get(elem, 2);
-                        analyze_expr(ctx, init_expr);
-                    }
-                    /* len == 1: [name] - uninitialized, don't analyze */
-
-                    /* Phase 25: Infer and set type_id for this binding */
-                    if (init_expr && omni_is_sym(name_val)) {
-                        analyze_and_set_type_id(ctx, name_val->str_val, init_expr);
-                    }
-                }
-
-                current = omni_cdr(current);
+            if (!omni_is_array(elem)) {
+                /* Not an array - we've hit the body */
+                break;
             }
 
-            /* The remaining elements form the body */
-            OmniValue* body = current;
-            bool old_return_pos = ctx->in_return_position;
-            while (!omni_is_nil(body) && omni_is_cell(body)) {
-                ctx->in_return_position = old_return_pos && omni_is_nil(omni_cdr(body));
-                analyze_expr(ctx, omni_car(body));
-                body = omni_cdr(body);
-            }
-            ctx->in_return_position = old_return_pos;
-        } else {
-            /* Old array style: (let [x val y val] body...) */
-            OmniValue* bindings = first;
-            OmniValue* body = rest;
-
-            for (size_t i = 0; i + 1 < bindings->array.len; i += 2) {
-                OmniValue* name = bindings->array.data[i];
-                OmniValue* val = bindings->array.data[i + 1];
-                if (omni_is_sym(name)) {
-                    mark_var_write(ctx, name->str_val);
+            /* Process array binding: [name] or [name type] or [name val] or [name type val] */
+            size_t len = omni_array_len(elem);
+            if (len >= 1) {
+                OmniValue* name_val = omni_array_get(elem, 0);
+                if (omni_is_sym(name_val)) {
+                    mark_var_write(ctx, name_val->str_val);
                     ctx->position++;
                 }
-                analyze_expr(ctx, val);
+
+                /* Analyze the value (last element if len >= 2, otherwise it's uninitialized) */
+                OmniValue* init_expr = NULL;
+                if (len == 2) {
+                    /* [name val] */
+                    init_expr = omni_array_get(elem, 1);
+                    analyze_expr(ctx, init_expr);
+                } else if (len == 3) {
+                    /* [name type val] - skip type, analyze val */
+                    init_expr = omni_array_get(elem, 2);
+                    analyze_expr(ctx, init_expr);
+                }
+                /* len == 1: [name] - uninitialized, don't analyze */
 
                 /* Phase 25: Infer and set type_id for this binding */
-                if (omni_is_sym(name)) {
-                    analyze_and_set_type_id(ctx, name->str_val, val);
+                if (init_expr && omni_is_sym(name_val)) {
+                    analyze_and_set_type_id(ctx, name_val->str_val, init_expr);
                 }
             }
 
-            /* Analyze body */
-            bool old_return_pos = ctx->in_return_position;
-            while (!omni_is_nil(body) && omni_is_cell(body)) {
-                ctx->in_return_position = old_return_pos && omni_is_nil(omni_cdr(body));
-                analyze_expr(ctx, omni_car(body));
-                body = omni_cdr(body);
-            }
-            ctx->in_return_position = old_return_pos;
+            current = omni_cdr(current);
         }
+
+        /* The remaining elements form the body */
+        OmniValue* body = current;
+        bool old_return_pos = ctx->in_return_position;
+        while (!omni_is_nil(body) && omni_is_cell(body)) {
+            ctx->in_return_position = old_return_pos && omni_is_nil(omni_cdr(body));
+            analyze_expr(ctx, omni_car(body));
+            body = omni_cdr(body);
+        }
+        ctx->in_return_position = old_return_pos;
     }
     /* Handle list-style bindings ((x 1) (y 2)) - first element is a list */
     else if (omni_is_cell(first)) {
@@ -3521,6 +3491,35 @@ void omni_analyze_function_summary(AnalysisContext* ctx, OmniValue* func_def) {
     /* Create function summary */
     FunctionSummary* summary = find_or_create_function_summary(ctx, func_name);
 
+    /*
+     * Phase 22: Extract ^:where constraints for diagonal dispatch
+     *
+     * Scan function definition for metadata markers like:
+     *   (define ^:where [T {Number}] ...)
+     */
+    OmniValue* scan = omni_cdr(func_def);  /* Skip 'define' */
+    while (omni_is_cell(scan)) {
+        OmniValue* item = omni_car(scan);
+        if (omni_is_sym(item) && item->str_val &&
+            strlen(item->str_val) > 2 &&
+            item->str_val[0] == '^' && item->str_val[1] == ':') {
+
+            const char* meta_key = item->str_val + 2;
+            OmniValue* value_cell = omni_cdr(scan);
+
+            if (strcmp(meta_key, "where") == 0 && omni_is_cell(value_cell)) {
+                OmniValue* where_value = omni_car(value_cell);
+                /* Parse constraints and attach to summary */
+                summary->constraints = omni_parse_where_constraints(where_value);
+                break;
+            }
+            /* Skip key and value */
+            scan = omni_cdr(value_cell);
+        } else {
+            break;
+        }
+    }
+
     /* Add parameter summaries - supports both plain symbols and Slot syntax */
     if (omni_is_cell(params)) {
         for (OmniValue* p = params; omni_is_cell(p); p = omni_cdr(p)) {
@@ -5075,37 +5074,55 @@ static void analyze_if_scoped(AnalysisContext* ctx, OmniValue* expr) {
  * tracked in that scope. If they don't escape the let body, they can
  * be cleaned up at the end of the let.
  *
+ * Strict Character Calculus forms:
+ *   - List style: (let ((x val) (y val)) body...)
+ *   - Slot syntax: (let [x val] [y val] body...)
+ *
  * We map the let expression AST node to its scope so that during
  * codegen we can look up the correct scope.
  */
 static void analyze_let_scoped(AnalysisContext* ctx, OmniValue* expr) {
-    /* (let ((x val) (y val)) body...) */
     OmniValue* args = omni_cdr(expr);
     if (omni_is_nil(args)) return;
 
-    OmniValue* bindings = omni_car(args);
-    OmniValue* body = omni_cdr(args);
+    OmniValue* first = omni_car(args);
 
     /* Enter new scope for the let */
     omni_scope_enter(ctx, "let");
     /* Map the let expression to this scope */
     omni_scope_map_ast_node(ctx, expr, ctx->current_scope);
 
-    /* Process bindings */
-    if (omni_is_array(bindings)) {
-        /* [x 1 y 2] style */
-        for (size_t i = 0; i + 1 < bindings->array.len; i += 2) {
-            OmniValue* name = bindings->array.data[i];
-            OmniValue* val = bindings->array.data[i + 1];
+    OmniValue* body = NULL;
 
-            if (omni_is_sym(name)) {
-                int def_pos = ctx->position++;
-                omni_scope_add_var(ctx, name->str_val, def_pos, false);
-                analyze_expr_scoped(ctx, val);
+    /* Slot syntax: (let [x val] [y val] body...) */
+    if (omni_is_array(first)) {
+        OmniValue* current = args;
+        while (current && !omni_is_nil(current) && omni_is_cell(current)) {
+            OmniValue* elem = omni_car(current);
+            if (!omni_is_array(elem)) {
+                /* Not an array - we've hit the body */
+                break;
             }
+
+            /* Process array binding: [name val] or [name type val] */
+            size_t len = omni_array_len(elem);
+            if (len >= 2) {
+                OmniValue* name = omni_array_get(elem, 0);
+                OmniValue* val = (len == 2) ? omni_array_get(elem, 1)
+                                            : omni_array_get(elem, 2);
+                if (omni_is_sym(name)) {
+                    int def_pos = ctx->position++;
+                    omni_scope_add_var(ctx, name->str_val, def_pos, false);
+                    analyze_expr_scoped(ctx, val);
+                }
+            }
+            current = omni_cdr(current);
         }
-    } else if (omni_is_cell(bindings)) {
-        /* ((x 1) (y 2)) style */
+        body = current;
+    }
+    /* List style: (let ((x val) (y val)) body...) */
+    else if (omni_is_cell(first)) {
+        OmniValue* bindings = first;
         while (!omni_is_nil(bindings) && omni_is_cell(bindings)) {
             OmniValue* binding = omni_car(bindings);
 
@@ -5123,11 +5140,12 @@ static void analyze_let_scoped(AnalysisContext* ctx, OmniValue* expr) {
 
             bindings = omni_cdr(bindings);
         }
+        body = omni_cdr(args);
     }
 
     /* Analyze body in return position (last expression) */
     bool old_return_pos = ctx->in_return_position;
-    while (!omni_is_nil(body) && omni_is_cell(body)) {
+    while (body && !omni_is_nil(body) && omni_is_cell(body)) {
         ctx->in_return_position = old_return_pos && omni_is_nil(omni_cdr(body));
         analyze_expr_scoped(ctx, omni_car(body));
         body = omni_cdr(body);
@@ -5371,6 +5389,253 @@ bool omni_type_is_subtype(AnalysisContext* ctx, const char* type_a, const char* 
     /* So if type_b is "Any", this should return true (already handled above) */
     /* If we reach here and type has no parent, it's only a subtype of Any */
     return false;
+}
+
+/*
+ * Phase 22: Bottom Type Support
+ *
+ * {bottom} represents a computation that never returns (diverges).
+ * Properties:
+ *   - bottom is a subtype of EVERY type (can be assigned anywhere)
+ *   - No type is a subtype of bottom (nothing can be assigned to bottom)
+ *   - Functions returning bottom never return (abort, loop forever, throw)
+ *   - Code after a call to a bottom-returning function is unreachable
+ */
+
+/* Check if a type name represents the bottom type */
+bool omni_is_bottom_type(const char* type_name) {
+    if (!type_name) return false;
+    return strcmp(type_name, "bottom") == 0 ||
+           strcmp(type_name, "Bottom") == 0 ||
+           strcmp(type_name, "Nothing") == 0 ||
+           strcmp(type_name, "!") == 0;  /* Rust-style "never" type */
+}
+
+/* Check if a function returns bottom (never returns) */
+bool omni_function_returns_bottom(AnalysisContext* ctx, const char* func_name) {
+    FunctionSummary* summary = omni_get_function_summary(ctx, func_name);
+    if (!summary || !summary->return_type) return false;
+    return omni_is_bottom_type(summary->return_type);
+}
+
+/*
+ * omni_is_subtype_with_bottom - Enhanced subtype check with bottom support
+ *
+ * Bottom is a subtype of everything, so:
+ *   bottom <: T for any T
+ *   T </: bottom for any T != bottom
+ */
+bool omni_is_subtype_with_bottom(AnalysisContext* ctx, const char* type_a, const char* type_b) {
+    /* Bottom is subtype of everything */
+    if (omni_is_bottom_type(type_a)) return true;
+
+    /* Nothing is subtype of bottom (except bottom itself) */
+    if (omni_is_bottom_type(type_b)) return omni_is_bottom_type(type_a);
+
+    /* Otherwise use normal subtype check */
+    return omni_type_is_subtype(ctx, type_a, type_b);
+}
+
+/*
+ * Phase 22: Variance-Aware Parametric Subtype Checking
+ *
+ * Check if a parametric type like List{Int} is a subtype of List{Number}.
+ * Uses the variance annotations on the type definition.
+ *
+ * Rules:
+ *   - Covariant (+): T <: S implies C{T} <: C{S}
+ *   - Contravariant (-): T <: S implies C{S} <: C{T}
+ *   - Invariant (default): C{T} <: C{S} only if T = S
+ */
+bool omni_is_parametric_subtype(AnalysisContext* ctx, TypeDef* base_type,
+                                const char** params_a, size_t count_a,
+                                const char** params_b, size_t count_b) {
+    if (!base_type || count_a != count_b) return false;
+
+    /* Check each type parameter according to its variance */
+    for (size_t i = 0; i < count_a; i++) {
+        const char* param_a = params_a[i];
+        const char* param_b = params_b[i];
+
+        if (strcmp(param_a, param_b) == 0) continue;  /* Same type, always OK */
+
+        /* Get variance for this type parameter position */
+        VarianceKind variance = VARIANCE_INVARIANT;
+        if (i < base_type->field_count && base_type->fields) {
+            variance = base_type->fields[i].variance;
+        }
+
+        switch (variance) {
+            case VARIANCE_COVARIANT:
+                /* T <: S implies C{T} <: C{S} */
+                if (!omni_type_is_subtype(ctx, param_a, param_b)) {
+                    return false;
+                }
+                break;
+
+            case VARIANCE_CONTRAVARIANT:
+                /* T <: S implies C{S} <: C{T} (reversed) */
+                if (!omni_type_is_subtype(ctx, param_b, param_a)) {
+                    return false;
+                }
+                break;
+
+            case VARIANCE_INVARIANT:
+            default:
+                /* Types must be identical for invariant positions */
+                return false;
+        }
+    }
+
+    return true;
+}
+
+/*
+ * Get variance for a type parameter at a given index
+ */
+VarianceKind omni_get_type_param_variance_by_index(TypeDef* type, size_t index) {
+    if (!type || index >= type->field_count || !type->fields) {
+        return VARIANCE_INVARIANT;
+    }
+    return type->fields[index].variance;
+}
+
+/* ============== Phase 22: ^:where Constraint Functions ============== */
+
+/*
+ * omni_parse_where_constraints - Parse ^:where [T {Bound}] constraints
+ *
+ * Input: OmniValue representing [T {Bound}] or [[T1 {B1}] [T2 {B2}] ...]
+ * Output: Linked list of TypeConstraint
+ *
+ * Syntax:
+ *   ^:where [T {Number}]           - Single constraint
+ *   ^:where [[T {Number}] [U]]     - Multiple constraints
+ */
+TypeConstraint* omni_parse_where_constraints(OmniValue* where_value) {
+    if (!where_value) return NULL;
+
+    TypeConstraint* head = NULL;
+    TypeConstraint** tail = &head;
+
+    /* Handle array of constraints: [[T {Bound}] [U {Bound}]] */
+    if (omni_is_array(where_value)) {
+        size_t len = omni_array_len(where_value);
+
+        /* Check if first element is also an array (multiple constraints) */
+        if (len > 0) {
+            OmniValue* first = omni_array_get(where_value, 0);
+            if (omni_is_array(first)) {
+                /* Multiple constraints: [[T {Bound}] [U {Bound}]] */
+                for (size_t i = 0; i < len; i++) {
+                    OmniValue* constraint_arr = omni_array_get(where_value, i);
+                    if (!omni_is_array(constraint_arr)) continue;
+
+                    size_t clen = omni_array_len(constraint_arr);
+                    if (clen < 1) continue;
+
+                    TypeConstraint* tc = calloc(1, sizeof(TypeConstraint));
+                    if (!tc) continue;
+
+                    /* First element: type variable name */
+                    OmniValue* name_val = omni_array_get(constraint_arr, 0);
+                    if (omni_is_sym(name_val) && name_val->str_val) {
+                        tc->name = strdup(name_val->str_val);
+                    }
+
+                    /* Second element (optional): type bound */
+                    if (clen >= 2) {
+                        OmniValue* bound_val = omni_array_get(constraint_arr, 1);
+                        if (omni_is_type_lit(bound_val) && bound_val->str_val) {
+                            tc->bound = strdup(bound_val->str_val);
+                        }
+                    }
+
+                    tc->variance = 0; /* Invariant by default */
+                    tc->next = NULL;
+                    *tail = tc;
+                    tail = &tc->next;
+                }
+            } else {
+                /* Single constraint: [T {Bound}] */
+                TypeConstraint* tc = calloc(1, sizeof(TypeConstraint));
+                if (tc) {
+                    /* First element: type variable name */
+                    OmniValue* name_val = omni_array_get(where_value, 0);
+                    if (omni_is_sym(name_val) && name_val->str_val) {
+                        tc->name = strdup(name_val->str_val);
+                    }
+
+                    /* Second element (optional): type bound */
+                    if (len >= 2) {
+                        OmniValue* bound_val = omni_array_get(where_value, 1);
+                        if (omni_is_type_lit(bound_val) && bound_val->str_val) {
+                            tc->bound = strdup(bound_val->str_val);
+                        }
+                    }
+
+                    tc->variance = 0;
+                    tc->next = NULL;
+                    *tail = tc;
+                }
+            }
+        }
+    }
+
+    return head;
+}
+
+/*
+ * omni_check_constraints - Check if argument types satisfy diagonal dispatch constraints
+ *
+ * For diagonal dispatch, all parameters with the same type variable must have
+ * the same concrete type, and that type must be a subtype of the bound.
+ *
+ * Example: ^:where [T {Number}] with params [x {T}] [y {T}]
+ *   - If x is Int32 and y is Int32: OK (same type, subtype of Number)
+ *   - If x is Int32 and y is Float64: FAIL (different concrete types)
+ *   - If x is String: FAIL (not subtype of Number)
+ */
+bool omni_check_constraints(AnalysisContext* ctx, TypeConstraint* constraints,
+                            const char** arg_types, size_t arg_count) {
+    if (!constraints) return true; /* No constraints = always valid */
+    (void)arg_count; /* May be used for future diagonal dispatch */
+
+    /* For each constraint, verify bound is satisfied */
+    for (TypeConstraint* tc = constraints; tc; tc = tc->next) {
+        if (!tc->name) continue;
+
+        /*
+         * In diagonal dispatch, we'd need to:
+         * 1. Find all params with type {T}
+         * 2. Check they all have the same concrete type
+         * 3. Check that concrete type is subtype of bound
+         *
+         * For now, we just verify that if a bound exists,
+         * any explicitly provided type is a subtype.
+         */
+        if (tc->bound && arg_types && arg_types[0]) {
+            /* Basic check: first arg type must satisfy bound */
+            if (!omni_type_is_subtype(ctx, arg_types[0], tc->bound)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+/*
+ * omni_free_constraints - Free a TypeConstraint linked list
+ */
+void omni_free_constraints(TypeConstraint* constraints) {
+    while (constraints) {
+        TypeConstraint* next = constraints->next;
+        free(constraints->name);
+        free(constraints->bound);
+        free(constraints);
+        constraints = next;
+    }
 }
 
 /* Compute specificity score for method dispatch (higher = more specific) */

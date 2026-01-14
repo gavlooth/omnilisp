@@ -1,0 +1,17 @@
+2026-01-13T06:10:11.156347Z  INFO codegraph_mcp::indexer: 🔧 Rayon threads capped to 12 (workers/env)
+2026-01-13T06:10:11.156589Z  INFO codegraph_mcp::indexer: 🗄️ Connecting to SurrealDB: ws://127.0.0.1:3004/rpc namespace=codegraph database=main
+2026-01-13T06:10:11.156605Z  INFO codegraph_graph::surrealdb_storage: Initializing SurrealDB storage with connection: ws://127.0.0.1:3004/rpc
+2026-01-13T06:10:11.158768Z  INFO codegraph_graph::surrealdb_storage: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T06:10:11.158782Z  INFO codegraph_mcp::indexer: 🗄️ SurrealDB connection established: ws://127.0.0.1:3004/rpc namespace=codegraph database=main
+2026-01-13T06:10:11.253873Z  INFO codegraph_vector::embedding: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T06:10:11.253898Z  INFO codegraph_vector::embedding: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T06:10:11.253903Z  INFO codegraph_vector::embedding: ✅ 'ollama' feature is ENABLED
+2026-01-13T06:10:11.253912Z  INFO codegraph_vector::embedding: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T06:10:11.357300Z  INFO codegraph_vector::embedding: 🔍 Checking Ollama availability...
+2026-01-13T06:10:11.360128Z  INFO codegraph_vector::ollama_embedding_provider: nomic-embed-text availability: true
+2026-01-13T06:10:11.360139Z  INFO codegraph_vector::embedding: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T06:10:11.360145Z  INFO codegraph_vector::embedding: ✅ ollama_provider successfully set!
+2026-01-13T06:10:11.360149Z  INFO codegraph_mcp::indexer: Active embeddings: ollama (batch_size: 128, max_concurrent: 10)
+2026-01-13T06:10:11.360152Z  INFO codegraph_mcp::indexer: 🧭 Embedding dimension resolved from provider (ollama): 768 → Surreal column embedding_768
+2026-01-13T06:10:11.360167Z  INFO codegraph_mcp::indexer: Starting project indexing: "/home/heefoo/code/OmniLisp"
+2026-01-13T06:10:11.360176Z  INFO codegraph_mcp::indexer: 🗄️ SurrealDB (pre-parse): target=ws://127.0.0.1:3004/rpc namespace=codegraph database=main auth=no auth

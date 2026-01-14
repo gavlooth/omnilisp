@@ -1,0 +1,22 @@
+2026-01-13T15:29:09.857566Z  INFO codegraph_mcp::indexer: 🔧 Rayon threads capped to 12 (workers/env)
+2026-01-13T15:29:09.857870Z  INFO codegraph_mcp::indexer: 🗄️ Connecting to SurrealDB: ws://127.0.0.1:3004/ namespace=codegraph database=main
+2026-01-13T15:29:09.857887Z  INFO codegraph_graph::surrealdb_storage: Initializing SurrealDB storage with connection: ws://127.0.0.1:3004
+2026-01-13T15:29:09.875957Z  INFO codegraph_graph::surrealdb_storage: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T15:29:09.875988Z  INFO codegraph_mcp::indexer: 🗄️ SurrealDB connection established: ws://127.0.0.1:3004/ namespace=codegraph database=main
+2026-01-13T15:29:09.978988Z  INFO codegraph_vector::embedding: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T15:29:09.979017Z  INFO codegraph_vector::embedding: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T15:29:09.979019Z  INFO codegraph_vector::embedding: ✅ 'ollama' feature is ENABLED
+2026-01-13T15:29:09.979030Z  INFO codegraph_vector::embedding: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T15:29:10.088228Z  INFO codegraph_vector::embedding: 🔍 Checking Ollama availability...
+2026-01-13T15:29:10.101750Z  INFO codegraph_vector::ollama_embedding_provider: nomic-embed-text availability: true
+2026-01-13T15:29:10.101765Z  INFO codegraph_vector::embedding: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T15:29:10.101773Z  INFO codegraph_vector::embedding: ✅ ollama_provider successfully set!
+2026-01-13T15:29:10.101778Z  INFO codegraph_mcp::indexer: Active embeddings: ollama (batch_size: 128, max_concurrent: 10)
+2026-01-13T15:29:10.101781Z  INFO codegraph_mcp::indexer: 🧭 Embedding dimension resolved from provider (ollama): 768 → Surreal column embedding_768
+2026-01-13T15:29:10.101792Z  INFO codegraph_mcp::indexer: Starting project indexing: "."
+2026-01-13T15:29:10.101803Z  INFO codegraph_mcp::indexer: 🗄️ SurrealDB (pre-parse): target=ws://127.0.0.1:3004/ namespace=codegraph database=main auth=credentials configured
+2026-01-13T15:29:10.104800Z  INFO codegraph_mcp::indexer: 📊 Project already indexed, checking for file changes...
+2026-01-13T15:29:10.104807Z  INFO codegraph_parser::file_collect: Collecting source files from: "."
+2026-01-13T15:29:10.105836Z  INFO codegraph_parser::file_collect: File collection complete: 41 files found, 41 passed filters
+2026-01-13T15:29:10.108271Z  INFO codegraph_mcp::indexer: 📈 Change summary: 5 added, 1 modified, 0 deleted, 35 unchanged
+2026-01-13T15:29:10.108280Z  INFO codegraph_mcp::indexer: 🔄 Incrementally indexing 6 changed files (delete-then-insert semantics)

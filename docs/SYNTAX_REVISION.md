@@ -1,5 +1,9 @@
 # OmniLisp Syntax Revision (Strict Character Calculus)
 
+> **Document Status (2026-01-14):** This is a **design specification** for the target syntax.
+> For current implementation status, see `SYNTAX.md` (Implementation Status section).
+> The Implementation Plan at the end of this document tracks progress toward full implementation.
+
 This document defines the definitive syntax for OmniLisp, adhering strictly to the **Character Calculus** rules and the **Uniform Definition** principle.
 
 ## 1. The Character Calculus Rules
@@ -310,10 +314,107 @@ Let bindings use Slot `[]` syntax with optional types: `[name {Type}? value]`
 
 ---
 
-## 7. The Bottom Type
-The Kind representing a computation that never returns.
+## 7. Algebraic Effects (Error Handling)
+
+OmniLisp uses **algebraic effects** for error handling and control flow, NOT try/catch.
+
+> **Design Note:** `try`/`catch` is intentionally NOT implemented. Algebraic effects
+> provide a more composable and type-safe approach to error handling.
+
+### Implementation: Delimited Continuations
+
+Effects are implemented using **delimited continuations** (shift/reset style):
+- `handle` installs a **prompt** (delimiter) on the continuation stack
+- Effect operations **capture** the continuation up to the nearest handler
+- Handlers can **resume**, **discard**, or **invoke multiple times** the captured continuation
+
+This enables expressive control flow patterns impossible with traditional exceptions.
+
+### 7.1 Effect Declaration
+Effects are declared as abstract operations that can be handled by surrounding code.
 
 ```lisp
+;; Declare an effect type
+(define {effect Error}
+  [raise [msg {String}] {bottom}])
+
+;; Declare a resumable effect
+(define {effect Ask}
+  [ask [prompt {String}] {String}])
+```
+
+### 7.2 Performing Effects
+Use the effect operation directly in code.
+
+```lisp
+(define safe-div [x {Int}] [y {Int}] {Int}
+  (if (= y 0)
+    (raise "Division by zero")  ;; Perform effect
+    (/ x y)))
+```
+
+### 7.3 Handling Effects
+Effects are handled with `handle` blocks that provide implementations.
+
+```lisp
+(handle
+  (safe-div 10 0)
+  [raise [msg] (println "Error: " msg) 0])  ;; Handle and return default
+
+;; With resumption (for resumable effects)
+(handle
+  (ask "Name?")
+  [ask [prompt] (resume "Alice")])  ;; Resume with a value
+```
+
+### 7.4 Effect Composition
+Multiple effects compose naturally.
+
+```lisp
+(define {effect Log}
+  [log [msg {String}] {Nothing}])
+
+;; Function using multiple effects
+(define process [x]
+  (log "Processing...")
+  (if (< x 0)
+    (raise "Negative input")
+    x))
+
+;; Handle both effects
+(handle
+  (process -5)
+  [log [msg] (println msg) (resume nothing)]
+  [raise [msg] 0])
+```
+
+### 7.5 Why Not try/catch?
+
+Algebraic effects provide several advantages over traditional exception handling:
+
+1. **Type Safety**: Effects are part of the type signature
+2. **Resumption**: Handlers can resume computation (impossible with exceptions)
+3. **Composability**: Multiple effects compose without nested try blocks
+4. **Explicit Control Flow**: No hidden control flow jumps
+5. **Region Compatibility**: Works naturally with CTRR memory management
+
+---
+
+## 8. The Bottom Type
+
+The Kind `{bottom}` represents a computation that never returns (divergence).
+
+```lisp
+;; Function that never returns
+(define panic [msg {String}] {bottom}
+  (raise msg))  ;; Effect that doesn't resume
+
+;; Used in exhaustive match
+(match val
+  [0 "zero"]
+  [_ (panic "unexpected")])  ;; {bottom} unifies with any type
+```
+
 ---
 
 # Implementation Plan
@@ -367,6 +468,26 @@ This plan outlines the steps to migrate the C compiler and runtime to the **Stri
 3.  **Bottom Type:**
     *   Wire `{bottom}` to the analyzer's dead-code detection (post-divergence).
 
+## Phase 5: Algebraic Effects
+**Goal:** Implement algebraic effects for error handling and control flow.
+
+> **Note:** `try`/`catch` is NOT supported. OmniLisp uses algebraic effects instead.
+
+1.  **Effect Declaration:**
+    *   Parse `{effect Name}` as a new type definition form.
+    *   Store effect operations in the type registry with signatures.
+2.  **Effect Typing:**
+    *   Track which effects a function may perform in its type signature.
+    *   Implement effect polymorphism for generic handlers.
+3.  **Handler Codegen:**
+    *   Implement `handle` blocks using delimited continuations.
+    *   Support both resumable and non-resumable effects.
+    *   Integrate with CTRR region management (handlers create region boundaries).
+4.  **Built-in Effects:**
+    *   `{effect Error}` - Non-resumable error raising.
+    *   `{effect IO}` - I/O operations (print, read, file access).
+    *   `{effect State}` - Local mutable state.
+
 ---
 
 # Verification Plan
@@ -375,4 +496,4 @@ Each phase must pass the following regression tests:
 1.  `tests/test_kinds.omni`: Basic annotation and `type?` checks.
 2.  `tests/test_julia_flex.omni`: Subtyping and dispatch checks.
 3.  New `tests/test_calculus.omni`: Verifying strict `{}`, `[]`, `()` boundaries.
-```
+4.  New `tests/test_effects.omni`: Algebraic effects and handlers.

@@ -1,0 +1,68 @@
+[embedding]
+provider = "ollama"
+model = "nomic-embed-text"
+dimension = 768
+ollama_url = "http://localhost:11434"
+batch_size = 64
+
+[rerank]
+provider = "none"
+top_n = 10
+
+[llm]
+enabled = true
+provider = "anthropic"
+model = "glm-4.7"
+anthropic_base_url = "https://api.z.ai/v1"    #https://api.z.ai/api/anthropic
+anthropic_api_key = "e988037e10444f42b30e54a746d49797.WUFfyb2pEPFGDsjp"
+context_window = 128000
+temperature = 0.1
+max_tokens = 4096
+timeout_secs = 120
+
+[database]
+backend = "surrealdb"
+
+[database.surrealdb]
+connection = "ws://127.0.0.1:3004"
+namespace = "codegraph"
+database = "main"
+username = "root"
+password = "root"
+strict_mode = false
+auto_migrate = true
+
+[performance]
+num_threads = 16
+cache_size_mb = 1024
+max_concurrent_requests = 8
+
+[indexing]
+tier = "full"
+
+[logging]
+level = "info"
+format = "pretty"
+
+[daemon]
+auto_start_with_mcp = false
+debounce_ms = 30
+batch_timeout_ms = 200
+health_check_interval_secs = 30
+exclude_patterns = [
+    "**/node_modules/**",
+    "**/target/**",
+    "**/.git/**",
+    "**/build/**",
+    "**/.codegraph/**",
+    "**/dist/**",
+    "**/__pycache__/**",
+]
+
+[surrealdb]
+# Legacy section kept for backward compatibility if any parts still use it
+url = "ws://127.0.0.1:3004"
+username = "root"
+password = "root"
+namespace = "codegraph"
+database = "main"

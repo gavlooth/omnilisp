@@ -1,0 +1,24 @@
+[Unit]
+Description=CodeGraph MCP Server
+After=network.target surrealdb.service ollama.service
+
+[Service]
+Type=simple
+User=heefoo
+WorkingDirectory=/home/heefoo/codegraph-rust
+# Updated Environment Variables for CodeGraph Indexer
+Environment="CODEGRAPH_SURREALDB_URL=ws://127.0.0.1:3004"
+Environment="CODEGRAPH_SURREALDB_USERNAME=root"
+Environment="CODEGRAPH_SURREALDB_PASSWORD=root"
+
+# Legacy/Alternative config styles if needed (preserved but commented out if unsure)
+# Environment="CODEGRAPH__DATABASE__SURREALDB__NAMESPACE=codegraph"
+# Environment="CODEGRAPH__DATABASE__SURREALDB__DATABASE=graph"
+
+# The binary automatically loads ~/.codegraph/config.toml
+ExecStart=/home/heefoo/.local/bin/codegraph start http --port 3000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

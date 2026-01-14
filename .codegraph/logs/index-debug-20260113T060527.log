@@ -1,0 +1,3 @@
+2026-01-13T06:05:27.335283Z  INFO codegraph_mcp::indexer: 🔧 Rayon threads capped to 12 (workers/env)
+2026-01-13T06:05:27.335673Z  INFO codegraph_mcp::indexer: 🗄️ Connecting to SurrealDB: ws://****:****@127.0.0.1:3004/codegraph/main namespace=codegraph database=main
+2026-01-13T06:05:27.335699Z  INFO codegraph_graph::surrealdb_storage: Initializing SurrealDB storage with connection: ws://root:root@127.0.0.1:3004/codegraph/main

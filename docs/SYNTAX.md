@@ -2,6 +2,10 @@
 
 This document describes the complete syntax of OmniLisp, from lexical tokens to high-level expressions.
 
+> **Implementation Status Note (2026-01-14):** This document describes the *design* syntax.
+> See the [Implementation Status](#implementation-status) section at the end for what is
+> currently implemented in the Pika parser (`csrc/parser/parser.c`).
+
 ## Table of Contents
 
 1. [Lexical Syntax](#lexical-syntax)
@@ -371,6 +375,22 @@ OmniLisp supports multiple syntaxes for function definitions.
 (λ [x] (* x x))
 ```
 
+### Algebraic Effects
+
+OmniLisp uses algebraic effects for error handling (NOT try/catch).
+
+```lisp
+;; Perform an effect
+(raise "error message")
+
+;; Handle effects
+(handle
+  (might-fail x)
+  [raise [msg] default-value])
+```
+
+See `SYNTAX_REVISION.md` Section 7 for full effect syntax.
+
 ---
 
 ## Path Expressions
@@ -448,3 +468,84 @@ For more details, see:
 - `QUICK_REFERENCE.md` - Complete language reference
 - `TYPE_SYSTEM_DESIGN.md` - Type system details
 - `PATTERN_SYNTAX.md` - Pattern matching syntax
+
+---
+
+## Implementation Status
+
+This section documents which syntax features are implemented in the Pika parser
+(`csrc/parser/parser.c`) vs the analyzer (`csrc/analysis/analysis.c`).
+
+### Fully Implemented (Parser)
+
+| Feature | Parser Rule | Notes |
+|---------|-------------|-------|
+| Integers | `R_INT` | Positive only; `-123` parsed as symbol `-` followed by int |
+| Floats | `R_FLOAT` | Requires `INT.INT` format (e.g., `3.14`) |
+| Symbols | `R_SYM` | Includes `-`, `+`, `*`, etc. as valid start chars |
+| Strings | `R_STRING` | With escape sequences `\n`, `\t`, `\"`, `\\`, `\xNN` |
+| Lists | `R_LIST` | S-expressions `(...)` |
+| Arrays | `R_ARRAY` | Bracket syntax `[...]` |
+| Type literals | `R_TYPE` | Brace syntax `{Type}` |
+| Paths | `R_PATH` | Dot notation `foo.bar.baz` |
+| Quote | `R_QUOTED` | `'expr`, `` `expr ``, `,expr`, `,@expr` |
+| Colon-quoted | `R_COLON_QUOTED_SYMBOL` | `:name` → `(quote name)` |
+| Metadata keys | `R_META_KEY` | `^:parent`, `^:where`, etc. |
+| Metadata attach | `R_METADATA` | `^ meta obj` (requires whitespace) |
+| Named chars | `R_NAMED_CHAR` | `#\newline`, `#\space`, `#\tab`, `#\xNN` |
+| Format strings | `R_FMT_STRING` | `#fmt"..."` |
+| Value-to-type | `R_HASH_VAL` | `#val 42` → `(value->type 42)` |
+| Comments | `R_COMMENT` | `;` to end of line |
+
+### Analyzer-Level Recognition
+
+These are parsed as plain symbols but recognized specially in the analyzer:
+
+| Symbol | Recognition | Location |
+|--------|-------------|----------|
+| `true` | Boolean true | `analysis.c:1065`, `codegen.c:975` |
+| `false` | Boolean false | `analysis.c:1066`, `codegen.c:977` |
+| `nothing` | Nothing value | `parser.c:158` (parser special-case) |
+| `nil` | Nil value | `parser.c:159` (parser special-case) |
+| `lambda` | Lambda form | `analysis.c:1170` |
+| `fn` | Lambda alias | `analysis.c:1170` |
+| `λ` (U+03BB) | Lambda alias | `analysis.c:1171` |
+
+### NOT YET IMPLEMENTED
+
+| Feature | Documented As | Status |
+|---------|---------------|--------|
+| Dict literals `#{}` | `#{:a 1 :b 2}` | **Not implemented** - no parser rule |
+| Signed integers | `+456` | **Not implemented** - `+` parsed as symbol |
+| Partial floats | `.5`, `3.` | **Not implemented** - requires `INT.INT` |
+| Match clauses | `[pattern result]` | **Placeholder** - returns empty/nil |
+| Algebraic effects | `(handle ...)` | **Not implemented** - planned for Phase 5 |
+
+### INTENTIONALLY NOT SUPPORTED
+
+| Feature | Reason |
+|---------|--------|
+| `try`/`catch` | Replaced by algebraic effects (see SYNTAX_REVISION.md Section 7) |
+
+### Operator Precedence (Clarification)
+
+The operator precedence table in this document describes *semantic* precedence
+for when OmniLisp is used with infix notation. However:
+
+- The **parser** is S-expression based (Lisp syntax)
+- Operators like `+`, `*`, `<` are just symbols
+- Precedence is determined by **explicit nesting** in S-expressions
+
+Example:
+```lisp
+;; These are NOT equivalent in the parser:
+(+ 1 (* 2 3))    ;; 1 + (2 * 3) = 7
+(* (+ 1 2) 3)    ;; (1 + 2) * 3 = 9
+
+;; There is no implicit precedence parsing like "1 + 2 * 3"
+```
+
+### Single Parser (Pika)
+
+OmniLisp uses a single Pika-based parser in `csrc/parser/parser.c`.
+There is no separate runtime parser - the runtime executes compiled output.

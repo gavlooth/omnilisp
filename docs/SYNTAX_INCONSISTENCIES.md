@@ -2,58 +2,84 @@
 
 This document tracks identified inconsistencies in the language syntax, documentation, and implementation.
 
+> **Last Updated:** 2026-01-14
+
 ## 1. Parser Implementation Divergence
 
+*   **Status:** ✅ **RESOLVED** (2026-01-14)
 *   **Compiler Parser:** Located in `csrc/parser/parser.c`. Uses a Pika packrat parser.
-*   **Runtime Parser:** Located in `src/runtime/pika/omni_grammar.c`. Seemingly a separate implementation.
-*   **Risk:** The compiler and runtime may parse code differently, leading to "works in REPL, fails in compiler" bugs.
-*   **Action:** Verify if `csrc/parser` and `runtime/src/pika` share the same grammar rules. Ideally, there should be a single source of truth for the grammar.
+*   **Runtime Parser:** The file `src/runtime/pika/omni_grammar.c` **does not exist**.
+*   **Resolution:** There is only ONE parser - the Pika-based parser in `csrc/parser/`.
+    The runtime does not have a separate parser; it executes compiled output.
+*   **Single Source of Truth:** `csrc/parser/parser.c` is the authoritative grammar.
 
 ## 2. "Truthiness" Semantics
 
+*   **Status:** ✅ **DOCUMENTED** (deliberate design choice)
 *   **Current Behavior (canonical):** `0` and `()` (empty list) are **truthy**. Only `false` and `nothing` are falsy.
 *   **Documentation:** `SYNTAX.md` and `language_reference.md` confirm this.
-*   **Inconsistency:** This deviates from standard Lisp dialects:
-    *   **Scheme:** `#f` is the only false value. `()` is true.
-    *   **Common Lisp:** `()` and `nil` are false.
-    *   **C/C++:** `0` is false.
-    *   **Python/JS:** `0`, `[]`, `""` are false.
-*   **Action:** Confirm if this is a deliberate design choice or an artifact of the C implementation (`false` and `nothing` map to specific tagged pointers).
+*   **Design Rationale:** This is a deliberate design choice:
+    *   Avoids C's confusing "0 is false" semantics
+    *   Empty list `()` is truthy (unlike Common Lisp's nil)
+    *   Only explicit `false` and `nothing` are falsy
+*   **Implementation:** `false` and `nothing` are recognized in `parser.c:158-159` and
+    handled as special symbols in the analyzer.
 
 ## 3. Implemented vs. Design Target
 
-*   **Documentation:** `SYNTAX.md` lists high-level features (arrays, dicts, file I/O) as "Built-ins Wired Today". `LANGUAGE_REFERENCE.md` claims only a small core (`define`, `if`, etc.) is implemented in the C compiler.
-*   **Reality:** `parser.c` shows support for arrays (`act_array`) but not dicts (`#{}`). The runtime likely supports more than the compiler.
-*   **Action:** Update `LANGUAGE_REFERENCE.md` to accurately reflect the "Implemented Subset" for both the Compiler and the Runtime.
+*   **Status:** ⚠️ **PARTIALLY RESOLVED** (2026-01-14)
+*   **Parser Implementation:**
+    *   ✅ Arrays `[...]` - implemented (`act_array`)
+    *   ❌ Dicts `#{}` - **NOT implemented** (no parser rule)
+    *   ❌ Signed integers `+456` - **NOT implemented**
+    *   ❌ Partial floats `.5`, `3.` - **NOT implemented**
+*   **Resolution:** `SYNTAX.md` now has an "Implementation Status" section documenting
+    what is actually implemented vs designed.
+*   **Action:** See TODO.md for implementation tasks.
 
 ## 4. Bracket Usage & Syntax Support
 
-*   **Documentation:** Claims support for:
-    *   List-style `let`: `(let ((x 1)) ...)`
-    *   Vector-style `let`: `(let [x 1] ...)`
-    *   Array literals: `[1 2 3]`
-    *   Dict literals: `#{:a 1}`
+*   **Status:** ⚠️ **PARTIALLY IMPLEMENTED** (2026-01-14)
 *   **Parser (`csrc/parser/parser.c`):**
-    *   Has rules for `R_LBRACKET` (`[`) and `R_RBRACKET` (`]`).
-    *   `act_array` implements `[ ... ]` syntax.
-    *   **Missing:** No obvious rule or action for `#{ ... }` (Dict literals).
-    *   **Missing:** `act_let` logic isn't in the parser file (likely handled in AST/Analysis phase), so support for vector-style binding needs verification in `ast.c` or `analysis.c`.
+    *   ✅ `R_LBRACKET`/`R_RBRACKET` - defined
+    *   ✅ `act_array` - implements `[...]` syntax
+    *   ✅ `R_HASHBRACE` terminal defined but **unused**
+    *   ❌ Dict literals `#{...}` - **NO parser rule or action**
+*   **Analyzer (`csrc/analysis/analysis.c`):**
+    *   ✅ `let` with bracket bindings handled in analyzer
+    *   Binding forms like `(let [x 1] ...)` are analyzed, not parsed specially
 
 ## 5. Lambda Aliases
 
+*   **Status:** ✅ **RESOLVED** (2026-01-14)
 *   **Documentation:** Lists `lambda`, `fn`, and `λ`.
-*   **Implementation:** The parser (`act_sym`) doesn't seem to canonicalize these. The AST or Compiler likely checks for the symbol name "lambda".
-*   **Risk:** If the compiler only checks for `strcmp(s, "lambda")`, then `fn` and `λ` won't work as expected unless they are macros or explicitly handled.
+*   **Implementation:**
+    *   Parser outputs these as plain symbols (no canonicalization)
+    *   Analyzer recognizes all three: `analysis.c:1170-1171`
+    *   Codegen handles all three: `codegen.c:2853-2854`
+*   **Verification:** `strcmp(name, "lambda") == 0 || strcmp(name, "fn") == 0 || strcmp(name, "λ") == 0`
 
 ## 6. Quote vs Quasiquote
 
-*   **Parser:** `act_quoted` handles `'`, `` ` ``, and `,`.
-*   **Status:** Looks correctly implemented in the parser.
+*   **Status:** ✅ **IMPLEMENTED**
+*   **Parser:** `act_quoted` handles `'`, `` ` ``, `,`, and `,@`:
+    *   `'expr` → `(quote expr)`
+    *   `` `expr `` → `(quasiquote expr)`
+    *   `,expr` → `(unquote expr)`
+    *   `,@expr` → `(unquote-splicing expr)`
 
-## 7. Plan
+## 7. Remaining Work
 
-1.  **Unified Grammar:** Refactor to share grammar definitions between Compiler and Runtime if possible.
-2.  **Verify Truthiness:** Add a test case to explicitly confirm/reject the `0` is true behavior.
-3.  **Audit Built-ins:** Create a "Compiler Support Matrix" vs "Runtime Support Matrix".
-4.  **Fix Dict Syntax:** Add `#{}` parsing to `csrc/parser/parser.c`.
-5.  **Standardize Aliases:** Ensure `fn` and `λ` are treated as `lambda` in the compiler.
+1.  ✅ **Unified Grammar:** RESOLVED - only one parser exists (`csrc/parser/parser.c`)
+2.  ✅ **Truthiness:** DOCUMENTED - deliberate design choice
+3.  ⚠️ **Implementation Status:** Added to `SYNTAX.md` - see Implementation Status section
+4.  ❌ **Dict Syntax:** Add `#{}` parsing to `csrc/parser/parser.c` - see TODO.md
+5.  ✅ **Lambda Aliases:** RESOLVED - `fn` and `λ` handled in analyzer
+
+### New Tasks (Added 2026-01-14)
+
+See `TODO.md` for implementation tasks:
+- Implement dict literal parsing `#{}`
+- Implement signed integer parsing `+456`
+- Implement partial float parsing `.5`, `3.`
+- Complete match clause parsing

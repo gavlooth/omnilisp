@@ -31,3 +31,844 @@
 2026-01-12T16:36:24.729813Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-06-18"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: Some(true) }), sampling: None, elicitation: None }, client_info: Implementation { name: "crush", title: Some("Crush"), version: "v0.31.0", icons: None, website_url: None } })
 2026-01-12T16:36:24.732100Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
 2026-01-12T16:36:24.732247Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Failed to create project indexer for daemon
+2026-01-12T20:47:46.643373Z  INFO 591: 🔧 Loading CodeGraph configuration...
+2026-01-12T20:47:46.643503Z  INFO 605: ✅ Configuration loaded successfully
+2026-01-12T20:47:46.643507Z  INFO 607:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-12T20:47:46.643508Z  INFO 611:    🤖 Embedding provider: auto
+2026-01-12T20:47:46.643509Z  INFO 612:    🔧 Embedding model: None
+2026-01-12T20:47:46.643518Z  INFO 613:    📐 Embedding dimension: 2048
+2026-01-12T20:47:46.643519Z  INFO 614:    🌐 Ollama URL: http://localhost:11434
+2026-01-12T20:47:46.643520Z  INFO 615:    💬 LLM insights: enabled
+2026-01-12T20:47:46.644252Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-12T20:47:46.648154Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-12T20:47:46.648500Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Failed to create project indexer for daemon
+2026-01-12T20:47:46.654184Z  INFO 239: client initialized
+2026-01-12T20:47:46.654225Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: Some(true) }), sampling: None, elicitation: None }, client_info: Implementation { name: "gemini-cli-mcp-client", title: None, version: "0.0.1", icons: None, website_url: None } })
+2026-01-12T21:10:51.098741Z  INFO 591: 🔧 Loading CodeGraph configuration...
+2026-01-12T21:10:51.098829Z  INFO 605: ✅ Configuration loaded successfully
+2026-01-12T21:10:51.098830Z  INFO 607:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-12T21:10:51.098832Z  INFO 611:    🤖 Embedding provider: auto
+2026-01-12T21:10:51.098833Z  INFO 612:    🔧 Embedding model: None
+2026-01-12T21:10:51.098838Z  INFO 613:    📐 Embedding dimension: 2048
+2026-01-12T21:10:51.098839Z  INFO 614:    🌐 Ollama URL: http://localhost:11434
+2026-01-12T21:10:51.098839Z  INFO 615:    💬 LLM insights: enabled
+2026-01-12T21:10:51.098870Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-12T21:10:51.102221Z  INFO 239: client initialized
+2026-01-12T21:10:51.102240Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-06-18"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: Some(true) }), sampling: None, elicitation: None }, client_info: Implementation { name: "crush", title: Some("Crush"), version: "v0.31.0", icons: None, website_url: None } })
+2026-01-12T21:10:51.104843Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-12T21:10:51.105181Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Failed to create project indexer for daemon
+2026-01-12T21:25:01.614680Z  INFO serve_inner: 618: input stream terminated
+2026-01-12T21:25:01.614702Z  INFO serve_inner: 844: serve finished quit_reason=Closed
+2026-01-12T21:25:01.614757Z  WARN 219: Daemon stopped with error error=Failed to create project indexer for daemon
+2026-01-12T22:02:08.874325Z  INFO 591: 🔧 Loading CodeGraph configuration...
+2026-01-12T22:02:08.874403Z  INFO 605: ✅ Configuration loaded successfully
+2026-01-12T22:02:08.874404Z  INFO 607:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-12T22:02:08.874405Z  INFO 611:    🤖 Embedding provider: auto
+2026-01-12T22:02:08.874406Z  INFO 612:    🔧 Embedding model: None
+2026-01-12T22:02:08.874409Z  INFO 613:    📐 Embedding dimension: 2048
+2026-01-12T22:02:08.874410Z  INFO 614:    🌐 Ollama URL: http://localhost:11434
+2026-01-12T22:02:08.874410Z  INFO 615:    💬 LLM insights: enabled
+2026-01-12T22:02:08.874483Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-12T22:02:08.876904Z  INFO 239: client initialized
+2026-01-12T22:02:08.876917Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-06-18"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: Some(true) }), sampling: None, elicitation: None }, client_info: Implementation { name: "crush", title: Some("Crush"), version: "v0.31.0", icons: None, website_url: None } })
+2026-01-12T22:02:08.879297Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-12T22:02:08.879637Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Failed to create project indexer for daemon
+2026-01-12T22:02:10.822441Z  INFO serve_inner: 618: input stream terminated
+2026-01-12T22:02:10.822467Z  INFO serve_inner: 844: serve finished quit_reason=Closed
+2026-01-12T22:02:10.822510Z  WARN 219: Daemon stopped with error error=Failed to create project indexer for daemon
+2026-01-12T22:02:17.102785Z  INFO 591: 🔧 Loading CodeGraph configuration...
+2026-01-12T22:02:17.103359Z  INFO 605: ✅ Configuration loaded successfully
+2026-01-12T22:02:17.103364Z  INFO 607:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-12T22:02:17.103366Z  INFO 611:    🤖 Embedding provider: auto
+2026-01-12T22:02:17.103367Z  INFO 612:    🔧 Embedding model: None
+2026-01-12T22:02:17.103375Z  INFO 613:    📐 Embedding dimension: 2048
+2026-01-12T22:02:17.103375Z  INFO 614:    🌐 Ollama URL: http://localhost:11434
+2026-01-12T22:02:17.103376Z  INFO 615:    💬 LLM insights: enabled
+2026-01-12T22:02:17.103426Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-12T22:02:17.107402Z  INFO 239: client initialized
+2026-01-12T22:02:17.107431Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-06-18"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: Some(true) }), sampling: None, elicitation: None }, client_info: Implementation { name: "crush", title: Some("Crush"), version: "v0.31.0", icons: None, website_url: None } })
+2026-01-12T22:02:17.107724Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-12T22:02:17.108023Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Failed to create project indexer for daemon
+2026-01-12T22:10:32.725747Z  WARN serve_inner: 773: response error id=5 error=ErrorData { code: ErrorCode(-32600), message: "Agentic tools require the `ai-enhanced` feature to be enabled", data: None }
+2026-01-12T22:10:48.944235Z  WARN serve_inner: 773: response error id=7 error=ErrorData { code: ErrorCode(-32600), message: "Agentic tools require the `ai-enhanced` feature to be enabled", data: None }
+2026-01-13T05:59:33.323908Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T05:59:33.324028Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-13T05:59:33.324031Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T05:59:33.324032Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-13T05:59:33.324033Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T05:59:33.324041Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-13T05:59:33.324042Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T05:59:33.324042Z  INFO 623:    💬 LLM insights: enabled
+2026-01-13T05:59:33.324094Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-13T05:59:33.326035Z  INFO 239: client initialized
+2026-01-13T05:59:33.326058Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-06-18"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: Some(true) }), sampling: None, elicitation: None }, client_info: Implementation { name: "crush", title: Some("Crush"), version: "v0.31.0", icons: None, website_url: None } })
+2026-01-13T05:59:33.328092Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-13T05:59:33.328345Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Failed to create project indexer for daemon
+2026-01-13T06:12:14.189730Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T06:12:14.189819Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-13T06:12:14.189820Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T06:12:14.189821Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-13T06:12:14.189821Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T06:12:14.189826Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-13T06:12:14.189826Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T06:12:14.189827Z  INFO 623:    💬 LLM insights: enabled
+2026-01-13T06:12:14.190072Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-13T06:12:14.195596Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-13T06:12:14.195956Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Failed to create project indexer for daemon
+2026-01-13T06:12:14.198592Z  INFO 239: client initialized
+2026-01-13T06:12:14.198613Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: Some(true) }), sampling: None, elicitation: None }, client_info: Implementation { name: "gemini-cli-mcp-client", title: None, version: "0.0.1", icons: None, website_url: None } })
+2026-01-13T06:51:15.278913Z  INFO serve_inner: 618: input stream terminated
+2026-01-13T06:51:15.278934Z  INFO serve_inner: 844: serve finished quit_reason=Closed
+2026-01-13T06:51:15.278988Z  WARN 219: Daemon stopped with error error=Failed to create project indexer for daemon
+2026-01-13T09:48:08.647026Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T09:48:08.647141Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-13T09:48:08.647143Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T09:48:08.647144Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-13T09:48:08.647145Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T09:48:08.647150Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-13T09:48:08.647151Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T09:48:08.647152Z  INFO 623:    💬 LLM insights: enabled
+2026-01-13T09:52:39.834070Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T09:52:39.834190Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-13T09:52:39.834192Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T09:52:39.834193Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-13T09:52:39.834194Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T09:52:39.834201Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-13T09:52:39.834201Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T09:52:39.834202Z  INFO 623:    💬 LLM insights: enabled
+2026-01-13T09:52:39.834413Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-13T09:52:39.837397Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-13T09:52:39.837725Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Failed to create project indexer for daemon
+2026-01-13T09:59:07.523800Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T09:59:07.523894Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-13T09:59:07.523895Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T09:59:07.523896Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-13T09:59:07.523896Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T09:59:07.523900Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-13T09:59:07.523901Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T09:59:07.523901Z  INFO 623:    💬 LLM insights: enabled
+2026-01-13T09:59:07.524813Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-13T09:59:07.527469Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-13T09:59:07.527746Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Failed to create project indexer for daemon
+2026-01-13T10:44:01.036350Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T10:44:01.036435Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-13T10:44:01.036437Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T10:44:01.036437Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-13T10:44:01.036438Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T10:44:01.036443Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-13T10:44:01.036444Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T10:44:01.036444Z  INFO 623:    💬 LLM insights: enabled
+2026-01-13T10:44:01.036484Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-13T10:44:01.041436Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-13T10:44:01.041661Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Failed to create project indexer for daemon
+2026-01-13T10:44:01.043900Z  INFO 239: client initialized
+2026-01-13T10:44:01.043917Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: Some(true) }), sampling: None, elicitation: None }, client_info: Implementation { name: "gemini-cli-mcp-client", title: None, version: "0.0.1", icons: None, website_url: None } })
+2026-01-13T15:08:35.250678Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T15:08:35.250806Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-13T15:08:35.250809Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T15:08:35.250810Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-13T15:08:35.250811Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T15:08:35.250818Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-13T15:08:35.250819Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T15:08:35.250820Z  INFO 623:    💬 LLM insights: enabled
+2026-01-13T15:08:35.252664Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-13T15:08:35.257542Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-13T15:08:35.257899Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Failed to create project indexer for daemon
+2026-01-13T15:08:35.260111Z  INFO 239: client initialized
+2026-01-13T15:08:35.260135Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: Some(true) }), sampling: None, elicitation: None }, client_info: Implementation { name: "gemini-cli-mcp-client", title: None, version: "0.0.1", icons: None, website_url: None } })
+2026-01-13T20:54:13.052017Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T20:54:13.052110Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-13T20:54:13.052112Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T20:54:13.052113Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-13T20:54:13.052113Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T20:54:13.052119Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-13T20:54:13.052119Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T20:54:13.052120Z  INFO 623:    💬 LLM insights: enabled
+2026-01-13T20:54:13.052155Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-13T20:54:13.053513Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-13T20:54:13.053740Z  INFO 3776: 🗄️ Connecting to SurrealDB: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-13T20:54:13.053754Z  INFO 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-13T20:54:13.056692Z  INFO 239: client initialized
+2026-01-13T20:54:13.056718Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, roots: None, sampling: None, elicitation: None }, client_info: Implementation { name: "opencode", title: None, version: "1.1.16", icons: None, website_url: None } })
+2026-01-13T20:54:13.075691Z  INFO 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T20:54:13.075718Z  INFO 3811: 🗄️ SurrealDB connection established: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-13T20:54:13.227221Z  INFO 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T20:54:13.227236Z  INFO 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T20:54:13.227237Z  INFO 396: ✅ 'ollama' feature is ENABLED
+2026-01-13T20:54:13.227248Z  INFO 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T20:54:13.400109Z  INFO 408: 🔍 Checking Ollama availability...
+2026-01-13T20:54:13.401147Z  INFO 201: nomic-embed-text availability: true
+2026-01-13T20:54:13.401154Z  INFO 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T20:54:13.401160Z  INFO 418: ✅ ollama_provider successfully set!
+2026-01-13T20:54:13.401162Z  INFO 787: Active embeddings: ollama (batch_size: 100, max_concurrent: 10)
+2026-01-13T20:54:13.401164Z  INFO 826: 🧭 Embedding dimension override: CODEGRAPH_EMBEDDING_DIMENSION=768 → Surreal column embedding_768
+2026-01-13T20:54:13.401244Z  INFO 38: PID file written: "/home/heefoo/Documents/code/OmniLisp/.codegraph/daemon.pid" (PID: 655411)
+2026-01-13T20:54:13.401276Z  INFO 103: Adding watch directory: "/home/heefoo/Documents/code/OmniLisp"
+2026-01-13T20:54:13.498747Z  INFO 57: Watch session initialized: 635 files tracked in "/home/heefoo/Documents/code/OmniLisp"
+2026-01-13T20:54:13.498910Z  INFO 107: Daemon started: watching "/home/heefoo/Documents/code/OmniLisp" (635 files)
+2026-01-13T21:08:20.062234Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T21:08:20.062411Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-13T21:08:20.062417Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T21:08:20.062419Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-13T21:08:20.062420Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T21:08:20.062427Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-13T21:08:20.062428Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T21:08:20.062429Z  INFO 623:    💬 LLM insights: enabled
+2026-01-13T21:08:20.062488Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-13T21:08:20.067727Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-13T21:08:20.068185Z  INFO 3776: 🗄️ Connecting to SurrealDB: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-13T21:08:20.068220Z  INFO 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-13T21:08:20.077885Z  INFO 239: client initialized
+2026-01-13T21:08:20.077917Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: Some(true) }), sampling: None, elicitation: None }, client_info: Implementation { name: "gemini-cli-mcp-client", title: None, version: "0.0.1", icons: None, website_url: None } })
+2026-01-13T21:08:20.095394Z  INFO 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T21:08:20.095428Z  INFO 3811: 🗄️ SurrealDB connection established: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-13T21:08:20.242588Z  INFO 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T21:08:20.242604Z  INFO 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T21:08:20.242604Z  INFO 396: ✅ 'ollama' feature is ENABLED
+2026-01-13T21:08:20.242612Z  INFO 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T21:08:20.388016Z  INFO 408: 🔍 Checking Ollama availability...
+2026-01-13T21:08:20.389677Z  INFO 201: nomic-embed-text availability: true
+2026-01-13T21:08:20.389688Z  INFO 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T21:08:20.389698Z  INFO 418: ✅ ollama_provider successfully set!
+2026-01-13T21:08:20.389702Z  INFO 787: Active embeddings: ollama (batch_size: 100, max_concurrent: 10)
+2026-01-13T21:08:20.389705Z  INFO 826: 🧭 Embedding dimension override: CODEGRAPH_EMBEDDING_DIMENSION=768 → Surreal column embedding_768
+2026-01-13T21:08:20.409967Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Daemon already running (PID file: "/home/heefoo/Documents/code/OmniLisp/.codegraph/daemon.pid")
+2026-01-13T21:23:50.441187Z  INFO serve_inner: 618: input stream terminated
+2026-01-13T21:23:50.441212Z  INFO serve_inner: 844: serve finished quit_reason=Closed
+2026-01-13T21:23:50.441288Z  INFO 183: Received shutdown signal
+2026-01-13T21:23:50.441298Z  INFO 122: Initiating graceful shutdown...
+2026-01-13T21:23:50.441301Z  INFO 248: Watch session stopped for "/home/heefoo/Documents/code/OmniLisp"
+2026-01-13T21:23:50.441368Z  INFO 65: PID file removed: "/home/heefoo/Documents/code/OmniLisp/.codegraph/daemon.pid"
+2026-01-13T21:23:50.441371Z  INFO 136: Graceful shutdown complete
+2026-01-13T21:23:50.459275Z  INFO 104: Daemon stopped gracefully project=/home/heefoo/Documents/code/OmniLisp
+2026-01-13T21:23:50.459317Z  INFO 213: Daemon stopped gracefully
+2026-01-13T21:23:56.403984Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T21:23:56.404099Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-13T21:23:56.404101Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T21:23:56.404102Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-13T21:23:56.404103Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T21:23:56.404108Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-13T21:23:56.404108Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T21:23:56.404109Z  INFO 623:    💬 LLM insights: enabled
+2026-01-13T21:23:56.404149Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-13T21:23:56.404833Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-13T21:23:56.405155Z  INFO 3776: 🗄️ Connecting to SurrealDB: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-13T21:23:56.405175Z  INFO 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-13T21:23:56.409343Z  INFO 239: client initialized
+2026-01-13T21:23:56.409373Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, roots: None, sampling: None, elicitation: None }, client_info: Implementation { name: "opencode", title: None, version: "1.1.18", icons: None, website_url: None } })
+2026-01-13T21:23:56.446742Z  INFO 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T21:23:56.446782Z  INFO 3811: 🗄️ SurrealDB connection established: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-13T21:23:56.619758Z  INFO 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T21:23:56.619774Z  INFO 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T21:23:56.619775Z  INFO 396: ✅ 'ollama' feature is ENABLED
+2026-01-13T21:23:56.619784Z  INFO 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T21:23:56.784588Z  INFO 408: 🔍 Checking Ollama availability...
+2026-01-13T21:23:56.785911Z  INFO 201: nomic-embed-text availability: true
+2026-01-13T21:23:56.785923Z  INFO 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T21:23:56.785934Z  INFO 418: ✅ ollama_provider successfully set!
+2026-01-13T21:23:56.785937Z  INFO 787: Active embeddings: ollama (batch_size: 100, max_concurrent: 10)
+2026-01-13T21:23:56.785941Z  INFO 826: 🧭 Embedding dimension override: CODEGRAPH_EMBEDDING_DIMENSION=768 → Surreal column embedding_768
+2026-01-13T21:23:56.786029Z  INFO 38: PID file written: "/home/heefoo/Documents/code/OmniLisp/.codegraph/daemon.pid" (PID: 719828)
+2026-01-13T21:23:56.786075Z  INFO 103: Adding watch directory: "/home/heefoo/Documents/code/OmniLisp"
+2026-01-13T21:23:56.847265Z  INFO 57: Watch session initialized: 635 files tracked in "/home/heefoo/Documents/code/OmniLisp"
+2026-01-13T21:23:56.847485Z  INFO 107: Daemon started: watching "/home/heefoo/Documents/code/OmniLisp" (635 files)
+2026-01-13T21:24:15.267392Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T21:24:15.267508Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-13T21:24:15.267511Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T21:24:15.267512Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-13T21:24:15.267513Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T21:24:15.267515Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-13T21:24:15.267515Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T21:24:15.267516Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-13T21:24:15.267518Z  INFO serve_inner: 648: AutoAgents context_builder (tier=Medium)
+2026-01-13T21:24:15.267522Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T21:24:15.267550Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-13T21:24:15.267552Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T21:24:15.267553Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-13T21:24:15.267553Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T21:24:15.267557Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-13T21:24:15.267557Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T21:24:15.267558Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-13T21:24:15.277858Z  INFO serve_inner: 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-13T21:24:15.298900Z  INFO serve_inner: 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T21:24:15.301466Z  WARN serve_inner: 787: Project '/home/heefoo/Documents/code/OmniLisp' has zero nodes indexed. Ensure CODEGRAPH_PROJECT_ID matches the indexed project and rerun `codegraph index`.
+2026-01-13T21:24:15.463237Z  INFO serve_inner: 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T21:24:15.463254Z  INFO serve_inner: 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T21:24:15.463255Z  INFO serve_inner: 396: ✅ 'ollama' feature is ENABLED
+2026-01-13T21:24:15.463262Z  INFO serve_inner: 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T21:24:15.633961Z  INFO serve_inner: 408: 🔍 Checking Ollama availability...
+2026-01-13T21:24:15.635218Z  INFO serve_inner: 201: nomic-embed-text availability: true
+2026-01-13T21:24:15.635227Z  INFO serve_inner: 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T21:24:15.635231Z  INFO serve_inner: 418: ✅ ollama_provider successfully set!
+2026-01-13T21:24:15.635233Z  INFO serve_inner: 805: ✅ Shared EmbeddingGenerator initialized (dimension: 768, provider: ollama)
+2026-01-13T21:24:15.635239Z  INFO serve_inner: 142: GraphToolExecutor initialized with max_result_bytes: 256000 (0.3MB)
+2026-01-13T21:24:15.635244Z  INFO serve_inner: 825: Using agent architecture: Rig
+2026-01-13T21:24:15.635245Z  INFO serve_inner: 55: Starting Rig agent execution query=index C code structure memory management regions transmigration analysis_type=ContextBuilder history_len=0
+2026-01-13T21:24:15.646797Z  WARN serve_inner: 773: response error id=7 error=ErrorData { code: ErrorCode(-32603), message: "Rig workflow failed: No LLM provider configured. Set CODEGRAPH_LLM_PROVIDER or provide API keys.", data: None }
+2026-01-13T21:28:08.999012Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T21:28:08.999117Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-13T21:28:08.999120Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T21:28:08.999121Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-13T21:28:08.999122Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T21:28:08.999123Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-13T21:28:08.999123Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T21:28:08.999124Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-13T21:28:08.999126Z  INFO serve_inner: 648: AutoAgents architecture_analysis (tier=Medium)
+2026-01-13T21:28:08.999130Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T21:28:08.999158Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-13T21:28:08.999160Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T21:28:08.999161Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-13T21:28:08.999162Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T21:28:08.999162Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-13T21:28:08.999163Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T21:28:08.999163Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-13T21:28:09.008238Z  INFO serve_inner: 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-13T21:28:09.035091Z  INFO serve_inner: 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T21:28:09.038495Z  WARN serve_inner: 787: Project '/home/heefoo/Documents/code/OmniLisp' has zero nodes indexed. Ensure CODEGRAPH_PROJECT_ID matches the indexed project and rerun `codegraph index`.
+2026-01-13T21:28:09.197275Z  INFO serve_inner: 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T21:28:09.197292Z  INFO serve_inner: 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T21:28:09.197293Z  INFO serve_inner: 396: ✅ 'ollama' feature is ENABLED
+2026-01-13T21:28:09.197299Z  INFO serve_inner: 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T21:28:09.361637Z  INFO serve_inner: 408: 🔍 Checking Ollama availability...
+2026-01-13T21:28:09.362680Z  INFO serve_inner: 201: nomic-embed-text availability: true
+2026-01-13T21:28:09.362689Z  INFO serve_inner: 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T21:28:09.362694Z  INFO serve_inner: 418: ✅ ollama_provider successfully set!
+2026-01-13T21:28:09.362697Z  INFO serve_inner: 805: ✅ Shared EmbeddingGenerator initialized (dimension: 768, provider: ollama)
+2026-01-13T21:28:09.362703Z  INFO serve_inner: 142: GraphToolExecutor initialized with max_result_bytes: 256000 (0.3MB)
+2026-01-13T21:28:09.362707Z  INFO serve_inner: 825: Using agent architecture: Rig
+2026-01-13T21:28:09.362708Z  INFO serve_inner: 55: Starting Rig agent execution query=C codebase architecture memory management regions runtime implementation analysis_type=ArchitectureAnalysis history_len=0
+2026-01-13T21:28:09.372042Z  WARN serve_inner: 773: response error id=13 error=ErrorData { code: ErrorCode(-32603), message: "Rig workflow failed: No LLM provider configured. Set CODEGRAPH_LLM_PROVIDER or provide API keys.", data: None }
+2026-01-13T22:43:53.728202Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T22:43:53.728326Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-13T22:43:53.728332Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T22:43:53.728334Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-13T22:43:53.728335Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T22:43:53.728337Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-13T22:43:53.728338Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T22:43:53.728339Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-13T22:43:53.728342Z  INFO serve_inner: 648: AutoAgents dependency_analysis (tier=Medium)
+2026-01-13T22:43:53.728346Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T22:43:53.728396Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-13T22:43:53.728399Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T22:43:53.728404Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-13T22:43:53.728405Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T22:43:53.728406Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-13T22:43:53.728407Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T22:43:53.728408Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-13T22:43:53.737181Z  INFO serve_inner: 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-13T22:43:53.755810Z  INFO serve_inner: 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T22:43:53.794318Z  INFO serve_inner: 791: Project '/home/heefoo/Documents/code/OmniLisp' has 6297 indexed nodes available for analysis
+2026-01-13T22:43:53.938589Z  INFO serve_inner: 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T22:43:53.938609Z  INFO serve_inner: 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T22:43:53.938610Z  INFO serve_inner: 396: ✅ 'ollama' feature is ENABLED
+2026-01-13T22:43:53.938615Z  INFO serve_inner: 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T22:43:54.096222Z  INFO serve_inner: 408: 🔍 Checking Ollama availability...
+2026-01-13T22:43:54.099168Z  INFO serve_inner: 201: nomic-embed-text availability: true
+2026-01-13T22:43:54.099178Z  INFO serve_inner: 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T22:43:54.099182Z  INFO serve_inner: 418: ✅ ollama_provider successfully set!
+2026-01-13T22:43:54.099185Z  INFO serve_inner: 805: ✅ Shared EmbeddingGenerator initialized (dimension: 768, provider: ollama)
+2026-01-13T22:43:54.099191Z  INFO serve_inner: 142: GraphToolExecutor initialized with max_result_bytes: 256000 (0.3MB)
+2026-01-13T22:43:54.099196Z  INFO serve_inner: 825: Using agent architecture: Rig
+2026-01-13T22:43:54.099198Z  INFO serve_inner: 55: Starting Rig agent execution query=disconnected orphaned unused functions no callers isolated code analysis_type=DependencyAnalysis history_len=0
+2026-01-13T22:43:54.111228Z  WARN serve_inner: 773: response error id=38 error=ErrorData { code: ErrorCode(-32603), message: "Rig workflow failed: No LLM provider configured. Set CODEGRAPH_LLM_PROVIDER or provide API keys.", data: None }
+2026-01-13T22:58:21.407302Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T22:58:21.407441Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-13T22:58:21.407445Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T22:58:21.407446Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-13T22:58:21.407447Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T22:58:21.407455Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-13T22:58:21.407456Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T22:58:21.407456Z  INFO 623:    💬 LLM insights: enabled
+2026-01-13T22:58:21.407632Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-13T22:58:21.410268Z  INFO 239: client initialized
+2026-01-13T22:58:21.410290Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: None }), sampling: None, elicitation: None }, client_info: Implementation { name: "claude-code", title: None, version: "2.1.6", icons: None, website_url: None } })
+2026-01-13T22:58:21.413415Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-13T22:58:21.413708Z  INFO 3776: 🗄️ Connecting to SurrealDB: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-13T22:58:21.413736Z  INFO 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-13T22:58:21.436206Z  INFO 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T22:58:21.436236Z  INFO 3811: 🗄️ SurrealDB connection established: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-13T22:58:21.572323Z  INFO 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T22:58:21.572340Z  INFO 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T22:58:21.572340Z  INFO 396: ✅ 'ollama' feature is ENABLED
+2026-01-13T22:58:21.572348Z  INFO 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T22:58:21.699166Z  INFO 408: 🔍 Checking Ollama availability...
+2026-01-13T22:58:21.700219Z  INFO 201: nomic-embed-text availability: true
+2026-01-13T22:58:21.700225Z  INFO 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T22:58:21.700231Z  INFO 418: ✅ ollama_provider successfully set!
+2026-01-13T22:58:21.700233Z  INFO 787: Active embeddings: ollama (batch_size: 100, max_concurrent: 10)
+2026-01-13T22:58:21.700235Z  INFO 826: 🧭 Embedding dimension override: CODEGRAPH_EMBEDDING_DIMENSION=768 → Surreal column embedding_768
+2026-01-13T22:58:21.717682Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Daemon already running (PID file: "/home/heefoo/Documents/code/OmniLisp/.codegraph/daemon.pid")
+2026-01-13T22:59:17.680115Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T22:59:17.680188Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-13T22:59:17.680189Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T22:59:17.680190Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-13T22:59:17.680190Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T22:59:17.680194Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-13T22:59:17.680195Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T22:59:17.680195Z  INFO 623:    💬 LLM insights: enabled
+2026-01-13T22:59:17.680225Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-13T22:59:17.684233Z  INFO 239: client initialized
+2026-01-13T22:59:17.684247Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: None }), sampling: None, elicitation: None }, client_info: Implementation { name: "claude-code", title: None, version: "2.1.6", icons: None, website_url: None } })
+2026-01-13T22:59:17.685309Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-13T22:59:17.685610Z  INFO 3776: 🗄️ Connecting to SurrealDB: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-13T22:59:17.685634Z  INFO 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-13T22:59:17.708679Z  INFO 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T22:59:17.708705Z  INFO 3811: 🗄️ SurrealDB connection established: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-13T22:59:17.816636Z  INFO 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T22:59:17.816651Z  INFO 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T22:59:17.816652Z  INFO 396: ✅ 'ollama' feature is ENABLED
+2026-01-13T22:59:17.816660Z  INFO 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T22:59:17.931152Z  INFO 408: 🔍 Checking Ollama availability...
+2026-01-13T22:59:17.933653Z  INFO 201: nomic-embed-text availability: true
+2026-01-13T22:59:17.933662Z  INFO 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T22:59:17.933669Z  INFO 418: ✅ ollama_provider successfully set!
+2026-01-13T22:59:17.933670Z  INFO 787: Active embeddings: ollama (batch_size: 100, max_concurrent: 10)
+2026-01-13T22:59:17.933673Z  INFO 826: 🧭 Embedding dimension override: CODEGRAPH_EMBEDDING_DIMENSION=768 → Surreal column embedding_768
+2026-01-13T22:59:17.941606Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Daemon already running (PID file: "/home/heefoo/Documents/code/OmniLisp/.codegraph/daemon.pid")
+2026-01-13T23:01:40.019122Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T23:01:40.019226Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-13T23:01:40.019229Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T23:01:40.019230Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-13T23:01:40.019231Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T23:01:40.019233Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-13T23:01:40.019234Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T23:01:40.019234Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-13T23:01:40.019236Z  INFO serve_inner: 648: AutoAgents architecture_analysis (tier=Medium)
+2026-01-13T23:01:40.019247Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T23:01:40.019277Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-13T23:01:40.019279Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T23:01:40.019279Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-13T23:01:40.019280Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T23:01:40.019281Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-13T23:01:40.019281Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T23:01:40.019282Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-13T23:01:40.028843Z  INFO serve_inner: 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-13T23:01:40.049650Z  INFO serve_inner: 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T23:01:40.087627Z  INFO serve_inner: 791: Project '/home/heefoo/Documents/code/OmniLisp' has 6297 indexed nodes available for analysis
+2026-01-13T23:01:40.199339Z  INFO serve_inner: 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T23:01:40.199357Z  INFO serve_inner: 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T23:01:40.199358Z  INFO serve_inner: 396: ✅ 'ollama' feature is ENABLED
+2026-01-13T23:01:40.199364Z  INFO serve_inner: 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T23:01:40.316818Z  INFO serve_inner: 408: 🔍 Checking Ollama availability...
+2026-01-13T23:01:40.318322Z  INFO serve_inner: 201: nomic-embed-text availability: true
+2026-01-13T23:01:40.318329Z  INFO serve_inner: 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T23:01:40.318332Z  INFO serve_inner: 418: ✅ ollama_provider successfully set!
+2026-01-13T23:01:40.318335Z  INFO serve_inner: 805: ✅ Shared EmbeddingGenerator initialized (dimension: 768, provider: ollama)
+2026-01-13T23:01:40.318341Z  INFO serve_inner: 142: GraphToolExecutor initialized with max_result_bytes: 256000 (0.3MB)
+2026-01-13T23:01:40.318353Z  INFO serve_inner: 825: Using agent architecture: Rig
+2026-01-13T23:01:40.318355Z  INFO serve_inner: 55: Starting Rig agent execution query=parser lexer syntax tokens grammar implementation analysis_type=ArchitectureAnalysis history_len=0
+2026-01-13T23:01:40.318362Z  INFO serve_inner: 149: Selecting LATS architecture for complex analysis: ArchitectureAnalysis
+2026-01-13T23:01:40.327961Z  INFO serve_inner: 196: Starting LATS execution for query: parser lexer syntax tokens grammar implementation
+2026-01-13T23:02:15.230245Z  INFO serve_inner: 142: Rig agent execution completed duration_ms=34911 tool_calls=0 history_len=1
+2026-01-13T23:02:15.230281Z  WARN serve_inner: 1003: Failed to parse ArchitectureAnalysisOutput: expected value at line 1 column 1
+2026-01-13T23:17:51.998292Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T23:17:51.998399Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-13T23:17:51.998401Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T23:17:51.998403Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-13T23:17:51.998404Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T23:17:51.998405Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-13T23:17:51.998406Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T23:17:51.998407Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-13T23:17:51.998409Z  INFO serve_inner: 648: AutoAgents context_builder (tier=Medium)
+2026-01-13T23:17:51.998413Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T23:17:51.998453Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-13T23:17:51.998455Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T23:17:51.998456Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-13T23:17:51.998456Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T23:17:51.998457Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-13T23:17:51.998458Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T23:17:51.998459Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-13T23:17:52.011737Z  INFO serve_inner: 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-13T23:17:52.037260Z  INFO serve_inner: 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T23:17:52.077931Z  INFO serve_inner: 791: Project '/home/heefoo/Documents/code/OmniLisp' has 6297 indexed nodes available for analysis
+2026-01-13T23:17:52.199143Z  INFO serve_inner: 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T23:17:52.199161Z  INFO serve_inner: 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T23:17:52.199162Z  INFO serve_inner: 396: ✅ 'ollama' feature is ENABLED
+2026-01-13T23:17:52.199168Z  INFO serve_inner: 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T23:17:52.324840Z  INFO serve_inner: 408: 🔍 Checking Ollama availability...
+2026-01-13T23:17:52.326706Z  INFO serve_inner: 201: nomic-embed-text availability: true
+2026-01-13T23:17:52.326713Z  INFO serve_inner: 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T23:17:52.326717Z  INFO serve_inner: 418: ✅ ollama_provider successfully set!
+2026-01-13T23:17:52.326719Z  INFO serve_inner: 805: ✅ Shared EmbeddingGenerator initialized (dimension: 768, provider: ollama)
+2026-01-13T23:17:52.326725Z  INFO serve_inner: 142: GraphToolExecutor initialized with max_result_bytes: 256000 (0.3MB)
+2026-01-13T23:17:52.326729Z  INFO serve_inner: 825: Using agent architecture: Rig
+2026-01-13T23:17:52.326731Z  INFO serve_inner: 55: Starting Rig agent execution query=define struct type registration with parent inheritance and parametric type parameters analysis_type=ContextBuilder history_len=0
+2026-01-13T23:17:52.336351Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-13T23:17:58.559939Z  INFO serve_inner: 106: Primary agent execution failed. Initiating Reflexion auto-recovery... error=Agent execution failed: CompletionError: HttpError: Invalid status code 429 Too Many Requests with message: {
+  "error": {
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.",
+    "type": "insufficient_quota",
+    "param": null,
+    "code": "insufficient_quota"
+  }
+}
+2026-01-13T23:17:58.559958Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-13T23:18:04.960956Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-13T23:18:10.710149Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-13T23:18:17.784170Z  WARN serve_inner: 773: response error id=4 error=ErrorData { code: ErrorCode(-32603), message: "Rig workflow failed: Agent failed after Reflexion recovery: Reflexion failed after 2 retries. Last error: Some(\"Agent execution failed: CompletionError: HttpError: Invalid status code 429 Too Many Requests with message: {\\n  \\\"error\\\": {\\n    \\\"message\\\": \\\"You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.\\\",\\n    \\\"type\\\": \\\"insufficient_quota\\\",\\n    \\\"param\\\": null,\\n    \\\"code\\\": \\\"insufficient_quota\\\"\\n  }\\n}\")", data: None }
+2026-01-13T23:18:17.825372Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T23:18:17.825469Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-13T23:18:17.825470Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T23:18:17.825471Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-13T23:18:17.825472Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T23:18:17.825473Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-13T23:18:17.825474Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T23:18:17.825474Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-13T23:18:17.825477Z  INFO serve_inner: 648: AutoAgents context_builder (tier=Medium)
+2026-01-13T23:18:17.825480Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T23:18:17.825505Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-13T23:18:17.825506Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T23:18:17.825507Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-13T23:18:17.825507Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T23:18:17.825508Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-13T23:18:17.825508Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T23:18:17.825509Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-13T23:18:17.835609Z  INFO serve_inner: 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-13T23:18:17.853780Z  INFO serve_inner: 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T23:18:17.894695Z  INFO serve_inner: 791: Project '/home/heefoo/Documents/code/OmniLisp' has 6297 indexed nodes available for analysis
+2026-01-13T23:18:18.019001Z  INFO serve_inner: 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T23:18:18.019021Z  INFO serve_inner: 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T23:18:18.019023Z  INFO serve_inner: 396: ✅ 'ollama' feature is ENABLED
+2026-01-13T23:18:18.019029Z  INFO serve_inner: 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T23:18:18.152941Z  INFO serve_inner: 408: 🔍 Checking Ollama availability...
+2026-01-13T23:18:18.153795Z  INFO serve_inner: 201: nomic-embed-text availability: true
+2026-01-13T23:18:18.153804Z  INFO serve_inner: 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T23:18:18.153808Z  INFO serve_inner: 418: ✅ ollama_provider successfully set!
+2026-01-13T23:18:18.153810Z  INFO serve_inner: 805: ✅ Shared EmbeddingGenerator initialized (dimension: 768, provider: ollama)
+2026-01-13T23:18:18.153815Z  INFO serve_inner: 142: GraphToolExecutor initialized with max_result_bytes: 256000 (0.3MB)
+2026-01-13T23:18:18.153818Z  INFO serve_inner: 825: Using agent architecture: Rig
+2026-01-13T23:18:18.153820Z  INFO serve_inner: 55: Starting Rig agent execution query=union type and function type registration flow constructors analysis_type=ContextBuilder history_len=0
+2026-01-13T23:18:18.163194Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-13T23:18:24.280726Z  INFO serve_inner: 106: Primary agent execution failed. Initiating Reflexion auto-recovery... error=Agent execution failed: CompletionError: HttpError: Invalid status code 429 Too Many Requests with message: {
+  "error": {
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.",
+    "type": "insufficient_quota",
+    "param": null,
+    "code": "insufficient_quota"
+  }
+}
+2026-01-13T23:18:24.280744Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-13T23:18:30.895390Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-13T23:18:37.732040Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-13T23:18:43.847515Z  WARN serve_inner: 773: response error id=5 error=ErrorData { code: ErrorCode(-32603), message: "Rig workflow failed: Agent failed after Reflexion recovery: Reflexion failed after 2 retries. Last error: Some(\"Agent execution failed: CompletionError: HttpError: Invalid status code 429 Too Many Requests with message: {\\n  \\\"error\\\": {\\n    \\\"message\\\": \\\"You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.\\\",\\n    \\\"type\\\": \\\"insufficient_quota\\\",\\n    \\\"param\\\": null,\\n    \\\"code\\\": \\\"insufficient_quota\\\"\\n  }\\n}\")", data: None }
+2026-01-13T23:22:20.381569Z  INFO serve_inner: 785: received notification notification=CancelledNotification(Notification { method: CancelledNotificationMethod, params: CancelledNotificationParam { request_id: Number(4), reason: Some("AbortError: This operation was aborted") }, extensions: Extensions })
+2026-01-13T23:22:20.381828Z  INFO serve_inner: 785: received notification notification=CancelledNotification(Notification { method: CancelledNotificationMethod, params: CancelledNotificationParam { request_id: Number(5), reason: Some("AbortError: This operation was aborted") }, extensions: Extensions })
+2026-01-13T23:23:18.007516Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-13T23:23:18.007631Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-13T23:23:18.007633Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-13T23:23:18.007634Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-13T23:23:18.007635Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-13T23:23:18.007641Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-13T23:23:18.007642Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-13T23:23:18.007643Z  INFO 623:    💬 LLM insights: enabled
+2026-01-13T23:23:18.007689Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-13T23:23:18.012427Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-13T23:23:18.012702Z  INFO 3776: 🗄️ Connecting to SurrealDB: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-13T23:23:18.012723Z  INFO 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-13T23:23:18.020891Z  INFO 239: client initialized
+2026-01-13T23:23:18.020920Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: None }), sampling: None, elicitation: None }, client_info: Implementation { name: "claude-code", title: None, version: "2.1.6", icons: None, website_url: None } })
+2026-01-13T23:23:18.031716Z  INFO 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T23:23:18.031738Z  INFO 3811: 🗄️ SurrealDB connection established: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-13T23:23:18.154574Z  INFO 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T23:23:18.154590Z  INFO 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T23:23:18.154591Z  INFO 396: ✅ 'ollama' feature is ENABLED
+2026-01-13T23:23:18.154599Z  INFO 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T23:23:18.288738Z  INFO 408: 🔍 Checking Ollama availability...
+2026-01-13T23:23:18.292031Z  INFO 201: nomic-embed-text availability: true
+2026-01-13T23:23:18.292040Z  INFO 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T23:23:18.292048Z  INFO 418: ✅ ollama_provider successfully set!
+2026-01-13T23:23:18.292051Z  INFO 787: Active embeddings: ollama (batch_size: 100, max_concurrent: 10)
+2026-01-13T23:23:18.292055Z  INFO 826: 🧭 Embedding dimension override: CODEGRAPH_EMBEDDING_DIMENSION=768 → Surreal column embedding_768
+2026-01-13T23:23:18.304373Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Daemon already running (PID file: "/home/heefoo/Documents/code/OmniLisp/.codegraph/daemon.pid")
+2026-01-14T04:53:32.851483Z  INFO serve_inner: 618: input stream terminated
+2026-01-14T04:53:32.851504Z  INFO serve_inner: 844: serve finished quit_reason=Closed
+2026-01-14T04:53:32.851544Z  WARN 219: Daemon stopped with error error=Daemon already running (PID file: "/home/heefoo/Documents/code/OmniLisp/.codegraph/daemon.pid")
+2026-01-14T04:55:56.716528Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-14T04:55:56.716646Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-14T04:55:56.716648Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-14T04:55:56.716649Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-14T04:55:56.716649Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-14T04:55:56.716654Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-14T04:55:56.716655Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-14T04:55:56.716655Z  INFO 623:    💬 LLM insights: enabled
+2026-01-14T04:55:56.716692Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-14T04:55:56.722361Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-14T04:55:56.722694Z  INFO 3776: 🗄️ Connecting to SurrealDB: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-14T04:55:56.722722Z  INFO 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-14T04:55:56.727100Z  INFO 239: client initialized
+2026-01-14T04:55:56.727127Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: None }), sampling: None, elicitation: None }, client_info: Implementation { name: "claude-code", title: None, version: "2.1.7", icons: None, website_url: None } })
+2026-01-14T04:55:56.746489Z  INFO 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-14T04:55:56.746524Z  INFO 3811: 🗄️ SurrealDB connection established: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-14T04:55:56.867971Z  INFO 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-14T04:55:56.867987Z  INFO 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-14T04:55:56.867987Z  INFO 396: ✅ 'ollama' feature is ENABLED
+2026-01-14T04:55:56.867995Z  INFO 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-14T04:55:57.001801Z  INFO 408: 🔍 Checking Ollama availability...
+2026-01-14T04:55:57.002960Z  INFO 201: nomic-embed-text availability: true
+2026-01-14T04:55:57.002969Z  INFO 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-14T04:55:57.002978Z  INFO 418: ✅ ollama_provider successfully set!
+2026-01-14T04:55:57.002980Z  INFO 787: Active embeddings: ollama (batch_size: 100, max_concurrent: 10)
+2026-01-14T04:55:57.002983Z  INFO 826: 🧭 Embedding dimension override: CODEGRAPH_EMBEDDING_DIMENSION=768 → Surreal column embedding_768
+2026-01-14T04:55:57.012512Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Daemon already running (PID file: "/home/heefoo/Documents/code/OmniLisp/.codegraph/daemon.pid")
+2026-01-14T05:02:52.700099Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-14T05:02:52.700188Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-14T05:02:52.700190Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-14T05:02:52.700191Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-14T05:02:52.700191Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-14T05:02:52.700195Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-14T05:02:52.700196Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-14T05:02:52.700196Z  INFO 623:    💬 LLM insights: enabled
+2026-01-14T05:02:52.700234Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-14T05:02:52.704439Z  INFO 239: client initialized
+2026-01-14T05:02:52.704458Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: None }), sampling: None, elicitation: None }, client_info: Implementation { name: "claude-code", title: None, version: "2.1.7", icons: None, website_url: None } })
+2026-01-14T05:02:52.705076Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-14T05:02:52.705365Z  INFO 3776: 🗄️ Connecting to SurrealDB: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-14T05:02:52.705385Z  INFO 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-14T05:02:52.724750Z  INFO 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-14T05:02:52.724779Z  INFO 3811: 🗄️ SurrealDB connection established: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-14T05:02:52.835938Z  INFO 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-14T05:02:52.835954Z  INFO 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-14T05:02:52.835955Z  INFO 396: ✅ 'ollama' feature is ENABLED
+2026-01-14T05:02:52.835965Z  INFO 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-14T05:02:52.954729Z  INFO 408: 🔍 Checking Ollama availability...
+2026-01-14T05:02:52.956791Z  INFO 201: nomic-embed-text availability: true
+2026-01-14T05:02:52.956799Z  INFO 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-14T05:02:52.956805Z  INFO 418: ✅ ollama_provider successfully set!
+2026-01-14T05:02:52.956806Z  INFO 787: Active embeddings: ollama (batch_size: 100, max_concurrent: 10)
+2026-01-14T05:02:52.956809Z  INFO 826: 🧭 Embedding dimension override: CODEGRAPH_EMBEDDING_DIMENSION=768 → Surreal column embedding_768
+2026-01-14T05:02:52.965986Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Daemon already running (PID file: "/home/heefoo/Documents/code/OmniLisp/.codegraph/daemon.pid")
+2026-01-14T05:07:58.412319Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-14T05:07:58.412414Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-14T05:07:58.412417Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-14T05:07:58.412418Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-14T05:07:58.412419Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-14T05:07:58.412420Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-14T05:07:58.412421Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-14T05:07:58.412421Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-14T05:07:58.412425Z  INFO serve_inner: 648: AutoAgents context_builder (tier=Medium)
+2026-01-14T05:07:58.412428Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-14T05:07:58.412453Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-14T05:07:58.412455Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-14T05:07:58.412455Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-14T05:07:58.412456Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-14T05:07:58.412457Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-14T05:07:58.412457Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-14T05:07:58.412458Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-14T05:07:58.421192Z  INFO serve_inner: 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-14T05:07:58.438281Z  INFO serve_inner: 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-14T05:07:58.475861Z  INFO serve_inner: 791: Project '/home/heefoo/Documents/code/OmniLisp' has 6297 indexed nodes available for analysis
+2026-01-14T05:07:58.582985Z  INFO serve_inner: 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-14T05:07:58.583003Z  INFO serve_inner: 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-14T05:07:58.583004Z  INFO serve_inner: 396: ✅ 'ollama' feature is ENABLED
+2026-01-14T05:07:58.583012Z  INFO serve_inner: 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-14T05:07:58.696850Z  INFO serve_inner: 408: 🔍 Checking Ollama availability...
+2026-01-14T05:07:58.697892Z  INFO serve_inner: 201: nomic-embed-text availability: true
+2026-01-14T05:07:58.697898Z  INFO serve_inner: 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-14T05:07:58.697902Z  INFO serve_inner: 418: ✅ ollama_provider successfully set!
+2026-01-14T05:07:58.697903Z  INFO serve_inner: 805: ✅ Shared EmbeddingGenerator initialized (dimension: 768, provider: ollama)
+2026-01-14T05:07:58.697908Z  INFO serve_inner: 142: GraphToolExecutor initialized with max_result_bytes: 256000 (0.3MB)
+2026-01-14T05:07:58.697912Z  INFO serve_inner: 825: Using agent architecture: Rig
+2026-01-14T05:07:58.697913Z  INFO serve_inner: 55: Starting Rig agent execution query=old array syntax handling in let and define for OmniLisp analysis_type=ContextBuilder history_len=0
+2026-01-14T05:07:58.706442Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-14T05:08:06.677218Z  INFO serve_inner: 106: Primary agent execution failed. Initiating Reflexion auto-recovery... error=Agent execution failed: CompletionError: HttpError: Invalid status code 429 Too Many Requests with message: {
+  "error": {
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.",
+    "type": "insufficient_quota",
+    "param": null,
+    "code": "insufficient_quota"
+  }
+}
+2026-01-14T05:08:06.677236Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-14T05:08:12.723092Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-14T05:08:18.985312Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-14T05:08:25.267305Z  WARN serve_inner: 773: response error id=3 error=ErrorData { code: ErrorCode(-32603), message: "Rig workflow failed: Agent failed after Reflexion recovery: Reflexion failed after 2 retries. Last error: Some(\"Agent execution failed: CompletionError: HttpError: Invalid status code 429 Too Many Requests with message: {\\n  \\\"error\\\": {\\n    \\\"message\\\": \\\"You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.\\\",\\n    \\\"type\\\": \\\"insufficient_quota\\\",\\n    \\\"param\\\": null,\\n    \\\"code\\\": \\\"insufficient_quota\\\"\\n  }\\n}\")", data: None }
+2026-01-14T05:08:37.135597Z  INFO serve_inner: 785: received notification notification=CancelledNotification(Notification { method: CancelledNotificationMethod, params: CancelledNotificationParam { request_id: Number(3), reason: Some("AbortError: This operation was aborted") }, extensions: Extensions })
+2026-01-14T05:15:52.866929Z  INFO 4132: Indexing single file: /home/heefoo/Documents/code/OmniLisp/csrc/codegen/codegen.c
+2026-01-14T05:15:52.915156Z  INFO 4149: Extracted 93 nodes and 2032 edges from /home/heefoo/Documents/code/OmniLisp/csrc/codegen/codegen.c
+2026-01-14T05:17:22.782490Z  INFO 632: Ollama embeddings complete: 93 nodes (160 chunks) in 89.87s (1.0 emb/s)
+2026-01-14T05:17:22.783463Z  INFO 4246: Persisting 1417 intra-file edges for /home/heefoo/Documents/code/OmniLisp/csrc/codegen/codegen.c
+2026-01-14T05:17:22.783469Z  INFO 4256: Successfully indexed file: /home/heefoo/Documents/code/OmniLisp/csrc/codegen/codegen.c (93 nodes)
+2026-01-14T05:17:22.783528Z  INFO 168: Batch 885fa1f7-80e5-40db-9092-3d87ecbd165d complete: 1 indexed, 0 deleted (89916 ms)
+2026-01-14T05:53:59.658078Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-14T05:53:59.658149Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-14T05:53:59.658150Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-14T05:53:59.658151Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-14T05:53:59.658151Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-14T05:53:59.658155Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-14T05:53:59.658155Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-14T05:53:59.658156Z  INFO 623:    💬 LLM insights: enabled
+2026-01-14T05:53:59.658187Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-14T05:53:59.662510Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-14T05:53:59.662736Z  INFO 3776: 🗄️ Connecting to SurrealDB: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-14T05:53:59.662749Z  INFO 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-14T05:53:59.662835Z  INFO 239: client initialized
+2026-01-14T05:53:59.662844Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: None }), sampling: None, elicitation: None }, client_info: Implementation { name: "claude-code", title: None, version: "2.1.7", icons: None, website_url: None } })
+2026-01-14T05:53:59.685807Z  INFO 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-14T05:53:59.685830Z  INFO 3811: 🗄️ SurrealDB connection established: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-14T05:53:59.792800Z  INFO 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-14T05:53:59.792814Z  INFO 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-14T05:53:59.792815Z  INFO 396: ✅ 'ollama' feature is ENABLED
+2026-01-14T05:53:59.792823Z  INFO 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-14T05:53:59.909512Z  INFO 408: 🔍 Checking Ollama availability...
+2026-01-14T05:53:59.910743Z  INFO 201: nomic-embed-text availability: true
+2026-01-14T05:53:59.910753Z  INFO 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-14T05:53:59.910760Z  INFO 418: ✅ ollama_provider successfully set!
+2026-01-14T05:53:59.910763Z  INFO 787: Active embeddings: ollama (batch_size: 100, max_concurrent: 10)
+2026-01-14T05:53:59.910766Z  INFO 826: 🧭 Embedding dimension override: CODEGRAPH_EMBEDDING_DIMENSION=768 → Surreal column embedding_768
+2026-01-14T05:53:59.920441Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Daemon already running (PID file: "/home/heefoo/Documents/code/OmniLisp/.codegraph/daemon.pid")
+2026-01-14T05:54:19.110032Z  INFO 599: 🔧 Loading CodeGraph configuration...
+2026-01-14T05:54:19.110179Z  INFO 613: ✅ Configuration loaded successfully
+2026-01-14T05:54:19.110181Z  INFO 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-14T05:54:19.110182Z  INFO 619:    🤖 Embedding provider: ollama
+2026-01-14T05:54:19.110183Z  INFO 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-14T05:54:19.110188Z  INFO 621:    📐 Embedding dimension: 768
+2026-01-14T05:54:19.110188Z  INFO 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-14T05:54:19.110189Z  INFO 623:    💬 LLM insights: enabled
+2026-01-14T05:54:19.110223Z  INFO 128: Background daemon started project=/home/heefoo/Documents/code/OmniLisp
+2026-01-14T05:54:19.115136Z  INFO 670: 🔧 Rayon threads capped to 4 (workers/env)
+2026-01-14T05:54:19.115430Z  INFO 3776: 🗄️ Connecting to SurrealDB: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-14T05:54:19.115459Z  INFO 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-14T05:54:19.119480Z  INFO 239: client initialized
+2026-01-14T05:54:19.119506Z  INFO serve_inner: 562: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-11-25"), capabilities: ClientCapabilities { experimental: None, roots: Some(RootsCapabilities { list_changed: Some(true) }), sampling: None, elicitation: None }, client_info: Implementation { name: "gemini-cli-mcp-client", title: None, version: "0.0.1", icons: None, website_url: None } })
+2026-01-14T05:54:19.157245Z  INFO 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-14T05:54:19.157275Z  INFO 3811: 🗄️ SurrealDB connection established: ws://localhost:3004/ namespace=ouroboros database=codegraph_experimental
+2026-01-14T05:54:19.274105Z  INFO 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-14T05:54:19.274121Z  INFO 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-14T05:54:19.274121Z  INFO 396: ✅ 'ollama' feature is ENABLED
+2026-01-14T05:54:19.274129Z  INFO 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-14T05:54:19.395635Z  INFO 408: 🔍 Checking Ollama availability...
+2026-01-14T05:54:19.396939Z  INFO 201: nomic-embed-text availability: true
+2026-01-14T05:54:19.396947Z  INFO 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-14T05:54:19.396957Z  INFO 418: ✅ ollama_provider successfully set!
+2026-01-14T05:54:19.396959Z  INFO 787: Active embeddings: ollama (batch_size: 100, max_concurrent: 10)
+2026-01-14T05:54:19.396961Z  INFO 826: 🧭 Embedding dimension override: CODEGRAPH_EMBEDDING_DIMENSION=768 → Surreal column embedding_768
+2026-01-14T05:54:19.405390Z ERROR 113: Daemon failed project=/home/heefoo/Documents/code/OmniLisp error=Daemon already running (PID file: "/home/heefoo/Documents/code/OmniLisp/.codegraph/daemon.pid")
+2026-01-14T06:52:34.359443Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-14T06:52:34.359546Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-14T06:52:34.359548Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-14T06:52:34.359549Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-14T06:52:34.359550Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-14T06:52:34.359552Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-14T06:52:34.359552Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-14T06:52:34.359553Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-14T06:52:34.359555Z  INFO serve_inner: 648: AutoAgents context_builder (tier=Medium)
+2026-01-14T06:52:34.359559Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-14T06:52:34.359584Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-14T06:52:34.359585Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-14T06:52:34.359586Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-14T06:52:34.359587Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-14T06:52:34.359587Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-14T06:52:34.359588Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-14T06:52:34.359588Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-14T06:52:34.368041Z  INFO serve_inner: 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-14T06:52:34.385107Z  INFO serve_inner: 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-14T06:52:34.423311Z  INFO serve_inner: 791: Project '/home/heefoo/Documents/code/OmniLisp' has 6390 indexed nodes available for analysis
+2026-01-14T06:52:34.533158Z  INFO serve_inner: 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-14T06:52:34.533176Z  INFO serve_inner: 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-14T06:52:34.533177Z  INFO serve_inner: 396: ✅ 'ollama' feature is ENABLED
+2026-01-14T06:52:34.533183Z  INFO serve_inner: 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-14T06:52:34.651736Z  INFO serve_inner: 408: 🔍 Checking Ollama availability...
+2026-01-14T06:52:34.653265Z  INFO serve_inner: 201: nomic-embed-text availability: true
+2026-01-14T06:52:34.653272Z  INFO serve_inner: 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-14T06:52:34.653275Z  INFO serve_inner: 418: ✅ ollama_provider successfully set!
+2026-01-14T06:52:34.653278Z  INFO serve_inner: 805: ✅ Shared EmbeddingGenerator initialized (dimension: 768, provider: ollama)
+2026-01-14T06:52:34.653284Z  INFO serve_inner: 142: GraphToolExecutor initialized with max_result_bytes: 256000 (0.3MB)
+2026-01-14T06:52:34.653289Z  INFO serve_inner: 825: Using agent architecture: Rig
+2026-01-14T06:52:34.653291Z  INFO serve_inner: 55: Starting Rig agent execution query=continuation implementation delimited control prompt resume analysis_type=ContextBuilder history_len=0
+2026-01-14T06:52:34.661291Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-14T06:52:43.032407Z  INFO serve_inner: 106: Primary agent execution failed. Initiating Reflexion auto-recovery... error=Agent execution failed: CompletionError: HttpError: Invalid status code 429 Too Many Requests with message: {
+  "error": {
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.",
+    "type": "insufficient_quota",
+    "param": null,
+    "code": "insufficient_quota"
+  }
+}
+2026-01-14T06:52:43.032425Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-14T06:52:48.394755Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-14T06:52:54.718768Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-14T06:53:01.874261Z  WARN serve_inner: 773: response error id=4 error=ErrorData { code: ErrorCode(-32603), message: "Rig workflow failed: Agent failed after Reflexion recovery: Reflexion failed after 2 retries. Last error: Some(\"Agent execution failed: CompletionError: HttpError: Invalid status code 429 Too Many Requests with message: {\\n  \\\"error\\\": {\\n    \\\"message\\\": \\\"You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.\\\",\\n    \\\"type\\\": \\\"insufficient_quota\\\",\\n    \\\"param\\\": null,\\n    \\\"code\\\": \\\"insufficient_quota\\\"\\n  }\\n}\")", data: None }
+2026-01-14T06:53:01.928732Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-14T06:53:01.928834Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-14T06:53:01.928836Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-14T06:53:01.928837Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-14T06:53:01.928839Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-14T06:53:01.928840Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-14T06:53:01.928840Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-14T06:53:01.928841Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-14T06:53:01.928843Z  INFO serve_inner: 648: AutoAgents architecture_analysis (tier=Medium)
+2026-01-14T06:53:01.928847Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-14T06:53:01.928881Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-14T06:53:01.928883Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-14T06:53:01.928883Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-14T06:53:01.928884Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-14T06:53:01.928885Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-14T06:53:01.928885Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-14T06:53:01.928886Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-14T06:53:01.938113Z  INFO serve_inner: 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-14T06:53:01.957666Z  INFO serve_inner: 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-14T06:53:01.997836Z  INFO serve_inner: 791: Project '/home/heefoo/Documents/code/OmniLisp' has 6390 indexed nodes available for analysis
+2026-01-14T06:53:02.120984Z  INFO serve_inner: 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-14T06:53:02.121004Z  INFO serve_inner: 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-14T06:53:02.121005Z  INFO serve_inner: 396: ✅ 'ollama' feature is ENABLED
+2026-01-14T06:53:02.121012Z  INFO serve_inner: 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-14T06:53:02.255549Z  INFO serve_inner: 408: 🔍 Checking Ollama availability...
+2026-01-14T06:53:02.257015Z  INFO serve_inner: 201: nomic-embed-text availability: true
+2026-01-14T06:53:02.257024Z  INFO serve_inner: 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-14T06:53:02.257027Z  INFO serve_inner: 418: ✅ ollama_provider successfully set!
+2026-01-14T06:53:02.257029Z  INFO serve_inner: 805: ✅ Shared EmbeddingGenerator initialized (dimension: 768, provider: ollama)
+2026-01-14T06:53:02.257037Z  INFO serve_inner: 142: GraphToolExecutor initialized with max_result_bytes: 256000 (0.3MB)
+2026-01-14T06:53:02.257042Z  INFO serve_inner: 825: Using agent architecture: Rig
+2026-01-14T06:53:02.257044Z  INFO serve_inner: 55: Starting Rig agent execution query=continuation fiber effect system architecture analysis_type=ArchitectureAnalysis history_len=0
+2026-01-14T06:53:02.257053Z  INFO serve_inner: 149: Selecting LATS architecture for complex analysis: ArchitectureAnalysis
+2026-01-14T06:53:02.265674Z  INFO serve_inner: 196: Starting LATS execution for query: continuation fiber effect system architecture
+2026-01-14T06:53:34.648635Z  INFO serve_inner: 142: Rig agent execution completed duration_ms=32391 tool_calls=0 history_len=1
+2026-01-14T06:53:34.648664Z  WARN serve_inner: 1003: Failed to parse ArchitectureAnalysisOutput: expected value at line 1 column 1
+2026-01-14T06:56:49.655341Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-14T06:56:49.655441Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-14T06:56:49.655442Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-14T06:56:49.655443Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-14T06:56:49.655444Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-14T06:56:49.655446Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-14T06:56:49.655447Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-14T06:56:49.655447Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-14T06:56:49.655449Z  INFO serve_inner: 648: AutoAgents context_builder (tier=Medium)
+2026-01-14T06:56:49.655453Z  INFO serve_inner: 599: 🔧 Loading CodeGraph configuration...
+2026-01-14T06:56:49.655482Z  INFO serve_inner: 613: ✅ Configuration loaded successfully
+2026-01-14T06:56:49.655483Z  INFO serve_inner: 615:    📄 Config file: /home/heefoo/.codegraph/config.toml
+2026-01-14T06:56:49.655483Z  INFO serve_inner: 619:    🤖 Embedding provider: ollama
+2026-01-14T06:56:49.655484Z  INFO serve_inner: 620:    🔧 Embedding model: Some("nomic-embed-text")
+2026-01-14T06:56:49.655485Z  INFO serve_inner: 621:    📐 Embedding dimension: 768
+2026-01-14T06:56:49.655485Z  INFO serve_inner: 622:    🌐 Ollama URL: http://localhost:11434
+2026-01-14T06:56:49.655486Z  INFO serve_inner: 623:    💬 LLM insights: enabled
+2026-01-14T06:56:49.664265Z  INFO serve_inner: 105: Initializing SurrealDB storage with connection: ws://localhost:3004
+2026-01-14T06:56:49.683180Z  INFO serve_inner: 150: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-14T06:56:49.725111Z  INFO serve_inner: 791: Project '/home/heefoo/Documents/code/OmniLisp' has 6390 indexed nodes available for analysis
+2026-01-14T06:56:49.853608Z  INFO serve_inner: 385: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-14T06:56:49.853629Z  INFO serve_inner: 393: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-14T06:56:49.853630Z  INFO serve_inner: 396: ✅ 'ollama' feature is ENABLED
+2026-01-14T06:56:49.853637Z  INFO serve_inner: 400: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-14T06:56:50.004156Z  INFO serve_inner: 408: 🔍 Checking Ollama availability...
+2026-01-14T06:56:50.005566Z  INFO serve_inner: 201: nomic-embed-text availability: true
+2026-01-14T06:56:50.005575Z  INFO serve_inner: 412: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-14T06:56:50.005578Z  INFO serve_inner: 418: ✅ ollama_provider successfully set!
+2026-01-14T06:56:50.005581Z  INFO serve_inner: 805: ✅ Shared EmbeddingGenerator initialized (dimension: 768, provider: ollama)
+2026-01-14T06:56:50.005588Z  INFO serve_inner: 142: GraphToolExecutor initialized with max_result_bytes: 256000 (0.3MB)
+2026-01-14T06:56:50.005592Z  INFO serve_inner: 825: Using agent architecture: Rig
+2026-01-14T06:56:50.005594Z  INFO serve_inner: 55: Starting Rig agent execution query=continuation fiber effect handler integration with region memory management codegen analysis_type=ContextBuilder history_len=0
+2026-01-14T06:56:50.018240Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-14T06:56:56.163274Z  INFO serve_inner: 106: Primary agent execution failed. Initiating Reflexion auto-recovery... error=Agent execution failed: CompletionError: HttpError: Invalid status code 429 Too Many Requests with message: {
+  "error": {
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.",
+    "type": "insufficient_quota",
+    "param": null,
+    "code": "insufficient_quota"
+  }
+}
+2026-01-14T06:56:56.163293Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-14T06:57:01.557344Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-14T06:57:06.740417Z  INFO serve_inner: 343: Current conversation depth: 1/5
+2026-01-14T06:57:11.877213Z  WARN serve_inner: 773: response error id=6 error=ErrorData { code: ErrorCode(-32603), message: "Rig workflow failed: Agent failed after Reflexion recovery: Reflexion failed after 2 retries. Last error: Some(\"Agent execution failed: CompletionError: HttpError: Invalid status code 429 Too Many Requests with message: {\\n  \\\"error\\\": {\\n    \\\"message\\\": \\\"You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.\\\",\\n    \\\"type\\\": \\\"insufficient_quota\\\",\\n    \\\"param\\\": null,\\n    \\\"code\\\": \\\"insufficient_quota\\\"\\n  }\\n}\")", data: None }
+2026-01-14T06:57:34.876321Z  INFO serve_inner: 785: received notification notification=CancelledNotification(Notification { method: CancelledNotificationMethod, params: CancelledNotificationParam { request_id: Number(4), reason: Some("AbortError: This operation was aborted") }, extensions: Extensions })
+2026-01-14T06:57:34.876354Z  INFO serve_inner: 785: received notification notification=CancelledNotification(Notification { method: CancelledNotificationMethod, params: CancelledNotificationParam { request_id: Number(5), reason: Some("AbortError: This operation was aborted") }, extensions: Extensions })
+2026-01-14T06:57:34.876358Z  INFO serve_inner: 785: received notification notification=CancelledNotification(Notification { method: CancelledNotificationMethod, params: CancelledNotificationParam { request_id: Number(6), reason: Some("AbortError: This operation was aborted") }, extensions: Extensions })

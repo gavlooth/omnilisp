@@ -1,0 +1,97 @@
+2026-01-13T15:29:22.413638Z  INFO codegraph_mcp::indexer: 🔧 Rayon threads capped to 12 (workers/env)
+2026-01-13T15:29:22.414005Z  INFO codegraph_mcp::indexer: 🗄️ Connecting to SurrealDB: ws://127.0.0.1:3004/ namespace=codegraph database=main
+2026-01-13T15:29:22.414031Z  INFO codegraph_graph::surrealdb_storage: Initializing SurrealDB storage with connection: ws://127.0.0.1:3004
+2026-01-13T15:29:22.473596Z  INFO codegraph_graph::surrealdb_storage: SurrealDB storage initialized successfully (schema management disabled)
+2026-01-13T15:29:22.473637Z  INFO codegraph_mcp::indexer: 🗄️ SurrealDB connection established: ws://127.0.0.1:3004/ namespace=codegraph database=main
+2026-01-13T15:29:22.566461Z  INFO codegraph_vector::embedding: 🔍 EmbeddingGenerator::with_config called with provider='ollama', model=Some("nomic-embed-text"), dimension=768
+2026-01-13T15:29:22.566484Z  INFO codegraph_vector::embedding: 🎯 Provider matches 'ollama', attempting to initialize...
+2026-01-13T15:29:22.566486Z  INFO codegraph_vector::embedding: ✅ 'ollama' feature is ENABLED
+2026-01-13T15:29:22.566496Z  INFO codegraph_vector::embedding: 🔧 Created OllamaEmbeddingConfig: model='nomic-embed-text', url='http://localhost:11434'
+2026-01-13T15:29:22.670812Z  INFO codegraph_vector::embedding: 🔍 Checking Ollama availability...
+2026-01-13T15:29:22.675243Z  INFO codegraph_vector::ollama_embedding_provider: nomic-embed-text availability: true
+2026-01-13T15:29:22.675270Z  INFO codegraph_vector::embedding: ✅ Ollama nomic-embed-text available for embeddings (from config)
+2026-01-13T15:29:22.675285Z  INFO codegraph_vector::embedding: ✅ ollama_provider successfully set!
+2026-01-13T15:29:22.675291Z  INFO codegraph_mcp::indexer: Active embeddings: ollama (batch_size: 128, max_concurrent: 10)
+2026-01-13T15:29:22.675298Z  INFO codegraph_mcp::indexer: 🧭 Embedding dimension resolved from provider (ollama): 768 → Surreal column embedding_768
+2026-01-13T15:29:22.675317Z  INFO codegraph_mcp::indexer: Starting project indexing: "."
+2026-01-13T15:29:22.675333Z  INFO codegraph_mcp::indexer: 🗄️ SurrealDB (pre-parse): target=ws://127.0.0.1:3004/ namespace=codegraph database=main auth=credentials configured
+2026-01-13T15:29:22.678954Z  INFO codegraph_mcp::indexer: 📊 Project already indexed, checking for file changes...
+2026-01-13T15:29:22.678976Z  INFO codegraph_parser::file_collect: Collecting source files from: "."
+2026-01-13T15:29:22.680771Z  INFO codegraph_parser::file_collect: File collection complete: 41 files found, 41 passed filters
+2026-01-13T15:29:22.683143Z  INFO codegraph_mcp::indexer: 📈 Change summary: 5 added, 1 modified, 0 deleted, 35 unchanged
+2026-01-13T15:29:22.683161Z  INFO codegraph_mcp::indexer: 🔄 Incrementally indexing 6 changed files (delete-then-insert semantics)
+2026-01-13T15:29:22.683171Z  INFO codegraph_mcp::indexer: 🧭 Indexing tier: Fast | analyzers: build_context=false lsp=off enrichment=false module_linking=false dataflow=false docs_contracts=false architecture=false
+2026-01-13T15:29:22.684208Z  INFO codegraph_mcp::indexer: 🧹 Removing existing nodes/edges/file_metadata for changed files
+2026-01-13T15:29:22.684330Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: ./CODEGRAPH_DEBUG_REPORT.md
+2026-01-13T15:29:22.684339Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: ./codegraph.service
+2026-01-13T15:29:22.684347Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: ./UNWIRED_FEATURES_REPORT.md
+2026-01-13T15:29:22.684409Z  WARN codegraph_mcp::estimation: Failed to parse file: Parse error: Unknown file type: ./history.txt
+2026-01-13T15:29:22.685321Z  INFO codegraph_mcp::estimation: 🌳 UNIFIED AST EXTRACTION COMPLETE:
+2026-01-13T15:29:22.685324Z  INFO codegraph_mcp::estimation:    📊 Files processed: 2/6 (33.3% success rate)
+2026-01-13T15:29:22.685327Z  INFO codegraph_mcp::estimation:    🌳 Semantic nodes extracted: 4 (functions, structs, classes, imports, etc.)
+2026-01-13T15:29:22.685329Z  INFO codegraph_mcp::estimation:    🔗 Code relationships found: 4 (function calls, imports, dependencies)
+2026-01-13T15:29:22.685349Z  INFO codegraph_mcp::estimation:    ⚡ Processing performance: 1877.8 files/s | 0 lines/s
+2026-01-13T15:29:22.685352Z  INFO codegraph_mcp::estimation:    🎯 Extraction efficiency: 2.0 nodes/file | 2.0 edges/file
+2026-01-13T15:29:22.685355Z  WARN codegraph_mcp::estimation:    ⚠️ Parse failures: 4 files failed TreeSitter analysis
+2026-01-13T15:29:22.685360Z  INFO codegraph_mcp::indexer: 🧹 Tier edge filter removed 2 edges (tier: Fast)
+2026-01-13T15:29:22.691937Z  INFO codegraph_mcp::indexer: 🌳 TreeSitter AST parsing results:
+2026-01-13T15:29:22.691964Z  INFO codegraph_mcp::indexer:    📊 Semantic nodes extracted: 4 (functions, structs, classes, etc.)
+2026-01-13T15:29:22.691970Z  INFO codegraph_mcp::indexer:    🔗 Code relationships extracted: 2 (calls, imports, dependencies)
+2026-01-13T15:29:22.691978Z  INFO codegraph_mcp::indexer:    📈 Extraction efficiency: 2.0 nodes/file | 1.0 edges/file
+2026-01-13T15:29:22.691986Z  INFO codegraph_mcp::indexer:    🎯 Sample nodes: [SharedStr("json"), SharedStr("."), SharedStr("sys")]
+2026-01-13T15:29:22.692008Z  INFO codegraph_mcp::indexer: 🗄️ SurrealDB (post-parse): target=ws://127.0.0.1:3004/ namespace=codegraph database=main auth=credentials configured
+2026-01-13T15:29:22.701556Z  INFO codegraph_mcp::indexer: 🗄️ SurrealDB nodes persisted: 26 (expected ≈ 4)
+2026-01-13T15:29:22.701635Z  INFO codegraph_mcp::indexer:    ⚙️ Effective embedding batch size: 128 (CODEGRAPH_EMBEDDINGS_BATCH_SIZE clamped to 512 for DB writes)
+2026-01-13T15:29:22.701642Z  INFO codegraph_mcp::indexer: 💾 Starting semantic embedding generation:
+2026-01-13T15:29:22.701647Z  INFO codegraph_mcp::indexer:    🤖 Provider: ollama (768-dimensional embeddings)
+2026-01-13T15:29:22.701651Z  INFO codegraph_mcp::indexer:    🗄️ SurrealDB column: embedding_768
+2026-01-13T15:29:22.701656Z  INFO codegraph_mcp::indexer:    📊 Nodes to embed: 4 semantic entities
+2026-01-13T15:29:22.701726Z  INFO codegraph_mcp::indexer:    ⚡ Batch size: 128 (optimized for 78GB system)
+2026-01-13T15:29:22.701732Z  INFO codegraph_mcp::indexer:    🎯 Target: Enable similarity search and AI-powered analysis
+2026-01-13T15:29:23.935579Z  INFO codegraph_mcp::indexer: 🧩 SurrealDB chunks persisted: 16766 (expected ≈ 4)
+2026-01-13T15:29:23.935603Z  INFO codegraph_mcp::indexer: 💾 Semantic embedding generation results:
+2026-01-13T15:29:23.935607Z  INFO codegraph_mcp::indexer:    🎯 Vector search enabled: 4 nodes embedded for similarity matching
+2026-01-13T15:29:23.935611Z  INFO codegraph_mcp::indexer:    📐 Embedding dimensions: 768
+2026-01-13T15:29:23.935615Z  INFO codegraph_mcp::indexer:    🤖 Provider performance: ollama with batch optimization
+2026-01-13T15:29:23.935618Z  INFO codegraph_mcp::indexer:    🔍 Capabilities unlocked: Vector search, semantic analysis, AI-powered tools
+2026-01-13T15:29:23.935622Z  INFO codegraph_mcp::indexer: 🔧 Preserving working ONNX embedder session for AI semantic matching
+2026-01-13T15:29:23.935625Z  INFO codegraph_mcp::indexer: Vector indexing handled by SurrealDB; local FAISS generation removed
+2026-01-13T15:29:23.935677Z  INFO codegraph_mcp::indexer: 🔗 Starting dependency relationship storage:
+2026-01-13T15:29:23.935682Z  INFO codegraph_mcp::indexer:    📊 Raw relationships extracted: 2 (calls, imports, dependencies)
+2026-01-13T15:29:23.935687Z  INFO codegraph_mcp::indexer:    🎯 Symbol resolution map: 10 unique symbols available
+2026-01-13T15:29:23.935691Z  INFO codegraph_mcp::indexer:    🧠 AI-enhanced resolution: Semantic similarity feature active
+2026-01-13T15:29:23.935695Z  INFO codegraph_mcp::indexer:    🔍 Resolution methods: Exact match → Simple name → Case variants → AI similarity
+2026-01-13T15:29:23.935700Z  INFO codegraph_mcp::indexer:    🚀 M4 Max optimization: Parallel processing with bulk database operations
+2026-01-13T15:29:23.935707Z  INFO codegraph_mcp::indexer: ⚡ Parallel processing: 1 edge chunks across 22 cores
+2026-01-13T15:29:23.935735Z  INFO codegraph_mcp::indexer: 🚀 INITIALIZING REVOLUTIONARY 2-PHASE AI SEMANTIC MATCHING
+2026-01-13T15:29:23.935739Z  INFO codegraph_mcp::indexer: 🔧 Phase 1: Pre-computing embeddings for 10 known symbols
+2026-01-13T15:29:23.935743Z  INFO codegraph_mcp::indexer: 🧠 Pre-computing symbol embeddings for M4 Max AI optimization
+2026-01-13T15:29:23.935747Z  INFO codegraph_mcp::indexer: 🔧 DEBUG: precompute_symbol_embeddings called with 10 symbols
+2026-01-13T15:29:23.935753Z  INFO codegraph_mcp::indexer: 📊 Selected 10 top symbols for AI embedding pre-computation
+2026-01-13T15:29:23.935757Z  INFO codegraph_mcp::indexer: 🤖 Using configured embedder (ollama) for AI semantic matching
+2026-01-13T15:29:23.935761Z  INFO codegraph_mcp::indexer: ✅ Using working embedder session (guaranteed real embeddings)
+2026-01-13T15:29:23.935767Z  INFO codegraph_mcp::indexer: ⚡ Embedding batch size: 128 symbols (1 batches, max 10 concurrent)
+2026-01-13T15:29:24.088995Z  INFO codegraph_mcp::indexer: 🧠 Pre-computed 10 symbol embeddings for fast AI resolution
+2026-01-13T15:29:24.089013Z  INFO codegraph_mcp::indexer: ✅ AI semantic matching ready with 100.0% coverage (10/10)
+2026-01-13T15:29:24.089017Z  INFO codegraph_mcp::indexer: 🤖 AI SEMANTIC MATCHING ACTIVATED: First call with 10 pre-computed embeddings
+2026-01-13T15:29:24.089022Z  INFO codegraph_mcp::indexer: ✅ Known symbol embeddings ready: 10 pre-computed
+2026-01-13T15:29:24.089026Z  INFO codegraph_mcp::indexer: 🔧 Phase 2: Pre-computing embeddings for unresolved edge targets
+2026-01-13T15:29:24.089031Z  INFO codegraph_mcp::indexer: 📊 Discovered 0 unique unresolved symbols for AI embedding
+2026-01-13T15:29:24.089036Z  INFO codegraph_mcp::indexer: symbol resolver: embeddings prepared (known=10, unresolved=0, total=10)
+2026-01-13T15:29:24.123837Z  INFO codegraph_mcp::indexer: 🔗 M4 MAX PARALLEL PROCESSING RESULTS:
+2026-01-13T15:29:24.123854Z  INFO codegraph_mcp::indexer:    ✅ Successfully stored: 2 edges (100.0% of extracted relationships)
+2026-01-13T15:29:24.123860Z  INFO codegraph_mcp::indexer:    🎯 Exact matches: 2 (direct symbol found)
+2026-01-13T15:29:24.123865Z  INFO codegraph_mcp::indexer:    🔄 Pattern matches: 0 (simplified/cleaned symbols)
+2026-01-13T15:29:24.123870Z  INFO codegraph_mcp::indexer:    🧠 AI semantic matches: 0 (similarity-based resolution)
+2026-01-13T15:29:24.123874Z  INFO codegraph_mcp::indexer:    ❌ Unresolved: 0 (external dependencies/dynamic calls)
+2026-01-13T15:29:24.123883Z  INFO codegraph_mcp::indexer:    ⚡ M4 Max performance: 23321 edges/s (22 cores utilized)
+2026-01-13T15:29:24.123890Z  INFO codegraph_mcp::indexer:    🚀 Parallel efficiency: 1 chunks processed across 22 cores
+2026-01-13T15:29:24.123895Z  INFO codegraph_mcp::indexer: 🎉 EXCELLENT: 100.0% resolution rate achieved!
+2026-01-13T15:29:24.367951Z  INFO codegraph_mcp::indexer: 🗄️ SurrealDB edges persisted: 56845 (expected ≈ 2)
+2026-01-13T15:29:24.368825Z  INFO codegraph_mcp::indexer: 💾 Updating file metadata for change tracking
+2026-01-13T15:29:24.369022Z  INFO codegraph_mcp::indexer: 💾 Persisted metadata for 6 files
+2026-01-13T15:29:24.373372Z  INFO codegraph_mcp::indexer: 🎉 INDEXING COMPLETE
+2026-01-13T15:29:24.373389Z  INFO codegraph_mcp::indexer: 📂 Files 2 (4 skipped) | Lines 2 | Time 1.7s
+2026-01-13T15:29:24.373397Z  INFO codegraph_mcp::indexer: 🌳 Graph coverage: nodes 4 | edges 2 | nodes/file 2.0 | edges/file 1.0 | resolved 100.0%
+2026-01-13T15:29:24.373403Z  INFO codegraph_mcp::indexer: 🧠 Embeddings: chunks 4 | dim 768 | provider ollama | per-node 1.0
+2026-01-13T15:29:24.373409Z  INFO codegraph_mcp::indexer: ⚡ Throughput: 1.2 files/s | 2.4 nodes/s | 1.2 edges/s
