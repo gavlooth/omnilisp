@@ -276,6 +276,298 @@ static void register_symbol(CodeGenContext* ctx, const char* name, const char* c
     ctx->symbols.count++;
 }
 
+/* ============== Closure Capture Collection ============== */
+
+/*
+ * Issue 1 P2: Closure Capture Collection
+ *
+ * This section implements capture collection for proper closure semantics.
+ * When a lambda references variables from outer scopes, those variables
+ * become "captures" that must be explicitly passed to the closure.
+ *
+ * Without proper captures, closures that outlive their defining scope
+ * would reference dangling memory (use-after-free).
+ */
+
+/* Structure to hold collected captures during AST traversal */
+typedef struct CaptureList {
+    char** names;       /* Lisp symbol names */
+    char** c_names;     /* Mangled C names */
+    size_t count;
+    size_t capacity;
+} CaptureList;
+
+static void capture_list_init(CaptureList* list) {
+    list->names = NULL;
+    list->c_names = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+static void capture_list_free(CaptureList* list) {
+    for (size_t i = 0; i < list->count; i++) {
+        free(list->names[i]);
+        free(list->c_names[i]);
+    }
+    free(list->names);
+    free(list->c_names);
+}
+
+static bool capture_list_contains(CaptureList* list, const char* name) {
+    for (size_t i = 0; i < list->count; i++) {
+        if (strcmp(list->names[i], name) == 0) return true;
+    }
+    return false;
+}
+
+static void capture_list_add(CaptureList* list, const char* name, const char* c_name) {
+    if (capture_list_contains(list, name)) return;  /* Already captured */
+
+    if (list->count >= list->capacity) {
+        list->capacity = list->capacity ? list->capacity * 2 : 8;
+        list->names = realloc(list->names, list->capacity * sizeof(char*));
+        list->c_names = realloc(list->c_names, list->capacity * sizeof(char*));
+    }
+    list->names[list->count] = strdup(name);
+    list->c_names[list->count] = strdup(c_name);
+    list->count++;
+}
+
+/* Check if a symbol name is a parameter of the lambda */
+static bool is_lambda_param(OmniValue* params, const char* name) {
+    if (!params || !name) return false;
+
+    if (omni_is_cell(params)) {
+        /* List-style: (lambda (x y) body) */
+        OmniValue* p = params;
+        while (!omni_is_nil(p) && omni_is_cell(p)) {
+            OmniValue* param = omni_car(p);
+            if (omni_is_sym(param) && strcmp(param->str_val, name) == 0) {
+                return true;
+            }
+            p = omni_cdr(p);
+        }
+    } else if (omni_is_array(params)) {
+        /* Slot syntax: (fn [x y] body) */
+        size_t len = omni_array_len(params);
+        for (size_t i = 0; i < len; i++) {
+            OmniValue* param = omni_array_get(params, i);
+            if (omni_is_type_lit(param)) continue;
+            if (omni_is_sym(param) && strcmp(param->str_val, name) == 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* Forward declaration for recursive collect */
+static void collect_free_vars_expr(OmniValue* expr, OmniValue* params,
+                                   OmniValue* excluded_params,
+                                   CodeGenContext* outer_ctx, CaptureList* captures);
+
+/* Collect free variables from a list of expressions.
+ * excluded_params: chain of all lambda params in scope (linked via cons cells)
+ */
+static void collect_free_vars_list(OmniValue* list, OmniValue* params,
+                                   OmniValue* excluded_params,
+                                   CodeGenContext* outer_ctx, CaptureList* captures) {
+    while (!omni_is_nil(list) && omni_is_cell(list)) {
+        collect_free_vars_expr(omni_car(list), params, excluded_params, outer_ctx, captures);
+        list = omni_cdr(list);
+    }
+}
+
+/* Check if a name is in the excluded params chain */
+static bool is_excluded_param(OmniValue* excluded_params, const char* name) {
+    while (!omni_is_nil(excluded_params) && omni_is_cell(excluded_params)) {
+        OmniValue* param_list = omni_car(excluded_params);
+        if (is_lambda_param(param_list, name)) return true;
+        excluded_params = omni_cdr(excluded_params);
+    }
+    return false;
+}
+
+/* Collect free variables from an expression
+ *
+ * A free variable is one that:
+ * 1. Is a symbol reference
+ * 2. Is NOT a parameter of this lambda OR any enclosing lambda (excluded_params)
+ * 3. IS in the outer scope's symbol table (outer_ctx)
+ *
+ * This identifies variables that need to be captured.
+ *
+ * excluded_params: linked list of param lists from enclosing lambdas.
+ * This prevents capturing variables that are params of intermediate lambdas.
+ */
+static void collect_free_vars_expr(OmniValue* expr, OmniValue* params,
+                                   OmniValue* excluded_params,
+                                   CodeGenContext* outer_ctx, CaptureList* captures) {
+    if (!expr) return;
+
+    switch (expr->tag) {
+        case OMNI_SYM: {
+            const char* name = expr->str_val;
+            /* Skip if it's a parameter of current lambda */
+            if (is_lambda_param(params, name)) return;
+            /* Skip if it's a parameter of any enclosing lambda in the chain */
+            if (is_excluded_param(excluded_params, name)) return;
+            /* Skip if it's a primitive/built-in (not in symbol table) */
+            const char* c_name = lookup_symbol(outer_ctx, name);
+            if (!c_name) return;
+            /* This is a free variable - add to captures */
+            capture_list_add(captures, name, c_name);
+            break;
+        }
+
+        case OMNI_CELL: {
+            /* List - could be a function call or special form */
+            OmniValue* first = omni_car(expr);
+
+            /* Handle nested lambda forms - need transitive capture collection */
+            if (omni_is_sym(first)) {
+                const char* sym = first->str_val;
+                if (strcmp(sym, "lambda") == 0 || strcmp(sym, "fn") == 0 ||
+                    strcmp(sym, "λ") == 0) {
+                    /* Issue 1 P2: Transitive captures.
+                     * When a nested lambda references a variable from an outer scope,
+                     * we need to capture it in this lambda too, to pass it along.
+                     *
+                     * Key insight: We extend outer_ctx with current lambda's params
+                     * so nested lambdas can find them. BUT we also add ALL params
+                     * (current + nested) to excluded_params so we don't capture
+                     * params that belong to intermediate lambdas.
+                     *
+                     * Example: (fn [start] (fn [step] (fn [] (+ start step))))
+                     * - outer collects for middle: finds `start` needed, but `start`
+                     *   is outer's param → excluded → not captured by outer
+                     * - middle collects for inner: finds `start`, `step` needed
+                     *   - `step` is middle's param → excluded → not captured by middle
+                     *   - `start` found in extended_ctx → captured by middle
+                     */
+                    OmniValue* nested_args = omni_cdr(expr);
+                    if (!omni_is_nil(nested_args)) {
+                        OmniValue* nested_params = omni_car(nested_args);
+                        OmniValue* nested_body = omni_cdr(nested_args);
+
+                        /* Create extended context with current lambda's params.
+                         * This allows nested lambdas to find our params as capturable vars.
+                         */
+                        CodeGenContext* extended_ctx = omni_codegen_new_buffer();
+                        /* Copy existing symbols from outer_ctx */
+                        for (size_t i = 0; i < outer_ctx->symbols.count; i++) {
+                            register_symbol(extended_ctx, outer_ctx->symbols.names[i],
+                                           outer_ctx->symbols.c_names[i]);
+                        }
+                        /* Add current lambda's params to extended context */
+                        if (omni_is_array(params)) {
+                            size_t len = omni_array_len(params);
+                            for (size_t i = 0; i < len; i++) {
+                                OmniValue* param = omni_array_get(params, i);
+                                if (omni_is_type_lit(param)) continue;
+                                if (omni_is_sym(param)) {
+                                    char* c_name = omni_codegen_mangle(param->str_val);
+                                    register_symbol(extended_ctx, param->str_val, c_name);
+                                    free(c_name);
+                                }
+                            }
+                        } else if (omni_is_cell(params)) {
+                            OmniValue* p = params;
+                            while (!omni_is_nil(p) && omni_is_cell(p)) {
+                                OmniValue* param = omni_car(p);
+                                if (omni_is_sym(param)) {
+                                    char* c_name = omni_codegen_mangle(param->str_val);
+                                    register_symbol(extended_ctx, param->str_val, c_name);
+                                    free(c_name);
+                                }
+                                p = omni_cdr(p);
+                            }
+                        }
+
+                        /* Build extended excluded_params chain:
+                         * (current_params . (nested_params . existing_excluded))
+                         * This ensures we don't capture params from any lambda in chain.
+                         */
+                        OmniValue* new_excluded = omni_new_cell(nested_params,
+                            omni_new_cell(params, excluded_params));
+
+                        /* Recurse with extended context and exclusions */
+                        collect_free_vars_list(nested_body, nested_params,
+                                              new_excluded, extended_ctx, captures);
+
+                        omni_codegen_free(extended_ctx);
+                    }
+                    return;
+                }
+                /* Handle let bindings specially - don't capture the bound vars */
+                if (strcmp(sym, "let") == 0) {
+                    OmniValue* args = omni_cdr(expr);
+                    if (!omni_is_nil(args)) {
+                        OmniValue* bindings = omni_car(args);
+                        OmniValue* body = omni_cdr(args);
+                        /* Process binding values (they can reference captures) */
+                        if (omni_is_array(bindings)) {
+                            size_t len = omni_array_len(bindings);
+                            for (size_t i = 1; i < len; i += 2) {
+                                collect_free_vars_expr(omni_array_get(bindings, i),
+                                                       params, excluded_params,
+                                                       outer_ctx, captures);
+                            }
+                        }
+                        /* Process body */
+                        collect_free_vars_list(body, params, excluded_params,
+                                              outer_ctx, captures);
+                    }
+                    return;
+                }
+            }
+
+            /* Recurse into all elements */
+            collect_free_vars_list(expr, params, excluded_params, outer_ctx, captures);
+            break;
+        }
+
+        case OMNI_ARRAY: {
+            /* Array literal - recurse into elements */
+            size_t len = omni_array_len(expr);
+            for (size_t i = 0; i < len; i++) {
+                collect_free_vars_expr(omni_array_get(expr, i), params, excluded_params,
+                                      outer_ctx, captures);
+            }
+            break;
+        }
+
+        default:
+            /* Literals (int, float, string, etc.) have no free variables */
+            break;
+    }
+}
+
+/*
+ * collect_lambda_captures - Collect all captured variables from a lambda
+ *
+ * Returns a CaptureList containing all outer-scope variables referenced
+ * in the lambda body that are not parameters.
+ */
+static CaptureList collect_lambda_captures(OmniValue* lambda_expr, CodeGenContext* outer_ctx) {
+    CaptureList captures;
+    capture_list_init(&captures);
+
+    if (!lambda_expr) return captures;
+
+    /* Get parameters and body */
+    OmniValue* args = omni_cdr(lambda_expr);
+    OmniValue* params = omni_car(args);
+    OmniValue* body = omni_cdr(args);
+
+    /* Collect free variables from body.
+     * excluded_params starts as NULL - only the current lambda's params are filtered.
+     */
+    collect_free_vars_list(body, params, NULL, outer_ctx, &captures);
+
+    return captures;
+}
+
 /* ============== Runtime Header ============== */
 
 void omni_codegen_runtime_header(CodeGenContext* ctx) {
@@ -1696,12 +1988,19 @@ static void codegen_lambda(CodeGenContext* ctx, OmniValue* expr);
  * Issue 2 P1: When passing a lambda to a HOF, we need to wrap it in a closure
  * object because the runtime HOFs expect Obj* (closure objects), not function pointers.
  *
+ * Issue 1 P2: Closures with captures now collect free variables from the lambda
+ * body and pass them to mk_closure_region. The runtime's store barrier
+ * (omni_store_repair) handles escape repair for captured values.
+ *
  * This generates:
  * 1. The static lambda function (via codegen_lambda side effects)
- * 2. A trampoline function that adapts the signature
- * 3. A call to mk_closure_region to create the closure object
+ * 2. A trampoline function that adapts the signature and passes captures
+ * 3. A call to mk_closure_region to create the closure object with captures
  */
 static void codegen_lambda_as_closure(CodeGenContext* ctx, OmniValue* lambda_expr) {
+    /* Issue 1 P2: Collect captured variables from the lambda */
+    CaptureList captures = collect_lambda_captures(lambda_expr, ctx);
+
     /* Get the lambda ID that will be generated */
     int lambda_id = ctx->lambda_counter;
     int arity = count_lambda_params(lambda_expr);
@@ -1713,17 +2012,30 @@ static void codegen_lambda_as_closure(CodeGenContext* ctx, OmniValue* lambda_exp
     char tramp_name[64];
     snprintf(tramp_name, sizeof(tramp_name), "_lambda_%d_tramp", lambda_id);
 
-    /* Generate trampoline function definition */
-    char tramp_def[2048];
+    /* Generate trampoline function definition
+     * Issue 1 P2: Trampoline passes _captures through to lambda.
+     * The lambda function itself unpacks captures.
+     */
+    char tramp_def[4096];
     char* p = tramp_def;
     p += sprintf(p, "static Obj* %s(struct Region* _caller_region, Obj** _captures, Obj** _args, int _argc) {\n", tramp_name);
-    p += sprintf(p, "    (void)_captures; (void)_argc;\n");
-    p += sprintf(p, "    return %s(_caller_region", fn_name);
+    p += sprintf(p, "    (void)_argc;\n");
+    /* Lambda function receives _captures as 2nd parameter */
+    p += sprintf(p, "    return %s(_caller_region, _captures", fn_name);
     for (int i = 0; i < arity; i++) {
         p += sprintf(p, ", _args[%d]", i);
     }
     p += sprintf(p, ");\n");
     p += sprintf(p, "}");
+
+    /* Issue 1 P2: Add forward declarations for lambda and trampoline.
+     * This ensures static functions can reference them even if they
+     * appear later in the file.
+     */
+    char fwd_decl[256];
+    snprintf(fwd_decl, sizeof(fwd_decl),
+             "static Obj* %s(struct Region*, Obj**, Obj**, int);", tramp_name);
+    omni_codegen_add_forward_decl(ctx, fwd_decl);
 
     /* Add trampoline to lambda definitions (it will be emitted before main) */
     /* First, generate the lambda itself (adds to lambda_defs) */
@@ -1733,6 +2045,10 @@ static void codegen_lambda_as_closure(CodeGenContext* ctx, OmniValue* lambda_exp
     for (size_t i = 0; i < ctx->symbols.count; i++) {
         register_symbol(tmp, ctx->symbols.names[i], ctx->symbols.c_names[i]);
     }
+
+    /* Issue 1 P2: Pass captures to codegen_lambda so it generates
+     * the _captures parameter and unpacking code */
+    tmp->current_captures = &captures;
 
     /* Generate lambda - this will emit "_lambda_N(_local_region" to tmp buffer */
     codegen_lambda(tmp, lambda_expr);
@@ -1750,8 +2066,34 @@ static void codegen_lambda_as_closure(CodeGenContext* ctx, OmniValue* lambda_exp
 
     omni_codegen_free(tmp);
 
-    /* Emit closure creation at call site */
-    omni_codegen_emit_raw(ctx, "mk_closure_region(_local_region, %s, NULL, 0, %d)", tramp_name, arity);
+    /* Issue 1 P2: Emit closure creation with captures
+     *
+     * If there are captures, we need to:
+     * 1. Build a temporary array of captured values
+     * 2. Pass it to mk_closure_region
+     *
+     * The runtime's store barrier (omni_store_repair) in mk_closure_region
+     * will handle escape repair for each captured value.
+     */
+    if (captures.count > 0) {
+        /* Build captures array inline */
+        omni_codegen_emit_raw(ctx, "({\n");
+        omni_codegen_emit_raw(ctx, "        /* Issue 1 P2: Build captures array for closure */\n");
+        omni_codegen_emit_raw(ctx, "        Obj* _cap_arr[%zu] = {", captures.count);
+        for (size_t i = 0; i < captures.count; i++) {
+            if (i > 0) omni_codegen_emit_raw(ctx, ", ");
+            omni_codegen_emit_raw(ctx, "%s", captures.c_names[i]);
+        }
+        omni_codegen_emit_raw(ctx, "};\n");
+        omni_codegen_emit_raw(ctx, "        mk_closure_region(_local_region, %s, _cap_arr, %zu, %d);\n",
+                             tramp_name, captures.count, arity);
+        omni_codegen_emit_raw(ctx, "    })");
+    } else {
+        /* No captures - original simple form */
+        omni_codegen_emit_raw(ctx, "mk_closure_region(_local_region, %s, NULL, 0, %d)", tramp_name, arity);
+    }
+
+    capture_list_free(&captures);
 }
 
 static void codegen_lambda(CodeGenContext* ctx, OmniValue* expr) {
@@ -1774,11 +2116,15 @@ static void codegen_lambda(CodeGenContext* ctx, OmniValue* expr) {
     char def[16384];  /* Increased buffer for region management code */
     char* p = def;
 
-    /* Function signature: Include Region* _caller_region as first parameter */
-    p += sprintf(p, "static Obj* %s(struct Region* _caller_region", fn_name);
+    /* Issue 1 P2: Check if we have captures to handle */
+    CaptureList* captures = (CaptureList*)ctx->current_captures;
+
+    /* Function signature: Include Region* _caller_region as first parameter,
+     * Obj** _captures as second parameter (if has captures) */
+    p += sprintf(p, "static Obj* %s(struct Region* _caller_region, Obj** _captures", fn_name);
 
     /* Parameters - register them before generating body */
-    bool first_param = false;  /* Already have _caller_region */
+    bool first_param = false;  /* Already have _caller_region and _captures */
 
     if (omni_is_cell(params)) {
         /* List-style: (lambda (x y) body) */
@@ -1833,6 +2179,20 @@ static void codegen_lambda(CodeGenContext* ctx, OmniValue* expr) {
     p += sprintf(p, "    region_tether_start(_caller_region);  /* Keep caller region alive */\n");
     p += sprintf(p, "    \n");
 
+    /* Issue 1 P2: Unpack captures into local variables */
+    if (captures && captures->count > 0) {
+        p += sprintf(p, "    /* Issue 1 P2: Unpack %zu captured variable(s) */\n", captures->count);
+        for (size_t i = 0; i < captures->count; i++) {
+            p += sprintf(p, "    Obj* %s = _captures[%zu];\n", captures->c_names[i], i);
+            /* Register the captured variable in symbol table for body generation */
+            register_symbol(ctx, captures->names[i], captures->c_names[i]);
+        }
+        p += sprintf(p, "    \n");
+    } else {
+        p += sprintf(p, "    (void)_captures;  /* No captures */\n");
+        p += sprintf(p, "    \n");
+    }
+
     /* Generate body - find last expression for return */
     OmniValue* result = NULL;
     OmniValue* body_iter = body;
@@ -1859,6 +2219,15 @@ static void codegen_lambda(CodeGenContext* ctx, OmniValue* expr) {
         omni_codegen_emit(tmp, "");
         codegen_expr(tmp, result);
         omni_codegen_emit_raw(tmp, ";\n");
+
+        /* Issue 1 P2: Propagate nested lambda definitions back to outer context.
+         * If the body contains lambdas (e.g., returning a closure), their
+         * definitions are added to tmp->lambda_defs and must be copied to ctx.
+         */
+        ctx->lambda_counter = tmp->lambda_counter;
+        for (size_t i = 0; i < tmp->lambda_defs.count; i++) {
+            omni_codegen_add_lambda_def(ctx, tmp->lambda_defs.defs[i]);
+        }
 
 	        /* Get the result expression code */
 	        char* result_code = omni_codegen_get_output(tmp);
@@ -1933,8 +2302,11 @@ static void codegen_lambda(CodeGenContext* ctx, OmniValue* expr) {
     /* Add to lambda definitions */
     omni_codegen_add_lambda_def(ctx, def);
 
-    /* Emit function name at call site with region parameter */
-    omni_codegen_emit_raw(ctx, "%s(_local_region", fn_name);
+    /* Emit function name at call site with region and captures parameters.
+     * Issue 1 P2: All lambdas now take _captures as 2nd parameter.
+     * For inline application (not via closure), pass NULL for _captures.
+     */
+    omni_codegen_emit_raw(ctx, "%s(_local_region, NULL", fn_name);
 }
 
 /* ============== Multiple Dispatch Support ============== */
@@ -2151,9 +2523,24 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
          * This block was ~220 lines of dead code that handled the deprecated syntax.
          */
 
-        /* Variable define: (define name value) or (define name {Type} value) */
+        /* Variable define: (define name value) or (define name {Type} value)
+         * Issue 1 P2: Global variables are declared at file scope during first pass.
+         * Here in main pass we only emit the assignment.
+         */
         char* c_name = omni_codegen_mangle(first->str_val);
-        omni_codegen_emit(ctx, "Obj* %s = ", c_name);
+
+        /* Check if this is a global (already declared at file scope) or local variable */
+        const char* existing = lookup_symbol(ctx, first->str_val);
+        bool is_global = (existing != NULL && strcmp(existing, c_name) == 0);
+
+        if (is_global) {
+            /* Global variable - only emit assignment, declaration is at file scope */
+            omni_codegen_emit(ctx, "%s = ", c_name);
+        } else {
+            /* Local variable - emit declaration + initialization */
+            omni_codegen_emit(ctx, "Obj* %s = ", c_name);
+        }
+
         if (!omni_is_nil(rest)) {
             OmniValue* maybe_type = omni_car(rest);
             if (omni_is_type_lit(maybe_type)) {
@@ -2173,7 +2560,10 @@ static void codegen_define(CodeGenContext* ctx, OmniValue* expr) {
             omni_codegen_emit_raw(ctx, "NOTHING");
         }
         omni_codegen_emit_raw(ctx, ";\n");
-        register_symbol(ctx, first->str_val, c_name);
+
+        if (!is_global) {
+            register_symbol(ctx, first->str_val, c_name);
+        }
         free(c_name);
     } else if (omni_is_cell(first)) {
         /* Scheme style: (define (name params...) body...) */
@@ -2934,7 +3324,19 @@ static void codegen_yield(CodeGenContext* ctx, OmniValue* expr) {
 
 /* Mutation operator: (set! var value) */
 static void codegen_set_bang(CodeGenContext* ctx, OmniValue* expr) {
-    /* (set! x 10) - modify a binding */
+    /* (set! x 10) - modify a binding
+     *
+     * Issue 1 P2: ESCAPE_GLOBAL detection.
+     * When storing to a variable that may be in a longer-lived scope (global),
+     * we need to ensure the value survives region destruction.
+     *
+     * Strategy: Use transmigrate to copy the value to the global region if needed.
+     * transmigrate handles the case where src == dst as a no-op.
+     *
+     * Note: For local variables within the same function, transmigrate is
+     * unnecessary overhead, but it's safe and the runtime optimizes same-region
+     * transfers to no-ops.
+     */
     OmniValue* args = omni_cdr(expr);
     if (omni_is_nil(args) || omni_is_nil(omni_cdr(args))) {
         omni_codegen_emit_raw(ctx, "NIL");
@@ -2953,9 +3355,29 @@ static void codegen_set_bang(CodeGenContext* ctx, OmniValue* expr) {
     }
 
     char* c_name = omni_codegen_mangle(var->str_val);
-    omni_codegen_emit_raw(ctx, "(%s = ", c_name);
-    codegen_expr(ctx, value);
-    omni_codegen_emit_raw(ctx, ")");
+
+    /* Issue 1 P2: Check if we're inside a function (not at top level).
+     * At top level, _local_region IS the global region, so no transmigration needed.
+     * Inside functions, we emit transmigrate to ensure global stores are safe.
+     *
+     * We detect "inside function" by checking if first_pass is false AND
+     * we're not in the main codegen pass (indicated by use_runtime being true
+     * and being in a function body).
+     *
+     * For safety, we always emit transmigrate when using runtime - the runtime
+     * will optimize same-region transfers to no-ops.
+     */
+    if (ctx->use_runtime) {
+        /* Safe global store: transmigrate to global region if needed */
+        omni_codegen_emit_raw(ctx, "(%s = transmigrate(", c_name);
+        codegen_expr(ctx, value);
+        omni_codegen_emit_raw(ctx, ", _local_region, omni_get_global_region()))");
+    } else {
+        /* No runtime - simple assignment */
+        omni_codegen_emit_raw(ctx, "(%s = ", c_name);
+        codegen_expr(ctx, value);
+        omni_codegen_emit_raw(ctx, ")");
+    }
     free(c_name);
 }
 
@@ -3219,13 +3641,26 @@ static void codegen_apply(CodeGenContext* ctx, OmniValue* expr) {
     }
 
     /* Regular function call with Region-RC support */
-    /* Check if function is a user-defined function (needs region parameter) */
+    /* Check if function is a user-defined function (needs region parameter)
+     *
+     * Issue 1 P2: Distinguish between:
+     * - Static functions: (define (f x) ...) -> call directly with region param
+     * - Closure variables: (define f (fn [x] ...)) -> call via call_closure_region
+     *
+     * Static functions are tracked via track_function_definition.
+     * Closure variables are Obj* values passed to call_closure_region.
+     */
     bool is_user_function = false;
+    bool is_static_function = false;
     if (omni_is_sym(func)) {
         const char* c_name = lookup_symbol(ctx, func->str_val);
         /* User-defined functions start with "o_" (mangled name) */
         if (c_name && strncmp(c_name, "o_", 2) == 0) {
             is_user_function = true;
+            /* Check if this is a static function (tracked via define (f x) form) */
+            if (check_function_defined(ctx, c_name) > 0) {
+                is_static_function = true;
+            }
         }
     }
 
@@ -3270,59 +3705,65 @@ static void codegen_apply(CodeGenContext* ctx, OmniValue* expr) {
 
         /* Regular function call */
 
-        codegen_expr(ctx, func);
-
-        omni_codegen_emit_raw(ctx, "(");
-
-    
-
-        /* Region-RC: Pass _local_region as first argument for user-defined functions */
-
-        if (is_user_function) {
-
-            omni_codegen_emit_raw(ctx, "_local_region");
-
-            if (!omni_is_nil(args)) {
-
+        /* Issue 1 P2: Distinguish static functions from closure variables.
+         * - Static functions: (define (f x) ...) -> call directly with region param
+         * - Closure variables: (define f (fn [x] ...)) -> call via call_closure_region
+         */
+        if (is_static_function) {
+            /* Static function - call directly with region parameter */
+            codegen_expr(ctx, func);
+            omni_codegen_emit_raw(ctx, "(_local_region");
+            while (!omni_is_nil(args) && omni_is_cell(args)) {
                 omni_codegen_emit_raw(ctx, ", ");
-
-            }
-
-            bool first_a = true;
-
-            while (!omni_is_nil(args) && omni_is_cell(args)) {
-
-                if (!first_a) omni_codegen_emit_raw(ctx, ", ");
-
-                first_a = false;
-
                 codegen_expr(ctx, omni_car(args));
-
                 args = omni_cdr(args);
-
+            }
+            omni_codegen_emit_raw(ctx, ")");
+        } else if (is_user_function) {
+            /* Closure variable - invoke via call_closure_region */
+            /* Count arguments */
+            int arg_count = 0;
+            OmniValue* arg_iter = args;
+            while (!omni_is_nil(arg_iter) && omni_is_cell(arg_iter)) {
+                arg_count++;
+                arg_iter = omni_cdr(arg_iter);
             }
 
+            /* Generate: call_closure_region(_local_region, closure, args_array, count) */
+            if (arg_count == 0) {
+                omni_codegen_emit_raw(ctx, "call_closure_region(_local_region, ");
+                codegen_expr(ctx, func);
+                omni_codegen_emit_raw(ctx, ", NULL, 0)");
+            } else {
+                /* Use a statement expression to build args array */
+                omni_codegen_emit_raw(ctx, "({\n");
+                omni_codegen_emit_raw(ctx, "        Obj* _closure_args[%d] = {", arg_count);
+                bool first_a = true;
+                while (!omni_is_nil(args) && omni_is_cell(args)) {
+                    if (!first_a) omni_codegen_emit_raw(ctx, ", ");
+                    first_a = false;
+                    codegen_expr(ctx, omni_car(args));
+                    args = omni_cdr(args);
+                }
+                omni_codegen_emit_raw(ctx, "};\n");
+                omni_codegen_emit_raw(ctx, "        call_closure_region(_local_region, ");
+                codegen_expr(ctx, func);
+                omni_codegen_emit_raw(ctx, ", _closure_args, %d);\n", arg_count);
+                omni_codegen_emit_raw(ctx, "    })");
+            }
         } else {
-
-            /* Built-in function - no region parameter */
-
+            /* Built-in function - direct call, no region parameter */
+            codegen_expr(ctx, func);
+            omni_codegen_emit_raw(ctx, "(");
             bool first_a = true;
-
             while (!omni_is_nil(args) && omni_is_cell(args)) {
-
                 if (!first_a) omni_codegen_emit_raw(ctx, ", ");
-
                 first_a = false;
-
                 codegen_expr(ctx, omni_car(args));
-
                 args = omni_cdr(args);
-
             }
-
+            omni_codegen_emit_raw(ctx, ")");
         }
-
-        omni_codegen_emit_raw(ctx, ")");
 
     }
 
@@ -3352,7 +3793,12 @@ static void codegen_list(CodeGenContext* ctx, OmniValue* expr) {
         }
         if (strcmp(name, "lambda") == 0 || strcmp(name, "fn") == 0 ||
             strcmp(name, "λ") == 0) {  /* Lambda forms */
-            codegen_lambda(ctx, expr);
+            /* Issue 1 P2: Use closure wrapper for lambda-as-value.
+             * codegen_lambda emits incomplete call "_lambda_N(_local_region"
+             * expecting immediate application. When lambda is used as a value
+             * (returned, stored, passed), we need a closure object instead.
+             */
+            codegen_lambda_as_closure(ctx, expr);
             return;
         }
         if (strcmp(name, "define") == 0) {
@@ -3603,8 +4049,16 @@ void omni_codegen_program(CodeGenContext* ctx, OmniValue** exprs, size_t count) 
     /* Emit runtime header */
     omni_codegen_runtime_header(ctx);
 
-    /* First pass: collect defines and emit as top-level functions */
-    ctx->first_pass = true;
+    /* Issue 1 P2: First pass to buffer - collect static functions and forward declarations.
+     * We buffer the first pass output so we can emit forward declarations BEFORE
+     * static functions. This ensures lambdas referenced in static functions are declared.
+     */
+    CodeGenContext* first_pass_ctx = omni_codegen_new_buffer();
+    first_pass_ctx->analysis = ctx->analysis;
+    first_pass_ctx->lambda_counter = ctx->lambda_counter;
+    first_pass_ctx->first_pass = true;
+    first_pass_ctx->use_runtime = ctx->use_runtime;  /* Issue 1 P2: Inherit runtime flag */
+
     for (size_t i = 0; i < count; i++) {
         OmniValue* expr = exprs[i];
         if (omni_is_cell(expr) && omni_is_sym(omni_car(expr)) &&
@@ -3615,21 +4069,56 @@ void omni_codegen_program(CodeGenContext* ctx, OmniValue** exprs, size_t count) 
             /* Only emit function defines at top level */
             if (omni_is_cell(name_or_sig)) {
                 /* Traditional Scheme style: (define (f x y) body) */
-                codegen_define(ctx, expr);
+                codegen_define(first_pass_ctx, expr);
             } else if (omni_is_sym(name_or_sig)) {
                 /* Check for slot-syntax: (define f [x] [y] body) or (define f x y body) */
                 OmniValue* rest = omni_cdr(args);
+                bool is_function = false;
                 if (!omni_is_nil(rest)) {
                     OmniValue* maybe_param = omni_car(rest);
                     OmniValue* param_name = codegen_extract_param_name(maybe_param);
                     if (param_name != NULL) {
                         /* This is a slot-syntax function definition */
-                        codegen_define(ctx, expr);
+                        codegen_define(first_pass_ctx, expr);
+                        is_function = true;
                     }
+                }
+
+                /* Issue 1 P2: Emit global variable declarations at file scope */
+                if (!is_function) {
+                    /* Simple variable: (define name value) or (define name {Type} value)
+                     * Emit declaration at file scope so static functions can access it.
+                     * Initialization will happen in main().
+                     */
+                    char* c_name = omni_codegen_mangle(name_or_sig->str_val);
+                    omni_codegen_emit_raw(first_pass_ctx, "static Obj* %s = NIL;\n", c_name);
+                    register_symbol(first_pass_ctx, name_or_sig->str_val, c_name);
+                    free(c_name);
                 }
             }
         }
     }
+
+    /* Copy state from first pass context to main context */
+    ctx->lambda_counter = first_pass_ctx->lambda_counter;
+    for (size_t i = 0; i < first_pass_ctx->symbols.count; i++) {
+        register_symbol(ctx, first_pass_ctx->symbols.names[i], first_pass_ctx->symbols.c_names[i]);
+    }
+    for (size_t i = 0; i < first_pass_ctx->defined_functions.count; i++) {
+        track_function_definition(ctx, first_pass_ctx->defined_functions.names[i]);
+    }
+    for (size_t i = 0; i < first_pass_ctx->lambda_defs.count; i++) {
+        omni_codegen_add_lambda_def(ctx, first_pass_ctx->lambda_defs.defs[i]);
+    }
+    for (size_t i = 0; i < first_pass_ctx->forward_decls.count; i++) {
+        omni_codegen_add_forward_decl(ctx, first_pass_ctx->forward_decls.decls[i]);
+    }
+
+    /* Get first pass output before freeing */
+    char* first_pass_code = omni_codegen_get_output(first_pass_ctx);
+    first_pass_ctx->analysis = NULL;  /* Don't free analysis */
+    omni_codegen_free(first_pass_ctx);
+
     ctx->first_pass = false;
 
     /* Generate main() to a buffer first to collect lambdas */
@@ -3639,6 +4128,10 @@ void omni_codegen_program(CodeGenContext* ctx, OmniValue** exprs, size_t count) 
     /* Copy symbol table */
     for (size_t i = 0; i < ctx->symbols.count; i++) {
         register_symbol(main_ctx, ctx->symbols.names[i], ctx->symbols.c_names[i]);
+    }
+    /* Issue 1 P2: Copy defined_functions table so static function calls work */
+    for (size_t i = 0; i < ctx->defined_functions.count; i++) {
+        track_function_definition(main_ctx, ctx->defined_functions.names[i]);
     }
     omni_codegen_main(main_ctx, exprs, count);
     char* main_code = omni_codegen_get_output(main_ctx);
@@ -3652,12 +4145,25 @@ void omni_codegen_program(CodeGenContext* ctx, OmniValue** exprs, size_t count) 
     main_ctx->analysis = NULL;
     omni_codegen_free(main_ctx);
 
+    /* Issue 1 P2: Emit in correct order for forward references:
+     * 1. Forward declarations (lambda trampolines, etc.)
+     * 2. First pass code (global vars + static functions)
+     * 3. Lambda definitions
+     * 4. Main function
+     */
+
     /* Emit forward declarations */
     for (size_t i = 0; i < ctx->forward_decls.count; i++) {
         omni_codegen_emit_raw(ctx, "%s\n", ctx->forward_decls.decls[i]);
     }
     if (ctx->forward_decls.count > 0) {
         omni_codegen_emit_raw(ctx, "\n");
+    }
+
+    /* Emit first pass code (global variables and static functions) */
+    if (first_pass_code) {
+        omni_codegen_emit_raw(ctx, "%s", first_pass_code);
+        free(first_pass_code);
     }
 
     /* Emit lambda definitions */
