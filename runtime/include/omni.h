@@ -76,8 +76,8 @@ typedef enum {
     TYPE_ID_THREAD,
     TYPE_ID_ERROR,
     TYPE_ID_ATOM,
-    TYPE_ID_TUPLE,
-    TYPE_ID_NAMED_TUPLE,
+    TYPE_ID_RESERVED_14,      /* Was TYPE_ID_TUPLE - REMOVED 2026-01-15 */
+    TYPE_ID_RESERVED_15,      /* Was TYPE_ID_NAMED_TUPLE - REMOVED 2026-01-15 */
     TYPE_ID_GENERIC,
     TYPE_ID_KIND,
     TYPE_ID_NOTHING,
@@ -105,33 +105,50 @@ typedef struct BorrowRef {
     struct Obj* ipge_target;     /* IPGE: Direct Obj* for generation check */
 } BorrowRef;
 
-/* Closure function signature */
+/* Closure function signature (legacy - no region parameter) */
 typedef Obj* (*ClosureFn)(Obj** captures, Obj** args, int argc);
+
+/* Region-aware closure function signature (Issue 2 P1: Dynamic closure region support)
+ * All new closures should use this signature to participate in Region-RC lifecycle. */
+typedef Obj* (*ClosureFnRegion)(struct Region* caller_region, Obj** captures, Obj** args, int argc);
 
 /* ========== Closure and Generic Structures ========== */
 
 /*
  * Closure - Single-dispatch function (traditional Lisp)
  * Stored in an Obj with tag=TAG_CLOSURE, using the obj->a field for the closure pointer.
+ *
+ * Issue 2 P1: Supports both legacy (non-region) and region-aware function pointers.
+ * New closures should set region_aware=1 and use fn_region.
  */
 struct Closure {
-    ClosureFn fn;           /* Function pointer */
+    union {
+        ClosureFn fn;              /* Legacy function pointer (no region) */
+        ClosureFnRegion fn_region; /* Region-aware function pointer */
+    };
     Obj** captures;         /* Captured variables (boxed array) */
     int capture_count;      /* Number of captures */
     int arity;              /* Expected number of arguments */
-    const char* name;      /* Function name (for debugging) */
+    const char* name;       /* Function name (for debugging) */
+    unsigned char region_aware; /* 1 if using fn_region, 0 if using fn */
 };
 
 /*
  * MethodInfo - A single method in a generic function's method table.
  * Methods are specialized for specific argument types.
+ *
+ * Issue 2 P1: Supports both legacy and region-aware method implementations.
  */
 struct MethodInfo {
     Obj** param_kinds;     /* Array of Kind objects for each parameter */
     int param_count;        /* Number of parameters */
-    ClosureFn impl;         /* Method implementation */
+    union {
+        ClosureFn impl;            /* Legacy method implementation */
+        ClosureFnRegion impl_region; /* Region-aware method implementation */
+    };
     int specificity;        /* Specificity score (higher = more specific) */
     struct MethodInfo* next; /* Next method in the table */
+    unsigned char region_aware; /* 1 if using impl_region, 0 if using impl */
 };
 
 /*
@@ -173,15 +190,19 @@ typedef enum {
     TAG_DICT,
     TAG_STRING,
     TAG_KEYWORD,
-    TAG_TUPLE,
-    TAG_NAMED_TUPLE,
+    TAG_RESERVED_16,          /* Was TAG_TUPLE - REMOVED 2026-01-15 */
+    TAG_RESERVED_17,          /* Was TAG_NAMED_TUPLE - REMOVED 2026-01-15 */
     TAG_GENERIC,
     TAG_KIND,
     TAG_NOTHING,
     /* Effect system tags (Phase 22: Algebraic Effects) */
     TAG_EFFECT_TYPE,
     TAG_RESUMPTION,
-    TAG_HANDLER
+    TAG_HANDLER,
+    /* Condition system tag (Issue 14 P3) */
+    TAG_CONDITION,
+    /* Generator tag (Issue 14 P4: Iterator-Generator Integration) */
+    TAG_GENERATOR
 } ObjTag;
 
 #define TAG_USER_BASE 1000
@@ -537,6 +558,7 @@ Obj* mk_box(Obj* v);
 Obj* mk_error(const char* msg);
 Obj* mk_nothing(void);
 Obj* mk_closure(ClosureFn fn, Obj** captures, BorrowRef** refs, int count, int arity);
+Obj* mk_closure_region(struct Region* r, ClosureFnRegion fn, Obj** captures, int count, int arity);
 
 /* Stack-allocated primitives (optimization for non-escaping values) */
 Obj* mk_int_stack(long i);
@@ -580,6 +602,12 @@ Obj* list_foldr(Obj* fn, Obj* init, Obj* xs);
 Obj* list_filter(Obj* fn, Obj* xs);
 Obj* list_append(Obj* a, Obj* b);
 Obj* list_reverse(Obj* xs);
+
+/* Issue 2 P1: Region-aware higher-order functions */
+Obj* list_map_region(struct Region* r, Obj* fn, Obj* xs);
+Obj* list_fold_region(struct Region* r, Obj* fn, Obj* init, Obj* xs);
+Obj* list_foldr_region(struct Region* r, Obj* fn, Obj* init, Obj* xs);
+Obj* list_filter_region(struct Region* r, Obj* fn, Obj* xs);
 
 /* ========== Arithmetic Primitives ========== */
 
@@ -644,6 +672,7 @@ Obj* prim_compose(Obj* f, Obj* g);
 /* ========== Closure Operations ========== */
 
 Obj* call_closure(Obj* clos, Obj** args, int argc);
+Obj* call_closure_region(struct Region* caller_region, Obj* clos, Obj** args, int argc);
 
 /* ========== Generic Function Operations (Multiple Dispatch) ========== */
 
@@ -652,15 +681,18 @@ Obj* mk_generic(const char* name);
 
 /* Add a method to a generic function. Returns the generic object for chaining. */
 Obj* generic_add_method(Obj* generic_obj, Obj** param_kinds, int param_count, ClosureFn impl);
+Obj* generic_add_method_region(Obj* generic_obj, Obj** param_kinds, int param_count, ClosureFnRegion impl);
 
 /* Call a generic function with multiple dispatch. Selects the most specific method. */
 Obj* call_generic(Obj* generic_obj, Obj** args, int argc);
+Obj* call_generic_region(struct Region* caller_region, Obj* generic_obj, Obj** args, int argc);
 
 /* Lookup the most specific method for arguments */
 MethodInfo* omni_generic_lookup(Obj* generic_obj, Obj** args, int argc);
 
 /* Invoke a generic function with arguments */
 Obj* omni_generic_invoke(Obj* generic_obj, Obj** args, int argc);
+Obj* omni_generic_invoke_region(struct Region* caller_region, Obj* generic_obj, Obj** args, int argc);
 
 /* Check if a generic function can accept the given number of arguments */
 bool omni_check_arity(Obj* generic_obj, int argc);
@@ -785,6 +817,26 @@ Obj* prim_deep_put(Obj* root, const char* path_str, Obj* new_value);
  *   => "hello"
  */
 Obj* prim_match_pattern(Obj* input_obj, Obj* pattern_obj);
+
+/*
+ * is_pattern_match: Structural pattern matching for match expressions
+ *
+ * Used by codegen to implement (match value [pattern result] ...) syntax.
+ * Performs structural equality checking:
+ * - Primitives: exact value equality
+ * - Symbols: equality by name
+ * - Lists/Arrays: recursive structural comparison
+ * - Wildcard (_): always matches
+ *
+ * Args:
+ *   - pattern: The pattern to match against
+ *   - value: The value being matched
+ *
+ * Returns:
+ *   - 1 if pattern matches value
+ *   - 0 otherwise
+ */
+int is_pattern_match(Obj* pattern, Obj* value);
 
 /*
  * Compile a pattern string for later use
@@ -1011,8 +1063,7 @@ Obj* mk_error_region(struct Region* r, const char* msg);
 Obj* mk_array_region(struct Region* r, int capacity);
 Obj* mk_dict_region(struct Region* r);
 Obj* mk_keyword_region(struct Region* r, const char* name);
-Obj* mk_tuple_region(struct Region* r, Obj** items, int count);
-Obj* mk_named_tuple_region(struct Region* r, Obj** keys, Obj** values, int count);
+/* mk_tuple_region, mk_named_tuple_region REMOVED 2026-01-15 */
 Obj* mk_generic_region(struct Region* r, const char* name);
 Obj* mk_kind_region(struct Region* r, const char* name, Obj** params, int param_count);
 
@@ -1028,12 +1079,8 @@ Obj* dict_get(Obj* dict, Obj* key);
 
 Obj* mk_keyword(const char* name);
 
-Obj* mk_tuple(Obj** items, int count);
-Obj* tuple_get(Obj* tup, int idx);
-int tuple_length(Obj* tup);
-
-Obj* mk_named_tuple(Obj** keys, Obj** values, int count);
-Obj* named_tuple_get(Obj* tup, Obj* key);
+/* mk_tuple, tuple_get, tuple_length REMOVED 2026-01-15 - use mk_array */
+/* mk_named_tuple, named_tuple_get REMOVED 2026-01-15 - use mk_dict */
 
 Obj* mk_generic(const char* name);
 

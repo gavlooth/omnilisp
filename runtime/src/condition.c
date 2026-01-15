@@ -452,3 +452,107 @@ Condition* make_memory_error(const char* message, void* address) {
 
     return cond;
 }
+
+/* ============================================================
+ * Effect-Based Condition Signaling (Issue 14 P3)
+ * ============================================================ */
+
+#include "effect.h"
+#include "../include/omni.h"
+
+/* Forward declaration */
+extern Region* _global_region;
+extern void _ensure_global_region(void);
+extern Obj* region_alloc(Region* r, size_t size);
+
+/*
+ * mk_condition_obj - Wrap a Condition struct in an Obj
+ *
+ * Creates an Obj with TAG_CONDITION that wraps the condition.
+ * The condition is NOT freed when the Obj is freed - caller manages lifetime.
+ */
+Obj* mk_condition_obj(Condition* cond) {
+    if (!cond) return NULL;
+
+    _ensure_global_region();
+    Obj* obj = region_alloc(_global_region, sizeof(Obj));
+    if (!obj) return NULL;
+
+    obj->tag = TAG_CONDITION;
+    obj->ptr = cond;
+    obj->mark = 1;
+
+    return obj;
+}
+
+/*
+ * condition_signal - Signal a resumable condition
+ *
+ * Uses the effect system to signal a condition. A handler can:
+ * 1. Resume with a value (like invoking a restart)
+ * 2. Not resume (like aborting)
+ *
+ * Returns: The value passed to resume(), or NULL if not handled/resumed.
+ */
+Obj* condition_signal(Condition* cond) {
+    if (!cond) return NULL;
+
+    /* Initialize effect system if needed */
+    if (!EFFECT_CONDITION) {
+        effect_init();
+    }
+
+    /* Wrap condition in Obj */
+    Obj* cond_obj = mk_condition_obj(cond);
+    if (!cond_obj) return NULL;
+
+    /* Perform the Condition effect */
+    return effect_perform(EFFECT_CONDITION, cond_obj);
+}
+
+/*
+ * condition_error - Signal a non-resumable error condition
+ *
+ * Uses the EFFECT_FAIL effect which has RECOVERY_ABORT mode.
+ * Handler cannot resume from this - it must handle or propagate.
+ *
+ * Returns: Handler's result, or NULL if unhandled.
+ */
+Obj* condition_error(Condition* cond) {
+    if (!cond) return NULL;
+
+    /* Initialize effect system if needed */
+    if (!EFFECT_FAIL) {
+        effect_init();
+    }
+
+    /* Wrap condition in Obj */
+    Obj* cond_obj = mk_condition_obj(cond);
+    if (!cond_obj) return NULL;
+
+    /* Perform the Fail effect (non-resumable) */
+    return effect_perform(EFFECT_FAIL, cond_obj);
+}
+
+/*
+ * condition_signal_with_message - Convenience for simple error signals
+ */
+Obj* condition_signal_with_message(ConditionType* type, const char* message) {
+    Condition* cond = condition_create_with_message(type, message);
+    if (!cond) return NULL;
+
+    Obj* result = condition_signal(cond);
+
+    /* Don't free condition - it may be stored in handler */
+    return result;
+}
+
+/*
+ * condition_from_obj - Extract Condition from TAG_CONDITION Obj
+ */
+Condition* condition_from_obj(Obj* obj) {
+    if (!obj || !IS_BOXED(obj) || obj->tag != TAG_CONDITION) {
+        return NULL;
+    }
+    return (Condition*)obj->ptr;
+}

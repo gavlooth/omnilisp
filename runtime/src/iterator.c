@@ -11,12 +11,18 @@
  *   - iter_next: Get next value from iterator
  *   - take: Take n elements from sequence
  *   - collect: Collect elements into a collection
+ *
+ * Issue 14 P4: Generator Integration
+ *   - make_generator: Create a generator from a producer thunk
+ *   - generator_next: Get next value from generator
+ *   - yield: Yield a value from within a generator
  */
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include "../include/omni.h"
+#include "memory/continuation.h"
 
 /* ============== Basic Sequence Operations ============== */
 
@@ -393,4 +399,157 @@ Obj* prim_range(long n) {
     }
 
     return result;
+}
+
+/* ============================================================
+ * Generator-Based Iteration (Issue 14 P4)
+ * ============================================================ */
+
+/*
+ * prim_make_generator: Create a generator from a producer thunk
+ *
+ * Args: producer - A zero-arg closure that yields values via (yield val)
+ * Returns: Generator object wrapped in Obj
+ *
+ * Example:
+ *   (def g (make-generator (fn [] (yield 1) (yield 2) (yield 3))))
+ *   (generator-next g) = 1
+ *   (generator-next g) = 2
+ *   (generator-next g) = 3
+ *   (generator-next g) = NULL (exhausted)
+ */
+Obj* prim_make_generator(Obj* producer) {
+    if (!producer) return NULL;
+
+    /* Check that producer is a closure */
+    if (!IS_BOXED(producer) || producer->tag != TAG_CLOSURE) {
+        return NULL;
+    }
+
+    Generator* g = generator_create(producer);
+    if (!g) return NULL;
+
+    return mk_generator_obj(g);
+}
+
+/*
+ * prim_generator_next: Get the next value from a generator
+ *
+ * Args: gen_obj - Generator Obj (TAG_GENERATOR)
+ * Returns: Next yielded value, or NULL if exhausted
+ *
+ * Example:
+ *   (generator-next gen) = value or nil
+ */
+Obj* prim_generator_next(Obj* gen_obj) {
+    if (!gen_obj) return NULL;
+
+    /* Extract generator from Obj */
+    if (!IS_BOXED(gen_obj) || gen_obj->tag != TAG_GENERATOR) {
+        return NULL;
+    }
+
+    Generator* g = (Generator*)gen_obj->ptr;
+    if (!g) return NULL;
+
+    return generator_next(g);
+}
+
+/*
+ * prim_generator_done: Check if generator is exhausted
+ *
+ * Args: gen_obj - Generator Obj (TAG_GENERATOR)
+ * Returns: Boolean true if generator is done
+ */
+Obj* prim_generator_done(Obj* gen_obj) {
+    if (!gen_obj) return mk_bool(1);  /* NULL = done */
+
+    if (!IS_BOXED(gen_obj) || gen_obj->tag != TAG_GENERATOR) {
+        return mk_bool(1);  /* Not a generator = done */
+    }
+
+    Generator* g = (Generator*)gen_obj->ptr;
+    return mk_bool(generator_is_done(g));
+}
+
+/*
+ * prim_yield: Yield a value from within a generator
+ *
+ * Args: value - Value to yield to the caller
+ * Returns: Value passed to next() on resume (or NULL)
+ *
+ * Must be called from within a generator's producer function.
+ *
+ * Example:
+ *   (fn [] (yield 1) (yield 2) (yield 3))
+ */
+Obj* prim_yield(Obj* value) {
+    generator_yield(value);
+    /* After resume, we return here */
+    /* Note: generator_yield internally handles the continuation mechanics */
+    return NULL;  /* This return is after resume - yield returns what next() passed */
+}
+
+/*
+ * Helper: Check if an Obj is a generator
+ */
+int is_generator(Obj* obj) {
+    return obj && IS_BOXED(obj) && obj->tag == TAG_GENERATOR;
+}
+
+/*
+ * prim_iter_next_unified: Get next value from iterator or generator
+ *
+ * Supports both:
+ * 1. Pair-based iterators: (current . fn)
+ * 2. Generator-based iterators: TAG_GENERATOR
+ *
+ * This provides backward compatibility while enabling generator usage.
+ */
+Obj* prim_iter_next_unified(Obj* iter_obj) {
+    if (!iter_obj) return NULL;
+
+    /* Check if it's a generator */
+    if (IS_BOXED(iter_obj) && iter_obj->tag == TAG_GENERATOR) {
+        return prim_generator_next(iter_obj);
+    }
+
+    /* Fall back to pair-based iterator */
+    return prim_iter_next(iter_obj);
+}
+
+/*
+ * prim_take_unified: Take n elements from iterator or generator
+ *
+ * Supports both pair-based iterators and generators.
+ */
+Obj* prim_take_unified(long n, Obj* seq) {
+    if (n <= 0 || !seq) return NULL;
+
+    omni_ensure_global_region();
+
+    Obj* result = NULL;
+    Obj* tail = NULL;
+
+    /* Check if it's a generator */
+    if (IS_BOXED(seq) && seq->tag == TAG_GENERATOR) {
+        Generator* g = (Generator*)seq->ptr;
+        for (long i = 0; i < n && !generator_is_done(g); i++) {
+            Obj* val = generator_next(g);
+            if (!val) break;
+
+            Obj* new_pair = mk_pair(val, NULL);
+            if (!result) {
+                result = new_pair;
+                tail = new_pair;
+            } else {
+                tail->b = new_pair;
+                tail = new_pair;
+            }
+        }
+        return result;
+    }
+
+    /* Fall back to existing prim_take behavior */
+    return prim_take(n, seq);
 }

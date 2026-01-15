@@ -297,13 +297,14 @@ void handler_clauses_free(HandlerClause* clauses);
 void effect_init_builtins(void);
 
 /* Built-in effect types (initialized at startup) */
-extern EffectType* EFFECT_FAIL;     /* Exception-like: never resumes */
-extern EffectType* EFFECT_ASK;      /* Reader effect: ask for a value */
-extern EffectType* EFFECT_EMIT;     /* Writer effect: emit a value */
-extern EffectType* EFFECT_STATE;    /* State effect: get/put state */
-extern EffectType* EFFECT_YIELD;    /* Generator effect */
-extern EffectType* EFFECT_ASYNC;    /* Async/await effect */
-extern EffectType* EFFECT_CHOICE;   /* Non-determinism */
+extern EffectType* EFFECT_FAIL;      /* Exception-like: never resumes */
+extern EffectType* EFFECT_ASK;       /* Reader effect: ask for a value */
+extern EffectType* EFFECT_EMIT;      /* Writer effect: emit a value */
+extern EffectType* EFFECT_STATE;     /* State effect: get/put state */
+extern EffectType* EFFECT_YIELD;     /* Generator effect */
+extern EffectType* EFFECT_ASYNC;     /* Async/await effect */
+extern EffectType* EFFECT_CHOICE;    /* Non-determinism */
+extern EffectType* EFFECT_CONDITION; /* Condition signaling (Issue 14 P3) */
 
 /* ============================================================
  * Recovery Protocol Helpers

@@ -44,6 +44,7 @@ EffectType* EFFECT_STATE = NULL;
 EffectType* EFFECT_YIELD = NULL;
 EffectType* EFFECT_ASYNC = NULL;
 EffectType* EFFECT_CHOICE = NULL;
+EffectType* EFFECT_CONDITION = NULL;  /* Issue 14 P3: Condition signaling */
 
 /* ============================================================
  * Thread-Local Handler Stack
@@ -130,6 +131,16 @@ void effect_init_builtins(void) {
         "Non-deterministic choice"
     );
     EFFECT_CHOICE = effect_type_register("Choice", NULL, choice_rp);
+
+    /* Condition effect (Issue 14 P3: unified condition signaling)
+     * ONE_SHOT mode - can resume once with a recovery value.
+     * Used by condition_signal() for resumable conditions.
+     */
+    RecoveryProtocol* cond_rp = recovery_protocol_create(
+        "condition", RECOVERY_ONE_SHOT, NULL, NULL,
+        "Signals a condition that can be handled"
+    );
+    EFFECT_CONDITION = effect_type_register("Condition", NULL, cond_rp);
 }
 
 /* ============================================================

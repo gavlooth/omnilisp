@@ -1252,6 +1252,25 @@ void generator_release(Generator* g) {
     free(g);
 }
 
+/* Create an Obj wrapper for a Generator (Issue 14 P4) */
+Obj* mk_generator_obj(Generator* g) {
+    if (!g) return NULL;
+
+    extern Region* _global_region;
+    extern void _ensure_global_region(void);
+
+    _ensure_global_region();
+    Obj* obj = (Obj*)region_alloc(_global_region, sizeof(Obj));
+    if (!obj) return NULL;
+
+    obj->tag = TAG_GENERATOR;
+    obj->ptr = g;
+    obj->mark = 1;
+    g->refcount++;
+
+    return obj;
+}
+
 /* ========== Promises (Async/Await) ========== */
 
 Promise* promise_create(void) {

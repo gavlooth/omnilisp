@@ -183,4 +183,39 @@ Condition* make_ffi_error(const char* message, const char* function_name);
 /* Create memory error */
 Condition* make_memory_error(const char* message, void* address);
 
+/* ============================================================
+ * Effect-Based Condition Signaling (Issue 14 P3)
+ * ============================================================ */
+
+#ifndef OMNI_OBJ_DECLARED
+#define OMNI_OBJ_DECLARED
+typedef struct Obj Obj;
+#endif
+
+/* Wrap a Condition in an Obj (TAG_CONDITION) */
+Obj* mk_condition_obj(Condition* cond);
+
+/* Extract Condition from an Obj */
+Condition* condition_from_obj(Obj* obj);
+
+/*
+ * Signal a condition via the effect system (resumable).
+ * Uses EFFECT_CONDITION with RECOVERY_ONE_SHOT mode.
+ * Handler can resume with a recovery value.
+ * Returns: the value passed to resume(), or NULL if not handled.
+ */
+Obj* condition_signal(Condition* cond);
+
+/*
+ * Signal a non-resumable error condition via effect system.
+ * Uses EFFECT_FAIL with RECOVERY_ABORT mode.
+ * Handler cannot resume - must provide a replacement value or re-signal.
+ */
+Obj* condition_error(Condition* cond);
+
+/*
+ * Convenience: create and signal a condition in one call.
+ */
+Obj* condition_signal_with_message(ConditionType* type, const char* message);
+
 #endif /* OMNI_CONDITION_H */
