@@ -324,6 +324,7 @@ void omni_codegen_runtime_header(CodeGenContext* ctx) {
         omni_codegen_emit_raw(ctx, "extern EffectType* effect_type_find(const char* name);\n");
         omni_codegen_emit_raw(ctx, "extern EffectType* effect_type_register(const char* name, Obj* payload_type, RecoveryProtocol* recovery);\n");
         omni_codegen_emit_raw(ctx, "extern HandlerClause* handler_clause_add(HandlerClause* clauses, EffectType* type, Obj* handler_fn);\n");
+        omni_codegen_emit_raw(ctx, "extern Obj* effect_handle(Obj* body, HandlerClause* clauses, Obj* return_clause, Obj* env);\n");
         omni_codegen_emit_raw(ctx, "\n");
         omni_codegen_emit_raw(ctx, "#define cdr(o) obj_cdr(o)\n");
         omni_codegen_emit_raw(ctx, "#define mk_cell(a, b) mk_pair(a, b)\n");
@@ -1642,17 +1643,128 @@ static void codegen_let(CodeGenContext* ctx, OmniValue* expr) {
     omni_codegen_emit(ctx, "})");
 }
 
+/*
+ * is_lambda_expr - Check if an expression is a lambda form
+ *
+ * Returns true for: (lambda ...), (fn ...), (λ ...)
+ * Note: Arrow syntax (-> ...) has been superseded by (fn ...)
+ */
+static bool is_lambda_expr(OmniValue* expr) {
+    if (!omni_is_cell(expr)) return false;
+    OmniValue* head = omni_car(expr);
+    if (!omni_is_sym(head)) return false;
+    const char* name = head->str_val;
+    return (strcmp(name, "lambda") == 0 || strcmp(name, "fn") == 0 ||
+            strcmp(name, "λ") == 0);
+}
+
+/*
+ * count_lambda_params - Count the number of parameters in a lambda expression
+ *
+ * Supports: (lambda (params...) body) and (fn [params...] body)
+ */
+static int count_lambda_params(OmniValue* expr) {
+    OmniValue* args = omni_cdr(expr);
+    OmniValue* params = omni_car(args);
+    int count = 0;
+
+    if (omni_is_cell(params)) {
+        /* List-style params: (lambda (x y) ...) */
+        OmniValue* p = params;
+        while (!omni_is_nil(p) && omni_is_cell(p)) {
+            if (omni_is_sym(omni_car(p))) count++;
+            p = omni_cdr(p);
+        }
+    } else if (omni_is_array(params)) {
+        /* Array-style params: (fn [x y] ...) */
+        size_t len = omni_array_len(params);
+        for (size_t i = 0; i < len; i++) {
+            OmniValue* param = omni_array_get(params, i);
+            if (omni_is_type_lit(param)) continue;
+            if (omni_is_sym(param)) count++;
+        }
+    }
+    return count;
+}
+
+/* Forward declaration */
+static void codegen_lambda(CodeGenContext* ctx, OmniValue* expr);
+
+/*
+ * codegen_lambda_as_closure - Generate a lambda as a closure object for HOFs
+ *
+ * Issue 2 P1: When passing a lambda to a HOF, we need to wrap it in a closure
+ * object because the runtime HOFs expect Obj* (closure objects), not function pointers.
+ *
+ * This generates:
+ * 1. The static lambda function (via codegen_lambda side effects)
+ * 2. A trampoline function that adapts the signature
+ * 3. A call to mk_closure_region to create the closure object
+ */
+static void codegen_lambda_as_closure(CodeGenContext* ctx, OmniValue* lambda_expr) {
+    /* Get the lambda ID that will be generated */
+    int lambda_id = ctx->lambda_counter;
+    int arity = count_lambda_params(lambda_expr);
+
+    /* Generate the static lambda function (this increments lambda_counter) */
+    /* We need to capture the emitted function call start and replace it */
+    char fn_name[64];
+    snprintf(fn_name, sizeof(fn_name), "_lambda_%d", lambda_id);
+    char tramp_name[64];
+    snprintf(tramp_name, sizeof(tramp_name), "_lambda_%d_tramp", lambda_id);
+
+    /* Generate trampoline function definition */
+    char tramp_def[2048];
+    char* p = tramp_def;
+    p += sprintf(p, "static Obj* %s(struct Region* _caller_region, Obj** _captures, Obj** _args, int _argc) {\n", tramp_name);
+    p += sprintf(p, "    (void)_captures; (void)_argc;\n");
+    p += sprintf(p, "    return %s(_caller_region", fn_name);
+    for (int i = 0; i < arity; i++) {
+        p += sprintf(p, ", _args[%d]", i);
+    }
+    p += sprintf(p, ");\n");
+    p += sprintf(p, "}");
+
+    /* Add trampoline to lambda definitions (it will be emitted before main) */
+    /* First, generate the lambda itself (adds to lambda_defs) */
+    CodeGenContext* tmp = omni_codegen_new_buffer();
+    tmp->lambda_counter = ctx->lambda_counter;
+    /* Copy symbol table */
+    for (size_t i = 0; i < ctx->symbols.count; i++) {
+        register_symbol(tmp, ctx->symbols.names[i], ctx->symbols.c_names[i]);
+    }
+
+    /* Generate lambda - this will emit "_lambda_N(_local_region" to tmp buffer */
+    codegen_lambda(tmp, lambda_expr);
+
+    /* Update lambda_counter in main context */
+    ctx->lambda_counter = tmp->lambda_counter;
+
+    /* Copy lambda definitions from tmp to main context */
+    for (size_t i = 0; i < tmp->lambda_defs.count; i++) {
+        omni_codegen_add_lambda_def(ctx, tmp->lambda_defs.defs[i]);
+    }
+
+    /* Add trampoline definition */
+    omni_codegen_add_lambda_def(ctx, tramp_def);
+
+    omni_codegen_free(tmp);
+
+    /* Emit closure creation at call site */
+    omni_codegen_emit_raw(ctx, "mk_closure_region(_local_region, %s, NULL, 0, %d)", tramp_name, arity);
+}
+
 static void codegen_lambda(CodeGenContext* ctx, OmniValue* expr) {
-    /* Generate lambda as a static function with region lifecycle */
+    /* Generate lambda as a static function with region lifecycle
+     *
+     * Supports: (lambda (params...) body) and (fn [params...] body)
+     * Note: Arrow syntax (-> ...) has been superseded by (fn ...)
+     */
     int lambda_id = ctx->lambda_counter++;
 
-    OmniValue* head = omni_car(expr);
     OmniValue* args = omni_cdr(expr);
-
-    /* Check if this is -> syntax (multiple slot params) */
-    bool is_arrow_syntax = omni_is_sym(head) && strcmp(head->str_val, "->") == 0;
-
-    OmniValue* body = NULL;
+    OmniValue* params = omni_car(args);
+    OmniValue* body = omni_cdr(args);
 
     /* Generate lambda function name */
     char fn_name[64];
@@ -1668,68 +1780,35 @@ static void codegen_lambda(CodeGenContext* ctx, OmniValue* expr) {
     /* Parameters - register them before generating body */
     bool first_param = false;  /* Already have _caller_region */
 
-    if (is_arrow_syntax) {
-        /* Arrow syntax: (-> [x] [y] ... body) - multiple slots then body */
-        OmniValue* rest = args;
-        while (!omni_is_nil(rest) && omni_is_cell(rest)) {
-            OmniValue* elem = omni_car(rest);
-            if (!omni_is_array(elem)) {
-                /* First non-array is the body */
-                body = rest;
-                break;
-            }
-            /* Process this slot array for params */
-            size_t len = omni_array_len(elem);
-            for (size_t i = 0; i < len; i++) {
-                OmniValue* param = omni_array_get(elem, i);
-                /* Skip type annotations {Type} */
-                if (omni_is_type_lit(param)) continue;
-                if (omni_is_sym(param)) {
-                    if (!first_param) p += sprintf(p, ", ");
-                    first_param = false;
-                    char* c_name = omni_codegen_mangle(param->str_val);
-                    p += sprintf(p, "Obj* %s", c_name);
-                    register_symbol(ctx, param->str_val, c_name);
-                    free(c_name);
-                }
-            }
-            rest = omni_cdr(rest);
-        }
-    } else {
-        /* Standard lambda/fn syntax */
-        OmniValue* params = omni_car(args);
-        body = omni_cdr(args);
-
+    if (omni_is_cell(params)) {
+        /* List-style: (lambda (x y) body) */
         OmniValue* param_list = params;
-        if (omni_is_cell(param_list)) {
-            /* List-style: (lambda (x y) body) */
-            while (!omni_is_nil(param_list) && omni_is_cell(param_list)) {
+        while (!omni_is_nil(param_list) && omni_is_cell(param_list)) {
+            if (!first_param) p += sprintf(p, ", ");
+            first_param = false;
+            OmniValue* param = omni_car(param_list);
+            if (omni_is_sym(param)) {
+                char* c_name = omni_codegen_mangle(param->str_val);
+                p += sprintf(p, "Obj* %s", c_name);
+                register_symbol(ctx, param->str_val, c_name);
+                free(c_name);
+            }
+            param_list = omni_cdr(param_list);
+        }
+    } else if (omni_is_array(params)) {
+        /* Slot syntax: (fn [x y] body) - array with params */
+        size_t len = omni_array_len(params);
+        for (size_t i = 0; i < len; i++) {
+            OmniValue* param = omni_array_get(params, i);
+            /* Skip type annotations {Type} */
+            if (omni_is_type_lit(param)) continue;
+            if (omni_is_sym(param)) {
                 if (!first_param) p += sprintf(p, ", ");
                 first_param = false;
-                OmniValue* param = omni_car(param_list);
-                if (omni_is_sym(param)) {
-                    char* c_name = omni_codegen_mangle(param->str_val);
-                    p += sprintf(p, "Obj* %s", c_name);
-                    register_symbol(ctx, param->str_val, c_name);
-                    free(c_name);
-                }
-                param_list = omni_cdr(param_list);
-            }
-        } else if (omni_is_array(params)) {
-            /* Slot syntax: (lambda [x] body) - single array with one param */
-            size_t len = omni_array_len(params);
-            for (size_t i = 0; i < len; i++) {
-                OmniValue* param = omni_array_get(params, i);
-                /* Skip type annotations {Type} */
-                if (omni_is_type_lit(param)) continue;
-                if (omni_is_sym(param)) {
-                    if (!first_param) p += sprintf(p, ", ");
-                    first_param = false;
-                    char* c_name = omni_codegen_mangle(param->str_val);
-                    p += sprintf(p, "Obj* %s", c_name);
-                    register_symbol(ctx, param->str_val, c_name);
-                    free(c_name);
-                }
+                char* c_name = omni_codegen_mangle(param->str_val);
+                p += sprintf(p, "Obj* %s", c_name);
+                register_symbol(ctx, param->str_val, c_name);
+                free(c_name);
             }
         }
     }
@@ -2284,15 +2363,6 @@ static void codegen_match(CodeGenContext* ctx, OmniValue* expr) {
         }
     }
 
-    /* Count clauses (pairs of pattern-result) */
-    size_t clause_count = 0;
-    OmniValue* c = clauses;
-    while (!omni_is_nil(c) && omni_is_cell(c)) {
-        clause_count++;
-        c = omni_cdr(c);
-    }
-    if (clause_count % 2 != 0) clause_count--;  /* Handle odd number (else clause) */
-
     /* Emit the value expression */
     omni_codegen_emit(ctx, "({ /* match */\n");
     omni_codegen_indent(ctx);
@@ -2303,102 +2373,166 @@ static void codegen_match(CodeGenContext* ctx, OmniValue* expr) {
     omni_codegen_emit(ctx, "Obj* _result = NIL;\n");
     omni_codegen_emit_raw(ctx, "\n");
 
-    /* Generate if-else chain for pattern matching */
-    size_t pairs_processed = 0;
-    c = clauses;
+    /*
+     * Match clause processing - supports two syntaxes:
+     *
+     * NEW (array-based clauses):
+     *   (match value [pattern result] [pattern :when guard result] ...)
+     *   - [pattern result]           -> 2 elements
+     *   - [pattern :when guard result] -> 4 elements
+     *
+     * LEGACY (alternating pairs):
+     *   (match value pattern1 result1 pattern2 result2 ...)
+     *   - Backward compatibility for existing code
+     */
+    size_t clauses_processed = 0;
+    OmniValue* c = clauses;
+
     while (!omni_is_nil(c) && omni_is_cell(c)) {
-        OmniValue* pattern = omni_car(c);
+        OmniValue* clause_or_pattern = omni_car(c);
         c = omni_cdr(c);
 
-        if (!omni_is_nil(c) && omni_is_cell(c)) {
-            OmniValue* result_expr = omni_car(c);
-            c = omni_cdr(c);
+        OmniValue* pattern = NULL;
+        OmniValue* guard_expr = NULL;
+        OmniValue* result_expr = NULL;
 
+        /*
+         * Detect clause format:
+         * - If array with 2+ elements containing result -> new array-based clause
+         * - Otherwise -> legacy alternating pattern-result pairs
+         */
+        if (omni_is_array(clause_or_pattern) && clause_or_pattern->array.len >= 2) {
             /*
-             * Phase 26: Guard Detection (& syntax)
+             * Array-based clause: [pattern result] or [pattern :when guard result]
              *
-             * Check if pattern contains a guard: [pattern-elements & guard-expr]
+             * Format 1: [pattern result]
+             *   array[0] = pattern
+             *   array[1] = result
              *
-             * Examples:
-             * - [n {Int} & (> n 10)]     -> guard is (> n 10)
-             * - [x y & (> x y)]          -> guard is (> x y)
-             * - [& (empty? nums)]         -> guard is (empty? nums)
-             *
-             * Note: Guards are detected but full guard evaluation requires
-             * binding support which is a future enhancement.
+             * Format 2: [pattern :when guard result]
+             *   array[0] = pattern
+             *   array[1] = :when (keyword)
+             *   array[2] = guard expression
+             *   array[3] = result
              */
-            OmniValue* guard_expr = NULL;
+            OmniValue* arr = clause_or_pattern;
 
-            /* Check if pattern is an array with & guard */
+            /* Check for :when guard syntax at position 1 */
+            if (arr->array.len >= 4) {
+                OmniValue* maybe_when = arr->array.data[1];
+                /* Check for :when keyword (quoted symbol 'when) */
+                bool is_when_keyword = false;
+
+                if (omni_is_sym(maybe_when) && strcmp(maybe_when->str_val, "when") == 0) {
+                    is_when_keyword = true;
+                }
+                /* Also check for (quote when) form */
+                if (omni_is_cell(maybe_when)) {
+                    OmniValue* head = omni_car(maybe_when);
+                    if (omni_is_sym(head) && strcmp(head->str_val, "quote") == 0) {
+                        OmniValue* quoted = omni_car(omni_cdr(maybe_when));
+                        if (omni_is_sym(quoted) && strcmp(quoted->str_val, "when") == 0) {
+                            is_when_keyword = true;
+                        }
+                    }
+                }
+
+                if (is_when_keyword) {
+                    /* [pattern :when guard result] */
+                    pattern = arr->array.data[0];
+                    guard_expr = arr->array.data[2];
+                    result_expr = arr->array.data[3];
+                } else {
+                    /* [pattern result] - first two elements */
+                    pattern = arr->array.data[0];
+                    result_expr = arr->array.data[1];
+                }
+            } else {
+                /* [pattern result] */
+                pattern = arr->array.data[0];
+                result_expr = arr->array.data[1];
+            }
+        } else {
+            /*
+             * Legacy alternating pairs: pattern result pattern result ...
+             * clause_or_pattern is the pattern, next element is result
+             */
+            pattern = clause_or_pattern;
+            if (!omni_is_nil(c) && omni_is_cell(c)) {
+                result_expr = omni_car(c);
+                c = omni_cdr(c);
+            } else {
+                /* Odd number of elements - skip this malformed clause */
+                continue;
+            }
+
+            /* Legacy guard detection: [pattern-elements & guard-expr] */
             if (omni_is_array(pattern)) {
-                /* Scan array for & symbol */
                 for (size_t i = 0; i < pattern->array.len; i++) {
                     OmniValue* elem = pattern->array.data[i];
                     if (omni_is_sym(elem) && strcmp(elem->str_val, "&") == 0) {
-                        /* Found & guard - everything after is the guard expression */
                         if (i + 1 < pattern->array.len) {
-                            /* Build guard expression from remaining elements */
-                            /* For now, just take the next element as the guard */
                             guard_expr = pattern->array.data[i + 1];
-
-                            /* Emit comment about guard */
-                            omni_codegen_emit(ctx, "/* pattern: ");
-                            codegen_expr(ctx, pattern);
-                            omni_codegen_emit_raw(ctx, " (with guard) */\n");
                         }
                         break;
                     }
                 }
             }
-
-            if (!guard_expr) {
-                /* No guard - emit regular pattern comment */
-                omni_codegen_emit(ctx, "/* pattern: ");
-                codegen_expr(ctx, pattern);
-                omni_codegen_emit_raw(ctx, " */\n");
-            }
-
-            /* Emit the else or start of if chain */
-            if (pairs_processed > 0) {
-                omni_codegen_emit_raw(ctx, "else ");
-            }
-
-            if (omni_is_sym(pattern) && strcmp(pattern->str_val, "_") == 0) {
-                /* Wildcard - always matches, no if needed */
-                omni_codegen_emit(ctx, "{\n");
-                omni_codegen_indent(ctx);
-                omni_codegen_emit(ctx, "/* wildcard */\n");
-                omni_codegen_emit(ctx, "_result = ");
-                codegen_expr(ctx, result_expr);
-                omni_codegen_emit_raw(ctx, ";\n");
-                omni_codegen_dedent(ctx);
-                omni_codegen_emit_raw(ctx, "}\n");
-            } else {
-                /* Regular pattern - use is_pattern_match */
-                omni_codegen_emit(ctx, "if (is_pattern_match(");
-                codegen_expr(ctx, pattern);
-                omni_codegen_emit_raw(ctx, ", _match_value)");
-
-                /* If there's a guard, add && condition to the if statement */
-                if (guard_expr) {
-                    omni_codegen_emit_raw(ctx, " && is_truthy(");
-                    codegen_expr(ctx, guard_expr);
-                    omni_codegen_emit_raw(ctx, ") /* guard */");
-                }
-
-                omni_codegen_emit_raw(ctx, ") {\n");
-                omni_codegen_indent(ctx);
-
-                omni_codegen_emit(ctx, "_result = ");
-                codegen_expr(ctx, result_expr);
-                omni_codegen_emit_raw(ctx, ";\n");
-
-                omni_codegen_dedent(ctx);
-                omni_codegen_emit_raw(ctx, "}\n");
-            }
-
-            pairs_processed++;
         }
+
+        if (!pattern || !result_expr) continue;
+
+        /* Emit pattern comment */
+        if (guard_expr) {
+            omni_codegen_emit(ctx, "/* pattern: ");
+            codegen_expr(ctx, pattern);
+            omni_codegen_emit_raw(ctx, " :when ");
+            codegen_expr(ctx, guard_expr);
+            omni_codegen_emit_raw(ctx, " */\n");
+        } else {
+            omni_codegen_emit(ctx, "/* pattern: ");
+            codegen_expr(ctx, pattern);
+            omni_codegen_emit_raw(ctx, " */\n");
+        }
+
+        /* Emit else for non-first clauses */
+        if (clauses_processed > 0) {
+            omni_codegen_emit_raw(ctx, "else ");
+        }
+
+        /* Handle wildcard pattern */
+        if (omni_is_sym(pattern) && strcmp(pattern->str_val, "_") == 0) {
+            omni_codegen_emit(ctx, "{\n");
+            omni_codegen_indent(ctx);
+            omni_codegen_emit(ctx, "/* wildcard */\n");
+            omni_codegen_emit(ctx, "_result = ");
+            codegen_expr(ctx, result_expr);
+            omni_codegen_emit_raw(ctx, ";\n");
+            omni_codegen_dedent(ctx);
+            omni_codegen_emit_raw(ctx, "}\n");
+        } else {
+            /* Regular pattern - use is_pattern_match */
+            omni_codegen_emit(ctx, "if (is_pattern_match(");
+            codegen_expr(ctx, pattern);
+            omni_codegen_emit_raw(ctx, ", _match_value)");
+
+            /* Add guard condition if present */
+            if (guard_expr) {
+                omni_codegen_emit_raw(ctx, " && is_truthy(");
+                codegen_expr(ctx, guard_expr);
+                omni_codegen_emit_raw(ctx, ")");
+            }
+
+            omni_codegen_emit_raw(ctx, ") {\n");
+            omni_codegen_indent(ctx);
+            omni_codegen_emit(ctx, "_result = ");
+            codegen_expr(ctx, result_expr);
+            omni_codegen_emit_raw(ctx, ";\n");
+            omni_codegen_dedent(ctx);
+            omni_codegen_emit_raw(ctx, "}\n");
+        }
+
+        clauses_processed++;
     }
 
     /* In a statement expression, the last expression becomes the return value */
@@ -2436,6 +2570,160 @@ static void codegen_match(CodeGenContext* ctx, OmniValue* expr) {
  *     _result;
  *   })
  */
+/*
+ * codegen_handler_closure - Generate a static handler function and return closure
+ *
+ * Handler closures have the signature:
+ *   Obj* fn(Region*, Obj** captures, Obj** args, int argc)
+ * where args[0] = payload, args[1] = resume (for effect handlers)
+ * or args[0] = value (for return handlers)
+ *
+ * @param ctx        CodeGen context
+ * @param params     Parameter list (e.g., (payload resume) or (value))
+ * @param body       Handler body expression
+ * @param name       Name prefix for the generated function
+ * @param arity      Number of parameters (2 for effect handlers, 1 for return)
+ */
+static void codegen_handler_closure(CodeGenContext* ctx, OmniValue* params,
+                                     OmniValue* body, const char* name, int arity) {
+    int handler_id = ctx->lambda_counter++;
+    char fn_name[64];
+    snprintf(fn_name, sizeof(fn_name), "_handler_%s_%d", name, handler_id);
+
+    /* Generate handler body into a temporary buffer */
+    CodeGenContext* tmp = omni_codegen_new_buffer();
+    tmp->lambda_counter = ctx->lambda_counter;
+
+    /* Copy symbol table */
+    for (size_t i = 0; i < ctx->symbols.count; i++) {
+        register_symbol(tmp, ctx->symbols.names[i], ctx->symbols.c_names[i]);
+    }
+
+    /* Register handler parameters as symbols */
+    int param_idx = 0;
+    if (omni_is_cell(params)) {
+        OmniValue* param_list = params;
+        while (!omni_is_nil(param_list) && omni_is_cell(param_list)) {
+            OmniValue* param = omni_car(param_list);
+            if (omni_is_sym(param)) {
+                char c_name[64];
+                snprintf(c_name, sizeof(c_name), "_arg_%d", param_idx);
+                register_symbol(tmp, param->str_val, c_name);
+            }
+            param_list = omni_cdr(param_list);
+            param_idx++;
+        }
+    } else if (omni_is_array(params)) {
+        for (size_t i = 0; i < params->array.len; i++) {
+            OmniValue* param = params->array.data[i];
+            if (omni_is_sym(param)) {
+                char c_name[64];
+                snprintf(c_name, sizeof(c_name), "_arg_%d", (int)i);
+                register_symbol(tmp, param->str_val, c_name);
+            }
+            param_idx++;
+        }
+    }
+
+    /* Generate the body code */
+    codegen_expr(tmp, body);
+
+    /* Update lambda counter in main context */
+    ctx->lambda_counter = tmp->lambda_counter;
+
+    /* Copy any nested lambda definitions */
+    for (size_t i = 0; i < tmp->lambda_defs.count; i++) {
+        omni_codegen_add_lambda_def(ctx, tmp->lambda_defs.defs[i]);
+    }
+
+    /* Build the static handler function */
+    char def[16384];
+    char* p = def;
+    p += sprintf(p, "static Obj* %s(struct Region* _caller_region, Obj** _captures, Obj** _args, int _argc) {\n", fn_name);
+    p += sprintf(p, "    (void)_captures; (void)_argc; (void)_caller_region;\n");
+
+    /* Bind parameters from args array */
+    param_idx = 0;
+    if (omni_is_cell(params)) {
+        OmniValue* param_list = params;
+        while (!omni_is_nil(param_list) && omni_is_cell(param_list)) {
+            OmniValue* param = omni_car(param_list);
+            if (omni_is_sym(param)) {
+                p += sprintf(p, "    Obj* _arg_%d = _args[%d];\n", param_idx, param_idx);
+            }
+            param_list = omni_cdr(param_list);
+            param_idx++;
+        }
+    } else if (omni_is_array(params)) {
+        for (size_t i = 0; i < params->array.len; i++) {
+            OmniValue* param = params->array.data[i];
+            if (omni_is_sym(param)) {
+                p += sprintf(p, "    Obj* _arg_%d = _args[%d];\n", (int)i, (int)i);
+            }
+            param_idx++;
+        }
+    }
+
+    p += sprintf(p, "    return %s;\n", tmp->output_buffer);
+    p += sprintf(p, "}");
+
+    /* Add handler function to lambda definitions */
+    omni_codegen_add_lambda_def(ctx, def);
+
+    omni_codegen_free(tmp);
+
+    /* Emit closure creation at call site */
+    omni_codegen_emit_raw(ctx, "mk_closure_region(_local_region, %s, NULL, 0, %d)", fn_name, arity);
+}
+
+/*
+ * codegen_body_thunk - Generate a static function for the handle body
+ *
+ * Creates a 0-argument closure that evaluates the body expression.
+ * This is needed because effect_handle expects a thunk.
+ */
+static void codegen_body_thunk(CodeGenContext* ctx, OmniValue* body) {
+    int thunk_id = ctx->lambda_counter++;
+    char fn_name[64];
+    snprintf(fn_name, sizeof(fn_name), "_body_thunk_%d", thunk_id);
+
+    /* Generate body into a temporary buffer */
+    CodeGenContext* tmp = omni_codegen_new_buffer();
+    tmp->lambda_counter = ctx->lambda_counter;
+
+    /* Copy symbol table */
+    for (size_t i = 0; i < ctx->symbols.count; i++) {
+        register_symbol(tmp, ctx->symbols.names[i], ctx->symbols.c_names[i]);
+    }
+
+    /* Generate the body code */
+    codegen_expr(tmp, body);
+
+    /* Update lambda counter in main context */
+    ctx->lambda_counter = tmp->lambda_counter;
+
+    /* Copy any nested lambda definitions */
+    for (size_t i = 0; i < tmp->lambda_defs.count; i++) {
+        omni_codegen_add_lambda_def(ctx, tmp->lambda_defs.defs[i]);
+    }
+
+    /* Build the static thunk function */
+    char def[16384];
+    char* p = def;
+    p += sprintf(p, "static Obj* %s(struct Region* _caller_region, Obj** _captures, Obj** _args, int _argc) {\n", fn_name);
+    p += sprintf(p, "    (void)_captures; (void)_argc; (void)_caller_region; (void)_args;\n");
+    p += sprintf(p, "    return %s;\n", tmp->output_buffer);
+    p += sprintf(p, "}");
+
+    /* Add thunk function to lambda definitions */
+    omni_codegen_add_lambda_def(ctx, def);
+
+    omni_codegen_free(tmp);
+
+    /* Emit closure creation at call site */
+    omni_codegen_emit_raw(ctx, "mk_closure_region(_local_region, %s, NULL, 0, 0)", fn_name);
+}
+
 static void codegen_handle(CodeGenContext* ctx, OmniValue* expr) {
     OmniValue* args = omni_cdr(expr);
     if (omni_is_nil(args)) {
@@ -2471,20 +2759,15 @@ static void codegen_handle(CodeGenContext* ctx, OmniValue* expr) {
 
         /* Check for return clause: (return (value) body) */
         if (strcmp(name, "return") == 0) {
-            /* Return clause - build a lambda for it */
+            /* Return clause takes 1 arg: value */
             OmniValue* params = omni_car(rest);
             OmniValue* body_rest = omni_cdr(rest);
             OmniValue* ret_body = omni_is_cell(body_rest) ? omni_car(body_rest) : body_rest;
 
             omni_codegen_emit(ctx, "/* return clause */\n");
             omni_codegen_emit(ctx, "_h_return_clause = ");
-
-            /* Build a lambda: (fn (params) ret_body) */
-            omni_codegen_emit_raw(ctx, "mk_closure_simple(\"return_handler\", ");
-            codegen_expr(ctx, params);
-            omni_codegen_emit_raw(ctx, ", ");
-            codegen_expr(ctx, ret_body);
-            omni_codegen_emit_raw(ctx, ");\n");
+            codegen_handler_closure(ctx, params, ret_body, "return", 1);
+            omni_codegen_emit_raw(ctx, ";\n");
             continue;
         }
 
@@ -2506,16 +2789,10 @@ static void codegen_handle(CodeGenContext* ctx, OmniValue* expr) {
         omni_codegen_dedent(ctx);
         omni_codegen_emit(ctx, "}\n");
 
-        /* Build handler lambda: (fn (payload resume) handler-body) */
+        /* Build handler closure: takes 2 args (payload, resume) */
         omni_codegen_emit(ctx, "Obj* _handler_fn = ");
-
-        /* For now, emit the handler as an inline lambda */
-        /* This creates a lambda capturing the handler body */
-        omni_codegen_emit_raw(ctx, "mk_closure_simple(\"%s_handler\", ", name);
-        codegen_expr(ctx, params);
-        omni_codegen_emit_raw(ctx, ", ");
-        codegen_expr(ctx, handler_body);
-        omni_codegen_emit_raw(ctx, ");\n");
+        codegen_handler_closure(ctx, params, handler_body, name, 2);
+        omni_codegen_emit_raw(ctx, ";\n");
 
         /* Add clause to list */
         omni_codegen_emit(ctx, "_h_clauses = handler_clause_add(_h_clauses, _eff_type, _handler_fn);\n");
@@ -2526,18 +2803,12 @@ static void codegen_handle(CodeGenContext* ctx, OmniValue* expr) {
 
     omni_codegen_emit_raw(ctx, "\n");
 
-    /* Push handler */
-    omni_codegen_emit(ctx, "handler_push(_h_clauses, _h_return_clause, NULL);\n");
-    omni_codegen_emit_raw(ctx, "\n");
-
-    /* Evaluate body in handler scope */
-    omni_codegen_emit(ctx, "Obj* _h_result = ");
-    codegen_expr(ctx, body);
+    /* Generate body as a thunk and call effect_handle */
+    omni_codegen_emit(ctx, "Obj* _body_thunk = ");
+    codegen_body_thunk(ctx, body);
     omni_codegen_emit_raw(ctx, ";\n");
+    omni_codegen_emit(ctx, "Obj* _h_result = effect_handle(_body_thunk, _h_clauses, _h_return_clause, NULL);\n");
     omni_codegen_emit_raw(ctx, "\n");
-
-    /* Pop handler */
-    omni_codegen_emit(ctx, "handler_pop();\n");
 
     /* Return result */
     omni_codegen_emit(ctx, "_h_result;  /* handle result */\n");
@@ -2598,9 +2869,13 @@ static void codegen_raise(CodeGenContext* ctx, OmniValue* expr) {
 /*
  * codegen_resume - Generate code for resuming a suspended computation
  *
- * Syntax: (resume resumption value)
+ * Syntax: (resume resumption value) - explicit resumption object
+ * Syntax: (resume value) - within handler, uses bound 'resume' variable
  *
  * Generates: prim_resume(resumption, value)
+ *
+ * When called with 1 argument inside a handler body, looks up 'resume'
+ * in the symbol table to find the bound resumption object.
  */
 static void codegen_resume(CodeGenContext* ctx, OmniValue* expr) {
     OmniValue* args = omni_cdr(expr);
@@ -2609,18 +2884,31 @@ static void codegen_resume(CodeGenContext* ctx, OmniValue* expr) {
         return;
     }
 
-    OmniValue* resumption = omni_car(args);
-    OmniValue* value_rest = omni_cdr(args);
-    OmniValue* value = omni_is_cell(value_rest) ? omni_car(value_rest) : NULL;
+    OmniValue* first_arg = omni_car(args);
+    OmniValue* rest = omni_cdr(args);
+    OmniValue* second_arg = omni_is_cell(rest) ? omni_car(rest) : NULL;
 
     omni_codegen_emit_raw(ctx, "prim_resume(");
-    codegen_expr(ctx, resumption);
-    omni_codegen_emit_raw(ctx, ", ");
-    if (value) {
-        codegen_expr(ctx, value);
+
+    if (second_arg) {
+        /* Two-arg form: (resume resumption value) */
+        codegen_expr(ctx, first_arg);
+        omni_codegen_emit_raw(ctx, ", ");
+        codegen_expr(ctx, second_arg);
     } else {
-        omni_codegen_emit_raw(ctx, "NIL");
+        /* One-arg form: (resume value) - look up 'resume' in scope */
+        const char* resume_var = lookup_symbol(ctx, "resume");
+        if (resume_var) {
+            /* Found 'resume' bound in scope (e.g., handler parameter) */
+            omni_codegen_emit_raw(ctx, "%s, ", resume_var);
+            codegen_expr(ctx, first_arg);
+        } else {
+            /* No 'resume' in scope - treat first_arg as resumption, value as NIL */
+            codegen_expr(ctx, first_arg);
+            omni_codegen_emit_raw(ctx, ", NIL");
+        }
     }
+
     omni_codegen_emit_raw(ctx, ")");
 }
 
@@ -2832,6 +3120,102 @@ static void codegen_apply(CodeGenContext* ctx, OmniValue* expr) {
             omni_codegen_emit_raw(ctx, "(printf(\"\\n\"), NOTHING)");
             return;
         }
+
+        /* Issue 2 P1: Region-aware higher-order functions
+         * These HOFs call closures internally, so they need the caller's region
+         * to properly propagate region context to the closure.
+         *
+         * When the function argument is an inline lambda, we generate a trampoline
+         * to adapt the static lambda's signature to ClosureFnRegion.
+         */
+        if (strcmp(name, "map") == 0) {
+            omni_codegen_emit_raw(ctx, "list_map_region(_local_region, ");
+            if (!omni_is_nil(args)) {
+                OmniValue* fn_arg = omni_car(args);
+                if (is_lambda_expr(fn_arg)) {
+                    codegen_lambda_as_closure(ctx, fn_arg);  /* Generate closure wrapper */
+                } else {
+                    codegen_expr(ctx, fn_arg);  /* Regular expression (closure obj) */
+                }
+                omni_codegen_emit_raw(ctx, ", ");
+                if (!omni_is_nil(omni_cdr(args))) {
+                    codegen_expr(ctx, omni_car(omni_cdr(args)));  /* xs */
+                } else {
+                    omni_codegen_emit_raw(ctx, "NIL");
+                }
+            }
+            omni_codegen_emit_raw(ctx, ")");
+            return;
+        }
+        if (strcmp(name, "filter") == 0) {
+            omni_codegen_emit_raw(ctx, "list_filter_region(_local_region, ");
+            if (!omni_is_nil(args)) {
+                OmniValue* fn_arg = omni_car(args);
+                if (is_lambda_expr(fn_arg)) {
+                    codegen_lambda_as_closure(ctx, fn_arg);  /* Generate closure wrapper */
+                } else {
+                    codegen_expr(ctx, fn_arg);  /* Regular expression (closure obj) */
+                }
+                omni_codegen_emit_raw(ctx, ", ");
+                if (!omni_is_nil(omni_cdr(args))) {
+                    codegen_expr(ctx, omni_car(omni_cdr(args)));  /* xs */
+                } else {
+                    omni_codegen_emit_raw(ctx, "NIL");
+                }
+            }
+            omni_codegen_emit_raw(ctx, ")");
+            return;
+        }
+        if (strcmp(name, "fold") == 0 || strcmp(name, "foldl") == 0) {
+            omni_codegen_emit_raw(ctx, "list_fold_region(_local_region, ");
+            if (!omni_is_nil(args)) {
+                OmniValue* fn_arg = omni_car(args);
+                if (is_lambda_expr(fn_arg)) {
+                    codegen_lambda_as_closure(ctx, fn_arg);  /* Generate closure wrapper */
+                } else {
+                    codegen_expr(ctx, fn_arg);  /* Regular expression (closure obj) */
+                }
+                omni_codegen_emit_raw(ctx, ", ");
+                OmniValue* rest = omni_cdr(args);
+                if (!omni_is_nil(rest)) {
+                    codegen_expr(ctx, omni_car(rest));  /* init */
+                    omni_codegen_emit_raw(ctx, ", ");
+                    OmniValue* rest2 = omni_cdr(rest);
+                    if (!omni_is_nil(rest2)) {
+                        codegen_expr(ctx, omni_car(rest2));  /* xs */
+                    } else {
+                        omni_codegen_emit_raw(ctx, "NIL");
+                    }
+                }
+            }
+            omni_codegen_emit_raw(ctx, ")");
+            return;
+        }
+        if (strcmp(name, "foldr") == 0) {
+            omni_codegen_emit_raw(ctx, "list_foldr_region(_local_region, ");
+            if (!omni_is_nil(args)) {
+                OmniValue* fn_arg = omni_car(args);
+                if (is_lambda_expr(fn_arg)) {
+                    codegen_lambda_as_closure(ctx, fn_arg);  /* Generate closure wrapper */
+                } else {
+                    codegen_expr(ctx, fn_arg);  /* Regular expression (closure obj) */
+                }
+                omni_codegen_emit_raw(ctx, ", ");
+                OmniValue* rest = omni_cdr(args);
+                if (!omni_is_nil(rest)) {
+                    codegen_expr(ctx, omni_car(rest));  /* init */
+                    omni_codegen_emit_raw(ctx, ", ");
+                    OmniValue* rest2 = omni_cdr(rest);
+                    if (!omni_is_nil(rest2)) {
+                        codegen_expr(ctx, omni_car(rest2));  /* xs */
+                    } else {
+                        omni_codegen_emit_raw(ctx, "NIL");
+                    }
+                }
+            }
+            omni_codegen_emit_raw(ctx, ")");
+            return;
+        }
     }
 
     /* Regular function call with Region-RC support */
@@ -2868,7 +3252,7 @@ static void codegen_apply(CodeGenContext* ctx, OmniValue* expr) {
         if (omni_is_sym(func_head)) {
             const char* fn_name = func_head->str_val;
             if (strcmp(fn_name, "lambda") == 0 || strcmp(fn_name, "fn") == 0 ||
-                strcmp(fn_name, "->") == 0 || strcmp(fn_name, "λ") == 0) {
+                strcmp(fn_name, "λ") == 0) {
                 /* Inline lambda application */
                 /* codegen_lambda emits _lambda_N(_local_region */
                 codegen_expr(ctx, func);
@@ -2967,7 +3351,7 @@ static void codegen_list(CodeGenContext* ctx, OmniValue* expr) {
             return;
         }
         if (strcmp(name, "lambda") == 0 || strcmp(name, "fn") == 0 ||
-            strcmp(name, "λ") == 0 || strcmp(name, "->") == 0) {  /* Lambda forms */
+            strcmp(name, "λ") == 0) {  /* Lambda forms */
             codegen_lambda(ctx, expr);
             return;
         }

@@ -7,6 +7,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "effect.h"
+#include "../include/omni.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -452,16 +453,33 @@ Obj* effect_handle(
     /* Push handler */
     Handler* h = handler_push(clauses, return_clause, env);
 
-    /* Establish prompt with the handler's tag */
+    /*
+     * Establish prompt with the handler's tag.
+     * cont_prompt sets up the escape point (setjmp) and returns body.
+     * If a longjmp occurs (from effect capture), we return via the
+     * setjmp return path with the handler's result.
+     */
     Obj* result = cont_prompt(h->prompt_tag, body, env, NULL);
+
+    /*
+     * If body is a thunk (closure), we need to call it.
+     * The prompt frame is now active, so effects in the body
+     * will be able to capture continuations up to this prompt.
+     */
+    if (result && IS_BOXED(result) && result->tag == TAG_CLOSURE) {
+        /* Call the body thunk with no arguments */
+        result = call_closure(result, NULL, 0);
+        /* Exit prompt normally with the result */
+        result = cont_prompt_exit(h->prompt_tag, result);
+    }
 
     /* Pop handler */
     handler_pop();
 
     /* Apply return clause if present */
     if (return_clause && result) {
-        /* (return-clause result) */
-        /* Placeholder - actual invocation depends on runtime */
+        Obj* args[1] = { result };
+        result = call_closure(return_clause, args, 1);
     }
 
     return result;
