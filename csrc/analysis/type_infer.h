@@ -292,6 +292,29 @@ ConcreteType* infer_let(AnalysisContext* ctx,
  */
 ConcreteType* infer_type_literal(OmniValue* type_lit);
 
+/**
+ * Infer the type of a match expression
+ *
+ * Analyzes a match expression and returns the common type of all branches.
+ *
+ * Args:
+ *   ctx: Analysis context
+ *   env: Type environment
+ *   args: Match arguments (value followed by clauses)
+ *
+ * Returns:
+ *   Type of the result (common type of all branch results)
+ *
+ * Match syntax:
+ *   (match value
+ *     [pattern1 result1]
+ *     [pattern2 result2]
+ *     ...)
+ */
+ConcreteType* infer_match(AnalysisContext* ctx,
+                         TypeEnv* env,
+                         OmniValue* args);
+
 /* ============== Utility Functions ============== */
 
 /**

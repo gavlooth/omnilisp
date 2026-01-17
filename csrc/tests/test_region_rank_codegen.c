@@ -5,8 +5,12 @@
  * The rank represents the outlives depth (nesting order) of regions.
  */
 
+#ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
+#endif
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -69,15 +73,14 @@ static OmniValue* mk_list4(OmniValue* a, OmniValue* b, OmniValue* c, OmniValue* 
 /* ========== Issue 2 P4.2: Rank Assignment Tests ========== */
 
 TEST(test_function_emits_rank_assignment) {
-    /* (define (f x) (+ x 1))
+    /* (define f x (+ x 1))
      * Should generate:
      *   _local_region->lifetime_rank = _caller_region->lifetime_rank + 1;
      * or using accessor functions:
      *   omni_region_set_lifetime_rank(_local_region, omni_region_get_lifetime_rank(_caller_region) + 1);
      */
-    OmniValue* params = mk_cons(mk_sym("x"), omni_nil);
     OmniValue* body = mk_list3(mk_sym("+"), mk_sym("x"), mk_int(1));
-    OmniValue* expr = mk_list3(mk_sym("define"), mk_cons(mk_sym("f"), params), body);
+    OmniValue* expr = mk_list4(mk_sym("define"), mk_sym("f"), mk_sym("x"), body);
 
     CodeGenContext* cg = omni_codegen_new_buffer();
     cg->analysis = omni_analysis_new();
@@ -181,9 +184,8 @@ TEST(test_no_direct_rank_field_access) {
      * Note: We exclude comments from this check since comments may mention
      * the field names for documentation purposes.
      */
-    OmniValue* params = mk_cons(mk_sym("x"), omni_nil);
     OmniValue* body = mk_list3(mk_sym("+"), mk_sym("x"), mk_int(1));
-    OmniValue* expr = mk_list3(mk_sym("define"), mk_cons(mk_sym("f"), params), body);
+    OmniValue* expr = mk_list4(mk_sym("define"), mk_sym("f"), mk_sym("x"), body);
 
     CodeGenContext* cg = omni_codegen_new_buffer();
     cg->analysis = omni_analysis_new();
@@ -235,18 +237,19 @@ TEST(test_no_direct_rank_field_access) {
 }
 
 TEST(test_nested_functions_rank_hierarchy) {
-    /* (define (outer x)
-     *   (define (inner y) (+ x y))
-     *   (inner 10))
+    /* (define outer x
+     *   (begin
+     *     (define inner y (+ x y))
+     *     (inner 10)))
      *
      * Outer region: rank = caller_rank + 1
      * Inner region: rank = outer_rank + 1 = caller_rank + 2
      */
-    OmniValue* inner_params = mk_cons(mk_sym("y"), omni_nil);
     OmniValue* inner_body = mk_list3(mk_sym("+"), mk_sym("x"), mk_sym("y"));
-    OmniValue* inner_def = mk_list3(
+    OmniValue* inner_def = mk_list4(
         mk_sym("define"),
-        mk_cons(mk_sym("inner"), inner_params),
+        mk_sym("inner"),
+        mk_sym("y"),
         inner_body
     );
 
@@ -258,9 +261,10 @@ TEST(test_nested_functions_rank_hierarchy) {
         inner_def,
         mk_list2(mk_sym("inner"), mk_int(10))
     );
-    OmniValue* outer_def = mk_list3(
+    OmniValue* outer_def = mk_list4(
         mk_sym("define"),
-        mk_cons(mk_sym("outer"), mk_cons(mk_sym("x"), omni_nil)),
+        mk_sym("outer"),
+        mk_sym("x"),
         outer_body
     );
 

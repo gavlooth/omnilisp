@@ -7,6 +7,7 @@
 
 #include "parser.h"
 #include "pika.h"
+#include "omni_debug.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -39,7 +40,8 @@ enum {
 
     R_DIGIT, R_DIGIT1, R_INT, R_SIGN, R_SIGNED_INT,
     R_LT, R_GT, R_EQ, R_QUESTION, R_AT,
-    R_FLOAT_FRAC, R_FLOAT,
+    R_OPT_SIGN, R_OPT_INT, R_FLOAT_FULL, R_FLOAT_LEAD, R_FLOAT_TRAIL, R_ANY_FLOAT,
+    R_FLOAT_FRAC, R_FLOAT, /* Legacy - kept for compatibility */
 
     R_ALPHA, R_ALPHA_UPPER,
     R_SYM_ASTERISK, R_SYM_PLUS, R_SYM_MINUS, R_SYM_UNDERSCORE, R_SYM_PERCENT, R_SYM_SLASH,
@@ -924,6 +926,51 @@ void omni_grammar_init(void) {
     g_rule_ids[R_FLOAT] = ids(3, R_INT, R_DOT, R_INT);
     g_rules[R_FLOAT] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_FLOAT], 3 }, .action = act_float };
 
+    /* ============== Enhanced Number Parsing (I6-p4) ==============
+     * Support for signed floats and partial floats:
+     *   -3.14   signed full float
+     *   +2.5    signed full float
+     *   .5      leading-dot float
+     *   -.25    signed leading-dot float
+     *   3.      trailing-dot float
+     *   -5.     signed trailing-dot float
+     *
+     * Grammar:
+     *   FLOAT_FULL  = SIGN? INT "." INT
+     *   FLOAT_LEAD  = SIGN? "." INT
+     *   FLOAT_TRAIL = SIGN? INT "."
+     *   ANY_FLOAT   = FLOAT_FULL / FLOAT_LEAD / FLOAT_TRAIL
+     */
+
+    /* Optional sign for floats */
+    g_rule_ids[R_OPT_SIGN] = ids(1, R_SIGN);
+    g_rules[R_OPT_SIGN] = (PikaRule){ PIKA_OPT, .data.children = { g_rule_ids[R_OPT_SIGN], 1 } };
+
+    /* Optional integer part (for trailing dot detection, not used directly) */
+    g_rule_ids[R_OPT_INT] = ids(1, R_INT);
+    g_rules[R_OPT_INT] = (PikaRule){ PIKA_OPT, .data.children = { g_rule_ids[R_OPT_INT], 1 } };
+
+    /* FLOAT_FULL: SIGN? INT "." INT (e.g., 1.5, -3.14, +2.718) */
+    g_rule_ids[R_FLOAT_FULL] = ids(4, R_OPT_SIGN, R_INT, R_DOT, R_INT);
+    g_rules[R_FLOAT_FULL] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_FLOAT_FULL], 4 }, .action = act_float };
+
+    /* FLOAT_LEAD: SIGN? "." INT (e.g., .5, -.25, +.333) */
+    g_rule_ids[R_FLOAT_LEAD] = ids(3, R_OPT_SIGN, R_DOT, R_INT);
+    g_rules[R_FLOAT_LEAD] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_FLOAT_LEAD], 3 }, .action = act_float };
+
+    /* FLOAT_TRAIL: SIGN? INT "." (e.g., 3., -5., +10.)
+     * Uses negative lookahead to avoid matching paths like 3.foo
+     * Implemented by trying FLOAT_FULL first in ANY_FLOAT
+     */
+    g_rule_ids[R_FLOAT_TRAIL] = ids(3, R_OPT_SIGN, R_INT, R_DOT);
+    g_rules[R_FLOAT_TRAIL] = (PikaRule){ PIKA_SEQ, .data.children = { g_rule_ids[R_FLOAT_TRAIL], 3 }, .action = act_float };
+
+    /* ANY_FLOAT: FLOAT_FULL / FLOAT_LEAD / FLOAT_TRAIL
+     * Order matters: FLOAT_FULL first to consume both sides of dot
+     */
+    g_rule_ids[R_ANY_FLOAT] = ids(3, R_FLOAT_FULL, R_FLOAT_LEAD, R_FLOAT_TRAIL);
+    g_rules[R_ANY_FLOAT] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_ANY_FLOAT], 3 } };
+
     /* Alphabetic */
     g_rules[R_ALPHA] = (PikaRule){ PIKA_RANGE, .data.range = { 'a', 'z' } };
     g_rules[R_ALPHA_UPPER] = (PikaRule){ PIKA_RANGE, .data.range = { 'A', 'Z' } };
@@ -1156,11 +1203,12 @@ void omni_grammar_init(void) {
 
     /* ============== Expression ============== */
 
-    /* EXPR = FLOAT / PATH / LIST / ARRAY / TYPE / METADATA / QUOTED / :SYMBOL / STRING / FMT_STRING / CLF_STRING / NAMED_CHAR / HASH_VAL / ATOM
-     * IMPORTANT: FLOAT must come BEFORE PATH so that "1.5" is parsed as a float literal,
-     * not as a path expression "1 . 5" (integer 1, dot, integer 5)
+    /* EXPR = ANY_FLOAT / PATH / LIST / ARRAY / TYPE / METADATA / QUOTED / :SYMBOL / STRING / FMT_STRING / CLF_STRING / NAMED_CHAR / HASH_VAL / ATOM
+     * IMPORTANT: ANY_FLOAT must come BEFORE PATH so that "1.5" is parsed as a float literal,
+     * not as a path expression "1 . 5" (integer 1, dot, integer 5).
+     * ANY_FLOAT handles signed floats (-3.14, +2.5) and partial floats (.5, 3.)
      */
-    g_rule_ids[R_EXPR] = ids(15, R_FLOAT, R_PATH, R_LIST, R_ARRAY, R_DICT, R_TYPE, R_METADATA, R_QUOTED, R_COLON_QUOTED_SYMBOL, R_STRING, R_FMT_STRING, R_CLF_STRING, R_NAMED_CHAR, R_HASH_VAL, R_ATOM);
+    g_rule_ids[R_EXPR] = ids(15, R_ANY_FLOAT, R_PATH, R_LIST, R_ARRAY, R_DICT, R_TYPE, R_METADATA, R_QUOTED, R_COLON_QUOTED_SYMBOL, R_STRING, R_FMT_STRING, R_CLF_STRING, R_NAMED_CHAR, R_HASH_VAL, R_ATOM);
     g_rules[R_EXPR] = (PikaRule){ PIKA_ALT, .data.children = { g_rule_ids[R_EXPR], 15 } };
 
     /* PROGRAM_SEQ = EXPR WS PROGRAM_INNER */
@@ -1231,29 +1279,27 @@ OmniValue* omni_parse_string(const char* source) {
 
     OmniValue* result = pika_run(state, R_EXPR);
 
-#ifdef DEBUG
-    fprintf(stderr, "[DEBUG] parse_string input='%s'\n", source);
+    DEBUG_PARSER("parse_string input='%s'", source);
     PikaMatch* m = pika_get_match(state, 0, R_EXPR);
     if (m) {
-        fprintf(stderr, "[DEBUG] R_EXPR at 0: matched=%d len=%zu\n", m->matched, m->len);
+	DEBUG_PARSER("R_EXPR at 0: matched=%d len=%zu", m->matched, m->len);
     }
     m = pika_get_match(state, 0, R_LIST);
     if (m) {
-        fprintf(stderr, "[DEBUG] R_LIST at 0: matched=%d len=%zu\n", m->matched, m->len);
+	DEBUG_PARSER("R_LIST at 0: matched=%d len=%zu", m->matched, m->len);
     }
     m = pika_get_match(state, 0, R_ATOM);
     if (m) {
-        fprintf(stderr, "[DEBUG] R_ATOM at 0: matched=%d len=%zu\n", m->matched, m->len);
+	DEBUG_PARSER("R_ATOM at 0: matched=%d len=%zu", m->matched, m->len);
     }
     m = pika_get_match(state, 0, R_INT);
     if (m) {
-        fprintf(stderr, "[DEBUG] R_INT at 0: matched=%d len=%zu\n", m->matched, m->len);
+	DEBUG_PARSER("R_INT at 0: matched=%d len=%zu", m->matched, m->len);
     }
     m = pika_get_match(state, 0, R_LPAREN);
     if (m) {
-        fprintf(stderr, "[DEBUG] R_LPAREN at 0: matched=%d len=%zu\n", m->matched, m->len);
+	DEBUG_PARSER("R_LPAREN at 0: matched=%d len=%zu", m->matched, m->len);
     }
-#endif
 
     pika_free(state);
 
@@ -1271,8 +1317,7 @@ OmniValue** omni_parser_parse_all(OmniParser* parser, size_t* count) {
 
     OmniValue* program = pika_run(state, R_PROGRAM);
 
-#ifdef DEBUG
-    fprintf(stderr, "[DEBUG] parse_all input='%.50s'\n", parser->input);
+    DEBUG_PARSER("parse_all input='%.50s'", parser->input);
     PikaMatch* m = pika_get_match(state, 0, R_PROGRAM);
     if (m) fprintf(stderr, "[DEBUG] R_PROGRAM at 0: matched=%d len=%zu\n", m->matched, m->len);
     m = pika_get_match(state, 0, R_EXPR);
@@ -1285,7 +1330,6 @@ OmniValue** omni_parser_parse_all(OmniParser* parser, size_t* count) {
     if (m) fprintf(stderr, "[DEBUG] R_LIST_INNER at 0: matched=%d len=%zu\n", m->matched, m->len);
     m = pika_get_match(state, 1, R_SYM);
     if (m) fprintf(stderr, "[DEBUG] R_SYM at 1: matched=%d len=%zu\n", m->matched, m->len);
-#endif
 
     pika_free(state);
 

@@ -1,0 +1,35 @@
+/*@semantic
+id: function::<test_scc_refcount_underflow>
+kind: function
+name: test_scc_refcount_underflow
+summary: The program calls abort() on unexpected failure.
+responsibility:
+  - <primary responsibility>
+inputs:
+  - <name>: <type> — <meaning>
+outputs:
+  - <name>: <type> — <meaning>
+side_effects:
+  - <memory|io|global_state|locks|signals|none>
+calls:
+  - <function_name>
+called_by:
+  - <function_name if evident>
+data_reads:
+  - <global|struct.field|pointer>
+data_writes:
+  - <global|struct.field|pointer>
+lifetime:
+  - <allocation / ownership / release semantics if relevant>
+invariants:
+  - <conditions assumed or enforced>
+error_handling:
+  - <return codes, errno, null checks, assertions>
+thread_safety:
+  - <thread-safe | not thread-safe | requires external synchronization>
+related_symbols:
+  - <structs, enums, macros, functions>
+tags:
+  - <domain-specific keyword>
+  - <algorithm / protocol / subsystem>
+*/

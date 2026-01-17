@@ -50,6 +50,9 @@ struct Region {
     /* OPTIMIZATION (T-opt-region-metadata-pointer-masking): Region ID for pointer masking */
     uint16_t region_id;          /* Unique region identifier (for encoded pointers) */
 
+    /* Issue 10 P0: IPGE (Indexed Pointer Generation Epoch) generation tracking */
+    uint32_t generation;          /* Generation number for detecting stale pointers */
+
     /* OPTIMIZATION (T-opt-thread-local-rc-detect): Thread-local detection for fast non-atomic RC */
     pthread_t owner_thread;      /* Thread that created this region */
     bool is_thread_local;        /* Cached detection result (true if only accessed by owner) */
@@ -66,6 +69,7 @@ struct Region {
     size_t escape_repair_count;      /* How often auto-repair triggered */
     size_t chunk_count;             /* Number of arena chunks allocated */
     ArenaChunk* last_arena_end;     /* Internal: detect chunk growth without touching third_party */
+    size_t allocation_count;        /* Number of allocations made */
 
     /* Issue 2 P4.1: Per-owner-thread outlives rank for store barrier enforcement */
     uint64_t lifetime_rank;           /* Outlives depth (0 = root/global), used for lifetime ordering */
@@ -138,8 +142,15 @@ static inline void* region_alloc(Region* r, size_t size) {
             /* Issue 2 P3: Update accounting for inline allocation */
             r->bytes_allocated_total += aligned_size;
             r->inline_buf_used_bytes += aligned_size;
+            r->allocation_count++;
             if (r->inline_buf_used_bytes > r->bytes_allocated_peak) {
                 r->bytes_allocated_peak = r->inline_buf_used_bytes;
+            }
+
+            /* Phase 4.4: Invoke allocation callback if set */
+            extern void (*g_alloc_callback)(struct Region*, void*, size_t);
+            if (g_alloc_callback) {
+                g_alloc_callback(r, ptr, aligned_size);
             }
 
             return ptr;
@@ -157,8 +168,15 @@ static inline void* region_alloc(Region* r, size_t size) {
     }
 
     r->bytes_allocated_total += size;
+    r->allocation_count++;
     if (r->bytes_allocated_total > r->bytes_allocated_peak) {
         r->bytes_allocated_peak = r->bytes_allocated_total;
+    }
+
+    /* Phase 4.4: Invoke allocation callback if set */
+    extern void (*g_alloc_callback)(struct Region*, void*, size_t);
+    if (g_alloc_callback) {
+        g_alloc_callback(r, ptr, size);
     }
 
     return ptr;

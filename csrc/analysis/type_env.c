@@ -89,6 +89,71 @@ ConcreteType* concrete_type_closure(ConcreteType** param_types,
     return type;
 }
 
+ConcreteType* concrete_type_union(ConcreteType** member_types, int member_count) {
+    /* Degenerate cases */
+    if (member_count <= 0 || !member_types) {
+        return concrete_type_any();
+    }
+    if (member_count == 1) {
+        concrete_type_inc_ref(member_types[0]);
+        return member_types[0];
+    }
+
+    /* Check if all members are the same type - simplify to single type */
+    bool all_same = true;
+    for (int i = 1; i < member_count && all_same; i++) {
+        if (!concrete_type_equals(member_types[0], member_types[i])) {
+            all_same = false;
+        }
+    }
+    if (all_same) {
+        concrete_type_inc_ref(member_types[0]);
+        return member_types[0];
+    }
+
+    /* Create union type */
+    ConcreteType* type = malloc(sizeof(ConcreteType));
+    if (!type) return concrete_type_any();
+
+    type->kind = TYPE_KIND_UNION;
+
+    /* Copy and deduplicate member types */
+    type->type_union.member_types = malloc(sizeof(ConcreteType*) * member_count);
+    if (!type->type_union.member_types) {
+        free(type);
+        return concrete_type_any();
+    }
+
+    int unique_count = 0;
+    for (int i = 0; i < member_count; i++) {
+        bool is_duplicate = false;
+        for (int j = 0; j < unique_count; j++) {
+            if (concrete_type_equals(type->type_union.member_types[j], member_types[i])) {
+                is_duplicate = true;
+                break;
+            }
+        }
+        if (!is_duplicate && member_types[i]) {
+            type->type_union.member_types[unique_count] = member_types[i];
+            concrete_type_inc_ref(member_types[i]);
+            unique_count++;
+        }
+    }
+
+    type->type_union.member_count = unique_count;
+    type->ref_count = 1;
+
+    /* If only one unique type after deduplication, simplify */
+    if (unique_count == 1) {
+        ConcreteType* result = type->type_union.member_types[0];
+        concrete_type_inc_ref(result);
+        concrete_type_dec_ref(type);
+        return result;
+    }
+
+    return type;
+}
+
 ConcreteType* concrete_type_any(void) {
     if (!g_any_type) {
         g_any_type = malloc(sizeof(ConcreteType));
@@ -123,6 +188,13 @@ void concrete_type_dec_ref(ConcreteType* type) {
                 }
                 free(type->closure.param_types);
                 concrete_type_dec_ref(type->closure.return_type);
+                break;
+
+            case TYPE_KIND_UNION:
+                for (int i = 0; i < type->type_union.member_count; i++) {
+                    concrete_type_dec_ref(type->type_union.member_types[i]);
+                }
+                free(type->type_union.member_types);
                 break;
 
             case TYPE_KIND_PRIMITIVE:
@@ -163,6 +235,24 @@ bool concrete_type_equals(ConcreteType* a, ConcreteType* b) {
                                          b->closure.param_types[i])) {
                     return false;
                 }
+            }
+            return true;
+
+        case TYPE_KIND_UNION:
+            if (a->type_union.member_count != b->type_union.member_count) {
+                return false;
+            }
+            /* Check if all members in a exist in b (order-independent) */
+            for (int i = 0; i < a->type_union.member_count; i++) {
+                bool found = false;
+                for (int j = 0; j < b->type_union.member_count; j++) {
+                    if (concrete_type_equals(a->type_union.member_types[i],
+                                           b->type_union.member_types[j])) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return false;
             }
             return true;
 
@@ -211,6 +301,18 @@ char* concrete_type_to_string(ConcreteType* type) {
             char* ret_str = concrete_type_to_string(type->closure.return_type);
             snprintf(buf, sizeof(buf), "(%s) -> %s", params, ret_str);
             free(ret_str);
+            break;
+        }
+
+        case TYPE_KIND_UNION: {
+            /* Build union type string: T1 | T2 | T3 */
+            int offset = 0;
+            for (int i = 0; i < type->type_union.member_count && offset < 200; i++) {
+                char* member_str = concrete_type_to_string(type->type_union.member_types[i]);
+                offset += snprintf(buf + offset, sizeof(buf) - offset,
+                                  "%s%s", i > 0 ? " | " : "", member_str);
+                free(member_str);
+            }
             break;
         }
 

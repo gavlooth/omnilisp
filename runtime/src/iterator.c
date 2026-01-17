@@ -475,20 +475,17 @@ Obj* prim_generator_done(Obj* gen_obj) {
 /*
  * prim_yield: Yield a value from within a generator
  *
- * Args: value - Value to yield to the caller
- * Returns: Value passed to next() on resume (or NULL)
+ * NOTE: This function is defined in runtime.c using the effect system.
+ * The effect-based version (effect_perform(EFFECT_YIELD, value)) is the
+ * canonical implementation that integrates with the handler infrastructure.
  *
- * Must be called from within a generator's producer function.
+ * To use the direct generator_yield() for frame-based generators, call
+ * generator_yield() directly rather than prim_yield().
  *
  * Example:
  *   (fn [] (yield 1) (yield 2) (yield 3))
  */
-Obj* prim_yield(Obj* value) {
-    generator_yield(value);
-    /* After resume, we return here */
-    /* Note: generator_yield internally handles the continuation mechanics */
-    return NULL;  /* This return is after resume - yield returns what next() passed */
-}
+/* prim_yield is defined in runtime.c - uses effect_perform(EFFECT_YIELD, value) */
 
 /*
  * Helper: Check if an Obj is a generator

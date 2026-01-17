@@ -6,7 +6,7 @@ CC = gcc
 CFLAGS = -std=c99 -Wall -Wextra -g -O2 -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
 CFLAGS += -I. -I../third_party -I../runtime/include
 
-LDFLAGS = -lpthread -lm
+LDFLAGS = -lpthread -lm -ldl
 
 # Sanitizer profiles
 ASAN_FLAGS = -fsanitize=address -fno-omit-frame-pointer

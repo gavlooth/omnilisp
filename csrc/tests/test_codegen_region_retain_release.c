@@ -9,8 +9,12 @@
  * - "retain": Keeps values in source region, increments RC
  */
 
+#ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
+#endif
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -69,15 +73,14 @@ static void compiler_teardown(void) {
 TEST(test_transmigrate_strategy_emits_transmigrate) {
     /*
      * Test program: simple return
-     *   (define (test-transmigrate x)
-     *     x)
+     *   (define test-transmigrate x x)
      *
      * Expected generated C (default TRANSMIGRATE strategy):
      *   - transmigrate(x, _local_region, _caller_region); at return
      *   - No region_retain_internal() call
      */
 
-    const char* source = "(define (test-transmigrate x) x)";
+    const char* source = "(define test-transmigrate x x)";
 
     /* Ensure no env var is set for this test */
     unsetenv("OMNILISP_REPAIR_STRATEGY");
@@ -103,15 +106,14 @@ TEST(test_transmigrate_strategy_emits_transmigrate) {
 TEST(test_retain_region_emits_retain_at_return) {
     /*
      * Test program: simple return
-     *   (define (test-retain x)
-     *     x)
+     *   (define test-retain x x)
      *
      * Expected generated C (RETAIN_REGION strategy):
      *   - region_retain_internal(_local_region); at return
      *   - No transmigrate() call
      */
 
-    const char* source = "(define (test-retain x) x)";
+    const char* source = "(define test-retain x x)";
 
     /* Set strategy to RETAIN_REGION via env var */
     setenv("OMNILISP_REPAIR_STRATEGY", "retain", 1);
@@ -140,7 +142,7 @@ TEST(test_retain_region_emits_retain_at_return) {
 TEST(test_region_exit_emitted_with_retain) {
     /*
      * Test program: region with value returned
-     *   (define (test-region-exit)
+     *   (define test-region-exit _
      *     (let ((region (region-create))
      *           (x (pair 1 2)))
      *       x))
@@ -152,7 +154,7 @@ TEST(test_region_exit_emitted_with_retain) {
      */
 
     const char* source =
-        "(define (test-region-exit)"
+        "(define test-region-exit _"
         "  (let ((region (region-create))"
         "        (x (pair 1 2)))"
         "    x))";
@@ -187,13 +189,12 @@ TEST(test_region_exit_emitted_with_retain) {
 TEST(test_strategy_switching_produces_different_output) {
     /*
      * Test program: simple function returning value
-     *   (define (test-switch x)
-     *     x)
+     *   (define test-switch x x)
      *
      * Expected: TRANSMIGRATE output differs from RETAIN_REGION output
      */
 
-    const char* source = "(define (test-switch x) x)";
+    const char* source = "(define test-switch x x)";
 
     /* Compile with TRANSMIGRATE (default) */
     unsetenv("OMNILISP_REPAIR_STRATEGY");

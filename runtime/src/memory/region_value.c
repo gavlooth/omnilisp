@@ -34,8 +34,6 @@ static int type_id_to_tag(TypeID type_id) {
         case TYPE_ID_THREAD:   return TAG_THREAD;
         case TYPE_ID_ERROR:    return TAG_ERROR;
         case TYPE_ID_ATOM:     return TAG_ATOM;
-        case TYPE_ID_TUPLE:    return TAG_TUPLE;
-        case TYPE_ID_NAMED_TUPLE: return TAG_NAMED_TUPLE;
         case TYPE_ID_GENERIC:  return TAG_GENERIC;
         case TYPE_ID_KIND:     return TAG_KIND;
         case TYPE_ID_NOTHING:  return TAG_NOTHING;
@@ -65,8 +63,6 @@ static TypeID tag_to_type_id(int tag) {
         case TAG_THREAD:   return TYPE_ID_THREAD;
         case TAG_ERROR:    return TYPE_ID_ERROR;
         case TAG_ATOM:     return TYPE_ID_ATOM;
-        case TAG_TUPLE:    return TYPE_ID_TUPLE;
-        case TAG_NAMED_TUPLE: return TYPE_ID_NAMED_TUPLE;
         case TAG_GENERIC:  return TYPE_ID_GENERIC;
         case TAG_KIND:     return TYPE_ID_KIND;
         case TAG_NOTHING:  return TYPE_ID_NOTHING;
@@ -609,43 +605,34 @@ Obj* mk_dict_region(Region* r) {
     return o;
 }
 
+/* DEPRECATED: Use mk_array_region() instead - REMOVED 2026-01-15 */
+/* Tuples replaced with arrays per design decision (see TODO.md Issue 6 Design Decisions) */
 Obj* mk_tuple_region(Region* r, Obj** items, int count) {
-    Obj* o = alloc_obj_region(r, TAG_TUPLE);
+    /* Create array instead of tuple */
+    Obj* o = mk_array_region(r, count);
     if (!o) return NULL;
 
-    Tuple* t = region_alloc(r, sizeof(Tuple) + count * sizeof(Obj*));
-    if (!t) return NULL;
-
-    t->count = count;
+    Array* a = (Array*)o->ptr;
     for (int i = 0; i < count; i++) {
-        t->items[i] = items[i];
+        a->data[i] = items[i];
     }
+    a->len = count;
 
-    o->ptr = t;
     return o;
 }
 
+/* DEPRECATED: Use mk_dict_region() instead - REMOVED 2026-01-15 */
+/* Named tuples replaced with dicts per design decision (see TODO.md Issue 6 Design Decisions) */
 Obj* mk_named_tuple_region(Region* r, Obj** keys, Obj** values, int count) {
-    Obj* o = alloc_obj_region(r, TAG_NAMED_TUPLE);
-    if (!o) return NULL;
+    /* Create dict instead of named tuple */
+    Obj* dict = mk_dict_region(r);
+    if (!dict) return NULL;
 
-    NamedTuple* nt = region_alloc(r, sizeof(NamedTuple));
-    if (!nt) return NULL;
-
-    nt->count = count;
-    // Separate arrays for keys and values
-    nt->keys = region_alloc(r, count * sizeof(Obj*));
-    nt->values = region_alloc(r, count * sizeof(Obj*));
-
-    if (nt->keys && nt->values) {
-        for (int i = 0; i < count; i++) {
-            nt->keys[i] = keys[i];
-            nt->values[i] = values[i];
-        }
+    for (int i = 0; i < count; i++) {
+        dict_set(dict, keys[i], values[i]);
     }
 
-    o->ptr = nt;
-    return o;
+    return dict;
 }
 
 Obj* mk_generic_region(Region* r, const char* name) {

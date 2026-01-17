@@ -30,6 +30,7 @@ typedef enum {
     VAR_USAGE_CAPTURED = 4,    /* Captured by closure */
     VAR_USAGE_ESCAPED = 8,     /* Escapes current scope */
     VAR_USAGE_RETURNED = 16,   /* Returned from function */
+    VAR_USAGE_REGION_RETAINED = 32,   /* Region retained via retain/release (Issue 1 P2) */
 } VarUsageFlags;
 
 typedef struct VarUsage {

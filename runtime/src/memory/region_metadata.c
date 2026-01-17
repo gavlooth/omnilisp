@@ -449,111 +449,6 @@ static void trace_dict(Obj* obj, OmniVisitSlotFn visit_slot, void* ctx) {
 }
 
 /* ============================================================================
- * TAG_TUPLE
- * ============================================================================
- * Layout: obj->a and obj->b (similar to PAIR but immutable semantics)
- */
-
-static Obj* clone_tuple(Obj* old_obj, Region* dest, void* tmp_ctx) {
-    (void)tmp_ctx;
-
-    Obj* new_obj = region_alloc(dest, sizeof(Obj));
-    if (!new_obj) return NULL;
-
-    new_obj->tag = old_obj->tag;
-    new_obj->a = old_obj->a;
-    new_obj->b = old_obj->b;
-
-    return new_obj;
-}
-
-static void trace_tuple(Obj* obj, OmniVisitSlotFn visit_slot, void* ctx) {
-    visit_slot(&obj->a, ctx);
-    visit_slot(&obj->b, ctx);
-}
-
-/* ============================================================================
- * TAG_NAMED_TUPLE
- * ============================================================================
- * Layout: obj->ptr points to NamedTuple struct with keys and values arrays
- *
- * NamedTuple struct (from internal_types.h):
- *   typedef struct NamedTuple {
- *       Obj** keys;
- *       Obj** values;
- *       int count;
- *   } NamedTuple;
- */
-
-static Obj* clone_named_tuple(Obj* old_obj, Region* dest, void* tmp_ctx) {
-    (void)tmp_ctx;
-
-    Obj* new_obj = region_alloc(dest, sizeof(Obj));
-    if (!new_obj) return NULL;
-
-    new_obj->tag = old_obj->tag;
-
-    if (old_obj->ptr) {
-        typedef struct {
-            Obj** keys;
-            Obj** values;
-            int count;
-        } NamedTuple;
-
-        NamedTuple* old_nt = (NamedTuple*)old_obj->ptr;
-
-        /* Allocate new NamedTuple struct */
-        NamedTuple* new_nt = (NamedTuple*)region_alloc(dest, sizeof(NamedTuple));
-        if (!new_nt) return NULL;
-
-        *new_nt = *old_nt;
-
-        /* CTRR SOUNDNESS: NULL out keys and values pointers before conditional allocation
-         * This prevents dangling pointers from source region if count == 0 */
-        new_nt->keys = NULL;
-        new_nt->values = NULL;
-
-        /* Allocate and copy keys array */
-        if (old_nt->count > 0) {
-            new_nt->keys = (Obj**)region_alloc(dest, sizeof(Obj*) * old_nt->count);
-            if (!new_nt->keys) return NULL;
-            for (int i = 0; i < old_nt->count; i++) {
-                new_nt->keys[i] = old_nt->keys[i];
-            }
-
-            /* Allocate and copy values array */
-            new_nt->values = (Obj**)region_alloc(dest, sizeof(Obj*) * old_nt->count);
-            if (!new_nt->values) return NULL;
-            for (int i = 0; i < old_nt->count; i++) {
-                new_nt->values[i] = old_nt->values[i];
-            }
-        }
-
-        new_obj->ptr = new_nt;
-    }
-
-    return new_obj;
-}
-
-static void trace_named_tuple(Obj* obj, OmniVisitSlotFn visit_slot, void* ctx) {
-    if (obj->ptr) {
-        typedef struct {
-            Obj** keys;
-            Obj** values;
-            int count;
-        } NamedTuple;
-
-        NamedTuple* nt = (NamedTuple*)obj->ptr;
-
-        /* Trace keys and values arrays */
-        for (int i = 0; i < nt->count; i++) {
-            visit_slot(&nt->keys[i], ctx);
-            visit_slot(&nt->values[i], ctx);
-        }
-    }
-}
-
-/* ============================================================================
  * TAG_ATOM, TAG_CHANNEL, TAG_THREAD
  * ============================================================================
  * These types are handles with no Obj* children or simple scalar fields
@@ -1003,41 +898,11 @@ static void init_core_type_metadata(Region* r) {
         .debug_info = "Atom (symbol-like)"
     };
 
-    /* TYPE_ID_TUPLE */
-    r->type_table[TYPE_ID_TUPLE] = (TypeMetadata){
-        .name = "Tuple",
-        .type_id = TYPE_ID_TUPLE,
-        .size = sizeof(struct Obj),
-        .alignment = 8,
-        .num_pointer_fields = 2,
-        .pointer_offsets = {offsetof(struct Obj, a), offsetof(struct Obj, b)},
-        .can_inline = true,
-        .inline_threshold = 48,
-        .clone = clone_tuple,          /* CTRR: tuple-specific clone */
-        .trace = trace_tuple,          /* CTRR: tuple-specific trace */
-        .destroy = NULL,
-        .equals = NULL,
-        .hash = NULL,
-        .debug_info = "Tuple (fixed-size pair)"
-    };
+    /* TYPE_ID_RESERVED_14 (Was TYPE_ID_TUPLE - REMOVED 2026-01-15)
+     * Tuples are deprecated - use arrays instead */
 
-    /* TYPE_ID_NAMED_TUPLE */
-    r->type_table[TYPE_ID_NAMED_TUPLE] = (TypeMetadata){
-        .name = "NamedTuple",
-        .type_id = TYPE_ID_NAMED_TUPLE,
-        .size = sizeof(struct Obj),
-        .alignment = 8,
-        .num_pointer_fields = 2,
-        .pointer_offsets = {offsetof(struct Obj, a), offsetof(struct Obj, b)},
-        .can_inline = true,
-        .inline_threshold = 64,
-        .clone = clone_named_tuple,    /* CTRR: named-tuple-specific clone */
-        .trace = trace_named_tuple,    /* CTRR: trace keys and values */
-        .destroy = NULL,
-        .equals = NULL,
-        .hash = NULL,
-        .debug_info = "Named tuple (like struct)"
-    };
+    /* TYPE_ID_RESERVED_15 (Was TYPE_ID_NAMED_TUPLE - REMOVED 2026-01-15)
+     * Named tuples are deprecated - use dicts instead */
 
     /* TYPE_ID_GENERIC */
     r->type_table[TYPE_ID_GENERIC] = (TypeMetadata){

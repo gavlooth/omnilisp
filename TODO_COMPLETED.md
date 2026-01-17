@@ -3,7 +3,195 @@
 This file contains completed and review-pending tasks from the TODO list.
 Tasks here are either `[DONE]` or `[DONE] (Review Needed)`.
 
-**Last Updated:** 2026-01-14
+**Last Updated:** 2026-01-17
+
+---
+
+## Session 2026-01-17: Completion Plan Phases 3-5 [DONE] (Review Needed)
+
+### Phase 3.2: Collection Operations [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: CP-3.2-array-ops
+  Location: `runtime/src/runtime.c:2757-2900`
+  What was done:
+  - `prim_array_reverse()` - returns new reversed array
+  - `prim_array_reverse_inplace()` - reverses array in place
+  - `prim_array_find()` - finds first element matching predicate
+  - `prim_array_find_index()` - finds index of first match
+  - `prim_array_index_of()` - finds index of element by equality
+  - `prim_array_sort()` - returns sorted copy using qsort
+  - `prim_array_sort_inplace()` - sorts array in place
+
+- [DONE] (Review Needed) Label: CP-3.2-dict-ops
+  Location: `runtime/src/runtime.c:2900-3206`
+  What was done:
+  - `prim_dict_keys()` - returns array of all keys
+  - `prim_dict_values()` - returns array of all values
+  - `prim_dict_entries()` - returns array of [key, value] pairs
+  - `prim_dict_merge()` - merges two dicts (second wins conflicts)
+  - `prim_dict_filter()` - filters entries by predicate
+  - `prim_dict_map()` - transforms values via function
+  - `prim_dict_has_key()` - checks key existence
+  - `prim_dict_size()` - returns entry count
+  - `prim_dict_remove()` - removes key (copy without key)
+  Code snippet (dict iteration pattern):
+  ```c
+  typedef struct { Obj** items; int count; int capacity; } CollectCtx;
+  static void collect_keys_fn(void* key, void* value, void* ctx) {
+      CollectCtx* c = (CollectCtx*)ctx;
+      if (c->count < c->capacity) c->items[c->count++] = (Obj*)key;
+  }
+  hashmap_foreach(&d->map, collect_keys_fn, &ctx);
+  ```
+
+### Phase 3.3: I/O Operations [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: CP-3.3-file-io
+  Location: `runtime/src/io.c` (NEW FILE)
+  What was done:
+  - `prim_file_read()` - read entire file to string
+  - `prim_file_read_lines()` - read file as array of lines
+  - `prim_file_write()` - write string to file (truncate)
+  - `prim_file_append()` - append string to file
+  - `prim_file_exists()` - check file existence
+  - `prim_file_delete()` - delete file
+  - `prim_file_size()` - get file size in bytes
+  - `prim_file_is_directory()` - check if path is directory
+
+- [DONE] (Review Needed) Label: CP-3.3-dir-io
+  Location: `runtime/src/io.c`
+  What was done:
+  - `prim_directory_list()` - list directory entries
+  - `prim_directory_create()` - create directory (with parents)
+  - `prim_directory_exists()` - check directory existence
+  - `prim_directory_delete()` - delete empty directory
+
+- [DONE] (Review Needed) Label: CP-3.3-stdio
+  Location: `runtime/src/io.c`
+  What was done:
+  - `prim_stdin_read_line()` - read line from stdin
+  - `prim_stdin_read_char()` - read single char from stdin
+  - `prim_stdout_write()` - write to stdout
+  - `prim_stderr_write()` - write to stderr
+
+- [DONE] (Review Needed) Label: CP-3.3-path-ops
+  Location: `runtime/src/io.c`
+  What was done:
+  - `prim_path_join()` - join path components
+  - `prim_path_dirname()` - extract directory part
+  - `prim_path_basename()` - extract filename part
+  - `prim_path_extension()` - extract file extension
+  - `prim_getcwd()` - get current working directory
+  - `prim_chdir()` - change working directory
+
+### Phase 3.4: Math Operations [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: CP-3.4-random
+  Location: `runtime/src/math_numerics.c:422-480`
+  What was done:
+  - `prim_random()` - returns float in [0, 1)
+  - `prim_random_int(n)` - returns int in [0, n)
+  - `prim_random_range(a, b)` - returns int in [a, b)
+  - `prim_random_seed(seed)` - seed the RNG
+  Code snippet:
+  ```c
+  static int _random_seeded = 0;
+  static void ensure_random_seeded(void) {
+      if (!_random_seeded) {
+          srand((unsigned int)time(NULL) ^ (unsigned int)clock());
+          _random_seeded = 1;
+      }
+  }
+  ```
+
+- [DONE] (Review Needed) Label: CP-3.4-variadic
+  Location: `runtime/src/math_numerics.c:480-520`
+  What was done:
+  - `prim_min_variadic(args, argc)` - min of multiple values
+  - `prim_max_variadic(args, argc)` - max of multiple values
+
+- [DONE] (Review Needed) Label: CP-3.4-parsing
+  Location: `runtime/src/math_numerics.c:520-549`
+  What was done:
+  - `prim_parse_int(str)` - parse string to int
+  - `prim_parse_float(str)` - parse string to float
+
+### Phase 4.1: Channel Operations RC [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: CP-4.1-channel-rc
+  Location: `csrc/codegen/codegen.c:3997-4050`
+  What was done:
+  - `send!`/`chan-send` - inc_ref before send (ownership transfer)
+  - `recv!`/`chan-recv`/`take!` - wrapper for channel_recv
+  - `make-channel`/`chan` - create channel with capacity
+  - `close!`/`chan-close` - close the channel
+  Code snippet:
+  ```c
+  if (strcmp(name, "send!") == 0 || strcmp(name, "chan-send") == 0) {
+      omni_codegen_emit(ctx, "Obj* _send_val = "); codegen_expr(ctx, value);
+      omni_codegen_emit(ctx, "if (_send_val && !IS_IMMEDIATE(_send_val)) inc_ref(_send_val);\n");
+      omni_codegen_emit(ctx, "channel_send("); codegen_expr(ctx, channel);
+      omni_codegen_emit_raw(ctx, ", _send_val);\n");
+  }
+  ```
+
+### Phase 4.2: Update Operators [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: CP-4.2-update-bang
+  Location: `csrc/codegen/codegen.c:3423-3490`
+  What was done:
+  - `(update! var f)` - transform variable in place
+  - `(update! coll idx f)` - transform collection element in place
+  - RC: dec_ref old, inc_ref new
+
+- [DONE] (Review Needed) Label: CP-4.2-update-functional
+  Location: `csrc/codegen/codegen.c:3490-3571`
+  What was done:
+  - `(update coll idx f)` - returns new collection with transformed element
+  - Array: creates shallow copy, transforms element
+  - Dict: creates copy, transforms value at key
+
+### Phase 5.1: Timer/Timeout Operations [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: CP-5.1-timer-system
+  Location: `runtime/src/memory/continuation.c:1562-1771`
+  What was done:
+  - Timer thread with sorted deadline list
+  - `timer_after(ms)` - creates promise resolved after delay
+  - `await_timeout(promise, ms)` - races promise vs timeout
+  - `sleep_async(ms)` - returns promise resolved after delay
+  - `sleep_ms_blocking(ms)` - blocking sleep
+  - `timer_system_shutdown()` - cleanup on exit
+  Code snippet (timer thread):
+  ```c
+  typedef struct TimerEntry {
+      uint64_t deadline_ns;
+      Promise* promise;
+      struct TimerEntry* next;
+  } TimerEntry;
+
+  static void* timer_thread_main(void* arg) {
+      while (g_timer_system.running) {
+          while (g_timer_system.timers && g_timer_system.timers->deadline_ns <= now) {
+              promise_resolve(entry->promise, NULL);
+          }
+          pthread_cond_timedwait(&g_timer_system.cond, &g_timer_system.mutex, &ts);
+      }
+  }
+  ```
+
+- [DONE] (Review Needed) Label: CP-5.1-timer-codegen
+  Location: `csrc/codegen/codegen.c:4052-4098`
+  What was done:
+  - `sleep` / `sleep-async` - emits `mk_promise_obj(sleep_async(...))`
+  - `sleep!` / `sleep-blocking` - emits `sleep_ms_blocking(...)`
+  - `timeout` / `await-timeout` - emits `await_timeout(...)`
+  - `timer-after` - emits `timer_after(...)`
+
+- [DONE] (Review Needed) Label: CP-5.1-promise-retain
+  Location: `runtime/src/memory/continuation.c:1518-1523`
+  What was done:
+  - Added `promise_retain(Promise* p)` to increment refcount
 
 ---
 

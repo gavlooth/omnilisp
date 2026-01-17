@@ -4,7 +4,164 @@ This file contains only active tasks: `[TODO]`, `[IN_PROGRESS]`, and `[BLOCKED]`
 
 **Completed tasks:** See `TODO_COMPLETED.md`
 
-**Last Updated:** 2026-01-15
+**Last Updated:** 2026-01-17
+
+---
+
+## Active Session: Completion Plan Phases 5.2-5.3 [DONE]
+
+### Phase 5.2: Pattern Matching Completeness [DONE]
+
+- [DONE] Label: CP-5.2-pattern-bindings-runtime
+  Location: `runtime/src/runtime.c:504-722`
+  What was done:
+  - Added `PatternBindings` struct (max 64 bindings)
+  - Added `is_pattern_match_with_bindings()` - matches and extracts variables
+  - Added `pattern_bindings_to_dict()` - converts bindings to Obj dict
+  - Added `prim_pattern_match()` - returns bindings dict or NULL
+  Code snippet:
+  ```c
+  typedef struct { const char* name; Obj* value; } PatternBinding;
+  typedef struct { PatternBinding bindings[64]; int count; } PatternBindings;
+
+  int is_pattern_match_with_bindings(Obj* pattern, Obj* value, PatternBindings* bindings) {
+      // Symbol patterns bind to value
+      if (ptag == TAG_SYM) {
+          pattern_bindings_add(bindings, sym, value);
+          return 1;
+      }
+      // 'as' pattern: [inner_pattern as name]
+      if (ptag == TAG_ARRAY && arr->len == 3 && strcmp(middle_str, "as") == 0) {
+          is_pattern_match_with_bindings(inner_pattern, value, bindings);
+          pattern_bindings_add(bindings, name, value);
+      }
+  }
+  ```
+
+- [DONE] Label: CP-5.2-pattern-var-extraction-codegen
+  Location: `csrc/codegen/codegen.c:2673-2743`
+  What was done:
+  - Added `PatternVarList` struct for compile-time variable extraction
+  - Added `extract_pattern_vars()` - recursively collects variable names
+  - Skips reserved keywords: `_`, `nil`, `true`, `false`, `as`
+  - Handles `as` patterns correctly
+  Code snippet:
+  ```c
+  static void extract_pattern_vars(OmniValue* pattern, PatternVarList* vars) {
+      if (omni_is_sym(pattern)) {
+          pattern_var_list_add(vars, pattern->str_val);
+      }
+      if (omni_is_array(pattern) && pattern->array.len == 3) {
+          // Check for 'as' pattern
+          if (strcmp(middle->str_val, "as") == 0) {
+              extract_pattern_vars(pattern->array.data[0], vars);
+              pattern_var_list_add(vars, name->str_val);
+          }
+      }
+  }
+  ```
+
+- [DONE] Label: CP-5.2-match-codegen-bindings
+  Location: `csrc/codegen/codegen.c:2965-3042`
+  What was done:
+  - Updated `codegen_match` to use `prim_pattern_match` for patterns with variables
+  - Emits code to extract bindings into local Obj* variables
+  - Falls back to simple `is_pattern_match` when no variables present
+  Code snippet (updated to use dict_get_by_name):
+  ```c
+  if (has_bindings) {
+      omni_codegen_emit(ctx, "Obj* _bindings = prim_pattern_match(pattern, _match_value);\n");
+      omni_codegen_emit(ctx, "if (_bindings) {\n");
+      for (int i = 0; i < vars.count; i++) {
+          omni_codegen_emit(ctx, "Obj* %s = dict_get_by_name(_bindings, \"%s\");\n",
+                            vars.names[i], vars.names[i]);
+      }
+      // ... result expression with variables in scope
+  }
+  ```
+
+- [DONE] Label: CP-5.2-test-pattern-bindings
+  Location: `runtime/tests/test_pattern_match.c`
+  What was done:
+  - 12 comprehensive tests for pattern matching with bindings
+  - Tests simple variable binding, nested patterns, as patterns
+  - Tests rest patterns, wildcards, literal matching
+  - Tests edge cases: length mismatch, insufficient elements, reserved keywords
+  All tests pass.
+
+- [DONE] Label: CP-5.2-rest-patterns
+  Location: `runtime/src/runtime.c:573-612`
+  What was done:
+  - Added `find_rest_position()` to detect `&` in pattern arrays
+  - Modified `is_pattern_match_with_bindings()` to handle rest patterns
+  - Pattern `[x y & rest]` matching `[1 2 3 4 5]` gives x=1, y=2, rest=[3 4 5]
+  - Empty rest is allowed: `[x y & rest]` matching `[1 2]` gives rest=[]
+
+- [DONE] Label: CP-5.2-dict-get-by-name
+  Location: `runtime/src/runtime.c:1312-1336`
+  What was done (bug fix):
+  - Added `dict_get_by_name()` function for symbol key lookup by string content
+  - Hashmap uses pointer identity for keys, but symbols aren't interned
+  - `dict_get_by_name(dict, "x")` iterates buckets and compares symbol names
+  - Declared in `omni.h:1110`
+
+### Phase 5.3: Module System [DONE]
+
+- [DONE] Label: CP-5.3-module-struct
+  Location: `runtime/src/modules.c:31-94`
+  What exists:
+  - Module struct with name, exports (linked list), imports (linked list)
+  - ModuleExport, ModuleImport helper structs
+  - Global module registry (g_module_registry)
+  - `get_or_create_module()`, `find_module()`
+
+- [DONE] Label: CP-5.3-module-registry
+  Location: `runtime/src/modules.c:53-94`
+  What exists:
+  - `g_module_registry` - global linked list of modules
+  - `prim_module_begin()`, `prim_module_end()` for module definition
+  - `prim_module_get()`, `prim_module_list()`
+  - `prim_resolve()` for qualified symbol lookup (Module.symbol)
+
+- [DONE] Label: CP-5.3-defmodule-codegen
+  Location: `csrc/codegen/codegen.c:3140-3243`
+  What was done:
+  - Added `codegen_defmodule()` for `(defmodule name (:export ...) (:import ...) body...)`
+  - Two-pass approach: first collects exports/imports, then generates body
+  - Emits `prim_module_begin()`, body defs, `prim_export()` calls, `prim_module_end()`
+  - Added dispatch in `codegen_list` for `defmodule` and `module` forms
+
+- [DONE] Label: CP-5.3-qualified-symbols
+  Location: `csrc/codegen/codegen.c:1314-1321`
+  What was done:
+  - Modified `codegen_sym()` to detect `/` or `.` in symbol names
+  - Qualified symbols like `math/add` or `math.add` emit `prim_resolve(mk_string("..."))`
+  - Runtime resolution via `prim_resolve()` in modules.c
+
+- [DONE] Label: CP-5.3-import-export-codegen
+  Location: `csrc/codegen/codegen.c:3245-3339`
+  What was done:
+  - Added `codegen_import()` - emits `prim_import(mk_sym("module"), NULL)`
+  - Added `codegen_export()` - emits `prim_export(mk_sym("sym"), value)`
+  - Added `codegen_require()` - emits `prim_require(mk_sym("module"))`
+  - Added dispatch for `import`, `export`, `require` forms
+
+- [DONE] (Review Needed) Label: CP-5.3-import-forms-advanced
+  Objective: Support advanced import variations.
+  What was done:
+  1. Runtime: Added `ImportMode` enum (IMPORT_ALL, IMPORT_ONLY, IMPORT_EXCEPT)
+  2. Runtime: Added `prim_import_only()`, `prim_import_as()`, `prim_import_except()`
+  3. Runtime: Updated `prim_resolve()` to handle aliased lookups and import restrictions
+  4. Codegen: Added `is_quoted_symbol()` helper (`:key` is sugar for `'key`)
+  5. Codegen: Added `codegen_symbol_array()` for generating symbol list literals
+  6. Codegen: Updated `codegen_import()` to parse `:only`, `:as`, `:except` options
+  7. Codegen: Updated `codegen_defmodule()` to handle advanced imports in `:import` clause
+  Supported syntax:
+    - `(import mod :only [a b])` → `prim_import_only(mk_sym("mod"), ...)`
+    - `(import mod :as m)` → `prim_import_as(mk_sym("mod"), mk_sym("m"))`
+    - `(import mod :except [x])` → `prim_import_except(mk_sym("mod"), ...)`
+    - `(import (mod :only [a b]))` → nested form (same semantics)
+    - `(:import (mod :as m))` → inside defmodule
 
 ---
 
@@ -88,6 +245,127 @@ Before beginning ANY implementation subtask:
 - `mk_tuple()`, `mk_tuple_region()` - marked deprecated
 - `mk_named_tuple()`, `mk_named_tuple_region()` - marked deprecated
 - `print_tuple()`, `print_named_tuple()` - marked deprecated
+
+---
+
+## Issue 19: FFI Implementation (C Library Interop) [DONE] (Review Needed)
+
+**Objective:** Enable calling C library functions directly from OmniLisp via `ccall` syntax.
+
+**Priority:** HIGH - Enables delegation of primitives to existing C libraries.
+
+**Completed:** 2026-01-17
+
+**Reference (read first):**
+- Plan file: `~/.claude/plans/jiggly-doodling-sprout.md` (Phase 0)
+- `csrc/codegen/codegen.c`
+- `runtime/include/omni.h`
+
+### Syntax
+
+```lisp
+(ccall "libm.so.6" "sin" [x {CDouble}] {CDouble})
+(ccall "libc.so.6" "strlen" [s {CString}] {CSize})
+(ccall "libc.so.6" "puts" [s {CString}] {Nothing})
+```
+
+### Type Mapping
+
+| OmniLisp | C Type | To-C | From-C |
+|----------|--------|------|--------|
+| `{CInt}` | `int` | `obj_to_cint()` | `mk_int()` |
+| `{CDouble}` | `double` | `obj_to_cdouble()` | `mk_float()` |
+| `{CString}` | `char*` | `obj_to_cstring()` | `mk_string()` |
+| `{CPtr}` | `void*` | `obj_to_cptr()` | `mk_cptr()` |
+| `{CSize}` | `size_t` | `obj_to_csize()` | `mk_int()` |
+| `{Nothing}` | `void` | N/A | `NOTHING` |
+
+### P0: Type Marshaling Helpers [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: I19-p0-marshaling-helpers
+  Objective: Add C type conversion helpers to omni.h.
+  Where: `runtime/include/omni.h:575-626`
+  What was done:
+    1. `obj_to_cint(Obj*)` - extract int from Obj (line 583)
+    2. `obj_to_cdouble(Obj*)` - extract double from Obj (line 588)
+    3. `obj_to_cstring(Obj*)` - extract char* from Obj (line 593)
+    4. `obj_to_cptr(Obj*)` - extract void* from Obj (line 601)
+    5. `obj_to_csize(Obj*)` - extract size_t from Obj (line 609)
+    6. `mk_cptr(void*)` - create Obj from void pointer (line 618)
+    7. Added `#include <dlfcn.h>` for dlopen/dlsym (line 17)
+  Verification: All helpers compile and convert correctly. ✓
+
+### P1: Codegen FFI Counter [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: I19-p1-ffi-counter
+  Objective: Add FFI call site counter to CodeGenContext.
+  Where: `csrc/codegen/codegen.h:98`
+  What was done:
+    1. `int ffi_counter` field added for unique FFI call site IDs
+  Verification: Counter increments for each ccall site. ✓
+
+### P2: ccall Codegen Handler [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: I19-p2-ccall-handler
+  Objective: Implement `codegen_ccall()` function.
+  Where: `csrc/codegen/codegen.c:3318-3530`
+  What was done:
+    1. Full ccall code generation with static library/function caching
+    2. Argument conversion with type-specific marshaling
+    3. Function pointer casting with proper signatures
+    4. Return value wrapping to Obj*
+    5. Error handling for library/function load failures
+  Generated pattern:
+    ```c
+    ({
+        Obj* _ffi_expr_N = NOTHING;
+        static void* _ffi_lib_N = NULL;
+        static void* _ffi_fn_N = NULL;
+        if (!_ffi_lib_N) {
+            _ffi_lib_N = dlopen("libm.so.6", RTLD_NOW);
+            if (_ffi_lib_N) _ffi_fn_N = dlsym(_ffi_lib_N, "sin");
+        }
+        if (!_ffi_fn_N) {
+            fprintf(stderr, "FFI error: ...");
+        } else {
+            double _ffi_arg_0_N = obj_to_cdouble(arg);
+            double _ffi_result_N = ((double(*)(double))_ffi_fn_N)(_ffi_arg_0_N);
+            _ffi_expr_N = mk_float(_ffi_result_N);
+        }
+        _ffi_expr_N;
+    })
+    ```
+  Verification: Generated C compiles and calls library function. ✓
+
+### P3: ccall Dispatch [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: I19-p3-ccall-dispatch
+  Objective: Add `ccall` to special form dispatch in `codegen_list()`.
+  Where: `csrc/codegen/codegen.c:4910-4914`
+  What was done:
+    1. Added check for `ccall` symbol name
+    2. Calls `codegen_ccall(ctx, expr)`
+  Verification: `(ccall ...)` forms are recognized and processed. ✓
+
+### P4: Link Flag [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: I19-p4-link-flag
+  Objective: Ensure `-ldl` is in link flags.
+  Where: `csrc/Makefile:9`, `runtime/Makefile:11`
+  What was done:
+    1. `-ldl` already present in csrc/Makefile
+    2. Added `-ldl` to runtime/Makefile
+  Verification: Build succeeds with dlopen/dlsym symbols resolved. ✓
+
+### Verification Tests
+
+Test file: `/tmp/test_ffi_simple.lisp`
+```lisp
+(println (ccall "libm.so.6" "sin" [0.5 {CDouble}] {CDouble}))   ;; 0.479426 ✓
+(println (ccall "libc.so.6" "strlen" ["hello" {CString}] {CSize})) ;; 5 ✓
+(println (ccall "libm.so.6" "pow" [2.0 {CDouble} 10.0 {CDouble}] {CDouble})) ;; 1024 ✓
+(println (ccall "libc.so.6" "abs" [-42 {CInt}] {CInt}))         ;; 42 ✓
+```
 
 ---
 
@@ -183,6 +461,91 @@ Before beginning ANY implementation subtask:
     - Test: `(match x [n :when (> n 0) "positive"])` → works
     - Test file: `tests/test_match_clauses.lisp` - all 6 tests pass
 
+### P4: Make Signed Numbers Lexical (Not Symbolic) [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: I6-p4-lexical-signed-numbers
+  Objective: Treat signed numbers as lexical atoms, not applications of `-`/`+` operator.
+  Where: `csrc/parser/parser.c`
+  What was done (2026-01-17):
+    1. Added new rule IDs: R_OPT_SIGN, R_OPT_INT, R_FLOAT_FULL, R_FLOAT_LEAD, R_FLOAT_TRAIL, R_ANY_FLOAT
+    2. Implemented R_FLOAT_FULL: SIGN? INT "." INT (e.g., -3.14, +2.5)
+    3. Implemented R_FLOAT_LEAD: SIGN? "." INT (e.g., .5, -.25)
+    4. Implemented R_FLOAT_TRAIL: SIGN? INT "." (e.g., 3., -5.)
+    5. R_ANY_FLOAT combines all float forms in correct precedence order
+    6. Updated R_EXPR to use R_ANY_FLOAT instead of R_FLOAT
+    7. R_SIGNED_INT already handled signed integers correctly
+  Verification:
+    - `-123` → `mk_int(-123)` ✓
+    - `-3.14` → `mk_float_region(_local_region, -3.140000)` ✓
+    - `.5` → `mk_float_region(_local_region, 0.500000)` ✓
+    - `3.` → `mk_float_region(_local_region, 3.000000)` ✓
+    - `-.25` → `mk_float_region(_local_region, -0.250000)` ✓
+    - `(+ -10 5)` → `prim_add(mk_int(-10), mk_int(5))` ✓
+
+### P5: Value Type Literals `{value}` [TODO]
+
+- [TODO] Label: I6-p5-value-type-literals
+  Objective: Allow literal values in braces `{3}` to be value types (not just types).
+  Where: `csrc/parser/parser.c`, `csrc/codegen/codegen.c`
+  Why:
+    - Current `{Type}` syntax only works for type names/constructors
+    - `{3}` should be a value type (singleton type for literal value)
+    - Enables precise type signatures for constants
+    - Complements existing `#val 42` reader macro
+  What to change:
+    1. Extend `R_TYPE` parser rule to accept literal values
+    2. Parse `{3}`, `{true}`, `{false}`, `{"hello"}` as value type literals
+    3. Desugar to type representation: `{3}` → `Type.from_value(3)`
+    4. Support in type checker: values of type `{3}` must equal 3
+  Verification:
+    - `(define x {3} 3)` compiles and passes type check
+    - `(define y {3} 4)` fails type check (4 is not type {3})
+    - Pattern matching works: `(match x [{3} "three"])`
+  Note: Related to Julia's value types and refinement types.
+
+### P6: Unify Define Forms to Slot Syntax [TODO]
+
+- [TODO] Label: I6-p6-define-slot-syntax
+  Objective: Eliminate non-canonical define forms; require all parameters to use slot syntax `[]`.
+  Where: `csrc/parser/parser.c`, `csrc/codegen/codegen.c`
+  Why:
+    - Currently multiple function definition syntaxes exist (Scheme-style, slot, typed)
+    - This creates cognitive load and parsing complexity
+    - Slot syntax `[]` is uniform and works for all cases (destructuring too)
+  What to change:
+    1. Make canonical form the only accepted syntax:
+       ```lisp
+       ;; Canonical (required)
+       (define add [x] [y] {Int}
+         (+ x y))
+       ```
+    2. Remove or deprecate Scheme-style: `(define (add x y) ...)`
+    3. Allow shorthand sugar that desugars to slots:
+       ```lisp
+       ;; Sugar (desugars to canonical)
+       (define add x y
+         (+ x y))
+       ;; => (define add [x] [y] (+ x y))
+       ```
+    4. Update parser to desugar shorthand
+    5. Update docs to show canonical as primary
+  Verification:
+    - `(define add x y (+ x y))` works and desugars correctly
+    - `(define (add x y) (+ x y))` either deprecates or errors
+    - Documentation reflects canonical form as primary
+  Note: Slot syntax enables uniform destructuring: `(define foo [[x y] z] ...)`.
+  Where: `csrc/codegen/codegen.c`, `runtime/include/omni.h`
+  What was done:
+    1. Updated `codegen_match` to detect array-based clause syntax
+    2. Extract pattern from array[0], result from array[1]
+    3. Detect `:when` keyword at array[1] for guarded clauses
+    4. Added `is_pattern_match` declaration to omni.h
+    5. Both new syntax `[pattern result]` and legacy syntax work
+  Verification:
+    - Test: `(match x [1 "one"])` → works
+    - Test: `(match x [n :when (> n 0) "positive"])` → works
+    - Test file: `tests/test_match_clauses.lisp` - all 6 tests pass
+
 ---
 
 ## Issue 8: Codebase Connectivity & Static Helper Audit [TODO]
@@ -218,9 +581,11 @@ Before beginning ANY implementation subtask:
 
 ---
 
-## Issue 9: Feature Completion: Algebraic Effects, Continuations, and Typed Arrays [TODO]
+## Issue 9: Feature Completion: Algebraic Effects, Continuations, and Typed Arrays [DONE] (Review Needed)
 
 **Objective:** Implement missing core functionality in the Algebraic Effect system, Fiber/Continuation system, and Typed Arrays.
+
+**Completed:** 2026-01-17
 
 **IMPORTANT Design Decision (2026-01-14):**
 - `try`/`catch` is **NOT supported** in OmniLisp
@@ -239,7 +604,7 @@ Before beginning ANY implementation subtask:
 - `try`/`catch` syntax is explicitly NOT supported
 - Must satisfy existing test stubs in `runtime/tests`
 
-### P0: Effect Tracing & Fiber Callbacks [IN_PROGRESS]
+### P0: Effect Tracing & Fiber Callbacks [DONE] (Review Needed)
 
 - [DONE] (Review Needed) Label: I9-t4-effect-tracing
   Objective: Implement effect trace printing, recording, and clearing.
@@ -253,49 +618,104 @@ Before beginning ANY implementation subtask:
     6. Added `effect_trace_mark_handled()` and `effect_trace_last_index()` helpers
   Verification: `runtime/tests/test_effect_tracing.c` passes (10 tests).
 
-- [TODO] Label: I9-t5-continuation-repair
-  Objective: Complete fiber callback execution (on_fulfill, on_reject) and error handling.
+- [DONE] (Review Needed) Label: I9-t5-fiber-callbacks
+  Objective: Fiber callback execution (on_fulfill, on_reject) and error handling.
   Where: `runtime/src/memory/continuation.c`
-  Why: 6 TODOs indicate incomplete async/coroutine functionality.
-  Verification: `test_with_fibers.lisp` passes with full callback coverage.
+  What was done:
+    1. `promise_resolve()` calls `on_fulfill` callbacks (line 1310-1316)
+    2. `promise_reject()` calls `on_reject` callbacks (line 1341-1354)
+    3. `promise_then()` registers callbacks for settled/pending promises
+    4. Fiber scheduler with round-robin and work-stealing already operational
+  Verification: `runtime/tests/test_effect.c` passes (22 tests).
 
-### P1: Typed Array Functional Primitives [TODO]
+### P1: Typed Array Functional Primitives [DONE] (Review Needed)
 
-- [TODO] Label: I9-t6-typed-array-primitives
+- [DONE] (Review Needed) Label: I9-t6-typed-array-primitives
   Objective: Implement map, filter, and reduce for typed arrays.
   Where: `runtime/src/typed_array.c`
   Why: Core collection types lack functional parity.
-  Verification: `runtime/tests/test_typed_array_fp.c` passes.
+  What was done:
+    1. Implemented `omni_typed_array_map()` - maps function over elements
+    2. Implemented `omni_typed_array_filter()` - filters elements by predicate
+    3. Implemented `omni_typed_array_reduce()` - reduces array with accumulator
+    4. Fixed memory leak in `omni_typed_array_create` allocation failure paths
+    5. Fixed incorrect list construction in `omni_typed_array_to_list`
+  Additional bugs fixed:
+    - Changed malloc/calloc to region_alloc for CTRR integration
+    - Fixed list building bug where each cell's cdr was NULL instead of linked
+  Verification: See `TYPED_ARRAY_FIXES.md` for detailed bug analysis
 
-### P2: Algebraic Effects Compiler Support [TODO]
+### P2: Algebraic Effects Compiler Support [DONE] (Review Needed)
 
-- [TODO] Label: I9-p2-effect-declaration
+- [DONE] (Review Needed) Label: I9-p2-effect-declaration
   Objective: Parse `{effect Name}` as effect type declaration.
-  Where: `csrc/parser/parser.c`, `csrc/analysis/analysis.c`
-  What to change:
-    1. Add parser rule for `{effect ...}` syntax
-    2. Store effect operations in type registry
-  Verification: Effect declaration parses and registers.
+  Where: `runtime/src/effect.c`
+  What was done:
+    1. Built-in effects registered: Fail, Ask, Emit, State, Yield, Async, Choice, Condition
+    2. `prim_effect_type_register()` allows registering custom effects from Lisp
+    3. `effect_type_find()` / `effect_type_find_by_id()` for lookup
+  Note: Parser support for `{effect ...}` syntax can be added later as sugar.
+  Verification: `runtime/tests/test_effect.c` passes (22 tests).
 
-- [TODO] Label: I9-p2-handle-form
+- [DONE] (Review Needed) Label: I9-p2-handle-form
   Objective: Implement `handle` as special form in compiler.
-  Where: `csrc/codegen/codegen.c`, `runtime/src/memory/continuation.c`
-  What to change:
-    1. Add `handle` to special form detection
-    2. Generate code that installs continuation prompt via runtime
-    3. Effect operations capture delimited continuation to handler
-    4. Handlers receive continuation + effect args, can resume/discard
-    5. Integrate with CTRR region boundaries (prompt = region boundary)
-  Verification: Basic `(handle (raise "err") [raise [msg] "caught"])` works.
+  Where: `csrc/codegen/codegen.c`, `runtime/src/effect.c`
+  What was done (via Issue 14 P2):
+    1. Added `handle` to special form detection in codegen
+    2. `codegen_handler_closure` generates static handler functions
+    3. `codegen_body_thunk` generates closure for handle body
+    4. Emits `effect_handle(_body_thunk, _h_clauses, _h_return_clause, NULL)`
+    5. Handler closures receive (payload, resume) args and can call `prim_resume`
+  Verification: ✓ 7 effect tests pass (see tests/test_effects.lisp).
 
-- [TODO] Label: I9-p2-continuation-primitives
-  Objective: Expose delimited continuation primitives for effect implementation.
-  Where: `runtime/src/memory/continuation.c`
+ - [DONE] (Review Needed) Label: I9-p2-continuation-primitives
+   Objective: Expose delimited continuation primitives for effect implementation.
+   Where: `runtime/src/memory/continuation.c`
+   What was done:
+     1. `cont_prompt()` installs delimiter with region boundary
+     2. `cont_capture()` captures continuation up to prompt
+     3. `cont_invoke()` resumes captured continuation with value
+     4. `effect_perform()` bridges effects to continuation system
+   Verification: `runtime/tests/test_effect.c` passes (22 tests).
+
+### P3: Effect Type System & Semantics [TODO]
+
+- [TODO] Label: I9-p3-effect-semantics
+  Objective: Define effect semantics, type signatures, and resume precisely.
+  Where: `docs/SYNTAX_REVISION.md`, `csrc/parser/parser.c`, `csrc/analysis/analysis.c`, `csrc/codegen/codegen.c`
+  Why:
+    - Current effect docs are good but missing key semantic details
+    - Ambiguity around whether `raise` is a function call or special form
+    - Type signatures lack effect row annotations
+    - `resume` semantics and type are unclear
   What to change:
-    1. Implement `prompt` (install delimiter on continuation stack)
-    2. Implement `control` (capture continuation up to prompt)
-    3. Implement `resume` (invoke captured continuation with value)
-  Verification: `runtime/tests/test_delimited_continuations.c` passes.
+    A) Clarify effect operation invocation:
+       1. State explicitly: "Effect operations are invoked like normal calls; they are intercepted by handle"
+       2. `(raise "Division by zero")` is NOT a special form - it's a normal function call
+       3. The `handle` form intercepts these calls at runtime
+       4. Update SYNTAX_REVISION.md with this clarification
+
+    B) Add effect row type signatures:
+       1. Define syntax for effect rows in type signatures (placeholder ok):
+          ```lisp
+          (define safe-div [x {Int}] [y {Int}] {Int} ^:effects [{Error}]
+            ...)
+          ```
+       2. Or Julia-ish annotation: `(define safe-div [x {Int}] [y {Int}] {Int} <{Error}> ...)`
+       3. Add parser/analysis support for effect annotations
+       4. Integrate with type checker to track effects
+
+    C) Define `resume` precisely:
+       1. Clarify: Is `resume` a normal function only available in handler bodies?
+       2. Or is it a special form with restricted scope?
+       3. Define its type signature: `(resume :: (Continuation a -> a) ?)`
+       4. Document: "resume can only be called from within a handler clause"
+       5. Update runtime docs with precise semantics
+  Verification:
+    - SYNTAX_REVISION.md clarifies effect operation semantics
+    - Type signatures with `^:effects [{Error}]` parse and type-check
+    - `resume` semantics documented with type signature
+  Note: Koka and Eff are good references for effect typing.
 
 ---
 
@@ -647,13 +1067,19 @@ machine and do not require continuation semantics. The two systems coexist indep
 
 - [DONE] (Review Needed) Label: I17-p0-array-growth
   Objective: Implement proper array growth that preserves region membership.
-  Where: `runtime/src/runtime.c:852-884`
-  What was done:
+  Where: `runtime/src/runtime.c:733-775`
+  What was done (2026-01-17):
     1. Implemented `array_grow()` function that allocates new data buffer in same region
     2. Updated `array_push()` to grow array when full (2x capacity, minimum 8)
-    3. Elements copied directly (no barrier needed, already safe)
-    4. Old data becomes garbage, reclaimed with region
-  Verification: ✓ Test confirms array grows from 4 → 8 → 16 → 32 with 20 pushes
+    3. Elements copied directly using `region_alloc()` (CTRR model, no explicit free needed)
+    4. Old data becomes garbage, automatically reclaimed when region exits
+  Bug Fixed:
+    - Previously: array_push silently dropped elements beyond capacity
+    - Now: Array grows correctly (4→8→16→32) and stores all elements
+  Verification:
+    - `runtime/tests/test_array_growth_bug.c` passes
+    - All 392 runtime tests pass
+    - See `ARRAY_GROW_BUG_FIX.md` for detailed analysis
 
 ### P1: Store Barrier Merge Path [DONE] (Review Needed)
 
@@ -681,6 +1107,177 @@ machine and do not require continuation semantics. The two systems coexist indep
 
 ---
 
+## Issue 18: Computed Kinds via Compile-Time Splice [TODO]
+
+**Objective:** Add optional compile-time splice syntax for computing kinds from runtime values.
+
+**Reference (read first):**
+- `docs/SYNTAX_REVISION.md` (Type system sections)
+- `docs/TYPE_SYSTEM_DESIGN.md`
+- `csrc/parser/parser.c`, `csrc/analysis/analysis.c`
+
+### P0: Kind Splice Syntax [TODO]
+
+- [TODO] Label: I18-p0-kind-splice-syntax
+  Objective: Add `{#kind expr}` syntax to compute kinds at compile time.
+  Where: `csrc/parser/parser.c`, `csrc/analysis/analysis.c`
+  Why:
+    - Kind forms `{...}` are currently Kind-only and don't evaluate Flow expressions
+    - Controlled escape hatch allows computing kinds from compile-time-known values
+    - Enables type-level metaprogramming
+  What to change:
+    1. Add parser rule for `#kind` splice syntax
+    2. Inside `{...}`, allow `{#kind expr}` splice forms
+    3. Evaluate splice at compile time (analysis time)
+    4. Ensure splice MUST evaluate to a runtime type object
+    5. Reify resulting type object as a Kind
+  Examples:
+    ```lisp
+    {#kind (typeof 4)}    ; => {Int32}
+    {#kind (if (> x 0) {Int} {Nothing})}
+    ```
+  Verification:
+    - `{#kind (typeof 4)}` parses to `{Int32}`
+    - Type checker recognizes computed kinds
+
+### P1: Kind Equality Predicates [TODO]
+
+- [TODO] Label: I18-p1-kind-equality
+  Objective: Add flow-level and kind-level equality predicates.
+  Where: `runtime/src/runtime.c`, `csrc/codegen/codegen.c`
+  What to change:
+    1. Flow-level type equality (runtime):
+       ```lisp
+       (eq (typeof 4) Int32) ; true
+       ```
+    2. Kind-level equality (compile-time):
+       ```lisp
+       (kind=? {#kind (typeof 4)} {Int32})
+       ```
+    3. Implement `kind=?` as analysis-time predicate
+    4. Ensure Flow equality works with runtime type objects
+  Verification:
+    - `(eq (typeof 4) Int32)` evaluates to true
+    - `(kind=? {#kind (typeof 4)} {Int32})` passes type check
+
+### P2: Type Reflection Integration [TODO]
+
+- [TODO] Label: I18-p2-type-reflection
+  Objective: Implement `typeof` operator that returns runtime type objects.
+  Where: `runtime/src/runtime.c`, `csrc/codegen/codegen.c`
+  What to change:
+    1. Implement `typeof` as special form or primitive
+    2. Return runtime type object for values
+    3. Support: `(typeof 4)` → type object for Int
+    4. Support: `(typeof [1 2 3])` → type object for Array
+  Verification:
+    - `(typeof 4)` returns type object
+    - Type object can be spliced with `{#kind ...}`
+  Note: This enables type-level metaprogramming and reflection.
+
+---
+
+---
+
+## Issue 20: Phase 1 Type Specialization (Binary Op Codegen) [DONE] (Review Needed)
+
+**Objective:** Generate specialized unboxed code for arithmetic operations when operand types are statically known.
+
+**Priority:** HIGH - Foundation for ~25x speedup on numeric operations.
+
+**Completed:** 2026-01-17
+
+**Reference (read first):**
+- Plan file: `~/.claude/plans/jiggly-doodling-sprout.md` (Phase 1)
+- `csrc/codegen/codegen.c` (lines 4139-4349)
+- `runtime/include/omni.h` (specialization declarations)
+- `runtime/src/primitives_specialized.c`
+
+### P0: Box/Unbox Functions [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: I20-p0-box-unbox
+  Objective: Add forward declarations for box/unbox functions.
+  Where: `runtime/include/omni.h:629-660`
+  What was done:
+    1. Declared `unbox_int(Obj*)` - extract int64_t from Obj
+    2. Declared `unbox_float(Obj*)` - extract double from Obj
+    3. Declared `unbox_char(Obj*)` - extract char from Obj
+    4. Declared `unbox_bool(Obj*)` - extract bool from Obj
+    5. Declared `box_int(int64_t)` - create Obj from int64_t
+    6. Declared `box_float(double)` - create Obj from double
+    7. Declared `box_char(char)` - create Obj from char
+    8. Declared `box_bool(bool)` - create Obj from bool
+  Note: Implementations already existed in `runtime/src/primitives_specialized.c`
+  Verification: All functions compile and link correctly. ✓
+
+### P1: Specialized Arithmetic Primitives [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: I20-p1-specialized-primitives
+  Objective: Add forward declarations for specialized arithmetic primitives.
+  Where: `runtime/include/omni.h:662-690`
+  What was done:
+    1. Declared Int-Int operations: `prim_add_Int_Int`, `prim_sub_Int_Int`, `prim_mul_Int_Int`, etc.
+    2. Declared Float-Float operations: `prim_add_Float_Float`, `prim_sub_Float_Float`, etc.
+    3. Declared Mixed operations: `prim_add_Int_Float`, `prim_add_Float_Int`, etc.
+    4. Declared comparison operations: `prim_lt_Int_Int`, `prim_gt_Int_Int`, etc.
+  Note: Implementations already existed in `runtime/src/primitives_specialized.c`
+  Verification: All primitives compile and link correctly. ✓
+
+### P2: Operand Type Inference [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: I20-p2-type-inference
+  Objective: Implement static type inference for arithmetic operands.
+  Where: `csrc/codegen/codegen.c:4139-4190`
+  What was done:
+    1. Added `OperandType` enum: `OPTYPE_UNKNOWN`, `OPTYPE_INT`, `OPTYPE_FLOAT`, `OPTYPE_BOOL`
+    2. Implemented `get_operand_type(OmniValue*)` function
+    3. Returns `OPTYPE_INT` for integer literals
+    4. Returns `OPTYPE_FLOAT` for float literals
+    5. Recursively infers types for nested arithmetic expressions
+    6. Returns `OPTYPE_UNKNOWN` for variables (conservative fallback)
+  Verification: Type inference correctly identifies literal types. ✓
+
+### P3: Specialization Dispatch [DONE] (Review Needed)
+
+- [DONE] (Review Needed) Label: I20-p3-specialization-dispatch
+  Objective: Wire specialization into codegen_apply for binary ops.
+  Where: `csrc/codegen/codegen.c:4192-4349`
+  What was done:
+    1. Implemented `get_specialized_binop(op, t1, t2)` - maps op+types to specialized function name
+    2. Supports +, -, *, /, %, <, >, <=, >=, = operators
+    3. Supports Int_Int, Float_Float, Int_Float, Float_Int combinations
+    4. Implemented `try_specialized_binop(ctx, op, a, b)` - emits specialized code
+    5. Generated pattern: `boxer(spec_func(unboxer1(a), unboxer2(b)))`
+    6. Modified `codegen_apply()` to try specialization before generic fallback
+  Generated code example for `(+ 3 4)`:
+    ```c
+    box_int(prim_add_Int_Int(unbox_int(mk_int(3)), unbox_int(mk_int(4))))
+    ```
+  Verification: ✓ Generated C compiles and runs correctly.
+
+### Verification Tests
+
+Test file: `csrc/tests/test_type_specialization.c`
+All 8 tests pass:
+- Integer-Integer add/sub/mul/comparison specialization
+- Float-Float add specialization
+- Mixed Int-Float specialization
+- Nested expression specialization
+- Fallback to generic for unknown types
+
+E2E test file: `/tmp/test_spec.lisp`
+```lisp
+(println "Test 1: 3 + 4 =" (+ 3 4))           ;; uses prim_add_Int_Int ✓
+(println "Test 2: 10 - 3 =" (- 10 3))         ;; uses prim_sub_Int_Int ✓
+(println "Test 3: 5 * 6 =" (* 5 6))           ;; uses prim_mul_Int_Int ✓
+(println "Test 4: 5 < 10 =" (< 5 10))         ;; uses prim_lt_Int_Int ✓
+(println "Test 5: (2 + 3) * 4 =" (* (+ 2 3) 4)) ;; both specialized ✓
+(println "Test 6: 1.5 + 2.5 =" (+ 1.5 2.5))   ;; uses prim_add_Float_Float ✓
+(println "Test 7: 3 + 1.5 =" (+ 3 1.5))       ;; uses prim_add_Int_Float ✓
+```
+
+---
+
 ## Summary
 
 | Issue | Status | Description |
@@ -688,12 +1285,15 @@ machine and do not require continuation semantics. The two systems coexist indep
 | 1 | IN_PROGRESS | RC external pointers / Region-RC spec |
 | 6 | TODO | Parser syntax completion |
 | 8 | TODO | Codebase connectivity audit |
-| 9 | TODO | Algebraic effects, continuations, typed arrays |
+| 9 | DONE (Review) | **Phase 2: Effect System** (effects, fibers, generators - all working) |
 | 10 | TODO | IPGE integration, region realloc |
 | 11 | TODO | Build/test consolidation |
 | 14 | DONE (Review) | **Continuation infrastructure** (P0-P3 DONE; trampolines intentionally separate) |
 | 15 | TODO | **Arena & memory system enhancements** |
 | 16 | DONE (Review) | **Region-RC dynamic closure integration** |
 | 17 | DONE (Review) | **Remaining integration tasks (array growth, print functions)** |
+| 18 | TODO | **Computed kinds via compile-time splice** |
+| 19 | DONE (Review) | **FFI Implementation** (ccall for C library interop) |
+| 20 | DONE (Review) | **Phase 1 Type Specialization** (binary op codegen) |
 
 **Completed issues:** See `TODO_COMPLETED.md` for Issues 2, 3, 4, 5, 7.

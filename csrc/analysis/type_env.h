@@ -32,12 +32,13 @@ typedef struct TypeEnv TypeEnv;
  * TypeKind - The category of a concrete type
  *
  * This distinguishes between primitive values (unboxed), typed arrays,
- * functions, and unknown/generic types.
+ * functions, union types, and unknown/generic types.
  */
 typedef enum {
     TYPE_KIND_PRIMITIVE = 0,    /* Int, Float, Char, Bool (unboxed) */
     TYPE_KIND_ARRAY,            /* Typed array (e.g., Array Float64) */
     TYPE_KIND_CLOSURE,          /* Function type */
+    TYPE_KIND_UNION,            /* Union of multiple types (e.g., Int | String) */
     TYPE_KIND_ANY,              /* Unknown/generic type */
 } TypeKind;
 
@@ -93,6 +94,12 @@ struct ConcreteType {
             int param_count;              /* Number of parameters */
             ConcreteType* return_type;    /* Return type */
         } closure;
+
+        /* TYPE_KIND_UNION */
+        struct {
+            ConcreteType** member_types;  /* Array of member types in the union */
+            int member_count;             /* Number of member types */
+        } type_union;
 
         /* TYPE_KIND_ANY has no additional data */
     };
@@ -189,6 +196,23 @@ ConcreteType* concrete_type_array(ConcreteType* element_type,
 ConcreteType* concrete_type_closure(ConcreteType** param_types,
                                     int param_count,
                                     ConcreteType* return_type);
+
+/**
+ * Create a union concrete type
+ *
+ * Args:
+ *   member_types: Array of member types in the union
+ *   member_count: Number of member types
+ *
+ * Returns:
+ *   New ConcreteType with ref_count = 1
+ *
+ * Note:
+ *   Increments ref_count on all member_types
+ *   If all members are the same type, returns that type instead
+ *   If member_count is 0 or 1, returns Any or the single type
+ */
+ConcreteType* concrete_type_union(ConcreteType** member_types, int member_count);
 
 /**
  * Create an "any" type (unknown/generic)

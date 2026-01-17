@@ -146,6 +146,7 @@ struct Fiber {
     Obj* env;               /* Current environment (E in CEK) */
     Frame* cont;            /* Current continuation (K in CEK) */
     Obj* value;             /* Value to resume with */
+    bool is_error;          /* Whether value is an error (distinguishes from normal result) */
 
     /* Scheduling */
     Fiber* next;            /* Next in queue */
@@ -445,6 +446,9 @@ void fiber_park(void* reason, Obj* value);
 /* Unpark a fiber (internal) */
 void fiber_unpark(Fiber* f, Obj* value);
 
+/* Unpark a fiber with error flag (internal) */
+void fiber_unpark_error(Fiber* f, Obj* value, bool is_error);
+
 /* ========== API: Fiber Channels ========== */
 
 /* Create channel */
@@ -536,6 +540,12 @@ typedef struct SelectCase {
 int fiber_select(SelectCase* cases, int count);
 
 /* ========== API: Timeout ========== */
+
+/* Initialize timer system (call once at startup) */
+void timer_system_init(void);
+
+/* Shutdown timer system (call at cleanup) */
+void timer_system_shutdown(void);
 
 /* Create a timer that resolves after ms milliseconds */
 Promise* timer_after(uint64_t ms);

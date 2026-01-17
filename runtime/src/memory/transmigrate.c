@@ -78,10 +78,10 @@ static RemapStats g_remap_stats = {0};
 
 #include "transmigrate.h"
 #include "region_metadata.h"  /* CTRR: TypeMetadata, type_metadata_get, TypeID */
+#include "scratch_arena.h"       /* Issue 15 P0: Scratch arena API for temporary allocations */
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
-#include "../../../third_party/arena/arena_config.h"
 #include "../../include/omni.h"
 
 /* ============================================================================
@@ -412,8 +412,9 @@ static TypeID transmigrate_tag_to_type_id(int tag) {
         case TAG_THREAD:      return TYPE_ID_THREAD;
         case TAG_ERROR:       return TYPE_ID_ERROR;
         case TAG_ATOM:        return TYPE_ID_ATOM;
-        case TAG_TUPLE:       return TYPE_ID_TUPLE;
-        case TAG_NAMED_TUPLE: return TYPE_ID_NAMED_TUPLE;
+        /* TAG_TUPLE and TAG_NAMED_TUPLE removed 2026-01-15 - map to TYPE_ID_ARRAY instead */
+        case TAG_RESERVED_16:   return TYPE_ID_ARRAY;     /* Was TAG_TUPLE */
+        case TAG_RESERVED_17:   return TYPE_ID_DICT;      /* Was TAG_NAMED_TUPLE */
         case TAG_GENERIC:     return TYPE_ID_GENERIC;
         case TAG_KIND:        return TYPE_ID_KIND;
         case TAG_NOTHING:     return TYPE_ID_NOTHING;

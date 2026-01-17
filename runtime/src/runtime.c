@@ -19,7 +19,7 @@
 #include "internal_types.h"
 #include "util/hashmap.h"
 #include "smr/qsbr.h"
-#include "omni_atomic.h"
+#include "../include/omni_atomic.h"
 #include "effect.h"
 
 /* RC-G Runtime: Standard RC is now Region-RC (Coarse-grained) */
@@ -257,15 +257,15 @@ static int is_wildcard(Obj* pattern) {
 }
 
 /*
- * Helper: Get array length from Obj
+ * Helper: Get sequence length from Obj
  * Handles both ARRAY and list (PAIR) types
  */
 static long get_sequence_length(Obj* seq) {
     if (!seq) return 0;
     if (IS_BOXED(seq) && seq->tag == TAG_ARRAY) {
-        /* Array stores length in generation field (hack for compact storage) */
-        /* Actually, arrays store data differently - let's use the convention */
-        return (long)(seq->generation);
+        /* Arrays store data in Array struct via ptr */
+        Array* arr = (Array*)seq->ptr;
+        return arr ? (long)arr->len : 0;
     }
     /* For lists (pairs), count elements */
     long len = 0;
@@ -281,18 +281,12 @@ static long get_sequence_length(Obj* seq) {
  * Returns NULL if index out of bounds
  */
 static Obj* get_sequence_element(Obj* seq, long index) {
-    if (!seq) return NULL;
+    if (!seq || index < 0) return NULL;
     if (IS_BOXED(seq) && seq->tag == TAG_ARRAY) {
-        /* Arrays are stored differently - need to access via helper */
-        /* For now, assume arrays are stored as a list of pairs in the 'a' field */
-        Obj* current = (Obj*)seq->ptr;
-        long i = 0;
-        while (current && IS_BOXED(current) && current->tag == TAG_PAIR) {
-            if (i == index) return current->a;
-            current = current->b;
-            i++;
-        }
-        return NULL;
+        /* Arrays store data in Array struct via ptr */
+        Array* arr = (Array*)seq->ptr;
+        if (!arr || index >= arr->len) return NULL;
+        return arr->data[index];
     }
     /* For lists (pairs) */
     long i = 0;
@@ -426,6 +420,362 @@ int is_pattern_match(Obj* pattern, Obj* value) {
     return 0;
 }
 
+/*
+ * Pattern Bindings - CP-5.2
+ *
+ * Structures and functions for pattern matching with variable binding.
+ * Supports:
+ * - Simple variable bindings: [x y] matches [1 2] → x=1, y=2
+ * - Rest patterns: [x y & rest] matches [1 2 3 4] → x=1, y=2, rest=[3 4]
+ * - As patterns: [inner as name] binds both inner vars and whole match
+ * - Nested patterns: [[a b] c] matches [[1 2] 3] → a=1, b=2, c=3
+ */
+
+/* Single pattern binding: variable name to matched value */
+typedef struct {
+    const char* name;
+    Obj* value;
+} PatternBinding;
+
+/* Collection of pattern bindings (max 64) */
+#define MAX_PATTERN_BINDINGS 64
+typedef struct {
+    PatternBinding bindings[MAX_PATTERN_BINDINGS];
+    int count;
+} PatternBindings;
+
+/* Initialize pattern bindings */
+static void pattern_bindings_init(PatternBindings* pb) {
+    pb->count = 0;
+}
+
+/* Add a binding (returns 1 on success, 0 if full) */
+static int pattern_bindings_add(PatternBindings* pb, const char* name, Obj* value) {
+    if (pb->count >= MAX_PATTERN_BINDINGS) return 0;
+    pb->bindings[pb->count].name = name;
+    pb->bindings[pb->count].value = value;
+    pb->count++;
+    return 1;
+}
+
+/* Check if a symbol is a reserved pattern keyword */
+static int is_pattern_keyword(const char* sym) {
+    return strcmp(sym, "_") == 0 ||
+           strcmp(sym, "nil") == 0 ||
+           strcmp(sym, "true") == 0 ||
+           strcmp(sym, "false") == 0 ||
+           strcmp(sym, "as") == 0 ||
+           strcmp(sym, "&") == 0;
+}
+
+/* Forward declaration */
+static int is_pattern_match_with_bindings(Obj* pattern, Obj* value, PatternBindings* bindings);
+
+/* Check if array pattern contains rest pattern (&) */
+static int find_rest_position(Obj* pattern) {
+    if (!IS_BOXED(pattern) || pattern->tag != TAG_ARRAY) return -1;
+    Array* arr = (Array*)pattern->ptr;
+    for (int i = 0; i < arr->len; i++) {
+        Obj* elem = arr->data[i];
+        if (IS_BOXED(elem) && elem->tag == TAG_SYM) {
+            char* sym = (char*)elem->ptr;
+            if (strcmp(sym, "&") == 0) return i;
+        }
+    }
+    return -1;
+}
+
+/*
+ * is_pattern_match_with_bindings - Match pattern and extract bindings
+ *
+ * Pattern matching rules:
+ * 1. Wildcard (_) always matches, no binding
+ * 2. Literals (int, float, string, char, bool) match by equality, no binding
+ * 3. nil matches NULL or TAG_NOTHING
+ * 4. true/false symbols match boolean values
+ * 5. Variables (other symbols) match anything and bind the value
+ * 6. Arrays/lists match element-wise
+ * 7. Rest patterns [x y & rest] bind remaining elements
+ * 8. As patterns [pattern as name] bind both inner and whole
+ *
+ * Returns: 1 if match succeeded, 0 otherwise
+ */
+
+/* Debug flag - set to 1 to enable debug output */
+#define PATTERN_DEBUG 0
+
+static int is_pattern_match_with_bindings(Obj* pattern, Obj* value, PatternBindings* bindings) {
+#if PATTERN_DEBUG
+    fprintf(stderr, "[DEBUG] is_pattern_match_with_bindings called\n");
+    fprintf(stderr, "[DEBUG]   pattern=%p, value=%p\n", (void*)pattern, (void*)value);
+    if (pattern) {
+        fprintf(stderr, "[DEBUG]   pattern IS_IMMEDIATE_INT=%d, IS_BOXED=%d\n",
+                IS_IMMEDIATE_INT(pattern), IS_BOXED(pattern));
+        if (IS_BOXED(pattern)) {
+            fprintf(stderr, "[DEBUG]   pattern->tag=%d\n", pattern->tag);
+        }
+    }
+    if (value) {
+        fprintf(stderr, "[DEBUG]   value IS_IMMEDIATE_INT=%d, IS_BOXED=%d\n",
+                IS_IMMEDIATE_INT(value), IS_BOXED(value));
+        if (IS_BOXED(value)) {
+            fprintf(stderr, "[DEBUG]   value->tag=%d\n", value->tag);
+        }
+    }
+#endif
+
+    /* NULL pattern matches NULL value */
+    if (!pattern) return value == NULL;
+
+    /* Handle immediate values */
+    if (IS_IMMEDIATE_INT(pattern)) {
+        return IS_IMMEDIATE_INT(value) && INT_IMM_VALUE(pattern) == INT_IMM_VALUE(value);
+    }
+    if (IS_IMMEDIATE_BOOL(pattern)) {
+        return IS_IMMEDIATE_BOOL(value) && pattern == value;
+    }
+    if (IS_IMMEDIATE_CHAR(pattern)) {
+        return IS_IMMEDIATE_CHAR(value) && pattern == value;
+    }
+
+    /* Handle boxed values */
+    if (!IS_BOXED(pattern)) return 0;
+
+    int ptag = pattern->tag;
+
+    /* Wildcard - always matches, no binding */
+    if (is_wildcard(pattern)) {
+        return 1;
+    }
+
+    /* Symbol patterns */
+    if (ptag == TAG_SYM) {
+        char* sym = (char*)pattern->ptr;
+#if PATTERN_DEBUG
+        fprintf(stderr, "[DEBUG] TAG_SYM: sym='%s'\n", sym);
+#endif
+
+        /* nil pattern matches NULL or NOTHING */
+        if (strcmp(sym, "nil") == 0) {
+            return is_nil(value);
+        }
+
+        /* true symbol matches true boolean */
+        if (strcmp(sym, "true") == 0) {
+            return IS_IMMEDIATE_BOOL(value) && value == OMNI_TRUE;
+        }
+
+        /* false symbol matches false boolean */
+        if (strcmp(sym, "false") == 0) {
+            return IS_IMMEDIATE_BOOL(value) && value == OMNI_FALSE;
+        }
+
+        /* Variable pattern - bind the value */
+        if (!is_pattern_keyword(sym)) {
+#if PATTERN_DEBUG
+            fprintf(stderr, "[DEBUG] Binding '%s' to value %p\n", sym, (void*)value);
+#endif
+            pattern_bindings_add(bindings, sym, value);
+        }
+        return 1;
+    }
+
+    /* Integer literal pattern */
+    if (ptag == TAG_INT) {
+        if (IS_IMMEDIATE_INT(value)) {
+            return pattern->i == INT_IMM_VALUE(value);
+        }
+        if (IS_BOXED(value) && value->tag == TAG_INT) {
+            return pattern->i == value->i;
+        }
+        return 0;
+    }
+
+    /* Float literal pattern */
+    if (ptag == TAG_FLOAT) {
+        if (!IS_BOXED(value) || value->tag != TAG_FLOAT) return 0;
+        return pattern->f == value->f;
+    }
+
+    /* String literal pattern */
+    if (ptag == TAG_STRING) {
+        return string_equals(pattern, value);
+    }
+
+    /* Char literal pattern */
+    if (ptag == TAG_CHAR) {
+        if (!IS_BOXED(value) || value->tag != TAG_CHAR) return 0;
+        return pattern->i == value->i;
+    }
+
+    /* Array pattern - match element-wise with rest pattern support */
+    if (ptag == TAG_ARRAY) {
+#if PATTERN_DEBUG
+        fprintf(stderr, "[DEBUG] Entering TAG_ARRAY branch\n");
+#endif
+        if (!IS_BOXED(value)) {
+#if PATTERN_DEBUG
+            fprintf(stderr, "[DEBUG] FAIL: value not boxed\n");
+#endif
+            return 0;
+        }
+
+        Array* parr = (Array*)pattern->ptr;
+#if PATTERN_DEBUG
+        fprintf(stderr, "[DEBUG] pattern->ptr=%p, parr=%p\n", pattern->ptr, (void*)parr);
+        if (parr) {
+            fprintf(stderr, "[DEBUG] parr->len=%d, parr->data=%p\n", parr->len, (void*)parr->data);
+        }
+#endif
+        long plen = parr->len;
+        long vlen = get_sequence_length(value);
+
+        /* Check for 'as' pattern: [inner_pattern as name] */
+        if (plen == 3) {
+            Obj* middle = parr->data[1];
+            if (IS_BOXED(middle) && middle->tag == TAG_SYM) {
+                char* mid_str = (char*)middle->ptr;
+                if (strcmp(mid_str, "as") == 0) {
+                    Obj* inner = parr->data[0];
+                    Obj* name_obj = parr->data[2];
+                    /* Match inner pattern */
+                    if (!is_pattern_match_with_bindings(inner, value, bindings)) {
+                        return 0;
+                    }
+                    /* Also bind the whole value to name */
+                    if (IS_BOXED(name_obj) && name_obj->tag == TAG_SYM) {
+                        char* name = (char*)name_obj->ptr;
+                        if (!is_pattern_keyword(name)) {
+                            pattern_bindings_add(bindings, name, value);
+                        }
+                    }
+                    return 1;
+                }
+            }
+        }
+
+        /* Check for rest pattern: [x y & rest] */
+        int rest_pos = find_rest_position(pattern);
+        if (rest_pos >= 0) {
+            /* Pattern has & - rest pattern */
+            int num_fixed = rest_pos;          /* Elements before & */
+            int has_rest_var = (rest_pos + 1 < plen); /* Is there a var after &? */
+
+            /* Value must have at least num_fixed elements */
+            if (vlen < num_fixed) return 0;
+
+            /* Match fixed elements before & */
+            for (int i = 0; i < num_fixed; i++) {
+                Obj* pelem = parr->data[i];
+                Obj* velem = get_sequence_element(value, i);
+                if (!is_pattern_match_with_bindings(pelem, velem, bindings)) {
+                    return 0;
+                }
+            }
+
+            /* Bind rest elements to rest variable */
+            if (has_rest_var) {
+                Obj* rest_var = parr->data[rest_pos + 1];
+                if (IS_BOXED(rest_var) && rest_var->tag == TAG_SYM) {
+                    char* rest_name = (char*)rest_var->ptr;
+                    if (!is_pattern_keyword(rest_name)) {
+                        /* Create array with remaining elements */
+                        int rest_count = vlen - num_fixed;
+                        Obj* rest_arr = mk_array(rest_count);
+                        for (int i = 0; i < rest_count; i++) {
+                            Obj* velem = get_sequence_element(value, num_fixed + i);
+                            array_push(rest_arr, velem);
+                        }
+                        pattern_bindings_add(bindings, rest_name, rest_arr);
+                    }
+                }
+            }
+            return 1;
+        }
+
+        /* Regular array pattern - exact length match */
+#if PATTERN_DEBUG
+        fprintf(stderr, "[DEBUG] plen=%ld, vlen=%ld\n", plen, vlen);
+#endif
+        if (plen != vlen) {
+#if PATTERN_DEBUG
+            fprintf(stderr, "[DEBUG] FAIL: length mismatch\n");
+#endif
+            return 0;
+        }
+
+        /* Match each element */
+        for (long i = 0; i < plen; i++) {
+            Obj* pelem = parr->data[i];
+            Obj* velem = get_sequence_element(value, i);
+#if PATTERN_DEBUG
+            fprintf(stderr, "[DEBUG] Matching element %ld: pelem=%p, velem=%p\n", i, (void*)pelem, (void*)velem);
+#endif
+            if (!is_pattern_match_with_bindings(pelem, velem, bindings)) {
+#if PATTERN_DEBUG
+                fprintf(stderr, "[DEBUG] FAIL: element %ld did not match\n", i);
+#endif
+                return 0;
+            }
+        }
+        return 1;
+    }
+
+    /* List pattern - match element-wise */
+    if (ptag == TAG_PAIR) {
+        long plen = get_sequence_length(pattern);
+        long vlen = get_sequence_length(value);
+
+        if (plen != vlen) return 0;
+
+        for (long i = 0; i < plen; i++) {
+            Obj* pelem = get_sequence_element(pattern, i);
+            Obj* velem = get_sequence_element(value, i);
+            if (!is_pattern_match_with_bindings(pelem, velem, bindings)) {
+                return 0;
+            }
+        }
+        return 1;
+    }
+
+    /* For other types, check tag equality */
+    if (IS_BOXED(value) && value->tag == ptag) {
+        return 1;
+    }
+
+    return 0;
+}
+
+/*
+ * pattern_bindings_to_dict - Convert bindings to a dict object
+ * Returns: Obj* dict with name->value entries (empty dict if no bindings)
+ */
+static Obj* pattern_bindings_to_dict(PatternBindings* bindings) {
+    Obj* dict = mk_dict();
+    for (int i = 0; i < bindings->count; i++) {
+        /* Use mk_sym for keys - symbols are interned so lookup by name works */
+        Obj* key = mk_sym(bindings->bindings[i].name);
+        dict_set(dict, key, bindings->bindings[i].value);
+    }
+    return dict;
+}
+
+/*
+ * prim_pattern_match - Runtime pattern match with bindings
+ *
+ * Returns: Dict of bindings if match succeeded, NULL if no match
+ * Used by codegen for match expressions with variable bindings.
+ */
+Obj* prim_pattern_match(Obj* pattern, Obj* value) {
+    PatternBindings bindings;
+    pattern_bindings_init(&bindings);
+
+    if (is_pattern_match_with_bindings(pattern, value, &bindings)) {
+        return pattern_bindings_to_dict(&bindings);
+    }
+    return NULL;
+}
+
 /* List Operations */
 Obj* list_length(Obj* xs) {
     long len = 0;
@@ -505,8 +855,8 @@ typedef struct Channel {
     pthread_cond_t recv_cond;
     
     /* ADDED: Lock-free atomic indices */
-    volatile volatile int head;        /* Atomic: read position */
-    volatile volatile int tail;        /* Atomic: write position */
+    volatile int head;        /* Atomic: read position */
+    volatile int tail;        /* Atomic: write position */
     
     /* ADDED: QSBR support */
     /* Note: old_buffer not needed for Channel (buffer never replaced) */
@@ -730,21 +1080,44 @@ void box_set(Obj* b, Obj* v) {
 Obj* box_get(Obj* b) { return (b && IS_BOXED(b) && b->tag == TAG_BOX) ? b->a : NULL; }
 
 /* Array Operations */
+static void array_grow(Obj* arr) {
+    if (!arr || !IS_BOXED(arr) || arr->tag != TAG_ARRAY) return;
+    Array* a = (Array*)arr->ptr;
+
+    Region* r = omni_obj_region(arr);
+    if (!r) {
+        _ensure_global_region();
+        r = _global_region;
+    }
+
+    int new_capacity = a->capacity * 2;
+    if (new_capacity < 8) new_capacity = 8;
+
+    Obj** new_data = (Obj**)region_alloc(r, new_capacity * sizeof(Obj*));
+    if (!new_data) return;
+
+    for (int i = 0; i < a->len; i++) {
+        new_data[i] = a->data[i];
+    }
+
+    a->data = new_data;
+    a->capacity = new_capacity;
+}
+
 void array_push(Obj* arr, Obj* val) {
     if (!arr || !IS_BOXED(arr) || arr->tag != TAG_ARRAY) return;
     Array* a = (Array*)arr->ptr;
-    /* Issue 2 P4: Use store barrier to enforce Region Closure Property */
+
+    if (a->len >= a->capacity) {
+        array_grow(arr);
+    }
+
     if (a->len < a->capacity) {
-        /* Store repaired value */
         a->data[a->len] = omni_store_repair(arr, &a->data[a->len], val);
         a->len++;
-        /* Phase 34.2: Monotonic boxed-element flag */
         if (val && !IS_IMMEDIATE(val)) {
             a->has_boxed_elems = true;
         }
-    } else {
-        /* Array is full, need reallocation (TODO: implement proper grow with region_realloc) */
-        /* For now, skip or fail silently */
     }
 }
 
@@ -936,35 +1309,365 @@ Obj* dict_get(Obj* dict, Obj* key) {
     return (Obj*)hashmap_get(&d->map, key);
 }
 
-/* Tuple Operations */
-Obj* tuple_get(Obj* tup, int idx) {
-    if (!tup || !IS_BOXED(tup) || tup->tag != TAG_TUPLE) return NULL;
-    Tuple* t = (Tuple*)tup->ptr;
-    if (idx >= 0 && idx < t->count) return t->items[idx];
-    return NULL;
-}
+/*
+ * dict_get_by_name - Look up a value by string name (symbol keys)
+ *
+ * Unlike dict_get which uses pointer identity for keys, this function
+ * iterates through the dict and compares symbol names by string content.
+ * Used for pattern matching bindings where keys are symbols.
+ */
+Obj* dict_get_by_name(Obj* dict, const char* name) {
+    if (!dict || !IS_BOXED(dict) || dict->tag != TAG_DICT || !name) return NULL;
+    Dict* d = (Dict*)dict->ptr;
 
-int tuple_length(Obj* tup) {
-    if (!tup || !IS_BOXED(tup) || tup->tag != TAG_TUPLE) return 0;
-    return ((Tuple*)tup->ptr)->count;
-}
-
-/* Named Tuple Operations */
-Obj* named_tuple_get(Obj* tup, Obj* key) {
-    if (!tup || !IS_BOXED(tup) || tup->tag != TAG_NAMED_TUPLE) return NULL;
-    NamedTuple* nt = (NamedTuple*)tup->ptr;
-    // Linear scan
-    for (int i = 0; i < nt->count; i++) {
-        // Pointer equality
-        if (nt->keys[i] == key) return nt->values[i];
-        // Symbol equality fallback
-        if (IS_BOXED(nt->keys[i]) && IS_BOXED(key)) {
-            if (nt->keys[i]->tag == TAG_KEYWORD && key->tag == TAG_KEYWORD) {
-                if (strcmp((char*)nt->keys[i]->ptr, (char*)key->ptr) == 0) return nt->values[i];
+    /* Iterate through all buckets to find matching symbol key */
+    for (size_t i = 0; i < d->map.bucket_count; i++) {
+        HashEntry* entry = d->map.buckets[i];
+        while (entry) {
+            Obj* key = (Obj*)entry->key;
+            if (key && IS_BOXED(key) && key->tag == TAG_SYM && key->ptr) {
+                if (strcmp((const char*)key->ptr, name) == 0) {
+                    return (Obj*)entry->value;
+                }
             }
+            entry = entry->next;
         }
     }
     return NULL;
+}
+
+/* ============== Array Collection Operations ============== */
+
+/*
+ * prim_array_sort: Sort array in-place with optional comparator
+ *
+ * Args:
+ *   arr: Array to sort
+ *   cmp: Comparator closure (fn [a b] -> int) or NULL for default
+ *
+ * Returns: The sorted array (same object, sorted in-place)
+ *
+ * Example:
+ *   (array-sort [3 1 2])           ; -> [1 2 3]
+ *   (array-sort [3 1 2] (fn [a b] (- b a)))  ; -> [3 2 1]
+ */
+static Obj* _sort_comparator = NULL;
+
+static int _array_sort_compare(const void* a, const void* b) {
+    Obj* obj_a = *(Obj**)a;
+    Obj* obj_b = *(Obj**)b;
+
+    if (_sort_comparator) {
+        /* Call user comparator */
+        if (IS_BOXED(_sort_comparator) && _sort_comparator->tag == TAG_CLOSURE) {
+            Closure* c = (Closure*)_sort_comparator->ptr;
+            if (c && c->fn) {
+                Obj* args[] = { obj_a, obj_b };
+                Obj* result = c->fn(c->captures, args, 2);
+                return (int)obj_to_int(result);
+            }
+        }
+    }
+
+    /* Default: numeric comparison */
+    long ia = obj_to_int(obj_a);
+    long ib = obj_to_int(obj_b);
+    if (ia < ib) return -1;
+    if (ia > ib) return 1;
+    return 0;
+}
+
+Obj* prim_array_sort(Obj* arr, Obj* cmp) {
+    if (!arr || !IS_BOXED(arr) || arr->tag != TAG_ARRAY) return arr;
+    Array* a = (Array*)arr->ptr;
+    if (a->len <= 1) return arr;
+
+    _sort_comparator = cmp;
+    qsort(a->data, a->len, sizeof(Obj*), _array_sort_compare);
+    _sort_comparator = NULL;
+
+    return arr;
+}
+
+/*
+ * prim_array_reverse: Reverse array in-place
+ *
+ * Args: arr - Array to reverse
+ * Returns: The reversed array (same object)
+ *
+ * Example:
+ *   (array-reverse [1 2 3]) ; -> [3 2 1]
+ */
+Obj* prim_array_reverse(Obj* arr) {
+    if (!arr || !IS_BOXED(arr) || arr->tag != TAG_ARRAY) return arr;
+    Array* a = (Array*)arr->ptr;
+
+    int left = 0;
+    int right = a->len - 1;
+    while (left < right) {
+        Obj* tmp = a->data[left];
+        a->data[left] = a->data[right];
+        a->data[right] = tmp;
+        left++;
+        right--;
+    }
+
+    return arr;
+}
+
+/*
+ * prim_array_find: Find first element matching predicate
+ *
+ * Args:
+ *   arr: Array to search
+ *   pred: Predicate closure (fn [elem] -> bool)
+ *
+ * Returns: First matching element or NULL
+ *
+ * Example:
+ *   (array-find [1 2 3 4] (fn [x] (> x 2))) ; -> 3
+ */
+Obj* prim_array_find(Obj* arr, Obj* pred) {
+    if (!arr || !IS_BOXED(arr) || arr->tag != TAG_ARRAY) return NULL;
+    if (!pred || !IS_BOXED(pred) || pred->tag != TAG_CLOSURE) return NULL;
+
+    Array* a = (Array*)arr->ptr;
+    Closure* c = (Closure*)pred->ptr;
+    if (!c || !c->fn) return NULL;
+
+    for (int i = 0; i < a->len; i++) {
+        Obj* args[] = { a->data[i] };
+        Obj* result = c->fn(c->captures, args, 1);
+        if (obj_to_int(result) != 0) {
+            return a->data[i];
+        }
+    }
+
+    return NULL;
+}
+
+/*
+ * prim_array_find_index: Find index of first element matching predicate
+ *
+ * Args:
+ *   arr: Array to search
+ *   pred: Predicate closure (fn [elem] -> bool)
+ *
+ * Returns: Index of first match, or -1 if not found
+ *
+ * Example:
+ *   (array-find-index [1 2 3 4] (fn [x] (> x 2))) ; -> 2
+ */
+Obj* prim_array_find_index(Obj* arr, Obj* pred) {
+    if (!arr || !IS_BOXED(arr) || arr->tag != TAG_ARRAY) return mk_int(-1);
+    if (!pred || !IS_BOXED(pred) || pred->tag != TAG_CLOSURE) return mk_int(-1);
+
+    Array* a = (Array*)arr->ptr;
+    Closure* c = (Closure*)pred->ptr;
+    if (!c || !c->fn) return mk_int(-1);
+
+    for (int i = 0; i < a->len; i++) {
+        Obj* args[] = { a->data[i] };
+        Obj* result = c->fn(c->captures, args, 1);
+        if (obj_to_int(result) != 0) {
+            return mk_int(i);
+        }
+    }
+
+    return mk_int(-1);
+}
+
+/*
+ * prim_array_copy: Create a shallow copy of an array
+ *
+ * Args: arr - Array to copy
+ * Returns: New array with same elements
+ */
+Obj* prim_array_copy(Obj* arr) {
+    if (!arr || !IS_BOXED(arr) || arr->tag != TAG_ARRAY) return NULL;
+    Array* a = (Array*)arr->ptr;
+
+    _ensure_global_region();
+    Obj* result = mk_array(a->len);
+    for (int i = 0; i < a->len; i++) {
+        array_push(result, a->data[i]);
+    }
+    return result;
+}
+
+/* ============== Dict Collection Operations ============== */
+
+/*
+ * dict_keys: Get all keys from a dict as an array
+ *
+ * Args: dict - Dict to get keys from
+ * Returns: Array of keys
+ *
+ * Example:
+ *   (dict-keys {:a 1 :b 2}) ; -> [:a :b]
+ */
+Obj* dict_keys(Obj* dict) {
+    if (!dict || !IS_BOXED(dict) || dict->tag != TAG_DICT) return NULL;
+    Dict* d = (Dict*)dict->ptr;
+
+    _ensure_global_region();
+    Obj* result = mk_array(d->map.entry_count > 0 ? d->map.entry_count : 8);
+
+    for (size_t i = 0; i < d->map.bucket_count; i++) {
+        HashEntry* entry = d->map.buckets[i];
+        while (entry) {
+            array_push(result, (Obj*)entry->key);
+            entry = entry->next;
+        }
+    }
+
+    return result;
+}
+
+/*
+ * dict_values: Get all values from a dict as an array
+ *
+ * Args: dict - Dict to get values from
+ * Returns: Array of values
+ *
+ * Example:
+ *   (dict-values {:a 1 :b 2}) ; -> [1 2]
+ */
+Obj* dict_values(Obj* dict) {
+    if (!dict || !IS_BOXED(dict) || dict->tag != TAG_DICT) return NULL;
+    Dict* d = (Dict*)dict->ptr;
+
+    _ensure_global_region();
+    Obj* result = mk_array(d->map.entry_count > 0 ? d->map.entry_count : 8);
+
+    for (size_t i = 0; i < d->map.bucket_count; i++) {
+        HashEntry* entry = d->map.buckets[i];
+        while (entry) {
+            array_push(result, (Obj*)entry->value);
+            entry = entry->next;
+        }
+    }
+
+    return result;
+}
+
+/*
+ * dict_entries: Get all key-value pairs from a dict as an array of pairs
+ *
+ * Args: dict - Dict to get entries from
+ * Returns: Array of [key value] pairs
+ *
+ * Example:
+ *   (dict-entries {:a 1 :b 2}) ; -> [[:a 1] [:b 2]]
+ */
+Obj* dict_entries(Obj* dict) {
+    if (!dict || !IS_BOXED(dict) || dict->tag != TAG_DICT) return NULL;
+    Dict* d = (Dict*)dict->ptr;
+
+    _ensure_global_region();
+    Obj* result = mk_array(d->map.entry_count > 0 ? d->map.entry_count : 8);
+
+    for (size_t i = 0; i < d->map.bucket_count; i++) {
+        HashEntry* entry = d->map.buckets[i];
+        while (entry) {
+            /* Create a pair [key value] as a 2-element array */
+            Obj* pair = mk_array(2);
+            array_push(pair, (Obj*)entry->key);
+            array_push(pair, (Obj*)entry->value);
+            array_push(result, pair);
+            entry = entry->next;
+        }
+    }
+
+    return result;
+}
+
+/*
+ * dict_merge: Merge multiple dicts into a new dict
+ *
+ * Args:
+ *   base: Base dict
+ *   overlay: Dict to merge on top (values override base)
+ *
+ * Returns: New dict with merged contents
+ *
+ * Example:
+ *   (dict-merge {:a 1 :b 2} {:b 3 :c 4}) ; -> {:a 1 :b 3 :c 4}
+ */
+Obj* dict_merge(Obj* base, Obj* overlay) {
+    _ensure_global_region();
+    Obj* result = mk_dict();
+
+    /* Copy base dict */
+    if (base && IS_BOXED(base) && base->tag == TAG_DICT) {
+        Dict* d = (Dict*)base->ptr;
+        for (size_t i = 0; i < d->map.bucket_count; i++) {
+            HashEntry* entry = d->map.buckets[i];
+            while (entry) {
+                dict_set(result, (Obj*)entry->key, (Obj*)entry->value);
+                entry = entry->next;
+            }
+        }
+    }
+
+    /* Overlay second dict (overwriting) */
+    if (overlay && IS_BOXED(overlay) && overlay->tag == TAG_DICT) {
+        Dict* d = (Dict*)overlay->ptr;
+        for (size_t i = 0; i < d->map.bucket_count; i++) {
+            HashEntry* entry = d->map.buckets[i];
+            while (entry) {
+                dict_set(result, (Obj*)entry->key, (Obj*)entry->value);
+                entry = entry->next;
+            }
+        }
+    }
+
+    return result;
+}
+
+/*
+ * dict_has_key: Check if dict contains a key
+ *
+ * Args:
+ *   dict: Dict to check
+ *   key: Key to look for
+ *
+ * Returns: Boolean
+ */
+Obj* dict_has_key(Obj* dict, Obj* key) {
+    if (!dict || !IS_BOXED(dict) || dict->tag != TAG_DICT) return mk_bool(0);
+    return mk_bool(dict_get(dict, key) != NULL);
+}
+
+/*
+ * dict_remove: Create new dict without specified key
+ *
+ * Args:
+ *   dict: Source dict
+ *   key: Key to remove
+ *
+ * Returns: New dict without the key
+ */
+Obj* dict_remove(Obj* dict, Obj* key_to_remove) {
+    if (!dict || !IS_BOXED(dict) || dict->tag != TAG_DICT) return NULL;
+    Dict* d = (Dict*)dict->ptr;
+
+    _ensure_global_region();
+    Obj* result = mk_dict();
+
+    for (size_t i = 0; i < d->map.bucket_count; i++) {
+        HashEntry* entry = d->map.buckets[i];
+        while (entry) {
+            Obj* key = (Obj*)entry->key;
+            /* Skip the key to remove */
+            if (key != key_to_remove) {
+                dict_set(result, key, (Obj*)entry->value);
+            }
+            entry = entry->next;
+        }
+    }
+
+    return result;
 }
 
 /* Arithmetic - MOVED to math_numerics.c to avoid duplicate symbols */
@@ -1055,8 +1758,6 @@ Obj* ctr_tag(Obj* x) {
         case TAG_SYM: return mk_sym("symbol");
         case TAG_STRING: return mk_sym("string");
         case TAG_KEYWORD: return mk_sym("keyword");
-        case TAG_TUPLE: return mk_sym("tuple");
-        case TAG_NAMED_TUPLE: return mk_sym("named-tuple");
         case TAG_ARRAY: return mk_sym("array");
         case TAG_DICT: return mk_sym("dict");
         case TAG_BOX: return mk_sym("box");
@@ -1079,6 +1780,48 @@ Obj* ctr_arg(Obj* x, Obj* idx) {
 Obj* obj_car(Obj* p) { return (p && IS_BOXED(p) && p->tag == TAG_PAIR) ? p->a : NULL; }
 Obj* obj_cdr(Obj* p) { return (p && IS_BOXED(p) && p->tag == TAG_PAIR) ? p->b : NULL; }
 
+/* Forward declaration for print_obj (needed by print helpers) */
+void print_obj(Obj* x);
+
+/* Print helpers for container types */
+static void print_array(Array* a) {
+    if (!a) {
+        printf("[]");
+        return;
+    }
+    printf("[");
+    for (int i = 0; i < a->len; i++) {
+        if (i > 0) printf(" ");
+        print_obj(a->data[i]);
+    }
+    printf("]");
+}
+
+typedef struct {
+    int count;
+    int first;
+} DictPrintCtx;
+
+static void dict_print_callback(void* key, void* value, void* ctx) {
+    DictPrintCtx* dctx = (DictPrintCtx*)ctx;
+    if (!dctx->first) printf(" ");
+    dctx->first = 0;
+    print_obj((Obj*)key);
+    printf(" ");
+    print_obj((Obj*)value);
+}
+
+static void print_dict(Dict* d) {
+    if (!d) {
+        printf("#{}");
+        return;
+    }
+    DictPrintCtx ctx = {0, 1};
+    printf("#{");
+    hashmap_foreach(&d->map, dict_print_callback, &ctx);
+    printf("}");
+}
+
 /* I/O */
 void print_obj(Obj* x) {
     if (!x) { printf("()"); return; }
@@ -1093,10 +1836,8 @@ void print_obj(Obj* x) {
         case TAG_STRING: printf("\"%s\"", (char*)x->ptr); break; /* Print strings with quotes */
         case TAG_KEYWORD: printf(":%s", (char*)x->ptr); break;
         case TAG_PAIR: printf("("); print_obj(x->a); printf(" . "); print_obj(x->b); printf(")"); break;
-        case TAG_ARRAY: printf("[...]"); break; // TODO: iter
-        case TAG_DICT: printf("#{...}"); break; // TODO: iter
-        case TAG_TUPLE: printf("{...}"); break; // TODO: iter
-        case TAG_NAMED_TUPLE: printf("#(:...)"); break;
+        case TAG_ARRAY: print_array((Array*)x->ptr); break;
+        case TAG_DICT: print_dict((Dict*)x->ptr); break;
         case TAG_NOTHING: printf("nothing"); break; /* Should be caught by is_nothing above */
         default: printf("#<obj:%d>", x->tag); break;
     }
@@ -1132,6 +1873,203 @@ Obj* prim_println(Obj* args) {
         }
     }
     printf("\n");
+    return mk_nothing();
+}
+
+/* ============== File I/O Operations ============== */
+
+/*
+ * prim_file_read: Read entire file contents as a string
+ *
+ * Args: path - String path to file
+ * Returns: String with file contents, or NULL on error
+ *
+ * Example:
+ *   (file-read "input.txt") ; -> "file contents..."
+ */
+Obj* prim_file_read(Obj* path) {
+    if (!path || !IS_BOXED(path) || path->tag != TAG_STRING) {
+        fprintf(stderr, "file-read: expected string path\n");
+        return NULL;
+    }
+
+    const char* filepath = (const char*)path->ptr;
+    FILE* f = fopen(filepath, "r");
+    if (!f) {
+        return NULL;
+    }
+
+    /* Get file size */
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    /* Allocate buffer and read */
+    char* buffer = malloc(size + 1);
+    if (!buffer) {
+        fclose(f);
+        return NULL;
+    }
+
+    size_t read_size = fread(buffer, 1, size, f);
+    buffer[read_size] = '\0';
+    fclose(f);
+
+    _ensure_global_region();
+    Obj* result = mk_string_cstr_region(_global_region, buffer);
+    free(buffer);
+    return result;
+}
+
+/*
+ * prim_file_write: Write string to file (overwrite)
+ *
+ * Args:
+ *   path - String path to file
+ *   content - String content to write
+ *
+ * Returns: Boolean indicating success
+ *
+ * Example:
+ *   (file-write "output.txt" "hello world")
+ */
+Obj* prim_file_write(Obj* path, Obj* content) {
+    if (!path || !IS_BOXED(path) || path->tag != TAG_STRING) {
+        fprintf(stderr, "file-write: expected string path\n");
+        return mk_bool(0);
+    }
+    if (!content || !IS_BOXED(content) || content->tag != TAG_STRING) {
+        fprintf(stderr, "file-write: expected string content\n");
+        return mk_bool(0);
+    }
+
+    const char* filepath = (const char*)path->ptr;
+    const char* data = (const char*)content->ptr;
+
+    FILE* f = fopen(filepath, "w");
+    if (!f) {
+        return mk_bool(0);
+    }
+
+    size_t len = strlen(data);
+    size_t written = fwrite(data, 1, len, f);
+    fclose(f);
+
+    return mk_bool(written == len);
+}
+
+/*
+ * prim_file_append: Append string to file
+ *
+ * Args:
+ *   path - String path to file
+ *   content - String content to append
+ *
+ * Returns: Boolean indicating success
+ */
+Obj* prim_file_append(Obj* path, Obj* content) {
+    if (!path || !IS_BOXED(path) || path->tag != TAG_STRING) {
+        fprintf(stderr, "file-append: expected string path\n");
+        return mk_bool(0);
+    }
+    if (!content || !IS_BOXED(content) || content->tag != TAG_STRING) {
+        fprintf(stderr, "file-append: expected string content\n");
+        return mk_bool(0);
+    }
+
+    const char* filepath = (const char*)path->ptr;
+    const char* data = (const char*)content->ptr;
+
+    FILE* f = fopen(filepath, "a");
+    if (!f) {
+        return mk_bool(0);
+    }
+
+    size_t len = strlen(data);
+    size_t written = fwrite(data, 1, len, f);
+    fclose(f);
+
+    return mk_bool(written == len);
+}
+
+/*
+ * prim_file_exists: Check if file exists
+ *
+ * Args: path - String path to file
+ * Returns: Boolean
+ *
+ * Example:
+ *   (file-exists? "input.txt") ; -> true or false
+ */
+Obj* prim_file_exists(Obj* path) {
+    if (!path || !IS_BOXED(path) || path->tag != TAG_STRING) {
+        return mk_bool(0);
+    }
+
+    const char* filepath = (const char*)path->ptr;
+    FILE* f = fopen(filepath, "r");
+    if (f) {
+        fclose(f);
+        return mk_bool(1);
+    }
+    return mk_bool(0);
+}
+
+/*
+ * prim_file_delete: Delete a file
+ *
+ * Args: path - String path to file
+ * Returns: Boolean indicating success
+ */
+Obj* prim_file_delete(Obj* path) {
+    if (!path || !IS_BOXED(path) || path->tag != TAG_STRING) {
+        fprintf(stderr, "file-delete: expected string path\n");
+        return mk_bool(0);
+    }
+
+    const char* filepath = (const char*)path->ptr;
+    return mk_bool(remove(filepath) == 0);
+}
+
+/*
+ * prim_stdin_read_line: Read a line from stdin
+ *
+ * Returns: String with line (without newline), or NULL on EOF
+ *
+ * Example:
+ *   (def input (stdin-read-line))
+ */
+Obj* prim_stdin_read_line(void) {
+    char buffer[4096];
+    if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+        return NULL;  /* EOF */
+    }
+
+    /* Remove trailing newline if present */
+    size_t len = strlen(buffer);
+    if (len > 0 && buffer[len - 1] == '\n') {
+        buffer[len - 1] = '\0';
+    }
+
+    _ensure_global_region();
+    return mk_string_cstr_region(_global_region, buffer);
+}
+
+/*
+ * prim_stdout_write: Write string to stdout (no newline)
+ *
+ * Args: content - String to write
+ * Returns: NOTHING
+ */
+Obj* prim_stdout_write(Obj* content) {
+    if (!content || !IS_BOXED(content) || content->tag != TAG_STRING) {
+        fprintf(stderr, "stdout-write: expected string\n");
+        return mk_nothing();
+    }
+
+    const char* data = (const char*)content->ptr;
+    fputs(data, stdout);
+    fflush(stdout);
     return mk_nothing();
 }
 
@@ -1666,12 +2604,6 @@ Obj* prim_value_to_type(Obj* value) {
                 break;
             case TAG_KEYWORD:
                 type_name = "Keyword";
-                break;
-            case TAG_TUPLE:
-                type_name = "Tuple";
-                break;
-            case TAG_NAMED_TUPLE:
-                type_name = "NamedTuple";
                 break;
             case TAG_BOX:
                 type_name = "Box";
@@ -2507,13 +3439,39 @@ Obj* prim_handler_pop(void) {
  * Args: value (any)
  * Returns: The value passed to resume (next iteration input)
  *
+ * This function bridges two yield mechanisms:
+ * 1. Frame-based generators: Uses generator_yield() when inside a generator context
+ * 2. Effect-based yield: Uses effect_perform(EFFECT_YIELD, value) when a handler exists
+ *
  * Usage: (yield 42)
  */
 Obj* prim_yield(Obj* value) {
+    /* Check if we're in a generator context (FRAME_YIELD on stack) */
+    Frame* f = cont_get_current();
+    while (f) {
+        if (f->tag == FRAME_YIELD) {
+            /* We're in a generator - use frame-based mechanism */
+            generator_yield(value);
+            /* After resume, generator_yield has returned */
+            return NULL;  /* Resume value will be set by generator_next */
+        }
+        f = f->prev;
+    }
+
+    /* Not in generator context - try effect system */
     if (!EFFECT_YIELD) {
         effect_init();
     }
-    return effect_perform(EFFECT_YIELD, value);
+
+    /* Check if there's a Yield handler installed */
+    Handler* h = handler_find(EFFECT_YIELD);
+    if (h) {
+        return effect_perform(EFFECT_YIELD, value);
+    }
+
+    /* No handler - this is likely an error */
+    fprintf(stderr, "Error: yield called outside of generator or effect handler\n");
+    return NULL;
 }
 
 /*
@@ -2542,4 +3500,240 @@ Obj* prim_emit(Obj* value) {
         effect_init();
     }
     return effect_perform(EFFECT_EMIT, value);
+}
+
+/* ============================================================
+ * Phase 4.2: Update Operators
+ * ============================================================
+ *
+ * Provides functional (copy-on-write) and imperative (in-place)
+ * update operations for arrays and dicts.
+ *
+ * API:
+ *   - prim_dict_copy: Shallow copy of dict
+ *   - prim_update: COW update for arrays/dicts
+ *   - prim_update_bang: In-place update for arrays/dicts
+ *   - prim_update_in: Nested path COW update
+ *   - prim_update_in_bang: Nested path in-place update
+ */
+
+/*
+ * prim_dict_copy: Create a shallow copy of a dict
+ *
+ * Args: dict - Dict to copy
+ * Returns: New dict with same key-value pairs
+ *
+ * Example:
+ *   (dict-copy {:a 1 :b 2}) ; -> {:a 1 :b 2} (new dict)
+ */
+Obj* prim_dict_copy(Obj* dict) {
+    if (!dict || !IS_BOXED(dict) || dict->tag != TAG_DICT) return NULL;
+    Dict* d = (Dict*)dict->ptr;
+
+    _ensure_global_region();
+    Obj* result = mk_dict();
+
+    /* Iterate over all buckets and copy entries */
+    for (size_t i = 0; i < d->map.bucket_count; i++) {
+        HashEntry* entry = d->map.buckets[i];
+        while (entry) {
+            dict_set(result, (Obj*)entry->key, (Obj*)entry->value);
+            entry = entry->next;
+        }
+    }
+
+    return result;
+}
+
+/*
+ * prim_update: Copy-on-write update for arrays and dicts
+ *
+ * Args:
+ *   - coll: Array or dict to update
+ *   - key: Index (for array) or key (for dict)
+ *   - val: New value
+ *
+ * Returns: New collection with the update applied
+ *
+ * Example:
+ *   (update [1 2 3] 1 42)     ; -> [1 42 3]
+ *   (update {:a 1} :b 2)      ; -> {:a 1 :b 2}
+ */
+Obj* prim_update(Obj* coll, Obj* key, Obj* val) {
+    if (!coll || !IS_BOXED(coll)) return NULL;
+
+    if (coll->tag == TAG_ARRAY) {
+        /* Array update: key must be an integer index */
+        long idx = obj_to_int(key);
+        Array* a = (Array*)coll->ptr;
+
+        /* Bounds check */
+        if (idx < 0 || idx >= a->len) {
+            return coll;  /* Out of bounds: return original unchanged */
+        }
+
+        /* Create copy and update */
+        Obj* result = prim_array_copy(coll);
+        array_set(result, (int)idx, val);
+        return result;
+    }
+
+    if (coll->tag == TAG_DICT) {
+        /* Dict update: copy and add/overwrite key */
+        Obj* result = prim_dict_copy(coll);
+        dict_set(result, key, val);
+        return result;
+    }
+
+    /* Unsupported collection type */
+    return NULL;
+}
+
+/*
+ * prim_update_bang: In-place update for arrays and dicts
+ *
+ * Args:
+ *   - coll: Array or dict to update
+ *   - key: Index (for array) or key (for dict)
+ *   - val: New value
+ *
+ * Returns: Same collection (mutated)
+ *
+ * Example:
+ *   (update! arr 1 42)   ; modifies arr[1], returns arr
+ *   (update! dict :a 1)  ; modifies dict[:a], returns dict
+ */
+Obj* prim_update_bang(Obj* coll, Obj* key, Obj* val) {
+    if (!coll || !IS_BOXED(coll)) return NULL;
+
+    if (coll->tag == TAG_ARRAY) {
+        /* Array update: key must be an integer index */
+        long idx = obj_to_int(key);
+        array_set(coll, (int)idx, val);
+        return coll;
+    }
+
+    if (coll->tag == TAG_DICT) {
+        /* Dict update */
+        dict_set(coll, key, val);
+        return coll;
+    }
+
+    /* Unsupported collection type */
+    return NULL;
+}
+
+/*
+ * Helper: Get value from collection by key
+ */
+static Obj* coll_get(Obj* coll, Obj* key) {
+    if (!coll || !IS_BOXED(coll)) return NULL;
+
+    if (coll->tag == TAG_ARRAY) {
+        long idx = obj_to_int(key);
+        return array_get(coll, (int)idx);
+    }
+
+    if (coll->tag == TAG_DICT) {
+        return dict_get(coll, key);
+    }
+
+    return NULL;
+}
+
+/*
+ * prim_update_in: Nested path copy-on-write update
+ *
+ * Args:
+ *   - coll: Root collection (array or dict)
+ *   - path: Array of keys specifying the path
+ *   - val: New value to set at path
+ *
+ * Returns: New collection with nested update applied
+ *
+ * Example:
+ *   (update-in {:a {:b 1}} [:a :b] 42)  ; -> {:a {:b 42}}
+ *   (update-in [[1 2] [3 4]] [1 0] 99)  ; -> [[1 2] [99 4]]
+ */
+Obj* prim_update_in(Obj* coll, Obj* path, Obj* val) {
+    if (!coll || !IS_BOXED(coll)) return NULL;
+    if (!path || !IS_BOXED(path) || path->tag != TAG_ARRAY) {
+        /* Path must be an array */
+        return NULL;
+    }
+
+    Array* path_arr = (Array*)path->ptr;
+    if (path_arr->len == 0) {
+        /* Empty path: return val (replace entire collection) */
+        return val;
+    }
+
+    if (path_arr->len == 1) {
+        /* Single key: use regular update */
+        return prim_update(coll, path_arr->data[0], val);
+    }
+
+    /* Multi-level path: recursively build new structure */
+    Obj* first_key = path_arr->data[0];
+    Obj* nested = coll_get(coll, first_key);
+
+    /* Build rest of path */
+    _ensure_global_region();
+    Obj* rest_path = mk_array(path_arr->len - 1);
+    for (int i = 1; i < path_arr->len; i++) {
+        array_push(rest_path, path_arr->data[i]);
+    }
+
+    /* Recursively update nested structure */
+    Obj* updated_nested = prim_update_in(nested, rest_path, val);
+
+    /* Update this level */
+    return prim_update(coll, first_key, updated_nested);
+}
+
+/*
+ * prim_update_in_bang: Nested path in-place update
+ *
+ * Args:
+ *   - coll: Root collection (array or dict)
+ *   - path: Array of keys specifying the path
+ *   - val: New value to set at path
+ *
+ * Returns: Same collection (mutated)
+ *
+ * Example:
+ *   (update-in! data [:a :b] 42)  ; modifies data[:a][:b], returns data
+ */
+Obj* prim_update_in_bang(Obj* coll, Obj* path, Obj* val) {
+    if (!coll || !IS_BOXED(coll)) return NULL;
+    if (!path || !IS_BOXED(path) || path->tag != TAG_ARRAY) {
+        return NULL;
+    }
+
+    Array* path_arr = (Array*)path->ptr;
+    if (path_arr->len == 0) {
+        /* Empty path: can't replace in-place */
+        return coll;
+    }
+
+    if (path_arr->len == 1) {
+        /* Single key: use regular in-place update */
+        return prim_update_bang(coll, path_arr->data[0], val);
+    }
+
+    /* Navigate to parent of target, then update */
+    Obj* current = coll;
+    for (int i = 0; i < path_arr->len - 1; i++) {
+        current = coll_get(current, path_arr->data[i]);
+        if (!current || !IS_BOXED(current)) {
+            /* Path doesn't exist */
+            return coll;
+        }
+    }
+
+    /* Update the leaf */
+    Obj* last_key = path_arr->data[path_arr->len - 1];
+    prim_update_bang(current, last_key, val);
+
+    return coll;
 }

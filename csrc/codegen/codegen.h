@@ -90,6 +90,12 @@ typedef struct CodeGenContext {
 
     /* Issue 3 P2: Non-lexical region end */
     int* region_exited;        /* Track which regions have been exited */
+
+    /* Current captures for lambda generation (pointer to CaptureList in codegen.c) */
+    void* current_captures;    /* Captures for current lambda being generated */
+
+    /* Phase 0: FFI counter for unique ccall site identifiers */
+    int ffi_counter;           /* Unique ID for FFI call sites (dlopen/dlsym caching) */
 } CodeGenContext;
 
 /* ============== Code Generator API ============== */

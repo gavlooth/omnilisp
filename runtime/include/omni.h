@@ -14,6 +14,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <dlfcn.h>     /* FFI: dlopen, dlsym for ccall */
 
 /* OmniLisp runtime uses the third-party arena implementation as its Arena type.
  * Include it here so the public API sees a single canonical Arena definition. */
@@ -33,10 +34,22 @@ extern "C" {
  * - Forward typedefs are declared here
  * - Struct definitions use plain "struct X { ... };" without typedef suffix
  * - This works because C99 allows forward typedefs to match later struct definitions
+ * - Guards prevent redefinition warnings regardless of include order
  */
+#ifndef OMNI_OBJ_DECLARED
+#define OMNI_OBJ_DECLARED
 typedef struct Obj Obj;
+#endif
+
+#ifndef OMNI_CLOSURE_DECLARED
+#define OMNI_CLOSURE_DECLARED
 typedef struct Closure Closure;
+#endif
+
+#ifndef OMNI_METHODINFO_DECLARED
+#define OMNI_METHODINFO_DECLARED
 typedef struct MethodInfo MethodInfo;
+#endif
 
 /* Region is part of the public API but its struct layout lives in internal headers.
  * Use a typedef guard so include order (omni.h vs region_core.h) is warning-clean. */
@@ -560,6 +573,121 @@ Obj* mk_nothing(void);
 Obj* mk_closure(ClosureFn fn, Obj** captures, BorrowRef** refs, int count, int arity);
 Obj* mk_closure_region(struct Region* r, ClosureFnRegion fn, Obj** captures, int count, int arity);
 
+/* ========== FFI Type Marshaling (Phase 0: ccall support) ========== */
+
+/*
+ * Obj* -> C type conversions for FFI ccall
+ * These extract C-native values from OmniLisp Obj* wrappers
+ */
+
+/* Extract int from Obj* (immediate or boxed) */
+static inline int obj_to_cint(Obj* o) {
+    return (int)obj_to_int(o);
+}
+
+/* Extract double from Obj* (immediate or boxed) */
+static inline double obj_to_cdouble(Obj* o) {
+    return obj_to_float(o);
+}
+
+/* Extract const char* from Obj* string */
+static inline const char* obj_to_cstring(Obj* o) {
+    if (!o || IS_IMMEDIATE(o)) return "";
+    if (o->tag == TAG_STRING || o->tag == TAG_SYM) {
+        return o->ptr ? (const char*)o->ptr : "";
+    }
+    return "";
+}
+
+/* Extract void* from Obj* (pointer stored in ptr field) */
+static inline void* obj_to_cptr(Obj* o) {
+    if (!o || IS_IMMEDIATE(o)) return NULL;
+    /* CPtr objects store raw pointer in ptr field */
+    return o->ptr;
+}
+
+/* Extract size_t from Obj* */
+static inline size_t obj_to_csize(Obj* o) {
+    return (size_t)obj_to_int(o);
+}
+
+/*
+ * C type -> Obj* conversions for FFI ccall return values
+ */
+
+/* Wrap void* as Obj* (CPtr type) */
+static inline Obj* mk_cptr(void* p) {
+    /* Use BOX tag to wrap raw pointer */
+    Obj* o = mk_box(NULL);
+    if (o) {
+        o->ptr = p;
+        o->tag = TAG_BOX;  /* Reuse BOX for CPtr storage */
+    }
+    return o;
+}
+
+/* ========== Specialization Box/Unbox Functions ========== */
+/*
+ * Phase 1 Type Specialization: Box/unbox wrappers for specialized codegen.
+ * Implementations in primitives_specialized.c
+ * Reference: docs/TYPE_SPECIALIZATION_DESIGN.md
+ */
+
+/* Unbox functions - extract primitive C values from Obj* */
+int64_t unbox_int(Obj* obj);
+double unbox_float(Obj* obj);
+char unbox_char(Obj* obj);
+bool unbox_bool(Obj* obj);
+
+/* Box functions - create Obj* from primitive C values */
+Obj* box_int(int64_t value);
+Obj* box_float(double value);
+Obj* box_char(char value);
+Obj* box_bool(bool value);
+
+/* Specialized arithmetic primitives (Int64) */
+int64_t prim_add_Int_Int(int64_t a, int64_t b);
+int64_t prim_sub_Int_Int(int64_t a, int64_t b);
+int64_t prim_mul_Int_Int(int64_t a, int64_t b);
+int64_t prim_div_Int_Int(int64_t a, int64_t b);
+int64_t prim_mod_Int_Int(int64_t a, int64_t b);
+int64_t prim_negate_Int(int64_t a);
+int64_t prim_abs_Int(int64_t a);
+
+/* Specialized arithmetic primitives (Float64) */
+double prim_add_Float_Float(double a, double b);
+double prim_sub_Float_Float(double a, double b);
+double prim_mul_Float_Float(double a, double b);
+double prim_div_Float_Float(double a, double b);
+double prim_negate_Float(double a);
+double prim_abs_Float(double a);
+
+/* Mixed arithmetic (Int64 + Float64) */
+double prim_add_Int_Float(int64_t a, double b);
+double prim_add_Float_Int(double a, int64_t b);
+double prim_sub_Int_Float(int64_t a, double b);
+double prim_sub_Float_Int(double a, int64_t b);
+double prim_mul_Int_Float(int64_t a, double b);
+double prim_mul_Float_Int(double a, int64_t b);
+double prim_div_Int_Float(int64_t a, double b);
+double prim_div_Float_Int(double a, int64_t b);
+
+/* Specialized comparison primitives (Int64) */
+bool prim_lt_Int_Int(int64_t a, int64_t b);
+bool prim_gt_Int_Int(int64_t a, int64_t b);
+bool prim_le_Int_Int(int64_t a, int64_t b);
+bool prim_ge_Int_Int(int64_t a, int64_t b);
+bool prim_eq_Int_Int(int64_t a, int64_t b);
+bool prim_ne_Int_Int(int64_t a, int64_t b);
+
+/* Specialized comparison primitives (Float64) */
+bool prim_lt_Float_Float(double a, double b);
+bool prim_gt_Float_Float(double a, double b);
+bool prim_le_Float_Float(double a, double b);
+bool prim_ge_Float_Float(double a, double b);
+bool prim_eq_Float_Float(double a, double b);
+bool prim_ne_Float_Float(double a, double b);
+
 /* Stack-allocated primitives (optimization for non-escaping values) */
 Obj* mk_int_stack(long i);
 Obj* mk_float_stack(double f);
@@ -647,6 +775,15 @@ Obj* prim_display(Obj* x);
 Obj* prim_print(Obj* x);
 Obj* prim_println(Obj* args);
 Obj* prim_newline(void);
+
+/* File I/O */
+Obj* prim_file_read(Obj* path);              /* Read entire file as string */
+Obj* prim_file_write(Obj* path, Obj* content);  /* Write string to file */
+Obj* prim_file_append(Obj* path, Obj* content); /* Append string to file */
+Obj* prim_file_exists(Obj* path);            /* Check if file exists */
+Obj* prim_file_delete(Obj* path);            /* Delete file */
+Obj* prim_stdin_read_line(void);             /* Read line from stdin */
+Obj* prim_stdout_write(Obj* content);        /* Write to stdout */
 
 /* ========== String Primitives ========== */
 Obj* prim_str(Obj* value);      /* Convert any value to string */
@@ -837,6 +974,25 @@ Obj* prim_match_pattern(Obj* input_obj, Obj* pattern_obj);
  *   - 0 otherwise
  */
 int is_pattern_match(Obj* pattern, Obj* value);
+
+/*
+ * prim_pattern_match - Pattern match with variable bindings
+ *
+ * Performs structural pattern matching and extracts variable bindings.
+ * Supports:
+ *   - Simple variables: [x y] matches [1 2] → {x: 1, y: 2}
+ *   - Rest patterns: [x & rest] matches [1 2 3] → {x: 1, rest: [2 3]}
+ *   - As patterns: [p as name] binds both inner vars and whole match
+ *   - Nested patterns: [[a b] c] matches [[1 2] 3] → {a: 1, b: 2, c: 3}
+ *
+ * Args:
+ *   - pattern: Pattern to match (array, list, symbol, or literal)
+ *   - value: Value to match against
+ * Returns:
+ *   - Dict of bindings if match succeeded
+ *   - NULL if no match
+ */
+Obj* prim_pattern_match(Obj* pattern, Obj* value);
 
 /*
  * Compile a pattern string for later use
@@ -1076,6 +1232,29 @@ int array_length(Obj* arr);
 Obj* mk_dict(void);
 void dict_set(Obj* dict, Obj* key, Obj* val);
 Obj* dict_get(Obj* dict, Obj* key);
+Obj* dict_get_by_name(Obj* dict, const char* name);  /* Symbol key lookup by name */
+
+/* Array Collection Operations */
+Obj* prim_array_sort(Obj* arr, Obj* cmp);        /* Sort with optional comparator */
+Obj* prim_array_reverse(Obj* arr);               /* Reverse in-place */
+Obj* prim_array_find(Obj* arr, Obj* pred);       /* Find first matching element */
+Obj* prim_array_find_index(Obj* arr, Obj* pred); /* Find index of first match */
+Obj* prim_array_copy(Obj* arr);                  /* Shallow copy */
+
+/* Dict Collection Operations */
+Obj* dict_keys(Obj* dict);                       /* Get all keys as array */
+Obj* dict_values(Obj* dict);                     /* Get all values as array */
+Obj* dict_entries(Obj* dict);                    /* Get key-value pairs as array */
+Obj* dict_merge(Obj* base, Obj* overlay);        /* Merge two dicts */
+Obj* dict_has_key(Obj* dict, Obj* key);          /* Check if key exists */
+Obj* dict_remove(Obj* dict, Obj* key);           /* Remove key from dict */
+Obj* prim_dict_copy(Obj* dict);                  /* Shallow copy */
+
+/* Update Operators (Phase 4.2: Memory Management) */
+Obj* prim_update(Obj* coll, Obj* key, Obj* val); /* Copy-on-write update */
+Obj* prim_update_bang(Obj* coll, Obj* key, Obj* val); /* In-place update */
+Obj* prim_update_in(Obj* coll, Obj* path, Obj* val);  /* Nested path COW update */
+Obj* prim_update_in_bang(Obj* coll, Obj* path, Obj* val); /* Nested path in-place */
 
 Obj* mk_keyword(const char* name);
 
@@ -1317,6 +1496,11 @@ Obj* prim_export(Obj* symbol_name, Obj* value);
 Obj* prim_import(Obj* name_obj, Obj* options);
 Obj* prim_use(Obj* name_obj);
 Obj* prim_require(Obj* name_obj);
+
+/* Advanced import forms */
+Obj* prim_import_only(Obj* name_obj, Obj* symbols_list);   /* (import mod :only [a b]) */
+Obj* prim_import_as(Obj* name_obj, Obj* alias);            /* (import mod :as m) */
+Obj* prim_import_except(Obj* name_obj, Obj* exclude_list); /* (import mod :except [x]) */
 
 /* Qualified name resolution */
 Obj* prim_resolve(Obj* qualified_name);

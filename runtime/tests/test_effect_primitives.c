@@ -10,6 +10,36 @@
  * These primitives bridge the effect system to OmniLisp code.
  */
 
+#include "../include/omni.h"
+#include "../src/effect.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* Test macros - only define if not already defined (for standalone builds) */
+#ifndef TEST_FRAMEWORK_H
+static int tests_run = 0;
+static int tests_passed = 0;
+
+#define ASSERT(cond) do { \
+    if (!(cond)) { \
+        printf("\033[31mFAIL\033[0m (line %d: %s)\n", __LINE__, #cond); \
+        tests_run++; \
+        return; \
+    } \
+} while(0)
+
+#define RUN_TEST(name) do { \
+    printf("  %s: ", #name); \
+    name(); \
+    tests_run++; \
+    tests_passed++; \
+    printf("\033[32mPASS\033[0m\n"); \
+} while(0)
+
+#define TEST_SUITE(name) printf("\n=== %s ===\n", name)
+#endif
+
 /* Forward declarations for effect primitives from runtime.c */
 extern Obj* prim_effect_init(void);
 extern Obj* prim_perform(Obj* effect_name, Obj* payload);
@@ -232,3 +262,18 @@ static void run_effect_primitives_tests(void) {
 	RUN_TEST(test_prim_effect_invalid_name);
 	RUN_TEST(test_effect_type_register_invalid_name);
 }
+
+/* Standalone main - only when not included by test_main.c */
+#ifndef TEST_FRAMEWORK_H
+int main(void) {
+    printf("Effect Primitives Tests\n");
+    printf("=======================\n");
+
+    run_effect_primitives_tests();
+
+    printf("\n=======================\n");
+    printf("Results: %d/%d tests passed\n", tests_passed, tests_run);
+
+    return tests_passed == tests_run ? 0 : 1;
+}
+#endif

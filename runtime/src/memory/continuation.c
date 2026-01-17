@@ -723,15 +723,16 @@ bool scheduler_step(void) {
     tl_current_frame = task->cont;
     tl_current_env = task->env;
 
-    /* Resume task with value */
+    /* Resume task with value or execute thunk */
     Obj* result = task->value;
 
-    /* TODO: Actually execute the task
-     * This would integrate with the evaluator:
-     * result = eval_step(task->expr, task->env, task->cont, task->value);
-     */
+    /* If fiber has a thunk (closure) to execute, call it */
+    if (task->expr && IS_BOXED(task->expr) && task->expr->tag == TAG_CLOSURE) {
+        result = call_closure(task->expr, NULL, 0);
+        task->expr = NULL;
+    }
 
-    /* For now, mark task as done */
+    /* Mark task as done */
     task->state = FIBER_DONE;
     task->result = result;
 
@@ -846,9 +847,14 @@ void fiber_park(void* reason, Obj* value) {
 }
 
 void fiber_unpark(Fiber* t, Obj* value) {
+    fiber_unpark_error(t, value, false);
+}
+
+void fiber_unpark_error(Fiber* t, Obj* value, bool is_error) {
     if (!t || t->state != FIBER_PARKED) return;
 
     t->value = value;
+    t->is_error = is_error;
     if (value) inc_ref(value);
     t->park_reason = NULL;
     if (t->park_value) {
@@ -1300,8 +1306,20 @@ void promise_resolve(Promise* p, Obj* value) {
     }
     p->waiters = NULL;
 
-    /* Call callbacks */
-    /* TODO: Execute on_fulfill callbacks */
+    /* Call on_fulfill callbacks */
+    Obj* lst = p->on_fulfill;
+    while (lst && lst->is_pair) {
+        Obj* callback = lst->a;
+        Obj* args[1] = { value };
+        call_closure(callback, args, 1);
+        lst = lst->b;
+    }
+
+    /* Clear callback list (they've been called) */
+    if (p->on_fulfill) {
+        dec_ref(p->on_fulfill);
+        p->on_fulfill = NULL;
+    }
 }
 
 void promise_reject(Promise* p, Obj* error) {
@@ -1315,13 +1333,25 @@ void promise_reject(Promise* p, Obj* error) {
     Fiber* t = p->waiters;
     while (t) {
         Fiber* next = t->next;
-        fiber_unpark(t, error);  /* TODO: Distinguish error from value */
+        fiber_unpark_error(t, error, true);
         t = next;
     }
     p->waiters = NULL;
 
-    /* Call reject callbacks */
-    /* TODO: Execute on_reject callbacks */
+    /* Call on_reject callbacks */
+    Obj* lst = p->on_reject;
+    while (lst && lst->is_pair) {
+        Obj* callback = lst->a;
+        Obj* args[1] = { error };
+        call_closure(callback, args, 1);
+        lst = lst->b;
+    }
+
+    /* Clear callback list (they've been called) */
+    if (p->on_reject) {
+        dec_ref(p->on_reject);
+        p->on_reject = NULL;
+    }
 }
 
 Obj* promise_await(Promise* p) {
@@ -1332,12 +1362,27 @@ Obj* promise_await(Promise* p) {
         return p->value;
     }
     if (p->state == PROMISE_REJECTED) {
-        return p->error;  /* TODO: Proper error handling */
+        /* Note: Returns error value directly - caller should check promise_state(p)
+         * to distinguish between successful error value and rejection.
+         * In fiber context, the error is set via fiber_unpark and stored in
+         * Fiber->value when the fiber resumes.
+         */
+        return p->error;
     }
 
     /* Must wait */
     Fiber* current = fiber_current();
-    if (!current) return NULL;
+    if (!current) {
+        /* No fiber context - use busy-wait with sleep (Phase 5.1) */
+        while (!promise_is_settled(p)) {
+            struct timespec ts = {0, 1000000};  /* 1ms */
+            nanosleep(&ts, NULL);
+        }
+        if (p->state == PROMISE_FULFILLED) {
+            return p->value;
+        }
+        return p->error;
+    }
 
     current->next = p->waiters;
     if (p->waiters) p->waiters->prev = current;
@@ -1363,7 +1408,15 @@ void promise_then(Promise* p, Obj* on_fulfill, Obj* on_reject) {
     }
 
     /* Still pending - save callbacks */
-    /* TODO: Store callbacks in list */
+    Region* r = cont_current_region();
+    if (on_fulfill) {
+        inc_ref(on_fulfill);
+        p->on_fulfill = mk_cell_region(r, on_fulfill, p->on_fulfill);
+    }
+    if (on_reject) {
+        inc_ref(on_reject);
+        p->on_reject = mk_cell_region(r, on_reject, p->on_reject);
+    }
 }
 
 bool promise_is_settled(Promise* p) {
@@ -1438,15 +1491,162 @@ int fiber_select(SelectCase* cases, int count) {
     return -1;
 }
 
-/* ========== Timer ========== */
+/* ========== Timer Infrastructure (Phase 5.1) ========== */
+
+#include <time.h>
+
+/* Timer entry for the timer registry */
+typedef struct TimerEntry {
+    uint64_t deadline_ns;      /* Absolute deadline in nanoseconds */
+    Promise* promise;          /* Promise to resolve when timer fires */
+    struct TimerEntry* next;   /* Next timer in sorted list */
+} TimerEntry;
+
+/* Timer registry - sorted linked list of pending timers */
+static TimerEntry* g_timer_list = NULL;
+static pthread_mutex_t g_timer_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_timer_cond = PTHREAD_COND_INITIALIZER;
+static pthread_t g_timer_thread;
+static volatile bool g_timer_running = false;
+
+/* Get current time in nanoseconds (monotonic clock) */
+static uint64_t get_time_ns(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+/* Timer thread function - processes expired timers */
+static void* timer_thread_func(void* arg) {
+    (void)arg;
+
+    pthread_mutex_lock(&g_timer_mutex);
+    while (g_timer_running) {
+        uint64_t now = get_time_ns();
+
+        /* Process all expired timers */
+        while (g_timer_list && g_timer_list->deadline_ns <= now) {
+            TimerEntry* entry = g_timer_list;
+            g_timer_list = entry->next;
+
+            /* Resolve the promise (unlock during resolve to avoid deadlock) */
+            Promise* p = entry->promise;
+            pthread_mutex_unlock(&g_timer_mutex);
+
+            promise_resolve(p, NULL);  /* Timer fires with nil value */
+
+            pthread_mutex_lock(&g_timer_mutex);
+            free(entry);
+            now = get_time_ns();  /* Refresh time after unlocking */
+        }
+
+        /* Calculate wait time */
+        if (g_timer_list) {
+            /* Wait until next timer deadline */
+            uint64_t wait_ns = g_timer_list->deadline_ns - now;
+            struct timespec ts;
+            ts.tv_sec = wait_ns / 1000000000ULL;
+            ts.tv_nsec = wait_ns % 1000000000ULL;
+
+            /* Use absolute time for pthread_cond_timedwait */
+            struct timespec abs_time;
+            clock_gettime(CLOCK_REALTIME, &abs_time);
+            abs_time.tv_sec += ts.tv_sec;
+            abs_time.tv_nsec += ts.tv_nsec;
+            if (abs_time.tv_nsec >= 1000000000) {
+                abs_time.tv_sec++;
+                abs_time.tv_nsec -= 1000000000;
+            }
+
+            pthread_cond_timedwait(&g_timer_cond, &g_timer_mutex, &abs_time);
+        } else {
+            /* No timers, wait indefinitely for new timer */
+            pthread_cond_wait(&g_timer_cond, &g_timer_mutex);
+        }
+    }
+    pthread_mutex_unlock(&g_timer_mutex);
+    return NULL;
+}
+
+/* Initialize timer system (call once at startup) */
+void timer_system_init(void) {
+    if (g_timer_running) return;  /* Already initialized */
+
+    g_timer_running = true;
+    pthread_create(&g_timer_thread, NULL, timer_thread_func, NULL);
+}
+
+/* Shutdown timer system (call at cleanup) */
+void timer_system_shutdown(void) {
+    if (!g_timer_running) return;
+
+    pthread_mutex_lock(&g_timer_mutex);
+    g_timer_running = false;
+
+    /* Cancel all pending timers */
+    while (g_timer_list) {
+        TimerEntry* entry = g_timer_list;
+        g_timer_list = entry->next;
+        /* Don't resolve - just clean up */
+        free(entry);
+    }
+
+    pthread_cond_signal(&g_timer_cond);
+    pthread_mutex_unlock(&g_timer_mutex);
+
+    pthread_join(g_timer_thread, NULL);
+}
+
+/* Register a timer with the timer system */
+static void timer_register(Promise* p, uint64_t ms) {
+    TimerEntry* entry = malloc(sizeof(TimerEntry));
+    if (!entry) {
+        /* OOM - resolve immediately as fallback */
+        promise_resolve(p, NULL);
+        return;
+    }
+
+    entry->deadline_ns = get_time_ns() + (ms * 1000000ULL);
+    entry->promise = p;
+    entry->next = NULL;
+
+    pthread_mutex_lock(&g_timer_mutex);
+
+    /* Insert in sorted order (by deadline) */
+    if (!g_timer_list || entry->deadline_ns < g_timer_list->deadline_ns) {
+        entry->next = g_timer_list;
+        g_timer_list = entry;
+    } else {
+        TimerEntry* curr = g_timer_list;
+        while (curr->next && curr->next->deadline_ns < entry->deadline_ns) {
+            curr = curr->next;
+        }
+        entry->next = curr->next;
+        curr->next = entry;
+    }
+
+    /* Wake timer thread if we added at front */
+    if (g_timer_list == entry) {
+        pthread_cond_signal(&g_timer_cond);
+    }
+
+    pthread_mutex_unlock(&g_timer_mutex);
+}
 
 Promise* timer_after(uint64_t ms) {
     Promise* p = promise_create();
     if (!p) return NULL;
 
-    /* TODO: Register with event loop */
-    /* For now, immediately resolve (placeholder) */
-    promise_resolve(p, NULL);
+    if (ms == 0) {
+        /* Zero delay - resolve immediately */
+        promise_resolve(p, NULL);
+    } else if (g_timer_running) {
+        /* Register with timer system */
+        timer_register(p, ms);
+    } else {
+        /* Timer system not initialized - fallback to immediate resolve */
+        promise_resolve(p, NULL);
+    }
 
     return p;
 }
@@ -1454,12 +1654,37 @@ Promise* timer_after(uint64_t ms) {
 Obj* await_timeout(Promise* p, uint64_t ms) {
     if (!p) return NULL;
 
+    /* If already settled, return immediately */
     if (promise_is_settled(p)) {
         return p->value;
     }
 
-    /* TODO: Race between promise and timer */
-    return promise_await(p);
+    /* Create a timeout timer */
+    Promise* timeout = timer_after(ms);
+    if (!timeout) {
+        return promise_await(p);  /* Fallback to no timeout */
+    }
+
+    /* Race: wait for either promise or timeout
+     * Simple implementation: poll both until one settles */
+    while (!promise_is_settled(p) && !promise_is_settled(timeout)) {
+        /* Try to run scheduler step to let fibers progress */
+        Scheduler* sched = scheduler_current();
+        if (sched && !scheduler_is_idle()) {
+            scheduler_step();
+        } else {
+            /* No scheduler or idle - brief sleep to avoid busy-wait */
+            struct timespec ts = {0, 1000000};  /* 1ms */
+            nanosleep(&ts, NULL);
+        }
+    }
+
+    if (promise_is_settled(p)) {
+        return p->value;
+    }
+
+    /* Timeout expired */
+    return NULL;  /* Return nil on timeout */
 }
 
 /* ========== Thread-Local Accessors ========== */

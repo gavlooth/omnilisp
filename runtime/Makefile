@@ -8,7 +8,7 @@
 CC ?= gcc
 AR ?= ar
 CFLAGS = -std=c99 -O2 -Wall -Wextra -fPIC -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
-LDFLAGS = -lpthread -lm
+LDFLAGS = -lpthread -lm -ldl
 
 # Directories
 SRCDIR = src

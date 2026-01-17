@@ -1,8 +1,12 @@
 # OmniLisp Runtime Test Suite Makefile
 
-CC ?= gcc
+CC ?= clang
 CFLAGS = -std=c99 -Wall -Wextra -g -I../include
 LDFLAGS = -L.. -lomni -lpthread -lm
+
+# Pattern rule for individual test binaries (link order matters for static libs)
+test_%: test_%.c runtime-lib
+	$(CC) $(CFLAGS) -o $@ $< -L.. -lomni $(LDFLAGS)
 
 # Source files - only test_main.c (it #includes all other test files and runtime.c)
 TESTS = test_main.c

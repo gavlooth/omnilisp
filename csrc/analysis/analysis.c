@@ -350,19 +350,20 @@ static OmniValue* extract_param_name(OmniValue* param) {
 }
 
 static void analyze_define(AnalysisContext* ctx, OmniValue* expr) {
-    /* Multiple forms supported:
+    /* OmniLisp define forms (Strict Character Calculus):
      *   - Type definitions: (define {abstract Name} [])
      *   - Type definitions: (define ^:parent {Any} {abstract Number} [])
      *   - Type definitions: (define {primitive Float64} [64])
      *   - Type definitions: (define {struct Point} [x {Float}] [y {Float}])
      *   - Type definitions: (define {struct [^:covar T]} {List} [head {T}] [tail {List T}])
      *   - Simple define: (define x value)
-     *   - Traditional function: (define (f x y) body)
      *   - Slot shorthand: (define f x y body)
      *   - Slot syntax: (define f [x] [y] body)
      *   - Slot with types: (define f [x {Int}] [y {String}] body)
      *   - Mixed syntax: (define f x [y {Int}] z body)
      *   - With metadata: (define (with-meta (^:parent {Number}) {abstract Real}) [])
+     *
+     * NOTE: Scheme-style (define (f x y) body) is NOT supported.
      */
     OmniValue* args = omni_cdr(expr);
     if (omni_is_nil(args)) return;
@@ -775,44 +776,18 @@ static void analyze_define(AnalysisContext* ctx, OmniValue* expr) {
             analyze_expr(ctx, omni_car(rest));
         }
     } else if (omni_is_cell(name_or_sig)) {
-        /* Traditional function define: (define (f x y) body) */
+        /* Scheme-style syntax (define (name params...) body) is NOT supported in OmniLisp.
+         * Use Slot syntax instead:
+         *   (define name [x] [y] body)          -- Canonical form
+         *   (define name x y body)              -- Shorthand form
+         *   (define name [x {Int}] {Int} body)  -- Typed form
+         */
         OmniValue* fname = omni_car(name_or_sig);
-        if (omni_is_sym(fname)) {
-            mark_var_write(ctx, fname->str_val);
-        }
-        ctx->position++;
-
-        /* Mark parameters - support both plain symbols and Slot syntax */
-        OmniValue* params = omni_cdr(name_or_sig);
-        while (!omni_is_nil(params) && omni_is_cell(params)) {
-            OmniValue* param = omni_car(params);
-            OmniValue* param_name = extract_param_name(param);
-
-            if (param_name) {
-                VarUsage* u = find_or_create_var_usage(ctx, param_name->str_val);
-                u->is_param = true;
-                u->def_pos = ctx->position;
-                ctx->position++;
-            }
-            /* TODO: If param is array with 2 elements [name {Type}], store type info */
-
-            params = omni_cdr(params);
-        }
-
-        /* Analyze body in return position */
-        bool old_return_pos = ctx->in_return_position;
-        ctx->in_return_position = true;
-        ctx->scope_depth++;
-
-        while (!omni_is_nil(rest) && omni_is_cell(rest)) {
-            /* Last expr is in return position */
-            ctx->in_return_position = omni_is_nil(omni_cdr(rest));
-            analyze_expr(ctx, omni_car(rest));
-            rest = omni_cdr(rest);
-        }
-
-        ctx->scope_depth--;
-        ctx->in_return_position = old_return_pos;
+        const char* fn_name = (omni_is_sym(fname) && fname->str_val) ? fname->str_val : "<unknown>";
+        fprintf(stderr, "Error: Scheme-style (define (%s ...) body) syntax is not supported.\n", fn_name);
+        fprintf(stderr, "       Use OmniLisp Slot syntax instead:\n");
+        fprintf(stderr, "         (define %s [x] [y] body)   ; Canonical\n", fn_name);
+        fprintf(stderr, "         (define %s x y body)       ; Shorthand\n", fn_name);
     }
 }
 

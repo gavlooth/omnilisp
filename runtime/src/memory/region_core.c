@@ -3,6 +3,13 @@
 #include <stdio.h>
 #include <string.h>
 #include "../../include/omni_atomic.h"  /* Issue 4 P3: Centralized atomic operations */
+#include "../../include/omni_debug.h"   /* Phase 4.4: Profiling infrastructure */
+
+/* Phase 4.4: Forward declarations for profiling */
+void _omni_stats_region_created(void);
+void _omni_stats_region_destroyed(size_t bytes_freed);
+extern OmniAllocCallback g_alloc_callback;
+extern OmniRegionCallback g_region_callback;
 
 #define MAX_THREAD_LOCAL_TETHERS 16
 #define REGION_POOL_SIZE 32  // Pool size for reusable regions
@@ -112,6 +119,9 @@ static inline void region_reset(Region* r) {
 
     /* Issue 2 P4.3b: Reset parent to NULL (required for region pooling) */
     r->parent = NULL;
+
+    /* Issue 10 P0: Increment generation on region reuse for IPGE */
+    r->generation++;  /* Bump generation to invalidate old pointers */
 }
 
 Region* region_create(void) {
@@ -121,6 +131,13 @@ Region* region_create(void) {
         // Region is already reset, just mark it as alive
         r->scope_alive = true;
         // Note: region_id is preserved from previous lifetime (acceptable)
+
+        /* Phase 4.4: Update global stats and invoke callback for pooled region */
+        _omni_stats_region_created();
+        if (g_region_callback) {
+            g_region_callback(r, "create");
+        }
+
         return r;
     }
 
@@ -162,6 +179,9 @@ Region* region_create(void) {
     /* Issue 2 P4.3b: Initialize parent to NULL (new regions have no parent initially) */
     r->parent = NULL;
 
+    /* Issue 10 P0: Initialize generation for IPGE (Indexed Pointer Generation Epoch) */
+    r->generation = 1;  /* Start at generation 1 (0 reserved for unallocated) */
+
     // Assign region ID (OPTIMIZATION: T-opt-region-metadata-pointer-masking)
     /* Issue 4 P3: Use atomic wrapper for consistent memory ordering */
     r->region_id = omni_atomic_fetch_add_u16(&g_next_region_id, 1);
@@ -178,6 +198,15 @@ Region* region_create(void) {
     r->owner_thread = pthread_self();
     r->is_thread_local = true;  // Assume thread-local until proven otherwise
     r->has_external_refs = false;
+
+    /* Phase 4.4: Initialize allocation_count */
+    r->allocation_count = 0;
+
+    /* Phase 4.4: Update global stats and invoke callback */
+    _omni_stats_region_created();
+    if (g_region_callback) {
+        g_region_callback(r, "create");
+    }
 
     return r;
 }
@@ -196,6 +225,12 @@ void region_destroy_if_dead(Region* r) {
     int tc = (int)omni_atomic_load_u32((volatile uint32_t*)&r->tether_count);
 
     if (!r->scope_alive && rc == 0 && tc == 0) {
+        /* Phase 4.4: Update stats and invoke callback before cleanup */
+        _omni_stats_region_destroyed(r->bytes_allocated_total);
+        if (g_region_callback) {
+            g_region_callback(r, "destroy");
+        }
+
         // OPTIMIZATION: Try to return to pool instead of freeing
         if (g_region_pool.count < REGION_POOL_SIZE) {
             // Reset and return to pool (FAST: avoids malloc/free)
@@ -696,3 +731,300 @@ Region* region_of(const void* encoded_ptr) {
     /* Collision or region was freed */
     return NULL;
 }
+
+/* ============================================================
+ * Phase 4.4: Memory Profiling Infrastructure
+ * ============================================================ */
+
+#include "../../include/omni_debug.h"
+
+/* Global statistics tracking */
+static GlobalMemStats g_global_stats = {0};
+static pthread_mutex_t g_stats_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/* Profiling callbacks */
+/* Phase 4.4: Profiling callbacks (non-static for inline access) */
+OmniAllocCallback g_alloc_callback = NULL;
+OmniRegionCallback g_region_callback = NULL;
+
+/*
+ * omni_region_get_stats - Get statistics for a single region
+ */
+void omni_region_get_stats(Region* r, RegionStats* stats) {
+    if (!r || !stats) return;
+
+    memset(stats, 0, sizeof(RegionStats));
+
+    stats->bytes_allocated = r->bytes_allocated_total;
+    stats->bytes_peak = r->bytes_allocated_peak;
+    stats->allocation_count = r->allocation_count;  /* Phase 4.4: Now tracked */
+
+    stats->inline_bytes_used = r->inline_buf_used_bytes;
+    stats->inline_capacity = REGION_INLINE_BUF_SIZE;
+
+    stats->arena_chunks = r->chunk_count;
+    stats->escape_repairs = r->escape_repair_count;
+
+    stats->external_rc = r->external_rc;
+    stats->tether_count = r->tether_count;
+
+    stats->lifetime_rank = r->lifetime_rank;
+    stats->scope_alive = r->scope_alive;
+    stats->is_thread_local = r->is_thread_local;
+
+    /* Calculate parent depth */
+    int depth = 0;
+    Region* p = r->parent;
+    while (p) {
+        depth++;
+        p = p->parent;
+    }
+    stats->parent_depth = depth;
+}
+
+/*
+ * omni_region_print_stats - Print region statistics to stderr
+ */
+void omni_region_print_stats(Region* r, const char* label) {
+    if (!r) {
+        fprintf(stderr, "[Region Stats] %s: NULL region\n", label ? label : "");
+        return;
+    }
+
+    RegionStats stats;
+    omni_region_get_stats(r, &stats);
+
+    fprintf(stderr, "[Region Stats] %s (id=%u, rank=%lu)\n",
+            label ? label : "", r->region_id, (unsigned long)stats.lifetime_rank);
+    fprintf(stderr, "  allocated: %zu bytes (peak: %zu)\n",
+            stats.bytes_allocated, stats.bytes_peak);
+    fprintf(stderr, "  inline: %zu/%zu bytes\n",
+            stats.inline_bytes_used, stats.inline_capacity);
+    fprintf(stderr, "  arena chunks: %zu\n", stats.arena_chunks);
+    fprintf(stderr, "  escape repairs: %zu\n", stats.escape_repairs);
+    fprintf(stderr, "  external_rc: %d, tethers: %d\n",
+            stats.external_rc, stats.tether_count);
+    fprintf(stderr, "  scope_alive: %s, thread_local: %s\n",
+            stats.scope_alive ? "yes" : "no",
+            stats.is_thread_local ? "yes" : "no");
+    fprintf(stderr, "  parent depth: %d\n", stats.parent_depth);
+}
+
+/*
+ * omni_get_global_stats - Get aggregate memory statistics
+ */
+void omni_get_global_stats(GlobalMemStats* stats) {
+    if (!stats) return;
+
+    pthread_mutex_lock(&g_stats_mutex);
+    memcpy(stats, &g_global_stats, sizeof(GlobalMemStats));
+    pthread_mutex_unlock(&g_stats_mutex);
+}
+
+/*
+ * omni_print_memory_summary - Print global memory summary
+ */
+void omni_print_memory_summary(void) {
+    GlobalMemStats stats;
+    omni_get_global_stats(&stats);
+
+    fprintf(stderr, "=== OmniLisp Memory Summary ===\n");
+    fprintf(stderr, "Regions: %zu created, %zu destroyed, %zu active (peak: %zu)\n",
+            stats.regions_created, stats.regions_destroyed,
+            stats.regions_active, stats.regions_peak);
+    fprintf(stderr, "Memory: %zu total allocated, %zu current, %zu peak\n",
+            stats.total_bytes_allocated, stats.current_bytes, stats.peak_bytes);
+    fprintf(stderr, "Operations: %zu transmigrates, %zu merges, %zu store repairs\n",
+            stats.transmigrate_calls, stats.merge_calls, stats.store_repairs);
+    fprintf(stderr, "================================\n");
+}
+
+/*
+ * omni_reset_global_stats - Reset statistics (for testing)
+ */
+void omni_reset_global_stats(void) {
+    pthread_mutex_lock(&g_stats_mutex);
+    memset(&g_global_stats, 0, sizeof(GlobalMemStats));
+    pthread_mutex_unlock(&g_stats_mutex);
+}
+
+/*
+ * omni_print_active_regions - Print all active regions
+ */
+void omni_print_active_regions(void) {
+    fprintf(stderr, "=== Active Regions ===\n");
+    int count = 0;
+
+    for (int i = 0; i < REGION_REGISTRY_SIZE; i++) {
+        Region* r = __atomic_load_n(&g_region_registry[i], __ATOMIC_ACQUIRE);
+        if (r && r->scope_alive) {
+            char label[32];
+            snprintf(label, sizeof(label), "Region #%d", count++);
+            omni_region_print_stats(r, label);
+            fprintf(stderr, "\n");
+        }
+    }
+
+    if (count == 0) {
+        fprintf(stderr, "(no active regions)\n");
+    }
+    fprintf(stderr, "======================\n");
+}
+
+/*
+ * omni_set_alloc_callback - Set profiling callback for allocations
+ */
+void omni_set_alloc_callback(OmniAllocCallback callback) {
+    g_alloc_callback = callback;
+}
+
+/*
+ * omni_set_region_callback - Set profiling callback for region lifecycle
+ */
+void omni_set_region_callback(OmniRegionCallback callback) {
+    g_region_callback = callback;
+}
+
+/*
+ * Internal: Update global stats on region create
+ */
+void _omni_stats_region_created(void) {
+    pthread_mutex_lock(&g_stats_mutex);
+    g_global_stats.regions_created++;
+    g_global_stats.regions_active++;
+    if (g_global_stats.regions_active > g_global_stats.regions_peak) {
+        g_global_stats.regions_peak = g_global_stats.regions_active;
+    }
+    pthread_mutex_unlock(&g_stats_mutex);
+}
+
+/*
+ * Internal: Update global stats on region destroy
+ */
+void _omni_stats_region_destroyed(size_t bytes_freed) {
+    pthread_mutex_lock(&g_stats_mutex);
+    g_global_stats.regions_destroyed++;
+    if (g_global_stats.regions_active > 0) {
+        g_global_stats.regions_active--;
+    }
+    if (g_global_stats.current_bytes >= bytes_freed) {
+        g_global_stats.current_bytes -= bytes_freed;
+    }
+    pthread_mutex_unlock(&g_stats_mutex);
+}
+
+/*
+ * Internal: Update global stats on allocation
+ */
+void _omni_stats_allocation(size_t size) {
+    pthread_mutex_lock(&g_stats_mutex);
+    g_global_stats.total_bytes_allocated += size;
+    g_global_stats.current_bytes += size;
+    if (g_global_stats.current_bytes > g_global_stats.peak_bytes) {
+        g_global_stats.peak_bytes = g_global_stats.current_bytes;
+    }
+    pthread_mutex_unlock(&g_stats_mutex);
+}
+
+/*
+ * Internal: Update global stats on transmigrate
+ */
+void _omni_stats_transmigrate(void) {
+    pthread_mutex_lock(&g_stats_mutex);
+    g_global_stats.transmigrate_calls++;
+    pthread_mutex_unlock(&g_stats_mutex);
+}
+
+/*
+ * Internal: Update global stats on store repair
+ */
+void _omni_stats_store_repair(void) {
+    pthread_mutex_lock(&g_stats_mutex);
+    g_global_stats.store_repairs++;
+    pthread_mutex_unlock(&g_stats_mutex);
+}
+
+#if OMNI_DEBUG >= 1
+
+/* ============================================================
+ * Leak Detection (Debug builds only)
+ * ============================================================ */
+
+#define MAX_TRACKED_ALLOCS 10000
+
+typedef struct {
+    void* ptr;
+    size_t size;
+    const char* file;
+    int line;
+} TrackedAlloc;
+
+static TrackedAlloc g_tracked_allocs[MAX_TRACKED_ALLOCS];
+static size_t g_tracked_count = 0;
+static pthread_mutex_t g_track_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void omni_debug_track_alloc(void* ptr, size_t size, const char* file, int line) {
+    if (!ptr) return;
+
+    pthread_mutex_lock(&g_track_mutex);
+    if (g_tracked_count < MAX_TRACKED_ALLOCS) {
+        g_tracked_allocs[g_tracked_count].ptr = ptr;
+        g_tracked_allocs[g_tracked_count].size = size;
+        g_tracked_allocs[g_tracked_count].file = file;
+        g_tracked_allocs[g_tracked_count].line = line;
+        g_tracked_count++;
+    }
+    pthread_mutex_unlock(&g_track_mutex);
+}
+
+void omni_debug_track_free(void* ptr, const char* file, int line) {
+    (void)file;
+    (void)line;
+    if (!ptr) return;
+
+    pthread_mutex_lock(&g_track_mutex);
+    for (size_t i = 0; i < g_tracked_count; i++) {
+        if (g_tracked_allocs[i].ptr == ptr) {
+            /* Swap with last and decrement count */
+            g_tracked_allocs[i] = g_tracked_allocs[g_tracked_count - 1];
+            g_tracked_count--;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_track_mutex);
+}
+
+void omni_debug_print_leaks(void) {
+    pthread_mutex_lock(&g_track_mutex);
+    if (g_tracked_count == 0) {
+        fprintf(stderr, "[Leak Check] No leaks detected.\n");
+    } else {
+        fprintf(stderr, "[Leak Check] %zu potential leaks:\n", g_tracked_count);
+        for (size_t i = 0; i < g_tracked_count && i < 20; i++) {
+            fprintf(stderr, "  %p: %zu bytes at %s:%d\n",
+                    g_tracked_allocs[i].ptr,
+                    g_tracked_allocs[i].size,
+                    g_tracked_allocs[i].file,
+                    g_tracked_allocs[i].line);
+        }
+        if (g_tracked_count > 20) {
+            fprintf(stderr, "  ... and %zu more\n", g_tracked_count - 20);
+        }
+    }
+    pthread_mutex_unlock(&g_track_mutex);
+}
+
+size_t omni_debug_leak_count(void) {
+    pthread_mutex_lock(&g_track_mutex);
+    size_t count = g_tracked_count;
+    pthread_mutex_unlock(&g_track_mutex);
+    return count;
+}
+
+void omni_debug_clear_tracking(void) {
+    pthread_mutex_lock(&g_track_mutex);
+    g_tracked_count = 0;
+    pthread_mutex_unlock(&g_track_mutex);
+}
+
+#endif /* OMNI_DEBUG >= 1 */

@@ -650,7 +650,189 @@ When the compiler proves `x` is dead after the match, it can reuse `x`'s memory 
 
 ---
 
-## 7. Pika Grammar DSL
+## 7. Regular Expressions
+
+OmniLisp provides a powerful regex engine based on Pika-style PEG matching. Unlike traditional backtracking regex engines, this implementation uses deterministic parsing with ordered choice.
+
+### 7.1 Regex Functions
+
+| Function | Description |
+|----------|-------------|
+| `(re-match pattern input)` | Find first match anywhere in string |
+| `(re-fullmatch pattern input)` | Check if pattern matches entire string |
+| `(re-find-all pattern input)` | Find all non-overlapping matches |
+| `(re-split pattern input)` | Split string by pattern |
+| `(re-replace pattern replacement input global?)` | Replace matches |
+
+#### Examples
+
+```lisp
+;; Find first match
+(re-match "[0-9]+" "abc123def")        ;; → "123"
+
+;; Full string match
+(re-fullmatch "[a-z]+" "hello")        ;; → true
+(re-fullmatch "[a-z]+" "hello123")     ;; → false
+
+;; Find all matches
+(re-find-all "[0-9]+" "a1b23c456")     ;; → (1 23 456)
+
+;; Split by pattern
+(re-split "," "a,b,c,d")               ;; → (a b c d)
+
+;; Replace (global=true for all, false for first only)
+(re-replace "[0-9]" "X" "a1b2c3" true) ;; → "aXbXcX"
+```
+
+### 7.2 Pattern Syntax
+
+#### Basic Patterns
+
+| Pattern | Description | Example |
+|---------|-------------|---------|
+| `abc` | Literal characters | `"abc"` matches `"abc"` |
+| `.` | Any single character | `"a.c"` matches `"abc"`, `"axc"` |
+| `\|` | Alternation | `"cat\|dog"` matches `"cat"` or `"dog"` |
+| `(...)` | Grouping | `"(ab)+"` matches `"abab"` |
+| `(?:...)` | Non-capturing group | `"(?:ab)+"` same as above, no capture |
+
+#### Character Classes
+
+| Pattern | Description | Example |
+|---------|-------------|---------|
+| `[abc]` | Match any of a, b, c | `"[aeiou]"` matches vowels |
+| `[a-z]` | Character range | `"[a-zA-Z]"` matches letters |
+| `[^abc]` | Negated class | `"[^0-9]"` matches non-digits |
+
+#### Escape Sequences
+
+| Escape | Meaning | Equivalent |
+|--------|---------|------------|
+| `\d` | Digit | `[0-9]` |
+| `\D` | Non-digit | `[^0-9]` |
+| `\w` | Word character | `[a-zA-Z0-9_]` |
+| `\W` | Non-word character | `[^a-zA-Z0-9_]` |
+| `\s` | Whitespace | `[ \t\n\r]` |
+| `\S` | Non-whitespace | `[^ \t\n\r]` |
+| `\n` | Newline | - |
+| `\t` | Tab | - |
+| `\r` | Carriage return | - |
+| `\\` | Literal backslash | - |
+
+#### Anchors
+
+| Anchor | Description | Example |
+|--------|-------------|---------|
+| `^` | Start of string | `"^hello"` matches at start |
+| `$` | End of string | `"world$"` matches at end |
+| `\b` | Word boundary | `"\bword\b"` matches whole word |
+
+```lisp
+(re-match "^hello" "hello world")      ;; → "hello"
+(re-match "world$" "hello world")      ;; → "world"
+(re-match "\\bcat\\b" "the cat sat")   ;; → "cat"
+```
+
+#### Quantifiers
+
+| Quantifier | Description | Example |
+|------------|-------------|---------|
+| `*` | Zero or more | `"a*"` matches `""`, `"a"`, `"aaa"` |
+| `+` | One or more | `"a+"` matches `"a"`, `"aaa"` |
+| `?` | Zero or one | `"a?"` matches `""`, `"a"` |
+| `{n}` | Exactly n | `"a{3}"` matches `"aaa"` |
+| `{n,}` | n or more | `"a{2,}"` matches `"aa"`, `"aaa"`, ... |
+| `{n,m}` | Between n and m | `"a{2,4}"` matches `"aa"` to `"aaaa"` |
+
+```lisp
+(re-match "a{3}" "aaaaa")              ;; → "aaa"
+(re-match "a{2,4}" "aaaaa")            ;; → "aaaa" (greedy)
+(re-match "a{2,}" "aaaaa")             ;; → "aaaaa"
+```
+
+#### Possessive Quantifiers
+
+Possessive quantifiers never backtrack, providing explicit control over matching behavior. In PEG-based matching, all quantifiers are naturally possessive.
+
+| Quantifier | Description |
+|------------|-------------|
+| `*+` | Possessive zero or more |
+| `++` | Possessive one or more |
+| `?+` | Possessive optional |
+| `{n,m}+` | Possessive bounded |
+
+```lisp
+(re-match "a*+b" "aaab")               ;; → "aaab"
+(re-match "a++b" "aaab")               ;; → "aaab"
+```
+
+### 7.3 Lookahead
+
+Lookahead assertions check if a pattern matches (or doesn't match) at the current position without consuming input. This is a key PEG feature.
+
+| Syntax | Description |
+|--------|-------------|
+| `(?=...)` | Positive lookahead - succeeds if pattern matches |
+| `(?!...)` | Negative lookahead - succeeds if pattern does NOT match |
+
+```lisp
+;; Positive lookahead: match "foo" only if followed by "bar"
+(re-match "foo(?=bar)" "foobar")       ;; → "foo"
+(re-match "foo(?=bar)" "foobaz")       ;; → nothing
+
+;; Negative lookahead: match "foo" only if NOT followed by "bar"
+(re-match "foo(?!bar)" "foobaz")       ;; → "foo"
+(re-match "foo(?!bar)" "foobar")       ;; → nothing
+
+;; Match digits only if followed by non-digit
+(re-match "\\d+(?=\\D)" "123abc")      ;; → "123"
+```
+
+### 7.4 PEG vs Traditional Regex
+
+OmniLisp's regex engine is based on **Parsing Expression Grammars (PEG)**, which differ from traditional regex:
+
+| Feature | PEG (OmniLisp) | Traditional Regex |
+|---------|----------------|-------------------|
+| Matching | Deterministic, greedy | Backtracking |
+| Alternation | Ordered choice (`a\|b` tries `a` first) | Unordered |
+| Quantifiers | Possessive (no backtrack) | Greedy + backtrack |
+| Lookahead | Native support | Extension |
+| Backreferences | Not supported | Supported |
+| Performance | O(n) guaranteed | Worst-case exponential |
+
+**Key implications:**
+- No catastrophic backtracking
+- Alternation order matters: `cat|catalog` matches `"cat"` in `"catalog"`
+- Use negative lookahead for "not followed by" patterns
+- Backreferences (`\1`, `\2`) are not available
+
+### 7.5 Common Patterns
+
+```lisp
+;; Match email-like pattern
+(re-match "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+          "contact@example.com")
+
+;; Match integers (including negative)
+(re-match "-?[0-9]+" "value is -42")   ;; → "-42"
+
+;; Match quoted strings
+(re-match "\"[^\"]*\"" "say \"hello\"") ;; → "\"hello\""
+
+;; Match words at word boundaries
+(re-match "\\bthe\\b" "other the end")  ;; → "the"
+
+;; Match URL protocol
+(re-match "https?://" "https://example.com") ;; → "https://"
+
+;; Stop before delimiter (using lookahead)
+(re-match "[^,]+(?=,)" "a,b,c")        ;; → "a"
+```
+
+---
+
+## 8. Pika Grammar DSL
 
 Define high-performance PEG grammars directly in the Flow domain.
 

@@ -55,7 +55,7 @@ test-cli:
 	@echo "()" | ../omnilisp | grep -q "^()$$" && echo "PASS: empty list literal"
 	@echo "nil" | ../omnilisp | grep -q "^()$$" && echo "PASS: nil literal"
 	@echo "(let [x 5] (* x x))" | ../omnilisp | grep -q "^25$$" && echo "PASS: let bindings"
-	@echo "(define (square n) (* n n)) (square 7)" | ../omnilisp | grep -q "^49$$" && echo "PASS: functions"
+	@echo "(define square n (* n n)) (square 7)" | ../omnilisp | grep -q "^49$$" && echo "PASS: functions"
 	@echo "CLI tests passed."
 
 clean:

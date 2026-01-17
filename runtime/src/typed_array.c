@@ -9,19 +9,19 @@
 #include "../include/omni.h"
 #include "../include/typed_array.h"
 #include "../include/primitives_specialized.h"
+#include "../src/memory/region_core.h"
+#include "../src/memory/region_value.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <stddef.h>
 
-/* strdup for C99 */
-static char* omni_strdup(const char* s) {
-    if (!s) return NULL;
-    size_t len = strlen(s) + 1;
-    char* copy = malloc(len);
-    if (copy) memcpy(copy, s, len);
-    return copy;
-}
+/* External function declarations */
+extern Obj* call_closure(Obj* clos, Obj** args, int argc);
+extern int is_truthy(Obj* x);
+extern Obj* mk_pair(Obj* a, Obj* b);
+extern Obj* obj_car(Obj* pair);
+extern Obj* obj_cdr(Obj* pair);
 
 /* NIL constant - using NULL for empty list */
 #define NIL NULL
@@ -99,10 +99,10 @@ TypedArray* omni_typed_array_create(Region* r,
                                     ArrayElementType element_type,
                                     int rank,
                                     int* dimensions) {
-    if (!dimensions || rank <= 0) return NULL;
+    if (!dimensions || rank <= 0 || !r) return NULL;
 
-    /* Allocate TypedArray structure */
-    TypedArray* arr = malloc(sizeof(TypedArray));
+    /* Allocate TypedArray structure from region */
+    TypedArray* arr = region_alloc(r, sizeof(TypedArray));
     if (!arr) return NULL;
 
     arr->element_type = element_type;
@@ -111,10 +111,11 @@ TypedArray* omni_typed_array_create(Region* r,
     arr->region = r;
     arr->ref_count = 1;
 
-    /* Copy dimensions */
-    arr->dimensions = malloc(sizeof(int) * rank);
+    /* Copy dimensions (allocated from region) */
+    arr->dimensions = region_alloc(r, sizeof(int) * rank);
     if (!arr->dimensions) {
-        free(arr);
+        /* region_alloc doesn't need explicit free, but arr is already allocated
+         * from region - it will be reclaimed when region exits */
         return NULL;
     }
     memcpy(arr->dimensions, dimensions, sizeof(int) * rank);
@@ -125,13 +126,15 @@ TypedArray* omni_typed_array_create(Region* r,
         arr->total_size *= dimensions[i];
     }
 
-    /* Allocate data buffer */
-    arr->data = calloc(arr->total_size, arr->element_size);
+    /* Allocate data buffer from region and zero-initialize */
+    size_t data_size = arr->total_size * arr->element_size;
+    arr->data = region_alloc(r, data_size);
     if (!arr->data) {
-        free(arr->dimensions);
-        free(arr);
+        /* region_alloc doesn't need explicit free, but arr and dimensions are
+         * already allocated from region - they will be reclaimed when region exits */
         return NULL;
     }
+    memset(arr->data, 0, data_size);  /* Zero-initialize like calloc */
 
     return arr;
 }
@@ -351,18 +354,15 @@ TypedArray* omni_list_to_typed_array(Region* r,
 }
 
 Obj* omni_typed_array_to_list(TypedArray* arr, Region* r) {
-    if (!arr) return NIL;
+    if (!arr) return mk_nil_region(r);
 
-    Obj* result = NIL;
-    Obj** tail = &result;
+    Obj* result = mk_nil_region(r);
 
     for (int64_t i = arr->total_size - 1; i >= 0; i--) {
         int indices[] = {(int)i};
         Obj* elem = omni_typed_array_ref(arr, indices);
-        *tail = mk_pair(elem, NIL);
-        if (*tail) {
-            tail = (Obj**)&((*tail)->b);
-        }
+        /* Prepend element: new cell points to current result as cdr */
+        result = mk_cell_region(r, elem, result);
     }
 
     return result;
@@ -380,8 +380,27 @@ TypedArray* omni_typed_array_map(Obj* func,
     TypedArray* result = omni_typed_array_create(r, result_type, arr->rank, arr->dimensions);
     if (!result) return NULL;
 
-    /* TODO: Apply function to each element */
-    /* This requires calling the function with boxed values */
+    /* Apply function to each element */
+    for (int64_t i = 0; i < arr->total_size; i++) {
+        int indices[] = {(int)i};
+        
+        /* Box element and call function */
+        Obj* boxed_elem = omni_typed_array_ref(arr, indices);
+        if (!boxed_elem) {
+            return NULL;  /* Out of bounds or error */
+        }
+        
+        Obj* boxed_result = call_closure(func, &boxed_elem, 1);
+        if (!boxed_result) {
+            return NULL;  /* Function returned NULL or error */
+        }
+        
+        /* Unbox result and store in array */
+        int result_indices[] = {(int)i};
+        if (!omni_typed_array_set(result, result_indices, boxed_result)) {
+            return NULL;  /* Type mismatch or error */
+        }
+    }
 
     return result;
 }
@@ -391,8 +410,83 @@ TypedArray* omni_typed_array_filter(Obj* pred,
                                     Region* r) {
     if (!pred || !arr) return NULL;
 
-    /* TODO: Filter array based on predicate */
-    return NULL;
+    /* First pass: count matching elements */
+    int64_t match_count = 0;
+    for (int64_t i = 0; i < arr->total_size; i++) {
+        int indices[] = {(int)i};
+        
+        /* Box element and call predicate */
+        Obj* boxed_elem = omni_typed_array_ref(arr, indices);
+        if (!boxed_elem) {
+            return NULL;  /* Out of bounds or error */
+        }
+        
+        Obj* boxed_result = call_closure(pred, &boxed_elem, 1);
+        if (!boxed_result) {
+            return NULL;  /* Predicate returned NULL or error */
+        }
+        
+        if (is_truthy(boxed_result)) {
+            match_count++;
+        }
+    }
+    
+    /* Create result array (1D, same element type) */
+    int result_dim = (int)match_count;
+    TypedArray* result = omni_typed_array_create(r, arr->element_type, 1, &result_dim);
+    if (!result) return NULL;
+    
+    /* Second pass: copy matching elements */
+    int64_t write_idx = 0;
+    for (int64_t i = 0; i < arr->total_size; i++) {
+        int indices[] = {(int)i};
+        
+        /* Box element and call predicate */
+        Obj* boxed_elem = omni_typed_array_ref(arr, indices);
+        if (!boxed_elem) {
+            return NULL;
+        }
+        
+        Obj* boxed_result = call_closure(pred, &boxed_elem, 1);
+        if (!boxed_result) {
+            return NULL;
+        }
+        
+        if (is_truthy(boxed_result)) {
+            /* Copy element directly from source array */
+            switch (arr->element_type) {
+                case ARRAY_TYPE_INT64: {
+                    int64_t* src_data = (int64_t*)arr->data;
+                    int64_t* dst_data = (int64_t*)result->data;
+                    dst_data[write_idx] = src_data[i];
+                    break;
+                }
+                case ARRAY_TYPE_FLOAT64: {
+                    double* src_data = (double*)arr->data;
+                    double* dst_data = (double*)result->data;
+                    dst_data[write_idx] = src_data[i];
+                    break;
+                }
+                case ARRAY_TYPE_CHAR: {
+                    char* src_data = (char*)arr->data;
+                    char* dst_data = (char*)result->data;
+                    dst_data[write_idx] = src_data[i];
+                    break;
+                }
+                case ARRAY_TYPE_BOOL: {
+                    bool* src_data = (bool*)arr->data;
+                    bool* dst_data = (bool*)result->data;
+                    dst_data[write_idx] = src_data[i];
+                    break;
+                }
+                default:
+                    return NULL;
+            }
+            write_idx++;
+        }
+    }
+    
+    return result;
 }
 
 Obj* omni_typed_array_reduce(Obj* func,
@@ -400,8 +494,29 @@ Obj* omni_typed_array_reduce(Obj* func,
                             TypedArray* arr) {
     if (!func || !arr) return init;
 
-    /* TODO: Reduce array */
-    return init;
+    Obj* acc = init;
+    
+    /* Reduce array */
+    for (int64_t i = 0; i < arr->total_size; i++) {
+        int indices[] = {(int)i};
+        
+        /* Box element */
+        Obj* boxed_elem = omni_typed_array_ref(arr, indices);
+        if (!boxed_elem) {
+            return NULL;  /* Out of bounds or error */
+        }
+        
+        /* Call reduction function: (acc, elem) -> new_acc */
+        Obj* args[2] = { acc, boxed_elem };
+        Obj* new_acc = call_closure(func, args, 2);
+        if (!new_acc) {
+            return NULL;  /* Function returned NULL or error */
+        }
+        
+        acc = new_acc;
+    }
+    
+    return acc;
 }
 
 bool omni_typed_array_fill(TypedArray* arr, Obj* value) {
