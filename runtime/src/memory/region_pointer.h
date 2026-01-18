@@ -6,6 +6,17 @@
 #include "region_core.h"
 
 /*
+ * Include omni.h for struct Obj definition (needed for accessing
+ * obj->generation field in pointer_mask_safe_access).
+ *
+ * Note: Must include guard to prevent circular dependencies since
+ * region_core.h is included by omni.h.
+ */
+#ifndef OMNI_RUNTIME_H
+#include "../../include/omni.h"
+#endif
+
+/*
  * region_pointer.h - Pointer Masking for Cross-Region References
  *
  * OPTIMIZATION (T-opt-region-metadata-pointer-masking): Encodes region
@@ -58,15 +69,15 @@
  */
 static inline void* pointer_mask_encode(const void* ptr, uint16_t region_id) {
     if (!ptr) return NULL;
-    
+
     uintptr_t addr = (uintptr_t)ptr;
-    
+
     /* Verify 8-byte alignment */
     if (addr & 0x7ULL) {
         /* Not aligned, can't encode region info */
         return (void*)addr;
     }
-    
+
     /* Encode region ID in high bits */
     uintptr_t encoded = addr | ((uintptr_t)region_id << POINTER_REGION_SHIFT);
     return (void*)encoded;
@@ -80,7 +91,7 @@ static inline void* pointer_mask_encode(const void* ptr, uint16_t region_id) {
  */
 static inline void* pointer_mask_decode(const void* encoded) {
     if (!encoded) return NULL;
-    
+
     uintptr_t ptr = (uintptr_t)encoded;
     return (void*)(ptr & POINTER_ADDR_MASK);
 }
@@ -93,7 +104,7 @@ static inline void* pointer_mask_decode(const void* encoded) {
  */
 static inline uint16_t pointer_mask_get_region(const void* encoded) {
     if (!encoded) return 0;
-    
+
     uintptr_t ptr = (uintptr_t)encoded;
     return (uint16_t)(ptr >> POINTER_REGION_SHIFT);
 }
@@ -107,7 +118,7 @@ static inline uint16_t pointer_mask_get_region(const void* encoded) {
  */
 static inline bool pointer_mask_is_same_region(const void* ptr1, const void* ptr2) {
     if (!ptr1 || !ptr2) return false;
-    
+
     uint16_t region1 = pointer_mask_get_region(ptr1);
     uint16_t region2 = pointer_mask_get_region(ptr2);
     return region1 == region2;
@@ -129,37 +140,70 @@ static inline bool pointer_mask_is_cross_region(const void* from_ptr, const void
  *
  * @param obj_ptr: The object pointer (may be encoded)
  * @param current_region: The current region ID
- * @param obj_generation: The object's generation (for safety check)
  * @return: true if access is safe, false otherwise
  *
- * This function implements the safety check for cross-region access.
+ * This function implements a safety check for cross-region access using IPGE
+ * (Indexed Pointer Generation Epoch).
+ *
  * For same-region access: No check needed (fast path)
- * For cross-region access: Check generation (IPGE-style)
+ * For cross-region access: Decode pointer, get object's generation,
+ * compare with region's current generation.
+ *
+ * IPGE: Each region has a generation number that increments when
+ * region is reused. Objects store the generation they were
+ * allocated with. If generations don't match, the pointer is stale.
  */
-static inline bool pointer_mask_safe_access(const void* obj_ptr, uint16_t current_region, uint32_t obj_generation) {
+static inline bool pointer_mask_safe_access(const void* obj_ptr, uint16_t current_region) {
     if (!obj_ptr) return false;
-    
+
     uint16_t obj_region = pointer_mask_get_region(obj_ptr);
-    
-    /* Same region: always safe */
+
+    /* Same region: always safe (no generation check needed) */
     if (obj_region == current_region) {
         return true;
     }
-    
-    /* Cross-region: would need generation check here */
-    /* For now, return true (unsafe but functional) */
-    /* TODO: Implement proper generation checking */
-    return true;
+
+    /* Cross-region: Need IPGE generation check */
+
+    /* Region ID 0 is reserved for NULL/unencoded pointers */
+    if (obj_region == 0) {
+        return false;
+    }
+
+    /* Decode pointer to get actual object */
+    void* actual_ptr = pointer_mask_decode(obj_ptr);
+    if (!actual_ptr) {
+        return false;
+    }
+
+    /* Look up target region from registry (O(1) lookup) */
+    Region* target_region = region_of(obj_ptr);
+    if (!target_region) {
+        /* Region no longer exists or was destroyed */
+        return false;
+    }
+
+    /* Compare object's generation with region's current generation */
+    /* If they don't match, object was allocated in an older generation */
+    /* and the region has been reused - this is a stale pointer */
+    Obj* obj = (Obj*)actual_ptr;
+    return obj->generation == target_region->generation;
 }
 
 /*
  * pointer_mask_encode_with_generation - Encode pointer with generation
  *
  * This is a placeholder for future integration with IPGE generation checking.
- * Currently just encodes the region ID.
+ * Currently just encodes the region ID, as the generation is stored
+ * inline in the object's header (Obj.generation field).
+ *
+ * @param ptr: The original pointer
+ * @param region_id: The region ID
+ * @param generation: The generation number (for future use)
+ * @return: Encoded pointer
  */
 static inline void* pointer_mask_encode_with_generation(const void* ptr, uint16_t region_id, uint32_t generation) {
-    (void)generation;  /* TODO: Integrate with IPGE */
+    (void)generation;  /* Generation stored in Obj header, not encoded in pointer */
     return pointer_mask_encode(ptr, region_id);
 }
 

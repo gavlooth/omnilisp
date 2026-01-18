@@ -14,31 +14,15 @@
 /*
  * Mapping from TypeID to ObjTag for compatibility with existing code.
  *
- * This mapping allows us to use the new type_id-based allocation while
+ * This mapping allows us to use new type_id-based allocation while
  * maintaining compatibility with code that still uses tag-based operations.
  * Eventually, all code will use type_id and we can eliminate the tag field.
+ *
+ * OPTIMIZATION: Since TAG enum is now aligned with TypeID (TAG = TypeID + 1),
+ * this is now a simple addition instead of a switch statement.
  */
-static int type_id_to_tag(TypeID type_id) {
-    switch (type_id) {
-        case TYPE_ID_INT:      return TAG_INT;
-        case TYPE_ID_FLOAT:    return TAG_FLOAT;
-        case TYPE_ID_CHAR:     return TAG_CHAR;
-        case TYPE_ID_PAIR:     return TAG_PAIR;
-        case TYPE_ID_ARRAY:    return TAG_ARRAY;
-        case TYPE_ID_STRING:   return TAG_STRING;
-        case TYPE_ID_SYMBOL:   return TAG_SYM;
-        case TYPE_ID_DICT:     return TAG_DICT;
-        case TYPE_ID_CLOSURE:  return TAG_CLOSURE;
-        case TYPE_ID_BOX:      return TAG_BOX;
-        case TYPE_ID_CHANNEL:  return TAG_CHANNEL;
-        case TYPE_ID_THREAD:   return TAG_THREAD;
-        case TYPE_ID_ERROR:    return TAG_ERROR;
-        case TYPE_ID_ATOM:     return TAG_ATOM;
-        case TYPE_ID_GENERIC:  return TAG_GENERIC;
-        case TYPE_ID_KIND:     return TAG_KIND;
-        case TYPE_ID_NOTHING:  return TAG_NOTHING;
-        default:               return TAG_INT;  /* Fallback */
-    }
+static inline int type_id_to_tag(TypeID type_id) {
+    return type_id + 1;  /* TAG = TypeID + 1 */
 }
 
 /*
@@ -46,28 +30,12 @@ static int type_id_to_tag(TypeID type_id) {
  *
  * Phase 25: Enable constructors to use alloc_obj_typed() by converting
  * legacy tag values to TypeID constants.
+ *
+ * OPTIMIZATION: Since TAG enum is now aligned with TypeID (TAG = TypeID + 1),
+ * this is now a simple subtraction instead of a switch statement.
  */
-static TypeID tag_to_type_id(int tag) {
-    switch (tag) {
-        case TAG_INT:      return TYPE_ID_INT;
-        case TAG_FLOAT:    return TYPE_ID_FLOAT;
-        case TAG_CHAR:     return TYPE_ID_CHAR;
-        case TAG_PAIR:     return TYPE_ID_PAIR;
-        case TAG_SYM:      return TYPE_ID_SYMBOL;
-        case TAG_ARRAY:    return TYPE_ID_ARRAY;
-        case TAG_STRING:   return TYPE_ID_STRING;
-        case TAG_DICT:     return TYPE_ID_DICT;
-        case TAG_CLOSURE:  return TYPE_ID_CLOSURE;
-        case TAG_BOX:      return TYPE_ID_BOX;
-        case TAG_CHANNEL:  return TYPE_ID_CHANNEL;
-        case TAG_THREAD:   return TYPE_ID_THREAD;
-        case TAG_ERROR:    return TYPE_ID_ERROR;
-        case TAG_ATOM:     return TYPE_ID_ATOM;
-        case TAG_GENERIC:  return TYPE_ID_GENERIC;
-        case TAG_KIND:     return TYPE_ID_KIND;
-        case TAG_NOTHING:  return TYPE_ID_NOTHING;
-        default:           return TYPE_ID_GENERIC;  /* Fallback */
-    }
+static inline TypeID tag_to_type_id(int tag) {
+    return tag - 1;  /* TypeID = TAG - 1 */
 }
 
 Obj* alloc_obj_region(Region* r, int tag) {
@@ -113,7 +81,7 @@ Obj* alloc_obj_typed(Region* r, TypeID type_id) {
 
     o->mark = 1;
     o->tag = type_id_to_tag(type_id);  /* Set tag for compatibility */
-    o->generation = 0;
+    o->generation = r->generation;  /* Initialize with region's current generation */
     o->tethered = 0;
     o->owner_region = r;  /* Issue 1 P1: Set owning region */
 
