@@ -8,7 +8,7 @@
 This document specifies the **metadata-driven transmigration** mechanism required
 by OmniLisp’s CTRR memory model.
 
-For the high-level CTRR contract, see `docs/CTRR.md`.
+For the high-level CTRR contract, see `docs/REGION_RC.md`.
 
 ---
 

@@ -37,18 +37,9 @@
       [x :when (= x 0) "zero"]
       [_ "positive"])))
 
-; Test 6: Legacy syntax (alternating pattern result)
-; This should still work for backward compatibility
-; REVIEWED:SYNTAX
-(define test6
-  (match 100
-    100 "hundred"
-    _ "other"))
-
 ; Print results
 (println "Test 1 (array clause): " test1)
 (println "Test 2 (wildcard): " test2)
 (println "Test 3 (multiple clauses): " test3)
 (println "Test 4 (:when guard >10): " test4)
 (println "Test 5 (:when guard positive): " test5)
-(println "Test 6 (legacy syntax): " test6)

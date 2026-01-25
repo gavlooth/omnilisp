@@ -15,14 +15,12 @@
 (define lst3 (list())
 (assert-nil (first lst3))
 
-; REVIEWED:SYNTAX
 ;; Test first on pair created via cons
 (define pair1 (cons 100 (list 200 300))))
 (assert-eq (first pair1) 100)
 
 (println "PASS: first primitive")
 
-; REVIEWED:SYNTAX
 (println "
 === Testing Rest Primitive ===")
 

@@ -15,9 +15,8 @@
 ;; Benchmark 1: Float Addition
 ;; ============================================================================
 
-; REVIEWED:SYNTAX
 (define bench-float-add [n]
-  (let ((result 0.0))
+  (let [result 0.0]
     (loop-n n (fn [] (set! result (+ result 1.5))))
     result))
 
@@ -26,7 +25,7 @@
 ;; ============================================================================
 
 (define bench-float-mul [n]
-  (let ((result 1.0))
+  (let [result 1.0]
     (loop-n n (fn [] (set! result (* result 1.001))))
     result))
 
@@ -35,7 +34,7 @@
 ;; ============================================================================
 
 (define bench-int-add [n]
-  (let ((result 0))
+  (let [result 0]
     (loop-n n (fn [] (set! result (+ result 42))))
     result))
 
@@ -44,7 +43,7 @@
 ;; ============================================================================
 
 (define bench-int-mul [n]
-  (let ((result 1))
+  (let [result 1]
     (loop-n n (fn [] (set! result (* result 2))))
     result))
 

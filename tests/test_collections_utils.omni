@@ -67,11 +67,9 @@
   '("a" "bb" "ccc")
   (sort-by string-length '("ccc" "a" "bb")))
 
-;; REVIEWED:SYNTAX
 ;; Test 2: sort-by with first char
 (test-eq "sort-by with first char"
   '(apple banana cherry)
-; REVIEWED:SYNTAX
   (sort-by (fn (s) (first s)) '(banana apple cherry)))
 
 ;; Test 3: sort-by on array

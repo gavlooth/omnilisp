@@ -26,7 +26,7 @@ The OmniLisp runtime uses a **hybrid memory system** that combines:
 - `runtime/docs/MEMORY_TERMINOLOGY.md` - **Pinned terminology** (Region vs Arena vs ArenaRegion/RCB)
 - `runtime/docs/REGION_RC_MODEL.md` - **Normative specification** of Region-RC semantics, external pointers, and auto-repair
 - `runtime/docs/CTRR_TRANSMIGRATION.md` - Transmigration implementation contract
-- `docs/CTRR.md` - High-level CTRR contract and Region Closure Property
+- `docs/REGION_RC.md` - High-level CTRR contract and Region Closure Property
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -272,7 +272,7 @@ Each runtime type registers:
 - how to `trace` all `Obj*` child slots so pointers can be rewritten
 
 This is documented in detail in:
-- `docs/CTRR.md` (normative contract)
+- `docs/REGION_RC.md` (normative contract)
 - `runtime/docs/CTRR_TRANSMIGRATION.md` (detailed runtime behavior)
 - `runtime/docs/REGION_RC_MODEL.md` (relationship between transmigration and Region-RC)
 
@@ -1218,7 +1218,7 @@ Example 3: Large array (escapes)
   - Metadata-driven implementation requirements
   - Region Closure Property enforcement
 
-- **High-Level CTRR:** `docs/CTRR.md`
+- **High-Level CTRR:** `docs/REGION_RC.md`
   - Compiler responsibilities (liveness, escape, capture tracking)
   - Runtime responsibilities (safe reclamation, tethering, transmigration)
 

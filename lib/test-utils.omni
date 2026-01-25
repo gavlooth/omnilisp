@@ -21,7 +21,6 @@
 ;; ============================================================
 
 ;; Test equality using equal? (works for all types)
-; REVIEWED:SYNTAX
 (define (test-eq name expected actual)
   (set! test-count (+ test-count 1))
   (if (equal? expected actual)
@@ -34,7 +33,6 @@
         (print "  Expected:" expected)
         (print "  Got:" actual))))
 
-; REVIEWED:SYNTAX
 ;; Test numeric equality using =
 (define (test-num name expected actual)
   (set! test-count (+ test-count 1))
@@ -48,12 +46,10 @@
         (print "  Expected:" expected)
         (print "  Got:" actual))))
 
-; REVIEWED:SYNTAX
 ;; Alias for test-num
 (define (test-int name expected actual)
   (test-num name expected actual))
 
-; REVIEWED:SYNTAX
 ;; Test boolean equality
 (define (test-bool name expected actual)
   (set! test-count (+ test-count 1))
@@ -241,10 +237,11 @@
 ;; Test comparison result (for string-compare, etc.)
 (define (test-compare name expected actual)
   (set! test-count (+ test-count 1))
-  (let ((matches (cond
-                   ((< expected 0) (< actual 0))
-                   ((> expected 0) (> actual 0))
-                   (else (= actual 0)))))
+  (let [matches (if (< expected 0)
+                    (< actual 0)
+                    (if (> expected 0)
+                        (> actual 0)
+                        (= actual 0)))]
     (if matches
         (do
           (set! pass-count (+ pass-count 1))

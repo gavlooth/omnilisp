@@ -5,7 +5,6 @@
 ;; ============================================================
 
 (define [syntax when]
-; REVIEWED:SYNTAX
   [(when test body ...)
    (if test (do body ...) nil])
 
@@ -39,29 +38,7 @@
 
 
 ;; ============================================================
-;; Test 3: 'cond' macro with literals
-;; ============================================================
-
-(define [syntax cond]
-  [literals else]
-  [(cond (else result)) result]
-  [(cond (test result))
-   (if test result nil)]
-  [(cond (test result) clause ...)
-   (if test result (cond clause ...))])
-
-(println (cond
-  ((= 1 2) "one equals two")
-  ((= 2 2) "two equals two")
-  (else "fallback")))
-
-(println (cond
-  ((= 1 1) "first match")
-  (else "should not reach")))
-
-
-;; ============================================================
-;; Test 4: 'let1' - single binding let
+;; Test 3: 'let1' - single binding let
 ;; ============================================================
 
 (define [syntax let1]
@@ -69,7 +46,6 @@
    (let [name value] body ...)])
 
 (let1 (x 42)
-  ;; REVIEWED:SYNTAX
   (println (str "let1: x = " x)))
 
 
@@ -83,7 +59,6 @@
      (set-box! a (unbox b))
      (set-box! b temp))])
 
-; REVIEWED:SYNTAX
 (define box1 (box 10))
 (define box2 (box 20))
 (println (str "Before swap: box1=" (unbox box1) " box2=" (unbox box2)))
@@ -110,10 +85,8 @@
 ;; Test 7: 'while' loop macro
 ;; ============================================================
 
-; REVIEWED:SYNTAX
 (define [syntax while]
   [(while test body ...)
-; REVIEWED:SYNTAX
    (letrec [loop (fn []
                    (when test
                      body ...

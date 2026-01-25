@@ -79,10 +79,67 @@ static RemapStats g_remap_stats = {0};
 #include "transmigrate.h"
 #include "region_metadata.h"  /* CTRR: TypeMetadata, type_metadata_get, TypeID */
 #include "scratch_arena.h"       /* Issue 15 P0: Scratch arena API for temporary allocations */
+#include "../internal_types.h"   /* Array, Dict layouts for inline fast-paths */
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 #include "../../include/omni.h"
+
+/* ============================================================================
+ * TRANSMIGRATION OPTIMIZATION: Feature Flags
+ * ============================================================================
+ * These flags control inline fast-paths for common types during transmigration.
+ * Inlining avoids metadata dispatch overhead for hot types like pairs, closures,
+ * and small arrays that dominate thunky iterator patterns.
+ */
+
+#ifndef OMNI_TRANSMIGRATE_INLINE_PAIR
+#define OMNI_TRANSMIGRATE_INLINE_PAIR 1      /* Inline pair clone (highest impact) */
+#endif
+
+#ifndef OMNI_TRANSMIGRATE_INLINE_CLOSURE
+#define OMNI_TRANSMIGRATE_INLINE_CLOSURE 1   /* Inline small closure clone */
+#endif
+
+#ifndef OMNI_TRANSMIGRATE_INLINE_ARRAY
+#define OMNI_TRANSMIGRATE_INLINE_ARRAY 1     /* Inline small array clone */
+#endif
+
+/* Threshold for inline closure optimization (max captures) */
+#ifndef OMNI_TRANSMIGRATE_INLINE_CLOSURE_MAX_CAPTURES
+#define OMNI_TRANSMIGRATE_INLINE_CLOSURE_MAX_CAPTURES 4
+#endif
+
+/* Threshold for inline array optimization (max elements) */
+#ifndef OMNI_TRANSMIGRATE_INLINE_ARRAY_MAX_LEN
+#define OMNI_TRANSMIGRATE_INLINE_ARRAY_MAX_LEN 16
+#endif
+
+/* ============================================================================
+ * TRANSMIGRATION OPTIMIZATION: Cache Prefetching
+ * ============================================================================
+ * Prefetch infrastructure for improved cache behavior during graph traversal.
+ * Uses compiler builtins when available, falls back to no-op otherwise.
+ */
+
+#ifdef __GNUC__
+/* GCC/Clang: Use builtin prefetch
+ * __builtin_prefetch(addr, rw, locality)
+ *   rw: 0 = read, 1 = write
+ *   locality: 0 = no temporal locality, 3 = high temporal locality
+ */
+#define OMNI_PREFETCH_READ(addr) __builtin_prefetch((addr), 0, 3)
+#define OMNI_PREFETCH_WRITE(addr) __builtin_prefetch((addr), 1, 3)
+#else
+/* Fallback: no-op prefetch */
+#define OMNI_PREFETCH_READ(addr) ((void)(addr))
+#define OMNI_PREFETCH_WRITE(addr) ((void)(addr))
+#endif
+
+/* Number of worklist items to prefetch ahead */
+#ifndef OMNI_PREFETCH_LOOKAHEAD
+#define OMNI_PREFETCH_LOOKAHEAD 4
+#endif
 
 /* ============================================================================
  * PHASE 35 (P0): Dense Forwarding-Table Remap
@@ -979,6 +1036,19 @@ void* transmigrate(void* root, Region* src_region, Region* dest_region) {
         WorkItem* current = worklist;
         worklist = worklist->next;
 
+        /* OPTIMIZATION: Prefetch upcoming worklist items
+         * Prefetch the next PREFETCH_LOOKAHEAD items to hide memory latency.
+         * This improves cache behavior during deep graph traversal.
+         */
+        {
+            WorkItem* pf = worklist;
+            for (int pf_i = 0; pf_i < OMNI_PREFETCH_LOOKAHEAD && pf; pf_i++, pf = pf->next) {
+                if (pf->old_ptr && !IS_IMMEDIATE(pf->old_ptr)) {
+                    OMNI_PREFETCH_READ(pf->old_ptr);
+                }
+            }
+        }
+
         Obj* old_obj = current->old_ptr;
 
         // Handle immediate values (integers, etc. masked in pointer)
@@ -1026,8 +1096,210 @@ void* transmigrate(void* root, Region* src_region, Region* dest_region) {
         }
 
         /* ========================================================================
+         * INLINE FAST-PATHS FOR COMMON TYPES
+         * ========================================================================
+         * These fast-paths avoid metadata dispatch overhead for hot types.
+         * They are particularly important for thunky iterator patterns.
+         */
+
+#if OMNI_TRANSMIGRATE_INLINE_PAIR
+        /* OPTIMIZATION: Inline pair clone (highest impact for iterators)
+         * Pairs are the most common type in functional code - lists, lazy sequences, etc.
+         * Inlining avoids metadata lookup and function pointer dispatch.
+         */
+        if (old_obj->tag == TAG_PAIR) {
+            /* Fast path: inline pair clone */
+            Obj* new_obj = pair_batch_alloc(&trace_ctx.pair_batch, dest_region);
+            if (!new_obj) new_obj = (Obj*)region_alloc(dest_region, sizeof(Obj));
+
+            if (!new_obj) {
+                fprintf(stderr, "[FATAL] transmigrate: inline pair alloc failed\n");
+                abort();
+            }
+
+            new_obj->tag = TAG_PAIR;
+            new_obj->mark = 0;
+            new_obj->generation = 0;
+            new_obj->tethered = 0;
+            new_obj->owner_region = dest_region;
+            new_obj->a = old_obj->a;
+            new_obj->b = old_obj->b;
+            new_obj->is_pair = 1;
+
+            *current->slot = new_obj;
+            bitmap_set(bitmap, old_obj);
+            clones_created++;
+
+            /* Inline trace - push children to worklist */
+            if (!IS_IMMEDIATE(new_obj->a)) {
+                WorkItem* item = arena_alloc(&tmp_arena, sizeof(WorkItem));
+                item->old_ptr = new_obj->a;
+                item->slot = &new_obj->a;
+                item->next = worklist;
+                worklist = item;
+            }
+            if (!IS_IMMEDIATE(new_obj->b)) {
+                WorkItem* item = arena_alloc(&tmp_arena, sizeof(WorkItem));
+                item->old_ptr = new_obj->b;
+                item->slot = &new_obj->b;
+                item->next = worklist;
+                worklist = item;
+            }
+
+            /* Store remap */
+            if (forward) {
+                fwd_put(forward, bitmap, old_obj, new_obj);
+            } else {
+                remap_put(&remap_struct, &tmp_arena, old_obj, new_obj);
+            }
+            continue;
+        }
+#endif /* OMNI_TRANSMIGRATE_INLINE_PAIR */
+
+#if OMNI_TRANSMIGRATE_INLINE_CLOSURE
+        /* OPTIMIZATION: Inline small closure clone
+         * Small closures (<=4 captures) are common in iterator patterns.
+         * Inlining avoids metadata dispatch for these hot cases.
+         */
+        if (old_obj->tag == TAG_CLOSURE && old_obj->ptr) {
+            Closure* old_c = (Closure*)old_obj->ptr;
+            if (old_c->capture_count <= OMNI_TRANSMIGRATE_INLINE_CLOSURE_MAX_CAPTURES) {
+                /* Inline clone for small closures */
+                Obj* new_obj = (Obj*)region_alloc(dest_region, sizeof(Obj));
+                if (!new_obj) {
+                    fprintf(stderr, "[FATAL] transmigrate: inline closure alloc failed\n");
+                    abort();
+                }
+
+                new_obj->tag = TAG_CLOSURE;
+                new_obj->mark = 0;
+                new_obj->generation = 0;
+                new_obj->tethered = 0;
+                new_obj->owner_region = dest_region;
+
+                Closure* new_c = (Closure*)region_alloc(dest_region, sizeof(Closure));
+                if (!new_c) {
+                    fprintf(stderr, "[FATAL] transmigrate: inline closure struct alloc failed\n");
+                    abort();
+                }
+
+                *new_c = *old_c;
+                new_c->captures = NULL;
+
+                if (old_c->capture_count > 0) {
+                    new_c->captures = (Obj**)region_alloc(dest_region,
+                        sizeof(Obj*) * old_c->capture_count);
+                    if (!new_c->captures) {
+                        fprintf(stderr, "[FATAL] transmigrate: inline closure captures alloc failed\n");
+                        abort();
+                    }
+                    for (int i = 0; i < old_c->capture_count; i++) {
+                        new_c->captures[i] = old_c->captures[i];
+                        /* Inline trace - push captured values to worklist */
+                        if (!IS_IMMEDIATE(old_c->captures[i])) {
+                            WorkItem* item = arena_alloc(&tmp_arena, sizeof(WorkItem));
+                            item->old_ptr = old_c->captures[i];
+                            item->slot = &new_c->captures[i];
+                            item->next = worklist;
+                            worklist = item;
+                        }
+                    }
+                }
+
+                new_obj->ptr = new_c;
+                *current->slot = new_obj;
+                bitmap_set(bitmap, old_obj);
+                clones_created++;
+
+                /* Store remap */
+                if (forward) {
+                    fwd_put(forward, bitmap, old_obj, new_obj);
+                } else {
+                    remap_put(&remap_struct, &tmp_arena, old_obj, new_obj);
+                }
+                continue;
+            }
+        }
+#endif /* OMNI_TRANSMIGRATE_INLINE_CLOSURE */
+
+#if OMNI_TRANSMIGRATE_INLINE_ARRAY
+        /* OPTIMIZATION: Inline small array clone
+         * Small arrays (<=16 elements) are common in iterator state.
+         * Inlining avoids metadata dispatch for these hot cases.
+         */
+        if (old_obj->tag == TAG_ARRAY && old_obj->ptr) {
+            Array* old_a = (Array*)old_obj->ptr;
+            if (old_a->len <= OMNI_TRANSMIGRATE_INLINE_ARRAY_MAX_LEN) {
+                /* Inline clone for small arrays */
+                Obj* new_obj = (Obj*)region_alloc(dest_region, sizeof(Obj));
+                if (!new_obj) {
+                    fprintf(stderr, "[FATAL] transmigrate: inline array alloc failed\n");
+                    abort();
+                }
+
+                new_obj->tag = TAG_ARRAY;
+                new_obj->mark = 0;
+                new_obj->generation = 0;
+                new_obj->tethered = 0;
+                new_obj->owner_region = dest_region;
+
+                Array* new_a = (Array*)region_alloc(dest_region, sizeof(Array));
+                if (!new_a) {
+                    fprintf(stderr, "[FATAL] transmigrate: inline array struct alloc failed\n");
+                    abort();
+                }
+
+                *new_a = *old_a;
+                new_a->data = NULL;
+
+                if (old_a->capacity > 0) {
+                    new_a->data = (Obj**)region_alloc(dest_region, sizeof(Obj*) * old_a->capacity);
+                    if (!new_a->data) {
+                        fprintf(stderr, "[FATAL] transmigrate: inline array data alloc failed\n");
+                        abort();
+                    }
+                    memcpy(new_a->data, old_a->data, sizeof(Obj*) * old_a->len);
+
+                    /* Inline trace - push array elements to worklist */
+                    if (old_a->has_boxed_elems) {
+                        for (int i = 0; i < old_a->len; i++) {
+                            /* Prefetch ahead for better cache behavior */
+                            if (i + 4 < old_a->len && !IS_IMMEDIATE(old_a->data[i + 4])) {
+                                OMNI_PREFETCH_READ(old_a->data[i + 4]);
+                            }
+                            if (!IS_IMMEDIATE(old_a->data[i])) {
+                                WorkItem* item = arena_alloc(&tmp_arena, sizeof(WorkItem));
+                                item->old_ptr = old_a->data[i];
+                                item->slot = &new_a->data[i];
+                                item->next = worklist;
+                                worklist = item;
+                            }
+                        }
+                    }
+                }
+
+                new_obj->ptr = new_a;
+                *current->slot = new_obj;
+                bitmap_set(bitmap, old_obj);
+                clones_created++;
+
+                /* Store remap */
+                if (forward) {
+                    fwd_put(forward, bitmap, old_obj, new_obj);
+                } else {
+                    remap_put(&remap_struct, &tmp_arena, old_obj, new_obj);
+                }
+                continue;
+            }
+        }
+#endif /* OMNI_TRANSMIGRATE_INLINE_ARRAY */
+
+        /* ========================================================================
          * METADATA-DRIVEN TRANSMIGRATION (CTRR compliant)
-         * ======================================================================== */
+         * ========================================================================
+         * Fallback to metadata-driven clone for types without inline fast-paths
+         * or for objects that exceed inline thresholds.
+         */
 
         /* Look up metadata for this object's type */
         const TypeMetadata* meta = meta_for_obj(old_obj, src_region);

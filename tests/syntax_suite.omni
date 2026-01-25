@@ -25,7 +25,6 @@
 ;; Lambdas
 (println "Lambda: " ((lambda [x] (* x x)) 5))
 (println "fn shorthand: " ((fn [x] (* x x)) 5))
-; REVIEWED:SYNTAX
 (println "-> shorthand: " ((-> [x] [y] (+ x y)) 1 2)) 
 
 ;; 2.2 Local Bindings 

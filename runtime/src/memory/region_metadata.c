@@ -295,6 +295,15 @@ static Obj* clone_array(Obj* old_obj, Region* dest, void* tmp_ctx) {
     return new_obj;
 }
 
+/* OPTIMIZATION: Prefetch macro for array trace (Opt 2C)
+ * Uses compiler builtin when available for cache prefetching.
+ */
+#ifdef __GNUC__
+#define TRACE_PREFETCH_READ(addr) __builtin_prefetch((addr), 0, 3)
+#else
+#define TRACE_PREFETCH_READ(addr) ((void)(addr))
+#endif
+
 static void trace_array(Obj* obj, OmniVisitSlotFn visit_slot, void* ctx) {
     if (obj->ptr) {
         Array* a = (Array*)obj->ptr;
@@ -315,6 +324,14 @@ static void trace_array(Obj* obj, OmniVisitSlotFn visit_slot, void* ctx) {
          * This optimization reduces overhead for immediate-heavy arrays by ~10-25x.
          */
         for (int i = 0; i < a->len; i++) {
+            /* OPTIMIZATION (Opt 2C): Prefetch 4 elements ahead
+             * This hides memory latency during array traversal by prefetching
+             * upcoming elements into the cache before they are accessed.
+             */
+            if (i + 4 < a->len && !IS_IMMEDIATE(a->data[i + 4])) {
+                TRACE_PREFETCH_READ(a->data[i + 4]);
+            }
+
             Obj* v = a->data[i];
             /* Skip immediates - they don't need pointer rewriting */
             if (IS_IMMEDIATE(v)) continue;

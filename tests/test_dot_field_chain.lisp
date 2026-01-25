@@ -77,7 +77,6 @@
 
 ;; Create structure mixing dicts and arrays
 ;; #{:data [#(:value "hello")]}
-; REVIEWED:SYNTAX
 (define mixed-struct #{:data [#(:value "hello")]})
 
 ;; Chain: dict -> array index 0 -> dict -> :value

@@ -41,11 +41,13 @@
 ; Helper to check if comparison result has correct sign
 ; Returns true if actual and expected have same sign (both negative, zero, or positive)
 (define check-sign [expected-sign] [actual]
-  (cond
-    [(= expected-sign 0) (= actual 0)]
-    [(< expected-sign 0) (< actual 0)]
-    [(> expected-sign 0) (> actual 0)]
-    [false]))
+  (if (= expected-sign 0)
+      (= actual 0)
+      (if (< expected-sign 0)
+          (< actual 0)
+          (if (> expected-sign 0)
+              (> actual 0)
+              false))))
 
 (define test-sign [name] [expected-sign] [actual]
   (set! test-count (+ test-count 1))

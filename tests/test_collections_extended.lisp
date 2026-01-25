@@ -53,15 +53,14 @@
         (print "  Expected: true")
         (print "  Got: false"))))
 
-;; REVIEWED:SYNTAX
 ;; Helper to check if two lists are equal
 (define list-equal? [l1] [l2]
-  (cond
-    [(and (not l1) (not l2)) true]
-    [(or (not l1) (not l2)) false]
-    [else
-     (and (= (car l1) (car l2))
-          (list-equal? (cdr l1) (cdr l2)))]))
+  (if (and (not l1) (not l2))
+      true
+      (if (or (not l1) (not l2))
+          false
+          (and (= (car l1) (car l2))
+               (list-equal? (cdr l1) (cdr l2))))))
 
 ;; ============================================================
 ;; Test 1: group-by function
@@ -70,7 +69,6 @@
 (print "")
 (print "=== Test 1: group-by Function ===")
 
-; REVIEWED:SYNTAX
 ;; Test 1.1: Group numbers by even/odd
 (do
   (define nums (list 1 2 3 4 5 6))

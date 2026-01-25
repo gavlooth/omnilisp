@@ -13,7 +13,7 @@
 
 (define test-name [name] [expected] [actual]
   (set! test-count (+ test-count 1))
-  (let ((tolerance 1e-10))
+  (let [tolerance 1e-10]
     ; For floats, check if values are close enough
     (if (or (and (equal? expected actual))
             (and (number? expected)
@@ -31,7 +31,7 @@
 
 (define test-approx [name] [expected] [actual]
   (set! test-count (+ test-count 1))
-  (let ((tolerance 1e-10))
+  (let [tolerance 1e-10]
     (if (and (number? expected)
              (number? actual)
              (<= (abs (- expected actual)) tolerance))

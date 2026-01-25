@@ -316,4 +316,87 @@ void omni_set_alloc_callback(OmniAllocCallback callback);
 /* Set region lifecycle callback (NULL to disable) */
 void omni_set_region_callback(OmniRegionCallback callback);
 
+/* ============================================================
+ * TRANSMIGRATION OPTIMIZATION: Profile-Guided Region Placement
+ * ============================================================
+ *
+ * Phase 4 (Opt 4A-4C): Allocation site profiling for profile-guided
+ * region placement decisions. Tracks escape frequency and transmigration
+ * patterns to inform the compiler's allocation strategy.
+ *
+ * Environment variables:
+ * - OMNILISP_PROFILE_ENABLED=1: Enable profiling collection
+ * - OMNILISP_PROFILE_FILE=profile.dat: Load/save profile data
+ */
+
+#define OMNI_PROFILE_MAX_SITES 1024  /* Maximum allocation sites to track */
+
+/* Recommended region placement based on profiling */
+typedef enum ProfileRecommendedRegion {
+    PROFILE_REGION_LOCAL = 0,    /* Allocate in local (function) region */
+    PROFILE_REGION_CALLER = 1,   /* Allocate in caller's region (escapes often) */
+    PROFILE_REGION_GLOBAL = 2    /* Allocate in global region (always escapes) */
+} ProfileRecommendedRegion;
+
+/* Allocation site profile data */
+typedef struct AllocationSiteProfile {
+    uint64_t site_id;                /* Hash of source location (file:line or symbol) */
+    size_t total_allocations;        /* Total allocations at this site */
+    size_t escape_count;             /* Number of escapes detected */
+    size_t transmigrate_count;       /* Number of transmigrations */
+    float escape_ratio;              /* Computed: escape_count / total_allocations */
+    ProfileRecommendedRegion recommended_region;  /* Recommended placement */
+} AllocationSiteProfile;
+
+/* Global profile feedback data */
+typedef struct ProfileFeedback {
+    AllocationSiteProfile* sites;    /* Array of allocation site profiles */
+    size_t site_count;               /* Number of sites tracked */
+    size_t site_capacity;            /* Capacity of sites array */
+    bool is_enabled;                 /* Whether profiling is active */
+    bool data_loaded;                /* Whether profile data was loaded from file */
+} ProfileFeedback;
+
+/* Global profile feedback (defined in runtime/src/profile.c or runtime.c) */
+extern ProfileFeedback g_profile_feedback;
+
+/* Initialize profile feedback system (call during runtime init) */
+void omni_profile_init(void);
+
+/* Record an allocation at the given site */
+void omni_profile_allocation(uint64_t site_id, struct Region* region);
+
+/* Record an escape event (object escapes its original region) */
+void omni_profile_escape(uint64_t site_id);
+
+/* Record a transmigration event */
+void omni_profile_transmigrate(uint64_t site_id);
+
+/* Save profile data to file */
+void omni_save_profile_data(const char* filename);
+
+/* Load profile data from file */
+void omni_load_profile_data(const char* filename);
+
+/* Query recommended region for an allocation site */
+ProfileRecommendedRegion omni_profile_get_recommendation(uint64_t site_id);
+
+/* Compute escape ratios and update recommendations (call periodically) */
+void omni_profile_update_recommendations(void);
+
+/* Generate hash for allocation site from file/line */
+static inline uint64_t omni_profile_site_hash(const char* file, int line) {
+    /* FNV-1a hash */
+    uint64_t hash = 14695981039346656037ULL;
+    if (file) {
+        while (*file) {
+            hash ^= (uint64_t)(unsigned char)*file++;
+            hash *= 1099511628211ULL;
+        }
+    }
+    hash ^= (uint64_t)line;
+    hash *= 1099511628211ULL;
+    return hash;
+}
+
 #endif /* OMNI_DEBUG_H */

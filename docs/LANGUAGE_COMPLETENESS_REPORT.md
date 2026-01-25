@@ -10,7 +10,7 @@ OmniLisp core language is **~88% complete** (macros not yet implemented). Standa
 
 | Feature Area | Status | % | Notes |
 | :--- | :--- | :--- | :--- |
-| **Control Flow** | ✅ Complete | 100% | `match`, `if`, `cond`, `do`, `loop/recur` |
+| **Control Flow** | ✅ Complete | 100% | `match`, `if`, `do`, `loop/recur` |
 | **Bindings** | ✅ Complete | 100% | `define`, `let`, `set!`, destructuring |
 | **Functions** | ✅ Complete | 100% | `lambda`, multi-arity, closures, `\|>` |
 | **Data Types** | ✅ Complete | 100% | Lists, Arrays, Dicts, Sets, DateTime |

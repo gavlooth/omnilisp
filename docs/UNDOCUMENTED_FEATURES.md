@@ -63,15 +63,6 @@ Using OmniLisp's unified `define` with slot syntax:
    (if test (do body ...) nil)])
 
 ;; Macro with literal keywords
-;; 'else' matches the symbol literally, not as a pattern variable
-(define [syntax cond]
-  [literals else]
-  [(cond (else result))
-   result]
-  [(cond (test result) clause ...)
-   (if test result (cond clause ...))])
-
-;; Multiple literals
 (define [syntax case]
   [literals else =>]
   [(case val (else result))

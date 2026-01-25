@@ -680,4 +680,4 @@ void* region_alloc(Region* r, size_t size) {
 
 - `runtime/docs/REGION_RC_MODEL.md` - Region-RC semantics and external pointers
 - `runtime/docs/SMR_FOR_RUNTIME_STRUCTURES.md` - SMR for internal runtime structures
-- `docs/CTRR.md` - CTRR contract and Region Closure Property
+- `docs/REGION_RC.md` - CTRR contract and Region Closure Property

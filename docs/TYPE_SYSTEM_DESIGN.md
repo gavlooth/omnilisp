@@ -245,10 +245,11 @@ Optimization: Use lattice structure, memoization, early termination
 (defun compute-overlap (sig1 sig2 lattice)
   (let ((t1 (param-type sig1 0))
         (t2 (param-type sig2 0)))
-    (cond
-      ((subtype? t1 t2 lattice) t1)    ; T1 more specific
-      ((subtype? t2 t1 lattice) t2)    ; T2 more specific
-      (t (find-join t1 t2 lattice))))) ; Find LUB
+    (if (subtype? t1 t2 lattice)
+        t1                              ; T1 more specific
+        (if (subtype? t2 t1 lattice)
+            t2                          ; T2 more specific
+            (find-join t1 t2 lattice))))) ; Find LUB
 
 ;; Check if two methods are ambiguously overlapping
 (defun ambiguous-p (m1 m2 lattice)

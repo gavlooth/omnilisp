@@ -3,7 +3,7 @@
 **Status:** Compiler improvement roadmap for CTRR  
 **Applies to:** `csrc/analysis/`, `csrc/codegen/`  
 **Last Updated:** 2026-01-10  
-**Related:** `docs/CTRR.md` (CTRR contract), `runtime/docs/REGION_RC_MODEL.md` (Region-RC model), `runtime/docs/REGION_ACCOUNTING.md` (accounting for heuristic tuning)
+**Related:** `docs/REGION_RC.md` (CTRR contract), `runtime/docs/REGION_RC_MODEL.md` (Region-RC model), `runtime/docs/REGION_ACCOUNTING.md` (accounting for heuristic tuning)
 
 ---
 
@@ -668,7 +668,7 @@ region_tether_end(arg_region);  // Release borrow
 
 ## 10) References
 
-- `docs/CTRR.md` - CTRR contract and Region Closure Property
+- `docs/REGION_RC.md` - CTRR contract and Region Closure Property
 - `runtime/docs/REGION_RC_MODEL.md` - Region-RC model and external pointers
 - `runtime/docs/REGION_ACCOUNTING.md` - Region accounting for heuristic tuning
 - *Better Static Memory Management* (Aiken/Fähndrich/Levien, PLDI 1995): https://digicoll.lib.berkeley.edu/record/139069

@@ -564,7 +564,7 @@ Algebraic effects provide:
 2. **Resumption**: Handlers can resume computation (impossible with exceptions)
 3. **Composability**: Multiple effects compose without nested try blocks
 4. **Explicit Control Flow**: No hidden control flow jumps
-5. **Region Compatibility**: Works naturally with CTRR memory management
+5. **Region Compatibility**: Works naturally with Region-RC memory management
 
 ---
 

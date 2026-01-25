@@ -297,7 +297,6 @@
 ;; Create array with numbers
 (define nums [10 20 30 40 50])
 
-;; REVIEWED:SYNTAX
 ;; Access by string index (if implemented)
 (define idx-0 (.0 nums))
 (define idx-2 (.2 nums))

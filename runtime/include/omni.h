@@ -169,11 +169,19 @@ struct MethodInfo {
  * Generic - Multi-dispatch generic function.
  * Contains a method table sorted by specificity.
  * Stored in an Obj with tag=TAG_GENERIC, using the obj->a field for the generic pointer.
+ *
+ * Optimization: dispatch_cache provides O(1) lookup for previously-resolved type
+ * signatures. by_arity provides O(1) arity filtering.
  */
 typedef struct Generic {
     const char* name;       /* Generic function name */
     MethodInfo* methods;    /* Method table (sorted by specificity) */
     int method_count;       /* Total number of methods */
+    /* Optimization: Dispatch cache (HashMap*) for O(1) cached lookups */
+    void* dispatch_cache;   /* type_sig_hash -> MethodInfo* */
+    /* Optimization: Methods indexed by arity for O(1) arity filtering */
+    MethodInfo** by_arity;  /* Array indexed by arity */
+    int max_arity;          /* Maximum arity in by_arity array */
 } Generic;
 
 /*

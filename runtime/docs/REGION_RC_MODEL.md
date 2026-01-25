@@ -3,7 +3,7 @@
 **Status:** Normative specification for Region-RC semantics  
 **Applies to:** `runtime/src/memory/region_core.h`, `runtime/src/memory/region_core.c`, compiler code generation  
 **Last Updated:** 2026-01-10  
-**Related:** `docs/CTRR.md` (Region Closure Property), `runtime/docs/CTRR_TRANSMIGRATION.md` (transmigration contract)
+**Related:** `docs/REGION_RC.md` (Region Closure Property), `runtime/docs/CTRR_TRANSMIGRATION.md` (transmigration contract)
 
 ---
 
@@ -938,7 +938,7 @@ Can we implement true ownership transfer for cross-thread channel send?
 
 ## 12) References
 
-- `docs/CTRR.md` - CTRR contract and Region Closure Property
+- `docs/REGION_RC.md` - CTRR contract and Region Closure Property
 - `runtime/docs/CTRR_TRANSMIGRATION.md` - Transmigration implementation contract
 - `runtime/docs/ARCHITECTURE.md` - Overall runtime architecture (to be updated with link to this document)
 - RC Dialect: https://www.barnowl.org/research/rc/index.html

@@ -5,11 +5,11 @@ Omnilisp is a modern Lisp dialect that synthesizes the best features of Scheme, 
 See also:
 - `docs/SYNTAX.md` for syntax examples and conventions.
 - `language_reference.md` for language-level reference notes.
-- `docs/CTRR.md` for the CTRR memory model contract.
+- `docs/REGION_RC.md` for the Region-RC memory model contract.
 
 ## Implemented (C Implementation)
 *   **Toolchain:** Unified C99 pipeline including Pika parser, static analysis, and code generator.
-*   **Memory Management:** CTRR (Compile-Time Region Reclamation) - compiler-scheduled region lifetimes, escape repair via transmigration, and borrow pinning via tethering (no stop-the-world GC).
+*   **Memory Management:** Region-RC - scope-based regions with reference counting at region granularity (no stop-the-world GC).
 *   **Core syntax:** lists `(...)`, arrays `[...]`, types `{}`.
 *   **Special forms:** `define`, `lambda`, `let`, `if`, `match`, `handle`/`perform`.
 *   **Primitives:** `+ - * / %`, `< > <= >= =`, `cons car cdr empty?`, `print println`, `str`, `map filter reduce`.

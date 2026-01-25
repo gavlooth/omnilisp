@@ -1,6 +1,6 @@
-# Memory Model Technical Reference (CTRR + Region Control Blocks)
+# Memory Model Technical Reference (Region-RC)
 
-> **Normative spec:** `docs/CTRR.md`  
+> **Normative spec:** `docs/REGION_RC.md`  
 > **Transmigration spec (detailed):** `runtime/docs/CTRR_TRANSMIGRATION.md`
 
 ## 1. Object Layout

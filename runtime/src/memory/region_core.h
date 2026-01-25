@@ -16,6 +16,53 @@
 /* Issue 2 P5: Merge threshold for store barrier auto-repair */
 #define REGION_MERGE_THRESHOLD_BYTES 4096  // 4KB default threshold for choosing merge vs transmigrate
 
+/* ============================================================================
+ * TRANSMIGRATION OPTIMIZATION: Configurable and Adaptive Threshold
+ * ============================================================================
+ * Optimization 1: Tune Size Threshold
+ * - Runtime-configurable merge threshold via TransmigrateConfig
+ * - Adaptive threshold based on operation history
+ * - Environment variable override: OMNILISP_MERGE_THRESHOLD
+ */
+
+#define OMNI_TRANSMIGRATE_ADAPTIVE_WINDOW 32  /* Ring buffer size for adaptive tuning */
+#define OMNI_TRANSMIGRATE_MIN_THRESHOLD 1024   /* Minimum threshold (1KB) */
+#define OMNI_TRANSMIGRATE_MAX_THRESHOLD 16384  /* Maximum threshold (16KB) */
+#define OMNI_TRANSMIGRATE_DEFAULT_THRESHOLD REGION_MERGE_THRESHOLD_BYTES
+
+typedef struct TransmigrateConfig {
+    size_t merge_threshold_bytes;        /* Current threshold (default: 4096) */
+    size_t adaptive_window_size;         /* Samples for adaptive tuning (default: 32) */
+    float merge_success_ratio_target;    /* Target ratio for successful merges (default: 0.8) */
+    bool adaptive_enabled;               /* Enable adaptive threshold tuning */
+} TransmigrateConfig;
+
+/* Adaptive statistics for threshold tuning */
+typedef struct TransmigrateAdaptiveStats {
+    size_t recent_sizes[OMNI_TRANSMIGRATE_ADAPTIVE_WINDOW];  /* Ring buffer of operation sizes */
+    uint32_t idx;                         /* Current index in ring buffer */
+    uint32_t count;                       /* Number of samples collected */
+    size_t current_threshold;             /* Current computed threshold */
+    uint64_t adaptation_epoch;            /* Epoch counter for adaptation cycles */
+    uint64_t ops_since_adaptation;        /* Operations since last adaptation */
+} TransmigrateAdaptiveStats;
+
+/* Global transmigrate configuration (defined in region_core.c) */
+extern TransmigrateConfig g_transmigrate_config;
+extern TransmigrateAdaptiveStats g_transmigrate_adaptive_stats;
+
+/* Initialize transmigrate configuration (call during runtime init) */
+void omni_transmigrate_config_init(void);
+
+/* Set/get merge threshold */
+void omni_set_merge_threshold(size_t bytes);
+size_t omni_get_merge_threshold(void);
+
+/* Adaptive threshold API */
+void omni_transmigrate_record_size(size_t bytes, bool was_merge);
+void omni_transmigrate_adapt_threshold(void);
+void omni_transmigrate_set_adaptive(bool enabled);
+
 typedef struct {
     char buffer[REGION_INLINE_BUF_SIZE];  // Inline storage for small objects
     size_t offset;                        // Current bump pointer offset

@@ -142,6 +142,6 @@ All 397 existing runtime tests pass with no regressions.
 ## References
 
 - Issue 10 P0: IPGE Generation & Region Realloc
-- `runtime/docs/CTRR.md` - Region memory model
+- `docs/REGION_RC.md` - Region-RC memory model
 - `runtime/src/memory/region_core.c` - Region lifecycle (lines 123-124, 182-183)
 - `runtime/src/memory/region_pointer.h` - Pointer masking and generation checking

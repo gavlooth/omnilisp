@@ -295,7 +295,6 @@
   #{:users [#{:name "Alice" :id 1}] :count 1}
   (json-parse "{\"users\": [{\"name\": \"Alice\", \"id\": 1}], \"count\": 1}"))
 
-;; REVIEWED:SYNTAX
 ;; Test 34: Complex real-world structure
 (test-dict "parse complex real-world structure"
   #{:name "Test" :version "1.0"

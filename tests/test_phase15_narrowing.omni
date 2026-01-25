@@ -4,7 +4,6 @@
 ;; Test 1: Simple non-escaping variable in if-then branch
 ;; Variable x is defined in the then branch and doesn't escape
 ;; Should be stack-allocated
-; REVIEWED:SYNTAX
 (define test1-simple-non-escaping
   (lambda (cond)
     (if cond
@@ -15,7 +14,6 @@
 ;; Test 2: Variable that escapes to parent scope
 ;; Variable y is defined in the then branch and returned
 ;; Should be region-allocated (escapes via RETURN)
-; REVIEWED:SYNTAX
 (define test2-escaping-return
   (lambda (cond)
     (if cond

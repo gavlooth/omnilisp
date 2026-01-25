@@ -279,7 +279,6 @@
     (print "PASS: rest on empty list returns ()")
     (print "FAIL: rest on empty list did not return ()"))
 
-; REVIEWED:SYNTAX
 ;; Test 33: pipe with identity
 (test-num "pipe identity"
   42

@@ -5,6 +5,31 @@
 #include "../../include/omni_atomic.h"  /* Issue 4 P3: Centralized atomic operations */
 #include "../../include/omni_debug.h"   /* Phase 4.4: Profiling infrastructure */
 
+/* ============================================================================
+ * TRANSMIGRATION OPTIMIZATION: Configurable and Adaptive Threshold
+ * ============================================================================ */
+
+/* Global transmigrate configuration with sensible defaults */
+TransmigrateConfig g_transmigrate_config = {
+    .merge_threshold_bytes = OMNI_TRANSMIGRATE_DEFAULT_THRESHOLD,
+    .adaptive_window_size = OMNI_TRANSMIGRATE_ADAPTIVE_WINDOW,
+    .merge_success_ratio_target = 0.8f,
+    .adaptive_enabled = false
+};
+
+/* Adaptive statistics for threshold tuning */
+TransmigrateAdaptiveStats g_transmigrate_adaptive_stats = {
+    .recent_sizes = {0},
+    .idx = 0,
+    .count = 0,
+    .current_threshold = OMNI_TRANSMIGRATE_DEFAULT_THRESHOLD,
+    .adaptation_epoch = 0,
+    .ops_since_adaptation = 0
+};
+
+/* Flag to track if config has been initialized */
+static bool g_transmigrate_config_initialized = false;
+
 /* Phase 4.4: Forward declarations for profiling */
 void _omni_stats_region_created(void);
 void _omni_stats_region_destroyed(size_t bytes_freed);
@@ -631,19 +656,180 @@ bool region_merge_permitted(const Region* src, const Region* dst) {
     return true;
 }
 
+/* ============================================================================
+ * TRANSMIGRATION OPTIMIZATION: Configurable Threshold Implementation
+ * ============================================================================ */
+
+/*
+ * omni_transmigrate_config_init - Initialize transmigrate configuration
+ *
+ * Called during runtime initialization to set up threshold based on
+ * environment variables. Supports:
+ * - OMNILISP_MERGE_THRESHOLD: Override merge threshold in bytes
+ * - OMNILISP_ADAPTIVE_THRESHOLD: Enable adaptive threshold tuning (0 or 1)
+ */
+void omni_transmigrate_config_init(void) {
+    if (g_transmigrate_config_initialized) return;
+    g_transmigrate_config_initialized = true;
+
+    /* Check for environment variable override */
+    const char* env_threshold = getenv("OMNILISP_MERGE_THRESHOLD");
+    if (env_threshold) {
+        size_t threshold = (size_t)atol(env_threshold);
+        if (threshold >= OMNI_TRANSMIGRATE_MIN_THRESHOLD &&
+            threshold <= OMNI_TRANSMIGRATE_MAX_THRESHOLD) {
+            g_transmigrate_config.merge_threshold_bytes = threshold;
+            g_transmigrate_adaptive_stats.current_threshold = threshold;
+        }
+    }
+
+    /* Check for adaptive mode */
+    const char* env_adaptive = getenv("OMNILISP_ADAPTIVE_THRESHOLD");
+    if (env_adaptive && atoi(env_adaptive) == 1) {
+        g_transmigrate_config.adaptive_enabled = true;
+    }
+}
+
+/*
+ * omni_set_merge_threshold - Set the merge threshold programmatically
+ *
+ * @param bytes: New threshold in bytes (clamped to valid range)
+ */
+void omni_set_merge_threshold(size_t bytes) {
+    /* Clamp to valid range */
+    if (bytes < OMNI_TRANSMIGRATE_MIN_THRESHOLD) {
+        bytes = OMNI_TRANSMIGRATE_MIN_THRESHOLD;
+    }
+    if (bytes > OMNI_TRANSMIGRATE_MAX_THRESHOLD) {
+        bytes = OMNI_TRANSMIGRATE_MAX_THRESHOLD;
+    }
+    g_transmigrate_config.merge_threshold_bytes = bytes;
+    g_transmigrate_adaptive_stats.current_threshold = bytes;
+}
+
+/*
+ * omni_get_merge_threshold - Get the current merge threshold
+ *
+ * Returns the adaptive threshold if adaptive mode is enabled,
+ * otherwise returns the configured threshold.
+ */
+size_t omni_get_merge_threshold(void) {
+    /* Lazy initialization */
+    if (!g_transmigrate_config_initialized) {
+        omni_transmigrate_config_init();
+    }
+
+    if (g_transmigrate_config.adaptive_enabled) {
+        return g_transmigrate_adaptive_stats.current_threshold;
+    }
+    return g_transmigrate_config.merge_threshold_bytes;
+}
+
 /*
  * get_merge_threshold - Get the merge threshold for auto-repair
  *
  * Issue 2 P5: Returns the size threshold for choosing between
  * merge and transmigrate when repairing lifetime violations.
  *
- * @return: Merge threshold in bytes (default: REGION_MERGE_THRESHOLD_BYTES)
+ * @return: Merge threshold in bytes
  *
- * Note: This is currently a constant, but making it a function
- * allows future runtime tuning without changing code.
+ * Note: Now delegates to omni_get_merge_threshold() for dynamic threshold.
  */
 size_t get_merge_threshold(void) {
-    return REGION_MERGE_THRESHOLD_BYTES;
+    return omni_get_merge_threshold();
+}
+
+/*
+ * omni_transmigrate_set_adaptive - Enable or disable adaptive threshold
+ */
+void omni_transmigrate_set_adaptive(bool enabled) {
+    g_transmigrate_config.adaptive_enabled = enabled;
+}
+
+/*
+ * omni_transmigrate_record_size - Record a transmigrate/merge operation size
+ *
+ * Called after each transmigrate or merge operation to track sizes
+ * for adaptive threshold tuning.
+ *
+ * @param bytes: Size of the operation in bytes
+ * @param was_merge: True if operation was a merge (not transmigrate)
+ */
+void omni_transmigrate_record_size(size_t bytes, bool was_merge) {
+    (void)was_merge;  /* May be used for success ratio tracking in future */
+
+    if (!g_transmigrate_config.adaptive_enabled) return;
+
+    /* Record size in ring buffer */
+    uint32_t idx = g_transmigrate_adaptive_stats.idx;
+    g_transmigrate_adaptive_stats.recent_sizes[idx] = bytes;
+    g_transmigrate_adaptive_stats.idx = (idx + 1) % OMNI_TRANSMIGRATE_ADAPTIVE_WINDOW;
+
+    if (g_transmigrate_adaptive_stats.count < OMNI_TRANSMIGRATE_ADAPTIVE_WINDOW) {
+        g_transmigrate_adaptive_stats.count++;
+    }
+
+    g_transmigrate_adaptive_stats.ops_since_adaptation++;
+
+    /* Trigger adaptation every 64 operations */
+    if (g_transmigrate_adaptive_stats.ops_since_adaptation >= 64) {
+        omni_transmigrate_adapt_threshold();
+    }
+}
+
+/*
+ * Helper: Compare function for qsort (size_t comparison)
+ */
+static int compare_size_t(const void* a, const void* b) {
+    size_t sa = *(const size_t*)a;
+    size_t sb = *(const size_t*)b;
+    return (sa > sb) - (sa < sb);
+}
+
+/*
+ * omni_transmigrate_adapt_threshold - Adapt threshold based on recent history
+ *
+ * Algorithm:
+ * 1. Track last 32 transmigrate/merge sizes
+ * 2. Every 64 ops: compute P75 of successful merge sizes
+ * 3. Adjust: new_threshold = clamp(p75, 1024, 16384)
+ * 4. Hysteresis: only adjust if delta > 20%
+ */
+void omni_transmigrate_adapt_threshold(void) {
+    if (!g_transmigrate_config.adaptive_enabled) return;
+    if (g_transmigrate_adaptive_stats.count < 8) return;  /* Need minimum samples */
+
+    g_transmigrate_adaptive_stats.ops_since_adaptation = 0;
+    g_transmigrate_adaptive_stats.adaptation_epoch++;
+
+    /* Copy sizes to sort buffer */
+    size_t sorted[OMNI_TRANSMIGRATE_ADAPTIVE_WINDOW];
+    uint32_t count = g_transmigrate_adaptive_stats.count;
+    memcpy(sorted, g_transmigrate_adaptive_stats.recent_sizes, count * sizeof(size_t));
+
+    /* Sort to find P75 */
+    qsort(sorted, count, sizeof(size_t), compare_size_t);
+
+    /* Compute P75 (75th percentile) */
+    uint32_t p75_idx = (count * 3) / 4;
+    size_t p75 = sorted[p75_idx];
+
+    /* Clamp to valid range */
+    if (p75 < OMNI_TRANSMIGRATE_MIN_THRESHOLD) {
+        p75 = OMNI_TRANSMIGRATE_MIN_THRESHOLD;
+    }
+    if (p75 > OMNI_TRANSMIGRATE_MAX_THRESHOLD) {
+        p75 = OMNI_TRANSMIGRATE_MAX_THRESHOLD;
+    }
+
+    /* Hysteresis: only adjust if delta > 20% */
+    size_t current = g_transmigrate_adaptive_stats.current_threshold;
+    size_t delta = (p75 > current) ? (p75 - current) : (current - p75);
+    float ratio = (float)delta / (float)current;
+
+    if (ratio > 0.2f) {
+        g_transmigrate_adaptive_stats.current_threshold = p75;
+    }
 }
 
 /*

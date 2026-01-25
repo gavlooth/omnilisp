@@ -196,7 +196,7 @@ int is_truthy(Obj* x);         /* Truthy for conditionals? */
 
 ## Memory Management
 
-> **Normative CTRR contract:** `docs/CTRR.md`  
+> **Normative CTRR contract:** `docs/REGION_RC.md`  
 > **Transmigration contract (detailed):** `runtime/docs/CTRR_TRANSMIGRATION.md`
 
 The runtime implements **CTRR (Compile-Time Region Reclamation)**. CTRR is not a
@@ -1187,7 +1187,7 @@ region_exit();  // inner invalidated
 
 ## Further Reading
 
-- `docs/CTRR.md` - CTRR contract (project spec)
+- `docs/REGION_RC.md` - CTRR contract (project spec)
 - `runtime/docs/CTRR_TRANSMIGRATION.md` - transmigration contract (runtime spec)
 - [ASAP (paper term): As Static As Possible](https://www.cl.cam.ac.uk/techreports/UCAM-CL-TR-908.pdf) - Proust, 2017
 - [Perceus: Garbage Free Reference Counting](https://dl.acm.org/doi/10.1145/3453483.3454032) - PLDI 2021

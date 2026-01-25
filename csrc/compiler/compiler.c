@@ -504,34 +504,6 @@ static OmniValue* desugar_or(OmniValue* expr) {
         make_list(4, omni_new_sym("if"), tmp, tmp, desugar_or(rest_or)));
 }
 
-/* Desugar (cond (test1 expr1) (test2 expr2) ... (else exprN))
- * => (if test1 expr1 (if test2 expr2 ... exprN)) */
-static OmniValue* desugar_cond(OmniValue* expr) {
-    OmniValue* clauses = omni_cdr(expr);
-
-    if (omni_is_nil(clauses)) {
-        return omni_new_sym("nil");
-    }
-
-    OmniValue* clause = omni_car(clauses);
-    OmniValue* test = omni_car(clause);
-    OmniValue* body = cadr(clause);
-
-    /* Check for else clause */
-    if (omni_is_sym(test) && omni_sym_eq_str(test, "else")) {
-        return desugar_expr(body);
-    }
-
-    /* Build (if test body (cond rest...)) */
-    OmniValue* rest_cond = omni_new_cell(omni_new_sym("cond"), omni_cdr(clauses));
-
-    return make_list(4,
-        omni_new_sym("if"),
-        desugar_expr(test),
-        desugar_expr(body),
-        desugar_cond(rest_cond));
-}
-
 /* Recursively desugar an expression */
 static OmniValue* desugar_expr(OmniValue* expr) {
     if (!expr || omni_is_nil(expr)) return expr;
@@ -547,7 +519,6 @@ static OmniValue* desugar_expr(OmniValue* expr) {
     if (strcmp(name, "if") == 0)   return desugar_if(expr);
     if (strcmp(name, "and") == 0)  return desugar_and(expr);
     if (strcmp(name, "or") == 0)   return desugar_or(expr);
-    if (strcmp(name, "cond") == 0) return desugar_cond(expr);
 
     /* For other forms, recursively desugar subexpressions */
     return desugar_list(expr);

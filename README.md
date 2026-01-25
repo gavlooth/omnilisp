@@ -1,10 +1,10 @@
 # OmniLisp
 
-**OmniLisp** is a high-performance, multi-paradigm Lisp dialect designed for systems programming and modern application development. It combines the minimalism of **Scheme**, the industrial power of **Common Lisp**, the modern type system of **Julia**, and the data-driven elegance of **Clojure**, all built on a foundation of **CTRR (Compile-Time Region Reclamation)**.
+**OmniLisp** is a high-performance, multi-paradigm Lisp dialect designed for systems programming and modern application development. It combines the minimalism of **Scheme**, the industrial power of **Common Lisp**, the modern type system of **Julia**, and the data-driven elegance of **Clojure**, all built on a foundation of **Region-RC** memory management.
 
 ## Key Design Pillars
 
-*   **CTRR Memory Model:** Deterministic region-based reclamation scheduled at compile time (no stop-the-world GC).
+*   **Region-RC Memory Model:** Scope-based regions with reference counting at region granularity (no stop-the-world GC).
 *   **Two-Tier Concurrency:** High-performance OS threads (pthreads) combined with lightweight green threads (delimited continuations).
 *   **Multiple Dispatch:** Full multiple dispatch on all arguments (Julia-style).
 *   **Algebraic Effects:** Resumable exception handling and structured control flow.
@@ -17,13 +17,14 @@
 
 The project features a unified C99 + POSIX toolchain (parser, analysis, codegen) and runtime implementing:
 
-### Memory Management (CTRR)
+### Memory Management (Region-RC)
 | Optimization | Status | Description |
 |---|---|---|
 | **Region Lifetime Scheduling** | ✅ | Compiler schedules `region_create` / `region_exit` at scope boundaries. |
+| **Region-Level Reference Counting** | ✅ | Cross-region refs tracked at region granularity, not per-object. |
 | **Transmigration on Escape** | ✅ | Explicit escape repair: copy/move graphs between regions. |
 | **Thread-Safe Tethering** | ✅ | Borrow-window pinning to prevent region reclamation during calls. |
-| **Metadata-Driven Transmigration** | 🚧 | Required by the CTRR contract; spec is written, implementation is pending. |
+| **Metadata-Driven Transmigration** | ✅ | Type-driven clone/trace operations for all runtime types. |
 
 ### Language Features
 *   **Special Forms:** `define`, `lambda`/`fn`, `let`, `if`, `do`/`begin`, `match`, `handle`/`perform`.
@@ -34,16 +35,22 @@ The project features a unified C99 + POSIX toolchain (parser, analysis, codegen)
 
 ---
 
-## Memory Management: CTRR is NOT Garbage Collection
+## Memory Management: Region-RC
 
-OmniLisp uses **CTRR (Compile-Time Region Reclamation)**: the compiler schedules
-region lifetimes and inserts explicit runtime operations for **escapes**
-(transmigration) and **borrows** (tethering). There is **no stop-the-world
-tracing collector**.
+OmniLisp uses **Region-RC**: scope-based regions with reference counting at
+region granularity. The compiler schedules region lifetimes and inserts explicit
+runtime operations for **escapes** (transmigration) and **borrows** (tethering).
+There is **no stop-the-world tracing collector**.
+
+**What makes Region-RC unique:**
+- Objects allocate in regions with O(1) bump-pointer allocation
+- Reference counting operates at the *region* level, not per-object
+- Cross-region references increment the target region's external RC
+- A region is freed when: its scope ends AND external_rc == 0
 
 Canonical references:
 
-- `docs/CTRR.md` (short, normative contract)
+- `docs/REGION_RC.md` (normative contract)
 - `runtime/docs/CTRR_TRANSMIGRATION.md` (detailed transmigration contract)
 
 ---
@@ -54,7 +61,6 @@ OmniLisp provides structured control flow through **Delimited Continuations** an
 
 ```lisp
 ;; Define an effect
-; REVIEWED:SYNTAX
 (define {effect ask} :one-shot (returns String))
 
 ;; Handle the effect

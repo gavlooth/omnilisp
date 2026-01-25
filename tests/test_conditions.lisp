@@ -49,21 +49,16 @@
 (print "")
 (print "=== handler-case Tests ===")
 
-; REVIEWED:SYNTAX
 ;; Test 1: handler-case with no error
 (test-num "handler-case no error"
   42
-  ; REVIEWED:SYNTAX
-  ; REVIEWED:SYNTAX
   (handler-case
     (+ 40 2)
     (error (e) 999)))
 
-; REVIEWED:SYNTAX
 ;; Test 2: handler-case catches signal
 (test-num "handler-case catches signal"
   100
-  ; REVIEWED:SYNTAX
   (handler-case
     (signal (quote error) "boom")
     (error (e) 100)))
@@ -100,7 +95,6 @@
 ;; Test 6: restart-case with invoke-restart
 (test-num "restart-case with invoke"
   42
-  ; REVIEWED:SYNTAX
   (restart-case
     (invoke-restart (quote use-value) 42)
     (use-value (v) v)))
@@ -133,7 +127,6 @@
 (print "=== handler-bind Tests ===")
 
 ;; Test 10: handler-bind without signal
-; REVIEWED:SYNTAX
 (test-num "handler-bind no signal"
   60
   (handler-bind
@@ -158,7 +151,6 @@
 
 ;; Test 12: find-restart for missing restart returns nothing
 (test-nothing "find-restart missing"
-  ; REVIEWED:SYNTAX
   (find-restart (quote nonexistent)))
 
 ;; Test 13: find-restart for present restart

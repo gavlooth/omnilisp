@@ -24,7 +24,6 @@
         (print "  Expected:" expected)
         (print "  Got:" actual))))
 
-; REVIEWED:SYNTAX
 (define arrays-equal? [arr1] [arr2]
   (if (and arr1 arr2)
       (let ([len1 (array-length arr1)]
@@ -274,7 +273,6 @@
 (print "=== Performance Tests ===")
 
 ;; Test 22: Large array partition
-; REVIEWED:SYNTAX
 (define large-array (array))
 (let ^:seq [i 0]
   (while (< i 100)

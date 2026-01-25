@@ -13,7 +13,6 @@
 (define pass-count 0)
 (define fail-count 0)
 
-;; REVIEWED:SYNTAX
 (define test-bool [name] [expected] [actual]
   (set! test-count (+ test-count 1))
   (if (= expected actual)

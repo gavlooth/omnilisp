@@ -548,21 +548,22 @@ OmniLisp includes a **Pika-style regex engine** - a self-contained PEG-based mat
 
 ---
 
-## 9. Memory Management (CTRR)
+## 9. Memory Management (Region-RC)
 
-OmniLisp uses **CTRR (Compile-Time Region Reclamation)**: a deterministic,
-garbage-collection-free model where the compiler schedules region lifetimes and
-inserts explicit operations for escapes and borrows.
+OmniLisp uses **Region-RC**: scope-based regions with reference counting at
+region granularity. No stop-the-world garbage collector.
 
-- **Regions:** Most allocations are bump/arena allocations in a region.
-- **Transmigration (escapes):** Values that cross a region boundary are repaired
-  by moving/copying their object graph into an outliving region.
+- **Regions:** Objects allocate in regions with O(1) bump-pointer allocation.
+- **Region-level RC:** Cross-region refs increment the target region's external_rc.
+  A region is freed when: scope ends AND external_rc == 0.
+- **Transmigration (escapes):** Values that cross a region boundary are copied
+  into an outliving region to maintain region closure.
 - **Tethering (borrows):** Borrow windows pin regions so they cannot be reclaimed
   while in use.
 
 Canonical references:
 
-- `docs/CTRR.md` (short, normative spec)
+- `docs/REGION_RC.md` (normative spec)
 - `runtime/docs/CTRR_TRANSMIGRATION.md` (detailed transmigration contract)
 
 ---
@@ -748,10 +749,6 @@ true            ; true
 
 (let ^:seq [x 1] [y (+ x 1)]         ; Sequential (like let*)
   (* x y))
-
-; Traditional list-style also supported
-(let ((x 10) (y 20))
-  (+ x y))
 
 ; Lambda/function
 (lambda (x) body)                    ; Function

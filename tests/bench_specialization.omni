@@ -8,10 +8,10 @@
 
 ;; Helper function to measure execution time
 (define time-it [name {String}] [f] {Any}
-  (let ((start (current-time-millis))
-        (result (f))
-        (end (current-time-millis))
-        (elapsed (- end start)))
+  (let [start (current-time-millis)]
+       [result (f)]
+       [end (current-time-millis)]
+       [elapsed (- end start)]
     (println name ": " elapsed "ms")
     result))
 
@@ -19,22 +19,20 @@
 ;; Benchmark 1: Float Arithmetic Operations
 ;; ============================================================================
 (define bench-float-add [n {Int}] {Float}
-  (let ((result 0.0))
-; REVIEWED:SYNTAX
-    (for ((i (range n)))
+  (let [result 0.0]
+    (for [i (range n)]
       (set! result (+ result 1.5)))
     result))
 
 (define bench-float-mul [n {Int}] {Float}
-  (let ((result 1.0))
-; REVIEWED:SYNTAX
-    (for ((i (range n)))
+  (let [result 1.0]
+    (for [i (range n)]
       (set! result (* result 1.001)))
     result))
 
 (define bench-float-div [n {Int}] {Float}
-  (let ((result 1000000.0))
-    (for ((i (range n)))
+  (let [result 1000000.0]
+    (for [i (range n)]
       (set! result (/ result 1.001)))
     result))
 
@@ -49,14 +47,14 @@
 ;; ============================================================================
 
 (define bench-int-add [n {Int}] {Int}
-  (let ((result 0))
-    (for ((i (range n)))
+  (let [result 0]
+    (for [i (range n)]
       (set! result (+ result 42)))
     result))
 
 (define bench-int-mul [n {Int}] {Int}
-  (let ((result 1))
-    (for ((i (range n)))
+  (let [result 1]
+    (for [i (range n)]
       (set! result (* result 2)))
     result))
 
@@ -70,8 +68,8 @@
 ;; ============================================================================
 
 (define bench-mixed-add [n {Int}] {Float}
-  (let ((result 0.0))
-    (for ((i (range n)))
+  (let [result 0.0]
+    (for [i (range n)]
       (set! result (+ result i)))  ; Int + Float = Float
     result))
 
@@ -84,8 +82,8 @@
 ;; ============================================================================
 
 (define bench-comparisons [n {Int}] {Int}
-  (let ((count 0))
-    (for ((i (range n)))
+  (let [count 0]
+    (for [i (range n)]
       (when (< i 500000)
         (set! count (+ count 1))))
     count))
@@ -99,14 +97,14 @@
 ;; ============================================================================
 
 (define bench-sqrt [n {Int}] {Float}
-  (let ((result 0.0))
-    (for ((i (range n)))
+  (let [result 0.0]
+    (for [i (range n)]
       (set! result (sqrt (+ i 1.0))))
     result))
 
 (define bench-sin [n {Int}] {Float}
-  (let ((result 0.0))
-    (for ((i (range n)))
+  (let [result 0.0]
+    (for [i (range n)]
       (set! result (sin (* i 0.01))))
     result))
 
@@ -120,13 +118,13 @@
 ;; ============================================================================
 
 (define bench-array-access [n {Int}] {Float}
-  (let ((arr (array n))
-        (result 0.0))
+  (let [arr (array n)]
+       [result 0.0]
     ;; Initialize array
-    (for ((i (range n)))
+    (for [i (range n)]
       (array-set arr i (* i 1.5)))
     ;; Access array
-    (for ((i (range n)))
+    (for [i (range n)]
       (set! result (+ result (array-ref arr i))))
     result))
 

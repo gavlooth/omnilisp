@@ -30,6 +30,7 @@ ANALYSIS_SRCS = analysis/analysis.c analysis/dominator.c analysis/scc.c analysis
 CODEGEN_SRCS = codegen/codegen.c codegen/region_codegen.c codegen/spec_db.c codegen/spec_decision.c codegen/spec_codegen.c codegen/typed_array_codegen.c
 MACRO_SRCS = macro/macro.c macro/pattern.c macro/template.c macro/hygiene.c
 COMPILER_SRCS = compiler/compiler.c
+UTIL_SRCS = util/strmap.c
 CLI_SRCS = cli/main.c
 
 # Object files
@@ -39,9 +40,10 @@ ANALYSIS_OBJS = $(ANALYSIS_SRCS:.c=.o)
 CODEGEN_OBJS = $(CODEGEN_SRCS:.c=.o)
 MACRO_OBJS = $(MACRO_SRCS:.c=.o)
 COMPILER_OBJS = $(COMPILER_SRCS:.c=.o)
+UTIL_OBJS = $(UTIL_SRCS:.c=.o)
 CLI_OBJS = $(CLI_SRCS:.c=.o)
 
-ALL_LIB_OBJS = $(AST_OBJS) $(PARSER_OBJS) $(ANALYSIS_OBJS) $(CODEGEN_OBJS) $(MACRO_OBJS) $(COMPILER_OBJS)
+ALL_LIB_OBJS = $(AST_OBJS) $(PARSER_OBJS) $(ANALYSIS_OBJS) $(CODEGEN_OBJS) $(MACRO_OBJS) $(COMPILER_OBJS) $(UTIL_OBJS)
 
 # Static library
 LIBRARY = libomnilisp.a
@@ -125,3 +127,4 @@ macro/template.o: macro/template.c macro/macro.h ast/ast.h
 macro/hygiene.o: macro/hygiene.c macro/macro.h ast/ast.h
 compiler/compiler.o: compiler/compiler.c compiler/compiler.h parser/parser.h analysis/analysis.h codegen/codegen.h macro/macro.h
 cli/main.o: cli/main.c compiler/compiler.h
+util/strmap.o: util/strmap.c util/strmap.h

@@ -696,14 +696,21 @@ Obj* mk_named_tuple_region(Region* r, Obj** keys, Obj** values, int count) {
 Obj* mk_generic_region(Region* r, const char* name) {
     Obj* o = alloc_obj_region(r, TAG_GENERIC);
     if (!o) return NULL;
-    
+
     Generic* g = region_alloc(r, sizeof(Generic));
     if (!g) return NULL;
-    
+
     size_t len = strlen(name);
     g->name = (char*)region_alloc(r, len + 1);
     strcpy((char*)g->name, name);
-    
+
+    /* Initialize method list and optimization fields */
+    g->methods = NULL;
+    g->method_count = 0;
+    g->dispatch_cache = NULL;  /* Lazily allocated on first use */
+    g->by_arity = NULL;        /* Lazily allocated on first method add */
+    g->max_arity = 0;
+
     o->ptr = g;
     return o;
 }

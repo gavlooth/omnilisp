@@ -47,8 +47,6 @@
 
 (test-list "sort descending numbers"
   [5 4 3 2 1]
-; REVIEWED:SYNTAX
-  ; REVIEWED:SYNTAX
   (sort-with (lambda (a b)
                 (if (> a b) -1 (if (< a b) 1 0)))
              [1 2 3 4 5]))
@@ -60,7 +58,6 @@
 (print "")
 (print "=== Test 2: Sort by String Length ===")
 
-; REVIEWED:SYNTAX
 (test-list "sort by string length descending"
   ["elephant" "cat" "dog" "ant"]
   (sort-with (lambda (a b)

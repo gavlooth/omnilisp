@@ -1,25 +1,30 @@
-# CTRR (Compile-Time Region Reclamation)
+# Region-RC Memory Model
 
-**Status:** Normative memory model contract (project spec)  
-**Scope:** Compiler + runtime behavior guarantees  
-**Target:** **C99 + POSIX + common compiler extensions** (e.g., TLS, `__atomic` builtins)  
+**Status:** Normative memory model contract (project spec)
+**Scope:** Compiler + runtime behavior guarantees
+**Target:** **C99 + POSIX + common compiler extensions** (e.g., TLS, `__atomic` builtins)
 **Non-goals:** stop-the-world tracing GC, heap-wide garbage collection loops
 
-OmniLisp uses **CTRR (Compile-Time Region Reclamation)** as its primary memory
-model. CTRR is **not** a garbage collector: there is no runtime phase that scans
-the heap searching for garbage.
+OmniLisp uses **Region-RC** as its memory model: **scope-based regions with
+reference counting at region granularity**. This is **not** a garbage collector:
+there is no runtime phase that scans the heap searching for garbage.
 
-CTRR is also intentionally named differently from the paper term **ASAP (As
-Static As Possible)**. ASAP has a specific meaning in the literature; OmniLisp’s
-CTRR contract is “regions + compile-time scheduled lifetimes + explicit escape
-repair”.
+**What makes Region-RC novel:**
+- **Regions** provide O(1) bump-pointer allocation and bulk deallocation
+- **Reference counting** operates at the *region* level, not per-object
+- Cross-region references increment the target region's external RC
+- A region is freed when: its scope ends AND external_rc == 0
+- **Transmigration** copies escaping objects to ensure region closure
+
+This differs from pure region systems (MLKit, Cyclone) which have no RC, and
+from pure RC systems (Swift ARC, Koka) which track per-object.
 
 ---
 
 ## 1) Glossary (precise meanings)
 
-- **Region (canonical)**: a **semantic lifetime class**: “a collection of objects with the same lifetime”.
-  - Regions are inferred/scheduled by the compiler (CTRR analysis) and then **implemented** by the runtime.
+- **Region (canonical)**: a **semantic lifetime class**: "a collection of objects with the same lifetime".
+  - Regions are inferred/scheduled by the compiler and then **implemented** by the runtime.
   - **Important:** a Region is *not* synonymous with an Arena allocator.
   - See `runtime/docs/MEMORY_TERMINOLOGY.md` (pinned project-wide terminology).
 - **Arena**: a physical bump/chunk allocator used to implement bulk allocation (not a semantic lifetime class).
@@ -45,7 +50,7 @@ For any region `Rsrc`:
 > `Rsrc`’s storage, **no reachable value may contain any pointer into memory
 > owned by `Rsrc`.**
 
-This is the foundation of CTRR. Violations are use-after-free by construction.
+This is the foundation of Region-RC. Violations are use-after-free by construction.
 
 **Enforcement note (pinned to the canonical Region definition):**
 - In a real Lisp, runtime mutation and cross-thread/global structures can create new escape edges dynamically.
@@ -64,7 +69,7 @@ Therefore, transmigration must be **total** over all runtime tags.
 
 ### 2.3 No stop-the-world tracing (design constraint)
 
-CTRR prohibits collectors that scan the heap looking for garbage.
+Region-RC prohibits collectors that scan the heap looking for garbage.
 Runtime memory work must be:
 
 - **Explicit** (triggered by compiler-inserted operations)
