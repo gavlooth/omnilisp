@@ -3,11 +3,16 @@
  *
  * Implements Common Lisp-style conditions for OmniLisp.
  * Part of T-cond-core-types implementation.
+ *
+ * Optimizations:
+ *   - g_condition_name_map: O(1) lookup by name
+ *   - g_condition_by_id: O(1) lookup by ID
  */
 
 #define _POSIX_C_SOURCE 200809L
 
 #include "condition.h"
+#include "util/strmap.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +23,13 @@
 
 static ConditionType* condition_registry = NULL;
 static uint32_t next_condition_id = 1;
+
+/* Optimization: O(1) name lookup */
+static StrMap* g_condition_name_map = NULL;
+
+/* Optimization: O(1) ID lookup (array indexed by ID) */
+#define CONDITION_ID_ARRAY_SIZE 256
+static ConditionType* g_condition_by_id[CONDITION_ID_ARRAY_SIZE] = {0};
 
 /* Base condition types (initialized by condition_init) */
 ConditionType* COND_CONDITION = NULL;
@@ -62,11 +74,34 @@ ConditionType* condition_type_register(
     type->next = condition_registry;
     condition_registry = type;
 
+    /* Register in name map for O(1) lookup */
+    if (!g_condition_name_map) {
+        g_condition_name_map = strmap_new();
+    }
+    if (g_condition_name_map && name) {
+        strmap_put(g_condition_name_map, name, type);
+    }
+
+    /* Register in ID array for O(1) lookup */
+    if (type->id < CONDITION_ID_ARRAY_SIZE) {
+        g_condition_by_id[type->id] = type;
+    }
+
     return type;
 }
 
-// REVIEWED:NAIVE
+/*
+ * condition_type_lookup: Look up condition type by name
+ * Optimization: O(1) using strmap
+ */
 ConditionType* condition_type_lookup(const char* name) {
+    /* Fast path: O(1) hash lookup */
+    if (g_condition_name_map && name) {
+        ConditionType* result = (ConditionType*)strmap_get(g_condition_name_map, name);
+        if (result) return result;
+    }
+
+    /* Fallback: Linear scan for safety */
     for (ConditionType* t = condition_registry; t; t = t->next) {
         if (strcmp(t->name, name) == 0) {
             return t;
@@ -75,8 +110,18 @@ ConditionType* condition_type_lookup(const char* name) {
     return NULL;
 }
 
-// REVIEWED:NAIVE
+/*
+ * condition_type_lookup_id: Look up condition type by ID
+ * Optimization: O(1) using array index
+ */
 ConditionType* condition_type_lookup_id(uint32_t id) {
+    /* Fast path: O(1) array lookup for common IDs */
+    if (id > 0 && id < CONDITION_ID_ARRAY_SIZE) {
+        ConditionType* result = g_condition_by_id[id];
+        if (result) return result;
+    }
+
+    /* Fallback: Linear scan for large IDs */
     for (ConditionType* t = condition_registry; t; t = t->next) {
         if (t->id == id) {
             return t;

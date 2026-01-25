@@ -949,8 +949,9 @@ static char* clause_to_string(PikaClause* clause) {
         case PIKA_CLAUSE_CHARSEQ: {
             sb_append_char(&sb, '"');
             const char* s = clause->data.charseq.str ? clause->data.charseq.str : "";
-// REVIEWED:NAIVE
-            for (size_t i = 0; i < strlen(s); i++) {
+// REVIEWED:OPTIMIZED - cache strlen to avoid O(n²)
+            size_t s_len = strlen(s);
+            for (size_t i = 0; i < s_len; i++) {
                 char* esc = escape_quoted_string_char((uint8_t)s[i]);
                 sb_append(&sb, esc);
                 free(esc);

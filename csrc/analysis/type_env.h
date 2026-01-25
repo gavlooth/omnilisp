@@ -15,6 +15,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include "../util/strmap.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -141,6 +142,7 @@ struct TypeBinding {
  */
 struct TypeEnv {
     TypeBinding* bindings;  /* Bindings in this scope (linked list) */
+    StrMap* bindings_map;   /* Optimization: O(1) lookup by var_name */
     TypeEnv* parent;        /* Parent scope (NULL for global) */
 };
 

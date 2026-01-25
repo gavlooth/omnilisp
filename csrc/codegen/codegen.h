@@ -12,6 +12,7 @@
 
 #include "../ast/ast.h"
 #include "../analysis/analysis.h"
+#include "../util/strmap.h"
 #include <stdio.h>
 #include <stdbool.h>
 
@@ -48,6 +49,7 @@ typedef struct CodeGenContext {
         char** c_names;
         size_t count;
         size_t capacity;
+        StrMap* map;              /* Optimization: O(1) symbol lookup */
     } symbols;
 
     /* Forward declarations needed */
@@ -71,6 +73,7 @@ typedef struct CodeGenContext {
         int* definition_count; /* Number of times each function was defined */
         size_t count;
         size_t capacity;
+        StrMap* map;           /* Optimization: O(1) function lookup (stores index) */
     } defined_functions;
 
     /* Flags */

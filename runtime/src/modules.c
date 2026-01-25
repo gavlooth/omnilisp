@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include "../include/omni.h"
 #include "internal_types.h"
+#include "util/strmap.h"
 
 /* ============== Module Search Paths ============== */
 
@@ -251,7 +252,8 @@ typedef struct ModuleImport {
 
 typedef struct Module {
     char* name;              /* Module name */
-    ModuleExport* exports;    /* Exported symbols */
+    ModuleExport* exports;    /* Exported symbols (linked list for iteration) */
+    StrMap* export_map;      /* Optimization: O(1) export lookup by name */
     ModuleImport* imports;    /* Imported modules */
     struct Module* next;     /* Next in global registry */
 } Module;
@@ -259,46 +261,54 @@ typedef struct Module {
 /* Global module registry */
 static Module* g_module_registry = NULL;
 
+/* Optimization: O(1) module lookup by name */
+static StrMap* g_module_map = NULL;
+
 /* Current module being defined */
 static Module* g_current_module = NULL;
 
 /* ============== Module Registry Functions ============== */
 
-// REVIEWED:NAIVE
 /*
  * Find or create a module by name
+ *
+ * Optimization: Uses g_module_map for O(1) lookup instead of O(n) linked list scan.
  */
-// REVIEWED:NAIVE
 static Module* get_or_create_module(const char* name) {
     if (!name) return NULL;
 
-    /* Search for existing module */
-    for (Module* m = g_module_registry; m; m = m->next) {
-        if (strcmp(m->name, name) == 0) {
-            return m;
-        }
+    /* Fast path: O(1) hash lookup */
+    if (!g_module_map) {
+        g_module_map = strmap_new();
+    }
+
+    Module* existing = (Module*)strmap_get(g_module_map, name);
+    if (existing) {
+        return existing;
     }
 
     /* Create new module */
     Module* m = malloc(sizeof(Module));
     memset(m, 0, sizeof(Module));
     m->name = strdup(name);
+    m->export_map = NULL;  /* Lazily allocated on first export */
     m->next = g_module_registry;
     g_module_registry = m;
+
+    /* Add to hash map for O(1) future lookups */
+    strmap_put(g_module_map, name, m);
 
     return m;
 }
 
 /*
  * Find a module by name
+ *
+ * Optimization: Uses g_module_map for O(1) lookup instead of O(n) linked list scan.
  */
 static Module* find_module(const char* name) {
-    for (Module* m = g_module_registry; m; m = m->next) {
-        if (strcmp(m->name, name) == 0) {
-            return m;
-        }
-    }
-    return NULL;
+    if (!name || !g_module_map) return NULL;
+    return (Module*)strmap_get(g_module_map, name);
 }
 
 /* ============== Module API ============== */
@@ -379,13 +389,19 @@ Obj* prim_export(Obj* symbol_name, Obj* value) {
         return value;
     }
 
-    /* Add to exports */
+    /* Add to exports linked list (for iteration) */
     ModuleExport* export = malloc(sizeof(ModuleExport));
     export->name = strdup(name);
     export->value = value;
     export->is_public = 1;
     export->next = g_current_module->exports;
     g_current_module->exports = export;
+
+    /* Add to export_map for O(1) lookup */
+    if (!g_current_module->export_map) {
+        g_current_module->export_map = strmap_new();
+    }
+    strmap_put(g_current_module->export_map, name, export);
 
     return value;
 }
@@ -587,16 +603,9 @@ Obj* prim_import_only(Obj* name_obj, Obj* symbols_list) {
     int symbol_count = 0;
     char** symbols = extract_symbol_list(symbols_list, &symbol_count);
 
-    /* Validate that requested symbols are exported */
-// REVIEWED:NAIVE
+    /* Validate that requested symbols are exported - O(1) per symbol using export_map */
     for (int i = 0; i < symbol_count; i++) {
-        int found = 0;
-        for (ModuleExport* exp = m->exports; exp; exp = exp->next) {
-            if (strcmp(exp->name, symbols[i]) == 0) {
-                found = 1;
-                break;
-            }
-        }
+        int found = (m->export_map && strmap_contains(m->export_map, symbols[i]));
         if (!found) {
             fprintf(stderr, "import-only: Symbol '%s' not exported by module '%s'\n",
                     symbols[i], name);
@@ -935,9 +944,10 @@ Obj* prim_module_ref(Obj* module_name, Obj* symbol_name) {
         return NULL;
     }
 
-    /* Find the export */
-    for (ModuleExport* exp = m->exports; exp; exp = exp->next) {
-        if (strcmp(exp->name, sym_name) == 0) {
+    /* Find the export - O(1) using export_map */
+    if (m->export_map) {
+        ModuleExport* exp = (ModuleExport*)strmap_get(m->export_map, sym_name);
+        if (exp) {
             return exp->value;
         }
     }
@@ -1113,9 +1123,10 @@ Obj* prim_resolve(Obj* qualified_name) {
         return NULL;
     }
 
-    /* Find the export */
-    for (ModuleExport* exp = target_module->exports; exp; exp = exp->next) {
-        if (strcmp(exp->name, symbol_name) == 0) {
+    /* Find the export - O(1) using export_map */
+    if (target_module->export_map) {
+        ModuleExport* exp = (ModuleExport*)strmap_get(target_module->export_map, symbol_name);
+        if (exp) {
             return exp->value;
         }
     }
@@ -1143,6 +1154,11 @@ void free_all_modules(void) {
             exp = next_exp;
         }
 
+        /* Free export_map */
+        if (m->export_map) {
+            strmap_free(m->export_map);
+        }
+
         /* Free imports */
         ModuleImport* imp = m->imports;
         while (imp) {
@@ -1162,4 +1178,10 @@ void free_all_modules(void) {
 
     g_module_registry = NULL;
     g_current_module = NULL;
+
+    /* Free global module map */
+    if (g_module_map) {
+        strmap_free(g_module_map);
+        g_module_map = NULL;
+    }
 }

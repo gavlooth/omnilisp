@@ -11,6 +11,7 @@
 #define OMNILISP_SPEC_DB_H
 
 #include "../analysis/type_env.h"
+#include "../util/strmap.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -41,6 +42,7 @@ struct SpecSignature {
     bool is_generated;         /* Has code been emitted for this spec? */
     bool is_builtin;           /* Is this a builtin primitive? */
     SpecSignature* next;       /* Next signature in linked list */
+    SpecSignature* func_next;  /* Next signature with same func_name (for by_func_name lookup) */
 };
 
 /* ============== Specialization Database Structure ============== */
@@ -56,6 +58,7 @@ struct SpecDB {
     SpecSignature** sig_table;   /* Hash table for O(1) lookup */
     int table_size;              /* Size of hash table */
     int count;                   /* Number of signatures */
+    StrMap* by_func_name;        /* Optimization: func_name -> first SpecSignature chain */
 };
 
 /* ============== SpecDB API ============== */

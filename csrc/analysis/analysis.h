@@ -13,6 +13,7 @@
 #define OMNILISP_ANALYSIS_H
 
 #include "../ast/ast.h"
+#include "../util/strmap.h"
 #include "type_id.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -465,12 +466,15 @@ typedef struct ComponentInfo {
 typedef struct AnalysisContext {
     /* Variable usage info */
     VarUsage* var_usages;
+    StrMap* var_map;          /* Optimization: O(1) var_usage lookup by name */
 
     /* Escape info */
     EscapeInfo* escape_info;
+    StrMap* escape_map;       /* Optimization: O(1) escape_info lookup by name */
 
     /* Ownership info */
     OwnerInfo* owner_info;
+    StrMap* owner_map;        /* Optimization: O(1) owner_info lookup by name */
 
     /* Shape info */
     ShapeInfo* shape_info;

@@ -39,6 +39,9 @@ CodeGenContext* omni_codegen_new(FILE* output) {
     memset(ctx, 0, sizeof(CodeGenContext));
     ctx->output = output;
     ctx->current_captures = NULL;
+    /* Initialize hash maps for O(1) lookups */
+    ctx->symbols.map = strmap_new();
+    ctx->defined_functions.map = strmap_new();
     return ctx;
 }
 
@@ -50,6 +53,9 @@ CodeGenContext* omni_codegen_new_buffer(void) {
     ctx->output_buffer = malloc(ctx->output_capacity);
     ctx->output_buffer[0] = '\0';
     ctx->current_captures = NULL;
+    /* Initialize hash maps for O(1) lookups */
+    ctx->symbols.map = strmap_new();
+    ctx->defined_functions.map = strmap_new();
     return ctx;
 }
 
@@ -62,6 +68,7 @@ void omni_codegen_free(CodeGenContext* ctx) {
     }
     free(ctx->symbols.names);
     free(ctx->symbols.c_names);
+    if (ctx->symbols.map) strmap_free(ctx->symbols.map);
 
     for (size_t i = 0; i < ctx->forward_decls.count; i++) {
         free(ctx->forward_decls.decls[i]);
@@ -79,6 +86,7 @@ void omni_codegen_free(CodeGenContext* ctx) {
     }
     free(ctx->defined_functions.names);
     free(ctx->defined_functions.definition_count);
+    if (ctx->defined_functions.map) strmap_free(ctx->defined_functions.map);
 
     if (ctx->analysis) {
         omni_analysis_free(ctx->analysis);
@@ -258,8 +266,13 @@ void omni_codegen_add_lambda_def(CodeGenContext* ctx, const char* def) {
 
 /* ============== Symbol Table ============== */
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) hash lookup instead of O(n) linear scan
 static const char* lookup_symbol(CodeGenContext* ctx, const char* name) {
+    /* O(1) hash lookup */
+    if (ctx->symbols.map) {
+        return (const char*)strmap_get(ctx->symbols.map, name);
+    }
+    /* Fallback to linear scan if hash map not initialized */
     for (size_t i = 0; i < ctx->symbols.count; i++) {
         if (strcmp(ctx->symbols.names[i], name) == 0) {
             return ctx->symbols.c_names[i];
@@ -274,9 +287,15 @@ static void register_symbol(CodeGenContext* ctx, const char* name, const char* c
         ctx->symbols.names = realloc(ctx->symbols.names, ctx->symbols.capacity * sizeof(char*));
         ctx->symbols.c_names = realloc(ctx->symbols.c_names, ctx->symbols.capacity * sizeof(char*));
     }
+    char* c_name_copy = strdup(c_name);
     ctx->symbols.names[ctx->symbols.count] = strdup(name);
-    ctx->symbols.c_names[ctx->symbols.count] = strdup(c_name);
+    ctx->symbols.c_names[ctx->symbols.count] = c_name_copy;
     ctx->symbols.count++;
+
+    /* Add to hash map for O(1) future lookups */
+    if (ctx->symbols.map) {
+        strmap_put(ctx->symbols.map, name, c_name_copy);
+    }
 }
 
 /* ============== Perceus Reuse & Lobster RC Elision Integration ==============
@@ -443,6 +462,7 @@ typedef struct CaptureList {
     char** c_names;     /* Mangled C names */
     size_t count;
     size_t capacity;
+    StrMap* map;        /* Optimization: O(1) capture lookup */
 } CaptureList;
 
 static void capture_list_init(CaptureList* list) {
@@ -450,6 +470,7 @@ static void capture_list_init(CaptureList* list) {
     list->c_names = NULL;
     list->count = 0;
     list->capacity = 0;
+    list->map = strmap_new();  /* Initialize hash map */
 }
 
 static void capture_list_free(CaptureList* list) {
@@ -459,10 +480,15 @@ static void capture_list_free(CaptureList* list) {
     }
     free(list->names);
     free(list->c_names);
+    if (list->map) strmap_free(list->map);
 }
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) hash lookup instead of O(n) linear scan
 static bool capture_list_contains(CaptureList* list, const char* name) {
+    if (list->map) {
+        return strmap_contains(list->map, name);
+    }
+    /* Fallback to linear scan if hash map not initialized */
     for (size_t i = 0; i < list->count; i++) {
         if (strcmp(list->names[i], name) == 0) return true;
     }
@@ -480,6 +506,11 @@ static void capture_list_add(CaptureList* list, const char* name, const char* c_
     list->names[list->count] = strdup(name);
     list->c_names[list->count] = strdup(c_name);
     list->count++;
+
+    /* Add to hash map for O(1) future lookups */
+    if (list->map) {
+        strmap_put(list->map, name, (void*)1);  /* Use as hash set */
+    }
 }
 
 /* Check if a symbol name is a parameter of the lambda */
@@ -2633,12 +2664,21 @@ static void codegen_lambda(CodeGenContext* ctx, OmniValue* expr) {
 
 /* ============== Multiple Dispatch Support ============== */
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) hash lookup instead of O(n) linear scan
 /*
  * check_function_defined - Check if a function has been defined before.
  * Returns the number of times the function has been defined (0 if not defined).
  */
 static int check_function_defined(CodeGenContext* ctx, const char* c_name) {
+    /* O(1) hash lookup - map stores index+1 (so 0 means not found) */
+    if (ctx->defined_functions.map) {
+        size_t idx_plus_one = (size_t)strmap_get(ctx->defined_functions.map, c_name);
+        if (idx_plus_one > 0) {
+            return ctx->defined_functions.definition_count[idx_plus_one - 1];
+        }
+        return 0;
+    }
+    /* Fallback to linear scan if hash map not initialized */
     for (size_t i = 0; i < ctx->defined_functions.count; i++) {
         if (strcmp(ctx->defined_functions.names[i], c_name) == 0) {
             return ctx->defined_functions.definition_count[i];
@@ -2647,17 +2687,26 @@ static int check_function_defined(CodeGenContext* ctx, const char* c_name) {
     return 0;
 }
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) hash lookup instead of O(n) linear scan
 /*
  * track_function_definition - Record that a function has been defined.
  * Increments the definition count for the function.
  */
 static void track_function_definition(CodeGenContext* ctx, const char* c_name) {
-    /* Check if already tracked */
-    for (size_t i = 0; i < ctx->defined_functions.count; i++) {
-        if (strcmp(ctx->defined_functions.names[i], c_name) == 0) {
-            ctx->defined_functions.definition_count[i]++;
+    /* O(1) hash lookup - map stores index+1 */
+    if (ctx->defined_functions.map) {
+        size_t idx_plus_one = (size_t)strmap_get(ctx->defined_functions.map, c_name);
+        if (idx_plus_one > 0) {
+            ctx->defined_functions.definition_count[idx_plus_one - 1]++;
             return;
+        }
+    } else {
+        /* Fallback to linear scan if hash map not initialized */
+        for (size_t i = 0; i < ctx->defined_functions.count; i++) {
+            if (strcmp(ctx->defined_functions.names[i], c_name) == 0) {
+                ctx->defined_functions.definition_count[i]++;
+                return;
+            }
         }
     }
 
@@ -2671,6 +2720,12 @@ static void track_function_definition(CodeGenContext* ctx, const char* c_name) {
 
     ctx->defined_functions.names[ctx->defined_functions.count] = strdup(c_name);
     ctx->defined_functions.definition_count[ctx->defined_functions.count] = 1;
+
+    /* Add to hash map for O(1) future lookups - store index+1 */
+    if (ctx->defined_functions.map) {
+        strmap_put(ctx->defined_functions.map, c_name, (void*)(ctx->defined_functions.count + 1));
+    }
+
     ctx->defined_functions.count++;
 }
 

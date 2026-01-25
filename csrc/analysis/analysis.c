@@ -16,6 +16,12 @@ AnalysisContext* omni_analysis_new(void) {
     AnalysisContext* ctx = malloc(sizeof(AnalysisContext));
     if (!ctx) return NULL;
     memset(ctx, 0, sizeof(AnalysisContext));
+
+    /* Initialize hash maps for O(1) lookups */
+    ctx->var_map = strmap_new();
+    ctx->escape_map = strmap_new();
+    ctx->owner_map = strmap_new();
+
     return ctx;
 }
 
@@ -207,15 +213,21 @@ void omni_analysis_free(AnalysisContext* ctx) {
         omni_type_registry_free(ctx->type_registry);
     }
     omni_free_constructor_owners(ctx);
+    /* Free hash maps for O(1) lookups */
+    if (ctx->var_map) strmap_free(ctx->var_map);
+    if (ctx->escape_map) strmap_free(ctx->escape_map);
+    if (ctx->owner_map) strmap_free(ctx->owner_map);
     free(ctx);
 }
 
 /* ============== Variable Usage Tracking ============== */
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) hash lookup instead of O(n) linear scan
 static VarUsage* find_or_create_var_usage(AnalysisContext* ctx, const char* name) {
-    for (VarUsage* u = ctx->var_usages; u; u = u->next) {
-        if (strcmp(u->name, name) == 0) return u;
+    /* O(1) hash lookup */
+    if (ctx->var_map) {
+        VarUsage* cached = (VarUsage*)strmap_get(ctx->var_map, name);
+        if (cached) return cached;
     }
 
     VarUsage* u = malloc(sizeof(VarUsage));
@@ -231,6 +243,11 @@ static VarUsage* find_or_create_var_usage(AnalysisContext* ctx, const char* name
     u->region_id = (ctx->current_region) ? ctx->current_region->region_id : 0;
     u->next = ctx->var_usages;
     ctx->var_usages = u;
+
+    /* Add to hash map for O(1) future lookups */
+    if (ctx->var_map) {
+        strmap_put(ctx->var_map, name, u);
+    }
     return u;
 }
 
@@ -259,10 +276,12 @@ static void mark_var_escaped(AnalysisContext* ctx, const char* name) {
 
 /* ============== Escape Analysis ============== */
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) hash lookup instead of O(n) linear scan
 static EscapeInfo* find_or_create_escape_info(AnalysisContext* ctx, const char* name) {
-    for (EscapeInfo* e = ctx->escape_info; e; e = e->next) {
-        if (strcmp(e->name, name) == 0) return e;
+    /* O(1) hash lookup */
+    if (ctx->escape_map) {
+        EscapeInfo* cached = (EscapeInfo*)strmap_get(ctx->escape_map, name);
+        if (cached) return cached;
     }
 
     EscapeInfo* e = malloc(sizeof(EscapeInfo));
@@ -271,6 +290,11 @@ static EscapeInfo* find_or_create_escape_info(AnalysisContext* ctx, const char* 
     e->is_unique = true;
     e->next = ctx->escape_info;
     ctx->escape_info = e;
+
+    /* Add to hash map for O(1) future lookups */
+    if (ctx->escape_map) {
+        strmap_put(ctx->escape_map, name, e);
+    }
     return e;
 }
 
@@ -284,10 +308,12 @@ static void set_escape_class(AnalysisContext* ctx, const char* name, EscapeClass
 
 /* ============== Ownership Analysis ============== */
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) hash lookup instead of O(n) linear scan
 static OwnerInfo* find_or_create_owner_info(AnalysisContext* ctx, const char* name) {
-    for (OwnerInfo* o = ctx->owner_info; o; o = o->next) {
-        if (strcmp(o->name, name) == 0) return o;
+    /* O(1) hash lookup */
+    if (ctx->owner_map) {
+        OwnerInfo* cached = (OwnerInfo*)strmap_get(ctx->owner_map, name);
+        if (cached) return cached;
     }
 
     OwnerInfo* o = malloc(sizeof(OwnerInfo));
@@ -301,6 +327,11 @@ static OwnerInfo* find_or_create_owner_info(AnalysisContext* ctx, const char* na
     o->alloc_strategy = ALLOC_HEAP; /* Default to heap, refined by escape analysis */
     o->next = ctx->owner_info;
     ctx->owner_info = o;
+
+    /* Add to hash map for O(1) future lookups */
+    if (ctx->owner_map) {
+        strmap_put(ctx->owner_map, name, o);
+    }
     return o;
 }
 
@@ -1602,24 +1633,37 @@ void omni_analyze_reuse(AnalysisContext* ctx, OmniValue* expr) {
 
 /* ============== Query Functions ============== */
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) hash lookup instead of O(n) linear scan
 VarUsage* omni_get_var_usage(AnalysisContext* ctx, const char* name) {
+    if (ctx->var_map) {
+        return (VarUsage*)strmap_get(ctx->var_map, name);
+    }
+    /* Fallback to linear scan if hash map not initialized */
     for (VarUsage* u = ctx->var_usages; u; u = u->next) {
         if (strcmp(u->name, name) == 0) return u;
     }
     return NULL;
 }
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) hash lookup instead of O(n) linear scan
 EscapeClass omni_get_escape_class(AnalysisContext* ctx, const char* name) {
+    if (ctx->escape_map) {
+        EscapeInfo* e = (EscapeInfo*)strmap_get(ctx->escape_map, name);
+        return e ? e->escape_class : ESCAPE_NONE;
+    }
+    /* Fallback to linear scan if hash map not initialized */
     for (EscapeInfo* e = ctx->escape_info; e; e = e->next) {
         if (strcmp(e->name, name) == 0) return e->escape_class;
     }
     return ESCAPE_NONE;
 }
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) hash lookup instead of O(n) linear scan
 OwnerInfo* omni_get_owner_info(AnalysisContext* ctx, const char* name) {
+    if (ctx->owner_map) {
+        return (OwnerInfo*)strmap_get(ctx->owner_map, name);
+    }
+    /* Fallback to linear scan if hash map not initialized */
     for (OwnerInfo* o = ctx->owner_info; o; o = o->next) {
         if (strcmp(o->name, name) == 0) return o;
     }
@@ -6060,24 +6104,34 @@ TypeDef* omni_make_parametric_instance(AnalysisContext* ctx, const char* base_ty
     TypeDef* base = omni_get_type(ctx, base_type);
     if (!base) return NULL;
 
-    // REVIEWED:NAIVE
+    // REVIEWED:OPTIMIZED - dynamic allocation instead of fixed 256-byte buffer
     /* Create instance type with mangled name */
-    char instance_name[256];
-    strcpy(instance_name, base_type);
-    strcat(instance_name, "_");
+    size_t name_len = strlen(base_type) + 1;  /* base_type + "_" */
     for (size_t i = 0; i < arg_count; i++) {
-        if (i > 0) strcat(instance_name, "_");
-        strcat(instance_name, type_args[i]);
+        name_len += strlen(type_args[i]) + 1;  /* + "_" separator */
+    }
+    char* instance_name = malloc(name_len + 1);
+    if (!instance_name) return NULL;
+
+    char* pos = instance_name;
+    pos += sprintf(pos, "%s_", base_type);
+    for (size_t i = 0; i < arg_count; i++) {
+        if (i > 0) pos += sprintf(pos, "_");
+        pos += sprintf(pos, "%s", type_args[i]);
     }
 
     /* Check if instance already exists */
     TypeDef* existing = omni_get_type(ctx, instance_name);
-    if (existing) return existing;
+    if (existing) {
+        free(instance_name);
+        return existing;
+    }
 
     /* Create new instance */
     TypeDef* instance = malloc(sizeof(TypeDef));
     memset(instance, 0, sizeof(TypeDef));
     instance->name = strdup(instance_name);
+    free(instance_name);  /* strdup made a copy, free the original */
     instance->parent = base->parent ? strdup(base->parent) : NULL;
     instance->is_abstract = base->is_abstract;
     instance->is_primitive = base->is_primitive;

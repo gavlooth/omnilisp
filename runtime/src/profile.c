@@ -78,6 +78,37 @@ __attribute__((unused)) static const char* g_current_profile_name = NULL;
 __attribute__((unused)) static uint64_t g_current_profile_start = 0;
 
 /* ============================================================================
+ * Sorting Utilities
+ * ============================================================================ */
+
+/*@semantic
+id: function::compare_profile_indices_desc
+kind: function
+name: compare_profile_indices_desc
+summary: Compare two profile indices by total_ns in descending order for qsort.
+inputs:
+  - a: const void* — pointer to first index
+  - b: const void* — pointer to second index
+outputs:
+  - return: int — negative if a > b, positive if a < b, 0 if equal
+tags:
+  - profiling
+  - sorting
+  - internal
+*/
+// REVIEWED:OPTIMIZED - comparison function for O(n log n) qsort
+static int compare_profile_indices_desc(const void* a, const void* b) {
+    int idx_a = *(const int*)a;
+    int idx_b = *(const int*)b;
+    uint64_t total_a = g_profile_entries[idx_a].total_ns;
+    uint64_t total_b = g_profile_entries[idx_b].total_ns;
+    /* Descending order: higher total_ns comes first */
+    if (total_a > total_b) return -1;
+    if (total_a < total_b) return 1;
+    return 0;
+}
+
+/* ============================================================================
  * Time Utilities
  * ============================================================================ */
 
@@ -318,22 +349,13 @@ Obj* prim_hot_spots(Obj* limit_obj) {
     int* indices = malloc(sizeof(int) * g_profile_count);
     if (!indices) return mk_array(1);
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(n log n) qsort instead of O(n²) bubble sort
     for (int i = 0; i < g_profile_count; i++) {
         indices[i] = i;
     }
 
-    /* Simple bubble sort (good enough for small arrays) */
-    for (int i = 0; i < g_profile_count - 1; i++) {
-        for (int j = 0; j < g_profile_count - i - 1; j++) {
-            if (g_profile_entries[indices[j]].total_ns <
-                g_profile_entries[indices[j + 1]].total_ns) {
-                int tmp = indices[j];
-                indices[j] = indices[j + 1];
-                indices[j + 1] = tmp;
-            }
-        }
-    }
+    /* Sort indices by total_ns descending */
+    qsort(indices, (size_t)g_profile_count, sizeof(int), compare_profile_indices_desc);
 
     /* Build result array */
     Obj* result = mk_array(limit);
@@ -386,21 +408,13 @@ Obj* prim_profile_report(void) {
         return mk_nothing();
     }
 
+// REVIEWED:OPTIMIZED - O(n log n) qsort instead of O(n²) bubble sort
     for (int i = 0; i < g_profile_count; i++) {
         indices[i] = i;
     }
 
-// REVIEWED:NAIVE
-    for (int i = 0; i < g_profile_count - 1; i++) {
-        for (int j = 0; j < g_profile_count - i - 1; j++) {
-            if (g_profile_entries[indices[j]].total_ns <
-                g_profile_entries[indices[j + 1]].total_ns) {
-                int tmp = indices[j];
-                indices[j] = indices[j + 1];
-                indices[j + 1] = tmp;
-            }
-        }
-    }
+    /* Sort indices by total_ns descending */
+    qsort(indices, (size_t)g_profile_count, sizeof(int), compare_profile_indices_desc);
 
     /* Calculate total time */
     uint64_t total_time = 0;
@@ -598,4 +612,362 @@ tags:
 */
 Obj* prim_profile_count(void) {
     return mk_int(g_profile_count);
+}
+
+/* ============================================================================
+ * TRANSMIGRATION OPTIMIZATION: Profile-Guided Region Placement (Phase 4)
+ * ============================================================================
+ * Allocation site profiling for profile-guided region placement decisions.
+ * Tracks escape frequency and transmigration patterns to inform the compiler's
+ * allocation strategy.
+ */
+
+#include "../include/omni_debug.h"
+
+/* Global profile feedback data */
+ProfileFeedback g_profile_feedback = {
+    .sites = NULL,
+    .site_count = 0,
+    .site_capacity = 0,
+    .is_enabled = false,
+    .data_loaded = false
+};
+
+/* Flag to track if profile system has been initialized */
+static bool g_profile_feedback_initialized = false;
+
+/*@semantic
+id: function::omni_profile_init
+kind: function
+name: omni_profile_init
+summary: Initialize profile feedback system based on environment variables.
+tags:
+  - profiling
+  - initialization
+  - transmigration-optimization
+*/
+void omni_profile_init(void) {
+    if (g_profile_feedback_initialized) return;
+    g_profile_feedback_initialized = true;
+
+    /* Check for environment variable to enable profiling */
+    const char* env_enabled = getenv("OMNILISP_PROFILE_ENABLED");
+    if (env_enabled && atoi(env_enabled) == 1) {
+        g_profile_feedback.is_enabled = true;
+
+        /* Allocate initial site array */
+        g_profile_feedback.site_capacity = 64;
+        g_profile_feedback.sites = (AllocationSiteProfile*)calloc(
+            g_profile_feedback.site_capacity, sizeof(AllocationSiteProfile));
+        if (!g_profile_feedback.sites) {
+            g_profile_feedback.is_enabled = false;
+            g_profile_feedback.site_capacity = 0;
+            return;
+        }
+    }
+
+    /* Check for profile data file to load */
+    const char* env_file = getenv("OMNILISP_PROFILE_FILE");
+    if (env_file) {
+        omni_load_profile_data(env_file);
+    }
+}
+
+/*@semantic
+id: function::find_or_create_site
+kind: function
+name: find_or_create_site
+summary: Find existing allocation site or create a new entry.
+tags:
+  - profiling
+  - internal
+*/
+static AllocationSiteProfile* find_or_create_site(uint64_t site_id) {
+    if (!g_profile_feedback.is_enabled || !g_profile_feedback.sites) {
+        return NULL;
+    }
+
+    /* Look for existing entry */
+    for (size_t i = 0; i < g_profile_feedback.site_count; i++) {
+        if (g_profile_feedback.sites[i].site_id == site_id) {
+            return &g_profile_feedback.sites[i];
+        }
+    }
+
+    /* Check if we need to grow the array */
+    if (g_profile_feedback.site_count >= g_profile_feedback.site_capacity) {
+        /* Don't grow beyond max */
+        if (g_profile_feedback.site_capacity >= OMNI_PROFILE_MAX_SITES) {
+            return NULL;
+        }
+
+        size_t new_capacity = g_profile_feedback.site_capacity * 2;
+        if (new_capacity > OMNI_PROFILE_MAX_SITES) {
+            new_capacity = OMNI_PROFILE_MAX_SITES;
+        }
+
+        AllocationSiteProfile* new_sites = (AllocationSiteProfile*)realloc(
+            g_profile_feedback.sites,
+            new_capacity * sizeof(AllocationSiteProfile));
+        if (!new_sites) {
+            return NULL;
+        }
+
+        /* Zero out new entries */
+        memset(new_sites + g_profile_feedback.site_capacity, 0,
+               (new_capacity - g_profile_feedback.site_capacity) * sizeof(AllocationSiteProfile));
+
+        g_profile_feedback.sites = new_sites;
+        g_profile_feedback.site_capacity = new_capacity;
+    }
+
+    /* Create new entry */
+    AllocationSiteProfile* site = &g_profile_feedback.sites[g_profile_feedback.site_count++];
+    site->site_id = site_id;
+    site->total_allocations = 0;
+    site->escape_count = 0;
+    site->transmigrate_count = 0;
+    site->escape_ratio = 0.0f;
+    site->recommended_region = PROFILE_REGION_LOCAL;
+
+    return site;
+}
+
+/*@semantic
+id: function::omni_profile_allocation
+kind: function
+name: omni_profile_allocation
+summary: Record an allocation at the given site.
+tags:
+  - profiling
+  - allocation
+  - transmigration-optimization
+*/
+void omni_profile_allocation(uint64_t site_id, Region* region) {
+    (void)region;  /* May be used for more detailed tracking in future */
+
+    AllocationSiteProfile* site = find_or_create_site(site_id);
+    if (site) {
+        site->total_allocations++;
+    }
+}
+
+/*@semantic
+id: function::omni_profile_escape
+kind: function
+name: omni_profile_escape
+summary: Record an escape event (object escapes its original region).
+tags:
+  - profiling
+  - escape-analysis
+  - transmigration-optimization
+*/
+void omni_profile_escape(uint64_t site_id) {
+    AllocationSiteProfile* site = find_or_create_site(site_id);
+    if (site) {
+        site->escape_count++;
+    }
+}
+
+/*@semantic
+id: function::omni_profile_transmigrate
+kind: function
+name: omni_profile_transmigrate
+summary: Record a transmigration event.
+tags:
+  - profiling
+  - transmigration
+  - transmigration-optimization
+*/
+void omni_profile_transmigrate(uint64_t site_id) {
+    AllocationSiteProfile* site = find_or_create_site(site_id);
+    if (site) {
+        site->transmigrate_count++;
+    }
+}
+
+/*@semantic
+id: function::omni_profile_update_recommendations
+kind: function
+name: omni_profile_update_recommendations
+summary: Compute escape ratios and update region recommendations.
+tags:
+  - profiling
+  - analysis
+  - transmigration-optimization
+*/
+void omni_profile_update_recommendations(void) {
+    if (!g_profile_feedback.is_enabled || !g_profile_feedback.sites) {
+        return;
+    }
+
+    for (size_t i = 0; i < g_profile_feedback.site_count; i++) {
+        AllocationSiteProfile* site = &g_profile_feedback.sites[i];
+
+        if (site->total_allocations > 0) {
+            site->escape_ratio = (float)site->escape_count / (float)site->total_allocations;
+
+            /* Determine recommendation based on escape ratio
+             * - >= 0.9: Always escapes, use global region
+             * - >= 0.5: Often escapes, use caller's region
+             * - < 0.5: Usually local, use local region
+             */
+            if (site->escape_ratio >= 0.9f) {
+                site->recommended_region = PROFILE_REGION_GLOBAL;
+            } else if (site->escape_ratio >= 0.5f) {
+                site->recommended_region = PROFILE_REGION_CALLER;
+            } else {
+                site->recommended_region = PROFILE_REGION_LOCAL;
+            }
+        }
+    }
+}
+
+/*@semantic
+id: function::omni_profile_get_recommendation
+kind: function
+name: omni_profile_get_recommendation
+summary: Query recommended region for an allocation site.
+tags:
+  - profiling
+  - query
+  - transmigration-optimization
+*/
+ProfileRecommendedRegion omni_profile_get_recommendation(uint64_t site_id) {
+    if (!g_profile_feedback.is_enabled || !g_profile_feedback.sites) {
+        return PROFILE_REGION_LOCAL;
+    }
+
+    for (size_t i = 0; i < g_profile_feedback.site_count; i++) {
+        if (g_profile_feedback.sites[i].site_id == site_id) {
+            return g_profile_feedback.sites[i].recommended_region;
+        }
+    }
+
+    return PROFILE_REGION_LOCAL;
+}
+
+/*@semantic
+id: function::omni_save_profile_data
+kind: function
+name: omni_save_profile_data
+summary: Save profile data to a binary file.
+tags:
+  - profiling
+  - persistence
+  - transmigration-optimization
+*/
+void omni_save_profile_data(const char* filename) {
+    if (!g_profile_feedback.sites || g_profile_feedback.site_count == 0) {
+        return;
+    }
+
+    FILE* f = fopen(filename, "wb");
+    if (!f) {
+        fprintf(stderr, "[WARN] Could not save profile data to %s\n", filename);
+        return;
+    }
+
+    /* Update recommendations before saving */
+    omni_profile_update_recommendations();
+
+    /* Write header: magic + version + count */
+    uint32_t magic = 0x4F4D5049;  /* "OMPI" */
+    uint32_t version = 1;
+    uint32_t count = (uint32_t)g_profile_feedback.site_count;
+
+    fwrite(&magic, sizeof(magic), 1, f);
+    fwrite(&version, sizeof(version), 1, f);
+    fwrite(&count, sizeof(count), 1, f);
+
+    /* Write site entries */
+    for (size_t i = 0; i < g_profile_feedback.site_count; i++) {
+        AllocationSiteProfile* site = &g_profile_feedback.sites[i];
+        fwrite(&site->site_id, sizeof(site->site_id), 1, f);
+        fwrite(&site->total_allocations, sizeof(site->total_allocations), 1, f);
+        fwrite(&site->escape_count, sizeof(site->escape_count), 1, f);
+        fwrite(&site->transmigrate_count, sizeof(site->transmigrate_count), 1, f);
+        fwrite(&site->escape_ratio, sizeof(site->escape_ratio), 1, f);
+        uint8_t rec = (uint8_t)site->recommended_region;
+        fwrite(&rec, sizeof(rec), 1, f);
+    }
+
+    fclose(f);
+}
+
+/*@semantic
+id: function::omni_load_profile_data
+kind: function
+name: omni_load_profile_data
+summary: Load profile data from a binary file.
+tags:
+  - profiling
+  - persistence
+  - transmigration-optimization
+*/
+void omni_load_profile_data(const char* filename) {
+    FILE* f = fopen(filename, "rb");
+    if (!f) {
+        /* File doesn't exist, that's OK - no profile data to load */
+        return;
+    }
+
+    /* Read and verify header */
+    uint32_t magic, version, count;
+    if (fread(&magic, sizeof(magic), 1, f) != 1 ||
+        fread(&version, sizeof(version), 1, f) != 1 ||
+        fread(&count, sizeof(count), 1, f) != 1) {
+        fclose(f);
+        return;
+    }
+
+    if (magic != 0x4F4D5049 || version != 1) {
+        fprintf(stderr, "[WARN] Invalid profile data file: %s\n", filename);
+        fclose(f);
+        return;
+    }
+
+    /* Ensure profiling is enabled and we have capacity */
+    if (!g_profile_feedback.is_enabled) {
+        g_profile_feedback.is_enabled = true;
+    }
+
+    if (!g_profile_feedback.sites || g_profile_feedback.site_capacity < count) {
+        size_t new_capacity = count > 64 ? count : 64;
+        if (new_capacity > OMNI_PROFILE_MAX_SITES) {
+            new_capacity = OMNI_PROFILE_MAX_SITES;
+        }
+
+        AllocationSiteProfile* new_sites = (AllocationSiteProfile*)realloc(
+            g_profile_feedback.sites,
+            new_capacity * sizeof(AllocationSiteProfile));
+        if (!new_sites) {
+            fclose(f);
+            return;
+        }
+
+        g_profile_feedback.sites = new_sites;
+        g_profile_feedback.site_capacity = new_capacity;
+    }
+
+    /* Read site entries */
+    g_profile_feedback.site_count = 0;
+    for (uint32_t i = 0; i < count && i < OMNI_PROFILE_MAX_SITES; i++) {
+        AllocationSiteProfile* site = &g_profile_feedback.sites[i];
+
+        if (fread(&site->site_id, sizeof(site->site_id), 1, f) != 1) break;
+        if (fread(&site->total_allocations, sizeof(site->total_allocations), 1, f) != 1) break;
+        if (fread(&site->escape_count, sizeof(site->escape_count), 1, f) != 1) break;
+        if (fread(&site->transmigrate_count, sizeof(site->transmigrate_count), 1, f) != 1) break;
+        if (fread(&site->escape_ratio, sizeof(site->escape_ratio), 1, f) != 1) break;
+
+        uint8_t rec;
+        if (fread(&rec, sizeof(rec), 1, f) != 1) break;
+        site->recommended_region = (ProfileRecommendedRegion)rec;
+
+        g_profile_feedback.site_count++;
+    }
+
+    g_profile_feedback.data_loaded = true;
+    fclose(f);
 }

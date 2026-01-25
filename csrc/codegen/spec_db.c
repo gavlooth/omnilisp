@@ -65,6 +65,7 @@ SpecDB* spec_db_new(void) {
 
     db->signatures = NULL;
     db->count = 0;
+    db->by_func_name = strmap_new();  /* Optimization: O(1) func_name lookup */
 
     return db;
 }
@@ -92,8 +93,9 @@ void spec_db_free(SpecDB* db) {
         sig = next;
     }
 
-    /* Free hash table */
+    /* Free hash table and func_name map */
     free(db->sig_table);
+    if (db->by_func_name) strmap_free(db->by_func_name);
     free(db);
 }
 
@@ -194,6 +196,7 @@ SpecSignature* spec_db_register(SpecDB* db,
     sig->is_generated = false;
     sig->is_builtin = is_builtin;
     sig->next = db->signatures;
+    sig->func_next = NULL;  /* Will be set below */
 
     /* Increment ref on return type */
     if (return_type) {
@@ -210,10 +213,17 @@ SpecSignature* spec_db_register(SpecDB* db,
     sig->next = db->sig_table[index];
     db->sig_table[index] = sig;
 
+    /* Add to by_func_name chain for O(1) func-name-only lookup */
+    if (db->by_func_name) {
+        SpecSignature* first = (SpecSignature*)strmap_get(db->by_func_name, func_name);
+        sig->func_next = first;  /* Chain to existing signatures for this func_name */
+        strmap_put(db->by_func_name, func_name, sig);
+    }
+
     return sig;
 }
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) average case via hash table
 SpecSignature* spec_db_lookup(SpecDB* db,
                               const char* func_name,
                               ConcreteType** param_types,
@@ -234,43 +244,46 @@ SpecSignature* spec_db_lookup(SpecDB* db,
     return NULL;
 }
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) func_name lookup + O(k) where k = signatures for this func
 SpecSignature* spec_db_find_match(SpecDB* db,
                                  const char* func_name,
                                  ConcreteType** arg_types,
                                  int arg_count) {
     if (!db || !func_name) return NULL;
 
-    /* Search all signatures for this function */
-    SpecSignature* sig = db->signatures;
+    /* O(1) lookup: get first signature for this function name */
+    SpecSignature* sig = NULL;
+    if (db->by_func_name) {
+        sig = (SpecSignature*)strmap_get(db->by_func_name, func_name);
+    }
+
+    /* Search only signatures for this function (via func_next chain) */
     while (sig) {
-        if (sig->func_name && strcmp(sig->func_name, func_name) == 0) {
-            if (sig->param_count == arg_count) {
-                /* Check if parameter types match */
-                bool match = true;
-                for (int i = 0; i < arg_count && match; i++) {
-                    ConcreteType* sig_param = sig->param_types ? sig->param_types[i] : NULL;
-                    ConcreteType* arg_type = arg_types ? arg_types[i] : NULL;
+        if (sig->param_count == arg_count) {
+            /* Check if parameter types match */
+            bool match = true;
+            for (int i = 0; i < arg_count && match; i++) {
+                ConcreteType* sig_param = sig->param_types ? sig->param_types[i] : NULL;
+                ConcreteType* arg_type = arg_types ? arg_types[i] : NULL;
 
-                    /* Match if types are equal OR arg type is unknown */
-                    if (!concrete_type_equals(sig_param, arg_type) &&
-                        arg_type && arg_type->kind != TYPE_KIND_ANY) {
-                        match = false;
-                    }
-                }
-
-                if (match) {
-                    return sig;
+                /* Match if types are equal OR arg type is unknown */
+                if (!concrete_type_equals(sig_param, arg_type) &&
+                    arg_type && arg_type->kind != TYPE_KIND_ANY) {
+                    match = false;
                 }
             }
+
+            if (match) {
+                return sig;
+            }
         }
-        sig = sig->next;
+        sig = sig->func_next;  /* Follow func_name chain, not main list */
     }
 
     return NULL;
 }
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) func_name lookup + O(k) where k = signatures for this func
 SpecSignature** spec_db_get_all(SpecDB* db,
                                const char* func_name,
                                int* out_count) {
@@ -279,19 +292,23 @@ SpecSignature** spec_db_get_all(SpecDB* db,
         return NULL;
     }
 
-    /* Count matching signatures */
-    int count = 0;
-    SpecSignature* sig = db->signatures;
-    while (sig) {
-        if (sig->func_name && strcmp(sig->func_name, func_name) == 0) {
-            count++;
-        }
-        sig = sig->next;
+    /* O(1) lookup: get first signature for this function name */
+    SpecSignature* first = NULL;
+    if (db->by_func_name) {
+        first = (SpecSignature*)strmap_get(db->by_func_name, func_name);
     }
 
-    if (count == 0) {
+    if (!first) {
         if (out_count) *out_count = 0;
         return NULL;
+    }
+
+    /* Count signatures for this function (via func_next chain) */
+    int count = 0;
+    SpecSignature* sig = first;
+    while (sig) {
+        count++;
+        sig = sig->func_next;
     }
 
     /* Allocate array */
@@ -301,16 +318,14 @@ SpecSignature** spec_db_get_all(SpecDB* db,
         return NULL;
     }
 
-    /* Fill array */
+    /* Fill array from func_next chain */
     int idx = 0;
-    sig = db->signatures;
+    sig = first;
     while (sig && idx < count) {
-        if (sig->func_name && strcmp(sig->func_name, func_name) == 0) {
-            result[idx++] = sig;
-        }
-        sig = sig->next;
+        result[idx++] = sig;
+        sig = sig->func_next;
     }
-    result[count] = NULL;
+    result[idx] = NULL;
 
     if (out_count) *out_count = count;
     return result;

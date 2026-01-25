@@ -103,18 +103,22 @@ void generate_typed_array_alloc(CodeGenContext* ctx,
                                int* dimensions) {
     if (!ctx || !var_name || !type_name) return;
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - dynamic allocation instead of fixed 256-byte buffer
     /* Build dimensions array initialization */
-    char dims_init[256] = "";
+    char* dims_init = NULL;
     if (dimensions && rank > 0) {
-        strcpy(dims_init, "(int[]){");
-        for (int i = 0; i < rank; i++) {
-            if (i > 0) strcat(dims_init, ", ");
-            char buf[32];
-            snprintf(buf, sizeof(buf), "%d", dimensions[i]);
-            strcat(dims_init, buf);
+        /* Calculate required size: "(int[]){" + comma-separated ints + "}" */
+        size_t dims_size = 16 + (size_t)rank * 22;  /* 22 chars per int with comma */
+        dims_init = malloc(dims_size);
+        if (dims_init) {
+            char* pos = dims_init;
+            pos += sprintf(pos, "(int[]){");
+            for (int i = 0; i < rank; i++) {
+                if (i > 0) pos += sprintf(pos, ", ");
+                pos += sprintf(pos, "%d", dimensions[i]);
+            }
+            sprintf(pos, "}");
         }
-        strcat(dims_init, "}");
     }
 
     /* Get ArrayElementType from type name */
@@ -139,7 +143,8 @@ void generate_typed_array_alloc(CodeGenContext* ctx,
     }
 
     omni_codegen_emit(ctx, "TypedArray* %s = omni_typed_array_create(_local_region, %s, %d, %s);",
-                     var_name, elem_type_str, rank, dims_init);
+                     var_name, elem_type_str, rank, dims_init ? dims_init : "NULL");
+    free(dims_init);
 }
 
 void generate_typed_array_get(CodeGenContext* ctx,
@@ -152,21 +157,31 @@ void generate_typed_array_get(CodeGenContext* ctx,
     char* c_type = get_c_type_name(elem_type);
     char* get_fn = get_typed_array_get_function(elem_type);
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - dynamic allocation instead of fixed 256-byte buffer
     /* Build indices array */
-    char indices_buf[256] = "";
+    char* indices_buf = NULL;
     if (elem_type->kind == TYPE_KIND_ARRAY && elem_type->array.rank > 0) {
-        strcpy(indices_buf, "(int[]){");
+        /* Calculate required size */
+        size_t buf_size = 16;  /* "(int[]){" + "}" + null */
         for (int i = 0; i < elem_type->array.rank; i++) {
-            if (i > 0) strcat(indices_buf, ", ");
-            strcat(indices_buf, indices[i]);
+            buf_size += strlen(indices[i]) + 2;  /* +2 for ", " */
         }
-        strcat(indices_buf, "}");
+        indices_buf = malloc(buf_size);
+        if (indices_buf) {
+            char* pos = indices_buf;
+            pos += sprintf(pos, "(int[]){");
+            for (int i = 0; i < elem_type->array.rank; i++) {
+                if (i > 0) pos += sprintf(pos, ", ");
+                pos += sprintf(pos, "%s", indices[i]);
+            }
+            sprintf(pos, "}");
+        }
     }
 
     omni_codegen_emit(ctx, "%s %s = %s(%s, %s);",
-                     c_type, result_var, get_fn, array_var, indices_buf);
+                     c_type, result_var, get_fn, array_var, indices_buf ? indices_buf : "NULL");
 
+    free(indices_buf);
     free(c_type);
     free(get_fn);
 }
@@ -180,20 +195,30 @@ void generate_typed_array_set(CodeGenContext* ctx,
 
     char* set_fn = get_typed_array_set_function(elem_type);
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - dynamic allocation instead of fixed 256-byte buffer
     /* Build indices array */
-    char indices_buf[256] = "";
+    char* indices_buf = NULL;
     if (elem_type->kind == TYPE_KIND_ARRAY && elem_type->array.rank > 0) {
-        strcpy(indices_buf, "(int[]){");
+        /* Calculate required size */
+        size_t buf_size = 16;  /* "(int[]){" + "}" + null */
         for (int i = 0; i < elem_type->array.rank; i++) {
-            if (i > 0) strcat(indices_buf, ", ");
-            strcat(indices_buf, indices[i]);
+            buf_size += strlen(indices[i]) + 2;  /* +2 for ", " */
         }
-        strcat(indices_buf, "}");
+        indices_buf = malloc(buf_size);
+        if (indices_buf) {
+            char* pos = indices_buf;
+            pos += sprintf(pos, "(int[]){");
+            for (int i = 0; i < elem_type->array.rank; i++) {
+                if (i > 0) pos += sprintf(pos, ", ");
+                pos += sprintf(pos, "%s", indices[i]);
+            }
+            sprintf(pos, "}");
+        }
     }
 
     omni_codegen_emit(ctx, "%s(%s, %s, %s);",
-                     set_fn, array_var, indices_buf, value_var);
+                     set_fn, array_var, indices_buf ? indices_buf : "NULL", value_var);
+    free(indices_buf);
 
     free(set_fn);
 }

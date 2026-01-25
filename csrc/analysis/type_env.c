@@ -333,6 +333,7 @@ TypeEnv* type_env_new(TypeEnv* parent) {
     if (!env) return NULL;
 
     env->bindings = NULL;
+    env->bindings_map = strmap_new();  /* Optimization: O(1) lookup */
     env->parent = parent;
 
     return env;
@@ -353,26 +354,30 @@ void type_env_free(TypeEnv* env) {
         binding = next;
     }
 
+    /* Free hash map */
+    if (env->bindings_map) {
+        strmap_free(env->bindings_map);
+    }
+
     free(env);
 }
 
 void type_env_bind(TypeEnv* env, const char* var_name, ConcreteType* type) {
     if (!env || !var_name) return;
 
-    /* Check if variable already exists in this scope */
-    TypeBinding* binding = env->bindings;
-    while (binding) {
-        if (strcmp(binding->var_name, var_name) == 0) {
-            /* Replace existing binding */
-            concrete_type_dec_ref(binding->type);
-            binding->type = type;
-            return;
-        }
-        binding = binding->next;
+    /* O(1) hash lookup to check if variable already exists */
+    TypeBinding* existing = env->bindings_map ?
+        (TypeBinding*)strmap_get(env->bindings_map, var_name) : NULL;
+
+    if (existing) {
+        /* Replace existing binding */
+        concrete_type_dec_ref(existing->type);
+        existing->type = type;
+        return;
     }
 
     /* Create new binding */
-    binding = malloc(sizeof(TypeBinding));
+    TypeBinding* binding = malloc(sizeof(TypeBinding));
     if (!binding) return;
 
     binding->var_name = strdup(var_name);
@@ -380,20 +385,33 @@ void type_env_bind(TypeEnv* env, const char* var_name, ConcreteType* type) {
     binding->next = env->bindings;
 
     env->bindings = binding;
+
+    /* Add to hash map for O(1) future lookups */
+    if (env->bindings_map) {
+        strmap_put(env->bindings_map, var_name, binding);
+    }
 }
 
 /* TESTED */
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) hash lookup per scope instead of O(m) linear scan
 ConcreteType* type_env_lookup(TypeEnv* env, const char* var_name) {
     if (!env || !var_name) return NULL;
 
-    /* Search current scope */
-    TypeBinding* binding = env->bindings;
-    while (binding) {
-        if (strcmp(binding->var_name, var_name) == 0) {
+    /* O(1) hash lookup in current scope */
+    if (env->bindings_map) {
+        TypeBinding* binding = (TypeBinding*)strmap_get(env->bindings_map, var_name);
+        if (binding) {
             return binding->type;
         }
-        binding = binding->next;
+    } else {
+        /* Fallback to linear scan if hash map not initialized */
+        TypeBinding* binding = env->bindings;
+        while (binding) {
+            if (strcmp(binding->var_name, var_name) == 0) {
+                return binding->type;
+            }
+            binding = binding->next;
+        }
     }
 
     /* Search parent scope */
@@ -419,9 +437,16 @@ TypeEnv* type_env_pop(TypeEnv* child) {
     return parent;
 }
 
+// REVIEWED:OPTIMIZED - O(1) hash lookup instead of O(m) linear scan
 bool type_env_defined_in_current_scope(TypeEnv* env, const char* var_name) {
     if (!env || !var_name) return false;
 
+    /* O(1) hash lookup */
+    if (env->bindings_map) {
+        return strmap_contains(env->bindings_map, var_name);
+    }
+
+    /* Fallback to linear scan if hash map not initialized */
     TypeBinding* binding = env->bindings;
     while (binding) {
         if (strcmp(binding->var_name, var_name) == 0) {

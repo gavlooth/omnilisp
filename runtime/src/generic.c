@@ -3,6 +3,10 @@
  *
  * Implements Julia-style multiple dispatch with method tables sorted by specificity.
  *
+ * Optimizations:
+ *   - dispatch_cache: HashMap caching type signature -> MethodInfo* for O(1) repeat lookups
+ *   - by_arity: Array indexed by arity for O(1) arity filtering
+ *
  * API:
  *   - mk_generic: Create a new generic function
  *   - generic_add_method: Add a method to a generic function
@@ -17,6 +21,37 @@
 #include "../include/omni.h"
 #include "internal_types.h"
 #include "memory/region_core.h"
+#include "util/hashmap.h"
+
+/* Maximum arity for the by_arity fast path (covers common cases) */
+#define MAX_ARITY_FAST 16
+
+/*
+ * compute_type_signature_hash: Compute a hash for the argument types.
+ * Used as cache key for dispatch_cache.
+ */
+static uint64_t compute_type_signature_hash(Obj** args, int argc) {
+    uint64_t hash = 0xcbf29ce484222325ULL;  /* FNV-1a offset basis */
+    for (int i = 0; i < argc; i++) {
+        Obj* arg = args[i];
+        uint64_t val;
+        if (IS_IMMEDIATE(arg)) {
+            /* Hash the immediate value directly */
+            val = (uint64_t)(uintptr_t)arg;
+        } else if (IS_BOXED(arg)) {
+            /* Hash the tag */
+            val = (uint64_t)arg->tag;
+        } else {
+            val = 0;
+        }
+        hash ^= val;
+        hash *= 0x100000001b3ULL;  /* FNV-1a prime */
+    }
+    /* Mix in the arity */
+    hash ^= (uint64_t)argc;
+    hash *= 0x100000001b3ULL;
+    return hash;
+}
 
 /* ============== Generic Function Creation ============== */
 
@@ -110,6 +145,32 @@ Obj* generic_add_method(Obj* generic_obj, Obj** param_kinds, int param_count, Cl
 
     g->method_count++;
 
+    /* Update by_arity index for O(1) arity lookup */
+    if (param_count < MAX_ARITY_FAST) {
+        if (!g->by_arity) {
+            /* Lazily allocate by_arity array */
+            g->by_arity = region_alloc(r, sizeof(MethodInfo*) * MAX_ARITY_FAST);
+            if (g->by_arity) {
+                memset(g->by_arity, 0, sizeof(MethodInfo*) * MAX_ARITY_FAST);
+                g->max_arity = MAX_ARITY_FAST;
+            }
+        }
+        if (g->by_arity && param_count < g->max_arity) {
+            /* Store pointer to first method with this arity (most specific) */
+            /* Note: We store the most specific method; if a more specific one
+             * is added later, we need to update this slot. */
+            if (!g->by_arity[param_count] ||
+                method->specificity > g->by_arity[param_count]->specificity) {
+                g->by_arity[param_count] = method;
+            }
+        }
+    }
+
+    /* Invalidate dispatch cache when methods change */
+    if (g->dispatch_cache) {
+        hashmap_clear((HashMap*)g->dispatch_cache);
+    }
+
     return generic_obj;
 }
 
@@ -197,8 +258,8 @@ static bool check_argument_types(Obj** param_kinds, int param_count, Obj** args,
  *
  * Returns: The most specific method that matches, or NULL if none match
  *
- * This searches the method table in order (already sorted by specificity)
- * and returns the first method whose parameter types match the arguments.
+ * Optimization: Uses dispatch_cache for O(1) repeat lookups of the same
+ * type signature, and by_arity for fast arity filtering.
  */
 MethodInfo* omni_generic_lookup(Obj* generic_obj, Obj** args, int argc) {
     if (!generic_obj || !IS_BOXED(generic_obj) || generic_obj->tag != TAG_GENERIC) {
@@ -210,16 +271,42 @@ MethodInfo* omni_generic_lookup(Obj* generic_obj, Obj** args, int argc) {
         return NULL;
     }
 
-    /* Search methods in order (most specific first) */
-// REVIEWED:NAIVE
-    for (MethodInfo* method = g->methods; method; method = method->next) {
-        if (check_argument_types(method->param_kinds, method->param_count, args, argc)) {
-            return method;
+    /* Fast path: Check dispatch cache for previously resolved signature */
+    uint64_t sig_hash = compute_type_signature_hash(args, argc);
+    if (g->dispatch_cache) {
+        MethodInfo* cached = (MethodInfo*)hashmap_get((HashMap*)g->dispatch_cache, (void*)(uintptr_t)sig_hash);
+        if (cached) {
+            return cached;
         }
     }
 
-    /* No applicable method found */
-    return NULL;
+    /* Fast path: Use by_arity to check if any method has this arity */
+    if (g->by_arity && argc < g->max_arity && !g->by_arity[argc]) {
+        /* No methods with this arity exist */
+        return NULL;
+    }
+
+    /* Fallback: Linear search through methods (sorted by specificity) */
+    MethodInfo* result = NULL;
+    for (MethodInfo* method = g->methods; method; method = method->next) {
+        if (check_argument_types(method->param_kinds, method->param_count, args, argc)) {
+            result = method;
+            break;
+        }
+    }
+
+    /* Cache the result for future lookups */
+    if (result) {
+        if (!g->dispatch_cache) {
+            /* Lazily allocate dispatch cache */
+            g->dispatch_cache = hashmap_new();
+        }
+        if (g->dispatch_cache) {
+            hashmap_put((HashMap*)g->dispatch_cache, (void*)(uintptr_t)sig_hash, result);
+        }
+    }
+
+    return result;
 }
 
 /*
@@ -280,7 +367,7 @@ Obj* call_generic(Obj* generic_obj, Obj** args, int argc) {
  *
  * Returns: true if at least one method has the given arity, false otherwise
  *
- * This is used for arity validation before dispatch.
+ * Optimization: Uses by_arity array for O(1) lookup when argc < MAX_ARITY_FAST.
  */
 bool omni_check_arity(Obj* generic_obj, int argc) {
     if (!generic_obj || !IS_BOXED(generic_obj) || generic_obj->tag != TAG_GENERIC) {
@@ -292,8 +379,12 @@ bool omni_check_arity(Obj* generic_obj, int argc) {
         return false;
     }
 
-    /* Check if any method has the given arity */
-// REVIEWED:NAIVE
+    /* Fast path: O(1) lookup using by_arity array */
+    if (g->by_arity && argc >= 0 && argc < g->max_arity) {
+        return g->by_arity[argc] != NULL;
+    }
+
+    /* Fallback: Linear scan for large arities */
     for (MethodInfo* method = g->methods; method; method = method->next) {
         if (method->param_count == argc) {
             return true;

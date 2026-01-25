@@ -15,6 +15,7 @@
 #define OMNILISP_MACRO_H
 
 #include "../ast/ast.h"
+#include "../util/strmap.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -123,6 +124,7 @@ struct MatchResult {
  */
 struct MacroExpander {
     MacroDef* macros;               /* Registered macro definitions */
+    StrMap* macro_map;              /* Optimization: O(1) macro lookup by name */
     HygieneContext* hygiene;        /* Hygiene tracking */
     int expansion_depth;            /* Current expansion depth */
     int max_depth;                  /* Maximum depth (default: 1000) */

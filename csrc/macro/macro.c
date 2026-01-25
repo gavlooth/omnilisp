@@ -26,6 +26,7 @@ MacroExpander* omni_macro_expander_new(void) {
     exp->max_depth = DEFAULT_MAX_DEPTH;
     exp->hygiene = omni_macro_hygiene_new();
     exp->arena = omni_arena_new(4096);
+    exp->macro_map = strmap_new();  /* Optimization: O(1) macro lookup */
 
     return exp;
 }
@@ -75,6 +76,11 @@ void omni_macro_expander_free(MacroExpander* exp) {
 
     /* Free hygiene context */
     omni_macro_hygiene_free(exp->hygiene);
+
+    /* Free macro_map */
+    if (exp->macro_map) {
+        strmap_free(exp->macro_map);
+    }
 
     /* Free arena */
     if (exp->arena) {
@@ -257,13 +263,25 @@ bool omni_macro_register(MacroExpander* exp, OmniValue* syntax_def) {
     def->next = exp->macros;
     exp->macros = def;
 
+    /* Add to macro_map for O(1) lookup */
+    if (exp->macro_map) {
+        strmap_put(exp->macro_map, def->name, def);
+    }
+
     return true;
 }
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) hash lookup instead of O(n) linear scan
 MacroDef* omni_macro_lookup(MacroExpander* exp, const char* name) {
     if (!exp || !name) return NULL;
 
+    /* O(1) hash lookup */
+    if (exp->macro_map) {
+        MacroDef* def = (MacroDef*)strmap_get(exp->macro_map, name);
+        if (def) return def;
+    }
+
+    /* Fallback to linear scan */
     for (MacroDef* def = exp->macros; def; def = def->next) {
         if (strcmp(def->name, name) == 0) {
             return def;

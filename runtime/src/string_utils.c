@@ -142,22 +142,28 @@ Obj* prim_string_join(Obj* delim_obj, Obj* list_obj) {
 
     if (count == 0) return cstr_to_obj("");
 
-// REVIEWED:NAIVE
-    /* Build joined string */
+    /* Build joined string using O(n) pointer arithmetic instead of O(n²) strcat */
     char* result = malloc(total_len + 1);
-    result[0] = '\0';
+    char* pos = result;
+    size_t delim_len = strlen(delim);
 
     p = list_obj;
     int first = 1;
     while (p && IS_BOXED(p) && p->tag == TAG_PAIR) {
         const char* s = obj_to_cstr(p->a);
         if (s) {
-            if (!first) strcat(result, delim);
-            strcat(result, s);
+            if (!first) {
+                memcpy(pos, delim, delim_len);
+                pos += delim_len;
+            }
+            size_t s_len = strlen(s);
+            memcpy(pos, s, s_len);
+            pos += s_len;
             first = 0;
         }
         p = p->b;
     }
+    *pos = '\0';
 
     Obj* result_obj = cstr_to_obj(result);
     free(result);
@@ -197,21 +203,26 @@ Obj* prim_string_replace(Obj* old_obj, Obj* new_obj, Obj* str_obj) {
 
     size_t result_len = strlen(str) + count * (new_len - old_len);
     char* result = malloc(result_len + 1);
-    result[0] = '\0';
 
-// REVIEWED:NAIVE
-    /* Build result string */
+    /* Build result string using O(n) pointer arithmetic instead of O(n²) strcat */
+    char* dest = result;
     p = str;
     const char* last_pos = str;
 
     while ((p = strstr(p, old)) != NULL) {
-        strncat(result, last_pos, p - last_pos);
-        strcat(result, new);
+        /* Copy segment before match */
+        size_t segment_len = p - last_pos;
+        memcpy(dest, last_pos, segment_len);
+        dest += segment_len;
+        /* Copy replacement */
+        memcpy(dest, new, new_len);
+        dest += new_len;
         p += old_len;
         last_pos = p;
     }
 
-    strcat(result, last_pos);
+    /* Copy remaining suffix */
+    strcpy(dest, last_pos);
 
     Obj* result_obj = cstr_to_obj(result);
     free(result);

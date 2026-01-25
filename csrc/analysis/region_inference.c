@@ -12,6 +12,7 @@
 #include "region_inference.h"
 #include "analysis.h"
 #include "../ast/ast.h"
+#include "../util/strmap.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +32,7 @@ typedef struct VIGNode {
     char** neighbors;               /* Adjacent variables */
     size_t neighbor_count;
     size_t neighbor_capacity;
+    StrMap* neighbor_map;           /* Optimization: O(1) neighbor lookup */
     int component_id;               /* Assigned component (-1 = unassigned) */
     bool visited;                   /* For BFS/DFS */
     int first_def;                  /* First definition position */
@@ -40,22 +42,24 @@ typedef struct VIGNode {
 
 typedef struct {
     VIGNode* nodes;
+    StrMap* node_map;               /* Optimization: O(1) node lookup by name */
     size_t node_count;
 } VariableInteractionGraph;
 
 /* Initialize VIG */
 static void vig_init(VariableInteractionGraph* vig) {
     vig->nodes = NULL;
+    vig->node_map = strmap_new();  /* Optimization: O(1) node lookup */
     vig->node_count = 0;
 }
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) hash lookup instead of O(n) linear scan
 /* Find or create a VIG node */
 static VIGNode* vig_get_node(VariableInteractionGraph* vig, const char* var_name) {
-    for (VIGNode* n = vig->nodes; n; n = n->next) {
-        if (strcmp(n->var_name, var_name) == 0) {
-            return n;
-        }
+    /* O(1) hash lookup */
+    if (vig->node_map) {
+        VIGNode* cached = (VIGNode*)strmap_get(vig->node_map, var_name);
+        if (cached) return cached;
     }
 
     /* Create new node */
@@ -63,6 +67,7 @@ static VIGNode* vig_get_node(VariableInteractionGraph* vig, const char* var_name
     node->var_name = strdup(var_name);
     node->neighbor_capacity = 4;
     node->neighbors = malloc(sizeof(char*) * node->neighbor_capacity);
+    node->neighbor_map = strmap_new();  /* Optimization: O(1) neighbor lookup */
     node->component_id = -1;
     node->visited = false;
     node->first_def = -1;
@@ -72,10 +77,15 @@ static VIGNode* vig_get_node(VariableInteractionGraph* vig, const char* var_name
     vig->nodes = node;
     vig->node_count++;
 
+    /* Add to hash map for O(1) future lookups */
+    if (vig->node_map) {
+        strmap_put(vig->node_map, var_name, node);
+    }
+
     return node;
 }
 
-// REVIEWED:NAIVE
+// REVIEWED:OPTIMIZED - O(1) neighbor lookup using hash map
 /* Add undirected edge between two variables */
 static void vig_add_edge(VariableInteractionGraph* vig, const char* u, const char* v) {
     if (strcmp(u, v) == 0) return; /* Skip self-loops */
@@ -83,36 +93,30 @@ static void vig_add_edge(VariableInteractionGraph* vig, const char* u, const cha
     VIGNode* nu = vig_get_node(vig, u);
     VIGNode* nv = vig_get_node(vig, v);
 
-    /* Add v to u's neighbors */
-    bool found = false;
-    for (size_t i = 0; i < nu->neighbor_count; i++) {
-        if (strcmp(nu->neighbors[i], v) == 0) {
-            found = true;
-            break;
-        }
-    }
+    /* Add v to u's neighbors - O(1) duplicate check */
+    bool found = nu->neighbor_map && strmap_contains(nu->neighbor_map, v);
     if (!found) {
         if (nu->neighbor_count >= nu->neighbor_capacity) {
             nu->neighbor_capacity *= 2;
             nu->neighbors = realloc(nu->neighbors, sizeof(char*) * nu->neighbor_capacity);
         }
         nu->neighbors[nu->neighbor_count++] = strdup(v);
-    }
-
-    /* Add u to v's neighbors (undirected) */
-    found = false;
-    for (size_t i = 0; i < nv->neighbor_count; i++) {
-        if (strcmp(nv->neighbors[i], u) == 0) {
-            found = true;
-            break;
+        if (nu->neighbor_map) {
+            strmap_put(nu->neighbor_map, v, (void*)1);  /* Use as hash set */
         }
     }
+
+    /* Add u to v's neighbors (undirected) - O(1) duplicate check */
+    found = nv->neighbor_map && strmap_contains(nv->neighbor_map, u);
     if (!found) {
         if (nv->neighbor_count >= nv->neighbor_capacity) {
             nv->neighbor_capacity *= 2;
             nv->neighbors = realloc(nv->neighbors, sizeof(char*) * nv->neighbor_capacity);
         }
         nv->neighbors[nv->neighbor_count++] = strdup(u);
+        if (nv->neighbor_map) {
+            strmap_put(nv->neighbor_map, u, (void*)1);  /* Use as hash set */
+        }
     }
 }
 
@@ -126,8 +130,14 @@ static void vig_free(VariableInteractionGraph* vig) {
             free(node->neighbors[i]);
         }
         free(node->neighbors);
+        if (node->neighbor_map) {
+            strmap_free(node->neighbor_map);
+        }
         free(node);
         node = next;
+    }
+    if (vig->node_map) {
+        strmap_free(vig->node_map);
     }
 }
 
