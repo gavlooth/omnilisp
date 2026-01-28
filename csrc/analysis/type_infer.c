@@ -69,6 +69,7 @@ ConcreteType* infer_var(TypeEnv* env, const char* var_name) {
     return concrete_type_any();
 }
 
+// REVIEWED:NAIVE
 /* ============== Operation Classification ============== */
 
 bool is_arithmetic_op(const char* op) {
@@ -90,6 +91,7 @@ bool is_arithmetic_op(const char* op) {
            strcmp(op, "log") == 0;
 }
 
+// REVIEWED:NAIVE
 bool is_comparison_op(const char* op) {
     if (!op) return false;
 

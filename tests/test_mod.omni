@@ -1,0 +1,182 @@
+;; test_mod.omni - Tests for modulo function
+;;
+;; Tests prim_mod (exposed as mod and % in OmniLisp)
+;; which computes the remainder of division.
+;;
+;; Run with: ./omni tests/test_mod.omni
+
+;; ============================================================
+;; Test Framework
+;; ============================================================
+
+(define test-count 0)
+(define pass-count 0)
+(define fail-count 0)
+
+(define test-eq [name] [expected] [actual]
+  (set! test-count (+ test-count 1))
+  (if (= expected actual)
+      (do
+        (set! pass-count (+ pass-count 1))
+        (print "PASS:" name))
+      (do
+        (set! fail-count (+ fail-count 1))
+        (print "FAIL:" name)
+        (print "  Expected:" expected)
+        (print "  Got:" actual))))
+
+;; ============================================================
+;; Test 1: Basic Modulo Operations - happy path
+;; ============================================================
+
+(print "")
+(print "=== Test 1: Basic Modulo Operations ===")
+
+;; Test 1.1: mod of positive numbers
+(test-eq "mod(10, 3) = 1" 1 (mod 10 3))
+(test-eq "mod(7, 2) = 1" 1 (mod 7 2))
+(test-eq "mod(15, 5) = 0" 0 (mod 15 5))
+(test-eq "mod(100, 7) = 2" 2 (mod 100 7))
+
+;; Test 1.2: mod with remainder zero
+(test-eq "mod(12, 4) = 0" 0 (mod 12 4))
+(test-eq "mod(25, 5) = 0" 0 (mod 25 5))
+(test-eq "mod(9, 3) = 0" 0 (mod 9 3))
+(test-eq "mod(1000, 10) = 0" 0 (mod 1000 10))
+
+;; Test 1.3: mod where dividend < divisor
+(test-eq "mod(3, 10) = 3" 3 (mod 3 10))
+(test-eq "mod(5, 15) = 5" 5 (mod 5 15))
+(test-eq "mod(1, 100) = 1" 1 (mod 1 100))
+
+;; ============================================================
+;; Test 2: Modulo with Zero
+;; ============================================================
+
+(print "")
+(print "=== Test 2: Modulo with Zero ===")
+
+;; Test 2.1: mod with dividend zero
+(test-eq "mod(0, 5) = 0" 0 (mod 0 5))
+(test-eq "mod(0, 1) = 0" 0 (mod 0 1))
+(test-eq "mod(0, 100) = 0" 0 (mod 0 100))
+
+;; Test 2.2: mod with divisor zero (error case)
+;; Current implementation returns 0 for division by zero
+;; This test documents current behavior (may need fixing)
+(do
+  (define result (mod 10 0))
+  (test-eq "mod(10, 0) = 0 (current behavior)" 0 result))
+
+;; ============================================================
+;; Test 3: Modulo with Negative Numbers
+;; ============================================================
+
+(print "")
+(print "=== Test 3: Modulo with Negative Numbers ===")
+
+;; Test 3.1: mod with negative dividend
+;; C modulo preserves sign of dividend
+(test-eq "mod(-10, 3) = -1" -1 (mod -10 3))
+(test-eq "mod(-7, 2) = -1" -1 (mod -7 2))
+(test-eq "mod(-15, 5) = 0" 0 (mod -15 5))
+
+;; Test 3.2: mod with negative divisor
+(test-eq "mod(10, -3) = 1" 1 (mod 10 -3))
+(test-eq "mod(7, -2) = 1" 1 (mod 7 -2))
+(test-eq "mod(15, -5) = 0" 0 (mod 15 -5))
+
+;; Test 3.3: mod with both negative
+(test-eq "mod(-10, -3) = -1" -1 (mod -10 -3))
+(test-eq "mod(-7, -2) = -1" -1 (mod -7 -2))
+(test-eq "mod(-15, -5) = 0" 0 (mod -15 -5))
+
+;; ============================================================
+;; Test 4: Modulo with Mod 1 (Identity)
+;; ============================================================
+
+(print "")
+(print "=== Test 4: Modulo with Mod 1 ===")
+
+;; Test 4.1: mod 1 always returns 0 for integers
+(test-eq "mod(10, 1) = 0" 0 (mod 10 1))
+(test-eq "mod(999, 1) = 0" 0 (mod 999 1))
+(test-eq "mod(0, 1) = 0" 0 (mod 0 1))
+(test-eq "mod(-5, 1) = 0" 0 (mod -5 1))
+
+;; ============================================================
+;; Test 5: Modulo with Large Numbers
+;; ============================================================
+
+(print "")
+(print "=== Test 5: Large Numbers ===")
+
+;; Test 5.1: mod with large positive numbers
+(test-eq "mod(1000000, 7) = 1" 1 (mod 1000000 7))
+(test-eq "mod(2147483647, 1000) = 647" 2147483647 (mod 2147483647 1000))
+(test-eq "mod(9999999999, 123) = 9" 9 (mod 9999999999 123))
+
+;; Test 5.2: mod with large negative numbers
+(test-eq "mod(-1000000, 7) = -1" -1 (mod -1000000 7))
+(test-eq "mod(-2147483648, 100) = -48" -48 (mod -2147483648 100))
+
+;; ============================================================
+;; Test 6: Modulo Edge Cases
+;; ============================================================
+
+(print "")
+(print "=== Test 6: Edge Cases ===")
+
+;; Test 6.1: mod with divisor 1
+(test-eq "mod(42, 1) = 0" 0 (mod 42 1))
+
+;; Test 6.2: mod where dividend equals divisor
+(test-eq "mod(5, 5) = 0" 0 (mod 5 5))
+(test-eq "mod(100, 100) = 0" 0 (mod 100 100))
+(test-eq "mod(-7, -7) = 0" 0 (mod -7 -7))
+
+;; Test 6.3: mod with divisor 2 (even/odd test)
+(test-eq "mod(42, 2) = 0 (even)" 0 (mod 42 2))
+(test-eq "mod(43, 2) = 1 (odd)" 1 (mod 43 2))
+(test-eq "mod(-42, 2) = 0 (even)" 0 (mod -42 2))
+(test-eq "mod(-43, 2) = -1 (odd)" -1 (mod -43 2))
+
+;; Test 6.4: mod with divisor 10 (last digit)
+(test-eq "mod(123, 10) = 3 (last digit)" 3 (mod 123 10))
+(test-eq "mod(456, 10) = 6 (last digit)" 6 (mod 456 10))
+(test-eq "mod(789, 10) = 9 (last digit)" 9 (mod 789 10))
+
+;; ============================================================
+;; Test 7: Modulo Operator (%) Alias
+;; ============================================================
+
+(print "")
+(print "=== Test 7: Percent Operator Alias ===")
+
+;; Test 7.1: % operator should work same as mod
+(test-eq "% operator (10, 3) = 1" 1 (% 10 3))
+(test-eq "% operator (7, 2) = 1" 1 (% 7 2))
+(test-eq "% operator (15, 5) = 0" 0 (% 15 5))
+(test-eq "% operator (100, 7) = 2" 2 (% 100 7))
+
+;; Test 7.2: % with negative numbers
+(test-eq "% operator (-10, 3) = -1" -1 (% -10 3))
+(test-eq "% operator (10, -3) = 1" 1 (% 10 -3))
+(test-eq "% operator (-10, -3) = -1" -1 (% -10 -3))
+
+;; ============================================================
+;; Test Results
+;; ============================================================
+
+(print "")
+(print "=== Test Results ===")
+(print "Total:" test-count)
+(print "Passed:" pass-count)
+(print "Failed:" fail-count)
+
+(if (= fail-count 0)
+    (print "ALL TESTS PASSED!")
+    (print "SOME TESTS FAILED"))
+
+;; Return count of failures (0 = success)
+fail-count

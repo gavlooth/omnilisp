@@ -413,6 +413,7 @@ static void stringify_string(const char* str, char** buf, size_t* len, size_t* c
     buf_append_char(buf, len, cap, '"');
 }
 
+// REVIEWED:NAIVE
 static void add_indent(char** buf, size_t* len, size_t* cap, int indent, int depth) {
     if (indent <= 0) return;
     buf_append_char(buf, len, cap, '\n');
@@ -617,6 +618,7 @@ Obj* prim_json_parse(Obj* json_str_obj) {
 }
 
 /* TESTED */
+// TESTED - tests/test_json_stringify.omni
 /*
  * prim_json_stringify - Convert data to JSON string (compact)
  *
@@ -636,6 +638,7 @@ Obj* prim_json_stringify(Obj* data) {
     return result;
 }
 
+// TESTED - tests/test_json_pretty.omni
 /*
  * prim_json_pretty - Convert data to pretty-printed JSON
  *

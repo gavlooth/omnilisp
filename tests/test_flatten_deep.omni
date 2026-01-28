@@ -1,0 +1,312 @@
+;; test_flatten_deep.omni - Comprehensive tests for flatten-deep primitive
+;;
+;; Tests prim_flatten_deep function (exposed as flatten-deep in OmniLisp)
+;; which recursively flattens ALL levels of nesting in collections.
+;; Supports both arrays and lists as input, and returns a flattened array.
+
+;; ============================================================
+;; Test Framework
+;; ============================================================
+
+(define test-count 0)
+(define pass-count 0)
+(define fail-count 0)
+
+(define test-eq [name] [expected] [actual]
+  (set! test-count (+ test-count 1))
+  (if (equal? expected actual)
+      (do
+        (set! pass-count (+ pass-count 1))
+        (print "PASS:" name))
+      (do
+        (set! fail-count (+ fail-count 1))
+        (print "FAIL:" name)
+        (print "  Expected:" expected)
+        (print "  Got:" actual))))
+
+;; ============================================================
+;; Basic Flatten-Deep Tests - Arrays
+;; ============================================================
+
+(print "")
+(print "=== Basic Flatten-Deep Tests - Arrays ===")
+
+;; Test 1: Flatten-deep empty array
+(test-eq "flatten-deep empty array"
+  []
+  (flatten-deep []))
+
+;; Test 2: Flatten-deep single-level array (no nesting)
+(test-eq "flatten-deep flat array"
+  [1 2 3]
+  (flatten-deep [1 2 3]))
+
+;; Test 3: Flatten-deep array of arrays (two levels)
+(test-eq "flatten-deep array of arrays"
+  [1 2 3 4 5 6]
+  (flatten-deep [[1 2] [3 4] [5 6]]))
+
+;; Test 4: Flatten-deep deeply nested arrays (three levels)
+(test-eq "flatten-deep three levels"
+  [1 2 3 4 5 6 7 8]
+  (flatten-deep [[[1 2] [3 4]] [[5 6] [7 8]]]))
+
+;; Test 5: Flatten-deep very deep nesting (four+ levels)
+(test-eq "flatten-deep four levels"
+  [1 2 3 4]
+  (flatten-deep [[[[[1 2]]] [[3 4]]]]))
+
+;; ============================================================
+;; Flatten-Deep Tests - Lists
+;; ============================================================
+
+(print "")
+(print "=== Flatten-Deep Tests - Lists ===")
+
+;; Test 6: Flatten-deep empty list
+(test-eq "flatten-deep empty list"
+  []
+  (flatten-deep ()))
+
+;; Test 7: Flatten-deep flat list
+(test-eq "flatten-deep flat list"
+  [1 2 3]
+  (flatten-deep '(1 2 3)))
+
+;; Test 8: Flatten-deep list of lists (two levels)
+(test-eq "flatten-deep list of lists"
+  [1 2 3 4 5 6]
+  (flatten-deep '((1 2) (3 4) (5 6))))
+
+;; Test 9: Flatten-deep deeply nested lists (three levels)
+(test-eq "flatten-deep nested lists three levels"
+  [1 2 3 4 5 6 7 8]
+  (flatten-deep '(((1 2) (3 4)) ((5 6) (7 8)))))
+
+;; Test 10: Flatten-deep irregular list nesting
+(test-eq "flatten-deep irregular nesting"
+  [1 2 3 4 5]
+  (flatten-deep '(1 (2 (3 (4 5)))))
+
+;; ============================================================
+;; Mixed Collection Tests
+;; ============================================================
+
+(print "")
+(print "=== Mixed Collection Tests ===")
+
+;; Test 11: Flatten-deep array containing lists
+(test-eq "flatten-deep array of lists"
+  [1 2 3 4]
+  (flatten-deep [(list 1 2) (list 3 4)]))
+
+;; Test 12: Flatten-deep list containing arrays
+(test-eq "flatten-deep list of arrays"
+  [1 2 3 4]
+  (flatten-deep (list [1 2] [3 4])))
+
+;; Test 13: Flatten-deep array with both arrays and lists
+(test-eq "flatten-deep mixed arrays and lists"
+  [1 2 3 4 5 6]
+  (flatten-deep [[1 2] (list 3 4) [5 6]]))
+
+;; Test 14: Flatten-deep deeply nested mixed collections
+(test-eq "flatten-deep deep mixed nesting"
+  [1 2 3 4 5 6 7 8]
+  (flatten-deep [[[1] [2]] (list [[3 4] [5 6]]) [7 8]]))
+
+;; Test 15: Flatten-deep array of arrays containing lists
+(test-eq "flatten-deep arrays of lists"
+  [1 2 3 4]
+  (flatten-deep [[(list 1 2)] [(list 3 4)]]))
+
+;; ============================================================
+;; Edge Cases
+;; ============================================================
+
+(print "")
+(print "=== Edge Cases ===")
+
+;; Test 16: Flatten-deep array with empty nested arrays
+(test-eq "flatten-deep with empty arrays"
+  [1 2 3]
+  (flatten-deep [[1] [] [2 3]]))
+
+;; Test 17: Flatten-deep array with only empty nested arrays
+(test-eq "flatten-deep only empty arrays"
+  []
+  (flatten-deep [[] [] []]))
+
+;; Test 18: Flatten-deep deeply nested empty arrays
+(test-eq "flatten-deep deep empty arrays"
+  []
+  (flatten-deep [[[[[]]]]]))
+
+;; Test 19: Flatten-deep with nil/nothing input
+(test-eq "flatten-deep with nothing"
+  []
+  (flatten-deep nothing))
+
+;; Test 20: Flatten-deep single element
+(test-eq "flatten-deep single element"
+  [42]
+  (flatten-deep 42))
+
+;; Test 21: Flatten-deep single nested element
+(test-eq "flatten-deep single nested element"
+  [99]
+  (flatten-deep [[[[99]]]]))
+
+;; Test 22: Flatten-deep array with non-collection elements
+(test-eq "flatten-deep with non-collections"
+  [1 2 3 "hello"]
+  (flatten-deep [1 2 "hello"]))
+
+;; Test 23: Flatten-deep empty lists mixed
+(test-eq "flatten-deep empty lists mixed"
+  [1 2 3]
+  (flatten-deep '(1 () 2 () 3)))
+
+;; ============================================================
+;; Type Preservation Tests
+;; ============================================================
+
+(print "")
+(print "=== Type Preservation Tests ===")
+
+;; Test 24: Flatten-deep preserves strings
+(test-eq "flatten-deep strings"
+  ["a" "b" "c" "d"]
+  (flatten-deep [["a" "b"] ["c" "d"]]))
+
+;; Test 25: Flatten-deep preserves mixed types
+(test-eq "flatten-deep mixed types"
+  [1 "two" 3.0 true]
+  (flatten-deep [[1 "two"] [3.0 true]]))
+
+;; Test 26: Flatten-deep with booleans
+(test-eq "flatten-deep booleans"
+  [true false true]
+  (flatten-deep [[true] [false] [true]]))
+
+;; Test 27: Flatten-deep with floats
+(test-eq "flatten-deep floats"
+  [1.1 2.2 3.3]
+  (flatten-deep [[[1.1] [2.2] [3.3]]]))
+
+;; ============================================================
+;; Large Input Tests
+;; ============================================================
+
+(print "")
+(print "=== Large Input Tests ===")
+
+;; Test 28: Flatten-deep large array
+(test-eq "flatten-deep large array"
+  (collect-array (range 10))
+  (flatten-deep [[0 1 2 3] [4 5 6 7] [8 9]]))
+
+;; Test 29: Flatten-deep large deeply nested structure
+(test-eq "flatten-deep large deep nesting"
+  (collect-array (range 5))
+  (flatten-deep [[[[0]]] [[[1]]] [[[[2]]]] [[[3]]] [[[[4]]]]]))
+
+;; ============================================================
+;; Deep Nesting Tests (Recursion Edge Cases)
+;; ============================================================
+
+(print "")
+(print "=== Deep Nesting Tests ===")
+
+;; Test 30: Flatten-deep alternating nesting depth
+(test-eq "flatten-deep alternating depth"
+  [1 2 3 4 5 6]
+  (flatten-deep [1 [2 [[3]]] [[[[4]]] 5] [[[6]]]))
+
+;; Test 31: Flatten-deep with many empty levels
+(test-eq "flatten-deep many empty levels"
+  [42]
+  (flatten-deep [[[[[[[42]]]]]]]))
+
+;; Test 32: Flatten-deep ragged structure
+(test-eq "flatten-deep ragged structure"
+  [1 2 3 4 5 6 7 8 9 10]
+  (flatten-deep [1 [2 [3]] [4 [5 [6]]] [[[7] [8]]] [[9] 10]))
+
+;; ============================================================
+;; Structure Preservation Tests
+;; ============================================================
+
+(print "")
+(print "=== Structure Preservation Tests ===")
+
+;; Test 33: Flatten-deep maintains order in arrays
+(test-eq "flatten-deep array order"
+  [1 2 3 4 5]
+  (flatten-deep [[1 2] [3] [[4] 5]]))
+
+;; Test 34: Flatten-deep maintains order in lists
+(test-eq "flatten-deep list order"
+  [1 2 3 4 5]
+  (flatten-deep '(1 (2 3) ((4) 5))))
+
+;; Test 35: Flatten-deep mixed structure order
+(test-eq "flatten-deep mixed order"
+  [1 2 3 4 5 6 7 8]
+  (flatten-deep [1 (list 2 3) [[4] (list 5 6)] [[7] 8]]))
+
+;; ============================================================
+;; Special Value Tests
+;; ============================================================
+
+(print "")
+(print "=== Special Value Tests ===")
+
+;; Test 36: Flatten-deep with nothing in nested structure
+(test-eq "flatten-deep with nothing"
+  [1 2 3]
+  (flatten-deep [1 [2 nothing] [3]]))
+
+;; Test 37: Flatten-deep with false
+(test-eq "flatten-deep with false"
+  [1 false 2 true]
+  (flatten-deep [1 [false 2] [true]]))
+
+;; Test 38: Flatten-deep with zero
+(test-eq "flatten-deep with zero"
+  [0 0 0 0]
+  (flatten-deep [[0] [0] [0] [0]]))
+
+;; ============================================================
+;; Complex Real-World Patterns
+;; ============================================================
+
+(print "")
+(print "=== Complex Real-World Patterns ===")
+
+;; Test 39: Flatten-deep matrix-like structure
+(test-eq "flatten-deep matrix"
+  [1 2 3 4 5 6 7 8 9]
+  (flatten-deep [[[1 2 3] [4 5 6]] [[7 8 9]]]))
+
+;; Test 40: Flatten-deep tree-like structure
+(test-eq "flatten-deep tree"
+  [1 2 3 4 5 6 7]
+  (flatten-deep [1 [2 [3 4]] [5 [6 [7]]]))
+
+;; ============================================================
+;; Results
+;; ============================================================
+
+(print "")
+(print "=== Test Results ===")
+(print "Total:" test-count)
+(print "Passed:" pass-count)
+(print "Failed:" fail-count)
+
+(if (= fail-count 0)
+    (print "ALL TESTS PASSED!")
+    (print "SOME TESTS FAILED"))
+
+;; Return count of failures (0 = success)
+fail-count

@@ -42,10 +42,12 @@ static void strmap_resize(StrMap* map) {
     map->bucket_count = new_count;
 }
 
+// TESTED
 StrMap* strmap_new(void) {
     return strmap_with_capacity(STRMAP_INITIAL_BUCKETS);
 }
 
+// TESTED
 StrMap* strmap_with_capacity(size_t capacity) {
     StrMap* map = malloc(sizeof(StrMap));
     if (!map) return NULL;
@@ -65,6 +67,7 @@ StrMap* strmap_with_capacity(size_t capacity) {
     return map;
 }
 
+// TESTED
 void strmap_free(StrMap* map) {
     if (!map) return;
 
@@ -82,6 +85,7 @@ void strmap_free(StrMap* map) {
     free(map);
 }
 
+// TESTED
 void strmap_put(StrMap* map, const char* key, void* value) {
     if (!map || !key) return;
 
@@ -120,6 +124,7 @@ void strmap_put(StrMap* map, const char* key, void* value) {
     map->entry_count++;
 }
 
+// TESTED
 void* strmap_remove(StrMap* map, const char* key) {
     if (!map || !key) return NULL;
 
@@ -156,10 +161,12 @@ void strmap_foreach(StrMap* map, StrMapIterFn fn, void* ctx) {
     }
 }
 
+// TESTED
 size_t strmap_size(StrMap* map) {
     return map ? map->entry_count : 0;
 }
 
+// TESTED
 void strmap_clear(StrMap* map) {
     if (!map) return;
 
@@ -176,6 +183,7 @@ void strmap_clear(StrMap* map) {
     map->entry_count = 0;
 }
 
+// TESTED
 int strmap_had_alloc_failure(StrMap* map) {
     return map ? map->had_alloc_failure : 0;
 }

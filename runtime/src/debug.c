@@ -40,6 +40,7 @@ static size_t g_total_bytes_allocated = 0;
 
 /* ============== Helper Functions ============== */
 
+// REVIEWED:NAIVE
 /*
  * env_lookup - Look up a symbol in an environment (alist)
  *
@@ -306,6 +307,7 @@ static size_t calculate_obj_size(Obj* obj) {
 
 /* ============== P0: Object Inspection ============== */
 
+// TESTED - tests/test_debug_primitives.lisp
 /*
  * prim_inspect - Detailed object info
  *
@@ -417,6 +419,7 @@ Obj* prim_type_of(Obj* obj) {
     return mk_keyword(lower);
 }
 
+// TESTED - tests/test_debug_primitives.lisp
 /*
  * prim_address_of - Return object memory address as integer
  *
@@ -427,19 +430,7 @@ Obj* prim_address_of(Obj* obj) {
     return mk_int((long)(uintptr_t)obj);
 }
 
-/*
- * prim_refcount_of - Return current reference count
- *
- * Returns the reference count (mark field) of a boxed object.
- * For immediates, returns -1 (not applicable).
- */
-Obj* prim_refcount_of(Obj* obj) {
-    if (!obj || IS_IMMEDIATE(obj)) {
-        return mk_int(-1);  /* Not applicable */
-    }
-    return mk_int(obj->mark);
-}
-
+// TESTED - tests/test_debug_primitives.lisp
 /*
  * prim_region_of_debug - Return owning region info as dict
  *
@@ -466,6 +457,7 @@ Obj* prim_region_of_debug(Obj* obj) {
     return dict;
 }
 
+// TESTED - tests/test_debug_primitives.lisp
 /*
  * prim_sizeof - Return object memory footprint in bytes
  *
@@ -505,6 +497,7 @@ Obj* prim_region_stats(void) {
     return mk_nothing();
 }
 
+// TESTED - runtime/tests/test_memory_usage.c
 /*
  * prim_memory_usage - Return total memory allocated
  *
@@ -514,6 +507,7 @@ Obj* prim_memory_usage(void) {
     return mk_int((long)g_total_bytes_allocated);
 }
 
+// TESTED - tests/test_gc_info.lisp
 /*
  * prim_gc_info - Show RC statistics
  *
@@ -552,6 +546,7 @@ Obj* prim_allocation_trace(Obj* enable) {
     return mk_bool(prev);
 }
 
+// TESTED - runtime/tests/test_leak_check.c
 /*
  * prim_leak_check - Scan for potential memory leaks
  *
@@ -762,6 +757,7 @@ Obj* prim_doc(Obj* sym) {
     }
 
     /* Search built-in docs */
+// REVIEWED:NAIVE
     for (int i = 0; g_builtin_docs[i].name; i++) {
         if (strcmp(g_builtin_docs[i].name, name) == 0) {
             return mk_string(g_builtin_docs[i].doc);
@@ -812,6 +808,7 @@ Obj* prim_source(Obj* obj) {
     return mk_string("Not a function");
 }
 
+// TESTED - tests/test_env_get.lisp
 /*
  * prim_env_get - Look up a symbol in the current environment
  *

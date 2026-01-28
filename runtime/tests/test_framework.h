@@ -20,6 +20,7 @@ extern const char* current_suite;
 
 /* Test suite runner declarations */
 extern void run_region_accounting_tests(void);
+extern void run_typed_array_element_size_tests(void);
 extern void run_regex_tests(void);
 
 /* Colors for output */

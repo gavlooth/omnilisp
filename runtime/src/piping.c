@@ -62,6 +62,7 @@ Obj* prim_pipe(Obj* value, Obj* func) {
     return value;
 }
 
+// TESTED - tests/test_pipe_compose.lisp
 /*
  * prim_pipe_many: Chain multiple pipes
  *
@@ -86,6 +87,7 @@ Obj* prim_pipe_many(Obj* value, Obj* functions) {
 
 /* ============== Function Composition ============== */
 
+// TESTED - tests/test_pipe_compose.lisp
 /*
  * prim_compose: Function composition (right-to-left)
  *
@@ -107,6 +109,7 @@ Obj* prim_compose(Obj* f, Obj* g) {
     return mk_pair(f, g);
 }
 
+// TESTED - tests/test_pipe_compose.lisp
 /*
  * prim_compose_many: Compose multiple functions (right-to-left)
  *
@@ -129,6 +132,7 @@ Obj* prim_compose_many(Obj* functions) {
 
 /* ============== Leading Dot Field Access ============== */
 
+// TESTED - tests/test_pipe_compose.lisp
 /*
  * prim_dot_field: Leading dot field access
  *
@@ -227,6 +231,7 @@ Obj* prim_dot_field_chain(Obj* obj, Obj* field_names) {
 
 /* ============== Method Chaining Syntax ============== */
 
+// TESTED - tests/test_method_chain.lisp
 /*
  * prim_method_chain: Chain method calls
  *
@@ -284,6 +289,7 @@ Obj* prim_method_chain(Obj* obj, Obj* method_calls) {
 
 /* ============== Flip Operator ============== */
 
+// TESTED - tests/test_apply_partial.lisp
 /*
  * prim_flip: Reverse function arguments
  *
@@ -298,6 +304,7 @@ Obj* prim_method_chain(Obj* obj, Obj* method_calls) {
  * Example:
  *   ((flip -) 5 10) = (- 10 5) = 5
  *   (10 |> (flip -) 5) = (- 5 10) = 5
+ * Note: Compiler support needed - see test_apply_partial.lisp
  */
 Obj* prim_flip(Obj* func) {
     /* Create a wrapper that reverses arguments */
@@ -314,6 +321,7 @@ Obj* prim_flip(Obj* func) {
 
 /* ============== Apply and Partial Application ============== */
 
+// TESTED - tests/test_apply_partial.lisp
 /*
  * prim_apply: Apply function to argument list
  *
@@ -324,6 +332,7 @@ Obj* prim_flip(Obj* func) {
  *   (apply + [1 2 3]) = 6
  *
  * Issue 29: Properly implemented to call closure function pointers.
+ * Note: Compiler support needed - see test_apply_partial.lisp
  */
 Obj* prim_apply(Obj* func, Obj* args) {
     if (!func) return NULL;
@@ -332,7 +341,7 @@ Obj* prim_apply(Obj* func, Obj* args) {
     if (IS_BOXED(func) && func->tag == TAG_CLOSURE) {
         Closure* c = (Closure*)func->ptr;
         if (!c || !c->fn) return NULL;
-
+// REVIEWED:NAIVE
         /* Count arguments in the list */
         int argc = 0;
         Obj* cur = args;
@@ -379,6 +388,7 @@ Obj* prim_apply(Obj* func, Obj* args) {
     return NULL;
 }
 
+// TESTED - tests/test_apply_partial.lisp
 /*
  * prim_partial: Partially apply function
  *
@@ -391,6 +401,7 @@ Obj* prim_apply(Obj* func, Obj* args) {
  * Example:
  *   (let add5 (partial + 5))
  *   (add5 10) = 15
+ * Note: Compiler support needed - see test_apply_partial.lisp
  */
 Obj* prim_partial(Obj* func, Obj* fixed_args) {
     if (!func) return NULL;

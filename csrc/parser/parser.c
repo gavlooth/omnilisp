@@ -462,6 +462,7 @@ static OmniValue* act_type(PikaState* state, size_t pos, PikaMatch match) {
             if (omni_is_sym(first)) {
                 const char* type_name = first->str_val;
                 OmniValue* params_list = omni_cdr(list);
+// REVIEWED:NAIVE
                 size_t param_count = omni_list_len(params_list);
                 OmniValue** params = NULL;
                 if (param_count > 0) {

@@ -1274,6 +1274,7 @@ typedef struct {
     size_t cap;
 } RuleGroup;
 
+// REVIEWED:NAIVE
 static RuleGroup* rulegroup_find(RuleGroup* groups, size_t group_count, const char* name) {
     for (size_t i = 0; i < group_count; i++) {
         if (strcmp(groups[i].name, name) == 0) return &groups[i];

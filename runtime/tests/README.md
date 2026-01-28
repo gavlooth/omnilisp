@@ -66,6 +66,33 @@ make test_piping_enhanced
 ../../bin/omni ../../tests/test_collections_utils.omni
 ```
 
+### 5. `test_typed_array_type_conversion.c` (C Tests)
+**Coverage:** Typed array type conversion utilities
+- omni_typed_array_type_name: Convert type enum to string name
+- omni_typed_array_type_from_string: Parse string name to type enum
+
+Tests all supported types (Int64, Float64, Char, Bool) including:
+- Valid type names and aliases (Int, Int64, int64_t, Float, Float64, double, etc.)
+- Case sensitivity
+- NULL and empty string inputs
+- Invalid type strings
+
+**Run with:**
+```bash
+cd /home/heefoo/Documents/code/OmniLisp/runtime/tests
+make test_typed_array_type_conversion
+./test_typed_array_type_conversion
+```
+
+**Or run as standalone:**
+```bash
+cd /home/heefoo/Documents/code/OmniLisp/runtime/tests
+clang -std=c99 -Wall -Wextra -g -I../include -o standalone_test_typed_array_type_conversion standalone_test_typed_array_type_conversion.c -L.. -lomni -lpthread -lm
+./standalone_test_typed_array_type_conversion
+```
+
+**Integrated in:** `test_main.c` (runs with full test suite)
+
 ## Running Tests
 
 ### Run All C Tests

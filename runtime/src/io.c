@@ -220,6 +220,7 @@ Obj* prim_write_lines(Obj* path_obj, Obj* lines_obj) {
     return mk_bool(1);
 }
 
+// TESTED - runtime/tests/test_io_binary.c
 /*
  * prim_read_bytes - Read file as byte array (binary mode)
  *
@@ -267,6 +268,7 @@ Obj* prim_read_bytes(Obj* path_obj) {
     return result;
 }
 
+// TESTED - runtime/tests/test_io_binary.c
 /*
  * prim_write_bytes - Write byte array to file (binary mode)
  *
@@ -645,6 +647,7 @@ Obj* prim_path_join2(Obj* path1_obj, Obj* path2_obj) {
     return mk_string(result);
 }
 
+// TESTED - runtime/tests/test_path_operations.c
 /*
  * prim_path_dirname - Get directory part of path
  *

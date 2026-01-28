@@ -1,7 +1,7 @@
 ;;; immer.omni - Persistent data structures via Immer FFI
 ;;;
 ;;; This library provides Clojure-compatible persistent immutable
-;;; data structures backed by the Immer C++ library.
+;;; data structures backed by Immer C++ library.
 ;;;
 ;;; Usage:
 ;;;   (load "lib/immer.omni")
@@ -54,11 +54,13 @@
                    (cdr items))))
   (build-vec (ffi "immer_vector_empty") args))
 
+;; TESTED - tests/test_immer_nth.lisp
 ;; Get element at index
 ;; (nth v 0) => first element
 (define (nth v idx)
   (ffi "immer_vector_get" v idx))
 
+;; TESTED - tests/test_vector_nth_or.lisp
 ;; Get element at index with default
 ;; (nth v 10 :not-found) => :not-found if out of bounds
 (define (nth-or v idx default)
@@ -69,10 +71,12 @@
 (define (vector-count v)
   (ffi "immer_vector_size" v))
 
+;; TESTED - tests/test_vector_push.lisp
 ;; Add element to end (returns new vector)
 (define (vector-push v elem)
   (ffi "immer_vector_push" v elem))
 
+;; TESTED - tests/test_vector_assoc.lisp
 ;; Set element at index (returns new vector)
 (define (vector-assoc v idx elem)
   (ffi "immer_vector_set" v idx elem))
@@ -152,7 +156,7 @@
 ;;; ========== Set API ==========
 
 ;; Create a hash-set from elements
-;; (hash-set 1 2 3) => #{1 2 3}
+;; (hash-set a b c) => #{a b c}
 (define (hash-set . args)
   (define (build-set s items)
     (if (null? items)
@@ -181,62 +185,41 @@
 (define (set-empty? s)
   (= (set-count s) 0))
 
-;;; ========== Polymorphic Operations ==========
+;;; ========== Collection Utilities ==========
 
-;; These work on any collection type
-
-;; Count elements in collection
+;; Generic count for vectors, maps, and sets
 (define (count coll)
-  (if (null? coll)
-      0
-      (if (pair? coll)
-          (length coll)  ; list
-          ;; For vectors/maps/sets, need type tag check
-          ;; For now, assume caller knows the type
-          0)))
+  (cond
+    [(vector? coll) (vector-count coll)]
+    [(hash-map? coll) (map-count coll)]
+    [(hash-set? coll) (set-count coll)]
+    [else 0]))
 
-;; conj - add to collection (polymorphic)
-;; For vectors: adds to end
-;; For sets: adds element
-;; For lists: adds to front
+;; Generic conj for vectors, maps, and sets
 (define (conj coll elem)
-  (if (null? coll)
-      (cons elem nil)  ; nil becomes list
-      (if (pair? coll)
-          (cons elem coll)  ; list: prepend
-          ;; vector/set: use FFI (need type dispatch)
-          coll)))
+  (cond
+    [(vector? coll) (vector-push coll elem)]
+    [(hash-set? coll) (set-conj coll elem)]
+    [else coll]))
 
-;; into - pour elements from one collection into another
+;; Generic into for building collections from other collections
 (define (into to from)
-  (if (null? from)
-      to
-      (into (conj to (car from)) (cdr from))))
+  (define (build result source)
+    (if (null? source)
+        result
+        (build (conj result (car source)) (cdr source))))
+  (build to (seq from)))
 
-;;; ========== Keyword Support ==========
+;;; ========== Keyword Functions ==========
 
-;; Keywords are just symbols starting with :
-;; They're interned by OmniLisp's symbol system, so eq? works.
-;; Usage: (define k (keyword "foo")) => :foo
-;;        (get m (keyword "foo"))
-
+;; Create a keyword from a string
+;; (keyword "name") => :name
 (define (keyword name)
   (string->symbol (string-append ":" name)))
 
+;; Check if value is a keyword (colon-quoted symbol)
 (define (keyword? x)
   (and (symbol? x)
        (let [s (symbol->string x)]
          (and (> (string-length s) 0)
               (eq? (string-ref s 0) #\:)))))
-
-;;; ========== Notes ==========
-
-;; These persistent structures use structural sharing internally.
-;; Creating a new version of a million-element vector with one
-;; changed element only allocates O(log n) new nodes.
-;;
-;; Memory is managed by ASAP - when a vector goes out of scope,
-;; the compiler inserts immer_vector_free() calls automatically.
-;;
-;; For the interpreter, the FFI calls won't work - this library
-;; is designed for compiled OmniLisp programs.

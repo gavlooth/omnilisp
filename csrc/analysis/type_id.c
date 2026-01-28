@@ -12,6 +12,8 @@
  * Maps string type names from type inference to TypeID enum values.
  * This is used during analysis to assign type_id to variables.
  */
+// REVIEWED:NAIVE
+// TESTED
 TypeID type_name_to_type_id(const char* type_name) {
     if (!type_name) return TYPE_ID_GENERIC;
 
@@ -127,6 +129,7 @@ TypeID type_name_to_type_id(const char* type_name) {
 /*
  * TypeID to name mapping (for debugging/codegen comments)
  */
+// TESTED
 const char* type_id_to_name(TypeID type_id) {
     switch (type_id) {
         case TYPE_ID_INT:         return "Int";
@@ -155,6 +158,7 @@ const char* type_id_to_name(TypeID type_id) {
 /*
  * Check if TypeID is valid
  */
+// TESTED
 bool is_valid_type_id(TypeID type_id) {
     return type_id >= 0 && type_id < TYPE_ID_MAX;
 }
@@ -219,6 +223,7 @@ static const size_t g_inline_threshold[TYPE_ID_MAX] = {
 /*
  * Check if a type can be inline-allocated
  */
+// TESTED
 bool type_id_can_inline(TypeID type_id) {
     if (!is_valid_type_id(type_id)) return false;
     return g_can_inline[type_id];
@@ -227,6 +232,7 @@ bool type_id_can_inline(TypeID type_id) {
 /*
  * Get the inline threshold for a type
  */
+// TESTED
 size_t type_id_inline_threshold(TypeID type_id) {
     if (!is_valid_type_id(type_id)) return 0;
     return g_inline_threshold[type_id];

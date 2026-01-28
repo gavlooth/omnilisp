@@ -1,0 +1,186 @@
+;; test_array_copy.omni - Comprehensive tests for array-copy primitive
+;;
+;; Tests prim_array_copy function (exposed as array-copy in OmniLisp)
+;; which creates a copy of an array.
+
+;; ============================================================
+;; Test Framework
+;; ============================================================
+
+(define test-count 0)
+(define pass-count 0)
+(define fail-count 0)
+
+(define test-eq [name] [expected] [actual]
+  (set! test-count (+ test-count 1))
+  (if (equal? expected actual)
+      (do
+        (set! pass-count (+ pass-count 1))
+        (print "PASS:" name))
+      (do
+        (set! fail-count (+ fail-count 1))
+        (print "FAIL:" name)
+        (print "  Expected:" expected)
+        (print "  Got:" actual))))
+
+;; ============================================================
+;; Basic Array Copy Tests
+;; ============================================================
+
+(print "")
+(print "=== Basic Array Copy Tests ===")
+
+;; Test 1: Copy empty array
+(test-eq "array-copy empty"
+  []
+  (array-copy []))
+
+;; Test 2: Copy array with integers
+(test-eq "array-copy integers"
+  [1 2 3 4 5]
+  (array-copy [1 2 3 4 5]))
+
+;; Test 3: Copy array with floats
+(test-eq "array-copy floats"
+  [1.1 2.2 3.3 4.4]
+  (array-copy [1.1 2.2 3.3 4.4]))
+
+;; Test 4: Copy array with strings
+(test-eq "array-copy strings"
+  ["hello" "world" "test"]
+  (array-copy ["hello" "world" "test"]))
+
+;; Test 5: Copy array with mixed types
+(test-eq "array-copy mixed types"
+  [1 "two" 3.0 true false]
+  (array-copy [1 "two" 3.0 true false]))
+
+;; ============================================================
+;; Single Element Tests
+;; ============================================================
+
+(print "")
+(print "=== Single Element Tests ===")
+
+;; Test 6: Copy array with single integer
+(test-eq "array-copy single integer"
+  [42]
+  (array-copy [42]))
+
+;; Test 7: Copy array with single string
+(test-eq "array-copy single string"
+  ["test"]
+  (array-copy ["test"]))
+
+;; Test 8: Copy array with single float
+(test-eq "array-copy single float"
+  [3.14]
+  (array-copy [3.14]))
+
+;; ============================================================
+;; Large Array Tests
+;; ============================================================
+
+(print "")
+(print "=== Large Array Tests ===")
+
+;; Test 9: Copy large array
+(test-eq "array-copy large"
+  (collect-array (range 20))
+  (array-copy (collect-array (range 20))))
+
+;; Test 10: Copy array with repeated elements
+(test-eq "array-copy repeated elements"
+  [1 1 1 2 2 2 3 3 3]
+  (array-copy [1 1 1 2 2 2 3 3 3]))
+
+;; ============================================================
+;; Special Value Tests
+;; ============================================================
+
+(print "")
+(print "=== Special Value Tests ===")
+
+;; Test 11: Copy array with zero
+(test-eq "array-copy with zero"
+  [0 1 2 0]
+  (array-copy [0 1 2 0]))
+
+;; Test 12: Copy array with negative numbers
+(test-eq "array-copy negative numbers"
+  [-1 -2 -3 -4 -5]
+  (array-copy [-1 -2 -3 -4 -5]))
+
+;; Test 13: Copy array with true/false
+(test-eq "array-copy booleans"
+  [true false true false]
+  (array-copy [true false true false]))
+
+;; Test 14: Copy array with nothing
+(test-eq "array-copy with nothing"
+  [1 nothing 2 nothing 3]
+  (array-copy [1 nothing 2 nothing 3]))
+
+;; ============================================================
+;; Copy Independence Tests
+;; ============================================================
+
+(print "")
+(print "=== Copy Independence Tests ===")
+
+;; Test 15: Verify copy is independent (modify original doesn't affect copy)
+(do
+  (define original [1 2 3])
+  (define copy (array-copy original))
+  (set! (array-nth original 0) 99)
+  (test-eq "copy independent of original"
+    [1 2 3]
+    copy))
+
+;; Test 16: Verify modifying copy doesn't affect original
+(do
+  (define original [1 2 3])
+  (define copy (array-copy original))
+  (set! (array-nth copy 1) 88)
+  (test-eq "modifying copy doesn't affect original"
+    [1 2 3]
+    original))
+
+;; ============================================================
+;; Type Preservation Tests
+;; ============================================================
+
+(print "")
+(print "=== Type Preservation Tests ===")
+
+;; Test 17: Copy preserves nested arrays
+(test-eq "array-copy nested arrays"
+  [[1 2] [3 4] [5 6]]
+  (array-copy [[1 2] [3 4] [5 6]]))
+
+;; Test 18: Copy preserves arrays with symbols
+(test-eq "array-copy with symbols"
+  ['foo 'bar 'baz]
+  (array-copy ['foo 'bar 'baz]))
+
+;; Test 19: Copy preserves arrays with characters
+(test-eq "array-copy with characters"
+  [#\a #\b #\c #\d]
+  (array-copy [#\a #\b #\c #\d]))
+
+;; ============================================================
+;; Results
+;; ============================================================
+
+(print "")
+(print "=== Test Results ===")
+(print "Total:" test-count)
+(print "Passed:" pass-count)
+(print "Failed:" fail-count)
+
+(if (= fail-count 0)
+    (print "ALL TESTS PASSED!")
+    (print "SOME TESTS FAILED"))
+
+;; Return count of failures (0 = success)
+fail-count

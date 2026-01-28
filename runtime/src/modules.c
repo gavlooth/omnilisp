@@ -1020,6 +1020,7 @@ static int is_symbol_allowed(ModuleImport* imp, const char* symbol_name) {
 
         case IMPORT_ONLY:
             /* Only allow if in the imported_symbols list */
+// REVIEWED:NAIVE
             for (int i = 0; i < imp->symbol_count; i++) {
                 if (strcmp(imp->imported_symbols[i], symbol_name) == 0) {
                     return 1;

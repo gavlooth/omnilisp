@@ -67,6 +67,7 @@ static Obj* long_to_obj(long l) {
 
 /* ============== Basic Arithmetic ============== */
 
+/* TESTED */
 /*
  * prim_add: Addition
  * Args: a, b
@@ -152,6 +153,7 @@ Obj* prim_div(Obj* a, Obj* b) {
     }
 }
 
+// TESTED - tests/test_mod.omni
 /*
  * prim_mod: Modulo
  * Args: a, b
@@ -181,13 +183,13 @@ Obj* prim_pow(Obj* base, Obj* exp) {
 
 /* ============== Trigonometric Functions ============== */
 
-// TESTED
+// TESTED - tests/test_trigonometric.omni
 Obj* prim_sin(Obj* x) { return mk_float(sin(obj_to_double(x))); }
 
-// TESTED
+// TESTED - tests/test_trigonometric.omni
 Obj* prim_cos(Obj* x) { return mk_float(cos(obj_to_double(x))); }
 
-// TESTED
+// TESTED - tests/test_trigonometric.omni
 Obj* prim_tan(Obj* x) { return mk_float(tan(obj_to_double(x))); }
 
 // TESTED - runtime/tests/test_math_numerics.c
@@ -203,17 +205,25 @@ Obj* prim_atan2(Obj* y, Obj* x) {
 }
 
 /* ============== Hyperbolic Functions ============== */
-
+// TESTED - tests/test_math_extended.lisp
 Obj* prim_sinh(Obj* x) { return mk_float(sinh(obj_to_double(x))); }
+// TESTED - tests/test_math_extended.lisp
 Obj* prim_cosh(Obj* x) { return mk_float(cosh(obj_to_double(x))); }
+// TESTED - tests/test_math_extended.lisp
 Obj* prim_tanh(Obj* x) { return mk_float(tanh(obj_to_double(x))); }
 
 /* ============== Exponential/Logarithmic Functions ============== */
 
+// TESTED - tests/test_math_lisp.lisp
 Obj* prim_exp(Obj* x) { return mk_float(exp(obj_to_double(x))); }
+// TESTED - tests/test_math_lisp.lisp
 Obj* prim_log(Obj* x) { return mk_float(log(obj_to_double(x))); }
+// TESTED - tests/test_math_lisp.lisp
 Obj* prim_log10(Obj* x) { return mk_float(log10(obj_to_double(x))); }
+// TESTED - tests/test_math_lisp.lisp
 Obj* prim_log2(Obj* x) { return mk_float(log2(obj_to_double(x))); }
+
+// TESTED - tests/test_sqrt.omni
 Obj* prim_sqrt(Obj* x) { return mk_float(sqrt(obj_to_double(x))); }
 
 /* ============== Rounding Functions ============== */
@@ -256,24 +266,29 @@ Obj* prim_trunc(Obj* x) {
 
 /* ============== Math Constants ============== */
 
+// TESTED - tests/test_math_extended.lisp
 Obj* prim_pi(void) {
     return mk_float(M_PI);
 }
 
+// TESTED - tests/test_math_extended.lisp
 Obj* prim_e(void) {
     return mk_float(M_E);
 }
 
+// TESTED - tests/test_math_extended.lisp
 Obj* prim_inf(void) {
     return mk_float(INFINITY);
 }
 
+// TESTED - tests/test_math_extended.lisp
 Obj* prim_nan(void) {
     return mk_float(NAN);
 }
 
 /* ============== Comparison Functions ============== */
 
+// TESTED - tests/test_math_extended.lisp
 /*
  * prim_min: Minimum of two values
  */
@@ -292,6 +307,7 @@ Obj* prim_min(Obj* a, Obj* b) {
     }
 }
 
+// TESTED - tests/test_math_extended.lisp
 /*
  * prim_max: Maximum of two values
  */
@@ -322,18 +338,22 @@ Obj* prim_clamp(Obj* x, Obj* min_val, Obj* max_val) {
 
 /* ============== Bitwise Operations ============== */
 
+// TESTED - tests/test_math_extended.lisp
 Obj* prim_band(Obj* a, Obj* b) {
     return mk_int(obj_to_long(a) & obj_to_long(b));
 }
 
+// TESTED - tests/test_math_extended.lisp
 Obj* prim_bor(Obj* a, Obj* b) {
     return mk_int(obj_to_long(a) | obj_to_long(b));
 }
 
+// TESTED - tests/test_math_extended.lisp
 Obj* prim_bxor(Obj* a, Obj* b) {
     return mk_int(obj_to_long(a) ^ obj_to_long(b));
 }
 
+// TESTED - tests/test_math_extended.lisp
 Obj* prim_bnot(Obj* x) {
     return mk_int(~obj_to_long(x));
 }
@@ -481,6 +501,7 @@ static void ensure_seeded(void) {
     }
 }
 
+// TESTED - tests/test_random.lisp
 /*
  * prim_seed_random - Set RNG seed
  *
@@ -495,6 +516,7 @@ Obj* prim_seed_random(Obj* seed) {
     return mk_nothing();
 }
 
+// TESTED - tests/test_random.lisp
 /*
  * prim_random - Random float in [0.0, 1.0)
  *
@@ -507,6 +529,7 @@ Obj* prim_random(void) {
     return mk_float(d);
 }
 
+// TESTED - tests/test_random.lisp
 /*
  * prim_random_int - Random integer in [0, n)
  *
@@ -528,6 +551,7 @@ Obj* prim_random_int(Obj* n_obj) {
     return mk_int((long)(r % (uint64_t)n));
 }
 
+// TESTED - tests/test_random.lisp
 /*
  * prim_random_range - Random integer in [min, max]
  *
@@ -550,6 +574,7 @@ Obj* prim_random_range(Obj* min_obj, Obj* max_obj) {
     return mk_int(min_val + obj_to_long(offset));
 }
 
+// TESTED - tests/test_random.lisp
 /*
  * prim_random_float_range - Random float in [min, max]
  *
@@ -566,6 +591,7 @@ Obj* prim_random_float_range(Obj* min_obj, Obj* max_obj) {
     return mk_float(min_val + rand_val * (max_val - min_val));
 }
 
+// TESTED - tests/test_random.lisp
 /*
  * prim_random_choice - Random element from list/array
  *
@@ -610,6 +636,7 @@ Obj* prim_random_choice(Obj* coll) {
     return mk_nothing();
 }
 
+// TESTED - tests/test_random.lisp
 /*
  * prim_shuffle - Fisher-Yates shuffle of list/array
  *

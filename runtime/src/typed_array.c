@@ -28,6 +28,7 @@ extern Obj* obj_cdr(Obj* pair);
 
 /* ============== Utility Functions ============== */
 
+// TESTED - runtime/tests/test_typed_array_element_size.c
 size_t omni_typed_array_element_size(ArrayElementType type) {
     switch (type) {
         case ARRAY_TYPE_INT64:  return sizeof(int64_t);
@@ -38,6 +39,7 @@ size_t omni_typed_array_element_size(ArrayElementType type) {
     }
 }
 
+// TESTED - runtime/tests/test_typed_array_type_conversion.c
 const char* omni_typed_array_type_name(ArrayElementType type) {
     switch (type) {
         case ARRAY_TYPE_INT64:  return "Int64";
@@ -48,6 +50,7 @@ const char* omni_typed_array_type_name(ArrayElementType type) {
     }
 }
 
+// TESTED - runtime/tests/test_typed_array_type_conversion.c
 ArrayElementType omni_typed_array_type_from_string(const char* name) {
     if (!name) return ARRAY_TYPE_UNKNOWN;
 

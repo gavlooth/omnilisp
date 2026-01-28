@@ -1,0 +1,269 @@
+;; test_array_reverse.omni - Comprehensive tests for array-reverse
+;;
+;; Tests array-reverse primitive which reverses an array in-place.
+;;
+;; Run with: ./omni tests/test_array_reverse.omni
+
+;; ============================================================
+;; Test Framework
+;; ============================================================
+
+(define test-count 0)
+(define pass-count 0)
+(define fail-count 0)
+
+(define test-array-eq [name] [expected] [actual]
+  (set! test-count (+ test-count 1))
+  (if (and (= (array-length expected) (array-length actual))
+           (array-equal? expected actual))
+      (do
+        (set! pass-count (+ pass-count 1))
+        (print "PASS:" name))
+      (do
+        (set! fail-count (+ fail-count 1))
+        (print "FAIL:" name)
+        (print "  Expected:" expected)
+        (print "  Got:" actual))))
+
+;; Helper to check if two arrays are equal
+(define array-equal? [arr1 arr2]
+  (let [len1 (array-length arr1)]
+    [len2 (array-length arr2)]
+    (if (= len1 len2)
+        (let [index 0]
+          [equal? true]
+          (while (and (< index len1) equal?)
+            (if (= (array-nth arr1 index) (array-nth arr2 index))
+                (set! index (+ index 1))
+                (set! equal? false)))
+          equal?)
+        false)))
+
+;; ============================================================
+;; Basic Reverse Tests
+;; ============================================================
+
+(print "")
+(print "=== Basic Reverse Tests ===")
+
+;; Test 1: Reverse simple array
+(test-array-eq "reverse [1 2 3]"
+  [3 2 1]
+  (array-reverse [1 2 3]))
+
+;; Test 2: Reverse single element
+(test-array-eq "reverse [1]"
+  [1]
+  (array-reverse [1]))
+
+;; Test 3: Reverse empty array
+(test-array-eq "reverse []"
+  []
+  (array-reverse []))
+
+;; Test 4: Reverse two elements
+(test-array-eq "reverse [1 2]"
+  [2 1]
+  (array-reverse [1 2]))
+
+;; Test 5: Reverse four elements
+(test-array-eq "reverse [1 2 3 4]"
+  [4 3 2 1]
+  (array-reverse [1 2 3 4]))
+
+;; ============================================================
+;; Element Type Tests
+;; ============================================================
+
+(print "")
+(print "=== Element Type Tests ===")
+
+;; Test 6: Reverse string array
+(test-array-eq "reverse string array"
+  ["cherry" "banana" "apple"]
+  (array-reverse ["apple" "banana" "cherry"]))
+
+;; Test 7: Reverse boolean array
+(test-array-eq "reverse boolean array"
+  [false true false]
+  (array-reverse [false false true]))
+
+;; Test 8: Reverse mixed type array
+(test-array-eq "reverse mixed types"
+  [nothing 5 "hello" true]
+  (array-reverse [true "hello" 5 nothing]))
+
+;; Test 9: Reverse nested arrays
+(test-array-eq "reverse nested arrays"
+  [[4 5] [2 3] [0 1]]
+  (array-reverse [[0 1] [2 3] [4 5]]))
+
+;; Test 10: Reverse array of dictionaries
+(test-array-eq "reverse dict array"
+  [#{:b 2} #{:a 1}]
+  (array-reverse [#{:a 1} #{:b 2}]))
+
+;; ============================================================
+;; Numeric Tests
+;; ============================================================
+
+(print "")
+(print "=== Numeric Tests ===")
+
+;; Test 11: Reverse positive integers
+(test-array-eq "reverse positive integers"
+  [5 4 3 2 1]
+  (array-reverse [1 2 3 4 5]))
+
+;; Test 12: Reverse negative integers
+(test-array-eq "reverse negative integers"
+  [-1 -2 -3]
+  (array-reverse [-3 -2 -1]))
+
+;; Test 13: Reverse mixed sign integers
+(test-array-eq "reverse mixed signs"
+  [-5 0 5]
+  (array-reverse [5 0 -5]))
+
+;; Test 14: Reverse floats
+(test-array-eq "reverse floats"
+  [3.3 2.2 1.1]
+  (array-reverse [1.1 2.2 3.3]))
+
+;; Test 15: Reverse large integers
+(test-array-eq "reverse large integers"
+  [1000 500 0 -500 -1000]
+  (array-reverse [-1000 -500 0 500 1000]))
+
+;; ============================================================
+;; Edge Cases
+;; ============================================================
+
+(print "")
+(print "=== Edge Case Tests ===")
+
+;; Test 16: Reverse duplicate values
+(test-array-eq "reverse duplicates"
+  [2 2 2]
+  (array-reverse [2 2 2]))
+
+;; Test 17: Reverse palindromic array
+(test-array-eq "reverse palindrome [1 2 3 2 1]"
+  [1 2 3 2 1]
+  (array-reverse [1 2 3 2 1]))
+
+;; Test 18: Reverse palindromic even-length
+(test-array-eq "reverse palindrome even [1 2 2 1]"
+  [1 2 2 1]
+  (array-reverse [1 2 2 1]))
+
+;; Test 19: Reverse with nothing values
+(test-array-eq "reverse with nothing"
+  [nothing nothing 1]
+  (array-reverse [1 nothing nothing]))
+
+;; Test 20: Reverse with false values
+(test-array-eq "reverse with false"
+  [false false true]
+  (array-reverse [true false false]))
+
+;; ============================================================
+;; Length Tests
+;; ============================================================
+
+(print "")
+(print "=== Length Tests ===")
+
+;; Test 21: Reverse 10 elements
+(test-array-eq "reverse 10 elements"
+  [10 9 8 7 6 5 4 3 2 1 0]
+  (array-reverse [0 1 2 3 4 5 6 7 8 9 10]))
+
+;; Test 22: Reverse 11 elements (odd length)
+(test-array-eq "reverse 11 elements"
+  [11 10 9 8 7 6 5 4 3 2 1 0]
+  (array-reverse [0 1 2 3 4 5 6 7 8 9 10 11]))
+
+;; Test 23: Reverse 20 elements
+(test-array-eq "reverse 20 elements"
+  [20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0]
+  (array-reverse [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20]))
+
+;; ============================================================
+;; In-Place Mutation Tests
+;; ============================================================
+
+(print "")
+(print "=== In-Place Mutation Tests ===")
+
+;; Test 24: Verify in-place behavior (same object returned)
+(define arr24 [1 2 3 4 5])
+(define result24 (array-reverse arr24))
+(if (= arr24 result24)
+    (do
+      (set! pass-count (+ pass-count 1))
+      (set! test-count (+ test-count 1))
+      (print "PASS: reverse returns same object (in-place)"))
+    (do
+      (set! fail-count (+ fail-count 1))
+      (set! test-count (+ test-count 1))
+      (print "FAIL: reverse does not return same object")))
+
+;; Test 25: Verify original reference is reversed
+(define arr25 [1 2 3])
+(array-reverse arr25)
+(test-array-eq "original reference modified"
+  [3 2 1]
+  arr25)
+
+;; Test 26: Double reverse returns original
+(define arr26 [1 2 3 4 5])
+(array-reverse arr26)
+(array-reverse arr26)
+(test-array-eq "double reverse returns original"
+  [1 2 3 4 5]
+  arr26)
+
+;; ============================================================
+;; Pattern Tests
+;; ============================================================
+
+(print "")
+(print "=== Pattern Tests ===")
+
+;; Test 27: Reverse alternating pattern
+(test-array-eq "reverse [1 2 1 2 1 2]"
+  [2 1 2 1 2 1]
+  (array-reverse [1 2 1 2 1 2]))
+
+;; Test 28: Reverse ascending sequence
+(test-array-eq "reverse ascending [1 3 5 7 9]"
+  [9 7 5 3 1]
+  (array-reverse [1 3 5 7 9]))
+
+;; Test 29: Reverse descending sequence
+(test-array-eq "reverse descending [9 7 5 3 1]"
+  [1 3 5 7 9]
+  (array-reverse [9 7 5 3 1]))
+
+;; Test 30: Reverse symmetric pattern
+(test-array-eq "reverse symmetric [0 1 2 1 0]"
+  [0 1 2 1 0]
+  (array-reverse [0 1 2 1 0]))
+
+;; ============================================================
+;; Test Results
+;; ============================================================
+
+(print "")
+(print "=== Test Results ===")
+(print "Total:" test-count)
+(print "Passed:" pass-count)
+(print "Failed:" fail-count)
+
+(if (= fail-count 0)
+    (print "ALL TESTS PASSED!")
+    (print "SOME TESTS FAILED"))
+
+;; Return count of failures (0 = success)
+fail-count

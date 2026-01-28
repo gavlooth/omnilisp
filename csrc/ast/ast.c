@@ -342,6 +342,7 @@ OmniValue* omni_new_set(void) {
     return v;
 }
 
+// REVIEWED:NAIVE
 // TESTED - test_ast_collections.c
 void omni_set_add(OmniValue* set, OmniValue* elem) {
     if (!set || set->tag != OMNI_SET || !elem) return;
@@ -434,6 +435,7 @@ bool omni_sym_eq_str(OmniValue* s, const char* str) {
 
 /* ============== Value Equality ============== */
 
+// TESTED - csrc/tests/test_values_equal.c
 bool omni_values_equal(OmniValue* a, OmniValue* b) {
     if (a == b) return true;
     if (!a || !b) return false;
@@ -570,6 +572,7 @@ OmniValue* omni_dict_get(OmniValue* dict, OmniValue* key) {
     return omni_nil;
 }
 
+// REVIEWED:NAIVE
 void omni_dict_set(OmniValue* dict, OmniValue* key, OmniValue* val) {
     if (!dict || dict->tag != OMNI_DICT) return;
 

@@ -1121,6 +1121,7 @@ Obj* pika_regex_replace(PikaRegexCompiled* compiled, const char* replacement,
     int last_end = 0;
     bool first_done = false;
 
+// REVIEWED:NAIVE
     for (size_t i = 0; i < match_count; i++) {
         if (!global && first_done) break;
 

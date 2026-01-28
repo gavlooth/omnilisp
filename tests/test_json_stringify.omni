@@ -1,0 +1,367 @@
+;; test_json_stringify.omni - Comprehensive tests for json-stringify primitive
+;;
+;; Tests prim_json_stringify function (exposed as json-stringify in OmniLisp)
+;; which converts OmniLisp data structures to compact JSON strings.
+;;
+;; Type mapping (OmniLisp -> JSON):
+;;   nothing -> null
+;;   true/false -> true/false
+;;   integers -> numbers
+;;   floats -> numbers
+;;   strings -> JSON strings (with escape sequences)
+;;   arrays [] -> JSON arrays []
+;;   dicts #{} -> JSON objects {}
+
+;; ============================================================
+;; Test Framework
+;; ============================================================
+
+(define test-count 0)
+(define pass-count 0)
+(define fail-count 0)
+
+(define test-string [name] [expected] [actual]
+  (set! test-count (+ test-count 1))
+  (if (= expected actual)
+      (do
+        (set! pass-count (+ pass-count 1))
+        (print "PASS:" name))
+      (do
+        (set! fail-count (+ fail-count 1))
+        (print "FAIL:" name)
+        (print "  Expected:" expected)
+        (print "  Got:" actual))))
+
+;; ============================================================
+;; Basic Type Tests
+;; ============================================================
+
+(print "")
+(print "=== Basic Type Tests ===")
+
+;; Test 1: nothing -> null
+(test-string "stringify nothing"
+  "null"
+  (json-stringify nothing))
+
+;; Test 2: Boolean true
+(test-string "stringify true"
+  "true"
+  (json-stringify true))
+
+;; Test 3: Boolean false
+(test-string "stringify false"
+  "false"
+  (json-stringify false))
+
+;; Test 4: Simple integer
+(test-string "stringify integer"
+  "42"
+  (json-stringify 42))
+
+;; Test 5: Negative integer
+(test-string "stringify negative integer"
+  "-123"
+  (json-stringify -123))
+
+;; Test 6: Float
+(test-string "stringify float"
+  "3.14"
+  (json-stringify 3.14))
+
+;; Test 7: Negative float
+(test-string "stringify negative float"
+  "-0.5"
+  (json-stringify -0.5))
+
+;; Test 8: Zero
+(test-string "stringify zero"
+  "0"
+  (json-stringify 0))
+
+;; ============================================================
+;; String Tests
+;; ============================================================
+
+(print "")
+(print "=== String Tests ===")
+
+;; Test 9: Empty string
+(test-string "stringify empty string"
+  "\"\""
+  (json-stringify ""))
+
+;; Test 10: Simple string
+(test-string "stringify simple string"
+  "\"hello\""
+  (json-stringify "hello"))
+
+;; Test 11: String with spaces
+(test-string "stringify string with spaces"
+  "\"hello world\""
+  (json-stringify "hello world"))
+
+;; Test 12: String with quote escape
+(test-string "stringify string with quote"
+  "\"say \\\"hello\\\"\""
+  (json-stringify "say \"hello\""))
+
+;; Test 13: String with backslash
+(test-string "stringify string with backslash"
+  "\"C:\\\\path\\\\to\\\\file\""
+  (json-stringify "C:\\path\\to\\file"))
+
+;; Test 14: String with newline escape
+(test-string "stringify string with newline"
+  "\"hello\\nworld\""
+  (json-stringify "hello\nworld"))
+
+;; Test 15: String with tab escape
+(test-string "stringify string with tab"
+  "\"hello\\tworld\""
+  (json-stringify "hello\tworld"))
+
+;; Test 16: String with carriage return
+(test-string "stringify string with carriage return"
+  "\"hello\\rworld\""
+  (json-stringify "hello\rworld"))
+
+;; Test 17: String with form feed
+(test-string "stringify string with form feed"
+  "\"hello\\fworld\""
+  (json-stringify "hello\fworld"))
+
+;; Test 18: String with backspace
+(test-string "stringify string with backspace"
+  "\"hello\\bworld\""
+  (json-stringify "hello\bworld"))
+
+;; ============================================================
+;; Array Tests
+;; ============================================================
+
+(print "")
+(print "=== Array Tests ===")
+
+;; Test 19: Empty array
+(test-string "stringify empty array"
+  "[]"
+  (json-stringify []))
+
+;; Test 20: Array of numbers
+(test-string "stringify array of numbers"
+  "[1,2,3,4,5]"
+  (json-stringify [1 2 3 4 5]))
+
+;; Test 21: Array of strings
+(test-string "stringify array of strings"
+  "[\"a\",\"b\",\"c\"]"
+  (json-stringify ["a" "b" "c"]))
+
+;; Test 22: Array of mixed types
+(test-string "stringify array of mixed types"
+  "[1,\"two\",true,null]"
+  (json-stringify [1 "two" true nothing]))
+
+;; Test 23: Nested arrays
+(test-string "stringify nested arrays"
+  "[[1,2],[3,4]]"
+  (json-stringify [[1 2] [3 4]]))
+
+;; Test 24: Deeply nested arrays
+(test-string "stringify deeply nested arrays"
+  "[[[1]]]"
+  (json-stringify [[[1]]]))
+
+;; ============================================================
+;; Dict Tests
+;; ============================================================
+
+(print "")
+(print "=== Dict Tests ===")
+
+;; Test 25: Empty dict
+(test-string "stringify empty dict"
+  "{}"
+  (json-stringify #{}))
+
+;; Test 26: Dict with string value
+(test-string "stringify dict with string value"
+  "{\"name\":\"Alice\"}"
+  (json-stringify #{:name "Alice"}))
+
+;; Test 27: Dict with number value
+(test-string "stringify dict with number value"
+  "{\"age\":30}"
+  (json-stringify #{:age 30}))
+
+;; Test 28: Dict with boolean value
+(test-string "stringify dict with boolean true"
+  "{\"active\":true}"
+  (json-stringify #{:active true}))
+
+;; Test 29: Dict with null value
+(test-string "stringify dict with null value"
+  "{\"value\":null}"
+  (json-stringify #{:value nothing}))
+
+;; Test 30: Dict with multiple keys
+(test-string "stringify dict with multiple keys"
+  "{\"name\":\"Bob\",\"age\":25,\"active\":true}"
+  (json-stringify #{:name "Bob" :age 25 :active true}))
+
+;; Test 31: Nested dicts
+(test-string "stringify nested dicts"
+  "{\"user\":{\"name\":\"Charlie\",\"age\":35}}"
+  (json-stringify #{:user #{:name "Charlie" :age 35}}))
+
+;; Test 32: Deeply nested dicts
+(test-string "stringify deeply nested dicts"
+  "{\"a\":{\"b\":{\"c\":42}}}"
+  (json-stringify #{:a #{:b #{:c 42}}}))
+
+;; ============================================================
+;; Complex Structure Tests
+;; ============================================================
+
+(print "")
+(print "=== Complex Structure Tests ===")
+
+;; Test 33: Array of dicts
+(test-string "stringify array of dicts"
+  "[{\"name\":\"Alice\",\"id\":1},{\"name\":\"Bob\",\"id\":2}]"
+  (json-stringify [#{:name "Alice" :id 1} #{:name "Bob" :id 2}]))
+
+;; Test 34: Dict with array value
+(test-string "stringify dict with array value"
+  "{\"items\":[1,2,3]}"
+  (json-stringify #{:items [1 2 3]}))
+
+;; Test 35: Mixed nested structure
+(test-string "stringify mixed nested structure"
+  "{\"users\":[{\"name\":\"Alice\",\"id\":1}],\"count\":1}"
+  (json-stringify #{:users [#{:name "Alice" :id 1}] :count 1}))
+
+;; Test 36: Complex real-world structure
+(test-string "stringify complex real-world structure"
+  "{\"name\":\"Test\",\"version\":\"1.0\",\"features\":[\"feature1\",\"feature2\"],\"settings\":{\"enabled\":true,\"count\":5}}"
+  (json-stringify #{:name "Test" :version "1.0"
+                   :features ["feature1" "feature2"]
+                   :settings #{:enabled true :count 5}}))
+
+;; ============================================================
+;; Round-trip Tests
+;; ============================================================
+
+(print "")
+(print "=== Round-trip Tests ===")
+
+;; Test 37: Round-trip simple number
+(define parsed1 (json-parse "42"))
+(test-string "round-trip number"
+  "42"
+  (json-stringify parsed1))
+
+;; Test 38: Round-trip string
+(define parsed2 (json-parse "\"hello\""))
+(test-string "round-trip string"
+  "\"hello\""
+  (json-stringify parsed2))
+
+;; Test 39: Round-trip array
+(define parsed3 (json-parse "[1,2,3]"))
+(test-string "round-trip array"
+  "[1,2,3]"
+  (json-stringify parsed3))
+
+;; Test 40: Round-trip dict
+(define parsed4 (json-parse "{\"name\":\"Alice\",\"age\":30}"))
+(test-string "round-trip dict"
+  "{\"name\":\"Alice\",\"age\":30}"
+  (json-stringify parsed4))
+
+;; Test 41: Round-trip complex structure
+(define parsed5 (json-parse "{\"users\":[{\"name\":\"Alice\"}],\"count\":1}"))
+(test-string "round-trip complex structure"
+  "{\"users\":[{\"name\":\"Alice\"}],\"count\":1}"
+  (json-stringify parsed5))
+
+;; ============================================================
+;; Compact Formatting Tests (vs pretty-print)
+;; ============================================================
+
+(print "")
+(print "=== Compact Formatting Tests ===")
+
+;; Test 42: Compact output has no newlines (nested dict)
+(define compact1 (json-stringify #{:a #{:b #{:c 42}}}))
+(test-string "nested dict is compact (no newlines)"
+  "{\"a\":{\"b\":{\"c\":42}}}"
+  compact1)
+
+;; Test 43: Compact output has no spaces (array of dicts)
+(define compact2 (json-stringify [#{:name "Alice" :id 1} #{:name "Bob" :id 2}]))
+(test-string "array of dicts is compact (no spaces)"
+  "[{\"name\":\"Alice\",\"id\":1},{\"name\":\"Bob\",\"id\":2}]"
+  compact2)
+
+;; Test 44: Compact output no spaces between elements
+(define compact3 (json-stringify [1 2 3]))
+(test-string "array is compact (no spaces between elements)"
+  "[1,2,3]"
+  compact3)
+
+;; ============================================================
+;; Edge Case Tests
+;; ============================================================
+
+(print "")
+(print "=== Edge Case Tests ===")
+
+;; Test 45: Dict with string containing special chars
+(test-string "dict value with special chars"
+  "{\"path\":\"C:\\\\Users\\\\name\"}"
+  (json-stringify #{:path "C:\\Users\\name"}))
+
+;; Test 46: Array with empty strings
+(test-string "array with empty strings"
+  "[\"\",\"hello\",\"\"]"
+  (json-stringify ["" "hello" ""]))
+
+;; Test 47: Dict with numeric keys (symbols in OmniLisp)
+;; Note: OmniLisp dicts use symbols as keys, they get stringified
+(test-string "dict with numeric-like symbol keys"
+  "{\"k1\":\"v1\",\"k2\":\"v2\"}"
+  (json-stringify #{:k1 "v1" :k2 "v2"}))
+
+;; Test 48: Array containing nothing
+(test-string "array containing nothing"
+  "[null,null,1]"
+  (json-stringify [nothing nothing 1]))
+
+;; Test 49: Dict containing nothing values
+(test-string "dict with nothing values"
+  "{\"a\":null,\"b\":null}"
+  (json-stringify #{:a nothing :b nothing}))
+
+;; Test 50: Empty structures in nested context
+(test-string "empty structures nested"
+  "{\"arr\":[],\"dict\":{}}"
+  (json-stringify #{:arr [] :dict #{}}))
+
+;; ============================================================
+;; Test Results
+;; ============================================================
+
+(print "")
+(print "=== Test Results ===")
+(print "Total:" test-count)
+(print "Passed:" pass-count)
+(print "Failed:" fail-count)
+
+(if (= fail-count 0)
+    (print "ALL TESTS PASSED!")
+    (print "SOME TESTS FAILED"))
+
+;; Return count of failures (0 = success)
+fail-count

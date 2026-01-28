@@ -21,6 +21,7 @@
 #include <stdbool.h>
 #include "../include/omni.h"
 #include "internal_types.h"
+#include "memory/region_value.h"
 
 /*
  * Helper: Extract string value from Obj
@@ -165,7 +166,8 @@ Obj* prim_string_join(Obj* delim_obj, Obj* list_obj) {
     }
     *pos = '\0';
 
-    Obj* result_obj = cstr_to_obj(result);
+    /* Use region allocation instead of malloc/cstr_to_obj */
+    Obj* result_obj = mk_string_region(omni_get_global_region(), result, total_len);
     free(result);
     return result_obj;
 }
@@ -224,7 +226,8 @@ Obj* prim_string_replace(Obj* old_obj, Obj* new_obj, Obj* str_obj) {
     /* Copy remaining suffix */
     strcpy(dest, last_pos);
 
-    Obj* result_obj = cstr_to_obj(result);
+    /* Use region allocation instead of malloc/cstr_to_obj */
+    Obj* result_obj = mk_string_region(omni_get_global_region(), result, result_len);
     free(result);
     return result_obj;
 }
@@ -593,7 +596,7 @@ Obj* prim_string_starts_with(Obj* str_obj, Obj* prefix_obj) {
     return mk_bool(strncmp(str, prefix, prefix_len) == 0);
 }
 
-// TESTED - tests/test_string_ends_with.omni (TODO: create test file)
+// TESTED - tests/test_string_ends_with.omni
 /*
  * string-ends-with: Check if string ends with suffix
  * Args:

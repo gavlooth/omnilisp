@@ -35,12 +35,12 @@ All P0-P2 items have been addressed. See commit history for details.
 
 See `TODO_NAIVE_OPTIMIZATIONS.md` for full optimization history.
 
-#### P3: Memory (heap instead of region) - Deferred
+#### P3: Memory (region allocation) - COMPLETE
 
-| Task | Location | Issue |
-|------|----------|-------|
-| Use region allocation in string_join | `runtime/src/string_utils.c:145` | Uses malloc instead of region_alloc. Low priority - working correctly. |
-| Use region allocation in string_replace | `runtime/src/string_utils.c:202` | Uses malloc instead of region_alloc. Low priority - working correctly. |
+| Task | Location | Status |
+|------|----------|--------|
+| ~~Use region allocation in string_join~~ | `runtime/src/string_utils.c:145` | **COMPLETE** - Now uses mk_string_region(). |
+| ~~Use region allocation in string_replace~~ | `runtime/src/string_utils.c:202` | **COMPLETE** - Now uses mk_string_region(). |
 
 ---
 
@@ -108,6 +108,7 @@ These have working fallbacks and are not blocking:
 - Added `take-while` and `drop-while` codegen mappings
 - Fixed effects system: list form, resumption calls, nested handlers
 - Completed hash optimization work (P0-P2 in TODO_NAIVE_OPTIMIZATIONS.md)
+- Completed P3: Region allocation for `string_join` and `string_replace`
 
 ---
 

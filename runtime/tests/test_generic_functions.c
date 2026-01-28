@@ -59,11 +59,12 @@ static Obj* method_float_float(Obj** captures, Obj** args, int argc) {
     return mk_float(obj_to_float(args[0]) + obj_to_float(args[1]));
 }
 
+// REVIEWED:NAIVE
 static Obj* method_string_string(Obj** captures, Obj** args, int argc) {
     (void)captures; (void)argc;
     const char* s1 = (const char*)args[0]->ptr;
     const char* s2 = (const char*)args[1]->ptr;
-    
+
     size_t len = strlen(s1) + strlen(s2);
     char* result = malloc(len + 1);
     strcpy(result, s1);

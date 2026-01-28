@@ -132,6 +132,7 @@ static uint64_t get_time_ns(void) {
  * Profile Entry Management
  * ============================================================================ */
 
+// REVIEWED:NAIVE
 /*@semantic
 id: function::find_or_create_entry
 kind: function
@@ -275,6 +276,7 @@ Obj* prim_profile(Obj* name_obj, Obj* thunk) {
     return timing;
 }
 
+/* TESTED */
 /*@semantic
 id: function::prim_time
 kind: function
@@ -673,6 +675,7 @@ void omni_profile_init(void) {
     }
 }
 
+// REVIEWED:NAIVE
 /*@semantic
 id: function::find_or_create_site
 kind: function

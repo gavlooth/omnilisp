@@ -1878,6 +1878,7 @@ FreeStrategy omni_get_free_strategy(AnalysisContext* ctx, const char* name) {
 
     /* Static SCC collection takes precedence for cyclic data */
     if (o->is_static_scc) {
+        // REVIEWED:NAIVE
         /* Check if it's a handle to a static component */
         for (ComponentInfo* ci = ctx->components; ci; ci = ci->next) {
             if (ci->is_static) {
@@ -1925,6 +1926,7 @@ FreeStrategy omni_get_free_strategy(AnalysisContext* ctx, const char* name) {
     }
 }
 
+// TESTED - test_alloc_strategy_name.c
 const char* omni_alloc_strategy_name(AllocStrategy strategy) {
     switch (strategy) {
         case ALLOC_HEAP:  return "heap";
@@ -2149,6 +2151,7 @@ static void cfg_node_add_use(CFGNode* n, const char* var) {
     n->uses[n->use_count++] = strdup(var);
 }
 
+// REVIEWED:NAIVE
 static void cfg_node_add_def(CFGNode* n, const char* var) {
     if (!n || !var) return;
     /* Check if already present */
@@ -3226,6 +3229,7 @@ void omni_analyze_borrows(AnalysisContext* ctx, OmniValue* expr) {
         return;
     }
 
+// REVIEWED:NAIVE
     if (strcmp(form, "while") == 0 || strcmp(form, "loop") == 0) {
         /* Mark as in loop for any borrowed variables */
         ctx->in_loop = true;
@@ -3824,6 +3828,7 @@ bool omni_should_free_after_send(AnalysisContext* ctx, const char* channel,
     return false;
 }
 
+// REVIEWED:NAIVE
 ThreadSpawnInfo** omni_get_threads_capturing(AnalysisContext* ctx, const char* var_name,
                                              size_t* count) {
     /* Count matching spawns */
@@ -4179,6 +4184,7 @@ TypeDef* omni_get_type(AnalysisContext* ctx, const char* name) {
     return NULL;
 }
 
+// REVIEWED:NAIVE
 TypeField* omni_get_type_field(TypeDef* type, const char* field_name) {
     if (!type) return NULL;
 
@@ -4247,6 +4253,7 @@ typedef struct {
     size_t stack_count;
 } CycleDetectState;
 
+// REVIEWED:NAIVE
 static bool in_array(const char* name, char** arr, size_t count) {
     for (size_t i = 0; i < count; i++) {
         if (strcmp(arr[i], name) == 0) return true;
@@ -4733,6 +4740,7 @@ char** omni_scope_get_cleanup_vars(ScopeInfo* scope, size_t* out_count) {
         return NULL;
     }
 
+    // REVIEWED:NAIVE
     /* Count variables that need cleanup */
     size_t count = 0;
     for (ScopedVarInfo* v = scope->variables; v; v = v->next) {

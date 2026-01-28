@@ -231,6 +231,150 @@ void test_path_basename_null_input(void) {
     PASS();
 }
 
+/* ========== prim_path_dirname Tests ========== */
+
+void test_path_dirname_simple_filename(void) {
+    /* Test simple filename without directory - returns "." */
+    Obj* path = mk_string("file.txt");
+    Obj* result = prim_path_dirname(path);
+
+    ASSERT_NOT_NULL(result);
+    ASSERT_STR_EQ(test_obj_to_cstr(result), ".");
+
+    dec_ref(path);
+    dec_ref(result);
+    PASS();
+}
+
+void test_path_dirname_full_path(void) {
+    /* Test full path with directories */
+    Obj* path = mk_string("/home/user/file.txt");
+    Obj* result = prim_path_dirname(path);
+
+    ASSERT_NOT_NULL(result);
+    ASSERT_STR_EQ(test_obj_to_cstr(result), "/home/user");
+
+    dec_ref(path);
+    dec_ref(result);
+    PASS();
+}
+
+void test_path_dirname_nested_directories(void) {
+    /* Test path with multiple nested directories */
+    Obj* path = mk_string("/a/b/c/d/e/file");
+    Obj* result = prim_path_dirname(path);
+
+    ASSERT_NOT_NULL(result);
+    ASSERT_STR_EQ(test_obj_to_cstr(result), "/a/b/c/d/e");
+
+    dec_ref(path);
+    dec_ref(result);
+    PASS();
+}
+
+void test_path_dirname_trailing_slash(void) {
+    /* Test path with trailing slash (returns directory part) */
+    Obj* path = mk_string("/home/user/dir/");
+    Obj* result = prim_path_dirname(path);
+
+    ASSERT_NOT_NULL(result);
+    /* strrchr finds last '/', so dirname is /home/user/dir */
+    ASSERT_STR_EQ(test_obj_to_cstr(result), "/home/user/dir");
+
+    dec_ref(path);
+    dec_ref(result);
+    PASS();
+}
+
+void test_path_dirname_root_directory(void) {
+    /* Test root directory - returns "/" */
+    Obj* path = mk_string("/");
+    Obj* result = prim_path_dirname(path);
+
+    ASSERT_NOT_NULL(result);
+    ASSERT_STR_EQ(test_obj_to_cstr(result), "/");
+
+    dec_ref(path);
+    dec_ref(result);
+    PASS();
+}
+
+void test_path_dirname_no_slash(void) {
+    /* Test path without any slash - returns "." */
+    Obj* path = mk_string("simple");
+    Obj* result = prim_path_dirname(path);
+
+    ASSERT_NOT_NULL(result);
+    ASSERT_STR_EQ(test_obj_to_cstr(result), ".");
+
+    dec_ref(path);
+    dec_ref(result);
+    PASS();
+}
+
+void test_path_dirname_empty_string(void) {
+    /* Test empty string - returns "." */
+    Obj* path = mk_string("");
+    Obj* result = prim_path_dirname(path);
+
+    ASSERT_NOT_NULL(result);
+    ASSERT_STR_EQ(test_obj_to_cstr(result), ".");
+
+    dec_ref(path);
+    dec_ref(result);
+    PASS();
+}
+
+void test_path_dirname_current_directory(void) {
+    /* Test current directory "." - returns "." */
+    Obj* path = mk_string(".");
+    Obj* result = prim_path_dirname(path);
+
+    ASSERT_NOT_NULL(result);
+    ASSERT_STR_EQ(test_obj_to_cstr(result), ".");
+
+    dec_ref(path);
+    dec_ref(result);
+    PASS();
+}
+
+void test_path_dirname_parent_directory(void) {
+    /* Test parent directory ".." - returns "." */
+    Obj* path = mk_string("..");
+    Obj* result = prim_path_dirname(path);
+
+    ASSERT_NOT_NULL(result);
+    ASSERT_STR_EQ(test_obj_to_cstr(result), ".");
+
+    dec_ref(path);
+    dec_ref(result);
+    PASS();
+}
+
+void test_path_dirname_single_level_path(void) {
+    /* Test path with one directory level */
+    Obj* path = mk_string("/file.txt");
+    Obj* result = prim_path_dirname(path);
+
+    ASSERT_NOT_NULL(result);
+    ASSERT_STR_EQ(test_obj_to_cstr(result), "/");
+
+    dec_ref(path);
+    dec_ref(result);
+    PASS();
+}
+
+void test_path_dirname_null_input(void) {
+    /* Test with NULL input - returns "." */
+    Obj* result = prim_path_dirname(NULL);
+
+    ASSERT_NOT_NULL(result);
+    ASSERT_STR_EQ(test_obj_to_cstr(result), ".");
+
+    dec_ref(result);
+    PASS();
+}
+
 /* ========== Run All Path Operation Tests ========== */
 
 void run_path_operations_tests(void) {
@@ -260,4 +404,27 @@ void run_path_operations_tests(void) {
     TEST_SECTION("Error Handling");
     RUN_TEST(test_path_basename_invalid_type);
     RUN_TEST(test_path_basename_null_input);
+
+    /* prim_path_dirname tests */
+    TEST_SUITE("Path Operations (prim_path_dirname)");
+
+    /* Basic functionality tests */
+    TEST_SECTION("Basic Functionality");
+    RUN_TEST(test_path_dirname_simple_filename);
+    RUN_TEST(test_path_dirname_full_path);
+    RUN_TEST(test_path_dirname_nested_directories);
+    RUN_TEST(test_path_dirname_single_level_path);
+
+    /* Edge cases */
+    TEST_SECTION("Edge Cases");
+    RUN_TEST(test_path_dirname_trailing_slash);
+    RUN_TEST(test_path_dirname_root_directory);
+    RUN_TEST(test_path_dirname_no_slash);
+    RUN_TEST(test_path_dirname_empty_string);
+    RUN_TEST(test_path_dirname_current_directory);
+    RUN_TEST(test_path_dirname_parent_directory);
+
+    /* Error handling */
+    TEST_SECTION("Error Handling");
+    RUN_TEST(test_path_dirname_null_input);
 }

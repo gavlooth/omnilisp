@@ -1,0 +1,238 @@
+;; test_array_find.omni - Comprehensive tests for array-find and array-find-index
+;;
+;; Tests:
+;;   - array-find: Find first element matching predicate
+;;   - array-find-index: Find index of first element matching predicate
+;;
+;; Run with: ./omni tests/test_array_find.omni
+
+;; ============================================================
+;; Test Framework
+;; ============================================================
+
+(define test-count 0)
+(define pass-count 0)
+(define fail-count 0)
+
+(define test-eq [name] [expected] [actual]
+  (set! test-count (+ test-count 1))
+  (if (= expected actual)
+      (do
+        (set! pass-count (+ pass-count 1))
+        (print "PASS:" name))
+      (do
+        (set! fail-count (+ fail-count 1))
+        (print "FAIL:" name)
+        (print "  Expected:" expected)
+        (print "  Got:" actual))))
+
+(define test-not-nothing [name] [value]
+  (set! test-count (+ test-count 1))
+  (if (nothing? value)
+      (do
+        (set! fail-count (+ fail-count 1))
+        (print "FAIL:" name "(expected non-nothing)"))
+      (do
+        (set! pass-count (+ pass-count 1))
+        (print "PASS:" name))))
+
+(define test-nothing [name] [value]
+  (set! test-count (+ test-count 1))
+  (if (nothing? value)
+      (do
+        (set! pass-count (+ pass-count 1))
+        (print "PASS:" name "(expected nothing)"))
+      (do
+        (set! fail-count (+ fail-count 1))
+        (print "FAIL:" name "(expected nothing)"))))
+
+;; ============================================================
+;; array-find Tests
+;; ============================================================
+
+(print "")
+(print "=== array-find Tests ===")
+
+;; Test 1: Find element in simple array
+(define arr1 [1 2 3 4 5])
+(define result1 (array-find arr1 (lambda [x] (> x 2))))
+(test-not-nothing "find element > 2" result1)
+(test-eq "find returns correct value" 3 result1)
+
+;; Test 2: Find first matching element
+(define arr2 [10 20 30 20 40])
+(define result2 (array-find arr2 (lambda [x] (= x 20))))
+(test-not-nothing "find first match" result2)
+(test-eq "find returns first occurrence" 20 result2)
+
+;; Test 3: Find element at beginning
+(define arr3 [100 200 300])
+(define result3 (array-find arr3 (lambda [x] (>= x 100))))
+(test-not-nothing "find at beginning" result3)
+(test-eq "find returns first element" 100 result3)
+
+;; Test 4: Find element at end
+(define arr4 [1 2 3 4 5])
+(define result4 (array-find arr4 (lambda [x] (= x 5))))
+(test-not-nothing "find at end" result4)
+(test-eq "find returns last element" 5 result4)
+
+;; Test 5: No match returns nothing
+(define arr5 [1 2 3 4 5])
+(define result5 (array-find arr5 (lambda [x] (> x 10))))
+(test-nothing "find no match returns nothing" result5)
+
+;; Test 6: Empty array returns nothing
+(define arr6 [])
+(define result6 (array-find arr6 (lambda [x] true)))
+(test-nothing "find on empty array returns nothing" result6)
+
+;; Test 7: Find with string predicate
+(define arr7 ["apple" "banana" "cherry"])
+(define result7 (array-find arr7 (lambda [x] (string-contains x "ban"))))
+(test-not-nothing "find string containing substring" result7)
+
+;; Test 8: Complex predicate
+(define arr8 [5 12 18 23 30])
+(define result8 (array-find arr8 (lambda [x] (and (> x 10) (< x 20)))))
+(test-not-nothing "find with complex predicate" result8)
+(test-eq "find returns correct value" 12 result8)
+
+;; Test 9: Find with boolean values
+(define arr9 [false false true false])
+(define result9 (array-find arr9 (lambda [x] x)))
+(test-not-nothing "find first true" result9)
+(test-eq "find returns true" true result9)
+
+;; Test 10: Find with no true values
+(define arr10 [false false false])
+(define result10 (array-find arr10 (lambda [x] x)))
+(test-nothing "find no true returns nothing" result10)
+
+;; ============================================================
+;; array-find-index Tests
+;; ============================================================
+
+(print "")
+(print "=== array-find-index Tests ===")
+
+;; Test 11: Find index of element in simple array
+(define arr11 [1 2 3 4 5])
+(define result11 (array-find-index arr11 (lambda [x] (> x 2))))
+(test-eq "find-index returns correct index" 2 result11)
+
+;; Test 12: Find index of first matching element
+(define arr12 [10 20 30 20 40])
+(define result12 (array-find-index arr12 (lambda [x] (= x 20))))
+(test-eq "find-index returns first occurrence index" 1 result12)
+
+;; Test 13: Find index at beginning
+(define arr13 [100 200 300])
+(define result13 (array-find-index arr13 (lambda [x] (>= x 100))))
+(test-eq "find-index at beginning" 0 result13)
+
+;; Test 14: Find index at end
+(define arr14 [1 2 3 4 5])
+(define result14 (array-find-index arr14 (lambda [x] (= x 5))))
+(test-eq "find-index at end" 4 result14)
+
+;; Test 15: No match returns -1
+(define arr15 [1 2 3 4 5])
+(define result15 (array-find-index arr15 (lambda [x] (> x 10))))
+(test-eq "find-index no match returns -1" -1 result15)
+
+;; Test 16: Empty array returns -1
+(define arr16 [])
+(define result16 (array-find-index arr16 (lambda [x] true)))
+(test-eq "find-index on empty array returns -1" -1 result16)
+
+;; Test 17: Find index with string predicate
+(define arr17 ["apple" "banana" "cherry"])
+(define result17 (array-find-index arr17 (lambda [x] (string-contains x "ban"))))
+(test-eq "find-index with string returns correct index" 1 result17)
+
+;; Test 18: Complex predicate for index
+(define arr18 [5 12 18 23 30])
+(define result18 (array-find-index arr18 (lambda [x] (and (> x 10) (< x 20)))))
+(test-eq "find-index with complex predicate" 1 result18)
+
+;; Test 19: Find index of true value
+(define arr19 [false false true false])
+(define result19 (array-find-index arr19 (lambda [x] x)))
+(test-eq "find-index of first true" 2 result19)
+
+;; Test 20: Find index with no true values
+(define arr20 [false false false])
+(define result20 (array-find-index arr20 (lambda [x] x)))
+(test-eq "find-index no true returns -1" -1 result20)
+
+;; Test 21: Find index of even number
+(define arr21 [1 3 5 6 7 9])
+(define result21 (array-find-index arr21 (lambda [x] (= (mod x 2) 0))))
+(test-eq "find-index of even number" 3 result21)
+
+;; Test 22: Find index of element greater than threshold
+(define arr22 [10 20 30 40 50])
+(define result22 (array-find-index arr22 (lambda [x] (> x 35))))
+(test-eq "find-index > 35" 3 result22)
+
+;; Test 23: Negative numbers
+(define arr23 [-5 -3 -1 0 1])
+(define result23 (array-find-index arr23 (lambda [x] (>= x 0))))
+(test-eq "find-index of non-negative" 3 result23)
+
+;; Test 24: Find with no match on larger array
+(define arr24 [1 2 3 4 5 6 7 8 9 10])
+(define result24 (array-find-index arr24 (lambda [x] (= x 100))))
+(test-eq "find-index no match on large array" -1 result24)
+
+;; ============================================================
+;; Integration Tests
+;; ============================================================
+
+(print "")
+(print "=== Integration Tests ===")
+
+;; Test 25: Combine find and find-index
+(define arr25 [10 20 30 40 50])
+(define found-value (array-find arr25 (lambda [x] (> x 25))))
+(define found-index (array-find-index arr25 (lambda [x] (> x 25))))
+(if (and (not (nothing? found-value)) (not (= found-index -1)))
+    (test-eq "find and find-index consistent" 
+             (array-nth arr25 found-index) 
+             found-value)
+    (do
+      (set! fail-count (+ fail-count 1))
+      (print "FAIL: find and find-index not consistent")))
+
+;; Test 26: Find multiple elements in sequence
+(define arr26 [1 2 3 4 5 6 7 8 9 10])
+(define find-even (lambda [x] (= (mod x 2) 0)))
+(define first-even-index (array-find-index arr26 find-even))
+(define first-even-value (array-find arr26 find-even))
+(if (and (= first-even-index 1) (= first-even-value 2))
+    (do
+      (set! pass-count (+ pass-count 1))
+      (set! test-count (+ test-count 1))
+      (print "PASS: find-even in sequence"))
+    (do
+      (set! fail-count (+ fail-count 1))
+      (set! test-count (+ test-count 1))
+      (print "FAIL: find-even in sequence")))
+
+;; ============================================================
+;; Test Results
+;; ============================================================
+
+(print "")
+(print "=== Test Results ===")
+(print "Total:" test-count)
+(print "Passed:" pass-count)
+(print "Failed:" fail-count)
+
+(if (= fail-count 0)
+    (print "ALL TESTS PASSED!")
+    (print "SOME TESTS FAILED"))
+
+;; Return count of failures (0 = success)
+fail-count

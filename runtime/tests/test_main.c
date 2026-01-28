@@ -16,6 +16,7 @@
 #include "../src/math_numerics.c"
 #include "../src/regex.c"
 #include "../src/generic.c"
+#include "../src/typed_array.c"
 #include "../src/piping.c"
 #include "../src/modules.c"
 #include "../src/io.c"
@@ -83,6 +84,8 @@ static int run_slow_tests_enabled(void) {
 #include "test_math_numerics.c"
 #include "test_collections_sort.c"
 #include "test_collections_take_drop.c"
+#include "test_typed_array_element_size.c"
+#include "test_typed_array_type_conversion.c"
 
 int main(int argc, char** argv) {
     (void)argc;
@@ -179,6 +182,8 @@ int main(int argc, char** argv) {
     /* Collection tests */
     run_collections_sort_tests();
     run_collections_take_drop_tests();
+    run_typed_array_element_size_tests();
+    run_typed_array_type_conversion_tests();
 
     /* Summary */
     TEST_SUMMARY();

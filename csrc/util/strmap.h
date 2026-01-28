@@ -52,10 +52,12 @@ void strmap_free(StrMap* map);
 
 /* ========== Core Operations ========== */
 
+// TESTED
 static inline uint64_t strmap_hash(const char* key) {
     return wyhash(key, strlen(key), 0, _wyp);
 }
 
+// TESTED
 static inline void* strmap_get(StrMap* map, const char* key) {
     if (!map || !key) return NULL;
 
@@ -73,6 +75,7 @@ static inline void* strmap_get(StrMap* map, const char* key) {
     return NULL;
 }
 
+// TESTED
 static inline bool strmap_contains(StrMap* map, const char* key) {
     return strmap_get(map, key) != NULL;
 }

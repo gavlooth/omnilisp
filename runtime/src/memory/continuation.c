@@ -1848,6 +1848,7 @@ void timer_system_shutdown(void) {
     pthread_join(g_timer_thread, NULL);
 }
 
+// REVIEWED:NAIVE
 /* Register a timer with the timer system */
 static void timer_register(Promise* p, uint64_t ms) {
     TimerEntry* entry = malloc(sizeof(TimerEntry));

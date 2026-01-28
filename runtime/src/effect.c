@@ -202,6 +202,7 @@ EffectType* effect_type_find(const char* name) {
     return NULL;
 }
 
+// REVIEWED:NAIVE
 EffectType* effect_type_find_by_id(uint32_t id) {
     pthread_mutex_lock(&registry_lock);
     for (EffectType* t = effect_registry; t; t = t->next) {

@@ -125,6 +125,7 @@ ConcreteType* concrete_type_union(ConcreteType** member_types, int member_count)
         return concrete_type_any();
     }
 
+    // REVIEWED:NAIVE
     int unique_count = 0;
     for (int i = 0; i < member_count; i++) {
         bool is_duplicate = false;
