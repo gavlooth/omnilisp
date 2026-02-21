@@ -13,7 +13,7 @@ and optionally extending to higher-kinded types.
 
 ---
 
-## Level 1: Julia Core (Current Target)
+## Type System Syntax
 
 ### 1.1 Type Annotations
 
@@ -48,9 +48,9 @@ Use `Lambda` to match value-level syntax:
 ; Root abstract type
 (define [abstract] Number)
 
-; With parent
-(define [abstract] Real Number)
-(define [abstract] Integer Real)
+; With parent (parenthesized form)
+(define [abstract] (Real Number))
+(define [abstract] (Integer Real))
 ```
 
 ### 1.4 Concrete Struct Types
@@ -61,8 +61,8 @@ Use `Lambda` to match value-level syntax:
   (^Float x)
   (^Float y))
 
-; Inheritance
-(define [type] Point3D Point
+; Inheritance (parenthesized form)
+(define [type] (Point3D Point)
   (^Float z))
 ```
 
@@ -168,126 +168,6 @@ None                  ; nullary variant
 
 ---
 
-## Level 2: Advanced Julia Features
-
-### 2.1 Tuple Types
-
-```lisp
-; Tuple type annotation
-^(Tuple Int String Bool) triple
-
-; Tuple literal
-[1 "hello" true]      ; inferred as Tuple{Int, String, Bool}
-```
-
-### 2.2 Union Type Expressions (Inline)
-
-```lisp
-; Nullable int
-^(Union Int Nothing) maybeInt
-
-; Multiple types
-^(Union Int String) intOrString
-```
-
-### 2.3 Variance Annotations
-
-```lisp
-; Covariant (output position)
-(define [type] ^{'covariant 'T}
-  (Producer T)
-  ...)
-
-; Contravariant (input position)
-(define [type] ^{'contravariant 'T}
-  (Consumer T)
-  ...)
-```
-
----
-
-## Level 3: Higher-Kinded Types (Extension)
-
-### 3.1 HKT Arity
-
-Instead of Haskell's `* -> *` notation, use **arity numbers**:
-
-```lisp
-; F takes 1 type argument (like List, Option)
-^{'F 1}
-
-; M takes 2 type arguments (like Either, Dict)
-^{'M 2}
-
-; Mixed with type bounds
-^{'T Number 'F 1}               ; T <: Number, F takes 1 arg
-```
-
-**Inference**: Arity is usually inferred from usage:
-
-```lisp
-(define [trait] (Functor F)
-  ; F used as (F A), (F B) → infer F takes 1 arg
-  (fmap ^(Lambda (Lambda A B) (F A) (F B))))
-```
-
-Explicit arity only when needed:
-
-```lisp
-^{'F 1}                         ; explicit: F takes 1 type arg
-```
-
-### 3.2 Traits (Typeclasses)
-
-Use `[trait]` attribute:
-
-```lisp
-(define [trait] (Functor F)
-  (fmap ^(Lambda (Lambda A B) (F A) (F B))))
-
-(define [trait] (Monad M)
-  ^{'extends Functor}
-  (pure ^(Lambda A (M A)))
-  (bind ^(Lambda (M A) (Lambda A (M B)) (M B))))
-```
-
-### 3.3 Instances
-
-Use `[instance]` attribute (clear terminology):
-
-```lisp
-(define [instance] (Functor Option)
-  (define (fmap f opt)
-    (match opt
-      (None None)
-      ((Some x) (Some (f x))))))
-
-(define [instance] (Functor List)
-  (define (fmap f xs) (map f xs)))
-
-(define [instance] (Monad Option)
-  (define (pure x) (Some x))
-  (define (bind opt f)
-    (match opt
-      (None None)
-      ((Some x) (f x)))))
-```
-
-### 3.4 Using HKT Constraints
-
-```lisp
-(define [method] ^{'F 1}
-  double-all (^(F Int) container)
-  (fmap (lambda (x) (* 2 x)) container))
-
-; With Functor constraint (if we track it)
-(define [method] ^{'F Functor}
-  double-all (^(F Int) container)
-  (fmap (lambda (x) (* 2 x)) container))
-```
-
----
-
 ## Metadata Value Disambiguation
 
 When metadata is flat, the **value type** determines meaning:
@@ -295,7 +175,6 @@ When metadata is flat, the **value type** determines meaning:
 | Value Type | Meaning | Example |
 |------------|---------|---------|
 | Type name (symbol) | Type bound | `'T Number` → T <: Number |
-| Integer | HKT arity | `'F 1` → F takes 1 type arg |
 | Boolean | Metadata flag | `'pure true` |
 | String | Metadata info | `'doc "description"` |
 
@@ -316,15 +195,12 @@ When metadata is flat, the **value type** determines meaning:
 | Function type | `^(Lambda Args Ret)` | `^(Lambda Int Int) f` |
 | Type bound | `'T Type` (flat) | `^{'T Number}` |
 | Multiple bounds | `'T Type 'U Type` | `^{'T Number 'U Eq}` |
-| HKT arity | `'F n` | `^{'F 1}` |
 | Explicit grouping | `'with {...}` | `^{'with {'T Number}}` |
 | Abstract type | `(define [abstract] ...)` | `(define [abstract] Number)` |
 | Struct type | `(define [type] ...)` | `(define [type] Point ...)` |
 | Parametric type | `(define [type] (Name T) ...)` | `(define [type] (Box T) ...)` |
 | Union type | `(define [union] ...)` | `(define [union] (Option T) ...)` |
 | Type alias | `(define [alias] ...)` | `(define [alias] Text String)` |
-| Trait | `(define [trait] ...)` | `(define [trait] (Functor F) ...)` |
-| Instance | `(define [instance] ...)` | `(define [instance] (Functor Option) ...)` |
 
 ---
 
@@ -333,9 +209,9 @@ When metadata is flat, the **value type** determines meaning:
 ```lisp
 ; Abstract hierarchy
 (define [abstract] Number)
-(define [abstract] Real Number)
+(define [abstract] (Real Number))
 
-; Parametric struct
+; Parametric struct (type params stored, not substituted)
 (define [type] (Box T)
   (^T value))
 
@@ -344,115 +220,56 @@ When metadata is flat, the **value type** determines meaning:
   None
   (Some T))
 
-; Method with type bound
-(define [method] ^{'T Number}
-  double (^T x)
-  (+ x x))
+; Multiple dispatch
+(define (double (^Int x)) (+ x x))
+(define (double (^Double x)) (+ x x))
 
-; Trait definition
-(define [trait] (Functor F)
-  (fmap ^(Lambda (Lambda A B) (F A) (F B))))
+; Union pattern matching
+(match (Some 42)
+  (None "empty")
+  ((Some x) x))          ; => 42
 
-; Trait instance
-(define [instance] (Functor Option)
-  (define (fmap f opt)
-    (match opt
-      (None None)
-      ((Some x) (Some (f x))))))
-
-; Using the trait
-(fmap (lambda (x) (* 2 x)) (Some 21))  ; => (Some 42)
+(double 21)              ; => 42 (dispatches to Int version)
 ```
 
 ---
 
-## Implementation Roadmap
+## Implementation Status (as of 2026-02-20)
 
-### Phase 1: Connect Types to Runtime ✓ COMPLETE
-- [x] Wire TypeRegistry to Interp
-- [x] infer_value_type for all 16 ValueTag types
-- [x] Type checking in apply()
-- [x] Register type names from eval_deftype/eval_abstract
-- [x] Trait definition with `[trait]` attribute
-- [x] Instance definition with `[instance]` attribute
-- [x] InstanceRegistry for method lookup
-- [x] Flat metadata bound parsing
+### Implemented (Phases 1-7)
+- [x] TypeRegistry wired to Interp with FNV-1a hash lookup
+- [x] `infer_value_type()` maps runtime values to TypeId
+- [x] `[type]` struct definitions with typed fields and constructors
+- [x] `[abstract]` type definitions with parent hierarchy
+- [x] `[union]` ADT definitions with variant constructors
+- [x] `[alias]` type alias definitions
+- [x] `^Type` annotation parsing (simple, compound `^(List Int)`, Val `^(Val 42)`)
+- [x] `^{'T Number}` flat metadata dict parsing in parser
+- [x] Multiple dispatch via MethodTable (typed `define` creates dispatch entries)
+- [x] Val dispatch `^(Val N)` for value-level pattern matching
+- [x] Multi-argument dispatch
+- [x] Dispatch scoring: Val=1000, exact=100, subtype=10, any=1
+- [x] Struct field access via dot-path: `point.x`, `line.start.y`
+- [x] Struct field mutation: `(set! point.x 99)`, nested paths
+- [x] Constructor pattern matching: `(match opt (None 0) ((Some x) x))`
+- [x] Nullary constructor auto-detection in patterns (e.g., `None`)
+- [x] I/O effects: print/println/etc. go through `perform` with fast path
+- [x] `type-of`, `is?`, `instance?`, `type-args` introspection primitives
+- [x] Parametric types: `(define [type] (Box T) (^T value))` with type param collection
+- [x] Type arg inference: `(type-args (Box 42))` → `'(Int)` — inferred from field values
+- [x] Constrained dispatch: `^{'T Number}` enforced at dispatch — arg type must be subtype of bound
+- [x] Parent vs type-param disambiguation at eval time (first symbol = registered type → parent)
+- [x] 100+ type/dispatch/effect tests all passing
 
-### Phase 2: Parametric Types (IN PROGRESS)
-- [x] Type parameter storage in ParametricType
-- [ ] Type substitution algorithm
-  - Replace type variables with concrete types
-  - `(Box T)` + `T=Int` → `(Box Int)`
-- [ ] Unification for inference
-  - Bidirectional type inference
-  - Constraint generation and solving
-- [ ] Instantiation at call sites
-  - Infer type arguments from value arguments
-  - `(Box 42)` infers `Box{Int}`
+### NOT Implemented (Future)
+- [ ] Type substitution algorithm — `(Box T)` + T=Int not checked at construction
+- [ ] `[effect]` attribute — effects are untyped
+- [ ] `Lambda` function types — annotation exists but no checking
 
-### Phase 3: Full HKT Dispatch
-- [x] Arity notation (`'F 1` for `* -> *`)
-- [x] Trait definitions stored in TypeRegistry
-- [x] Instance registration in InstanceRegistry
-- [ ] Method dispatch based on runtime type
-  - `(fmap f (Some 42))` → lookup `(Functor Option).fmap`
-  - Use `infer_value_type` to get implementing type
-- [ ] Typeclass constraint checking
-  - Verify `F` has `Functor` instance before applying `fmap`
+### Implementation Notes
 
-### Phase 4: Advanced Features
-- [ ] Variance annotations
-  - `^{'covariant 'T}` for output positions
-  - `^{'contravariant 'T}` for input positions
-- [ ] Associated types
-  - `(define [trait] (Iterable C) (type Item) ...)`
-- [ ] Default method implementations
-  - Trait methods with default bodies
+**Dispatch mechanism**: When a typed `define` is encountered, the evaluator checks if the name is already bound. If bound to a closure, it promotes to a MethodTable with the existing closure as fallback. If already a MethodTable, adds a new entry. This means dispatch is backwards-compatible — untyped defines work exactly as before.
 
----
+**Constructor patterns**: The parser generates PAT_CONSTRUCTOR for `(ConstructorName sub-patterns...)`. In match_pattern, it checks if the value is an INSTANCE whose type matches the constructor name, then recursively matches sub-patterns against fields. Nullary constructors like `None` are detected in the PAT_VAR case by looking up the symbol in the type registry.
 
-## Next Implementation Steps
-
-### Immediate: Type Substitution
-
-```c3
-// In types.c3, add:
-struct Substitution {
-    SymbolId[16] vars;
-    TypeId[16] types;
-    usz count;
-}
-
-fn TypeId apply_substitution(TypeId type, Substitution* subst) {
-    // If type is a type variable, look it up in subst
-    // If type is parametric, recursively substitute parameters
-    // Otherwise return type unchanged
-}
-```
-
-### Then: Method Dispatch
-
-```c3
-// In eval.c3, modify function application:
-fn Value* dispatch_trait_method(SymbolId method_name, Value* arg, Interp* interp) {
-    // 1. Get runtime type of arg
-    TypeId arg_type = infer_value_type(arg, interp.types);
-
-    // 2. Find trait that defines this method
-    // 3. Look up instance for arg_type
-    // 4. Get method implementation from instance
-    // 5. Apply method to arg
-}
-```
-
-### Syntax for Parametric Instantiation
-
-```lisp
-; Explicit type application (when inference fails)
-((Box ^Int) 42)               ; explicitly Box{Int}
-((Either ^String ^Int) ...)   ; Either{String, Int}
-
-; Usually inferred from arguments
-(Box 42)                      ; inferred Box{Int}
-(Pair "key" 42)               ; inferred Pair{String, Int}
-```
+**I/O effects**: Primitives are registered as `__raw-print`, `__raw-println`, etc. Stdlib wrappers (`print`, `println`, etc.) call `(perform io/print x)`. In `eval_perform`, before searching the handler stack, a fast path checks if the tag is an I/O effect symbol and no user handler is installed — if so, calls the raw primitive directly.

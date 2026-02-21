@@ -1,6 +1,29 @@
 # End-to-End Type System Tests with Memory Regions
 
-These tests demonstrate the complete integration between the Julia-style type
+> **STATUS: ASPIRATIONAL (2026-02-19)**
+>
+> These tests describe the *target vision* for the type system integrated with
+> region-based memory. **Most features used below are NOT YET IMPLEMENTED:**
+>
+> - `with-region` / `in-region` -- NOT implemented (memory is implicit)
+> - `ref` / `@` (mutable references) -- NOT implemented
+> - `[method]` attribute -- NOT implemented (use plain typed `define` instead)
+> - `[effect]` attribute -- NOT implemented (effects are untyped)
+> - `[destructor]` -- NOT implemented
+> - `Proc` function type -- NOT implemented
+> - Region parameters / `Region` type -- NOT implemented
+> - Parametric type inference at construction -- NOT implemented
+> - Type constraints `:where` -- NOT enforced
+>
+> **What IS implemented** (and tested in eval.c3):
+> - `(define [type] ...)`, `(define [abstract] ...)`, `(define [union] ...)`
+> - `(define [alias] ...)`
+> - Struct construction, field access (`.x`), field mutation (`set!`)
+> - Multiple dispatch via typed `define`
+> - Union pattern matching: `(match opt (None 0) ((Some x) x))`
+> - `type-of`, `is?`, `instance?` introspection
+
+These tests demonstrate the *planned* complete integration between the Julia-style type
 system and the region-based memory management.
 
 ---
@@ -58,15 +81,15 @@ system and the region-based memory management.
 ```lisp
 ; Define Julia-style numeric tower
 (define [abstract] Number)
-(define [abstract] Real Number)
-(define [abstract] Integer Real)
-(define [abstract] Float Real)
+(define [abstract] (Real Number))
+(define [abstract] (Integer Real))
+(define [abstract] (Float Real))
 
 ; Concrete types
-(define [type] Int64 Integer
+(define [type] (Int64 Integer)
   (^i64 value))
 
-(define [type] Float64 Float
+(define [type] (Float64 Float)
   (^f64 value))
 
 ; Method dispatches on type hierarchy
@@ -390,23 +413,23 @@ system and the region-based memory management.
 ; Abstract syntax tree
 (define [abstract] Expr)
 
-(define [type] Lit Expr
+(define [type] (Lit Expr)
   (^Int value))
 
-(define [type] Add Expr
+(define [type] (Add Expr)
   (^Expr left)
   (^Expr right))
 
-(define [type] Mul Expr
+(define [type] (Mul Expr)
   (^Expr left)
   (^Expr right))
 
-(define [type] Let Expr
+(define [type] (Let Expr)
   (^Symbol name)
   (^Expr init)
   (^Expr body))
 
-(define [type] Var Expr
+(define [type] (Var Expr)
   (^Symbol name))
 
 ; Environment

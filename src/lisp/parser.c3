@@ -17,6 +17,7 @@ enum TokenType : char {
     T_DOTDOT,       // .. for rest patterns in destructuring
     T_QUOTE,
     T_INT,
+    T_FLOAT,        // Floating-point literal
     T_STRING,       // "..." string literal
     T_SYMBOL,
     T_PATH,         // dot-separated path: point.x, person.address.city
@@ -24,6 +25,8 @@ enum TokenType : char {
     T_BACKTICK,     // ` quasiquote
     T_COMMA,        // , unquote
     T_COMMA_AT,     // ,@ unquote-splicing
+    T_LBRACE,       // { for metadata dictionaries
+    T_RBRACE,       // } for metadata dictionaries
     T_ERROR,
 }
 
@@ -31,7 +34,8 @@ struct Token {
     TokenType type;
     char[64]  text;
     usz       text_len;
-    long      int_value;  // For T_INT
+    long      int_value;    // For T_INT
+    double    double_value; // For T_FLOAT
     usz       line;       // 1-indexed line number
     usz       column;     // 1-indexed column number
 }
@@ -162,6 +166,18 @@ fn void Lexer.advance(Lexer* self) {
         return;
     }
 
+    if (c == '{') {
+        self.current.type = T_LBRACE;
+        self.next_char();
+        return;
+    }
+
+    if (c == '}') {
+        self.current.type = T_RBRACE;
+        self.next_char();
+        return;
+    }
+
     // String literal: "..."
     if (c == '"') {
         self.next_char();  // consume opening quote
@@ -222,7 +238,7 @@ fn void Lexer.advance(Lexer* self) {
         return;
     }
 
-    // Integer (with optional leading minus)
+    // Integer or float (with optional leading minus)
     if ((c >= '0' && c <= '9') ||
         (c == '-' && self.pos + 1 < self.len &&
          self.source[self.pos + 1] >= '0' && self.source[self.pos + 1] <= '9')) {
@@ -238,7 +254,6 @@ fn void Lexer.advance(Lexer* self) {
             long digit = (long)(self.source[self.pos] - '0');
             if (val > (long.max - digit) / 10) {
                 self.current.type = T_ERROR;
-                // Store error info in token text for diagnostics
                 char[] err = "integer literal overflow";
                 for (usz i = 0; i < err.len; i++) self.current.text[i] = err[i];
                 self.current.text[err.len] = 0;
@@ -248,6 +263,45 @@ fn void Lexer.advance(Lexer* self) {
             val = val * 10 + digit;
             self.next_char();
         }
+
+        // Check for decimal point → float literal
+        if (self.pos < self.len && self.source[self.pos] == '.' &&
+            self.pos + 1 < self.len && self.source[self.pos + 1] >= '0' && self.source[self.pos + 1] <= '9') {
+            // Parse as float: collect digits into text buffer, then convert
+            double dval = (double)val;
+            self.next_char(); // consume '.'
+            double frac = 0.1;
+            while (self.pos < self.len &&
+                   self.source[self.pos] >= '0' && self.source[self.pos] <= '9') {
+                dval += (double)(self.source[self.pos] - '0') * frac;
+                frac *= 0.1;
+                self.next_char();
+            }
+            // Optional exponent: e/E followed by optional +/- and digits
+            if (self.pos < self.len && (self.source[self.pos] == 'e' || self.source[self.pos] == 'E')) {
+                self.next_char(); // consume e/E
+                bool exp_neg = false;
+                if (self.pos < self.len && (self.source[self.pos] == '+' || self.source[self.pos] == '-')) {
+                    exp_neg = self.source[self.pos] == '-';
+                    self.next_char();
+                }
+                long exp_val = 0;
+                while (self.pos < self.len &&
+                       self.source[self.pos] >= '0' && self.source[self.pos] <= '9') {
+                    exp_val = exp_val * 10 + (long)(self.source[self.pos] - '0');
+                    self.next_char();
+                }
+                double multiplier = 1.0;
+                for (long i = 0; i < exp_val; i++) multiplier *= 10.0;
+                if (exp_neg) { dval /= multiplier; } else { dval *= multiplier; }
+            }
+            if (negative) dval = -dval;
+            self.current.type = T_FLOAT;
+            self.current.double_value = dval;
+            self.current.text_len = self.pos - start;
+            return;
+        }
+
         if (negative) val = -val;
 
         self.current.type = T_INT;
@@ -439,6 +493,114 @@ fn SymbolId Parser.get_current_symbol(Parser* self) {
 }
 
 /**
+ * Parse a ^Type annotation on a parameter.
+ * Three forms:
+ *   ^Int         — simple type (single token ^Int)
+ *   ^(List Int)  — compound type (^ then parens)
+ *   ^{'T Number} — metadata dictionary (^ then braces)
+ */
+fn TypeAnnotation Parser.parse_type_annotation(Parser* self) {
+    TypeAnnotation ann;
+    ann.has_annotation = false;
+    ann.is_compound = false;
+    ann.is_dict = false;
+    ann.param_count = 0;
+    ann.meta_count = 0;
+    ann.has_val_literal = false;
+
+    if (self.lexer.current.type != T_SYMBOL) return ann;
+    if (self.lexer.current.text[0] != '^') return ann;
+
+    if (self.lexer.current.text_len > 1) {
+        // Form 1: ^TypeName — strip leading ^, intern rest as base_type
+        ann.has_annotation = true;
+        ann.base_type = self.interp.symbols.intern(self.lexer.current.text[1..self.lexer.current.text_len - 1]);
+        self.lexer.advance();
+        return ann;
+    }
+
+    // text is exactly "^" (1 char) — peek at next token
+    self.lexer.advance();  // consume "^"
+
+    if (self.lexer.current.type == T_LPAREN) {
+        // Form 2: ^(Compound T1 T2) or ^(Val 42)
+        ann.has_annotation = true;
+        ann.is_compound = true;
+        self.lexer.advance();  // consume (
+
+        // Parse base type name
+        if (self.lexer.current.type != T_SYMBOL) {
+            self.set_error("expected type name after ^(");
+            return ann;
+        }
+        ann.base_type = self.get_current_symbol();
+        self.lexer.advance();
+
+        // Check for Val literal: ^(Val 42)
+        if (ann.base_type == self.interp.sym_Val && self.lexer.current.type == T_INT) {
+            ann.has_val_literal = true;
+            ann.val_literal = self.lexer.current.int_value;
+            self.lexer.advance();
+        } else {
+            // Collect type params until )
+            while (self.lexer.current.type == T_SYMBOL && ann.param_count < MAX_TYPE_PARAMS) {
+                ann.params[ann.param_count] = self.get_current_symbol();
+                ann.param_count++;
+                self.lexer.advance();
+            }
+        }
+        self.expect(T_RPAREN, ")");
+        return ann;
+    }
+
+    if (self.lexer.current.type == T_LBRACE) {
+        // Form 3: ^{'key value 'key2 value2 ...} — Clojure-like map
+        ann.has_annotation = true;
+        ann.is_dict = true;
+        self.lexer.advance();  // consume {
+
+        while (self.lexer.current.type != T_RBRACE && !self.has_error) {
+            if (ann.meta_count >= MAX_META_ENTRIES) break;
+            // Keys are 'symbol (T_QUOTE + T_SYMBOL)
+            if (self.lexer.current.type == T_QUOTE) {
+                self.lexer.advance();
+                if (self.lexer.current.type != T_SYMBOL) {
+                    self.set_error("expected symbol after ' in metadata dict");
+                    return ann;
+                }
+                ann.meta[ann.meta_count].key = self.get_current_symbol();
+                self.lexer.advance();
+            } else {
+                self.set_error("expected 'key in metadata dict");
+                return ann;
+            }
+            // Values: symbol (type bound) or integer (arity)
+            if (self.lexer.current.type == T_INT) {
+                ann.meta[ann.meta_count].is_int = true;
+                ann.meta[ann.meta_count].int_value = self.lexer.current.int_value;
+                self.lexer.advance();
+            } else if (self.lexer.current.type == T_SYMBOL) {
+                ann.meta[ann.meta_count].sym_value = self.get_current_symbol();
+                self.lexer.advance();
+            } else {
+                self.set_error("expected value in metadata dict");
+                return ann;
+            }
+            ann.meta_count++;
+        }
+        if (self.lexer.current.type == T_RBRACE) {
+            self.lexer.advance();  // consume }
+        } else if (!self.has_error) {
+            self.set_error("expected } in metadata dict");
+        }
+        return ann;
+    }
+
+    self.set_error("expected type name, (, or { after ^");
+    return ann;
+}
+
+/**
  * Check for and parse postfix index access: expr.[index]
  * Returns the expression wrapped in E_INDEX if followed by .[, otherwise returns unchanged.
  *
@@ -528,12 +690,26 @@ fn Expr* Parser.parse_expr(Parser* self) {
         return self.parse_postfix_index(e);
     }
 
+    // Float literal
+    if (lex.current.type == T_FLOAT) {
+        Expr* e = self.alloc_expr_here();
+        double dval = lex.current.double_value;
+        lex.advance();
+
+        e.tag = E_LIT;
+        e.lit.value = self.interp.alloc_value();
+        e.lit.value.tag = DOUBLE;
+        e.lit.value.double_val = dval;
+        return self.parse_postfix_index(e);
+    }
+
     // String literal - may be followed by postfix .[index]
     if (lex.current.type == T_STRING) {
         Expr* e = self.alloc_expr_here();  // Capture location before consuming
         e.tag = E_LIT;
         e.lit.value = self.interp.alloc_value();
         e.lit.value.tag = STRING;
+        e.lit.value.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
         // Copy string content from token
         usz len = lex.current.text_len;
         if (len > MAX_STRING_LEN - 1) len = MAX_STRING_LEN - 1;
@@ -580,6 +756,63 @@ fn Expr* Parser.parse_expr(Parser* self) {
             }
         }
         lex.advance();
+        return self.parse_postfix_index(e);
+    }
+
+    // Dict literal: {k1 v1 k2 v2 ...} → (dict k1 v1 k2 v2 ...)
+    if (lex.current.type == T_LBRACE) {
+        Expr* e = self.alloc_expr_here();
+        lex.advance();  // consume {
+
+        // Build E_CALL: func = E_VAR("dict"), args = collected expressions
+        e.tag = E_CALL;
+        e.call = mem::malloc(ExprCall.sizeof);
+        Expr* func = self.interp.alloc_expr();
+        func.tag = E_VAR;
+        func.var_expr.name = self.interp.symbols.intern("dict");
+        e.call.func = func;
+        e.call.arg_count = 0;
+
+        while (lex.current.type != T_RBRACE && !self.has_error) {
+            if (e.call.arg_count >= 64) { self.set_error("too many elements in dict literal"); return null; }
+            Expr* arg = self.parse_expr();
+            if (arg == null) return null;
+            e.call.args[e.call.arg_count] = arg;
+            e.call.arg_count++;
+        }
+
+        if (e.call.arg_count % 2 != 0) {
+            self.set_error("dict literal requires even number of elements");
+            return null;
+        }
+
+        self.expect(T_RBRACE, "}");
+        return self.parse_postfix_index(e);
+    }
+
+    // Array literal: [e1 e2 e3 ...] → (array e1 e2 e3 ...)
+    if (lex.current.type == T_LBRACKET) {
+        Expr* e = self.alloc_expr_here();
+        lex.advance();  // consume [
+
+        // Build E_CALL: func = E_VAR("array"), args = collected expressions
+        e.tag = E_CALL;
+        e.call = mem::malloc(ExprCall.sizeof);
+        Expr* func = self.interp.alloc_expr();
+        func.tag = E_VAR;
+        func.var_expr.name = self.interp.symbols.intern("array");
+        e.call.func = func;
+        e.call.arg_count = 0;
+
+        while (lex.current.type != T_RBRACKET && !self.has_error) {
+            if (e.call.arg_count >= 64) { self.set_error("too many elements in array literal"); return null; }
+            Expr* arg = self.parse_expr();
+            if (arg == null) return null;
+            e.call.args[e.call.arg_count] = arg;
+            e.call.arg_count++;
+        }
+
+        self.expect(T_RBRACKET, "]");
         return self.parse_postfix_index(e);
     }
 
@@ -704,6 +937,7 @@ fn Expr* Parser.parse_lambda(Parser* self) {
         self.expect(T_RPAREN, ")");
 
         e.tag = E_LAMBDA;
+        e.lambda = mem::malloc(ExprLambda.sizeof);
         e.lambda.param = (SymbolId)0xFFFFFFFF;  // sentinel for "no param"
         e.lambda.param_count = 0;
         e.lambda.has_rest = false;
@@ -725,6 +959,7 @@ fn Expr* Parser.parse_lambda(Parser* self) {
         if (self.has_error) return null;
 
         e.tag = E_LAMBDA;
+        e.lambda = mem::malloc(ExprLambda.sizeof);
         e.lambda.param = (SymbolId)0xFFFFFFFF;  // sentinel: no fixed params
         e.lambda.param_count = 0;
         e.lambda.has_rest = true;
@@ -734,14 +969,43 @@ fn Expr* Parser.parse_lambda(Parser* self) {
     }
 
     // Collect all fixed parameters until ')' or '..'
+    // Also collect type annotations: (lambda ((^Int x) (^String y)) body)
     SymbolId[64] params;
+    TypeAnnotation[8] param_anns;
+    bool has_any_typed = false;
     usz param_count = 0;
 
-    while (self.lexer.current.type == T_SYMBOL) {
+    while (self.lexer.current.type == T_SYMBOL || self.lexer.current.type == T_LPAREN) {
         if (param_count >= 64) { self.set_error("too many lambda parameters"); return null; }
-        params[param_count] = self.get_current_symbol();
+
+        if (self.lexer.current.type == T_LPAREN) {
+            // Typed param: (^Type name)
+            self.lexer.advance();  // consume (
+            TypeAnnotation ann = self.parse_type_annotation();
+            if (!ann.has_annotation) {
+                self.set_error("expected type annotation in typed parameter");
+                return null;
+            }
+            if (self.lexer.current.type != T_SYMBOL) {
+                self.set_error("expected parameter name after type annotation");
+                return null;
+            }
+            params[param_count] = self.get_current_symbol();
+            if (param_count < 8) {
+                param_anns[param_count] = ann;
+                has_any_typed = true;
+            }
+            self.lexer.advance();
+            self.expect(T_RPAREN, ")");
+        } else {
+            // Untyped param: name
+            params[param_count] = self.get_current_symbol();
+            if (param_count < 8) {
+                param_anns[param_count].has_annotation = false;
+            }
+            self.lexer.advance();
+        }
         param_count++;
-        self.lexer.advance();
 
         if (self.lexer.current.type == T_DOTDOT) {
             break;
@@ -763,6 +1027,7 @@ fn Expr* Parser.parse_lambda(Parser* self) {
         self.expect(T_RPAREN, ")");
 
         e.tag = E_LAMBDA;
+        e.lambda = mem::malloc(ExprLambda.sizeof);
         e.lambda.param = params[0];
         e.lambda.param_count = param_count;
         for (usz i = 0; i < param_count; i++) {
@@ -786,39 +1051,54 @@ fn Expr* Parser.parse_lambda(Parser* self) {
     if (param_count == 1) {
         // Single param - simple case
         e.tag = E_LAMBDA;
+        e.lambda = mem::malloc(ExprLambda.sizeof);
         e.lambda.param = params[0];
         e.lambda.param_count = 1;
         e.lambda.params[0] = params[0];
         e.lambda.has_rest = false;
         e.lambda.rest_param = 0;
         e.lambda.body = body;
+        e.lambda.has_typed_params = has_any_typed;
+        if (has_any_typed) {
+            e.lambda.param_annotations[0] = param_anns[0];
+        }
         return e;
     }
 
-    // Multi-param (no rest): desugar (lambda (x y z) body) => (lambda (x) (lambda (y) (lambda (z) body)))
-    // Build from inside out
-    Expr* inner = body;
-    for (usz i = param_count; i > 1; i--) {
-        Expr* wrapper = self.interp.alloc_expr();
-        wrapper.tag = E_LAMBDA;
-        wrapper.loc_line = e.loc_line;
-        wrapper.loc_column = e.loc_column;
-        wrapper.lambda.param = params[i - 1];
-        wrapper.lambda.param_count = 1;
-        wrapper.lambda.params[0] = params[i - 1];
-        wrapper.lambda.has_rest = false;
-        wrapper.lambda.rest_param = 0;
-        wrapper.lambda.body = inner;
-        inner = wrapper;
+    if (has_any_typed) {
+        // Multi-param with typed params: DON'T curry — keep as multi-arg E_LAMBDA
+        // so the type annotations are preserved for dispatch
+        e.tag = E_LAMBDA;
+        e.lambda = mem::malloc(ExprLambda.sizeof);
+        e.lambda.param = params[0];
+        e.lambda.param_count = param_count;
+        for (usz i = 0; i < param_count; i++) {
+            e.lambda.params[i] = params[i];
+        }
+        e.lambda.has_rest = false;
+        e.lambda.rest_param = 0;
+        e.lambda.body = body;
+        e.lambda.has_typed_params = true;
+        usz ann_count = param_count;
+        if (ann_count > 8) ann_count = 8;
+        for (usz i = 0; i < ann_count; i++) {
+            e.lambda.param_annotations[i] = param_anns[i];
+        }
+        return e;
     }
-    // Outermost lambda with first param
+
+    // Multi-param (no rest, no types): keep as multi-arg E_LAMBDA
     e.tag = E_LAMBDA;
+    e.lambda = mem::malloc(ExprLambda.sizeof);
     e.lambda.param = params[0];
-    e.lambda.param_count = 1;
-    e.lambda.params[0] = params[0];
+    e.lambda.param_count = param_count;
+    for (usz i = 0; i < param_count; i++) {
+        e.lambda.params[i] = params[i];
+    }
     e.lambda.has_rest = false;
     e.lambda.rest_param = 0;
-    e.lambda.body = inner;
+    e.lambda.has_typed_params = false;
+    e.lambda.body = body;
     return e;
 }
 
@@ -978,50 +1258,25 @@ fn Expr* Parser.parse_named_let(Parser* self, Expr* e, SymbolId loop_name) {
     self.expect(T_RPAREN, ")");  // consume outer ')' of let form
 
     // Build the lambda: (lambda (param1 param2 ...) body)
-    // Multi-param desugars to nested single-param lambdas (same as parse_lambda)
-    Expr* lambda_expr;
-    if (param_count == 1) {
-        lambda_expr = self.interp.alloc_expr();
-        lambda_expr.tag = E_LAMBDA;
-        lambda_expr.loc_line = e.loc_line;
-        lambda_expr.loc_column = e.loc_column;
-        lambda_expr.lambda.param = params[0];
-        lambda_expr.lambda.param_count = 1;
-        lambda_expr.lambda.params[0] = params[0];
-        lambda_expr.lambda.has_rest = false;
-        lambda_expr.lambda.rest_param = 0;
-        lambda_expr.lambda.body = body;
-    } else {
-        // Build nested lambdas from inside out
-        Expr* inner = body;
-        for (usz i = param_count; i > 1; i--) {
-            Expr* wrapper = self.interp.alloc_expr();
-            wrapper.tag = E_LAMBDA;
-            wrapper.loc_line = e.loc_line;
-            wrapper.loc_column = e.loc_column;
-            wrapper.lambda.param = params[i - 1];
-            wrapper.lambda.param_count = 1;
-            wrapper.lambda.params[0] = params[i - 1];
-            wrapper.lambda.has_rest = false;
-            wrapper.lambda.rest_param = 0;
-            wrapper.lambda.body = inner;
-            inner = wrapper;
-        }
-        lambda_expr = self.interp.alloc_expr();
-        lambda_expr.tag = E_LAMBDA;
-        lambda_expr.loc_line = e.loc_line;
-        lambda_expr.loc_column = e.loc_column;
-        lambda_expr.lambda.param = params[0];
-        lambda_expr.lambda.param_count = 1;
-        lambda_expr.lambda.params[0] = params[0];
-        lambda_expr.lambda.has_rest = false;
-        lambda_expr.lambda.rest_param = 0;
-        lambda_expr.lambda.body = inner;
+    Expr* lambda_expr = self.interp.alloc_expr();
+    lambda_expr.tag = E_LAMBDA;
+    lambda_expr.lambda = mem::malloc(ExprLambda.sizeof);
+    lambda_expr.loc_line = e.loc_line;
+    lambda_expr.loc_column = e.loc_column;
+    lambda_expr.lambda.param = params[0];
+    lambda_expr.lambda.param_count = param_count;
+    for (usz i = 0; i < param_count; i++) {
+        lambda_expr.lambda.params[i] = params[i];
     }
+    lambda_expr.lambda.has_rest = false;
+    lambda_expr.lambda.rest_param = 0;
+    lambda_expr.lambda.has_typed_params = false;
+    lambda_expr.lambda.body = body;
 
     // Build the call: (name init1 init2 ...)
     Expr* call_expr = self.interp.alloc_expr();
     call_expr.tag = E_CALL;
+    call_expr.call = mem::malloc(ExprCall.sizeof);
     call_expr.loc_line = e.loc_line;
     call_expr.loc_column = e.loc_column;
     Expr* name_ref = self.interp.alloc_expr();
@@ -1049,49 +1304,56 @@ fn Expr* Parser.parse_define(Parser* self) {
     Expr* e = self.alloc_expr_here();  // Capture 'define' location
     self.lexer.advance();  // consume 'define'
 
-    // Check for [macro] annotation: (define [macro] name ...)
+    // Check for bracket annotation: (define [attr] ...)
     if (self.lexer.current.type == T_LBRACKET) {
         self.lexer.advance();  // consume '['
-        // Expect 'macro' symbol
-        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected 'macro' after ["); return null; }
+        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected attribute after ["); return null; }
         SymbolId annotation = self.get_current_symbol();
-        if ((uint)annotation != (uint)self.interp.sym_macro) { self.set_error("expected 'macro' annotation"); return null; }
-        self.lexer.advance();  // consume 'macro'
+        self.lexer.advance();
         self.expect(T_RBRACKET, "]");
 
-        // Parse macro name
-        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected macro name"); return null; }
-        SymbolId name = self.get_current_symbol();
-        self.lexer.advance();
+        if (annotation == self.interp.sym_macro) {
+            // [macro]: Parse macro definition
+            if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected macro name"); return null; }
+            SymbolId name = self.get_current_symbol();
+            self.lexer.advance();
 
-        // Parse macro clauses
-        e.tag = E_DEFMACRO;
-        e.define_macro.name = name;
-        e.define_macro.clause_count = 0;
+            e.tag = E_DEFMACRO;
+            e.define_macro.name = name;
+            e.define_macro.clause_count = 0;
 
-        // Parse clauses: (pattern template) ...
-        while (self.lexer.current.type == T_LPAREN && !self.has_error) {
-            if (e.define_macro.clause_count >= 8) { self.set_error("too many macro clauses"); return null; }
-            self.lexer.advance();  // consume '('
-
-            // Parse pattern
-            Pattern* pat = self.parse_pattern();
-
-            // Parse template datum
-            Value* tmpl = self.parse_template_datum();
-
-            self.expect(T_RPAREN, ")");  // close clause
-
-            e.define_macro.clauses[e.define_macro.clause_count].pattern = pat;
-            e.define_macro.clauses[e.define_macro.clause_count].tmpl = tmpl;
-            e.define_macro.clause_count++;
+            while (self.lexer.current.type == T_LPAREN && !self.has_error) {
+                if (e.define_macro.clause_count >= 8) { self.set_error("too many macro clauses"); return null; }
+                self.lexer.advance();
+                Pattern* pat = self.parse_pattern();
+                Value* tmpl = self.parse_template_datum();
+                self.expect(T_RPAREN, ")");
+                e.define_macro.clauses[e.define_macro.clause_count].pattern = pat;
+                e.define_macro.clauses[e.define_macro.clause_count].tmpl = tmpl;
+                e.define_macro.clause_count++;
+            }
+            self.expect(T_RPAREN, ")");
+            return e;
         }
 
-        self.expect(T_RPAREN, ")");  // close define
-        return e;
+        if (annotation == self.interp.sym_type) {
+            return self.parse_deftype(e);
+        }
+        if (annotation == self.interp.sym_abstract) {
+            return self.parse_defabstract(e);
+        }
+        if (annotation == self.interp.sym_union) {
+            return self.parse_defunion(e);
+        }
+        if (annotation == self.interp.sym_alias) {
+            return self.parse_defalias(e);
+        }
+        self.set_error("unknown define attribute");
+        return null;
     }
 
     // Shorthand define: (define (name params...) body) => (define name (lambda (params...) body))
+    // Also supports typed params: (define (name (^Int x) (^String y)) body)
     if (self.lexer.current.type == T_LPAREN) {
         self.lexer.advance();  // consume '('
 
@@ -1100,14 +1362,29 @@ fn Expr* Parser.parse_define(Parser* self) {
         SymbolId name = self.get_current_symbol();
         self.lexer.advance();
 
-        // Collect parameter symbols until ')'
+        // Collect parameter symbols (with optional type annotations) until ')'
         SymbolId[64] params;
+        TypeAnnotation[8] define_param_anns;
+        bool define_has_typed = false;
         usz param_count = 0;
-        while (self.lexer.current.type == T_SYMBOL) {
+        while (self.lexer.current.type == T_SYMBOL || self.lexer.current.type == T_LPAREN) {
             if (param_count >= 64) { self.set_error("too many parameters in shorthand define"); return null; }
-            params[param_count] = self.get_current_symbol();
+            if (self.lexer.current.type == T_LPAREN) {
+                // Typed param: (^Type name)
+                self.lexer.advance();
+                TypeAnnotation ann = self.parse_type_annotation();
+                if (!ann.has_annotation) { self.set_error("expected type annotation in typed parameter"); return null; }
+                if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected parameter name after type annotation"); return null; }
+                params[param_count] = self.get_current_symbol();
+                if (param_count < 8) { define_param_anns[param_count] = ann; define_has_typed = true; }
+                self.lexer.advance();
+                self.expect(T_RPAREN, ")");
+            } else {
+                params[param_count] = self.get_current_symbol();
+                if (param_count < 8) { define_param_anns[param_count].has_annotation = false; }
+                self.lexer.advance();
+            }
             param_count++;
-            self.lexer.advance();
         }
         self.expect(T_RPAREN, ")");  // close param list
 
@@ -1123,17 +1400,41 @@ fn Expr* Parser.parse_define(Parser* self) {
             // Zero-arg lambda
             lambda_expr = self.interp.alloc_expr();
             lambda_expr.tag = E_LAMBDA;
+            lambda_expr.lambda = mem::malloc(ExprLambda.sizeof);
             lambda_expr.loc_line = e.loc_line;
             lambda_expr.loc_column = e.loc_column;
             lambda_expr.lambda.param = (SymbolId)0xFFFFFFFF;
             lambda_expr.lambda.param_count = 0;
             lambda_expr.lambda.has_rest = false;
             lambda_expr.lambda.rest_param = 0;
+            lambda_expr.lambda.has_typed_params = false;
+            lambda_expr.lambda.body = body;
+        } else if (define_has_typed) {
+            // Typed params: DON'T curry, keep as multi-arg for dispatch
+            lambda_expr = self.interp.alloc_expr();
+            lambda_expr.tag = E_LAMBDA;
+            lambda_expr.lambda = mem::malloc(ExprLambda.sizeof);
+            lambda_expr.loc_line = e.loc_line;
+            lambda_expr.loc_column = e.loc_column;
+            lambda_expr.lambda.param = params[0];
+            lambda_expr.lambda.param_count = param_count;
+            for (usz i = 0; i < param_count; i++) {
+                lambda_expr.lambda.params[i] = params[i];
+            }
+            lambda_expr.lambda.has_rest = false;
+            lambda_expr.lambda.rest_param = 0;
+            lambda_expr.lambda.has_typed_params = true;
+            usz ann_count = param_count;
+            if (ann_count > 8) ann_count = 8;
+            for (usz i = 0; i < ann_count; i++) {
+                lambda_expr.lambda.param_annotations[i] = define_param_anns[i];
+            }
             lambda_expr.lambda.body = body;
         } else if (param_count == 1) {
             // Single-param lambda
             lambda_expr = self.interp.alloc_expr();
             lambda_expr.tag = E_LAMBDA;
+            lambda_expr.lambda = mem::malloc(ExprLambda.sizeof);
             lambda_expr.loc_line = e.loc_line;
             lambda_expr.loc_column = e.loc_column;
             lambda_expr.lambda.param = params[0];
@@ -1141,34 +1442,24 @@ fn Expr* Parser.parse_define(Parser* self) {
             lambda_expr.lambda.params[0] = params[0];
             lambda_expr.lambda.has_rest = false;
             lambda_expr.lambda.rest_param = 0;
+            lambda_expr.lambda.has_typed_params = false;
             lambda_expr.lambda.body = body;
         } else {
-            // Multi-param: desugar to nested single-param lambdas (inside out)
-            Expr* inner = body;
-            for (usz i = param_count; i > 1; i--) {
-                Expr* wrapper = self.interp.alloc_expr();
-                wrapper.tag = E_LAMBDA;
-                wrapper.loc_line = e.loc_line;
-                wrapper.loc_column = e.loc_column;
-                wrapper.lambda.param = params[i - 1];
-                wrapper.lambda.param_count = 1;
-                wrapper.lambda.params[0] = params[i - 1];
-                wrapper.lambda.has_rest = false;
-                wrapper.lambda.rest_param = 0;
-                wrapper.lambda.body = inner;
-                inner = wrapper;
-            }
-            // Outermost lambda with first param
+            // Multi-param (no types): keep as multi-arg E_LAMBDA
             lambda_expr = self.interp.alloc_expr();
             lambda_expr.tag = E_LAMBDA;
+            lambda_expr.lambda = mem::malloc(ExprLambda.sizeof);
             lambda_expr.loc_line = e.loc_line;
             lambda_expr.loc_column = e.loc_column;
             lambda_expr.lambda.param = params[0];
-            lambda_expr.lambda.param_count = 1;
-            lambda_expr.lambda.params[0] = params[0];
+            lambda_expr.lambda.param_count = param_count;
+            for (usz i = 0; i < param_count; i++) {
+                lambda_expr.lambda.params[i] = params[i];
+            }
             lambda_expr.lambda.has_rest = false;
             lambda_expr.lambda.rest_param = 0;
-            lambda_expr.lambda.body = inner;
+            lambda_expr.lambda.has_typed_params = false;
+            lambda_expr.lambda.body = body;
         }
 
         e.tag = E_DEFINE;
@@ -1189,6 +1480,190 @@ fn Expr* Parser.parse_define(Parser* self) {
     e.tag = E_DEFINE;
     e.define.name = name;
     e.define.value = value;
+    return e;
+}
+
+/**
+ * Parse type definition: (define [type] Name (^Type field) ...)
+ * or with parent: (define [type] (Name Parent) (^Type field) ...)
+ */
+fn Expr* Parser.parse_deftype(Parser* self, Expr* e) {
+    e.tag = E_DEFTYPE;
+    e.deftype = mem::malloc(ExprDefType.sizeof);
+    e.deftype.has_parent = false;
+    e.deftype.field_count = 0;
+    e.deftype.type_param_count = 0;
+    e.deftype.parent = 0;
+
+    // Name can be simple: Name or parenthesized: (Name Parent?) or (Name TypeParam...)
+    // All extra symbols collected as type_params — disambiguate parent vs type-param at eval time
+    if (self.lexer.current.type == T_LPAREN) {
+        self.lexer.advance();  // consume (
+        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected type name"); return null; }
+        e.deftype.name = self.get_current_symbol();
+        self.lexer.advance();
+        // Collect all extra symbols (could be parent OR type params)
+        while (self.lexer.current.type == T_SYMBOL && e.deftype.type_param_count < MAX_TYPE_PARAMS) {
+            e.deftype.type_params[e.deftype.type_param_count] = self.get_current_symbol();
+            e.deftype.type_param_count++;
+            self.lexer.advance();
+        }
+        self.expect(T_RPAREN, ")");
+    } else if (self.lexer.current.type == T_SYMBOL) {
+        e.deftype.name = self.get_current_symbol();
+        self.lexer.advance();
+    } else {
+        self.set_error("expected type name after [type]");
+        return null;
+    }
+
+    // Parse fields: (^Type field) or just field
+    while (self.lexer.current.type == T_LPAREN && !self.has_error) {
+        if (e.deftype.field_count >= MAX_TYPE_FIELDS) { self.set_error("too many type fields"); return null; }
+        self.lexer.advance();  // consume (
+        TypeAnnotation ann = self.parse_type_annotation();
+        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected field name"); return null; }
+        e.deftype.fields[e.deftype.field_count].name = self.get_current_symbol();
+        e.deftype.fields[e.deftype.field_count].type_ann = ann;
+        e.deftype.field_count++;
+        self.lexer.advance();
+        self.expect(T_RPAREN, ")");
+    }
+
+    // Also allow bare symbol fields (untyped)
+    while (self.lexer.current.type == T_SYMBOL && !self.has_error) {
+        if (e.deftype.field_count >= MAX_TYPE_FIELDS) { self.set_error("too many type fields"); return null; }
+        e.deftype.fields[e.deftype.field_count].name = self.get_current_symbol();
+        e.deftype.fields[e.deftype.field_count].type_ann.has_annotation = false;
+        e.deftype.field_count++;
+        self.lexer.advance();
+    }
+
+    self.expect(T_RPAREN, ")");  // close define
+    return e;
+}
+
+/**
+ * Parse abstract type: (define [abstract] Name) or (define [abstract] (Name Parent))
+ */
+fn Expr* Parser.parse_defabstract(Parser* self, Expr* e) {
+    e.tag = E_DEFABSTRACT;
+    e.defabstract.has_parent = false;
+    e.defabstract.parent = 0;
+
+    if (self.lexer.current.type == T_LPAREN) {
+        self.lexer.advance();
+        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected type name"); return null; }
+        e.defabstract.name = self.get_current_symbol();
+        self.lexer.advance();
+        if (self.lexer.current.type == T_SYMBOL) {
+            e.defabstract.parent = self.get_current_symbol();
+            e.defabstract.has_parent = true;
+            self.lexer.advance();
+        }
+        self.expect(T_RPAREN, ")");
+    } else if (self.lexer.current.type == T_SYMBOL) {
+        e.defabstract.name = self.get_current_symbol();
+        self.lexer.advance();
+    } else {
+        self.set_error("expected type name after [abstract]");
+        return null;
+    }
+
+    self.expect(T_RPAREN, ")");  // close define
+    return e;
+}
+
+/**
+ * Parse union type: (define [union] (Name T...) Variant1 (Variant2 fields...) ...)
+ * or simple: (define [union] Name Variant1 (Variant2 T) ...)
+ */
+fn Expr* Parser.parse_defunion(Parser* self, Expr* e) {
+    e.tag = E_DEFUNION;
+    e.defunion = mem::malloc(ExprDefUnion.sizeof);
+    e.defunion.type_param_count = 0;
+    e.defunion.variant_count = 0;
+
+    // Name can be simple or parameterized: (Option T)
+    if (self.lexer.current.type == T_LPAREN) {
+        self.lexer.advance();
+        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected union name"); return null; }
+        e.defunion.name = self.get_current_symbol();
+        self.lexer.advance();
+        // Collect type params
+        while (self.lexer.current.type == T_SYMBOL && e.defunion.type_param_count < MAX_TYPE_PARAMS) {
+            e.defunion.type_params[e.defunion.type_param_count] = self.get_current_symbol();
+            e.defunion.type_param_count++;
+            self.lexer.advance();
+        }
+        self.expect(T_RPAREN, ")");
+    } else if (self.lexer.current.type == T_SYMBOL) {
+        e.defunion.name = self.get_current_symbol();
+        self.lexer.advance();
+    } else {
+        self.set_error("expected union name after [union]");
+        return null;
+    }
+
+    // Parse variants: either bare symbols (None) or (VariantName fields...)
+    while ((self.lexer.current.type == T_SYMBOL || self.lexer.current.type == T_LPAREN) && !self.has_error) {
+        if (e.defunion.variant_count >= 16) { self.set_error("too many union variants"); return null; }
+        UnionVariant* v = &e.defunion.variants[e.defunion.variant_count];
+        v.field_count = 0;
+
+        if (self.lexer.current.type == T_LPAREN) {
+            self.lexer.advance();
+            if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected variant name"); return null; }
+            v.name = self.get_current_symbol();
+            self.lexer.advance();
+            // Collect field type params
+            while (self.lexer.current.type == T_SYMBOL && v.field_count < MAX_TYPE_PARAMS) {
+                v.fields[v.field_count] = self.get_current_symbol();
+                v.field_count++;
+                self.lexer.advance();
+            }
+            self.expect(T_RPAREN, ")");
+        } else {
+            // Bare variant: None, True, etc.
+            v.name = self.get_current_symbol();
+            self.lexer.advance();
+        }
+        e.defunion.variant_count++;
+    }
+
+    self.expect(T_RPAREN, ")");  // close define
+    return e;
+}
+
+/**
+ * Parse type alias: (define [alias] Name ^Target)
+ */
+fn Expr* Parser.parse_defalias(Parser* self, Expr* e) {
+    e.tag = E_DEFALIAS;
+
+    if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected alias name after [alias]"); return null; }
+    e.defalias.name = self.get_current_symbol();
+    self.lexer.advance();
+
+    // Parse target type annotation or symbol
+    if (self.lexer.current.type == T_SYMBOL && self.lexer.current.text[0] == '^') {
+        e.defalias.target = self.parse_type_annotation();
+    } else if (self.lexer.current.type == T_SYMBOL) {
+        // Plain symbol target
+        e.defalias.target.has_annotation = true;
+        e.defalias.target.is_compound = false;
+        e.defalias.target.is_dict = false;
+        e.defalias.target.base_type = self.get_current_symbol();
+        e.defalias.target.param_count = 0;
+        e.defalias.target.meta_count = 0;
+        e.defalias.target.has_val_literal = false;
+        self.lexer.advance();
+    } else {
+        self.set_error("expected target type after alias name");
+        return null;
+    }
+
+    self.expect(T_RPAREN, ")");
     return e;
 }
 
@@ -1358,6 +1833,7 @@ fn Pattern* Parser.parse_pattern(Parser* self) {
         p.tag = PAT_LIT;
         p.lit_value = self.interp.alloc_value();
         p.lit_value.tag = STRING;
+        p.lit_value.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
         usz len = lex.current.text_len;
         if (len > MAX_STRING_LEN - 1) len = MAX_STRING_LEN - 1;
         for (usz i = 0; i < len; i++) {
@@ -1420,6 +1896,29 @@ fn Pattern* Parser.parse_pattern(Parser* self) {
 
         self.expect(T_RBRACKET, "]");
         return p;
+    }
+
+    // Constructor pattern: (ConstructorName sub-patterns...)
+    if (lex.current.type == T_LPAREN) {
+        lex.advance();  // consume '('
+        if (lex.current.type == T_SYMBOL) {
+            Pattern* p = self.interp.alloc_pattern();
+            p.tag = PAT_CONSTRUCTOR;
+            p.constructor_name = self.get_current_symbol();
+            p.ctor_sub_count = 0;
+            lex.advance();  // consume constructor name
+
+            // Parse sub-patterns until )
+            while (lex.current.type != T_RPAREN && !self.has_error) {
+                if (p.ctor_sub_count >= MAX_TYPE_FIELDS) { self.set_error("too many constructor sub-patterns"); return null; }
+                p.ctor_sub_patterns[p.ctor_sub_count] = self.parse_pattern();
+                p.ctor_sub_count++;
+            }
+            self.expect(T_RPAREN, ")");
+            return p;
+        }
+        self.set_error("expected constructor name in pattern");
+        return null;
     }
 
     // Variable pattern (symbol)
@@ -1527,6 +2026,7 @@ fn Expr* Parser.parse_begin(Parser* self) {
     self.lexer.advance();  // consume 'begin'
 
     e.tag = E_BEGIN;
+    e.begin = mem::malloc(ExprBegin.sizeof);
     e.begin.expr_count = 0;
 
     while (self.lexer.current.type != T_RPAREN && !self.has_error) {
@@ -1555,16 +2055,41 @@ fn Expr* Parser.parse_set(Parser* self) {
     Expr* e = self.alloc_expr_here();
     self.lexer.advance();  // consume 'set!'
 
-    if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected variable name after set!"); return null; }
-    SymbolId name = self.get_current_symbol();
-    self.lexer.advance();
+    if (self.lexer.current.type == T_PATH) {
+        // (set! obj.field value) — path mutation
+        e.set_expr.is_path = true;
+        e.set_expr.path_segment_count = 0;
+        usz text_len = self.lexer.current.text_len;
+        usz start = 0;
+        for (usz i = 0; i <= text_len; i++) {
+            if (i == text_len || self.lexer.current.text[i] == '.') {
+                if (i > start) {
+                    if (e.set_expr.path_segment_count >= MAX_PATH_SEGMENTS) { self.set_error("too many path segments in set!"); return null; }
+                    usz seg_len = i - start;
+                    SymbolId seg_sym = self.interp.symbols.intern(self.lexer.current.text[start:seg_len]);
+                    if (seg_sym == INVALID_SYMBOL_ID) { self.set_error("symbol table exhausted"); return null; }
+                    e.set_expr.path_segments[e.set_expr.path_segment_count] = seg_sym;
+                    e.set_expr.path_segment_count++;
+                }
+                start = i + 1;
+            }
+        }
+        e.set_expr.name = e.set_expr.path_segments[0];
+        self.lexer.advance();
+    } else if (self.lexer.current.type == T_SYMBOL) {
+        e.set_expr.is_path = false;
+        e.set_expr.name = self.get_current_symbol();
+        self.lexer.advance();
+    } else {
+        self.set_error("expected variable name or path after set!");
+        return null;
+    }
 
     Expr* value = self.parse_expr();
 
     self.expect(T_RPAREN, ")");
 
     e.tag = E_SET;
-    e.set_expr.name = name;
     e.set_expr.value = value;
     return e;
 }
@@ -1619,6 +2144,7 @@ fn Value* Parser.parse_template_datum(Parser* self) {
     if (lex.current.type == T_STRING) {
         Value* v = self.interp.alloc_value();
         v.tag = STRING;
+        v.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
         usz len = lex.current.text_len;
         if (len > MAX_STRING_LEN - 1) len = MAX_STRING_LEN - 1;
         for (usz i = 0; i < len; i++) {
@@ -1707,6 +2233,7 @@ fn Expr* Parser.parse_module(Parser* self) {
     self.lexer.advance();
 
     e.tag = E_MODULE;
+    e.module_expr = mem::malloc(ExprModule.sizeof);
     e.module_expr.name = name;
     e.module_expr.export_count = 0;
     e.module_expr.body_count = 0;
@@ -1838,6 +2365,7 @@ fn Expr* Parser.parse_qq_template(Parser* self) {
         e.tag = E_LIT;
         e.lit.value = self.interp.alloc_value();
         e.lit.value.tag = STRING;
+        e.lit.value.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
         usz len = lex.current.text_len;
         if (len > MAX_STRING_LEN - 1) len = MAX_STRING_LEN - 1;
         for (usz i = 0; i < len; i++) {
@@ -1877,6 +2405,7 @@ fn Expr* Parser.parse_qq_template(Parser* self) {
         Expr* func = self.parse_qq_template();
         Expr* e = self.interp.alloc_expr();
         e.tag = E_CALL;
+        e.call = mem::malloc(ExprCall.sizeof);
         e.call.func = func;
         e.call.arg_count = 0;
 
@@ -1915,6 +2444,7 @@ fn Expr* Parser.parse_application(Parser* self) {
     // Collect arguments
     Expr* e = self.interp.alloc_expr();
     e.tag = E_CALL;
+    e.call = mem::malloc(ExprCall.sizeof);
     e.loc_line = app_line;
     e.loc_column = app_col;
     e.call.func = func;
@@ -1960,6 +2490,7 @@ fn Value* Parser.parse_datum(Parser* self) {
     if (lex.current.type == T_STRING) {
         Value* v = self.interp.alloc_value();
         v.tag = STRING;
+        v.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
         usz len = lex.current.text_len;
         if (len > MAX_STRING_LEN - 1) len = MAX_STRING_LEN - 1;
         for (usz i = 0; i < len; i++) {

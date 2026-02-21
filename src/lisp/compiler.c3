@@ -22,7 +22,9 @@ import main;
  */
 struct Compiler {
     Interp*     interp;          // For symbol table access
-    List{char}  output;          // Generated C3 code buffer
+    char*       output_buf;      // Generated C3 code buffer
+    usz         output_len;      // Current length
+    usz         output_cap;      // Buffer capacity
     usz         indent;          // Current indentation level
     usz         temp_counter;    // For generating unique temp names
     usz         lambda_counter;  // For generating lambda function names
@@ -38,6 +40,22 @@ struct Compiler {
 
     // Track which lambdas create nested closures (for frame region optimization)
     bool[256] lambda_creates_closure;
+
+    // Track mutable-captured variables (stored in interpreter env, not C3 locals)
+    List{SymbolId} mutable_captures;
+
+    // Track variables declared in current function scope (to avoid re-declaration/shadowing)
+    List{SymbolId} declared_vars;
+
+    // When true, emit rt_print_value for the last non-define expression
+    bool print_last;
+
+    // When true, emit rt_print_value for EVERY non-define expression
+    bool print_all;
+
+    // When true, find_free_vars uses is_builtin_primitive instead of is_primitive
+    // (for delegation contexts where user globals need injection into interpreter env)
+    bool for_delegation;
 }
 
 /**
@@ -53,6 +71,168 @@ struct LambdaDef {
 }
 
 // =============================================================================
+// SECTION 1b: PRIMITIVE VARIABLE HASH TABLE
+// =============================================================================
+
+const usz PRIM_HASH_SIZE = 256;  // Power of 2, > 2*87
+struct PrimHashEntry {
+    SymbolId key;
+    char[]   emit;
+}
+
+// Module-level hash table for primitive variable → C3 code mapping
+PrimHashEntry[PRIM_HASH_SIZE] g_prim_hash;
+bool g_prim_hash_initialized = false;
+
+fn void prim_hash_insert(SymbolId key, char[] emit) {
+    usz idx = ((usz)key) & (PRIM_HASH_SIZE - 1);
+    for (usz i = 0; i < PRIM_HASH_SIZE; i++) {
+        usz slot = (idx + i) & (PRIM_HASH_SIZE - 1);
+        if ((uint)g_prim_hash[slot].key == 0xFFFFFFFF) {
+            g_prim_hash[slot].key = key;
+            g_prim_hash[slot].emit = emit;
+            return;
+        }
+    }
+}
+
+fn char[] prim_hash_lookup(SymbolId key) {
+    usz idx = ((usz)key) & (PRIM_HASH_SIZE - 1);
+    for (usz i = 0; i < PRIM_HASH_SIZE; i++) {
+        usz slot = (idx + i) & (PRIM_HASH_SIZE - 1);
+        if ((uint)g_prim_hash[slot].key == 0xFFFFFFFF) return "";
+        if ((uint)g_prim_hash[slot].key == (uint)key) return g_prim_hash[slot].emit;
+    }
+    return "";
+}
+
+fn void init_prim_hash(Interp* interp) {
+    if (g_prim_hash_initialized) return;
+    g_prim_hash_initialized = true;
+
+    // Clear
+    for (usz i = 0; i < PRIM_HASH_SIZE; i++) {
+        g_prim_hash[i].key = (SymbolId)0xFFFFFFFF;
+    }
+
+    SymbolTable* st = &interp.symbols;
+
+    // Arithmetic
+    prim_hash_insert(st.intern("+"), "runtime::make_prim(&runtime::rt_add)");
+    prim_hash_insert(st.intern("-"), "runtime::make_prim(&runtime::rt_sub)");
+    prim_hash_insert(st.intern("*"), "runtime::make_prim(&runtime::rt_mul)");
+    prim_hash_insert(st.intern("/"), "runtime::make_prim(&runtime::rt_div)");
+    prim_hash_insert(st.intern("%"), "runtime::make_prim(&runtime::rt_mod)");
+
+    // Comparison
+    prim_hash_insert(st.intern("="), "runtime::make_prim(&runtime::rt_eq)");
+    prim_hash_insert(st.intern("<"), "runtime::make_prim(&runtime::rt_lt)");
+    prim_hash_insert(st.intern(">"), "runtime::make_prim(&runtime::rt_gt)");
+    prim_hash_insert(st.intern("<="), "runtime::make_prim(&runtime::rt_le)");
+    prim_hash_insert(st.intern(">="), "runtime::make_prim(&runtime::rt_ge)");
+
+    // List ops
+    prim_hash_insert(st.intern("cons"), "runtime::make_prim(&runtime::rt_cons_prim)");
+    prim_hash_insert(st.intern("car"), "runtime::make_prim_unary(&runtime::rt_car)");
+    prim_hash_insert(st.intern("cdr"), "runtime::make_prim_unary(&runtime::rt_cdr)");
+    prim_hash_insert(st.intern("null?"), "runtime::make_prim_unary(&runtime::rt_null_p)");
+    prim_hash_insert(st.intern("pair?"), "runtime::make_prim_unary(&runtime::rt_pair_p)");
+    prim_hash_insert(st.intern("list"), "runtime::make_prim_unary(&runtime::rt_list)");
+    prim_hash_insert(st.intern("length"), "runtime::make_prim_unary(&runtime::rt_length)");
+    prim_hash_insert(st.intern("not"), "runtime::make_prim_unary(&runtime::rt_not)");
+
+    // I/O
+    prim_hash_insert(st.intern("print"), "runtime::make_prim_unary(&runtime::rt_print)");
+    prim_hash_insert(st.intern("println"), "runtime::make_prim_unary(&runtime::rt_println)");
+    prim_hash_insert(st.intern("newline"), "runtime::make_prim_unary(&runtime::rt_newline)");
+    prim_hash_insert(st.intern("display"), "runtime::make_prim_unary(&runtime::rt_display)");
+
+    // String ops
+    prim_hash_insert(st.intern("string-append"), "runtime::make_prim(&runtime::rt_string_append)");
+    prim_hash_insert(st.intern("string-join"), "runtime::make_prim(&runtime::rt_string_join)");
+    prim_hash_insert(st.intern("substring"), "runtime::rt_lookup_var(\"substring\")");
+    prim_hash_insert(st.intern("string-split"), "runtime::make_prim(&runtime::rt_string_split)");
+    prim_hash_insert(st.intern("string-length"), "runtime::make_prim_unary(&runtime::rt_string_length)");
+    prim_hash_insert(st.intern("string->list"), "runtime::make_prim_unary(&runtime::rt_string_to_list)");
+    prim_hash_insert(st.intern("list->string"), "runtime::make_prim_unary(&runtime::rt_list_to_string)");
+    prim_hash_insert(st.intern("string-upcase"), "runtime::make_prim_unary(&runtime::rt_string_upcase)");
+    prim_hash_insert(st.intern("string-downcase"), "runtime::make_prim_unary(&runtime::rt_string_downcase)");
+    prim_hash_insert(st.intern("string-trim"), "runtime::make_prim_unary(&runtime::rt_string_trim)");
+    prim_hash_insert(st.intern("string->number"), "runtime::make_prim_unary(&runtime::rt_string_to_number)");
+    prim_hash_insert(st.intern("number->string"), "runtime::make_prim_unary(&runtime::rt_number_to_string)");
+
+    // Type predicates
+    prim_hash_insert(st.intern("string?"), "runtime::make_prim_unary(&runtime::rt_string_p)");
+    prim_hash_insert(st.intern("int?"), "runtime::make_prim_unary(&runtime::rt_int_p)");
+    prim_hash_insert(st.intern("symbol?"), "runtime::make_prim_unary(&runtime::rt_symbol_p)");
+    prim_hash_insert(st.intern("closure?"), "runtime::make_prim_unary(&runtime::rt_closure_p)");
+    prim_hash_insert(st.intern("continuation?"), "runtime::make_prim_unary(&runtime::rt_continuation_p)");
+    prim_hash_insert(st.intern("double?"), "runtime::make_prim_unary(&runtime::rt_double_p)");
+    prim_hash_insert(st.intern("list?"), "runtime::make_prim_unary(&runtime::rt_list_p)");
+    prim_hash_insert(st.intern("boolean?"), "runtime::make_prim_unary(&runtime::rt_boolean_p)");
+    prim_hash_insert(st.intern("number?"), "runtime::make_prim_unary(&runtime::rt_number_p)");
+    prim_hash_insert(st.intern("equal?"), "runtime::make_prim(&runtime::rt_equal_p)");
+    prim_hash_insert(st.intern("type-of"), "runtime::make_prim_unary(&runtime::rt_type_of)");
+
+    // File I/O
+    prim_hash_insert(st.intern("read-file"), "runtime::make_prim_unary(&runtime::rt_read_file)");
+    prim_hash_insert(st.intern("write-file"), "runtime::make_prim(&runtime::rt_write_file)");
+    prim_hash_insert(st.intern("file-exists?"), "runtime::make_prim_unary(&runtime::rt_file_exists)");
+    prim_hash_insert(st.intern("read-lines"), "runtime::make_prim_unary(&runtime::rt_read_lines)");
+
+    // FFI
+    prim_hash_insert(st.intern("ffi-open"), "runtime::make_prim_unary(&runtime::rt_ffi_open)");
+    prim_hash_insert(st.intern("ffi-close"), "runtime::make_prim_unary(&runtime::rt_ffi_close)");
+    prim_hash_insert(st.intern("ffi-sym"), "runtime::make_prim(&runtime::rt_ffi_sym)");
+    prim_hash_insert(st.intern("ffi-call"), "runtime::make_prim(&runtime::rt_ffi_call)");
+
+    // Misc
+    prim_hash_insert(st.intern("gensym"), "runtime::make_prim_unary(&runtime::rt_gensym)");
+    prim_hash_insert(st.intern("load"), "runtime::make_prim_unary(&runtime::rt_load)");
+    prim_hash_insert(st.intern("apply"), "runtime::make_prim(&runtime::rt_apply_prim)");
+
+    // Dict/collection ops
+    prim_hash_insert(st.intern("dict"), "runtime::make_prim_unary(&runtime::rt_hash_map_create)");
+    prim_hash_insert(st.intern("dict-set!"), "runtime::make_prim(&runtime::rt_hash_set)");
+    prim_hash_insert(st.intern("dict?"), "runtime::make_prim_unary(&runtime::rt_hash_map_p)");
+    prim_hash_insert(st.intern("ref"), "runtime::make_prim(&runtime::rt_hash_ref)");
+    prim_hash_insert(st.intern("keys"), "runtime::make_prim_unary(&runtime::rt_hash_keys)");
+    prim_hash_insert(st.intern("values"), "runtime::make_prim_unary(&runtime::rt_hash_values)");
+    prim_hash_insert(st.intern("has?"), "runtime::make_prim(&runtime::rt_hash_has)");
+    prim_hash_insert(st.intern("remove!"), "runtime::make_prim(&runtime::rt_hash_remove)");
+    prim_hash_insert(st.intern("push!"), "runtime::make_prim(&runtime::rt_hash_set)");
+
+    // Math
+    prim_hash_insert(st.intern("abs"), "runtime::make_prim_unary(&runtime::rt_abs)");
+    prim_hash_insert(st.intern("min"), "runtime::make_prim(&runtime::rt_min)");
+    prim_hash_insert(st.intern("max"), "runtime::make_prim(&runtime::rt_max)");
+    prim_hash_insert(st.intern("floor"), "runtime::make_prim_unary(&runtime::rt_floor)");
+    prim_hash_insert(st.intern("ceiling"), "runtime::make_prim_unary(&runtime::rt_ceiling)");
+    prim_hash_insert(st.intern("round"), "runtime::make_prim_unary(&runtime::rt_round)");
+    prim_hash_insert(st.intern("truncate"), "runtime::make_prim_unary(&runtime::rt_truncate)");
+    prim_hash_insert(st.intern("sqrt"), "runtime::make_prim_unary(&runtime::rt_sqrt)");
+    prim_hash_insert(st.intern("even?"), "runtime::make_prim_unary(&runtime::rt_even_p)");
+    prim_hash_insert(st.intern("odd?"), "runtime::make_prim_unary(&runtime::rt_odd_p)");
+    prim_hash_insert(st.intern("zero?"), "runtime::make_prim_unary(&runtime::rt_zero_p)");
+    prim_hash_insert(st.intern("positive?"), "runtime::make_prim_unary(&runtime::rt_positive_p)");
+    prim_hash_insert(st.intern("negative?"), "runtime::make_prim_unary(&runtime::rt_negative_p)");
+    prim_hash_insert(st.intern("gcd"), "runtime::make_prim(&runtime::rt_gcd)");
+
+    // Bitwise
+    prim_hash_insert(st.intern("bitwise-and"), "runtime::make_prim(&runtime::rt_bitwise_and)");
+    prim_hash_insert(st.intern("bitwise-or"), "runtime::make_prim(&runtime::rt_bitwise_or)");
+    prim_hash_insert(st.intern("bitwise-xor"), "runtime::make_prim(&runtime::rt_bitwise_xor)");
+    prim_hash_insert(st.intern("bitwise-not"), "runtime::make_prim_unary(&runtime::rt_bitwise_not)");
+    prim_hash_insert(st.intern("lshift"), "runtime::make_prim(&runtime::rt_lshift)");
+    prim_hash_insert(st.intern("rshift"), "runtime::make_prim(&runtime::rt_rshift)");
+
+    // Literals
+    prim_hash_insert(st.intern("true"), "runtime::make_true()");
+    prim_hash_insert(st.intern("false"), "runtime::make_nil()");
+    prim_hash_insert(st.intern("nil"), "runtime::make_nil()");
+}
+
+// =============================================================================
 // SECTION 2: COMPILER INITIALIZATION
 // =============================================================================
 
@@ -62,27 +242,60 @@ fn void Compiler.init(Compiler* self, Interp* interp) {
     self.indent = 0;
     self.temp_counter = 0;
     self.lambda_counter = 0;
+    self.output_cap = 8192;
+    self.output_buf = (char*)mem::malloc(self.output_cap);
+    self.output_len = 0;
+    init_prim_hash(interp);
 }
 
 fn void Compiler.free(Compiler* self) {
-    self.output.free();
+    if (self.output_buf != null) { mem::free(self.output_buf); self.output_buf = null; }
     self.current_captures.free();
     self.defined_globals.free();
     self.lambda_defs.free();
+    self.mutable_captures.free();
+    self.declared_vars.free();
+}
+
+fn bool Compiler.is_declared(Compiler* self, SymbolId sym) {
+    foreach (s : self.declared_vars) {
+        if ((uint)s == (uint)sym) return true;
+    }
+    return false;
+}
+
+fn void Compiler.mark_declared(Compiler* self, SymbolId sym) {
+    if (!self.is_declared(sym)) {
+        self.declared_vars.push(sym);
+    }
 }
 
 // =============================================================================
 // SECTION 3: OUTPUT HELPERS
 // =============================================================================
 
-fn void Compiler.emit(Compiler* self, char[] s) {
-    foreach (c : s) {
-        self.output.push(c);
+fn void Compiler.ensure_capacity(Compiler* self, usz needed) {
+    if (self.output_len + needed > self.output_cap) {
+        usz new_cap = self.output_cap * 2;
+        if (new_cap < self.output_len + needed) { new_cap = self.output_len + needed; }
+        char* new_buf = (char*)mem::malloc(new_cap);
+        mem::copy(new_buf, self.output_buf, self.output_len);
+        mem::free(self.output_buf);
+        self.output_buf = new_buf;
+        self.output_cap = new_cap;
     }
 }
 
+fn void Compiler.emit(Compiler* self, char[] s) {
+    self.ensure_capacity(s.len);
+    mem::copy(&self.output_buf[self.output_len], s.ptr, s.len);
+    self.output_len += s.len;
+}
+
 fn void Compiler.emit_char(Compiler* self, char c) {
-    self.output.push(c);
+    self.ensure_capacity(1);
+    self.output_buf[self.output_len] = c;
+    self.output_len++;
 }
 
 /**
@@ -151,8 +364,29 @@ fn void Compiler.emit_usz(Compiler* self, usz n) {
     self.emit_int((long)n);
 }
 
+fn bool is_c3_reserved(char[] name) {
+    char[][*] reserved = {"try", "var", "fn", "if", "else", "for", "while", "do",
+        "switch", "case", "default", "return", "break", "continue", "import",
+        "module", "struct", "enum", "union", "const", "static", "true", "false",
+        "null", "void", "bool", "int", "uint", "char", "float", "double", "usz"};
+    foreach (r : reserved) {
+        if (name.len == r.len) {
+            bool match = true;
+            for (usz i = 0; i < name.len; i++) {
+                if (name[i] != r[i]) { match = false; break; }
+            }
+            if (match) return true;
+        }
+    }
+    return false;
+}
+
 fn void Compiler.emit_symbol_name(Compiler* self, SymbolId sym) {
     char[] name = self.interp.symbols.get_name(sym);
+    // Escape C3 reserved words
+    if (is_c3_reserved(name)) {
+        self.emit("_pika_");
+    }
     // Sanitize name for C3 (replace - with _)
     foreach (c : name) {
         if (c == '-') {
@@ -182,8 +416,7 @@ fn void Compiler.emit_symbol_name(Compiler* self, SymbolId sym) {
 }
 
 fn char[] Compiler.get_output(Compiler* self) {
-    // Return the output as a char slice
-    return self.output.entries[:self.output.len()];
+    return self.output_buf[:self.output_len];
 }
 
 // =============================================================================
@@ -194,7 +427,7 @@ fn char[] Compiler.get_output(Compiler* self) {
  * Find free variables in an expression that need to be captured.
  * bound_vars contains variables that are bound in the current scope.
  */
-fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars) {
+fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {
     if (expr == null) return;
 
     switch (expr.tag) {
@@ -204,12 +437,31 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
 
         case E_VAR:
             SymbolId name = expr.var_expr.name;
-            // Check if bound locally
+            // Check if bound locally (this lambda's own params/lets)
             foreach (b : *bound_vars) {
                 if ((uint)b == (uint)name) return;
             }
-            // Check if it's a global primitive
-            if (self.is_primitive(name)) return;
+            // Check if in enclosing scope (outer lambda params/lets) — must capture,
+            // even if the name also exists as a global define
+            if (enclosing_scope != null) {
+                foreach (e : *enclosing_scope) {
+                    if ((uint)e == (uint)name) {
+                        foreach (f : *free_vars) {
+                            if ((uint)f == (uint)name) return;
+                        }
+                        free_vars.push(name);
+                        return;
+                    }
+                }
+            }
+            // Check if it's a global primitive (for delegation, only skip builtins)
+            if (self.for_delegation) {
+                if (self.is_builtin_primitive(name)) return;
+            } else {
+                if (self.is_primitive(name)) return;
+            }
+            // Check if it's a mutable-captured variable (accessed via interpreter env)
+            if (self.is_mutable_captured_var(name)) return;
             // Check if already in free vars
             foreach (f : *free_vars) {
                 if ((uint)f == (uint)name) return;
@@ -218,55 +470,65 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
             free_vars.push(name);
 
         case E_LAMBDA:
-            // Add parameter to bound vars (skip sentinel for zero-arg lambdas)
+            // Add ALL parameters to bound vars (multi-param lambdas have param_count > 1)
             List{SymbolId} new_bound;
             foreach (b : *bound_vars) {
                 new_bound.push(b);
             }
-            if ((uint)expr.lambda.param != 0xFFFFFFFF) {
+            if (expr.lambda.param_count > 1) {
+                for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
+                    new_bound.push(expr.lambda.params[pi]);
+                }
+            } else if ((uint)expr.lambda.param != 0xFFFFFFFF) {
                 new_bound.push(expr.lambda.param);
             }
-            self.find_free_vars(expr.lambda.body, &new_bound, free_vars);
+            self.find_free_vars(expr.lambda.body, &new_bound, free_vars, enclosing_scope);
             new_bound.free();
 
         case E_APP:
-            self.find_free_vars(expr.app.func, bound_vars, free_vars);
-            self.find_free_vars(expr.app.arg, bound_vars, free_vars);
+            self.find_free_vars(expr.app.func, bound_vars, free_vars, enclosing_scope);
+            self.find_free_vars(expr.app.arg, bound_vars, free_vars, enclosing_scope);
 
         case E_IF:
-            self.find_free_vars(expr.if_expr.test, bound_vars, free_vars);
-            self.find_free_vars(expr.if_expr.then_branch, bound_vars, free_vars);
-            self.find_free_vars(expr.if_expr.else_branch, bound_vars, free_vars);
+            self.find_free_vars(expr.if_expr.test, bound_vars, free_vars, enclosing_scope);
+            self.find_free_vars(expr.if_expr.then_branch, bound_vars, free_vars, enclosing_scope);
+            self.find_free_vars(expr.if_expr.else_branch, bound_vars, free_vars, enclosing_scope);
 
         case E_LET:
-            // Init expression
-            self.find_free_vars(expr.let_expr.init, bound_vars, free_vars);
-            // Body with name bound
+            // For recursive let, name is bound in both init and body
             List{SymbolId} let_bound;
             foreach (b : *bound_vars) {
                 let_bound.push(b);
             }
-            let_bound.push(expr.let_expr.name);
-            self.find_free_vars(expr.let_expr.body, &let_bound, free_vars);
+            if (expr.let_expr.is_recursive) {
+                let_bound.push(expr.let_expr.name);
+            }
+            // Init expression
+            self.find_free_vars(expr.let_expr.init, &let_bound, free_vars, enclosing_scope);
+            // Body with name bound
+            if (!expr.let_expr.is_recursive) {
+                let_bound.push(expr.let_expr.name);
+            }
+            self.find_free_vars(expr.let_expr.body, &let_bound, free_vars, enclosing_scope);
             let_bound.free();
 
         case E_DEFINE:
-            self.find_free_vars(expr.define.value, bound_vars, free_vars);
+            self.find_free_vars(expr.define.value, bound_vars, free_vars, enclosing_scope);
 
         case E_QUOTE:
             // Quoted data has no free variables
             return;
 
         case E_AND:
-            self.find_free_vars(expr.and_expr.left, bound_vars, free_vars);
-            self.find_free_vars(expr.and_expr.right, bound_vars, free_vars);
+            self.find_free_vars(expr.and_expr.left, bound_vars, free_vars, enclosing_scope);
+            self.find_free_vars(expr.and_expr.right, bound_vars, free_vars, enclosing_scope);
 
         case E_OR:
-            self.find_free_vars(expr.or_expr.left, bound_vars, free_vars);
-            self.find_free_vars(expr.or_expr.right, bound_vars, free_vars);
+            self.find_free_vars(expr.or_expr.left, bound_vars, free_vars, enclosing_scope);
+            self.find_free_vars(expr.or_expr.right, bound_vars, free_vars, enclosing_scope);
 
         case E_MATCH:
-            self.find_free_vars(expr.match.scrutinee, bound_vars, free_vars);
+            self.find_free_vars(expr.match.scrutinee, bound_vars, free_vars, enclosing_scope);
             for (usz i = 0; i < expr.match.clause_count; i++) {
                 // Add pattern bindings to bound vars
                 List{SymbolId} clause_bound;
@@ -274,25 +536,37 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
                     clause_bound.push(b);
                 }
                 self.collect_pattern_bindings(expr.match.clauses[i].pattern, &clause_bound);
-                self.find_free_vars(expr.match.clauses[i].result, &clause_bound, free_vars);
+                self.find_free_vars(expr.match.clauses[i].result, &clause_bound, free_vars, enclosing_scope);
                 clause_bound.free();
             }
 
         case E_CALL:
-            self.find_free_vars(expr.call.func, bound_vars, free_vars);
+            self.find_free_vars(expr.call.func, bound_vars, free_vars, enclosing_scope);
             for (usz i = 0; i < expr.call.arg_count; i++) {
-                self.find_free_vars(expr.call.args[i], bound_vars, free_vars);
+                self.find_free_vars(expr.call.args[i], bound_vars, free_vars, enclosing_scope);
             }
 
         case E_INDEX:
-            self.find_free_vars(expr.index.collection, bound_vars, free_vars);
-            self.find_free_vars(expr.index.index, bound_vars, free_vars);
+            self.find_free_vars(expr.index.collection, bound_vars, free_vars, enclosing_scope);
+            self.find_free_vars(expr.index.index, bound_vars, free_vars, enclosing_scope);
 
         case E_PATH:
             // First segment is a variable reference
             SymbolId path_name = expr.path.segments[0];
             foreach (b : *bound_vars) {
                 if ((uint)b == (uint)path_name) return;
+            }
+            // Check enclosing scope before is_primitive (enclosing var shadows global)
+            if (enclosing_scope != null) {
+                foreach (e : *enclosing_scope) {
+                    if ((uint)e == (uint)path_name) {
+                        foreach (f : *free_vars) {
+                            if ((uint)f == (uint)path_name) return;
+                        }
+                        free_vars.push(path_name);
+                        return;
+                    }
+                }
             }
             if (self.is_primitive(path_name)) return;
             foreach (f : *free_vars) {
@@ -301,7 +575,7 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
             free_vars.push(path_name);
 
         case E_RESET:
-            self.find_free_vars(expr.reset.body, bound_vars, free_vars);
+            self.find_free_vars(expr.reset.body, bound_vars, free_vars, enclosing_scope);
 
         case E_SHIFT:
             // k_name is bound in the body
@@ -310,14 +584,14 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
                 shift_bound.push(b);
             }
             shift_bound.push(expr.shift.k_name);
-            self.find_free_vars(expr.shift.body, &shift_bound, free_vars);
+            self.find_free_vars(expr.shift.body, &shift_bound, free_vars, enclosing_scope);
             shift_bound.free();
 
         case E_PERFORM:
-            self.find_free_vars(expr.perform.arg, bound_vars, free_vars);
+            self.find_free_vars(expr.perform.arg, bound_vars, free_vars, enclosing_scope);
 
         case E_HANDLE:
-            self.find_free_vars(expr.handle.body, bound_vars, free_vars);
+            self.find_free_vars(expr.handle.body, bound_vars, free_vars, enclosing_scope);
             for (usz i = 0; i < expr.handle.clause_count; i++) {
                 // k_name and arg_name are bound in handler body
                 List{SymbolId} handle_bound;
@@ -326,14 +600,38 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
                 }
                 handle_bound.push(expr.handle.clauses[i].k_name);
                 handle_bound.push(expr.handle.clauses[i].arg_name);
-                self.find_free_vars(expr.handle.clauses[i].handler_body, &handle_bound, free_vars);
+                self.find_free_vars(expr.handle.clauses[i].handler_body, &handle_bound, free_vars, enclosing_scope);
                 handle_bound.free();
             }
 
         case E_BEGIN:
             for (usz i = 0; i < expr.begin.expr_count; i++) {
-                self.find_free_vars(expr.begin.exprs[i], bound_vars, free_vars);
+                self.find_free_vars(expr.begin.exprs[i], bound_vars, free_vars, enclosing_scope);
             }
+
+        case E_QUASIQUOTE:
+            // Only look for free vars inside unquote nodes — the rest is quoted (literal symbols)
+            self.find_free_vars_in_qq(expr.quasiquote.body, bound_vars, free_vars, enclosing_scope);
+
+        case E_UNQUOTE:
+            self.find_free_vars(expr.unquote.body, bound_vars, free_vars, enclosing_scope);
+
+        case E_UNQUOTE_SPLICING:
+            self.find_free_vars(expr.unquote_splicing.body, bound_vars, free_vars, enclosing_scope);
+
+        case E_DEFMACRO:
+            // Macro templates may reference free vars at expansion time
+            // Conservative: treat as having no free vars (macros expand at compile time)
+            return;
+
+        case E_MODULE:
+            for (usz i = 0; i < expr.module_expr.body_count; i++) {
+                self.find_free_vars(expr.module_expr.body[i], bound_vars, free_vars, enclosing_scope);
+            }
+
+        case E_IMPORT:
+            // No free variables
+            return;
 
         case E_SET:
             // The variable being set might be free
@@ -341,12 +639,28 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
             foreach (b : *bound_vars) {
                 if ((uint)b == (uint)set_name) {
                     // Bound locally, just analyze the value
-                    self.find_free_vars(expr.set_expr.value, bound_vars, free_vars);
+                    self.find_free_vars(expr.set_expr.value, bound_vars, free_vars, enclosing_scope);
                     return;
                 }
             }
+            // Check enclosing scope before is_primitive (enclosing var shadows global)
+            if (enclosing_scope != null) {
+                foreach (e : *enclosing_scope) {
+                    if ((uint)e == (uint)set_name) {
+                        bool set_enc_free = false;
+                        foreach (f : *free_vars) {
+                            if ((uint)f == (uint)set_name) { set_enc_free = true; break; }
+                        }
+                        if (!set_enc_free) {
+                            free_vars.push(set_name);
+                        }
+                        self.find_free_vars(expr.set_expr.value, bound_vars, free_vars, enclosing_scope);
+                        return;
+                    }
+                }
+            }
             if (self.is_primitive(set_name)) {
-                self.find_free_vars(expr.set_expr.value, bound_vars, free_vars);
+                self.find_free_vars(expr.set_expr.value, bound_vars, free_vars, enclosing_scope);
                 return;
             }
             // Check if already in free vars
@@ -357,10 +671,40 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
             if (!set_already_free) {
                 free_vars.push(set_name);
             }
-            self.find_free_vars(expr.set_expr.value, bound_vars, free_vars);
+            self.find_free_vars(expr.set_expr.value, bound_vars, free_vars, enclosing_scope);
 
         default:
             // Handle other expression types conservatively
+            return;
+    }
+}
+
+/**
+ * Traverse quasiquote body, only descending into unquote/unquote-splicing for free vars.
+ * In quasiquote, bare symbols are literals — only unquoted expressions reference variables.
+ */
+fn void Compiler.find_free_vars_in_qq(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {
+    if (expr == null) return;
+    switch (expr.tag) {
+        case E_UNQUOTE:
+            // Unquoted expression — evaluate normally, so scan for free vars
+            self.find_free_vars(expr.unquote.body, bound_vars, free_vars, enclosing_scope);
+        case E_UNQUOTE_SPLICING:
+            self.find_free_vars(expr.unquote_splicing.body, bound_vars, free_vars, enclosing_scope);
+        case E_CALL:
+            // Lists in qq template are parsed as E_CALL — traverse to find unquotes
+            self.find_free_vars_in_qq(expr.call.func, bound_vars, free_vars, enclosing_scope);
+            for (usz i = 0; i < expr.call.arg_count; i++) {
+                self.find_free_vars_in_qq(expr.call.args[i], bound_vars, free_vars, enclosing_scope);
+            }
+        case E_APP:
+            self.find_free_vars_in_qq(expr.app.func, bound_vars, free_vars, enclosing_scope);
+            self.find_free_vars_in_qq(expr.app.arg, bound_vars, free_vars, enclosing_scope);
+        case E_QUASIQUOTE:
+            // Nested quasiquote — still only scan for unquotes
+            self.find_free_vars_in_qq(expr.quasiquote.body, bound_vars, free_vars, enclosing_scope);
+        default:
+            // E_VAR, E_LIT, etc. in qq context are literal — no free vars
             return;
     }
 }
@@ -398,14 +742,25 @@ fn bool Compiler.is_primitive(Compiler* self, SymbolId sym) {
         "=", "<", ">", "<=", ">=",
         "cons", "car", "cdr", "null?", "pair?",
         "list", "length", "not",
-        "print", "println", "newline",
+        "print", "println", "newline", "display",
         "string-append", "string-join", "substring",
         "string-split", "string-length", "string->list",
         "list->string", "string-upcase", "string-downcase",
         "string-trim", "string?", "int?", "symbol?",
-        "closure?", "continuation?",
+        "closure?", "continuation?", "double?", "list?",
+        "boolean?", "number?",
+        "string->number", "number->string",
+        "gensym", "load", "apply", "equal?",
+        "dict", "dict-set!", "dict?",
+        "ref", "push!", "keys", "values", "has?", "remove!",
         "read-file", "write-file", "file-exists?", "read-lines",
         "ffi-open", "ffi-call", "ffi-close", "ffi-sym",
+        "type-of",
+        "abs", "min", "max", "floor", "ceiling", "round",
+        "truncate", "sqrt", "even?", "odd?", "zero?",
+        "positive?", "negative?", "gcd",
+        "bitwise-and", "bitwise-or", "bitwise-xor",
+        "bitwise-not", "lshift", "rshift",
         "true", "false", "nil"
     };
 
@@ -421,12 +776,215 @@ fn bool Compiler.is_primitive(Compiler* self, SymbolId sym) {
     return false;
 }
 
+fn bool Compiler.is_mutable_captured_var(Compiler* self, SymbolId sym) {
+    foreach (mc : self.mutable_captures) {
+        if ((uint)mc == (uint)sym) return true;
+    }
+    return false;
+}
+
 fn bool Compiler.str_eq(Compiler* self, char[] a, char[] b) {
     if (a.len != b.len) return false;
     for (usz i = 0; i < a.len; i++) {
         if (a[i] != b[i]) return false;
     }
     return true;
+}
+
+// =============================================================================
+// SECTION 4a1: MUTABLE CAPTURE PRESCAN
+// =============================================================================
+
+/**
+ * Pre-scan the entire expression tree to identify all mutable-captured variables.
+ * Must be called before scan_lambdas so that lambda scanning can exclude
+ * mutable-captured variables from closure struct captures.
+ */
+fn void Compiler.prescan_mutable_captures(Compiler* self, Expr* expr) {
+    if (expr == null) return;
+    switch (expr.tag) {
+        case E_LET:
+            // Check if this let-bound variable is mutable-captured
+            if (self.is_mutable_capture(expr.let_expr.name, expr.let_expr.body)) {
+                // Add to mutable captures if not already present
+                bool already = false;
+                foreach (mc : self.mutable_captures) {
+                    if ((uint)mc == (uint)expr.let_expr.name) { already = true; break; }
+                }
+                if (!already) {
+                    self.mutable_captures.push(expr.let_expr.name);
+                }
+            }
+            self.prescan_mutable_captures(expr.let_expr.init);
+            self.prescan_mutable_captures(expr.let_expr.body);
+        case E_LAMBDA:
+            self.prescan_mutable_captures(expr.lambda.body);
+        case E_APP:
+            self.prescan_mutable_captures(expr.app.func);
+            self.prescan_mutable_captures(expr.app.arg);
+        case E_IF:
+            self.prescan_mutable_captures(expr.if_expr.test);
+            self.prescan_mutable_captures(expr.if_expr.then_branch);
+            self.prescan_mutable_captures(expr.if_expr.else_branch);
+        case E_DEFINE:
+            self.prescan_mutable_captures(expr.define.value);
+        case E_BEGIN:
+            for (usz i = 0; i < expr.begin.expr_count; i++) {
+                self.prescan_mutable_captures(expr.begin.exprs[i]);
+            }
+        case E_CALL:
+            self.prescan_mutable_captures(expr.call.func);
+            for (usz i = 0; i < expr.call.arg_count; i++) {
+                self.prescan_mutable_captures(expr.call.args[i]);
+            }
+        case E_AND:
+            self.prescan_mutable_captures(expr.and_expr.left);
+            self.prescan_mutable_captures(expr.and_expr.right);
+        case E_OR:
+            self.prescan_mutable_captures(expr.or_expr.left);
+            self.prescan_mutable_captures(expr.or_expr.right);
+        case E_MATCH:
+            self.prescan_mutable_captures(expr.match.scrutinee);
+            for (usz i = 0; i < expr.match.clause_count; i++) {
+                self.prescan_mutable_captures(expr.match.clauses[i].result);
+            }
+        case E_SET:
+            self.prescan_mutable_captures(expr.set_expr.value);
+        case E_RESET:
+            self.prescan_mutable_captures(expr.reset.body);
+        case E_SHIFT:
+            self.prescan_mutable_captures(expr.shift.body);
+        case E_HANDLE:
+            self.prescan_mutable_captures(expr.handle.body);
+            for (usz i = 0; i < expr.handle.clause_count; i++) {
+                self.prescan_mutable_captures(expr.handle.clauses[i].handler_body);
+            }
+        case E_PERFORM:
+            self.prescan_mutable_captures(expr.perform.arg);
+        default:
+            return;
+    }
+}
+
+// =============================================================================
+// SECTION 4a2: MUTABLE CAPTURE DETECTION
+// =============================================================================
+
+/**
+ * Check if a variable is both captured by a nested lambda AND mutated with set!.
+ * This is done by scanning the expression tree for (set! name ...) where name
+ * is a free variable of some nested lambda.
+ *
+ * We detect: is `name` set! inside any sub-expression that also contains
+ * a lambda that captures `name`?
+ */
+fn bool Compiler.is_mutable_capture(Compiler* self, SymbolId name, Expr* body) {
+    // Check if name is set! anywhere AND captured by any nested lambda
+    bool has_set = self.has_set_on(name, body);
+    bool has_capture = self.is_captured_by_nested_lambda(name, body);
+    return has_set && has_capture;
+}
+
+fn bool Compiler.has_set_on(Compiler* self, SymbolId name, Expr* expr) {
+    if (expr == null) return false;
+    switch (expr.tag) {
+        case E_SET:
+            if ((uint)expr.set_expr.name == (uint)name) return true;
+            return self.has_set_on(name, expr.set_expr.value);
+        case E_APP:
+            return self.has_set_on(name, expr.app.func) || self.has_set_on(name, expr.app.arg);
+        case E_IF:
+            return self.has_set_on(name, expr.if_expr.test) ||
+                   self.has_set_on(name, expr.if_expr.then_branch) ||
+                   self.has_set_on(name, expr.if_expr.else_branch);
+        case E_LET:
+            return self.has_set_on(name, expr.let_expr.init) || self.has_set_on(name, expr.let_expr.body);
+        case E_LAMBDA:
+            return self.has_set_on(name, expr.lambda.body);
+        case E_BEGIN:
+            for (usz i = 0; i < expr.begin.expr_count; i++) {
+                if (self.has_set_on(name, expr.begin.exprs[i])) return true;
+            }
+            return false;
+        case E_CALL:
+            if (self.has_set_on(name, expr.call.func)) return true;
+            for (usz i = 0; i < expr.call.arg_count; i++) {
+                if (self.has_set_on(name, expr.call.args[i])) return true;
+            }
+            return false;
+        case E_AND:
+            return self.has_set_on(name, expr.and_expr.left) || self.has_set_on(name, expr.and_expr.right);
+        case E_OR:
+            return self.has_set_on(name, expr.or_expr.left) || self.has_set_on(name, expr.or_expr.right);
+        case E_MATCH:
+            if (self.has_set_on(name, expr.match.scrutinee)) return true;
+            for (usz i = 0; i < expr.match.clause_count; i++) {
+                if (self.has_set_on(name, expr.match.clauses[i].result)) return true;
+            }
+            return false;
+        default:
+            return false;
+    }
+}
+
+fn bool Compiler.is_captured_by_nested_lambda(Compiler* self, SymbolId name, Expr* expr) {
+    if (expr == null) return false;
+    switch (expr.tag) {
+        case E_LAMBDA:
+            // Check if this lambda captures name as a free variable
+            List{SymbolId} bound;
+            if ((uint)expr.lambda.param != 0xFFFFFFFF) {
+                bound.push(expr.lambda.param);
+            }
+            List{SymbolId} free;
+            self.find_free_vars(expr.lambda.body, &bound, &free, null);
+            bool captured = false;
+            foreach (f : free) {
+                if ((uint)f == (uint)name) { captured = true; break; }
+            }
+            bound.free();
+            free.free();
+            if (captured) return true;
+            // Also check deeper nesting
+            return self.is_captured_by_nested_lambda(name, expr.lambda.body);
+        case E_APP:
+            return self.is_captured_by_nested_lambda(name, expr.app.func) ||
+                   self.is_captured_by_nested_lambda(name, expr.app.arg);
+        case E_IF:
+            return self.is_captured_by_nested_lambda(name, expr.if_expr.test) ||
+                   self.is_captured_by_nested_lambda(name, expr.if_expr.then_branch) ||
+                   self.is_captured_by_nested_lambda(name, expr.if_expr.else_branch);
+        case E_LET:
+            return self.is_captured_by_nested_lambda(name, expr.let_expr.init) ||
+                   self.is_captured_by_nested_lambda(name, expr.let_expr.body);
+        case E_BEGIN:
+            for (usz i = 0; i < expr.begin.expr_count; i++) {
+                if (self.is_captured_by_nested_lambda(name, expr.begin.exprs[i])) return true;
+            }
+            return false;
+        case E_CALL:
+            if (self.is_captured_by_nested_lambda(name, expr.call.func)) return true;
+            for (usz i = 0; i < expr.call.arg_count; i++) {
+                if (self.is_captured_by_nested_lambda(name, expr.call.args[i])) return true;
+            }
+            return false;
+        case E_AND:
+            return self.is_captured_by_nested_lambda(name, expr.and_expr.left) ||
+                   self.is_captured_by_nested_lambda(name, expr.and_expr.right);
+        case E_OR:
+            return self.is_captured_by_nested_lambda(name, expr.or_expr.left) ||
+                   self.is_captured_by_nested_lambda(name, expr.or_expr.right);
+        case E_MATCH:
+            if (self.is_captured_by_nested_lambda(name, expr.match.scrutinee)) return true;
+            for (usz i = 0; i < expr.match.clause_count; i++) {
+                if (self.is_captured_by_nested_lambda(name, expr.match.clauses[i].result)) return true;
+            }
+            return false;
+        case E_SET:
+            return self.is_captured_by_nested_lambda(name, expr.set_expr.value);
+        default:
+            return false;
+    }
 }
 
 // =============================================================================
@@ -440,87 +998,6 @@ fn bool Compiler.str_eq(Compiler* self, char[] a, char[] b) {
  * A lambda "creates closures" if its body contains lambda expressions.
  * This is conservative but correct - if a lambda is created, it might escape.
  */
-fn bool Compiler.body_creates_closure(Compiler* self, Expr* body) {
-    if (body == null) return false;
-
-    switch (body.tag) {
-        case E_LAMBDA:
-            // Body directly is a lambda - definitely creates closure
-            return true;
-
-        case E_APP:
-            // Check both function and argument
-            return self.body_creates_closure(body.app.func) ||
-                   self.body_creates_closure(body.app.arg);
-
-        case E_IF:
-            return self.body_creates_closure(body.if_expr.test) ||
-                   self.body_creates_closure(body.if_expr.then_branch) ||
-                   self.body_creates_closure(body.if_expr.else_branch);
-
-        case E_LET:
-            return self.body_creates_closure(body.let_expr.init) ||
-                   self.body_creates_closure(body.let_expr.body);
-
-        case E_DEFINE:
-            return self.body_creates_closure(body.define.value);
-
-        case E_AND:
-            return self.body_creates_closure(body.and_expr.left) ||
-                   self.body_creates_closure(body.and_expr.right);
-
-        case E_OR:
-            return self.body_creates_closure(body.or_expr.left) ||
-                   self.body_creates_closure(body.or_expr.right);
-
-        case E_MATCH:
-            if (self.body_creates_closure(body.match.scrutinee)) return true;
-            for (usz i = 0; i < body.match.clause_count; i++) {
-                if (self.body_creates_closure(body.match.clauses[i].result)) return true;
-            }
-            return false;
-
-        case E_CALL:
-            if (self.body_creates_closure(body.call.func)) return true;
-            for (usz i = 0; i < body.call.arg_count; i++) {
-                if (self.body_creates_closure(body.call.args[i])) return true;
-            }
-            return false;
-
-        case E_INDEX:
-            return self.body_creates_closure(body.index.collection) ||
-                   self.body_creates_closure(body.index.index);
-
-        case E_RESET:
-            return self.body_creates_closure(body.reset.body);
-
-        case E_SHIFT:
-            return self.body_creates_closure(body.shift.body);
-
-        case E_PERFORM:
-            return self.body_creates_closure(body.perform.arg);
-
-        case E_HANDLE:
-            if (self.body_creates_closure(body.handle.body)) return true;
-            for (usz i = 0; i < body.handle.clause_count; i++) {
-                if (self.body_creates_closure(body.handle.clauses[i].handler_body)) return true;
-            }
-            return false;
-
-        case E_BEGIN:
-            for (usz i = 0; i < body.begin.expr_count; i++) {
-                if (self.body_creates_closure(body.begin.exprs[i])) return true;
-            }
-            return false;
-
-        case E_SET:
-            return self.body_creates_closure(body.set_expr.value);
-
-        default:
-            return false;
-    }
-}
-
 // =============================================================================
 // SECTION 4c: EXPRESSION SERIALIZER
 // =============================================================================
@@ -705,6 +1182,55 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
                 self.buf_append(buf, seg);
             }
 
+        case E_QUASIQUOTE:
+            buf.push('`');
+            self.serialize_expr_to_buf(expr.quasiquote.body, buf);
+
+        case E_UNQUOTE:
+            buf.push(',');
+            self.serialize_expr_to_buf(expr.unquote.body, buf);
+
+        case E_UNQUOTE_SPLICING:
+            self.buf_append(buf, ",@");
+            self.serialize_expr_to_buf(expr.unquote_splicing.body, buf);
+
+        case E_DEFMACRO:
+            self.buf_append(buf, "(define [macro] ");
+            char[] macro_name = self.interp.symbols.get_name(expr.define_macro.name);
+            self.buf_append(buf, macro_name);
+            for (usz i = 0; i < expr.define_macro.clause_count; i++) {
+                self.buf_append(buf, " (");
+                self.serialize_pattern_to_buf(expr.define_macro.clauses[i].pattern, buf);
+                buf.push(' ');
+                self.buf_append(buf, "(");
+                self.serialize_value_to_buf(expr.define_macro.clauses[i].tmpl, buf);
+                self.buf_append(buf, "))");
+            }
+            buf.push(')');
+
+        case E_MODULE:
+            self.buf_append(buf, "(module ");
+            char[] mod_name = self.interp.symbols.get_name(expr.module_expr.name);
+            self.buf_append(buf, mod_name);
+            self.buf_append(buf, " (export");
+            for (usz i = 0; i < expr.module_expr.export_count; i++) {
+                buf.push(' ');
+                char[] exp_name = self.interp.symbols.get_name(expr.module_expr.exports[i]);
+                self.buf_append(buf, exp_name);
+            }
+            buf.push(')');
+            for (usz i = 0; i < expr.module_expr.body_count; i++) {
+                buf.push(' ');
+                self.serialize_expr_to_buf(expr.module_expr.body[i], buf);
+            }
+            buf.push(')');
+
+        case E_IMPORT:
+            self.buf_append(buf, "(import ");
+            char[] imp_name = self.interp.symbols.get_name(expr.import_expr.name);
+            self.buf_append(buf, imp_name);
+            buf.push(')');
+
         default:
             self.buf_append(buf, "nil");
     }
@@ -737,6 +1263,11 @@ fn void Compiler.serialize_value_to_buf(Compiler* self, Value* v, List{char}* bu
                     buf.push(digits[(usz)di]);
                 }
             }
+
+        case DOUBLE:
+            char[64] dbuf;
+            char[] dslice = io::bprintf(&dbuf, "%.15g", v.double_val)!!;
+            self.buf_append(buf, dslice);
 
         case STRING:
             buf.push('"');
@@ -870,7 +1401,9 @@ fn void Compiler.emit_serialized_expr(Compiler* self, Expr* expr) {
 fn List{SymbolId} Compiler.collect_cont_free_vars(Compiler* self, Expr* expr) {
     List{SymbolId} bound;
     List{SymbolId} free;
-    self.find_free_vars(expr, &bound, &free);
+    self.for_delegation = true;
+    self.find_free_vars(expr, &bound, &free, null);
+    self.for_delegation = false;
     bound.free();
     return free;
 }
@@ -885,8 +1418,8 @@ fn List{SymbolId} Compiler.collect_cont_free_vars(Compiler* self, Expr* expr) {
  */
 const char[] STDLIB_PRELUDE =
 `(define with-trampoline (lambda (thunk) (handle (thunk nil) ((bounce k next-thunk) (k (with-trampoline next-thunk))))))
-(define map (lambda (f) (lambda (lst) (if (null? lst) nil (cons (f (car lst)) ((map f) (cdr lst)))))))
-(define filter (lambda (pred) (lambda (lst) (if (null? lst) nil (if (pred (car lst)) (cons (car lst) ((filter pred) (cdr lst))) ((filter pred) (cdr lst)))))))
+(define map (lambda (f) (lambda (lst) (let loop ((xs lst) (acc nil)) (if (null? xs) (reverse acc) (loop (cdr xs) (cons (f (car xs)) acc)))))))
+(define filter (lambda (pred) (lambda (lst) (let loop ((xs lst) (acc nil)) (if (null? xs) (reverse acc) (if (pred (car xs)) (loop (cdr xs) (cons (car xs) acc)) (loop (cdr xs) acc)))))))
 (define foldl (lambda (f) (lambda (acc) (lambda (lst) (if (null? lst) acc (((foldl f) ((f acc) (car lst))) (cdr lst)))))))
 (define foldr (lambda (f) (lambda (init) (lambda (lst) (if (null? lst) init ((f (car lst)) (((foldr f) init) (cdr lst))))))))
 (define append (lambda (a) (lambda (b) (if (null? a) b (cons (car a) ((append (cdr a)) b))))))
@@ -904,7 +1437,9 @@ const char[] STDLIB_PRELUDE =
 (define try (lambda (thunk) (lambda (handler) (handle (thunk nil) ((raise k msg) (handler msg))))))
 (define assert! (lambda (condition) (lambda (msg) (if condition true (perform raise msg)))))
 (define assoc (lambda (key) (lambda (alist) (if (null? alist) nil (if (= (car (car alist)) key) (car alist) ((assoc key) (cdr alist)))))))
-(define assoc-ref (lambda (key) (lambda (alist) (let ((pair ((assoc key) alist))) (if (null? pair) nil (cdr pair))))))`;
+(define assoc-ref (lambda (key) (lambda (alist) (let ((pair ((assoc key) alist))) (if (null? pair) nil (cdr pair))))))
+(define when (lambda (test) (lambda (body) (if test body nil))))
+(define unless (lambda (test) (lambda (body) (if test nil body))))`;
 
 // =============================================================================
 // SECTION 5: MAIN COMPILATION
@@ -915,16 +1450,13 @@ const char[] STDLIB_PRELUDE =
  * Prepends stdlib definitions so HOFs are available.
  */
 fn char[] Compiler.compile_program(Compiler* self, char[] source) {
-    // Prepend stdlib prelude to user source
-    List{char} full_source;
-    foreach (c : STDLIB_PRELUDE) {
-        full_source.push(c);
-    }
-    full_source.push(' ');
-    foreach (c : source) {
-        full_source.push(c);
-    }
-    char[] full = full_source.entries[:full_source.len()];
+    // Prepend stdlib prelude to user source using bulk copy
+    usz total = STDLIB_PRELUDE.len + 1 + source.len;
+    char* full_buf = (char*)mem::malloc(total);
+    mem::copy(full_buf, STDLIB_PRELUDE.ptr, STDLIB_PRELUDE.len);
+    full_buf[STDLIB_PRELUDE.len] = ' ';
+    mem::copy(&full_buf[STDLIB_PRELUDE.len + 1], source.ptr, source.len);
+    char[] full = full_buf[:total];
 
     // Parse the program
     List{Expr*} exprs = parse_program(full, self.interp);
@@ -934,6 +1466,11 @@ fn char[] Compiler.compile_program(Compiler* self, char[] source) {
         if (expr.tag == E_DEFINE) {
             self.defined_globals.push(expr.define.name);
         }
+    }
+
+    // Prescan for mutable captures (before lambda scanning)
+    foreach (expr : exprs) {
+        self.prescan_mutable_captures(expr);
     }
 
     // Emit prelude
@@ -953,16 +1490,48 @@ fn char[] Compiler.compile_program(Compiler* self, char[] source) {
     // Emit main function
     self.emit_main_start();
 
+    // Clear declared vars for main scope
+    self.declared_vars.free();
+
     // Compile each top-level expression
-    foreach (expr : exprs) {
-        self.emit_indent();
-        self.compile_statement(expr);
+    // Find the last non-define expression index for print_last mode
+    isz last_non_define = -1;
+    if (self.print_last) {
+        for (usz i = 0; i < exprs.len(); i++) {
+            if (exprs[i].tag != E_DEFINE) {
+                last_non_define = (isz)i;
+            }
+        }
+    }
+
+    for (usz i = 0; i < exprs.len(); i++) {
+        bool should_print = (self.print_all && exprs[i].tag != E_DEFINE)
+            || (self.print_last && (isz)i == last_non_define);
+        if (should_print) {
+            // Compile to temp, then print the result
+            usz r = self.compile_to_temp(exprs[i]);
+            self.emit_indent();
+            self.emit("runtime::rt_print_value(");
+            self.emit_temp_ref(r);
+            self.emit("); io::printn(\"\");\n");
+        } else if (exprs[i].tag == E_DEFINE) {
+            // Define: compile init to temp, assign to global
+            usz init_r = self.compile_to_temp(exprs[i].define.value);
+            self.emit_indent();
+            self.emit_symbol_name(exprs[i].define.name);
+            self.emit(" = ");
+            self.emit_temp_ref(init_r);
+            self.emit(";\n");
+        } else {
+            // Other statements: compile to temp (discards result)
+            self.compile_to_temp(exprs[i]);
+        }
     }
 
     self.emit_main_end();
 
     exprs.free();
-    full_source.free();
+    mem::free(full_buf);
     return self.get_output();
 }
 
@@ -970,20 +1539,50 @@ fn char[] Compiler.compile_program(Compiler* self, char[] source) {
  * Scan expression tree for lambdas and register them.
  */
 fn void Compiler.scan_lambdas(Compiler* self, Expr* expr) {
-    if (expr == null) return;
+    List{SymbolId} empty;
+    self.scan_lambdas_with_scope(expr, &empty);
+    empty.free();
+}
+
+// Returns true if any E_LAMBDA was found in the subtree (replaces body_creates_closure)
+fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
+    if (expr == null) return false;
 
     switch (expr.tag) {
         case E_LAMBDA:
-            // Find free variables
-            List{SymbolId} bound;
-            // Don't push sentinel for zero-arg lambdas
+            // For multi-param lambdas, create synthetic nested single-param
+            // lambda AST nodes for the compiler (which uses single-param calling convention).
+            Expr* scan_expr = expr;
+            if (expr.lambda.param_count > 1 && !expr.lambda.has_rest) {
+                Expr* inner = expr.lambda.body;
+                for (usz pi = expr.lambda.param_count; pi > 1; pi--) {
+                    Expr* wrapper = self.interp.alloc_expr();
+                    wrapper.tag = E_LAMBDA;
+                    wrapper.lambda = mem::malloc(ExprLambda.sizeof);
+                    wrapper.loc_line = expr.loc_line;
+                    wrapper.loc_column = expr.loc_column;
+                    wrapper.lambda.param = expr.lambda.params[pi - 1];
+                    wrapper.lambda.param_count = 1;
+                    wrapper.lambda.params[0] = expr.lambda.params[pi - 1];
+                    wrapper.lambda.has_rest = false;
+                    wrapper.lambda.rest_param = 0;
+                    wrapper.lambda.has_typed_params = false;
+                    wrapper.lambda.body = inner;
+                    inner = wrapper;
+                }
+                expr.lambda.body = inner;
+                expr.lambda.param = expr.lambda.params[0];
+                expr.lambda.param_count = 1;
+                expr.lambda.params[0] = expr.lambda.param;
+            }
+
+            List{SymbolId} own_bound;
             if ((uint)expr.lambda.param != 0xFFFFFFFF) {
-                bound.push(expr.lambda.param);
+                own_bound.push(expr.lambda.param);
             }
             List{SymbolId} free;
-            self.find_free_vars(expr.lambda.body, &bound, &free);
+            self.find_free_vars(expr.lambda.body, &own_bound, &free, enclosing_bound);
 
-            // Register lambda
             LambdaDef def;
             def.id = self.lambda_counter++;
             def.param = expr.lambda.param;
@@ -996,89 +1595,138 @@ fn void Compiler.scan_lambdas(Compiler* self, Expr* expr) {
                 }
             }
 
-            // Check if this lambda's body creates nested closures
-            def.creates_closure = self.body_creates_closure(expr.lambda.body);
+            // Recursively scan body — the return value tells us if body has nested lambdas
+            List{SymbolId} new_enclosing;
+            foreach (b : *enclosing_bound) {
+                new_enclosing.push(b);
+            }
+            if ((uint)expr.lambda.param != 0xFFFFFFFF) {
+                new_enclosing.push(expr.lambda.param);
+            }
+            bool body_has_lambda = self.scan_lambdas_with_scope(expr.lambda.body, &new_enclosing);
+
+            // Set creates_closure from recursive scan (replaces body_creates_closure)
+            def.creates_closure = body_has_lambda;
             if (def.id < 256) {
-                self.lambda_creates_closure[def.id] = def.creates_closure;
+                self.lambda_creates_closure[def.id] = body_has_lambda;
             }
 
             self.lambda_defs.push(def);
 
-            // Recursively scan body
-            self.scan_lambdas(expr.lambda.body);
-
-            bound.free();
+            new_enclosing.free();
+            own_bound.free();
             free.free();
+            return true;  // This node IS a lambda
 
         case E_APP:
-            self.scan_lambdas(expr.app.func);
-            self.scan_lambdas(expr.app.arg);
+            bool app_f = self.scan_lambdas_with_scope(expr.app.func, enclosing_bound);
+            return self.scan_lambdas_with_scope(expr.app.arg, enclosing_bound) || app_f;
 
         case E_IF:
-            self.scan_lambdas(expr.if_expr.test);
-            self.scan_lambdas(expr.if_expr.then_branch);
-            self.scan_lambdas(expr.if_expr.else_branch);
+            bool if_t = self.scan_lambdas_with_scope(expr.if_expr.test, enclosing_bound);
+            bool if_th = self.scan_lambdas_with_scope(expr.if_expr.then_branch, enclosing_bound);
+            return self.scan_lambdas_with_scope(expr.if_expr.else_branch, enclosing_bound) || if_t || if_th;
 
         case E_LET:
-            self.scan_lambdas(expr.let_expr.init);
-            self.scan_lambdas(expr.let_expr.body);
+            List{SymbolId} let_scope;
+            foreach (b : *enclosing_bound) {
+                let_scope.push(b);
+            }
+            let_scope.push(expr.let_expr.name);
+            bool let_found;
+            if (expr.let_expr.is_recursive) {
+                let_found = self.scan_lambdas_with_scope(expr.let_expr.init, &let_scope);
+            } else {
+                let_found = self.scan_lambdas_with_scope(expr.let_expr.init, enclosing_bound);
+            }
+            bool let_body = self.scan_lambdas_with_scope(expr.let_expr.body, &let_scope);
+            let_scope.free();
+            return let_found || let_body;
 
         case E_DEFINE:
-            self.scan_lambdas(expr.define.value);
+            return self.scan_lambdas_with_scope(expr.define.value, enclosing_bound);
 
         case E_AND:
-            self.scan_lambdas(expr.and_expr.left);
-            self.scan_lambdas(expr.and_expr.right);
+            bool and_l = self.scan_lambdas_with_scope(expr.and_expr.left, enclosing_bound);
+            return self.scan_lambdas_with_scope(expr.and_expr.right, enclosing_bound) || and_l;
 
         case E_OR:
-            self.scan_lambdas(expr.or_expr.left);
-            self.scan_lambdas(expr.or_expr.right);
+            bool or_l = self.scan_lambdas_with_scope(expr.or_expr.left, enclosing_bound);
+            return self.scan_lambdas_with_scope(expr.or_expr.right, enclosing_bound) || or_l;
 
         case E_MATCH:
-            self.scan_lambdas(expr.match.scrutinee);
+            bool m_found = self.scan_lambdas_with_scope(expr.match.scrutinee, enclosing_bound);
             for (usz i = 0; i < expr.match.clause_count; i++) {
-                self.scan_lambdas(expr.match.clauses[i].result);
+                m_found |= self.scan_lambdas_with_scope(expr.match.clauses[i].result, enclosing_bound);
             }
+            return m_found;
 
         case E_CALL:
-            self.scan_lambdas(expr.call.func);
+            bool c_found = self.scan_lambdas_with_scope(expr.call.func, enclosing_bound);
             for (usz i = 0; i < expr.call.arg_count; i++) {
-                self.scan_lambdas(expr.call.args[i]);
+                c_found |= self.scan_lambdas_with_scope(expr.call.args[i], enclosing_bound);
             }
+            return c_found;
 
         case E_INDEX:
-            self.scan_lambdas(expr.index.collection);
-            self.scan_lambdas(expr.index.index);
+            bool idx_c = self.scan_lambdas_with_scope(expr.index.collection, enclosing_bound);
+            return self.scan_lambdas_with_scope(expr.index.index, enclosing_bound) || idx_c;
 
         case E_PATH:
-            // Paths are just variable references, no sub-expressions
-            return;
+            return false;
 
         case E_RESET:
-            self.scan_lambdas(expr.reset.body);
+            return self.scan_lambdas_with_scope(expr.reset.body, enclosing_bound);
 
         case E_SHIFT:
-            self.scan_lambdas(expr.shift.body);
+            return self.scan_lambdas_with_scope(expr.shift.body, enclosing_bound);
 
         case E_PERFORM:
-            self.scan_lambdas(expr.perform.arg);
+            return self.scan_lambdas_with_scope(expr.perform.arg, enclosing_bound);
 
         case E_HANDLE:
-            self.scan_lambdas(expr.handle.body);
+            bool h_found = self.scan_lambdas_with_scope(expr.handle.body, enclosing_bound);
             for (usz i = 0; i < expr.handle.clause_count; i++) {
-                self.scan_lambdas(expr.handle.clauses[i].handler_body);
+                h_found |= self.scan_lambdas_with_scope(expr.handle.clauses[i].handler_body, enclosing_bound);
             }
+            return h_found;
 
         case E_BEGIN:
+            bool b_found = false;
             for (usz i = 0; i < expr.begin.expr_count; i++) {
-                self.scan_lambdas(expr.begin.exprs[i]);
+                b_found |= self.scan_lambdas_with_scope(expr.begin.exprs[i], enclosing_bound);
             }
+            return b_found;
 
         case E_SET:
-            self.scan_lambdas(expr.set_expr.value);
+            return self.scan_lambdas_with_scope(expr.set_expr.value, enclosing_bound);
+
+        case E_QUASIQUOTE:
+            return self.scan_lambdas_with_scope(expr.quasiquote.body, enclosing_bound);
+
+        case E_UNQUOTE:
+            return self.scan_lambdas_with_scope(expr.unquote.body, enclosing_bound);
+
+        case E_UNQUOTE_SPLICING:
+            return self.scan_lambdas_with_scope(expr.unquote_splicing.body, enclosing_bound);
+
+        case E_DEFMACRO:
+            return false;
+
+        case E_MODULE:
+            bool mod_found = false;
+            for (usz i = 0; i < expr.module_expr.body_count; i++) {
+                List{SymbolId} mod_empty;
+                mod_found |= self.scan_lambdas_with_scope(expr.module_expr.body[i], &mod_empty);
+                mod_empty.free();
+            }
+            return mod_found;
+
+        case E_IMPORT:
+            return false;
 
         default:
-            return;
+            return false;
     }
 }
 
@@ -1132,6 +1780,13 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
 
         self.indent++;
 
+        // Clear declared vars for this function scope
+        self.declared_vars.free();
+        // Mark parameter as declared
+        if (!is_zero_arg) {
+            self.mark_declared(def.param);
+        }
+
         // If this lambda creates closures, push a frame region
         if (def.creates_closure) {
             self.emit_indent();
@@ -1148,6 +1803,7 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
             self.emit("*)_self;\n");
 
             for (usz i = 0; i < def.capture_count; i++) {
+                self.mark_declared(def.captures[i]);
                 self.emit_indent();
                 self.emit("runtime::Value ");
                 self.emit_symbol_name(def.captures[i]);
@@ -1157,27 +1813,19 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
             }
         }
 
-        // Compile body and return
-        // Special case: if body is a lambda with captures, emit setup statements first
+        // Compile body and return using statement-level compilation
         if (def.body.tag == E_LAMBDA) {
             self.emit_lambda_return_with_frame(def.body, def.creates_closure);
         } else {
+            usz body_r = self.compile_to_temp_tail(def.body);
             if (def.creates_closure) {
-                // Store result, pop frame, then return
-                self.emit_indent();
-                self.emit("runtime::Value _result = ");
-                self.compile_expr(def.body);
-                self.emit(";\n");
                 self.emit_indent();
                 self.emit("runtime::rt_pop_frame(_frame);\n");
-                self.emit_indent();
-                self.emit("return _result;\n");
-            } else {
-                self.emit_indent();
-                self.emit("return ");
-                self.compile_expr(def.body);
-                self.emit(";\n");
             }
+            self.emit_indent();
+            self.emit("return ");
+            self.emit_temp_ref(body_r);
+            self.emit(";\n");
         }
 
         self.indent--;
@@ -1341,6 +1989,13 @@ fn void Compiler.emit_main_start(Compiler* self) {
     // Initialize runtime
     self.emit_line("runtime::rt_init();");
     self.emit_newline();
+
+    // Register stdlib macros in the interpreter bridge
+    self.emit_line("// Register stdlib macros");
+    self.emit_line(`runtime::rt_eval_source("(define [macro] when ([test .. body] (if test (begin .. body) nil)))");`);
+    self.emit_line(`runtime::rt_eval_source("(define [macro] unless ([test .. body] (if test nil (begin .. body))))");`);
+    self.emit_line(`runtime::rt_eval_source("(define [macro] cond ([] nil) ([test body .. rest] (if test body (cond .. rest))))");`);
+    self.emit_newline();
 }
 
 fn void Compiler.emit_main_end(Compiler* self) {
@@ -1362,16 +2017,16 @@ fn void Compiler.compile_statement(Compiler* self, Expr* expr) {
     switch (expr.tag) {
         case E_DEFINE:
             // (define name value) => name = <compile value>;
-            // (globals are declared at module level, just assign here)
+            usz init_r = self.compile_to_temp(expr.define.value);
+            self.emit_indent();
             self.emit_symbol_name(expr.define.name);
             self.emit(" = ");
-            self.compile_expr(expr.define.value);
+            self.emit_temp_ref(init_r);
             self.emit(";\n");
 
         default:
             // Other expressions: evaluate and discard result
-            self.compile_expr(expr);
-            self.emit(";\n");
+            self.compile_to_temp(expr);
     }
 }
 
@@ -1451,9 +2106,993 @@ fn void Compiler.compile_expr(Compiler* self, Expr* expr) {
         case E_SET:
             self.compile_set(expr);
 
+        case E_QUASIQUOTE:
+            self.compile_quasiquote(expr);
+
+        case E_DEFMACRO:
+            self.compile_defmacro(expr);
+
+        case E_MODULE:
+            self.compile_module(expr);
+
+        case E_IMPORT:
+            self.compile_import(expr);
+
         default:
-            self.emit("runtime::make_nil() /* unsupported expr type */");
+            io::printfn("WARNING: compiler: unsupported expr tag %d", expr.tag.ordinal);
+            self.emit("runtime::make_nil() /* WARNING: unsupported expr type */");
     }
+}
+
+// =============================================================================
+// SECTION 8a: STATEMENT-LEVEL COMPILATION (compile_to_temp)
+//
+// compile_to_temp emits statements that compute an expression's value
+// and store it in a temp variable _rN. Returns N.
+// This avoids GCC-style statement expressions ({ ... }) which C3 doesn't support.
+// =============================================================================
+
+fn usz Compiler.next_result(Compiler* self) {
+    usz id = self.temp_counter;
+    self.temp_counter++;
+    return id;
+}
+
+fn void Compiler.emit_temp_decl(Compiler* self, usz id) {
+    self.emit_indent();
+    self.emit("runtime::Value _r");
+    self.emit_usz(id);
+}
+
+fn void Compiler.emit_temp_ref(Compiler* self, usz id) {
+    self.emit("_r");
+    self.emit_usz(id);
+}
+
+/**
+ * Compile an expression as statements, storing result in _rN.
+ * Returns N. All temp declarations are emitted as proper C3 statements.
+ */
+fn usz Compiler.compile_to_temp(Compiler* self, Expr* expr) {
+    if (expr == null) {
+        usz id = self.next_result();
+        self.emit_temp_decl(id);
+        self.emit(" = runtime::make_nil();\n");
+        return id;
+    }
+
+    switch (expr.tag) {
+        case E_CALL:
+            return self.compile_call_flat(expr);
+
+        case E_LET:
+            return self.compile_let_flat(expr);
+
+        case E_AND:
+            return self.compile_and_flat(expr);
+
+        case E_OR:
+            return self.compile_or_flat(expr);
+
+        case E_BEGIN:
+            return self.compile_begin_flat(expr);
+
+        case E_SET:
+            return self.compile_set_flat(expr);
+
+        case E_RESET:
+            return self.compile_delegate_flat(expr);
+
+        case E_SHIFT:
+            return self.compile_delegate_flat(expr);
+
+        case E_PERFORM:
+            return self.compile_delegate_flat(expr);
+
+        case E_HANDLE:
+            return self.compile_delegate_flat(expr);
+
+        case E_QUASIQUOTE:
+            return self.compile_delegate_flat(expr);
+
+        case E_DEFMACRO:
+            return self.compile_delegate_flat(expr);
+
+        case E_MODULE:
+            return self.compile_delegate_flat(expr);
+
+        case E_IMPORT:
+            return self.compile_delegate_flat(expr);
+
+        case E_IF:
+            return self.compile_if_flat(expr);
+
+        case E_APP:
+            return self.compile_app_flat(expr);
+
+        case E_LAMBDA:
+            return self.compile_lambda_flat(expr);
+
+        case E_MATCH:
+            return self.compile_match_flat(expr);
+
+        case E_INDEX:
+            usz idx_coll_r = self.compile_to_temp(expr.index.collection);
+            usz idx_idx_r = self.compile_to_temp(expr.index.index);
+            usz idx_id = self.next_result();
+            self.emit_temp_decl(idx_id);
+            self.emit(" = runtime::rt_index(");
+            self.emit_temp_ref(idx_coll_r);
+            self.emit(", ");
+            self.emit_temp_ref(idx_idx_r);
+            self.emit(");\n");
+            return idx_id;
+
+        case E_DEFINE:
+            usz def_val_r = self.compile_to_temp(expr.define.value);
+            self.emit_indent();
+            self.emit_symbol_name(expr.define.name);
+            self.emit(" = ");
+            self.emit_temp_ref(def_val_r);
+            self.emit(";\n");
+            return def_val_r;
+
+        default:
+            // Leaf expressions (E_LIT, E_VAR, E_QUOTE, E_PATH):
+            // compile_expr produces inline code without ({ }) or recursion
+            usz id = self.next_result();
+            self.emit_temp_decl(id);
+            self.emit(" = ");
+            self.compile_expr(expr);
+            self.emit(";\n");
+            return id;
+    }
+}
+
+/**
+ * compile_to_temp for tail position. For calls, emits make_thunk instead of rt_invoke.
+ */
+fn usz Compiler.compile_to_temp_tail(Compiler* self, Expr* expr) {
+    if (expr == null) {
+        usz id = self.next_result();
+        self.emit_temp_decl(id);
+        self.emit(" = runtime::make_nil();\n");
+        return id;
+    }
+
+    switch (expr.tag) {
+        case E_APP:
+            return self.compile_app_tail_flat(expr);
+
+        case E_CALL:
+            return self.compile_call_tail_flat(expr);
+
+        case E_IF:
+            // Propagate tail to branches
+            usz cond = self.compile_to_temp(expr.if_expr.test);
+            usz id = self.next_result();
+            self.emit_temp_decl(id);
+            self.emit(";\n");
+            self.emit_indent();
+            self.emit("if (runtime::rt_is_truthy(");
+            self.emit_temp_ref(cond);
+            self.emit(")) {\n");
+            self.indent++;
+            usz then_r = self.compile_to_temp_tail(expr.if_expr.then_branch);
+            self.emit_indent();
+            self.emit_temp_ref(id);
+            self.emit(" = ");
+            self.emit_temp_ref(then_r);
+            self.emit(";\n");
+            self.indent--;
+            self.emit_indent();
+            self.emit("} else {\n");
+            self.indent++;
+            usz else_r = self.compile_to_temp_tail(expr.if_expr.else_branch);
+            self.emit_indent();
+            self.emit_temp_ref(id);
+            self.emit(" = ");
+            self.emit_temp_ref(else_r);
+            self.emit(";\n");
+            self.indent--;
+            self.emit_indent();
+            self.emit("}\n");
+            return id;
+
+        case E_BEGIN:
+            usz bcount = expr.begin.expr_count;
+            if (bcount == 0) {
+                usz bid = self.next_result();
+                self.emit_temp_decl(bid);
+                self.emit(" = runtime::make_nil();\n");
+                return bid;
+            }
+            for (usz i = 0; i < bcount - 1; i++) {
+                self.compile_to_temp(expr.begin.exprs[i]);
+            }
+            return self.compile_to_temp_tail(expr.begin.exprs[bcount - 1]);
+
+        case E_LET:
+            return self.compile_let_flat_tail(expr);
+
+        case E_AND:
+            usz and_left = self.compile_to_temp(expr.and_expr.left);
+            usz and_id = self.next_result();
+            self.emit_temp_decl(and_id);
+            self.emit(";\n");
+            self.emit_indent();
+            self.emit("if (runtime::rt_is_truthy(");
+            self.emit_temp_ref(and_left);
+            self.emit(")) {\n");
+            self.indent++;
+            usz and_right = self.compile_to_temp_tail(expr.and_expr.right);
+            self.emit_indent();
+            self.emit_temp_ref(and_id);
+            self.emit(" = ");
+            self.emit_temp_ref(and_right);
+            self.emit(";\n");
+            self.indent--;
+            self.emit_indent();
+            self.emit("} else {\n");
+            self.indent++;
+            self.emit_indent();
+            self.emit_temp_ref(and_id);
+            self.emit(" = ");
+            self.emit_temp_ref(and_left);
+            self.emit(";\n");
+            self.indent--;
+            self.emit_indent();
+            self.emit("}\n");
+            return and_id;
+
+        case E_OR:
+            usz or_left = self.compile_to_temp(expr.or_expr.left);
+            usz or_id = self.next_result();
+            self.emit_temp_decl(or_id);
+            self.emit(";\n");
+            self.emit_indent();
+            self.emit("if (runtime::rt_is_truthy(");
+            self.emit_temp_ref(or_left);
+            self.emit(")) {\n");
+            self.indent++;
+            self.emit_indent();
+            self.emit_temp_ref(or_id);
+            self.emit(" = ");
+            self.emit_temp_ref(or_left);
+            self.emit(";\n");
+            self.indent--;
+            self.emit_indent();
+            self.emit("} else {\n");
+            self.indent++;
+            usz or_right = self.compile_to_temp_tail(expr.or_expr.right);
+            self.emit_indent();
+            self.emit_temp_ref(or_id);
+            self.emit(" = ");
+            self.emit_temp_ref(or_right);
+            self.emit(";\n");
+            self.indent--;
+            self.emit_indent();
+            self.emit("}\n");
+            return or_id;
+
+        default:
+            // Non-tail forms: just use compile_to_temp
+            return self.compile_to_temp(expr);
+    }
+}
+
+// --- Flat (statement-level) compilation of individual forms ---
+
+fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
+    usz arg_count = expr.call.arg_count;
+
+    // Special case: (dict ...) is variadic — use rt_dict_from_args directly
+    if (expr.call.func.tag == E_VAR) {
+        char[] fname = self.interp.symbols.get_name(expr.call.func.var_expr.name);
+        if (self.str_eq(fname, "dict")) {
+            if (arg_count == 0) {
+                usz id = self.next_result();
+                self.emit_temp_decl(id);
+                self.emit(" = runtime::rt_dict_from_args(runtime::make_nil());\n");
+                return id;
+            }
+            // Compile args and build cons list
+            usz[32] arg_temps;
+            for (usz i = 0; i < arg_count && i < 32; i++) {
+                arg_temps[i] = self.compile_to_temp(expr.call.args[i]);
+            }
+            usz args_list = self.next_result();
+            self.emit_temp_decl(args_list);
+            self.emit(" = runtime::make_nil();\n");
+            for (isz i = (isz)arg_count - 1; i >= 0; i--) {
+                self.emit_indent();
+                self.emit_temp_ref(args_list);
+                self.emit(" = runtime::rt_cons(");
+                self.emit_temp_ref(arg_temps[(usz)i]);
+                self.emit(", ");
+                self.emit_temp_ref(args_list);
+                self.emit(");\n");
+            }
+            usz id = self.next_result();
+            self.emit_temp_decl(id);
+            self.emit(" = runtime::rt_dict_from_args(");
+            self.emit_temp_ref(args_list);
+            self.emit(");\n");
+            return id;
+        }
+    }
+
+    if (arg_count == 0) {
+        usz func_r = self.compile_to_temp(expr.call.func);
+        usz id = self.next_result();
+        self.emit_temp_decl(id);
+        self.emit(" = runtime::rt_invoke(");
+        self.emit_temp_ref(func_r);
+        self.emit(", runtime::make_nil());\n");
+        return id;
+    }
+
+    // Compile each arg to a temp
+    usz[32] arg_temps;
+    for (usz i = 0; i < arg_count && i < 32; i++) {
+        arg_temps[i] = self.compile_to_temp(expr.call.args[i]);
+    }
+
+    // Compile func to temp
+    usz func_r = self.compile_to_temp(expr.call.func);
+
+    // Apply args one at a time (inline currying):
+    // rt_invoke_once for intermediates, rt_invoke for last arg (with trampoline)
+    usz tf = func_r;
+    for (usz i = 0; i < arg_count; i++) {
+        usz next_r = self.next_result();
+        self.emit_temp_decl(next_r);
+        if (i == arg_count - 1) {
+            self.emit(" = runtime::rt_invoke(");
+        } else {
+            self.emit(" = runtime::rt_invoke_once(");
+        }
+        self.emit_temp_ref(tf);
+        self.emit(", ");
+        self.emit_temp_ref(arg_temps[i]);
+        self.emit(");\n");
+        tf = next_r;
+    }
+    return tf;
+}
+
+fn usz Compiler.compile_call_tail_flat(Compiler* self, Expr* expr) {
+    usz arg_count = expr.call.arg_count;
+
+    if (arg_count == 0) {
+        usz func_r = self.compile_to_temp(expr.call.func);
+        usz id = self.next_result();
+        self.emit_temp_decl(id);
+        self.emit(";\n");
+        self.emit_indent();
+        self.emit("if (");
+        self.emit_temp_ref(func_r);
+        self.emit(".tag == runtime::ValueTag.V_CLOSURE) {\n");
+        self.indent++;
+        self.emit_indent();
+        self.emit_temp_ref(id);
+        self.emit(" = runtime::make_thunk(");
+        self.emit_temp_ref(func_r);
+        self.emit(".closure_val.invoke, ");
+        self.emit_temp_ref(func_r);
+        self.emit(".closure_val.data, runtime::make_nil());\n");
+        self.indent--;
+        self.emit_indent();
+        self.emit("} else {\n");
+        self.indent++;
+        self.emit_indent();
+        self.emit_temp_ref(id);
+        self.emit(" = runtime::rt_invoke_once(");
+        self.emit_temp_ref(func_r);
+        self.emit(", runtime::make_nil());\n");
+        self.indent--;
+        self.emit_indent();
+        self.emit("}\n");
+        return id;
+    }
+
+    // Compile each arg to a temp
+    usz[32] arg_temps;
+    for (usz i = 0; i < arg_count && i < 32; i++) {
+        arg_temps[i] = self.compile_to_temp(expr.call.args[i]);
+    }
+
+    // Compile func
+    usz func_r = self.compile_to_temp(expr.call.func);
+
+    // Apply args one at a time; last one is tail position
+    usz tf = func_r;
+    for (usz i = 0; i < arg_count; i++) {
+        if (i == arg_count - 1) {
+            // Last arg: tail position → emit thunk for closures
+            usz id = self.next_result();
+            self.emit_temp_decl(id);
+            self.emit(";\n");
+            self.emit_indent();
+            self.emit("if (");
+            self.emit_temp_ref(tf);
+            self.emit(".tag == runtime::ValueTag.V_CLOSURE) {\n");
+            self.indent++;
+            self.emit_indent();
+            self.emit_temp_ref(id);
+            self.emit(" = runtime::make_thunk(");
+            self.emit_temp_ref(tf);
+            self.emit(".closure_val.invoke, ");
+            self.emit_temp_ref(tf);
+            self.emit(".closure_val.data, ");
+            self.emit_temp_ref(arg_temps[i]);
+            self.emit(");\n");
+            self.indent--;
+            self.emit_indent();
+            self.emit("} else {\n");
+            self.indent++;
+            self.emit_indent();
+            self.emit_temp_ref(id);
+            self.emit(" = runtime::rt_invoke_once(");
+            self.emit_temp_ref(tf);
+            self.emit(", ");
+            self.emit_temp_ref(arg_temps[i]);
+            self.emit(");\n");
+            self.indent--;
+            self.emit_indent();
+            self.emit("}\n");
+            return id;
+        } else {
+            // Intermediate: non-tail, no trampoline needed
+            usz next_tf = self.next_result();
+            self.emit_temp_decl(next_tf);
+            self.emit(" = runtime::rt_invoke_once(");
+            self.emit_temp_ref(tf);
+            self.emit(", ");
+            self.emit_temp_ref(arg_temps[i]);
+            self.emit(");\n");
+            tf = next_tf;
+        }
+    }
+    // Should not reach here
+    return tf;
+}
+
+fn usz Compiler.compile_app_flat(Compiler* self, Expr* expr) {
+    usz func_r = self.compile_to_temp(expr.app.func);
+    usz arg_r = self.compile_to_temp(expr.app.arg);
+    usz id = self.next_result();
+    self.emit_temp_decl(id);
+    self.emit(" = runtime::rt_invoke(");
+    self.emit_temp_ref(func_r);
+    self.emit(", ");
+    self.emit_temp_ref(arg_r);
+    self.emit(");\n");
+    return id;
+}
+
+fn usz Compiler.compile_app_tail_flat(Compiler* self, Expr* expr) {
+    usz func_r = self.compile_to_temp(expr.app.func);
+    usz arg_r = self.compile_to_temp(expr.app.arg);
+    usz id = self.next_result();
+    self.emit_temp_decl(id);
+    self.emit(";\n");
+    self.emit_indent();
+    self.emit("if (");
+    self.emit_temp_ref(func_r);
+    self.emit(".tag == runtime::ValueTag.V_CLOSURE) {\n");
+    self.indent++;
+    self.emit_indent();
+    self.emit_temp_ref(id);
+    self.emit(" = runtime::make_thunk(");
+    self.emit_temp_ref(func_r);
+    self.emit(".closure_val.invoke, ");
+    self.emit_temp_ref(func_r);
+    self.emit(".closure_val.data, ");
+    self.emit_temp_ref(arg_r);
+    self.emit(");\n");
+    self.indent--;
+    self.emit_indent();
+    self.emit("} else {\n");
+    self.indent++;
+    self.emit_indent();
+    self.emit_temp_ref(id);
+    self.emit(" = runtime::rt_invoke_once(");
+    self.emit_temp_ref(func_r);
+    self.emit(", ");
+    self.emit_temp_ref(arg_r);
+    self.emit(");\n");
+    self.indent--;
+    self.emit_indent();
+    self.emit("}\n");
+    return id;
+}
+
+fn usz Compiler.compile_if_flat(Compiler* self, Expr* expr) {
+    usz cond = self.compile_to_temp(expr.if_expr.test);
+    usz id = self.next_result();
+    self.emit_temp_decl(id);
+    self.emit(";\n");
+    self.emit_indent();
+    self.emit("if (runtime::rt_is_truthy(");
+    self.emit_temp_ref(cond);
+    self.emit(")) {\n");
+    self.indent++;
+    usz then_r = self.compile_to_temp(expr.if_expr.then_branch);
+    self.emit_indent();
+    self.emit_temp_ref(id);
+    self.emit(" = ");
+    self.emit_temp_ref(then_r);
+    self.emit(";\n");
+    self.indent--;
+    self.emit_indent();
+    self.emit("} else {\n");
+    self.indent++;
+    usz else_r = self.compile_to_temp(expr.if_expr.else_branch);
+    self.emit_indent();
+    self.emit_temp_ref(id);
+    self.emit(" = ");
+    self.emit_temp_ref(else_r);
+    self.emit(";\n");
+    self.indent--;
+    self.emit_indent();
+    self.emit("}\n");
+    return id;
+}
+
+fn usz Compiler.compile_let_flat(Compiler* self, Expr* expr) {
+    bool is_mc = self.is_mutable_captured_var(expr.let_expr.name);
+
+    if (is_mc) {
+        // Mutable-captured: define in interpreter env
+        usz init_r = self.compile_to_temp(expr.let_expr.init);
+        self.emit_indent();
+        self.emit("runtime::rt_define_var(\"");
+        char[] mc_name = self.interp.symbols.get_name(expr.let_expr.name);
+        self.emit_escaped(mc_name);
+        self.emit("\", ");
+        self.emit_temp_ref(init_r);
+        self.emit(");\n");
+        return self.compile_to_temp(expr.let_expr.body);
+    }
+
+    bool already = self.is_declared(expr.let_expr.name);
+
+    if (expr.let_expr.is_recursive) {
+        // Recursive let: declare first (if needed), then assign
+        if (!already) {
+            self.emit_indent();
+            self.emit("runtime::Value ");
+            self.emit_symbol_name(expr.let_expr.name);
+            self.emit(";\n");
+            self.mark_declared(expr.let_expr.name);
+        }
+        usz init_r = self.compile_to_temp(expr.let_expr.init);
+        self.emit_indent();
+        self.emit_symbol_name(expr.let_expr.name);
+        self.emit(" = ");
+        self.emit_temp_ref(init_r);
+        self.emit(";\n");
+
+        // Patch self-reference: the closure captured an uninitialized copy of name.
+        // Now that name holds the closure, update the capture in the region-allocated data.
+        Expr* rec_init = expr.let_expr.init;
+        if (rec_init.tag == E_LAMBDA) {
+            foreach (&def : self.lambda_defs) {
+                if (def.body == rec_init.lambda.body && (uint)def.param == (uint)rec_init.lambda.param) {
+                    for (usz ci = 0; ci < def.capture_count; ci++) {
+                        if ((uint)def.captures[ci] == (uint)expr.let_expr.name) {
+                            // Patch: Lambda_N* _sp_N = (Lambda_N*)name.closure_val.data; _sp_N.captured_name = name;
+                            self.emit_indent();
+                            self.emit("Lambda_");
+                            self.emit_usz(def.id);
+                            self.emit("* _sp_");
+                            self.emit_usz(def.id);
+                            self.emit(" = (Lambda_");
+                            self.emit_usz(def.id);
+                            self.emit("*)");
+                            self.emit_symbol_name(expr.let_expr.name);
+                            self.emit(".closure_val.data;\n");
+                            self.emit_indent();
+                            self.emit("_sp_");
+                            self.emit_usz(def.id);
+                            self.emit(".captured_");
+                            self.emit_symbol_name(expr.let_expr.name);
+                            self.emit(" = ");
+                            self.emit_symbol_name(expr.let_expr.name);
+                            self.emit(";\n");
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    } else {
+        // Non-recursive let
+        usz init_r = self.compile_to_temp(expr.let_expr.init);
+        self.emit_indent();
+        if (!already) {
+            self.emit("runtime::Value ");
+            self.mark_declared(expr.let_expr.name);
+        }
+        self.emit_symbol_name(expr.let_expr.name);
+        self.emit(" = ");
+        self.emit_temp_ref(init_r);
+        self.emit(";\n");
+    }
+
+    return self.compile_to_temp(expr.let_expr.body);
+}
+
+fn usz Compiler.compile_let_flat_tail(Compiler* self, Expr* expr) {
+    bool is_mc = self.is_mutable_captured_var(expr.let_expr.name);
+
+    if (is_mc) {
+        usz init_r = self.compile_to_temp(expr.let_expr.init);
+        self.emit_indent();
+        self.emit("runtime::rt_define_var(\"");
+        char[] mc_name = self.interp.symbols.get_name(expr.let_expr.name);
+        self.emit_escaped(mc_name);
+        self.emit("\", ");
+        self.emit_temp_ref(init_r);
+        self.emit(");\n");
+        return self.compile_to_temp_tail(expr.let_expr.body);
+    }
+
+    bool already = self.is_declared(expr.let_expr.name);
+
+    if (expr.let_expr.is_recursive) {
+        if (!already) {
+            self.emit_indent();
+            self.emit("runtime::Value ");
+            self.emit_symbol_name(expr.let_expr.name);
+            self.emit(";\n");
+            self.mark_declared(expr.let_expr.name);
+        }
+        usz init_r = self.compile_to_temp(expr.let_expr.init);
+        self.emit_indent();
+        self.emit_symbol_name(expr.let_expr.name);
+        self.emit(" = ");
+        self.emit_temp_ref(init_r);
+        self.emit(";\n");
+
+        // Patch self-reference for recursive closure
+        Expr* rec_init = expr.let_expr.init;
+        if (rec_init.tag == E_LAMBDA) {
+            foreach (&def : self.lambda_defs) {
+                if (def.body == rec_init.lambda.body && (uint)def.param == (uint)rec_init.lambda.param) {
+                    for (usz ci = 0; ci < def.capture_count; ci++) {
+                        if ((uint)def.captures[ci] == (uint)expr.let_expr.name) {
+                            // Patch: Lambda_N* _sp_N = (Lambda_N*)name.closure_val.data; _sp_N.captured_name = name;
+                            self.emit_indent();
+                            self.emit("Lambda_");
+                            self.emit_usz(def.id);
+                            self.emit("* _sp_");
+                            self.emit_usz(def.id);
+                            self.emit(" = (Lambda_");
+                            self.emit_usz(def.id);
+                            self.emit("*)");
+                            self.emit_symbol_name(expr.let_expr.name);
+                            self.emit(".closure_val.data;\n");
+                            self.emit_indent();
+                            self.emit("_sp_");
+                            self.emit_usz(def.id);
+                            self.emit(".captured_");
+                            self.emit_symbol_name(expr.let_expr.name);
+                            self.emit(" = ");
+                            self.emit_symbol_name(expr.let_expr.name);
+                            self.emit(";\n");
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    } else {
+        usz init_r = self.compile_to_temp(expr.let_expr.init);
+        self.emit_indent();
+        if (!already) {
+            self.emit("runtime::Value ");
+            self.mark_declared(expr.let_expr.name);
+        }
+        self.emit_symbol_name(expr.let_expr.name);
+        self.emit(" = ");
+        self.emit_temp_ref(init_r);
+        self.emit(";\n");
+    }
+
+    return self.compile_to_temp_tail(expr.let_expr.body);
+}
+
+fn usz Compiler.compile_and_flat(Compiler* self, Expr* expr) {
+    usz left = self.compile_to_temp(expr.and_expr.left);
+    usz id = self.next_result();
+    self.emit_temp_decl(id);
+    self.emit(";\n");
+    self.emit_indent();
+    self.emit("if (runtime::rt_is_truthy(");
+    self.emit_temp_ref(left);
+    self.emit(")) {\n");
+    self.indent++;
+    usz right = self.compile_to_temp(expr.and_expr.right);
+    self.emit_indent();
+    self.emit_temp_ref(id);
+    self.emit(" = ");
+    self.emit_temp_ref(right);
+    self.emit(";\n");
+    self.indent--;
+    self.emit_indent();
+    self.emit("} else {\n");
+    self.indent++;
+    self.emit_indent();
+    self.emit_temp_ref(id);
+    self.emit(" = ");
+    self.emit_temp_ref(left);
+    self.emit(";\n");
+    self.indent--;
+    self.emit_indent();
+    self.emit("}\n");
+    return id;
+}
+
+fn usz Compiler.compile_or_flat(Compiler* self, Expr* expr) {
+    usz left = self.compile_to_temp(expr.or_expr.left);
+    usz id = self.next_result();
+    self.emit_temp_decl(id);
+    self.emit(";\n");
+    self.emit_indent();
+    self.emit("if (runtime::rt_is_truthy(");
+    self.emit_temp_ref(left);
+    self.emit(")) {\n");
+    self.indent++;
+    self.emit_indent();
+    self.emit_temp_ref(id);
+    self.emit(" = ");
+    self.emit_temp_ref(left);
+    self.emit(";\n");
+    self.indent--;
+    self.emit_indent();
+    self.emit("} else {\n");
+    self.indent++;
+    usz right = self.compile_to_temp(expr.or_expr.right);
+    self.emit_indent();
+    self.emit_temp_ref(id);
+    self.emit(" = ");
+    self.emit_temp_ref(right);
+    self.emit(";\n");
+    self.indent--;
+    self.emit_indent();
+    self.emit("}\n");
+    return id;
+}
+
+fn usz Compiler.compile_begin_flat(Compiler* self, Expr* expr) {
+    usz count = expr.begin.expr_count;
+    if (count == 0) {
+        usz id = self.next_result();
+        self.emit_temp_decl(id);
+        self.emit(" = runtime::make_nil();\n");
+        return id;
+    }
+    // Compile all but last as discarded statements
+    for (usz i = 0; i < count - 1; i++) {
+        self.compile_to_temp(expr.begin.exprs[i]);
+    }
+    // Last expression is the result
+    return self.compile_to_temp(expr.begin.exprs[count - 1]);
+}
+
+fn usz Compiler.compile_set_flat(Compiler* self, Expr* expr) {
+    if (self.is_mutable_captured_var(expr.set_expr.name)) {
+        usz val_r = self.compile_to_temp(expr.set_expr.value);
+        usz id = self.next_result();
+        self.emit_temp_decl(id);
+        self.emit(" = runtime::rt_set_var(\"");
+        char[] set_name = self.interp.symbols.get_name(expr.set_expr.name);
+        self.emit_escaped(set_name);
+        self.emit("\", ");
+        self.emit_temp_ref(val_r);
+        self.emit(");\n");
+        return id;
+    } else {
+        usz val_r = self.compile_to_temp(expr.set_expr.value);
+        self.emit_indent();
+        self.emit_symbol_name(expr.set_expr.name);
+        self.emit(" = ");
+        self.emit_temp_ref(val_r);
+        self.emit(";\n");
+        // Result is the variable itself
+        usz id = self.next_result();
+        self.emit_temp_decl(id);
+        self.emit(" = ");
+        self.emit_symbol_name(expr.set_expr.name);
+        self.emit(";\n");
+        return id;
+    }
+}
+
+fn bool Compiler.is_builtin_primitive(Compiler* self, SymbolId sym) {
+    // Check ONLY the hardcoded primitives list, NOT defined_globals.
+    // Used for delegation injection — defined globals still need injection
+    // into the interpreter env since they're C3 locals, not interpreter vars.
+    char[] name = self.interp.symbols.get_name(sym);
+    char[][*] primitives = {
+        "+", "-", "*", "/", "%",
+        "=", "<", ">", "<=", ">=",
+        "cons", "car", "cdr", "null?", "pair?",
+        "list", "length", "not",
+        "print", "println", "newline", "display",
+        "string-append", "string-join", "substring",
+        "string-split", "string-length", "string->list",
+        "list->string", "string-upcase", "string-downcase",
+        "string-trim", "string?", "int?", "symbol?",
+        "closure?", "continuation?", "double?", "list?",
+        "boolean?", "number?",
+        "string->number", "number->string",
+        "gensym", "load", "apply", "equal?",
+        "dict", "dict-set!", "dict?",
+        "ref", "push!", "keys", "values", "has?", "remove!",
+        "read-file", "write-file", "file-exists?", "read-lines",
+        "ffi-open", "ffi-call", "ffi-close", "ffi-sym",
+        "type-of",
+        "abs", "min", "max", "floor", "ceiling", "round",
+        "truncate", "sqrt", "even?", "odd?", "zero?",
+        "positive?", "negative?", "gcd",
+        "bitwise-and", "bitwise-or", "bitwise-xor",
+        "bitwise-not", "lshift", "rshift",
+        "true", "false", "nil"
+    };
+    foreach (prim : primitives) {
+        if (self.str_eq(name, prim)) return true;
+    }
+    return false;
+}
+
+fn usz Compiler.compile_delegate_flat(Compiler* self, Expr* expr) {
+    // Delegation: inject free vars, then eval via interpreter
+    // Use collect_all_delegate_vars which finds vars referenced in unquoted parts
+    List{SymbolId} free_vars = self.collect_cont_free_vars(expr);
+    for (usz i = 0; i < free_vars.len(); i++) {
+        SymbolId sym = free_vars.entries[i];
+        // Only skip true built-in primitives, NOT user-defined globals
+        if (self.is_builtin_primitive(sym)) continue;
+        self.emit_indent();
+        self.emit("runtime::rt_define_var(\"");
+        char[] dname = self.interp.symbols.get_name(sym);
+        self.emit_escaped(dname);
+        self.emit("\", ");
+        self.emit_symbol_name(sym);
+        self.emit(");\n");
+    }
+    free_vars.free();
+
+    usz id = self.next_result();
+    self.emit_temp_decl(id);
+    self.emit(" = runtime::rt_eval_source(");
+    self.emit_serialized_expr(expr);
+    self.emit(");\n");
+    return id;
+}
+
+fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
+    // Find the lambda definition we created earlier
+    usz lambda_id = 0;
+    LambdaDef* found_def = null;
+
+    foreach (&def : self.lambda_defs) {
+        if (def.body == expr.lambda.body && (uint)def.param == (uint)expr.lambda.param) {
+            lambda_id = def.id;
+            found_def = def;
+            break;
+        }
+    }
+
+    if (found_def != null && found_def.capture_count > 0) {
+        // Closure with captures - emit as statements
+        self.emit_indent();
+        self.emit("Lambda_");
+        self.emit_usz(lambda_id);
+        self.emit(" _closure_data_");
+        self.emit_usz(lambda_id);
+        self.emit(";\n");
+
+        // Set home region
+        self.emit_indent();
+        self.emit("_closure_data_");
+        self.emit_usz(lambda_id);
+        self.emit(".home_region = runtime::rt_current_region();\n");
+
+        // Set captured values with write barriers
+        for (usz i = 0; i < found_def.capture_count; i++) {
+            self.emit_indent();
+            self.emit("_closure_data_");
+            self.emit_usz(lambda_id);
+            self.emit(".captured_");
+            self.emit_symbol_name(found_def.captures[i]);
+            self.emit(" = ");
+            self.emit_symbol_name(found_def.captures[i]);
+            self.emit(";\n");
+
+            // Write barrier
+            self.emit_indent();
+            self.emit("runtime::rt_capture_value(_closure_data_");
+            self.emit_usz(lambda_id);
+            self.emit(".home_region, ");
+            self.emit_symbol_name(found_def.captures[i]);
+            self.emit(");\n");
+        }
+
+        // Allocate in region
+        self.emit_indent();
+        self.emit("main::ObjectHandle _closure_handle_");
+        self.emit_usz(lambda_id);
+        self.emit(" = main::allocate_in(runtime::rt_current_region(), Lambda_");
+        self.emit_usz(lambda_id);
+        self.emit(", _closure_data_");
+        self.emit_usz(lambda_id);
+        self.emit(");\n");
+
+        usz id = self.next_result();
+        self.emit_temp_decl(id);
+        self.emit(" = runtime::make_closure(main::dereference(_closure_handle_");
+        self.emit_usz(lambda_id);
+        self.emit("), &invoke_lambda_");
+        self.emit_usz(lambda_id);
+        self.emit(");\n");
+        return id;
+    } else {
+        // Simple closure without captures
+        usz id = self.next_result();
+        self.emit_temp_decl(id);
+        self.emit(" = runtime::make_closure(null, &invoke_lambda_");
+        self.emit_usz(lambda_id);
+        self.emit(");\n");
+        return id;
+    }
+}
+
+fn usz Compiler.compile_match_flat(Compiler* self, Expr* expr) {
+    // Compile scrutinee to temp
+    usz scrutinee_r = self.compile_to_temp(expr.match.scrutinee);
+
+    // Declare result temp
+    usz id = self.next_result();
+    self.emit_temp_decl(id);
+    self.emit(" = runtime::make_nil();\n");
+
+    for (usz i = 0; i < expr.match.clause_count; i++) {
+        self.emit_indent();
+        if (i > 0) {
+            self.emit("else ");
+        }
+        self.emit("if (");
+        // Use temp ref name for pattern checks
+        char[16] ref_name;
+        usz ref_len = io::bprintf(&ref_name, "_r%d", (int)scrutinee_r)!!.len;
+        self.compile_pattern_check(expr.match.clauses[i].pattern, ref_name[:ref_len]);
+        self.emit(") {\n");
+        self.indent++;
+
+        // Bind pattern variables
+        self.emit_indent();
+        self.compile_pattern_bindings(expr.match.clauses[i].pattern, ref_name[:ref_len]);
+
+        // Compile result
+        usz clause_r = self.compile_to_temp(expr.match.clauses[i].result);
+        self.emit_indent();
+        self.emit_temp_ref(id);
+        self.emit(" = ");
+        self.emit_temp_ref(clause_r);
+        self.emit(";\n");
+        self.indent--;
+        self.emit_indent();
+        self.emit("} ");
+    }
+
+    self.emit("\n");
+    return id;
 }
 
 fn void Compiler.compile_literal(Compiler* self, Value* v) {
@@ -1466,6 +3105,13 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
         case INT:
             self.emit("runtime::make_int(");
             self.emit_int(v.int_val);
+            self.emit(")");
+
+        case DOUBLE:
+            self.emit("runtime::rt_make_double(");
+            char[64] dbuf;
+            char[] dslice = io::bprintf(&dbuf, "%.17g", v.double_val)!!;
+            self.emit(dslice);
             self.emit(")");
 
         case STRING:
@@ -1507,105 +3153,25 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
 
 fn void Compiler.compile_var(Compiler* self, Expr* expr) {
     SymbolId name = expr.var_expr.name;
-    char[] sym_name = self.interp.symbols.get_name(name);
 
-    // Check if it's a known primitive
-    if (self.str_eq(sym_name, "+")) {
-        self.emit("runtime::make_prim(&runtime::rt_add)");
-    } else if (self.str_eq(sym_name, "-")) {
-        self.emit("runtime::make_prim(&runtime::rt_sub)");
-    } else if (self.str_eq(sym_name, "*")) {
-        self.emit("runtime::make_prim(&runtime::rt_mul)");
-    } else if (self.str_eq(sym_name, "/")) {
-        self.emit("runtime::make_prim(&runtime::rt_div)");
-    } else if (self.str_eq(sym_name, "%")) {
-        self.emit("runtime::make_prim(&runtime::rt_mod)");
-    } else if (self.str_eq(sym_name, "=")) {
-        self.emit("runtime::make_prim(&runtime::rt_eq)");
-    } else if (self.str_eq(sym_name, "<")) {
-        self.emit("runtime::make_prim(&runtime::rt_lt)");
-    } else if (self.str_eq(sym_name, ">")) {
-        self.emit("runtime::make_prim(&runtime::rt_gt)");
-    } else if (self.str_eq(sym_name, "<=")) {
-        self.emit("runtime::make_prim(&runtime::rt_le)");
-    } else if (self.str_eq(sym_name, ">=")) {
-        self.emit("runtime::make_prim(&runtime::rt_ge)");
-    } else if (self.str_eq(sym_name, "cons")) {
-        self.emit("runtime::make_prim(&runtime::rt_cons_prim)");
-    } else if (self.str_eq(sym_name, "car")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_car)");
-    } else if (self.str_eq(sym_name, "cdr")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_cdr)");
-    } else if (self.str_eq(sym_name, "null?")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_null_p)");
-    } else if (self.str_eq(sym_name, "pair?")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_pair_p)");
-    } else if (self.str_eq(sym_name, "list")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_list)");
-    } else if (self.str_eq(sym_name, "length")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_length)");
-    } else if (self.str_eq(sym_name, "not")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_not)");
-    } else if (self.str_eq(sym_name, "print")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_print)");
-    } else if (self.str_eq(sym_name, "println")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_println)");
-    } else if (self.str_eq(sym_name, "newline")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_newline)");
-    } else if (self.str_eq(sym_name, "string-append")) {
-        self.emit("runtime::make_prim(&runtime::rt_string_append)");
-    } else if (self.str_eq(sym_name, "string-join")) {
-        self.emit("runtime::make_prim(&runtime::rt_string_join)");
-    } else if (self.str_eq(sym_name, "substring")) {
-        self.emit("runtime::make_prim(&runtime::rt_substring)");
-    } else if (self.str_eq(sym_name, "string-split")) {
-        self.emit("runtime::make_prim(&runtime::rt_string_split)");
-    } else if (self.str_eq(sym_name, "string-length")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_string_length)");
-    } else if (self.str_eq(sym_name, "string->list")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_string_to_list)");
-    } else if (self.str_eq(sym_name, "list->string")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_list_to_string)");
-    } else if (self.str_eq(sym_name, "string-upcase")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_string_upcase)");
-    } else if (self.str_eq(sym_name, "string-downcase")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_string_downcase)");
-    } else if (self.str_eq(sym_name, "string-trim")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_string_trim)");
-    } else if (self.str_eq(sym_name, "string?")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_string_p)");
-    } else if (self.str_eq(sym_name, "int?")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_int_p)");
-    } else if (self.str_eq(sym_name, "symbol?")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_symbol_p)");
-    } else if (self.str_eq(sym_name, "closure?")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_closure_p)");
-    } else if (self.str_eq(sym_name, "continuation?")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_continuation_p)");
-    } else if (self.str_eq(sym_name, "read-file")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_read_file)");
-    } else if (self.str_eq(sym_name, "write-file")) {
-        self.emit("runtime::make_prim(&runtime::rt_write_file)");
-    } else if (self.str_eq(sym_name, "file-exists?")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_file_exists)");
-    } else if (self.str_eq(sym_name, "read-lines")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_read_lines)");
-    } else if (self.str_eq(sym_name, "ffi-open")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_ffi_open)");
-    } else if (self.str_eq(sym_name, "ffi-close")) {
-        self.emit("runtime::make_prim_unary(&runtime::rt_ffi_close)");
-    } else if (self.str_eq(sym_name, "ffi-sym")) {
-        self.emit("runtime::make_prim(&runtime::rt_ffi_sym)");
-    } else if (self.str_eq(sym_name, "ffi-call")) {
-        self.emit("runtime::make_prim(&runtime::rt_ffi_call)");
-    } else if (self.str_eq(sym_name, "true")) {
-        self.emit("runtime::make_true()");
-    } else if (self.str_eq(sym_name, "false") || self.str_eq(sym_name, "nil")) {
-        self.emit("runtime::make_nil()");
-    } else {
-        // Regular variable reference
-        self.emit_symbol_name(name);
+    // O(1) hash lookup for known primitives and literals
+    char[] emit_code = prim_hash_lookup(name);
+    if (emit_code.len > 0) {
+        self.emit(emit_code);
+        return;
     }
+
+    // Mutable-captured variable: look up from interpreter env
+    if (self.is_mutable_captured_var(name)) {
+        char[] sym_name = self.interp.symbols.get_name(name);
+        self.emit("runtime::rt_lookup_var(\"");
+        self.emit_escaped(sym_name);
+        self.emit("\")");
+        return;
+    }
+
+    // Regular variable reference
+    self.emit_symbol_name(name);
 }
 
 fn void Compiler.compile_lambda(Compiler* self, Expr* expr) {
@@ -1703,7 +3269,21 @@ fn void Compiler.compile_if(Compiler* self, Expr* expr) {
 }
 
 fn void Compiler.compile_let(Compiler* self, Expr* expr) {
-    if (expr.let_expr.is_recursive) {
+    // Check if this let-bound variable was identified as mutable-captured in prescan
+    bool is_mc = self.is_mutable_captured_var(expr.let_expr.name);
+
+    if (is_mc) {
+        // Mutable-captured: define in interpreter env instead of C3 local
+        self.emit("({ ");
+        self.emit("runtime::rt_define_var(\"");
+        char[] mc_name = self.interp.symbols.get_name(expr.let_expr.name);
+        self.emit_escaped(mc_name);
+        self.emit("\", ");
+        self.compile_expr(expr.let_expr.init);
+        self.emit("); ");
+        self.compile_expr(expr.let_expr.body);
+        self.emit("; })");
+    } else if (expr.let_expr.is_recursive) {
         // Recursive let: declare first, then assign (name visible in initializer)
         self.emit("({ Value ");
         self.emit_symbol_name(expr.let_expr.name);
@@ -1826,12 +3406,19 @@ fn void Compiler.compile_pattern_check(Compiler* self, Pattern* pat, char[] val_
     }
 }
 
+fn void Compiler.emit_pattern_var_decl(Compiler* self, SymbolId name) {
+    if (!self.is_declared(name)) {
+        self.emit("runtime::Value ");
+        self.mark_declared(name);
+    }
+}
+
 fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] val_name) {
     if (pat == null) return;
 
     switch (pat.tag) {
         case PAT_VAR:
-            self.emit("runtime::Value ");
+            self.emit_pattern_var_decl(pat.var_name);
             self.emit_symbol_name(pat.var_name);
             self.emit(" = ");
             self.emit(val_name);
@@ -1840,19 +3427,30 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
         case PAT_SEQ:
             // Bind sequence elements
             for (usz i = 0; i < pat.elem_count; i++) {
-                char[32] elem_name;
-                // Generate element access
+                // Generate element access — index depends on rest position
                 self.emit("runtime::Value _elem_");
                 self.emit_usz(i);
-                self.emit(" = runtime::rt_list_nth(");
-                self.emit(val_name);
-                self.emit(", ");
-                self.emit_usz(i);
-                self.emit("); ");
+                if (pat.rest_pos == REST_START) {
+                    // [.. a b] — elements are at end of list
+                    self.emit(" = runtime::rt_list_nth(");
+                    self.emit(val_name);
+                    self.emit(", runtime::rt_list_length(");
+                    self.emit(val_name);
+                    self.emit(") - ");
+                    self.emit_usz(pat.elem_count - i);
+                    self.emit("); ");
+                } else {
+                    // REST_NONE, REST_END, REST_MIDDLE — elements at start
+                    self.emit(" = runtime::rt_list_nth(");
+                    self.emit(val_name);
+                    self.emit(", ");
+                    self.emit_usz(i);
+                    self.emit("); ");
+                }
 
                 // Recursively bind
                 if (pat.elements[i].tag == PAT_VAR) {
-                    self.emit("runtime::Value ");
+                    self.emit_pattern_var_decl(pat.elements[i].var_name);
                     self.emit_symbol_name(pat.elements[i].var_name);
                     self.emit(" = _elem_");
                     self.emit_usz(i);
@@ -1862,7 +3460,7 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
 
             // Bind rest if REST_MIDDLE
             if (pat.rest_pos == REST_MIDDLE) {
-                self.emit("runtime::Value ");
+                self.emit_pattern_var_decl(pat.rest_binding);
                 self.emit_symbol_name(pat.rest_binding);
                 self.emit(" = runtime::rt_list_rest(");
                 self.emit(val_name);
@@ -1882,30 +3480,58 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
 
 /**
  * compile_call — Multi-argument function call.
- * (f a b c) => rt_invoke(rt_invoke(rt_invoke(f, a), b), c)
+ * (f a b c) => rt_apply_multi(f, cons(a, cons(b, cons(c, nil))), 3)
+ * Uses temp vars to evaluate args left-to-right, then builds cons list right-to-left.
  */
 fn void Compiler.compile_call(Compiler* self, Expr* expr) {
     usz arg_count = expr.call.arg_count;
 
     if (arg_count == 0) {
-        // Zero-arg call: rt_invoke(func, make_nil())
-        self.emit("runtime::rt_invoke(");
+        // Zero-arg call: rt_apply_multi(func, make_nil(), 0)
+        self.emit("runtime::rt_apply_multi(");
         self.compile_expr(expr.call.func);
-        self.emit(", runtime::make_nil())");
+        self.emit(", runtime::make_nil(), 0)");
         return;
     }
 
-    // Multi-arg: chain invocations
-    // (f a b c) => rt_invoke(rt_invoke(rt_invoke(f, a), b), c)
+    // Multi-arg: evaluate args into temps, build cons list, call rt_apply_multi
+    self.emit("({ ");
+
+    // Evaluate each arg into a temp variable (left-to-right evaluation order)
+    // Reserve temp names upfront to avoid collisions with nested compile_expr
+    usz base_temp = self.temp_counter;
+    self.temp_counter += arg_count;
     for (usz i = 0; i < arg_count; i++) {
-        self.emit("runtime::rt_invoke(");
-    }
-    self.compile_expr(expr.call.func);
-    for (usz i = 0; i < arg_count; i++) {
-        self.emit(", ");
+        self.emit("runtime::Value _t");
+        self.emit_usz(base_temp + i);
+        self.emit(" = ");
         self.compile_expr(expr.call.args[i]);
-        self.emit(")");
+        self.emit("; ");
     }
+
+    // Build cons list right-to-left
+    self.emit("runtime::Value _args");
+    self.emit_usz(base_temp);
+    self.emit(" = runtime::make_nil(); ");
+
+    for (isz i = (isz)arg_count - 1; i >= 0; i--) {
+        self.emit("_args");
+        self.emit_usz(base_temp);
+        self.emit(" = runtime::rt_cons(_t");
+        self.emit_usz(base_temp + (usz)i);
+        self.emit(", _args");
+        self.emit_usz(base_temp);
+        self.emit("); ");
+    }
+
+    // Call rt_apply_multi
+    self.emit("runtime::rt_apply_multi(");
+    self.compile_expr(expr.call.func);
+    self.emit(", _args");
+    self.emit_usz(base_temp);
+    self.emit(", ");
+    self.emit_usz(arg_count);
+    self.emit("); })");
 }
 
 /**
@@ -2061,14 +3687,76 @@ fn void Compiler.compile_begin(Compiler* self, Expr* expr) {
  * The result of set! is the new value.
  */
 fn void Compiler.compile_set(Compiler* self, Expr* expr) {
-    // (set! name value) => ({ name = <value>; name; })
+    if (self.is_mutable_captured_var(expr.set_expr.name)) {
+        // Mutable-captured variable: set in interpreter env
+        self.emit("runtime::rt_set_var(\"");
+        char[] set_name = self.interp.symbols.get_name(expr.set_expr.name);
+        self.emit_escaped(set_name);
+        self.emit("\", ");
+        self.compile_expr(expr.set_expr.value);
+        self.emit(")");
+    } else {
+        // (set! name value) => ({ name = <value>; name; })
+        self.emit("({ ");
+        self.emit_symbol_name(expr.set_expr.name);
+        self.emit(" = ");
+        self.compile_expr(expr.set_expr.value);
+        self.emit("; ");
+        self.emit_symbol_name(expr.set_expr.name);
+        self.emit("; })");
+    }
+}
+
+// =============================================================================
+// SECTION 8b2: TAIL-POSITION COMPILATION (TCO)
+// =============================================================================
+
+// =============================================================================
+// SECTION 8c: QUASIQUOTE / MACRO / MODULE COMPILATION
+// =============================================================================
+
+/**
+ * compile_quasiquote — Delegates to interpreter via rt_eval_source.
+ * Quasiquote involves complex splicing logic that the interpreter handles fully.
+ */
+fn void Compiler.compile_quasiquote(Compiler* self, Expr* expr) {
     self.emit("({ ");
-    self.emit_symbol_name(expr.set_expr.name);
-    self.emit(" = ");
-    self.compile_expr(expr.set_expr.value);
-    self.emit("; ");
-    self.emit_symbol_name(expr.set_expr.name);
-    self.emit("; })");
+    self.emit_cont_var_injection(expr);
+    self.emit("runtime::rt_eval_source(");
+    self.emit_serialized_expr(expr);
+    self.emit("); })");
+}
+
+/**
+ * compile_defmacro — Delegates macro definition to interpreter.
+ * Macros are defined in the interpreter's macro table and expanded at compile time.
+ */
+fn void Compiler.compile_defmacro(Compiler* self, Expr* expr) {
+    self.emit("({ ");
+    self.emit("runtime::rt_eval_source(");
+    self.emit_serialized_expr(expr);
+    self.emit("); runtime::make_nil(); })");
+}
+
+/**
+ * compile_module — Delegates module definition to interpreter.
+ */
+fn void Compiler.compile_module(Compiler* self, Expr* expr) {
+    self.emit("({ ");
+    self.emit_cont_var_injection(expr);
+    self.emit("runtime::rt_eval_source(");
+    self.emit_serialized_expr(expr);
+    self.emit("); })");
+}
+
+/**
+ * compile_import — Delegates module import to interpreter.
+ */
+fn void Compiler.compile_import(Compiler* self, Expr* expr) {
+    self.emit("({ ");
+    self.emit("runtime::rt_eval_source(");
+    self.emit_serialized_expr(expr);
+    self.emit("); })");
 }
 
 // =============================================================================
@@ -2082,6 +3770,38 @@ fn void Compiler.compile_set(Compiler* self, Expr* expr) {
 fn char[] compile_to_c3(char[] source, Interp* interp) {
     Compiler compiler;
     compiler.init(interp);
+
+    char[] result = compiler.compile_program(source);
+
+    // Note: caller must copy result before compiler is freed
+    return result;
+}
+
+/**
+ * Compile Lisp source code to C3 source code with print_last mode.
+ * The last non-define expression is wrapped with rt_print_value + printn
+ * so the compiled binary prints its result.
+ */
+fn char[] compile_to_c3_with_print(char[] source, Interp* interp) {
+    Compiler compiler;
+    compiler.init(interp);
+    compiler.print_last = true;
+
+    char[] result = compiler.compile_program(source);
+
+    // Note: caller must copy result before compiler is freed
+    return result;
+}
+
+/**
+ * Compile Lisp source code to C3 source code with print_all mode.
+ * Every non-define expression is wrapped with rt_print_value + printn
+ * so the compiled binary prints all results (for e2e testing).
+ */
+fn char[] compile_to_c3_print_all(char[] source, Interp* interp) {
+    Compiler compiler;
+    compiler.init(interp);
+    compiler.print_all = true;
 
     char[] result = compiler.compile_program(source);
 

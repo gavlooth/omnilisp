@@ -2,7 +2,7 @@
 
 **Date**: 2026-02-13
 **Scope**: Full codebase audit for naive implementations and production readiness
-**Status**: 41 of 64 issues fixed, 1 false positive (H4), 22 remaining (low-risk)
+**Status**: 44 of 64 issues fixed, 1 false positive (H4), 19 remaining (low-risk)
 
 ---
 
@@ -11,10 +11,10 @@
 | Severity | Total | Fixed | False Positive | Remaining |
 |----------|-------|-------|----------------|-----------|
 | CRITICAL | 14 | **14** | 0 | 0 |
-| HIGH | 20 | **17** | 1 | 3 |
-| MEDIUM | 18 | **10** | 0 | 8 |
+| HIGH | 20 | **18** | 1 | 2 |
+| MEDIUM | 18 | **12** | 0 | 6 |
 | LOW | 12 | 0 | 0 | 12 |
-| **Total** | **64** | **41** | **1** | **22** |
+| **Total** | **64** | **44** | **1** | **18** |
 
 **Note**: Some findings from sub-audits were deduplicated or reclassified after cross-referencing. One parser finding (missing `break` in switch) was identified as a **false positive** — C3 switches do not have implicit fallthrough.
 
@@ -80,7 +80,7 @@
 
 ---
 
-## HIGH Issues (20) — 17 FIXED, 1 FALSE POSITIVE, 3 REMAINING
+## HIGH Issues (20) — 18 FIXED, 1 FALSE POSITIVE, 2 REMAINING
 
 ### H1. Macro/Module Lookup is O(n) Linear Scan — FIXED
 - **File**: `src/lisp/value.c3`, `src/lisp/eval.c3`
@@ -137,8 +137,9 @@
 - **File**: `src/main.c3`
 - **Fix**: Guard `if (refcount == 0) return` in `release_region()` and `destroy_region()` child cleanup.
 
-### H15. Ghost Table Stale Index Risk — REMAINING (Accepted Risk)
-- **Reason**: Ghost index is maintained in lockstep with region lifecycle. Staleness requires a region to be destroyed between lookup and access in the same function call — no concurrent mutation exists. C13 bounds checks provide defense-in-depth.
+### H15. Ghost Table Missing ghost_idx Bounds Check — FIXED
+- **File**: `src/main.c3`
+- **Fix**: Added `ghost_idx` bounds check before `inherited_ghost_tables[]` access in `dereference_via_ghost()` and `manual_extend()`. Completes the defense-in-depth started by C13 (`is_valid_ghost_handle` and `resolve_object_record` already had checks).
 
 ### H16. Stack Copy No Size Validation — FIXED
 - **File**: `src/context.c3`
@@ -161,7 +162,7 @@
 
 ---
 
-## MEDIUM Issues (18) — 10 FIXED, 8 REMAINING
+## MEDIUM Issues (18) — 12 FIXED, 6 REMAINING
 
 ### M1. Quasiquote Splice Capped at 64 Items Silently — FIXED
 - **Fix**: Returns `eval_error("quasiquote splice: too many items (max 64)")` instead of silent drop.
@@ -205,11 +206,13 @@
 ### M14. Arena Fragmentation Without Coalescing — REMAINING
 - **Reason**: Architectural. Region-based design intentionally avoids per-object free.
 
-### M15. No Signal Handling for REPL — REMAINING
-- **Reason**: Requires careful integration with readline and continuation state. Low priority.
+### M15. No Signal Handling for REPL — FIXED
+- **File**: `src/lisp/eval.c3`
+- **Fix**: Added SIGINT handler that sets `g_interrupted` flag. Eval loop checks flag each iteration and returns "interrupted" error. Handler installed at REPL start; flag cleared before each eval. Readline handles its own Ctrl+C during input.
 
-### M16. Unreachable() Calls Instead of Error Returns — REMAINING
-- **Reason**: These guard true invariants in the region system. Converting to errors would require propagating error returns through the entire memory subsystem.
+### M16. Unreachable() in arena_free — FIXED
+- **File**: `src/main.c3`
+- **Fix**: Converted `unreachable()` in `Pool.arena_free` to `io::eprintfn` warning + return. Other `unreachable()` calls in the region system guard true invariants and remain as-is.
 
 ### M17. Double-Free Risk in Ghost Table Transfer — REMAINING
 - **Reason**: Requires careful analysis of region lifecycle. Ghost table ownership transfer is complex and the double-free path requires specific timing.

@@ -354,9 +354,12 @@ values remain accessible through the forwarding chain.
 ## Limitations
 
 - Maximum 16 captured variables per closure
-- 256-character limit for strings
-- No tail-call optimization
-- Reset/shift continuations not yet implemented in compiler
+- Strings use 4096-byte buffer in runtime
+- TCO via V_THUNK trampoline (resolved — TCO now works)
+- Reset/shift continuations delegate to interpreter via `rt_eval_source()`
+- Handle/perform effects delegate to interpreter via `rt_eval_source()`
+- Type system forms (define [type], [union], etc.) delegate to interpreter
+- Macros expanded at compile time, complex macros delegate to interpreter
 
 ## Generated Code Structure
 

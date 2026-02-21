@@ -354,24 +354,29 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
         return result;
     }
 
-    // Non-variadic: curry through list, detecting variadic mid-chain
+    // Non-variadic multi-param closure: direct binding
+    if (func.tag == CLOSURE) {
+        usz pc = func.closure_val.param_count;
+        if (arg_count != pc) return make_error(interp, "arity mismatch");
+        Env* call_env = make_env(interp, func.closure_val.env);
+        Value* curr = arg_list;
+        for (usz i = 0; i < pc; i++) {
+            if (curr == null || curr.tag != CONS) return make_error(interp, "arg list too short");
+            call_env.define(func.closure_val.params[i], curr.cons_val.car);
+            curr = curr.cons_val.cdr;
+        }
+        EvalResult r = eval(func.closure_val.body, call_env, interp);
+        if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+        return r.value;
+    }
+
+    // Partial primitives, continuations, etc. — apply one arg at a time
     Value* result = func;
     Value* curr = arg_list;
     for (usz i = 0; i < arg_count; i++) {
         if (curr == null || curr.tag != CONS) break;
         Value* arg = curr.cons_val.car;
         curr = curr.cons_val.cdr;
-
-        // Check if result became variadic mid-curry
-        if (result.tag == CLOSURE && result.closure_val.has_rest) {
-            // Rebuild remaining arg list (curr still has the rest)
-            // Include current arg at the front
-            Value* remaining = make_cons(interp, arg, curr);
-            usz remaining_count = arg_count - i;
-            // Recurse with direct variadic path
-            return jit_apply_multi_args(interp, result, remaining, remaining_count);
-        }
-
         EvalResult r = apply(result, arg, interp);
         if (r.error.has_error) return make_error(interp, r.error.message[:256]);
         result = r.value;
@@ -396,45 +401,54 @@ fn void jit_env_reparent(Env* env, Env* new_parent) {
 
 // Direct primitive helpers — bypass apply() for arithmetic hot path
 fn Value* jit_prim_add(Interp* interp, Value* a, Value* b) {
-    if (a != null && b != null && a.tag == INT && b.tag == INT) {
-        return make_int(interp, a.int_val + b.int_val);
+    if (a != null && b != null) {
+        if (is_double(a) || is_double(b)) {
+            if (is_number(a) && is_number(b)) return make_double(interp, to_double(a) + to_double(b));
+        }
+        if (a.tag == INT && b.tag == INT) return make_int(interp, a.int_val + b.int_val);
     }
-    return make_error(interp, "+: expected integers");
+    return make_error(interp, "+: expected numbers");
 }
 
 fn Value* jit_prim_sub(Interp* interp, Value* a, Value* b) {
-    if (a != null && b != null && a.tag == INT && b.tag == INT) {
-        return make_int(interp, a.int_val - b.int_val);
+    if (a != null && b != null) {
+        if (is_double(a) || is_double(b)) {
+            if (is_number(a) && is_number(b)) return make_double(interp, to_double(a) - to_double(b));
+        }
+        if (a.tag == INT && b.tag == INT) return make_int(interp, a.int_val - b.int_val);
     }
-    return make_error(interp, "-: expected integers");
+    return make_error(interp, "-: expected numbers");
 }
 
 fn Value* jit_prim_mul(Interp* interp, Value* a, Value* b) {
-    if (a != null && b != null && a.tag == INT && b.tag == INT) {
-        return make_int(interp, a.int_val * b.int_val);
+    if (a != null && b != null) {
+        if (is_double(a) || is_double(b)) {
+            if (is_number(a) && is_number(b)) return make_double(interp, to_double(a) * to_double(b));
+        }
+        if (a.tag == INT && b.tag == INT) return make_int(interp, a.int_val * b.int_val);
     }
-    return make_error(interp, "*: expected integers");
+    return make_error(interp, "*: expected numbers");
 }
 
 fn Value* jit_prim_lt(Interp* interp, Value* a, Value* b) {
-    if (a != null && b != null && a.tag == INT && b.tag == INT) {
-        return a.int_val < b.int_val ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (a != null && b != null && is_number(a) && is_number(b)) {
+        return to_double(a) < to_double(b) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
     }
-    return make_error(interp, "<: expected integers");
+    return make_error(interp, "<: expected numbers");
 }
 
 fn Value* jit_prim_gt(Interp* interp, Value* a, Value* b) {
-    if (a != null && b != null && a.tag == INT && b.tag == INT) {
-        return a.int_val > b.int_val ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (a != null && b != null && is_number(a) && is_number(b)) {
+        return to_double(a) > to_double(b) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
     }
-    return make_error(interp, ">: expected integers");
+    return make_error(interp, ">: expected numbers");
 }
 
 fn Value* jit_prim_eq(Interp* interp, Value* a, Value* b) {
-    if (a != null && b != null && a.tag == INT && b.tag == INT) {
-        return a.int_val == b.int_val ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (a != null && b != null && is_number(a) && is_number(b)) {
+        return to_double(a) == to_double(b) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
     }
-    return make_error(interp, "=: expected integers");
+    return make_error(interp, "=: expected numbers");
 }
 
 // =============================================================================

@@ -1,5 +1,495 @@
 # Changelog
 
+## 2026-02-21 (Session 11): Tasks #15, #18, #21, #32, #35 — ALL 35 AUDIT TASKS COMPLETE
+
+### Task #15: Replace compile_var linear string chain with hash map
+Replaced 87 `str_eq` comparisons in `compile_var()` with O(1) `prim_hash_lookup()`. Added `PrimHashEntry[256]` open-addressing hash table with ~90 entries. `init_prim_hash()` called from `Compiler.init()`. `compile_var` reduced from 190 lines to 20 lines.
+
+### Task #35: Compile multi-binding let as single env extension
+Optimized eval's E_LET case: consecutive non-recursive lets are batched into a single Env frame. Creates one `make_env()` + N `define()` calls instead of N `env.extend()` calls. Preserves let* semantics (each init sees previous bindings).
+
+### Task #32: Implement arena free-list coalescing
+`Pool.arena_free()` now coalesces adjacent free chunks. Finds left-adjacent and right-adjacent chunks in the same arena and merges them. Handles three-way merge (left + new + right → one chunk).
+
+### Task #18: Consolidate compiler AST traversal passes
+Merged `body_creates_closure()` into `scan_lambdas_with_scope()`. Changed return type to `bool` — returns whether any E_LAMBDA was found in subtree. Eliminates a separate full traversal per lambda. Removed ~90 lines.
+
+### Task #21: Add collection reclamation via `free!` primitive
+Added `(free! value)` primitive for explicit memory reclamation. Frees heap-allocated backing storage (Array items+struct, HashMap entries, Instance struct, StringVal) and sets value tag to NIL for safe aliasing. 4 tests added.
+
+### Changes
+- `src/lisp/compiler.c3` — Tasks #15, #18: hash table for compile_var, merged body_creates_closure
+- `src/lisp/eval.c3` — Tasks #21, #35: free! primitive, multi-binding let batching
+- `src/main.c3` — Task #32: arena free-list coalescing
+
+### Test Count
+- 1099 total (654 unified + 77 compiler + 368 e2e) — all passing
+
+---
+
+## 2026-02-21 (Session 10): Tasks #13-#14, #16-#17, #19-#20, #22-#24, #27-#31, #33-#34
+
+### Task #13: Fix runtime_to_interp V_CLOSURE wrapping
+Added `CompiledClosureWrapper` struct and `invoke_compiled_closure` PrimitiveFn. Added `user_data` field to Primitive struct and `prim_user_data` to Interp for threading data through primitive calls.
+
+### Task #14: Cache compiled STDLIB_PRELUDE
+Replaced per-char `List{char}` source building with bulk `mem::copy` for stdlib prelude concatenation.
+
+### Task #16: Pre-cache TypeIds for built-in types
+Added `tid_Int`, `tid_Double`, etc. fields to Interp, populated after `register_builtin_types()`. Updated `infer_value_type` to use cached IDs instead of repeated `symbols.intern()` calls.
+
+### Task #17: Cache I/O fast path symbols and primitives
+Added `raw_print`, `raw_println` etc. cached Value* pointers to Interp. Updated eval_perform I/O fast path. Added `sym_car`/`sym_cdr` for eval_path and set! path.
+
+### Task #19: Align runtime StringData to 4096
+Changed runtime StringData from `char[256]` to `char[4096]`, updated all 255 limits to 4095.
+
+### Task #20: Replace emit() with bulk mem::copy
+Replaced `List{char}` output with raw `char*` + `output_len` + `output_cap`. `emit()` now uses `mem::copy`.
+
+### Task #22: Remove dead compile_expr tail-call code
+Removed `compile_expr_tail`, `compile_application_tail`, `compile_call_tail` (~146 lines).
+
+### Task #23: Remove 7 dead standalone eval functions
+Removed eval_app, eval_call, eval_if, eval_and, eval_or, eval_let, eval_match (~250 lines).
+
+### Task #24: Fix rt_string_split multi-char delimiters
+Rewrote to scan for full delimiter string matches instead of single-char.
+
+### Task #27: Add type validation to bitwise operations
+Added V_INT tag checks to all 6 bitwise ops + shift bounds checking (0-63).
+
+### Task #28: Fix long.min UB
+Added `long.min` special cases to `rt_abs` and `rt_number_to_string`.
+
+### Task #29: Increase SymbolTable capacity
+MAX_SYMBOLS 512→4096, MAX_SYMBOL_LEN 64→128, HASH_TABLE_SIZE 1024→8192.
+
+### Task #30: Optimize MethodTable dispatch
+Pre-compute arg TypeIds once into `TypeId[8]` array before scanning methods.
+
+### Task #31: Fix O(n²) pattern matching
+Collect list elements into `Value*[64]` flat array in one pass, then index directly.
+
+### Task #33: Fix make_interp_closure_wrapper leak
+Changed from `allocate_in(g_root_region, ...)` to `mem::malloc()`.
+
+### Task #34: Add FFI_HANDLE destructor
+Added `dlclose(v.ffi_val.lib_handle)` in destroy_value for FFI_HANDLE.
+
+### Changes
+- `src/lisp/eval.c3` — Tasks #16, #17, #23, #30, #31, #34
+- `src/lisp/value.c3` — Tasks #13, #16, #17, #29
+- `src/lisp/runtime.c3` — Tasks #13, #19, #24, #27, #28, #33
+- `src/lisp/compiler.c3` — Tasks #14, #20, #22
+
+### Test Count
+- 1095 total (650 unified + 77 compiler + 368 e2e) — all passing
+
+---
+
+## 2026-02-21 (Session 9): Tasks #9-#12, #25
+
+### Task #9: Add depth limit to rt_values_equal
+Added `usz depth = 0` default parameter, guard at depth >= 256. Prevents stack overflow on circular structures.
+
+### Task #10: Add ARRAY/HASHMAP equality to rt_values_equal
+Added V_INTERP_REF case: ARRAY uses structural equality (element-by-element comparison via `interp_to_runtime`), HASHMAP uses pointer equality (matching interpreter behavior).
+
+### Task #11: Fix rt_string_to_number to parse floats
+Added float detection (scan for '.', 'e', 'E') with manual double parser: integer part, fractional part, exponent part. Returns V_DOUBLE for float strings.
+
+### Task #12: Fix rt_number_to_string to handle doubles
+Added V_DOUBLE check at function start, formats using `io::bprintf` with "%.15g".
+
+### Task #25: Replace rt_gensym rt_eval_source delegation with counter
+Replaced `rt_eval_source("(gensym)")` with `tlocal long g_gensym_counter` that formats "g#N" symbols directly. No more re-parsing overhead.
+
+### Changes
+- `src/lisp/runtime.c3` — All 5 tasks: depth limit, ARRAY/HASHMAP equality, float parsing, double formatting, gensym counter
+
+### Test Count
+- 1095 total (650 unified + 77 compiler + 368 e2e) — all passing
+
+---
+
+## 2026-02-21 (Session 8): Tasks #6-#8
+
+### Task #7: Add hash table to Env for O(1) variable lookup
+Added open-addressing hash table to Env struct, activated when binding_count exceeds 16 (ENV_HASH_THRESHOLD). Global env with 129+ primitives now uses O(1) lookups instead of O(n) linear scan.
+
+### Changes
+- `src/lisp/value.c3` — Added `EnvHashEntry` struct, `hash_table`/`hash_capacity` fields to Env, `build_hash_table`/`hash_lookup`/`hash_insert` methods, updated `Env.define`/`Env.lookup`/`Env.set` with hash fast paths, updated `alloc_env` to init new fields
+- `src/lisp/eval.c3` — Updated `destroy_env` to free hash table, `deep_copy_env` to rebuild hash table on copy
+
+### Task #8: Add V_FALSE tag to runtime
+Added V_FALSE tag to runtime ValueTag enum, `make_false()` constructor. Updated `rt_is_truthy` (V_FALSE is falsy), `rt_print_value` (prints "false"), `rt_values_equal`, `rt_boolean_p` (recognizes V_FALSE), `rt_type_of` (returns "Bool"), `interp_to_runtime` (sym_false→V_FALSE), `runtime_to_interp` (V_FALSE→sym_false). Note: interpreter defines `false` as `make_nil()`, so compiler still emits `make_nil()` for `false` literal to match. V_FALSE primarily used when quoted `false` symbol flows through `interp_to_runtime`.
+
+---
+
+## 2026-02-21 (Session 8): Task #6 — Native dict operations in runtime
+
+### Task #6: Implement native dict operations in runtime
+Replaced all 10 dict/hashmap functions that delegated through `rt_eval_source` (parsing source text) with direct calls to interpreter's hashmap functions (`lisp::hashmap_get/set/remove`, `lisp::make_hashmap`, `lisp::make_cons`, `lisp::make_nil`).
+
+### Changes
+- `src/lisp/runtime.c3` — Rewrote 10 functions:
+  - `rt_hash_map_create`: direct `lisp::make_hashmap(g_interp, 16)`
+  - `rt_dict_from_args`: direct hashmap create + `lisp::hashmap_set` per pair (fixes #26 buffer overflow)
+  - `rt_hash_ref`: direct `lisp::hashmap_get`
+  - `rt_hash_set`: curried 2→3 arg pattern — returns closure(dict,key) that accepts value; uses malloc'd `HashSetCapture` struct
+  - `rt_hash_has`: direct `lisp::hashmap_get` + null check, returns `make_true()` not `make_int(1)`
+  - `rt_hash_remove`: direct `lisp::hashmap_remove`
+  - `rt_hash_keys`/`rt_hash_values`: iterate `map.entries[]`, build cons list
+  - `rt_hash_count`: direct `im.hashmap_val.count`
+  - `rt_hash_map_p`: direct tag check, returns `make_true()` not `make_int(1)`
+
+### Test Count
+- 1095 total (650 unified + 77 compiler + 368 e2e) — all passing
+
+---
+
+## 2026-02-21 (Session 7): Tasks #3-#5
+
+### Task #3: Remove Auto-Currying
+Removed auto-currying from interpreter and JIT. Multi-param lambdas kept intact. Compiler re-curries at compile time only.
+
+### Task #5: Eliminate cons-list intermediary for compiler multi-arg calls
+Replaced `compile_call_flat`'s cons list building + `rt_apply_multi` with inline currying (`rt_invoke_once` for intermediates, `rt_invoke` for last arg). Fixed `compile_call_tail_flat` intermediates to use `rt_invoke_once` instead of `rt_invoke`. Updated 5 compiler pattern tests.
+
+### Task #4: Pointer-indirect large Expr union variants
+Moved 6 large Expr union members behind pointers (malloc'd): ExprLambda*, ExprCall*, ExprBegin*, ExprModule*, ExprDefType*, ExprDefUnion*. Reduces Expr node union from ~3200 bytes to ~272 bytes. C3 auto-deref means read sites are unchanged.
+
+### Changes
+- `src/lisp/value.c3` — 6 union members changed from inline to pointer
+- `src/lisp/parser.c3` — Added malloc at 17 creation sites (parse_lambda, parse_define, parse_named_let, parse_application, parse_begin, parse_module, parse_deftype, parse_defunion, dict/array literals, quasiquote)
+- `src/lisp/eval.c3` — Added malloc at 7 creation sites (value_to_expr), fixed &expr.deftype → expr.deftype
+- `src/lisp/compiler.c3` — Added malloc at 1 creation site (scan_lambdas_with_scope wrapper), fixed find_free_vars multi-param
+
+### Test Count
+- 1095 total (650 unified + 77 compiler + 368 e2e) — all passing
+
+---
+
+## 2026-02-21 (Session 7, earlier): Remove Auto-Currying (Task #3)
+
+Removed auto-currying from the interpreter and JIT. Multi-param lambdas are now kept intact in the parser and bound directly in eval/JIT. The compiler re-introduces currying at compile time only (via `scan_lambdas_with_scope` AST mutation) since the runtime uses single-arg calling convention.
+
+### Changes
+1. **Parser**: `parse_lambda`, `parse_define`, `parse_named_let` — create direct multi-param E_LAMBDA instead of nested single-param curried lambdas
+2. **Eval E_CALL CLOSURE**: Direct multi-param binding (one env frame for all params, arity check) instead of currying loop
+3. **Eval apply_closure**: Added multi-param rejection (apply_closure is single-arg only)
+4. **JIT jit_apply_multi_args**: Direct multi-param binding matching eval semantics
+5. **Compiler scan_lambdas_with_scope**: Re-curries multi-param lambdas at compile time (AST mutation to nested single-param)
+6. **Compiler find_free_vars**: Fixed E_LAMBDA case to add ALL params (not just first) to bound vars — critical for multi-param lambdas encountered before re-currying
+
+### Files Modified
+- `src/lisp/parser.c3` — parse_lambda, parse_define, parse_named_let
+- `src/lisp/eval.c3` — E_CALL CLOSURE, apply_closure, METHOD_TABLE dispatch, tests
+- `src/lisp/jit.c3` — jit_apply_multi_args
+- `src/lisp/compiler.c3` — scan_lambdas_with_scope re-currying, find_free_vars multi-param fix
+
+### Test Count
+- Before: 985 (650 unified + 77 compiler + 39 new + 219 e2e)
+- After: 1095 (650 unified + 77 compiler + 368 e2e) — all passing
+
+## 2026-02-21 (Session 6): Audit Fixes — Tasks #1 & #2
+
+### Task #1: Box StringVal, Closure, FfiHandle, Primitive behind pointers
+Changed 4 Value union fields from inline to pointer (`StringVal*`, `Closure*`, `Primitive*`, `FfiHandle*`). C3 auto-deref means most read sites unchanged. Updated constructors to malloc sub-structs, updated `destroy_value` to free them.
+
+### Task #2: Dynamic Env bindings
+Changed `Env.bindings` from `Binding[512]` (8KB) to `Binding*` + `usz capacity` with dynamic growth (initial 8, doubles). Added `destroy_env` destructor.
+
+### Files Modified
+- `src/lisp/value.c3` — Value union, Env struct, constructors, make_env
+- `src/lisp/eval.c3` — destroy_value, destroy_env, deep_copy_env, string primitives
+- `src/lisp/parser.c3` — StringVal malloc in string literals
+
+### Test Count
+- Before: 985 (650 unified + 77 compiler + 39 new + 219 e2e)
+- After: 985 — all passing, no regressions
+
+## 2026-02-20 (Session 5): Memory System Fix & Hardening
+
+Fixed use-after-free bugs and memory leaks in region-based memory system.
+
+### Changes
+1. **Fix `make_array()` UAF**: Allocate Value in root_region (was current_frame → dangling pointer after frame release). `value.c3:713`
+2. **Fix `make_instance()` UAF**: Same root_region fix. `eval.c3:1210`
+3. **Fix MethodTable Value allocation**: Allocate directly in root_region, removed conditional `copy_to_parent` calls. `eval.c3:974,993,1010`
+4. **Add `destroy_value()` destructor**: Frees malloc'd backing for ARRAY (items + struct), INSTANCE, METHOD_TABLE, CLOSURE type_sig.
+5. **Add `destroy_hashmap()` destructor**: Frees malloc'd entries buffer.
+6. **Register destructors**: `register_destructors()` called at all 4 init sites (tests, compiler tests, REPL, script runner). Initializes global destructor registry if needed.
+7. **Update `copy_to_parent()` comments**: Reflects that HASHMAP/ARRAY/INSTANCE/METHOD_TABLE Values are now in root_region with registered destructors.
+8. **Bounds checking verified**: `prim_ref` and `prim_array_set` already had proper bounds checking.
+
+### Files Modified
+- `src/lisp/value.c3` — `make_array()` root_region allocation
+- `src/lisp/eval.c3` — destructors, `make_instance()` fix, MethodTable fix, comments, registration
+- `src/main.c3` — `register_destructors()` calls at REPL and script init
+
+### Test Count
+- Before: 727 (650 unified + 77 compiler)
+- After: 727 (650 unified + 77 compiler) — all passing, no regressions
+
+## 2026-02-20 (Session 4): Literal Syntax + Generic Dispatch
+
+Major rename and feature addition: collection literals and generic operations.
+
+### Changes
+1. **Rename VECTOR → ARRAY everywhere**: `ValueTag::VECTOR` → `ARRAY`, `Vector` struct → `Array`, `vector_val` → `array_val`, `is_vector` → `is_array`, `make_vector` → `make_array`. User-facing: `vector` → `array`, `vector?` → `array?`, `make-vector` → `make-array`. Print format: `#(...)` → `[...]`.
+2. **Rename HashMap → Dict (user-facing)**: `sym_Vector` → `sym_Array`, `sym_HashMap` → `sym_Dict`. Type names: `Vector` → `Array`, `HashMap` → `Dict`. Constructor: `hash-map` → `dict`. Predicate: `hash-map?` → `dict?`.
+3. **`{}` dict literal in parser**: `{'a 1 'b 2}` desugars to `(dict 'a 1 'b 2)`. Handles `T_LBRACE` in `parse_expr()`. Error on odd element count.
+4. **`[]` array literal in parser**: `[1 2 3]` desugars to `(array 1 2 3)`. Handles `T_LBRACKET` in `parse_expr()`. No conflict with `[type]` attributes (parsed in `parse_define`) or `[a b]` patterns (parsed in `parse_pattern`).
+5. **Cons cell dot-path**: `pair.car`/`pair.cdr` for read access (in `eval_path`). `(set! pair.car val)` for mutation (in `E_SET` handler). Falls through to alist lookup if field is not `car`/`cdr`.
+6. **Generic collection primitives**: `ref` (array/dict/cons/string), `length` (extended to array/dict/string), `push!` (array), `keys`/`values`/`has?`/`remove!` (dict).
+7. **Removed prefixed registrations**: `array-ref`, `array-length`, `array-push!`, `dict-ref`, `dict-has?`, `dict-remove!`, `dict-keys`, `dict-values`, `dict-count`, `make-array`, `array->list`, `list->array`. Kept: `array-set!`, `dict-set!` (no generic equivalent for mutation), `array?`, `dict?`.
+8. **Constructor dispatch**: `(array '(1 2 3))` converts list→array, `(list [1 2 3])` converts array→list. No need for separate conversion functions or `make-array`.
+9. **Updated compiler**: Known primitives list and code generation updated for new names.
+
+**Files modified**: `src/lisp/value.c3`, `src/lisp/eval.c3`, `src/lisp/parser.c3`, `src/lisp/compiler.c3`
+**Tests**: 727 (650 unified + 77 compiler), all passing (+35 new tests)
+
+---
+
+## 2026-02-19 (Session 3): Parametric Types, Type Arg Inference, Constrained Dispatch
+
+Implemented the 3 remaining type system intents from the holistic plan.
+
+### Changes
+1. **parser.c3**: Fixed `parse_deftype` to collect ALL symbols after name into `type_params[]` (like `parse_defunion`), instead of treating only the first as parent. Disambiguation moved to eval time.
+2. **eval.c3**: `eval_deftype` now disambiguates parent vs type-params: if first symbol is a registered type → parent, else all are type params. Also stores `annotation_sym` on fields for param↔field mapping.
+3. **value.c3**: Extended `Instance` with `type_args[MAX_TYPE_PARAMS]` + `type_arg_count`. Added `annotation_sym` to `TypeFieldInfo`. Added `MethodConstraint` struct and constraint fields to `MethodSignature`.
+4. **eval.c3**: `prim_type_constructor` now infers type arguments from field values (matching annotation_sym to type params). New `type-args` primitive returns inferred type arg list.
+5. **eval.c3**: Lambda eval builds constraints from `^{'T Bound}` dict annotations into `MethodSignature`. `find_best_method` enforces constraints — method only matches if arg type is subtype of bound.
+6. **eval.c3**: 15 new tests covering parametric types, type-args inference, multi-param generics, parent disambiguation, and constrained dispatch.
+
+**Files modified**: `src/lisp/parser.c3`, `src/lisp/value.c3`, `src/lisp/eval.c3`
+**Tests**: 692 (615 unified + 77 compiler), all passing
+
+---
+
+## 2026-02-19 (Session 2): Documentation Sync
+
+Comprehensive documentation sync to match all implemented features. No code changes.
+
+### Updated docs
+- **docs/LANGUAGE_SPEC.md**: Complete rewrite (v0.3.0). Added all 16 data types, 129+ primitives in categorized tables, type system (struct/abstract/union/alias), multiple dispatch (basic/multi-arg/Val), I/O effects, macros, modules, stdlib, FFI. Fixed limits (4095 chars, 4096 symbols). Added backend comparison table.
+- **docs/type-system-syntax.md**: Replaced stale Implementation Roadmap (falsely claimed traits/instances COMPLETE). New accurate status: type defs/dispatch/I/O effects/union matching = IMPLEMENTED; traits/instances/HKT/parametric substitution = NOT implemented. Fixed abstract type syntax: `(define [abstract] (Real Number))` (parenthesized). Fixed struct inheritance syntax: `(define [type] (Point3D Point) ...)`.
+- **docs/type-system-proposal.md**: Added status banner marking it as design proposal (not implementation status). Annotated each section with implementation notes (constraints not enforced, `arr[0]` vs `arr.[0]`, `[type mutable]` not needed, `Proc` not implemented). Added complete Implementation Status table at bottom.
+- **docs/type-system-e2e-tests.md**: Added ASPIRATIONAL status banner listing all unimplemented features (with-region, ref/@, [method], [effect], destructors, Proc, Arena). Fixed type syntax to use parenthesized inheritance form throughout.
+- **docs/FEATURES.md**: Updated data types table to include all 16 types (added DOUBLE, HASHMAP, VECTOR, FFI_HANDLE, INSTANCE, METHOD_TABLE).
+- **docs/SYNTAX_SPEC.md**: Added parenthesized abstract type form `(define [abstract] (Child Parent))`.
+
+### Paradigm verification findings
+- Abstract type parent syntax uses parenthesized form `(define [abstract] (Real Number))`, NOT bare `(define [abstract] Real Number)` — design docs had wrong syntax, now fixed
+- All implemented features match the design intent from `type-system-syntax.md` Levels 1
+- Levels 2-3 (HKT, traits, instances, variance) are clearly marked as future
+
+**Files modified**: `docs/LANGUAGE_SPEC.md`, `docs/FEATURES.md`, `docs/SYNTAX_SPEC.md`, `docs/type-system-syntax.md`, `docs/type-system-proposal.md`, `docs/type-system-e2e-tests.md`
+**Tests**: 677 (600 unified + 77 compiler), unchanged, all passing
+
+---
+
+## 2026-02-19: Type System, Dispatch, Effects Coherence (Phases 0-6)
+
+Major implementation of the holistic plan — bringing types, dispatch, and effects into one coherent system.
+
+### Phase 1: Type System Foundation
+- **value.c3**: Added ValueTag entries (TYPE_INFO, INSTANCE, METHOD_TABLE), TypeAnnotation struct (3 forms: ^Int, ^(List Int), ^{'T Number}), TypeKind enum, TypeInfo, TypeRegistry (FNV-1a hash, init/register/lookup/get/is_subtype), Instance (malloc'd), MethodSignature/MethodEntry/MethodTable, ExprTags (E_DEFTYPE/E_DEFABSTRACT/E_DEFUNION/E_DEFALIAS), type AST structs, PAT_CONSTRUCTOR pattern, 16 pre-interned type symbols
+- **parser.c3**: Added T_LBRACE/T_RBRACE tokens, parse_type_annotation() (3 forms), typed params in parse_lambda/parse_define (^Type name), bracket attribute dispatch ([type]/[abstract]/[union]/[alias]), parse_deftype/parse_defabstract/parse_defunion/parse_defalias
+- **eval.c3**: register_builtin_types (11 built-ins), infer_value_type, make_instance, eval_deftype (registers type + creates constructor), eval_defabstract, eval_defunion (variants + constructors), eval_defalias, prim_type_of/prim_is_type/prim_is_instance, Instance field access in eval_path/eval_index, copy_to_parent for new tags
+- 35 new tests
+
+### Phase 2: Multiple Dispatch
+- **eval.c3**: find_best_method (scoring: Val=1000, exact=100, subtype=10, any=1), eval_lambda builds MethodSignature from typed params, eval_define creates/updates MethodTable (typed closure + existing MT/CLOSURE/PRIMITIVE), METHOD_TABLE dispatch in E_CALL and apply()
+- **Bug fix**: Val literal check must come BEFORE INVALID_TYPE_ID escape in find_best_method (was causing ^Int to always win over ^(Val 0))
+- 10 new tests (basic dispatch, Val fibonacci, multi-arg)
+
+### Phase 3: Struct Dot-Path
+- **value.c3**: Extended ExprSet with path segments for set! on dot-paths
+- **parser.c3**: parse_set handles T_PATH targets
+- **eval.c3**: E_SET handler resolves path segments, mutates final Instance field
+- 5 new tests (set! struct fields, nested mutation, preserves other fields)
+
+### Phase 4: Primitive Consolidation
+- Already works via Phase 2: typed defines on existing primitive names promote PRIMITIVE to MethodTable with primitive as fallback
+- 4 new tests (typed dispatch on Point, builtin + still works)
+
+### Phase 5: I/O Effects Coherence
+- **eval.c3**: Renamed I/O prims to __raw-* (print→__raw-print, etc.), removed old `display` registration
+- **value.c3**: Added 8 pre-interned I/O effect tag symbols (io/print, io/println, etc.)
+- **eval.c3 register_stdlib**: Effect wrappers: `(define print (lambda (x) (perform io/print x)))` etc.
+- **eval.c3 eval_perform**: I/O fast path — if no handler matches io/* effect, call __raw-* prim directly (zero overhead when no handler installed)
+- 5 new tests (io effect print, custom handler suppress/capture, raw-print)
+
+### Phase 6: Union Types + Pattern Matching
+- **parser.c3**: Added PAT_CONSTRUCTOR handling in parse_pattern for (ConstructorName sub-patterns...)
+- **eval.c3**: PAT_CONSTRUCTOR case in match_pattern (check INSTANCE type, recursively match fields), PAT_VAR auto-detects nullary constructors, collect_pattern_vars handles PAT_CONSTRUCTOR
+- 6 new tests (match None, match Some, Result Ok/Err, nested Some, wildcard in ctor)
+
+### Phase 0: Documentation Alignment
+- **docs/SYNTAX_SPEC.md**: Fixed truthiness (removed 0 from falsy), added all missing tokens/ExprTags/special forms, updated limits, added type system section
+- **docs/FEATURES.md**: Fixed primitive count (45→129+), fixed binding limit (256→512), added type system, JIT, compiler sections, constructor patterns
+- **docs/COMPILER.md**: Updated limitations (TCO now works, delegation patterns)
+- **docs/LANGUAGE_SPEC.md**: Updated version, date, and description
+
+**Files modified**: `src/lisp/eval.c3`, `src/lisp/value.c3`, `src/lisp/parser.c3`, `docs/SYNTAX_SPEC.md`, `docs/FEATURES.md`, `docs/COMPILER.md`, `docs/LANGUAGE_SPEC.md`
+**Tests**: 614 → 677 (600 unified + 77 compiler), all passing
+
+---
+
+## 2026-02-18: Paradigm-Aware Feature Expansion (8 Phases)
+
+Major feature expansion following Pika Lisp's own paradigm (effects, continuations, curried HOFs) rather than blindly copying Scheme/R7RS.
+
+### Phase 1: Complete Float Support
+- **eval.c3**: Updated `prim_string_to_number` to parse float strings (detect `.` or `e/E`), updated `prim_number_to_string` to handle DOUBLE, added `exact->inexact`/`inexact->exact` conversions
+- **runtime.c3**: Updated `rt_add/sub/mul/div` for mixed int/double dispatch, `rt_lt/gt/le/ge` for double comparisons, `rt_values_equal` for cross-type numeric, `rt_print_value` for DOUBLE
+- JIT helpers and compiler literal emission were already done in prior session
+- 22 new float tests (literals, mixed arithmetic, comparisons, conversions)
+
+### Phase 2: Math Library
+- **eval.c3**: 21 C-level math primitives wrapping `std::math`: sin/cos/tan/asin/acos/atan/atan2, exp/log/log10/pow/sqrt, floor/ceiling/round/truncate, abs/min/max/gcd/lcm
+- Constants `pi` and `e` defined in `register_stdlib`
+- 22 new math tests
+
+### Phase 3: Sorting, Bitwise, Stdlib HOFs
+- **eval.c3**: `sort` (insertion sort, max 256 elements), `sort-by` (custom comparator), `bitwise-and/or/xor/not`, `lshift/rshift`
+- **stdlib**: `flatten`, `partition`, `remove`, `find` via named-let
+- 17 new tests
+
+### Phase 4: FFI Double Fix + dlsym Cache
+- **eval.c3**: `ffi_value_to_long`/`ffi_long_to_value` handle `'double` type via bit-cast. dlsym cache (32-entry linear scan in FfiHandle). Cache cleared on `ffi-close`
+- **value.c3**: Added `sym_cache_ptrs/names/count` to FfiHandle
+- Note: XMM register passing for float FFI args is a known limitation (double args pass via integer registers, won't work with C functions expecting XMM)
+- 1 new test (cache hit verification)
+
+### Phase 5: String Ops & Type Predicates
+- **eval.c3**: `string-contains?`, `string-index-of`, `string-replace`, `char-at`, `string-repeat`
+- Type predicates: `double?`, `number?`, `boolean?`, `list?`, `procedure?`, `zero?`, `positive?`, `negative?`, `even?`, `odd?`
+- `format` (variadic with ~a/~s directives), `display` (print without quotes)
+- 30 new tests
+
+### Phase 6: TCO Stdlib & Module Assert
+- All stdlib functions already use TCO patterns (foldr=reverse+foldl, append/take/zip use let loop with accumulator)
+- Module assert already returns runtime error (no assertion crash)
+- 1 new test (foldl TCO 10000)
+
+### Phase 7: Introspection Primitives
+- **eval.c3**: `macroexpand` (macro hash lookup → expand_pattern_macro), `eval` (value_to_expr + eval), `apply` (iterative curried application), `bound?` (env chain lookup), `error`/`error-message`
+- 7 new tests
+
+### Phase 8: Stdlib Generators & Lazy Streams
+- **stdlib**: `yield` macro (shift k (cons val k)), `stream-take`, `delay`/`force`
+- Generator stream-take deferred (continuation interaction needs more work)
+- 1 new test (delay/force)
+
+### Phase 8 (continued): Vectors (Mutable Arrays)
+- **value.c3**: Added `VECTOR` to ValueTag, `Vector` struct (`Value** items`, `usz length/capacity`, malloc'd), `make_vector`, `is_vector`, `print_value` VECTOR case (`#(...)`)
+- **eval.c3**: 9 vector primitives: `vector`, `make-vector`, `vector-ref`, `vector-set!`, `vector-length`, `vector->list`, `list->vector`, `vector?`, `vector-push!`
+- **eval.c3**: `copy_to_parent` VECTOR case, `values_equal` VECTOR structural equality
+- 14 new tests (creation, ref, set!, push, conversion, bounds checking)
+
+### Phase 9: Sets (Built on HashMap)
+- **eval.c3**: 6 set primitives: `set`, `set-add`, `set-remove`, `set-contains?`, `set-size`, `set->list`
+- Sets are hashmaps with `true` values — reuses existing HashMap infrastructure
+- 7 new tests (creation, add, remove, contains, dedup)
+
+### Phase 12 (partial): Convenience Primitives
+- **eval.c3**: `read-string` (parse+eval string), `string->symbol`, `symbol->string`
+- **value.c3**: Increased `MAX_BINDINGS` from 256 to 512 (needed for expanded primitive set)
+- 3 new tests
+
+**Files modified**: `src/lisp/eval.c3`, `src/lisp/value.c3`, `src/lisp/runtime.c3`, `src/lisp/parser.c3`, `src/lisp/compiler.c3`, `src/lisp/jit.c3`, `src/main.c3`
+**Tests**: 489 → 614 (537 unified + 77 compiler), all passing
+
+---
+
+## 2026-02-17: Transpiler Correctness Fixes + Round-Trip Tests
+
+Three correctness fixes for the Lisp-to-C3 transpiler, plus new testing infrastructure.
+
+### STDLIB_PRELUDE map/filter fix
+- **compiler.c3**: Replaced naive recursive `map`/`filter` in STDLIB_PRELUDE with iterative accumulator+reverse versions using named-let `loop`. Prevents stack overflow on large lists.
+
+### Unknown expr default case warning
+- **compiler.c3**: Added `io::printfn` warning + comment text "WARNING" in `compile_expr` default case so unrecognized expression types are visible during compilation.
+
+### Round-trip test infrastructure
+- **compiler.c3**: Added `print_last` bool field to Compiler struct. New `compile_to_c3_with_print()` function sets this flag. `compile_program` wraps the last non-define expression with `rt_print_value` + `io::printn` when enabled.
+- **eval.c3**: Added 12 new compiler tests (66-77):
+  - Tests 66-67: Verify STDLIB_PRELUDE map/filter use `loop` pattern
+  - Tests 68-73: Runtime bridge tests via `rt_eval_source` (map, filter, TCO depth, multi-arg, set!, macros)
+  - Tests 74-76: `compile_to_c3_with_print` pattern tests
+  - Test 77: Verify no WARNING in normal compilation
+
+**Files modified**: `src/lisp/compiler.c3`, `src/lisp/eval.c3`
+**Tests**: 477 → 489 (412 unified + 77 compiler), all passing
+
+---
+
+## 2026-02-17: Compiler Feature Parity — 6-Phase Transpiler Upgrade
+
+Comprehensive upgrade of the Lisp-to-C3 transpiler to achieve near-parity with the JIT compiler. Uses the same delegation pattern: compile outer expressions natively, delegate complex features to the interpreter via `rt_eval_source`.
+
+### Phase 1: Multi-Arg Calls + Variadic Lambdas
+- **compiler.c3**: Rewrote `compile_call` from nested `rt_invoke` chains to cons-list + `rt_apply_multi(func, args, argc)`. Evaluates args left-to-right into temps, builds cons list right-to-left.
+- **runtime.c3**: Added `rt_apply_multi(Value func, Value arg_list, long argc)` — applies a function to a cons-list of arguments with curried one-at-a-time application.
+
+### Phase 2: TCO via Trampoline
+- **runtime.c3**: Added `V_THUNK` value tag, `ThunkData` struct, `make_thunk()` constructor. Split `rt_invoke` into `rt_invoke_once` (single step) and `rt_invoke` (with trampoline loop). Trampoline in `rt_apply_multi` for final application.
+- **compiler.c3**: Added `compile_expr_tail()` that propagates tail position through if/begin/let/and/or. Tail-position calls emit `make_thunk()` for closures instead of `rt_invoke()`. Lambda bodies now compiled with `compile_expr_tail()`.
+
+### Phase 3: Missing Expression Types
+- **compiler.c3**: Added `compile_quasiquote`, `compile_defmacro`, `compile_module`, `compile_import` — all delegate to `rt_eval_source()` with free variable injection.
+- Added serializer cases for E_QUASIQUOTE (`` ` ``), E_UNQUOTE (`,`), E_UNQUOTE_SPLICING (`,@`), E_DEFMACRO, E_MODULE, E_IMPORT.
+- Added `find_free_vars`, `scan_lambdas`, `body_creates_closure` cases for all new expression types.
+- Stdlib macros (when/unless/cond) registered via `rt_eval_source` in `emit_main_start`.
+
+### Phase 4: Missing Primitives
+- **runtime.c3**: Added 15 new runtime functions:
+  - `rt_string_to_number`, `rt_number_to_string` — string/number conversion
+  - `rt_gensym` — unique symbol generation (delegates to interpreter)
+  - `rt_apply_prim` — apply function to list of args
+  - `rt_equal_p` — deep structural equality
+  - `rt_display` — print without string quotes
+  - `rt_load` — evaluate file contents
+  - 9 hash-map functions (`rt_hash_ref`, `rt_hash_set`, `rt_hash_has`, `rt_hash_remove`, `rt_hash_keys`, `rt_hash_values`, `rt_hash_count`, `rt_hash_map_p`, `rt_hash_map_create`) — all delegate to interpreter
+- **compiler.c3**: Registered all new primitives in `compile_var` and `is_primitive`.
+
+### Phase 5: Closure-Captured Mutable Locals
+- **compiler.c3**: Added mutable capture detection (`is_mutable_capture`, `has_set_on`, `is_captured_by_nested_lambda`). Pre-scan pass (`prescan_mutable_captures`) identifies mutable-captured variables before lambda scanning.
+- Mutable-captured variables excluded from lambda closure struct captures; accessed via interpreter env instead.
+- `compile_let`: uses `rt_define_var` for mutable-captured variables. `compile_set`: uses `rt_set_var`. `compile_var`: uses `rt_lookup_var`.
+- **runtime.c3**: Added `rt_lookup_var` and `rt_set_var` for interpreter env bridge.
+
+### Phase 6: Test Overhaul
+- Added 25 new compiler tests (41-65) covering all 5 phases:
+  - Phase 1: rt_apply_multi usage, cons list building, 3-arg calls, zero-arg calls
+  - Phase 2: make_thunk emission for tail calls, non-tail OK, if branch propagation
+  - Phase 3: quasiquote/defmacro delegation, free var injection, stdlib macro registration
+  - Phase 4: string->number, number->string, gensym, apply, equal?, display, hash-ref, load
+  - Phase 5: mutable capture rt_define_var/rt_set_var/rt_lookup_var, non-mutable C3 local
+  - Integration: factorial, let-rec tail call, nested multi-arg calls
+
+- **Files modified**: `src/lisp/compiler.c3`, `src/lisp/runtime.c3`, `src/lisp/eval.c3`
+- **Tests**: 477 (412 unified + 65 compiler), all passing (was 452 = 412 + 40)
+
+## 2026-02-17: Fix H15 (ghost_idx bounds), M15 (SIGINT handler), M16 (arena_free unreachable)
+- **H15**: Added `ghost_idx` bounds check before `inherited_ghost_tables[]` access in:
+  - `dereference_via_ghost()` — new bounds check + unreachable guard
+  - `manual_extend()` — replaced assert with proper bounds checks on host_idx, ghost_idx, and slot_idx (break on OOB)
+  - (Note: `is_valid_ghost_handle` and `resolve_object_record` already had the check from C13)
+- **M15**: SIGINT handler for REPL — Ctrl+C during eval now returns "interrupted" error instead of killing process
+  - Added `signal()` extern, `SignalHandler` alias, `g_interrupted` flag, `sigint_handler()` in eval.c3
+  - Installed handler at REPL start; eval loop checks flag each iteration
+  - Flag cleared before each REPL eval to prevent stale interrupts
+- **M16**: Converted `unreachable()` in `Pool.arena_free` to `io::eprintfn` warning + return
+- **Files modified**: `src/main.c3`, `src/lisp/eval.c3`
+- **Tests**: 452 (412 unified + 40 compiler), all passing
+
 ## 2026-02-13: Fix CRITICAL C13, C14 + HIGH H1
 - **C13 (Region bounds violations)**: Added bounds checks in 3 ghost-table functions in main.c3:
   - `dereference_via_ghost()`: bounds check on `host_idx`, replaced `assert` with `if`/`unreachable`

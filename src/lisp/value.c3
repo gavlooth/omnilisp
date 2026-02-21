@@ -22,8 +22,13 @@ enum ValueTag : char {
     PRIMITIVE,
     PARTIAL_PRIM,   // Partially applied primitive (curried)
     ERROR,          // Error value (carries error message in str_val)
+    DOUBLE,         // Floating-point number
     HASHMAP,        // Hash map (mutable dictionary)
     FFI_HANDLE,     // FFI library handle (dlopen result)
+    ARRAY,          // Mutable array (dynamic array)
+    TYPE_INFO,      // Type descriptor value
+    INSTANCE,       // User-defined type instance
+    METHOD_TABLE,   // Dispatch table for multiple dispatch
 }
 
 /**
@@ -32,11 +37,11 @@ enum ValueTag : char {
 typedef SymbolId = uint;
 
 // Maximum symbol name length
-const usz MAX_SYMBOL_LEN = 64;
+const usz MAX_SYMBOL_LEN = 128;
 // Maximum string value length (for StringVal, file reads, string ops)
 const usz MAX_STRING_LEN = 4096;
 // Maximum number of symbols
-const usz MAX_SYMBOLS = 512;
+const usz MAX_SYMBOLS = 4096;
 // Maximum number of macros in the macro table
 const usz MAX_MACROS = 64;
 // Maximum number of modules in the module table
@@ -45,9 +50,19 @@ const usz MAX_MODULES = 32;
 const usz MACRO_HASH_SIZE = 128;   // 2 * MAX_MACROS
 const usz MODULE_HASH_SIZE = 64;   // 2 * MAX_MODULES
 // Hash table size for symbol intern (must be power of 2, >= 2*MAX_SYMBOLS)
-const usz HASH_TABLE_SIZE = 1024;
+const usz HASH_TABLE_SIZE = 8192;
 // Invalid symbol ID sentinel (returned on exhaustion; must not alias any valid index)
 const SymbolId INVALID_SYMBOL_ID = (SymbolId)0xFFFFFFFF;
+
+// Type system constants
+typedef TypeId = uint;
+const TypeId INVALID_TYPE_ID = (TypeId)0xFFFFFFFF;
+const usz MAX_TYPES = 128;
+const usz TYPE_HASH_SIZE = 256;
+const usz MAX_TYPE_PARAMS = 8;
+const usz MAX_META_ENTRIES = 8;
+const usz MAX_TYPE_FIELDS = 16;
+const usz MAX_METHODS = 32;
 
 /**
  * SymbolEntry — Storage for a single interned symbol name.
@@ -171,6 +186,8 @@ struct Closure {
     Expr*     body;           // Body expression
     Env*      env;            // Captured environment
     bool      has_param;      // false for zero-arg lambdas: (lambda () body)
+    bool      has_typed_params;  // true if any param has type annotations
+    MethodSignature* type_sig;   // heap-allocated type signature (null if no types)
 }
 
 /**
@@ -190,6 +207,8 @@ struct Primitive {
     char[32] name;
     PrimitiveFn func;
     int arity;           // -1 for variadic
+    int tag;             // Extra data (e.g., TypeId for constructors)
+    void* user_data;     // Optional data pointer for closure-like primitives
 }
 
 /**
@@ -198,7 +217,8 @@ struct Primitive {
 struct PartialPrim {
     PrimitiveFn func;
     Value*      first_arg;   // First argument stored
-    int         remaining;   // Arguments still needed (usually 1 for binary ops)
+    Value*      second_arg;  // Second argument (for 3+ arity primitives)
+    int         remaining;   // Arguments still needed
 }
 
 /**
@@ -266,6 +286,203 @@ struct FfiHandle {
     void*    lib_handle;     // dlopen() result
     char[256] lib_name;      // for display/debugging
     usz      name_len;
+    // dlsym cache — linear scan, populated on miss
+    void*[32] sym_cache_ptrs;
+    char[32][64] sym_cache_names;
+    usz      sym_cache_count;
+}
+
+/**
+ * Array — Mutable dynamic array. Heap-allocated like HashMap.
+ */
+struct Array {
+    Value** items;     // malloc'd array of Value pointers
+    usz length;
+    usz capacity;
+}
+
+// =============================================================================
+// SECTION 1.5: TYPE SYSTEM TYPES
+// =============================================================================
+
+/**
+ * MetaEntry — Single key-value pair in a metadata dictionary annotation.
+ * Keys are quoted symbols, values are either symbol (type bound) or integer.
+ */
+struct MetaEntry {
+    SymbolId key;          // quoted symbol key ('T, 'with, etc.)
+    SymbolId sym_value;    // symbol value (Number, Comparable)
+    long int_value;        // integer value (arity: 1, 2)
+    bool is_int;           // true if value is integer, false if symbol
+}
+
+/**
+ * TypeAnnotation — Parsed ^Type annotation on a parameter.
+ * Three forms: ^Int (simple), ^(List Int) (compound), ^{'T Number} (dict)
+ */
+struct TypeAnnotation {
+    bool has_annotation;
+    bool is_compound;          // ^(List Int) form
+    bool is_dict;              // ^{...} form
+    SymbolId base_type;        // Int, List, Lambda, Val, etc.
+    SymbolId[MAX_TYPE_PARAMS] params;  // compound type params
+    usz param_count;
+    MetaEntry[MAX_META_ENTRIES] meta;  // dict entries
+    usz meta_count;
+    long val_literal;          // For ^(Val 42) — the literal value
+    bool has_val_literal;      // true if this is a Val type with literal
+}
+
+/**
+ * TypeKind — Kind of user-defined type.
+ */
+enum TypeKind : char { TK_CONCRETE, TK_ABSTRACT, TK_UNION, TK_ALIAS, TK_BUILTIN }
+
+/**
+ * TypeFieldInfo — Field descriptor in a concrete type.
+ */
+struct TypeFieldInfo { SymbolId name; TypeId field_type; SymbolId annotation_sym; }
+
+/**
+ * UnionVariant — Single variant in a union type.
+ */
+struct UnionVariant {
+    SymbolId name;
+    SymbolId[MAX_TYPE_PARAMS] fields;
+    usz field_count;
+}
+
+/**
+ * TypeInfo — Complete type descriptor stored in the registry.
+ */
+struct TypeInfo {
+    SymbolId name;
+    TypeKind kind;
+    TypeId parent;           // INVALID_TYPE_ID if no parent
+    TypeFieldInfo[MAX_TYPE_FIELDS] fields;
+    usz field_count;
+    SymbolId[MAX_TYPE_PARAMS] type_params;
+    usz type_param_count;
+    UnionVariant[16] variants;  // for TK_UNION
+    usz variant_count;
+    TypeId alias_target;     // for TK_ALIAS
+}
+
+/**
+ * TypeRegistry — Registry of all types (builtin + user-defined).
+ */
+struct TypeRegistry {
+    TypeInfo[MAX_TYPES] types;
+    usz type_count;
+    TypeId[TYPE_HASH_SIZE] type_hash_index;  // FNV-1a hash → type index
+}
+
+fn void TypeRegistry.init(TypeRegistry* self) {
+    self.type_count = 0;
+    for (usz i = 0; i < TYPE_HASH_SIZE; i++) {
+        self.type_hash_index[i] = INVALID_TYPE_ID;
+    }
+}
+
+fn TypeId TypeRegistry.register_type(TypeRegistry* self, TypeInfo info, SymbolTable* syms) {
+    if (self.type_count >= MAX_TYPES) return INVALID_TYPE_ID;
+    TypeId id = (TypeId)self.type_count;
+    self.types[self.type_count] = info;
+    self.type_count++;
+
+    // Insert into hash table
+    char[] name = syms.get_name(info.name);
+    usz h = hash_symbol(name);
+    usz mask = TYPE_HASH_SIZE - 1;
+    for (usz probe = 0; probe < TYPE_HASH_SIZE; probe++) {
+        usz slot = (h + probe) & mask;
+        if (self.type_hash_index[slot] == INVALID_TYPE_ID) {
+            self.type_hash_index[slot] = id;
+            break;
+        }
+    }
+    return id;
+}
+
+fn TypeId TypeRegistry.lookup(TypeRegistry* self, SymbolId name, SymbolTable* syms) {
+    char[] name_str = syms.get_name(name);
+    usz h = hash_symbol(name_str);
+    usz mask = TYPE_HASH_SIZE - 1;
+    for (usz probe = 0; probe < TYPE_HASH_SIZE; probe++) {
+        usz slot = (h + probe) & mask;
+        TypeId tid = self.type_hash_index[slot];
+        if (tid == INVALID_TYPE_ID) return INVALID_TYPE_ID;
+        if (self.types[(usz)tid].name == name) return tid;
+    }
+    return INVALID_TYPE_ID;
+}
+
+fn TypeInfo* TypeRegistry.get(TypeRegistry* self, TypeId id) {
+    if (id == INVALID_TYPE_ID || (usz)id >= self.type_count) return null;
+    return &self.types[(usz)id];
+}
+
+fn bool TypeRegistry.is_subtype(TypeRegistry* self, TypeId child, TypeId parent) {
+    if (child == parent) return true;
+    // Walk parent chain (depth limit 16)
+    TypeId current = child;
+    for (usz depth = 0; depth < 16; depth++) {
+        TypeInfo* info = self.get(current);
+        if (info == null) return false;
+        if (info.parent == INVALID_TYPE_ID) return false;
+        if (info.parent == parent) return true;
+        current = info.parent;
+    }
+    return false;
+}
+
+/**
+ * Instance — User-defined type instance (heap-allocated like HashMap/Array).
+ */
+struct Instance {
+    TypeId type_id;
+    Value*[MAX_TYPE_FIELDS] fields;
+    usz field_count;
+    TypeId[MAX_TYPE_PARAMS] type_args;   // Inferred type arguments (e.g., T=Int for Box<Int>)
+    usz type_arg_count;
+}
+
+/**
+ * MethodConstraint — Type bound on a type parameter (e.g., T <: Number).
+ */
+struct MethodConstraint {
+    SymbolId param_sym;   // The type parameter symbol (e.g., 'T)
+    TypeId bound_type;    // The upper bound TypeId (e.g., Number)
+}
+
+/**
+ * MethodSignature — Type signature for dispatch matching.
+ */
+struct MethodSignature {
+    TypeId[8] param_types;     // INVALID_TYPE_ID = Any
+    long[8] val_literals;      // For Val types
+    bool[8] has_val_literal;
+    usz param_count;
+    MethodConstraint[MAX_TYPE_PARAMS] constraints;  // Type param constraints
+    usz constraint_count;
+}
+
+/**
+ * MethodEntry — Single dispatch entry in a method table.
+ */
+struct MethodEntry {
+    MethodSignature sig;
+    Value* implementation;  // Closure or Primitive
+}
+
+/**
+ * MethodTable — Dispatch table for multiple dispatch (heap-allocated).
+ */
+struct MethodTable {
+    SymbolId name;
+    MethodEntry[MAX_METHODS] entries;
+    usz entry_count;
+    Value* fallback;  // untyped catch-all
 }
 
 /**
@@ -276,15 +493,20 @@ struct Value {
 
     union {
         long          int_val;
-        StringVal     str_val;        // String value
+        double        double_val;     // Floating-point value
+        StringVal*    str_val;        // String value (heap-allocated)
         SymbolId      sym_val;
         Cons          cons_val;
-        Closure       closure_val;
+        Closure*      closure_val;    // Closure (heap-allocated)
         Continuation* cont_val;      // From our continuation system
-        Primitive     prim_val;
+        Primitive*    prim_val;       // Primitive (heap-allocated)
         PartialPrim   partial_val;   // Curried primitive
         HashMap*      hashmap_val;   // Hash map
-        FfiHandle     ffi_val;       // FFI library handle
+        FfiHandle*    ffi_val;       // FFI library handle (heap-allocated)
+        Array*        array_val;     // Mutable array
+        TypeInfo*     type_info_val; // Type descriptor
+        Instance*     instance_val;  // User-defined type instance
+        MethodTable*  method_table_val; // Dispatch table
     }
 }
 
@@ -305,9 +527,17 @@ fn Value* make_int(Interp* interp, long n) @inline {
     return v;
 }
 
+fn Value* make_double(Interp* interp, double d) @inline {
+    Value* v = interp.alloc_value();
+    v.tag = DOUBLE;
+    v.double_val = d;
+    return v;
+}
+
 fn Value* make_string(Interp* interp, char[] str) {
     Value* v = interp.alloc_value();
     v.tag = STRING;
+    v.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
     usz len = str.len;
     if (len > MAX_STRING_LEN - 1) {
         io::eprintfn("WARNING: string truncated from %d to %d bytes", str.len, MAX_STRING_LEN - 1);
@@ -336,9 +566,10 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
     return v;
 }
 
-fn Value* make_closure(Interp* interp, SymbolId param, Expr* body, Env* env) @inline {
+fn Value* make_closure(Interp* interp, SymbolId param, Expr* body, Env* env) {
     Value* v = interp.alloc_value();
     v.tag = CLOSURE;
+    v.closure_val = (Closure*)mem::malloc(Closure.sizeof);
     v.closure_val.param = param;
     v.closure_val.params[0] = param;
     v.closure_val.param_count = 1;
@@ -347,12 +578,15 @@ fn Value* make_closure(Interp* interp, SymbolId param, Expr* body, Env* env) @in
     v.closure_val.body = body;
     v.closure_val.env = env;
     v.closure_val.has_param = true;
+    v.closure_val.has_typed_params = false;
+    v.closure_val.type_sig = null;
     return v;
 }
 
-fn Value* make_closure_no_param(Interp* interp, Expr* body, Env* env) @inline {
+fn Value* make_closure_no_param(Interp* interp, Expr* body, Env* env) {
     Value* v = interp.alloc_value();
     v.tag = CLOSURE;
+    v.closure_val = (Closure*)mem::malloc(Closure.sizeof);
     v.closure_val.param = 0;
     v.closure_val.param_count = 0;
     v.closure_val.has_rest = false;
@@ -360,6 +594,8 @@ fn Value* make_closure_no_param(Interp* interp, Expr* body, Env* env) @inline {
     v.closure_val.body = body;
     v.closure_val.env = env;
     v.closure_val.has_param = false;
+    v.closure_val.has_typed_params = false;
+    v.closure_val.type_sig = null;
     return v;
 }
 
@@ -373,6 +609,7 @@ fn Value* make_continuation(Interp* interp, Continuation* k) @inline {
 fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arity) {
     Value* v = interp.alloc_value();
     v.tag = PRIMITIVE;
+    v.prim_val = (Primitive*)mem::malloc(Primitive.sizeof);
     // Copy name into fixed buffer
     usz len = name.len;
     if (len > 31) {
@@ -385,6 +622,8 @@ fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arit
     v.prim_val.name[len] = 0;
     v.prim_val.func = func;
     v.prim_val.arity = arity;
+    v.prim_val.tag = 0;
+    v.prim_val.user_data = null;
     return v;
 }
 
@@ -394,7 +633,9 @@ fn Value* make_ffi_handle(Interp* interp, void* handle, char[] name) {
     interp.current_frame = interp.root_region;
     Value* v = interp.alloc_value();
     v.tag = FFI_HANDLE;
+    v.ffi_val = (FfiHandle*)mem::malloc(FfiHandle.sizeof);
     v.ffi_val.lib_handle = handle;
+    v.ffi_val.sym_cache_count = 0;
     usz len = name.len;
     if (len > 255) {
         io::eprintfn("WARNING: FFI handle name truncated from %d to 255 bytes", name.len);
@@ -412,6 +653,7 @@ fn Value* make_ffi_handle(Interp* interp, void* handle, char[] name) {
 fn Value* make_error(Interp* interp, char[] msg) {
     Value* v = interp.alloc_value();
     v.tag = ERROR;
+    v.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
     usz len = msg.len;
     if (len > MAX_STRING_LEN - 1) len = MAX_STRING_LEN - 1;
     for (usz i = 0; i < len; i++) {
@@ -462,8 +704,40 @@ fn bool is_error(Value* v) @inline {
     return v != null && v.tag == ERROR;
 }
 
+fn bool is_double(Value* v) @inline {
+    return v != null && v.tag == DOUBLE;
+}
+
+fn bool is_number(Value* v) @inline {
+    return v != null && (v.tag == INT || v.tag == DOUBLE);
+}
+
+fn double to_double(Value* v) @inline {
+    if (v.tag == DOUBLE) return v.double_val;
+    return (double)v.int_val;
+}
+
 fn bool is_ffi_handle(Value* v) @inline {
     return v != null && v.tag == FFI_HANDLE;
+}
+
+fn bool is_array(Value* v) @inline {
+    return v != null && v.tag == ARRAY;
+}
+
+fn Value* make_array(Interp* interp, usz capacity) {
+    // Allocate Value in root_region so it persists across frame releases
+    main::RegionHandle saved = interp.current_frame;
+    interp.current_frame = interp.root_region;
+    Value* v = interp.alloc_value();
+    interp.current_frame = saved;
+    v.tag = ARRAY;
+    Array* arr = (Array*)mem::malloc(Array.sizeof);
+    arr.capacity = capacity < 4 ? 4 : capacity;
+    arr.length = 0;
+    arr.items = (Value**)mem::malloc(Value*.sizeof * arr.capacity);
+    v.array_val = arr;
+    return v;
 }
 
 fn bool is_list(Value* v) {
@@ -515,8 +789,17 @@ fn usz list_length(Value* v) {
 // SECTION 5: ENVIRONMENT
 // =============================================================================
 
-// Maximum bindings per environment frame
-const usz MAX_BINDINGS = 256;
+// Maximum bindings per match result (stack-allocated, fixed size)
+const usz MAX_BINDINGS = 512;
+
+// Initial capacity for dynamically-sized Env binding arrays
+const usz ENV_INITIAL_CAPACITY = 8;
+
+// Threshold: build hash table when binding_count exceeds this
+const usz ENV_HASH_THRESHOLD = 16;
+
+// Sentinel for empty hash table slots
+const SymbolId ENV_HASH_EMPTY = 0xFFFFFFFF;
 
 /**
  * Binding — Single name-value binding.
@@ -527,44 +810,156 @@ struct Binding {
 }
 
 /**
+ * EnvHashEntry — Open-addressing hash table entry for Env.
+ */
+struct EnvHashEntry {
+    SymbolId key;    // ENV_HASH_EMPTY = empty slot
+    usz      index;  // Index into bindings array
+}
+
+/**
  * Env — Linked list of environment frames.
+ * Bindings array is heap-allocated and grows dynamically.
+ * For frames with >ENV_HASH_THRESHOLD bindings, a hash table provides O(1) lookup.
  */
 struct Env {
-    Binding[MAX_BINDINGS] bindings;
+    Binding*              bindings;
     usz                   binding_count;
+    usz                   capacity;
     Env*                  parent;
+    EnvHashEntry*         hash_table;     // NULL if not using hash
+    usz                   hash_capacity;  // Power of 2
 }
 
 fn Env* make_env(Interp* interp, Env* parent) {
     Env* env = interp.alloc_env();
+    env.bindings = (Binding*)mem::malloc(Binding.sizeof * ENV_INITIAL_CAPACITY);
     env.binding_count = 0;
+    env.capacity = ENV_INITIAL_CAPACITY;
     env.parent = parent;
+    env.hash_table = null;
+    env.hash_capacity = 0;
     return env;
 }
 
-fn void Env.define(Env* self, SymbolId name, Value* value) {
-    // Check if binding already exists and update it
+/**
+ * Build or rebuild the hash table for an Env frame.
+ * Hash capacity is next power of 2 >= 2 * binding_count.
+ */
+fn void Env.build_hash_table(Env* self) {
+    // Determine capacity (next power of 2 >= 2 * count)
+    usz cap = 32;
+    while (cap < self.binding_count * 2) cap *= 2;
+
+    // Free old hash table if exists
+    if (self.hash_table != null) {
+        mem::free(self.hash_table);
+    }
+
+    self.hash_capacity = cap;
+    self.hash_table = (EnvHashEntry*)mem::malloc(EnvHashEntry.sizeof * cap);
+    // Initialize all slots to empty
+    for (usz i = 0; i < cap; i++) {
+        self.hash_table[i].key = ENV_HASH_EMPTY;
+    }
+    // Insert all existing bindings
+    usz mask = cap - 1;
     for (usz i = 0; i < self.binding_count; i++) {
-        if (self.bindings[i].name == name) {
-            self.bindings[i].value = value;
+        usz slot = (usz)self.bindings[i].name & mask;
+        while (self.hash_table[slot].key != ENV_HASH_EMPTY) {
+            slot = (slot + 1) & mask;
+        }
+        self.hash_table[slot].key = self.bindings[i].name;
+        self.hash_table[slot].index = i;
+    }
+}
+
+/**
+ * Look up a SymbolId in the hash table. Returns index into bindings or ~(usz)0 if not found.
+ */
+fn usz Env.hash_lookup(Env* self, SymbolId name) {
+    usz mask = self.hash_capacity - 1;
+    usz slot = (usz)name & mask;
+    for (;;) {
+        SymbolId k = self.hash_table[slot].key;
+        if (k == name) return self.hash_table[slot].index;
+        if (k == ENV_HASH_EMPTY) return ~(usz)0;
+        slot = (slot + 1) & mask;
+    }
+}
+
+/**
+ * Insert into the hash table (must have space — caller ensures load factor).
+ */
+fn void Env.hash_insert(Env* self, SymbolId name, usz index) {
+    usz mask = self.hash_capacity - 1;
+    usz slot = (usz)name & mask;
+    while (self.hash_table[slot].key != ENV_HASH_EMPTY && self.hash_table[slot].key != name) {
+        slot = (slot + 1) & mask;
+    }
+    self.hash_table[slot].key = name;
+    self.hash_table[slot].index = index;
+}
+
+fn void Env.define(Env* self, SymbolId name, Value* value) {
+    // Fast path: use hash table if available
+    if (self.hash_table != null) {
+        usz idx = self.hash_lookup(name);
+        if (idx != ~(usz)0) {
+            self.bindings[idx].value = value;
             return;
         }
+    } else {
+        // Linear scan for small frames
+        for (usz i = 0; i < self.binding_count; i++) {
+            if (self.bindings[i].name == name) {
+                self.bindings[i].value = value;
+                return;
+            }
+        }
     }
-    // Add new binding
-    if (self.binding_count >= MAX_BINDINGS) {
-        io::eprintfn("ERROR: environment binding limit exceeded (%d)", MAX_BINDINGS);
-        return;
+    // Grow if needed
+    if (self.binding_count >= self.capacity) {
+        usz new_cap = self.capacity * 2;
+        Binding* new_bindings = (Binding*)mem::malloc(Binding.sizeof * new_cap);
+        for (usz i = 0; i < self.binding_count; i++) {
+            new_bindings[i] = self.bindings[i];
+        }
+        mem::free(self.bindings);
+        self.bindings = new_bindings;
+        self.capacity = new_cap;
     }
-    self.bindings[self.binding_count].name = name;
-    self.bindings[self.binding_count].value = value;
+    usz new_idx = self.binding_count;
+    self.bindings[new_idx].name = name;
+    self.bindings[new_idx].value = value;
     self.binding_count++;
+
+    // Build hash table if we crossed the threshold
+    if (self.hash_table == null && self.binding_count > ENV_HASH_THRESHOLD) {
+        self.build_hash_table();
+    } else if (self.hash_table != null) {
+        // Check load factor: rebuild if > 70%
+        if (self.binding_count * 10 > self.hash_capacity * 7) {
+            self.build_hash_table();
+        } else {
+            self.hash_insert(name, new_idx);
+        }
+    }
 }
 
 fn Value* Env.lookup(Env* self, SymbolId name) {
-    // Search current frame
-    for (usz i = 0; i < self.binding_count; i++) {
-        if (self.bindings[i].name == name) {
-            return self.bindings[i].value;
+    // Fast path: use hash table if available
+    if (self.hash_table != null) {
+        usz idx = self.hash_lookup(name);
+        if (idx != ~(usz)0) {
+            return self.bindings[idx].value;
+        }
+    } else {
+        // Linear scan for small frames
+        for (usz i = 0; i < self.binding_count; i++) {
+            if (self.bindings[i].name == name) {
+                return self.bindings[i].value;
+            }
         }
     }
     // Search parent
@@ -575,10 +970,18 @@ fn Value* Env.lookup(Env* self, SymbolId name) {
 }
 
 fn bool Env.set(Env* self, SymbolId name, Value* value) {
-    for (usz i = 0; i < self.binding_count; i++) {
-        if (self.bindings[i].name == name) {
-            self.bindings[i].value = value;
+    if (self.hash_table != null) {
+        usz idx = self.hash_lookup(name);
+        if (idx != ~(usz)0) {
+            self.bindings[idx].value = value;
             return true;
+        }
+    } else {
+        for (usz i = 0; i < self.binding_count; i++) {
+            if (self.bindings[i].name == name) {
+                self.bindings[i].value = value;
+                return true;
+            }
         }
     }
     if (self.parent != null) return self.parent.set(name, value);
@@ -628,6 +1031,10 @@ enum ExprTag : char {
     E_DEFMACRO,   // (defmacro name transformer) - macro definition
     E_MODULE,     // (module name (export ...) body...) - module definition
     E_IMPORT,     // (import name) - module import
+    E_DEFTYPE,    // (define [type] Name fields...)
+    E_DEFABSTRACT, // (define [abstract] Name [Parent])
+    E_DEFUNION,   // (define [union] Name variants...)
+    E_DEFALIAS,   // (define [alias] Name Target)
 }
 
 struct ExprLit {
@@ -645,6 +1052,8 @@ struct ExprLambda {
     bool     has_rest;        // True if variadic (.. rest)
     SymbolId rest_param;      // Rest parameter name
     Expr*    body;
+    TypeAnnotation[8] param_annotations;  // Type annotations for first 8 params
+    bool has_typed_params;    // True if any param has a type annotation
 }
 
 struct ExprApp {
@@ -740,6 +1149,7 @@ enum PatternTag : char {
     PAT_CONS,       // (head . tail) - matches cons cell
     PAT_SEQ,        // [a b c], [head .. tail], [x y ..] - sequence pattern
     PAT_QUOTE,      // 'symbol or 'literal - matches quoted datum
+    PAT_CONSTRUCTOR, // (TypeName sub-patterns...) - matches type instance
 }
 
 /**
@@ -776,6 +1186,13 @@ struct Pattern {
             usz elem_count;
             RestPosition rest_pos;
             SymbolId rest_binding;  // Name to bind rest to (if REST_MIDDLE)
+        }
+
+        // PAT_CONSTRUCTOR: (TypeName sub-patterns...)
+        struct {
+            SymbolId constructor_name;
+            Pattern*[MAX_TYPE_FIELDS] ctor_sub_patterns;
+            usz ctor_sub_count;
         }
     }
 }
@@ -841,6 +1258,9 @@ struct ExprBegin {
 struct ExprSet {
     SymbolId name;
     Expr*    value;
+    bool     is_path;
+    SymbolId[MAX_PATH_SEGMENTS] path_segments;
+    usz      path_segment_count;
 }
 
 /**
@@ -895,6 +1315,59 @@ struct ExprImport {
     usz      path_len;
 }
 
+// =============================================================================
+// SECTION 6.7: TYPE DEFINITION AST NODES
+// =============================================================================
+
+/**
+ * TypeField — Field in a type definition with optional type annotation.
+ */
+struct TypeField {
+    SymbolId name;
+    TypeAnnotation type_ann;
+}
+
+/**
+ * ExprDefType — (define [type] Name fields...) or (define [type] (Name Parent) fields...)
+ */
+struct ExprDefType {
+    SymbolId name;
+    SymbolId parent;
+    bool has_parent;
+    TypeField[MAX_TYPE_FIELDS] fields;
+    usz field_count;
+    SymbolId[MAX_TYPE_PARAMS] type_params;
+    usz type_param_count;
+}
+
+/**
+ * ExprDefAbstract — (define [abstract] Name) or (define [abstract] (Name Parent))
+ */
+struct ExprDefAbstract {
+    SymbolId name;
+    SymbolId parent;
+    bool has_parent;
+}
+
+/**
+ * ExprDefUnion — (define [union] (Name T...) Variant1 (Variant2 T) ...)
+ */
+struct ExprDefUnion {
+    SymbolId name;
+    SymbolId[MAX_TYPE_PARAMS] type_params;
+    usz type_param_count;
+    UnionVariant[16] variants;
+    usz variant_count;
+}
+
+/**
+ * ExprDefAlias — (define [alias] Name Target)
+ */
+struct ExprDefAlias {
+    SymbolId name;
+    TypeAnnotation target;
+}
+
 /**
  * Module — Loaded module record.
  */
@@ -919,7 +1392,7 @@ struct Expr {
     union {
         ExprLit     lit;
         ExprVar     var_expr;
-        ExprLambda  lambda;
+        ExprLambda* lambda;       // Pointer-indirect (large struct)
         ExprApp     app;
         ExprIf      if_expr;
         ExprLet     let_expr;
@@ -934,15 +1407,19 @@ struct Expr {
         ExprMatch   match;
         ExprAnd     and_expr;
         ExprOr      or_expr;
-        ExprCall    call;
-        ExprBegin   begin;
+        ExprCall*   call;         // Pointer-indirect (large struct)
+        ExprBegin*  begin;        // Pointer-indirect (large struct)
         ExprSet     set_expr;
         ExprQuasiquote   quasiquote;
         ExprUnquote      unquote;
         ExprUnquoteSplicing unquote_splicing;
         ExprDefineMacro  define_macro;
-        ExprModule       module_expr;
+        ExprModule*      module_expr;  // Pointer-indirect (large struct)
         ExprImport       import_expr;
+        ExprDefType*     deftype;      // Pointer-indirect (large struct)
+        ExprDefAbstract  defabstract;
+        ExprDefUnion*    defunion;     // Pointer-indirect (large struct)
+        ExprDefAlias     defalias;
     }
 }
 
@@ -1023,6 +1500,68 @@ struct Interp {
     SymbolId sym_defmacro;
     SymbolId sym_dotdot;    // ".." symbol for template splice detection
     SymbolId sym_macro;     // "macro" symbol for [macro] annotation
+
+    // Type system symbols
+    SymbolId sym_type;      // "type" for [type] annotation
+    SymbolId sym_abstract;  // "abstract" for [abstract] annotation
+    SymbolId sym_union;     // "union" for [union] annotation
+    SymbolId sym_alias;     // "alias" for [alias] annotation
+
+    // Built-in type name symbols
+    SymbolId sym_Int;
+    SymbolId sym_Double;
+    SymbolId sym_String;
+    SymbolId sym_Symbol;
+    SymbolId sym_List;
+    SymbolId sym_Bool;
+    SymbolId sym_Nil;
+    SymbolId sym_Closure;
+    SymbolId sym_Array;
+    SymbolId sym_Dict;
+    SymbolId sym_Any;
+    SymbolId sym_Val;
+
+    // I/O effect tags
+    SymbolId sym_io_print;
+    SymbolId sym_io_println;
+    SymbolId sym_io_display;
+    SymbolId sym_io_newline;
+    SymbolId sym_io_read_file;
+    SymbolId sym_io_write_file;
+    SymbolId sym_io_file_exists;
+    SymbolId sym_io_read_lines;
+
+    // Cached cons path symbols
+    SymbolId sym_car;
+    SymbolId sym_cdr;
+
+    // Cached I/O fast path primitives (set after register_primitives)
+    Value* raw_print;
+    Value* raw_println;
+    Value* raw_display;
+    Value* raw_newline;
+    Value* raw_read_file;
+    Value* raw_write_file;
+    Value* raw_file_exists;
+    Value* raw_read_lines;
+
+    // Cached TypeIds for built-in types (avoid repeated hash lookups)
+    TypeId tid_Int;
+    TypeId tid_Double;
+    TypeId tid_String;
+    TypeId tid_Symbol;
+    TypeId tid_List;
+    TypeId tid_Bool;
+    TypeId tid_Nil;
+    TypeId tid_Closure;
+    TypeId tid_Array;
+    TypeId tid_Dict;
+    TypeId tid_Any;
+
+    // Type registry
+    TypeRegistry types;
+    int constructor_type_id;  // Set before calling type constructor primitive
+    void* prim_user_data;     // Set before calling primitive with user_data
 
     // Stack overflow protection
     usz eval_depth;
@@ -1128,6 +1667,43 @@ fn void Interp.init(Interp* self) {
     self.sym_dotdot = self.symbols.intern("..");
     self.sym_macro = self.symbols.intern("macro");
 
+    // Type system symbols
+    self.sym_type = self.symbols.intern("type");
+    self.sym_abstract = self.symbols.intern("abstract");
+    self.sym_union = self.symbols.intern("union");
+    self.sym_alias = self.symbols.intern("alias");
+
+    // Built-in type name symbols
+    self.sym_Int = self.symbols.intern("Int");
+    self.sym_Double = self.symbols.intern("Double");
+    self.sym_String = self.symbols.intern("String");
+    self.sym_Symbol = self.symbols.intern("Symbol");
+    self.sym_List = self.symbols.intern("List");
+    self.sym_Bool = self.symbols.intern("Bool");
+    self.sym_Nil = self.symbols.intern("Nil");
+    self.sym_Closure = self.symbols.intern("Closure");
+    self.sym_Array = self.symbols.intern("Array");
+    self.sym_Dict = self.symbols.intern("Dict");
+    self.sym_Any = self.symbols.intern("Any");
+    self.sym_Val = self.symbols.intern("Val");
+
+    // I/O effect tags
+    self.sym_io_print = self.symbols.intern("io/print");
+    self.sym_io_println = self.symbols.intern("io/println");
+    self.sym_io_display = self.symbols.intern("io/display");
+    self.sym_io_newline = self.symbols.intern("io/newline");
+    self.sym_io_read_file = self.symbols.intern("io/read-file");
+    self.sym_io_write_file = self.symbols.intern("io/write-file");
+    self.sym_io_file_exists = self.symbols.intern("io/file-exists?");
+    self.sym_io_read_lines = self.symbols.intern("io/read-lines");
+
+    // Cons path symbols
+    self.sym_car = self.symbols.intern("car");
+    self.sym_cdr = self.symbols.intern("cdr");
+
+    // Type registry
+    self.types.init();
+
     // Module system
     self.sym_module = self.symbols.intern("module");
     self.sym_import = self.symbols.intern("import");
@@ -1165,6 +1741,8 @@ fn Env* Interp.alloc_env(Interp* self) {
     Env e;
     e.binding_count = 0;
     e.parent = null;
+    e.hash_table = null;
+    e.hash_capacity = 0;
     main::ObjectHandle h = main::allocate_in(self.current_frame, Env, e);
     return main::dereference_as(Env, h);
 }
@@ -1194,6 +1772,27 @@ fn void print_value(Value* v, SymbolTable* syms) {
     switch (v.tag) {
         case INT:
             io::printf("%d", v.int_val);
+        case DOUBLE:
+            // Print float: strip trailing zeros but keep at least one decimal
+            double dv = v.double_val;
+            if (dv != dv) {
+                io::print("+nan.0");
+            } else if (dv == 1.0/0.0) {
+                io::print("+inf.0");
+            } else if (dv == -1.0/0.0) {
+                io::print("-inf.0");
+            } else {
+                io::printf("%.15g", dv);
+                // If printf didn't include a decimal point, add .0
+                // Check by re-printing to a buffer
+                char[64] buf;
+                char[] bslice = io::bprintf(&buf, "%.15g", dv)!!;
+                bool has_dot = false;
+                for (usz i = 0; i < bslice.len; i++) {
+                    if (bslice[i] == '.' || bslice[i] == 'e' || bslice[i] == 'E') { has_dot = true; break; }
+                }
+                if (!has_dot) io::print(".0");
+            }
         case STRING:
             io::printf("\"%s\"", (ZString)&v.str_val.chars);
         case SYMBOL:
@@ -1226,6 +1825,37 @@ fn void print_value(Value* v, SymbolTable* syms) {
             io::printf("#<hashmap:%d>", v.hashmap_val.count);
         case FFI_HANDLE:
             io::printf("#<ffi-handle:%s>", (ZString)&v.ffi_val.lib_name);
+        case ARRAY:
+            io::print("[");
+            if (v.array_val != null) {
+                for (usz vi = 0; vi < v.array_val.length; vi++) {
+                    if (vi > 0) io::print(" ");
+                    print_value(v.array_val.items[vi], syms);
+                }
+            }
+            io::print("]");
+        case TYPE_INFO:
+            io::printf("#<type %s>", syms.get_name(v.type_info_val.name));
+        case INSTANCE:
+            if (v.instance_val != null) {
+                io::print("(");
+                // Print type name — need the registry to look up
+                // For now just print the type_id
+                io::printf("instance:%d", v.instance_val.type_id);
+                for (usz fi = 0; fi < v.instance_val.field_count; fi++) {
+                    io::print(" ");
+                    print_value(v.instance_val.fields[fi], syms);
+                }
+                io::print(")");
+            } else {
+                io::print("#<instance:null>");
+            }
+        case METHOD_TABLE:
+            if (v.method_table_val != null) {
+                io::printf("#<method-table %s:%d>", syms.get_name(v.method_table_val.name), v.method_table_val.entry_count);
+            } else {
+                io::print("#<method-table:null>");
+            }
         default:
             io::print("#<unknown>");
     }
@@ -1234,4 +1864,121 @@ fn void print_value(Value* v, SymbolTable* syms) {
 fn void println_value(Value* v, SymbolTable* syms) {
     print_value(v, syms);
     io::printn("");
+}
+
+// =============================================================================
+// print_value_to_buf — capture print_value output to a char buffer
+// =============================================================================
+
+struct PrintBuf {
+    char* buf;
+    usz pos;
+    usz capacity;
+}
+
+fn void PrintBuf.append_str(PrintBuf* self, char[] s) {
+    for (usz i = 0; i < s.len && self.pos < self.capacity - 1; i++) {
+        self.buf[self.pos++] = s[i];
+    }
+}
+
+fn void PrintBuf.append_char(PrintBuf* self, char c) {
+    if (self.pos < self.capacity - 1) {
+        self.buf[self.pos++] = c;
+    }
+}
+
+fn void PrintBuf.append_zstr(PrintBuf* self, ZString zs) {
+    char* p = (char*)zs;
+    while (*p != 0 && self.pos < self.capacity - 1) {
+        self.buf[self.pos++] = *p;
+        p++;
+    }
+}
+
+fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
+    if (v == null || v.tag == NIL) {
+        pb.append_str("nil");
+        return;
+    }
+
+    switch (v.tag) {
+        case INT:
+            char[32] ibuf;
+            char[] is = io::bprintf(&ibuf, "%d", v.int_val)!!;
+            pb.append_str(is);
+        case DOUBLE:
+            double dv = v.double_val;
+            if (dv != dv) {
+                pb.append_str("+nan.0");
+            } else if (dv == 1.0/0.0) {
+                pb.append_str("+inf.0");
+            } else if (dv == -1.0/0.0) {
+                pb.append_str("-inf.0");
+            } else {
+                char[64] dbuf;
+                char[] ds = io::bprintf(&dbuf, "%.15g", dv)!!;
+                pb.append_str(ds);
+                bool has_dot = false;
+                for (usz i = 0; i < ds.len; i++) {
+                    if (ds[i] == '.' || ds[i] == 'e' || ds[i] == 'E') { has_dot = true; break; }
+                }
+                if (!has_dot) pb.append_str(".0");
+            }
+        case STRING:
+            pb.append_char('"');
+            pb.append_zstr((ZString)&v.str_val.chars);
+            pb.append_char('"');
+        case SYMBOL:
+            pb.append_str(syms.get_name(v.sym_val));
+        case CONS:
+            pb.append_char('(');
+            print_value_buf(v.cons_val.car, syms, pb);
+            Value* rest = v.cons_val.cdr;
+            while (is_cons(rest)) {
+                pb.append_char(' ');
+                print_value_buf(rest.cons_val.car, syms, pb);
+                rest = rest.cons_val.cdr;
+            }
+            if (!is_nil(rest)) {
+                pb.append_str(" . ");
+                print_value_buf(rest, syms, pb);
+            }
+            pb.append_char(')');
+        case CLOSURE:
+            pb.append_str("#<closure>");
+        case CONTINUATION:
+            pb.append_str("#<continuation>");
+        case PRIMITIVE:
+            pb.append_str("#<primitive>");
+        case PARTIAL_PRIM:
+            pb.append_str("#<partial>");
+        case ERROR:
+            pb.append_str("#<error>");
+        case HASHMAP:
+            char[32] hbuf;
+            char[] hs = io::bprintf(&hbuf, "#<hashmap:%d>", v.hashmap_val.count)!!;
+            pb.append_str(hs);
+        case ARRAY:
+            pb.append_char('[');
+            if (v.array_val != null) {
+                for (usz vi = 0; vi < v.array_val.length; vi++) {
+                    if (vi > 0) pb.append_char(' ');
+                    print_value_buf(v.array_val.items[vi], syms, pb);
+                }
+            }
+            pb.append_char(']');
+        default:
+            pb.append_str("#<unknown>");
+    }
+}
+
+fn usz print_value_to_buf(Value* v, SymbolTable* syms, char* buf, usz buf_size) {
+    PrintBuf pb;
+    pb.buf = buf;
+    pb.pos = 0;
+    pb.capacity = buf_size;
+    print_value_buf(v, syms, &pb);
+    buf[pb.pos] = 0;
+    return pb.pos;
 }

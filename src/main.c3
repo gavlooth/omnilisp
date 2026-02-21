@@ -556,15 +556,43 @@ fn void Pool.arena_free(Pool* self, void* ptr, usz size) {
         char* arena_end = arena_start + self.arenas[i].capacity;
 
         if ((char*)ptr >= arena_start && (char*)ptr < arena_end) {
-            // Found the owning arena — add to free-list
-            usz offset = (usz)((char*)ptr - arena_start);
-            FreeListEntry entry = { .offset = offset, .size = size, .arena_idx = i };
-            self.free_list.push(entry);
+            usz new_offset = (usz)((char*)ptr - arena_start);
+
+            // Coalesce with adjacent free chunks in the same arena
+            isz merge_left = -1;   // chunk ending where new starts
+            isz merge_right = -1;  // chunk starting where new ends
+
+            for (usz j = 0; j < self.free_list.len(); j++) {
+                if (self.free_list[j].arena_idx != i) continue;
+                if (self.free_list[j].offset + self.free_list[j].size == new_offset) {
+                    merge_left = (isz)j;
+                }
+                if (new_offset + size == self.free_list[j].offset) {
+                    merge_right = (isz)j;
+                }
+            }
+
+            if (merge_left >= 0 && merge_right >= 0) {
+                // Bridge: merge left + new + right into one chunk
+                self.free_list[(usz)merge_left].size += size + self.free_list[(usz)merge_right].size;
+                // Remove right entry (swap with last and pop)
+                usz ri = (usz)merge_right;
+                usz last = self.free_list.len() - 1;
+                if (ri != last) self.free_list[ri] = self.free_list[last];
+                (void)self.free_list.pop();
+            } else if (merge_left >= 0) {
+                self.free_list[(usz)merge_left].size += size;
+            } else if (merge_right >= 0) {
+                self.free_list[(usz)merge_right].offset = new_offset;
+                self.free_list[(usz)merge_right].size += size;
+            } else {
+                FreeListEntry entry = { .offset = new_offset, .size = size, .arena_idx = i };
+                self.free_list.push(entry);
+            }
             return;
         }
     }
-    // If we get here, ptr wasn't from any arena (bug in caller)
-    unreachable("arena_free: pointer not from any arena");
+    io::eprintfn("WARNING: arena_free: pointer not from any arena");
 }
 
 // -----------------------------------------------------------------------------
@@ -1995,6 +2023,9 @@ fn void* RegionRegistry.dereference_via_ghost(RegionRegistry* self, ObjectHandle
         unreachable("dereference_via_ghost: host region is dead");
     }
     Region* host_region = &self.region_storage[host_idx];
+    if (result.ghost_idx >= host_region.inherited_ghost_tables.len()) {
+        unreachable("ghost_idx out of bounds in dereference_via_ghost");
+    }
     GhostTable* ghost = &host_region.inherited_ghost_tables[result.ghost_idx];
 
     usz slot_idx = (usz)(uint)handle.slot_id;
@@ -2250,10 +2281,18 @@ fn RegionHandle RegionRegistry.manual_extend(
         GhostLookupResult result = self.ghost_index.lookup(current.region_id, current.generation);
         if (result.found) {
             usz host_idx = (usz)(uint)result.host_id;
+            if (host_idx >= self.region_storage.len() || !self.region_alive_flags[host_idx]) {
+                break;
+            }
             Region* host = &self.region_storage[host_idx];
+            if (result.ghost_idx >= host.inherited_ghost_tables.len()) {
+                break;
+            }
             GhostTable* ghost = &host.inherited_ghost_tables[result.ghost_idx];
             usz slot_idx = (usz)(uint)current.slot_id;
-            assert(slot_idx < ghost.forwarding_records.len(), "slot_id out of bounds in ghost table during manual_extend");
+            if (slot_idx >= ghost.forwarding_records.len()) {
+                break;
+            }
             ObjectRecord* record = &ghost.forwarding_records[slot_idx];
             if (record.forwarded) {
                 current = record.forward_target;
@@ -2512,211 +2551,4 @@ fn bool str_eq(char* s, char[] target) {
     return s[target.len] == 0;
 }
 
-/**
- * Main entry point.
- *
- * Usage:
- *   ./main                              - Run all tests
- *   ./main -repl                        - Start interactive REPL
- *   ./main --repl                       - Start interactive REPL
- *   ./main --compile input.lisp out.c3  - Compile Lisp to C3
- *   ./main script.pik                   - Run a script file
- */
-fn int main(int argc, char** argv) {
-    // Check for compile flag
-    bool run_compile = false;
-    char* input_file = null;
-    char* output_file = null;
-    for (int i = 1; i < argc; i++) {
-        if (str_eq(argv[i], "--compile") || str_eq(argv[i], "-compile")) {
-            run_compile = true;
-            if (i + 1 < argc) {
-                input_file = argv[i + 1];
-            }
-            if (i + 2 < argc) {
-                output_file = argv[i + 2];
-            }
-            break;
-        }
-    }
-
-    if (run_compile) {
-        // Compile mode
-        if (input_file == null || output_file == null) {
-            io::printn("Usage: ./main --compile input.lisp output.c3");
-            return 1;
-        }
-
-        io::printfn("Compiling %s to %s...", (ZString)input_file, (ZString)output_file);
-
-        // Read input file
-        char[] input_path;
-        usz input_len = 0;
-        char* p = input_file;
-        while (*p != 0) { input_len++; p++; }
-        input_path = input_file[:input_len];
-
-        if (try source = io::file::load_temp((String)input_path)) {
-            // Initialize interpreter for symbol table (heap-allocated due to size)
-            lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
-            interp.init();
-
-            // Compile to C3
-            char[] c3_code = lisp::compile_to_c3(source, interp);
-
-            // Write output file
-            char[] output_path;
-            usz output_len = 0;
-            p = output_file;
-            while (*p != 0) { output_len++; p++; }
-            output_path = output_file[:output_len];
-
-            if (try file = io::file::open((String)output_path, "w")) {
-                file.write(c3_code)!!;
-                file.close()!!;
-                io::printfn("Compilation successful: %s", (ZString)output_file);
-                mem::free(interp);
-                return 0;
-            } else {
-                io::printfn("Error: cannot write output file %s", (ZString)output_file);
-                mem::free(interp);
-                return 1;
-            }
-        } else {
-            io::printfn("Error: cannot read input file %s", (ZString)input_file);
-            return 1;
-        }
-    }
-
-    // Check for REPL flag
-    bool run_repl = false;
-    for (int i = 1; i < argc; i++) {
-        if (str_eq(argv[i], "-repl") || str_eq(argv[i], "--repl")) {
-            run_repl = true;
-            break;
-        }
-    }
-
-    if (run_repl) {
-        // Start REPL mode
-        io::printn("Starting Lisp REPL...");
-
-        // Initialize thread-local registry first
-        thread_registry_init();
-
-        // Initialize interpreter
-        lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
-        interp.init();
-        lisp::register_primitives(interp);
-        lisp::register_stdlib(interp);
-
-        // Run REPL
-        lisp::repl(interp);
-
-        // Clean up
-        mem::free(interp);
-        thread_registry_shutdown();
-        return 0;
-    }
-
-    // Check for script file argument (any arg that isn't a known flag)
-    if (argc > 1) {
-        // argv[1] is not --compile, -repl, or --repl — treat as script file
-        char* script_file = argv[1];
-        usz script_path_len = 0;
-        char* sp = script_file;
-        while (*sp != 0) { script_path_len++; sp++; }
-        char[] script_path = script_file[:script_path_len];
-
-        // Read script file
-        if (try source = io::file::load_temp((String)script_path)) {
-            // Initialize thread-local registry
-            thread_registry_init();
-
-            // Initialize interpreter
-            lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
-            interp.init();
-            lisp::register_primitives(interp);
-            lisp::register_stdlib(interp);
-
-            // Run the script (multiple expressions)
-            usz len = source.len;
-            if (len > 65535) len = 65535;
-            char[] src = source[:len];
-            lisp::EvalResult r = lisp::run_program(src, interp);
-
-            if (r.error.has_error) {
-                // Print error
-                usz msg_len = 0;
-                while (msg_len < 256 && r.error.message[msg_len] != 0) {
-                    msg_len++;
-                }
-                if (r.error.line > 0) {
-                    io::printf("Error at line %d, column %d: ", (int)r.error.line, (int)r.error.column);
-                } else {
-                    io::print("Error: ");
-                }
-                for (usz i = 0; i < msg_len; i++) {
-                    io::printf("%c", r.error.message[i]);
-                }
-                io::printn("");
-                mem::free(interp);
-                thread_registry_shutdown();
-                return 1;
-            }
-
-            // Print result if non-nil
-            if (r.value != null && !lisp::is_nil(r.value)) {
-                lisp::print_value(r.value, &interp.symbols);
-                io::printn("");
-            }
-
-            mem::free(interp);
-            thread_registry_shutdown();
-            return 0;
-        } else {
-            io::printfn("Error: cannot read script file '%s'", (ZString)script_file);
-            return 1;
-        }
-    }
-
-    // Run tests mode
-    io::printfn("Region Memory System v3 initialized");
-
-    // Run destructor registry tests (O(1) lookup implementation)
-    run_destructor_registry_tests();
-
-    // Run ghost lookup tests (O(1) optimization verification)
-    run_ghost_lookup_tests();
-
-    // Run context capture/restore tests (x86_64 assembly primitives)
-    // Note: These tests exercise low-level CPU state manipulation
-    run_context_tests();
-
-    // Run delimited continuation tests (reset/shift/resume system)
-    // Note: These tests verify the continuation machinery including:
-    // - Prompt stack operations
-    // - Continuation allocation and lifecycle
-    // - Region integration
-    // - Effect handler patterns
-    run_delimited_tests();
-
-    // Initialize thread-local registry BEFORE Lisp tests (interpreter uses regions)
-    thread_registry_init();
-    io::printfn("Thread-local registry initialized, root id=%d", (uint)thread_registry().root_id);
-
-    // Run Lisp interpreter tests
-    lisp::run_lisp_tests();
-
-    // Create a child region using convenience function
-    RegionHandle child = create_region();
-    io::printfn("Child region created: id=%d, gen=%d",
-        (uint)child.region_id, (uint)child.generation);
-
-    // Clean up
-    release_region(child);  // Release our reference
-    thread_registry_shutdown();
-
-    io::printfn("System ready.");
-    return 0;
-}
+// main() entry point is in entry.c3

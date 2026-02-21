@@ -1,8 +1,29 @@
 # Pika Lisp — Claude Code Instructions
 
+## Onboarding — Read Before Any Work
+
+Before writing or modifying code, understand the project's intent and paradigms:
+
+1. **Read `memory/MEMORY.md`** — project overview, key files, naming conventions, architecture, what's implemented
+2. **Read `docs/LANGUAGE_SPEC.md`** — the language Pika Lisp aims to be: syntax, data types, special forms, type system, dispatch, effects
+3. **For type/dispatch/effects work**, also read `memory/type-system-design.md`
+
+### Design Intent
+Pika is a **Lisp with modern semantics** — not Scheme, not Clojure, not Common Lisp. Key paradigm choices:
+- **Three collection types**: list (linked, `'(1 2 3)`), array (contiguous, `[1 2 3]`), dict (hash, `{'a 1}`)
+- **No "vector"** — arrays are arrays. No Scheme/C++ naming.
+- **Generic operations over type-prefixed names**: `(ref coll key)` not `(array-ref arr idx)` / `(dict-ref d k)`
+- **Multiple dispatch as the extension mechanism** — no traits, no interfaces, dispatch table IS the protocol
+- **Algebraic effects for I/O** — `print`/`println` go through `perform` with fast path when unhandled
+- **Auto-curried lambdas** — `(lambda (x y) body)` desugars to nested single-param lambdas, except typed multi-param (preserved for dispatch)
+- **Region-based memory** — no GC, deterministic cleanup
+- **Truthiness**: only `nil` and `false` are falsy — `0`, `""`, `'()` are truthy
+
+When proposing new features or changes, check whether they align with these paradigms. Prefer generic dispatch over adding new type-prefixed primitives. Prefer simplicity over configurability.
+
 ## Build & Test
 - Build: `c3c build`
-- Run tests: `./build/main`
+- Run: `LD_LIBRARY_PATH=/usr/local/lib ./build/main` (needs GNU Lightning)
 - All tests must pass before committing
 
 ## Conventions

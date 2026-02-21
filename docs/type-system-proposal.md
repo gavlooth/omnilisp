@@ -1,8 +1,13 @@
 # Julia-Style Type System - Syntax Proposal
 
+> **Status Note (2026-02-19):** This document is a *design proposal*. Checkmarks (✓) indicate
+> features that were **designed** and **syntax-agreed**, NOT necessarily implemented.
+> See the Implementation Status section at the bottom for what actually works.
+> The canonical syntax reference is `type-system-syntax.md`.
+
 ---
 
-## 1. Parametric Types ✓
+## 1. Parametric Types ✓ (syntax designed, type params stored but NOT substituted)
 
 Scheme-style with parameters in name position:
 
@@ -28,9 +33,13 @@ Scheme-style with parameters in name position:
 
 ---
 
-## 2. Type Constraints ✓
+## 2. Type Constraints ✓ (syntax designed, parsed but NOT enforced)
 
-Using `^{:where [...]}` metadata map with braces:
+> **Implementation note:** The actual implementation uses flat metadata `^{'T Number}` syntax
+> (from `type-system-syntax.md`), NOT the `:where` keyword syntax shown below. The `:where`
+> syntax was an earlier proposal. Constraints are parsed but not checked at runtime.
+
+Using `^{:where [...]}` metadata map with braces (PROPOSED, not implemented):
 
 ```lisp
 ; Single constraint - T must be subtype of Number
@@ -79,9 +88,9 @@ Using `^{:where [...]}` metadata map with braces:
 
 ---
 
-## 4. Field Access (Path Expressions) ✓
+## 4. Field Access (Path Expressions) ✓ IMPLEMENTED
 
-Dot notation from OmniLisp:
+Dot notation:
 
 ```lisp
 point.x
@@ -90,42 +99,43 @@ person.address.city
 
 ; In expressions
 (+ point.x point.y)
-(set! counter.value (+ counter.value 1))
+(set! counter.value (+ counter.value 1))  ; field mutation
 ```
 
 ---
 
-## 4.1 Bracket Indexing ✓
+## 4.1 Bracket Indexing ✓ IMPLEMENTED (dot-bracket syntax)
 
-Bracket notation for arrays, lists, and dictionaries:
+> **Implementation note:** Actual syntax uses dot-bracket `.[` (not bare bracket `[`).
+> The `.[` token is a distinct lexer token (T_DOT_BRACKET).
 
 ```lisp
-; Array/list indexing
-arr[0]                   ; first element
-arr[-1]                  ; last element
-arr[i]                   ; variable index
-matrix[i][j]             ; chained indexing
-
-; Dictionary access
-dict[:key]               ; keyword key (preferred)
-dict["key"]              ; string key
-
-; In expressions
-(+ arr[0] arr[1])
-(make-array 10)[0]       ; index function result
+; Actual syntax (dot-bracket)
+arr.[0]                  ; first element
+arr.[i]                  ; variable index
+matrix.[i].[j]           ; chained indexing
+hashmap.['key]           ; hashmap key lookup
 ```
 
-> Note: Keywords (`:key`) are the preferred way to access dictionary entries.
+> Note: The bare `arr[0]` syntax from this proposal was NOT implemented.
+> Use `arr.[0]` instead.
 
 ---
 
-## 5. Mutable Types ✓
+## 5. Mutable Types ✓ (syntax designed, NOT implemented as attribute)
+
+> **Implementation note:** `[type mutable]` attribute is NOT implemented.
+> All type instances are mutable by default — `(set! instance.field value)` works
+> on any type without needing the `mutable` attribute.
 
 ```lisp
+; Proposed (NOT implemented — no mutable attribute needed)
 (define [type mutable] Counter
   (^Int value))
 
-(set! counter.value 10)
+; Actual (works now — all types are mutable)
+(define [type] Counter (^Int value))
+(set! counter.value 10)  ; works without [type mutable]
 ```
 
 ---
@@ -140,9 +150,13 @@ dict["key"]              ; string key
 
 ---
 
-## 7. Function Types ✓
+## 7. Function Types ✓ (syntax designed, NOT implemented)
 
-Using `Proc` keyword:
+> **Implementation note:** `Proc` is not a recognized keyword. The `type-system-syntax.md`
+> uses `Lambda` as the function type constructor: `^(Lambda Int Int)`. Neither `Proc` nor
+> `Lambda` function types are enforced at runtime — they exist only as annotations.
+
+Using `Proc` keyword (PROPOSED):
 
 ```lisp
 ^(Proc Int Int)         ; Int -> Int
@@ -188,16 +202,45 @@ Using `Proc` keyword:
 
 ---
 
-## Memory Integration
+## Memory Integration (ASPIRATIONAL — NOT IMPLEMENTED)
+
+> The features below (`with-region`, `in-region`, `:destructor`) are NOT implemented.
+> Memory is managed automatically via the region system in `src/main.c3`.
 
 ```lisp
-; Region allocation
+; PROPOSED (not implemented)
 (with-region r
   (define p (Point 1.0 2.0))
   (+ p.x p.y))
 
-; Destructor
+; PROPOSED (not implemented)
 (define [type] ^{:destructor close-file}
   FileHandle
   (^Int fd))
 ```
+
+---
+
+## Implementation Status (2026-02-19)
+
+| Feature | Syntax | Status |
+|---------|--------|--------|
+| Struct types | `(define [type] Point (^Int x) (^Int y))` | **IMPLEMENTED** |
+| Abstract types | `(define [abstract] Shape)` | **IMPLEMENTED** |
+| Type inheritance | `(define [type] (Circle Shape) (^Int r))` | **IMPLEMENTED** |
+| Union types | `(define [union] (Option T) None (Some T))` | **IMPLEMENTED** |
+| Type aliases | `(define [alias] Num Int)` | **IMPLEMENTED** |
+| Field access | `point.x`, `line.start.y` | **IMPLEMENTED** |
+| Field mutation | `(set! point.x 99)` | **IMPLEMENTED** |
+| Dot-bracket indexing | `arr.[0]`, `map.['key]` | **IMPLEMENTED** |
+| Multiple dispatch | Typed `define` with `^Type` params | **IMPLEMENTED** |
+| Val dispatch | `^(Val 42)` for value matching | **IMPLEMENTED** |
+| Pattern matching ctors | `(match opt (None 0) ((Some x) x))` | **IMPLEMENTED** |
+| Type introspection | `type-of`, `is?`, `instance?` | **IMPLEMENTED** |
+| Parametric types | `(define [type] (Box T) (^T value))` | Parsed, NOT substituted |
+| Type constraints | `^{'T Number}` | Parsed, NOT enforced |
+| `[type mutable]` | Mutable attribute | NOT needed (all mutable) |
+| Function types | `^(Proc Int Int)` / `^(Lambda Int Int)` | NOT enforced |
+| Bare bracket indexing | `arr[0]` | NOT implemented (use `arr.[0]`) |
+| Destructors | `^{:destructor fn}` | NOT implemented |
+| Region expressions | `with-region`, `in-region` | NOT implemented |

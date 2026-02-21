@@ -22,8 +22,12 @@ enum ValueTag : char {
     V_PRIM_UNARY, // Unary primitive (called immediately with one arg)
     V_PARTIAL,    // Partially applied primitive (curried)
     V_TRUE,       // Distinguished true value
+    V_FALSE,      // Distinguished false value
     V_CONTINUATION, // Captured delimited continuation
     V_FFI_HANDLE,   // FFI library handle (dlopen result)
+    V_THUNK,        // Suspended tail call (for TCO trampoline)
+    V_DOUBLE,       // Floating-point number
+    V_INTERP_REF,   // Opaque reference to interpreter Value* (for HASHMAP, ARRAY, etc.)
 }
 
 /**
@@ -43,7 +47,7 @@ alias PrimFn = fn Value(Value a, Value b);
  * Allocated in regions.
  */
 struct StringData {
-    char[256] chars;
+    char[4096] chars;
     usz len;
 }
 
@@ -94,8 +98,22 @@ struct Value {
         ClosureData         closure_val;  // V_CLOSURE - inline closure data
         PrimFn              prim_val;     // V_PRIM - function pointer
         PartialData         partial_val;  // V_PARTIAL - inline partial application
+        double              double_val;   // V_DOUBLE - floating-point
         void*               ffi_handle;   // V_FFI_HANDLE - dlopen handle
+        ThunkData           thunk_val;    // V_THUNK - suspended tail call
+        void*               interp_ref;   // V_INTERP_REF - pointer to lisp::Value*
     }
+}
+
+/**
+ * ThunkData — Suspended tail call for TCO trampoline.
+ * Instead of making a recursive call, emit a thunk that rt_invoke will bounce.
+ * Arg is stored via ObjectHandle to avoid recursive Value definition.
+ */
+struct ThunkData {
+    ClosureFn           invoke;  // Function to invoke
+    void*               data;    // Closure data
+    main::ObjectHandle  arg;     // Argument (region-allocated Value)
 }
 
 /**
@@ -217,11 +235,33 @@ fn Value make_true() @inline {
     return v;
 }
 
+fn Value make_false() @inline {
+    Value v;
+    v.tag = V_FALSE;
+    return v;
+}
+
 fn Value make_int(long n) @inline {
     Value v;
     v.tag = V_INT;
     v.int_val = n;
     return v;
+}
+
+fn Value rt_make_double(double d) @inline {
+    Value v;
+    v.tag = V_DOUBLE;
+    v.double_val = d;
+    return v;
+}
+
+fn bool rt_is_number(Value v) @inline {
+    return v.tag == V_INT || v.tag == V_DOUBLE;
+}
+
+fn double rt_to_double(Value v) @inline {
+    if (v.tag == V_DOUBLE) return v.double_val;
+    return (double)v.int_val;
 }
 
 fn Value make_string(char[] s) {
@@ -231,7 +271,7 @@ fn Value make_string(char[] s) {
     // Create StringData in current region
     StringData str;
     usz len = s.len;
-    if (len > 255) len = 255;
+    if (len > 4095) len = 4095;
     for (usz i = 0; i < len; i++) {
         str.chars[i] = s[i];
     }
@@ -248,7 +288,7 @@ fn Value make_string_in_region(char[] s, main::RegionHandle region) {
 
     StringData str;
     usz len = s.len;
-    if (len > 255) len = 255;
+    if (len > 4095) len = 4095;
     for (usz i = 0; i < len; i++) {
         str.chars[i] = s[i];
     }
@@ -266,7 +306,7 @@ fn Value make_symbol(char[] s) {
     // Create SymbolData in current region
     SymbolData sym;
     usz len = s.len;
-    if (len > 255) len = 255;
+    if (len > 4095) len = 4095;
     for (usz i = 0; i < len; i++) {
         sym.chars[i] = s[i];
     }
@@ -283,7 +323,7 @@ fn Value make_symbol_in_region(char[] s, main::RegionHandle region) {
 
     SymbolData sym;
     usz len = s.len;
-    if (len > 255) len = 255;
+    if (len > 4095) len = 4095;
     for (usz i = 0; i < len; i++) {
         sym.chars[i] = s[i];
     }
@@ -336,6 +376,15 @@ fn Value make_partial(PrimFn func, Value first) @inline {
     return v;
 }
 
+fn Value make_thunk(ClosureFn invoke, void* data, Value arg) @inline {
+    Value v;
+    v.tag = V_THUNK;
+    v.thunk_val.invoke = invoke;
+    v.thunk_val.data = data;
+    v.thunk_val.arg = main::allocate_in(g_current_region, Value, arg);
+    return v;
+}
+
 fn Value make_partial_in_region(PrimFn func, Value first, main::RegionHandle region) @inline {
     Value v;
     v.tag = V_PARTIAL;
@@ -353,14 +402,15 @@ fn Value make_partial_in_region(PrimFn func, Value first, main::RegionHandle reg
  * nil and false are falsy, everything else is truthy.
  */
 fn bool rt_is_truthy(Value v) {
-    if (v.tag == V_NIL) return false;
+    if (v.tag == V_NIL || v.tag == V_FALSE) return false;
     return true;
 }
 
 /**
- * Invoke a function with an argument.
+ * Invoke a function with an argument (single call, no trampoline).
+ * Returns the result which may be a V_THUNK for tail calls.
  */
-fn Value rt_invoke(Value func, Value arg) {
+fn Value rt_invoke_once(Value func, Value arg) {
     switch (func.tag) {
         case V_CLOSURE:
             return func.closure_val.invoke(func.closure_val.data, arg);
@@ -385,9 +435,69 @@ fn Value rt_invoke(Value func, Value arg) {
 }
 
 /**
+ * Invoke a function with an argument, with trampoline for TCO.
+ * Bounces thunks until a non-thunk result is obtained.
+ */
+fn Value rt_invoke(Value func, Value arg) {
+    Value result = rt_invoke_once(func, arg);
+    while (result.tag == V_THUNK) {
+        Value* thunk_arg = main::dereference_as(Value, result.thunk_val.arg);
+        result = result.thunk_val.invoke(result.thunk_val.data, *thunk_arg);
+    }
+    return result;
+}
+
+/**
+ * Apply a function to a cons-list of arguments.
+ * Handles variadic closures, primitives, and curried application.
+ * This is the multi-arg equivalent of rt_invoke.
+ * Includes trampoline for TCO on the final result.
+ */
+fn Value rt_apply_multi(Value func, Value arg_list, long argc) {
+    if (argc == 0) {
+        // Zero-arg call
+        return rt_invoke(func, make_nil());
+    }
+
+    if (argc == 1) {
+        // Single arg: extract car and invoke
+        if (arg_list.tag == V_CONS) {
+            Value* car = main::dereference_as(Value, arg_list.cons_val.car);
+            return rt_invoke(func, *car);
+        }
+        return rt_invoke(func, make_nil());
+    }
+
+    // Multi-arg: apply one at a time (currying)
+    // Use rt_invoke_once for intermediate applications (no trampoline bounce),
+    // use rt_invoke for the last arg (with trampoline for TCO).
+    Value result = func;
+    Value current = arg_list;
+    for (long i = 0; i < argc; i++) {
+        if (current.tag != V_CONS) break;
+        Value* car = main::dereference_as(Value, current.cons_val.car);
+        if (i == argc - 1) {
+            // Last arg: use full trampoline
+            result = rt_invoke(result, *car);
+        } else {
+            // Intermediate: no trampoline (partial app shouldn't return thunks)
+            result = rt_invoke_once(result, *car);
+        }
+        Value* cdr = main::dereference_as(Value, current.cons_val.cdr);
+        current = *cdr;
+    }
+    return result;
+}
+
+/**
  * Check if two values are equal.
  */
-fn bool rt_values_equal(Value a, Value b) {
+fn bool rt_values_equal(Value a, Value b, usz depth = 0) {
+    if (depth >= 256) return false;  // Guard against circular structures
+    // Mixed int/double comparison
+    if (rt_is_number(a) && rt_is_number(b)) {
+        return rt_to_double(a) == rt_to_double(b);
+    }
     if (a.tag != b.tag) return false;
 
     switch (a.tag) {
@@ -395,8 +505,12 @@ fn bool rt_values_equal(Value a, Value b) {
             return true;
         case V_TRUE:
             return true;
+        case V_FALSE:
+            return true;
         case V_INT:
             return a.int_val == b.int_val;
+        case V_DOUBLE:
+            return a.double_val == b.double_val;
         case V_STRING:
             StringData* sa = main::dereference_as(StringData, a.str_handle);
             StringData* sb = main::dereference_as(StringData, b.str_handle);
@@ -418,7 +532,25 @@ fn bool rt_values_equal(Value a, Value b) {
             Value* cdr_a = main::dereference_as(Value, a.cons_val.cdr);
             Value* car_b = main::dereference_as(Value, b.cons_val.car);
             Value* cdr_b = main::dereference_as(Value, b.cons_val.cdr);
-            return rt_values_equal(*car_a, *car_b) && rt_values_equal(*cdr_a, *cdr_b);
+            return rt_values_equal(*car_a, *car_b, depth + 1) && rt_values_equal(*cdr_a, *cdr_b, depth + 1);
+        case V_INTERP_REF:
+            lisp::Value* ia = (lisp::Value*)a.interp_ref;
+            lisp::Value* ib = (lisp::Value*)b.interp_ref;
+            if (ia == null || ib == null) return ia == ib;
+            if (ia.tag != ib.tag) return false;
+            if (ia.tag == lisp::ValueTag.HASHMAP) {
+                return ia == ib;  // Pointer equality for mutable containers
+            }
+            if (ia.tag == lisp::ValueTag.ARRAY) {
+                if (ia.array_val.length != ib.array_val.length) return false;
+                for (usz i = 0; i < ia.array_val.length; i++) {
+                    Value ra = interp_to_runtime(ia.array_val.items[i]);
+                    Value rb = interp_to_runtime(ib.array_val.items[i]);
+                    if (!rt_values_equal(ra, rb, depth + 1)) return false;
+                }
+                return true;
+            }
+            return ia == ib;  // Pointer equality for other interp types
         default:
             return false;
     }
@@ -511,22 +643,30 @@ fn Value rt_list_rest(Value v, usz n) {
 // =============================================================================
 
 fn Value rt_add(Value a, Value b) {
-    if (a.tag != V_INT || b.tag != V_INT) return make_nil();
+    if (!rt_is_number(a) || !rt_is_number(b)) return make_nil();
+    if (a.tag == V_DOUBLE || b.tag == V_DOUBLE) return rt_make_double(rt_to_double(a) + rt_to_double(b));
     return make_int(a.int_val + b.int_val);
 }
 
 fn Value rt_sub(Value a, Value b) {
-    if (a.tag != V_INT || b.tag != V_INT) return make_nil();
+    if (!rt_is_number(a) || !rt_is_number(b)) return make_nil();
+    if (a.tag == V_DOUBLE || b.tag == V_DOUBLE) return rt_make_double(rt_to_double(a) - rt_to_double(b));
     return make_int(a.int_val - b.int_val);
 }
 
 fn Value rt_mul(Value a, Value b) {
-    if (a.tag != V_INT || b.tag != V_INT) return make_nil();
+    if (!rt_is_number(a) || !rt_is_number(b)) return make_nil();
+    if (a.tag == V_DOUBLE || b.tag == V_DOUBLE) return rt_make_double(rt_to_double(a) * rt_to_double(b));
     return make_int(a.int_val * b.int_val);
 }
 
 fn Value rt_div(Value a, Value b) {
-    if (a.tag != V_INT || b.tag != V_INT) return make_nil();
+    if (!rt_is_number(a) || !rt_is_number(b)) return make_nil();
+    if (a.tag == V_DOUBLE || b.tag == V_DOUBLE) {
+        double bd = rt_to_double(b);
+        if (bd == 0.0) return make_nil();
+        return rt_make_double(rt_to_double(a) / bd);
+    }
     if (b.int_val == 0) return make_nil();
     return make_int(a.int_val / b.int_val);
 }
@@ -546,23 +686,23 @@ fn Value rt_eq(Value a, Value b) {
 }
 
 fn Value rt_lt(Value a, Value b) {
-    if (a.tag != V_INT || b.tag != V_INT) return make_nil();
-    return a.int_val < b.int_val ? make_true() : make_nil();
+    if (!rt_is_number(a) || !rt_is_number(b)) return make_nil();
+    return rt_to_double(a) < rt_to_double(b) ? make_true() : make_nil();
 }
 
 fn Value rt_gt(Value a, Value b) {
-    if (a.tag != V_INT || b.tag != V_INT) return make_nil();
-    return a.int_val > b.int_val ? make_true() : make_nil();
+    if (!rt_is_number(a) || !rt_is_number(b)) return make_nil();
+    return rt_to_double(a) > rt_to_double(b) ? make_true() : make_nil();
 }
 
 fn Value rt_le(Value a, Value b) {
-    if (a.tag != V_INT || b.tag != V_INT) return make_nil();
-    return a.int_val <= b.int_val ? make_true() : make_nil();
+    if (!rt_is_number(a) || !rt_is_number(b)) return make_nil();
+    return rt_to_double(a) <= rt_to_double(b) ? make_true() : make_nil();
 }
 
 fn Value rt_ge(Value a, Value b) {
-    if (a.tag != V_INT || b.tag != V_INT) return make_nil();
-    return a.int_val >= b.int_val ? make_true() : make_nil();
+    if (!rt_is_number(a) || !rt_is_number(b)) return make_nil();
+    return rt_to_double(a) >= rt_to_double(b) ? make_true() : make_nil();
 }
 
 // =============================================================================
@@ -623,8 +763,29 @@ fn void rt_print_value(Value v) {
             io::print("nil");
         case V_TRUE:
             io::print("true");
+        case V_FALSE:
+            io::print("false");
         case V_INT:
             io::printf("%d", v.int_val);
+        case V_DOUBLE:
+            double dv = v.double_val;
+            if (dv != dv) {
+                io::print("+nan.0");
+            } else if (dv == 1.0/0.0) {
+                io::print("+inf.0");
+            } else if (dv == -1.0/0.0) {
+                io::print("-inf.0");
+            } else {
+                io::printf("%.15g", dv);
+                // If printf didn't include a decimal point, add .0
+                char[64] dbuf;
+                char[] dslice = io::bprintf(&dbuf, "%.15g", dv)!!;
+                bool has_dot = false;
+                for (usz di = 0; di < dslice.len; di++) {
+                    if (dslice[di] == '.' || dslice[di] == 'e' || dslice[di] == 'E') { has_dot = true; break; }
+                }
+                if (!has_dot) io::print(".0");
+            }
         case V_STRING:
             StringData* str = main::dereference_as(StringData, v.str_handle);
             io::printf("\"%s\"", (ZString)&str.chars);
@@ -657,6 +818,11 @@ fn void rt_print_value(Value v) {
             io::print("#<primitive-unary>");
         case V_PARTIAL:
             io::print("#<partial>");
+        case V_INTERP_REF:
+            // Delegate printing to interpreter's print_value
+            rt_ensure_interp();
+            lisp::Value* iv = (lisp::Value*)v.interp_ref;
+            lisp::print_value(iv, &g_interp.symbols);
         default:
             io::print("#<unknown>");
     }
@@ -722,12 +888,12 @@ fn Value rt_string_append(Value a, Value b) {
 
     StringData result;
     usz total = sa.len + sb.len;
-    if (total > 255) total = 255;
+    if (total > 4095) total = 4095;
     usz i = 0;
-    for (usz j = 0; j < sa.len && i < 255; j++) {
+    for (usz j = 0; j < sa.len && i < 4095; j++) {
         result.chars[i++] = sa.chars[j];
     }
-    for (usz j = 0; j < sb.len && i < 255; j++) {
+    for (usz j = 0; j < sb.len && i < 4095; j++) {
         result.chars[i++] = sb.chars[j];
     }
     result.chars[i] = 0;
@@ -750,7 +916,7 @@ fn Value rt_string_join(Value sep, Value lst) {
 
     while (current.tag == V_CONS) {
         if (!first && pos + sep_str.len < 255) {
-            for (usz i = 0; i < sep_str.len && pos < 255; i++) {
+            for (usz i = 0; i < sep_str.len && pos < 4095; i++) {
                 result.chars[pos++] = sep_str.chars[i];
             }
         }
@@ -759,7 +925,7 @@ fn Value rt_string_join(Value sep, Value lst) {
         Value* elem = main::dereference_as(Value, current.cons_val.car);
         if (elem.tag == V_STRING) {
             StringData* s = main::dereference_as(StringData, elem.str_handle);
-            for (usz i = 0; i < s.len && pos < 255; i++) {
+            for (usz i = 0; i < s.len && pos < 4095; i++) {
                 result.chars[pos++] = s.chars[i];
             }
         }
@@ -798,7 +964,7 @@ fn Value rt_substring(Value str, Value start_v, Value end_v) {
 
     StringData result;
     usz len = (usz)(end - start);
-    if (len > 255) len = 255;
+    if (len > 4095) len = 4095;
     for (usz i = 0; i < len; i++) {
         result.chars[i] = s.chars[(usz)start + i];
     }
@@ -817,30 +983,64 @@ fn Value rt_string_split(Value str, Value sep) {
     StringData* d = main::dereference_as(StringData, sep.str_handle);
     if (d.len == 0) return make_nil();
 
-    char delim = d.chars[0];
+    usz dlen = d.len;
     Value result = make_nil();
 
-    // Build list in reverse, then reverse
-    isz last = (isz)s.len;
-    for (isz i = (isz)s.len - 1; i >= -1; i--) {
-        if (i == -1 || s.chars[(usz)i] == delim) {
-            usz start = (usz)(i + 1);
-            usz len = (usz)last - start;
+    // Scan forward, split at delimiter occurrences
+    usz[256] starts;  // start indices of each segment
+    usz[256] lens;    // lengths of each segment
+    usz seg_count = 0;
+    usz seg_start = 0;  // start of current segment
+    usz pos = 0;
 
-            StringData part;
-            if (len > 255) len = 255;
-            for (usz j = 0; j < len; j++) {
-                part.chars[j] = s.chars[start + j];
+    while (pos + dlen <= s.len) {
+        // Check if delimiter matches at pos
+        bool match = true;
+        for (usz k = 0; k < dlen; k++) {
+            if (s.chars[pos + k] != d.chars[k]) {
+                match = false;
+                break;
             }
-            part.chars[len] = 0;
-            part.len = len;
-
-            Value part_val;
-            part_val.tag = V_STRING;
-            part_val.str_handle = main::allocate_in(g_current_region, StringData, part);
-            result = rt_cons(part_val, result);
-            last = (isz)i;
         }
+
+        if (match) {
+            if (seg_count < 256) {
+                starts[seg_count] = seg_start;
+                lens[seg_count] = pos - seg_start;
+                seg_count++;
+            }
+            pos += dlen;
+            seg_start = pos;
+        } else {
+            pos++;
+        }
+    }
+
+    // Final segment (from last delimiter to end of string)
+    if (seg_count < 256) {
+        starts[seg_count] = seg_start;
+        lens[seg_count] = s.len - seg_start;
+        seg_count++;
+    }
+
+    // Build list in reverse order so cons produces correct order
+    for (usz i = seg_count; i > 0; i--) {
+        usz idx = i - 1;
+        usz start = starts[idx];
+        usz len = lens[idx];
+        if (len > 4095) { len = 4095; }
+
+        StringData part;
+        for (usz j = 0; j < len; j++) {
+            part.chars[j] = s.chars[start + j];
+        }
+        part.chars[len] = 0;
+        part.len = len;
+
+        Value part_val;
+        part_val.tag = V_STRING;
+        part_val.str_handle = main::allocate_in(g_current_region, StringData, part);
+        result = rt_cons(part_val, result);
     }
 
     return result;
@@ -880,11 +1080,11 @@ fn Value rt_list_to_string(Value a, Value _unused) {
         Value* elem = main::dereference_as(Value, current.cons_val.car);
         if (elem.tag == V_STRING) {
             StringData* s = main::dereference_as(StringData, elem.str_handle);
-            for (usz i = 0; i < s.len && pos < 255; i++) {
+            for (usz i = 0; i < s.len && pos < 4095; i++) {
                 result.chars[pos++] = s.chars[i];
             }
         } else if (elem.tag == V_INT) {
-            if (pos < 255) {
+            if (pos < 4095) {
                 result.chars[pos++] = (char)elem.int_val;
             }
         }
@@ -991,6 +1191,190 @@ fn Value rt_closure_p(Value a, Value _unused) {
 
 fn Value rt_continuation_p(Value a, Value _unused) {
     return a.tag == V_CONTINUATION ? make_true() : make_nil();
+}
+
+fn Value rt_double_p(Value a, Value _unused) {
+    return a.tag == V_DOUBLE ? make_true() : make_nil();
+}
+
+fn Value rt_list_p(Value a, Value _unused) {
+    return (a.tag == V_CONS || a.tag == V_NIL) ? make_true() : make_nil();
+}
+
+fn Value rt_boolean_p(Value a, Value _unused) {
+    return (a.tag == V_TRUE || a.tag == V_FALSE) ? make_true() : make_nil();
+}
+
+fn Value rt_number_p(Value a, Value _unused) {
+    return (a.tag == V_INT || a.tag == V_DOUBLE) ? make_true() : make_nil();
+}
+
+// =============================================================================
+// SECTION 13b: TYPE-OF
+// =============================================================================
+
+fn Value rt_type_of(Value a, Value _unused) {
+    switch (a.tag) {
+        case V_INT:          return make_symbol("Int");
+        case V_DOUBLE:       return make_symbol("Double");
+        case V_STRING:       return make_symbol("String");
+        case V_SYMBOL:       return make_symbol("Symbol");
+        case V_CONS:         return make_symbol("List");
+        case V_CLOSURE:      return make_symbol("Closure");
+        case V_PRIM:         return make_symbol("Closure");
+        case V_PRIM_UNARY:   return make_symbol("Closure");
+        case V_PARTIAL:      return make_symbol("Closure");
+        case V_TRUE:         return make_symbol("Bool");
+        case V_FALSE:        return make_symbol("Bool");
+        case V_NIL:          return make_symbol("Nil");
+        case V_CONTINUATION: return make_symbol("Continuation");
+        case V_FFI_HANDLE:   return make_symbol("FFIHandle");
+        case V_INTERP_REF:
+            // Delegate to interpreter for HASHMAP/ARRAY/INSTANCE
+            lisp::Value* iv = (lisp::Value*)a.interp_ref;
+            if (iv != null) {
+                if (iv.tag == lisp::ValueTag.HASHMAP) return make_symbol("Dict");
+                if (iv.tag == lisp::ValueTag.ARRAY) return make_symbol("Array");
+                if (iv.tag == lisp::ValueTag.INSTANCE) return make_symbol("Instance");
+            }
+            return make_symbol("Any");
+        default:             return make_symbol("Any");
+    }
+}
+
+// =============================================================================
+// SECTION 13c: MATH PRIMITIVES
+// =============================================================================
+
+extern fn double c_sqrt(double x) @extern("sqrt");
+extern fn double c_floor(double x) @extern("floor");
+extern fn double c_ceil(double x) @extern("ceil");
+extern fn double c_round(double x) @extern("round");
+extern fn double c_fabs(double x) @extern("fabs");
+
+fn Value rt_abs(Value a, Value _unused) {
+    if (a.tag == V_DOUBLE) return rt_make_double(c_fabs(a.double_val));
+    if (a.tag == V_INT) {
+        long n = a.int_val;
+        if (n == long.min) return make_int(long.max);  // Avoid -long.min overflow
+        return make_int(n < 0 ? -n : n);
+    }
+    return make_nil();
+}
+
+fn Value rt_min(Value a, Value b) {
+    if (a.tag == V_DOUBLE || b.tag == V_DOUBLE) {
+        double da = rt_to_double(a); double db = rt_to_double(b);
+        return rt_make_double(da < db ? da : db);
+    }
+    return make_int(a.int_val < b.int_val ? a.int_val : b.int_val);
+}
+
+fn Value rt_max(Value a, Value b) {
+    if (a.tag == V_DOUBLE || b.tag == V_DOUBLE) {
+        double da = rt_to_double(a); double db = rt_to_double(b);
+        return rt_make_double(da > db ? da : db);
+    }
+    return make_int(a.int_val > b.int_val ? a.int_val : b.int_val);
+}
+
+fn Value rt_floor(Value a, Value _unused) {
+    return make_int((long)c_floor(rt_to_double(a)));
+}
+
+fn Value rt_ceiling(Value a, Value _unused) {
+    return make_int((long)c_ceil(rt_to_double(a)));
+}
+
+fn Value rt_round(Value a, Value _unused) {
+    return make_int((long)c_round(rt_to_double(a)));
+}
+
+fn Value rt_truncate(Value a, Value _unused) {
+    return make_int((long)rt_to_double(a));
+}
+
+fn Value rt_sqrt(Value a, Value _unused) {
+    return rt_make_double(c_sqrt(rt_to_double(a)));
+}
+
+fn Value rt_even_p(Value a, Value _unused) {
+    if (a.tag != V_INT) return make_nil();
+    return (a.int_val % 2 == 0) ? make_true() : make_nil();
+}
+
+fn Value rt_odd_p(Value a, Value _unused) {
+    if (a.tag != V_INT) return make_nil();
+    return (a.int_val % 2 != 0) ? make_true() : make_nil();
+}
+
+fn Value rt_zero_p(Value a, Value _unused) {
+    if (a.tag == V_INT) return a.int_val == 0 ? make_true() : make_nil();
+    if (a.tag == V_DOUBLE) return a.double_val == 0.0 ? make_true() : make_nil();
+    return make_nil();
+}
+
+fn Value rt_positive_p(Value a, Value _unused) {
+    if (a.tag == V_INT) return a.int_val > 0 ? make_true() : make_nil();
+    if (a.tag == V_DOUBLE) return a.double_val > 0.0 ? make_true() : make_nil();
+    return make_nil();
+}
+
+fn Value rt_negative_p(Value a, Value _unused) {
+    if (a.tag == V_INT) return a.int_val < 0 ? make_true() : make_nil();
+    if (a.tag == V_DOUBLE) return a.double_val < 0.0 ? make_true() : make_nil();
+    return make_nil();
+}
+
+fn Value rt_gcd(Value a, Value b) {
+    if (a.tag != V_INT || b.tag != V_INT) return make_nil();
+    long x = a.int_val; long y = b.int_val;
+    if (x < 0) x = -x;
+    if (y < 0) y = -y;
+    while (y != 0) {
+        long t = y;
+        y = x % y;
+        x = t;
+    }
+    return make_int(x);
+}
+
+// =============================================================================
+// SECTION 13d: BITWISE OPS
+// =============================================================================
+
+fn Value rt_bitwise_and(Value a, Value b) {
+    if (a.tag != V_INT || b.tag != V_INT) return make_nil();
+    return make_int(a.int_val & b.int_val);
+}
+
+fn Value rt_bitwise_or(Value a, Value b) {
+    if (a.tag != V_INT || b.tag != V_INT) return make_nil();
+    return make_int(a.int_val | b.int_val);
+}
+
+fn Value rt_bitwise_xor(Value a, Value b) {
+    if (a.tag != V_INT || b.tag != V_INT) return make_nil();
+    return make_int(a.int_val ^ b.int_val);
+}
+
+fn Value rt_bitwise_not(Value a, Value _unused) {
+    if (a.tag != V_INT) return make_nil();
+    return make_int(~a.int_val);
+}
+
+fn Value rt_lshift(Value a, Value b) {
+    if (a.tag != V_INT || b.tag != V_INT) return make_nil();
+    long shift = b.int_val;
+    if (shift < 0 || shift >= 64) return make_int(0);
+    return make_int(a.int_val << shift);
+}
+
+fn Value rt_rshift(Value a, Value b) {
+    if (a.tag != V_INT || b.tag != V_INT) return make_nil();
+    long shift = b.int_val;
+    if (shift < 0 || shift >= 64) return make_int(0);
+    return make_int(a.int_val >> shift);
 }
 
 fn Value rt_newline(Value _a, Value _unused) {
@@ -1113,7 +1497,7 @@ fn Value rt_read_file(Value path, Value _unused) {
     // Use C3's file::load_temp to read entire file
     if (try content = io::file::load_temp((String)path_slice)) {
         usz len = content.len;
-        if (len > 255) len = 255;
+        if (len > 4095) len = 4095;
 
         StringData result;
         for (usz i = 0; i < len; i++) {
@@ -1232,7 +1616,7 @@ fn Value interp_to_runtime(lisp::Value* v) {
                 return make_true();
             }
             if ((uint)v.sym_val == (uint)g_interp.sym_false) {
-                return make_nil();
+                return make_false();
             }
         }
         char[] sym_name = g_interp.symbols.get_name(v.sym_val);
@@ -1241,14 +1625,24 @@ fn Value interp_to_runtime(lisp::Value* v) {
         Value car = interp_to_runtime(v.cons_val.car);
         Value cdr = interp_to_runtime(v.cons_val.cdr);
         return rt_cons(car, cdr);
-    } else if (itag == lisp::ValueTag.CLOSURE) {
-        // Closures from the interpreter can't be directly used in compiled code.
-        // Wrap as a runtime closure that delegates to the interpreter's apply.
+    } else if (itag == lisp::ValueTag.CLOSURE || itag == lisp::ValueTag.PRIMITIVE || itag == lisp::ValueTag.PARTIAL_PRIM) {
+        // Callable interpreter values: wrap as runtime closure that delegates via apply.
         return make_interp_closure_wrapper(v);
     } else if (itag == lisp::ValueTag.CONTINUATION) {
         // Continuations from the interpreter can't be directly used.
         // Wrap as a runtime closure that invokes the continuation.
         return make_interp_continuation_wrapper(v);
+    } else if (itag == lisp::ValueTag.DOUBLE) {
+        Value r;
+        r.tag = V_DOUBLE;
+        r.double_val = v.double_val;
+        return r;
+    } else if (itag == lisp::ValueTag.HASHMAP || itag == lisp::ValueTag.ARRAY || itag == lisp::ValueTag.INSTANCE) {
+        // Complex interpreter types: wrap as opaque reference
+        Value r;
+        r.tag = V_INTERP_REF;
+        r.interp_ref = v;
+        return r;
     }
     return make_nil();
 }
@@ -1266,6 +1660,9 @@ fn lisp::Value* runtime_to_interp(Value v) {
 
         case V_TRUE:
             return lisp::make_symbol(g_interp, g_interp.sym_true);
+
+        case V_FALSE:
+            return lisp::make_symbol(g_interp, g_interp.sym_false);
 
         case V_INT:
             return lisp::make_int(g_interp, v.int_val);
@@ -1286,14 +1683,48 @@ fn lisp::Value* runtime_to_interp(Value v) {
             lisp::Value* cdr_interp = runtime_to_interp(*cdr_rt);
             return lisp::make_cons(g_interp, car_interp, cdr_interp);
 
+        case V_DOUBLE:
+            return lisp::make_double(g_interp, v.double_val);
+
+        case V_INTERP_REF:
+            // Opaque interpreter reference — just return the stored pointer
+            return (lisp::Value*)v.interp_ref;
+
         case V_CLOSURE:
-            // Wrap compiled closure as interpreter closure
-            // For now, return a placeholder
-            return lisp::make_nil(g_interp);
+            // Wrap compiled closure as interpreter-callable primitive
+            CompiledClosureWrapper* ccw = (CompiledClosureWrapper*)mem::malloc(CompiledClosureWrapper.sizeof);
+            ccw.data = v.closure_val.data;
+            ccw.func = v.closure_val.invoke;
+            lisp::Value* prim = lisp::make_primitive(g_interp, "compiled-closure", &invoke_compiled_closure, 1);
+            prim.prim_val.user_data = (void*)ccw;
+            return prim;
 
         default:
             return lisp::make_nil(g_interp);
     }
+}
+
+/**
+ * Wrapper state for compiled closures passed back to interpreter.
+ */
+struct CompiledClosureWrapper {
+    void* data;
+    ClosureFn func;
+}
+
+/**
+ * PrimitiveFn adapter: invoke a compiled closure from interpreter context.
+ * interp.prim_user_data is set to Primitive.user_data by apply_primitive().
+ */
+fn lisp::Value* invoke_compiled_closure(lisp::Value*[] args, lisp::Env* env, lisp::Interp* interp) {
+    if (args.len < 1) return lisp::make_nil(interp);
+
+    CompiledClosureWrapper* ccw = (CompiledClosureWrapper*)interp.prim_user_data;
+    if (ccw == null) return lisp::make_nil(interp);
+
+    Value rt_arg = interp_to_runtime(args[0]);
+    Value result = ccw.func(ccw.data, rt_arg);
+    return runtime_to_interp(result);
 }
 
 /**
@@ -1326,14 +1757,10 @@ fn Value invoke_interp_closure(void* data, Value arg) {
  * Create a runtime closure that wraps an interpreter closure.
  */
 fn Value make_interp_closure_wrapper(lisp::Value* interp_val) {
-    InterpClosureWrapper wrapper_data;
-    wrapper_data.interp_value = interp_val;
-
-    // Allocate wrapper in root region so it persists
-    main::ObjectHandle wrapper_handle = main::allocate_in(g_root_region, InterpClosureWrapper, wrapper_data);
-    void* wrapper_ptr = main::dereference(wrapper_handle);
-
-    return make_closure(wrapper_ptr, &invoke_interp_closure);
+    // Use malloc instead of root region to avoid unbounded region growth
+    InterpClosureWrapper* wrapper = (InterpClosureWrapper*)mem::malloc(InterpClosureWrapper.sizeof);
+    wrapper.interp_value = interp_val;
+    return make_closure((void*)wrapper, &invoke_interp_closure);
 }
 
 /**
@@ -1341,15 +1768,9 @@ fn Value make_interp_closure_wrapper(lisp::Value* interp_val) {
  * Continuations are invoked with apply_continuation in the interpreter.
  */
 fn Value make_interp_continuation_wrapper(lisp::Value* interp_val) {
-    // Continuations behave like closures: (k value) applies the continuation
-    // We use the same wrapper mechanism
-    InterpClosureWrapper wrapper_data;
-    wrapper_data.interp_value = interp_val;
-
-    main::ObjectHandle wrapper_handle = main::allocate_in(g_root_region, InterpClosureWrapper, wrapper_data);
-    void* wrapper_ptr = main::dereference(wrapper_handle);
-
-    return make_closure(wrapper_ptr, &invoke_interp_closure);
+    InterpClosureWrapper* wrapper = (InterpClosureWrapper*)mem::malloc(InterpClosureWrapper.sizeof);
+    wrapper.interp_value = interp_val;
+    return make_closure((void*)wrapper, &invoke_interp_closure);
 }
 
 /**
@@ -1365,6 +1786,30 @@ fn void rt_define_var(char[] name, Value val) {
     lisp::SymbolId sym = g_interp.symbols.intern(name);
     lisp::Value* interp_val = runtime_to_interp(val);
     g_interp.global_env.define(sym, interp_val);
+}
+
+/**
+ * Look up a variable in the interpreter's global environment.
+ * Used for mutable-captured variables that are stored in the interpreter env.
+ */
+fn Value rt_lookup_var(char[] name) {
+    rt_ensure_interp();
+    lisp::SymbolId sym = g_interp.symbols.intern(name);
+    lisp::Value* val = g_interp.global_env.lookup(sym);
+    if (val == null) return make_nil();
+    return interp_to_runtime(val);
+}
+
+/**
+ * Set a variable in the interpreter's global environment.
+ * Returns the new value. Used for mutable-captured variable mutation.
+ */
+fn Value rt_set_var(char[] name, Value val) {
+    rt_ensure_interp();
+    lisp::SymbolId sym = g_interp.symbols.intern(name);
+    lisp::Value* interp_val = runtime_to_interp(val);
+    g_interp.global_env.define(sym, interp_val);
+    return val;
 }
 
 /**
@@ -1388,6 +1833,381 @@ fn Value rt_eval_source(char[] source) {
     }
 
     return interp_to_runtime(result.value);
+}
+
+// =============================================================================
+// SECTION 18: MISSING PRIMITIVES
+// =============================================================================
+
+/**
+ * (string->number str) => int or nil
+ */
+fn Value rt_string_to_number(Value a, Value _unused) {
+    if (a.tag != V_STRING) return make_nil();
+    StringData* s = main::dereference_as(StringData, a.str_handle);
+    if (s.len == 0) return make_nil();
+
+    // Check if it contains a decimal point or exponent → parse as double
+    bool is_float = false;
+    for (usz i = 0; i < s.len; i++) {
+        if (s.chars[i] == '.' || s.chars[i] == 'e' || s.chars[i] == 'E') {
+            is_float = true;
+            break;
+        }
+    }
+
+    if (is_float) {
+        // Parse as double manually
+        double result = 0.0;
+        bool negative = false;
+        usz pos = 0;
+        if (s.chars[0] == '-') { negative = true; pos = 1; }
+        else if (s.chars[0] == '+') { pos = 1; }
+        // Integer part
+        while (pos < s.len && s.chars[pos] >= '0' && s.chars[pos] <= '9') {
+            result = result * 10.0 + (double)(s.chars[pos] - '0');
+            pos++;
+        }
+        // Fractional part
+        if (pos < s.len && s.chars[pos] == '.') {
+            pos++;
+            double frac = 0.1;
+            while (pos < s.len && s.chars[pos] >= '0' && s.chars[pos] <= '9') {
+                result += (double)(s.chars[pos] - '0') * frac;
+                frac *= 0.1;
+                pos++;
+            }
+        }
+        // Exponent part
+        if (pos < s.len && (s.chars[pos] == 'e' || s.chars[pos] == 'E')) {
+            pos++;
+            bool exp_neg = false;
+            if (pos < s.len && s.chars[pos] == '-') { exp_neg = true; pos++; }
+            else if (pos < s.len && s.chars[pos] == '+') { pos++; }
+            long exp_val = 0;
+            while (pos < s.len && s.chars[pos] >= '0' && s.chars[pos] <= '9') {
+                exp_val = exp_val * 10 + (long)(s.chars[pos] - '0');
+                pos++;
+            }
+            double multiplier = 1.0;
+            for (long e = 0; e < exp_val; e++) multiplier *= 10.0;
+            if (exp_neg) { result /= multiplier; }
+            else { result *= multiplier; }
+        }
+        if (pos != s.len) return make_nil();  // Unparsed characters
+        return rt_make_double(negative ? -result : result);
+    }
+
+    // Parse as integer
+    long result = 0;
+    bool negative = false;
+    usz start = 0;
+
+    if (s.chars[0] == '-') {
+        negative = true;
+        start = 1;
+        if (s.len == 1) return make_nil();
+    }
+
+    for (usz i = start; i < s.len; i++) {
+        char c = s.chars[i];
+        if (c < '0' || c > '9') return make_nil();
+        result = result * 10 + (long)(c - '0');
+    }
+
+    return make_int(negative ? -result : result);
+}
+
+/**
+ * (number->string n) => string
+ */
+fn Value rt_number_to_string(Value a, Value _unused) {
+    if (a.tag == V_DOUBLE) {
+        char[64] dbuf;
+        char[] dslice = io::bprintf(&dbuf, "%.15g", a.double_val)!!;
+        return make_string(dslice);
+    }
+    if (a.tag != V_INT) return make_nil();
+    long n = a.int_val;
+
+    // Handle long.min specially to avoid -long.min overflow
+    if (n == long.min) {
+        char[] min_str = "-9223372036854775808";
+        return make_string(min_str);
+    }
+
+    char[32] buf;
+    usz pos = 0;
+    bool negative = n < 0;
+    if (negative) { n = -n; }
+
+    if (n == 0) {
+        buf[0] = '0';
+        pos = 1;
+    } else {
+        while (n > 0 && pos < 31) {
+            buf[pos++] = (char)('0' + (n % 10));
+            n /= 10;
+        }
+        // Reverse
+        for (usz i = 0; i < pos / 2; i++) {
+            char tmp = buf[i];
+            buf[i] = buf[pos - 1 - i];
+            buf[pos - 1 - i] = tmp;
+        }
+    }
+
+    if (negative) {
+        // Shift right and prepend '-'
+        for (isz i = (isz)pos; i > 0; i--) {
+            buf[(usz)i] = buf[(usz)i - 1];
+        }
+        buf[0] = '-';
+        pos++;
+    }
+
+    return make_string(buf[:pos]);
+}
+
+/**
+ * (gensym) => unique symbol via interpreter delegation
+ */
+tlocal long g_gensym_counter = 0;
+
+fn Value rt_gensym(Value _a, Value _unused) {
+    long n = g_gensym_counter++;
+    char[32] buf;
+    // Format as "g#N"
+    buf[0] = 'g';
+    buf[1] = '#';
+    usz pos = 2;
+    if (n == 0) {
+        buf[pos++] = '0';
+    } else {
+        // Write digits reversed, then reverse
+        usz start = pos;
+        long tmp = n;
+        while (tmp > 0 && pos < 31) {
+            buf[pos++] = (char)('0' + (tmp % 10));
+            tmp /= 10;
+        }
+        for (usz i = 0; i < (pos - start) / 2; i++) {
+            char c = buf[start + i];
+            buf[start + i] = buf[pos - 1 - i];
+            buf[pos - 1 - i] = c;
+        }
+    }
+    return make_symbol(buf[:pos]);
+}
+
+/**
+ * (apply f args) => apply function to list of args
+ */
+fn Value rt_apply_prim(Value f, Value args) {
+    // Count the args list
+    long argc = 0;
+    Value cur = args;
+    while (cur.tag == V_CONS) {
+        argc++;
+        Value* cdr = main::dereference_as(Value, cur.cons_val.cdr);
+        cur = *cdr;
+    }
+    return rt_apply_multi(f, args, argc);
+}
+
+/**
+ * (equal? a b) => true or nil — deep structural equality
+ */
+fn Value rt_equal_p(Value a, Value b) {
+    return rt_values_equal(a, b) ? make_true() : make_nil();
+}
+
+/**
+ * (display val) => nil — print without quotes around strings
+ */
+fn Value rt_display(Value a, Value _unused) {
+    if (a.tag == V_STRING) {
+        StringData* s = main::dereference_as(StringData, a.str_handle);
+        io::printf("%s", (ZString)&s.chars);
+    } else {
+        rt_print_value(a);
+    }
+    return make_nil();
+}
+
+/**
+ * Hash-map operations — all delegated to interpreter.
+ */
+fn Value rt_hash_map_create(Value a, Value _unused) {
+    rt_ensure_interp();
+    lisp::Value* v = lisp::make_hashmap(g_interp, 16);
+    Value r;
+    r.tag = V_INTERP_REF;
+    r.interp_ref = v;
+    return r;
+}
+
+/**
+ * Create a dict from a cons list of interleaved key-value pairs.
+ * (dict k1 v1 k2 v2 ...) compiles to rt_dict_from_args(args_cons_list)
+ */
+fn Value rt_dict_from_args(Value arg_list) {
+    rt_ensure_interp();
+
+    // Count args first
+    Value current = arg_list;
+    long count = 0;
+    while (current.tag == V_CONS) {
+        count++;
+        Value* cdr = main::dereference_as(Value, current.cons_val.cdr);
+        current = *cdr;
+    }
+
+    // Create hashmap with appropriate capacity (min 16, 2x pairs)
+    uint cap = 16;
+    if (count > 8) cap = (uint)count * 2;
+    lisp::Value* map_val = lisp::make_hashmap(g_interp, cap);
+    lisp::HashMap* map = map_val.hashmap_val;
+
+    // Insert key-value pairs
+    current = arg_list;
+    while (current.tag == V_CONS) {
+        Value* car = main::dereference_as(Value, current.cons_val.car);
+        lisp::Value* key = runtime_to_interp(*car);
+        Value* cdr = main::dereference_as(Value, current.cons_val.cdr);
+        current = *cdr;
+        if (current.tag != V_CONS) break;
+        Value* val_car = main::dereference_as(Value, current.cons_val.car);
+        lisp::Value* val = runtime_to_interp(*val_car);
+        lisp::hashmap_set(map, key, val, g_interp);
+        Value* val_cdr = main::dereference_as(Value, current.cons_val.cdr);
+        current = *val_cdr;
+    }
+
+    Value r;
+    r.tag = V_INTERP_REF;
+    r.interp_ref = map_val;
+    return r;
+}
+
+fn Value rt_hash_ref(Value m, Value k) {
+    if (m.tag != V_INTERP_REF) return make_nil();
+    lisp::Value* im = (lisp::Value*)m.interp_ref;
+    if (im.tag != lisp::ValueTag.HASHMAP) return make_nil();
+    rt_ensure_interp();
+    lisp::Value* ik = runtime_to_interp(k);
+    lisp::Value* result = lisp::hashmap_get(im.hashmap_val, ik);
+    if (result == null) return make_nil();
+    return interp_to_runtime(result);
+}
+
+// Capture struct for curried dict-set! (3-arg: dict, key, value)
+struct HashSetCapture {
+    Value dict;
+    Value key;
+}
+
+fn Value hash_set_apply(void* data, Value val) {
+    HashSetCapture* cap = (HashSetCapture*)data;
+    Value m = cap.dict;
+    Value k = cap.key;
+    if (m.tag != V_INTERP_REF) return m;
+    lisp::Value* im = (lisp::Value*)m.interp_ref;
+    if (im.tag != lisp::ValueTag.HASHMAP) return m;
+    rt_ensure_interp();
+    lisp::Value* ik = runtime_to_interp(k);
+    lisp::Value* iv = runtime_to_interp(val);
+    lisp::hashmap_set(im.hashmap_val, ik, iv, g_interp);
+    return m;
+}
+
+fn Value rt_hash_set(Value m, Value k) {
+    // Returns a closure that captures (dict, key) and accepts value
+    HashSetCapture* cap = (HashSetCapture*)mem::malloc(HashSetCapture.sizeof);
+    cap.dict = m;
+    cap.key = k;
+    return make_closure((void*)cap, &hash_set_apply);
+}
+
+fn Value rt_hash_has(Value m, Value k) {
+    if (m.tag != V_INTERP_REF) return make_nil();
+    lisp::Value* im = (lisp::Value*)m.interp_ref;
+    if (im.tag != lisp::ValueTag.HASHMAP) return make_nil();
+    rt_ensure_interp();
+    lisp::Value* ik = runtime_to_interp(k);
+    lisp::Value* result = lisp::hashmap_get(im.hashmap_val, ik);
+    if (result != null) return make_true();
+    return make_nil();
+}
+
+fn Value rt_hash_remove(Value m, Value k) {
+    if (m.tag != V_INTERP_REF) return m;
+    lisp::Value* im = (lisp::Value*)m.interp_ref;
+    if (im.tag != lisp::ValueTag.HASHMAP) return m;
+    rt_ensure_interp();
+    lisp::Value* ik = runtime_to_interp(k);
+    lisp::hashmap_remove(im.hashmap_val, ik);
+    return m;
+}
+
+fn Value rt_hash_keys(Value a, Value _unused) {
+    if (a.tag != V_INTERP_REF) return make_nil();
+    lisp::Value* im = (lisp::Value*)a.interp_ref;
+    if (im.tag != lisp::ValueTag.HASHMAP) return make_nil();
+    rt_ensure_interp();
+    lisp::HashMap* map = im.hashmap_val;
+    // Build cons list of keys
+    lisp::Value* result = lisp::make_nil(g_interp);
+    for (uint i = 0; i < map.capacity; i++) {
+        if (map.entries[i].key != null) {
+            result = lisp::make_cons(g_interp, map.entries[i].key, result);
+        }
+    }
+    return interp_to_runtime(result);
+}
+
+fn Value rt_hash_values(Value a, Value _unused) {
+    if (a.tag != V_INTERP_REF) return make_nil();
+    lisp::Value* im = (lisp::Value*)a.interp_ref;
+    if (im.tag != lisp::ValueTag.HASHMAP) return make_nil();
+    rt_ensure_interp();
+    lisp::HashMap* map = im.hashmap_val;
+    // Build cons list of values
+    lisp::Value* result = lisp::make_nil(g_interp);
+    for (uint i = 0; i < map.capacity; i++) {
+        if (map.entries[i].key != null) {
+            result = lisp::make_cons(g_interp, map.entries[i].value, result);
+        }
+    }
+    return interp_to_runtime(result);
+}
+
+fn Value rt_hash_count(Value a, Value _unused) {
+    if (a.tag != V_INTERP_REF) return make_int(0);
+    lisp::Value* im = (lisp::Value*)a.interp_ref;
+    if (im.tag != lisp::ValueTag.HASHMAP) return make_int(0);
+    return make_int((long)im.hashmap_val.count);
+}
+
+fn Value rt_hash_map_p(Value a, Value _unused) {
+    if (a.tag == V_INTERP_REF) {
+        lisp::Value* im = (lisp::Value*)a.interp_ref;
+        if (im.tag == lisp::ValueTag.HASHMAP) return make_true();
+    }
+    return make_nil();
+}
+
+/**
+ * (load path) => result of evaluating file
+ */
+fn Value rt_load(Value path, Value _unused) {
+    if (path.tag != V_STRING) return make_nil();
+    StringData* p = main::dereference_as(StringData, path.str_handle);
+    // Read the file contents, then evaluate with interpreter
+    Value content = rt_read_file(path, make_nil());
+    if (content.tag != V_STRING) return make_nil();
+    StringData* c = main::dereference_as(StringData, content.str_handle);
+    return rt_eval_source(c.chars[:c.len]);
 }
 
 // =============================================================================

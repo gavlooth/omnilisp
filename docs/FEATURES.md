@@ -1,6 +1,6 @@
 # Pika Lisp — Complete Feature Inventory
 
-**Last updated:** 2026-02-12
+**Last updated:** 2026-02-20
 
 ---
 
@@ -174,15 +174,40 @@
 - `gensym` function available for manual hygiene
 - Up to 8 clauses per macro
 
-### 1.17 `hash-map` — Hash Maps
+### 1.17 Collections — Arrays, Dicts, and Generic Operations
+
 ```lisp
-(hash-map key1 val1 key2 val2 ...)
-(hash-ref m key)
-(hash-set! m key val)
+; Array literal
+[1 2 3]                 ; desugars to (array 1 2 3)
+(array 1 2 3)           ; explicit constructor
+(array '(1 2 3))        ; list → array conversion
+
+; Dict literal
+{'a 1 'b 2}             ; desugars to (dict 'a 1 'b 2)
+(dict 'a 1 'b 2)        ; explicit constructor
+
+; Generic operations
+(ref coll key)           ; lookup by key/index (array, dict, cons, string)
+(length coll)            ; length (list, array, dict, string)
+(push! arr val)          ; append to array
+(keys d)                 ; dict keys as list
+(values d)               ; dict values as list
+(has? d key)             ; dict key existence
+(remove! d key)          ; dict key removal
+
+; Mutation
+(array-set! arr idx val) ; set array element
+(dict-set! d key val)    ; set dict key-value
+(set! pair.car val)      ; cons cell car mutation
+(set! pair.cdr val)      ; cons cell cdr mutation
+
+; Constructor dispatch
+(list [1 2 3])           ; array → list conversion
 ```
-- Mutable hash maps with open-addressing and linear probing
-- Keys can be integers, strings, or symbols
-- `hash-ref` returns nil for missing keys
+- Arrays are mutable dynamic arrays (contiguous memory)
+- Dicts are mutable hash maps with open-addressing and linear probing
+- Dict keys can be integers, strings, or symbols
+- `ref` returns nil for missing keys
 
 ### 1.18 `module` / `import` — Module System
 ```lisp
@@ -210,6 +235,8 @@
 | Head-tail | `[head .. tail]` | Binds first element and rest of list |
 | Prefix | `[x y ..]` | Matches first N elements, ignores rest |
 | Suffix | `[.. last]` | Skips to last element(s) |
+| Constructor | `(Some x)` | Matches union variant, binds fields |
+| Nullary ctor | `None` | Matches nullary constructor (auto-detected) |
 
 Up to 16 elements per sequence pattern.
 
@@ -217,18 +244,24 @@ Up to 16 elements per sequence pattern.
 
 ## 3. Data Types
 
-| Type | Description | Examples |
-|------|-------------|---------|
-| `nil` | Empty/false value | `nil`, `()` |
-| `int` | 64-bit signed integer | `42`, `-17`, `0` |
-| `string` | Immutable string (max 4095 characters) | `"hello"`, `"line\nbreak"` |
-| `symbol` | Interned identifier | `foo`, `my-function`, `null?` |
-| `cons` | Pair (car/cdr) | `(cons 1 2)`, `'(1 2 3)` |
-| `closure` | Lambda with captured environment | `(lambda (x) x)` |
-| `continuation` | Delimited continuation | captured by `shift` |
-| `primitive` | Built-in function | `+`, `car`, `println` |
-| `partial_prim` | Partially applied primitive | `(+ 3)` => adds 3 to next arg |
-| `error` | Error value | internal only |
+| Type | Tag | Description | Examples |
+|------|-----|-------------|---------|
+| `nil` | NIL | Empty/false value | `nil`, `()` |
+| `int` | INT | 64-bit signed integer | `42`, `-17`, `0` |
+| `double` | DOUBLE | 64-bit floating point | `3.14`, `-0.5` |
+| `string` | STRING | Immutable string (max 4095 characters) | `"hello"`, `"line\nbreak"` |
+| `symbol` | SYMBOL | Interned identifier | `foo`, `my-function`, `null?` |
+| `cons` | CONS | Pair (car/cdr) | `(cons 1 2)`, `'(1 2 3)` |
+| `closure` | CLOSURE | Lambda with captured environment | `(lambda (x) x)` |
+| `continuation` | CONTINUATION | Delimited continuation | captured by `shift` |
+| `primitive` | PRIMITIVE | Built-in function | `+`, `car` |
+| `partial_prim` | PARTIAL_PRIM | Partially applied primitive | `(+ 3)` |
+| `error` | ERROR | Error value | `(error "oops")` |
+| `dict` | HASHMAP | Mutable hash table | `{'a 1}`, `(dict 'a 1)` |
+| `array` | ARRAY | Mutable dynamic array | `[1 2 3]`, `(array 1 2 3)` |
+| `ffi_handle` | FFI_HANDLE | Foreign library handle | `(ffi-open "libc.so.6")` |
+| `instance` | INSTANCE | User-defined type instance | `(Point 3 4)` |
+| `method_table` | METHOD_TABLE | Multiple dispatch table | internal |
 
 ### Truthiness Rules
 - **Falsy:** `nil`, `false`
@@ -241,20 +274,25 @@ Up to 16 elements per sequence pattern.
 ### 4.1 Dot-Bracket Indexing
 ```lisp
 list.[0]         ; first element of list
+arr.[0]          ; first element of array
+dict.['key]      ; dict key lookup
 str.[2]          ; character code at index 2
 matrix.[i].[j]   ; chained indexing
 ```
-- Works on lists (returns nth element) and strings (returns char code)
+- Works on lists, arrays, dicts, and strings
 - Index is any expression
 - Chainable for nested access
 
 ### 4.2 Path Notation (Field Access)
 ```lisp
-point.x                  ; lookup 'x in alist 'point'
+point.x                  ; struct field access
 person.address.city      ; chained field access
+pair.car                 ; cons cell car access
+pair.cdr                 ; cons cell cdr access
 ```
-- Uses association lists (alists) for field lookup
-- Format: `((key1 . val1) (key2 . val2) ...)`
+- Struct instances use field names
+- Cons cells support `.car` and `.cdr` as special fields
+- Other values fall back to association list (alist) lookup
 - Up to 8 segments deep
 
 ### 4.3 Quote Shorthand
@@ -308,8 +346,8 @@ Returns `true` or `nil`.
 | `cons` | 2 | Construct pair |
 | `car` | 1 | First element of pair |
 | `cdr` | 1 | Rest of pair |
-| `list` | variadic | Create list from arguments |
-| `length` | 1 | List length (nil => 0) |
+| `list` | variadic | Create list; `(list [1 2 3])` converts array to list |
+| `length` | 1 | Generic: list, array, dict, or string length |
 | `null?` | 1 | Test if nil |
 | `pair?` | 1 | Test if cons cell |
 
@@ -318,12 +356,16 @@ Returns `true` or `nil`.
 |-----------|-------|-------------|
 | `not` | 1 | Logical negation |
 
-### 5.5 I/O (3)
+### 5.5 I/O (3 + effect wrappers)
 | Primitive | Arity | Description |
 |-----------|-------|-------------|
-| `print` | 1 | Output without newline |
-| `println` | 1 | Output with newline |
-| `newline` | 0 | Output newline only |
+| `print` | 1 | Output without newline (via `io/print` effect) |
+| `println` | 1 | Output with newline (via `io/println` effect) |
+| `newline` | 0 | Output newline only (via `io/newline` effect) |
+| `display` | 1 | Display value (via `io/display` effect) |
+
+I/O primitives go through algebraic effects. Raw versions (`__raw-print`, `__raw-println`, etc.) bypass effects.
+When no handler is installed, a fast path calls raw primitives directly (zero overhead).
 
 ### 5.6 String Operations (10)
 | Primitive | Arity | Description |
@@ -363,7 +405,7 @@ Returns `true` or `nil`.
 | `true` | Symbol `true` |
 | `false` | Bound to `nil` |
 
-**Total: 45 primitives + 2 constants**
+**Total: 129+ primitives + 2 constants** (includes math library, bitwise ops, sorting, introspection, type system, generic collection ops, and more not listed above)
 
 ### 5.10 FFI (Foreign Function Interface)
 | Primitive | Arity | Description |
@@ -469,13 +511,77 @@ The Pika compiler (`src/lisp/compiler.c3`) translates Lisp AST to C3 source code
 
 ---
 
-## 9. Limits
+## 9. Type System
+
+### 9.1 Type Definitions
+```lisp
+(define [type] Point (^Int x) (^Int y))           ;; struct type
+(define [abstract] Shape)                           ;; abstract type
+(define [type] (Circle Shape) (^Int radius))       ;; subtype of Shape
+(define [union] (Option T) None (Some T))          ;; union/ADT
+(define [alias] Num Int)                            ;; type alias
+```
+
+### 9.2 Multiple Dispatch
+```lisp
+(define (describe (^Int n)) "integer")
+(define (describe (^String s)) "string")
+(define (describe x) "other")           ;; fallback
+(describe 42)      ;; => "integer"
+(describe "hi")    ;; => "string"
+```
+
+Val dispatch for value-level matching:
+```lisp
+(define (fib (^(Val 0) n)) 0)
+(define (fib (^(Val 1) n)) 1)
+(define (fib (^Int n)) (+ (fib (- n 1)) (fib (- n 2))))
+(fib 10)  ;; => 55
+```
+
+### 9.3 Type Introspection
+| Primitive | Arity | Description |
+|-----------|-------|-------------|
+| `type-of` | 1 | Returns type name as symbol |
+| `is?` | 2 | Check if value is/subtypes given type |
+| `instance?` | 1 | Check if value is a type instance |
+
+### 9.4 Struct Features
+- Field access via dot-path: `point.x`
+- Nested access: `line.start.x`
+- Field mutation: `(set! point.x 99)`
+- Positional indexing: `instance.[0]`
+- Instance construction: `(Point 3 4)`
+
+---
+
+## 10. JIT Compilation
+
+GNU Lightning-based JIT compiler (`src/lisp/jit.c3`):
+- Compiles expressions to native x86_64 machine code
+- Falls back to interpreter for complex forms (effects, macros, modules, types)
+- Every test runs both interpreter AND JIT for parity verification
+- Supports: lambda, if, let, define, quote, call, arithmetic, comparison, list ops, begin, set!
+
+---
+
+## 11. Lisp-to-C3 Compiler
+
+Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
+- Runtime library (`src/lisp/runtime.c3`) provides value representation
+- TCO via V_THUNK trampoline pattern
+- Delegates complex forms to interpreter via `rt_eval_source()`
+- Supports: lambda, if, let (incl. ^rec), define, match, begin, and/or, call, literals
+
+---
+
+## 12. Limits
 
 | Resource | Limit |
 |----------|-------|
 | Symbol name length | 64 bytes |
 | Total symbols | 512 |
-| Bindings per env frame | 256 |
+| Bindings per env frame | 512 |
 | Values | Region-allocated (no fixed pool) |
 | Environments | Region-allocated (no fixed pool) |
 | Expressions | Region-allocated (no fixed pool) |
