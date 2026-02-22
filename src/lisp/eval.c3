@@ -38,7 +38,7 @@ extern fn int dlclose(void* handle) @extern("dlclose");
 extern fn char* dlerror() @extern("dlerror");
 const int RTLD_LAZY = 1;
 
-// Function pointer aliases for FFI calls (all args as long for x86_64 ABI)
+// Function pointer aliases for FFI calls — integer args
 alias FfiFn0 = fn long();
 alias FfiFn1 = fn long(long);
 alias FfiFn2 = fn long(long, long);
@@ -46,6 +46,21 @@ alias FfiFn3 = fn long(long, long, long);
 alias FfiFn4 = fn long(long, long, long, long);
 alias FfiFn5 = fn long(long, long, long, long, long);
 alias FfiFn6 = fn long(long, long, long, long, long, long);
+
+// Function pointer aliases for FFI calls — double args, double return (x86-64: XMM regs)
+alias FfiFnD0 = fn double();
+alias FfiFnD1 = fn double(double);
+alias FfiFnD2 = fn double(double, double);
+alias FfiFnD3 = fn double(double, double, double);
+
+// Function pointer aliases for FFI calls — integer args, double return
+alias FfiFnID0 = fn double();
+alias FfiFnID1 = fn double(long);
+alias FfiFnID2 = fn double(long, long);
+
+// Function pointer aliases for FFI calls — double args, integer return
+alias FfiFnDI1 = fn long(double);
+alias FfiFnDI2 = fn long(double, double);
 
 // =============================================================================
 // SECTION 1: EVALUATOR CORE
@@ -3399,6 +3414,17 @@ fn Value* prim_dict_count(Value*[] args, Env* env, Interp* interp) {
 // SECTION 7.8: FFI PRIMITIVES
 // =============================================================================
 
+fn bool ffi_is_double_type(char[] type_name) @inline {
+    return type_name.len == 6 && type_name[0] == 'd' && type_name[1] == 'o' && type_name[2] == 'u'
+        && type_name[3] == 'b' && type_name[4] == 'l' && type_name[5] == 'e';
+}
+
+fn double ffi_value_to_double(Value* val) @inline {
+    if (val != null && is_double(val)) return val.double_val;
+    if (val != null && val.tag == INT) return (double)val.int_val;
+    return 0.0;
+}
+
 /**
  * Convert a Pika value to a long based on FFI type symbol.
  * Returns the value as a long suitable for passing through function pointer casts.
@@ -3425,13 +3451,10 @@ fn long ffi_value_to_long(Value* val, char[] type_name, Interp* interp) {
         if (val != null && val.tag == INT) return val.int_val;
         return 0;
     }
-    if (type_name.len == 6 && type_name[0] == 'd' && type_name[1] == 'o' && type_name[2] == 'u') {
-        // 'double — bit-cast double to long for passing in integer register
-        double d = 0.0;
-        if (val != null && is_double(val)) { d = val.double_val; }
-        else if (val != null && val.tag == INT) { d = (double)val.int_val; }
-        long* lp = (long*)&d;
-        return *lp;
+    if (ffi_is_double_type(type_name)) {
+        // 'double — use ffi_value_to_double() and proper double calling convention.
+        // This path returns 0; actual double args are handled in prim_ffi_call dispatch.
+        return 0;
     }
     return 0;
 }
@@ -3461,10 +3484,10 @@ fn Value* ffi_long_to_value(long result, char[] type_name, Interp* interp) {
     if (type_name.len == 3 && type_name[0] == 'p' && type_name[1] == 't' && type_name[2] == 'r') {
         return make_int(interp, result);
     }
-    if (type_name.len == 6 && type_name[0] == 'd' && type_name[1] == 'o' && type_name[2] == 'u') {
-        // 'double — bit-cast long back to double
-        double* dp = (double*)&result;
-        return make_double(interp, *dp);
+    if (ffi_is_double_type(type_name)) {
+        // 'double returns are handled directly in prim_ffi_call dispatch
+        // (proper XMM register convention). Should not reach here.
+        return make_double(interp, 0.0);
     }
     return make_nil(interp);
 }
@@ -3563,43 +3586,84 @@ fn Value* prim_ffi_call(Value*[] args, Env* env, Interp* interp) {
         return make_error(interp, "ffi-call: max 6 C arguments supported");
     }
 
-    // Convert args to longs
+    // Classify arg types (double vs integer)
+    char[][6] arg_types;
     long[6] c_args;
+    double[6] d_args;
+    usz double_count = 0;
     for (usz i = 0; i < c_argc; i++) {
         Value* val = args[3 + i * 2];
         Value* type_sym = args[3 + i * 2 + 1];
         if (type_sym == null || type_sym.tag != SYMBOL) {
             return make_error(interp, "ffi-call: type annotation must be a symbol");
         }
-        char[] type_name = interp.symbols.get_name(type_sym.sym_val);
-        c_args[i] = ffi_value_to_long(val, type_name, interp);
+        arg_types[i] = interp.symbols.get_name(type_sym.sym_val);
+        if (ffi_is_double_type(arg_types[i])) {
+            d_args[i] = ffi_value_to_double(val);
+            double_count++;
+        } else {
+            c_args[i] = ffi_value_to_long(val, arg_types[i], interp);
+        }
     }
 
-    // Get return type name
+    // Get return type
     char[] ret_type = interp.symbols.get_name(args[2].sym_val);
+    bool ret_is_double = ffi_is_double_type(ret_type);
 
-    // Call the function based on arg count
-    long result;
-    switch (c_argc) {
-        case 0:
-            result = ((FfiFn0)(uptr)fn_ptr)();
-        case 1:
-            result = ((FfiFn1)(uptr)fn_ptr)(c_args[0]);
-        case 2:
-            result = ((FfiFn2)(uptr)fn_ptr)(c_args[0], c_args[1]);
-        case 3:
-            result = ((FfiFn3)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2]);
-        case 4:
-            result = ((FfiFn4)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2], c_args[3]);
-        case 5:
-            result = ((FfiFn5)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2], c_args[3], c_args[4]);
-        case 6:
-            result = ((FfiFn6)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2], c_args[3], c_args[4], c_args[5]);
-        default:
-            return make_error(interp, "ffi-call: unreachable arg count");
+    // Dispatch based on arg types and return type.
+    // All-double args with double return (most common: sqrt, sin, pow, etc.)
+    if (double_count > 0 && double_count == c_argc && ret_is_double) {
+        double dresult;
+        switch (c_argc) {
+            case 0: dresult = ((FfiFnD0)(uptr)fn_ptr)();
+            case 1: dresult = ((FfiFnD1)(uptr)fn_ptr)(d_args[0]);
+            case 2: dresult = ((FfiFnD2)(uptr)fn_ptr)(d_args[0], d_args[1]);
+            case 3: dresult = ((FfiFnD3)(uptr)fn_ptr)(d_args[0], d_args[1], d_args[2]);
+            default: return make_error(interp, "ffi-call: max 3 double args supported");
+        }
+        return make_double(interp, dresult);
     }
 
-    return ffi_long_to_value(result, ret_type, interp);
+    // All-double args with integer return (e.g., lround)
+    if (double_count > 0 && double_count == c_argc && !ret_is_double) {
+        long result;
+        switch (c_argc) {
+            case 1: result = ((FfiFnDI1)(uptr)fn_ptr)(d_args[0]);
+            case 2: result = ((FfiFnDI2)(uptr)fn_ptr)(d_args[0], d_args[1]);
+            default: return make_error(interp, "ffi-call: unsupported double-arg int-return combo");
+        }
+        return ffi_long_to_value(result, ret_type, interp);
+    }
+
+    // All-integer args with double return (e.g., converting int to double)
+    if (double_count == 0 && ret_is_double) {
+        double dresult;
+        switch (c_argc) {
+            case 0: dresult = ((FfiFnID0)(uptr)fn_ptr)();
+            case 1: dresult = ((FfiFnID1)(uptr)fn_ptr)(c_args[0]);
+            case 2: dresult = ((FfiFnID2)(uptr)fn_ptr)(c_args[0], c_args[1]);
+            default: return make_error(interp, "ffi-call: unsupported int-arg double-return combo");
+        }
+        return make_double(interp, dresult);
+    }
+
+    // All-integer args with integer return (original behavior)
+    if (double_count == 0) {
+        long result;
+        switch (c_argc) {
+            case 0: result = ((FfiFn0)(uptr)fn_ptr)();
+            case 1: result = ((FfiFn1)(uptr)fn_ptr)(c_args[0]);
+            case 2: result = ((FfiFn2)(uptr)fn_ptr)(c_args[0], c_args[1]);
+            case 3: result = ((FfiFn3)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2]);
+            case 4: result = ((FfiFn4)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2], c_args[3]);
+            case 5: result = ((FfiFn5)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2], c_args[3], c_args[4]);
+            case 6: result = ((FfiFn6)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2], c_args[3], c_args[4], c_args[5]);
+            default: return make_error(interp, "ffi-call: unreachable arg count");
+        }
+        return ffi_long_to_value(result, ret_type, interp);
+    }
+
+    return make_error(interp, "ffi-call: mixed int/double args not yet supported");
 }
 
 /**
@@ -5367,6 +5431,29 @@ fn void test_eq(Interp* interp, char[] name, char[] expr, long expected, int* pa
         if (f != null) {
             Value* jv = jit_exec(f, interp);
             jit_ok = jv != null && jv.tag == INT && jv.int_val == expected;
+        }
+    }
+
+    if (interp_ok && jit_ok) {
+        io::printfn("[PASS] %s", (ZString)name);
+        (*pass)++;
+    } else {
+        io::printfn("[FAIL] %s (interp=%s, jit=%s)", (ZString)name, interp_ok ? "ok" : "FAIL", jit_ok ? "ok" : "FAIL");
+        (*fail)++;
+    }
+}
+
+fn void test_eq_double(Interp* interp, char[] name, char[] expr, double expected, int* pass, int* fail) {
+    EvalResult ri = run(expr, interp);
+    bool interp_ok = !ri.error.has_error && is_double(ri.value) && ri.value.double_val == expected;
+
+    Expr* ast = parse_for_jit(expr, interp);
+    bool jit_ok = false;
+    if (ast != null) {
+        JitFn f = jit_compile(ast, interp);
+        if (f != null) {
+            Value* jv = jit_exec(f, interp);
+            jit_ok = jv != null && is_double(jv) && jv.double_val == expected;
         }
     }
 
@@ -7608,12 +7695,15 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_gt(interp, "ffi-call getpid", "(ffi-call test-libc \"getpid\" 'int)", 0, pass, fail);
     test_eq(interp, "ffi-call atoi", "(ffi-call test-libc \"atoi\" 'int \"12345\" 'string)", 12345, pass, fail);
     test_truthy(interp, "ffi-sym strlen", "(> (ffi-sym test-libc \"strlen\") 0)", pass, fail);
+    // Double FFI: uses XMM registers via properly-typed function pointers
+    setup(interp, "(define test-libm (ffi-open \"libm.so.6\"))");
+    test_eq_double(interp, "ffi-call sqrt", "(ffi-call test-libm \"sqrt\" 'double 4.0 'double)", 2.0, pass, fail);
+    test_eq_double(interp, "ffi-call pow", "(ffi-call test-libm \"pow\" 'double 2.0 'double 10.0 'double)", 1024.0, pass, fail);
+    setup(interp, "(ffi-close test-libm)");
     setup(interp, "(define test-libc2 (ffi-open \"libc.so.6\"))");
     // ffi-close is a side effect: JIT-only to avoid double-close
     test_nil_jit(interp, "ffi-close", "(ffi-close test-libc2)", pass, fail);
     test_error(interp, "ffi-open bad lib", "(ffi-open \"nonexistent_lib_xyz.so\")", pass, fail);
-    // FFI cache hit test: call same function twice (uses integer funcs since double FFI
-    // needs XMM register passing which isn't implemented yet)
     test_eq(interp, "ffi-call cached", "(ffi-call test-libc \"abs\" 'int (- 0 7) 'int)", 7, pass, fail);
     setup(interp, "(ffi-close test-libc)");
 }
