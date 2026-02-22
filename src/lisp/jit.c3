@@ -239,7 +239,7 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
 fn EvalResult jit_eval_to_result(Expr* expr, Env* env, Interp* interp) {
     Value* v = jit_eval(expr, env, interp);
     if (v != null && v.tag == ERROR) {
-        return eval_error(v.str_val.chars[:v.str_val.len]);
+        return eval_error_expr(v.str_val.chars[:v.str_val.len], expr);
     }
     return eval_ok(v);
 }

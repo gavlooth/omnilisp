@@ -4865,14 +4865,14 @@ fn EvalResult run_program(char[] source, Interp* interp) {
         if (f != null) {
             Value* jit_result = jit_exec(f, interp);
             if (jit_result != null && jit_result.tag == ERROR) {
-                result = eval_error(jit_result.str_val.chars[:jit_result.str_val.len]);
+                result = eval_error_expr(jit_result.str_val.chars[:jit_result.str_val.len], expr);
             } else {
                 result = eval_ok(jit_result);
             }
             if (result.error.has_error) break;
             continue;
         }
-        result = eval_error("JIT compilation failed");
+        result = eval_error_expr("JIT compilation failed", expr);
         break;
     }
 
@@ -4912,11 +4912,11 @@ fn EvalResult run(char[] source, Interp* interp) {
     if (f != null) {
         Value* result = jit_exec(f, interp);
         if (result != null && result.tag == ERROR) {
-            return eval_error(result.str_val.chars[:result.str_val.len]);
+            return eval_error_expr(result.str_val.chars[:result.str_val.len], expr);
         }
         return eval_ok(result);
     }
-    return eval_error("JIT compilation failed");
+    return eval_error_expr("JIT compilation failed", expr);
 }
 
 /**
