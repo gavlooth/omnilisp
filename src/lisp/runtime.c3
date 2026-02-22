@@ -68,6 +68,7 @@ struct ClosureData {
     void*               data;         // Captured environment struct (region-allocated)
     ClosureFn           invoke;       // Function pointer
     main::RegionHandle  home_region;  // Region where closure was created
+    bool                is_variadic;  // True for variadic closures (receives arg list)
 }
 
 /**
@@ -340,6 +341,17 @@ fn Value make_closure(void* data, ClosureFn invoke) @inline {
     v.closure_val.data = data;
     v.closure_val.invoke = invoke;
     v.closure_val.home_region = g_current_region;
+    v.closure_val.is_variadic = false;
+    return v;
+}
+
+fn Value make_variadic_closure(void* data, ClosureFn invoke) @inline {
+    Value v;
+    v.tag = V_CLOSURE;
+    v.closure_val.data = data;
+    v.closure_val.invoke = invoke;
+    v.closure_val.home_region = g_current_region;
+    v.closure_val.is_variadic = true;
     return v;
 }
 
@@ -349,6 +361,7 @@ fn Value make_closure_in_region(void* data, ClosureFn invoke, main::RegionHandle
     v.closure_val.data = data;
     v.closure_val.invoke = invoke;
     v.closure_val.home_region = region;
+    v.closure_val.is_variadic = false;
     return v;
 }
 
@@ -413,6 +426,11 @@ fn bool rt_is_truthy(Value v) {
 fn Value rt_invoke_once(Value func, Value arg) {
     switch (func.tag) {
         case V_CLOSURE:
+            if (func.closure_val.is_variadic) {
+                // Variadic closure expects all args as a list; wrap single arg
+                Value arg_list = rt_cons(arg, make_nil());
+                return func.closure_val.invoke(func.closure_val.data, arg_list);
+            }
             return func.closure_val.invoke(func.closure_val.data, arg);
 
         case V_PRIM:
@@ -459,6 +477,17 @@ fn Value rt_apply_multi(Value func, Value arg_list, long argc) {
         return rt_invoke(func, make_nil());
     }
 
+    // Variadic closure: pass ALL args as a list directly
+    if (func.tag == V_CLOSURE && func.closure_val.is_variadic) {
+        Value result = func.closure_val.invoke(func.closure_val.data, arg_list);
+        // Trampoline for TCO
+        while (result.tag == V_THUNK) {
+            Value* thunk_arg = main::dereference_as(Value, result.thunk_val.arg);
+            result = result.thunk_val.invoke(result.thunk_val.data, *thunk_arg);
+        }
+        return result;
+    }
+
     if (argc == 1) {
         // Single arg: extract car and invoke
         if (arg_list.tag == V_CONS) {
@@ -476,6 +505,19 @@ fn Value rt_apply_multi(Value func, Value arg_list, long argc) {
     for (long i = 0; i < argc; i++) {
         if (current.tag != V_CONS) break;
         Value* car = main::dereference_as(Value, current.cons_val.car);
+
+        // Check if intermediate result became a variadic closure (e.g., after currying fixed params)
+        if (result.tag == V_CLOSURE && result.closure_val.is_variadic) {
+            // Pass remaining args as list
+            Value remaining = current;
+            Value vr = result.closure_val.invoke(result.closure_val.data, remaining);
+            while (vr.tag == V_THUNK) {
+                Value* ta = main::dereference_as(Value, vr.thunk_val.arg);
+                vr = vr.thunk_val.invoke(vr.thunk_val.data, *ta);
+            }
+            return vr;
+        }
+
         if (i == argc - 1) {
             // Last arg: use full trampoline
             result = rt_invoke(result, *car);
@@ -748,6 +790,19 @@ fn Value rt_car(Value a, Value _unused) {
 }
 
 fn Value rt_cdr(Value a, Value _unused) {
+    if (a.tag != V_CONS) return make_nil();
+    Value* cdr = main::dereference_as(Value, a.cons_val.cdr);
+    return *cdr;
+}
+
+// Single-arg car/cdr — used by variadic lambda arg unpacking
+fn Value rt_car1(Value a) {
+    if (a.tag != V_CONS) return make_nil();
+    Value* car = main::dereference_as(Value, a.cons_val.car);
+    return *car;
+}
+
+fn Value rt_cdr1(Value a) {
     if (a.tag != V_CONS) return make_nil();
     Value* cdr = main::dereference_as(Value, a.cons_val.cdr);
     return *cdr;

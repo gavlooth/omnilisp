@@ -1557,9 +1557,11 @@ bool g_jit_initialized = false;
 
 // JIT state cleanup tracking (C9: increased from 64 to 256, then to 4096)
 const usz JIT_STATE_POOL_SIZE = 4096;
+const usz JIT_STATE_GC_THRESHOLD = 3072;  // GC when pool reaches 75%
 void*[4096] g_jit_states;
 usz g_jit_state_count = 0;
 bool g_jit_pool_warned = false;
+bool g_jit_gc_needed = false;  // signals that GC should run between evals
 
 // JIT compilation cache: Expr* → JitFn (open-addressing hash on pointer value)
 struct JitCacheEntry {
@@ -1568,6 +1570,7 @@ struct JitCacheEntry {
 }
 
 const usz JIT_CACHE_SIZE = 1024;
+const usz JIT_CACHE_GC_THRESHOLD = 768;  // clear cache at 75% capacity
 JitCacheEntry[JIT_CACHE_SIZE] g_jit_cache;
 usz g_jit_cache_count = 0;
 
@@ -1583,7 +1586,10 @@ fn JitFn jit_cache_lookup(Expr* expr) {
 }
 
 fn void jit_cache_store(Expr* expr, JitFn compiled) {
-    if (g_jit_cache_count >= JIT_CACHE_SIZE - 64) return;  // leave headroom
+    // If cache is too full, clear it entirely (codes remain valid in state pool)
+    if (g_jit_cache_count >= JIT_CACHE_GC_THRESHOLD) {
+        jit_cache_clear();
+    }
     usz hash = (usz)expr;
     usz idx = hash % JIT_CACHE_SIZE;
     for (usz probe = 0; probe < 16; probe++) {
@@ -1595,6 +1601,18 @@ fn void jit_cache_store(Expr* expr, JitFn compiled) {
             return;
         }
     }
+}
+
+/**
+ * Clear the JIT cache. Safe to call anytime — just causes recompilation on next access.
+ * Does NOT free state memory (codes remain valid but unreachable from cache).
+ */
+fn void jit_cache_clear() {
+    for (usz i = 0; i < JIT_CACHE_SIZE; i++) {
+        g_jit_cache[i].expr = null;
+        g_jit_cache[i].compiled = null;
+    }
+    g_jit_cache_count = 0;
 }
 
 fn void jit_global_init() {
@@ -1614,6 +1632,30 @@ fn void jit_global_shutdown() {
         finish_jit();
         g_jit_initialized = false;
     }
+}
+
+/**
+ * Garbage-collect JIT states and cache.
+ *
+ * SAFETY: Must only be called between top-level evaluations, when NO JIT
+ * code is on the call stack. Destroys all state objects (freeing their code
+ * buffers) and clears the compilation cache. Subsequent jit_eval() calls
+ * will recompile on demand.
+ */
+fn void jit_gc() {
+    if (!g_jit_gc_needed) return;
+
+    // Destroy all JIT states — their code buffers become invalid
+    for (usz i = 0; i < g_jit_state_count; i++) {
+        _jit_destroy_state(g_jit_states[i]);
+    }
+    g_jit_state_count = 0;
+
+    // Clear cache since all code buffers are freed
+    jit_cache_clear();
+
+    g_jit_gc_needed = false;
+    g_jit_pool_warned = false;
 }
 
 /**
@@ -1663,11 +1705,14 @@ fn JitFn jit_compile(Expr* expr, Interp* interp) {
 
     // Track state for cleanup (code buffer lives inside it).
     // C9: Cannot destroy_state here — code buffer lives inside the state.
-    // If pool is full, the state leaks but the compiled code remains valid.
-    // Increased pool from 64 to 256 to reduce likelihood of overflow.
+    // States are destroyed by jit_gc() between top-level evaluations.
     if (g_jit_state_count < JIT_STATE_POOL_SIZE) {
         g_jit_states[g_jit_state_count] = s;
         g_jit_state_count++;
+        // Signal GC needed when approaching capacity
+        if (g_jit_state_count >= JIT_STATE_GC_THRESHOLD) {
+            g_jit_gc_needed = true;
+        }
     } else {
         if (!g_jit_pool_warned) {
             io::printfn("WARNING: JIT state pool full (%d states), further states leaked", JIT_STATE_POOL_SIZE);

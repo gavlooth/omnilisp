@@ -77,11 +77,16 @@ struct CompiledModule {
  */
 struct LambdaDef {
     usz         id;              // Lambda ID
-    SymbolId    param;           // Parameter name
+    SymbolId    param;           // Parameter name (for single-param lambdas)
     Expr*       body;            // Body expression
     SymbolId[16] captures;       // Captured variables
     usz         capture_count;
     bool        creates_closure; // Does this lambda create nested closures?
+    // Variadic support
+    bool        has_rest;        // True if variadic lambda (.. rest)
+    SymbolId    rest_param;      // Rest parameter name
+    SymbolId[16] params;         // All fixed params (for variadic)
+    usz         param_count;     // Number of fixed params (for variadic)
 }
 
 // =============================================================================
@@ -1601,6 +1606,15 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
             if ((uint)expr.lambda.param != 0xFFFFFFFF) {
                 own_bound.push(expr.lambda.param);
             }
+            // For variadic lambdas, add all fixed params + rest param to bound set
+            if (expr.lambda.has_rest) {
+                for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
+                    own_bound.push(expr.lambda.params[pi]);
+                }
+                if ((uint)expr.lambda.rest_param != 0) {
+                    own_bound.push(expr.lambda.rest_param);
+                }
+            }
             List{SymbolId} free;
             self.find_free_vars(expr.lambda.body, &own_bound, &free, enclosing_bound);
 
@@ -1609,6 +1623,13 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
             def.param = expr.lambda.param;
             def.body = expr.lambda.body;
             def.capture_count = 0;
+            // Store variadic info
+            def.has_rest = expr.lambda.has_rest;
+            def.rest_param = expr.lambda.rest_param;
+            def.param_count = expr.lambda.param_count;
+            for (usz pi = 0; pi < expr.lambda.param_count && pi < 16; pi++) {
+                def.params[pi] = expr.lambda.params[pi];
+            }
 
             foreach (f : free) {
                 if (def.capture_count < 16) {
@@ -1623,6 +1644,15 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
             }
             if ((uint)expr.lambda.param != 0xFFFFFFFF) {
                 new_enclosing.push(expr.lambda.param);
+            }
+            // Add variadic params to enclosing scope for nested lambda free var analysis
+            if (expr.lambda.has_rest) {
+                for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
+                    new_enclosing.push(expr.lambda.params[pi]);
+                }
+                if ((uint)expr.lambda.rest_param != 0) {
+                    new_enclosing.push(expr.lambda.rest_param);
+                }
             }
             bool body_has_lambda = self.scan_lambdas_with_scope(expr.lambda.body, &new_enclosing);
 
@@ -1904,7 +1934,11 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
 
         self.emit("fn runtime::Value invoke_lambda_");
         self.emit_usz(def.id);
-        if (is_zero_arg) {
+
+        if (def.has_rest) {
+            // Variadic lambda: receives all args as a cons list
+            self.emit("(void* _self, runtime::Value _arg_list) {\n");
+        } else if (is_zero_arg) {
             self.emit("(void* _self, runtime::Value _unused) {\n");
         } else {
             self.emit("(void* _self, runtime::Value ");
@@ -1916,9 +1950,31 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
 
         // Clear declared vars for this function scope
         self.declared_vars.free();
-        // Mark parameter as declared
-        if (!is_zero_arg) {
-            self.mark_declared(def.param);
+
+        if (def.has_rest) {
+            // Variadic: unpack fixed params from arg list, bind rest
+            self.emit_indent();
+            self.emit("runtime::Value _curr = _arg_list;\n");
+            for (usz pi = 0; pi < def.param_count; pi++) {
+                self.mark_declared(def.params[pi]);
+                self.emit_indent();
+                self.emit("runtime::Value ");
+                self.emit_symbol_name(def.params[pi]);
+                self.emit(" = runtime::rt_car1(_curr);\n");
+                self.emit_indent();
+                self.emit("_curr = runtime::rt_cdr1(_curr);\n");
+            }
+            // Rest param gets remaining list
+            self.mark_declared(def.rest_param);
+            self.emit_indent();
+            self.emit("runtime::Value ");
+            self.emit_symbol_name(def.rest_param);
+            self.emit(" = _curr;\n");
+        } else {
+            // Mark parameter as declared
+            if (!is_zero_arg) {
+                self.mark_declared(def.param);
+            }
         }
 
         // If this lambda creates closures, push a frame region
@@ -1964,6 +2020,21 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
 
         self.indent--;
         self.emit("}\n\n");
+    }
+}
+
+fn bool Compiler.is_variadic_lambda(Compiler* self, usz lambda_id) {
+    foreach (def : self.lambda_defs) {
+        if (def.id == lambda_id) return def.has_rest;
+    }
+    return false;
+}
+
+fn void Compiler.emit_make_closure_call(Compiler* self, usz lambda_id) {
+    if (self.is_variadic_lambda(lambda_id)) {
+        self.emit("make_variadic_closure");
+    } else {
+        self.emit("make_closure");
     }
 }
 
@@ -2014,13 +2085,17 @@ fn void Compiler.emit_lambda_return(Compiler* self, Expr* expr) {
         self.emit(", _closure_data);\n");
 
         self.emit_indent();
-        self.emit("return runtime::make_closure(main::dereference(_closure_handle), &invoke_lambda_");
+        self.emit("return runtime::");
+        self.emit_make_closure_call(lambda_id);
+        self.emit("(main::dereference(_closure_handle), &invoke_lambda_");
         self.emit_usz(lambda_id);
         self.emit(");\n");
     } else {
         // Simple closure without captures
         self.emit_indent();
-        self.emit("return runtime::make_closure(null, &invoke_lambda_");
+        self.emit("return runtime::");
+        self.emit_make_closure_call(lambda_id);
+        self.emit("(null, &invoke_lambda_");
         self.emit_usz(lambda_id);
         self.emit(");\n");
     }
@@ -2074,7 +2149,9 @@ fn void Compiler.emit_lambda_return_with_frame(Compiler* self, Expr* expr, bool 
 
         // Make closure value
         self.emit_indent();
-        self.emit("runtime::Value _result = runtime::make_closure(main::dereference(_closure_handle), &invoke_lambda_");
+        self.emit("runtime::Value _result = runtime::");
+        self.emit_make_closure_call(lambda_id);
+        self.emit("(main::dereference(_closure_handle), &invoke_lambda_");
         self.emit_usz(lambda_id);
         self.emit(");\n");
 
@@ -2089,7 +2166,9 @@ fn void Compiler.emit_lambda_return_with_frame(Compiler* self, Expr* expr, bool 
     } else {
         // Simple closure without captures
         self.emit_indent();
-        self.emit("runtime::Value _result = runtime::make_closure(null, &invoke_lambda_");
+        self.emit("runtime::Value _result = runtime::");
+        self.emit_make_closure_call(lambda_id);
+        self.emit("(null, &invoke_lambda_");
         self.emit_usz(lambda_id);
         self.emit(");\n");
 
@@ -2521,6 +2600,7 @@ fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
     usz arg_count = expr.call.arg_count;
 
     // Special case: (dict ...) is variadic — use rt_dict_from_args directly
+    // Special case: (list ...) is variadic — build cons chain directly
     if (expr.call.func.tag == E_VAR) {
         char[] fname = self.interp.symbols.get_name(expr.call.func.var_expr.name);
         if (self.str_eq(fname, "dict")) {
@@ -2554,6 +2634,32 @@ fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
             self.emit(");\n");
             return id;
         }
+        if (self.str_eq(fname, "list")) {
+            // list is variadic: (list a b c) → cons chain (a b c)
+            if (arg_count == 0) {
+                usz id = self.next_result();
+                self.emit_temp_decl(id);
+                self.emit(" = runtime::make_nil();\n");
+                return id;
+            }
+            usz[32] arg_temps;
+            for (usz i = 0; i < arg_count && i < 32; i++) {
+                arg_temps[i] = self.compile_to_temp(expr.call.args[i]);
+            }
+            usz result_r = self.next_result();
+            self.emit_temp_decl(result_r);
+            self.emit(" = runtime::make_nil();\n");
+            for (isz i = (isz)arg_count - 1; i >= 0; i--) {
+                self.emit_indent();
+                self.emit_temp_ref(result_r);
+                self.emit(" = runtime::rt_cons(");
+                self.emit_temp_ref(arg_temps[(usz)i]);
+                self.emit(", ");
+                self.emit_temp_ref(result_r);
+                self.emit(");\n");
+            }
+            return result_r;
+        }
     }
 
     if (arg_count == 0) {
@@ -2575,28 +2681,42 @@ fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
     // Compile func to temp
     usz func_r = self.compile_to_temp(expr.call.func);
 
-    // Apply args one at a time (inline currying):
-    // rt_invoke_once for intermediates, rt_invoke for last arg (with trampoline)
-    usz tf = func_r;
-    for (usz i = 0; i < arg_count; i++) {
-        usz next_r = self.next_result();
-        self.emit_temp_decl(next_r);
-        if (i == arg_count - 1) {
-            self.emit(" = runtime::rt_invoke(");
-        } else {
-            self.emit(" = runtime::rt_invoke_once(");
-        }
-        self.emit_temp_ref(tf);
+    // Build cons list of args for rt_apply_multi (handles variadic + non-variadic)
+    usz args_list = self.next_result();
+    self.emit_temp_decl(args_list);
+    self.emit(" = runtime::make_nil();\n");
+    for (isz i = (isz)arg_count - 1; i >= 0; i--) {
+        self.emit_indent();
+        self.emit_temp_ref(args_list);
+        self.emit(" = runtime::rt_cons(");
+        self.emit_temp_ref(arg_temps[(usz)i]);
         self.emit(", ");
-        self.emit_temp_ref(arg_temps[i]);
+        self.emit_temp_ref(args_list);
         self.emit(");\n");
-        tf = next_r;
     }
-    return tf;
+
+    usz id = self.next_result();
+    self.emit_temp_decl(id);
+    self.emit(" = runtime::rt_apply_multi(");
+    self.emit_temp_ref(func_r);
+    self.emit(", ");
+    self.emit_temp_ref(args_list);
+    self.emit(", ");
+    self.emit_usz(arg_count);
+    self.emit(");\n");
+    return id;
 }
 
 fn usz Compiler.compile_call_tail_flat(Compiler* self, Expr* expr) {
     usz arg_count = expr.call.arg_count;
+
+    // Special cases: list/dict build data structures, delegate to non-tail version
+    if (expr.call.func.tag == E_VAR) {
+        char[] fname = self.interp.symbols.get_name(expr.call.func.var_expr.name);
+        if (self.str_eq(fname, "list") || self.str_eq(fname, "dict")) {
+            return self.compile_call_flat(expr);
+        }
+    }
 
     if (arg_count == 0) {
         usz func_r = self.compile_to_temp(expr.call.func);
@@ -2639,14 +2759,50 @@ fn usz Compiler.compile_call_tail_flat(Compiler* self, Expr* expr) {
     // Compile func
     usz func_r = self.compile_to_temp(expr.call.func);
 
-    // Apply args one at a time; last one is tail position
+    // Build cons list of args (needed for variadic path)
+    usz args_list = self.next_result();
+    self.emit_temp_decl(args_list);
+    self.emit(" = runtime::make_nil();\n");
+    for (isz i = (isz)arg_count - 1; i >= 0; i--) {
+        self.emit_indent();
+        self.emit_temp_ref(args_list);
+        self.emit(" = runtime::rt_cons(");
+        self.emit_temp_ref(arg_temps[(usz)i]);
+        self.emit(", ");
+        self.emit_temp_ref(args_list);
+        self.emit(");\n");
+    }
+
+    usz id = self.next_result();
+    self.emit_temp_decl(id);
+    self.emit(";\n");
+
+    // Variadic closure: make_thunk with full arg list (preserves TCO)
+    self.emit_indent();
+    self.emit("if (");
+    self.emit_temp_ref(func_r);
+    self.emit(".tag == runtime::ValueTag.V_CLOSURE && ");
+    self.emit_temp_ref(func_r);
+    self.emit(".closure_val.is_variadic) {\n");
+    self.indent++;
+    self.emit_indent();
+    self.emit_temp_ref(id);
+    self.emit(" = runtime::make_thunk(");
+    self.emit_temp_ref(func_r);
+    self.emit(".closure_val.invoke, ");
+    self.emit_temp_ref(func_r);
+    self.emit(".closure_val.data, ");
+    self.emit_temp_ref(args_list);
+    self.emit(");\n");
+    self.indent--;
+    self.emit_indent();
+    self.emit("} else {\n");
+    self.indent++;
+
+    // Non-variadic: curry one at a time; last arg is tail position (thunk)
     usz tf = func_r;
     for (usz i = 0; i < arg_count; i++) {
         if (i == arg_count - 1) {
-            // Last arg: tail position → emit thunk for closures
-            usz id = self.next_result();
-            self.emit_temp_decl(id);
-            self.emit(";\n");
             self.emit_indent();
             self.emit("if (");
             self.emit_temp_ref(tf);
@@ -2675,9 +2831,7 @@ fn usz Compiler.compile_call_tail_flat(Compiler* self, Expr* expr) {
             self.indent--;
             self.emit_indent();
             self.emit("}\n");
-            return id;
         } else {
-            // Intermediate: non-tail, no trampoline needed
             usz next_tf = self.next_result();
             self.emit_temp_decl(next_tf);
             self.emit(" = runtime::rt_invoke_once(");
@@ -2688,8 +2842,11 @@ fn usz Compiler.compile_call_tail_flat(Compiler* self, Expr* expr) {
             tf = next_tf;
         }
     }
-    // Should not reach here
-    return tf;
+
+    self.indent--;
+    self.emit_indent();
+    self.emit("}\n");
+    return id;
 }
 
 fn usz Compiler.compile_app_flat(Compiler* self, Expr* expr) {
@@ -3519,7 +3676,9 @@ fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
 
         usz id = self.next_result();
         self.emit_temp_decl(id);
-        self.emit(" = runtime::make_closure(main::dereference(_closure_handle_");
+        self.emit(" = runtime::");
+        self.emit_make_closure_call(lambda_id);
+        self.emit("(main::dereference(_closure_handle_");
         self.emit_usz(lambda_id);
         self.emit("), &invoke_lambda_");
         self.emit_usz(lambda_id);
@@ -3529,7 +3688,9 @@ fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
         // Simple closure without captures
         usz id = self.next_result();
         self.emit_temp_decl(id);
-        self.emit(" = runtime::make_closure(null, &invoke_lambda_");
+        self.emit(" = runtime::");
+        self.emit_make_closure_call(lambda_id);
+        self.emit("(null, &invoke_lambda_");
         self.emit_usz(lambda_id);
         self.emit(");\n");
         return id;
@@ -3698,12 +3859,16 @@ fn void Compiler.compile_lambda(Compiler* self, Expr* expr) {
         self.emit_usz(lambda_id);
         self.emit(", _closure_data); ");
 
-        self.emit("runtime::make_closure(main::dereference(_closure_handle), &invoke_lambda_");
+        self.emit("runtime::");
+        self.emit_make_closure_call(lambda_id);
+        self.emit("(main::dereference(_closure_handle), &invoke_lambda_");
         self.emit_usz(lambda_id);
         self.emit("); })");
     } else {
         // Simple closure without captures
-        self.emit("runtime::make_closure(null, &invoke_lambda_");
+        self.emit("runtime::");
+        self.emit_make_closure_call(lambda_id);
+        self.emit("(null, &invoke_lambda_");
         self.emit_usz(lambda_id);
         self.emit(")");
     }

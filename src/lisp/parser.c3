@@ -1365,10 +1365,12 @@ fn Expr* Parser.parse_define(Parser* self) {
         SymbolId name = self.get_current_symbol();
         self.lexer.advance();
 
-        // Collect parameter symbols (with optional type annotations) until ')'
+        // Collect parameter symbols (with optional type annotations) until ')' or '..'
         SymbolId[64] params;
         TypeAnnotation[8] define_param_anns;
         bool define_has_typed = false;
+        bool define_has_rest = false;
+        SymbolId define_rest_param = 0;
         usz param_count = 0;
         while (self.lexer.current.type == T_SYMBOL || self.lexer.current.type == T_LPAREN) {
             if (param_count >= 64) { self.set_error("too many parameters in shorthand define"); return null; }
@@ -1388,7 +1390,21 @@ fn Expr* Parser.parse_define(Parser* self) {
                 self.lexer.advance();
             }
             param_count++;
+            // Check for variadic '..' rest param
+            if (self.lexer.current.type == T_DOTDOT) {
+                break;
+            }
         }
+
+        // Handle variadic: (define (f x .. rest) body)
+        if (self.lexer.current.type == T_DOTDOT) {
+            self.lexer.advance();  // consume '..'
+            if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected rest parameter name after .."); return null; }
+            define_rest_param = self.get_current_symbol();
+            define_has_rest = true;
+            self.lexer.advance();
+        }
+
         self.expect(T_RPAREN, ")");  // close param list
 
         // Parse body expression
@@ -1399,7 +1415,34 @@ fn Expr* Parser.parse_define(Parser* self) {
 
         // Build lambda expression
         Expr* lambda_expr;
-        if (param_count == 0) {
+        if (define_has_rest) {
+            // Variadic lambda: (define (f x .. rest) body) or (define (f .. rest) body)
+            lambda_expr = self.interp.alloc_expr();
+            lambda_expr.tag = E_LAMBDA;
+            lambda_expr.lambda = mem::malloc(ExprLambda.sizeof);
+            lambda_expr.loc_line = e.loc_line;
+            lambda_expr.loc_column = e.loc_column;
+            if (param_count > 0) {
+                lambda_expr.lambda.param = params[0];
+            } else {
+                lambda_expr.lambda.param = (SymbolId)0xFFFFFFFF;
+            }
+            lambda_expr.lambda.param_count = param_count;
+            for (usz i = 0; i < param_count; i++) {
+                lambda_expr.lambda.params[i] = params[i];
+            }
+            lambda_expr.lambda.has_rest = true;
+            lambda_expr.lambda.rest_param = define_rest_param;
+            lambda_expr.lambda.has_typed_params = define_has_typed;
+            if (define_has_typed) {
+                usz ann_count = param_count;
+                if (ann_count > 8) ann_count = 8;
+                for (usz i = 0; i < ann_count; i++) {
+                    lambda_expr.lambda.param_annotations[i] = define_param_anns[i];
+                }
+            }
+            lambda_expr.lambda.body = body;
+        } else if (param_count == 0) {
             // Zero-arg lambda
             lambda_expr = self.interp.alloc_expr();
             lambda_expr.tag = E_LAMBDA;

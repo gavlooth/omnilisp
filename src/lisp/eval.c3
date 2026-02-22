@@ -4856,6 +4856,9 @@ fn EvalResult run_program(char[] source, Interp* interp) {
     EvalResult result = eval_ok(make_nil(interp));
 
     foreach (expr : exprs) {
+        // GC JIT states between top-level expressions (safe: no JIT code on stack)
+        jit_gc();
+
         // Expand macros before JIT compilation
         expr = expand_macros_in_expr(expr, interp);
         JitFn f = jit_compile(expr, interp);
@@ -5287,6 +5290,9 @@ fn void repl(Interp* interp) {
         // Add the full accumulated expression to history
         buf[buf_len] = 0; // null-terminate for add_history
         add_history(&buf[0]);
+
+        // GC JIT states between REPL lines (safe: no JIT code on stack)
+        jit_gc();
 
         // Parse and evaluate in temp region
         char[] input = buf[:buf_len];
@@ -8014,12 +8020,12 @@ fn void run_compiler_tests(Interp* _unused_interp) {
         else    { fail++; io::printn("[FAIL] Compiler: multi-arg uses rt_invoke"); }
     }
 
-    // 43. 3-arg call uses inline currying
+    // 43. 3-arg call uses rt_apply_multi
     {
         char[] code = compile_to_c3("(substring \"hello\" 1 3)", interp);
-        bool ok = str_contains(code, "rt_invoke") && !str_contains(code, "rt_apply_multi");
-        if (ok) { pass++; io::printn("[PASS] Compiler: 3-arg inline currying"); }
-        else    { fail++; io::printn("[FAIL] Compiler: 3-arg inline currying"); }
+        bool ok = str_contains(code, "rt_apply_multi");
+        if (ok) { pass++; io::printn("[PASS] Compiler: 3-arg rt_apply_multi"); }
+        else    { fail++; io::printn("[FAIL] Compiler: 3-arg rt_apply_multi"); }
     }
 
     // 44. Zero-arg call via rt_invoke
