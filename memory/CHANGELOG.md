@@ -1,5 +1,58 @@
 # Changelog
 
+## 2026-02-22 (Session 12): JIT GC, Variadic Lambda AOT, FFI Doubles, Error Locations, Region Pinning
+
+### JIT State Pool & Cache GC (Tasks #7-#8)
+- Added `jit_gc()` function: destroys all JIT states + clears cache between top-level evaluations when pool exceeds 75% capacity (3072/4096)
+- Added `jit_cache_clear()`: evicts all cache entries when cache reaches 75% capacity (768/1024)
+- GC runs safely between top-level evals in `run_program()` and REPL (no JIT code on call stack)
+
+### Variadic Lambda AOT Compilation (Task #9)
+- Parser: `(define (f x .. rest) body)` shorthand now handles `T_DOTDOT` token correctly
+- Compiler: `LambdaDef` extended with `has_rest`, `rest_param`, `params[]`, `param_count`; lambda body generates arg-list unpacking via `rt_car1`/`rt_cdr1`
+- Runtime: `ClosureData.is_variadic` flag, `make_variadic_closure()`, `rt_apply_multi` detects variadic closures and passes full arg list
+- E_CALL compilation: `compile_call_flat` uses `rt_apply_multi` with cons list; `compile_call_tail_flat` has runtime variadic check with `make_thunk` for TCO preservation
+
+### Multi-arg `list` Compiler Fix
+- Added `list` special case in `compile_call_flat` (like `dict`): builds cons chain directly instead of currying through unary `rt_list` primitive
+- `compile_call_tail_flat` delegates `list`/`dict` to non-tail version
+
+### Changes
+- `src/lisp/jit.c3` — JIT GC infrastructure (51 lines added)
+- `src/lisp/compiler.c3` — Variadic lambda support, rt_apply_multi for E_CALL, list special case (239 lines changed)
+- `src/lisp/runtime.c3` — Variadic closure support (55 lines added)
+- `src/lisp/parser.c3` — Define-shorthand variadic handling (47 lines added)
+- `src/lisp/eval.c3` — jit_gc() calls, updated test expectation (14 lines changed)
+
+### Source Location in Error Messages (Task #10)
+- `jit_eval_to_result()`, `run_program()`, `run()` now use `eval_error_expr(msg, expr)` instead of `eval_error(msg)`, threading Expr.loc_line/loc_column to error display
+- Errors now show `Error at line N, column N:` instead of bare `Error:`
+
+### FFI Double/XMM Register Support (Task #11)
+- Added properly-typed function pointer aliases: `FfiFnD0..D3` (double args + double return), `FfiFnID0..2`, `FfiFnDI1..2` (cross-type)
+- `prim_ffi_call` classifies arg types and dispatches to correct function pointer cast
+- Replaces broken bit-cast approach (doubles passed in integer registers) with correct x86-64 ABI
+- Added `ffi_is_double_type()`, `ffi_value_to_double()` helpers
+- Added `test_eq_double()` test helper + 2 tests (ffi-call sqrt, ffi-call pow via libm)
+
+### Region Pinning for Continuations (Task #14)
+- Added `captured_frame: main::RegionHandle` to `CapturedCont` struct
+- `jit_shift_impl` and `jit_perform_impl` call `retain_region(current_frame)` when capturing continuation
+- Prevents UAF when temp frame is released before captured continuation is invoked
+
+### Changes
+- `src/lisp/jit.c3` — JIT GC, error locations, region pinning
+- `src/lisp/compiler.c3` — Variadic lambda, rt_apply_multi for E_CALL, list special case
+- `src/lisp/runtime.c3` — Variadic closure support
+- `src/lisp/parser.c3` — Define-shorthand variadic handling
+- `src/lisp/eval.c3` — jit_gc, error locations, FFI doubles, test helpers
+- `src/lisp/value.c3` — CapturedCont.captured_frame field
+
+### Test Count
+- 1163 total (720 unified + 77 compiler + 366 e2e) — all passing
+
+---
+
 ## 2026-02-21 (Session 11): Tasks #15, #18, #21, #32, #35 — ALL 35 AUDIT TASKS COMPLETE
 
 ### Task #15: Replace compile_var linear string chain with hash map
