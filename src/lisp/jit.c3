@@ -815,6 +815,8 @@ fn EvalResult jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     cc.has_handler = false;
     cc.shift_index = interp.shift_counter;
     cc.shift_prior_count = interp.shift_counter;
+    // Pin the current frame to prevent UAF: reset_env may be allocated there
+    cc.captured_frame = main::retain_region(interp.current_frame);
     for (usz si = 0; si < cc.shift_prior_count && si < 16; si++) {
         cc.shift_prior_results[si] = interp.shift_prior_results[si];
     }
@@ -954,6 +956,8 @@ fn EvalResult jit_perform_impl(Expr* expr, Env* env, Interp* interp) {
                 cc.has_handler = true;
                 cc.perform_index = interp.effect_perform_counter;
                 cc.prior_count = interp.effect_perform_counter;
+                // Pin the current frame to prevent UAF on body_env
+                cc.captured_frame = main::retain_region(interp.current_frame);
                 for (usz pi = 0; pi < cc.prior_count && pi < 16; pi++) {
                     cc.prior_results[pi] = interp.effect_prior_results[pi];
                 }

@@ -1471,6 +1471,9 @@ struct CapturedCont {
     usz shift_index;
     Value*[16] shift_prior_results;
     usz shift_prior_count;
+    // Region pinning: retain the frame where reset_env was allocated
+    // to prevent UAF when frame is released before continuation is invoked
+    main::RegionHandle captured_frame;
 }
 
 // =============================================================================
