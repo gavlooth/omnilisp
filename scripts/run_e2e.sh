@@ -18,7 +18,8 @@ c3c compile \
   src/test_ghost_lookup.c3 src/test_arena_bug.c3 src/test_alignment.c3 \
   src/test_sparse_set.c3 src/test_typeid.c3 src/test_destructor_registry.c3 \
   src/test_slot_table.c3 src/test_region.c3 \
-  src/lisp/eval.c3 src/lisp/parser.c3 src/lisp/value.c3 \
+  src/lisp/eval.c3 src/lisp/primitives.c3 src/lisp/macros.c3 src/lisp/tests.c3 \
+  src/lisp/parser.c3 src/lisp/value.c3 \
   src/lisp/jit.c3 src/lisp/compiler.c3 src/lisp/runtime.c3 \
   build/e2e_test.c3 \
   -o build/e2e_test -l lightning -l readline -l dl -l m -L /usr/local/lib -L build
