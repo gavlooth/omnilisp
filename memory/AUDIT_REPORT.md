@@ -1,8 +1,8 @@
 # Pika Lisp Codebase Audit Report
 
-**Date**: 2026-02-13
+**Date**: 2026-02-13 (updated 2026-02-23)
 **Scope**: Full codebase audit for naive implementations and production readiness
-**Status**: 44 of 64 issues fixed, 1 false positive (H4), 19 remaining (low-risk)
+**Status**: 46 of 64 issues fixed, 1 false positive (H4), 17 remaining (low-risk)
 
 ---
 
@@ -12,9 +12,9 @@
 |----------|-------|-------|----------------|-----------|
 | CRITICAL | 14 | **14** | 0 | 0 |
 | HIGH | 20 | **18** | 1 | 2 |
-| MEDIUM | 18 | **12** | 0 | 6 |
+| MEDIUM | 18 | **14** | 0 | 4 |
 | LOW | 12 | 0 | 0 | 12 |
-| **Total** | **64** | **44** | **1** | **18** |
+| **Total** | **64** | **46** | **1** | **17** |
 
 **Note**: Some findings from sub-audits were deduplicated or reclassified after cross-referencing. One parser finding (missing `break` in switch) was identified as a **false positive** — C3 switches do not have implicit fallthrough.
 
@@ -162,7 +162,7 @@
 
 ---
 
-## MEDIUM Issues (18) — 12 FIXED, 6 REMAINING
+## MEDIUM Issues (18) — 14 FIXED, 4 REMAINING
 
 ### M1. Quasiquote Splice Capped at 64 Items Silently — FIXED
 - **Fix**: Returns `eval_error("quasiquote splice: too many items (max 64)")` instead of silent drop.
@@ -200,11 +200,12 @@
 ### M12. JIT Locals Limit (32) Assert-Only — FIXED
 - **Fix**: Assert replaced with `return false` — falls back to interpreter.
 
-### M13. JIT Global Env Pointer Baked at Compile Time — REMAINING
-- **Reason**: By design. `global_env` is stable for the Interp lifetime. JIT code is never persisted across Interp instances.
+### M13. JIT Global Env Pointer Baked at Compile Time — REMAINING (By Design)
+- **Reason**: Slightly misleading description — JIT actually uses runtime `jit_get_env()` / `emit_load_env()` for env lookup, not a baked compile-time pointer. `global_env` is stable for the Interp lifetime and JIT code is never persisted across Interp instances.
 
-### M14. Arena Fragmentation Without Coalescing — REMAINING
-- **Reason**: Architectural. Region-based design intentionally avoids per-object free.
+### M14. Arena Fragmentation Without Coalescing — FIXED
+- **File**: `src/main.c3`
+- **Fix**: `Pool.arena_free()` implements left-merge, right-merge, and bridge-merge of adjacent free chunks. Coalescing was implemented during earlier audit sessions but the report entry was not updated. Stale comment in `arena_free()` corrected in Session 19.
 
 ### M15. No Signal Handling for REPL — FIXED
 - **File**: `src/lisp/eval.c3`
@@ -214,8 +215,12 @@
 - **File**: `src/main.c3`
 - **Fix**: Converted `unreachable()` in `Pool.arena_free` to `io::eprintfn` warning + return. Other `unreachable()` calls in the region system guard true invariants and remain as-is.
 
-### M17. Double-Free Risk in Ghost Table Transfer — REMAINING
-- **Reason**: Requires careful analysis of region lifecycle. Ghost table ownership transfer is complex and the double-free path requires specific timing.
+### M17. Double-Free Risk in Ghost Table Transfer — FIXED (Verified Safe)
+- **Analysis**: Deep code-path trace confirms no double-free is possible. Three defenses prevent it:
+  1. `promote_inherited_ghost_tables()` uses value-copy + `source.object_records = {}` null-out pattern — source is emptied after transfer
+  2. `clear()` (not `free()`) is used on transferred lists — sets `size=0` without freeing backing memory
+  3. `foreach` over size=0 lists iterates zero times, so no stale pointers are followed
+- Ghost table ownership is always singular: transfer moves entries, never shares them.
 
 ### M18. Destructor Registry Grows Without Bound — REMAINING
 - **Reason**: In practice, the registry only grows to the number of distinct types, which is bounded by the program's type diversity. Adding a cap could break valid programs.

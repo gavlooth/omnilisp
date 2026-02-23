@@ -57,7 +57,6 @@ module main;
 
 import std::collections::list;
 import std::io;
-import lisp;
 
 // =============================================================================
 // SECTION 1: PRIMITIVE TYPE ALIASES
@@ -543,8 +542,8 @@ fn void* Pool.arena_alloc(Pool* self, usz size, usz alignment = 8) {
  * Finds which arena owns this pointer and adds an entry to the free-list.
  * Future allocations may reuse this chunk.
  *
- * Note: This implementation doesn't coalesce adjacent free chunks.
- * A production system might want to merge them to reduce fragmentation.
+ * Coalesces adjacent free chunks (left-merge, right-merge, bridge-merge)
+ * to reduce fragmentation.
  *
  * @param ptr  Pointer to free (must have been returned by arena_alloc)
  * @param size Size of the allocation being freed

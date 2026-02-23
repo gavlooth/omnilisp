@@ -434,6 +434,12 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 - Error on bad library or bad symbol returns error value
 - Supported in interpreter, JIT (via fallback), and compiler
 
+### 5.11 Memory
+
+| Primitive | Arity | Description |
+|-----------|-------|-------------|
+| `unsafe-free!` | 1 | Free heap backing of array/dict/instance/string. Value becomes an error — accessing it after free raises "use after unsafe-free!". No-op on int/nil/other non-heap types. |
+
 ---
 
 ## 6. Continuation & Effect System (Low-Level)
@@ -482,10 +488,12 @@ The Omni compiler (`src/lisp/compiler.c3`) translates Lisp AST to C3 source code
 | quote | Y | Y |
 | match | Y | Y |
 | and/or | Y | Y |
-| reset/shift | Y | N |
-| handle/perform | Y | N |
-| dot-bracket `.[i]` | Y | ? |
-| path `a.b.c` | Y | ? |
+| reset/shift | Y | Y |
+| handle/perform | Y | Y |
+| quasiquote | Y | Y |
+| modules | Y | Y |
+| dot-bracket `.[i]` | Y | Y |
+| path `a.b.c` | Y | Y |
 
 ---
 
@@ -570,8 +578,17 @@ GNU Lightning-based JIT compiler (`src/lisp/jit.c3`):
 Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
 - Runtime library (`src/lisp/runtime.c3`) provides value representation
 - TCO via V_THUNK trampoline pattern
-- Delegates complex forms to interpreter via `rt_eval_source()`
-- Supports: lambda, if, let (incl. ^rec), define, match, begin, and/or, call, literals
+- All expression types compile natively (no interpreter delegation for effects/modules/quasiquote)
+- Type definitions and dispatch resolution delegate to interpreter
+- Supports: lambda, if, let (incl. ^rec), define, match, begin, and/or, call, reset/shift, handle/perform, quasiquote, modules, literals
+
+### 11b. AOT Compilation
+
+- `./build/main --build input.lisp -o output` — compiles Lisp to C3 to standalone binary
+- Generates 5 files: main.c3, continuation.c3, ghost_index.c3, runtime.c3, generated.c3
+- AOT binaries link only libc/libm/libdl (no GNU Lightning, no readline)
+- All 8 expression types (reset/shift/handle/perform/quasiquote/defmacro/module/import) compile natively
+- Runtime bridge (`runtime_bridge.c3`) provides interpreter-to-runtime conversion
 
 ---
 
@@ -579,16 +596,16 @@ Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
 
 | Resource | Limit |
 |----------|-------|
-| Symbol name length | 64 bytes |
-| Total symbols | 512 |
+| Symbol name length | 128 bytes |
+| Total symbols | 8192 |
 | Bindings per env frame | 512 |
 | Values | Region-allocated (no fixed pool) |
 | Environments | Region-allocated (no fixed pool) |
 | Expressions | Region-allocated (no fixed pool) |
 | Patterns | Region-allocated (no fixed pool) |
 | Continuations | Region-allocated (no fixed pool) |
-| Match clauses | 16 |
-| Effect handler clauses | 8 |
+| Match clauses | 32 |
+| Effect handler clauses | 16 |
 | Handler stack depth | 16 |
 | Call arguments | 64 |
 | Path segments | 8 |
@@ -600,4 +617,7 @@ Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
 | Begin expressions | 64 |
 | Lambda params | 64 |
 | String | 4095 characters (4096 bytes max) |
-| Eval depth | 200 (stack overflow guard) |
+| Eval depth | 5000 (stack overflow guard) |
+| Registered types | 256 |
+| Type fields | 16 |
+| Method table entries | 64 |

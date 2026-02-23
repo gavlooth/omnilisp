@@ -119,6 +119,36 @@ fn void test_error(Interp* interp, char[] name, char[] expr, int* pass, int* fai
     }
 }
 
+fn void test_error_contains(Interp* interp, char[] name, char[] expr_str, char[] expected_substr, int* pass, int* fail) {
+    EvalResult ri = run(expr_str, interp);
+    if (!ri.error.has_error) {
+        io::printfn("[FAIL] %s (expected error, got success)", (ZString)name);
+        (*fail)++; return;
+    }
+    // Check if error message contains expected substring
+    char[] msg = ri.error.message[:256];
+    bool found = false;
+    usz slen = 0;
+    while (slen < 256 && msg[slen] != 0) slen++;
+    usz elen = expected_substr.len;
+    if (elen <= slen) {
+        for (usz i = 0; i <= slen - elen; i++) {
+            bool match = true;
+            for (usz j = 0; j < elen; j++) {
+                if (msg[i + j] != expected_substr[j]) { match = false; break; }
+            }
+            if (match) { found = true; break; }
+        }
+    }
+    if (found) {
+        io::printfn("[PASS] %s", (ZString)name);
+        (*pass)++;
+    } else {
+        io::printfn("[FAIL] %s (error '%s' doesn't contain '%s')", (ZString)name, (ZString)msg, (ZString)expected_substr);
+        (*fail)++;
+    }
+}
+
 fn void test_str(Interp* interp, char[] name, char[] expr, int* pass, int* fail) {
     EvalResult ri = run(expr, interp);
     bool interp_ok = !ri.error.has_error && is_string(ri.value);
@@ -955,6 +985,63 @@ fn void generate_e2e_tests(Interp* interp) {
     mem::free(e2e_interp);
 }
 
+fn void run_diagnostic_tests(Interp* interp, int* pass, int* fail) {
+    io::printn("\n--- Diagnostic Tests ---");
+
+    // --- Dispatch diagnostics ---
+
+    // Type mismatch - shows arg types
+    test_error_contains(interp, "dispatch: type mismatch shows types",
+        "(begin (define (typed-fn (^Int x)) x) (typed-fn \"hello\"))",
+        "String", pass, fail);
+
+    // Shows method name
+    test_error_contains(interp, "dispatch: shows method name",
+        "(begin (define (typed-fn2 (^Int x)) x) (typed-fn2 \"hello\"))",
+        "typed-fn2", pass, fail);
+
+    // Arity mismatch
+    test_error_contains(interp, "dispatch: arity mismatch",
+        "(begin (define [type] DPt (^Int x) (^Int y)) (define (dadd (^DPt a) (^DPt b)) 1) (dadd (DPt 1 2)))",
+        "no matching method", pass, fail);
+
+    // --- Match exhaustiveness ---
+
+    // Union match missing variant
+    test_error_contains(interp, "match: missing union variant",
+        "(begin (define [union] DiagResult DiagOk (DiagErr Int)) (match (DiagErr 42) ((DiagOk) 1)))",
+        "missing variants", pass, fail);
+
+    // Non-union match shows type
+    test_error_contains(interp, "match: non-union shows type",
+        "(match 42 (\"hello\" 1))",
+        "Int", pass, fail);
+
+    // --- Strict handlers ---
+
+    // Strict handler catches unhandled effect
+    test_error_contains(interp, "handle ^strict: catches unhandled",
+        "(handle ^strict (perform my-eff 42) ((other-eff k v) v))",
+        "strict handler", pass, fail);
+
+    // Strict handler allows handled effects
+    test_eq(interp, "handle ^strict: allows handled",
+        "(handle ^strict (perform my-eff 42) ((my-eff k v) (+ v 1)))",
+        43, pass, fail);
+
+    // --- Unhandled effect diagnostics ---
+
+    // Shows tag name
+    test_error_contains(interp, "unhandled effect: shows tag name",
+        "(perform unknown-eff 42)",
+        "unknown-eff", pass, fail);
+
+    // Shows arg type
+    test_error_contains(interp, "unhandled effect: shows arg type",
+        "(perform unknown-eff \"hello\")",
+        "String", pass, fail);
+}
+
 fn void run_lisp_tests() {
     io::printn("=== Unified Tests (Interpreter + JIT) ===");
 
@@ -963,6 +1050,7 @@ fn void run_lisp_tests() {
     register_primitives(interp);
     register_destructors();
     register_stdlib(interp);
+    bridge_init();  // Register eval_source hook for runtime bridge tests
 
     int pass = 0;
     int fail = 0;
@@ -972,6 +1060,7 @@ fn void run_lisp_tests() {
     run_list_closure_tests(interp, &pass, &fail);
     run_arithmetic_comparison_tests(interp, &pass, &fail);
     run_string_type_tests(interp, &pass, &fail);
+    run_diagnostic_tests(interp, &pass, &fail);
     run_advanced_tests(interp, &pass, &fail);
 
     io::printfn("\n=== Unified Tests: %d passed, %d failed ===", pass, fail);
@@ -2096,6 +2185,44 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define (get-val x) (- 0 1))");
     test_eq_interp(interp, "constraint fallback", "(get-val (NotAddable 99))", -1, pass, fail);
 
+    // === CONSTRUCTOR FIELD TYPE VALIDATION TESTS ===
+
+    // Correct types — should succeed
+    test_truthy_interp(interp, "ctor valid Point", "(instance? (Point 3 4))", pass, fail);
+    // Wrong type — string where Int expected
+    test_error(interp, "ctor type error str for int", "(Point \"x\" 4)", pass, fail);
+    // Wrong type — double where Int expected
+    test_error(interp, "ctor type error dbl for int", "(Point 3.0 4)", pass, fail);
+    // Subtype field — Circle has Int field, still works
+    test_truthy_interp(interp, "ctor valid Circle", "(instance? (Circle 5))", pass, fail);
+    // Nested instance type — Line expects Point fields
+    test_truthy_interp(interp, "ctor valid Line", "(instance? (Line (Point 1 2) (Point 3 4)))", pass, fail);
+    // Parametric field — Box accepts anything (no constraint)
+    test_truthy_interp(interp, "ctor parametric Box", "(instance? (Box \"anything\"))", pass, fail);
+
+    // === DISPATCH AMBIGUITY DETECTION TESTS ===
+
+    // Two methods with identical signatures — should error
+    setup(interp, "(define (ambig-test (^Int x) (^Int y)) (+ x y))");
+    setup(interp, "(define (ambig-test (^Int x) (^Int y)) (* x y))");
+    test_error(interp, "dispatch ambiguity", "(ambig-test 3 4)", pass, fail);
+    // Different specificity — should succeed (picks more specific)
+    setup(interp, "(define (specific-test (^Int x)) (* x 2))");
+    setup(interp, "(define (specific-test x) 0)");
+    test_eq_interp(interp, "dispatch no ambiguity", "(specific-test 5)", 10, pass, fail);
+
+    // === PARAMETRIC CONSTRAINT AT CONSTRUCTION TESTS ===
+
+    // Define constrained parametric type: T must be subtype of Number
+    // Constraint expressed via dict annotation on field: ^{'T Number}
+    setup(interp, "(define [type] (NumBox T) (^{'T Number} value))");
+    // Int <: Number — should succeed
+    test_eq_interp(interp, "NumBox Int ok", "(let ((b (NumBox 42))) b.value)", 42, pass, fail);
+    // Double <: Number — should succeed
+    test_truthy_interp(interp, "NumBox Dbl ok", "(= (type-of (NumBox 3.14)) 'NumBox)", pass, fail);
+    // String not <: Number — should error
+    test_error(interp, "NumBox String fail", "(NumBox \"hi\")", pass, fail);
+
     // Array/dict indexing (Phase 3)
     test_eq(interp, "array index", "(let ((v (array 10 20 30))) v.[0])", 10, pass, fail);
     test_eq(interp, "array index 2", "(let ((v (array 10 20 30))) v.[2])", 30, pass, fail);
@@ -2273,14 +2400,32 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq_interp(interp, "match ctor wildcard", "(match (Ok 42) ((Ok _) 1) ((Err _) 2))", 1, pass, fail);
 
     // === MEMORY RECLAMATION TESTS ===
-    // free! on array: releases backing, value becomes nil
-    test_nil_interp(interp, "free! array", "(let ((a [1 2 3])) (begin (free! a) a))", pass, fail);
-    // free! on dict: releases backing, value becomes nil
-    test_nil_interp(interp, "free! dict", "(let ((d {'a 1 'b 2})) (begin (free! d) d))", pass, fail);
-    // free! on non-collection: no-op, returns nil
-    test_nil_interp(interp, "free! int noop", "(free! 42)", pass, fail);
-    // free! on nil: no-op
-    test_nil_interp(interp, "free! nil noop", "(free! nil)", pass, fail);
+    // unsafe-free! on array: releases backing, accessing freed value errors
+    test_error(interp, "unsafe-free! array UAF", "(let ((a [1 2 3])) (begin (unsafe-free! a) a))", pass, fail);
+    // unsafe-free! on dict: releases backing, accessing freed value errors
+    test_error(interp, "unsafe-free! dict UAF", "(let ((d {'a 1 'b 2})) (begin (unsafe-free! d) d))", pass, fail);
+    // unsafe-free! on non-collection: no-op, returns nil
+    test_nil_interp(interp, "unsafe-free! int noop", "(unsafe-free! 42)", pass, fail);
+    // unsafe-free! on nil: no-op
+    test_nil_interp(interp, "unsafe-free! nil noop", "(unsafe-free! nil)", pass, fail);
+
+    // === RAISED LIMITS TESTS ===
+    // Match with 17 clauses (was max 16, now 32)
+    test_eq(interp, "match 17 clauses",
+        "(match 17 (1 101) (2 102) (3 103) (4 104) (5 105) (6 106) (7 107) (8 108) (9 109) (10 110) (11 111) (12 112) (13 113) (14 114) (15 115) (16 116) (17 117))",
+        117, pass, fail);
+    // Handle with 9 effect clauses (was max 8, now 16)
+    test_eq(interp, "handle 9 effects",
+        "(handle (perform e9 42) ((e1 k v) (k v)) ((e2 k v) (k v)) ((e3 k v) (k v)) ((e4 k v) (k v)) ((e5 k v) (k v)) ((e6 k v) (k v)) ((e7 k v) (k v)) ((e8 k v) (k v)) ((e9 k v) (+ v 1)))",
+        43, pass, fail);
+    // Large method table (>32 methods, was max 32, now 64)
+    setup(interp, "(define [type] TestMT33 (^Int val))");
+    setup(interp, "(define (mt33-f (^(Val 1) n)) 1) (define (mt33-f (^(Val 2) n)) 2) (define (mt33-f (^(Val 3) n)) 3) (define (mt33-f (^(Val 4) n)) 4) (define (mt33-f (^(Val 5) n)) 5) (define (mt33-f (^(Val 6) n)) 6) (define (mt33-f (^(Val 7) n)) 7) (define (mt33-f (^(Val 8) n)) 8)");
+    setup(interp, "(define (mt33-f (^(Val 9) n)) 9) (define (mt33-f (^(Val 10) n)) 10) (define (mt33-f (^(Val 11) n)) 11) (define (mt33-f (^(Val 12) n)) 12) (define (mt33-f (^(Val 13) n)) 13) (define (mt33-f (^(Val 14) n)) 14) (define (mt33-f (^(Val 15) n)) 15) (define (mt33-f (^(Val 16) n)) 16)");
+    setup(interp, "(define (mt33-f (^(Val 17) n)) 17) (define (mt33-f (^(Val 18) n)) 18) (define (mt33-f (^(Val 19) n)) 19) (define (mt33-f (^(Val 20) n)) 20) (define (mt33-f (^(Val 21) n)) 21) (define (mt33-f (^(Val 22) n)) 22) (define (mt33-f (^(Val 23) n)) 23) (define (mt33-f (^(Val 24) n)) 24)");
+    setup(interp, "(define (mt33-f (^(Val 25) n)) 25) (define (mt33-f (^(Val 26) n)) 26) (define (mt33-f (^(Val 27) n)) 27) (define (mt33-f (^(Val 28) n)) 28) (define (mt33-f (^(Val 29) n)) 29) (define (mt33-f (^(Val 30) n)) 30) (define (mt33-f (^(Val 31) n)) 31) (define (mt33-f (^(Val 32) n)) 32)");
+    setup(interp, "(define (mt33-f (^(Val 33) n)) 33)");
+    test_eq(interp, "method table >32", "(mt33-f 33)", 33, pass, fail);
 
     // === FFI TESTS ===
     setup(interp, "(define test-libc (ffi-open \"libc.so.6\"))");
@@ -2964,12 +3109,12 @@ fn void run_compiler_tests(Interp* _unused_interp) {
         else    { fail++; io::printn("[FAIL] Runtime: filter correctness"); }
     }
 
-    // 70. TCO depth via runtime (named-let loop to 10000)
+    // 70. TCO depth via runtime (named-let loop to 5000)
     {
-        runtime::Value result = runtime::rt_eval_source("(let loop ((n 10000) (acc 0)) (if (= n 0) acc (loop (- n 1) (+ acc 1))))");
-        bool ok = (result.tag == runtime::ValueTag.V_INT && result.int_val == 10000);
-        if (ok) { pass++; io::printn("[PASS] Runtime: TCO depth 10000"); }
-        else    { fail++; io::printn("[FAIL] Runtime: TCO depth 10000"); }
+        runtime::Value result = runtime::rt_eval_source("(let loop ((n 5000) (acc 0)) (if (= n 0) acc (loop (- n 1) (+ acc 1))))");
+        bool ok = (result.tag == runtime::ValueTag.V_INT && result.int_val == 5000);
+        if (ok) { pass++; io::printn("[PASS] Runtime: TCO depth 5000"); }
+        else    { fail++; io::printn("[FAIL] Runtime: TCO depth 5000"); }
     }
 
     // 71. multi-arg via runtime

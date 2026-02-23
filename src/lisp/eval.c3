@@ -139,6 +139,7 @@ fn EvalResult eval_error_expr(char[] msg, Expr* expr) {
 fn Value* find_best_method(MethodTable* mt, Value*[] args, Interp* interp) {
     long best_score = -1;
     Value* best_method = null;
+    usz best_count = 0;
 
     // Pre-compute arg TypeIds once (avoid repeated infer_value_type calls)
     TypeId[8] arg_types;
@@ -226,7 +227,14 @@ fn Value* find_best_method(MethodTable* mt, Value*[] args, Interp* interp) {
         if (matches && score > best_score) {
             best_score = score;
             best_method = entry.implementation;
+            best_count = 1;
+        } else if (matches && score == best_score) {
+            best_count++;
         }
+    }
+
+    if (best_count > 1) {
+        return make_error(interp, "ambiguous method call: multiple methods match with equal specificity");
     }
 
     return best_method;
@@ -255,6 +263,7 @@ fn void register_builtin_types(Interp* interp) {
         info.parent = INVALID_TYPE_ID;
         info.field_count = 0;
         info.type_param_count = 0;
+        info.constraint_count = 0;
         info.variant_count = 0;
         info.alias_target = INVALID_TYPE_ID;
         interp.types.register_type(info, &interp.symbols);
@@ -266,6 +275,7 @@ fn void register_builtin_types(Interp* interp) {
     abs_info.parent = INVALID_TYPE_ID;
     abs_info.field_count = 0;
     abs_info.type_param_count = 0;
+    abs_info.constraint_count = 0;
     abs_info.variant_count = 0;
     abs_info.alias_target = INVALID_TYPE_ID;
 
@@ -349,6 +359,115 @@ fn SymbolId value_type_name(Value* v, Interp* interp) {
 }
 
 /**
+ * Format a detailed dispatch error showing method name, arg types, and arity hints.
+ */
+fn Value* format_dispatch_error(MethodTable* mt, Value*[] args, Interp* interp) {
+    char[512] buf;
+    char[] name = interp.symbols.get_name(mt.name);
+
+    // Build "Int, String" arg type list
+    char[128] arg_types_buf;
+    usz apos = 0;
+    for (usz i = 0; i < args.len && apos < 120; i++) {
+        if (i > 0) { arg_types_buf[apos++] = ','; arg_types_buf[apos++] = ' '; }
+        char[] tname = interp.symbols.get_name(value_type_name(args[i], interp));
+        for (usz c = 0; c < tname.len && apos < 120; c++) arg_types_buf[apos++] = tname[c];
+    }
+
+    // Check if arity mismatch is the issue
+    bool has_arity_match = false;
+    for (usz i = 0; i < mt.entry_count; i++) {
+        if (mt.entries[i].sig.param_count == args.len) { has_arity_match = true; break; }
+    }
+
+    char[] msg;
+    if (mt.entry_count > 0 && !has_arity_match) {
+        // Collect unique arities
+        char[64] arity_buf;
+        usz arpos = 0;
+        usz[8] seen_arities;
+        usz seen_count = 0;
+        for (usz i = 0; i < mt.entry_count && seen_count < 8; i++) {
+            usz pc = mt.entries[i].sig.param_count;
+            bool dup = false;
+            for (usz s = 0; s < seen_count; s++) { if (seen_arities[s] == pc) { dup = true; break; } }
+            if (!dup) {
+                seen_arities[seen_count++] = pc;
+                if (arpos > 0 && arpos < 60) { arity_buf[arpos++] = ','; arity_buf[arpos++] = ' '; }
+                // Simple int-to-char for small numbers
+                if (pc < 10 && arpos < 60) {
+                    arity_buf[arpos++] = (char)('0' + pc);
+                } else if (arpos < 58) {
+                    arity_buf[arpos++] = (char)('0' + pc / 10);
+                    arity_buf[arpos++] = (char)('0' + pc % 10);
+                }
+            }
+        }
+        msg = io::bprintf(&buf, "no matching method '%s': got %d arg(s) (%s), expected %s arg(s)",
+            (ZString)name, (int)args.len, (ZString)arg_types_buf[:apos], (ZString)arity_buf[:arpos])!!;
+    } else {
+        msg = io::bprintf(&buf, "no matching method '%s' for (%s)",
+            (ZString)name, (ZString)arg_types_buf[:apos])!!;
+    }
+    return make_error(interp, msg);
+}
+
+/**
+ * Format a detailed match error showing type info and missing union variants.
+ */
+fn Value* format_match_error(Value* scrutinee, Expr* expr, Interp* interp) {
+    char[512] buf;
+    char[] type_name = interp.symbols.get_name(value_type_name(scrutinee, interp));
+
+    // Check if scrutinee is an Instance of a union type
+    if (scrutinee != null && scrutinee.tag == INSTANCE && scrutinee.instance_val != null) {
+        TypeId tid = scrutinee.instance_val.type_id;
+        TypeInfo* ti = interp.types.get(tid);
+        if (ti != null && ti.parent != INVALID_TYPE_ID) {
+            TypeInfo* parent = interp.types.get(ti.parent);
+            if (parent != null && parent.kind == TK_UNION) {
+                char[256] missing_buf;
+                usz mpos = 0;
+                usz missing_count = 0;
+                for (usz v = 0; v < parent.variant_count; v++) {
+                    char[] vname = interp.symbols.get_name(parent.variants[v].name);
+                    bool covered = false;
+                    for (usz c = 0; c < expr.match.clause_count; c++) {
+                        Pattern* pat = expr.match.clauses[c].pattern;
+                        if (pat.tag == PAT_CONSTRUCTOR &&
+                            (uint)pat.constructor_name == (uint)parent.variants[v].name) {
+                            covered = true; break;
+                        }
+                        if (pat.tag == PAT_WILDCARD) { covered = true; break; }
+                        if (pat.tag == PAT_VAR) {
+                            TypeId vt = interp.types.lookup(pat.var_name, &interp.symbols);
+                            if (vt != INVALID_TYPE_ID && (uint)pat.var_name == (uint)parent.variants[v].name) {
+                                covered = true; break;
+                            }
+                        }
+                    }
+                    if (!covered && mpos < 240) {
+                        if (missing_count > 0) { missing_buf[mpos++] = ','; missing_buf[mpos++] = ' '; }
+                        for (usz ch = 0; ch < vname.len && mpos < 240; ch++) missing_buf[mpos++] = vname[ch];
+                        missing_count++;
+                    }
+                }
+                if (missing_count > 0) {
+                    char[] parent_name = interp.symbols.get_name(parent.name);
+                    char[] msg = io::bprintf(&buf, "no pattern matched: %s value '%s', missing variants: %s",
+                        (ZString)parent_name, (ZString)type_name, (ZString)missing_buf[:mpos])!!;
+                    return make_error(interp, msg);
+                }
+            }
+        }
+    }
+
+    // Fallback for non-union types
+    char[] msg = io::bprintf(&buf, "no pattern matched for value of type %s", (ZString)type_name)!!;
+    return make_error(interp, msg);
+}
+
+/**
  * Create an Instance value (heap-allocated).
  */
 fn Value* make_instance(Interp* interp, TypeId type_id, Value** fields, usz field_count) {
@@ -406,11 +525,29 @@ fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
     }
 
     // Copy fields and store original annotation symbol for type-param mapping
+    info.constraint_count = 0;
     for (usz i = 0; i < dt.field_count; i++) {
         info.fields[i].name = dt.fields[i].name;
         if (dt.fields[i].type_ann.has_annotation) {
-            info.fields[i].field_type = interp.types.lookup(dt.fields[i].type_ann.base_type, &interp.symbols);
-            info.fields[i].annotation_sym = dt.fields[i].type_ann.base_type;
+            if (dt.fields[i].type_ann.is_dict) {
+                // Dict annotation like ^{'T Number} — extract constraints
+                info.fields[i].field_type = INVALID_TYPE_ID;
+                info.fields[i].annotation_sym = 0;
+                // Extract constraint entries from dict metadata
+                for (usz m = 0; m < dt.fields[i].type_ann.meta_count && info.constraint_count < MAX_TYPE_PARAMS; m++) {
+                    if (!dt.fields[i].type_ann.meta[m].is_int) {
+                        info.constraints[info.constraint_count].param_sym = dt.fields[i].type_ann.meta[m].key;
+                        info.constraints[info.constraint_count].bound_type =
+                            interp.types.lookup(dt.fields[i].type_ann.meta[m].sym_value, &interp.symbols);
+                        // Also store the param_sym as annotation_sym for type-arg inference
+                        info.fields[i].annotation_sym = dt.fields[i].type_ann.meta[m].key;
+                        info.constraint_count++;
+                    }
+                }
+            } else {
+                info.fields[i].field_type = interp.types.lookup(dt.fields[i].type_ann.base_type, &interp.symbols);
+                info.fields[i].annotation_sym = dt.fields[i].type_ann.base_type;
+            }
         } else {
             info.fields[i].field_type = INVALID_TYPE_ID;  // Any
             info.fields[i].annotation_sym = 0;
@@ -468,6 +605,33 @@ fn Value* prim_type_constructor(Value*[] args, Env* env, Interp* interp) {
         return make_error(interp, "wrong number of arguments to constructor");
     }
 
+    // Validate field types (Julia-style boundary enforcement)
+    for (usz i = 0; i < args.len && i < ti.field_count; i++) {
+        TypeId expected = ti.fields[i].field_type;
+        if (expected == INVALID_TYPE_ID) continue;  // untyped field — allow any
+        // Check if annotation_sym is a type param (e.g., T in Box)
+        if (ti.fields[i].annotation_sym != 0) {
+            bool is_param = false;
+            for (usz p = 0; p < ti.type_param_count; p++) {
+                if (ti.type_params[p] == ti.fields[i].annotation_sym) {
+                    is_param = true; break;
+                }
+            }
+            if (is_param) continue;  // parametric field — validated by constraint check
+        }
+        TypeId actual = infer_value_type(args[i], interp);
+        if (actual == INVALID_TYPE_ID) continue;  // can't infer — allow
+        if (actual != expected && !interp.types.is_subtype(actual, expected)) {
+            char[128] ebuf;
+            char[] expected_name = interp.symbols.get_name(ti.fields[i].annotation_sym);
+            char[] field_name = interp.symbols.get_name(ti.fields[i].name);
+            char[] actual_name = interp.symbols.get_name(value_type_name(args[i], interp));
+            char[] emsg = io::bprintf(&ebuf, "type error: field '%s' expects %s, got %s",
+                (ZString)field_name, (ZString)expected_name, (ZString)actual_name)!!;
+            return make_error(interp, emsg);
+        }
+    }
+
     // Copy args into a fixed array for make_instance
     Value*[MAX_TYPE_FIELDS] fields;
     for (usz i = 0; i < args.len && i < MAX_TYPE_FIELDS; i++) {
@@ -490,6 +654,31 @@ fn Value* prim_type_constructor(Value*[] args, Env* env, Interp* interp) {
                 }
             }
         }
+
+        // Validate parametric constraints (e.g., T <: Number)
+        for (usz c = 0; c < ti.constraint_count; c++) {
+            SymbolId param = ti.constraints[c].param_sym;
+            TypeId bound = ti.constraints[c].bound_type;
+            if (bound == INVALID_TYPE_ID) continue;
+            // Find the inferred type_arg for this param
+            for (usz p = 0; p < ti.type_param_count; p++) {
+                if (ti.type_params[p] == param) {
+                    TypeId inferred = inst.type_args[p];
+                    if (inferred != INVALID_TYPE_ID) {
+                        if (inferred != bound && !interp.types.is_subtype(inferred, bound)) {
+                            char[128] ebuf;
+                            char[] param_name = interp.symbols.get_name(param);
+                            char[] bound_name = interp.symbols.get_name(interp.types.types[(usz)bound].name);
+                            char[] actual_name = interp.symbols.get_name(interp.types.types[(usz)inferred].name);
+                            char[] emsg = io::bprintf(&ebuf, "type constraint violated: %s must be subtype of %s, got %s",
+                                (ZString)param_name, (ZString)bound_name, (ZString)actual_name)!!;
+                            return make_error(interp, emsg);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
     }
 
     return result;
@@ -503,6 +692,7 @@ fn EvalResult eval_defabstract(Expr* expr, Env* env, Interp* interp) {
     info.kind = TK_ABSTRACT;
     info.field_count = 0;
     info.type_param_count = 0;
+    info.constraint_count = 0;
     info.variant_count = 0;
     info.alias_target = INVALID_TYPE_ID;
 
@@ -535,6 +725,7 @@ fn EvalResult eval_defunion(Expr* expr, Env* env, Interp* interp) {
     union_info.parent = INVALID_TYPE_ID;
     union_info.field_count = 0;
     union_info.type_param_count = du.type_param_count;
+    union_info.constraint_count = 0;
     union_info.variant_count = du.variant_count;
     union_info.alias_target = INVALID_TYPE_ID;
     for (usz i = 0; i < du.type_param_count; i++) {
@@ -559,6 +750,7 @@ fn EvalResult eval_defunion(Expr* expr, Env* env, Interp* interp) {
         var_info.parent = union_id;  // variant is subtype of union
         var_info.field_count = variant.field_count;
         var_info.type_param_count = 0;
+        var_info.constraint_count = 0;
         var_info.variant_count = 0;
         var_info.alias_target = INVALID_TYPE_ID;
         for (usz j = 0; j < variant.field_count; j++) {
@@ -612,6 +804,7 @@ fn EvalResult eval_defalias(Expr* expr, Env* env, Interp* interp) {
     info.parent = INVALID_TYPE_ID;
     info.field_count = 0;
     info.type_param_count = 0;
+    info.constraint_count = 0;
     info.variant_count = 0;
 
     // Resolve target
@@ -638,6 +831,7 @@ fn EvalResult eval_defeffect(Expr* expr, Env* env, Interp* interp) {
     info.kind = TK_EFFECT;
     info.parent = INVALID_TYPE_ID;
     info.type_param_count = 0;
+    info.constraint_count = 0;
     info.variant_count = 0;
     info.alias_target = INVALID_TYPE_ID;
 
@@ -668,16 +862,13 @@ fn EvalResult eval_defeffect(Expr* expr, Env* env, Interp* interp) {
 // SECTION 2.4: FRAME PUSH/POP (ESCAPE-COPY)
 // =============================================================================
 
-// NOTE: Frame push/pop integration is deferred. While copy_to_parent correctly
-// handles simple values and cons lists, closures capture Env* pointers that may
-// live in child frames. Releasing a child frame would create dangling env
-// pointers in escaped closures (e.g., (define (f x) (lambda (y) (+ x y)))).
-// Additionally, let ^rec creates env cycles (closure→env→binding→closure) that
-// would require cycle-aware copying. A proper solution needs either:
-// (1) Full mark-and-sweep GC, (2) Reference counting with cycle detection, or
-// (3) Cycle-aware env chain copying with a visited set.
-// For now, current_frame == root_region always. This function is retained for
-// future GC integration.
+// Frame push/pop is now active: run() wraps each evaluation in a child region.
+// Temporary Values (ints, cons cells, intermediate strings) die with the child
+// region. Long-lived values are promoted to root_region by existing infrastructure:
+// - jit_make_closure_from_expr: allocates closures in root_region, deep-copies env
+// - jit_eval_define: copies defined values to root_region via copy_to_parent
+// - jit_eval_let_rec: promotes rec_env to root_region when in child frame
+// - alloc_expr/alloc_pattern: always use root_region (AST nodes survive)
 
 /**
  * Destructor for Value objects — frees malloc'd backing storage.
@@ -1503,7 +1694,7 @@ fn void register_primitives(Interp* interp) {
     register_prim(interp, "type-args", &prim_type_args, 1);
 
     // Memory reclamation
-    register_prim(interp, "free!", &prim_free_bang, 1);
+    register_prim(interp, "unsafe-free!", &prim_free_bang, 1);
 
     // Register built-in types
     register_builtin_types(interp);
@@ -1628,17 +1819,34 @@ fn EvalResult run(char[] source, Interp* interp) {
         return r;
     }
 
-    // JIT path: compile + execute
+    // JIT path: compile + execute in child region
     expr = expand_macros_in_expr(expr, interp);
+
+    // Push temp frame for evaluation — temporaries die on release
+    main::RegionHandle saved_frame = interp.current_frame;
+    interp.current_frame = main::create_region(saved_frame);
+
     JitFn f = jit_compile(expr, interp);
+    EvalResult result;
     if (f != null) {
-        Value* result = jit_exec(f, interp);
-        if (result != null && result.tag == ERROR) {
-            return eval_error_expr(result.str_val.chars[:result.str_val.len], expr);
+        Value* jit_result = jit_exec(f, interp);
+        if (jit_result != null && jit_result.tag == ERROR) {
+            result = eval_error_expr(jit_result.str_val.chars[:jit_result.str_val.len], expr);
+        } else {
+            // Copy result to parent before releasing child frame
+            if (jit_result != null) {
+                jit_result = copy_to_parent(jit_result, interp, saved_frame);
+            }
+            result = eval_ok(jit_result);
         }
-        return eval_ok(result);
+    } else {
+        result = eval_error_expr("JIT compilation failed", expr);
     }
-    return eval_error_expr("JIT compilation failed", expr);
+
+    // Pop temp frame
+    main::release_region(interp.current_frame);
+    interp.current_frame = saved_frame;
+    return result;
 }
 
 /**

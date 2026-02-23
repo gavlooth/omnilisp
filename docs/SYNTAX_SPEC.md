@@ -325,17 +325,17 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 | Resource | Limit |
 |----------|-------|
 | Symbol/string length | 4095 chars |
-| Max symbols | 4096 |
+| Max symbols | 8192 |
 | Max values per region | 4096 |
 | Max bindings per env frame | 512 |
-| Effect clauses per handle | 8 |
+| Effect clauses per handle | 16 |
 | Path segments | 8 |
 | Handler stack depth | 16 |
-| Match clauses | 16 |
+| Match clauses | 32 |
 | Pattern elements | 16 |
 | Type fields | 16 |
-| Method table entries | 32 |
-| Registered types | 128 |
+| Method table entries | 64 |
+| Registered types | 256 |
 
 ---
 

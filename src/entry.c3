@@ -97,19 +97,14 @@ fn int run_build(int argc, char** argv, int build_idx) {
 
     char[1024] cmd_buf;
     usz cmd_len = 0;
-    // Include all source files needed by runtime (will be slimmed after Phase 6)
-    char[] prefix = "env -u LD_LIBRARY_PATH c3c compile src/main.c3 src/context.c3 src/continuation.c3 src/delimited.c3 src/ghost_index.c3 src/ffi_bindings.c3 src/test_ghost_lookup.c3 src/test_arena_bug.c3 src/test_alignment.c3 src/test_sparse_set.c3 src/test_typeid.c3 src/test_destructor_registry.c3 src/test_slot_table.c3 src/test_region.c3 src/lisp/eval.c3 src/lisp/primitives.c3 src/lisp/macros.c3 src/lisp/tests.c3 src/lisp/parser.c3 src/lisp/value.c3 src/lisp/jit.c3 src/lisp/compiler.c3 src/lisp/runtime.c3 build/_aot_temp.c3 -l lightning -l readline -l dl -l m -L /usr/local/lib -o ";
+    // Standalone AOT: only 5 source files, no interpreter/JIT/readline/lightning
+    char[] prefix = "env -u LD_LIBRARY_PATH c3c compile src/main.c3 src/continuation.c3 src/ghost_index.c3 src/lisp/runtime.c3 build/_aot_temp.c3 -l dl -l m -L /usr/local/lib -o ";
     for (usz i = 0; i < prefix.len && cmd_len < 1023; i++) {
         cmd_buf[cmd_len] = prefix[i];
         cmd_len++;
     }
     for (usz i = 0; i < out_len && cmd_len < 1023; i++) {
         cmd_buf[cmd_len] = output_binary[i];
-        cmd_len++;
-    }
-    char[] flags = " -l m";
-    for (usz i = 0; i < flags.len && cmd_len < 1023; i++) {
-        cmd_buf[cmd_len] = flags[i];
         cmd_len++;
     }
     cmd_buf[cmd_len] = 0;

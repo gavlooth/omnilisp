@@ -645,7 +645,13 @@ FFI type symbols: `'int`, `'size`, `'string`, `'void`, `'ptr`, `'double`
 | `pi` | 3.141592653589793 |
 | `e` | 2.718281828459045 |
 
-**Total: 129+ primitives**
+### 7.22 Memory
+
+| Primitive | Args | Description |
+|-----------|------|-------------|
+| `unsafe-free!` | 1 | Free heap backing of array/dict/instance/string. Value becomes an error — accessing it after free raises "use after unsafe-free!". No-op on int/nil/other non-heap types. |
+
+**Total: 130+ primitives**
 
 ---
 
@@ -980,11 +986,11 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 | Resource | Limit |
 |----------|-------|
 | Symbol/string length | 4095 characters |
-| Total symbols | 4096 |
+| Total symbols | 8192 |
 | Bindings per env frame | 512 |
-| Match clauses | 16 |
+| Match clauses | 32 |
 | Pattern elements | 16 |
-| Effect handler clauses | 8 |
+| Effect handler clauses | 16 |
 | Handler stack depth | 16 |
 | Call arguments | 64 |
 | Path segments | 8 |
@@ -994,10 +1000,10 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 | Macro clauses | 8 |
 | Modules | 32 |
 | Module exports | 128 |
-| Eval depth | 200 |
-| Registered types | 128 |
+| Eval depth | 5000 |
+| Registered types | 256 |
 | Type fields | 16 |
-| Method table entries | 32 |
+| Method table entries | 64 |
 
 ---
 
@@ -1009,14 +1015,14 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 | begin/set!/and/or | Y | Y | Y |
 | quote/quasiquote | Y | Y | Y |
 | match | Y | Y | Y |
-| reset/shift | Y | eval* | eval* |
-| handle/perform | Y | eval* | eval* |
-| type definitions | Y | eval* | eval* |
-| dispatch | Y | eval* | eval* |
+| reset/shift | Y | Y | Y |
+| handle/perform | Y | Y | Y |
+| type definitions | Y | Y | eval* |
+| dispatch | Y | Y | eval* |
 | macros | Y | Y** | Y** |
-| modules | Y | eval* | eval* |
+| modules | Y | Y | Y |
 
-*eval* = delegates to interpreter
+*eval* = delegates to interpreter for dispatch resolution
 **Y** = macro expansion at parse time
 
 ---

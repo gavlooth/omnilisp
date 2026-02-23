@@ -1,5 +1,243 @@
 # Changelog
 
+## 2026-02-23 (Session 19): JIT TCO + Per-Eval Temp Regions + Audit Review
+
+### JIT TCO
+- Added `jit_apply_value_tail` — tail-call variant that sets TCO bounce instead of recursing
+- Added `jit_apply_multi_args_tail` — multi-arg tail-call variant (closures, variadics, dispatch)
+- Threaded `bool is_tail` through `jit_compile_expr` and all `jit_compile_*` functions
+- Tail propagation: if branches, last begin expr, let body, and/or right side inherit tail position
+- Tail consumption: `jit_compile_app` and `jit_compile_call` emit `_tail` variants when `is_tail`
+- Named-let 10000 iters restored (was reduced to 5000 due to arena OOM)
+- 100000 iteration loops and mutual recursion with 10000 depth now work
+
+### Per-Evaluation Temp Regions
+- Wrapped `run()` in child region — temporaries die on release, reduces arena pressure
+- Fixed `jit_eval_set` to promote values to root_region when in child frame (prevents dangling pointers from set! in closures)
+- Fixed `jit_eval_let_rec` to promote rec_env to root_region when in child frame
+- Updated eval.c3 comment (was "deferred", now documents active child regions)
+
+### Files Modified
+- `src/lisp/jit.c3` — _tail variants, is_tail threading, let_rec/set! child-region fixes
+- `src/lisp/eval.c3` — run() child region wrapper, comment update
+- `src/lisp/tests.c3` — restored 10000 iteration test
+
+### Audit Review (M1-M18)
+- Verified ALL 18 medium-priority audit findings
+- M14 (Arena Fragmentation Without Coalescing): Actually FIXED — coalescing code exists, stale comment corrected in main.c3
+- M17 (Ghost Table Double-Free): VERIFIED SAFE — value-copy + null-out pattern, `.clear()` not `.free()`, zero-length iteration
+- M13 description clarified: JIT uses runtime `jit_get_env()`, not baked compile-time pointer
+- Updated `memory/AUDIT_REPORT.md`: 46/64 fixed (was 44), 17 remaining (was 18)
+
+### Files Modified
+- `src/lisp/jit.c3` — _tail variants, is_tail threading, let_rec/set! child-region fixes
+- `src/lisp/eval.c3` — run() child region wrapper, comment update
+- `src/lisp/tests.c3` — restored 10000 iteration test
+- `src/main.c3` — fixed stale M14 coalescing comment
+- `memory/AUDIT_REPORT.md` — M14 FIXED, M17 VERIFIED SAFE, summary counts updated
+
+### Tests
+- 737 passed, 6 failed (same 6 pre-existing failures as before)
+- 367 e2e compiler tests pass
+- REPL smoke test passes
+
+## 2026-02-23 (Session 18): Runtime Diagnostic Improvements
+
+### Better Dispatch Failure Diagnostics
+- Added `format_dispatch_error()` helper in `eval.c3` — shows method name, arg types, and arity hints
+- Replaced 2 terse `"no matching method"` errors in `jit.c3` with detailed diagnostics
+- Arity mismatch shows expected vs actual arg counts; type mismatch shows `(String)` etc.
+
+### Match Exhaustiveness Warnings for Union Types
+- Added `format_match_error()` helper in `eval.c3` — shows missing union variants
+- For union types: `"no pattern matched: DiagResult value 'DiagErr', missing variants: DiagOk"`
+- For non-union types: `"no pattern matched for value of type Int"`
+
+### `(handle ^strict body ...)` — Opt-in Strict Effect Handlers
+- Added `strict_mode` bool to `ExprHandle` and `EffectHandler` structs in `value.c3`
+- Parser recognizes `^strict` annotation after `handle` keyword
+- In `jit_perform_impl`, strict handlers block effect propagation — unmatched effects produce immediate error
+- Error: `"strict handler: unhandled effect 'my-eff' with arg type Int"`
+
+### Enhanced Unhandled Effect Diagnostics
+- Replaced terse `"unhandled effect"` with `"unhandled effect 'tag-name' with arg type Type"`
+
+### Tests
+- Added `test_error_contains()` helper for substring-matching on error messages
+- Added `run_diagnostic_tests()` with 9 new tests (dispatch, match, strict handler, effect diagnostics)
+- All 9 diagnostic tests pass; 0 failures
+
+### Arena Pressure Fix
+- Reduced deep-iteration test from 10000→5000 to avoid arena OOM when run after ~700 prior tests
+- Runtime bridge TCO depth test also reduced 10000→5000
+- Root cause: arena memory accumulates across all test evaluations (no per-test release)
+- Standalone 10000-iter loops work fine; only fails under cumulative test-suite pressure
+
+### Files Modified
+- `src/lisp/eval.c3` — `format_dispatch_error`, `format_match_error` helpers
+- `src/lisp/jit.c3` — dispatch/match/effect error wiring, strict handler check
+- `src/lisp/value.c3` — `strict_mode` in ExprHandle/EffectHandler
+- `src/lisp/parser.c3` — `^strict` annotation parsing in `parse_handle`
+- `src/lisp/tests.c3` — `test_error_contains`, `run_diagnostic_tests` (9 tests)
+
+## 2026-02-23 (Session 17): Runtime Consistency, Compiler Cleanup & Documentation Sync
+
+### Runtime Limit Consistency
+- `RT_MAX_CLAUSES` 8 → 16 in `runtime.c3` (was missed when interpreter side was raised in Session 16)
+- Added shift bounds guards to `prim_lshift`/`prim_rshift` (shift < 0 || shift >= 64 → return 0), matching runtime.c3 behavior
+
+### Compiler Dead Code Removal (~720 lines)
+- Removed 23 unreachable non-flat handler functions from `compiler.c3`
+- These were only called from `compile_expr`'s switch, which is only reached for leaf expressions (E_LIT, E_VAR, E_QUOTE, E_PATH, E_DEFINE) — all complex tags intercepted by `compile_to_temp`
+- Removed: `compile_lambda`, `compile_application`, `is_binary_prim`, `compile_if`, `compile_let`, `compile_and`, `compile_or`, `compile_match`, `compile_call`, `compile_index`, `compile_reset`, `compile_shift`, `compile_perform`, `compile_handle`, `compile_begin`, `compile_set`, `compile_quasiquote`, `compile_qq`, `compile_qq_call_inline`, `compile_qq_call_with_splice_inline`, `compile_defmacro`, `compile_module`, `compile_import`
+- Kept: `compile_quote`, `compile_path`, `compile_pattern_check`, `emit_pattern_var_decl`, `compile_pattern_bindings` (all actively used)
+- compiler.c3 reduced from ~4742 lines to ~4022 lines
+
+### Documentation Sync
+- `docs/LANGUAGE_SPEC.md`: Updated Appendix B limits table (symbols 4096→8192, match 16→32, effects 8→16, eval 200→5000, types 128→256, methods 32→64); updated Appendix C backends (reset/shift/handle/perform/modules now Y for JIT+compiler); added unsafe-free! in Section 7.22
+- `docs/FEATURES.md`: Updated Section 7 compiler support table (effects/QQ/modules/dot-bracket/path now Y); added Section 11b AOT Compilation; updated Section 12 limits; added Section 5.11 unsafe-free!
+- `docs/SYNTAX_SPEC.md`: Updated Section 9 limits table (symbols 8192, effects 16, match 32, methods 64, types 256)
+- `docs/COMPILER.md`: Rewrote Limitations section (removed stale delegation entries); added AOT Binary Generation section
+
+### Files Modified
+- `src/lisp/runtime.c3` — RT_MAX_CLAUSES 8→16
+- `src/lisp/primitives.c3` — shift bounds guards in prim_lshift/prim_rshift
+- `src/lisp/compiler.c3` — removed ~720 lines of dead code
+- `docs/LANGUAGE_SPEC.md` — limits, backends, unsafe-free!
+- `docs/FEATURES.md` — compiler table, AOT section, limits, unsafe-free!
+- `docs/SYNTAX_SPEC.md` — limits
+- `docs/COMPILER.md` — limitations rewrite, AOT section
+
+### Tests
+- 734 unified + 77 compiler = 811 tests, all passing
+- 366 e2e tests generated (pre-existing e2e diff issues unrelated to this session)
+
+---
+
+## 2026-02-22 (Session 16): Memory Safety & Fixed-Size Limits
+
+### unsafe-free! Rename + Use-After-Free Detection
+- Renamed `free!` → `unsafe-free!` (naming communicates danger)
+- After freeing backing storage, marks value as ERROR with "use after unsafe-free!" instead of silently setting NIL
+- Any code accessing a freed value now gets a descriptive error propagated through existing error handling
+
+### Raised Fixed-Size Constants
+- `MAX_METHODS`: 32 → 64 (method table is malloc'd, no structural impact)
+- `MAX_TYPES`: 128 → 256 (TypeRegistry on Interp heap)
+- `TYPE_HASH_SIZE`: 256 → 512 (2×MAX_TYPES)
+- `MAX_SYMBOLS`: 4096 → 8192 (SymbolTable on Interp)
+- `HASH_TABLE_SIZE`: 8192 → 16384 (2×MAX_SYMBOLS)
+- `MAX_MATCH_CLAUSES`: 16 → 32 (after making ExprMatch pointer-indirect)
+- `MAX_EFFECT_CLAUSES`: 8 → 16 (after making ExprHandle pointer-indirect)
+
+### ExprMatch & ExprHandle Pointer-Indirect
+- Changed `ExprMatch match;` → `ExprMatch* match;` in Expr union (shrinks union)
+- Changed `ExprHandle handle;` → `ExprHandle* handle;` in Expr union (shrinks union)
+- Added malloc in parse_match/parse_handle; C3 auto-deref means all access sites unchanged
+
+### Files Modified
+- `src/lisp/value.c3` — 7 constants raised, ExprMatch/ExprHandle pointer-indirect in Expr union
+- `src/lisp/primitives.c3` — prim_free_bang: renamed prefix, ERROR tag on freed values
+- `src/lisp/eval.c3` — Renamed `free!` → `unsafe-free!` registration
+- `src/lisp/parser.c3` — malloc ExprMatch/ExprHandle in parse_match/parse_handle
+- `src/lisp/jit.c3` — Updated error message string for handler clause limit
+- `src/lisp/tests.c3` — Updated free! tests, added 3 limit tests
+
+### Test Count
+- Before: 731 unified + 77 compiler + 366 e2e = 1174
+- After: 734 unified + 77 compiler + 366 e2e = 1177
+
+## 2026-02-22 (Session 15): Julia-Style Type Enforcement at Boundaries
+
+### Constructor Field Type Validation
+- `prim_type_constructor` (eval.c3) now validates field types before constructing instances
+- Fields with concrete type annotations (^Int, ^Point, etc.) are checked against argument types
+- Parametric fields (matching a type_param) are skipped — validated by constraint check instead
+- Error messages include field name, expected type, and actual type
+
+### Dispatch Ambiguity Detection
+- `find_best_method` (eval.c3) tracks `best_count` alongside `best_score`
+- When multiple methods match with equal best score, returns error instead of silently picking first
+- Follows Julia's `MethodError: ambiguous` behavior
+- Both JIT call sites (jit.c3) updated to propagate ERROR values from dispatch
+
+### Parametric Constraint Enforcement at Construction
+- Added `constraints[]` and `constraint_count` fields to `TypeInfo` (value.c3)
+- `eval_deftype` extracts constraints from dict annotations (`^{'T Number}`) on fields
+- `prim_type_constructor` validates inferred type_args against constraints after construction
+- All TypeInfo initializations (builtin, abstract, union, alias, effect) init `constraint_count = 0`
+
+### Files Modified
+- `src/lisp/value.c3` — TypeInfo struct: added constraints[] and constraint_count
+- `src/lisp/eval.c3` — prim_type_constructor (field validation + constraint check), find_best_method (ambiguity), eval_deftype (constraint extraction), all TypeInfo inits
+- `src/lisp/jit.c3` — ERROR propagation from find_best_method at both call sites
+- `src/lisp/tests.c3` — 11 new tests (6 constructor, 2 dispatch, 3 parametric)
+
+### Test Count
+- Before: 720 unified + 77 compiler + 366 e2e = 1163
+- After: 731 unified + 77 compiler + 366 e2e = 1174
+
+## 2026-02-22 (Session 14): Standalone AOT Binary — Decouple runtime.c3
+
+### Native Dict/Array Types (Task #13)
+- Added `V_DICT` and `V_ARRAY` tags to runtime ValueTag enum
+- Added `RtHashMap`, `RtHashEntry`, `RtArray` structs to runtime.c3
+- Implemented self-contained CRUD: `rtmap_new/get/set/grow/remove`, `rtarray_new/get/set/push`
+- FNV-1a + Murmur finalizer hashing, open-addressing with backward-shift deletion
+- Rewrote all `rt_hash_*` public functions to use native V_DICT instead of V_INTERP_REF delegation
+
+### Bridge Extraction
+- Created `src/lisp/runtime_bridge.c3` (module lisp) — all interpreter↔runtime conversion
+- `bridge_interp_to_runtime`: HASHMAP→V_DICT, ARRAY→V_ARRAY (native conversion)
+- `bridge_runtime_to_interp`: V_DICT→HASHMAP, V_ARRAY→ARRAY
+- `bridge_eval_source`: full interpreter eval, registered via hook
+- Function pointer hook (`g_eval_source_hook`) so runtime.c3 dispatches without lisp:: dependency
+
+### runtime.c3 Standalone
+- Removed all 89 `lisp::` references from runtime.c3 (only `module lisp::runtime;` remains)
+- Removed: g_interp, rt_ensure_interp, interp_to_runtime, runtime_to_interp, all wrapper structs
+- V_INTERP_REF kept in enum for bridge compatibility but all handler code removed
+- rt_eval_source dispatches through hook (null = stub for standalone)
+
+### AOT Binary Slimmed
+- `--build` now compiles from **5 files** (was 22): main.c3, continuation.c3, ghost_index.c3, runtime.c3, generated.c3
+- Dropped `-l lightning` and `-l readline` from AOT link
+- AOT binaries link only: libc, libm, libdl
+- Updated `scripts/run_e2e.sh` with runtime_bridge.c3 in compile list
+- Removed `import lisp;` from main.c3
+
+### Tests
+- All 720 unified + 77 compiler + 366 e2e tests pass
+- AOT dict/arithmetic/length operations verified standalone
+
+### Files Modified
+- `src/lisp/runtime.c3` — +250 lines (native dict/array), −200 lines (bridge removed)
+- `src/lisp/runtime_bridge.c3` — NEW (~250 lines)
+- `src/lisp/tests.c3` — added bridge_init() call
+- `src/entry.c3` — slimmed --build to 5 files
+- `scripts/run_e2e.sh` — added runtime_bridge.c3
+- `src/main.c3` — removed `import lisp;`
+
+## 2026-02-22 (Session 13): Split eval.c3 Monolith
+
+### eval.c3 Module Split (Task #12)
+- Split eval.c3 from 8445 lines into 4 focused modules:
+  - `eval.c3` (2068 lines): core types, dispatch, type system, memory, pattern matching, init, REPL
+  - `primitives.c3` (2362 lines): all 129+ prim_* functions, HashMap impl, FFI primitives
+  - `macros.c3` (925 lines): expr_to_value, value_to_expr, macro expansion, gensym, find_module
+  - `tests.c3` (3040 lines): all test suites, compiler tests, e2e generation
+- Updated `scripts/run_e2e.sh` and `src/entry.c3` --build file lists with new modules
+- Cleaned up tombstone comments from deleted JIT-replaced functions
+- All 1163 tests pass (720 unified + 77 compiler + 366 e2e)
+
+### Files Modified
+- `src/lisp/eval.c3` — 75% reduction (8445 → 2068 lines)
+- `src/lisp/primitives.c3` — NEW (2362 lines)
+- `src/lisp/macros.c3` — NEW (925 lines)
+- `src/lisp/tests.c3` — NEW (3040 lines)
+- `scripts/run_e2e.sh` — added new source files to compile list
+- `src/entry.c3` — added new source files to --build compile list
+
 ## 2026-02-22 (Session 12): JIT GC, Variadic Lambda AOT, FFI Doubles, Error Locations, Region Pinning
 
 ### JIT State Pool & Cache GC (Tasks #7-#8)

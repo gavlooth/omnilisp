@@ -62,7 +62,7 @@ const usz TYPE_HASH_SIZE = 256;
 const usz MAX_TYPE_PARAMS = 8;
 const usz MAX_META_ENTRIES = 8;
 const usz MAX_TYPE_FIELDS = 16;
-const usz MAX_METHODS = 32;
+const usz MAX_METHODS = 64;
 
 /**
  * SymbolEntry — Storage for a single interned symbol name.
@@ -363,6 +363,8 @@ struct TypeInfo {
     usz field_count;
     SymbolId[MAX_TYPE_PARAMS] type_params;
     usz type_param_count;
+    MethodConstraint[MAX_TYPE_PARAMS] constraints;  // Parametric type constraints (e.g., T <: Number)
+    usz constraint_count;
     UnionVariant[16] variants;  // for TK_UNION
     usz variant_count;
     TypeId alias_target;     // for TK_ALIAS
@@ -1099,7 +1101,7 @@ struct ExprPerform {
 }
 
 // Maximum effect clauses per handle expression
-const usz MAX_EFFECT_CLAUSES = 8;
+const usz MAX_EFFECT_CLAUSES = 16;
 
 struct EffectClause {
     SymbolId effect_tag;    // Effect name
@@ -1112,6 +1114,7 @@ struct ExprHandle {
     Expr*                          body;
     EffectClause[MAX_EFFECT_CLAUSES] clauses;
     usz                            clause_count;
+    bool                           strict_mode;   // ^strict annotation
 }
 
 /**
@@ -1138,7 +1141,7 @@ struct ExprPath {
 // Maximum elements in a sequence pattern
 const usz MAX_PATTERN_ELEMS = 16;
 // Maximum match clauses
-const usz MAX_MATCH_CLAUSES = 16;
+const usz MAX_MATCH_CLAUSES = 32;
 
 /**
  * PatternTag — Type of pattern.
@@ -1411,10 +1414,10 @@ struct Expr {
         ExprReset   reset;
         ExprShift   shift;
         ExprPerform perform;
-        ExprHandle  handle;
+        ExprHandle* handle;       // Pointer-indirect (large struct)
         ExprIndex   index;
         ExprPath    path;
-        ExprMatch   match;
+        ExprMatch*  match;        // Pointer-indirect (large struct)
         ExprAnd     and_expr;
         ExprOr      or_expr;
         ExprCall*   call;         // Pointer-indirect (large struct)
@@ -1448,6 +1451,7 @@ struct EffectHandler {
     Env* handler_env;
     Expr* body_expr;    // The handle body for continuation capture
     Env*  body_env;     // Environment at handle time
+    bool  strict_mode;  // ^strict: reject unhandled effects in body
 }
 
 /**

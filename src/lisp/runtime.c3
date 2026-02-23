@@ -28,6 +28,8 @@ enum ValueTag : char {
     V_THUNK,        // Suspended tail call (for TCO trampoline)
     V_DOUBLE,       // Floating-point number
     V_INTERP_REF,   // Opaque reference to interpreter Value* (for HASHMAP, ARRAY, etc.)
+    V_DICT,         // Native runtime hash map
+    V_ARRAY,        // Native runtime array
 }
 
 /**
@@ -102,7 +104,9 @@ struct Value {
         double              double_val;   // V_DOUBLE - floating-point
         void*               ffi_handle;   // V_FFI_HANDLE - dlopen handle
         ThunkData           thunk_val;    // V_THUNK - suspended tail call
-        void*               interp_ref;   // V_INTERP_REF - pointer to lisp::Value*
+        void*               interp_ref;   // V_INTERP_REF - opaque reference (bridge only)
+        RtHashMap*          dict_val;     // V_DICT - native hash map
+        RtArray*            array_val;    // V_ARRAY - native array
     }
 }
 
@@ -123,6 +127,35 @@ struct ThunkData {
 struct SymbolData {
     char[256] chars;
     usz len;
+}
+
+/**
+ * RtHashEntry — Key-value pair for native runtime hash map.
+ */
+struct RtHashEntry {
+    Value key;    // key (V_NIL tag = empty slot)
+    Value value;
+}
+
+/**
+ * RtHashMap — Open-addressing hash map with linear probing.
+ * Self-contained, no interpreter dependency.
+ */
+struct RtHashMap {
+    RtHashEntry* entries;
+    uint capacity;
+    uint count;
+    uint mask;    // capacity - 1
+}
+
+/**
+ * RtArray — Contiguous mutable array.
+ * Self-contained, no interpreter dependency.
+ */
+struct RtArray {
+    Value* items;
+    usz length;
+    usz capacity;
 }
 
 // =============================================================================
@@ -407,6 +440,289 @@ fn Value make_partial_in_region(PrimFn func, Value first, main::RegionHandle reg
 }
 
 // =============================================================================
+// SECTION 3b: NATIVE DICT/ARRAY — HASH AND CRUD INTERNALS
+// =============================================================================
+
+/**
+ * FNV-1a hash for byte sequences.
+ */
+fn uint rt_fnv1a(char[] data) {
+    uint h = 2166136261;
+    for (usz i = 0; i < data.len; i++) { h ^= (uint)data[i]; h *= 16777619; }
+    return h;
+}
+
+/**
+ * Murmur finalizer for integer-like keys.
+ */
+fn uint rt_murmur(uint h) {
+    h ^= h >> 16; h *= 0x85ebca6b; h ^= h >> 13; h *= 0xc2b2ae35; h ^= h >> 16;
+    return h;
+}
+
+/**
+ * Hash a runtime Value for use as dict key.
+ */
+fn uint rt_hash_key(Value key) {
+    switch (key.tag) {
+        case V_INT:    return rt_murmur((uint)key.int_val);
+        case V_DOUBLE: return rt_murmur((uint)(long)key.double_val);
+        case V_STRING:
+            StringData* s = main::dereference_as(StringData, key.str_handle);
+            return rt_fnv1a(s.chars[:s.len]);
+        case V_SYMBOL:
+            SymbolData* sym = main::dereference_as(SymbolData, key.sym_handle);
+            return rt_fnv1a(sym.chars[:sym.len]);
+        case V_TRUE:   return rt_murmur(1);
+        case V_FALSE:  return rt_murmur(0);
+        case V_NIL:    return 0;
+        default:       return 0;
+    }
+}
+
+/**
+ * Check if a hash entry slot is empty (key tag == V_NIL with no actual nil key stored).
+ * We use a sentinel: empty slots have key.tag == V_NIL AND value.tag == V_NIL.
+ * Actual nil keys are stored with a non-nil value sentinel.
+ */
+fn bool rtmap_slot_empty(RtHashEntry* entry) {
+    // An entry is empty if key.tag is V_NIL
+    // We don't support nil as a dict key (matching interpreter behavior)
+    return entry.key.tag == V_NIL;
+}
+
+/**
+ * Check if two runtime Values are equal for key comparison.
+ */
+fn bool rt_key_equal(Value a, Value b) {
+    if (a.tag != b.tag) {
+        // Cross-type numeric comparison
+        if ((a.tag == V_INT || a.tag == V_DOUBLE) && (b.tag == V_INT || b.tag == V_DOUBLE)) {
+            return rt_to_double(a) == rt_to_double(b);
+        }
+        return false;
+    }
+    switch (a.tag) {
+        case V_INT:    return a.int_val == b.int_val;
+        case V_DOUBLE: return a.double_val == b.double_val;
+        case V_STRING:
+            StringData* sa = main::dereference_as(StringData, a.str_handle);
+            StringData* sb = main::dereference_as(StringData, b.str_handle);
+            if (sa.len != sb.len) return false;
+            for (usz i = 0; i < sa.len; i++) {
+                if (sa.chars[i] != sb.chars[i]) return false;
+            }
+            return true;
+        case V_SYMBOL:
+            SymbolData* sya = main::dereference_as(SymbolData, a.sym_handle);
+            SymbolData* syb = main::dereference_as(SymbolData, b.sym_handle);
+            if (sya.len != syb.len) return false;
+            for (usz i = 0; i < sya.len; i++) {
+                if (sya.chars[i] != syb.chars[i]) return false;
+            }
+            return true;
+        case V_TRUE:   return true;
+        case V_FALSE:  return true;
+        case V_NIL:    return true;
+        default:       return false;
+    }
+}
+
+/**
+ * Create a new RtHashMap with given capacity (must be power of 2).
+ */
+fn RtHashMap* rtmap_new(uint capacity) {
+    RtHashMap* m = (RtHashMap*)mem::malloc(RtHashMap.sizeof);
+    m.capacity = capacity;
+    m.count = 0;
+    m.mask = capacity - 1;
+    m.entries = (RtHashEntry*)mem::malloc(RtHashEntry.sizeof * capacity);
+    for (uint i = 0; i < capacity; i++) {
+        m.entries[i].key.tag = V_NIL;
+        m.entries[i].value.tag = V_NIL;
+    }
+    return m;
+}
+
+/**
+ * Grow a hash map by doubling capacity and rehashing.
+ */
+fn void rtmap_grow(RtHashMap* m) {
+    uint old_cap = m.capacity;
+    RtHashEntry* old_entries = m.entries;
+    uint new_cap = old_cap * 2;
+    uint new_mask = new_cap - 1;
+
+    RtHashEntry* new_entries = (RtHashEntry*)mem::malloc(RtHashEntry.sizeof * new_cap);
+    for (uint i = 0; i < new_cap; i++) {
+        new_entries[i].key.tag = V_NIL;
+        new_entries[i].value.tag = V_NIL;
+    }
+
+    m.entries = new_entries;
+    m.capacity = new_cap;
+    m.mask = new_mask;
+    m.count = 0;
+
+    for (uint i = 0; i < old_cap; i++) {
+        if (!rtmap_slot_empty(&old_entries[i])) {
+            // Re-insert into new table
+            uint h = rt_hash_key(old_entries[i].key) & new_mask;
+            for (uint j = 0; j < new_cap; j++) {
+                uint idx = (h + j) & new_mask;
+                if (rtmap_slot_empty(&new_entries[idx])) {
+                    new_entries[idx] = old_entries[i];
+                    m.count++;
+                    break;
+                }
+            }
+        }
+    }
+    mem::free(old_entries);
+}
+
+/**
+ * Get value for key. Returns pointer to value or null if not found.
+ */
+fn Value* rtmap_get(RtHashMap* m, Value key) {
+    uint h = rt_hash_key(key) & m.mask;
+    for (uint i = 0; i < m.capacity; i++) {
+        uint idx = (h + i) & m.mask;
+        RtHashEntry* entry = &m.entries[idx];
+        if (rtmap_slot_empty(entry)) return null;
+        if (rt_key_equal(entry.key, key)) return &entry.value;
+    }
+    return null;
+}
+
+/**
+ * Set key-value pair. Grows at 70% load.
+ */
+fn void rtmap_set(RtHashMap* m, Value key, Value value) {
+    if (m.count * 10 >= m.capacity * 7) {
+        rtmap_grow(m);
+    }
+
+    uint h = rt_hash_key(key) & m.mask;
+    for (uint i = 0; i < m.capacity; i++) {
+        uint idx = (h + i) & m.mask;
+        RtHashEntry* entry = &m.entries[idx];
+        if (rtmap_slot_empty(entry)) {
+            entry.key = key;
+            entry.value = value;
+            m.count++;
+            return;
+        }
+        if (rt_key_equal(entry.key, key)) {
+            entry.value = value;
+            return;
+        }
+    }
+}
+
+/**
+ * Remove key from map using backward-shift deletion.
+ */
+fn bool rtmap_remove(RtHashMap* m, Value key) {
+    uint h = rt_hash_key(key) & m.mask;
+    for (uint i = 0; i < m.capacity; i++) {
+        uint idx = (h + i) & m.mask;
+        RtHashEntry* entry = &m.entries[idx];
+        if (rtmap_slot_empty(entry)) return false;
+        if (rt_key_equal(entry.key, key)) {
+            // Backward shift delete
+            uint j = idx;
+            for (;;) {
+                uint next = (j + 1) & m.mask;
+                if (rtmap_slot_empty(&m.entries[next])) break;
+                uint natural = rt_hash_key(m.entries[next].key) & m.mask;
+                bool should_move;
+                if (j < next) {
+                    should_move = natural <= j || natural > next;
+                } else {
+                    should_move = natural <= j && natural > next;
+                }
+                if (!should_move) break;
+                m.entries[j] = m.entries[next];
+                j = next;
+            }
+            m.entries[j].key.tag = V_NIL;
+            m.entries[j].value.tag = V_NIL;
+            m.count--;
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Create a new RtArray with given capacity.
+ */
+fn RtArray* rtarray_new(usz capacity) {
+    RtArray* a = (RtArray*)mem::malloc(RtArray.sizeof);
+    a.length = 0;
+    a.capacity = capacity;
+    a.items = (Value*)mem::malloc(Value.sizeof * capacity);
+    return a;
+}
+
+/**
+ * Get element at index. Returns nil if out of bounds.
+ */
+fn Value rtarray_get(RtArray* a, usz index) {
+    if (index >= a.length) return make_nil();
+    return a.items[index];
+}
+
+/**
+ * Set element at index. Returns false if out of bounds.
+ */
+fn bool rtarray_set(RtArray* a, usz index, Value val) {
+    if (index >= a.length) return false;
+    a.items[index] = val;
+    return true;
+}
+
+/**
+ * Push element to end of array, growing if needed.
+ */
+fn void rtarray_push(RtArray* a, Value val) {
+    if (a.length >= a.capacity) {
+        usz new_cap = a.capacity * 2;
+        if (new_cap < 8) new_cap = 8;
+        Value* new_items = (Value*)mem::malloc(Value.sizeof * new_cap);
+        for (usz i = 0; i < a.length; i++) {
+            new_items[i] = a.items[i];
+        }
+        mem::free(a.items);
+        a.items = new_items;
+        a.capacity = new_cap;
+    }
+    a.items[a.length] = val;
+    a.length++;
+}
+
+/**
+ * Make a V_DICT value from a new hash map.
+ */
+fn Value make_dict(uint capacity) {
+    Value v;
+    v.tag = V_DICT;
+    v.dict_val = rtmap_new(capacity);
+    return v;
+}
+
+/**
+ * Make a V_ARRAY value from a new array.
+ */
+fn Value make_array(usz capacity) {
+    Value v;
+    v.tag = V_ARRAY;
+    v.array_val = rtarray_new(capacity);
+    return v;
+}
+
+// =============================================================================
 // SECTION 4: CORE RUNTIME FUNCTIONS
 // =============================================================================
 
@@ -575,24 +891,17 @@ fn bool rt_values_equal(Value a, Value b, usz depth = 0) {
             Value* car_b = main::dereference_as(Value, b.cons_val.car);
             Value* cdr_b = main::dereference_as(Value, b.cons_val.cdr);
             return rt_values_equal(*car_a, *car_b, depth + 1) && rt_values_equal(*cdr_a, *cdr_b, depth + 1);
+        case V_DICT:
+            return a.dict_val == b.dict_val;  // Pointer equality for mutable containers
+        case V_ARRAY:
+            if (a.array_val == null || b.array_val == null) return a.array_val == b.array_val;
+            if (a.array_val.length != b.array_val.length) return false;
+            for (usz i = 0; i < a.array_val.length; i++) {
+                if (!rt_values_equal(a.array_val.items[i], b.array_val.items[i], depth + 1)) return false;
+            }
+            return true;
         case V_INTERP_REF:
-            lisp::Value* ia = (lisp::Value*)a.interp_ref;
-            lisp::Value* ib = (lisp::Value*)b.interp_ref;
-            if (ia == null || ib == null) return ia == ib;
-            if (ia.tag != ib.tag) return false;
-            if (ia.tag == lisp::ValueTag.HASHMAP) {
-                return ia == ib;  // Pointer equality for mutable containers
-            }
-            if (ia.tag == lisp::ValueTag.ARRAY) {
-                if (ia.array_val.length != ib.array_val.length) return false;
-                for (usz i = 0; i < ia.array_val.length; i++) {
-                    Value ra = interp_to_runtime(ia.array_val.items[i]);
-                    Value rb = interp_to_runtime(ib.array_val.items[i]);
-                    if (!rt_values_equal(ra, rb, depth + 1)) return false;
-                }
-                return true;
-            }
-            return ia == ib;  // Pointer equality for other interp types
+            return a.interp_ref == b.interp_ref;
         default:
             return false;
     }
@@ -825,6 +1134,12 @@ fn Value rt_list(Value a, Value _unused) {
 }
 
 fn Value rt_length(Value a, Value _unused) {
+    if (a.tag == V_DICT) return make_int((long)a.dict_val.count);
+    if (a.tag == V_ARRAY) return make_int((long)a.array_val.length);
+    if (a.tag == V_STRING) {
+        StringData* s = main::dereference_as(StringData, a.str_handle);
+        return make_int((long)s.len);
+    }
     return make_int((long)rt_list_length(a));
 }
 
@@ -901,11 +1216,30 @@ fn void rt_print_value(Value v) {
             io::print("#<primitive-unary>");
         case V_PARTIAL:
             io::print("#<partial>");
+        case V_DICT:
+            io::print("{");
+            RtHashMap* dm = v.dict_val;
+            bool dfirst = true;
+            for (uint di = 0; di < dm.capacity; di++) {
+                if (!rtmap_slot_empty(&dm.entries[di])) {
+                    if (!dfirst) io::print(" ");
+                    dfirst = false;
+                    rt_print_value(dm.entries[di].key);
+                    io::print(" ");
+                    rt_print_value(dm.entries[di].value);
+                }
+            }
+            io::print("}");
+        case V_ARRAY:
+            io::print("[");
+            RtArray* arr = v.array_val;
+            for (usz ai = 0; ai < arr.length; ai++) {
+                if (ai > 0) io::print(" ");
+                rt_print_value(arr.items[ai]);
+            }
+            io::print("]");
         case V_INTERP_REF:
-            // Delegate printing to interpreter's print_value
-            rt_ensure_interp();
-            lisp::Value* iv = (lisp::Value*)v.interp_ref;
-            lisp::print_value(iv, &g_interp.symbols);
+            io::print("#<interp-ref>");
         default:
             io::print("#<unknown>");
     }
@@ -1331,15 +1665,9 @@ fn Value rt_type_of(Value a, Value _unused) {
         case V_NIL:          return make_symbol("Nil");
         case V_CONTINUATION: return make_symbol("Continuation");
         case V_FFI_HANDLE:   return make_symbol("FFIHandle");
-        case V_INTERP_REF:
-            // Delegate to interpreter for HASHMAP/ARRAY/INSTANCE
-            lisp::Value* iv = (lisp::Value*)a.interp_ref;
-            if (iv != null) {
-                if (iv.tag == lisp::ValueTag.HASHMAP) return make_symbol("Dict");
-                if (iv.tag == lisp::ValueTag.ARRAY) return make_symbol("Array");
-                if (iv.tag == lisp::ValueTag.INSTANCE) return make_symbol("Instance");
-            }
-            return make_symbol("Any");
+        case V_DICT:         return make_symbol("Dict");
+        case V_ARRAY:        return make_symbol("Array");
+        case V_INTERP_REF:  return make_symbol("Any");
         default:             return make_symbol("Any");
     }
 }
@@ -1542,7 +1870,7 @@ fn Value rt_field_access(Value obj, Value field_name) {
 // Uses replay-based continuations: body closures are re-invoked with substitution.
 
 const usz RT_MAX_HANDLERS = 16;
-const usz RT_MAX_CLAUSES = 8;
+const usz RT_MAX_CLAUSES = 16;
 const usz RT_MAX_PRIOR = 16;
 
 struct RtEffectClause {
@@ -1998,218 +2326,27 @@ fn Value rt_read_lines(Value path, Value _unused) {
 // SECTION 17: INTERPRETER BRIDGE
 // =============================================================================
 
-/**
- * The interpreter bridge allows compiled code to delegate reset/shift/handle/perform
- * to the interpreter. The compiler serializes continuation expressions to Pika source
- * text, and these runtime functions parse and evaluate them using a real Interp instance.
- *
- * This is the simplest correct approach: the interpreter already fully implements
- * the replay-based continuation system, so we reuse it for compiled code.
- *
- * Variable injection: The compiler emits rt_define_var() calls to inject compiled-scope
- * variables into the interpreter before evaluating the continuation expression.
- */
+// =============================================================================
+// SECTION 17a: BRIDGE HOOKS (interpreter bridge in runtime_bridge.c3)
+// =============================================================================
+// The interpreter<->runtime bridge is in runtime_bridge.c3 (module lisp).
+// These function pointers allow runtime.c3 to compile standalone while
+// the full build hooks in the real implementations.
+
+alias EvalSourceFn = fn Value(char[] source);
 
 /**
- * Thread-local interpreter instance for delegation.
- * Lazily initialized on first use.
+ * Function pointer for eval_source, set by the bridge at init.
+ * Null in standalone AOT binaries; set to bridge_eval_source in full build.
  */
-tlocal lisp::Interp* g_interp = null;
+tlocal EvalSourceFn g_eval_source_hook = null;
 
 /**
- * Ensure the interpreter is initialized.
- * Creates a fresh Interp with all primitives and stdlib registered.
+ * Register the bridge's eval_source implementation.
+ * Called by runtime_bridge.c3 during initialization.
  */
-fn void rt_ensure_interp() {
-    if (g_interp != null) return;
-
-    g_interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
-    g_interp.init();
-    lisp::register_primitives(g_interp);
-    lisp::register_stdlib(g_interp);
-    g_interp.jit_enabled = true;
-}
-
-/**
- * Convert an interpreter Value* to a runtime Value.
- * Recursively converts cons cells, strings, symbols, etc.
- */
-fn Value interp_to_runtime(lisp::Value* v) {
-    if (v == null) {
-        return make_nil();
-    }
-
-    // Use the underlying char value of the tag for cross-module comparison
-    lisp::ValueTag itag = v.tag;
-
-    if (itag == lisp::ValueTag.NIL) {
-        return make_nil();
-    } else if (itag == lisp::ValueTag.INT) {
-        return make_int(v.int_val);
-    } else if (itag == lisp::ValueTag.STRING) {
-        return make_string(v.str_val.chars[:v.str_val.len]);
-    } else if (itag == lisp::ValueTag.SYMBOL) {
-        // Check for 'true' and 'false' symbols
-        if (g_interp != null) {
-            if ((uint)v.sym_val == (uint)g_interp.sym_true) {
-                return make_true();
-            }
-            if ((uint)v.sym_val == (uint)g_interp.sym_false) {
-                return make_false();
-            }
-        }
-        char[] sym_name = g_interp.symbols.get_name(v.sym_val);
-        return make_symbol(sym_name);
-    } else if (itag == lisp::ValueTag.CONS) {
-        Value car = interp_to_runtime(v.cons_val.car);
-        Value cdr = interp_to_runtime(v.cons_val.cdr);
-        return rt_cons(car, cdr);
-    } else if (itag == lisp::ValueTag.CLOSURE || itag == lisp::ValueTag.PRIMITIVE || itag == lisp::ValueTag.PARTIAL_PRIM) {
-        // Callable interpreter values: wrap as runtime closure that delegates via apply.
-        return make_interp_closure_wrapper(v);
-    } else if (itag == lisp::ValueTag.CONTINUATION) {
-        // Continuations from the interpreter can't be directly used.
-        // Wrap as a runtime closure that invokes the continuation.
-        return make_interp_continuation_wrapper(v);
-    } else if (itag == lisp::ValueTag.DOUBLE) {
-        Value r;
-        r.tag = V_DOUBLE;
-        r.double_val = v.double_val;
-        return r;
-    } else if (itag == lisp::ValueTag.HASHMAP || itag == lisp::ValueTag.ARRAY || itag == lisp::ValueTag.INSTANCE) {
-        // Complex interpreter types: wrap as opaque reference
-        Value r;
-        r.tag = V_INTERP_REF;
-        r.interp_ref = v;
-        return r;
-    }
-    return make_nil();
-}
-
-/**
- * Convert a runtime Value to an interpreter Value*.
- * Allocates the interpreter value in the interpreter's current frame.
- */
-fn lisp::Value* runtime_to_interp(Value v) {
-    rt_ensure_interp();
-
-    switch (v.tag) {
-        case V_NIL:
-            return lisp::make_nil(g_interp);
-
-        case V_TRUE:
-            return lisp::make_symbol(g_interp, g_interp.sym_true);
-
-        case V_FALSE:
-            return lisp::make_symbol(g_interp, g_interp.sym_false);
-
-        case V_INT:
-            return lisp::make_int(g_interp, v.int_val);
-
-        case V_STRING:
-            StringData* s = main::dereference_as(StringData, v.str_handle);
-            return lisp::make_string(g_interp, s.chars[:s.len]);
-
-        case V_SYMBOL:
-            SymbolData* sym = main::dereference_as(SymbolData, v.sym_handle);
-            lisp::SymbolId sid = g_interp.symbols.intern(sym.chars[:sym.len]);
-            return lisp::make_symbol(g_interp, sid);
-
-        case V_CONS:
-            Value* car_rt = main::dereference_as(Value, v.cons_val.car);
-            Value* cdr_rt = main::dereference_as(Value, v.cons_val.cdr);
-            lisp::Value* car_interp = runtime_to_interp(*car_rt);
-            lisp::Value* cdr_interp = runtime_to_interp(*cdr_rt);
-            return lisp::make_cons(g_interp, car_interp, cdr_interp);
-
-        case V_DOUBLE:
-            return lisp::make_double(g_interp, v.double_val);
-
-        case V_INTERP_REF:
-            // Opaque interpreter reference — just return the stored pointer
-            return (lisp::Value*)v.interp_ref;
-
-        case V_CLOSURE:
-            // Wrap compiled closure as interpreter-callable primitive
-            CompiledClosureWrapper* ccw = (CompiledClosureWrapper*)mem::malloc(CompiledClosureWrapper.sizeof);
-            ccw.data = v.closure_val.data;
-            ccw.func = v.closure_val.invoke;
-            lisp::Value* prim = lisp::make_primitive(g_interp, "compiled-closure", &invoke_compiled_closure, 1);
-            prim.prim_val.user_data = (void*)ccw;
-            return prim;
-
-        default:
-            return lisp::make_nil(g_interp);
-    }
-}
-
-/**
- * Wrapper state for compiled closures passed back to interpreter.
- */
-struct CompiledClosureWrapper {
-    void* data;
-    ClosureFn func;
-}
-
-/**
- * PrimitiveFn adapter: invoke a compiled closure from interpreter context.
- * interp.prim_user_data is set to Primitive.user_data by apply_primitive().
- */
-fn lisp::Value* invoke_compiled_closure(lisp::Value*[] args, lisp::Env* env, lisp::Interp* interp) {
-    if (args.len < 1) return lisp::make_nil(interp);
-
-    CompiledClosureWrapper* ccw = (CompiledClosureWrapper*)interp.prim_user_data;
-    if (ccw == null) return lisp::make_nil(interp);
-
-    Value rt_arg = interp_to_runtime(args[0]);
-    Value result = ccw.func(ccw.data, rt_arg);
-    return runtime_to_interp(result);
-}
-
-/**
- * Wrapper state for interpreter closures used in compiled code.
- */
-struct InterpClosureWrapper {
-    lisp::Value* interp_value;  // The interpreter closure/continuation value
-}
-
-/**
- * Invoke function for interpreter closure wrappers.
- * Converts the runtime arg to interpreter form, applies, converts back.
- */
-fn Value invoke_interp_closure(void* data, Value arg) {
-    InterpClosureWrapper* wrapper = (InterpClosureWrapper*)data;
-    rt_ensure_interp();
-
-    lisp::Value* interp_arg = runtime_to_interp(arg);
-    lisp::Value* result = lisp::jit_apply_value(wrapper.interp_value, interp_arg, g_interp);
-
-    if (result != null && lisp::is_error(result)) {
-        io::printfn("Error in interpreter closure: %s", (ZString)result.str_val.chars[:result.str_val.len]);
-        return make_nil();
-    }
-
-    return interp_to_runtime(result);
-}
-
-/**
- * Create a runtime closure that wraps an interpreter closure.
- */
-fn Value make_interp_closure_wrapper(lisp::Value* interp_val) {
-    // Use malloc instead of root region to avoid unbounded region growth
-    InterpClosureWrapper* wrapper = (InterpClosureWrapper*)mem::malloc(InterpClosureWrapper.sizeof);
-    wrapper.interp_value = interp_val;
-    return make_closure((void*)wrapper, &invoke_interp_closure);
-}
-
-/**
- * Create a runtime closure that wraps an interpreter continuation.
- * Continuations are invoked with apply_continuation in the interpreter.
- */
-fn Value make_interp_continuation_wrapper(lisp::Value* interp_val) {
-    InterpClosureWrapper* wrapper = (InterpClosureWrapper*)mem::malloc(InterpClosureWrapper.sizeof);
-    wrapper.interp_value = interp_val;
-    return make_closure((void*)wrapper, &invoke_interp_closure);
+fn void rt_set_eval_source_hook(EvalSourceFn hook) {
+    g_eval_source_hook = hook;
 }
 
 // =============================================================================
@@ -2298,21 +2435,16 @@ fn Value rt_set_var(char[] name, Value val) {
 }
 
 /**
- * rt_eval_source — DEPRECATED: No longer needed.
- * All expression types are now compiled natively.
- * Kept as a stub for backwards compatibility during transition.
+ * rt_eval_source — dispatches to bridge hook if available.
+ * In standalone AOT: prints error, returns nil.
+ * In full interpreter build: bridge sets the hook during init.
  */
 fn Value rt_eval_source(char[] source) {
-    rt_ensure_interp();
-
-    lisp::EvalResult result = lisp::run(source, &*g_interp);
-
-    if (result.error.has_error) {
-        io::printfn("Error in rt_eval_source: %s", (ZString)&result.error.message);
-        return make_nil();
+    if (g_eval_source_hook != null) {
+        return g_eval_source_hook(source);
     }
-
-    return interp_to_runtime(result.value);
+    io::printn("Error: eval_source not available in standalone binary");
+    return make_nil();
 }
 
 // =============================================================================
@@ -2516,15 +2648,10 @@ fn Value rt_display(Value a, Value _unused) {
 }
 
 /**
- * Hash-map operations — all delegated to interpreter.
+ * Hash-map operations — native V_DICT implementation.
  */
 fn Value rt_hash_map_create(Value a, Value _unused) {
-    rt_ensure_interp();
-    lisp::Value* v = lisp::make_hashmap(g_interp, 16);
-    Value r;
-    r.tag = V_INTERP_REF;
-    r.interp_ref = v;
-    return r;
+    return make_dict(16);
 }
 
 /**
@@ -2532,8 +2659,6 @@ fn Value rt_hash_map_create(Value a, Value _unused) {
  * (dict k1 v1 k2 v2 ...) compiles to rt_dict_from_args(args_cons_list)
  */
 fn Value rt_dict_from_args(Value arg_list) {
-    rt_ensure_interp();
-
     // Count args first
     Value current = arg_list;
     long count = 0;
@@ -2546,39 +2671,36 @@ fn Value rt_dict_from_args(Value arg_list) {
     // Create hashmap with appropriate capacity (min 16, 2x pairs)
     uint cap = 16;
     if (count > 8) cap = (uint)count * 2;
-    lisp::Value* map_val = lisp::make_hashmap(g_interp, cap);
-    lisp::HashMap* map = map_val.hashmap_val;
+    Value d = make_dict(cap);
 
     // Insert key-value pairs
     current = arg_list;
     while (current.tag == V_CONS) {
         Value* car = main::dereference_as(Value, current.cons_val.car);
-        lisp::Value* key = runtime_to_interp(*car);
-        Value* cdr = main::dereference_as(Value, current.cons_val.cdr);
-        current = *cdr;
+        Value key = *car;
+        Value* cdr_ptr = main::dereference_as(Value, current.cons_val.cdr);
+        current = *cdr_ptr;
         if (current.tag != V_CONS) break;
         Value* val_car = main::dereference_as(Value, current.cons_val.car);
-        lisp::Value* val = runtime_to_interp(*val_car);
-        lisp::hashmap_set(map, key, val, g_interp);
+        rtmap_set(d.dict_val, key, *val_car);
         Value* val_cdr = main::dereference_as(Value, current.cons_val.cdr);
         current = *val_cdr;
     }
 
-    Value r;
-    r.tag = V_INTERP_REF;
-    r.interp_ref = map_val;
-    return r;
+    return d;
 }
 
 fn Value rt_hash_ref(Value m, Value k) {
-    if (m.tag != V_INTERP_REF) return make_nil();
-    lisp::Value* im = (lisp::Value*)m.interp_ref;
-    if (im.tag != lisp::ValueTag.HASHMAP) return make_nil();
-    rt_ensure_interp();
-    lisp::Value* ik = runtime_to_interp(k);
-    lisp::Value* result = lisp::hashmap_get(im.hashmap_val, ik);
-    if (result == null) return make_nil();
-    return interp_to_runtime(result);
+    if (m.tag == V_DICT) {
+        Value* result = rtmap_get(m.dict_val, k);
+        if (result == null) return make_nil();
+        return *result;
+    }
+    if (m.tag == V_ARRAY) {
+        if (k.tag != V_INT) return make_nil();
+        return rtarray_get(m.array_val, (usz)k.int_val);
+    }
+    return make_nil();
 }
 
 // Capture struct for curried dict-set! (3-arg: dict, key, value)
@@ -2591,13 +2713,16 @@ fn Value hash_set_apply(void* data, Value val) {
     HashSetCapture* cap = (HashSetCapture*)data;
     Value m = cap.dict;
     Value k = cap.key;
-    if (m.tag != V_INTERP_REF) return m;
-    lisp::Value* im = (lisp::Value*)m.interp_ref;
-    if (im.tag != lisp::ValueTag.HASHMAP) return m;
-    rt_ensure_interp();
-    lisp::Value* ik = runtime_to_interp(k);
-    lisp::Value* iv = runtime_to_interp(val);
-    lisp::hashmap_set(im.hashmap_val, ik, iv, g_interp);
+    if (m.tag == V_DICT) {
+        rtmap_set(m.dict_val, k, val);
+        return m;
+    }
+    if (m.tag == V_ARRAY) {
+        if (k.tag == V_INT) {
+            rtarray_set(m.array_val, (usz)k.int_val, val);
+        }
+        return m;
+    }
     return m;
 }
 
@@ -2610,70 +2735,56 @@ fn Value rt_hash_set(Value m, Value k) {
 }
 
 fn Value rt_hash_has(Value m, Value k) {
-    if (m.tag != V_INTERP_REF) return make_nil();
-    lisp::Value* im = (lisp::Value*)m.interp_ref;
-    if (im.tag != lisp::ValueTag.HASHMAP) return make_nil();
-    rt_ensure_interp();
-    lisp::Value* ik = runtime_to_interp(k);
-    lisp::Value* result = lisp::hashmap_get(im.hashmap_val, ik);
-    if (result != null) return make_true();
+    if (m.tag == V_DICT) {
+        Value* result = rtmap_get(m.dict_val, k);
+        return result != null ? make_true() : make_nil();
+    }
+    if (m.tag == V_ARRAY) {
+        if (k.tag == V_INT && k.int_val >= 0 && (usz)k.int_val < m.array_val.length) return make_true();
+        return make_nil();
+    }
     return make_nil();
 }
 
 fn Value rt_hash_remove(Value m, Value k) {
-    if (m.tag != V_INTERP_REF) return m;
-    lisp::Value* im = (lisp::Value*)m.interp_ref;
-    if (im.tag != lisp::ValueTag.HASHMAP) return m;
-    rt_ensure_interp();
-    lisp::Value* ik = runtime_to_interp(k);
-    lisp::hashmap_remove(im.hashmap_val, ik);
+    if (m.tag == V_DICT) {
+        rtmap_remove(m.dict_val, k);
+    }
     return m;
 }
 
 fn Value rt_hash_keys(Value a, Value _unused) {
-    if (a.tag != V_INTERP_REF) return make_nil();
-    lisp::Value* im = (lisp::Value*)a.interp_ref;
-    if (im.tag != lisp::ValueTag.HASHMAP) return make_nil();
-    rt_ensure_interp();
-    lisp::HashMap* map = im.hashmap_val;
-    // Build cons list of keys
-    lisp::Value* result = lisp::make_nil(g_interp);
+    if (a.tag != V_DICT) return make_nil();
+    RtHashMap* map = a.dict_val;
+    Value result = make_nil();
     for (uint i = 0; i < map.capacity; i++) {
-        if (map.entries[i].key != null) {
-            result = lisp::make_cons(g_interp, map.entries[i].key, result);
+        if (!rtmap_slot_empty(&map.entries[i])) {
+            result = rt_cons(map.entries[i].key, result);
         }
     }
-    return interp_to_runtime(result);
+    return result;
 }
 
 fn Value rt_hash_values(Value a, Value _unused) {
-    if (a.tag != V_INTERP_REF) return make_nil();
-    lisp::Value* im = (lisp::Value*)a.interp_ref;
-    if (im.tag != lisp::ValueTag.HASHMAP) return make_nil();
-    rt_ensure_interp();
-    lisp::HashMap* map = im.hashmap_val;
-    // Build cons list of values
-    lisp::Value* result = lisp::make_nil(g_interp);
+    if (a.tag != V_DICT) return make_nil();
+    RtHashMap* map = a.dict_val;
+    Value result = make_nil();
     for (uint i = 0; i < map.capacity; i++) {
-        if (map.entries[i].key != null) {
-            result = lisp::make_cons(g_interp, map.entries[i].value, result);
+        if (!rtmap_slot_empty(&map.entries[i])) {
+            result = rt_cons(map.entries[i].value, result);
         }
     }
-    return interp_to_runtime(result);
+    return result;
 }
 
 fn Value rt_hash_count(Value a, Value _unused) {
-    if (a.tag != V_INTERP_REF) return make_int(0);
-    lisp::Value* im = (lisp::Value*)a.interp_ref;
-    if (im.tag != lisp::ValueTag.HASHMAP) return make_int(0);
-    return make_int((long)im.hashmap_val.count);
+    if (a.tag == V_DICT) return make_int((long)a.dict_val.count);
+    if (a.tag == V_ARRAY) return make_int((long)a.array_val.length);
+    return make_int(0);
 }
 
 fn Value rt_hash_map_p(Value a, Value _unused) {
-    if (a.tag == V_INTERP_REF) {
-        lisp::Value* im = (lisp::Value*)a.interp_ref;
-        if (im.tag == lisp::ValueTag.HASHMAP) return make_true();
-    }
+    if (a.tag == V_DICT) return make_true();
     return make_nil();
 }
 

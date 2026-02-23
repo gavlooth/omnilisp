@@ -1672,12 +1672,16 @@ fn Value* prim_bitwise_not(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_lshift(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return make_error(interp, "lshift: expected 2 integers");
-    return make_int(interp, args[0].int_val << args[1].int_val);
+    long shift = args[1].int_val;
+    if (shift < 0 || shift >= 64) return make_int(interp, 0);
+    return make_int(interp, args[0].int_val << shift);
 }
 
 fn Value* prim_rshift(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return make_error(interp, "rshift: expected 2 integers");
-    return make_int(interp, args[0].int_val >> args[1].int_val);
+    long shift = args[1].int_val;
+    if (shift < 0 || shift >= 64) return make_int(interp, 0);
+    return make_int(interp, args[0].int_val >> shift);
 }
 
 // --- Phase 5: String operations & type predicates ---
@@ -2318,11 +2322,11 @@ fn Value* prim_type_args(Value*[] args, Env* env, Interp* interp) {
 // --- Memory reclamation ---
 
 fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "free!: expected 1 argument");
+    if (args.len < 1) return make_error(interp, "unsafe-free!: expected 1 argument");
     Value* v = args[0];
     if (v == null) return make_nil(interp);
 
-    // Free heap-allocated backing storage and nullify the value.
+    // Free heap-allocated backing storage and mark as error.
     // Note: Array struct is malloc'd, but HashMap/Instance structs are region-allocated.
     // Only free what was actually malloc'd.
     switch (v.tag) {
@@ -2356,7 +2360,15 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
             }
         default: return make_nil(interp);  // No backing to free
     }
-    v.tag = NIL;  // Mark as nil so aliases see a safe value
+    // Mark as error so use-after-free is caught instead of silently becoming nil
+    v.tag = ERROR;
+    v.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
+    char[] msg = "use after unsafe-free!";
+    for (usz i = 0; i < msg.len; i++) {
+        v.str_val.chars[i] = msg[i];
+    }
+    v.str_val.chars[msg.len] = 0;
+    v.str_val.len = msg.len;
     return make_nil(interp);
 }
 

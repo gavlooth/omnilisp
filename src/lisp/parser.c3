@@ -1822,11 +1822,26 @@ fn Expr* Parser.parse_handle(Parser* self) {
     Expr* e = self.alloc_expr_here();  // Capture 'handle' location
     self.lexer.advance();  // consume 'handle'
 
+    // Check for ^strict annotation
+    bool strict = false;
+    if (self.lexer.current.type == T_SYMBOL) {
+        if (self.lexer.current.text_len == 7 &&
+            self.lexer.current.text[0] == '^' && self.lexer.current.text[1] == 's' &&
+            self.lexer.current.text[2] == 't' && self.lexer.current.text[3] == 'r' &&
+            self.lexer.current.text[4] == 'i' && self.lexer.current.text[5] == 'c' &&
+            self.lexer.current.text[6] == 't') {
+            strict = true;
+            self.lexer.advance();  // consume ^strict
+        }
+    }
+
     Expr* body = self.parse_expr();
 
     e.tag = E_HANDLE;
+    e.handle = (ExprHandle*)mem::malloc(ExprHandle.sizeof);
     e.handle.body = body;
     e.handle.clause_count = 0;
+    e.handle.strict_mode = strict;
 
     // Parse handler clauses
     while (self.lexer.current.type == T_LPAREN && !self.has_error) {
@@ -2031,6 +2046,7 @@ fn Expr* Parser.parse_match(Parser* self) {
     Expr* scrutinee = self.parse_expr();
 
     e.tag = E_MATCH;
+    e.match = (ExprMatch*)mem::malloc(ExprMatch.sizeof);
     e.match.scrutinee = scrutinee;
     e.match.clause_count = 0;
 

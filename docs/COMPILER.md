@@ -355,11 +355,27 @@ values remain accessible through the forwarding chain.
 
 - Maximum 16 captured variables per closure
 - Strings use 4096-byte buffer in runtime
-- TCO via V_THUNK trampoline (resolved — TCO now works)
-- Reset/shift continuations delegate to interpreter via `rt_eval_source()`
-- Handle/perform effects delegate to interpreter via `rt_eval_source()`
-- Type system forms (define [type], [union], etc.) delegate to interpreter
-- Macros expanded at compile time, complex macros delegate to interpreter
+- TCO via V_THUNK trampoline (works correctly)
+- Type definitions and dispatch resolution delegate to interpreter
+- Macros expanded at compile time; complex pattern macros delegate to interpreter
+
+## AOT Binary Generation
+
+The `--build` flag compiles Omni Lisp source to a standalone binary:
+
+```
+./build/main --build input.lisp -o output
+```
+
+This produces 5 C3 source files, then invokes `c3c compile`:
+- `main.c3` — entry point with `rt_init()`/`rt_shutdown()`
+- `continuation.c3` — setjmp/longjmp continuation support
+- `ghost_index.c3` — symbol table stubs
+- `runtime.c3` — standalone runtime (zero interpreter dependencies)
+- `generated.c3` — compiled Omni code
+
+AOT binaries link only libc/libm/libdl — no GNU Lightning, no readline.
+All expression types compile natively: reset/shift, handle/perform, quasiquote, defmacro, module, import.
 
 ## Generated Code Structure
 
