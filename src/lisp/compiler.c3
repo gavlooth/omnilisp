@@ -57,7 +57,7 @@ struct Compiler {
 
     // Compiled modules: track module name → exported symbols
     usz compiled_module_count;
-    CompiledModule[32] compiled_modules;
+    CompiledModule[64] compiled_modules;
 }
 
 /**
@@ -73,18 +73,22 @@ struct CompiledModule {
 /**
  * LambdaDef — Stored lambda definition for deferred emission.
  */
+const usz LAMBDA_CAPTURE_INITIAL = 16;
+
 struct LambdaDef {
     usz         id;              // Lambda ID
     SymbolId    param;           // Parameter name (for single-param lambdas)
     Expr*       body;            // Body expression
-    SymbolId[16] captures;       // Captured variables
+    SymbolId*   captures;        // Captured variables (heap-allocated)
     usz         capture_count;
+    usz         capture_capacity;
     bool        creates_closure; // Does this lambda create nested closures?
     // Variadic support
     bool        has_rest;        // True if variadic lambda (.. rest)
     SymbolId    rest_param;      // Rest parameter name
-    SymbolId[16] params;         // All fixed params (for variadic)
+    SymbolId*   params;          // All fixed params (heap-allocated)
     usz         param_count;     // Number of fixed params (for variadic)
+    usz         param_capacity;
 }
 
 // =============================================================================
@@ -725,6 +729,11 @@ fn void Compiler.collect_pattern_bindings(Compiler* self, Pattern* pat, List{Sym
             }
             if (pat.rest_pos == REST_MIDDLE) {
                 bindings.push(pat.rest_binding);
+            }
+
+        case PAT_GUARD:
+            if (pat.guard_sub != null) {
+                self.collect_pattern_bindings(pat.guard_sub, bindings);
             }
 
         default:
@@ -1556,34 +1565,13 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
 
     switch (expr.tag) {
         case E_LAMBDA:
-            // For multi-param lambdas, create synthetic nested single-param
-            // lambda AST nodes for the compiler (which uses single-param calling convention).
-            Expr* scan_expr = expr;
-            if (expr.lambda.param_count > 1 && !expr.lambda.has_rest) {
-                Expr* inner = expr.lambda.body;
-                for (usz pi = expr.lambda.param_count; pi > 1; pi--) {
-                    Expr* wrapper = self.interp.alloc_expr();
-                    wrapper.tag = E_LAMBDA;
-                    wrapper.lambda = mem::malloc(ExprLambda.sizeof);
-                    wrapper.loc_line = expr.loc_line;
-                    wrapper.loc_column = expr.loc_column;
-                    wrapper.lambda.param = expr.lambda.params[pi - 1];
-                    wrapper.lambda.param_count = 1;
-                    wrapper.lambda.params[0] = expr.lambda.params[pi - 1];
-                    wrapper.lambda.has_rest = false;
-                    wrapper.lambda.rest_param = 0;
-                    wrapper.lambda.has_typed_params = false;
-                    wrapper.lambda.body = inner;
-                    inner = wrapper;
-                }
-                expr.lambda.body = inner;
-                expr.lambda.param = expr.lambda.params[0];
-                expr.lambda.param_count = 1;
-                expr.lambda.params[0] = expr.lambda.param;
-            }
-
             List{SymbolId} own_bound;
-            if ((uint)expr.lambda.param != 0xFFFFFFFF) {
+            // Add all params to bound set for free-var scanning
+            if (expr.lambda.param_count > 1) {
+                for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
+                    own_bound.push(expr.lambda.params[pi]);
+                }
+            } else if ((uint)expr.lambda.param != 0xFFFFFFFF) {
                 own_bound.push(expr.lambda.param);
             }
             // For variadic lambdas, add all fixed params + rest param to bound set
@@ -1603,18 +1591,28 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
             def.param = expr.lambda.param;
             def.body = expr.lambda.body;
             def.capture_count = 0;
+            def.capture_capacity = LAMBDA_CAPTURE_INITIAL;
+            def.captures = (SymbolId*)mem::malloc(SymbolId.sizeof * def.capture_capacity);
             // Store variadic info
             def.has_rest = expr.lambda.has_rest;
             def.rest_param = expr.lambda.rest_param;
             def.param_count = expr.lambda.param_count;
-            for (usz pi = 0; pi < expr.lambda.param_count && pi < 16; pi++) {
+            def.param_capacity = expr.lambda.param_count < LAMBDA_CAPTURE_INITIAL ? LAMBDA_CAPTURE_INITIAL : expr.lambda.param_count;
+            def.params = (SymbolId*)mem::malloc(SymbolId.sizeof * def.param_capacity);
+            for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
                 def.params[pi] = expr.lambda.params[pi];
             }
 
             foreach (f : free) {
-                if (def.capture_count < 16) {
-                    def.captures[def.capture_count++] = f;
+                if (def.capture_count >= def.capture_capacity) {
+                    usz new_cap = def.capture_capacity * 2;
+                    SymbolId* new_caps = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
+                    for (usz ci = 0; ci < def.capture_count; ci++) new_caps[ci] = def.captures[ci];
+                    mem::free(def.captures);
+                    def.captures = new_caps;
+                    def.capture_capacity = new_cap;
                 }
+                def.captures[def.capture_count++] = f;
             }
 
             // Recursively scan body — the return value tells us if body has nested lambdas
@@ -1622,17 +1620,16 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
             foreach (b : *enclosing_bound) {
                 new_enclosing.push(b);
             }
-            if ((uint)expr.lambda.param != 0xFFFFFFFF) {
-                new_enclosing.push(expr.lambda.param);
-            }
-            // Add variadic params to enclosing scope for nested lambda free var analysis
-            if (expr.lambda.has_rest) {
+            // Add all params to enclosing scope for nested lambda free var analysis
+            if (expr.lambda.param_count > 1) {
                 for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
                     new_enclosing.push(expr.lambda.params[pi]);
                 }
-                if ((uint)expr.lambda.rest_param != 0) {
-                    new_enclosing.push(expr.lambda.rest_param);
-                }
+            } else if ((uint)expr.lambda.param != 0xFFFFFFFF) {
+                new_enclosing.push(expr.lambda.param);
+            }
+            if (expr.lambda.has_rest && (uint)expr.lambda.rest_param != 0) {
+                new_enclosing.push(expr.lambda.rest_param);
             }
             bool body_has_lambda = self.scan_lambdas_with_scope(expr.lambda.body, &new_enclosing);
 
@@ -1915,8 +1912,8 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
         self.emit("fn runtime::Value invoke_lambda_");
         self.emit_usz(def.id);
 
-        if (def.has_rest) {
-            // Variadic lambda: receives all args as a cons list
+        if (def.has_rest || (def.param_count > 1)) {
+            // Variadic or multi-param lambda: receives all args as a cons list
             self.emit("(void* _self, runtime::Value _arg_list) {\n");
         } else if (is_zero_arg) {
             self.emit("(void* _self, runtime::Value _unused) {\n");
@@ -1931,8 +1928,8 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
         // Clear declared vars for this function scope
         self.declared_vars.free();
 
-        if (def.has_rest) {
-            // Variadic: unpack fixed params from arg list, bind rest
+        if (def.has_rest || (def.param_count > 1 && !def.has_rest)) {
+            // Variadic or multi-param: unpack params from arg list
             self.emit_indent();
             self.emit("runtime::Value _curr = _arg_list;\n");
             for (usz pi = 0; pi < def.param_count; pi++) {
@@ -1944,12 +1941,14 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
                 self.emit_indent();
                 self.emit("_curr = runtime::rt_cdr1(_curr);\n");
             }
-            // Rest param gets remaining list
-            self.mark_declared(def.rest_param);
-            self.emit_indent();
-            self.emit("runtime::Value ");
-            self.emit_symbol_name(def.rest_param);
-            self.emit(" = _curr;\n");
+            if (def.has_rest) {
+                // Rest param gets remaining list
+                self.mark_declared(def.rest_param);
+                self.emit_indent();
+                self.emit("runtime::Value ");
+                self.emit_symbol_name(def.rest_param);
+                self.emit(" = _curr;\n");
+            }
         } else {
             // Mark parameter as declared
             if (!is_zero_arg) {
@@ -2010,8 +2009,16 @@ fn bool Compiler.is_variadic_lambda(Compiler* self, usz lambda_id) {
     return false;
 }
 
+// Multi-param lambdas also receive args as a cons list (like variadic)
+fn bool Compiler.needs_arg_list(Compiler* self, usz lambda_id) {
+    foreach (def : self.lambda_defs) {
+        if (def.id == lambda_id) return def.has_rest || def.param_count > 1;
+    }
+    return false;
+}
+
 fn void Compiler.emit_make_closure_call(Compiler* self, usz lambda_id) {
-    if (self.is_variadic_lambda(lambda_id)) {
+    if (self.needs_arg_list(lambda_id)) {
         self.emit("make_variadic_closure");
     } else {
         self.emit("make_closure");
@@ -3793,6 +3800,10 @@ fn void Compiler.compile_pattern_check(Compiler* self, Pattern* pat, char[] val_
                 self.emit_usz(pat.elem_count);
             }
 
+        case PAT_GUARD:
+            // Guard patterns: delegate to true for now (guard check at runtime)
+            self.emit("true");
+
         default:
             self.emit("true");
     }
@@ -3861,6 +3872,12 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
                 self.emit("); ");
             }
 
+        case PAT_GUARD:
+            // Guard pattern: bind sub-pattern if present
+            if (pat.guard_sub != null) {
+                self.compile_pattern_bindings(pat.guard_sub, val_name);
+            }
+
         default:
             return;
     }
@@ -3903,7 +3920,7 @@ fn void Compiler.compile_path(Compiler* self, Expr* expr) {
  */
 fn usz Compiler.compile_module_flat(Compiler* self, Expr* expr) {
     // Register the module in compiled_modules table
-    if (self.compiled_module_count < 32) {
+    if (self.compiled_module_count < 64) {
         CompiledModule* mod = &self.compiled_modules[self.compiled_module_count];
         mod.name = expr.module_expr.name;
         mod.export_count = expr.module_expr.export_count;

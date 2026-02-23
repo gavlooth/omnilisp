@@ -4,6 +4,9 @@ import std::collections::list;
 import std::io;
 import main;
 
+// Compile-time debug flag: set to false for release builds (zero-cost elimination).
+const bool DEBUG_BUILD = true;
+
 // =============================================================================
 // SECTION 1: VALUE TYPES
 // =============================================================================
@@ -36,56 +39,102 @@ enum ValueTag : char {
  */
 typedef SymbolId = uint;
 
-// Maximum symbol name length
-const usz MAX_SYMBOL_LEN = 128;
-// Maximum string value length (for StringVal, file reads, string ops)
-const usz MAX_STRING_LEN = 4096;
-// Maximum number of symbols
-const usz MAX_SYMBOLS = 4096;
-// Maximum number of macros in the macro table
-const usz MAX_MACROS = 64;
-// Maximum number of modules in the module table
-const usz MAX_MODULES = 32;
-// Hash table sizes for macro/module lookup (2x max entries for good load factor)
-const usz MACRO_HASH_SIZE = 128;   // 2 * MAX_MACROS
-const usz MODULE_HASH_SIZE = 64;   // 2 * MAX_MODULES
-// Hash table size for symbol intern (must be power of 2, >= 2*MAX_SYMBOLS)
-const usz HASH_TABLE_SIZE = 8192;
+// Initial capacities for dynamic tables
+const usz MACRO_INITIAL_CAPACITY = 32;
+const usz MODULE_INITIAL_CAPACITY = 16;
+const usz HANDLER_INITIAL_CAPACITY = 16;
+const usz RESET_STACK_INITIAL = 16;
+const usz PRIOR_INITIAL_CAPACITY = 16;
 // Invalid symbol ID sentinel (returned on exhaustion; must not alias any valid index)
 const SymbolId INVALID_SYMBOL_ID = (SymbolId)0xFFFFFFFF;
+
+// Initial capacities for dynamic symbol table
+const usz SYMBOL_INITIAL_CAPACITY = 256;
+const usz SYMBOL_HASH_INITIAL_CAPACITY = 512;
 
 // Type system constants
 typedef TypeId = uint;
 const TypeId INVALID_TYPE_ID = (TypeId)0xFFFFFFFF;
-const usz MAX_TYPES = 128;
-const usz TYPE_HASH_SIZE = 256;
-const usz MAX_TYPE_PARAMS = 8;
-const usz MAX_META_ENTRIES = 8;
-const usz MAX_TYPE_FIELDS = 16;
-const usz MAX_METHODS = 64;
-
+const usz TYPE_INITIAL_CAPACITY = 64;
+const usz MAX_TYPE_PARAMS = 32;
+const usz MAX_META_ENTRIES = 16;
+const usz MAX_TYPE_FIELDS = 64;
 /**
  * SymbolEntry — Storage for a single interned symbol name.
  */
 struct SymbolEntry {
-    char[MAX_SYMBOL_LEN] name;
+    char* name;   // heap-allocated, null-terminated
     usz len;
 }
 
 /**
- * SymbolTable — Table for interning symbol names.
+ * SymbolTable — Table for interning symbol names (dynamic, growable).
  */
 struct SymbolTable {
-    SymbolEntry[MAX_SYMBOLS] entries;
+    SymbolEntry* entries;
     usz count;
-    SymbolId[HASH_TABLE_SIZE] hash_index;  // Maps hash slot → symbol index (INVALID_SYMBOL_ID = empty)
+    usz capacity;           // entries array capacity
+    SymbolId* hash_index;   // Maps hash slot → symbol index (INVALID_SYMBOL_ID = empty)
+    usz hash_capacity;      // hash_index array capacity (power of 2)
 }
 
 fn void SymbolTable.init(SymbolTable* self) {
     self.count = 0;
-    // Initialize hash table slots to empty
-    for (usz i = 0; i < HASH_TABLE_SIZE; i++) {
+    self.capacity = SYMBOL_INITIAL_CAPACITY;
+    self.hash_capacity = SYMBOL_HASH_INITIAL_CAPACITY;
+    self.entries = (SymbolEntry*)mem::malloc(SymbolEntry.sizeof * self.capacity);
+    self.hash_index = (SymbolId*)mem::malloc(SymbolId.sizeof * self.hash_capacity);
+    for (usz i = 0; i < self.hash_capacity; i++) {
         self.hash_index[i] = INVALID_SYMBOL_ID;
+    }
+}
+
+fn void SymbolTable.destroy(SymbolTable* self) {
+    for (usz i = 0; i < self.count; i++) {
+        if (self.entries[i].name != null) {
+            mem::free(self.entries[i].name);
+        }
+    }
+    if (self.entries != null) {
+        mem::free(self.entries);
+        self.entries = null;
+    }
+    if (self.hash_index != null) {
+        mem::free(self.hash_index);
+        self.hash_index = null;
+    }
+}
+
+fn void SymbolTable.grow(SymbolTable* self) {
+    // Double entries capacity
+    usz new_cap = self.capacity * 2;
+    SymbolEntry* new_entries = (SymbolEntry*)mem::malloc(SymbolEntry.sizeof * new_cap);
+    for (usz i = 0; i < self.count; i++) {
+        new_entries[i] = self.entries[i];
+    }
+    mem::free(self.entries);
+    self.entries = new_entries;
+    self.capacity = new_cap;
+
+    // Double hash capacity and rebuild
+    usz new_hash_cap = self.hash_capacity * 2;
+    mem::free(self.hash_index);
+    self.hash_index = (SymbolId*)mem::malloc(SymbolId.sizeof * new_hash_cap);
+    self.hash_capacity = new_hash_cap;
+    for (usz i = 0; i < new_hash_cap; i++) {
+        self.hash_index[i] = INVALID_SYMBOL_ID;
+    }
+    // Re-insert all entries into new hash table
+    usz mask = new_hash_cap - 1;
+    for (usz i = 0; i < self.count; i++) {
+        usz h = hash_symbol(self.entries[i].name[:self.entries[i].len]);
+        for (usz probe = 0; probe < new_hash_cap; probe++) {
+            usz slot = (h + probe) & mask;
+            if (self.hash_index[slot] == INVALID_SYMBOL_ID) {
+                self.hash_index[slot] = (SymbolId)i;
+                break;
+            }
+        }
     }
 }
 
@@ -103,10 +152,10 @@ fn usz hash_symbol(char[] name) {
 
 fn SymbolId SymbolTable.intern(SymbolTable* self, char[] name) {
     usz h = hash_symbol(name);
-    usz mask = HASH_TABLE_SIZE - 1;
+    usz mask = self.hash_capacity - 1;
 
     // Hash table lookup with linear probing
-    for (usz probe = 0; probe < HASH_TABLE_SIZE; probe++) {
+    for (usz probe = 0; probe < self.hash_capacity; probe++) {
         usz slot = (h + probe) & mask;
         SymbolId sid = self.hash_index[slot];
         if (sid == INVALID_SYMBOL_ID) {
@@ -129,26 +178,28 @@ fn SymbolId SymbolTable.intern(SymbolTable* self, char[] name) {
         }
     }
 
-    // Not found — insert new symbol
-    if (self.count >= MAX_SYMBOLS) {
-        io::eprintfn("error: symbol table exhausted (max %d symbols)", MAX_SYMBOLS);
-        return INVALID_SYMBOL_ID;
+    // Grow at 70% load factor
+    if (self.count * 10 >= self.capacity * 7) {
+        self.grow();
+        mask = self.hash_capacity - 1;
+        h = hash_symbol(name);  // recompute with new mask
     }
+
+    // Insert new symbol
     SymbolId id = (SymbolId)self.count;
     usz len = name.len;
-    if (len > MAX_SYMBOL_LEN - 1) {
-        io::eprintfn("WARNING: symbol name truncated to %d bytes", MAX_SYMBOL_LEN - 1);
-        len = MAX_SYMBOL_LEN - 1;
-    }
+    // Heap-allocate symbol name
+    char* heap_name = (char*)mem::malloc(len + 1);
     for (usz i = 0; i < len; i++) {
-        self.entries[self.count].name[i] = name[i];
+        heap_name[i] = name[i];
     }
-    self.entries[self.count].name[len] = 0;
+    heap_name[len] = 0;
+    self.entries[self.count].name = heap_name;
     self.entries[self.count].len = len;
     self.count++;
 
     // Insert into hash table
-    for (usz probe = 0; probe < HASH_TABLE_SIZE; probe++) {
+    for (usz probe = 0; probe < self.hash_capacity; probe++) {
         usz slot = (h + probe) & mask;
         if (self.hash_index[slot] == INVALID_SYMBOL_ID) {
             self.hash_index[slot] = id;
@@ -162,7 +213,7 @@ fn SymbolId SymbolTable.intern(SymbolTable* self, char[] name) {
 <* @require (usz)id < self.count : "invalid symbol id" *>
 fn char[] SymbolTable.get_name(SymbolTable* self, SymbolId id) {
     usz idx = (usz)id;
-    return self.entries[idx].name[:self.entries[idx].len];
+    return self.entries[idx].name[:(usz)self.entries[idx].len];
 }
 
 /**
@@ -179,7 +230,7 @@ struct Cons {
  */
 struct Closure {
     SymbolId  param;          // Parameter name (first/only param, or unused if param_count==0)
-    SymbolId[64] params;      // All fixed params (including first)
+    SymbolId[256] params;     // All fixed params (including first)
     usz       param_count;    // Number of fixed params
     bool      has_rest;       // True if variadic (.. rest)
     SymbolId  rest_param;     // Rest parameter name (if has_rest)
@@ -204,7 +255,7 @@ struct Continuation {
 alias PrimitiveFn = fn Value*(Value*[] args, Env* env, Interp* interp);
 
 struct Primitive {
-    char[32] name;
+    char[64] name;
     PrimitiveFn func;
     int arity;           // -1 for variadic
     int tag;             // Extra data (e.g., TypeId for constructors)
@@ -222,11 +273,12 @@ struct PartialPrim {
 }
 
 /**
- * StringVal — String value storage.
+ * StringVal — String value storage (heap-allocated, dynamic).
  */
 struct StringVal {
-    char[MAX_STRING_LEN] chars;
+    char* chars;    // heap-allocated, null-terminated
     usz len;
+    usz capacity;   // allocated size
 }
 
 /**
@@ -273,9 +325,9 @@ struct CapturedBinding {
  */
 struct MacroDef {
     SymbolId name;
-    MacroClause[8] clauses;
+    MacroClause[32] clauses;
     usz clause_count;
-    CapturedBinding[32] captured_bindings;  // Snapshot of def-time bindings for hygiene
+    CapturedBinding[64] captured_bindings;  // Snapshot of def-time bindings for hygiene
     usz captured_count;
 }
 
@@ -287,8 +339,8 @@ struct FfiHandle {
     char[256] lib_name;      // for display/debugging
     usz      name_len;
     // dlsym cache — linear scan, populated on miss
-    void*[32] sym_cache_ptrs;
-    char[32][64] sym_cache_names;
+    void*[64] sym_cache_ptrs;
+    char[64][64] sym_cache_names;
     usz      sym_cache_count;
 }
 
@@ -365,7 +417,7 @@ struct TypeInfo {
     usz type_param_count;
     MethodConstraint[MAX_TYPE_PARAMS] constraints;  // Parametric type constraints (e.g., T <: Number)
     usz constraint_count;
-    UnionVariant[16] variants;  // for TK_UNION
+    UnionVariant[64] variants;  // for TK_UNION
     usz variant_count;
     TypeId alias_target;     // for TK_ALIAS
 }
@@ -374,20 +426,63 @@ struct TypeInfo {
  * TypeRegistry — Registry of all types (builtin + user-defined).
  */
 struct TypeRegistry {
-    TypeInfo[MAX_TYPES] types;
+    TypeInfo* types;
     usz type_count;
-    TypeId[TYPE_HASH_SIZE] type_hash_index;  // FNV-1a hash → type index
+    usz capacity;
+    TypeId* type_hash_index;
+    usz hash_capacity;
 }
 
 fn void TypeRegistry.init(TypeRegistry* self) {
+    self.capacity = TYPE_INITIAL_CAPACITY;
     self.type_count = 0;
-    for (usz i = 0; i < TYPE_HASH_SIZE; i++) {
+    self.types = (TypeInfo*)mem::malloc(TypeInfo.sizeof * self.capacity);
+    self.hash_capacity = self.capacity * 2;
+    self.type_hash_index = (TypeId*)mem::malloc(TypeId.sizeof * self.hash_capacity);
+    for (usz i = 0; i < self.hash_capacity; i++) {
         self.type_hash_index[i] = INVALID_TYPE_ID;
     }
 }
 
+fn void TypeRegistry.grow(TypeRegistry* self, SymbolTable* syms) {
+    usz new_cap = self.capacity * 2;
+    TypeInfo* new_types = (TypeInfo*)mem::malloc(TypeInfo.sizeof * new_cap);
+    for (usz i = 0; i < self.type_count; i++) new_types[i] = self.types[i];
+    mem::free(self.types);
+    self.types = new_types;
+    self.capacity = new_cap;
+
+    // Rebuild hash table at 2x new capacity
+    usz new_hash_cap = new_cap * 2;
+    TypeId* new_hash = (TypeId*)mem::malloc(TypeId.sizeof * new_hash_cap);
+    for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = INVALID_TYPE_ID;
+    mem::free(self.type_hash_index);
+    self.type_hash_index = new_hash;
+    self.hash_capacity = new_hash_cap;
+
+    usz mask = new_hash_cap - 1;
+    for (usz i = 0; i < self.type_count; i++) {
+        char[] name_str = syms.get_name(self.types[i].name);
+        usz h = hash_symbol(name_str);
+        for (usz probe = 0; probe < new_hash_cap; probe++) {
+            usz slot = (h + probe) & mask;
+            if (new_hash[slot] == INVALID_TYPE_ID) {
+                new_hash[slot] = (TypeId)i;
+                break;
+            }
+        }
+    }
+}
+
+fn void TypeRegistry.destroy(TypeRegistry* self) {
+    if (self.types != null) { mem::free(self.types); self.types = null; }
+    if (self.type_hash_index != null) { mem::free(self.type_hash_index); self.type_hash_index = null; }
+}
+
 fn TypeId TypeRegistry.register_type(TypeRegistry* self, TypeInfo info, SymbolTable* syms) {
-    if (self.type_count >= MAX_TYPES) return INVALID_TYPE_ID;
+    if (self.type_count >= self.capacity) {
+        self.grow(syms);
+    }
     TypeId id = (TypeId)self.type_count;
     self.types[self.type_count] = info;
     self.type_count++;
@@ -395,8 +490,8 @@ fn TypeId TypeRegistry.register_type(TypeRegistry* self, TypeInfo info, SymbolTa
     // Insert into hash table
     char[] name = syms.get_name(info.name);
     usz h = hash_symbol(name);
-    usz mask = TYPE_HASH_SIZE - 1;
-    for (usz probe = 0; probe < TYPE_HASH_SIZE; probe++) {
+    usz mask = self.hash_capacity - 1;
+    for (usz probe = 0; probe < self.hash_capacity; probe++) {
         usz slot = (h + probe) & mask;
         if (self.type_hash_index[slot] == INVALID_TYPE_ID) {
             self.type_hash_index[slot] = id;
@@ -409,8 +504,8 @@ fn TypeId TypeRegistry.register_type(TypeRegistry* self, TypeInfo info, SymbolTa
 fn TypeId TypeRegistry.lookup(TypeRegistry* self, SymbolId name, SymbolTable* syms) {
     char[] name_str = syms.get_name(name);
     usz h = hash_symbol(name_str);
-    usz mask = TYPE_HASH_SIZE - 1;
-    for (usz probe = 0; probe < TYPE_HASH_SIZE; probe++) {
+    usz mask = self.hash_capacity - 1;
+    for (usz probe = 0; probe < self.hash_capacity; probe++) {
         usz slot = (h + probe) & mask;
         TypeId tid = self.type_hash_index[slot];
         if (tid == INVALID_TYPE_ID) return INVALID_TYPE_ID;
@@ -461,9 +556,9 @@ struct MethodConstraint {
  * MethodSignature — Type signature for dispatch matching.
  */
 struct MethodSignature {
-    TypeId[8] param_types;     // INVALID_TYPE_ID = Any
-    long[8] val_literals;      // For Val types
-    bool[8] has_val_literal;
+    TypeId[32] param_types;     // INVALID_TYPE_ID = Any
+    long[32] val_literals;      // For Val types
+    bool[32] has_val_literal;
     usz param_count;
     MethodConstraint[MAX_TYPE_PARAMS] constraints;  // Type param constraints
     usz constraint_count;
@@ -480,10 +575,13 @@ struct MethodEntry {
 /**
  * MethodTable — Dispatch table for multiple dispatch (heap-allocated).
  */
+const usz METHOD_INITIAL_CAPACITY = 8;
+
 struct MethodTable {
     SymbolId name;
-    MethodEntry[MAX_METHODS] entries;
+    MethodEntry* entries;
     usz entry_count;
+    usz capacity;
     Value* fallback;  // untyped catch-all
 }
 
@@ -545,10 +643,10 @@ fn Value* make_string(Interp* interp, char[] str) {
     v.tag = STRING;
     v.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
     usz len = str.len;
-    if (len > MAX_STRING_LEN - 1) {
-        io::eprintfn("WARNING: string truncated from %d to %d bytes", str.len, MAX_STRING_LEN - 1);
-        len = MAX_STRING_LEN - 1;
-    }
+    usz cap = len + 1;
+    if (cap < 32) cap = 32;  // minimum allocation
+    v.str_val.chars = (char*)mem::malloc(cap);
+    v.str_val.capacity = cap;
     for (usz i = 0; i < len; i++) {
         v.str_val.chars[i] = str[i];
     }
@@ -663,7 +761,10 @@ fn Value* make_error(Interp* interp, char[] msg) {
     v.tag = ERROR;
     v.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
     usz len = msg.len;
-    if (len > MAX_STRING_LEN - 1) len = MAX_STRING_LEN - 1;
+    usz cap = len + 1;
+    if (cap < 32) cap = 32;
+    v.str_val.chars = (char*)mem::malloc(cap);
+    v.str_val.capacity = cap;
     for (usz i = 0; i < len; i++) {
         v.str_val.chars[i] = msg[i];
     }
@@ -858,9 +959,6 @@ fn char[] double_to_string(double val, char[] buffer) {
 // =============================================================================
 // SECTION 5: ENVIRONMENT
 // =============================================================================
-
-// Maximum bindings per match result (stack-allocated, fixed size)
-const usz MAX_BINDINGS = 512;
 
 // Initial capacity for dynamically-sized Env binding arrays
 const usz ENV_INITIAL_CAPACITY = 8;
@@ -1076,7 +1174,7 @@ fn Env* Env.extend(Env* self, Interp* interp, SymbolId name, Value* value) {
  * ExprTag — Type of expression.
  */
 // Maximum path segments (e.g., person.address.city has 3)
-const usz MAX_PATH_SEGMENTS = 8;
+const usz MAX_PATH_SEGMENTS = 32;
 
 enum ExprTag : char {
     E_LIT,        // Literal value
@@ -1122,12 +1220,12 @@ struct ExprVar {
 
 struct ExprLambda {
     SymbolId param;           // First/only param (or unused if param_count==0)
-    SymbolId[64] params;      // All fixed params
+    SymbolId[256] params;     // All fixed params
     usz      param_count;     // Number of fixed params
     bool     has_rest;        // True if variadic (.. rest)
     SymbolId rest_param;      // Rest parameter name
     Expr*    body;
-    TypeAnnotation[8] param_annotations;  // Type annotations for first 8 params
+    TypeAnnotation[32] param_annotations;  // Type annotations for params
     bool has_typed_params;    // True if any param has a type annotation
 }
 
@@ -1173,7 +1271,7 @@ struct ExprPerform {
 }
 
 // Maximum effect clauses per handle expression
-const usz MAX_EFFECT_CLAUSES = 16;
+const usz MAX_EFFECT_CLAUSES = 64;
 
 struct EffectClause {
     SymbolId effect_tag;    // Effect name
@@ -1211,9 +1309,9 @@ struct ExprPath {
 // =============================================================================
 
 // Maximum elements in a sequence pattern
-const usz MAX_PATTERN_ELEMS = 16;
+const usz MAX_PATTERN_ELEMS = 64;
 // Maximum match clauses
-const usz MAX_MATCH_CLAUSES = 32;
+const usz MAX_MATCH_CLAUSES = 128;
 
 /**
  * PatternTag — Type of pattern.
@@ -1226,6 +1324,7 @@ enum PatternTag : char {
     PAT_SEQ,        // [a b c], [head .. tail], [x y ..] - sequence pattern
     PAT_QUOTE,      // 'symbol or 'literal - matches quoted datum
     PAT_CONSTRUCTOR, // (TypeName sub-patterns...) - matches type instance
+    PAT_GUARD,      // (? pred) or (? pred sub-pattern) - guarded pattern
 }
 
 /**
@@ -1269,6 +1368,12 @@ struct Pattern {
             SymbolId constructor_name;
             Pattern*[MAX_TYPE_FIELDS] ctor_sub_patterns;
             usz ctor_sub_count;
+        }
+
+        // PAT_GUARD: (? pred) or (? pred sub-pattern)
+        struct {
+            Expr* guard_pred;       // Predicate expression
+            Pattern* guard_sub;     // Optional sub-pattern (null = match anything)
         }
     }
 }
@@ -1315,7 +1420,7 @@ struct ExprOr {
  */
 struct ExprCall {
     Expr* func;
-    Expr*[64] args;
+    Expr*[256] args;
     usz arg_count;
 }
 
@@ -1324,7 +1429,7 @@ struct ExprCall {
  * Evaluates all expressions, returns the last.
  */
 struct ExprBegin {
-    Expr*[64] exprs;
+    Expr*[256] exprs;
     usz expr_count;
 }
 
@@ -1366,7 +1471,7 @@ struct ExprUnquoteSplicing {
  */
 struct ExprDefineMacro {
     SymbolId name;
-    MacroClause[8] clauses;
+    MacroClause[32] clauses;
     usz clause_count;
 }
 
@@ -1375,9 +1480,9 @@ struct ExprDefineMacro {
  */
 struct ExprModule {
     SymbolId     name;
-    SymbolId[64] exports;
+    SymbolId[256] exports;
     usz          export_count;
-    Expr*[64]    body;
+    Expr*[256]    body;
     usz          body_count;
 }
 
@@ -1432,7 +1537,7 @@ struct ExprDefUnion {
     SymbolId name;
     SymbolId[MAX_TYPE_PARAMS] type_params;
     usz type_param_count;
-    UnionVariant[16] variants;
+    UnionVariant[64] variants;
     usz variant_count;
 }
 
@@ -1459,7 +1564,7 @@ struct ExprDefEffect {
 struct Module {
     SymbolId     name;
     Env*         env;              // Module's internal environment
-    SymbolId[128] exports;         // Exported symbol names
+    SymbolId[256] exports;         // Exported symbol names
     usz          export_count;
     bool         loaded;           // false during loading (circular import detection)
     char[256]    path;             // Source file path
@@ -1541,12 +1646,14 @@ struct CapturedCont {
     bool has_handler;     // whether handler_copy is valid
     // Multi-perform tracking
     usz perform_index;
-    Value*[16] prior_results;
+    Value** prior_results;
     usz prior_count;
+    usz prior_capacity;
     // Multi-shift tracking
     usz shift_index;
-    Value*[16] shift_prior_results;
+    Value** shift_prior_results;
     usz shift_prior_count;
+    usz shift_prior_capacity;
     // Region pinning: retain the frame where reset_env was allocated
     // to prevent UAF when frame is released before continuation is invoked
     main::RegionHandle captured_frame;
@@ -1640,6 +1747,11 @@ struct Interp {
     SymbolId sym_car;
     SymbolId sym_cdr;
 
+    // Placeholder/pipe/guard symbols
+    SymbolId sym_placeholder;  // "__placeholder" sentinel for _ in expression context
+    SymbolId sym_pipe;         // "|>" pipe operator
+    SymbolId sym_question;     // "?" guard pattern
+
     // Cached I/O fast path primitives (set after register_primitives)
     Value* raw_print;
     Value* raw_println;
@@ -1675,6 +1787,7 @@ struct Interp {
 
     // JIT execution mode
     Env* jit_env;      // Current local env for JIT sub-expression evaluation
+    Env* match_env;    // Current env for evaluating guard predicates in match
 
     // JIT trampoline TCO state
     Expr* jit_tco_expr;   // Next expression to evaluate (set by tail-call helpers)
@@ -1684,16 +1797,20 @@ struct Interp {
     usz eval_depth;
     usz max_eval_depth;
 
-    // Macro table
-    MacroDef[MAX_MACROS] macro_table;
+    // Macro table (dynamic)
+    MacroDef* macro_table;
     usz macro_count;
+    usz macro_capacity;
     usz gensym_counter;
-    usz[MACRO_HASH_SIZE] macro_hash_index;    // Hash slot -> macro_table index (usz.max = empty)
+    usz* macro_hash_index;
+    usz macro_hash_capacity;
 
-    // Module system
-    Module[MAX_MODULES] modules;
+    // Module system (dynamic)
+    Module* modules;
     usz module_count;
-    usz[MODULE_HASH_SIZE] module_hash_index;  // Hash slot -> modules index (usz.max = empty)
+    usz module_capacity;
+    usz* module_hash_index;
+    usz module_hash_capacity;
     SymbolId sym_module;
     SymbolId sym_import;
     SymbolId sym_export;
@@ -1703,9 +1820,10 @@ struct Interp {
     usz      shift_target_depth;
     Value*   shift_result;
 
-    // Effect handler stack
-    EffectHandler[16] handler_stack;
-    usz               handler_count;
+    // Effect handler stack (dynamic)
+    EffectHandler* handler_stack;
+    usz            handler_count;
+    usz            handler_capacity;
 
     // Effect handler result propagation
     Value*   effect_result;         // Result of the handler body
@@ -1715,16 +1833,19 @@ struct Interp {
     SymbolId cont_effect_tag;       // Effect tag for effect replay
     // Multi-perform replay tracking
     usz    effect_perform_counter;
-    Value*[16] effect_prior_results;
+    Value** effect_prior_results;
+    usz    effect_prior_capacity;
     usz    cont_target_perform_index;
     // Multi-shift replay tracking
     usz    shift_counter;
-    Value*[16] shift_prior_results;
+    Value** shift_prior_results;
+    usz    shift_prior_capacity;
     usz    cont_target_shift_index;
 
-    // Reset body/env stack (for continuation capture)
-    Expr*[16] reset_body_stack;
-    Env*[16]  reset_env_stack;
+    // Reset body/env stack (dynamic, for continuation capture)
+    Expr** reset_body_stack;
+    Env**  reset_env_stack;
+    usz    reset_stack_capacity;
 
 }
 
@@ -1736,12 +1857,21 @@ fn void Interp.init(Interp* self) {
     self.root_region = main::thread_root_region();
     self.current_frame = self.root_region;
 
-    // Continuation/shift state
+    // Effect handler stack (dynamic)
+    self.handler_capacity = HANDLER_INITIAL_CAPACITY;
+    self.handler_count = 0;
+    self.handler_stack = (EffectHandler*)mem::malloc(EffectHandler.sizeof * self.handler_capacity);
+
+    // Reset body/env stacks (dynamic)
+    self.reset_stack_capacity = RESET_STACK_INITIAL;
     self.reset_depth = 0;
+    self.reset_body_stack = (Expr**)mem::malloc(Expr*.sizeof * self.reset_stack_capacity);
+    self.reset_env_stack = (Env**)mem::malloc(Env*.sizeof * self.reset_stack_capacity);
+
+    // Continuation/shift state
     self.flags.shift_occurred = false;
     self.shift_target_depth = 0;
     self.shift_result = null;
-    self.handler_count = 0;
     self.flags.effect_occurred = false;
     self.effect_result = null;
 
@@ -1749,12 +1879,16 @@ fn void Interp.init(Interp* self) {
     self.cont_substitution = null;
     self.flags.cont_substituting = false;
     self.flags.cont_is_effect = false;
-    // Multi-perform replay tracking
+    // Multi-perform replay tracking (dynamic)
     self.effect_perform_counter = 0;
     self.cont_target_perform_index = 0;
-    // Multi-shift replay tracking
+    self.effect_prior_capacity = PRIOR_INITIAL_CAPACITY;
+    self.effect_prior_results = (Value**)mem::malloc(Value*.sizeof * self.effect_prior_capacity);
+    // Multi-shift replay tracking (dynamic)
     self.shift_counter = 0;
     self.cont_target_shift_index = 0;
+    self.shift_prior_capacity = PRIOR_INITIAL_CAPACITY;
+    self.shift_prior_results = (Value**)mem::malloc(Value*.sizeof * self.shift_prior_capacity);
 
     // Pre-intern keywords
     self.sym_lambda  = self.symbols.intern("lambda");
@@ -1817,14 +1951,24 @@ fn void Interp.init(Interp* self) {
     self.sym_car = self.symbols.intern("car");
     self.sym_cdr = self.symbols.intern("cdr");
 
+    // Placeholder/pipe/guard symbols
+    self.sym_placeholder = self.symbols.intern("__placeholder");
+    self.sym_pipe = self.symbols.intern("|>");
+    self.sym_question = self.symbols.intern("?");
+
     // Type registry
     self.types.init();
 
-    // Module system
+    // Module system (dynamic)
     self.sym_module = self.symbols.intern("module");
     self.sym_import = self.symbols.intern("import");
     self.sym_export = self.symbols.intern("export");
     self.module_count = 0;
+    self.module_capacity = MODULE_INITIAL_CAPACITY;
+    self.modules = (Module*)mem::malloc(Module.sizeof * self.module_capacity);
+    self.module_hash_capacity = self.module_capacity * 2;
+    self.module_hash_index = (usz*)mem::malloc(usz.sizeof * self.module_hash_capacity);
+    for (usz i = 0; i < self.module_hash_capacity; i++) self.module_hash_index[i] = usz.max;
 
     // JIT disabled until after stdlib registration
     self.flags.jit_enabled = false;
@@ -1837,14 +1981,137 @@ fn void Interp.init(Interp* self) {
     self.eval_depth = 0;
     self.max_eval_depth = 5000;
 
-    // Macro table
+    // Macro table (dynamic)
     self.macro_count = 0;
+    self.macro_capacity = MACRO_INITIAL_CAPACITY;
+    self.macro_table = (MacroDef*)mem::malloc(MacroDef.sizeof * self.macro_capacity);
     self.gensym_counter = 0;
-    for (usz i = 0; i < MACRO_HASH_SIZE; i++) self.macro_hash_index[i] = usz.max;
-    for (usz i = 0; i < MODULE_HASH_SIZE; i++) self.module_hash_index[i] = usz.max;
+    self.macro_hash_capacity = self.macro_capacity * 2;
+    self.macro_hash_index = (usz*)mem::malloc(usz.sizeof * self.macro_hash_capacity);
+    for (usz i = 0; i < self.macro_hash_capacity; i++) self.macro_hash_index[i] = usz.max;
 
     // Create global environment
     self.global_env = make_env(self, null);
+}
+
+fn void Interp.grow_macro_table(Interp* self) {
+    usz new_cap = self.macro_capacity * 2;
+    MacroDef* new_table = (MacroDef*)mem::malloc(MacroDef.sizeof * new_cap);
+    for (usz i = 0; i < self.macro_count; i++) new_table[i] = self.macro_table[i];
+    mem::free(self.macro_table);
+    self.macro_table = new_table;
+    self.macro_capacity = new_cap;
+
+    // Rebuild hash
+    usz new_hash_cap = new_cap * 2;
+    usz* new_hash = (usz*)mem::malloc(usz.sizeof * new_hash_cap);
+    for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = usz.max;
+    mem::free(self.macro_hash_index);
+    self.macro_hash_index = new_hash;
+    self.macro_hash_capacity = new_hash_cap;
+
+    usz mask = new_hash_cap - 1;
+    for (usz i = 0; i < self.macro_count; i++) {
+        char[] name_str = self.symbols.get_name(self.macro_table[i].name);
+        usz h = hash_symbol(name_str);
+        for (usz probe = 0; probe < new_hash_cap; probe++) {
+            usz slot = (h + probe) & mask;
+            if (new_hash[slot] == usz.max) {
+                new_hash[slot] = i;
+                break;
+            }
+        }
+    }
+}
+
+fn void Interp.grow_module_table(Interp* self) {
+    usz new_cap = self.module_capacity * 2;
+    Module* new_mods = (Module*)mem::malloc(Module.sizeof * new_cap);
+    for (usz i = 0; i < self.module_count; i++) new_mods[i] = self.modules[i];
+    mem::free(self.modules);
+    self.modules = new_mods;
+    self.module_capacity = new_cap;
+
+    // Rebuild hash
+    usz new_hash_cap = new_cap * 2;
+    usz* new_hash = (usz*)mem::malloc(usz.sizeof * new_hash_cap);
+    for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = usz.max;
+    mem::free(self.module_hash_index);
+    self.module_hash_index = new_hash;
+    self.module_hash_capacity = new_hash_cap;
+
+    usz mask = new_hash_cap - 1;
+    for (usz i = 0; i < self.module_count; i++) {
+        char[] name_str = self.symbols.get_name(self.modules[i].name);
+        usz h = hash_symbol(name_str);
+        for (usz probe = 0; probe < new_hash_cap; probe++) {
+            usz slot = (h + probe) & mask;
+            if (new_hash[slot] == usz.max) {
+                new_hash[slot] = i;
+                break;
+            }
+        }
+    }
+}
+
+fn void Interp.grow_handler_stack(Interp* self) {
+    usz new_cap = self.handler_capacity * 2;
+    EffectHandler* new_stack = (EffectHandler*)mem::malloc(EffectHandler.sizeof * new_cap);
+    for (usz i = 0; i < self.handler_count; i++) new_stack[i] = self.handler_stack[i];
+    mem::free(self.handler_stack);
+    self.handler_stack = new_stack;
+    self.handler_capacity = new_cap;
+}
+
+fn void Interp.grow_reset_stacks(Interp* self) {
+    usz new_cap = self.reset_stack_capacity * 2;
+    Expr** new_body = (Expr**)mem::malloc(Expr*.sizeof * new_cap);
+    Env** new_env = (Env**)mem::malloc(Env*.sizeof * new_cap);
+    for (usz i = 0; i < self.reset_depth; i++) {
+        new_body[i] = self.reset_body_stack[i];
+        new_env[i] = self.reset_env_stack[i];
+    }
+    mem::free(self.reset_body_stack);
+    mem::free(self.reset_env_stack);
+    self.reset_body_stack = new_body;
+    self.reset_env_stack = new_env;
+    self.reset_stack_capacity = new_cap;
+}
+
+fn void Interp.ensure_effect_prior(Interp* self, usz needed) {
+    if (needed < self.effect_prior_capacity) return;
+    usz new_cap = self.effect_prior_capacity;
+    while (new_cap <= needed) new_cap *= 2;
+    Value** new_buf = (Value**)mem::malloc(Value*.sizeof * new_cap);
+    for (usz i = 0; i < self.effect_prior_capacity; i++) new_buf[i] = self.effect_prior_results[i];
+    mem::free(self.effect_prior_results);
+    self.effect_prior_results = new_buf;
+    self.effect_prior_capacity = new_cap;
+}
+
+fn void Interp.ensure_shift_prior(Interp* self, usz needed) {
+    if (needed < self.shift_prior_capacity) return;
+    usz new_cap = self.shift_prior_capacity;
+    while (new_cap <= needed) new_cap *= 2;
+    Value** new_buf = (Value**)mem::malloc(Value*.sizeof * new_cap);
+    for (usz i = 0; i < self.shift_prior_capacity; i++) new_buf[i] = self.shift_prior_results[i];
+    mem::free(self.shift_prior_results);
+    self.shift_prior_results = new_buf;
+    self.shift_prior_capacity = new_cap;
+}
+
+fn void Interp.destroy(Interp* self) {
+    self.symbols.destroy();
+    self.types.destroy();
+    if (self.macro_table != null) { mem::free(self.macro_table); self.macro_table = null; }
+    if (self.macro_hash_index != null) { mem::free(self.macro_hash_index); self.macro_hash_index = null; }
+    if (self.modules != null) { mem::free(self.modules); self.modules = null; }
+    if (self.module_hash_index != null) { mem::free(self.module_hash_index); self.module_hash_index = null; }
+    if (self.handler_stack != null) { mem::free(self.handler_stack); self.handler_stack = null; }
+    if (self.reset_body_stack != null) { mem::free(self.reset_body_stack); self.reset_body_stack = null; }
+    if (self.reset_env_stack != null) { mem::free(self.reset_env_stack); self.reset_env_stack = null; }
+    if (self.effect_prior_results != null) { mem::free(self.effect_prior_results); self.effect_prior_results = null; }
+    if (self.shift_prior_results != null) { mem::free(self.shift_prior_results); self.shift_prior_results = null; }
 }
 
 fn Continuation* Interp.alloc_lisp_continuation(Interp* self) {
@@ -1901,7 +2168,7 @@ fn void print_value(Value* v, SymbolTable* syms) {
             char[] dstr = double_to_string(v.double_val, &dbuf);
             io::printf("%s", (ZString)&dbuf);
         case STRING:
-            io::printf("\"%s\"", (ZString)&v.str_val.chars);
+            io::printf("\"%s\"", (ZString)v.str_val.chars);
         case SYMBOL:
             io::printf("%s", syms.get_name(v.sym_val));
         case CONS:
@@ -1927,7 +2194,7 @@ fn void print_value(Value* v, SymbolTable* syms) {
         case PARTIAL_PRIM:
             io::print("#<partial>");
         case ERROR:
-            io::printf("#<error: %s>", (ZString)&v.str_val.chars);
+            io::printf("#<error: %s>", (ZString)v.str_val.chars);
         case HASHMAP:
             io::printf("#<hashmap:%d>", v.hashmap_val.count);
         case FFI_HANDLE:
@@ -2020,7 +2287,7 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             pb.append_str(dstr2);
         case STRING:
             pb.append_char('"');
-            pb.append_zstr((ZString)&v.str_val.chars);
+            pb.append_zstr((ZString)v.str_val.chars);
             pb.append_char('"');
         case SYMBOL:
             pb.append_str(syms.get_name(v.sym_val));

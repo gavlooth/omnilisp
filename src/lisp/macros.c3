@@ -402,14 +402,14 @@ fn Expr* value_to_expr(Value* val, Interp* interp) {
  * Returns the macro definition, or null if not a macro.
  */
 fn MacroDef* lookup_macro(SymbolId name, Interp* interp) {
-    usz hash_slot = (usz)name % MACRO_HASH_SIZE;
-    for (usz probe = 0; probe < MACRO_HASH_SIZE; probe++) {
+    usz hash_slot = (usz)name % interp.macro_hash_capacity;
+    for (usz probe = 0; probe < interp.macro_hash_capacity; probe++) {
         usz idx = interp.macro_hash_index[hash_slot];
         if (idx == usz.max) return null;  // Empty slot — not found
         if ((uint)interp.macro_table[idx].name == (uint)name) {
             return &interp.macro_table[idx];
         }
-        hash_slot = (hash_slot + 1) % MACRO_HASH_SIZE;
+        hash_slot = (hash_slot + 1) % interp.macro_hash_capacity;
     }
     return null;
 }
@@ -511,10 +511,10 @@ fn void capture_template_bindings(Value* tmpl, SymbolId* pat_vars, usz pat_var_c
  * (define [macro] name (pattern1 template1) ...)
  * Captures definition-time bindings for template hygiene.
  */
+<* @require expr != null : "eval_define_macro: null expr"
+   @require interp != null : "eval_define_macro: null interp" *>
 fn EvalResult eval_define_macro(Expr* expr, Env* env, Interp* interp) {
-    if (interp.macro_count >= 64) {
-        return eval_error("macro table exhausted (max 64 macros)");
-    }
+    if (interp.macro_count >= interp.macro_capacity) interp.grow_macro_table();
     MacroDef* mdef = &interp.macro_table[interp.macro_count];
     mdef.name = expr.define_macro.name;
     mdef.clause_count = expr.define_macro.clause_count;
@@ -543,7 +543,7 @@ fn EvalResult eval_define_macro(Expr* expr, Env* env, Interp* interp) {
 
     // Insert into macro hash index
     usz macro_idx = interp.macro_count - 1;
-    usz hash_slot = (usz)mdef.name % MACRO_HASH_SIZE;
+    usz hash_slot = (usz)mdef.name % interp.macro_hash_capacity;
     for (;;) {
         usz existing = interp.macro_hash_index[hash_slot];
         if (existing == usz.max) {
@@ -556,7 +556,7 @@ fn EvalResult eval_define_macro(Expr* expr, Env* env, Interp* interp) {
             interp.macro_hash_index[hash_slot] = macro_idx;
             break;
         }
-        hash_slot = (hash_slot + 1) % MACRO_HASH_SIZE;
+        hash_slot = (hash_slot + 1) % interp.macro_hash_capacity;
     }
 
     return eval_ok(make_nil(interp));
@@ -753,6 +753,7 @@ fn EvalResult expand_pattern_macro(MacroDef* mdef, Expr* call_expr, Interp* inte
             gensyms.count = 0;
             Value* expanded = expand_template(mdef.clauses[i].tmpl, &match_result, interp, &gensyms,
                                               &mdef.captured_bindings, mdef.captured_count);
+            match_result.cleanup();
             return eval_ok(expanded);
         }
     }
@@ -910,14 +911,14 @@ fn Value* append_values(Value* a, Value* b, Interp* interp, usz depth = 0) {
  * Find a module by name in the module table.
  */
 fn Module* find_module(SymbolId name, Interp* interp) {
-    usz hash_slot = (usz)name % MODULE_HASH_SIZE;
-    for (usz probe = 0; probe < MODULE_HASH_SIZE; probe++) {
+    usz hash_slot = (usz)name % interp.module_hash_capacity;
+    for (usz probe = 0; probe < interp.module_hash_capacity; probe++) {
         usz idx = interp.module_hash_index[hash_slot];
         if (idx == usz.max) return null;  // Empty slot — not found
         if ((uint)interp.modules[idx].name == (uint)name) {
             return &interp.modules[idx];
         }
-        hash_slot = (hash_slot + 1) % MODULE_HASH_SIZE;
+        hash_slot = (hash_slot + 1) % interp.module_hash_capacity;
     }
     return null;
 }

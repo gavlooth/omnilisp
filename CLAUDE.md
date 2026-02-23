@@ -15,7 +15,7 @@ Omni is a **Lisp with modern semantics** — not Scheme, not Clojure, not Common
 - **Generic operations over type-prefixed names**: `(ref coll key)` not `(array-ref arr idx)` / `(dict-ref d k)`
 - **Multiple dispatch as the extension mechanism** — no traits, no interfaces, dispatch table IS the protocol
 - **Algebraic effects for I/O** — `print`/`println` go through `perform` with fast path when unhandled
-- **Auto-curried lambdas** — `(lambda (x y) body)` desugars to nested single-param lambdas, except typed multi-param (preserved for dispatch)
+- **Strict arity lambdas** — `(lambda (x y) body)` requires exactly 2 args; use `_` placeholder `(+ 1 _)`, `|>` pipe, or `partial` for partial application
 - **Region-based memory** — no GC, deterministic cleanup
 - **Truthiness**: only `nil` and `false` are falsy — `0`, `""`, `'()` are truthy
 
@@ -27,8 +27,8 @@ When proposing new features or changes, check whether they align with these para
 - All tests must pass before committing
 
 ## Conventions
-- Single-param lambdas with currying (multi-param desugars to nested lambdas)
-- `_` is a wildcard token (T_UNDERSCORE), NOT a symbol — never use as lambda param name
+- Multi-param lambdas with strict arity (NO auto-curry); use `_` placeholder, `|>` pipe, or `partial` for partial application
+- `_` is T_UNDERSCORE — wildcard in match patterns, placeholder in call args `(+ 1 _)` → lambda
 - C3 slices are INCLUSIVE: `buffer[0..n]` = n+1 elements, use `buffer[:n]` for n elements
 - Stdlib functions defined in `register_stdlib()` as Omni code via `run()`
 - Tests go in `run_advanced_tests()` or appropriate test function in eval.c3

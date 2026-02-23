@@ -1,5 +1,154 @@
 # Changelog
 
+## 2026-02-23 (Session 25): Remove Auto-Currying + Add Placeholder/Pipe/Guard Syntax
+
+### Phase 1: Strict Arity Enforcement
+- **JIT arity guards**: `jit_apply_value_impl` and `jit_apply_value_tail` now return arity mismatch errors when a non-variadic multi-param closure is called with 1 arg (instead of silently binding only the first param)
+- **`format_arity_error` helper**: Formats "arity mismatch: expected N args, got M" messages
+- **Removed compiler re-currying**: Deleted `scan_lambdas_with_scope` block that converted multi-param lambdas to nested single-param; multi-param closures now kept intact through compilation
+- **Compiler multi-param invoke**: `emit_lambda_definitions` emits arg-list-unpacking code for multi-param non-variadic closures (receive cons list, unpack with `rt_car1/rt_cdr1`)
+- **`prim_apply` updated**: Uses `jit_apply_multi_args` instead of one-at-a-time loop
+- **`jit_apply_multi_args` refined**: Strict arity only for `param_count > 1`; single-param closures fall through to one-at-a-time loop (preserving curried function chains)
+
+### Phase 2: `_` Placeholder Desugaring
+- **Parse-time desugaring**: `_` in expression context (T_UNDERSCORE) produces E_VAR with `sym_placeholder` sentinel
+- **Lambda wrapping in `parse_application`**: After collecting call args, scans for placeholder sentinels, generates `__pN` param names via `gensym_counter`, replaces in-place, wraps in nested single-param lambdas
+- **Multiple `_` support**: `(f _ 2 _)` → `(lambda (__p1) (lambda (__p2) (f __p1 2 __p2)))` — returns curried function
+- Added `sym_placeholder` to Interp struct
+
+### Phase 3: `|>` Pipe Operator
+- **Parse-time desugaring**: `(|> val step1 step2)` folds left-to-right, appending piped value as last arg to E_CALL nodes or wrapping bare functions
+- **`parse_pipe` function**: ~45 lines, handles E_CALL steps (append arg) and bare symbol steps (wrap in call)
+- Added `sym_pipe` to Interp struct
+
+### Phase 4: Guard Patterns `(? pred)`
+- **PAT_GUARD pattern type**: New enum value + `guard_pred`/`guard_sub` fields in Pattern union
+- **Parser**: Detects `(? pred)` or `(? pred sub-pattern)` in `parse_pattern`
+- **Evaluator**: `match_pattern` PAT_GUARD case evaluates predicate via `jit_eval` + `jit_apply_value`, with sub-pattern bindings in scope
+- **`match_env` on Interp**: Set in `jit_do_match` so guard predicates can resolve free variables
+- **Compiler support**: `collect_pattern_bindings`, `compile_pattern_check`, `compile_pattern_bindings` handle PAT_GUARD
+- Added `sym_question` to Interp struct
+
+### Phase 5: `partial` in Stdlib
+- Added `(define (partial f .. initial-args) (lambda (.. new-args) (apply f ((append initial-args) new-args))))` to stdlib.lisp
+
+### Files Modified
+- `src/lisp/jit.c3` — `format_arity_error`, arity guards in apply_impl/apply_tail, refined multi_args strict arity, `match_env` set
+- `src/lisp/parser.c3` — `_` placeholder in parse_expr, placeholder wrapping in parse_application, pipe dispatch + parse_pipe, guard in parse_pattern
+- `src/lisp/compiler.c3` — Removed re-currying, multi-param invoke, `needs_arg_list` helper, PAT_GUARD in pattern compiler
+- `src/lisp/value.c3` — PAT_GUARD enum + pattern fields, sym_placeholder/sym_pipe/sym_question/match_env on Interp, symbol inits
+- `src/lisp/eval.c3` — PAT_GUARD case in match_pattern
+- `src/lisp/primitives.c3` — `prim_apply` uses `jit_apply_multi_args`
+- `src/lisp/tests.c3` — Updated "multi-param" test, added 18 new tests (arity, placeholder, pipe, guard, partial)
+- `stdlib/stdlib.lisp` — Added `partial` function
+
+### Tests
+- Before: 1192 total (743 unified + 77 compiler + 367 e2e + 5 misc), 0 failures
+- After: 1206 total (761 unified + 77 compiler + 368 e2e), 0 failures
+
+## 2026-02-23 (Session 24): Remove Hard-Coded Limits — Dynamic Data Structures
+
+### Phase 1: Tier 1 Crash/Corrupt Fixes
+- **1A: SymbolTable dynamic** — `char[128] name` → `char*` (heap-allocated per symbol), fixed arrays → pointer + capacity with init/destroy/grow. Grows at 70% load. Removed MAX_SYMBOL_LEN, MAX_SYMBOLS, HASH_TABLE_SIZE.
+- **1B: MatchResult dynamic** — `Binding[512]` → `Binding*` + capacity. match_ok() mallocs, match_fail() zero-cost (null). Added cleanup() method with calls at all return points.
+- **1C: RT_MAX_PRIOR bumped** — `RT_MAX_PRIOR` 16→256 in runtime.c3 (pragmatic: tlocal can't easily be dynamic).
+
+### Phase 2: Tier 2 Silent Data Loss Fixes
+- **2A: MethodTable entries dynamic** — `MethodEntry[64]` → `MethodEntry*` + capacity. Init=8, grows in jit_eval_define. Free in destroy_value.
+- **2B: StringVal.chars dynamic** — `char[4096]` → `char*` + capacity. Added strval_new/strval_ensure/strval_push helpers. Updated all 7+ primitives, parser, print_value. Removed MAX_STRING_LEN.
+- **2C: LambdaDef captures dynamic** — `SymbolId[16]` → `SymbolId*` + capacity for captures and params in compiler.c3.
+
+### Phase 3A: Bump Fixed AST/Parser Limits
+- Increased 20+ constants: ExprLambda/ExprCall/ExprBegin/ExprModule arrays 64→256, Closure.params 64→256, Module.exports 128→256, MAX_MATCH_CLAUSES 32→128, MAX_EFFECT_CLAUSES 16→64, MAX_PATTERN_ELEMS 16→64, MAX_TYPE_FIELDS 16→64, MAX_TYPE_PARAMS 8→32, MAX_PATH_SEGMENTS 8→32, MacroDef/ExprDefineMacro clauses 8→32, CapturedBinding 32→64, UnionVariant 16→64, MethodSignature arrays 8→32, GensymMapping 16→64.
+
+### Phase 3B: Dynamic Interpreter Tables
+- **TypeRegistry dynamic** — `TypeInfo[128]` → `TypeInfo*` + capacity with hash table. Added grow() (doubles + rebuilds hash), destroy(). Auto-grows instead of returning INVALID_TYPE_ID.
+- **MacroDef table dynamic** — `MacroDef[64]` → `MacroDef*` + capacity with hash table. Added Interp.grow_macro_table() with hash rebuild.
+- **Module table dynamic** — `Module[32]` → `Module*` + capacity with hash table. Added Interp.grow_module_table() with hash rebuild.
+- **Handler stack dynamic** — `EffectHandler[16]` → `EffectHandler*` + capacity. Added Interp.grow_handler_stack().
+- **Reset stacks dynamic** — `Expr*[16]`/`Env*[16]` → pointer + capacity. Added Interp.grow_reset_stacks().
+- **Prior results dynamic** — `Value*[16]` → `Value**` + capacity for both effect and shift. Added ensure_effect_prior/ensure_shift_prior.
+- **CapturedCont prior_results dynamic** — `Value*[16]` → `Value**` + capacity. Malloc'd at capture time.
+- Added Interp.destroy() to free all dynamic arrays.
+- Removed MAX_MACROS, MAX_MODULES, MACRO_HASH_SIZE, MODULE_HASH_SIZE, MAX_TYPES, TYPE_HASH_SIZE constants.
+
+### Phase 3C: Low-Priority Remaining Tables
+- Primitive.name 32→64, FfiHandle.sym_cache 32→64, CompiledModule 32→64
+- RT_MAX_HANDLERS 16→64, RT_MAX_CLAUSES 16→64, RT_VAR_TABLE_SIZE 256→512
+
+### Files Modified
+- `src/lisp/value.c3` — SymbolTable, TypeRegistry, MethodTable, StringVal, CapturedCont, Interp struct + init/grow/destroy
+- `src/lisp/eval.c3` — MatchResult, destroy_value updates, GensymTable bump
+- `src/lisp/jit.c3` — Handler/reset/prior dynamic growth, CapturedCont malloc, module hash updates
+- `src/lisp/macros.c3` — Macro/module hash capacity updates, eval_define_macro growth
+- `src/lisp/primitives.c3` — StringVal helpers, macro hash update, sym_cache bump
+- `src/lisp/parser.c3` — String literal creation with strval_new
+- `src/lisp/compiler.c3` — LambdaDef captures dynamic, CompiledModule bump
+- `src/lisp/runtime.c3` — RT_MAX_PRIOR/HANDLERS/CLAUSES/VAR_TABLE bumps
+
+### Constants Removed (now dynamic)
+MAX_SYMBOL_LEN, MAX_SYMBOLS, HASH_TABLE_SIZE, MAX_STRING_LEN, MAX_METHODS, MAX_BINDINGS, MAX_MACROS, MAX_MODULES, MACRO_HASH_SIZE, MODULE_HASH_SIZE, MAX_TYPES, TYPE_HASH_SIZE
+
+### Tests
+- 743 unified tests passed, 0 failed
+- 77 compiler tests passed, 0 failed
+- 367 e2e tests passed
+
+---
+
+## 2026-02-23 (Session 23): Creative C3 Feature Combinations
+
+### Phase 1: $embed Stdlib (Self-Bootstrapping)
+- Extracted 65 inline `run("...")` calls from `register_stdlib()` into `stdlib/stdlib.lisp`
+- Replaced function body with `$embed("../../stdlib/stdlib.lisp")` + line-by-line parser
+- Stdlib is now an editable .lisp file with syntax highlighting support
+- Files: NEW `stdlib/stdlib.lisp`, MODIFIED `src/lisp/eval.c3`
+
+### Phase 2: Compile-Time Debug/Release Build Tiers
+- Added `const bool DEBUG_BUILD = true` in value.c3 (visible to all modules)
+- Wrapped 8 instrumentation sites with `$if DEBUG_BUILD:` / `$endif`:
+  - JIT pool GC scheduling (jit.c3)
+  - JIT cache clearing (jit.c3)
+  - Stack overflow depth reporting (jit.c3)
+  - Handler stack overflow detail (jit.c3)
+  - JIT GC reclamation stats (jit.c3)
+  - copy_to_parent root promotion tracing (eval.c3)
+  - Macro table near-capacity warning (macros.c3)
+  - Symbol table near-capacity warning (value.c3)
+- Verified: `DEBUG_BUILD=false` eliminates all debug code (zero-cost in release)
+- Files: MODIFIED `src/lisp/value.c3`, `src/lisp/jit.c3`, `src/lisp/eval.c3`, `src/lisp/macros.c3`
+
+### Phase 3: JIT Emit Helper Functions
+- Added 8 emit helpers near existing `emit_call_1` in jit.c3:
+  `emit_call_2`, `emit_call_2i`, `emit_call_3`, `emit_call_3i`,
+  `emit_call_4_rrir`, `emit_call_4_rirr`, `emit_call_4_rrri`
+- Replaced ~30 repetitive 4-5 line JIT call sequences with 1-line helper calls
+- Also collapsed quasiquote/reset/shift/handle/path/define_macro compile functions
+  into `jit_compile_3arg_helper` reuse (which itself now uses `emit_call_3i`)
+- Files: MODIFIED `src/lisp/jit.c3`
+
+### Phase 4: Contracts on Critical Paths
+- Added `@require` contracts to 6 critical functions:
+  - `copy_to_parent` (eval.c3): null interp check
+  - `jit_eval_define` (jit.c3): null interp + null value
+  - `jit_env_extend_root` (jit.c3): null interp
+  - `jit_handle_impl` (jit.c3): null expr + null interp
+  - `eval_define_macro` (macros.c3): null expr + null interp
+  - `jit_eval` (jit.c3): null interp
+- Files: MODIFIED `src/lisp/jit.c3`, `src/lisp/eval.c3`, `src/lisp/macros.c3`
+
+### Phase 5: Generic Bounded Array (SKIPPED)
+- C3 generic modules only support type parameters, not value/constant parameters
+- `module bounded_array {Type, usz};` fails: "Only generic parameters are allowed"
+- Contracts from Phase 4 provide bounded-array safety instead
+
+### Tests
+- 743 unified tests passed, 0 failed
+- 77 compiler tests passed, 0 failed
+- 367 e2e tests passed
+
+---
+
 ## 2026-02-23 (Session 22): Fix 6 Pre-Existing Test Failures
 
 ### Bug 1: test_eq_jit missing TCO bounce handler (5 tests)

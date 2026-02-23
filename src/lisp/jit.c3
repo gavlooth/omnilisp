@@ -108,6 +108,22 @@ fn Value* jit_lookup_global(Interp* interp, uint sym_id) {
     return make_error(interp, "unbound variable");
 }
 
+fn usz format_arity_error(char[] buf, usz expected, usz got) {
+    char[] prefix = "arity mismatch: expected ";
+    usz pos = 0;
+    for (usz i = 0; i < prefix.len && pos < buf.len - 1; i++) buf[pos++] = prefix[i];
+    // Write expected count
+    char[20] num_buf;
+    char[] num_str = int_to_string((long)expected, &num_buf);
+    for (usz i = 0; i < num_str.len && pos < buf.len - 1; i++) buf[pos++] = num_str[i];
+    char[] mid = " args, got ";
+    for (usz i = 0; i < mid.len && pos < buf.len - 1; i++) buf[pos++] = mid[i];
+    num_str = int_to_string((long)got, &num_buf);
+    for (usz i = 0; i < num_str.len && pos < buf.len - 1; i++) buf[pos++] = num_str[i];
+    buf[pos] = 0;
+    return pos;
+}
+
 fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
     if (func == null) return make_error(interp, "cannot apply null");
 
@@ -131,6 +147,12 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
                 } else {
                     return make_error(interp, "too few arguments for variadic lambda");
                 }
+            }
+            // Arity check: non-variadic multi-param closure called with 1 arg
+            if (func.closure_val.param_count > 1) {
+                char[128] buf;
+                usz len = format_arity_error(&buf, func.closure_val.param_count, 1);
+                return make_error(interp, buf[:len]);
             }
             Env* new_env = func.closure_val.env.extend(interp, func.closure_val.param, arg);
             return jit_eval(func.closure_val.body, new_env, interp);
@@ -179,6 +201,9 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
 fn Value* jit_apply_value(Value* func, Value* arg, Interp* interp) {
     interp.eval_depth++;
     if (interp.eval_depth > interp.max_eval_depth) {
+        $if DEBUG_BUILD:
+            io::eprintfn("[debug] Stack overflow at depth %d (max %d)", interp.eval_depth, interp.max_eval_depth);
+        $endif
         interp.eval_depth--;
         return make_error(interp, "stack overflow: maximum eval depth exceeded");
     }
@@ -209,6 +234,11 @@ fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
             } else {
                 return make_error(interp, "too few arguments for variadic lambda");
             }
+        } else if (func.closure_val.param_count > 1) {
+            // Arity check: non-variadic multi-param closure called with 1 arg
+            char[128] buf;
+            usz len = format_arity_error(&buf, func.closure_val.param_count, 1);
+            return make_error(interp, buf[:len]);
         } else {
             new_env = func.closure_val.env.extend(interp, func.closure_val.param, arg);
         }
@@ -229,6 +259,7 @@ fn Value* jit_eval_fallback(Expr* expr, Env* env, Interp* interp) {
 // JIT-aware eval replacement with trampoline TCO.
 // Compiles sub-expressions with cache, executes with env context.
 // When a tail-call helper sets jit_tco_bounce, loops instead of recursing.
+<* @require interp != null : "jit_eval: null interp" *>
 fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
     Env* saved_env = interp.jit_env;
 
@@ -547,6 +578,8 @@ fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) 
 
 // define helper — called from JIT-compiled code.
 // Full define with typed dispatch support, mirrors eval_define from eval.c3.
+<* @require interp != null : "jit_eval_define: null interp"
+   @require value != null : "jit_eval_define: null value" *>
 fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
     // Copy to root_region for globals (so value survives temp frame release)
     Value* stored_val = value;
@@ -559,15 +592,24 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
         Value* existing = interp.global_env.lookup(name);
         if (existing != null && existing.tag == METHOD_TABLE) {
             MethodTable* mt = existing.method_table_val;
-            if (mt.entry_count < MAX_METHODS) {
-                mt.entries[mt.entry_count].sig = *stored_val.closure_val.type_sig;
-                mt.entries[mt.entry_count].implementation = stored_val;
-                mt.entry_count++;
+            // Grow entries array if needed
+            if (mt.entry_count >= mt.capacity) {
+                usz new_cap = mt.capacity * 2;
+                MethodEntry* new_entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * new_cap);
+                for (usz ei = 0; ei < mt.entry_count; ei++) new_entries[ei] = mt.entries[ei];
+                mem::free(mt.entries);
+                mt.entries = new_entries;
+                mt.capacity = new_cap;
             }
+            mt.entries[mt.entry_count].sig = *stored_val.closure_val.type_sig;
+            mt.entries[mt.entry_count].implementation = stored_val;
+            mt.entry_count++;
             return existing;
         } else if (existing != null && existing.tag == CLOSURE) {
             MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
             mt.name = name;
+            mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * METHOD_INITIAL_CAPACITY);
+            mt.capacity = METHOD_INITIAL_CAPACITY;
             mt.entry_count = 0;
             mt.fallback = existing;
             mt.entries[0].sig = *stored_val.closure_val.type_sig;
@@ -584,6 +626,8 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
         } else if (existing != null && existing.tag == PRIMITIVE) {
             MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
             mt.name = name;
+            mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * METHOD_INITIAL_CAPACITY);
+            mt.capacity = METHOD_INITIAL_CAPACITY;
             mt.entry_count = 0;
             mt.fallback = existing;
             mt.entries[0].sig = *stored_val.closure_val.type_sig;
@@ -600,6 +644,8 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
         } else {
             MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
             mt.name = name;
+            mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * METHOD_INITIAL_CAPACITY);
+            mt.capacity = METHOD_INITIAL_CAPACITY;
             mt.entries[0].sig = *stored_val.closure_val.type_sig;
             mt.entries[0].implementation = stored_val;
             mt.entry_count = 1;
@@ -637,6 +683,7 @@ fn Env* jit_env_extend(Interp* interp, Env* env, SymbolId name, Value* value) {
 // Creates a persistent Env node that survives child region cleanup and
 // is preserved (not copied) by deep_copy_env. This ensures closures and
 // the enclosing JIT scope share the same mutable box.
+<* @require interp != null : "jit_env_extend_root: null interp" *>
 fn Env* jit_env_extend_root(Interp* interp, Env* env, SymbolId name, Value* value) {
     main::RegionHandle saved = interp.current_frame;
     interp.current_frame = interp.root_region;
@@ -826,7 +873,7 @@ fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
     usz saved_shift_counter = interp.shift_counter;
     interp.shift_counter = 0;
 
-    if (interp.reset_depth >= 16) return eval_error("reset stack overflow: too many nested reset expressions");
+    if (interp.reset_depth >= interp.reset_stack_capacity) interp.grow_reset_stacks();
     interp.reset_depth++;
 
     interp.reset_body_stack[interp.reset_depth - 1] = expr.reset.body;
@@ -866,9 +913,8 @@ fn EvalResult jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
         }
         if (current_index == interp.cont_target_shift_index) {
             interp.flags.cont_substituting = false;
-            if (current_index < 16) {
-                interp.shift_prior_results[current_index] = interp.cont_substitution;
-            }
+            interp.ensure_shift_prior(current_index);
+            interp.shift_prior_results[current_index] = interp.cont_substitution;
             return eval_ok(interp.cont_substitution);
         }
     }
@@ -886,11 +932,22 @@ fn EvalResult jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     cc.has_handler = false;
     cc.shift_index = interp.shift_counter;
     cc.shift_prior_count = interp.shift_counter;
+    // Allocate and copy shift prior results
+    if (cc.shift_prior_count > 0) {
+        cc.shift_prior_capacity = cc.shift_prior_count;
+        cc.shift_prior_results = (Value**)mem::malloc(Value*.sizeof * cc.shift_prior_capacity);
+        for (usz si = 0; si < cc.shift_prior_count; si++) {
+            cc.shift_prior_results[si] = interp.shift_prior_results[si];
+        }
+    } else {
+        cc.shift_prior_results = null;
+        cc.shift_prior_capacity = 0;
+    }
+    cc.prior_results = null;
+    cc.prior_count = 0;
+    cc.prior_capacity = 0;
     // Pin the current frame to prevent UAF: reset_env may be allocated there
     cc.captured_frame = main::retain_region(interp.current_frame);
-    for (usz si = 0; si < cc.shift_prior_count && si < 16; si++) {
-        cc.shift_prior_results[si] = interp.shift_prior_results[si];
-    }
     interp.shift_counter++;
 
     Continuation* k = interp.alloc_lisp_continuation();
@@ -919,8 +976,10 @@ fn EvalResult jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     return body_result;
 }
 
+<* @require expr != null : "jit_handle_impl: null expr"
+   @require interp != null : "jit_handle_impl: null interp" *>
 fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
-    if (interp.handler_count >= 16) return eval_error("handler stack overflow: too many nested handlers");
+    if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
 
     EffectHandler* h = &interp.handler_stack[interp.handler_count];
     if (expr.handle.clause_count > MAX_EFFECT_CLAUSES) {
@@ -1002,9 +1061,8 @@ fn EvalResult jit_perform_impl(Expr* expr, Env* env, Interp* interp) {
         }
         if (current_index == interp.cont_target_perform_index) {
             interp.flags.cont_substituting = false;
-            if (current_index < 16) {
-                interp.effect_prior_results[current_index] = interp.cont_substitution;
-            }
+            interp.ensure_effect_prior(current_index);
+            interp.effect_prior_results[current_index] = interp.cont_substitution;
             return eval_ok(interp.cont_substitution);
         }
     }
@@ -1029,11 +1087,22 @@ fn EvalResult jit_perform_impl(Expr* expr, Env* env, Interp* interp) {
                 cc.has_handler = true;
                 cc.perform_index = interp.effect_perform_counter;
                 cc.prior_count = interp.effect_perform_counter;
+                // Allocate and copy effect prior results
+                if (cc.prior_count > 0) {
+                    cc.prior_capacity = cc.prior_count;
+                    cc.prior_results = (Value**)mem::malloc(Value*.sizeof * cc.prior_capacity);
+                    for (usz pi = 0; pi < cc.prior_count; pi++) {
+                        cc.prior_results[pi] = interp.effect_prior_results[pi];
+                    }
+                } else {
+                    cc.prior_results = null;
+                    cc.prior_capacity = 0;
+                }
+                cc.shift_prior_results = null;
+                cc.shift_prior_count = 0;
+                cc.shift_prior_capacity = 0;
                 // Pin the current frame to prevent UAF on body_env
                 cc.captured_frame = main::retain_region(interp.current_frame);
-                for (usz pi = 0; pi < cc.prior_count && pi < 16; pi++) {
-                    cc.prior_results[pi] = interp.effect_prior_results[pi];
-                }
                 interp.effect_perform_counter++;
 
                 Continuation* k = interp.alloc_lisp_continuation();
@@ -1132,7 +1201,7 @@ fn EvalResult jit_apply_continuation(Value* k_val, Value* arg, Interp* interp) {
     EvalResult result;
 
     if (cc.is_effect && cc.has_handler) {
-        if (interp.handler_count >= 16) return eval_error("handler stack overflow: too many nested handlers during continuation resume");
+        if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
         interp.handler_stack[interp.handler_count] = cc.handler_copy;
         interp.handler_stack[interp.handler_count].body_expr = cc.reset_body;
         interp.handler_stack[interp.handler_count].body_env = cc.reset_env;
@@ -1140,7 +1209,8 @@ fn EvalResult jit_apply_continuation(Value* k_val, Value* arg, Interp* interp) {
 
         interp.cont_target_perform_index = cc.perform_index;
         interp.effect_perform_counter = 0;
-        for (usz i = 0; i < cc.prior_count && i < 16; i++) {
+        interp.ensure_effect_prior(cc.prior_count > 0 ? cc.prior_count - 1 : 0);
+        for (usz i = 0; i < cc.prior_count; i++) {
             interp.effect_prior_results[i] = cc.prior_results[i];
         }
 
@@ -1160,7 +1230,8 @@ fn EvalResult jit_apply_continuation(Value* k_val, Value* arg, Interp* interp) {
     } else {
         interp.cont_target_shift_index = cc.shift_index;
         interp.shift_counter = 0;
-        for (usz i = 0; i < cc.shift_prior_count && i < 16; i++) {
+        interp.ensure_shift_prior(cc.shift_prior_count > 0 ? cc.shift_prior_count - 1 : 0);
+        for (usz i = 0; i < cc.shift_prior_count; i++) {
             interp.shift_prior_results[i] = cc.shift_prior_results[i];
         }
 
@@ -1229,6 +1300,8 @@ fn Value* jit_do_path(Interp* interp, Expr* expr, Env* env) {
 // Match helper — evaluates scrutinee, runs pattern matching, evals matched result.
 // Eliminates one level of eval dispatch compared to jit_eval_match.
 fn Value* jit_do_match(Interp* interp, Value* scrutinee, Expr* expr, Env* env) {
+    // Set match_env so guard predicates can resolve free variables
+    interp.match_env = env;
     for (usz i = 0; i < expr.match.clause_count; i++) {
         MatchClause* clause = &expr.match.clauses[i];
         MatchResult match_r = match_pattern(clause.pattern, scrutinee, interp);
@@ -1237,6 +1310,7 @@ fn Value* jit_do_match(Interp* interp, Value* scrutinee, Expr* expr, Env* env) {
             for (usz j = 0; j < match_r.binding_count; j++) {
                 clause_env.define(match_r.bindings[j].name, match_r.bindings[j].value);
             }
+            match_r.cleanup();
             // TCO bounce — jit_eval() will compile and execute the clause body
             interp.jit_tco_expr = clause.result;
             interp.jit_tco_env = clause_env;
@@ -1298,9 +1372,7 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
         return eval_error("module already defined");
     }
 
-    if (interp.module_count >= 32) {
-        return eval_error("module table exhausted (max 32 modules)");
-    }
+    if (interp.module_count >= interp.module_capacity) interp.grow_module_table();
     Module* mod = &interp.modules[interp.module_count];
     mod.name = name;
     mod.loaded = false;
@@ -1315,9 +1387,9 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
     interp.module_count++;
 
     usz mod_idx = interp.module_count - 1;
-    usz mh_slot = (usz)name % MODULE_HASH_SIZE;
+    usz mh_slot = (usz)name % interp.module_hash_capacity;
     while (interp.module_hash_index[mh_slot] != usz.max) {
-        mh_slot = (mh_slot + 1) % MODULE_HASH_SIZE;
+        mh_slot = (mh_slot + 1) % interp.module_hash_capacity;
     }
     interp.module_hash_index[mh_slot] = mod_idx;
 
@@ -1359,9 +1431,7 @@ fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* inte
             return jit_eval_to_result(exprs[0], interp.global_env, interp);
         }
 
-        if (interp.module_count >= 32) {
-            return eval_error("module table exhausted (max 32 modules)");
-        }
+        if (interp.module_count >= interp.module_capacity) interp.grow_module_table();
         Module* mod = &interp.modules[interp.module_count];
         mod.name = name;
         mod.loaded = false;
@@ -1376,9 +1446,9 @@ fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* inte
         interp.module_count++;
 
         usz mod_idx2 = interp.module_count - 1;
-        usz mh_slot2 = (usz)name % MODULE_HASH_SIZE;
+        usz mh_slot2 = (usz)name % interp.module_hash_capacity;
         while (interp.module_hash_index[mh_slot2] != usz.max) {
-            mh_slot2 = (mh_slot2 + 1) % MODULE_HASH_SIZE;
+            mh_slot2 = (mh_slot2 + 1) % interp.module_hash_capacity;
         }
         interp.module_hash_index[mh_slot2] = mod_idx2;
 
@@ -1508,18 +1578,33 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
         return result;
     }
 
-    // Non-variadic multi-param closure: direct binding
+    // Non-variadic closure
     if (func.tag == CLOSURE) {
         usz pc = func.closure_val.param_count;
-        if (arg_count != pc) return make_error(interp, "arity mismatch");
-        Env* call_env = make_env(interp, func.closure_val.env);
-        Value* curr = arg_list;
-        for (usz i = 0; i < pc; i++) {
-            if (curr == null || curr.tag != CONS) return make_error(interp, "arg list too short");
-            call_env.define(func.closure_val.params[i], curr.cons_val.car);
-            curr = curr.cons_val.cdr;
+        if (pc > 1) {
+            // Multi-param: strict arity
+            if (arg_count < pc) {
+                char[128] buf;
+                usz len = format_arity_error(&buf, pc, arg_count);
+                return make_error(interp, buf[:len]);
+            }
+            Env* call_env = make_env(interp, func.closure_val.env);
+            Value* curr = arg_list;
+            for (usz i = 0; i < pc; i++) {
+                if (curr == null || curr.tag != CONS) return make_error(interp, "arg list too short");
+                call_env.define(func.closure_val.params[i], curr.cons_val.car);
+                curr = curr.cons_val.cdr;
+            }
+            Value* result = jit_eval(func.closure_val.body, call_env, interp);
+            // If extra args remain and result is callable, chain-apply them
+            if (arg_count > pc && result != null && result.tag != ERROR) {
+                usz remaining = arg_count - pc;
+                return jit_apply_multi_args(interp, result, curr, remaining);
+            }
+            return result;
         }
-        return jit_eval(func.closure_val.body, call_env, interp);
+        // Single-param: apply one arg, chain-apply rest if any
+        // (falls through to one-at-a-time loop below)
     }
 
     // METHOD_TABLE: dispatch with all args at once
@@ -1589,21 +1674,38 @@ fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list
         return jit_tco_sentinel();
     }
 
-    // Non-variadic multi-param closure
+    // Non-variadic closure
     if (func.tag == CLOSURE) {
         usz pc = func.closure_val.param_count;
-        if (arg_count != pc) return make_error(interp, "arity mismatch");
-        Env* call_env = make_env(interp, func.closure_val.env);
-        Value* curr = arg_list;
-        for (usz i = 0; i < pc; i++) {
-            if (curr == null || curr.tag != CONS) return make_error(interp, "arg list too short");
-            call_env.define(func.closure_val.params[i], curr.cons_val.car);
-            curr = curr.cons_val.cdr;
+        if (pc > 1) {
+            // Multi-param: strict arity
+            if (arg_count < pc) {
+                char[128] buf;
+                usz len = format_arity_error(&buf, pc, arg_count);
+                return make_error(interp, buf[:len]);
+            }
+            Env* call_env = make_env(interp, func.closure_val.env);
+            Value* curr = arg_list;
+            for (usz i = 0; i < pc; i++) {
+                if (curr == null || curr.tag != CONS) return make_error(interp, "arg list too short");
+                call_env.define(func.closure_val.params[i], curr.cons_val.car);
+                curr = curr.cons_val.cdr;
+            }
+            if (arg_count > pc) {
+                // Extra args: evaluate body, then chain-apply rest
+                Value* result = jit_eval(func.closure_val.body, call_env, interp);
+                if (result != null && result.tag != ERROR) {
+                    usz remaining = arg_count - pc;
+                    return jit_apply_multi_args_tail(interp, result, curr, remaining);
+                }
+                return result;
+            }
+            interp.jit_tco_expr = func.closure_val.body;
+            interp.jit_tco_env = call_env;
+            interp.flags.jit_tco_bounce = true;
+            return jit_tco_sentinel();
         }
-        interp.jit_tco_expr = func.closure_val.body;
-        interp.jit_tco_env = call_env;
-        interp.flags.jit_tco_bounce = true;
-        return jit_tco_sentinel();
+        // Single-param: fall through to one-at-a-time loop
     }
 
     // METHOD_TABLE: resolve, then bounce if closure
@@ -1756,6 +1858,9 @@ fn JitFn jit_cache_lookup(Expr* expr) {
 fn void jit_cache_store(Expr* expr, JitFn compiled) {
     // If cache is too full, clear it entirely (codes remain valid in state pool)
     if (g_jit_cache_count >= JIT_CACHE_GC_THRESHOLD) {
+        $if DEBUG_BUILD:
+            io::eprintfn("[debug] JIT cache full (%d/%d), clearing", g_jit_cache_count, JIT_CACHE_SIZE);
+        $endif
         jit_cache_clear();
     }
     usz hash = (usz)expr;
@@ -1812,6 +1917,10 @@ fn void jit_global_shutdown() {
  */
 fn void jit_gc() {
     if (!g_jit_gc_needed) return;
+
+    $if DEBUG_BUILD:
+        io::eprintfn("[debug] JIT GC: reclaiming %d states, %d cache entries", g_jit_state_count, g_jit_cache_count);
+    $endif
 
     // Destroy all JIT states — their code buffers become invalid
     for (usz i = 0; i < g_jit_state_count; i++) {
@@ -1880,6 +1989,11 @@ fn JitFn jit_compile(Expr* expr, Interp* interp) {
         // Signal GC needed when approaching capacity
         if (g_jit_state_count >= JIT_STATE_GC_THRESHOLD) {
             g_jit_gc_needed = true;
+            $if DEBUG_BUILD:
+                io::eprintfn("[debug] JIT pool at %d/%d (%.0f%%), GC scheduled",
+                    g_jit_state_count, JIT_STATE_POOL_SIZE,
+                    (double)g_jit_state_count / (double)JIT_STATE_POOL_SIZE * 100.0);
+            $endif
         }
     } else {
         if (!g_jit_pool_warned) {
@@ -2012,12 +2126,7 @@ fn bool jit_compile_lit(void* s, Expr* expr, Interp* interp) {
         return true;
     }
     if (lit.tag == INT) {
-        // Call jit_make_int(interp, n)
-        _jit_prepare(s);
-        _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);   // arg0 = interp
-        _jit_pushargi(s, lit.int_val, CODE_PUSHARGI_L); // arg1 = int value
-        _jit_finishi(s, (void*)&jit_make_int);
-        _jit_retval_l(s, JIT_R0);
+        emit_call_2i(s, (void*)&jit_make_int, JIT_V0, lit.int_val);
         return true;
     }
     // For other literal types, use the literal value directly
@@ -2035,11 +2144,7 @@ fn bool jit_compile_var(void* s, Expr* expr, Interp* interp, JitLocals* locals) 
             if (locals.locals[i - 1].is_mutable) {
                 // Mutable local: stack slot holds Env* (the box). Lookup value in it.
                 _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)locals.locals[i - 1].stack_offset);
-                _jit_prepare(s);
-                _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);                // arg0 = env box
-                _jit_pushargi(s, (long)sym_id, CODE_PUSHARGI_L);          // arg1 = symbol id
-                _jit_finishi(s, (void*)&jit_env_lookup_local);
-                _jit_retval_l(s, JIT_R0);
+                emit_call_2i(s, (void*)&jit_env_lookup_local, JIT_V1, (long)sym_id);
                 return true;
             }
             // Non-mutable: load value directly from stack slot
@@ -2049,11 +2154,7 @@ fn bool jit_compile_var(void* s, Expr* expr, Interp* interp, JitLocals* locals) 
     }
 
     // Fall back to jit_lookup_var: checks jit_env (for sub-expression local bindings), then global
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);     // arg0 = interp
-    _jit_pushargi(s, (long)sym_id, CODE_PUSHARGI_L); // arg1 = symbol id
-    _jit_finishi(s, (void*)&jit_lookup_var);
-    _jit_retval_l(s, JIT_R0);
+    emit_call_2i(s, (void*)&jit_lookup_var, JIT_V0, (long)sym_id);
     return true;
 }
 
@@ -2061,13 +2162,9 @@ fn bool jit_compile_if(void* s, Expr* expr, Interp* interp, JitLocals* locals, b
     // Compile test expression -> R0 (test is never in tail position)
     if (!jit_compile_expr(s, expr.if_expr.test, interp, locals)) return false;
 
-    // Save test result to V1, call is_falsy(R0, interp)
+    // Save test result to V1, call is_falsy(V1, interp)
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = test result
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);   // arg0 = test_value
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);   // arg1 = interp
-    _jit_finishi(s, (void*)&jit_is_falsy);
-    _jit_retval_l(s, JIT_R0);
+    emit_call_2(s, (void*)&jit_is_falsy, JIT_V1, JIT_V0);
 
     // If is_falsy returned true (non-zero), jump to else branch
     void* jump_else = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
@@ -2091,11 +2188,7 @@ fn bool jit_compile_and(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
 
     // Check if left is falsy
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = left result
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);
-    _jit_finishi(s, (void*)&jit_is_falsy);
-    _jit_retval_l(s, JIT_R0);
+    emit_call_2(s, (void*)&jit_is_falsy, JIT_V1, JIT_V0);
 
     // If falsy, short-circuit: result = left (V1)
     void* jump_done = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
@@ -2118,11 +2211,7 @@ fn bool jit_compile_or(void* s, Expr* expr, Interp* interp, JitLocals* locals, b
 
     // Check if left is falsy
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = left result
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);
-    _jit_finishi(s, (void*)&jit_is_falsy);
-    _jit_retval_l(s, JIT_R0);
+    emit_call_2(s, (void*)&jit_is_falsy, JIT_V1, JIT_V0);
 
     // If NOT falsy, short-circuit: result = left (V1)
     void* jump_done = _jit_new_node_pww(s, CODE_BEQI, null, (long)JIT_R0, 0);
@@ -2164,12 +2253,7 @@ fn bool jit_compile_app(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
 
     // Call apply — use _tail variant when in tail position
     void* apply_fn = is_tail ? (void*)&jit_apply_value_tail : (void*)&jit_apply_value;
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);  // arg0 = func
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);  // arg1 = arg
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);  // arg2 = interp
-    _jit_finishi(s, apply_fn);
-    _jit_retval_l(s, JIT_R0);
+    emit_call_3(s, apply_fn, JIT_V1, JIT_V2, JIT_V0);
     return true;
 }
 
@@ -2258,12 +2342,7 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
             }
 
             // Call direct_fn(interp=V0, a=V1, b=V2) -> R0
-            _jit_prepare(s);
-            _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);  // arg0 = interp
-            _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);  // arg1 = a
-            _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);  // arg2 = b
-            _jit_finishi(s, direct_fn);
-            _jit_retval_l(s, JIT_R0);
+            emit_call_3(s, direct_fn, JIT_V0, JIT_V1, JIT_V2);
             return true;
         }
     }
@@ -2284,13 +2363,7 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
 
         // Call apply — use _tail variant when in tail position
         void* apply_fn = is_tail ? (void*)&jit_apply_multi_args_tail : (void*)&jit_apply_multi_args;
-        _jit_prepare(s);
-        _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);
-        _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);
-        _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);
-        _jit_pushargi(s, 0, CODE_PUSHARGI_L);
-        _jit_finishi(s, apply_fn);
-        _jit_retval_l(s, JIT_R0);
+        emit_call_4_rrri(s, apply_fn, JIT_V0, JIT_V1, JIT_V2, 0);
         return true;
     }
 
@@ -2309,12 +2382,7 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
 
         // Use _tail variant when in tail position
         void* apply_fn = is_tail ? (void*)&jit_apply_value_tail : (void*)&jit_apply_value;
-        _jit_prepare(s);
-        _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);
-        _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);
-        _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);
-        _jit_finishi(s, apply_fn);
-        _jit_retval_l(s, JIT_R0);
+        emit_call_3(s, apply_fn, JIT_V1, JIT_V2, JIT_V0);
         return true;
     }
 
@@ -2351,12 +2419,7 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
         // V1 = arg[i-1] loaded from stack slot
         _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)arg_slots[i - 1]);
         // Call jit_cons(interp=V0, car=V1, cdr=V2)
-        _jit_prepare(s);
-        _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);   // arg0 = interp
-        _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);   // arg1 = car (current arg)
-        _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);   // arg2 = cdr (accumulated list)
-        _jit_finishi(s, (void*)&jit_cons);
-        _jit_retval_l(s, JIT_R0);
+        emit_call_3(s, (void*)&jit_cons, JIT_V0, JIT_V1, JIT_V2);
         _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);  // V2 = updated list
     }
 
@@ -2365,13 +2428,7 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
 
     // Call apply — use _tail variant when in tail position
     void* apply_fn = is_tail ? (void*)&jit_apply_multi_args_tail : (void*)&jit_apply_multi_args;
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);        // arg0 = interp
-    _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);        // arg1 = func
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);        // arg2 = arg list
-    _jit_pushargi(s, (long)argc, CODE_PUSHARGI_L);    // arg3 = arg count
-    _jit_finishi(s, apply_fn);
-    _jit_retval_l(s, JIT_R0);
+    emit_call_4_rrri(s, apply_fn, JIT_V0, JIT_V1, JIT_V2, (long)argc);
     return true;
 }
 
@@ -2482,13 +2539,7 @@ fn bool jit_compile_let(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
 
         // Call jit_env_extend_root(interp, parent_env, name, init_value) -> Env* (the box)
         // Uses root_region so the box is persistent and shared with closures.
-        _jit_prepare(s);
-        _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                                    // interp
-        _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                                    // env (V2)
-        _jit_pushargi(s, (long)(uint)expr.let_expr.name, CODE_PUSHARGI_L);            // name
-        _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);                                    // value
-        _jit_finishi(s, (void*)&jit_env_extend_root);
-        _jit_retval_l(s, JIT_R0);  // R0 = Env* (boxed variable, persistent)
+        emit_call_4_rrir(s, (void*)&jit_env_extend_root, JIT_V0, JIT_V2, (long)(uint)expr.let_expr.name, JIT_V1);
 
         // Store Env* to stack slot
         _jit_new_node_www(s, CODE_STXI_L, (long)offset, (long)JIT_FP, (long)JIT_R0);
@@ -2519,12 +2570,7 @@ fn bool jit_compile_lambda(void* s, Expr* expr, Interp* interp, JitLocals* local
     if (!has_env) emit_load_env(s, JIT_V2);
 
     // Call jit_make_closure_from_expr(interp, expr, env)
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                       // arg0 = interp
-    _jit_pushargi(s, (long)expr, CODE_PUSHARGI_L);                    // arg1 = expr ptr
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                       // arg2 = env (V2)
-    _jit_finishi(s, (void*)&jit_make_closure_from_expr);
-    _jit_retval_l(s, JIT_R0);
+    emit_call_3i(s, (void*)&jit_make_closure_from_expr, JIT_V0, (long)expr, JIT_V2);
     return true;
 }
 
@@ -2534,12 +2580,7 @@ fn bool jit_compile_let_rec(void* s, Expr* expr, Interp* interp, JitLocals* loca
     if (!has_env) emit_load_env(s, JIT_V2);
 
     // Call jit_eval_let_rec(interp, expr, env)
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                       // arg0 = interp
-    _jit_pushargi(s, (long)expr, CODE_PUSHARGI_L);                    // arg1 = expr ptr
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                       // arg2 = env (V2)
-    _jit_finishi(s, (void*)&jit_eval_let_rec);
-    _jit_retval_l(s, JIT_R0);
+    emit_call_3i(s, (void*)&jit_eval_let_rec, JIT_V0, (long)expr, JIT_V2);
     return true;
 }
 
@@ -2555,13 +2596,7 @@ fn bool jit_compile_set(void* s, Expr* expr, Interp* interp, JitLocals* locals) 
         if (!has_env) emit_load_env(s, JIT_V2);
 
         // Call jit_eval_set_path(interp, expr, value, env)
-        _jit_prepare(s);
-        _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                  // arg0 = interp
-        _jit_pushargi(s, (long)expr, CODE_PUSHARGI_L);               // arg1 = expr ptr
-        _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);                  // arg2 = value
-        _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                  // arg3 = env
-        _jit_finishi(s, (void*)&jit_eval_set_path);
-        _jit_retval_l(s, JIT_R0);
+        emit_call_4_rirr(s, (void*)&jit_eval_set_path, JIT_V0, (long)expr, JIT_V1, JIT_V2);
         return true;
     }
 
@@ -2577,13 +2612,7 @@ fn bool jit_compile_set(void* s, Expr* expr, Interp* interp, JitLocals* locals) 
                 _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V2, (long)JIT_FP, (long)locals.locals[i - 1].stack_offset);
 
                 // Call jit_eval_set(interp, name, value, env_box)
-                _jit_prepare(s);
-                _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                                    // interp
-                _jit_pushargi(s, (long)(uint)expr.set_expr.name, CODE_PUSHARGI_L);            // name
-                _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);                                    // value
-                _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                                    // env box
-                _jit_finishi(s, (void*)&jit_eval_set);
-                _jit_retval_l(s, JIT_R0);
+                emit_call_4_rirr(s, (void*)&jit_eval_set, JIT_V0, (long)(uint)expr.set_expr.name, JIT_V1, JIT_V2);
                 return true;
             }
             // Non-mutable local: update stack slot directly
@@ -2606,13 +2635,7 @@ fn bool jit_compile_set(void* s, Expr* expr, Interp* interp, JitLocals* locals) 
     if (!has_env) emit_load_env(s, JIT_V2);
 
     // Call jit_eval_set(interp, name, value, env)
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                          // arg0 = interp
-    _jit_pushargi(s, (long)(uint)expr.set_expr.name, CODE_PUSHARGI_L);  // arg1 = symbol id
-    _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);                          // arg2 = value
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                          // arg3 = env (V2)
-    _jit_finishi(s, (void*)&jit_eval_set);
-    _jit_retval_l(s, JIT_R0);
+    emit_call_4_rirr(s, (void*)&jit_eval_set, JIT_V0, (long)(uint)expr.set_expr.name, JIT_V1, JIT_V2);
     return true;
 }
 
@@ -2622,25 +2645,12 @@ fn bool jit_compile_define(void* s, Expr* expr, Interp* interp, JitLocals* local
 
     // Call jit_eval_define(interp, name, value)
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = value
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                        // arg0 = interp
-    _jit_pushargi(s, (long)(uint)expr.define.name, CODE_PUSHARGI_L);   // arg1 = symbol id
-    _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);                        // arg2 = value
-    _jit_finishi(s, (void*)&jit_eval_define);
-    _jit_retval_l(s, JIT_R0);
+    emit_call_3i(s, (void*)&jit_eval_define, JIT_V0, (long)(uint)expr.define.name, JIT_V1);
     return true;
 }
 
 fn bool jit_compile_quasiquote(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                       // arg0 = interp
-    _jit_pushargi(s, (long)expr, CODE_PUSHARGI_L);                    // arg1 = expr ptr
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                       // arg2 = env (V2)
-    _jit_finishi(s, (void*)&jit_eval_quasiquote);
-    _jit_retval_l(s, JIT_R0);
-    return true;
+    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_eval_quasiquote);
 }
 
 fn bool jit_compile_match(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
@@ -2654,73 +2664,30 @@ fn bool jit_compile_match(void* s, Expr* expr, Interp* interp, JitLocals* locals
     if (!has_env) emit_load_env(s, JIT_V2);
 
     // Call jit_do_match(interp, scrutinee, expr, env)
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                       // arg0 = interp
-    _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);                       // arg1 = scrutinee value
-    _jit_pushargi(s, (long)expr, CODE_PUSHARGI_L);                    // arg2 = expr ptr
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                       // arg3 = env (V2)
-    _jit_finishi(s, (void*)&jit_do_match);
-    _jit_retval_l(s, JIT_R0);
+    emit_call_4_rrir(s, (void*)&jit_do_match, JIT_V0, JIT_V1, (long)expr, JIT_V2);
     return true;
 }
 
 fn bool jit_compile_define_macro(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                       // arg0 = interp
-    _jit_pushargi(s, (long)expr, CODE_PUSHARGI_L);                    // arg1 = expr ptr
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                       // arg2 = env (V2)
-    _jit_finishi(s, (void*)&jit_eval_define_macro);
-    _jit_retval_l(s, JIT_R0);
-    return true;
+    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_eval_define_macro);
 }
 
 fn bool jit_compile_reset(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                       // arg0 = interp
-    _jit_pushargi(s, (long)expr, CODE_PUSHARGI_L);                    // arg1 = expr ptr
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                       // arg2 = env (V2)
-    _jit_finishi(s, (void*)&jit_exec_reset);
-    _jit_retval_l(s, JIT_R0);
-    return true;
+    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_exec_reset);
 }
 
 fn bool jit_compile_shift(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                       // arg0 = interp
-    _jit_pushargi(s, (long)expr, CODE_PUSHARGI_L);                    // arg1 = expr ptr
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                       // arg2 = env (V2)
-    _jit_finishi(s, (void*)&jit_exec_shift);
-    _jit_retval_l(s, JIT_R0);
-    return true;
+    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_exec_shift);
 }
 
 fn bool jit_compile_handle(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                       // arg0 = interp
-    _jit_pushargi(s, (long)expr, CODE_PUSHARGI_L);                    // arg1 = expr ptr
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                       // arg2 = env (V2)
-    _jit_finishi(s, (void*)&jit_exec_handle);
-    _jit_retval_l(s, JIT_R0);
-    return true;
+    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_exec_handle);
 }
 
 fn bool jit_compile_perform(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     bool has_env = emit_build_locals_env(s, interp, locals);
     if (!has_env) emit_load_env(s, JIT_V2);
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                       // arg0 = interp
-    _jit_pushargi(s, (long)expr, CODE_PUSHARGI_L);                    // arg1 = expr ptr
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                       // arg2 = env (V2)
-    _jit_finishi(s, (void*)&jit_exec_perform);
-    _jit_retval_l(s, JIT_R0);
+    emit_call_3i(s, (void*)&jit_exec_perform, JIT_V0, (long)expr, JIT_V2);
     return true;
 }
 
@@ -2747,38 +2714,19 @@ fn bool jit_compile_index(void* s, Expr* expr, Interp* interp, JitLocals* locals
     _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
 
     // Call jit_do_index(interp=V0, collection=V1, index=V2)
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);  // arg0 = interp
-    _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);  // arg1 = collection
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);  // arg2 = index
-    _jit_finishi(s, (void*)&jit_do_index);
-    _jit_retval_l(s, JIT_R0);
+    emit_call_3(s, (void*)&jit_do_index, JIT_V0, JIT_V1, JIT_V2);
     return true;
 }
 
 fn bool jit_compile_path(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    // Path access: eval_path does variable lookup + field chain — no eval() internally
-    bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                       // arg0 = interp
-    _jit_pushargi(s, (long)expr, CODE_PUSHARGI_L);                    // arg1 = expr ptr
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                       // arg2 = env (V2)
-    _jit_finishi(s, (void*)&jit_do_path);
-    _jit_retval_l(s, JIT_R0);
-    return true;
+    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_path);
 }
 
 // Emit a standard 3-arg call pattern: helper(interp, expr, env)
 fn bool jit_compile_3arg_helper(void* s, Expr* expr, Interp* interp, JitLocals* locals, void* helper_fn) {
     bool has_env = emit_build_locals_env(s, interp, locals);
     if (!has_env) emit_load_env(s, JIT_V2);
-    _jit_prepare(s);
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                       // arg0 = interp
-    _jit_pushargi(s, (long)expr, CODE_PUSHARGI_L);                    // arg1 = expr ptr
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                       // arg2 = env (V2)
-    _jit_finishi(s, helper_fn);
-    _jit_retval_l(s, JIT_R0);
+    emit_call_3i(s, helper_fn, JIT_V0, (long)expr, JIT_V2);
     return true;
 }
 
@@ -2840,6 +2788,77 @@ fn void emit_call_1(void* s, void* fn_ptr) {
     _jit_retval_l(s, JIT_R0);
 }
 
+/// Emit fn(reg0, reg1) -> R0
+fn void emit_call_2(void* s, void* fn_ptr, int reg0, int reg1) {
+    _jit_prepare(s);
+    _jit_pushargr(s, reg0, CODE_PUSHARGR_L);
+    _jit_pushargr(s, reg1, CODE_PUSHARGR_L);
+    _jit_finishi(s, fn_ptr);
+    _jit_retval_l(s, JIT_R0);
+}
+
+/// Emit fn(reg0, imm1) -> R0
+fn void emit_call_2i(void* s, void* fn_ptr, int reg0, long imm1) {
+    _jit_prepare(s);
+    _jit_pushargr(s, reg0, CODE_PUSHARGR_L);
+    _jit_pushargi(s, imm1, CODE_PUSHARGI_L);
+    _jit_finishi(s, fn_ptr);
+    _jit_retval_l(s, JIT_R0);
+}
+
+/// Emit fn(reg0, reg1, reg2) -> R0
+fn void emit_call_3(void* s, void* fn_ptr, int reg0, int reg1, int reg2) {
+    _jit_prepare(s);
+    _jit_pushargr(s, reg0, CODE_PUSHARGR_L);
+    _jit_pushargr(s, reg1, CODE_PUSHARGR_L);
+    _jit_pushargr(s, reg2, CODE_PUSHARGR_L);
+    _jit_finishi(s, fn_ptr);
+    _jit_retval_l(s, JIT_R0);
+}
+
+/// Emit fn(reg0, imm1, reg2) -> R0
+fn void emit_call_3i(void* s, void* fn_ptr, int reg0, long imm1, int reg2) {
+    _jit_prepare(s);
+    _jit_pushargr(s, reg0, CODE_PUSHARGR_L);
+    _jit_pushargi(s, imm1, CODE_PUSHARGI_L);
+    _jit_pushargr(s, reg2, CODE_PUSHARGR_L);
+    _jit_finishi(s, fn_ptr);
+    _jit_retval_l(s, JIT_R0);
+}
+
+/// Emit fn(reg0, reg1, imm2, reg3) -> R0
+fn void emit_call_4_rrir(void* s, void* fn_ptr, int reg0, int reg1, long imm2, int reg3) {
+    _jit_prepare(s);
+    _jit_pushargr(s, reg0, CODE_PUSHARGR_L);
+    _jit_pushargr(s, reg1, CODE_PUSHARGR_L);
+    _jit_pushargi(s, imm2, CODE_PUSHARGI_L);
+    _jit_pushargr(s, reg3, CODE_PUSHARGR_L);
+    _jit_finishi(s, fn_ptr);
+    _jit_retval_l(s, JIT_R0);
+}
+
+/// Emit fn(reg0, imm1, reg2, reg3) -> R0
+fn void emit_call_4_rirr(void* s, void* fn_ptr, int reg0, long imm1, int reg2, int reg3) {
+    _jit_prepare(s);
+    _jit_pushargr(s, reg0, CODE_PUSHARGR_L);
+    _jit_pushargi(s, imm1, CODE_PUSHARGI_L);
+    _jit_pushargr(s, reg2, CODE_PUSHARGR_L);
+    _jit_pushargr(s, reg3, CODE_PUSHARGR_L);
+    _jit_finishi(s, fn_ptr);
+    _jit_retval_l(s, JIT_R0);
+}
+
+/// Emit fn(reg0, reg1, reg2, imm3) -> R0
+fn void emit_call_4_rrri(void* s, void* fn_ptr, int reg0, int reg1, int reg2, long imm3) {
+    _jit_prepare(s);
+    _jit_pushargr(s, reg0, CODE_PUSHARGR_L);
+    _jit_pushargr(s, reg1, CODE_PUSHARGR_L);
+    _jit_pushargr(s, reg2, CODE_PUSHARGR_L);
+    _jit_pushargi(s, imm3, CODE_PUSHARGI_L);
+    _jit_finishi(s, fn_ptr);
+    _jit_retval_l(s, JIT_R0);
+}
+
 /**
  * Emit code that builds an Env* from JIT locals into V2 (callee-saved register).
  * Returns true if locals were captured (V2 holds the env), false if no locals.
@@ -2869,10 +2888,7 @@ fn bool emit_build_locals_env(void* s, Interp* interp, JitLocals* locals) {
             // then use it as the new V2.
             _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_R1, (long)JIT_FP, (long)locals.locals[i].stack_offset);
             // Call jit_env_reparent(env=R1, new_parent=V2)
-            _jit_prepare(s);
-            _jit_pushargr(s, JIT_R1, CODE_PUSHARGR_L);   // arg0 = mutable env box
-            _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);    // arg1 = new parent chain
-            _jit_finishi(s, (void*)&jit_env_reparent);
+            emit_call_2(s, (void*)&jit_env_reparent, JIT_R1, JIT_V2);
             // After reparenting, reload the Env* from stack into V2
             // (R1 may be clobbered by finishi, so reload from stack)
             _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V2, (long)JIT_FP, (long)locals.locals[i].stack_offset);

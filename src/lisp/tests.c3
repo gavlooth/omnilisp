@@ -595,10 +595,10 @@ const E2ETestCase[] E2E_TESTS = {
     { "thunk begin", "((lambda () (begin 1 2 3)))" },
     { "thunk arith", "((lambda () (+ 10 20)))" },
 
-    // === Multi-param lambdas (auto-curried) ===
+    // === Multi-param lambdas (strict arity) ===
     { "multi-param add", "((lambda (x y) (+ x y)) 3 4)" },
     { "multi-param 3", "((lambda (x y z) (+ x (+ y z))) 1 2 3)" },
-    { "multi-param partial", "(let ((add (lambda (x y) (+ x y)))) ((add 10) 20))" },
+    { "multi-param direct", "(let ((add (lambda (x y) (+ x y)))) (add 10 20))" },
 
     // === Named let patterns ===
     { "named let sum 5", "(let loop ((n 5) (acc 0)) (if (= n 0) acc (loop (- n 1) (+ acc n))))" },
@@ -1583,13 +1583,41 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "zero-arg begin body", "((lambda () (begin 1 2 3)))", 3, pass, fail);
     test_eq(interp, "zero-arg computation", "((lambda () (+ 10 20)))", 30, pass, fail);
 
-    // Multi-param lambda (auto-curry)
+    // Multi-param lambda (strict arity)
     test_eq(interp, "multi-param two", "((lambda (x y) (+ x y)) 3 4)", 7, pass, fail);
     test_eq(interp, "multi-param three", "((lambda (x y z) (+ x (+ y z))) 1 2 3)", 6, pass, fail);
     test_eq(interp, "multi-param direct call", "(let ((add (lambda (x y) (+ x y)))) (add 10 20))", 30, pass, fail);
     setup(interp, "(define mp-add3 (lambda (a b c) (+ a (+ b c))))");
     test_eq(interp, "multi-param defined fn", "(mp-add3 10 20 30)", 60, pass, fail);
     test_eq(interp, "multi-param three call", "(let ((f (lambda (x y z) (+ x (+ y z))))) (f 1 2 3))", 6, pass, fail);
+
+    // Arity error tests (strict enforcement)
+    test_error_contains(interp, "arity err 2-param 1-arg", "((lambda (x y) (+ x y)) 5)", "arity", pass, fail);
+    test_error_contains(interp, "arity err 3-param 2-arg", "((lambda (x y z) (+ x y z)) 1 2)", "arity", pass, fail);
+
+    // Placeholder _ desugaring
+    test_eq(interp, "placeholder basic", "((+ 1 _) 5)", 6, pass, fail);
+    test_eq(interp, "placeholder position", "((- _ 5) 10)", 5, pass, fail);
+    test_eq(interp, "placeholder multi", "((+ _ _) 3 4)", 7, pass, fail);
+    test_eq(interp, "placeholder in let", "(let ((f (+ _ 10))) (f 5))", 15, pass, fail);
+    test_eq(interp, "placeholder nested call", "((* 2 _) ((+ 1 _) 3))", 8, pass, fail);
+
+    // Pipe |> operator
+    test_eq(interp, "pipe basic", "(|> 5 (+ 3))", 8, pass, fail);
+    test_eq(interp, "pipe chain", "(|> 5 (+ 3) (* 2))", 16, pass, fail);
+    test_eq(interp, "pipe placeholder", "(|> 5 (- _ 3))", 2, pass, fail);
+    test_eq(interp, "pipe mixed", "(|> 10 (+ 5) (- _ 3) (* 2))", 24, pass, fail);
+
+    // Guard patterns (? pred)
+    test_eq(interp, "guard basic", "(match 5 ((? positive?) 1) (_ 0))", 1, pass, fail);
+    test_eq(interp, "guard fail", "(match -3 ((? positive?) 1) (_ 0))", 0, pass, fail);
+    test_eq(interp, "guard with bind", "(match 5 ((? positive? x) x) (_ 0))", 5, pass, fail);
+    test_eq(interp, "guard lambda", "(match 5 ((? (lambda (x) (> x 3))) 1) (_ 0))", 1, pass, fail);
+    test_eq(interp, "guard placeholder", "(match 5 ((? (> _ 3)) 1) (_ 0))", 1, pass, fail);
+
+    // Partial application
+    test_eq(interp, "partial basic", "((partial + 1) 2)", 3, pass, fail);
+    test_eq(interp, "partial multi", "((partial + 10) 20)", 30, pass, fail);
 
     // Multi-binding let
     test_eq(interp, "multi-let two", "(let ((ml-x 10) (ml-y 20)) (+ ml-x ml-y))", 30, pass, fail);

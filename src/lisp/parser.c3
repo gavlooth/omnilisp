@@ -709,10 +709,8 @@ fn Expr* Parser.parse_expr(Parser* self) {
         e.tag = E_LIT;
         e.lit.value = self.interp.alloc_value();
         e.lit.value.tag = STRING;
-        e.lit.value.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
-        // Copy string content from token
         usz len = lex.current.text_len;
-        if (len > MAX_STRING_LEN - 1) len = MAX_STRING_LEN - 1;
+        e.lit.value.str_val = strval_new(len);
         for (usz i = 0; i < len; i++) {
             e.lit.value.str_val.chars[i] = lex.current.text[i];
         }
@@ -907,10 +905,22 @@ fn Expr* Parser.parse_expr(Parser* self) {
             if ((uint)head == (uint)self.interp.sym_import) {
                 return self.parse_import();
             }
+            if ((uint)head == (uint)self.interp.sym_pipe) {
+                return self.parse_pipe();
+            }
         }
 
         // Regular application
         return self.parse_application();
+    }
+
+    // Placeholder _ in expression context (for partial application desugaring)
+    if (lex.current.type == T_UNDERSCORE) {
+        Expr* e = self.alloc_expr_here();
+        lex.advance();
+        e.tag = E_VAR;
+        e.var_expr.name = self.interp.sym_placeholder;
+        return e;
     }
 
     if (lex.current.type == T_EOF) {
@@ -1932,9 +1942,8 @@ fn Pattern* Parser.parse_pattern(Parser* self) {
         p.tag = PAT_LIT;
         p.lit_value = self.interp.alloc_value();
         p.lit_value.tag = STRING;
-        p.lit_value.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
         usz len = lex.current.text_len;
-        if (len > MAX_STRING_LEN - 1) len = MAX_STRING_LEN - 1;
+        p.lit_value.str_val = strval_new(len);
         for (usz i = 0; i < len; i++) {
             p.lit_value.str_val.chars[i] = lex.current.text[i];
         }
@@ -1997,13 +2006,31 @@ fn Pattern* Parser.parse_pattern(Parser* self) {
         return p;
     }
 
-    // Constructor pattern: (ConstructorName sub-patterns...)
+    // Constructor or guard pattern: (ConstructorName sub-patterns...) or (? pred [sub-pattern])
     if (lex.current.type == T_LPAREN) {
         lex.advance();  // consume '('
         if (lex.current.type == T_SYMBOL) {
+            SymbolId sym = self.get_current_symbol();
+
+            // Guard pattern: (? pred) or (? pred sub-pattern)
+            if ((uint)sym == (uint)self.interp.sym_question) {
+                lex.advance();  // consume '?'
+                Pattern* p = self.interp.alloc_pattern();
+                p.tag = PAT_GUARD;
+                p.guard_pred = self.parse_expr();  // Parse predicate expression
+                if (lex.current.type != T_RPAREN) {
+                    p.guard_sub = self.parse_pattern();  // Optional sub-pattern
+                } else {
+                    p.guard_sub = null;  // No sub-pattern, just guard
+                }
+                self.expect(T_RPAREN, ")");
+                return p;
+            }
+
+            // Constructor pattern
             Pattern* p = self.interp.alloc_pattern();
             p.tag = PAT_CONSTRUCTOR;
-            p.constructor_name = self.get_current_symbol();
+            p.constructor_name = sym;
             p.ctor_sub_count = 0;
             lex.advance();  // consume constructor name
 
@@ -2016,7 +2043,7 @@ fn Pattern* Parser.parse_pattern(Parser* self) {
             self.expect(T_RPAREN, ")");
             return p;
         }
-        self.set_error("expected constructor name in pattern");
+        self.set_error("expected constructor name or ? in pattern");
         return null;
     }
 
@@ -2244,9 +2271,8 @@ fn Value* Parser.parse_template_datum(Parser* self) {
     if (lex.current.type == T_STRING) {
         Value* v = self.interp.alloc_value();
         v.tag = STRING;
-        v.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
         usz len = lex.current.text_len;
-        if (len > MAX_STRING_LEN - 1) len = MAX_STRING_LEN - 1;
+        v.str_val = strval_new(len);
         for (usz i = 0; i < len; i++) {
             v.str_val.chars[i] = lex.current.text[i];
         }
@@ -2465,9 +2491,8 @@ fn Expr* Parser.parse_qq_template(Parser* self) {
         e.tag = E_LIT;
         e.lit.value = self.interp.alloc_value();
         e.lit.value.tag = STRING;
-        e.lit.value.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
         usz len = lex.current.text_len;
-        if (len > MAX_STRING_LEN - 1) len = MAX_STRING_LEN - 1;
+        e.lit.value.str_val = strval_new(len);
         for (usz i = 0; i < len; i++) {
             e.lit.value.str_val.chars[i] = lex.current.text[i];
         }
@@ -2534,6 +2559,59 @@ fn Expr* Parser.parse_qq_template(Parser* self) {
     return null;
 }
 
+/**
+ * Parse pipe expression: (|> val step1 step2 ...)
+ * Desugars to nested application: (step2 (step1 val))
+ * Each step is applied as a function to the accumulated value.
+ * Steps containing _ placeholders are already desugared to lambdas by parse_application.
+ */
+fn Expr* Parser.parse_pipe(Parser* self) {
+    if (self.has_error) return null;
+    Expr* pipe_loc = self.alloc_expr_here();
+    self.lexer.advance();  // consume '|>'
+
+    // Parse initial value
+    Expr* acc = self.parse_expr();
+    if (acc == null || self.has_error) return null;
+
+    // Parse steps
+    Expr*[64] steps;
+    usz step_count = 0;
+    while (self.lexer.current.type != T_RPAREN && !self.has_error) {
+        if (step_count >= 64) { self.set_error("too many pipe steps"); return null; }
+        steps[step_count] = self.parse_expr();
+        step_count++;
+    }
+    if (self.has_error) return null;
+    self.expect(T_RPAREN, ")");
+
+    if (step_count == 0) return acc;
+
+    // Build nested calls left-to-right: (step1 acc), then (step2 result), etc.
+    for (usz i = 0; i < step_count; i++) {
+        Expr* step = steps[i];
+        // If step is an E_CALL, append acc as last arg
+        if (step.tag == E_CALL) {
+            if (step.call.arg_count >= 64) { self.set_error("pipe step has too many args"); return null; }
+            step.call.args[step.call.arg_count] = acc;
+            step.call.arg_count++;
+            acc = step;
+        } else {
+            // Bare function: wrap as (step acc)
+            Expr* call = self.interp.alloc_expr();
+            call.tag = E_CALL;
+            call.call = mem::malloc(ExprCall.sizeof);
+            call.loc_line = pipe_loc.loc_line;
+            call.loc_column = pipe_loc.loc_column;
+            call.call.func = step;
+            call.call.args[0] = acc;
+            call.call.arg_count = 1;
+            acc = call;
+        }
+    }
+    return acc;
+}
+
 fn Expr* Parser.parse_application(Parser* self) {
     if (self.has_error) return null;
     // Already consumed '(' - capture func location for application
@@ -2557,6 +2635,58 @@ fn Expr* Parser.parse_application(Parser* self) {
     }
     if (self.has_error) return null;
     self.lexer.advance();  // consume ')'
+
+    // Placeholder desugaring: scan args for __placeholder sentinels
+    usz placeholder_count = 0;
+    for (usz i = 0; i < e.call.arg_count; i++) {
+        if (e.call.args[i] != null && e.call.args[i].tag == E_VAR &&
+            (uint)e.call.args[i].var_expr.name == (uint)self.interp.sym_placeholder) {
+            placeholder_count++;
+        }
+    }
+    if (placeholder_count > 0) {
+        // Generate unique param names for each placeholder, replace in-place
+        SymbolId[16] param_syms;
+        usz param_idx = 0;
+        char[32] name_buf;
+        for (usz i = 0; i < e.call.arg_count; i++) {
+            if (e.call.args[i] != null && e.call.args[i].tag == E_VAR &&
+                (uint)e.call.args[i].var_expr.name == (uint)self.interp.sym_placeholder) {
+                // Generate __pN name using gensym counter
+                self.interp.gensym_counter++;
+                usz pos = 0;
+                name_buf[pos++] = '_'; name_buf[pos++] = '_'; name_buf[pos++] = 'p';
+                char[20] num_buf;
+                char[] num_str = int_to_string((long)self.interp.gensym_counter, &num_buf);
+                for (usz j = 0; j < num_str.len && pos < 31; j++) name_buf[pos++] = num_str[j];
+                SymbolId psym = self.interp.symbols.intern(name_buf[:pos]);
+                if (param_idx < 16) param_syms[param_idx] = psym;
+                param_idx++;
+                // Replace placeholder with E_VAR referencing the generated param
+                e.call.args[i].var_expr.name = psym;
+            }
+        }
+        // Wrap the E_CALL in nested single-param lambdas (outermost = first _)
+        // Build from innermost to outermost
+        Expr* body = e;
+        usz wrap_count = param_idx < 16 ? param_idx : 16;
+        for (usz i = wrap_count; i > 0; i--) {
+            Expr* lam = self.interp.alloc_expr();
+            lam.tag = E_LAMBDA;
+            lam.lambda = mem::malloc(ExprLambda.sizeof);
+            lam.loc_line = app_line;
+            lam.loc_column = app_col;
+            lam.lambda.param = param_syms[i - 1];
+            lam.lambda.param_count = 1;
+            lam.lambda.params[0] = param_syms[i - 1];
+            lam.lambda.has_rest = false;
+            lam.lambda.rest_param = 0;
+            lam.lambda.has_typed_params = false;
+            lam.lambda.body = body;
+            body = lam;
+        }
+        return self.parse_postfix_index(body);
+    }
 
     // Check for postfix indexing: (make-array 10).[0]
     return self.parse_postfix_index(e);
@@ -2590,9 +2720,8 @@ fn Value* Parser.parse_datum(Parser* self) {
     if (lex.current.type == T_STRING) {
         Value* v = self.interp.alloc_value();
         v.tag = STRING;
-        v.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
         usz len = lex.current.text_len;
-        if (len > MAX_STRING_LEN - 1) len = MAX_STRING_LEN - 1;
+        v.str_val = strval_new(len);
         for (usz i = 0; i < len; i++) {
             v.str_val.chars[i] = lex.current.text[i];
         }

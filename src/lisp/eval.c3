@@ -879,6 +879,7 @@ fn void destroy_value(void* ptr) {
         case STRING:
         case ERROR:
             if (v.str_val != null) {
+                if (v.str_val.chars != null) mem::free(v.str_val.chars);
                 mem::free(v.str_val);
                 v.str_val = null;
             }
@@ -895,6 +896,9 @@ fn void destroy_value(void* ptr) {
             }
         case METHOD_TABLE:
             if (v.method_table_val != null) {
+                if (v.method_table_val.entries != null) {
+                    mem::free(v.method_table_val.entries);
+                }
                 mem::free(v.method_table_val);
                 v.method_table_val = null;
             }
@@ -968,8 +972,14 @@ fn void register_destructors() {
  * Copy a Value and everything it transitively references to a target region.
  * Used to promote return values out of a child frame before releasing it.
  */
+<* @require interp != null : "copy_to_parent: null interp" *>
 fn Value* copy_to_parent(Value* v, Interp* interp, main::RegionHandle target) {
     if (v == null) return null;
+    $if DEBUG_BUILD:
+        if (target.region_id == interp.root_region.region_id && v.tag != ValueTag.NIL && v.tag != ValueTag.INT) {
+            io::eprintfn("[debug] copy_to_parent: promoting tag=%d to root region", v.tag.ordinal);
+        }
+    $endif
     main::RegionHandle saved = interp.current_frame;
     interp.current_frame = target;
 
@@ -1168,11 +1178,15 @@ fn EvalResult eval_path(Expr* expr, Env* env, Interp* interp) {
 /**
  * MatchResult - Result of attempting to match a pattern against a value.
  * If successful, contains bindings produced by the match.
+ * Bindings are heap-allocated and grow dynamically.
  */
+const usz MATCH_INITIAL_CAPACITY = 32;
+
 struct MatchResult {
     bool matched;
-    Binding[MAX_BINDINGS] bindings;
+    Binding* bindings;
     usz binding_count;
+    usz capacity;
 }
 
 /**
@@ -1186,20 +1200,30 @@ struct GensymMapping {
 }
 
 struct GensymTable {
-    GensymMapping[16] mappings;
+    GensymMapping[64] mappings;
     usz count;
 }
 
 fn MatchResult match_fail() @inline {
-    return { .matched = false, .binding_count = 0 };
+    return { .matched = false, .bindings = null, .binding_count = 0, .capacity = 0 };
 }
 
 fn MatchResult match_ok() @inline {
-    return { .matched = true, .binding_count = 0 };
+    Binding* b = (Binding*)mem::malloc(Binding.sizeof * MATCH_INITIAL_CAPACITY);
+    return { .matched = true, .bindings = b, .binding_count = 0, .capacity = MATCH_INITIAL_CAPACITY };
 }
 
 fn void MatchResult.add_binding(MatchResult* self, SymbolId name, Value* value) {
-    assert(self.binding_count < MAX_BINDINGS, "too many pattern bindings");
+    if (self.binding_count >= self.capacity) {
+        usz new_cap = self.capacity < MATCH_INITIAL_CAPACITY ? MATCH_INITIAL_CAPACITY : self.capacity * 2;
+        Binding* new_bindings = (Binding*)mem::malloc(Binding.sizeof * new_cap);
+        for (usz i = 0; i < self.binding_count; i++) {
+            new_bindings[i] = self.bindings[i];
+        }
+        if (self.bindings != null) mem::free(self.bindings);
+        self.bindings = new_bindings;
+        self.capacity = new_cap;
+    }
     self.bindings[self.binding_count].name = name;
     self.bindings[self.binding_count].value = value;
     self.binding_count++;
@@ -1208,6 +1232,13 @@ fn void MatchResult.add_binding(MatchResult* self, SymbolId name, Value* value) 
 fn void MatchResult.merge(MatchResult* self, MatchResult* other) {
     for (usz i = 0; i < other.binding_count; i++) {
         self.add_binding(other.bindings[i].name, other.bindings[i].value);
+    }
+}
+
+fn void MatchResult.cleanup(MatchResult* self) {
+    if (self.bindings != null) {
+        mem::free(self.bindings);
+        self.bindings = null;
     }
 }
 
@@ -1344,9 +1375,11 @@ fn MatchResult match_pattern(Pattern* pat, Value* val, Interp* interp) {
             }
             MatchResult cdr_result = match_pattern(pat.cdr_pat, cdr(val), interp);
             if (!cdr_result.matched) {
+                car_result.cleanup();
                 return match_fail();
             }
             car_result.merge(&cdr_result);
+            cdr_result.cleanup();
             return car_result;
 
         case PAT_SEQ:
@@ -1370,10 +1403,39 @@ fn MatchResult match_pattern(Pattern* pat, Value* val, Interp* interp) {
             MatchResult result = match_ok();
             for (usz ci = 0; ci < pat.ctor_sub_count; ci++) {
                 MatchResult sub = match_pattern(pat.ctor_sub_patterns[ci], val.instance_val.fields[ci], interp);
-                if (!sub.matched) return match_fail();
+                if (!sub.matched) { result.cleanup(); return match_fail(); }
                 result.merge(&sub);
+                sub.cleanup();
             }
             return result;
+        }
+
+        case PAT_GUARD: {
+            // Guard pattern: evaluate pred, apply to val
+            if (pat.guard_sub != null) {
+                MatchResult sub_r = match_pattern(pat.guard_sub, val, interp);
+                if (!sub_r.matched) return match_fail();
+                // Evaluate guard with sub bindings in scope
+                Env* guard_env = make_env(interp, interp.match_env);
+                for (usz j = 0; j < sub_r.binding_count; j++) {
+                    guard_env.define(sub_r.bindings[j].name, sub_r.bindings[j].value);
+                }
+                Value* pred = jit_eval(pat.guard_pred, guard_env, interp);
+                if (pred == null || pred.tag == ERROR) { sub_r.cleanup(); return match_fail(); }
+                Value* result = jit_apply_value(pred, val, interp);
+                if (result == null || result.tag == ERROR || jit_is_falsy(result, interp)) {
+                    sub_r.cleanup(); return match_fail();
+                }
+                return sub_r;
+            }
+            // No sub-pattern: just evaluate pred and apply to val
+            Value* pred = jit_eval(pat.guard_pred, interp.match_env, interp);
+            if (pred == null || pred.tag == ERROR) return match_fail();
+            Value* result = jit_apply_value(pred, val, interp);
+            if (result == null || result.tag == ERROR || jit_is_falsy(result, interp)) {
+                return match_fail();
+            }
+            return match_ok();
         }
 
         default:
@@ -1406,8 +1468,9 @@ fn MatchResult match_seq_pattern(Pattern* pat, Value* val, Interp* interp) {
             MatchResult result = match_ok();
             for (usz i = 0; i < elem_count; i++) {
                 MatchResult elem_result = match_pattern(pat.elements[i], elems[i], interp);
-                if (!elem_result.matched) { return match_fail(); }
+                if (!elem_result.matched) { result.cleanup(); return match_fail(); }
                 result.merge(&elem_result);
+                elem_result.cleanup();
             }
             return result;
 
@@ -1419,8 +1482,9 @@ fn MatchResult match_seq_pattern(Pattern* pat, Value* val, Interp* interp) {
             MatchResult start_result = match_ok();
             for (usz i = 0; i < elem_count; i++) {
                 MatchResult elem_result = match_pattern(pat.elements[i], elems[skip + i], interp);
-                if (!elem_result.matched) { return match_fail(); }
+                if (!elem_result.matched) { start_result.cleanup(); return match_fail(); }
                 start_result.merge(&elem_result);
+                elem_result.cleanup();
             }
             return start_result;
 
@@ -1431,8 +1495,9 @@ fn MatchResult match_seq_pattern(Pattern* pat, Value* val, Interp* interp) {
             MatchResult mid_result = match_ok();
             for (usz i = 0; i < elem_count; i++) {
                 MatchResult elem_result = match_pattern(pat.elements[i], elems[i], interp);
-                if (!elem_result.matched) { return match_fail(); }
+                if (!elem_result.matched) { mid_result.cleanup(); return match_fail(); }
                 mid_result.merge(&elem_result);
+                elem_result.cleanup();
             }
             Value* rest = get_list_rest(val, elem_count, interp);
             mid_result.add_binding(pat.rest_binding, rest);
@@ -1445,8 +1510,9 @@ fn MatchResult match_seq_pattern(Pattern* pat, Value* val, Interp* interp) {
             MatchResult end_result = match_ok();
             for (usz i = 0; i < elem_count; i++) {
                 MatchResult elem_result = match_pattern(pat.elements[i], elems[i], interp);
-                if (!elem_result.matched) { return match_fail(); }
+                if (!elem_result.matched) { end_result.cleanup(); return match_fail(); }
                 end_result.merge(&elem_result);
+                elem_result.cleanup();
             }
             return end_result;
 
@@ -1675,7 +1741,9 @@ fn void register_dispatched_prim(Interp* interp, char[] name, PrimitiveFn func, 
     // Create method table with no typed entries, primitive as fallback
     MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
     mt.name = sym;
+    mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * METHOD_INITIAL_CAPACITY);
     mt.entry_count = 0;
+    mt.capacity = METHOD_INITIAL_CAPACITY;
     mt.fallback = prim;
 
     main::RegionHandle saved = interp.current_frame;
@@ -1806,185 +1874,18 @@ fn EvalResult run(char[] source, Interp* interp) {
  * Called after register_primitives().
  */
 fn void register_stdlib(Interp* interp) {
-    // =========================================================================
-    // Built-in Effect Declarations (typed I/O effects)
-    // =========================================================================
-    run("(define [effect] (io/print (^Any x)))", interp);
-    run("(define [effect] (io/println (^Any x)))", interp);
-    run("(define [effect] (io/display (^Any x)))", interp);
-    run("(define [effect] (io/newline (^Any x)))", interp);
-    run("(define [effect] (io/read-file (^String path)))", interp);
-    run("(define [effect] (io/write-file (^Any x)))", interp);
-    run("(define [effect] (io/file-exists? (^String path)))", interp);
-    run("(define [effect] (io/read-lines (^String path)))", interp);
-
-    // =========================================================================
-    // Standard Macros (defined before HOFs since macros may be used by them)
-    // =========================================================================
-
-    // when: (when test body...) - evaluate body if test is truthy
-    run("(define [macro] when ([test .. body] (if test (begin .. body) nil)))", interp);
-
-    // unless: (unless test body...) - evaluate body if test is falsy
-    run("(define [macro] unless ([test .. body] (if test nil (begin .. body))))", interp);
-
-    // cond: (cond test1 body1 test2 body2 ...) - multi-clause conditional
-    run("(define [macro] cond ([] nil) ([test body .. rest] (if test body (cond .. rest))))", interp);
-
-    // with-trampoline: effect-based trampoline for stack-safe non-tail recursion.
-    // Usage: (with-trampoline (lambda () (fib 10)))
-    // Inside the thunk, use (perform bounce (lambda () ...)) to bounce.
-    // Thunks use a dummy parameter: (lambda (xx) body), called with (thunk nil)
-    run("(define with-trampoline (lambda (thunk) (handle (thunk nil) ((bounce k next-thunk) (k (with-trampoline next-thunk))))))", interp);
-
-    // =========================================================================
-    // Type Predicates (defined via is? and abstract type hierarchy)
-    // =========================================================================
-    run("(define (int? x) (is? x 'Int))", interp);
-    run("(define (double? x) (is? x 'Double))", interp);
-    run("(define (number? x) (is? x 'Number))", interp);
-    run("(define (string? x) (is? x 'String))", interp);
-    run("(define (symbol? x) (is? x 'Symbol))", interp);
-    run("(define (boolean? x) (or (null? x) (= x true)))", interp);
-    run("(define (list? x) (or (null? x) (pair? x)))", interp);
-    run("(define (closure? x) (is? x 'Closure))", interp);
-    run("(define (array? x) (is? x 'Array))", interp);
-    run("(define (dict? x) (is? x 'Dict))", interp);
-
-    // =========================================================================
-    // Numeric Predicates (defined via dispatched comparison ops)
-    // =========================================================================
-    run("(define (zero? x) (= x 0))", interp);
-    run("(define (positive? x) (> x 0))", interp);
-    run("(define (negative? x) (< x 0))", interp);
-    run("(define (even? x) (= (% x 2) 0))", interp);
-    run("(define (odd? x) (not (= (% x 2) 0)))", interp);
-
-    // =========================================================================
-    // Higher-Order Functions (all curried, list-based)
-    // =========================================================================
-
-    // map: (map f lst) - apply f to each element, return new list
-    // Iterative: accumulator + reverse for O(1) stack via TCO
-    run("(define map (lambda (f) (lambda (lst) (let loop ((xs lst) (acc nil)) (if (null? xs) (reverse acc) (loop (cdr xs) (cons (f (car xs)) acc)))))))", interp);
-
-    // filter: (filter pred lst) - keep elements where (pred x) is truthy
-    // Iterative: accumulator + reverse for O(1) stack via TCO
-    run("(define filter (lambda (pred) (lambda (lst) (let loop ((xs lst) (acc nil)) (if (null? xs) (reverse acc) (if (pred (car xs)) (loop (cdr xs) (cons (car xs) acc)) (loop (cdr xs) acc)))))))", interp);
-
-    // foldl: (foldl f acc lst) - left fold
-    run("(define foldl (lambda (f) (lambda (acc) (lambda (lst) (if (null? lst) acc (((foldl f) ((f acc) (car lst))) (cdr lst)))))))", interp);
-
-    // foldr: (foldr f init lst) - right fold (iterative: reverse + foldl with flipped f)
-    run("(define foldr (lambda (f) (lambda (init) (lambda (lst) (((foldl (lambda (acc) (lambda (x) ((f x) acc)))) init) (reverse lst))))))", interp);
-
-    // append: (append a b) - concatenate two lists (iterative: reverse + prepend)
-    run("(define append (lambda (a) (lambda (b) (let loop ((xs (let rev ((l a) (r nil)) (if (null? l) r (rev (cdr l) (cons (car l) r))))) (acc b)) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))))", interp);
-
-    // reverse: (reverse lst) - reverse a list (iterative)
-    run("(define reverse (lambda (lst) (let loop ((xs lst) (acc nil)) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc))))))", interp);
-
-    // compose: (compose f g) - function composition, returns (lambda (x) (f (g x)))
-    run("(define compose (lambda (f) (lambda (g) (lambda (x) (f (g x))))))", interp);
-
-    // id: identity function
-    run("(define id (lambda (x) x))", interp);
-
-    // nth: (nth n lst) - get nth element (0-indexed)
-    run("(define nth (lambda (n) (lambda (lst) (if (= n 0) (car lst) ((nth (- n 1)) (cdr lst))))))", interp);
-
-    // take: (take n lst) - first n elements (iterative)
-    run("(define take (lambda (n) (lambda (lst) (let loop ((i n) (xs lst) (acc nil)) (if (= i 0) (reverse acc) (if (null? xs) (reverse acc) (loop (- i 1) (cdr xs) (cons (car xs) acc))))))))", interp);
-
-    // drop: (drop n lst) - skip first n elements
-    run("(define drop (lambda (n) (lambda (lst) (if (= n 0) lst (if (null? lst) nil ((drop (- n 1)) (cdr lst)))))))", interp);
-
-    // zip: (zip a b) - zip two lists into list of pairs (iterative)
-    run("(define zip (lambda (a) (lambda (b) (let loop ((xs a) (ys b) (acc nil)) (if (or (null? xs) (null? ys)) (reverse acc) (loop (cdr xs) (cdr ys) (cons (cons (car xs) (car ys)) acc)))))))", interp);
-
-    // range: (range n) - list from 0 to n-1 (iterative, builds in reverse)
-    run("(define range (lambda (n) (let loop ((i (- n 1)) (acc nil)) (if (< i 0) acc (loop (- i 1) (cons i acc))))))", interp);
-
-    // for-each: (for-each f lst) - apply f to each element for side effects, return nil
-    run("(define for-each (lambda (f) (lambda (lst) (if (null? lst) nil (let ((_r (f (car lst)))) ((for-each f) (cdr lst)))))))", interp);
-
-    // any?: (any? pred lst) - true if pred is truthy for any element
-    run("(define any? (lambda (pred) (lambda (lst) (if (null? lst) nil (if (pred (car lst)) true ((any? pred) (cdr lst)))))))", interp);
-
-    // every?: (every? pred lst) - true if pred is truthy for all elements
-    run("(define every? (lambda (pred) (lambda (lst) (if (null? lst) true (if (pred (car lst)) ((every? pred) (cdr lst)) nil)))))", interp);
-
-    // =========================================================================
-    // Error Handling Convention (via algebraic effects)
-    // =========================================================================
-
-    // try: run a thunk, catch errors via 'raise' effect
-    // Usage: ((try (lambda (xx) body)) (lambda (msg) handler))
-    run("(define try (lambda (thunk) (lambda (handler) (handle (thunk nil) ((raise k msg) (handler msg))))))", interp);
-
-    // assert!: check condition, raise if false
-    run("(define assert! (lambda (condition) (lambda (msg) (if condition true (perform raise msg)))))", interp);
-
-    // =========================================================================
-    // Association List Helpers
-    // =========================================================================
-
-    // assoc: (assoc key alist) - find pair with matching key
-    run("(define assoc (lambda (key) (lambda (alist) (if (null? alist) nil (if (= (car (car alist)) key) (car alist) ((assoc key) (cdr alist)))))))", interp);
-
-    // assoc-ref: (assoc-ref key alist) - get value for key (cdr of pair)
-    run("(define assoc-ref (lambda (key) (lambda (alist) (let ((pair ((assoc key) alist))) (if (null? pair) nil (cdr pair))))))", interp);
-
-    // =========================================================================
-    // Mathematical Constants
-    // =========================================================================
-    run("(define pi 3.141592653589793)", interp);
-    run("(define e 2.718281828459045)", interp);
-
-    // =========================================================================
-    // Additional HOFs (Phase 3/6)
-    // =========================================================================
-
-    // flatten: flatten nested lists into a flat list
-    run("(define (flatten lst) (let loop ((l lst) (acc nil)) (if (null? l) (reverse acc) (if (pair? (car l)) (loop (cdr l) (let loop2 ((inner (car l)) (a acc)) (if (null? inner) a (loop2 (cdr inner) (cons (car inner) a))))) (loop (cdr l) (cons (car l) acc))))))", interp);
-
-    // partition: split list by predicate, returns (kept . rejected)
-    run("(define (partition pred lst) (let loop ((l lst) (yes nil) (no nil)) (if (null? l) (cons (reverse yes) (reverse no)) (if (pred (car l)) (loop (cdr l) (cons (car l) yes) no) (loop (cdr l) yes (cons (car l) no))))))", interp);
-
-    // remove: remove elements matching predicate (uses filter)
-    run("(define (remove pred lst) ((filter (lambda (x) (not (pred x)))) lst))", interp);
-
-    // find: first element matching predicate, or nil
-    run("(define (find pred lst) (let loop ((l lst)) (if (null? l) nil (if (pred (car l)) (car l) (loop (cdr l))))))", interp);
-
-    // =========================================================================
-    // Generators & Lazy Streams (Phase 8 — using existing effects)
-    // =========================================================================
-
-    // yield: (yield val) inside a generator — returns (cons val continuation)
-    run("(define [macro] yield ([val] (shift k (cons val k))))", interp);
-
-    // stream-take: consume n values from a generator continuation
-    run("(define (stream-take n gen) (let loop ((i n) (g gen) (acc nil)) (if (= i 0) (reverse acc) (if (null? g) (reverse acc) (let ((pair (if (procedure? g) (g nil) g))) (if (null? pair) (reverse acc) (loop (- i 1) (cdr pair) (cons (car pair) acc))))))))", interp);
-
-    // delay/force: promise (lazy evaluation)
-    run("(define (delay thunk) (let ((result nil) (forced nil)) (lambda () (if forced result (begin (set! result (thunk nil)) (set! forced true) result)))))", interp);
-
-    run("(define (force p) (p))", interp);
-
-    // =========================================================================
-    // I/O Effect Wrappers (Phase 5)
-    // These redefine I/O operations to go through the effects system.
-    // When no handler is installed, eval_perform's fast path calls __raw-* directly.
-    // =========================================================================
-    run("(define print (lambda (x) (perform io/print x)))", interp);
-    run("(define println (lambda (x) (perform io/println x)))", interp);
-    run("(define display (lambda (x) (perform io/display x)))", interp);
-    run("(define newline (lambda () (perform io/newline nil)))", interp);
-    run("(define read-file (lambda (path) (perform io/read-file path)))", interp);
-    run("(define write-file (lambda (path content) (perform io/write-file (cons path content))))", interp);
-    run("(define file-exists? (lambda (path) (perform io/file-exists? path)))", interp);
-    run("(define read-lines (lambda (path) (perform io/read-lines path)))", interp);
+    // Standard library loaded from embedded stdlib/stdlib.lisp at compile time.
+    // Edit that file (with syntax highlighting) instead of inline strings here.
+    char[] stdlib_src = $embed("../../stdlib/stdlib.lisp");
+    usz pos = 0;
+    while (pos < stdlib_src.len) {
+        usz start = pos;
+        while (pos < stdlib_src.len && stdlib_src[pos] != '\n') pos++;
+        usz line_len = pos - start;
+        if (pos < stdlib_src.len) pos++; // skip newline
+        if (line_len == 0 || stdlib_src[start] == ';') continue;
+        run(stdlib_src[start:line_len], interp);
+    }
 }
 
 // =============================================================================

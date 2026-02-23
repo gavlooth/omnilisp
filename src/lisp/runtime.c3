@@ -1869,9 +1869,9 @@ fn Value rt_field_access(Value obj, Value field_name) {
 // Self-contained effect mechanism for AOT-compiled code.
 // Uses replay-based continuations: body closures are re-invoked with substitution.
 
-const usz RT_MAX_HANDLERS = 16;
-const usz RT_MAX_CLAUSES = 16;
-const usz RT_MAX_PRIOR = 16;
+const usz RT_MAX_HANDLERS = 64;
+const usz RT_MAX_CLAUSES = 64;
+const usz RT_MAX_PRIOR = 256;
 
 struct RtEffectClause {
     Value tag;                    // V_SYMBOL tag
@@ -2353,7 +2353,7 @@ fn void rt_set_eval_source_hook(EvalSourceFn hook) {
 // SECTION 17b: STANDALONE VARIABLE TABLE (mutable-captured variables)
 // =============================================================================
 
-const usz RT_VAR_TABLE_SIZE = 256;
+const usz RT_VAR_TABLE_SIZE = 512;
 
 struct RtVarEntry {
     char[64] name;

@@ -7,6 +7,42 @@ import main;
 // SECTION 7: PRIMITIVES
 // =============================================================================
 
+/**
+ * Create a new empty StringVal with given initial capacity.
+ */
+fn StringVal* strval_new(usz initial_cap) {
+    if (initial_cap < 32) initial_cap = 32;
+    StringVal* sv = (StringVal*)mem::malloc(StringVal.sizeof);
+    sv.chars = (char*)mem::malloc(initial_cap);
+    sv.len = 0;
+    sv.capacity = initial_cap;
+    sv.chars[0] = 0;
+    return sv;
+}
+
+/**
+ * Ensure StringVal has room for at least `needed` more bytes.
+ */
+fn void strval_ensure(StringVal* sv, usz needed) {
+    if (sv.len + needed + 1 > sv.capacity) {
+        usz new_cap = sv.capacity * 2;
+        while (new_cap < sv.len + needed + 1) new_cap *= 2;
+        char* new_chars = (char*)mem::malloc(new_cap);
+        for (usz i = 0; i < sv.len; i++) new_chars[i] = sv.chars[i];
+        mem::free(sv.chars);
+        sv.chars = new_chars;
+        sv.capacity = new_cap;
+    }
+}
+
+/**
+ * Append a single char to a StringVal.
+ */
+fn void strval_push(StringVal* sv, char c) {
+    strval_ensure(sv, 1);
+    sv.chars[sv.len++] = c;
+}
+
 // Curried primitive helper - stores first argument and waits for second
 struct CurriedPrim {
     Value* first_arg;
@@ -341,7 +377,7 @@ fn Value* prim_string_split(Value*[] args, Env* env, Interp* interp) {
         return make_error(interp, "string-split: empty separator");
     }
 
-    char* str = &args[0].str_val.chars;
+    char* str = args[0].str_val.chars;
     usz str_len = args[0].str_val.len;
     // NOTE: Currently only supports single-character delimiters.
     // The first character of the separator string is used.
@@ -492,7 +528,7 @@ fn Value* prim_string_trim(Value*[] args, Env* env, Interp* interp) {
         return make_error(interp, "string-trim: expected string argument");
     }
 
-    char* str = &args[0].str_val.chars;
+    char* str = args[0].str_val.chars;
     usz len = args[0].str_val.len;
 
     // Find start (skip leading whitespace)
@@ -651,13 +687,7 @@ fn Value* prim_read_lines(Value*[] args, Env* env, Interp* interp) {
                 if (line_len > 0 && content[start + line_len - 1] == '\r') {
                     line_len--;
                 }
-                if (line_len > MAX_STRING_LEN - 1) line_len = MAX_STRING_LEN - 1;
-                char[MAX_STRING_LEN] buffer;
-                for (usz j = 0; j < line_len; j++) {
-                    buffer[j] = content[start + j];
-                }
-                buffer[line_len] = 0;
-                Value* line = make_string(interp, buffer[:line_len]);
+                Value* line = make_string(interp, content[start:line_len]);
                 lines = make_cons(interp, line, lines);
                 start = i + 1;
             }
@@ -1052,7 +1082,7 @@ fn long ffi_value_to_long(Value* val, char[] type_name, Interp* interp) {
     }
     if (type_name.len == 6 && type_name[0] == 's' && type_name[1] == 't' && type_name[2] == 'r') {
         // 'string
-        if (val != null && val.tag == STRING) return (long)&val.str_val.chars;
+        if (val != null && val.tag == STRING) return (long)val.str_val.chars;
         return 0;
     }
     if (type_name.len == 3 && type_name[0] == 'p' && type_name[1] == 't' && type_name[2] == 'r') {
@@ -1085,7 +1115,7 @@ fn Value* ffi_long_to_value(long result, char[] type_name, Interp* interp) {
         if (ptr == null) return make_nil(interp);
         // Measure length
         usz len = 0;
-        while (ptr[len] != 0 && len < MAX_STRING_LEN - 1) len++;
+        while (ptr[len] != 0) len++;
         return make_string(interp, ptr[:len]);
     }
     if (type_name.len == 4 && type_name[0] == 'v' && type_name[1] == 'o' && type_name[2] == 'i' && type_name[3] == 'd') {
@@ -1110,7 +1140,7 @@ fn Value* prim_ffi_open(Value*[] args, Env* env, Interp* interp) {
         return make_error(interp, "ffi-open: expected string argument");
     }
     char[] name = args[0].str_val.chars[:args[0].str_val.len];
-    void* handle = dlopen((ZString)&args[0].str_val.chars, RTLD_LAZY);
+    void* handle = dlopen((ZString)args[0].str_val.chars, RTLD_LAZY);
     if (handle == null) {
         char* err = dlerror();
         if (err != null) {
@@ -1164,7 +1194,7 @@ fn Value* prim_ffi_call(Value*[] args, Env* env, Interp* interp) {
         if (match) { fn_ptr = args[0].ffi_val.sym_cache_ptrs[ci]; break; }
     }
     if (fn_ptr == null) {
-        fn_ptr = dlsym(args[0].ffi_val.lib_handle, (ZString)&args[1].str_val.chars);
+        fn_ptr = dlsym(args[0].ffi_val.lib_handle, (ZString)args[1].str_val.chars);
         if (fn_ptr == null) {
             char* err = dlerror();
             if (err != null) {
@@ -1175,7 +1205,7 @@ fn Value* prim_ffi_call(Value*[] args, Env* env, Interp* interp) {
             return make_error(interp, "ffi-call: dlsym failed");
         }
         // Populate cache
-        if (args[0].ffi_val.sym_cache_count < 32 && fn_name.len < 64) {
+        if (args[0].ffi_val.sym_cache_count < 64 && fn_name.len < 64) {
             usz ci = args[0].ffi_val.sym_cache_count;
             args[0].ffi_val.sym_cache_ptrs[ci] = fn_ptr;
             for (usz cj = 0; cj < fn_name.len; cj++) {
@@ -1305,7 +1335,7 @@ fn Value* prim_ffi_sym(Value*[] args, Env* env, Interp* interp) {
     if (args[1] == null || args[1].tag != STRING) {
         return make_error(interp, "ffi-sym: second arg must be a string");
     }
-    void* sym = dlsym(args[0].ffi_val.lib_handle, (ZString)&args[1].str_val.chars);
+    void* sym = dlsym(args[0].ffi_val.lib_handle, (ZString)args[1].str_val.chars);
     if (sym == null) return make_int(interp, 0);
     return make_int(interp, (long)(uptr)sym);
 }
@@ -1653,8 +1683,7 @@ fn Value* prim_string_replace(Value*[] args, Env* env, Interp* interp) {
     if (old.len == 0) return args[0]; // nothing to replace
     Value* result = interp.alloc_value();
     result.tag = STRING;
-    result.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
-    result.str_val.len = 0;
+    result.str_val = strval_new(str.len);
     usz i = 0;
     while (i < str.len) {
         if (i + old.len <= str.len) {
@@ -1663,16 +1692,15 @@ fn Value* prim_string_replace(Value*[] args, Env* env, Interp* interp) {
                 if (str[i + j] != old[j]) { match = false; break; }
             }
             if (match) {
-                for (usz j = 0; j < new_str.len && result.str_val.len < MAX_STRING_LEN - 1; j++) {
+                strval_ensure(result.str_val, new_str.len);
+                for (usz j = 0; j < new_str.len; j++) {
                     result.str_val.chars[result.str_val.len++] = new_str[j];
                 }
                 i += old.len;
                 continue;
             }
         }
-        if (result.str_val.len < MAX_STRING_LEN - 1) {
-            result.str_val.chars[result.str_val.len++] = str[i];
-        }
+        strval_push(result.str_val, str[i]);
         i++;
     }
     result.str_val.chars[result.str_val.len] = 0;
@@ -1685,7 +1713,7 @@ fn Value* prim_char_at(Value*[] args, Env* env, Interp* interp) {
     if (idx < 0 || (usz)idx >= args[0].str_val.len) return make_error(interp, "char-at: index out of range");
     Value* result = interp.alloc_value();
     result.tag = STRING;
-    result.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
+    result.str_val = strval_new(32);
     result.str_val.chars[0] = args[0].str_val.chars[(usz)idx];
     result.str_val.chars[1] = 0;
     result.str_val.len = 1;
@@ -1698,10 +1726,10 @@ fn Value* prim_string_repeat(Value*[] args, Env* env, Interp* interp) {
     if (n <= 0) return make_string(interp, "");
     Value* result = interp.alloc_value();
     result.tag = STRING;
-    result.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
-    result.str_val.len = 0;
+    result.str_val = strval_new(args[0].str_val.len * (usz)n);
     for (long i = 0; i < n; i++) {
-        for (usz j = 0; j < args[0].str_val.len && result.str_val.len < MAX_STRING_LEN - 1; j++) {
+        strval_ensure(result.str_val, args[0].str_val.len);
+        for (usz j = 0; j < args[0].str_val.len; j++) {
             result.str_val.chars[result.str_val.len++] = args[0].str_val.chars[j];
         }
     }
@@ -1761,8 +1789,7 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
     char[] fmt = args[0].str_val.chars[:args[0].str_val.len];
     Value* result = interp.alloc_value();
     result.tag = STRING;
-    result.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
-    result.str_val.len = 0;
+    result.str_val = strval_new(fmt.len);
     usz arg_idx = 1;
     for (usz i = 0; i < fmt.len; i++) {
         if (fmt[i] == '~' && i + 1 < fmt.len) {
@@ -1773,51 +1800,57 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
                     Value* a = args[arg_idx++];
                     if (a == null || is_nil(a)) {
                         char[] s = "nil";
-                        for (usz k = 0; k < 3 && result.str_val.len < MAX_STRING_LEN - 1; k++) {
+                        strval_ensure(result.str_val, 3);
+                        for (usz k = 0; k < 3; k++) {
                             result.str_val.chars[result.str_val.len++] = s[k];
                         }
                     } else if (is_int(a)) {
                         char[32] nbuf;
                         char[] nslice = io::bprintf(&nbuf, "%d", a.int_val)!!;
-                        for (usz k = 0; k < nslice.len && result.str_val.len < MAX_STRING_LEN - 1; k++) {
+                        strval_ensure(result.str_val, nslice.len);
+                        for (usz k = 0; k < nslice.len; k++) {
                             result.str_val.chars[result.str_val.len++] = nslice[k];
                         }
                     } else if (is_double(a)) {
                         char[64] nbuf;
                         char[] nslice = io::bprintf(&nbuf, "%.15g", a.double_val)!!;
-                        for (usz k = 0; k < nslice.len && result.str_val.len < MAX_STRING_LEN - 1; k++) {
+                        strval_ensure(result.str_val, nslice.len);
+                        for (usz k = 0; k < nslice.len; k++) {
                             result.str_val.chars[result.str_val.len++] = nslice[k];
                         }
                     } else if (a.tag == STRING) {
                         if (directive == 's') {
-                            if (result.str_val.len < MAX_STRING_LEN - 1) { result.str_val.chars[result.str_val.len++] = '"'; }
+                            strval_push(result.str_val, '"');
                         }
-                        for (usz k = 0; k < a.str_val.len && result.str_val.len < MAX_STRING_LEN - 1; k++) {
+                        strval_ensure(result.str_val, a.str_val.len);
+                        for (usz k = 0; k < a.str_val.len; k++) {
                             result.str_val.chars[result.str_val.len++] = a.str_val.chars[k];
                         }
                         if (directive == 's') {
-                            if (result.str_val.len < MAX_STRING_LEN - 1) { result.str_val.chars[result.str_val.len++] = '"'; }
+                            strval_push(result.str_val, '"');
                         }
                     } else if (is_symbol(a)) {
                         char[] sname = interp.symbols.get_name(a.sym_val);
-                        for (usz k = 0; k < sname.len && result.str_val.len < MAX_STRING_LEN - 1; k++) {
+                        strval_ensure(result.str_val, sname.len);
+                        for (usz k = 0; k < sname.len; k++) {
                             result.str_val.chars[result.str_val.len++] = sname[k];
                         }
                     } else {
                         char[] s = "#<obj>";
-                        for (usz k = 0; k < s.len && result.str_val.len < MAX_STRING_LEN - 1; k++) {
+                        strval_ensure(result.str_val, s.len);
+                        for (usz k = 0; k < s.len; k++) {
                             result.str_val.chars[result.str_val.len++] = s[k];
                         }
                     }
                 }
             } else if (directive == '~') {
-                if (result.str_val.len < MAX_STRING_LEN - 1) { result.str_val.chars[result.str_val.len++] = '~'; }
+                strval_push(result.str_val, '~');
             } else {
-                if (result.str_val.len < MAX_STRING_LEN - 1) { result.str_val.chars[result.str_val.len++] = '~'; }
-                if (result.str_val.len < MAX_STRING_LEN - 1) { result.str_val.chars[result.str_val.len++] = directive; }
+                strval_push(result.str_val, '~');
+                strval_push(result.str_val, directive);
             }
         } else {
-            if (result.str_val.len < MAX_STRING_LEN - 1) { result.str_val.chars[result.str_val.len++] = fmt[i]; }
+            strval_push(result.str_val, fmt[i]);
         }
     }
     result.str_val.chars[result.str_val.len] = 0;
@@ -1830,7 +1863,7 @@ fn Value* prim_display(Value*[] args, Env* env, Interp* interp) {
     if (v == null || is_nil(v)) {
         io::print("nil");
     } else if (v.tag == STRING) {
-        io::printf("%s", (ZString)&v.str_val.chars); // No quotes for display
+        io::printf("%s", (ZString)v.str_val.chars); // No quotes for display
     } else {
         print_value(v, &interp.symbols);
     }
@@ -1849,8 +1882,8 @@ fn Value* prim_macroexpand(Value*[] args, Env* env, Interp* interp) {
     SymbolId sym = head.sym_val;
     // Check macro table using hash index
     usz mh = (usz)((uint)sym * 2654435761);
-    usz mmask = MACRO_HASH_SIZE - 1;
-    for (usz probe = 0; probe < MACRO_HASH_SIZE; probe++) {
+    usz mmask = interp.macro_hash_capacity - 1;
+    for (usz probe = 0; probe < interp.macro_hash_capacity; probe++) {
         usz slot = (mh + probe) & mmask;
         usz midx = interp.macro_hash_index[slot];
         if (midx == usz.max) break; // empty slot
@@ -1878,15 +1911,15 @@ fn Value* prim_apply(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return make_error(interp, "apply: expected function and argument list");
     Value* func = args[0];
     Value* arg_list = args[1];
-    // Apply one arg at a time via JIT path
-    Value* result = func;
+    // Count args
+    usz arg_count = 0;
     Value* cur = arg_list;
     while (is_cons(cur)) {
-        result = jit_apply_value(result, cur.cons_val.car, interp);
-        if (result != null && result.tag == ERROR) return make_error(interp, "apply: error during application");
+        arg_count++;
         cur = cur.cons_val.cdr;
     }
-    return result;
+    // Use multi-arg apply (handles multi-param closures, variadics, etc.)
+    return jit_apply_multi_args(interp, func, arg_list, arg_count);
 }
 
 fn Value* prim_bound(Value*[] args, Env* env, Interp* interp) {
@@ -2280,6 +2313,7 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
         case STRING:
         case ERROR:
             if (v.str_val != null) {
+                if (v.str_val.chars != null) mem::free(v.str_val.chars);
                 mem::free(v.str_val);
                 v.str_val = null;
             }
@@ -2287,8 +2321,8 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
     }
     // Mark as error so use-after-free is caught instead of silently becoming nil
     v.tag = ERROR;
-    v.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
     char[] msg = "use after unsafe-free!";
+    v.str_val = strval_new(msg.len);
     for (usz i = 0; i < msg.len; i++) {
         v.str_val.chars[i] = msg[i];
     }
