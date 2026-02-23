@@ -362,17 +362,18 @@ fn SymbolId value_type_name(Value* v, Interp* interp) {
  * Format a detailed dispatch error showing method name, arg types, and arity hints.
  */
 fn Value* format_dispatch_error(MethodTable* mt, Value*[] args, Interp* interp) {
-    char[512] buf;
     char[] name = interp.symbols.get_name(mt.name);
 
     // Build "Int, String" arg type list
-    char[128] arg_types_buf;
-    usz apos = 0;
-    for (usz i = 0; i < args.len && apos < 120; i++) {
-        if (i > 0) { arg_types_buf[apos++] = ','; arg_types_buf[apos++] = ' '; }
-        char[] tname = interp.symbols.get_name(value_type_name(args[i], interp));
-        for (usz c = 0; c < tname.len && apos < 120; c++) arg_types_buf[apos++] = tname[c];
+    DString ds;
+    ds.init(mem);
+    defer ds.free();
+
+    for (usz i = 0; i < args.len; i++) {
+        if (i > 0) ds.append_string(", ");
+        ds.append_string((String)interp.symbols.get_name(value_type_name(args[i], interp)));
     }
+    char[] arg_types = ds.str_view();
 
     // Check if arity mismatch is the issue
     bool has_arity_match = false;
@@ -380,11 +381,13 @@ fn Value* format_dispatch_error(MethodTable* mt, Value*[] args, Interp* interp) 
         if (mt.entries[i].sig.param_count == args.len) { has_arity_match = true; break; }
     }
 
+    char[512] buf;
     char[] msg;
     if (mt.entry_count > 0 && !has_arity_match) {
         // Collect unique arities
-        char[64] arity_buf;
-        usz arpos = 0;
+        DString arities;
+        arities.init(mem);
+        defer arities.free();
         usz[8] seen_arities;
         usz seen_count = 0;
         for (usz i = 0; i < mt.entry_count && seen_count < 8; i++) {
@@ -393,21 +396,16 @@ fn Value* format_dispatch_error(MethodTable* mt, Value*[] args, Interp* interp) 
             for (usz s = 0; s < seen_count; s++) { if (seen_arities[s] == pc) { dup = true; break; } }
             if (!dup) {
                 seen_arities[seen_count++] = pc;
-                if (arpos > 0 && arpos < 60) { arity_buf[arpos++] = ','; arity_buf[arpos++] = ' '; }
-                // Simple int-to-char for small numbers
-                if (pc < 10 && arpos < 60) {
-                    arity_buf[arpos++] = (char)('0' + pc);
-                } else if (arpos < 58) {
-                    arity_buf[arpos++] = (char)('0' + pc / 10);
-                    arity_buf[arpos++] = (char)('0' + pc % 10);
-                }
+                if (arities.len() > 0) arities.append_string(", ");
+                char[4] nbuf;
+                arities.append_string((String)int_to_string((long)pc, &nbuf));
             }
         }
         msg = io::bprintf(&buf, "no matching method '%s': got %d arg(s) (%s), expected %s arg(s)",
-            (ZString)name, (int)args.len, (ZString)arg_types_buf[:apos], (ZString)arity_buf[:arpos])!!;
+            (ZString)name, (int)args.len, (ZString)arg_types, (ZString)arities.str_view())!!;
     } else {
         msg = io::bprintf(&buf, "no matching method '%s' for (%s)",
-            (ZString)name, (ZString)arg_types_buf[:apos])!!;
+            (ZString)name, (ZString)arg_types)!!;
     }
     return make_error(interp, msg);
 }
@@ -426,8 +424,9 @@ fn Value* format_match_error(Value* scrutinee, Expr* expr, Interp* interp) {
         if (ti != null && ti.parent != INVALID_TYPE_ID) {
             TypeInfo* parent = interp.types.get(ti.parent);
             if (parent != null && parent.kind == TK_UNION) {
-                char[256] missing_buf;
-                usz mpos = 0;
+                DString missing;
+                missing.init(mem);
+                defer missing.free();
                 usz missing_count = 0;
                 for (usz v = 0; v < parent.variant_count; v++) {
                     char[] vname = interp.symbols.get_name(parent.variants[v].name);
@@ -446,16 +445,16 @@ fn Value* format_match_error(Value* scrutinee, Expr* expr, Interp* interp) {
                             }
                         }
                     }
-                    if (!covered && mpos < 240) {
-                        if (missing_count > 0) { missing_buf[mpos++] = ','; missing_buf[mpos++] = ' '; }
-                        for (usz ch = 0; ch < vname.len && mpos < 240; ch++) missing_buf[mpos++] = vname[ch];
+                    if (!covered) {
+                        if (missing_count > 0) missing.append_string(", ");
+                        missing.append_string((String)vname);
                         missing_count++;
                     }
                 }
                 if (missing_count > 0) {
                     char[] parent_name = interp.symbols.get_name(parent.name);
                     char[] msg = io::bprintf(&buf, "no pattern matched: %s value '%s', missing variants: %s",
-                        (ZString)parent_name, (ZString)type_name, (ZString)missing_buf[:mpos])!!;
+                        (ZString)parent_name, (ZString)type_name, (ZString)missing.str_view())!!;
                     return make_error(interp, msg);
                 }
             }
@@ -1027,6 +1026,15 @@ fn Value* copy_to_parent(Value* v, Interp* interp, main::RegionHandle target) {
 fn Env* deep_copy_env(Env* env, Interp* interp, usz depth = 0) {
     if (env == null || env == interp.global_env) return env;
     if (depth >= 256) return null;
+
+    // Persistent env nodes (mutable boxes allocated in root_region) are kept
+    // as-is to preserve sharing between JIT stack slots and closure captures.
+    // Their parent chain still needs fixing up since it may point to child-region envs.
+    if (env.persistent) {
+        env.parent = deep_copy_env(env.parent, interp, depth + 1);
+        return env;
+    }
+
     main::RegionHandle saved = interp.current_frame;
     interp.current_frame = interp.root_region;
     Env* new_env = interp.alloc_env();
@@ -1528,8 +1536,16 @@ fn bool is_falsy(Value* v, Interp* interp) {
 // SECTION 8: INTERPRETER INITIALIZATION
 // =============================================================================
 
+// Primitive registration table entry
+struct PrimReg {
+    char[] name;
+    PrimitiveFn func;
+    int arity;
+}
+
 /**
  * Register all primitive functions in the interpreter.
+ * Uses data-driven tables to separate declaration from registration logic.
  */
 fn void register_primitives(Interp* interp) {
     // Register true, false, and nil as symbols bound to their values
@@ -1541,160 +1557,96 @@ fn void register_primitives(Interp* interp) {
     SymbolId sym_nil = interp.symbols.intern("nil");
     interp.global_env.define(sym_nil, nil_val);
 
-    // Arithmetic (dispatch-ready for user-defined numeric types)
-    register_dispatched_prim(interp, "+", &prim_add, 2);
-    register_dispatched_prim(interp, "-", &prim_sub, 2);
-    register_dispatched_prim(interp, "*", &prim_mul, 2);
-    register_dispatched_prim(interp, "/", &prim_div, 2);
-    register_dispatched_prim(interp, "%", &prim_mod, 2);
+    // --- Dispatched primitives (have MethodTable for user-defined type extension) ---
+    PrimReg[19] dispatched_prims = {
+        // Arithmetic
+        { "+", &prim_add, 2 }, { "-", &prim_sub, 2 }, { "*", &prim_mul, 2 },
+        { "/", &prim_div, 2 }, { "%", &prim_mod, 2 },
+        // Comparison
+        { "=", &prim_eq, 2 }, { "<", &prim_lt, 2 }, { ">", &prim_gt, 2 },
+        { "<=", &prim_le, 2 }, { ">=", &prim_ge, 2 },
+        // Collections
+        { "length", &prim_length, 1 }, { "ref", &prim_ref, 2 },
+        { "push!", &prim_push, 2 }, { "keys", &prim_keys, 1 },
+        { "values", &prim_values, 1 }, { "has?", &prim_has, 2 },
+        { "remove!", &prim_remove, 2 },
+        // Sorting
+        { "sort", &prim_sort, 1 }, { "sort-by", &prim_sort_by, 2 },
+    };
+    foreach (&d : dispatched_prims) {
+        register_dispatched_prim(interp, d.name, d.func, d.arity);
+    }
 
-    // Comparison (dispatch-ready for user-defined ordering)
-    register_dispatched_prim(interp, "=", &prim_eq, 2);
-    register_dispatched_prim(interp, "<", &prim_lt, 2);
-    register_dispatched_prim(interp, ">", &prim_gt, 2);
-    register_dispatched_prim(interp, "<=", &prim_le, 2);
-    register_dispatched_prim(interp, ">=", &prim_ge, 2);
-
-    // List operations
-    register_prim(interp, "cons", &prim_cons, 2);
-    register_prim(interp, "car", &prim_car, 1);
-    register_prim(interp, "cdr", &prim_cdr, 1);
-    register_prim(interp, "null?", &prim_null, 1);
-    register_prim(interp, "pair?", &prim_pair, 1);
-    register_prim(interp, "list", &prim_list, -1);
-    register_dispatched_prim(interp, "length", &prim_length, 1);
-
-    // Boolean
-    register_prim(interp, "not", &prim_not, 1);
-
-    // I/O (raw primitives + effect-compatible names)
-    register_prim(interp, "__raw-print", &prim_print, 1);
-    register_prim(interp, "__raw-println", &prim_println, 1);
-    register_prim(interp, "__raw-newline", &prim_newline, 0);
-    register_prim(interp, "__raw-display", &prim_display, 1);
-
-    // String primitives
-    register_prim(interp, "string-append", &prim_string_append, -1);
-    register_prim(interp, "string-join", &prim_string_join, 2);
-    register_prim(interp, "substring", &prim_substring, 3);
-    register_prim(interp, "string-split", &prim_string_split, 2);
-    register_prim(interp, "string-length", &prim_string_length, 1);
-    register_prim(interp, "string->list", &prim_string_to_list, 1);
-    register_prim(interp, "list->string", &prim_list_to_string, 1);
-    register_prim(interp, "string-upcase", &prim_string_upcase, 1);
-    register_prim(interp, "string-downcase", &prim_string_downcase, 1);
-    register_prim(interp, "string-trim", &prim_string_trim, 1);
-    register_prim(interp, "continuation?", &prim_is_continuation, 1);
-
-    // File I/O primitives (raw + effect-compatible)
-    register_prim(interp, "__raw-read-file", &prim_read_file, 1);
-    register_prim(interp, "__raw-write-file", &prim_write_file, 2);
-    register_prim(interp, "__raw-file-exists?", &prim_file_exists, 1);
-    register_prim(interp, "__raw-read-lines", &prim_read_lines, 1);
-    register_prim(interp, "load", &prim_load, 1);
-
-    // Conversion primitives
-    register_prim(interp, "string->number", &prim_string_to_number, 1);
-    register_prim(interp, "number->string", &prim_number_to_string, 1);
-    register_prim(interp, "exact->inexact", &prim_exact_to_inexact, 1);
-    register_prim(interp, "inexact->exact", &prim_inexact_to_exact, 1);
-
-    // Gensym
-    register_prim(interp, "gensym", &prim_gensym, 0);
-
-    // Dict primitives
-    register_prim(interp, "dict", &prim_dict, -1);
-    register_prim(interp, "dict-set!", &prim_dict_set, 3);
-
-    // FFI primitives
-    register_prim(interp, "ffi-open", &prim_ffi_open, 1);
-    register_prim(interp, "ffi-call", &prim_ffi_call, -1);
-    register_prim(interp, "ffi-close", &prim_ffi_close, 1);
-    register_prim(interp, "ffi-sym", &prim_ffi_sym, 2);
-
-    // Phase 2: Math library
-    register_prim(interp, "sin", &prim_sin, 1);
-    register_prim(interp, "cos", &prim_cos, 1);
-    register_prim(interp, "tan", &prim_tan, 1);
-    register_prim(interp, "asin", &prim_asin, 1);
-    register_prim(interp, "acos", &prim_acos, 1);
-    register_prim(interp, "atan", &prim_atan, 1);
-    register_prim(interp, "atan2", &prim_atan2, 2);
-    register_prim(interp, "exp", &prim_exp, 1);
-    register_prim(interp, "log", &prim_log, 1);
-    register_prim(interp, "log10", &prim_log10, 1);
-    register_prim(interp, "pow", &prim_pow, 2);
-    register_prim(interp, "sqrt", &prim_sqrt, 1);
-    register_prim(interp, "floor", &prim_floor, 1);
-    register_prim(interp, "ceiling", &prim_ceiling, 1);
-    register_prim(interp, "round", &prim_round, 1);
-    register_prim(interp, "truncate", &prim_truncate, 1);
-    register_prim(interp, "abs", &prim_abs, 1);
-    register_prim(interp, "min", &prim_min, 2);
-    register_prim(interp, "max", &prim_max, 2);
-    register_prim(interp, "gcd", &prim_gcd, 2);
-    register_prim(interp, "lcm", &prim_lcm, 2);
-
-    // Phase 3: Sorting & bitwise
-    register_dispatched_prim(interp, "sort", &prim_sort, 1);
-    register_dispatched_prim(interp, "sort-by", &prim_sort_by, 2);
-    register_prim(interp, "bitwise-and", &prim_bitwise_and, 2);
-    register_prim(interp, "bitwise-or", &prim_bitwise_or, 2);
-    register_prim(interp, "bitwise-xor", &prim_bitwise_xor, 2);
-    register_prim(interp, "bitwise-not", &prim_bitwise_not, 1);
-    register_prim(interp, "lshift", &prim_lshift, 2);
-    register_prim(interp, "rshift", &prim_rshift, 2);
-
-    // Phase 5: String operations & type predicates
-    register_prim(interp, "string-contains?", &prim_string_contains, 2);
-    register_prim(interp, "string-index-of", &prim_string_index_of, 2);
-    register_prim(interp, "string-replace", &prim_string_replace, 3);
-    register_prim(interp, "char-at", &prim_char_at, 2);
-    register_prim(interp, "string-repeat", &prim_string_repeat, 2);
-    register_prim(interp, "procedure?", &prim_is_procedure, 1);
-    register_prim(interp, "format", &prim_format, -1);
-
-    // Phase 7: Introspection & metaprogramming
-    register_prim(interp, "macroexpand", &prim_macroexpand, 1);
-    register_prim(interp, "eval", &prim_eval, 1);
-    register_prim(interp, "apply", &prim_apply, 2);
-    register_prim(interp, "bound?", &prim_bound, 1);
-    register_prim(interp, "error", &prim_error, 1);
-    register_prim(interp, "error-message", &prim_error_message, 1);
-
-    // Phase 8: Arrays
-    register_prim(interp, "array", &prim_array, -1);
-    register_prim(interp, "array-set!", &prim_array_set, 3);
-
-    // Generic collection primitives (dispatch-ready for user-defined collections)
-    register_dispatched_prim(interp, "ref", &prim_ref, 2);
-    register_dispatched_prim(interp, "push!", &prim_push, 2);
-    register_dispatched_prim(interp, "keys", &prim_keys, 1);
-    register_dispatched_prim(interp, "values", &prim_values, 1);
-    register_dispatched_prim(interp, "has?", &prim_has, 2);
-    register_dispatched_prim(interp, "remove!", &prim_remove, 2);
-
-    // Phase 9: Sets (built on dict)
-    register_prim(interp, "set", &prim_set, -1);
-    register_prim(interp, "set-add", &prim_set_add, 2);
-    register_prim(interp, "set-remove", &prim_set_remove, 2);
-    register_prim(interp, "set-contains?", &prim_set_contains, 2);
-    register_prim(interp, "set-size", &prim_set_size, 1);
-    register_prim(interp, "set->list", &prim_set_to_list, 1);
-
-    // Phase 12: Additional I/O and convenience
-    register_prim(interp, "read-string", &prim_read_string, 1);
-    register_prim(interp, "string->symbol", &prim_string_to_symbol, 1);
-    register_prim(interp, "symbol->string", &prim_symbol_to_string, 1);
-
-    // Type system primitives
-    register_prim(interp, "type-of", &prim_type_of, 1);
-    register_prim(interp, "is?", &prim_is_type, 2);
-    register_prim(interp, "instance?", &prim_is_instance, 1);
-    register_prim(interp, "type-args", &prim_type_args, 1);
-
-    // Memory reclamation
-    register_prim(interp, "unsafe-free!", &prim_free_bang, 1);
+    // --- Regular primitives ---
+    PrimReg[94] regular_prims = {
+        // List operations
+        { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
+        { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 }, { "list", &prim_list, -1 },
+        // Boolean
+        { "not", &prim_not, 1 },
+        // I/O (raw primitives for effect fast path)
+        { "__raw-print", &prim_print, 1 }, { "__raw-println", &prim_println, 1 },
+        { "__raw-newline", &prim_newline, 0 }, { "__raw-display", &prim_display, 1 },
+        // String primitives
+        { "string-append", &prim_string_append, -1 }, { "string-join", &prim_string_join, 2 },
+        { "substring", &prim_substring, 3 }, { "string-split", &prim_string_split, 2 },
+        { "string-length", &prim_string_length, 1 }, { "string->list", &prim_string_to_list, 1 },
+        { "list->string", &prim_list_to_string, 1 }, { "string-upcase", &prim_string_upcase, 1 },
+        { "string-downcase", &prim_string_downcase, 1 }, { "string-trim", &prim_string_trim, 1 },
+        { "continuation?", &prim_is_continuation, 1 },
+        // File I/O
+        { "__raw-read-file", &prim_read_file, 1 }, { "__raw-write-file", &prim_write_file, 2 },
+        { "__raw-file-exists?", &prim_file_exists, 1 }, { "__raw-read-lines", &prim_read_lines, 1 },
+        { "load", &prim_load, 1 },
+        // Conversion
+        { "string->number", &prim_string_to_number, 1 }, { "number->string", &prim_number_to_string, 1 },
+        { "exact->inexact", &prim_exact_to_inexact, 1 }, { "inexact->exact", &prim_inexact_to_exact, 1 },
+        // Gensym
+        { "gensym", &prim_gensym, 0 },
+        // Dict
+        { "dict", &prim_dict, -1 }, { "dict-set!", &prim_dict_set, 3 },
+        // FFI
+        { "ffi-open", &prim_ffi_open, 1 }, { "ffi-call", &prim_ffi_call, -1 },
+        { "ffi-close", &prim_ffi_close, 1 }, { "ffi-sym", &prim_ffi_sym, 2 },
+        // Math library
+        { "sin", &prim_sin, 1 }, { "cos", &prim_cos, 1 }, { "tan", &prim_tan, 1 },
+        { "asin", &prim_asin, 1 }, { "acos", &prim_acos, 1 }, { "atan", &prim_atan, 1 },
+        { "atan2", &prim_atan2, 2 }, { "exp", &prim_exp, 1 }, { "log", &prim_log, 1 },
+        { "log10", &prim_log10, 1 }, { "pow", &prim_pow, 2 }, { "sqrt", &prim_sqrt, 1 },
+        { "floor", &prim_floor, 1 }, { "ceiling", &prim_ceiling, 1 }, { "round", &prim_round, 1 },
+        { "truncate", &prim_truncate, 1 }, { "abs", &prim_abs, 1 }, { "min", &prim_min, 2 },
+        { "max", &prim_max, 2 }, { "gcd", &prim_gcd, 2 }, { "lcm", &prim_lcm, 2 },
+        // Bitwise
+        { "bitwise-and", &prim_bitwise_and, 2 }, { "bitwise-or", &prim_bitwise_or, 2 },
+        { "bitwise-xor", &prim_bitwise_xor, 2 }, { "bitwise-not", &prim_bitwise_not, 1 },
+        { "lshift", &prim_lshift, 2 }, { "rshift", &prim_rshift, 2 },
+        // String operations & predicates
+        { "string-contains?", &prim_string_contains, 2 }, { "string-index-of", &prim_string_index_of, 2 },
+        { "string-replace", &prim_string_replace, 3 }, { "char-at", &prim_char_at, 2 },
+        { "string-repeat", &prim_string_repeat, 2 }, { "procedure?", &prim_is_procedure, 1 },
+        { "format", &prim_format, -1 },
+        // Introspection & metaprogramming
+        { "macroexpand", &prim_macroexpand, 1 }, { "eval", &prim_eval, 1 },
+        { "apply", &prim_apply, 2 }, { "bound?", &prim_bound, 1 },
+        { "error", &prim_error, 1 }, { "error-message", &prim_error_message, 1 },
+        // Arrays
+        { "array", &prim_array, -1 }, { "array-set!", &prim_array_set, 3 },
+        // Sets
+        { "set", &prim_set, -1 }, { "set-add", &prim_set_add, 2 },
+        { "set-remove", &prim_set_remove, 2 }, { "set-contains?", &prim_set_contains, 2 },
+        { "set-size", &prim_set_size, 1 }, { "set->list", &prim_set_to_list, 1 },
+        // Additional I/O and convenience
+        { "read-string", &prim_read_string, 1 }, { "string->symbol", &prim_string_to_symbol, 1 },
+        { "symbol->string", &prim_symbol_to_string, 1 },
+        // Type system
+        { "type-of", &prim_type_of, 1 }, { "is?", &prim_is_type, 2 },
+        { "instance?", &prim_is_instance, 1 }, { "type-args", &prim_type_args, 1 },
+        // Memory reclamation
+        { "unsafe-free!", &prim_free_bang, 1 },
+    };
+    foreach (&r : regular_prims) {
+        register_prim(interp, r.name, r.func, r.arity);
+    }
 
     // Register built-in types
     register_builtin_types(interp);
@@ -2154,17 +2106,17 @@ fn void repl(Interp* interp) {
             len++;
         }
 
+        defer mem::free(line);
+
         // If we're in continuation mode and get an empty line, cancel
         if (buf_len > 0 && len == 0) {
             io::printn("Input cancelled.");
             buf_len = 0;
-            mem::free(line);
             continue;
         }
 
         // Skip empty lines on primary prompt (don't add to history)
         if (buf_len == 0 && len == 0) {
-            mem::free(line);
             continue;
         }
 
@@ -2172,14 +2124,12 @@ fn void repl(Interp* interp) {
         if (buf_len == 0) {
             if (len >= 4 && line[0] == 'q' && line[1] == 'u' &&
                 line[2] == 'i' && line[3] == 't') {
-                mem::free(line);
                 io::printn("Goodbye!");
                 break;
             }
 
             if (len >= 4 && line[0] == 'e' && line[1] == 'x' &&
                 line[2] == 'i' && line[3] == 't') {
-                mem::free(line);
                 io::printn("Goodbye!");
                 break;
             }
@@ -2203,9 +2153,6 @@ fn void repl(Interp* interp) {
             buf[buf_len + i] = line[i];
         }
         buf_len += copy_len;
-
-        // Free the readline-allocated string
-        mem::free(line);
 
         // Check paren depth to see if expression is complete
         char[] accumulated = buf[:buf_len];

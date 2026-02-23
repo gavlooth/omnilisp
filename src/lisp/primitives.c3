@@ -243,30 +243,21 @@ fn Value* prim_list(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_string_append(Value*[] args, Env* env, Interp* interp) {
     if (args.len == 0) return make_string(interp, "");
 
-    // Calculate total length and validate all args are strings
-    usz total_len = 0;
+    // Validate all args are strings
     for (usz i = 0; i < args.len; i++) {
         if (!is_string(args[i])) {
             return make_error(interp, "string-append: expected string arguments");
         }
-        total_len += args[i].str_val.len;
     }
 
-    // Clamp to max length
-    if (total_len > MAX_STRING_LEN - 1) total_len = MAX_STRING_LEN - 1;
-
-    char[MAX_STRING_LEN] buffer;
-    usz pos = 0;
-
-    for (usz i = 0; i < args.len && pos < MAX_STRING_LEN - 1; i++) {
-        usz arg_len = args[i].str_val.len;
-        for (usz j = 0; j < arg_len && pos < MAX_STRING_LEN - 1; j++) {
-            buffer[pos++] = args[i].str_val.chars[j];
-        }
+    DString ds;
+    ds.init(mem);
+    for (usz i = 0; i < args.len; i++) {
+        ds.append_string((String)args[i].str_val.chars[:args[i].str_val.len]);
     }
-    buffer[pos] = 0;
-
-    return make_string(interp, buffer[:pos]);
+    Value* result = make_string(interp, ds.str_view());
+    ds.free();
+    return result;
 }
 
 /**
@@ -286,11 +277,11 @@ fn Value* prim_string_join(Value*[] args, Env* env, Interp* interp) {
         return make_error(interp, "string-join: expected list as second argument");
     }
 
-    char* sep = &args[0].str_val.chars;
-    usz sep_len = args[0].str_val.len;
+    char[] sep = args[0].str_val.chars[:args[0].str_val.len];
 
-    char[MAX_STRING_LEN] buffer;
-    usz pos = 0;
+    DString ds;
+    ds.init(mem);
+    defer ds.free();
     bool first = true;
 
     Value* list = args[1];
@@ -298,25 +289,17 @@ fn Value* prim_string_join(Value*[] args, Env* env, Interp* interp) {
         Value* elem = list.cons_val.car;
         list = list.cons_val.cdr;
 
-        if (!first && pos < MAX_STRING_LEN - 1) {
-            // Add separator
-            for (usz i = 0; i < sep_len && pos < MAX_STRING_LEN - 1; i++) {
-                buffer[pos++] = sep[i];
-            }
+        if (!first) {
+            ds.append_string((String)sep);
         }
         first = false;
 
         if (is_string(elem)) {
-            for (usz i = 0; i < elem.str_val.len && pos < MAX_STRING_LEN - 1; i++) {
-                buffer[pos++] = elem.str_val.chars[i];
-            }
+            ds.append_string((String)elem.str_val.chars[:elem.str_val.len]);
         }
     }
-    buffer[pos] = 0;
 
-    // Truncate if too long
-    if (pos > MAX_STRING_LEN - 1) pos = MAX_STRING_LEN - 1;
-    return make_string(interp, buffer[:pos]);
+    return make_string(interp, ds.str_view());
 }
 
 /**
@@ -343,14 +326,7 @@ fn Value* prim_substring(Value*[] args, Env* env, Interp* interp) {
     if (start >= end) return make_string(interp, "");
 
     usz sub_len = (usz)(end - start);
-    char[MAX_STRING_LEN] buffer;
-    for (usz i = 0; i < sub_len && i < MAX_STRING_LEN - 1; i++) {
-        buffer[i] = args[0].str_val.chars[(usz)start + i];
-    }
-    if (sub_len > MAX_STRING_LEN - 1) sub_len = MAX_STRING_LEN - 1;
-    buffer[sub_len] = 0;
-
-    return make_string(interp, buffer[:sub_len]);
+    return make_string(interp, args[0].str_val.chars[(usz)start:sub_len]);
 }
 
 /**
@@ -377,15 +353,14 @@ fn Value* prim_string_split(Value*[] args, Env* env, Interp* interp) {
 
     for (usz i = 0; i <= str_len; i++) {
         if (i == str_len || str[i] == delim) {
-            // Extract substring [start..i)
+            // Extract substring [start..i) — direct slice, no temp buffer
             usz part_len = i - start;
-            if (part_len > MAX_STRING_LEN - 1) part_len = MAX_STRING_LEN - 1;
-            char[MAX_STRING_LEN] buffer;
-            for (usz j = 0; j < part_len; j++) {
-                buffer[j] = str[start + j];
+            Value* part;
+            if (part_len == 0) {
+                part = make_string(interp, "");
+            } else {
+                part = make_string(interp, args[0].str_val.chars[start:part_len]);
             }
-            buffer[part_len] = 0;
-            Value* part = make_string(interp, buffer[:part_len]);
             parts = make_cons(interp, part, parts);
             start = i + 1;
         }
@@ -451,22 +426,21 @@ fn Value* prim_list_to_string(Value*[] args, Env* env, Interp* interp) {
         return make_error(interp, "list->string: expected a list");
     }
 
-    char[MAX_STRING_LEN] buffer;
-    usz pos = 0;
+    DString ds;
+    ds.init(mem);
+    defer ds.free();
 
     Value* list = args[0];
-    while (is_cons(list) && pos < MAX_STRING_LEN - 1) {
+    while (is_cons(list)) {
         Value* elem = list.cons_val.car;
         list = list.cons_val.cdr;
 
         if (is_string(elem) && elem.str_val.len > 0) {
-            // Take first character of the string
-            buffer[pos++] = elem.str_val.chars[0];
+            ds.append_char(elem.str_val.chars[0]);
         }
     }
-    buffer[pos] = 0;
 
-    return make_string(interp, buffer[:pos]);
+    return make_string(interp, ds.str_view());
 }
 
 /**
@@ -478,22 +452,15 @@ fn Value* prim_string_upcase(Value*[] args, Env* env, Interp* interp) {
         return make_error(interp, "string-upcase: expected string argument");
     }
 
-    char[MAX_STRING_LEN] buffer;
-    usz len = args[0].str_val.len;
-    if (len > MAX_STRING_LEN - 1) len = MAX_STRING_LEN - 1;
-
-    for (usz i = 0; i < len; i++) {
-        char c = args[0].str_val.chars[i];
-        // Convert lowercase a-z to uppercase A-Z
+    // Allocate result, then transform in place
+    Value* result = make_string(interp, args[0].str_val.chars[:args[0].str_val.len]);
+    for (usz i = 0; i < result.str_val.len; i++) {
+        char c = result.str_val.chars[i];
         if (c >= 'a' && c <= 'z') {
-            buffer[i] = c - 32;  // 'a' - 'A' = 32
-        } else {
-            buffer[i] = c;
+            result.str_val.chars[i] = c - 32;
         }
     }
-    buffer[len] = 0;
-
-    return make_string(interp, buffer[:len]);
+    return result;
 }
 
 /**
@@ -505,22 +472,15 @@ fn Value* prim_string_downcase(Value*[] args, Env* env, Interp* interp) {
         return make_error(interp, "string-downcase: expected string argument");
     }
 
-    char[MAX_STRING_LEN] buffer;
-    usz len = args[0].str_val.len;
-    if (len > MAX_STRING_LEN - 1) len = MAX_STRING_LEN - 1;
-
-    for (usz i = 0; i < len; i++) {
-        char c = args[0].str_val.chars[i];
-        // Convert uppercase A-Z to lowercase a-z
+    // Allocate result, then transform in place
+    Value* result = make_string(interp, args[0].str_val.chars[:args[0].str_val.len]);
+    for (usz i = 0; i < result.str_val.len; i++) {
+        char c = result.str_val.chars[i];
         if (c >= 'A' && c <= 'Z') {
-            buffer[i] = c + 32;  // 'a' - 'A' = 32
-        } else {
-            buffer[i] = c;
+            result.str_val.chars[i] = c + 32;
         }
     }
-    buffer[len] = 0;
-
-    return make_string(interp, buffer[:len]);
+    return result;
 }
 
 /**
@@ -554,17 +514,8 @@ fn Value* prim_string_trim(Value*[] args, Env* env, Interp* interp) {
         return make_string(interp, "");
     }
 
-    // Copy trimmed string
-    usz trim_len = end - start;
-    if (trim_len > MAX_STRING_LEN - 1) trim_len = MAX_STRING_LEN - 1;
-
-    char[MAX_STRING_LEN] buffer;
-    for (usz i = 0; i < trim_len; i++) {
-        buffer[i] = str[start + i];
-    }
-    buffer[trim_len] = 0;
-
-    return make_string(interp, buffer[:trim_len]);
+    // Direct slice — no temp buffer needed
+    return make_string(interp, args[0].str_val.chars[start:end - start]);
 }
 
 /**
@@ -648,11 +599,10 @@ fn Value* prim_write_file(Value*[] args, Env* env, Interp* interp) {
 
     // Open file for writing
     if (try file = io::file::open((String)path, "w")) {
+        defer (void)file.close();
         if (try bytes_written = file.write(content)) {
-            file.close()!!;
             return make_symbol(interp, interp.sym_true);
         }
-        file.close()!!;
     }
     return make_nil(interp);
 }
@@ -805,36 +755,11 @@ fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_number_to_string(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_number(args[0])) return make_error(interp, "number->string: expected number");
+    char[64] buf;
     if (is_double(args[0])) {
-        char[64] dbuf;
-        char[] dslice = io::bprintf(&dbuf, "%.15g", args[0].double_val)!!;
-        return make_string(interp, dslice);
+        return make_string(interp, double_to_string(args[0].double_val, &buf));
     }
-    long n = args[0].int_val;
-    char[24] buf;
-    usz len = 0;
-    if (n == 0) {
-        buf[0] = '0';
-        len = 1;
-    } else {
-        bool negative = n < 0;
-        if (negative) n = -n;
-        // Reverse digit extraction
-        usz start = 0;
-        while (n > 0) {
-            buf[len] = (char)('0' + (char)(n % 10));
-            len++;
-            n = n / 10;
-        }
-        if (negative) { buf[len] = '-'; len++; }
-        // Reverse in-place
-        for (usz j = 0; j < len / 2; j++) {
-            char tmp = buf[j];
-            buf[j] = buf[len - 1 - j];
-            buf[len - 1 - j] = tmp;
-        }
-    }
-    return make_string(interp, buf[:len]);
+    return make_string(interp, int_to_string(args[0].int_val, &buf));
 }
 
 fn Value* prim_gensym(Value*[] args, Env* env, Interp* interp) {

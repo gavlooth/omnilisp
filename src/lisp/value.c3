@@ -159,9 +159,9 @@ fn SymbolId SymbolTable.intern(SymbolTable* self, char[] name) {
     return id;
 }
 
+<* @require (usz)id < self.count : "invalid symbol id" *>
 fn char[] SymbolTable.get_name(SymbolTable* self, SymbolId id) {
     usz idx = (usz)id;
-    assert(idx < self.count, "invalid symbol id");
     return self.entries[idx].name[:self.entries[idx].len];
 }
 
@@ -516,12 +516,14 @@ struct Value {
 // SECTION 2: VALUE CONSTRUCTORS
 // =============================================================================
 
+<* @ensure return != null *>
 fn Value* make_nil(Interp* interp) @inline {
     Value* v = interp.alloc_value();
     v.tag = NIL;
     return v;
 }
 
+<* @ensure return != null *>
 fn Value* make_int(Interp* interp, long n) @inline {
     Value* v = interp.alloc_value();
     v.tag = INT;
@@ -529,6 +531,7 @@ fn Value* make_int(Interp* interp, long n) @inline {
     return v;
 }
 
+<* @ensure return != null *>
 fn Value* make_double(Interp* interp, double d) @inline {
     Value* v = interp.alloc_value();
     v.tag = DOUBLE;
@@ -536,6 +539,7 @@ fn Value* make_double(Interp* interp, double d) @inline {
     return v;
 }
 
+<* @ensure return != null *>
 fn Value* make_string(Interp* interp, char[] str) {
     Value* v = interp.alloc_value();
     v.tag = STRING;
@@ -553,6 +557,7 @@ fn Value* make_string(Interp* interp, char[] str) {
     return v;
 }
 
+<* @ensure return != null *>
 fn Value* make_symbol(Interp* interp, SymbolId sym) @inline {
     Value* v = interp.alloc_value();
     v.tag = SYMBOL;
@@ -560,6 +565,7 @@ fn Value* make_symbol(Interp* interp, SymbolId sym) @inline {
     return v;
 }
 
+<* @ensure return != null *>
 fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
     Value* v = interp.alloc_value();
     v.tag = CONS;
@@ -753,23 +759,23 @@ fn bool is_list(Value* v) {
 // SECTION 4: VALUE ACCESSORS
 // =============================================================================
 
+<* @require v != null && v.tag == INT : "get_int called on non-INT value" *>
 fn long get_int(Value* v) @inline {
-    assert(is_int(v), "expected int");
     return v.int_val;
 }
 
+<* @require v != null && v.tag == SYMBOL : "get_symbol called on non-SYMBOL value" *>
 fn SymbolId get_symbol(Value* v) @inline {
-    assert(is_symbol(v), "expected symbol");
     return v.sym_val;
 }
 
+<* @require v != null && v.tag == CONS : "car called on non-CONS value" *>
 fn Value* car(Value* v) @inline {
-    assert(is_cons(v), "expected cons");
     return v.cons_val.car;
 }
 
+<* @require v != null && v.tag == CONS : "cdr called on non-CONS value" *>
 fn Value* cdr(Value* v) @inline {
-    assert(is_cons(v), "expected cons");
     return v.cons_val.cdr;
 }
 
@@ -785,6 +791,68 @@ fn usz list_length(Value* v) {
         v = cdr(v);
     }
     return len;
+}
+
+// =============================================================================
+// String conversion helpers (shared across primitives, eval, value printing)
+// =============================================================================
+
+/**
+ * Convert integer to string in caller-provided buffer. Returns slice of written chars.
+ */
+fn char[] int_to_string(long val, char[] buffer) {
+    if (val == 0) { buffer[0] = '0'; return buffer[:1]; }
+    usz len = 0;
+    bool negative = val < 0;
+    if (negative) val = -val;
+    while (val > 0 && len < buffer.len - 1) {
+        buffer[len++] = (char)('0' + (val % 10));
+        val /= 10;
+    }
+    if (negative) buffer[len++] = '-';
+    // Reverse in-place
+    for (usz j = 0; j < len / 2; j++) {
+        char tmp = buffer[j];
+        buffer[j] = buffer[len - 1 - j];
+        buffer[len - 1 - j] = tmp;
+    }
+    return buffer[:len];
+}
+
+/**
+ * Format double to string in caller-provided buffer, ensuring decimal point.
+ * Handles NaN, +inf, -inf. Buffer must be at least 64 bytes.
+ */
+fn char[] double_to_string(double val, char[] buffer) {
+    if (val != val) {
+        char[] nan = "+nan.0";
+        for (usz i = 0; i < nan.len; i++) buffer[i] = nan[i];
+        return buffer[:nan.len];
+    }
+    if (val == 1.0/0.0) {
+        char[] inf = "+inf.0";
+        for (usz i = 0; i < inf.len; i++) buffer[i] = inf[i];
+        return buffer[:inf.len];
+    }
+    if (val == -1.0/0.0) {
+        char[] ninf = "-inf.0";
+        for (usz i = 0; i < ninf.len; i++) buffer[i] = ninf[i];
+        return buffer[:ninf.len];
+    }
+    char[64] fmt_buf;
+    char[] s = io::bprintf(&fmt_buf, "%.15g", val)!!;
+    for (usz i = 0; i < s.len; i++) buffer[i] = s[i];
+    usz len = s.len;
+    bool has_dot = false;
+    for (usz i = 0; i < len; i++) {
+        if (buffer[i] == '.' || buffer[i] == 'e' || buffer[i] == 'E') { has_dot = true; break; }
+    }
+    if (!has_dot && len + 2 <= buffer.len) {
+        buffer[len] = '.';
+        buffer[len + 1] = '0';
+        len += 2;
+    }
+    return buffer[:len];
 }
 
 // =============================================================================
@@ -831,6 +899,7 @@ struct Env {
     Env*                  parent;
     EnvHashEntry*         hash_table;     // NULL if not using hash
     usz                   hash_capacity;  // Power of 2
+    bool                  persistent;     // true = allocated in root_region, skip in deep_copy_env
 }
 
 fn Env* make_env(Interp* interp, Env* parent) {
@@ -841,6 +910,7 @@ fn Env* make_env(Interp* interp, Env* parent) {
     env.parent = parent;
     env.hash_table = null;
     env.hash_capacity = 0;
+    env.persistent = false;
     return env;
 }
 
@@ -879,6 +949,7 @@ fn void Env.build_hash_table(Env* self) {
 /**
  * Look up a SymbolId in the hash table. Returns index into bindings or ~(usz)0 if not found.
  */
+<* @require self.hash_table != null : "hash_lookup called without hash table" *>
 fn usz Env.hash_lookup(Env* self, SymbolId name) {
     usz mask = self.hash_capacity - 1;
     usz slot = (usz)name & mask;
@@ -893,6 +964,7 @@ fn usz Env.hash_lookup(Env* self, SymbolId name) {
 /**
  * Insert into the hash table (must have space — caller ensures load factor).
  */
+<* @require self.hash_table != null : "hash_insert called without hash table" *>
 fn void Env.hash_insert(Env* self, SymbolId name, usz index) {
     usz mask = self.hash_capacity - 1;
     usz slot = (usz)name & mask;
@@ -1485,6 +1557,18 @@ struct CapturedCont {
 // =============================================================================
 
 /**
+ * InterpFlags — Packed boolean state flags for the interpreter.
+ */
+bitstruct InterpFlags : char {
+    bool jit_enabled      : 0;  // true after init, enables JIT-first execution
+    bool jit_tco_bounce   : 1;  // True = return sentinel, jit_eval loop continues
+    bool shift_occurred   : 2;  // shift was invoked in current reset context
+    bool effect_occurred  : 3;  // Handler body was evaluated, result should bypass
+    bool cont_substituting: 4;  // Are we in replay mode?
+    bool cont_is_effect   : 5;  // Is this an effect continuation replay?
+}
+
+/**
  * Interp — Interpreter state.
  */
 struct Interp {
@@ -1586,14 +1670,15 @@ struct Interp {
     int constructor_type_id;  // Set before calling type constructor primitive
     void* prim_user_data;     // Set before calling primitive with user_data
 
+    // Packed boolean state flags
+    InterpFlags flags;
+
     // JIT execution mode
-    bool jit_enabled;  // true after init, enables JIT-first execution in run()
     Env* jit_env;      // Current local env for JIT sub-expression evaluation
 
     // JIT trampoline TCO state
     Expr* jit_tco_expr;   // Next expression to evaluate (set by tail-call helpers)
     Env*  jit_tco_env;    // Environment for next expression
-    bool  jit_tco_bounce; // True = return sentinel, jit_eval loop continues
 
     // Stack overflow protection
     usz eval_depth;
@@ -1615,7 +1700,6 @@ struct Interp {
 
     // Continuation/shift state
     usz      reset_depth;
-    bool     shift_occurred;
     usz      shift_target_depth;
     Value*   shift_result;
 
@@ -1623,14 +1707,11 @@ struct Interp {
     EffectHandler[16] handler_stack;
     usz               handler_count;
 
-    // Effect handler result propagation (like shift_occurred for effects)
-    bool     effect_occurred;       // Handler body was evaluated, result should bypass to handle
+    // Effect handler result propagation
     Value*   effect_result;         // Result of the handler body
 
     // Continuation replay state
     Value*   cont_substitution;     // Value to substitute during replay
-    bool     cont_substituting;     // Are we in replay mode?
-    bool     cont_is_effect;        // Is this an effect continuation replay?
     SymbolId cont_effect_tag;       // Effect tag for effect replay
     // Multi-perform replay tracking
     usz    effect_perform_counter;
@@ -1657,17 +1738,17 @@ fn void Interp.init(Interp* self) {
 
     // Continuation/shift state
     self.reset_depth = 0;
-    self.shift_occurred = false;
+    self.flags.shift_occurred = false;
     self.shift_target_depth = 0;
     self.shift_result = null;
     self.handler_count = 0;
-    self.effect_occurred = false;
+    self.flags.effect_occurred = false;
     self.effect_result = null;
 
     // Continuation replay state
     self.cont_substitution = null;
-    self.cont_substituting = false;
-    self.cont_is_effect = false;
+    self.flags.cont_substituting = false;
+    self.flags.cont_is_effect = false;
     // Multi-perform replay tracking
     self.effect_perform_counter = 0;
     self.cont_target_perform_index = 0;
@@ -1746,11 +1827,11 @@ fn void Interp.init(Interp* self) {
     self.module_count = 0;
 
     // JIT disabled until after stdlib registration
-    self.jit_enabled = false;
+    self.flags.jit_enabled = false;
     self.jit_env = null;
     self.jit_tco_expr = null;
     self.jit_tco_env = null;
-    self.jit_tco_bounce = false;
+    self.flags.jit_tco_bounce = false;
 
     // Stack overflow protection
     self.eval_depth = 0;
@@ -1785,6 +1866,7 @@ fn Env* Interp.alloc_env(Interp* self) {
     e.parent = null;
     e.hash_table = null;
     e.hash_capacity = 0;
+    e.persistent = false;
     main::ObjectHandle h = main::allocate_in(self.current_frame, Env, e);
     return main::dereference_as(Env, h);
 }
@@ -1815,26 +1897,9 @@ fn void print_value(Value* v, SymbolTable* syms) {
         case INT:
             io::printf("%d", v.int_val);
         case DOUBLE:
-            // Print float: strip trailing zeros but keep at least one decimal
-            double dv = v.double_val;
-            if (dv != dv) {
-                io::print("+nan.0");
-            } else if (dv == 1.0/0.0) {
-                io::print("+inf.0");
-            } else if (dv == -1.0/0.0) {
-                io::print("-inf.0");
-            } else {
-                io::printf("%.15g", dv);
-                // If printf didn't include a decimal point, add .0
-                // Check by re-printing to a buffer
-                char[64] buf;
-                char[] bslice = io::bprintf(&buf, "%.15g", dv)!!;
-                bool has_dot = false;
-                for (usz i = 0; i < bslice.len; i++) {
-                    if (bslice[i] == '.' || bslice[i] == 'e' || bslice[i] == 'E') { has_dot = true; break; }
-                }
-                if (!has_dot) io::print(".0");
-            }
+            char[64] dbuf;
+            char[] dstr = double_to_string(v.double_val, &dbuf);
+            io::printf("%s", (ZString)&dbuf);
         case STRING:
             io::printf("\"%s\"", (ZString)&v.str_val.chars);
         case SYMBOL:
@@ -1950,23 +2015,9 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             char[] is = io::bprintf(&ibuf, "%d", v.int_val)!!;
             pb.append_str(is);
         case DOUBLE:
-            double dv = v.double_val;
-            if (dv != dv) {
-                pb.append_str("+nan.0");
-            } else if (dv == 1.0/0.0) {
-                pb.append_str("+inf.0");
-            } else if (dv == -1.0/0.0) {
-                pb.append_str("-inf.0");
-            } else {
-                char[64] dbuf;
-                char[] ds = io::bprintf(&dbuf, "%.15g", dv)!!;
-                pb.append_str(ds);
-                bool has_dot = false;
-                for (usz i = 0; i < ds.len; i++) {
-                    if (ds[i] == '.' || ds[i] == 'e' || ds[i] == 'E') { has_dot = true; break; }
-                }
-                if (!has_dot) pb.append_str(".0");
-            }
+            char[64] dbuf2;
+            char[] dstr2 = double_to_string(v.double_val, &dbuf2);
+            pb.append_str(dstr2);
         case STRING:
             pb.append_char('"');
             pb.append_zstr((ZString)&v.str_val.chars);

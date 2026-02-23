@@ -282,7 +282,7 @@ fn void test_eq_jit(Interp* interp, char[] name, char[] source, long expected, i
     if (ast == null) { (*fail)++; io::printfn("[FAIL] %s (JIT parse error)", (ZString)name); return; }
     JitFn f = jit_compile(ast, interp);
     if (f == null) { (*fail)++; io::printfn("[FAIL] %s (JIT compile error)", (ZString)name); return; }
-    Value* result = f(interp);
+    Value* result = jit_exec(f, interp);
     if (result != null && result.tag == INT && result.int_val == expected) {
         io::printfn("[PASS] %s", (ZString)name);
         (*pass)++;
@@ -298,7 +298,7 @@ fn void test_nil_jit(Interp* interp, char[] name, char[] source, int* pass, int*
     if (ast == null) { (*fail)++; io::printfn("[FAIL] %s (JIT parse error)", (ZString)name); return; }
     JitFn f = jit_compile(ast, interp);
     if (f == null) { (*fail)++; io::printfn("[FAIL] %s (JIT compile error)", (ZString)name); return; }
-    Value* result = f(interp);
+    Value* result = jit_exec(f, interp);
     if (result == null || is_nil(result)) {
         io::printfn("[PASS] %s", (ZString)name);
         (*pass)++;
@@ -953,8 +953,8 @@ fn void generate_e2e_tests(Interp* interp) {
 
     // Write generated C3 file
     if (try file = io::file::open("build/e2e_test.c3", "w")) {
+        defer (void)file.close();
         file.write(c3_code)!!;
-        file.close()!!;
         io::printfn("  Wrote build/e2e_test.c3 (%d bytes)", (int)c3_code.len);
     } else {
         io::printn("ERROR: Cannot write build/e2e_test.c3");
@@ -967,8 +967,8 @@ fn void generate_e2e_tests(Interp* interp) {
     // Write expected output file
     char[] expected_out = expected_buf[:expected_pos];
     if (try file = io::file::open("build/e2e_expected.txt", "w")) {
+        defer (void)file.close();
         file.write(expected_out)!!;
-        file.close()!!;
         io::printfn("  Wrote build/e2e_expected.txt (%d lines)", test_count);
     } else {
         io::printn("ERROR: Cannot write build/e2e_expected.txt");

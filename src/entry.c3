@@ -78,8 +78,8 @@ fn int run_build(int argc, char** argv, int build_idx) {
     // Step 2: Write temp C3 file
     char[] temp_path = "build/_aot_temp.c3";
     if (try file = io::file::open((String)temp_path, "w")) {
+        defer (void)file.close();
         file.write(c3_code)!!;
-        file.close()!!;
     } else {
         io::printn("Error: cannot write temp file build/_aot_temp.c3");
         mem::free(interp);
@@ -195,8 +195,8 @@ fn int main(int argc, char** argv) {
             output_path = output_file[:output_len];
 
             if (try file = io::file::open((String)output_path, "w")) {
+                defer (void)file.close();
                 file.write(c3_code)!!;
-                file.close()!!;
                 io::printfn("Compilation successful: %s", (ZString)output_file);
                 mem::free(interp);
                 thread_registry_shutdown();
@@ -222,7 +222,7 @@ fn int main(int argc, char** argv) {
             lisp::register_primitives(interp);
             lisp::register_destructors();
             lisp::register_stdlib(interp);
-            interp.jit_enabled = true;
+            interp.flags.jit_enabled = true;
 
             lisp::generate_e2e_tests(interp);
 
@@ -254,7 +254,7 @@ fn int main(int argc, char** argv) {
         lisp::register_primitives(interp);
         lisp::register_destructors();
         lisp::register_stdlib(interp);
-        interp.jit_enabled = true;
+        interp.flags.jit_enabled = true;
 
         // Run REPL
         lisp::repl(interp);
@@ -285,7 +285,7 @@ fn int main(int argc, char** argv) {
             lisp::register_primitives(interp);
             lisp::register_destructors();
             lisp::register_stdlib(interp);
-            interp.jit_enabled = true;
+            interp.flags.jit_enabled = true;
 
             // Run the script (multiple expressions)
             usz len = source.len;

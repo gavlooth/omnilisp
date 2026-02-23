@@ -1,5 +1,111 @@
 # Changelog
 
+## 2026-02-23 (Session 22): Fix 6 Pre-Existing Test Failures
+
+### Bug 1: test_eq_jit missing TCO bounce handler (5 tests)
+- `test_eq_jit` and `test_nil_jit` called `f(interp)` directly instead of `jit_exec(f, interp)`
+- Top-level expressions compiled with `is_tail=true` use `jit_apply_multi_args_tail` for zero-arg calls
+- This returns a TCO sentinel (tag=NIL) which requires `jit_exec`'s bounce loop to handle
+- Fix: changed both functions to use `jit_exec(f, interp)` (tests.c3)
+- Fixed: "set! counter 1/2/3", "module counter 1/2"
+
+### Bug 2: deep_copy_env breaks mutable box sharing (1 test)
+- `run()` wraps each eval in a child region; `jit_make_closure_from_expr` calls `deep_copy_env` when in child region
+- For mutable let-locals, JIT creates a boxed Env node shared between stack slot and closure capture
+- `deep_copy_env` created a COPY of the box — closure and JIT stack pointed to different Env nodes
+- `set!` through the closure updated the copy; reads from outer scope used the original
+- Fix: Added `persistent` flag to Env struct; `jit_env_extend_root` allocates mutable boxes in root_region with `persistent=true`; `deep_copy_env` skips persistent envs (preserves sharing) but still fixes up their parent chain
+- Fixed: "set! parent scope"
+
+### Files Modified
+- `src/lisp/tests.c3` — test_eq_jit/test_nil_jit: f(interp) → jit_exec(f, interp)
+- `src/lisp/value.c3` — Env struct: added `persistent` field; alloc_env: initialize persistent=false; make_env: initialize persistent=false
+- `src/lisp/jit.c3` — new `jit_env_extend_root()`: allocates box in root_region; `jit_compile_let`: uses jit_env_extend_root for mutable locals
+- `src/lisp/eval.c3` — `deep_copy_env`: skip persistent envs, fix parent chain only
+
+### Tests
+- 743 passed, 0 failed (6 pre-existing failures now fixed)
+- 77 compiler tests passed
+
+---
+
+## 2026-02-23 (Session 21): C3 Modernization — Contracts, Bitstructs, Helpers
+
+### Phase 1B: Data-Driven Primitive Registration
+- Replaced 95+ individual `register_prim()`/`register_dispatched_prim()` calls with two data tables + loops
+- `PrimReg` struct with `{name, func, arity}` — `PrimReg[19]` dispatched + `PrimReg[94]` regular
+- Registration is now declarative — adding a primitive is a single table entry (eval.c3)
+
+### Phase 2: C3 Contracts
+- Added `@require` preconditions to 8 functions: `get_int`, `get_symbol`, `car`, `cdr`, `SymbolTable.get_name`, `Env.hash_lookup`, `Env.hash_insert`, `jit_apply_value`
+- Added `@ensure return != null` postconditions to 6 factory functions: `make_nil`, `make_int`, `make_double`, `make_string`, `make_symbol`, `make_cons`
+- Removed redundant `assert()` calls replaced by contracts (value.c3, jit.c3)
+
+### Phase 3: Shared Helpers + DString Migrations
+- Extracted `int_to_string()` helper in value.c3 — replaces digit-reversal loop in `prim_number_to_string`
+- Extracted `double_to_string()` helper in value.c3 — replaces duplicate NaN/inf/dot-check in `print_value` and `value_to_string`
+- Migrated `format_dispatch_error` to DString (eval.c3) — eliminated manual `char[128]`/`char[64]` position-tracked buffers
+- Migrated `format_match_error` to DString (eval.c3) — eliminated manual `char[256]` missing-variants buffer
+
+### Phase 4A: InterpFlags Bitstruct
+- Defined `InterpFlags` bitstruct packing 6 bools into 1 byte: `jit_enabled`, `jit_tco_bounce`, `shift_occurred`, `effect_occurred`, `cont_substituting`, `cont_is_effect`
+- Replaced 6 scattered `bool` fields on `Interp` struct with single `InterpFlags flags`
+- Updated 38 access sites across 4 files (value.c3, jit.c3, runtime_bridge.c3, entry.c3)
+- Phases 4B/4C (ClosureFlags, TypeAnnotationFlags) skipped — fields shared between Closure and ExprLambda structs across 7 files, 103+ sites, risk too high
+
+### Phase 5: Additional defer
+- Added `defer (void)file.close()` to 4 file write sites: `generate_e2e_tests` (2 files), AOT build temp file, AOT output file
+- Ensures file handles closed even on write failure with `!!` rethrow
+
+### Phase 6: Generic Modules — Evaluated and Skipped
+- C3 v0.7.9 is in generic syntax transition (module-based → @generic attribute)
+- Current inline `Type[MAX]; usz count;` patterns are zero-overhead and simpler
+- Cost-benefit doesn't justify the added complexity
+
+### Files Modified
+- `src/lisp/value.c3` — contracts, int/double_to_string helpers, InterpFlags bitstruct, print_value/value_to_string dedup
+- `src/lisp/eval.c3` — PrimReg data tables, DString error formatters
+- `src/lisp/jit.c3` — InterpFlags access migration, jit_apply_value contract
+- `src/lisp/primitives.c3` — number->string uses shared helpers
+- `src/lisp/tests.c3` — defer for e2e file writes
+- `src/lisp/runtime_bridge.c3` — InterpFlags access migration
+- `src/entry.c3` — InterpFlags access migration, defer for AOT file writes
+
+### Tests
+- 737 passed, 6 failed (same pre-existing), 367 e2e passed
+
+---
+
+## 2026-02-23 (Session 20): Idiomatic C3 Modernization
+
+### DString Adoption
+- Replaced `Compiler.output_buf/output_len/output_cap` manual buffer with `DString` (compiler.c3)
+- Deleted `ensure_capacity()` — DString handles growth automatically
+- `emit()` → `output.append_string()`, `emit_char()` → `output.append_char()`, `get_output()` → `output.str_view()`
+
+### String Primitives — Eliminated 7× `char[4096]` Stack Buffers
+- `string-append`, `string-join`, `list->string`: replaced with DString (no truncation limit)
+- `substring`, `string-trim`, `string-split`: replaced with direct slices (zero-copy)
+- `string-upcase`, `string-downcase`: allocate via `make_string` then transform in-place
+
+### defer Cleanup
+- REPL readline loop: 5× `mem::free(line)` → single `defer mem::free(line)` (eval.c3)
+- `prim_write_file`: 2× `file.close()!!` → single `defer (void)file.close()` (primitives.c3)
+- `compile_program`: manual `mem::free(full_buf)` + `exprs.free()` → `defer` (compiler.c3)
+
+### Default Parameter Cleanup
+- Removed 15 explicit `false` arguments from `jit_compile_expr` calls (jit.c3) — `is_tail` already defaults to `false`
+
+### Files Modified
+- `src/lisp/compiler.c3` — DString output buffer, defer in compile_program
+- `src/lisp/primitives.c3` — DString string prims, direct slices, defer file I/O
+- `src/lisp/eval.c3` — defer in REPL readline loop
+- `src/lisp/jit.c3` — removed redundant is_tail=false arguments
+
+### Tests
+- 737 passed, 6 failed (same pre-existing)
+- 367 e2e compiler tests pass
+
 ## 2026-02-23 (Session 19): JIT TCO + Per-Eval Temp Regions + Audit Review
 
 ### JIT TCO

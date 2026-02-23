@@ -22,9 +22,7 @@ import main;
  */
 struct Compiler {
     Interp*     interp;          // For symbol table access
-    char*       output_buf;      // Generated C3 code buffer
-    usz         output_len;      // Current length
-    usz         output_cap;      // Buffer capacity
+    DString     output;          // Generated C3 code (dynamic string)
     usz         indent;          // Current indentation level
     usz         temp_counter;    // For generating unique temp names
     usz         lambda_counter;  // For generating lambda function names
@@ -261,14 +259,12 @@ fn void Compiler.init(Compiler* self, Interp* interp) {
     self.indent = 0;
     self.temp_counter = 0;
     self.lambda_counter = 0;
-    self.output_cap = 8192;
-    self.output_buf = (char*)mem::malloc(self.output_cap);
-    self.output_len = 0;
+    self.output.init(mem, 8192);
     init_prim_hash(interp);
 }
 
 fn void Compiler.free(Compiler* self) {
-    if (self.output_buf != null) { mem::free(self.output_buf); self.output_buf = null; }
+    self.output.free();
     self.current_captures.free();
     self.defined_globals.free();
     self.lambda_defs.free();
@@ -293,28 +289,12 @@ fn void Compiler.mark_declared(Compiler* self, SymbolId sym) {
 // SECTION 3: OUTPUT HELPERS
 // =============================================================================
 
-fn void Compiler.ensure_capacity(Compiler* self, usz needed) {
-    if (self.output_len + needed > self.output_cap) {
-        usz new_cap = self.output_cap * 2;
-        if (new_cap < self.output_len + needed) { new_cap = self.output_len + needed; }
-        char* new_buf = (char*)mem::malloc(new_cap);
-        mem::copy(new_buf, self.output_buf, self.output_len);
-        mem::free(self.output_buf);
-        self.output_buf = new_buf;
-        self.output_cap = new_cap;
-    }
-}
-
 fn void Compiler.emit(Compiler* self, char[] s) {
-    self.ensure_capacity(s.len);
-    mem::copy(&self.output_buf[self.output_len], s.ptr, s.len);
-    self.output_len += s.len;
+    self.output.append_string((String)s);
 }
 
 fn void Compiler.emit_char(Compiler* self, char c) {
-    self.ensure_capacity(1);
-    self.output_buf[self.output_len] = c;
-    self.output_len++;
+    self.output.append_char(c);
 }
 
 /**
@@ -435,7 +415,7 @@ fn void Compiler.emit_symbol_name(Compiler* self, SymbolId sym) {
 }
 
 fn char[] Compiler.get_output(Compiler* self) {
-    return self.output_buf[:self.output_len];
+    return self.output.str_view();
 }
 
 // =============================================================================
@@ -1472,6 +1452,7 @@ fn char[] Compiler.compile_program(Compiler* self, char[] source) {
     // Prepend stdlib prelude to user source using bulk copy
     usz total = STDLIB_PRELUDE.len + 1 + source.len;
     char* full_buf = (char*)mem::malloc(total);
+    defer mem::free(full_buf);
     mem::copy(full_buf, STDLIB_PRELUDE.ptr, STDLIB_PRELUDE.len);
     full_buf[STDLIB_PRELUDE.len] = ' ';
     mem::copy(&full_buf[STDLIB_PRELUDE.len + 1], source.ptr, source.len);
@@ -1479,6 +1460,7 @@ fn char[] Compiler.compile_program(Compiler* self, char[] source) {
 
     // Parse the program
     List{Expr*} exprs = parse_program(full, self.interp);
+    defer exprs.free();
 
     // First pass: collect all top-level defines (including inside module bodies)
     foreach (expr : exprs) {
@@ -1556,8 +1538,6 @@ fn char[] Compiler.compile_program(Compiler* self, char[] source) {
 
     self.emit_main_end();
 
-    exprs.free();
-    mem::free(full_buf);
     return self.get_output();
 }
 

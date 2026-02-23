@@ -175,6 +175,7 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
     }
 }
 
+<* @require func != null : "jit_apply_value called with null func" *>
 fn Value* jit_apply_value(Value* func, Value* arg, Interp* interp) {
     interp.eval_depth++;
     if (interp.eval_depth > interp.max_eval_depth) {
@@ -213,7 +214,7 @@ fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
         }
         interp.jit_tco_expr = func.closure_val.body;
         interp.jit_tco_env = new_env;
-        interp.jit_tco_bounce = true;
+        interp.flags.jit_tco_bounce = true;
         return jit_tco_sentinel();
     }
 
@@ -252,15 +253,15 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
 
         // 3. Execute with env context
         interp.jit_env = env;
-        interp.jit_tco_bounce = false;
+        interp.flags.jit_tco_bounce = false;
         Value* result = cached(interp);
 
         // 4. Check for TCO bounce
-        if (interp.jit_tco_bounce) {
+        if (interp.flags.jit_tco_bounce) {
             // Tail call — loop with new expr/env instead of recursing
             expr = interp.jit_tco_expr;
             env = interp.jit_tco_env;
-            interp.jit_tco_bounce = false;
+            interp.flags.jit_tco_bounce = false;
             continue;
         }
 
@@ -304,8 +305,8 @@ fn Value* jit_tco_sentinel() {
 // Must be used whenever calling a JitFn from outside jit_eval (e.g., run(), test harness).
 fn Value* jit_exec(JitFn f, Interp* interp) {
     Value* result = f(interp);
-    while (interp.jit_tco_bounce) {
-        interp.jit_tco_bounce = false;
+    while (interp.flags.jit_tco_bounce) {
+        interp.flags.jit_tco_bounce = false;
         result = jit_eval(interp.jit_tco_expr, interp.jit_tco_env, interp);
     }
     return result;
@@ -632,6 +633,21 @@ fn Env* jit_env_extend(Interp* interp, Env* env, SymbolId name, Value* value) {
     return env.extend(interp, name, value);
 }
 
+// Mutable box allocation in root_region — called from JIT-compiled code.
+// Creates a persistent Env node that survives child region cleanup and
+// is preserved (not copied) by deep_copy_env. This ensures closures and
+// the enclosing JIT scope share the same mutable box.
+fn Env* jit_env_extend_root(Interp* interp, Env* env, SymbolId name, Value* value) {
+    main::RegionHandle saved = interp.current_frame;
+    interp.current_frame = interp.root_region;
+    // Promote the initial value to root_region
+    Value* promoted = copy_to_parent(value, interp, interp.root_region);
+    Env* box = env.extend(interp, name, promoted);
+    box.persistent = true;
+    interp.current_frame = saved;
+    return box;
+}
+
 // JIT-native quasiquote — no eval() dependency.
 fn Value* jit_eval_quasiquote(Interp* interp, Expr* expr, Env* env) {
     EvalResult r = jit_qq_impl(expr.quasiquote.body, env, interp, 0);
@@ -828,12 +844,12 @@ fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
     interp.reset_depth--;
 
     if (result.error.has_error) {
-        interp.shift_occurred = false;
+        interp.flags.shift_occurred = false;
         return result;
     }
 
-    if (interp.shift_occurred && interp.reset_depth == interp.shift_target_depth) {
-        interp.shift_occurred = false;
+    if (interp.flags.shift_occurred && interp.reset_depth == interp.shift_target_depth) {
+        interp.flags.shift_occurred = false;
         return eval_ok(interp.shift_result);
     }
 
@@ -842,14 +858,14 @@ fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
 
 fn EvalResult jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     // REPLAY CHECK
-    if (interp.cont_substituting && !interp.cont_is_effect) {
+    if (interp.flags.cont_substituting && !interp.flags.cont_is_effect) {
         usz current_index = interp.shift_counter;
         interp.shift_counter++;
         if (current_index < interp.cont_target_shift_index) {
             return eval_ok(interp.shift_prior_results[current_index]);
         }
         if (current_index == interp.cont_target_shift_index) {
-            interp.cont_substituting = false;
+            interp.flags.cont_substituting = false;
             if (current_index < 16) {
                 interp.shift_prior_results[current_index] = interp.cont_substitution;
             }
@@ -896,7 +912,7 @@ fn EvalResult jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
         return body_result;
     }
 
-    interp.shift_occurred = true;
+    interp.flags.shift_occurred = true;
     interp.shift_target_depth = interp.reset_depth - 1;
     interp.shift_result = body_result.value;
 
@@ -936,8 +952,8 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
 
     interp.effect_perform_counter = saved_perform_counter;
 
-    if (interp.effect_occurred) {
-        interp.effect_occurred = false;
+    if (interp.flags.effect_occurred) {
+        interp.flags.effect_occurred = false;
         return eval_ok(interp.effect_result);
     }
 
@@ -977,7 +993,7 @@ fn EvalResult jit_perform_impl(Expr* expr, Env* env, Interp* interp) {
     }
 
     // REPLAY CHECK
-    if (interp.cont_substituting && interp.cont_is_effect &&
+    if (interp.flags.cont_substituting && interp.flags.cont_is_effect &&
         (uint)interp.cont_effect_tag == (uint)tag) {
         usz current_index = interp.effect_perform_counter;
         interp.effect_perform_counter++;
@@ -985,7 +1001,7 @@ fn EvalResult jit_perform_impl(Expr* expr, Env* env, Interp* interp) {
             return eval_ok(interp.effect_prior_results[current_index]);
         }
         if (current_index == interp.cont_target_perform_index) {
-            interp.cont_substituting = false;
+            interp.flags.cont_substituting = false;
             if (current_index < 16) {
                 interp.effect_prior_results[current_index] = interp.cont_substitution;
             }
@@ -1038,7 +1054,7 @@ fn EvalResult jit_perform_impl(Expr* expr, Env* env, Interp* interp) {
                     result = eval_ok(handler_v);
                 }
                 if (!result.error.has_error) {
-                    interp.effect_occurred = true;
+                    interp.flags.effect_occurred = true;
                     interp.effect_result = result.value;
                 }
                 return result;
@@ -1107,8 +1123,8 @@ fn EvalResult jit_apply_continuation(Value* k_val, Value* arg, Interp* interp) {
     }
 
     interp.cont_substitution = arg;
-    interp.cont_substituting = true;
-    interp.cont_is_effect = cc.is_effect;
+    interp.flags.cont_substituting = true;
+    interp.flags.cont_is_effect = cc.is_effect;
     if (cc.is_effect) {
         interp.cont_effect_tag = cc.effect_tag;
     }
@@ -1135,8 +1151,8 @@ fn EvalResult jit_apply_continuation(Value* k_val, Value* arg, Interp* interp) {
             result = eval_ok(v);
         }
 
-        if (interp.effect_occurred) {
-            interp.effect_occurred = false;
+        if (interp.flags.effect_occurred) {
+            interp.flags.effect_occurred = false;
             result = eval_ok(interp.effect_result);
         } else {
             interp.handler_count--;
@@ -1156,7 +1172,7 @@ fn EvalResult jit_apply_continuation(Value* k_val, Value* arg, Interp* interp) {
         }
     }
 
-    interp.cont_substituting = false;
+    interp.flags.cont_substituting = false;
 
     return result;
 }
@@ -1224,7 +1240,7 @@ fn Value* jit_do_match(Interp* interp, Value* scrutinee, Expr* expr, Env* env) {
             // TCO bounce — jit_eval() will compile and execute the clause body
             interp.jit_tco_expr = clause.result;
             interp.jit_tco_env = clause_env;
-            interp.jit_tco_bounce = true;
+            interp.flags.jit_tco_bounce = true;
             return jit_tco_sentinel();
         }
     }
@@ -1551,7 +1567,7 @@ fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list
     if (arg_count == 0 && func.tag == CLOSURE && !func.closure_val.has_param && !func.closure_val.has_rest) {
         interp.jit_tco_expr = func.closure_val.body;
         interp.jit_tco_env = func.closure_val.env;
-        interp.jit_tco_bounce = true;
+        interp.flags.jit_tco_bounce = true;
         return jit_tco_sentinel();
     }
 
@@ -1569,7 +1585,7 @@ fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list
         new_env = new_env.extend(interp, func.closure_val.rest_param, curr);
         interp.jit_tco_expr = func.closure_val.body;
         interp.jit_tco_env = new_env;
-        interp.jit_tco_bounce = true;
+        interp.flags.jit_tco_bounce = true;
         return jit_tco_sentinel();
     }
 
@@ -1586,7 +1602,7 @@ fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list
         }
         interp.jit_tco_expr = func.closure_val.body;
         interp.jit_tco_env = call_env;
-        interp.jit_tco_bounce = true;
+        interp.flags.jit_tco_bounce = true;
         return jit_tco_sentinel();
     }
 
@@ -2043,7 +2059,7 @@ fn bool jit_compile_var(void* s, Expr* expr, Interp* interp, JitLocals* locals) 
 
 fn bool jit_compile_if(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     // Compile test expression -> R0 (test is never in tail position)
-    if (!jit_compile_expr(s, expr.if_expr.test, interp, locals, false)) return false;
+    if (!jit_compile_expr(s, expr.if_expr.test, interp, locals)) return false;
 
     // Save test result to V1, call is_falsy(R0, interp)
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = test result
@@ -2071,7 +2087,7 @@ fn bool jit_compile_if(void* s, Expr* expr, Interp* interp, JitLocals* locals, b
 
 fn bool jit_compile_and(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     // Evaluate left -> R0 (left is never in tail position)
-    if (!jit_compile_expr(s, expr.and_expr.left, interp, locals, false)) return false;
+    if (!jit_compile_expr(s, expr.and_expr.left, interp, locals)) return false;
 
     // Check if left is falsy
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = left result
@@ -2098,7 +2114,7 @@ fn bool jit_compile_and(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
 
 fn bool jit_compile_or(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     // Evaluate left -> R0 (left is never in tail position)
-    if (!jit_compile_expr(s, expr.or_expr.left, interp, locals, false)) return false;
+    if (!jit_compile_expr(s, expr.or_expr.left, interp, locals)) return false;
 
     // Check if left is falsy
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = left result
@@ -2139,11 +2155,11 @@ fn bool jit_compile_begin(void* s, Expr* expr, Interp* interp, JitLocals* locals
 
 fn bool jit_compile_app(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     // Compile function -> R0, save to V1 (not in tail position)
-    if (!jit_compile_expr(s, expr.app.func, interp, locals, false)) return false;
+    if (!jit_compile_expr(s, expr.app.func, interp, locals)) return false;
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = func
 
     // Compile argument -> R0, save to V2 (not in tail position)
-    if (!jit_compile_expr(s, expr.app.arg, interp, locals, false)) return false;
+    if (!jit_compile_expr(s, expr.app.arg, interp, locals)) return false;
     _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);  // V2 = arg
 
     // Call apply — use _tail variant when in tail position
@@ -2213,11 +2229,11 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
             if (arg0_simple && arg1_simple) {
                 // Fast path: both args are simple, no spilling needed
                 // Compile arg0 -> R0, save to V1
-                if (!jit_compile_expr(s, expr.call.args[0], interp, locals, false)) return false;
+                if (!jit_compile_expr(s, expr.call.args[0], interp, locals)) return false;
                 _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = arg0
 
                 // Compile arg1 -> R0, save to V2
-                if (!jit_compile_expr(s, expr.call.args[1], interp, locals, false)) return false;
+                if (!jit_compile_expr(s, expr.call.args[1], interp, locals)) return false;
                 _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);  // V2 = arg1
             } else {
                 // Nested path: at least one arg is complex (e.g. a function call).
@@ -2229,12 +2245,12 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
                 int spill_offset = _jit_allocai(s, 8);  // 8 bytes for a pointer
 
                 // Compile first arg -> result in R0
-                if (!jit_compile_expr(s, expr.call.args[0], interp, locals, false)) return false;
+                if (!jit_compile_expr(s, expr.call.args[0], interp, locals)) return false;
                 // Spill arg0 result to stack: *(FP + spill_offset) = R0
                 _jit_new_node_www(s, CODE_STXI_L, (long)spill_offset, (long)JIT_FP, (long)JIT_R0);
 
                 // Compile second arg -> result in R0, move to V2
-                if (!jit_compile_expr(s, expr.call.args[1], interp, locals, false)) return false;
+                if (!jit_compile_expr(s, expr.call.args[1], interp, locals)) return false;
                 _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);  // V2 = arg1
 
                 // Restore arg0 from stack into V1: V1 = *(FP + spill_offset)
@@ -2259,7 +2275,7 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
         // Zero-arg call: compile function, pass empty list via jit_apply_multi_args.
         // This correctly handles both zero-arg closures (lambda () body)
         // and zero-arg variadic closures (lambda (.. args) body).
-        if (!jit_compile_expr(s, expr.call.func, interp, locals, false)) return false;
+        if (!jit_compile_expr(s, expr.call.func, interp, locals)) return false;
         _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = func
 
         // Make nil (empty arg list)
@@ -2283,10 +2299,10 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
         // Compile func, spill to stack, compile arg, restore func, apply
         int spill_fn = _jit_allocai(s, 8);
 
-        if (!jit_compile_expr(s, expr.call.func, interp, locals, false)) return false;
+        if (!jit_compile_expr(s, expr.call.func, interp, locals)) return false;
         _jit_new_node_www(s, CODE_STXI_L, (long)spill_fn, (long)JIT_FP, (long)JIT_R0);
 
-        if (!jit_compile_expr(s, expr.call.args[0], interp, locals, false)) return false;
+        if (!jit_compile_expr(s, expr.call.args[0], interp, locals)) return false;
         _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);  // V2 = arg
 
         _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)spill_fn);  // V1 = func
@@ -2318,13 +2334,13 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
 
     // Compile each arg and spill to its stack slot (args are not in tail position)
     for (usz i = 0; i < argc; i++) {
-        if (!jit_compile_expr(s, expr.call.args[i], interp, locals, false)) return false;
+        if (!jit_compile_expr(s, expr.call.args[i], interp, locals)) return false;
         _jit_new_node_www(s, CODE_STXI_L, (long)arg_slots[i], (long)JIT_FP, (long)JIT_R0);
     }
 
     // Compile function and spill to stack (not in tail position)
     int func_slot = _jit_allocai(s, 8);
-    if (!jit_compile_expr(s, expr.call.func, interp, locals, false)) return false;
+    if (!jit_compile_expr(s, expr.call.func, interp, locals)) return false;
     _jit_new_node_www(s, CODE_STXI_L, (long)func_slot, (long)JIT_FP, (long)JIT_R0);
 
     // Build cons list right-to-left: start with nil
@@ -2447,7 +2463,7 @@ fn bool jit_compile_let(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
     bool is_mutable = has_closure_set_on_local(expr.let_expr.body, expr.let_expr.name);
 
     // Compile init expression -> result in R0 (init is not in tail position)
-    if (!jit_compile_expr(s, expr.let_expr.init, interp, locals, false)) return false;
+    if (!jit_compile_expr(s, expr.let_expr.init, interp, locals)) return false;
 
     // Allocate a stack slot for this local variable
     int offset = _jit_allocai(s, 8);
@@ -2464,14 +2480,15 @@ fn bool jit_compile_let(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
         bool has_env = emit_build_locals_env(s, interp, locals);
         if (!has_env) emit_load_env(s, JIT_V2);
 
-        // Call jit_env_extend(interp, parent_env, name, init_value) -> Env* (the box)
+        // Call jit_env_extend_root(interp, parent_env, name, init_value) -> Env* (the box)
+        // Uses root_region so the box is persistent and shared with closures.
         _jit_prepare(s);
         _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                                    // interp
         _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                                    // env (V2)
         _jit_pushargi(s, (long)(uint)expr.let_expr.name, CODE_PUSHARGI_L);            // name
         _jit_pushargr(s, JIT_V1, CODE_PUSHARGR_L);                                    // value
-        _jit_finishi(s, (void*)&jit_env_extend);
-        _jit_retval_l(s, JIT_R0);  // R0 = Env* (boxed variable)
+        _jit_finishi(s, (void*)&jit_env_extend_root);
+        _jit_retval_l(s, JIT_R0);  // R0 = Env* (boxed variable, persistent)
 
         // Store Env* to stack slot
         _jit_new_node_www(s, CODE_STXI_L, (long)offset, (long)JIT_FP, (long)JIT_R0);

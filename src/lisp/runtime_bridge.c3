@@ -28,7 +28,7 @@ fn void bridge_ensure_interp() {
     g_bridge_interp.init();
     register_primitives(g_bridge_interp);
     register_stdlib(g_bridge_interp);
-    g_bridge_interp.jit_enabled = true;
+    g_bridge_interp.flags.jit_enabled = true;
 }
 
 /**
