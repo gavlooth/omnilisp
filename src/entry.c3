@@ -376,21 +376,48 @@ fn int run_bind(int argc, char** argv, int bind_idx) {
     return 0;
 }
 
-/**
- * Main entry point.
- *
- * Usage:
- *   ./main                              - Run all tests
- *   ./main -repl                        - Start interactive REPL
- *   ./main --repl                       - Start interactive REPL
- *   ./main --compile input.lisp out.c3  - Compile Lisp to C3
- *   ./main --build input.lisp -o prog   - AOT compile Lisp to standalone binary
- *   ./main --gen-e2e                    - Generate e2e compiler test files
- *   ./main --init myproject             - Scaffold a new Omni project
- *   ./main --bind [project-dir]         - Generate FFI bindings from project.toml
- *   ./main script.pik                   - Run a script file
- */
+fn int print_help() {
+    io::printn("omni 0.1.0 — A Lisp with modern semantics");
+    io::printn("");
+    io::printn("Usage: omni [options] [script.omni]");
+    io::printn("");
+    io::printn("Running:");
+    io::printn("  omni                              Start the REPL");
+    io::printn("  omni <script.omni>                Run a script file");
+    io::printn("  omni --repl                       Start the REPL (explicit)");
+    io::printn("");
+    io::printn("Building:");
+    io::printn("  omni --build <file> [-o output]   AOT compile to standalone binary");
+    io::printn("  omni --compile <file> <out.c3>    Compile Omni source to C3");
+    io::printn("");
+    io::printn("Project management:");
+    io::printn("  omni --init <name>                Scaffold a new Omni project");
+    io::printn("  omni --bind [project-dir]         Generate FFI bindings from project.toml");
+    io::printn("");
+    io::printn("Other:");
+    io::printn("  omni --gen-e2e                    Generate end-to-end compiler tests");
+    io::printn("  omni --version, -v                Print version");
+    io::printn("  omni --help, -h                   Print this help");
+    return 0;
+}
+
+/** Main entry point. */
 fn int main(int argc, char** argv) {
+    // Check for --help / -h flag
+    for (int i = 1; i < argc; i++) {
+        if (str_eq(argv[i], "--help") || str_eq(argv[i], "-h") || str_eq(argv[i], "-help")) {
+            return print_help();
+        }
+    }
+
+    // Check for --version / -v flag
+    for (int i = 1; i < argc; i++) {
+        if (str_eq(argv[i], "--version") || str_eq(argv[i], "-v")) {
+            io::printn("omni 0.1.0");
+            return 0;
+        }
+    }
+
     // Check for --init flag (scaffold new project)
     for (int i = 1; i < argc; i++) {
         if (str_eq(argv[i], "--init")) {
