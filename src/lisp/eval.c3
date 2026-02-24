@@ -301,12 +301,13 @@ fn void register_builtin_types(Interp* interp) {
     interp.tid_Collection = interp.types.lookup(interp.sym_Collection, &interp.symbols);
     interp.tid_Iterator = interp.types.lookup(interp.sym_Iterator, &interp.symbols);
 
-    // Set parent chains: Int/Double → Number, List/Array/Dict → Collection
+    // Set parent chains: Int/Double → Number, List/Array/Dict → Collection, Nil → List
     interp.types.types[(usz)interp.tid_Int].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_Double].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_List].parent = interp.tid_Collection;
     interp.types.types[(usz)interp.tid_Array].parent = interp.tid_Collection;
     interp.types.types[(usz)interp.tid_Dict].parent = interp.tid_Collection;
+    interp.types.types[(usz)interp.tid_Nil].parent = interp.tid_List;  // nil IS the empty list
 }
 
 /**
@@ -1654,7 +1655,7 @@ fn void register_primitives(Interp* interp) {
     interp.global_env.define(sym_nil, nil_val);
 
     // --- Dispatched primitives (have MethodTable for user-defined type extension) ---
-    PrimReg[19] dispatched_prims = {
+    PrimReg[31] dispatched_prims = {
         // Arithmetic
         { "+", &prim_add, 2 }, { "-", &prim_sub, 2 }, { "*", &prim_mul, 2 },
         { "/", &prim_div, 2 }, { "%", &prim_mod, 2 },
@@ -1668,13 +1669,23 @@ fn void register_primitives(Interp* interp) {
         { "remove!", &prim_remove, 2 },
         // Sorting
         { "sort", &prim_sort, 1 }, { "sort-by", &prim_sort_by, 2 },
+        // String ops (extensible for user-defined string-like types)
+        { "string-append", &prim_string_append, -1 },
+        { "string-contains?", &prim_string_contains, 2 },
+        { "string-upcase", &prim_string_upcase, 1 },
+        { "string-downcase", &prim_string_downcase, 1 },
+        // Math (extensible for user-defined numeric types)
+        { "abs", &prim_abs, 1 }, { "floor", &prim_floor, 1 },
+        { "ceiling", &prim_ceiling, 1 }, { "round", &prim_round, 1 },
+        { "truncate", &prim_truncate, 1 }, { "sqrt", &prim_sqrt, 1 },
+        { "min", &prim_min, 2 }, { "max", &prim_max, 2 },
     };
     foreach (&d : dispatched_prims) {
         register_dispatched_prim(interp, d.name, d.func, d.arity);
     }
 
     // --- Regular primitives ---
-    PrimReg[100] regular_prims = {
+    PrimReg[88] regular_prims = {
         // List operations
         { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
         { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 }, { "list", &prim_list, -1 },
@@ -1684,12 +1695,12 @@ fn void register_primitives(Interp* interp) {
         { "__raw-print", &prim_print, 1 }, { "__raw-println", &prim_println, 1 },
         { "__raw-newline", &prim_newline, 0 }, { "__raw-display", &prim_display, 1 },
         // String primitives
-        { "string-append", &prim_string_append, -1 }, { "string-join", &prim_string_join, 2 },
+        { "string-join", &prim_string_join, 2 },
         { "substring", &prim_substring, 3 }, { "string-split", &prim_string_split, 2 },
         { "string-length", &prim_string_length, 1 }, { "string-byte-length", &prim_string_byte_length, 1 },
         { "string->list", &prim_string_to_list, 1 },
-        { "list->string", &prim_list_to_string, 1 }, { "string-upcase", &prim_string_upcase, 1 },
-        { "string-downcase", &prim_string_downcase, 1 }, { "string-trim", &prim_string_trim, 1 },
+        { "list->string", &prim_list_to_string, 1 },
+        { "string-trim", &prim_string_trim, 1 },
         { "continuation?", &prim_is_continuation, 1 },
         // File I/O
         { "__raw-read-file", &prim_read_file, 1 }, { "__raw-write-file", &prim_write_file, 2 },
@@ -1709,16 +1720,14 @@ fn void register_primitives(Interp* interp) {
         { "sin", &prim_sin, 1 }, { "cos", &prim_cos, 1 }, { "tan", &prim_tan, 1 },
         { "asin", &prim_asin, 1 }, { "acos", &prim_acos, 1 }, { "atan", &prim_atan, 1 },
         { "atan2", &prim_atan2, 2 }, { "exp", &prim_exp, 1 }, { "log", &prim_log, 1 },
-        { "log10", &prim_log10, 1 }, { "pow", &prim_pow, 2 }, { "sqrt", &prim_sqrt, 1 },
-        { "floor", &prim_floor, 1 }, { "ceiling", &prim_ceiling, 1 }, { "round", &prim_round, 1 },
-        { "truncate", &prim_truncate, 1 }, { "abs", &prim_abs, 1 }, { "min", &prim_min, 2 },
-        { "max", &prim_max, 2 }, { "gcd", &prim_gcd, 2 }, { "lcm", &prim_lcm, 2 },
+        { "log10", &prim_log10, 1 }, { "pow", &prim_pow, 2 },
+        { "gcd", &prim_gcd, 2 }, { "lcm", &prim_lcm, 2 },
         // Bitwise
         { "bitwise-and", &prim_bitwise_and, 2 }, { "bitwise-or", &prim_bitwise_or, 2 },
         { "bitwise-xor", &prim_bitwise_xor, 2 }, { "bitwise-not", &prim_bitwise_not, 1 },
         { "lshift", &prim_lshift, 2 }, { "rshift", &prim_rshift, 2 },
         // String operations & predicates
-        { "string-contains?", &prim_string_contains, 2 }, { "string-index-of", &prim_string_index_of, 2 },
+        { "string-index-of", &prim_string_index_of, 2 },
         { "string-replace", &prim_string_replace, 3 }, { "char-at", &prim_char_at, 2 },
         { "string-repeat", &prim_string_repeat, 2 }, { "procedure?", &prim_is_procedure, 1 },
         { "format", &prim_format, -1 },
@@ -2016,7 +2025,7 @@ fn void repl(Interp* interp) {
         // Determine prompt: primary or continuation
         char* prompt;
         if (buf_len == 0) {
-            prompt = "pika> ";
+            prompt = "omni> ";
         } else {
             prompt = "...   ";
         }

@@ -724,43 +724,43 @@ const E2ETestCase[] E2E_TESTS = {
     { "recursive list build", "(length (cons 1 (cons 2 (cons 3 (quote ())))))" },
 
     // === Stdlib HOFs ===
-    { "stdlib map double", "((map (lambda (x) (* x 2))) (quote (1 2 3)))" },
-    { "stdlib map inc", "((map (lambda (x) (+ x 1))) (quote (10 20 30)))" },
-    { "stdlib map identity", "((map (lambda (x) x)) (quote (1 2 3)))" },
-    { "stdlib filter gt2", "((filter (lambda (x) (> x 2))) (quote (1 2 3 4 5)))" },
-    { "stdlib filter none", "((filter (lambda (x) (> x 100))) (quote (1 2 3)))" },
-    { "stdlib filter all", "((filter (lambda (x) (> x 0))) (quote (1 2 3)))" },
-    { "stdlib foldl sum", "(((foldl (lambda (acc) (lambda (x) (+ acc x)))) 0) (quote (1 2 3 4 5)))" },
-    { "stdlib foldl product", "(((foldl (lambda (acc) (lambda (x) (* acc x)))) 1) (quote (1 2 3 4 5)))" },
-    { "stdlib foldr cons", "(((foldr (lambda (x) (lambda (acc) (cons x acc)))) (quote ())) (quote (1 2 3)))" },
-    { "stdlib append", "((append (quote (1 2))) (quote (3 4)))" },
-    { "stdlib append empty l", "((append (quote ())) (quote (1 2)))" },
-    { "stdlib append empty r", "((append (quote (1 2))) (quote ()))" },
+    { "stdlib map double", "(map (lambda (x) (* x 2)) (quote (1 2 3)))" },
+    { "stdlib map inc", "(map (lambda (x) (+ x 1)) (quote (10 20 30)))" },
+    { "stdlib map identity", "(map (lambda (x) x) (quote (1 2 3)))" },
+    { "stdlib filter gt2", "(filter (lambda (x) (> x 2)) (quote (1 2 3 4 5)))" },
+    { "stdlib filter none", "(filter (lambda (x) (> x 100)) (quote (1 2 3)))" },
+    { "stdlib filter all", "(filter (lambda (x) (> x 0)) (quote (1 2 3)))" },
+    { "stdlib foldl sum", "(foldl + 0 (quote (1 2 3 4 5)))" },
+    { "stdlib foldl product", "(foldl * 1 (quote (1 2 3 4 5)))" },
+    { "stdlib foldr cons", "(foldr cons nil (quote (1 2 3)))" },
+    { "stdlib append", "(append (quote (1 2)) (quote (3 4)))" },
+    { "stdlib append empty l", "(append (quote ()) (quote (1 2)))" },
+    { "stdlib append empty r", "(append (quote (1 2)) (quote ()))" },
     { "stdlib reverse", "(reverse (quote (1 2 3)))" },
     { "stdlib reverse single", "(reverse (quote (7)))" },
     { "stdlib reverse empty", "(reverse (quote ()))" },
-    { "stdlib compose", "(((compose (lambda (x) (* x 2))) (lambda (x) (+ x 1))) 5)" },
-    { "stdlib nth 0", "((nth 0) (quote (10 20 30)))" },
-    { "stdlib nth 2", "((nth 2) (quote (10 20 30)))" },
-    { "stdlib take 3", "((take 3) (quote (1 2 3 4 5)))" },
-    { "stdlib take 0", "((take 0) (quote (1 2 3)))" },
-    { "stdlib take all", "((take 5) (quote (1 2 3)))" },
-    { "stdlib drop 2", "((drop 2) (quote (1 2 3 4 5)))" },
-    { "stdlib drop 0", "((drop 0) (quote (1 2 3)))" },
-    { "stdlib drop all", "((drop 5) (quote (1 2 3)))" },
-    { "stdlib zip", "(car ((zip (quote (1 2 3))) (quote (4 5 6))))" },
+    { "stdlib compose", "((compose (lambda (x) (* x 2)) (lambda (x) (+ x 1))) 5)" },
+    { "stdlib nth 0", "(nth 0 (quote (10 20 30)))" },
+    { "stdlib nth 2", "(nth 2 (quote (10 20 30)))" },
+    { "stdlib take 3", "(take 3 (quote (1 2 3 4 5)))" },
+    { "stdlib take 0", "(take 0 (quote (1 2 3)))" },
+    { "stdlib take all", "(take 5 (quote (1 2 3)))" },
+    { "stdlib drop 2", "(drop 2 (quote (1 2 3 4 5)))" },
+    { "stdlib drop 0", "(drop 0 (quote (1 2 3)))" },
+    { "stdlib drop all", "(drop 5 (quote (1 2 3)))" },
+    { "stdlib zip", "(car (zip (quote (1 2 3)) (quote (4 5 6))))" },
     { "stdlib range 5", "(range 5)" },
     { "stdlib range 0", "(range 0)" },
     { "stdlib range 1", "(range 1)" },
-    { "stdlib any? found", "((any? (lambda (x) (= x 3))) (quote (1 2 3 4)))" },
-    { "stdlib any? not found", "((any? (lambda (x) (= x 99))) (quote (1 2 3)))" },
-    { "stdlib every? true", "((every? (lambda (x) (> x 0))) (quote (1 2 3)))" },
-    { "stdlib every? false", "((every? (lambda (x) (> x 2))) (quote (1 2 3)))" },
-    { "stdlib assoc found", "((assoc 2) (quote ((1 . 10) (2 . 20) (3 . 30))))" },
-    { "stdlib assoc not found", "((assoc 99) (quote ((1 . 10) (2 . 20))))" },
-    { "stdlib assoc-ref", "((assoc-ref 2) (quote ((1 . 10) (2 . 20) (3 . 30))))" },
-    { "stdlib id compose", "(((compose id) id) 42)" },
-    { "stdlib map filter", "(((foldl (lambda (acc) (lambda (x) (+ acc x)))) 0) ((filter (lambda (x) (> x 2))) (quote (1 2 3 4 5))))" },
+    { "stdlib any? found", "(any? (lambda (x) (= x 3)) (quote (1 2 3 4)))" },
+    { "stdlib any? not found", "(any? (lambda (x) (= x 99)) (quote (1 2 3)))" },
+    { "stdlib every? true", "(every? (lambda (x) (> x 0)) (quote (1 2 3)))" },
+    { "stdlib every? false", "(every? (lambda (x) (> x 2)) (quote (1 2 3)))" },
+    { "stdlib assoc found", "(assoc 2 (quote ((1 . 10) (2 . 20) (3 . 30))))" },
+    { "stdlib assoc not found", "(assoc 99 (quote ((1 . 10) (2 . 20))))" },
+    { "stdlib assoc-ref", "(assoc-ref 2 (quote ((1 . 10) (2 . 20) (3 . 30))))" },
+    { "stdlib id compose", "((compose id id) 42)" },
+    { "stdlib map filter", "(foldl + 0 (filter (lambda (x) (> x 2)) (quote (1 2 3 4 5))))" },
 
     // === Dict operations ===
     { "dict empty", "(dict? (dict))" },
@@ -802,15 +802,15 @@ const E2ETestCase[] E2E_TESTS = {
     { "tco count 5000", "(let count ((n 5000)) (if (= n 0) 0 (count (- n 1))))" },
 
     // === Complex combinations ===
-    { "map then reverse", "(reverse ((map (lambda (x) (* x 10))) (quote (1 2 3))))" },
-    { "filter then length", "(length ((filter (lambda (x) (> x 3))) (quote (1 2 3 4 5 6))))" },
-    { "nested map", "((map (lambda (x) (+ x 1))) ((map (lambda (x) (* x 2))) (quote (1 2 3))))" },
-    { "foldl with filter", "(((foldl (lambda (a) (lambda (x) (+ a x)))) 0) ((filter (lambda (x) (< x 4))) (quote (1 2 3 4 5))))" },
-    { "compose triple", "(((compose (lambda (x) (* x 3))) (lambda (x) (+ x 1))) 10)" },
-    { "range then sum", "(((foldl (lambda (a) (lambda (x) (+ a x)))) 0) (range 10))" },
-    { "take from range", "((take 3) (range 10))" },
-    { "drop from range", "((drop 7) (range 10))" },
-    { "match on map result", "(match ((map (lambda (x) (* x 10))) (quote (1 2 3))) ([a b c] (+ a (+ b c))))" },
+    { "map then reverse", "(reverse (map (lambda (x) (* x 10)) (quote (1 2 3))))" },
+    { "filter then length", "(length (filter (lambda (x) (> x 3)) (quote (1 2 3 4 5 6))))" },
+    { "nested map", "(map (lambda (x) (+ x 1)) (map (lambda (x) (* x 2)) (quote (1 2 3))))" },
+    { "foldl with filter", "(foldl + 0 (filter (lambda (x) (< x 4)) (quote (1 2 3 4 5))))" },
+    { "compose triple", "((compose (lambda (x) (* x 3)) (lambda (x) (+ x 1))) 10)" },
+    { "range then sum", "(foldl + 0 (range 10))" },
+    { "take from range", "(take 3 (range 10))" },
+    { "drop from range", "(drop 7 (range 10))" },
+    { "match on map result", "(match (map (lambda (x) (* x 10)) (quote (1 2 3))) ([a b c] (+ a (+ b c))))" },
     { "closure over let rec", "(let ^rec ((f (lambda (n) (if (<= n 1) 1 (* n (f (- n 1))))))) (f 7))" },
     { "nested handle", "(handle (handle (+ 1 (perform inner 0)) ((inner k x) (k 10))) ((outer k x) (k 0)))" },
     { "shift double resume", "(reset (+ (shift k (+ (k 1) (k 2))) 10))" },
@@ -981,8 +981,8 @@ fn void generate_e2e_tests(Interp* interp) {
     // Compile the combined source
     io::printfn("  Compiling %d test expressions...", test_count);
 
-    char[] pika_source = source_buf[:source_pos];
-    char[] c3_code = compile_to_c3_print_all(pika_source, e2e_interp);
+    char[] omni_source = source_buf[:source_pos];
+    char[] c3_code = compile_to_c3_print_all(omni_source, e2e_interp);
 
     if (c3_code.len == 0) {
         io::printn("ERROR: Compilation produced empty output");
@@ -1446,7 +1446,7 @@ fn void run_list_closure_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define compose (lambda (f) (lambda (g) (lambda (x) (f (g x))))))");
     setup(interp, "(define double2 (lambda (x) (* x 2)))");
     setup(interp, "(define inc (lambda (x) (+ x 1)))");
-    setup(interp, "(define double-then-inc ((compose inc) double2))");
+    setup(interp, "(define double-then-inc (compose inc double2))");
     test_eq(interp, "compose inc double 5 => 11", "(double-then-inc 5)", 11, pass, fail);
 
     // Multi-capture
@@ -1536,37 +1536,37 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "handle catches raise",
         "(handle (/ 1 0) ((raise k msg) 42))", 42, pass, fail);
     test_str_val(interp, "try catch div-by-zero",
-        "((try (lambda (xx) (/ 1 0))) (lambda (msg) msg))",
+        "(try (lambda (xx) (/ 1 0)) (lambda (msg) msg))",
         "/: division by zero", pass, fail);
     test_str_val(interp, "try catch arity error",
-        "((try (lambda (xx) (+ ))) (lambda (msg) msg))",
+        "(try (lambda (xx) (+ )) (lambda (msg) msg))",
         "+: expected at least 1 argument", pass, fail);
     test_str_val(interp, "try catch type error",
-        "((try (lambda (xx) (+ \"a\" 1))) (lambda (msg) msg))",
+        "(try (lambda (xx) (+ \"a\" 1)) (lambda (msg) msg))",
         "+: expected number argument", pass, fail);
     test_str_val(interp, "try catch oob array",
-        "((try (lambda (xx) (ref [1 2 3] 99))) (lambda (msg) msg))",
+        "(try (lambda (xx) (ref [1 2 3] 99)) (lambda (msg) msg))",
         "ref: array index out of bounds", pass, fail);
     test_str_val(interp, "try catch oob string",
-        "((try (lambda (xx) (char-at \"abc\" 99))) (lambda (msg) msg))",
+        "(try (lambda (xx) (char-at \"abc\" 99)) (lambda (msg) msg))",
         "char-at: index out of range", pass, fail);
     test_str_val(interp, "try catch car nil",
-        "((try (lambda (xx) (car 42))) (lambda (msg) msg))",
+        "(try (lambda (xx) (car 42)) (lambda (msg) msg))",
         "car: argument must be a pair", pass, fail);
     test_str_val(interp, "try catch unbound var",
-        "((try (lambda (xx) nonexistent_var_xyz_2)) (lambda (msg) msg))",
+        "(try (lambda (xx) nonexistent_var_xyz_2) (lambda (msg) msg))",
         "unbound variable 'nonexistent_var_xyz_2'", pass, fail);
     test_eq(interp, "try no error returns value",
-        "((try (lambda (xx) 42)) (lambda (msg) 0))",
+        "(try (lambda (xx) 42) (lambda (msg) 0))",
         42, pass, fail);
     test_str_val(interp, "try catch set! unbound",
-        "((try (lambda (xx) (set! no_such_var_xyz 1))) (lambda (msg) msg))",
+        "(try (lambda (xx) (set! no_such_var_xyz 1)) (lambda (msg) msg))",
         "set!: unbound variable", pass, fail);
     test_str_val(interp, "try catch user raise",
-        "((try (lambda (xx) (perform raise \"custom error\"))) (lambda (msg) msg))",
+        "(try (lambda (xx) (perform raise \"custom error\")) (lambda (msg) msg))",
         "custom error", pass, fail);
     test_eq(interp, "nested try inner catches",
-        "((try (lambda (xx) ((try (lambda (yy) (/ 1 0))) (lambda (msg) 99)))) (lambda (msg) 0))",
+        "(try (lambda (xx) (try (lambda (yy) (/ 1 0)) (lambda (msg) 99))) (lambda (msg) 0))",
         99, pass, fail);
     test_eq(interp, "unhandled raise is error",
         "(if (pair? (quote (1))) 1 0)", 1, pass, fail);
@@ -2026,7 +2026,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "import all bar", "(bar)", 99, pass, fail);
 
     // Original tests updated to use selective import
-    setup(interp, "(module list-utils (export sum-list) (define sum-list (lambda (lst) (((foldl (lambda (a) (lambda (b) (+ a b)))) 0) lst))))");
+    setup(interp, "(module list-utils (export sum-list) (define sum-list (lambda (lst) (foldl + 0 lst))))");
     setup(interp, "(import list-utils (sum-list))");
     test_eq(interp, "module stdlib access", "(sum-list (quote (1 2 3 4 5)))", 15, pass, fail);
     setup(interp, "(module base-mod (export base-fn) (define base-fn (lambda (x) (+ x 100))))");
@@ -2067,58 +2067,58 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "shorthand define zero-arg", "(sh-answer)", 42, pass, fail);
 
     // === STDLIB TESTS ===
-    test_eq(interp, "map car", "(car ((map (lambda (x) (* x 2))) (quote (1 2 3))))", 2, pass, fail);
-    test_eq(interp, "map length", "(length ((map (lambda (x) (* x 2))) (quote (1 2 3))))", 3, pass, fail);
-    test_nil(interp, "map empty", "((map (lambda (x) (* x 2))) (quote ()))", pass, fail);
-    test_eq(interp, "filter car", "(car ((filter (lambda (x) (> x 2))) (quote (1 2 3 4 5))))", 3, pass, fail);
-    test_eq(interp, "filter length", "(length ((filter (lambda (x) (> x 2))) (quote (1 2 3 4 5))))", 3, pass, fail);
-    test_nil(interp, "filter none", "((filter (lambda (x) (> x 100))) (quote (1 2 3)))", pass, fail);
-    test_eq(interp, "foldl sum", "(((foldl (lambda (acc) (lambda (x) (+ acc x)))) 0) (quote (1 2 3 4 5)))", 15, pass, fail);
-    test_eq(interp, "foldl product", "(((foldl (lambda (acc) (lambda (x) (* acc x)))) 1) (quote (1 2 3 4)))", 24, pass, fail);
-    test_eq(interp, "foldr cons len", "(length (((foldr (lambda (x) (lambda (acc) (cons x acc)))) nil) (quote (1 2 3))))", 3, pass, fail);
-    test_eq(interp, "foldr cons car", "(car (((foldr (lambda (x) (lambda (acc) (cons x acc)))) nil) (quote (1 2 3))))", 1, pass, fail);
-    test_eq(interp, "append length", "(length ((append (quote (1 2))) (quote (3 4))))", 4, pass, fail);
-    test_eq(interp, "append car", "(car ((append (quote (1 2))) (quote (3 4))))", 1, pass, fail);
-    test_eq(interp, "append nil left", "(car ((append nil) (quote (1 2))))", 1, pass, fail);
+    test_eq(interp, "map car", "(car (map (lambda (x) (* x 2)) (quote (1 2 3))))", 2, pass, fail);
+    test_eq(interp, "map length", "(length (map (lambda (x) (* x 2)) (quote (1 2 3))))", 3, pass, fail);
+    test_nil(interp, "map empty", "(map (lambda (x) (* x 2)) (quote ()))", pass, fail);
+    test_eq(interp, "filter car", "(car (filter (lambda (x) (> x 2)) (quote (1 2 3 4 5))))", 3, pass, fail);
+    test_eq(interp, "filter length", "(length (filter (lambda (x) (> x 2)) (quote (1 2 3 4 5))))", 3, pass, fail);
+    test_nil(interp, "filter none", "(filter (lambda (x) (> x 100)) (quote (1 2 3)))", pass, fail);
+    test_eq(interp, "foldl sum", "(foldl + 0 (quote (1 2 3 4 5)))", 15, pass, fail);
+    test_eq(interp, "foldl product", "(foldl * 1 (quote (1 2 3 4)))", 24, pass, fail);
+    test_eq(interp, "foldr cons len", "(length (foldr cons nil (quote (1 2 3))))", 3, pass, fail);
+    test_eq(interp, "foldr cons car", "(car (foldr cons nil (quote (1 2 3))))", 1, pass, fail);
+    test_eq(interp, "append length", "(length (append (quote (1 2)) (quote (3 4))))", 4, pass, fail);
+    test_eq(interp, "append car", "(car (append (quote (1 2)) (quote (3 4))))", 1, pass, fail);
+    test_eq(interp, "append nil left", "(car (append nil (quote (1 2))))", 1, pass, fail);
     test_eq(interp, "reverse car", "(car (reverse (quote (1 2 3))))", 3, pass, fail);
     test_eq(interp, "reverse length", "(length (reverse (quote (1 2 3))))", 3, pass, fail);
     test_nil(interp, "reverse nil", "(reverse nil)", pass, fail);
-    test_eq(interp, "compose *2.+1", "(((compose (lambda (x) (* x 2))) (lambda (x) (+ x 1))) 3)", 8, pass, fail);
-    test_eq(interp, "compose +1.*2", "(((compose (lambda (x) (+ x 1))) (lambda (x) (* x 2))) 3)", 7, pass, fail);
+    test_eq(interp, "compose *2.+1", "((compose (lambda (x) (* x 2)) (lambda (x) (+ x 1))) 3)", 8, pass, fail);
+    test_eq(interp, "compose +1.*2", "((compose (lambda (x) (+ x 1)) (lambda (x) (* x 2))) 3)", 7, pass, fail);
     test_eq(interp, "id", "(id 42)", 42, pass, fail);
-    test_eq(interp, "nth 0", "((nth 0) (quote (10 20 30 40)))", 10, pass, fail);
-    test_eq(interp, "nth 2", "((nth 2) (quote (10 20 30 40)))", 30, pass, fail);
-    test_eq(interp, "take length", "(length ((take 3) (quote (1 2 3 4 5))))", 3, pass, fail);
-    test_eq(interp, "take car", "(car ((take 3) (quote (1 2 3 4 5))))", 1, pass, fail);
-    test_nil(interp, "take 0", "((take 0) (quote (1 2 3)))", pass, fail);
-    test_eq(interp, "drop car", "(car ((drop 2) (quote (1 2 3 4 5))))", 3, pass, fail);
-    test_eq(interp, "drop length", "(length ((drop 2) (quote (1 2 3 4 5))))", 3, pass, fail);
-    test_eq(interp, "drop 0", "(car ((drop 0) (quote (1 2 3))))", 1, pass, fail);
-    test_eq(interp, "zip length", "(length ((zip (quote (1 2 3))) (quote (4 5 6))))", 3, pass, fail);
-    test_eq(interp, "zip first car", "(car (car ((zip (quote (1 2 3))) (quote (4 5 6)))))", 1, pass, fail);
-    test_eq(interp, "zip first cdr", "(cdr (car ((zip (quote (1 2 3))) (quote (4 5 6)))))", 4, pass, fail);
-    test_eq(interp, "zip unequal", "(length ((zip (quote (1 2))) (quote (4 5 6))))", 2, pass, fail);
+    test_eq(interp, "nth 0", "(nth 0 (quote (10 20 30 40)))", 10, pass, fail);
+    test_eq(interp, "nth 2", "(nth 2 (quote (10 20 30 40)))", 30, pass, fail);
+    test_eq(interp, "take length", "(length (take 3 (quote (1 2 3 4 5))))", 3, pass, fail);
+    test_eq(interp, "take car", "(car (take 3 (quote (1 2 3 4 5))))", 1, pass, fail);
+    test_nil(interp, "take 0", "(take 0 (quote (1 2 3)))", pass, fail);
+    test_eq(interp, "drop car", "(car (drop 2 (quote (1 2 3 4 5))))", 3, pass, fail);
+    test_eq(interp, "drop length", "(length (drop 2 (quote (1 2 3 4 5))))", 3, pass, fail);
+    test_eq(interp, "drop 0", "(car (drop 0 (quote (1 2 3))))", 1, pass, fail);
+    test_eq(interp, "zip length", "(length (zip (quote (1 2 3)) (quote (4 5 6))))", 3, pass, fail);
+    test_eq(interp, "zip first car", "(car (car (zip (quote (1 2 3)) (quote (4 5 6)))))", 1, pass, fail);
+    test_eq(interp, "zip first cdr", "(cdr (car (zip (quote (1 2 3)) (quote (4 5 6)))))", 4, pass, fail);
+    test_eq(interp, "zip unequal", "(length (zip (quote (1 2)) (quote (4 5 6))))", 2, pass, fail);
     test_eq(interp, "range length", "(length (range 5))", 5, pass, fail);
     test_eq(interp, "range car", "(car (range 5))", 0, pass, fail);
     test_nil(interp, "range 0", "(range 0)", pass, fail);
-    test_nil(interp, "for-each", "((for-each (lambda (x) (+ x 1))) (quote (1 2 3)))", pass, fail);
-    test_truthy(interp, "any? found", "((any? (lambda (x) (= x 3))) (quote (1 2 3 4)))", pass, fail);
-    test_nil(interp, "any? not found", "((any? (lambda (x) (= x 99))) (quote (1 2 3 4)))", pass, fail);
-    test_truthy(interp, "every? all", "((every? (lambda (x) (> x 0))) (quote (1 2 3 4)))", pass, fail);
-    test_nil(interp, "every? not all", "((every? (lambda (x) (> x 2))) (quote (1 2 3 4)))", pass, fail);
-    test_truthy(interp, "every? empty", "((every? (lambda (x) (> x 0))) nil)", pass, fail);
-    test_eq(interp, "try/raise catch", "((try (lambda (xx) (+ 1 (perform raise 42)))) (lambda (msg) msg))", 42, pass, fail);
-    test_eq(interp, "try no error", "((try (lambda (xx) (+ 1 2))) (lambda (msg) msg))", 3, pass, fail);
-    test_truthy(interp, "assert! true", "((assert! (= 1 1)) \"ok\")", pass, fail);
-    test_truthy(interp, "assert! false raises", "(handle ((assert! (= 1 2)) \"fail\") ((raise k msg) msg))", pass, fail);
+    test_nil(interp, "for-each", "(for-each (lambda (x) (+ x 1)) (quote (1 2 3)))", pass, fail);
+    test_truthy(interp, "any? found", "(any? (lambda (x) (= x 3)) (quote (1 2 3 4)))", pass, fail);
+    test_nil(interp, "any? not found", "(any? (lambda (x) (= x 99)) (quote (1 2 3 4)))", pass, fail);
+    test_truthy(interp, "every? all", "(every? (lambda (x) (> x 0)) (quote (1 2 3 4)))", pass, fail);
+    test_nil(interp, "every? not all", "(every? (lambda (x) (> x 2)) (quote (1 2 3 4)))", pass, fail);
+    test_truthy(interp, "every? empty", "(every? (lambda (x) (> x 0)) nil)", pass, fail);
+    test_eq(interp, "try/raise catch", "(try (lambda (xx) (+ 1 (perform raise 42))) (lambda (msg) msg))", 42, pass, fail);
+    test_eq(interp, "try no error", "(try (lambda (xx) (+ 1 2)) (lambda (msg) msg))", 3, pass, fail);
+    test_truthy(interp, "assert! true", "(assert! (= 1 1) \"ok\")", pass, fail);
+    test_truthy(interp, "assert! false raises", "(handle (assert! (= 1 2) \"fail\") ((raise k msg) msg))", pass, fail);
     setup(interp, "(define test-alist (list (cons 1 10) (cons 2 20) (cons 3 30)))");
-    test_eq(interp, "assoc find", "(cdr ((assoc 2) test-alist))", 20, pass, fail);
-    test_nil(interp, "assoc not found", "((assoc 99) test-alist)", pass, fail);
-    test_eq(interp, "assoc-ref", "((assoc-ref 3) test-alist)", 30, pass, fail);
-    test_nil(interp, "assoc-ref not found", "((assoc-ref 99) test-alist)", pass, fail);
-    test_eq(interp, "map+filter+foldl", "(((foldl (lambda (acc) (lambda (x) (+ acc x)))) 0) ((filter (lambda (x) (> x 3))) ((map (lambda (x) (* x 2))) (quote (1 2 3 4 5)))))", 28, pass, fail);
-    test_eq(interp, "reverse+take", "(car ((take 1) (reverse (quote (1 2 3)))))", 3, pass, fail);
-    test_eq(interp, "sum of squares", "(((foldl (lambda (acc) (lambda (x) (+ acc x)))) 0) ((map (lambda (x) (* x x))) (range 5)))", 30, pass, fail);
+    test_eq(interp, "assoc find", "(cdr (assoc 2 test-alist))", 20, pass, fail);
+    test_nil(interp, "assoc not found", "(assoc 99 test-alist)", pass, fail);
+    test_eq(interp, "assoc-ref", "(assoc-ref 3 test-alist)", 30, pass, fail);
+    test_nil(interp, "assoc-ref not found", "(assoc-ref 99 test-alist)", pass, fail);
+    test_eq(interp, "map+filter+foldl", "(foldl + 0 (filter (lambda (x) (> x 3)) (map (lambda (x) (* x 2)) (quote (1 2 3 4 5)))))", 28, pass, fail);
+    test_eq(interp, "reverse+take", "(car (take 1 (reverse (quote (1 2 3)))))", 3, pass, fail);
+    test_eq(interp, "sum of squares", "(foldl + 0 (map (lambda (x) (* x x)) (range 5)))", 30, pass, fail);
 
     // === FLOAT TESTS ===
     // Float literals
@@ -2248,7 +2248,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "delay/force", "(force p)", 42, pass, fail);
 
     // === TCO STDLIB TESTS (Phase 6) ===
-    test_eq(interp, "foldl TCO 4000", "(((foldl (lambda (a) (lambda (b) (+ a b)))) 0) (range 4000))", 7998000, pass, fail);
+    test_eq(interp, "foldl TCO 4000", "(foldl + 0 (range 4000))", 7998000, pass, fail);
 
     // === ARRAY TESTS (Phase 8) ===
     test_eq(interp, "length array", "(length (array 1 2 3))", 3, pass, fail);
@@ -2814,7 +2814,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 11. map compiles
     {
-        char[] code = compile_to_c3("((map (lambda (x) (+ x 1))) (list 1))", interp);
+        char[] code = compile_to_c3("(map (lambda (x) (+ x 1)) (list 1))", interp);
         bool ok = !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: map"); }
         else    { fail++; io::printn("[FAIL] Compiler: map"); }
@@ -2822,7 +2822,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 12. filter compiles
     {
-        char[] code = compile_to_c3("((filter (lambda (x) (> x 2))) (list 1 2 3))", interp);
+        char[] code = compile_to_c3("(filter (lambda (x) (> x 2)) (list 1 2 3))", interp);
         bool ok = !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: filter"); }
         else    { fail++; io::printn("[FAIL] Compiler: filter"); }
@@ -2830,7 +2830,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 13. foldl compiles
     {
-        char[] code = compile_to_c3("(((foldl (lambda (acc) (lambda (x) (+ acc x)))) 0) (list 1 2 3))", interp);
+        char[] code = compile_to_c3("(foldl + 0 (list 1 2 3))", interp);
         bool ok = !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: foldl"); }
         else    { fail++; io::printn("[FAIL] Compiler: foldl"); }
@@ -3018,7 +3018,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 35. try from stdlib (uses handle/perform internally) compiles
     {
-        char[] code = compile_to_c3("((try (lambda (xx) (+ 1 2))) (lambda (msg) 0))", interp);
+        char[] code = compile_to_c3("(try (lambda (xx) (+ 1 2)) (lambda (msg) 0))", interp);
         bool ok = !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: try from stdlib"); }
         else    { fail++; io::printn("[FAIL] Compiler: try from stdlib"); }
@@ -3229,7 +3229,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 59. load compiles
     {
-        char[] code = compile_to_c3("(load \"test.pika\")", interp);
+        char[] code = compile_to_c3("(load \"test.omni\")", interp);
         bool ok = str_contains(code, "rt_load") && !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: load"); }
         else    { fail++; io::printn("[FAIL] Compiler: load"); }
@@ -3301,7 +3301,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 66. STDLIB_PRELUDE map uses iterative loop pattern
     {
-        char[] code = compile_to_c3("((map (lambda (x) x)) (list 1))", interp);
+        char[] code = compile_to_c3("(map (lambda (x) x) (list 1))", interp);
         bool ok = str_contains(code, "loop");
         if (ok) { pass++; io::printn("[PASS] Compiler: STDLIB map uses loop pattern"); }
         else    { fail++; io::printn("[FAIL] Compiler: STDLIB map uses loop pattern"); }
@@ -3309,7 +3309,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 67. STDLIB_PRELUDE filter uses iterative loop pattern
     {
-        char[] code = compile_to_c3("((filter (lambda (x) x)) (list 1))", interp);
+        char[] code = compile_to_c3("(filter (lambda (x) x) (list 1))", interp);
         bool ok = str_contains(code, "loop");
         if (ok) { pass++; io::printn("[PASS] Compiler: STDLIB filter uses loop pattern"); }
         else    { fail++; io::printn("[FAIL] Compiler: STDLIB filter uses loop pattern"); }
@@ -3321,7 +3321,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 68. map correctness via runtime
     {
-        runtime::Value result = runtime::rt_eval_source("((map (lambda (x) (+ x 1))) (list 1 2 3))");
+        runtime::Value result = runtime::rt_eval_source("(map (lambda (x) (+ x 1)) (list 1 2 3))");
         // Should be list (2 3 4) — check first element is 2
         bool ok = false;
         if (result.tag == runtime::ValueTag.V_CONS) {
@@ -3334,7 +3334,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 69. filter correctness via runtime
     {
-        runtime::Value result = runtime::rt_eval_source("((filter (lambda (x) (> x 2))) (list 1 2 3 4))");
+        runtime::Value result = runtime::rt_eval_source("(filter (lambda (x) (> x 2)) (list 1 2 3 4))");
         // Should be list (3 4) — check first element is 3
         bool ok = false;
         if (result.tag == runtime::ValueTag.V_CONS) {

@@ -402,7 +402,7 @@ fn void Compiler.emit_symbol_name(Compiler* self, SymbolId sym) {
     char[] name = self.interp.symbols.get_name(sym);
     // Escape C3 reserved words
     if (is_c3_reserved(name)) {
-        self.emit("_pika_");
+        self.emit("_omni_");
     }
     // Sanitize name for C3 (replace - with _)
     foreach (c : name) {
@@ -1473,28 +1473,28 @@ fn List{SymbolId} Compiler.collect_cont_free_vars(Compiler* self, Expr* expr) {
  */
 const char[] STDLIB_PRELUDE =
 `(define with-trampoline (lambda (thunk) (handle (thunk nil) ((bounce k next-thunk) (k (with-trampoline next-thunk))))))
-(define map (lambda (f) (lambda (lst) (let loop ((xs lst) (acc nil)) (if (null? xs) (reverse acc) (loop (cdr xs) (cons (f (car xs)) acc)))))))
-(define filter (lambda (pred) (lambda (lst) (let loop ((xs lst) (acc nil)) (if (null? xs) (reverse acc) (if (pred (car xs)) (loop (cdr xs) (cons (car xs) acc)) (loop (cdr xs) acc)))))))
-(define foldl (lambda (f) (lambda (acc) (lambda (lst) (if (null? lst) acc (((foldl f) ((f acc) (car lst))) (cdr lst)))))))
-(define foldr (lambda (f) (lambda (init) (lambda (lst) (if (null? lst) init ((f (car lst)) (((foldr f) init) (cdr lst))))))))
-(define append (lambda (a) (lambda (b) (if (null? a) b (cons (car a) ((append (cdr a)) b))))))
-(define reverse (lambda (lst) (((foldl (lambda (acc) (lambda (x) (cons x acc)))) nil) lst)))
-(define compose (lambda (f) (lambda (g) (lambda (x) (f (g x))))))
-(define id (lambda (x) x))
-(define nth (lambda (n) (lambda (lst) (if (= n 0) (car lst) ((nth (- n 1)) (cdr lst))))))
-(define take (lambda (n) (lambda (lst) (if (= n 0) nil (if (null? lst) nil (cons (car lst) ((take (- n 1)) (cdr lst))))))))
-(define drop (lambda (n) (lambda (lst) (if (= n 0) lst (if (null? lst) nil ((drop (- n 1)) (cdr lst)))))))
-(define zip (lambda (a) (lambda (b) (if (or (null? a) (null? b)) nil (cons (cons (car a) (car b)) ((zip (cdr a)) (cdr b)))))))
-(define range (lambda (n) (let ^rec ((helper (lambda (i) (if (= i n) nil (cons i (helper (+ i 1))))))) (helper 0))))
-(define for-each (lambda (f) (lambda (lst) (if (null? lst) nil (let ((_r (f (car lst)))) ((for-each f) (cdr lst)))))))
-(define any? (lambda (pred) (lambda (lst) (if (null? lst) nil (if (pred (car lst)) true ((any? pred) (cdr lst)))))))
-(define every? (lambda (pred) (lambda (lst) (if (null? lst) true (if (pred (car lst)) ((every? pred) (cdr lst)) nil)))))
-(define try (lambda (thunk) (lambda (handler) (handle (thunk nil) ((raise k msg) (handler msg))))))
-(define assert! (lambda (condition) (lambda (msg) (if condition true (perform raise msg)))))
-(define assoc (lambda (key) (lambda (alist) (if (null? alist) nil (if (= (car (car alist)) key) (car alist) ((assoc key) (cdr alist)))))))
-(define assoc-ref (lambda (key) (lambda (alist) (let ((pair ((assoc key) alist))) (if (null? pair) nil (cdr pair))))))
-(define when (lambda (test) (lambda (body) (if test body nil))))
-(define unless (lambda (test) (lambda (body) (if test nil body))))`;
+(define (reverse lst) (let loop ((xs lst) (acc nil)) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
+(define (map f lst) (let loop ((xs lst) (acc nil)) (if (null? xs) (reverse acc) (loop (cdr xs) (cons (f (car xs)) acc)))))
+(define (filter pred lst) (let loop ((xs lst) (acc nil)) (if (null? xs) (reverse acc) (if (pred (car xs)) (loop (cdr xs) (cons (car xs) acc)) (loop (cdr xs) acc)))))
+(define (foldl f acc lst) (let loop ((a acc) (xs lst)) (if (null? xs) a (loop (f a (car xs)) (cdr xs)))))
+(define (foldr f init lst) (foldl (lambda (acc x) (f x acc)) init (reverse lst)))
+(define (append a b) (let loop ((xs (reverse a)) (acc b)) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
+(define (compose f g) (lambda (x) (f (g x))))
+(define (id x) x)
+(define (nth n lst) (let loop ((i n) (xs lst)) (if (= i 0) (car xs) (loop (- i 1) (cdr xs)))))
+(define (take n lst) (let loop ((i n) (xs lst) (acc nil)) (if (= i 0) (reverse acc) (if (null? xs) (reverse acc) (loop (- i 1) (cdr xs) (cons (car xs) acc))))))
+(define (drop n lst) (let loop ((i n) (xs lst)) (if (= i 0) xs (if (null? xs) nil (loop (- i 1) (cdr xs))))))
+(define (zip a b) (let loop ((xs a) (ys b) (acc nil)) (if (or (null? xs) (null? ys)) (reverse acc) (loop (cdr xs) (cdr ys) (cons (cons (car xs) (car ys)) acc)))))
+(define (range n) (let loop ((i (- n 1)) (acc nil)) (if (< i 0) acc (loop (- i 1) (cons i acc)))))
+(define (for-each f lst) (let loop ((xs lst)) (if (null? xs) nil (begin (f (car xs)) (loop (cdr xs))))))
+(define (any? pred lst) (let loop ((xs lst)) (if (null? xs) nil (if (pred (car xs)) true (loop (cdr xs))))))
+(define (every? pred lst) (let loop ((xs lst)) (if (null? xs) true (if (pred (car xs)) (loop (cdr xs)) nil))))
+(define (try thunk handler) (handle (thunk nil) ((raise k msg) (handler msg))))
+(define (assert! condition msg) (if condition true (perform raise msg)))
+(define (assoc key alist) (let loop ((xs alist)) (if (null? xs) nil (if (= (car (car xs)) key) (car xs) (loop (cdr xs))))))
+(define (assoc-ref key alist) (let ((pair (assoc key alist))) (if (null? pair) nil (cdr pair))))
+(define when (lambda (test body) (if test body nil)))
+(define unless (lambda (test body) (if test nil body)))`;
 
 // =============================================================================
 // SECTION 5: MAIN COMPILATION
