@@ -57,7 +57,8 @@ struct Compiler {
 
     // Compiled modules: track module name → exported symbols
     usz compiled_module_count;
-    CompiledModule[64] compiled_modules;
+    usz compiled_module_capacity;
+    CompiledModule* compiled_modules;
 }
 
 /**
@@ -65,8 +66,9 @@ struct Compiler {
  */
 struct CompiledModule {
     SymbolId     name;
-    SymbolId[64] exports;
+    SymbolId*    exports;       // heap-allocated
     usz          export_count;
+    usz          export_capacity;
     bool         loaded;
 }
 
@@ -265,6 +267,9 @@ fn void Compiler.init(Compiler* self, Interp* interp) {
     self.lambda_counter = 0;
     self.output.init(mem, 8192);
     init_prim_hash(interp);
+    self.compiled_module_count = 0;
+    self.compiled_module_capacity = 16;
+    self.compiled_modules = (CompiledModule*)mem::malloc(CompiledModule.sizeof * 16);
 }
 
 fn void Compiler.free(Compiler* self) {
@@ -274,6 +279,15 @@ fn void Compiler.free(Compiler* self) {
     self.lambda_defs.free();
     self.mutable_captures.free();
     self.declared_vars.free();
+    for (usz i = 0; i < self.compiled_module_count; i++) {
+        if (self.compiled_modules[i].exports != null) {
+            mem::free(self.compiled_modules[i].exports);
+        }
+    }
+    if (self.compiled_modules != null) {
+        mem::free(self.compiled_modules);
+        self.compiled_modules = null;
+    }
 }
 
 fn bool Compiler.is_declared(Compiler* self, SymbolId sym) {
@@ -633,6 +647,7 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
             }
 
         case E_IMPORT:
+        case E_EXPORT_FROM:
             // No free variables
             return;
 
@@ -1237,7 +1252,39 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
             self.buf_append(buf, "(import ");
             char[] imp_name = self.interp.symbols.get_name(expr.import_expr.name);
             self.buf_append(buf, imp_name);
+            if (expr.import_expr.import_all) {
+                self.buf_append(buf, " :all");
+            } else if (expr.import_expr.import_count > 0) {
+                self.buf_append(buf, " (");
+                for (usz i = 0; i < expr.import_expr.import_count; i++) {
+                    if (i > 0) buf.push(' ');
+                    char[] sel_name = self.interp.symbols.get_name(expr.import_expr.imports[i]);
+                    self.buf_append(buf, sel_name);
+                    if ((uint)expr.import_expr.aliases[i] != 0) {
+                        self.buf_append(buf, " :as ");
+                        char[] alias_name = self.interp.symbols.get_name(expr.import_expr.aliases[i]);
+                        self.buf_append(buf, alias_name);
+                    }
+                }
+                buf.push(')');
+            }
             buf.push(')');
+
+        case E_EXPORT_FROM:
+            self.buf_append(buf, "(export-from ");
+            char[] efmod = self.interp.symbols.get_name(expr.export_from.source_module);
+            self.buf_append(buf, efmod);
+            if (expr.export_from.all) {
+                self.buf_append(buf, " :all)");
+            } else {
+                self.buf_append(buf, " (");
+                for (usz i = 0; i < expr.export_from.name_count; i++) {
+                    if (i > 0) buf.push(' ');
+                    char[] ef_name = self.interp.symbols.get_name(expr.export_from.names[i]);
+                    self.buf_append(buf, ef_name);
+                }
+                self.buf_append(buf, "))");
+            }
 
         default:
             self.buf_append(buf, "nil");
@@ -1864,6 +1911,7 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
             return mod_found;
 
         case E_IMPORT:
+        case E_EXPORT_FROM:
             return false;
 
         default:
@@ -2346,6 +2394,9 @@ fn usz Compiler.compile_to_temp(Compiler* self, Expr* expr) {
 
         case E_IMPORT:
             return self.compile_import_flat(expr);
+
+        case E_EXPORT_FROM:
+            return self.compile_export_from_flat(expr);
 
         case E_IF:
             return self.compile_if_flat(expr);
@@ -3920,9 +3971,20 @@ fn void Compiler.compile_path(Compiler* self, Expr* expr) {
  */
 fn usz Compiler.compile_module_flat(Compiler* self, Expr* expr) {
     // Register the module in compiled_modules table
-    if (self.compiled_module_count < 64) {
+    if (self.compiled_module_count >= self.compiled_module_capacity) {
+        usz new_cap = self.compiled_module_capacity * 2;
+        CompiledModule* new_mods = (CompiledModule*)mem::malloc(CompiledModule.sizeof * new_cap);
+        for (usz i = 0; i < self.compiled_module_count; i++) new_mods[i] = self.compiled_modules[i];
+        mem::free(self.compiled_modules);
+        self.compiled_modules = new_mods;
+        self.compiled_module_capacity = new_cap;
+    }
+    {
         CompiledModule* mod = &self.compiled_modules[self.compiled_module_count];
         mod.name = expr.module_expr.name;
+        usz cap = expr.module_expr.export_count < 16 ? 16 : expr.module_expr.export_count;
+        mod.exports = (SymbolId*)mem::malloc(SymbolId.sizeof * cap);
+        mod.export_capacity = cap;
         mod.export_count = expr.module_expr.export_count;
         for (usz i = 0; i < expr.module_expr.export_count; i++) {
             mod.exports[i] = expr.module_expr.exports[i];
@@ -3965,6 +4027,17 @@ fn usz Compiler.compile_import_flat(Compiler* self, Expr* expr) {
     usz id = self.next_result();
     self.emit_temp_decl(id);
     self.emit(" = runtime::make_nil(); // import: inline module\n");
+    return id;
+}
+
+/**
+ * compile_export_from_flat — export-from is a no-op in compiled mode
+ * (re-exported symbols are already inlined as globals).
+ */
+fn usz Compiler.compile_export_from_flat(Compiler* self, Expr* expr) {
+    usz id = self.next_result();
+    self.emit_temp_decl(id);
+    self.emit(" = runtime::make_nil(); // export-from: no-op in compiled mode\n");
     return id;
 }
 

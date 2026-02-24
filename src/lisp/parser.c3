@@ -101,6 +101,8 @@ fn bool is_symbol_char(char c) {
         c == '%' || c == '&' || c == '|' || c == '^' || c == '~') {
         return true;
     }
+    // Accept high bytes (>= 0x80) for UTF-8 multibyte characters (e.g. λ)
+    if ((uint)c >= 0x80) return true;
     return false;
 }
 
@@ -486,10 +488,7 @@ fn Expr* Parser.alloc_expr_here(Parser* self) {
  * Get interned symbol from current token text.
  */
 fn SymbolId Parser.get_current_symbol(Parser* self) {
-    // Pass the char slice directly as String (String = char[])
-    SymbolId sym = self.interp.symbols.intern(self.lexer.current.text[:self.lexer.current.text_len]);
-    if (sym == INVALID_SYMBOL_ID) { self.set_error("symbol table exhausted"); }
-    return sym;
+    return self.interp.symbols.intern(self.lexer.current.text[:self.lexer.current.text_len]);
 }
 
 /**
@@ -746,7 +745,7 @@ fn Expr* Parser.parse_expr(Parser* self) {
                     if (e.path.segment_count >= MAX_PATH_SEGMENTS) { self.set_error("too many path segments"); return null; }
                     usz seg_len = i - start;
                     SymbolId seg_sym = self.interp.symbols.intern(lex.current.text[start:seg_len]);
-                    if (seg_sym == INVALID_SYMBOL_ID) { self.set_error("symbol table exhausted"); return null; }
+
                     e.path.segments[e.path.segment_count] = seg_sym;
                     e.path.segment_count++;
                 }
@@ -836,6 +835,11 @@ fn Expr* Parser.parse_expr(Parser* self) {
             if ((uint)head == (uint)self.interp.sym_lambda) {
                 return self.parse_lambda();
             }
+            // Check for λ (U+03BB, UTF-8: CE BB)
+            char[] head_text = self.interp.symbols.get_name(head);
+            if (head_text.len == 2 && head_text[0] == (char)0xCE && head_text[1] == (char)0xBB) {
+                return self.parse_lambda();
+            }
             if ((uint)head == (uint)self.interp.sym_if) {
                 return self.parse_if();
             }
@@ -904,6 +908,9 @@ fn Expr* Parser.parse_expr(Parser* self) {
             }
             if ((uint)head == (uint)self.interp.sym_import) {
                 return self.parse_import();
+            }
+            if ((uint)head == (uint)self.interp.sym_export_from) {
+                return self.parse_export_from();
             }
             if ((uint)head == (uint)self.interp.sym_pipe) {
                 return self.parse_pipe();
@@ -1867,6 +1874,7 @@ fn Expr* Parser.parse_handle(Parser* self) {
         SymbolId k_name = self.get_current_symbol();
         self.lexer.advance();
 
+        // Parse arg: plain symbol or typed (^Type name)
         if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected arg name"); return null; }
         SymbolId arg_name = self.get_current_symbol();
         self.lexer.advance();
@@ -2194,7 +2202,7 @@ fn Expr* Parser.parse_set(Parser* self) {
                     if (e.set_expr.path_segment_count >= MAX_PATH_SEGMENTS) { self.set_error("too many path segments in set!"); return null; }
                     usz seg_len = i - start;
                     SymbolId seg_sym = self.interp.symbols.intern(self.lexer.current.text[start:seg_len]);
-                    if (seg_sym == INVALID_SYMBOL_ID) { self.set_error("symbol table exhausted"); return null; }
+
                     e.set_expr.path_segments[e.set_expr.path_segment_count] = seg_sym;
                     e.set_expr.path_segment_count++;
                 }
@@ -2243,7 +2251,6 @@ fn Value* Parser.parse_template_datum(Parser* self) {
     if (lex.current.type == T_UNDERSCORE) {
         lex.advance();
         SymbolId usym = self.interp.symbols.intern("_");
-        if (usym == INVALID_SYMBOL_ID) { self.set_error("symbol table exhausted"); return null; }
         Value* v = self.interp.alloc_value();
         v.tag = SYMBOL;
         v.sym_val = usym;
@@ -2362,7 +2369,11 @@ fn Expr* Parser.parse_module(Parser* self) {
     e.module_expr = mem::malloc(ExprModule.sizeof);
     e.module_expr.name = name;
     e.module_expr.export_count = 0;
+    e.module_expr.export_capacity = 32;
+    e.module_expr.exports = (SymbolId*)mem::malloc(SymbolId.sizeof * 32);
     e.module_expr.body_count = 0;
+    e.module_expr.body_capacity = 32;
+    e.module_expr.body = (Expr**)mem::malloc(Expr*.sizeof * 32);
 
     // Parse (export sym1 sym2 ...) — required
     self.expect(T_LPAREN, "(");
@@ -2372,7 +2383,14 @@ fn Expr* Parser.parse_module(Parser* self) {
     if ((uint)maybe_export != (uint)self.interp.sym_export) { self.set_error("expected 'export' in module"); return null; }
     self.lexer.advance();  // consume 'export'
     while (self.lexer.current.type == T_SYMBOL) {
-        if (e.module_expr.export_count >= 64) { self.set_error("too many exports"); return null; }
+        if (e.module_expr.export_count >= e.module_expr.export_capacity) {
+            usz new_cap = e.module_expr.export_capacity * 2;
+            SymbolId* new_exports = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
+            for (usz i = 0; i < e.module_expr.export_count; i++) new_exports[i] = e.module_expr.exports[i];
+            mem::free(e.module_expr.exports);
+            e.module_expr.exports = new_exports;
+            e.module_expr.export_capacity = new_cap;
+        }
         e.module_expr.exports[e.module_expr.export_count] = self.get_current_symbol();
         e.module_expr.export_count++;
         self.lexer.advance();
@@ -2381,7 +2399,14 @@ fn Expr* Parser.parse_module(Parser* self) {
 
     // Parse remaining body expressions
     while (self.lexer.current.type != T_RPAREN && !self.lexer.at_end() && !self.has_error) {
-        if (e.module_expr.body_count >= 64) { self.set_error("too many body expressions in module"); return null; }
+        if (e.module_expr.body_count >= e.module_expr.body_capacity) {
+            usz new_cap = e.module_expr.body_capacity * 2;
+            Expr** new_body = (Expr**)mem::malloc(Expr*.sizeof * new_cap);
+            for (usz i = 0; i < e.module_expr.body_count; i++) new_body[i] = e.module_expr.body[i];
+            mem::free(e.module_expr.body);
+            e.module_expr.body = new_body;
+            e.module_expr.body_capacity = new_cap;
+        }
         e.module_expr.body[e.module_expr.body_count] = self.parse_expr();
         e.module_expr.body_count++;
     }
@@ -2391,7 +2416,7 @@ fn Expr* Parser.parse_module(Parser* self) {
 }
 
 /**
- * Parse import: (import name) or (import "path/to/file.pika")
+ * Parse import: (import name), (import name (sym1 (sym2 :as alias))), (import name :all), (import "path")
  */
 fn Expr* Parser.parse_import(Parser* self) {
     if (self.has_error) return null;
@@ -2401,6 +2426,11 @@ fn Expr* Parser.parse_import(Parser* self) {
     e.tag = E_IMPORT;
     e.import_expr.has_path = false;
     e.import_expr.path_len = 0;
+    e.import_expr.import_count = 0;
+    e.import_expr.import_capacity = 0;
+    e.import_expr.imports = null;
+    e.import_expr.aliases = null;
+    e.import_expr.import_all = false;
 
     if (self.lexer.current.type == T_SYMBOL) {
         e.import_expr.name = self.get_current_symbol();
@@ -2416,7 +2446,6 @@ fn Expr* Parser.parse_import(Parser* self) {
         }
         e.import_expr.path_len = len;
         SymbolId import_sym = self.interp.symbols.intern(str);
-        if (import_sym == INVALID_SYMBOL_ID) { self.set_error("symbol table exhausted"); return null; }
         e.import_expr.name = import_sym;
         self.lexer.advance();
     } else {
@@ -2424,7 +2453,158 @@ fn Expr* Parser.parse_import(Parser* self) {
         return null;
     }
 
-    self.expect(T_RPAREN, ")");
+    // Check for optional specifiers before closing )
+    // (import name :all) or (import name (sym1 (sym2 :as alias)))
+    if (self.lexer.current.type == T_SYMBOL) {
+        SymbolId maybe_all = self.get_current_symbol();
+        if ((uint)maybe_all == (uint)self.interp.sym_all) {
+            // (import name :all)
+            e.import_expr.import_all = true;
+            self.lexer.advance();
+        }
+    } else if (self.lexer.current.type == T_LPAREN) {
+        // (import name (sym1 sym2 (sym3 :as alias3)))
+        // Allocate initial arrays
+        e.import_expr.import_capacity = 16;
+        e.import_expr.imports = (SymbolId*)mem::malloc(SymbolId.sizeof * 16);
+        e.import_expr.aliases = (SymbolId*)mem::malloc(SymbolId.sizeof * 16);
+        self.lexer.advance();  // consume '('
+        while (self.lexer.current.type != T_RPAREN && !self.lexer.at_end() && !self.has_error) {
+            if (e.import_expr.import_count >= e.import_expr.import_capacity) {
+                usz new_cap = e.import_expr.import_capacity * 2;
+                SymbolId* new_imports = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
+                SymbolId* new_aliases = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
+                for (usz i = 0; i < e.import_expr.import_count; i++) {
+                    new_imports[i] = e.import_expr.imports[i];
+                    new_aliases[i] = e.import_expr.aliases[i];
+                }
+                mem::free(e.import_expr.imports);
+                mem::free(e.import_expr.aliases);
+                e.import_expr.imports = new_imports;
+                e.import_expr.aliases = new_aliases;
+                e.import_expr.import_capacity = new_cap;
+            }
+            usz idx = e.import_expr.import_count;
+
+            if (self.lexer.current.type == T_LPAREN) {
+                // (sym :as alias) form
+                self.lexer.advance();  // consume '('
+                if (self.lexer.current.type != T_SYMBOL) {
+                    self.set_error("expected symbol in import specifier");
+                    return null;
+                }
+                e.import_expr.imports[idx] = self.get_current_symbol();
+                self.lexer.advance();
+                // Expect :as
+                if (self.lexer.current.type != T_SYMBOL) {
+                    self.set_error("expected :as in import specifier");
+                    return null;
+                }
+                SymbolId maybe_as = self.get_current_symbol();
+                if ((uint)maybe_as != (uint)self.interp.sym_as) {
+                    self.set_error("expected :as in import specifier");
+                    return null;
+                }
+                self.lexer.advance();  // consume ':as'
+                if (self.lexer.current.type != T_SYMBOL) {
+                    self.set_error("expected alias after :as");
+                    return null;
+                }
+                e.import_expr.aliases[idx] = self.get_current_symbol();
+                self.lexer.advance();
+                self.expect(T_RPAREN, ")");  // close (sym :as alias)
+            } else if (self.lexer.current.type == T_SYMBOL) {
+                // Plain symbol — check for inline :as
+                e.import_expr.imports[idx] = self.get_current_symbol();
+                e.import_expr.aliases[idx] = (SymbolId)0;
+                self.lexer.advance();
+                // Check for :as after symbol (without parens)
+                if (self.lexer.current.type == T_SYMBOL) {
+                    SymbolId maybe_as = self.get_current_symbol();
+                    if ((uint)maybe_as == (uint)self.interp.sym_as) {
+                        self.lexer.advance();  // consume ':as'
+                        if (self.lexer.current.type != T_SYMBOL) {
+                            self.set_error("expected alias after :as");
+                            return null;
+                        }
+                        e.import_expr.aliases[idx] = self.get_current_symbol();
+                        self.lexer.advance();
+                    }
+                }
+            } else {
+                self.set_error("expected symbol in import list");
+                return null;
+            }
+
+            e.import_expr.import_count++;
+        }
+        self.expect(T_RPAREN, ")");  // close selective list
+    }
+
+    self.expect(T_RPAREN, ")");  // close import
+    return e;
+}
+
+/**
+ * Parse export-from: (export-from mod (sym1 sym2)) or (export-from mod :all)
+ */
+fn Expr* Parser.parse_export_from(Parser* self) {
+    if (self.has_error) return null;
+    Expr* e = self.alloc_expr_here();
+    self.lexer.advance();  // consume 'export-from'
+
+    e.tag = E_EXPORT_FROM;
+    e.export_from.name_count = 0;
+    e.export_from.name_capacity = 0;
+    e.export_from.names = null;
+    e.export_from.all = false;
+
+    // Parse source module name
+    if (self.lexer.current.type != T_SYMBOL) {
+        self.set_error("expected module name after export-from");
+        return null;
+    }
+    e.export_from.source_module = self.get_current_symbol();
+    self.lexer.advance();
+
+    // Parse specifiers: :all or (sym1 sym2 ...)
+    if (self.lexer.current.type == T_SYMBOL) {
+        SymbolId maybe_all = self.get_current_symbol();
+        if ((uint)maybe_all == (uint)self.interp.sym_all) {
+            e.export_from.all = true;
+            self.lexer.advance();
+        } else {
+            self.set_error("expected :all or (names...) after export-from module");
+            return null;
+        }
+    } else if (self.lexer.current.type == T_LPAREN) {
+        e.export_from.name_capacity = 16;
+        e.export_from.names = (SymbolId*)mem::malloc(SymbolId.sizeof * 16);
+        self.lexer.advance();  // consume '('
+        while (self.lexer.current.type != T_RPAREN && !self.lexer.at_end() && !self.has_error) {
+            if (e.export_from.name_count >= e.export_from.name_capacity) {
+                usz new_cap = e.export_from.name_capacity * 2;
+                SymbolId* new_names = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
+                for (usz i = 0; i < e.export_from.name_count; i++) new_names[i] = e.export_from.names[i];
+                mem::free(e.export_from.names);
+                e.export_from.names = new_names;
+                e.export_from.name_capacity = new_cap;
+            }
+            if (self.lexer.current.type != T_SYMBOL) {
+                self.set_error("expected symbol in export-from list");
+                return null;
+            }
+            e.export_from.names[e.export_from.name_count] = self.get_current_symbol();
+            e.export_from.name_count++;
+            self.lexer.advance();
+        }
+        self.expect(T_RPAREN, ")");  // close name list
+    } else {
+        self.set_error("expected :all or (names...) after export-from module");
+        return null;
+    }
+
+    self.expect(T_RPAREN, ")");  // close export-from
     return e;
 }
 
@@ -2548,7 +2728,6 @@ fn Expr* Parser.parse_qq_template(Parser* self) {
     if (lex.current.type == T_UNDERSCORE) {
         Expr* e = self.alloc_expr_here();
         SymbolId sym = self.interp.symbols.intern("_");
-        if (sym == INVALID_SYMBOL_ID) { self.set_error("symbol table exhausted"); return null; }
         lex.advance();
         e.tag = E_VAR;
         e.var_expr.name = sym;

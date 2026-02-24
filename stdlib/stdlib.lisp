@@ -13,6 +13,9 @@
 (define [effect] (io/file-exists? (^String path)))
 (define [effect] (io/read-lines (^String path)))
 
+;; Error effect — all recoverable errors flow through this
+(define [effect] (raise (^Any msg)))
+
 ;; =========================================================================
 ;; Standard Macros (defined before HOFs since macros may be used by them)
 ;; =========================================================================
@@ -154,6 +157,34 @@
 ;; delay/force: promise (lazy evaluation)
 (define (delay thunk) (let ((result nil) (forced nil)) (lambda () (if forced result (begin (set! result (thunk nil)) (set! forced true) result)))))
 (define (force p) (p))
+
+;; =========================================================================
+;; Iterators: Lazy Sequences
+;; =========================================================================
+
+;; iterator-empty: the empty iterator
+(define iterator-empty (make-iterator (lambda () nil)))
+
+;; iterator: convert collection to lazy iterator (dispatched on type)
+(define (iterator (^List lst)) (if (null? lst) iterator-empty (make-iterator (lambda () (cons (car lst) (iterator (cdr lst)))))))
+(define (iterator (^Array arr)) (let ((len (length arr))) (let make-it ((i 0)) (if (= i len) iterator-empty (make-iterator (lambda () (cons (ref arr i) (make-it (+ i 1)))))))))
+(define (iterator (^Dict d)) (iterator (keys d)))
+(define (iterator (^Iterator it)) it)
+
+;; Lazy combinators — return new iterators, nothing allocated until consumed
+(define (imap f it) (make-iterator (lambda () (let ((pair (next it))) (if (null? pair) nil (cons (f (car pair)) (imap f (cdr pair))))))))
+(define (ifilter pred it) (make-iterator (lambda () (let loop ((pair (next it))) (if (null? pair) nil (if (pred (car pair)) (cons (car pair) (ifilter pred (cdr pair))) (loop (next (cdr pair)))))))))
+(define (itake n it) (if (= n 0) iterator-empty (make-iterator (lambda () (let ((pair (next it))) (if (null? pair) nil (cons (car pair) (itake (- n 1) (cdr pair)))))))))
+(define (idrop n it) (if (= n 0) it (let ((pair (next it))) (if (null? pair) iterator-empty (idrop (- n 1) (cdr pair))))))
+(define (izip a b) (make-iterator (lambda () (let ((pa (next a)) (pb (next b))) (if (or (null? pa) (null? pb)) nil (cons (cons (car pa) (car pb)) (izip (cdr pa) (cdr pb))))))))
+
+;; Infinite sources
+(define (range-from n) (make-iterator (lambda () (cons n (range-from (+ n 1))))))
+(define (irepeat x) (make-iterator (lambda () (cons x (irepeat x)))))
+(define (icycle coll) (let ((it (iterator coll))) (make-iterator (lambda () (let ((pair (next it))) (if (null? pair) (next (icycle coll)) pair))))))
+
+;; ifoldl: eagerly fold an iterator
+(define (ifoldl f acc it) (let loop ((a acc) (cur it)) (let ((pair (next cur))) (if (null? pair) a (loop (f a (car pair)) (cdr pair))))))
 
 ;; =========================================================================
 ;; I/O Effect Wrappers

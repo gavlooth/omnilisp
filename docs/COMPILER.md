@@ -20,7 +20,18 @@ c3c compile output.c3 src/lisp/runtime.c3 src/main.c3 -o program
 
 # Run the native executable
 ./program
+
+# AOT compile to standalone binary (one step)
+./build/main --build input.lisp -o output
+
+# Scaffold a new Omni project
+./build/main --init myproject
+
+# Generate FFI bindings from project.toml (requires libclang)
+./build/main --bind myproject/
 ```
+
+See `docs/PROJECT_TOOLING.md` for the full `--init`/`--bind` reference.
 
 ## Architecture
 

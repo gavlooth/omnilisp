@@ -123,6 +123,259 @@ fn int run_build(int argc, char** argv, int build_idx) {
     return 0;
 }
 
+extern fn int mkdir(char* path, uint mode) @extern("mkdir");
+
+/**
+ * Scaffold a new Omni project directory.
+ * Usage: ./main --init myproject
+ */
+fn int run_init(int argc, char** argv, int init_idx) {
+    if (init_idx + 1 >= argc) {
+        io::printn("Usage: ./main --init <project-name>");
+        return 1;
+    }
+    char* name = argv[init_idx + 1];
+    usz name_len = 0;
+    char* np = name;
+    while (*np != 0) { name_len++; np++; }
+
+    // Create directories: name/, name/src/, name/lib/, name/lib/ffi/, name/include/
+    char[512] path_buf;
+    usz plen;
+
+    // Helper: build path_buf = base + "/" + suffix, null-terminate
+    // name/
+    for (usz i = 0; i < name_len && i < 500; i++) path_buf[i] = name[i];
+    path_buf[name_len] = 0;
+    mkdir(&path_buf[0], 0o755);
+
+    // name/src/
+    plen = name_len;
+    path_buf[plen] = '/'; plen++;
+    char[] sub_src = "src";
+    for (usz i = 0; i < sub_src.len; i++) { path_buf[plen] = sub_src[i]; plen++; }
+    path_buf[plen] = 0;
+    mkdir(&path_buf[0], 0o755);
+
+    // name/lib/
+    plen = name_len;
+    path_buf[plen] = '/'; plen++;
+    char[] sub_lib = "lib";
+    for (usz i = 0; i < sub_lib.len; i++) { path_buf[plen] = sub_lib[i]; plen++; }
+    path_buf[plen] = 0;
+    mkdir(&path_buf[0], 0o755);
+
+    // name/lib/ffi/
+    char[] sub_ffi = "/ffi";
+    for (usz i = 0; i < sub_ffi.len; i++) { path_buf[plen] = sub_ffi[i]; plen++; }
+    path_buf[plen] = 0;
+    mkdir(&path_buf[0], 0o755);
+
+    // name/include/
+    plen = name_len;
+    path_buf[plen] = '/'; plen++;
+    char[] sub_inc = "include";
+    for (usz i = 0; i < sub_inc.len; i++) { path_buf[plen] = sub_inc[i]; plen++; }
+    path_buf[plen] = 0;
+    mkdir(&path_buf[0], 0o755);
+
+    // Write project.toml
+    plen = name_len;
+    path_buf[plen] = '/'; plen++;
+    char[] toml_name = "project.toml";
+    for (usz i = 0; i < toml_name.len; i++) { path_buf[plen] = toml_name[i]; plen++; }
+    path_buf[plen] = 0;
+    if (try file = io::file::open((String)path_buf[:plen], "w")) {
+        defer (void)file.close();
+        file.write("[project]\n")!!;
+        file.write("name = \"")!!;
+        file.write(name[:name_len])!!;
+        file.write("\"\nversion = \"0.1.0\"\n\n")!!;
+        file.write("# FFI dependencies — uncomment and edit:\n")!!;
+        file.write("# [dependencies.ffi.math]\n")!!;
+        file.write("# library = \"m\"\n")!!;
+        file.write("# headers = [\"/usr/include/math.h\"]\n")!!;
+        file.write("# functions = [\"sin\", \"cos\", \"sqrt\"]\n")!!;
+    }
+
+    // Write project.json (C3 build config)
+    plen = name_len;
+    path_buf[plen] = '/'; plen++;
+    char[] json_name = "project.json";
+    for (usz i = 0; i < json_name.len; i++) { path_buf[plen] = json_name[i]; plen++; }
+    path_buf[plen] = 0;
+    if (try file = io::file::open((String)path_buf[:plen], "w")) {
+        defer (void)file.close();
+        file.write("{\n")!!;
+        file.write("    \"langrev\": \"1\",\n")!!;
+        file.write("    \"version\": \"0.1.0\",\n")!!;
+        file.write("    \"sources\": [\"src\"],\n")!!;
+        file.write("    \"output\": \"build\",\n")!!;
+        file.write("    \"targets\": {\n")!!;
+        file.write("        \"main\": {\n")!!;
+        file.write("            \"type\": \"executable\"\n")!!;
+        file.write("        }\n")!!;
+        file.write("    }\n")!!;
+        file.write("}\n")!!;
+    }
+
+    // Write src/main.omni
+    plen = name_len;
+    path_buf[plen] = '/'; plen++;
+    char[] main_path = "src/main.omni";
+    for (usz i = 0; i < main_path.len; i++) { path_buf[plen] = main_path[i]; plen++; }
+    path_buf[plen] = 0;
+    if (try file = io::file::open((String)path_buf[:plen], "w")) {
+        defer (void)file.close();
+        file.write("(println \"Hello from ")!!;
+        file.write(name[:name_len])!!;
+        file.write("!\")\n")!!;
+    }
+
+    io::printfn("Created project '%s'", (ZString)name);
+    io::printn("");
+    io::printfn("  %s/", (ZString)name);
+    io::printn("    project.toml    # Project config");
+    io::printn("    project.json    # C3 build config");
+    io::printn("    src/main.omni   # Entry point");
+    io::printn("    lib/ffi/        # Auto-generated FFI bindings");
+    io::printn("    include/        # C headers");
+    io::printn("");
+    io::printn("Next steps:");
+    io::printfn("  cd %s", (ZString)name);
+    io::printn("  # Edit project.toml to add FFI dependencies");
+    io::printn("  # Run: omni --bind to generate bindings");
+    return 0;
+}
+
+/**
+ * Generate FFI bindings from project.toml using libclang.
+ * Usage: ./main --bind [project-dir]
+ */
+fn int run_bind(int argc, char** argv, int bind_idx) {
+    // Determine project directory (next arg or ".")
+    char[512] proj_dir;
+    usz proj_dir_len;
+    if (bind_idx + 1 < argc) {
+        char* dir = argv[bind_idx + 1];
+        proj_dir_len = 0;
+        while (dir[proj_dir_len] != 0 && proj_dir_len < 510) {
+            proj_dir[proj_dir_len] = dir[proj_dir_len];
+            proj_dir_len++;
+        }
+        // Strip trailing slash
+        if (proj_dir_len > 0 && proj_dir[proj_dir_len - 1] == '/') proj_dir_len--;
+        proj_dir[proj_dir_len] = 0;
+    } else {
+        proj_dir[0] = '.';
+        proj_dir[1] = 0;
+        proj_dir_len = 1;
+    }
+
+    // Load project.toml
+    char[512] toml_path;
+    usz tlen = 0;
+    for (usz i = 0; i < proj_dir_len; i++) { toml_path[tlen] = proj_dir[i]; tlen++; }
+    toml_path[tlen] = '/'; tlen++;
+    char[] toml_suffix = "project.toml";
+    for (usz i = 0; i < toml_suffix.len; i++) { toml_path[tlen] = toml_suffix[i]; tlen++; }
+    toml_path[tlen] = 0;
+
+    lisp::TomlConfig* config = (lisp::TomlConfig*)mem::malloc(lisp::TomlConfig.sizeof);
+    defer mem::free(config);
+
+    if (!lisp::toml_load(toml_path[:tlen], config)) {
+        io::printfn("Error: cannot read %s", (ZString)&toml_path[0]);
+        return 1;
+    }
+
+    if (config.ffi_dep_count == 0) {
+        io::printn("No FFI dependencies found in project.toml");
+        io::printn("Add a [dependencies.ffi.NAME] section to generate bindings.");
+        return 0;
+    }
+
+    // Initialize libclang
+    lisp::LibclangHandle clang;
+    if (!lisp::libclang_init(&clang)) {
+        io::printn("Error: libclang not found.");
+        io::printn("");
+        io::printn("Install libclang:");
+        io::printn("  Arch:   pacman -S clang");
+        io::printn("  Debian: apt install libclang-dev");
+        io::printn("  Fedora: dnf install clang-devel");
+        return 1;
+    }
+    defer lisp::libclang_destroy(&clang);
+
+    // Allocate parsed functions buffer
+    const usz MAX_FUNCS = 256;
+    lisp::ParsedFunc* funcs = (lisp::ParsedFunc*)mem::malloc(lisp::ParsedFunc.sizeof * MAX_FUNCS);
+    defer mem::free(funcs);
+
+    usz total_bindings = 0;
+    usz total_libs = 0;
+
+    for (usz dep_idx = 0; dep_idx < config.ffi_dep_count; dep_idx++) {
+        lisp::TomlFfiDep* dep = &config.ffi_deps[dep_idx];
+
+        // Get null-terminated name and library
+        char* dep_name = &dep.name;
+        char* dep_lib = &dep.library;
+
+        io::printfn("Parsing headers for '%s' (lib%s)...", (ZString)dep_name, (ZString)dep_lib);
+
+        usz func_count = 0;
+
+        // Parse each header
+        for (usz hi = 0; hi < dep.header_count; hi++) {
+            char* header = &dep.headers[hi];
+            usz hlen = 0;
+            while (header[hlen] != 0) hlen++;
+
+            usz found = lisp::parse_header(&clang, header[:hlen],
+                                           &funcs[func_count], MAX_FUNCS - func_count,
+                                           &dep.functions, dep.function_count, dep.filter_functions);
+            func_count += found;
+        }
+
+        if (func_count == 0) {
+            io::printfn("  Warning: no functions found for '%s'", (ZString)dep_name);
+            continue;
+        }
+
+        // Build output path: {proj_dir}/lib/ffi/{name}.omni
+        char[512] out_path;
+        usz olen = 0;
+        for (usz i = 0; i < proj_dir_len; i++) { out_path[olen] = proj_dir[i]; olen++; }
+        char[] ffi_mid = "/lib/ffi/";
+        for (usz i = 0; i < ffi_mid.len; i++) { out_path[olen] = ffi_mid[i]; olen++; }
+        usz nlen = 0;
+        while (dep_name[nlen] != 0) { out_path[olen] = dep_name[nlen]; olen++; nlen++; }
+        char[] omni_ext = ".omni";
+        for (usz i = 0; i < omni_ext.len; i++) { out_path[olen] = omni_ext[i]; olen++; }
+        out_path[olen] = 0;
+
+        // Get dep_name and dep_lib as slices
+        usz dep_name_len = 0;
+        while (dep_name[dep_name_len] != 0) dep_name_len++;
+        usz dep_lib_len = 0;
+        while (dep_lib[dep_lib_len] != 0) dep_lib_len++;
+
+        if (lisp::generate_ffi_module(dep_name[:dep_name_len], dep_lib[:dep_lib_len],
+                                       funcs, func_count, out_path[:olen])) {
+            io::printfn("  Generated %s (%d functions)", (ZString)&out_path[0], (int)func_count);
+            total_bindings += func_count;
+            total_libs++;
+        } else {
+            io::printfn("  Error: failed to write %s", (ZString)&out_path[0]);
+        }
+    }
+
+    io::printfn("\nGenerated %d bindings from %d libraries.", (int)total_bindings, (int)total_libs);
+    return 0;
+}
+
 /**
  * Main entry point.
  *
@@ -133,9 +386,25 @@ fn int run_build(int argc, char** argv, int build_idx) {
  *   ./main --compile input.lisp out.c3  - Compile Lisp to C3
  *   ./main --build input.lisp -o prog   - AOT compile Lisp to standalone binary
  *   ./main --gen-e2e                    - Generate e2e compiler test files
+ *   ./main --init myproject             - Scaffold a new Omni project
+ *   ./main --bind [project-dir]         - Generate FFI bindings from project.toml
  *   ./main script.pik                   - Run a script file
  */
 fn int main(int argc, char** argv) {
+    // Check for --init flag (scaffold new project)
+    for (int i = 1; i < argc; i++) {
+        if (str_eq(argv[i], "--init")) {
+            return run_init(argc, argv, i);
+        }
+    }
+
+    // Check for --bind flag (generate FFI bindings)
+    for (int i = 1; i < argc; i++) {
+        if (str_eq(argv[i], "--bind")) {
+            return run_bind(argc, argv, i);
+        }
+    }
+
     // Check for --build flag (AOT compile to standalone binary)
     for (int i = 1; i < argc; i++) {
         if (str_eq(argv[i], "--build")) {

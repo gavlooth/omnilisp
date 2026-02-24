@@ -1,7 +1,7 @@
-# Type System Syntax Proposal
+# Type System Syntax Reference
 
-This document proposes syntax for completing the Julia-style type system
-and optionally extending to higher-kinded types.
+This document describes Omni's Julia-style type system syntax.
+Most features below are implemented (see Implementation Status at the end).
 
 ## Design Principles
 
@@ -38,7 +38,7 @@ Use `Lambda` to match value-level syntax:
 
 ; Type level
 ^(Lambda Int Int) inc            ; Int -> Int
-^(Lambda Int Int Int) add        ; Int -> Int -> Int (curried)
+^(Lambda Int Int Int) add        ; (Int, Int) -> Int
 ^(Lambda A B) fn                 ; polymorphic
 ```
 
@@ -263,7 +263,6 @@ When metadata is flat, the **value type** determines meaning:
 
 ### NOT Implemented (Future)
 - [ ] Type substitution algorithm — `(Box T)` + T=Int not checked at construction
-- [ ] `[effect]` attribute — effects are untyped
 - [ ] `Lambda` function types — annotation exists but no checking
 
 ### Implementation Notes

@@ -234,7 +234,7 @@ fn Value* find_best_method(MethodTable* mt, Value*[] args, Interp* interp) {
     }
 
     if (best_count > 1) {
-        return make_error(interp, "ambiguous method call: multiple methods match with equal specificity");
+        return raise_error(interp, "ambiguous method call: multiple methods match with equal specificity");
     }
 
     return best_method;
@@ -250,13 +250,13 @@ fn Value* find_best_method(MethodTable* mt, Value*[] args, Interp* interp) {
  */
 fn void register_builtin_types(Interp* interp) {
     // Register built-in types with TK_BUILTIN kind
-    SymbolId[11] builtin_names = {
+    SymbolId[12] builtin_names = {
         interp.sym_Int, interp.sym_Double, interp.sym_String,
         interp.sym_Symbol, interp.sym_List, interp.sym_Bool,
         interp.sym_Nil, interp.sym_Closure, interp.sym_Array,
-        interp.sym_Dict, interp.sym_Any
+        interp.sym_Dict, interp.sym_Any, interp.sym_Iterator
     };
-    for (usz i = 0; i < 11; i++) {
+    for (usz i = 0; i < 12; i++) {
         TypeInfo info;
         info.name = builtin_names[i];
         info.kind = TK_BUILTIN;
@@ -299,6 +299,7 @@ fn void register_builtin_types(Interp* interp) {
     interp.tid_Any = interp.types.lookup(interp.sym_Any, &interp.symbols);
     interp.tid_Number = interp.types.lookup(interp.sym_Number, &interp.symbols);
     interp.tid_Collection = interp.types.lookup(interp.sym_Collection, &interp.symbols);
+    interp.tid_Iterator = interp.types.lookup(interp.sym_Iterator, &interp.symbols);
 
     // Set parent chains: Int/Double → Number, List/Array/Dict → Collection
     interp.types.types[(usz)interp.tid_Int].parent = interp.tid_Number;
@@ -322,6 +323,7 @@ fn TypeId infer_value_type(Value* v, Interp* interp) {
         case CLOSURE:   return interp.tid_Closure;
         case ARRAY:     return interp.tid_Array;
         case HASHMAP:   return interp.tid_Dict;
+        case ITERATOR:  return interp.tid_Iterator;
         case INSTANCE:
             if (v.instance_val != null) return v.instance_val.type_id;
             return INVALID_TYPE_ID;
@@ -347,6 +349,7 @@ fn SymbolId value_type_name(Value* v, Interp* interp) {
         case CLOSURE:   return interp.sym_Closure;
         case ARRAY:     return interp.sym_Array;
         case HASHMAP:   return interp.sym_Dict;
+        case ITERATOR:  return interp.sym_Iterator;
         case INSTANCE:
             if (v.instance_val != null) {
                 TypeInfo* ti = interp.types.get(v.instance_val.type_id);
@@ -407,7 +410,7 @@ fn Value* format_dispatch_error(MethodTable* mt, Value*[] args, Interp* interp) 
         msg = io::bprintf(&buf, "no matching method '%s' for (%s)",
             (ZString)name, (ZString)arg_types)!!;
     }
-    return make_error(interp, msg);
+    return raise_error(interp, msg);
 }
 
 /**
@@ -455,7 +458,7 @@ fn Value* format_match_error(Value* scrutinee, Expr* expr, Interp* interp) {
                     char[] parent_name = interp.symbols.get_name(parent.name);
                     char[] msg = io::bprintf(&buf, "no pattern matched: %s value '%s', missing variants: %s",
                         (ZString)parent_name, (ZString)type_name, (ZString)missing.str_view())!!;
-                    return make_error(interp, msg);
+                    return raise_error(interp, msg);
                 }
             }
         }
@@ -463,7 +466,7 @@ fn Value* format_match_error(Value* scrutinee, Expr* expr, Interp* interp) {
 
     // Fallback for non-union types
     char[] msg = io::bprintf(&buf, "no pattern matched for value of type %s", (ZString)type_name)!!;
-    return make_error(interp, msg);
+    return raise_error(interp, msg);
 }
 
 /**
@@ -555,9 +558,6 @@ fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
 
     // Register in type registry
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
-    if (type_id == INVALID_TYPE_ID) {
-        return eval_error("type registry full");
-    }
 
     // Create constructor primitive
     // Constructor is a closure that takes field_count args and creates an Instance
@@ -598,10 +598,14 @@ fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
 fn Value* prim_type_constructor(Value*[] args, Env* env, Interp* interp) {
     TypeId type_id = (TypeId)interp.constructor_type_id;
     TypeInfo* ti = interp.types.get(type_id);
-    if (ti == null) return make_error(interp, "invalid type in constructor");
+    if (ti == null) return make_error(interp, "internal error: type not found in constructor");
 
     if (args.len != ti.field_count) {
-        return make_error(interp, "wrong number of arguments to constructor");
+        char[256] ebuf;
+        char[] type_n = interp.symbols.get_name(ti.name);
+        char[] msg = io::bprintf(&ebuf, "%s constructor expects %d argument(s), got %d",
+            (ZString)type_n, (int)ti.field_count, (int)args.len)!!;
+        return raise_error(interp, msg);
     }
 
     // Validate field types (Julia-style boundary enforcement)
@@ -627,7 +631,7 @@ fn Value* prim_type_constructor(Value*[] args, Env* env, Interp* interp) {
             char[] actual_name = interp.symbols.get_name(value_type_name(args[i], interp));
             char[] emsg = io::bprintf(&ebuf, "type error: field '%s' expects %s, got %s",
                 (ZString)field_name, (ZString)expected_name, (ZString)actual_name)!!;
-            return make_error(interp, emsg);
+            return raise_error(interp, emsg);
         }
     }
 
@@ -671,7 +675,7 @@ fn Value* prim_type_constructor(Value*[] args, Env* env, Interp* interp) {
                             char[] actual_name = interp.symbols.get_name(interp.types.types[(usz)inferred].name);
                             char[] emsg = io::bprintf(&ebuf, "type constraint violated: %s must be subtype of %s, got %s",
                                 (ZString)param_name, (ZString)bound_name, (ZString)actual_name)!!;
-                            return make_error(interp, emsg);
+                            return raise_error(interp, emsg);
                         }
                     }
                     break;
@@ -698,16 +702,16 @@ fn EvalResult eval_defabstract(Expr* expr, Env* env, Interp* interp) {
     if (da.has_parent) {
         info.parent = interp.types.lookup(da.parent, &interp.symbols);
         if (info.parent == INVALID_TYPE_ID) {
-            return eval_error("unknown parent type");
+            char[256] ebuf;
+            char[] msg = io::bprintf(&ebuf, "unknown parent type '%s'",
+                (ZString)interp.symbols.get_name(da.parent))!!;
+            return eval_error(msg);
         }
     } else {
         info.parent = INVALID_TYPE_ID;
     }
 
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
-    if (type_id == INVALID_TYPE_ID) {
-        return eval_error("type registry full");
-    }
 
     // Return type name as symbol
     Value* result = make_symbol(interp, da.name);
@@ -735,9 +739,6 @@ fn EvalResult eval_defunion(Expr* expr, Env* env, Interp* interp) {
     }
 
     TypeId union_id = interp.types.register_type(union_info, &interp.symbols);
-    if (union_id == INVALID_TYPE_ID) {
-        return eval_error("type registry full");
-    }
 
     // Register each variant as its own type (with union as parent)
     for (usz i = 0; i < du.variant_count; i++) {
@@ -758,9 +759,6 @@ fn EvalResult eval_defunion(Expr* expr, Env* env, Interp* interp) {
         }
 
         TypeId var_id = interp.types.register_type(var_info, &interp.symbols);
-        if (var_id == INVALID_TYPE_ID) {
-            return eval_error("type registry full");
-        }
 
         // Create constructor for this variant
         if (variant.field_count == 0) {
@@ -814,9 +812,6 @@ fn EvalResult eval_defalias(Expr* expr, Env* env, Interp* interp) {
     }
 
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
-    if (type_id == INVALID_TYPE_ID) {
-        return eval_error("type registry full");
-    }
 
     Value* result = make_symbol(interp, da.name);
     return eval_ok(result);
@@ -850,9 +845,6 @@ fn EvalResult eval_defeffect(Expr* expr, Env* env, Interp* interp) {
     }
 
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
-    if (type_id == INVALID_TYPE_ID) {
-        return eval_error("type registry full");
-    }
 
     return eval_ok(make_nil(interp));
 }
@@ -924,6 +916,7 @@ fn void destroy_value(void* ptr) {
                 mem::free(v.ffi_val);
                 v.ffi_val = null;
             }
+        case ITERATOR: {}  // iterator_val is a Value* (CLOSURE), owned by region
         default: {}
     }
 }
@@ -1107,7 +1100,7 @@ fn Value* alist_lookup(Value* alist, SymbolId key, Interp* interp) {
  */
 fn EvalResult eval_path(Expr* expr, Env* env, Interp* interp) {
     if (expr.path.segment_count == 0) {
-        return eval_error("empty path");
+        return eval_error("empty field access path (e.g., point.x)");
     }
 
     // Look up the first segment as a variable
@@ -1124,9 +1117,37 @@ fn EvalResult eval_path(Expr* expr, Env* env, Interp* interp) {
         return eval_ok(current);
     }
 
-    // For each remaining segment, look up field in Instance or alist
+    // For each remaining segment, look up field in Instance, Module, or alist
     for (usz i = 1; i < expr.path.segment_count; i++) {
         SymbolId key = expr.path.segments[i];
+
+        // Module member access: math.add
+        if (current != null && current.tag == MODULE && current.module_val != null) {
+            Module* mod = current.module_val;
+            // Check if member is exported
+            bool is_exported = false;
+            for (usz ei = 0; ei < mod.export_count; ei++) {
+                if ((uint)mod.exports[ei] == (uint)key) {
+                    is_exported = true;
+                    break;
+                }
+            }
+            if (!is_exported) {
+                char[256] ebuf;
+                char[] msg = io::bprintf(&ebuf, "'%s' is not exported from module",
+                    (ZString)interp.symbols.get_name(key))!!;
+                return eval_error(msg);
+            }
+            // Look up in module's env
+            current = mod.env.lookup(key);
+            if (current == null) {
+                char[256] ebuf;
+                char[] msg = io::bprintf(&ebuf, "symbol '%s' not found in module",
+                    (ZString)interp.symbols.get_name(key))!!;
+                return eval_error(msg);
+            }
+            continue;
+        }
 
         if (current != null && current.tag == INSTANCE && current.instance_val != null) {
             // Instance field access
@@ -1144,7 +1165,12 @@ fn EvalResult eval_path(Expr* expr, Env* env, Interp* interp) {
                 }
                 if (found_field) continue;
             }
-            return eval_error("field not found in type instance");
+            char[256] ebuf;
+            char[] type_n = interp.symbols.get_name(ti.name);
+            char[] field_n = interp.symbols.get_name(key);
+            char[] msg = io::bprintf(&ebuf, "field '%s' not found in type '%s'",
+                (ZString)field_n, (ZString)type_n)!!;
+            return eval_error(msg);
         }
 
         // Cons cell .car / .cdr access
@@ -1163,7 +1189,11 @@ fn EvalResult eval_path(Expr* expr, Env* env, Interp* interp) {
         // Alist fallback
         Value* found = alist_lookup(current, key, interp);
         if (found == null) {
-            return eval_error("path segment not found");
+            char[256] ebuf;
+            char[] seg_n = interp.symbols.get_name(key);
+            char[] msg = io::bprintf(&ebuf, "cannot access '.%s' on %s value",
+                (ZString)seg_n, (ZString)interp.symbols.get_name(value_type_name(current, interp)))!!;
+            return eval_error(msg);
         }
         current = found;
     }
@@ -1644,7 +1674,7 @@ fn void register_primitives(Interp* interp) {
     }
 
     // --- Regular primitives ---
-    PrimReg[94] regular_prims = {
+    PrimReg[100] regular_prims = {
         // List operations
         { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
         { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 }, { "list", &prim_list, -1 },
@@ -1656,7 +1686,8 @@ fn void register_primitives(Interp* interp) {
         // String primitives
         { "string-append", &prim_string_append, -1 }, { "string-join", &prim_string_join, 2 },
         { "substring", &prim_substring, 3 }, { "string-split", &prim_string_split, 2 },
-        { "string-length", &prim_string_length, 1 }, { "string->list", &prim_string_to_list, 1 },
+        { "string-length", &prim_string_length, 1 }, { "string-byte-length", &prim_string_byte_length, 1 },
+        { "string->list", &prim_string_to_list, 1 },
         { "list->string", &prim_list_to_string, 1 }, { "string-upcase", &prim_string_upcase, 1 },
         { "string-downcase", &prim_string_downcase, 1 }, { "string-trim", &prim_string_trim, 1 },
         { "continuation?", &prim_is_continuation, 1 },
@@ -1709,6 +1740,10 @@ fn void register_primitives(Interp* interp) {
         { "instance?", &prim_is_instance, 1 }, { "type-args", &prim_type_args, 1 },
         // Memory reclamation
         { "unsafe-free!", &prim_free_bang, 1 },
+        // Iterators
+        { "iterator?", &prim_iterator_p, 1 }, { "make-iterator", &prim_make_iterator, 1 },
+        { "next", &prim_next, 1 }, { "collect", &prim_collect, 1 },
+        { "to-array", &prim_to_array, 1 },
     };
     foreach (&r : regular_prims) {
         register_prim(interp, r.name, r.func, r.arity);

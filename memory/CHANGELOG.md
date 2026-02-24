@@ -1,5 +1,204 @@
 # Changelog
 
+## 2026-02-24 (Session 31): Feature Roadmap Phases 2-3 — λ Syntax, UTF-8, Iterators
+
+### Summary
+Implemented Phases 2A, 2B, and 3 of the feature roadmap: λ lambda syntax, UTF-8 string support, Iterator type with lazy sequences. Phase 5A (typed effect dispatch) was implemented then reverted — it introduced a second dispatch mechanism in handle clauses inconsistent with the language's MethodTable-based dispatch design. The idiomatic approach is to use dispatched functions inside handlers instead.
+
+### Phase 2A: λ Lambda Syntax
+- Parser recognizes `λ` (U+03BB, UTF-8 0xCE 0xBB) as synonym for `lambda`
+- `is_symbol_char()` accepts high bytes >= 0x80 for UTF-8 symbol support
+- 4 new tests
+
+### Phase 2B: UTF-8 String Support
+- **New file**: `src/lisp/utf8.c3` (~130 lines) — codec: `utf8_codepoint_len`, `utf8_decode`, `utf8_encode`, `utf8_strlen`, `utf8_byte_offset`, `utf8_valid`
+- `string-length` counts codepoints (not bytes); added `string-byte-length` for raw bytes
+- `char-at`, `substring`, `string->list`, `jit_do_index` — all codepoint-indexed
+- AOT runtime: `rt_utf8_cplen`, `rt_utf8_strlen`, `rt_utf8_byte_offset`
+- 14 new tests
+
+### Phase 3: Iterator Type + Lazy Sequences
+- `V_ITERATOR` value tag (backed by `Value*` thunk closure)
+- 5 new primitives: `iterator?`, `make-iterator`, `next`, `collect`, `to-array`
+- `Iterator` registered as builtin type in TypeRegistry
+- Stdlib: `iterator` dispatched constructor (List, Array, Dict, Iterator), `imap`, `ifilter`, `itake`, `idrop`, `izip`, `range-from`, `irepeat`, `icycle`, `ifoldl`, `iterator-empty`
+- 28 new tests (10 primitive + 18 stdlib)
+
+### Design Decision: No typed effect clause syntax
+Typed effect dispatch via `((tag k (^Type arg)) body)` was implemented and reverted. It created a match-style dispatch inside handle blocks — a parallel mechanism to the MethodTable. Instead, use dispatched functions inside handlers:
+```lisp
+(define (on-show (^Int x))    "got int")
+(define (on-show (^String s)) "got string")
+(handle body ((show k x) (k (on-show x))))
+```
+
+### Modified Files
+- `src/lisp/utf8.c3` — **NEW** UTF-8 codec
+- `src/lisp/value.c3` — ITERATOR tag, iterator_val, make_iterator
+- `src/lisp/parser.c3` — λ recognition
+- `src/lisp/primitives.c3` — UTF-8 string ops, iterator primitives, string-byte-length
+- `src/lisp/eval.c3` — Iterator type registration
+- `src/lisp/jit.c3` — UTF-8 string indexing
+- `src/lisp/runtime.c3` — UTF-8 helpers
+- `src/lisp/tests.c3` — 46 new tests
+- `stdlib/stdlib.lisp` — Iterator definitions (15 lines)
+- `scripts/run_e2e.sh` — Added utf8.c3
+
+### Tests
+- 1290 total (845 unified + 77 compiler + 368 e2e), 0 failures
+
+## 2026-02-24 (Session 30): Dead Code Removal + Negative Indexing + Consistency Fixes
+
+### Summary
+Removed 23 dead code items, added Python-style negative indexing everywhere, and fixed all 5 inconsistency categories found by audit agents.
+
+### Dead Code Removed
+- `CurriedPrim` struct (unused legacy from auto-curry era)
+- 8 unregistered primitive functions: `prim_is_string`, `prim_is_int`, `prim_is_symbol`, `prim_is_closure`, `prim_is_dict`, `prim_dict_ref`, `prim_dict_count`, `prim_is_number`, `prim_is_double` (type predicates defined in stdlib instead)
+- `prim_make_array` + `prim_array_ref` (never registered, superseded by `array` dispatch + `ref` dispatch)
+- 7x "type registry full" dead checks in eval.c3 (TypeRegistry.grow() prevents overflow)
+- 7x "symbol table exhausted" dead checks in parser.c3 + primitives.c3 (SymbolTable.grow() prevents overflow)
+
+### Negative Indexing (Python-style)
+- `prim_ref`: array + string cases now support -1 = last, -2 = second-to-last, etc.
+- `prim_array_set`: supports negative indices
+- `prim_char_at`: supports negative indices
+- `jit_do_index`: list (walks to count length), string, array — all support negative indices
+- Consistent with existing `substring` negative index support
+
+### Consistency Fixes
+- **Arity checking**: All 9 predicates (null?, pair?, not, continuation?, boolean?, list?, procedure?, array?, instance?) now error on missing args instead of returning nil/true inconsistently
+- **`prim_ref` cons handling**: Now walks cons chains like `jit_do_index` (supports arbitrary list indices + negative indexing), not just pair 0/1 access
+- **Dispatch wrappers**: Inlined `prim_dict_has`, `prim_dict_remove`, `prim_dict_keys`, `prim_dict_values` into their dispatch wrappers — eliminated double type checks
+- **Null checks**: Removed 10+ redundant `args[0] == null` guards (args are always valid Value* after length check)
+- **Error messages**: `"modulo:"` → `"%:"`, `"unbound variable"` → includes variable name, `"not a function"` → includes actual type, `"args"` → `"argument(s)"` throughout
+
+### Modified Files
+- `src/lisp/primitives.c3` — Removed struct + 11 dead functions + 1 dead error check; added negative indexing to 4 functions; inlined 4 dict wrappers; fixed 9 predicate arity checks; removed redundant null checks; fixed error message style
+- `src/lisp/eval.c3` — Removed 7 dead `register_type` return checks
+- `src/lisp/parser.c3` — Removed 6 dead `intern` return checks
+- `src/lisp/jit.c3` — Added negative indexing to `jit_do_index` (list, string, array); improved "unbound variable" + "not a function" messages; normalized arity error wording
+- `src/lisp/tests.c3` — Added 17 new tests (13 negative indexing + 4 ref-on-list)
+
+### Tests
+- 865 tests pass (788 unified + 77 compiler), 0 failures (+17 from previous)
+
+## 2026-02-23 (Session 29): Error Messages + Doc Limit Fixes
+
+### Summary
+Improved 20+ error messages across eval.c3, jit.c3, primitives.c3, parser.c3 — all cryptic or context-free errors now include type names, field names, expected/actual counts, and actionable descriptions. Fixed stale limits in all 3 doc files (match clauses 32→128, effect clauses 16→64, strings/symbols "4095"/"128"→"dynamic heap-allocated", `-` arity 2→1-2).
+
+### Modified Files
+- `src/lisp/eval.c3` — 6x "type registry full" → include limit, "unknown parent type" → include name, "empty path" → clarify meaning, "field not found" → include field+type names, "path segment not found" → include segment+value type, "not exported from module" / "symbol not found in module" → include symbol name, constructor errors → include type name and expected/got counts
+- `src/lisp/jit.c3` — "negative list index" → "must be >= 0", "unsupported collection type" → include actual type, "perform type mismatch" → include effect name + expected/actual types, 4x "cannot apply null" → "cannot call nil (not a function)", 2x variadic lambda → include required/got counts
+- `src/lisp/primitives.c3` — "make-array invalid size" → include actual value, "symbol table exhausted" → add "(out of memory)"
+- `src/lisp/parser.c3` — 6x "symbol table exhausted" → add "(out of memory)"
+- `docs/LANGUAGE_SPEC.md` — Fix `-` arity, match clauses, effect clauses, string/symbol limits
+- `docs/FEATURES.md` — Fix match clauses, effect clauses, string description, symbol/string limits
+- `docs/SYNTAX_SPEC.md` — Fix match clauses, effect clauses, symbol/string limits
+
+### Tests
+- 848 tests pass (771 unified + 77 compiler), 0 failures
+
+## 2026-02-23 (Session 27): Project Scaffolding + FFI Binding Generator (--init, --bind)
+
+### Summary
+Added `--init` and `--bind` CLI commands for creating Omni projects and auto-generating FFI bindings from C headers using libclang.
+
+### New Files
+- `src/lisp/toml.c3` (~200 lines) — Minimal TOML parser for project.toml
+- `src/lisp/libclang_bind.c3` (~300 lines) — libclang dlopen wrapper, C header parser via clang_visitChildren
+- `src/lisp/bindgen.c3` (~150 lines) — Omni FFI module generator (ffi-open/ffi-call wrappers)
+
+### Modified Files
+- `src/entry.c3` — Added `run_init()` and `run_bind()` commands (+200 lines)
+
+### Features
+- `--init myproject`: Scaffolds project directory with project.toml, project.json, src/main.omni, lib/ffi/, include/
+- `--bind [dir]`: Reads project.toml, parses C headers via libclang, generates typed Omni FFI modules
+- TOML parser: [section.sub.name], key = "value", key = ["a", "b"], # comments
+- C-to-Omni type mapping: int→'int/^Int, double→'double/^Double, char*→'string/^String, void*→'ptr/^Int
+- snake_case → kebab-case conversion for function names
+- Variadic C functions skipped with comment
+- Helpful error messages when libclang not found (install instructions per distro)
+
+### Tests
+- All 848 existing tests pass (771 unified + 77 compiler), 0 failures
+- Manual verification: --init creates correct structure, --bind generates correct ffi-call wrappers for libm (sin, cos, sqrt) and libc (strlen, strcmp, memcpy)
+
+## 2026-02-23 (Session 28): Documentation Rework — Remove Stale Docs, Fix Auto-Curry References
+
+### Summary
+Removed 26 stale OmniList-era docs. Reworked all 7 remaining docs to fix inaccurate auto-curry references (removed in Session 25), update module system descriptions to reflect Session 26 redesign, and fix JIT section. Removed completed unified-dispatch-plan.md. Retitled type-system-syntax.md from "Proposal" to "Reference".
+
+### Removed Files
+- 26 stale OmniList-era docs (QUICK_REFERENCE.md, FFI_DESIGN_PROPOSALS.md, ARCHITECTURE_DIAGRAMS.md, etc.)
+- `docs/unified-dispatch-plan.md` — described already-completed MethodTable + Val dispatch work
+
+### Modified Files
+- `docs/FEATURES.md` — Fixed lambda/define auto-curry→strict arity, module system→qualified access, JIT section→sole engine, application model
+- `docs/LANGUAGE_SPEC.md` — Fixed intro, S-expression forms, lambda section, stdlib note, module section, footer
+- `docs/SYNTAX_SPEC.md` — Replaced "Currying" section with "Partial Application" (_, |>, partial), fixed lambda section, module section, footer
+- `docs/type-system-syntax.md` — Retitled from "Proposal" to "Reference", removed stale [effect] NOT-implemented entry, fixed curried type example
+- `docs/PROJECT_TOOLING.md` — Created (previous session)
+
+### Tests
+- No code changes, documentation only
+
+## 2026-02-23 (Session 26): Module System Redesign — Qualified Access, Selective Import, Re-Export
+
+### Summary
+Complete module system overhaul: modules are now first-class values (`V_MODULE`), `(import mod)` defaults to qualified-only access via dot-path (`mod.symbol`), with explicit selective/renamed/all imports. Added `export-from` for re-export. All fixed-size arrays in module structs converted to dynamic malloc+grow.
+
+### Breaking Change
+- `(import name)` no longer dumps all exports into scope — it only binds the module as a value for qualified access
+- Use `(import name :all)` for old behavior, or `(import name (sym1 sym2))` for selective
+
+### Phase 1: Module as First-Class Value
+- **V_MODULE tag** in ValueTag enum, `Module* module_val` in Value union
+- **`make_module()`** constructor, allocates in root_region
+- **`print_value`/`print_value_buf`** handle V_MODULE: `#<module name>`
+- **Import binds module value**: `jit_eval_import_impl` creates V_MODULE and binds it by module name
+- **Dot-path access**: `eval_path` resolves V_MODULE segments — checks export list, looks up in module env
+
+### Phase 2: Selective Import Syntax
+- **Extended ExprImport**: `imports*`, `aliases*`, `import_count`, `import_all` fields
+- **Parser**: `(import mod (sym1 sym2))`, `(import mod (sym :as alias))`, `(import mod :all)`
+- **Pre-interned symbols**: `sym_as` (`:as`), `sym_all` (`:all`), `sym_export_from` (`export-from`)
+- **Import eval**: qualified-only (default), selective with rename, or all exports
+
+### Phase 3: Re-Export
+- **E_EXPORT_FROM** ExprTag + ExprExportFrom struct
+- **Parser**: `(export-from mod (sym1 sym2))` or `(export-from mod :all)`
+- **JIT eval**: `jit_eval_export_from_impl` — finds current module, copies symbols from source, adds to export list
+- **Works inside module bodies**: Detects current module via env matching
+
+### Phase 4: Compiler Support
+- Added E_EXPORT_FROM cases to: `find_free_vars`, `scan_lambdas_with_scope`, `compile_to_temp`, `serialize_expr_to_buf`
+- `compile_export_from_flat` — no-op in compiled mode (symbols already inlined as globals)
+- Dynamic `CompiledModule*` table with grow
+
+### Phase 5: Dynamic Limits
+- `Module.exports[256]` → `SymbolId*` + `export_capacity` (malloc + 2x grow)
+- `ExprModule.exports[256]` → `SymbolId*` + `export_capacity`
+- `ExprModule.body[256]` → `Expr**` + `body_capacity`
+- `ExprImport.imports[64]`/`aliases[64]` → `SymbolId*` + `import_capacity`
+- `ExprExportFrom.names[64]` → `SymbolId*` + `name_capacity`
+- `CompiledModule[64]` → `CompiledModule*` + `compiled_module_capacity`
+- All with destructors in `Interp.destroy`/`Compiler.free`
+
+### Files Modified
+- `src/lisp/value.c3` — V_MODULE tag, Value union, make_module, Module/ExprModule/ExprImport/ExprExportFrom structs, Interp symbols, print_value, destroy
+- `src/lisp/jit.c3` — jit_eval_import_impl rewrite, jit_eval_export_from_impl, jit_do_export_from, jit_compile_export_from, dynamic export growth
+- `src/lisp/eval.c3` — eval_path V_MODULE case for dot-path access
+- `src/lisp/parser.c3` — parse_import extended (selective/:all), parse_export_from new, dynamic arrays
+- `src/lisp/compiler.c3` — E_EXPORT_FROM in all dispatch sites, compile_export_from_flat, dynamic CompiledModule
+- `src/lisp/tests.c3` — Updated ~12 module tests, added ~18 new tests (qualified, selective, rename, :all, export-from, module-as-value)
+
+### Test Count
+- Before: 761 unified + 77 compiler + 368 E2E = 1206 total, 0 failures
+- After: 771 unified + 77 compiler + 368 E2E = 1216 total, 0 failures
+
 ## 2026-02-23 (Session 25): Remove Auto-Currying + Add Placeholder/Pipe/Guard Syntax
 
 ### Phase 1: Strict Arity Enforcement

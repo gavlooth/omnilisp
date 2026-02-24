@@ -43,22 +43,16 @@ fn void strval_push(StringVal* sv, char c) {
     sv.chars[sv.len++] = c;
 }
 
-// Curried primitive helper - stores first argument and waits for second
-struct CurriedPrim {
-    Value* first_arg;
-    PrimitiveFn binary_fn;
-}
-
 fn Value* prim_add(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "+: expected at least 1 argument");
+    if (args.len < 1) return raise_error(interp, "+: expected at least 1 argument");
 
     if (args.len == 1) {
-        if (!is_number(args[0])) return make_error(interp, "+: expected number argument");
+        if (!is_number(args[0])) return raise_error(interp, "+: expected number argument");
         return args[0];
     }
 
-    if (!is_number(args[0])) return make_error(interp, "+: expected number argument");
-    if (!is_number(args[1])) return make_error(interp, "+: expected number argument");
+    if (!is_number(args[0])) return raise_error(interp, "+: expected number argument");
+    if (!is_number(args[1])) return raise_error(interp, "+: expected number argument");
     if (is_double(args[0]) || is_double(args[1])) {
         return make_double(interp, to_double(args[0]) + to_double(args[1]));
     }
@@ -66,14 +60,14 @@ fn Value* prim_add(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_sub(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "-: expected at least 1 argument");
+    if (args.len < 1) return raise_error(interp, "-: expected at least 1 argument");
     if (args.len == 1) {
-        if (!is_number(args[0])) return make_error(interp, "-: expected number argument");
+        if (!is_number(args[0])) return raise_error(interp, "-: expected number argument");
         if (is_double(args[0])) return make_double(interp, -args[0].double_val);
         return make_int(interp, -args[0].int_val);
     }
-    if (!is_number(args[0])) return make_error(interp, "-: expected number argument");
-    if (!is_number(args[1])) return make_error(interp, "-: expected number argument");
+    if (!is_number(args[0])) return raise_error(interp, "-: expected number argument");
+    if (!is_number(args[1])) return raise_error(interp, "-: expected number argument");
     if (is_double(args[0]) || is_double(args[1])) {
         return make_double(interp, to_double(args[0]) - to_double(args[1]));
     }
@@ -81,9 +75,9 @@ fn Value* prim_sub(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_mul(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "*: expected 2 arguments");
-    if (!is_number(args[0])) return make_error(interp, "*: expected number argument");
-    if (!is_number(args[1])) return make_error(interp, "*: expected number argument");
+    if (args.len < 2) return raise_error(interp, "*: expected 2 arguments");
+    if (!is_number(args[0])) return raise_error(interp, "*: expected number argument");
+    if (!is_number(args[1])) return raise_error(interp, "*: expected number argument");
     if (is_double(args[0]) || is_double(args[1])) {
         return make_double(interp, to_double(args[0]) * to_double(args[1]));
     }
@@ -91,91 +85,91 @@ fn Value* prim_mul(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_div(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "/: expected 2 arguments");
-    if (!is_number(args[0])) return make_error(interp, "/: expected number argument");
-    if (!is_number(args[1])) return make_error(interp, "/: expected number argument");
+    if (args.len < 2) return raise_error(interp, "/: expected 2 arguments");
+    if (!is_number(args[0])) return raise_error(interp, "/: expected number argument");
+    if (!is_number(args[1])) return raise_error(interp, "/: expected number argument");
     if (is_double(args[0]) || is_double(args[1])) {
         double b = to_double(args[1]);
-        if (b == 0.0) return make_error(interp, "/: division by zero");
+        if (b == 0.0) return raise_error(interp, "/: division by zero");
         return make_double(interp, to_double(args[0]) / b);
     }
     long b = args[1].int_val;
-    if (b == 0) return make_error(interp, "/: division by zero");
+    if (b == 0) return raise_error(interp, "/: division by zero");
     return make_int(interp, args[0].int_val / b);
 }
 
 fn Value* prim_mod(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "modulo: expected 2 arguments");
-    if (!is_number(args[0])) return make_error(interp, "modulo: expected number argument");
-    if (!is_number(args[1])) return make_error(interp, "modulo: expected number argument");
+    if (args.len < 2) return raise_error(interp, "%: expected 2 arguments");
+    if (!is_number(args[0])) return raise_error(interp, "%: expected number argument");
+    if (!is_number(args[1])) return raise_error(interp, "%: expected number argument");
     if (is_double(args[0]) || is_double(args[1])) {
-        return make_error(interp, "modulo: expected integer arguments");
+        return raise_error(interp, "%: expected integer arguments");
     }
     long a = args[0].int_val;
     long b = args[1].int_val;
-    if (b == 0) return make_error(interp, "modulo: division by zero");
+    if (b == 0) return raise_error(interp, "%: division by zero");
     return make_int(interp, a % b);
 }
 
 fn Value* prim_eq(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "=: expected 2 arguments");
+    if (args.len < 2) return raise_error(interp, "=: expected 2 arguments");
     bool eq = values_equal(args[0], args[1]);
     return eq ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_lt(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "<: expected 2 arguments");
-    if (!is_number(args[0]) || !is_number(args[1])) return make_error(interp, "<: expected number arguments");
+    if (args.len < 2) return raise_error(interp, "<: expected 2 arguments");
+    if (!is_number(args[0]) || !is_number(args[1])) return raise_error(interp, "<: expected number arguments");
     bool lt = to_double(args[0]) < to_double(args[1]);
     return lt ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_gt(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, ">: expected 2 arguments");
-    if (!is_number(args[0]) || !is_number(args[1])) return make_error(interp, ">: expected number arguments");
+    if (args.len < 2) return raise_error(interp, ">: expected 2 arguments");
+    if (!is_number(args[0]) || !is_number(args[1])) return raise_error(interp, ">: expected number arguments");
     bool gt = to_double(args[0]) > to_double(args[1]);
     return gt ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_le(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "<=: expected 2 arguments");
-    if (!is_number(args[0]) || !is_number(args[1])) return make_error(interp, "<=: expected number arguments");
+    if (args.len < 2) return raise_error(interp, "<=: expected 2 arguments");
+    if (!is_number(args[0]) || !is_number(args[1])) return raise_error(interp, "<=: expected number arguments");
     bool le = to_double(args[0]) <= to_double(args[1]);
     return le ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_ge(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, ">=: expected 2 arguments");
-    if (!is_number(args[0]) || !is_number(args[1])) return make_error(interp, ">=: expected number arguments");
+    if (args.len < 2) return raise_error(interp, ">=: expected 2 arguments");
+    if (!is_number(args[0]) || !is_number(args[1])) return raise_error(interp, ">=: expected number arguments");
     bool ge = to_double(args[0]) >= to_double(args[1]);
     return ge ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_cons(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "cons: expected 2 arguments");
+    if (args.len < 2) return raise_error(interp, "cons: expected 2 arguments");
     return make_cons(interp, args[0], args[1]);
 }
 
 fn Value* prim_car(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "car: expected 1 argument");
-    if (!is_cons(args[0])) return make_error(interp, "car: argument must be a pair");
+    if (args.len < 1) return raise_error(interp, "car: expected 1 argument");
+    if (!is_cons(args[0])) return raise_error(interp, "car: argument must be a pair");
     return args[0].cons_val.car;
 }
 
 fn Value* prim_cdr(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "cdr: expected 1 argument");
-    if (!is_cons(args[0])) return make_error(interp, "cdr: argument must be a pair");
+    if (args.len < 1) return raise_error(interp, "cdr: expected 1 argument");
+    if (!is_cons(args[0])) return raise_error(interp, "cdr: argument must be a pair");
     return args[0].cons_val.cdr;
 }
 
 fn Value* prim_null(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_symbol(interp, interp.sym_true);
+    if (args.len < 1) return raise_error(interp, "null?: expected 1 argument");
     bool is_null = is_nil(args[0]);
     return is_null ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_pair(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
+    if (args.len < 1) return raise_error(interp, "pair?: expected 1 argument");
     bool is_pair = is_cons(args[0]);
     return is_pair ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
@@ -185,7 +179,7 @@ fn Value* prim_pair(Value*[] args, Env* env, Interp* interp) {
  * Returns the number of elements in a list
  */
 fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "length: expected 1 argument");
+    if (args.len < 1) return raise_error(interp, "length: expected 1 argument");
 
     // nil has length 0
     if (is_nil(args[0])) {
@@ -203,13 +197,13 @@ fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Dict count
-    if (args[0] != null && args[0].tag == HASHMAP) {
+    if (args[0].tag == HASHMAP) {
         return make_int(interp, (long)args[0].hashmap_val.count);
     }
 
     // Count cons cells
     if (!is_cons(args[0])) {
-        return make_error(interp, "length: expected list, array, dict, or string");
+        return raise_error(interp, "length: expected list, array, dict, or string");
     }
 
     long count = 0;
@@ -241,7 +235,7 @@ fn Value* prim_newline(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_not(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_symbol(interp, interp.sym_true);
+    if (args.len < 1) return raise_error(interp, "not: expected 1 argument");
     bool falsy = is_falsy(args[0], interp);
     return falsy ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
@@ -282,7 +276,7 @@ fn Value* prim_string_append(Value*[] args, Env* env, Interp* interp) {
     // Validate all args are strings
     for (usz i = 0; i < args.len; i++) {
         if (!is_string(args[i])) {
-            return make_error(interp, "string-append: expected string arguments");
+            return raise_error(interp, "string-append: expected string arguments");
         }
     }
 
@@ -301,8 +295,8 @@ fn Value* prim_string_append(Value*[] args, Env* env, Interp* interp) {
  * Join list of strings with separator
  */
 fn Value* prim_string_join(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "string-join: expected 2 arguments");
-    if (!is_string(args[0])) return make_error(interp, "string-join: expected string separator");
+    if (args.len < 2) return raise_error(interp, "string-join: expected 2 arguments");
+    if (!is_string(args[0])) return raise_error(interp, "string-join: expected string separator");
 
     // Allow nil list to return empty string
     if (is_nil(args[1])) {
@@ -310,7 +304,7 @@ fn Value* prim_string_join(Value*[] args, Env* env, Interp* interp) {
     }
 
     if (!is_cons(args[1])) {
-        return make_error(interp, "string-join: expected list as second argument");
+        return raise_error(interp, "string-join: expected list as second argument");
     }
 
     char[] sep = args[0].str_val.chars[:args[0].str_val.len];
@@ -342,39 +336,43 @@ fn Value* prim_string_join(Value*[] args, Env* env, Interp* interp) {
  * (substring s start end) -> substring
  */
 fn Value* prim_substring(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 3) return make_error(interp, "substring: expected 3 arguments");
-    if (!is_string(args[0])) return make_error(interp, "substring: expected string as first argument");
+    if (args.len < 3) return raise_error(interp, "substring: expected 3 arguments");
+    if (!is_string(args[0])) return raise_error(interp, "substring: expected string as first argument");
     if (!is_int(args[1]) || !is_int(args[2])) {
-        return make_error(interp, "substring: expected integer indices");
+        return raise_error(interp, "substring: expected integer indices");
     }
 
-    usz len = args[0].str_val.len;
+    char[] bytes = args[0].str_val.chars[:args[0].str_val.len];
+    usz cp_len = utf8_strlen(bytes);
     long start = args[1].int_val;
     long end = args[2].int_val;
 
-    // Handle negative indices (Python-style)
-    if (start < 0) start = (long)len + start;
-    if (end < 0) end = (long)len + end;
+    // Handle negative indices (Python-style) — based on codepoint count
+    if (start < 0) start += (long)cp_len;
+    if (end < 0) end += (long)cp_len;
 
     // Clamp to bounds
     if (start < 0) start = 0;
-    if (end > (long)len) end = (long)len;
+    if (end > (long)cp_len) end = (long)cp_len;
     if (start >= end) return make_string(interp, "");
 
-    usz sub_len = (usz)(end - start);
-    return make_string(interp, args[0].str_val.chars[(usz)start:sub_len]);
+    // Convert codepoint indices to byte offsets
+    usz byte_start = utf8_byte_offset(bytes, (usz)start);
+    usz byte_end = utf8_byte_offset(bytes, (usz)end);
+    usz sub_len = byte_end - byte_start;
+    return make_string(interp, bytes[byte_start:sub_len]);
 }
 
 /**
  * (string-split s sep) -> list of strings
  */
 fn Value* prim_string_split(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "string-split: expected 2 arguments");
+    if (args.len < 2) return raise_error(interp, "string-split: expected 2 arguments");
     if (!is_string(args[0]) || !is_string(args[1])) {
-        return make_error(interp, "string-split: expected string arguments");
+        return raise_error(interp, "string-split: expected string arguments");
     }
     if (args[1].str_val.len == 0) {
-        return make_error(interp, "string-split: empty separator");
+        return raise_error(interp, "string-split: empty separator");
     }
 
     char* str = args[0].str_val.chars;
@@ -418,6 +416,15 @@ fn Value* prim_string_length(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return make_int(interp, 0);
     }
+    // Count UTF-8 codepoints, not bytes
+    usz cp_len = utf8_strlen(args[0].str_val.chars[:args[0].str_val.len]);
+    return make_int(interp, (long)cp_len);
+}
+
+fn Value* prim_string_byte_length(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1 || !is_string(args[0])) {
+        return make_int(interp, 0);
+    }
     return make_int(interp, (long)args[0].str_val.len);
 }
 
@@ -425,20 +432,33 @@ fn Value* prim_string_length(Value*[] args, Env* env, Interp* interp) {
  * (string->list s) -> list of single-char strings
  */
 fn Value* prim_string_to_list(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "string->list: expected 1 argument");
+    if (args.len < 1) return raise_error(interp, "string->list: expected 1 argument");
     if (!is_string(args[0])) {
-        return make_error(interp, "string->list: expected string argument");
+        return raise_error(interp, "string->list: expected string argument");
     }
 
-    Value* result = make_nil(interp);
-    usz len = args[0].str_val.len;
+    char[] bytes = args[0].str_val.chars[:args[0].str_val.len];
+
+    // Collect codepoint byte offsets first (forward pass)
+    usz[512] offsets;
+    usz[512] cp_lens;
+    usz cp_count = 0;
+    usz pos = 0;
+    while (pos < bytes.len && cp_count < 512) {
+        offsets[cp_count] = pos;
+        usz cplen = utf8_codepoint_len(bytes[pos]);
+        if (pos + cplen > bytes.len) cplen = bytes.len - pos;
+        cp_lens[cp_count] = cplen;
+        pos += cplen;
+        cp_count++;
+    }
 
     // Build list in reverse order
-    for (isz i = (isz)len - 1; i >= 0; i--) {
-        char[2] ch;
-        ch[0] = args[0].str_val.chars[(usz)i];
-        ch[1] = 0;
-        Value* char_str = make_string(interp, ch[0..1]);
+    Value* result = make_nil(interp);
+    for (isz i = (isz)cp_count - 1; i >= 0; i--) {
+        usz off = offsets[(usz)i];
+        usz clen = cp_lens[(usz)i];
+        Value* char_str = make_string(interp, bytes[off:clen]);
         result = make_cons(interp, char_str, result);
     }
     return result;
@@ -450,7 +470,7 @@ fn Value* prim_string_to_list(Value*[] args, Env* env, Interp* interp) {
  */
 fn Value* prim_list_to_string(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) {
-        return make_error(interp, "list->string: expected 1 argument");
+        return raise_error(interp, "list->string: expected 1 argument");
     }
 
     // Allow nil to return empty string
@@ -459,7 +479,7 @@ fn Value* prim_list_to_string(Value*[] args, Env* env, Interp* interp) {
     }
 
     if (!is_cons(args[0])) {
-        return make_error(interp, "list->string: expected a list");
+        return raise_error(interp, "list->string: expected a list");
     }
 
     DString ds;
@@ -483,9 +503,9 @@ fn Value* prim_list_to_string(Value*[] args, Env* env, Interp* interp) {
  * (string-upcase s) -> uppercase string
  */
 fn Value* prim_string_upcase(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "string-upcase: expected 1 argument");
+    if (args.len < 1) return raise_error(interp, "string-upcase: expected 1 argument");
     if (!is_string(args[0])) {
-        return make_error(interp, "string-upcase: expected string argument");
+        return raise_error(interp, "string-upcase: expected string argument");
     }
 
     // Allocate result, then transform in place
@@ -503,9 +523,9 @@ fn Value* prim_string_upcase(Value*[] args, Env* env, Interp* interp) {
  * (string-downcase s) -> lowercase string
  */
 fn Value* prim_string_downcase(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "string-downcase: expected 1 argument");
+    if (args.len < 1) return raise_error(interp, "string-downcase: expected 1 argument");
     if (!is_string(args[0])) {
-        return make_error(interp, "string-downcase: expected string argument");
+        return raise_error(interp, "string-downcase: expected string argument");
     }
 
     // Allocate result, then transform in place
@@ -523,9 +543,9 @@ fn Value* prim_string_downcase(Value*[] args, Env* env, Interp* interp) {
  * (string-trim s) -> string with leading/trailing whitespace removed
  */
 fn Value* prim_string_trim(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "string-trim: expected 1 argument");
+    if (args.len < 1) return raise_error(interp, "string-trim: expected 1 argument");
     if (!is_string(args[0])) {
-        return make_error(interp, "string-trim: expected string argument");
+        return raise_error(interp, "string-trim: expected string argument");
     }
 
     char* str = args[0].str_val.chars;
@@ -555,47 +575,11 @@ fn Value* prim_string_trim(Value*[] args, Env* env, Interp* interp) {
 }
 
 /**
- * (string? v) -> true if v is a string
- */
-fn Value* prim_is_string(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
-    bool result = is_string(args[0]);
-    return result ? make_symbol(interp, interp.sym_true) : make_nil(interp);
-}
-
-/**
- * (int? v) -> true if v is an integer
- */
-fn Value* prim_is_int(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
-    bool result = is_int(args[0]);
-    return result ? make_symbol(interp, interp.sym_true) : make_nil(interp);
-}
-
-/**
- * (symbol? v) -> true if v is a symbol
- */
-fn Value* prim_is_symbol(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
-    bool result = args[0] != null && args[0].tag == SYMBOL;
-    return result ? make_symbol(interp, interp.sym_true) : make_nil(interp);
-}
-
-/**
- * (closure? v) -> true if v is a closure (user-defined function)
- */
-fn Value* prim_is_closure(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
-    bool result = args[0] != null && args[0].tag == CLOSURE;
-    return result ? make_symbol(interp, interp.sym_true) : make_nil(interp);
-}
-
-/**
  * (continuation? v) -> true if v is a continuation
  */
 fn Value* prim_is_continuation(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
-    bool result = args[0] != null && args[0].tag == CONTINUATION;
+    if (args.len < 1) return raise_error(interp, "continuation?: expected 1 argument");
+    bool result = args[0].tag == CONTINUATION;
     return result ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
@@ -784,7 +768,7 @@ fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_number_to_string(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "number->string: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "number->string: expected number");
     char[64] buf;
     if (is_double(args[0])) {
         return make_string(interp, double_to_string(args[0].double_val, &buf));
@@ -810,14 +794,7 @@ fn Value* prim_gensym(Value*[] args, Env* env, Interp* interp) {
     }
     len += dlen;
     SymbolId id = interp.symbols.intern(buf[:len]);
-    if (id == INVALID_SYMBOL_ID) return make_error(interp, "symbol table exhausted");
     return make_symbol(interp, id);
-}
-
-fn Value* prim_is_dict(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
-    if (args[0] != null && args[0].tag == HASHMAP) return make_symbol(interp, interp.sym_true);
-    return make_nil(interp);
 }
 
 // =============================================================================
@@ -981,7 +958,7 @@ fn Value* make_hashmap(Interp* interp, uint capacity) {
 
 // Dict primitives
 fn Value* prim_dict(Value*[] args, Env* env, Interp* interp) {
-    if (args.len % 2 != 0) return make_error(interp, "dict: expected even number of args");
+    if (args.len % 2 != 0) return raise_error(interp, "dict: expected even number of args");
     uint cap = 16;
     while (cap < (uint)args.len * 2) cap *= 2;
     Value* v = make_hashmap(interp, cap);
@@ -991,64 +968,15 @@ fn Value* prim_dict(Value*[] args, Env* env, Interp* interp) {
     return v;
 }
 
-fn Value* prim_dict_ref(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "dict-ref: expected 2 args");
-    if (args[0] == null || args[0].tag != HASHMAP) return make_error(interp, "dict-ref: expected dict");
-    Value* result = hashmap_get(args[0].hashmap_val, args[1]);
-    if (result == null) return make_nil(interp);
-    return result;
-}
-
 fn Value* prim_dict_set(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 3) return make_error(interp, "dict-set!: expected 3 args");
-    if (args[0] == null || args[0].tag != HASHMAP) return make_error(interp, "dict-set!: expected dict");
+    if (args.len < 3) return raise_error(interp, "dict-set!: expected 3 arguments");
+    if (args[0].tag != HASHMAP) return raise_error(interp, "dict-set!: expected dict");
     hashmap_set(args[0].hashmap_val, args[1], args[2], interp);
     return args[0];
 }
 
-fn Value* prim_dict_has(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "dict-has?: expected 2 args");
-    if (args[0] == null || args[0].tag != HASHMAP) return make_error(interp, "dict-has?: expected dict");
-    Value* result = hashmap_get(args[0].hashmap_val, args[1]);
-    if (result != null) return make_symbol(interp, interp.sym_true);
-    return make_nil(interp);
-}
-
-fn Value* prim_dict_remove(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "dict-remove!: expected 2 args");
-    if (args[0] == null || args[0].tag != HASHMAP) return make_error(interp, "dict-remove!: expected dict");
-    hashmap_remove(args[0].hashmap_val, args[1]);
-    return args[0];
-}
-
-fn Value* prim_dict_keys(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0] == null || args[0].tag != HASHMAP) return make_error(interp, "keys: expected dict");
-    HashMap* map = args[0].hashmap_val;
-    Value* result = make_nil(interp);
-    for (uint i = 0; i < map.capacity; i++) {
-        if (map.entries[i].key != null) {
-            result = make_cons(interp, map.entries[i].key, result);
-        }
-    }
-    return result;
-}
-
-fn Value* prim_dict_values(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0] == null || args[0].tag != HASHMAP) return make_error(interp, "values: expected dict");
-    HashMap* map = args[0].hashmap_val;
-    Value* result = make_nil(interp);
-    for (uint i = 0; i < map.capacity; i++) {
-        if (map.entries[i].key != null) {
-            result = make_cons(interp, map.entries[i].value, result);
-        }
-    }
-    return result;
-}
-
-fn Value* prim_dict_count(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0] == null || args[0].tag != HASHMAP) return make_error(interp, "dict-count: expected dict");
-    return make_int(interp, (long)args[0].hashmap_val.count);
-}
+// prim_dict_has, prim_dict_remove, prim_dict_keys, prim_dict_values
+// inlined into their dispatch wrappers (prim_has, prim_remove, prim_keys, prim_values)
 
 // =============================================================================
 // SECTION 7.8: FFI PRIMITIVES
@@ -1136,8 +1064,8 @@ fn Value* ffi_long_to_value(long result, char[] type_name, Interp* interp) {
  * (ffi-open "libc.so.6") => V_FFI_HANDLE
  */
 fn Value* prim_ffi_open(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0] == null || args[0].tag != STRING) {
-        return make_error(interp, "ffi-open: expected string argument");
+    if (args.len < 1 || args[0].tag != STRING) {
+        return raise_error(interp, "ffi-open: expected 1 string argument");
     }
     char[] name = args[0].str_val.chars[:args[0].str_val.len];
     void* handle = dlopen((ZString)args[0].str_val.chars, RTLD_LAZY);
@@ -1147,9 +1075,9 @@ fn Value* prim_ffi_open(Value*[] args, Env* env, Interp* interp) {
             // Build error message
             usz elen = 0;
             while (err[elen] != 0 && elen < 200) elen++;
-            return make_error(interp, err[:elen]);
+            return raise_error(interp, err[:elen]);
         }
-        return make_error(interp, "ffi-open: dlopen failed");
+        return raise_error(interp, "ffi-open: dlopen failed");
     }
     return make_ffi_handle(interp, handle, name);
 }
@@ -1161,22 +1089,22 @@ fn Value* prim_ffi_open(Value*[] args, Env* env, Interp* interp) {
  */
 fn Value* prim_ffi_call(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3) {
-        return make_error(interp, "ffi-call: expected at least 3 args (handle, name, return-type)");
+        return raise_error(interp, "ffi-call: expected at least 3 args (handle, name, return-type)");
     }
     // Arg 0: FFI handle
-    if (args[0] == null || args[0].tag != FFI_HANDLE) {
-        return make_error(interp, "ffi-call: first arg must be an ffi-handle");
+    if (args[0].tag != FFI_HANDLE) {
+        return raise_error(interp, "ffi-call: first argument must be an ffi-handle");
     }
     if (args[0].ffi_val.lib_handle == null) {
-        return make_error(interp, "ffi-call: handle is closed");
+        return raise_error(interp, "ffi-call: handle is closed");
     }
     // Arg 1: function name (string)
-    if (args[1] == null || args[1].tag != STRING) {
-        return make_error(interp, "ffi-call: second arg must be a string (function name)");
+    if (args[1].tag != STRING) {
+        return raise_error(interp, "ffi-call: second argument must be a string (function name)");
     }
     // Arg 2: return type (symbol)
-    if (args[2] == null || args[2].tag != SYMBOL) {
-        return make_error(interp, "ffi-call: third arg must be a symbol (return type)");
+    if (args[2].tag != SYMBOL) {
+        return raise_error(interp, "ffi-call: third argument must be a symbol (return type)");
     }
 
     // Look up the function (with dlsym cache)
@@ -1200,9 +1128,9 @@ fn Value* prim_ffi_call(Value*[] args, Env* env, Interp* interp) {
             if (err != null) {
                 usz elen = 0;
                 while (err[elen] != 0 && elen < 200) elen++;
-                return make_error(interp, err[:elen]);
+                return raise_error(interp, err[:elen]);
             }
-            return make_error(interp, "ffi-call: dlsym failed");
+            return raise_error(interp, "ffi-call: dlsym failed");
         }
         // Populate cache
         if (args[0].ffi_val.sym_cache_count < 64 && fn_name.len < 64) {
@@ -1219,11 +1147,11 @@ fn Value* prim_ffi_call(Value*[] args, Env* env, Interp* interp) {
     // Parse arg pairs: (value, type_symbol) after the first 3 args
     usz remaining = args.len - 3;
     if (remaining % 2 != 0) {
-        return make_error(interp, "ffi-call: args after return-type must be (value type) pairs");
+        return raise_error(interp, "ffi-call: args after return-type must be (value type) pairs");
     }
     usz c_argc = remaining / 2;
     if (c_argc > 6) {
-        return make_error(interp, "ffi-call: max 6 C arguments supported");
+        return raise_error(interp, "ffi-call: max 6 C arguments supported");
     }
 
     // Classify arg types (double vs integer)
@@ -1235,7 +1163,7 @@ fn Value* prim_ffi_call(Value*[] args, Env* env, Interp* interp) {
         Value* val = args[3 + i * 2];
         Value* type_sym = args[3 + i * 2 + 1];
         if (type_sym == null || type_sym.tag != SYMBOL) {
-            return make_error(interp, "ffi-call: type annotation must be a symbol");
+            return raise_error(interp, "ffi-call: type annotation must be a symbol");
         }
         arg_types[i] = interp.symbols.get_name(type_sym.sym_val);
         if (ffi_is_double_type(arg_types[i])) {
@@ -1259,7 +1187,7 @@ fn Value* prim_ffi_call(Value*[] args, Env* env, Interp* interp) {
             case 1: dresult = ((FfiFnD1)(uptr)fn_ptr)(d_args[0]);
             case 2: dresult = ((FfiFnD2)(uptr)fn_ptr)(d_args[0], d_args[1]);
             case 3: dresult = ((FfiFnD3)(uptr)fn_ptr)(d_args[0], d_args[1], d_args[2]);
-            default: return make_error(interp, "ffi-call: max 3 double args supported");
+            default: return raise_error(interp, "ffi-call: max 3 double args supported");
         }
         return make_double(interp, dresult);
     }
@@ -1270,7 +1198,7 @@ fn Value* prim_ffi_call(Value*[] args, Env* env, Interp* interp) {
         switch (c_argc) {
             case 1: result = ((FfiFnDI1)(uptr)fn_ptr)(d_args[0]);
             case 2: result = ((FfiFnDI2)(uptr)fn_ptr)(d_args[0], d_args[1]);
-            default: return make_error(interp, "ffi-call: unsupported double-arg int-return combo");
+            default: return raise_error(interp, "ffi-call: unsupported double-arg int-return combo");
         }
         return ffi_long_to_value(result, ret_type, interp);
     }
@@ -1282,7 +1210,7 @@ fn Value* prim_ffi_call(Value*[] args, Env* env, Interp* interp) {
             case 0: dresult = ((FfiFnID0)(uptr)fn_ptr)();
             case 1: dresult = ((FfiFnID1)(uptr)fn_ptr)(c_args[0]);
             case 2: dresult = ((FfiFnID2)(uptr)fn_ptr)(c_args[0], c_args[1]);
-            default: return make_error(interp, "ffi-call: unsupported int-arg double-return combo");
+            default: return raise_error(interp, "ffi-call: unsupported int-arg double-return combo");
         }
         return make_double(interp, dresult);
     }
@@ -1298,20 +1226,20 @@ fn Value* prim_ffi_call(Value*[] args, Env* env, Interp* interp) {
             case 4: result = ((FfiFn4)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2], c_args[3]);
             case 5: result = ((FfiFn5)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2], c_args[3], c_args[4]);
             case 6: result = ((FfiFn6)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2], c_args[3], c_args[4], c_args[5]);
-            default: return make_error(interp, "ffi-call: unreachable arg count");
+            default: return raise_error(interp, "ffi-call: unreachable arg count");
         }
         return ffi_long_to_value(result, ret_type, interp);
     }
 
-    return make_error(interp, "ffi-call: mixed int/double args not yet supported");
+    return raise_error(interp, "ffi-call: mixed int/double args not yet supported");
 }
 
 /**
  * (ffi-close handle) => nil
  */
 fn Value* prim_ffi_close(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0] == null || args[0].tag != FFI_HANDLE) {
-        return make_error(interp, "ffi-close: expected ffi-handle argument");
+    if (args.len < 1 || args[0].tag != FFI_HANDLE) {
+        return raise_error(interp, "ffi-close: expected 1 ffi-handle argument");
     }
     if (args[0].ffi_val.lib_handle != null) {
         dlclose(args[0].ffi_val.lib_handle);
@@ -1325,15 +1253,15 @@ fn Value* prim_ffi_close(Value*[] args, Env* env, Interp* interp) {
  * (ffi-sym handle "func_name") => int (pointer as integer)
  */
 fn Value* prim_ffi_sym(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "ffi-sym: expected 2 args");
-    if (args[0] == null || args[0].tag != FFI_HANDLE) {
-        return make_error(interp, "ffi-sym: first arg must be ffi-handle");
+    if (args.len < 2) return raise_error(interp, "ffi-sym: expected 2 arguments");
+    if (args[0].tag != FFI_HANDLE) {
+        return raise_error(interp, "ffi-sym: first argument must be ffi-handle");
     }
     if (args[0].ffi_val.lib_handle == null) {
-        return make_error(interp, "ffi-sym: handle is closed");
+        return raise_error(interp, "ffi-sym: handle is closed");
     }
-    if (args[1] == null || args[1].tag != STRING) {
-        return make_error(interp, "ffi-sym: second arg must be a string");
+    if (args[1].tag != STRING) {
+        return raise_error(interp, "ffi-sym: second argument must be a string");
     }
     void* sym = dlsym(args[0].ffi_val.lib_handle, (ZString)args[1].str_val.chars);
     if (sym == null) return make_int(interp, 0);
@@ -1344,25 +1272,15 @@ fn Value* prim_ffi_sym(Value*[] args, Env* env, Interp* interp) {
 // PHASE 1-7 NEW PRIMITIVES
 // =============================================================================
 
-// --- Phase 1: Float predicates & conversions ---
-
-fn Value* prim_is_double(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
-    return is_double(args[0]) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
-}
-
-fn Value* prim_is_number(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
-    return is_number(args[0]) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
-}
+// --- Phase 1: Float conversions ---
 
 fn Value* prim_exact_to_inexact(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "exact->inexact: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "exact->inexact: expected number");
     return make_double(interp, to_double(args[0]));
 }
 
 fn Value* prim_inexact_to_exact(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "inexact->exact: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "inexact->exact: expected number");
     return make_int(interp, (long)to_double(args[0]));
 }
 
@@ -1389,94 +1307,94 @@ extern fn double c_round(double x) @extern("round");
 extern fn double c_fabs(double x) @extern("fabs");
 
 fn Value* prim_sin(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "sin: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "sin: expected number");
     return make_double(interp, c_sin(to_double(args[0])));
 }
 
 fn Value* prim_cos(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "cos: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "cos: expected number");
     return make_double(interp, c_cos(to_double(args[0])));
 }
 
 fn Value* prim_tan(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "tan: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "tan: expected number");
     return make_double(interp, c_tan(to_double(args[0])));
 }
 
 fn Value* prim_asin(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "asin: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "asin: expected number");
     return make_double(interp, c_asin(to_double(args[0])));
 }
 
 fn Value* prim_acos(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "acos: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "acos: expected number");
     return make_double(interp, c_acos(to_double(args[0])));
 }
 
 fn Value* prim_atan(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "atan: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "atan: expected number");
     return make_double(interp, c_atan(to_double(args[0])));
 }
 
 fn Value* prim_atan2(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_number(args[0]) || !is_number(args[1])) return make_error(interp, "atan2: expected 2 numbers");
+    if (args.len < 2 || !is_number(args[0]) || !is_number(args[1])) return raise_error(interp, "atan2: expected 2 numbers");
     return make_double(interp, c_atan2(to_double(args[0]), to_double(args[1])));
 }
 
 fn Value* prim_exp(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "exp: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "exp: expected number");
     return make_double(interp, c_exp(to_double(args[0])));
 }
 
 fn Value* prim_log(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "log: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "log: expected number");
     return make_double(interp, c_log(to_double(args[0])));
 }
 
 fn Value* prim_log10(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "log10: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "log10: expected number");
     return make_double(interp, c_log10(to_double(args[0])));
 }
 
 fn Value* prim_pow(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_number(args[0]) || !is_number(args[1])) return make_error(interp, "pow: expected 2 numbers");
+    if (args.len < 2 || !is_number(args[0]) || !is_number(args[1])) return raise_error(interp, "pow: expected 2 numbers");
     return make_double(interp, c_pow(to_double(args[0]), to_double(args[1])));
 }
 
 fn Value* prim_sqrt(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "sqrt: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "sqrt: expected number");
     return make_double(interp, c_sqrt(to_double(args[0])));
 }
 
 fn Value* prim_floor(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "floor: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "floor: expected number");
     return make_int(interp, (long)c_floor(to_double(args[0])));
 }
 
 fn Value* prim_ceiling(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "ceiling: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "ceiling: expected number");
     return make_int(interp, (long)c_ceil(to_double(args[0])));
 }
 
 fn Value* prim_round(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "round: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "round: expected number");
     return make_int(interp, (long)c_round(to_double(args[0])));
 }
 
 fn Value* prim_truncate(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "truncate: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "truncate: expected number");
     return make_int(interp, (long)to_double(args[0]));
 }
 
 fn Value* prim_abs(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "abs: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "abs: expected number");
     if (is_double(args[0])) return make_double(interp, c_fabs(args[0].double_val));
     long n = args[0].int_val;
     return make_int(interp, n < 0 ? -n : n);
 }
 
 fn Value* prim_min(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_number(args[0]) || !is_number(args[1])) return make_error(interp, "min: expected 2 numbers");
+    if (args.len < 2 || !is_number(args[0]) || !is_number(args[1])) return raise_error(interp, "min: expected 2 numbers");
     if (is_double(args[0]) || is_double(args[1])) {
         double a = to_double(args[0]); double b = to_double(args[1]);
         return make_double(interp, a < b ? a : b);
@@ -1485,7 +1403,7 @@ fn Value* prim_min(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_max(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_number(args[0]) || !is_number(args[1])) return make_error(interp, "max: expected 2 numbers");
+    if (args.len < 2 || !is_number(args[0]) || !is_number(args[1])) return raise_error(interp, "max: expected 2 numbers");
     if (is_double(args[0]) || is_double(args[1])) {
         double a = to_double(args[0]); double b = to_double(args[1]);
         return make_double(interp, a > b ? a : b);
@@ -1494,7 +1412,7 @@ fn Value* prim_max(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_gcd(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return make_error(interp, "gcd: expected 2 integers");
+    if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return raise_error(interp, "gcd: expected 2 integers");
     long a = args[0].int_val; long b = args[1].int_val;
     if (a < 0) { a = -a; }
     if (b < 0) { b = -b; }
@@ -1503,7 +1421,7 @@ fn Value* prim_gcd(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_lcm(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return make_error(interp, "lcm: expected 2 integers");
+    if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return raise_error(interp, "lcm: expected 2 integers");
     long a = args[0].int_val; long b = args[1].int_val;
     if (a == 0 || b == 0) return make_int(interp, 0);
     if (a < 0) { a = -a; }
@@ -1517,7 +1435,7 @@ fn Value* prim_lcm(Value*[] args, Env* env, Interp* interp) {
 // --- Phase 3: Sorting & Bitwise ---
 
 fn Value* prim_sort(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "sort: expected list argument");
+    if (args.len < 1) return raise_error(interp, "sort: expected list argument");
     if (is_nil(args[0])) return make_nil(interp);
     // Convert list to array
     Value*[256] arr;
@@ -1565,7 +1483,7 @@ fn Value* prim_sort(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_sort_by(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "sort-by: expected comparator and list");
+    if (args.len < 2) return raise_error(interp, "sort-by: expected comparator and list");
     Value* cmp_fn = args[0];
     if (is_nil(args[1])) return make_nil(interp);
     // Convert list to array
@@ -1606,34 +1524,34 @@ fn Value* prim_sort_by(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_bitwise_and(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return make_error(interp, "bitwise-and: expected 2 integers");
+    if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return raise_error(interp, "bitwise-and: expected 2 integers");
     return make_int(interp, args[0].int_val & args[1].int_val);
 }
 
 fn Value* prim_bitwise_or(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return make_error(interp, "bitwise-or: expected 2 integers");
+    if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return raise_error(interp, "bitwise-or: expected 2 integers");
     return make_int(interp, args[0].int_val | args[1].int_val);
 }
 
 fn Value* prim_bitwise_xor(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return make_error(interp, "bitwise-xor: expected 2 integers");
+    if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return raise_error(interp, "bitwise-xor: expected 2 integers");
     return make_int(interp, args[0].int_val ^ args[1].int_val);
 }
 
 fn Value* prim_bitwise_not(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_int(args[0])) return make_error(interp, "bitwise-not: expected integer");
+    if (args.len < 1 || !is_int(args[0])) return raise_error(interp, "bitwise-not: expected integer");
     return make_int(interp, ~args[0].int_val);
 }
 
 fn Value* prim_lshift(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return make_error(interp, "lshift: expected 2 integers");
+    if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return raise_error(interp, "lshift: expected 2 integers");
     long shift = args[1].int_val;
     if (shift < 0 || shift >= 64) return make_int(interp, 0);
     return make_int(interp, args[0].int_val << shift);
 }
 
 fn Value* prim_rshift(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return make_error(interp, "rshift: expected 2 integers");
+    if (args.len < 2 || !is_int(args[0]) || !is_int(args[1])) return raise_error(interp, "rshift: expected 2 integers");
     long shift = args[1].int_val;
     if (shift < 0 || shift >= 64) return make_int(interp, 0);
     return make_int(interp, args[0].int_val >> shift);
@@ -1642,7 +1560,7 @@ fn Value* prim_rshift(Value*[] args, Env* env, Interp* interp) {
 // --- Phase 5: String operations & type predicates ---
 
 fn Value* prim_string_contains(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args[0].tag != STRING || args[1].tag != STRING) return make_error(interp, "string-contains?: expected 2 strings");
+    if (args.len < 2 || args[0].tag != STRING || args[1].tag != STRING) return raise_error(interp, "string-contains?: expected 2 strings");
     char[] haystack = args[0].str_val.chars[:args[0].str_val.len];
     char[] needle = args[1].str_val.chars[:args[1].str_val.len];
     if (needle.len == 0) return make_symbol(interp, interp.sym_true);
@@ -1658,7 +1576,7 @@ fn Value* prim_string_contains(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_string_index_of(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args[0].tag != STRING || args[1].tag != STRING) return make_error(interp, "string-index-of: expected 2 strings");
+    if (args.len < 2 || args[0].tag != STRING || args[1].tag != STRING) return raise_error(interp, "string-index-of: expected 2 strings");
     char[] haystack = args[0].str_val.chars[:args[0].str_val.len];
     char[] needle = args[1].str_val.chars[:args[1].str_val.len];
     if (needle.len == 0) return make_int(interp, 0);
@@ -1675,7 +1593,7 @@ fn Value* prim_string_index_of(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_string_replace(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3 || args[0].tag != STRING || args[1].tag != STRING || args[2].tag != STRING) {
-        return make_error(interp, "string-replace: expected 3 strings");
+        return raise_error(interp, "string-replace: expected 3 strings");
     }
     char[] str = args[0].str_val.chars[:args[0].str_val.len];
     char[] old = args[1].str_val.chars[:args[1].str_val.len];
@@ -1708,20 +1626,21 @@ fn Value* prim_string_replace(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_char_at(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args[0].tag != STRING || !is_int(args[1])) return make_error(interp, "char-at: expected string and int");
+    if (args.len < 2 || args[0].tag != STRING || !is_int(args[1])) return raise_error(interp, "char-at: expected string and int");
+    char[] bytes = args[0].str_val.chars[:args[0].str_val.len];
+    usz cp_count = utf8_strlen(bytes);
     long idx = args[1].int_val;
-    if (idx < 0 || (usz)idx >= args[0].str_val.len) return make_error(interp, "char-at: index out of range");
-    Value* result = interp.alloc_value();
-    result.tag = STRING;
-    result.str_val = strval_new(32);
-    result.str_val.chars[0] = args[0].str_val.chars[(usz)idx];
-    result.str_val.chars[1] = 0;
-    result.str_val.len = 1;
-    return result;
+    if (idx < 0) idx += (long)cp_count;
+    if (idx < 0 || idx >= (long)cp_count) return raise_error(interp, "char-at: index out of range");
+    // Find byte offset of the idx-th codepoint
+    usz byte_off = utf8_byte_offset(bytes, (usz)idx);
+    usz cplen = utf8_codepoint_len(bytes[byte_off]);
+    if (byte_off + cplen > bytes.len) cplen = bytes.len - byte_off;
+    return make_string(interp, bytes[byte_off:cplen]);
 }
 
 fn Value* prim_string_repeat(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args[0].tag != STRING || !is_int(args[1])) return make_error(interp, "string-repeat: expected string and int");
+    if (args.len < 2 || args[0].tag != STRING || !is_int(args[1])) return raise_error(interp, "string-repeat: expected string and int");
     long n = args[1].int_val;
     if (n <= 0) return make_string(interp, "");
     Value* result = interp.alloc_value();
@@ -1738,14 +1657,14 @@ fn Value* prim_string_repeat(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_is_boolean(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
+    if (args.len < 1) return raise_error(interp, "boolean?: expected 1 argument");
     if (is_nil(args[0])) return make_symbol(interp, interp.sym_true); // false is nil
     if (is_symbol(args[0]) && (uint)args[0].sym_val == (uint)interp.sym_true) return make_symbol(interp, interp.sym_true);
     return make_nil(interp);
 }
 
 fn Value* prim_is_list(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
+    if (args.len < 1) return raise_error(interp, "list?: expected 1 argument");
     Value* v = args[0];
     if (is_nil(v)) return make_symbol(interp, interp.sym_true); // empty list is a list
     // Check if proper list (nil-terminated cons chain)
@@ -1754,38 +1673,38 @@ fn Value* prim_is_list(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_is_procedure(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
+    if (args.len < 1) return raise_error(interp, "procedure?: expected 1 argument");
     ValueTag t = args[0].tag;
     return (t == CLOSURE || t == PRIMITIVE || t == PARTIAL_PRIM || t == METHOD_TABLE) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_is_zero(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "zero?: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "zero?: expected number");
     return to_double(args[0]) == 0.0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_is_positive(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "positive?: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "positive?: expected number");
     return to_double(args[0]) > 0.0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_is_negative(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return make_error(interp, "negative?: expected number");
+    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "negative?: expected number");
     return to_double(args[0]) < 0.0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_is_even(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_int(args[0])) return make_error(interp, "even?: expected integer");
+    if (args.len < 1 || !is_int(args[0])) return raise_error(interp, "even?: expected integer");
     return (args[0].int_val % 2 == 0) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_is_odd(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_int(args[0])) return make_error(interp, "odd?: expected integer");
+    if (args.len < 1 || !is_int(args[0])) return raise_error(interp, "odd?: expected integer");
     return (args[0].int_val % 2 != 0) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != STRING) return make_error(interp, "format: expected format string");
+    if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "format: expected format string");
     char[] fmt = args[0].str_val.chars[:args[0].str_val.len];
     Value* result = interp.alloc_value();
     result.tag = STRING;
@@ -1858,7 +1777,7 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_display(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "display: expected argument");
+    if (args.len < 1) return raise_error(interp, "display: expected argument");
     Value* v = args[0];
     if (v == null || is_nil(v)) {
         io::print("nil");
@@ -1873,7 +1792,7 @@ fn Value* prim_display(Value*[] args, Env* env, Interp* interp) {
 // --- Phase 7: Macroexpand, eval, apply, bound? ---
 
 fn Value* prim_macroexpand(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "macroexpand: expected quoted expression");
+    if (args.len < 1) return raise_error(interp, "macroexpand: expected quoted expression");
     Value* form = args[0];
     // Form should be a list (macro-name arg...)
     if (!is_cons(form)) return form; // not a macro call, return as-is
@@ -1899,16 +1818,16 @@ fn Value* prim_macroexpand(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_eval(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "eval: expected expression");
+    if (args.len < 1) return raise_error(interp, "eval: expected expression");
     Expr* expr = value_to_expr(args[0], interp);
-    if (expr == null) return make_error(interp, "eval: could not convert to expression");
+    if (expr == null) return raise_error(interp, "eval: could not convert to expression");
     Value* result = jit_eval(expr, interp.global_env, interp);
-    if (result != null && result.tag == ERROR) return make_error(interp, "eval: error during evaluation");
+    if (result != null && result.tag == ERROR) return raise_error(interp, "eval: error during evaluation");
     return result;
 }
 
 fn Value* prim_apply(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "apply: expected function and argument list");
+    if (args.len < 2) return raise_error(interp, "apply: expected function and argument list");
     Value* func = args[0];
     Value* arg_list = args[1];
     // Count args
@@ -1923,7 +1842,7 @@ fn Value* prim_apply(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_bound(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_symbol(args[0])) return make_error(interp, "bound?: expected symbol");
+    if (args.len < 1 || !is_symbol(args[0])) return raise_error(interp, "bound?: expected symbol");
     SymbolId sym = args[0].sym_val;
     Env* lookup_env = env != null ? env : interp.global_env;
     Value* v = lookup_env.lookup(sym);
@@ -1931,12 +1850,12 @@ fn Value* prim_bound(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_error(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != STRING) return make_error(interp, "error: expected string message");
-    return make_error(interp, args[0].str_val.chars[:args[0].str_val.len]);
+    if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "error: expected string message");
+    return raise_error(interp, args[0].str_val.chars[:args[0].str_val.len]);
 }
 
 fn Value* prim_error_message(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != ERROR) return make_error(interp, "error-message: expected error value");
+    if (args.len < 1 || args[0].tag != ERROR) return raise_error(interp, "error-message: expected error value");
     return make_string(interp, args[0].str_val.chars[:args[0].str_val.len]);
 }
 
@@ -1966,38 +1885,23 @@ fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
     return v;
 }
 
-fn Value* prim_make_array(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_int(args[0])) return make_error(interp, "make-array: expected size and fill");
-    long sz = args[0].int_val;
-    if (sz < 0 || sz > 65536) return make_error(interp, "make-array: invalid size");
-    Value* v = make_array(interp, (usz)sz);
-    for (usz i = 0; i < (usz)sz; i++) { v.array_val.items[i] = args[1]; }
-    v.array_val.length = (usz)sz;
-    return v;
-}
-
-fn Value* prim_array_ref(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_array(args[0]) || !is_int(args[1])) return make_error(interp, "array-ref: expected array and int");
-    long idx = args[1].int_val;
-    if (idx < 0 || (usz)idx >= args[0].array_val.length) return make_error(interp, "array-ref: index out of range");
-    return args[0].array_val.items[(usz)idx];
-}
-
 fn Value* prim_array_set(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 3 || !is_array(args[0]) || !is_int(args[1])) return make_error(interp, "array-set!: expected array, int, value");
+    if (args.len < 3 || !is_array(args[0]) || !is_int(args[1])) return raise_error(interp, "array-set!: expected array, int, value");
     long idx = args[1].int_val;
-    if (idx < 0 || (usz)idx >= args[0].array_val.length) return make_error(interp, "array-set!: index out of range");
+    long alen = (long)args[0].array_val.length;
+    if (idx < 0) idx += alen;
+    if (idx < 0 || idx >= alen) return raise_error(interp, "array-set!: index out of range");
     args[0].array_val.items[(usz)idx] = args[2];
     return make_nil(interp);
 }
 
 fn Value* prim_array_length(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_array(args[0])) return make_error(interp, "array-length: expected array");
+    if (args.len < 1 || !is_array(args[0])) return raise_error(interp, "array-length: expected array");
     return make_int(interp, (long)args[0].array_val.length);
 }
 
 fn Value* prim_array_to_list(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_array(args[0])) return make_error(interp, "array->list: expected array");
+    if (args.len < 1 || !is_array(args[0])) return raise_error(interp, "array->list: expected array");
     Array* vec = args[0].array_val;
     Value* result = make_nil(interp);
     for (isz i = (isz)vec.length - 1; i >= 0; i--) {
@@ -2007,7 +1911,7 @@ fn Value* prim_array_to_list(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_list_to_array(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "list->array: expected list");
+    if (args.len < 1) return raise_error(interp, "list->array: expected list");
     // Count elements
     usz count = 0;
     Value* cur = args[0];
@@ -2023,12 +1927,12 @@ fn Value* prim_list_to_array(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_is_array(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
+    if (args.len < 1) return raise_error(interp, "array?: expected 1 argument");
     return is_array(args[0]) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_array_push(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_array(args[0])) return make_error(interp, "push!: expected array and value");
+    if (args.len < 2 || !is_array(args[0])) return raise_error(interp, "push!: expected array and value");
     Array* vec = args[0].array_val;
     if (vec.length >= vec.capacity) {
         usz new_cap = vec.capacity * 2;
@@ -2045,15 +1949,16 @@ fn Value* prim_array_push(Value*[] args, Env* env, Interp* interp) {
 // --- Generic collection primitives ---
 
 fn Value* prim_ref(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "ref: expected collection and key");
+    if (args.len < 2) return raise_error(interp, "ref: expected collection and key");
     Value* coll = args[0];
-    if (coll == null) return make_error(interp, "ref: nil collection");
 
-    // Array: (ref arr idx)
+    // Array: (ref arr idx) — supports negative indexing
     if (coll.tag == ARRAY) {
-        if (!is_int(args[1])) return make_error(interp, "ref: array requires int index");
+        if (!is_int(args[1])) return raise_error(interp, "ref: array requires int index");
         long idx = args[1].int_val;
-        if (coll.array_val == null || idx < 0 || (usz)idx >= coll.array_val.length) { return make_error(interp, "ref: array index out of bounds"); }
+        long alen = (long)coll.array_val.length;
+        if (idx < 0) idx += alen;
+        if (idx < 0 || idx >= alen) { return raise_error(interp, "ref: array index out of bounds"); }
         return coll.array_val.items[(usz)idx];
     }
 
@@ -2064,52 +1969,85 @@ fn Value* prim_ref(Value*[] args, Env* env, Interp* interp) {
         return result;
     }
 
-    // Cons: (ref pair 0) = car, (ref pair 1) = cdr
+    // Cons/list: walk cons chain — supports negative indexing
     if (coll.tag == CONS) {
-        if (!is_int(args[1])) return make_error(interp, "ref: cons requires int index (0=car, 1=cdr)");
+        if (!is_int(args[1])) return raise_error(interp, "ref: list requires int index");
         long idx = args[1].int_val;
-        if (idx == 0) return coll.cons_val.car;
-        if (idx == 1) return coll.cons_val.cdr;
-        return make_error(interp, "ref: cons index must be 0 (car) or 1 (cdr)");
+        if (idx < 0) {
+            long len = 0;
+            Value* c = coll;
+            while (is_cons(c)) { len++; c = c.cons_val.cdr; }
+            idx += len;
+            if (idx < 0) return raise_error(interp, "ref: list index out of bounds");
+        }
+        Value* current = coll;
+        for (long i = 0; i < idx; i++) {
+            if (!is_cons(current)) return raise_error(interp, "ref: list index out of bounds");
+            current = cdr(current);
+        }
+        if (is_cons(current)) return car(current);
+        // Dotted pair terminal: (ref (cons 10 20) 1) => 20
+        if (idx > 0) return current;
+        return raise_error(interp, "ref: list index out of bounds");
     }
 
-    // String: (ref str idx) = char as int
+    // String: (ref str idx) = char as int — supports negative indexing
     if (coll.tag == STRING) {
-        if (!is_int(args[1])) return make_error(interp, "ref: string requires int index");
+        if (!is_int(args[1])) return raise_error(interp, "ref: string requires int index");
         long idx = args[1].int_val;
-        if (idx < 0 || (usz)idx >= coll.str_val.len) { return make_error(interp, "ref: string index out of bounds"); }
+        long slen = (long)coll.str_val.len;
+        if (idx < 0) idx += slen;
+        if (idx < 0 || idx >= slen) { return raise_error(interp, "ref: string index out of bounds"); }
         return make_int(interp, (long)coll.str_val.chars[(usz)idx]);
     }
 
-    return make_error(interp, "ref: expected array, dict, cons, or string");
+    return raise_error(interp, "ref: expected array, dict, cons, or string");
 }
 
 fn Value* prim_push(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "push!: expected collection and value");
-    if (!is_array(args[0])) return make_error(interp, "push!: expected array");
+    if (args.len < 2) return raise_error(interp, "push!: expected 2 arguments");
+    if (!is_array(args[0])) return raise_error(interp, "push!: expected array");
     return prim_array_push(args, env, interp);
 }
 
 fn Value* prim_keys(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0] == null || args[0].tag != HASHMAP) return make_error(interp, "keys: expected dict");
-    return prim_dict_keys(args, env, interp);
+    if (args.len < 1) return raise_error(interp, "keys: expected 1 argument");
+    if (args[0].tag != HASHMAP) return raise_error(interp, "keys: expected dict");
+    HashMap* map = args[0].hashmap_val;
+    Value* result = make_nil(interp);
+    for (uint i = 0; i < map.capacity; i++) {
+        if (map.entries[i].key != null) {
+            result = make_cons(interp, map.entries[i].key, result);
+        }
+    }
+    return result;
 }
 
 fn Value* prim_values(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0] == null || args[0].tag != HASHMAP) return make_error(interp, "values: expected dict");
-    return prim_dict_values(args, env, interp);
+    if (args.len < 1) return raise_error(interp, "values: expected 1 argument");
+    if (args[0].tag != HASHMAP) return raise_error(interp, "values: expected dict");
+    HashMap* map = args[0].hashmap_val;
+    Value* result = make_nil(interp);
+    for (uint i = 0; i < map.capacity; i++) {
+        if (map.entries[i].key != null) {
+            result = make_cons(interp, map.entries[i].value, result);
+        }
+    }
+    return result;
 }
 
 fn Value* prim_has(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "has?: expected collection and key");
-    if (args[0] == null || args[0].tag != HASHMAP) return make_error(interp, "has?: expected dict");
-    return prim_dict_has(args, env, interp);
+    if (args.len < 2) return raise_error(interp, "has?: expected 2 arguments");
+    if (args[0].tag != HASHMAP) return raise_error(interp, "has?: expected dict");
+    Value* found = hashmap_get(args[0].hashmap_val, args[1]);
+    return found != null ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_remove(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "remove!: expected collection and key");
-    if (args[0] == null || args[0].tag != HASHMAP) return make_error(interp, "remove!: expected dict");
-    return prim_dict_remove(args, env, interp);
+    if (args.len < 2) return raise_error(interp, "remove!: expected 2 arguments");
+    if (args[0].tag != HASHMAP) return raise_error(interp, "remove!: expected dict");
+    hashmap_remove(args[0].hashmap_val, args[1]);
+    return args[0];
 }
 
 // --- Phase 9: Set primitives (built on dict) ---
@@ -2135,31 +2073,31 @@ fn Value* prim_set(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_set_add(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args[0].tag != HASHMAP) return make_error(interp, "set-add: expected set and value");
+    if (args.len < 2 || args[0].tag != HASHMAP) return raise_error(interp, "set-add: expected set and value");
     Value* true_val = make_symbol(interp, interp.sym_true);
     hashmap_set(args[0].hashmap_val, args[1], true_val, interp);
     return args[0];
 }
 
 fn Value* prim_set_remove(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args[0].tag != HASHMAP) return make_error(interp, "set-remove: expected set and value");
+    if (args.len < 2 || args[0].tag != HASHMAP) return raise_error(interp, "set-remove: expected set and value");
     hashmap_remove(args[0].hashmap_val, args[1]);
     return args[0];
 }
 
 fn Value* prim_set_contains(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args[0].tag != HASHMAP) return make_error(interp, "set-contains?: expected set and value");
+    if (args.len < 2 || args[0].tag != HASHMAP) return raise_error(interp, "set-contains?: expected set and value");
     Value* v = hashmap_get(args[0].hashmap_val, args[1]);
     return (v != null) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_set_size(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != HASHMAP) return make_error(interp, "set-size: expected set");
+    if (args.len < 1 || args[0].tag != HASHMAP) return raise_error(interp, "set-size: expected set");
     return make_int(interp, (long)args[0].hashmap_val.count);
 }
 
 fn Value* prim_set_to_list(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != HASHMAP) return make_error(interp, "set->list: expected set");
+    if (args.len < 1 || args[0].tag != HASHMAP) return raise_error(interp, "set->list: expected set");
     HashMap* map = args[0].hashmap_val;
     Value* result = make_nil(interp);
     for (uint i = 0; i < map.capacity; i++) {
@@ -2173,21 +2111,21 @@ fn Value* prim_set_to_list(Value*[] args, Env* env, Interp* interp) {
 // --- Phase 12: Additional I/O and convenience ---
 
 fn Value* prim_read_string(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != STRING) return make_error(interp, "read-string: expected string");
+    if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "read-string: expected string");
     char[] src = args[0].str_val.chars[:args[0].str_val.len];
     EvalResult r = run(src, interp);
-    if (r.error.has_error) return make_error(interp, "read-string: parse/eval error");
+    if (r.error.has_error) return raise_error(interp, "read-string: parse/eval error");
     return r.value;
 }
 
 fn Value* prim_string_to_symbol(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != STRING) return make_error(interp, "string->symbol: expected string");
+    if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "string->symbol: expected string");
     SymbolId sym = interp.symbols.intern(args[0].str_val.chars[:args[0].str_val.len]);
     return make_symbol(interp, sym);
 }
 
 fn Value* prim_symbol_to_string(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_symbol(args[0])) return make_error(interp, "symbol->string: expected symbol");
+    if (args.len < 1 || !is_symbol(args[0])) return raise_error(interp, "symbol->string: expected symbol");
     char[] name = interp.symbols.get_name(args[0].sym_val);
     return make_string(interp, name);
 }
@@ -2200,7 +2138,7 @@ fn Value* prim_symbol_to_string(Value*[] args, Env* env, Interp* interp) {
  * (type-of v) -> symbol representing the type name
  */
 fn Value* prim_type_of(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "type-of: expected 1 argument");
+    if (args.len < 1) return raise_error(interp, "type-of: expected 1 argument");
     SymbolId type_name = value_type_name(args[0], interp);
     return make_symbol(interp, type_name);
 }
@@ -2209,9 +2147,9 @@ fn Value* prim_type_of(Value*[] args, Env* env, Interp* interp) {
  * (is? v 'TypeName) -> true if v's type is or is subtype of TypeName
  */
 fn Value* prim_is_type(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_error(interp, "is?: expected 2 arguments");
+    if (args.len < 2) return raise_error(interp, "is?: expected 2 arguments");
     if (args[1] == null || args[1].tag != SYMBOL) {
-        return make_error(interp, "is?: second argument must be a symbol");
+        return raise_error(interp, "is?: second argument must be a symbol");
     }
 
     SymbolId target_name = args[1].sym_val;
@@ -2243,8 +2181,8 @@ fn Value* prim_is_type(Value*[] args, Env* env, Interp* interp) {
  * (instance? v) -> true if v is a user-defined type instance
  */
 fn Value* prim_is_instance(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
-    bool result = args[0] != null && args[0].tag == INSTANCE;
+    if (args.len < 1) return raise_error(interp, "instance?: expected 1 argument");
+    bool result = args[0].tag == INSTANCE;
     return result ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
@@ -2253,7 +2191,7 @@ fn Value* prim_is_instance(Value*[] args, Env* env, Interp* interp) {
  * Example: (type-args (Box 42)) => '(Int)
  */
 fn Value* prim_type_args(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "type-args: expected 1 argument");
+    if (args.len < 1) return raise_error(interp, "type-args: expected 1 argument");
     if (args[0] == null || args[0].tag != INSTANCE) return make_nil(interp);
     Instance* inst = args[0].instance_val;
     if (inst == null || inst.type_arg_count == 0) return make_nil(interp);
@@ -2280,7 +2218,7 @@ fn Value* prim_type_args(Value*[] args, Env* env, Interp* interp) {
 // --- Memory reclamation ---
 
 fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_error(interp, "unsafe-free!: expected 1 argument");
+    if (args.len < 1) return raise_error(interp, "unsafe-free!: expected 1 argument");
     Value* v = args[0];
     if (v == null) return make_nil(interp);
 
@@ -2329,5 +2267,87 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
     v.str_val.chars[msg.len] = 0;
     v.str_val.len = msg.len;
     return make_nil(interp);
+}
+
+// =============================================================================
+// ITERATOR PRIMITIVES
+// =============================================================================
+
+fn Value* prim_iterator_p(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return make_nil(interp);
+    if (args[0].tag == ITERATOR) return make_symbol(interp, interp.sym_true);
+    return make_nil(interp);
+}
+
+fn Value* prim_make_iterator(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1 || args[0].tag != CLOSURE) {
+        return raise_error(interp, "make-iterator: expected closure thunk");
+    }
+    return make_iterator(interp, args[0]);
+}
+
+fn Value* prim_next(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1 || args[0].tag != ITERATOR) {
+        return raise_error(interp, "next: expected iterator");
+    }
+    // Call the thunk closure — iterator_val is a Value* (CLOSURE)
+    return jit_apply_value(args[0].iterator_val, make_nil(interp), interp);
+}
+
+fn Value* prim_collect(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1 || args[0].tag != ITERATOR) {
+        return raise_error(interp, "collect: expected iterator");
+    }
+    // Consume iterator into a list
+    // Collect into stack buffer first, then build list in reverse
+    Value*[4096] items;
+    usz count = 0;
+    Value* it = args[0];
+
+    while (count < 4096) {
+        Value* pair = jit_apply_value(it.iterator_val, make_nil(interp), interp);
+        if (pair == null || pair.tag == NIL) break;
+        if (pair.tag == ERROR) return pair;
+        if (!is_cons(pair)) break;
+        items[count++] = car(pair);
+        Value* rest = cdr(pair);
+        if (rest == null || rest.tag != ITERATOR) break;
+        it = rest;
+    }
+
+    // Build list in reverse
+    Value* result = make_nil(interp);
+    for (isz i = (isz)count - 1; i >= 0; i--) {
+        result = make_cons(interp, items[(usz)i], result);
+    }
+    return result;
+}
+
+fn Value* prim_to_array(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1 || args[0].tag != ITERATOR) {
+        return raise_error(interp, "to-array: expected iterator");
+    }
+    // Consume iterator into an array
+    Value*[4096] items;
+    usz count = 0;
+    Value* it = args[0];
+
+    while (count < 4096) {
+        Value* pair = jit_apply_value(it.iterator_val, make_nil(interp), interp);
+        if (pair == null || pair.tag == NIL) break;
+        if (pair.tag == ERROR) return pair;
+        if (!is_cons(pair)) break;
+        items[count++] = car(pair);
+        Value* rest = cdr(pair);
+        if (rest == null || rest.tag != ITERATOR) break;
+        it = rest;
+    }
+
+    Value* arr = make_array(interp, count);
+    for (usz i = 0; i < count; i++) {
+        arr.array_val.items[i] = items[i];
+    }
+    arr.array_val.length = count;
+    return arr;
 }
 

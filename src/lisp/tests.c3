@@ -149,6 +149,47 @@ fn void test_error_contains(Interp* interp, char[] name, char[] expr_str, char[]
     }
 }
 
+fn bool str_starts_with(char[] haystack, char[] needle) {
+    if (haystack.len < needle.len) return false;
+    for (usz i = 0; i < needle.len; i++) {
+        if (haystack[i] != needle[i]) return false;
+    }
+    return true;
+}
+
+fn void test_str_val(Interp* interp, char[] name, char[] expr, char[] expected, int* pass, int* fail) {
+    EvalResult ri = run(expr, interp);
+    bool interp_ok = !ri.error.has_error && is_string(ri.value) &&
+        str_starts_with(ri.value.str_val.chars[:ri.value.str_val.len], expected) &&
+        ri.value.str_val.len == expected.len;
+
+    Expr* ast = parse_for_jit(expr, interp);
+    bool jit_ok = false;
+    if (ast != null) {
+        JitFn f = jit_compile(ast, interp);
+        if (f != null) {
+            Value* jv = jit_exec(f, interp);
+            jit_ok = jv != null && jv.tag == STRING &&
+                str_starts_with(jv.str_val.chars[:jv.str_val.len], expected) &&
+                jv.str_val.len == expected.len;
+        }
+    }
+
+    if (interp_ok && jit_ok) {
+        io::printfn("[PASS] %s", (ZString)name);
+        (*pass)++;
+    } else {
+        char[256] got_buf;
+        char[] got_str = "?";
+        if (!ri.error.has_error && is_string(ri.value)) {
+            got_str = ri.value.str_val.chars[:ri.value.str_val.len];
+        }
+        io::printfn("[FAIL] %s (interp=%s, jit=%s, got='%s')", (ZString)name,
+            interp_ok ? "ok" : "FAIL", jit_ok ? "ok" : "FAIL", (ZString)got_str);
+        (*fail)++;
+    }
+}
+
 fn void test_str(Interp* interp, char[] name, char[] expr, int* pass, int* fail) {
     EvalResult ri = run(expr, interp);
     bool interp_ok = !ri.error.has_error && is_string(ri.value);
@@ -1491,6 +1532,116 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_error(interp, "call non-function", "(42 1)", pass, fail);
     test_error(interp, "shift outside reset", "(shift k 42)", pass, fail);
 
+    // Error-as-effect: try/catch via raise effect
+    test_eq(interp, "handle catches raise",
+        "(handle (/ 1 0) ((raise k msg) 42))", 42, pass, fail);
+    test_str_val(interp, "try catch div-by-zero",
+        "((try (lambda (xx) (/ 1 0))) (lambda (msg) msg))",
+        "/: division by zero", pass, fail);
+    test_str_val(interp, "try catch arity error",
+        "((try (lambda (xx) (+ ))) (lambda (msg) msg))",
+        "+: expected at least 1 argument", pass, fail);
+    test_str_val(interp, "try catch type error",
+        "((try (lambda (xx) (+ \"a\" 1))) (lambda (msg) msg))",
+        "+: expected number argument", pass, fail);
+    test_str_val(interp, "try catch oob array",
+        "((try (lambda (xx) (ref [1 2 3] 99))) (lambda (msg) msg))",
+        "ref: array index out of bounds", pass, fail);
+    test_str_val(interp, "try catch oob string",
+        "((try (lambda (xx) (char-at \"abc\" 99))) (lambda (msg) msg))",
+        "char-at: index out of range", pass, fail);
+    test_str_val(interp, "try catch car nil",
+        "((try (lambda (xx) (car 42))) (lambda (msg) msg))",
+        "car: argument must be a pair", pass, fail);
+    test_str_val(interp, "try catch unbound var",
+        "((try (lambda (xx) nonexistent_var_xyz_2)) (lambda (msg) msg))",
+        "unbound variable 'nonexistent_var_xyz_2'", pass, fail);
+    test_eq(interp, "try no error returns value",
+        "((try (lambda (xx) 42)) (lambda (msg) 0))",
+        42, pass, fail);
+    test_str_val(interp, "try catch set! unbound",
+        "((try (lambda (xx) (set! no_such_var_xyz 1))) (lambda (msg) msg))",
+        "set!: unbound variable", pass, fail);
+    test_str_val(interp, "try catch user raise",
+        "((try (lambda (xx) (perform raise \"custom error\"))) (lambda (msg) msg))",
+        "custom error", pass, fail);
+    test_eq(interp, "nested try inner catches",
+        "((try (lambda (xx) ((try (lambda (yy) (/ 1 0))) (lambda (msg) 99)))) (lambda (msg) 0))",
+        99, pass, fail);
+    test_eq(interp, "unhandled raise is error",
+        "(if (pair? (quote (1))) 1 0)", 1, pass, fail);
+
+    // Phase 2A: λ (lambda) syntax
+    test_eq(interp, "\xce\xbb application", "((\xce\xbb (x) (* x x)) 5)", 25, pass, fail);
+    test_eq(interp, "\xce\xbb multi-param", "((\xce\xbb (x y) (+ x y)) 3 7)", 10, pass, fail);
+    test_eq(interp, "\xce\xbb closure", "(let ((a 10)) ((\xce\xbb (x) (+ x a)) 5))", 15, pass, fail);
+    test_eq(interp, "\xce\xbb recursive define", "(begin (define sq (\xce\xbb (x) (* x x))) (sq 6))", 36, pass, fail);
+
+    // Phase 2B: UTF-8 string support
+    test_eq(interp, "utf8 strlen ASCII", "(string-length \"hello\")", 5, pass, fail);
+    test_eq(interp, "utf8 strlen h\xc3\xa9llo", "(string-length \"h\xc3\xa9llo\")", 5, pass, fail);
+    test_eq(interp, "utf8 strlen CJK", "(string-length \"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\")", 3, pass, fail);
+    test_eq(interp, "utf8 strlen emoji", "(string-length \"\xf0\x9f\x98\x80\")", 1, pass, fail);
+    test_eq(interp, "utf8 byte-length ASCII", "(string-byte-length \"hello\")", 5, pass, fail);
+    test_eq(interp, "utf8 byte-length h\xc3\xa9llo", "(string-byte-length \"h\xc3\xa9llo\")", 6, pass, fail);
+    test_eq(interp, "utf8 byte-length CJK", "(string-byte-length \"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\")", 9, pass, fail);
+    test_str_val(interp, "utf8 char-at ASCII", "(char-at \"hello\" 1)", "e", pass, fail);
+    test_str_val(interp, "utf8 char-at caf\xc3\xa9", "(char-at \"caf\xc3\xa9\" 3)", "\xc3\xa9", pass, fail);
+    test_str_val(interp, "utf8 char-at CJK", "(char-at \"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\" 1)", "\xe6\x9c\xac", pass, fail);
+    test_str_val(interp, "utf8 char-at neg", "(char-at \"caf\xc3\xa9\" -1)", "\xc3\xa9", pass, fail);
+    test_str_val(interp, "utf8 substring", "(substring \"caf\xc3\xa9\" 0 3)", "caf", pass, fail);
+    test_str_val(interp, "utf8 substring mid", "(substring \"h\xc3\xa9llo\" 1 3)", "\xc3\xa9l", pass, fail);
+    test_eq(interp, "utf8 string->list len", "(length (string->list \"h\xc3\xa9llo\"))", 5, pass, fail);
+
+    // Phase 3A: Iterator type + primitives
+    test_truthy(interp, "make-iterator creates iter",
+        "(iterator? (make-iterator (lambda () nil)))", pass, fail);
+    test_truthy(interp, "next on empty iter is nil",
+        "(null? (next (make-iterator (lambda () nil))))", pass, fail);
+    // Simple iterator: returns (cons 42 empty-iter), then empty
+    setup(interp, "(define empty-it (make-iterator (lambda () nil)))");
+    setup(interp, "(define one-it (make-iterator (lambda () (cons 42 empty-it))))");
+    test_eq(interp, "next returns pair car", "(car (next one-it))", 42, pass, fail);
+    // Collect a hand-made 3-element iterator
+    setup(interp, "(define it3 (make-iterator (lambda () (cons 3 (make-iterator (lambda () (cons 2 (make-iterator (lambda () (cons 1 (make-iterator (lambda () nil))))))))))))" );
+    test_eq(interp, "collect it3 car", "(car (collect it3))", 3, pass, fail);
+    test_eq(interp, "collect it3 len", "(length (collect it3))", 3, pass, fail);
+    // to-array
+    test_eq(interp, "to-array it3 len", "(length (to-array it3))", 3, pass, fail);
+    test_eq(interp, "to-array it3 ref 0", "(ref (to-array it3) 0)", 3, pass, fail);
+    // type-of iterator
+    test_truthy(interp, "type-of iterator",
+        "(is? (make-iterator (lambda () nil)) (quote Iterator))", pass, fail);
+
+    // Phase 3B: iterator constructors + lazy combinators
+    test_truthy(interp, "iterator dispatches list",
+        "(iterator? (iterator (quote (1 2 3))))", pass, fail);
+    test_eq(interp, "iterator list collect car", "(car (collect (iterator (quote (1 2 3)))))", 1, pass, fail);
+    test_eq(interp, "iterator list collect len", "(length (collect (iterator (quote (1 2 3)))))", 3, pass, fail);
+    test_eq(interp, "iterator array collect car", "(car (collect (iterator [10 20 30])))", 10, pass, fail);
+    test_eq(interp, "iterator array collect len", "(length (collect (iterator [10 20 30])))", 3, pass, fail);
+    test_eq(interp, "iterator dict collect len", "(length (collect (iterator (begin (define iter-d {'a 1 'b 2}) iter-d))))", 2, pass, fail);
+    test_truthy(interp, "iterator idempotent", "(iterator? (iterator (iterator [1 2 3])))", pass, fail);
+    // Lazy imap
+    test_eq(interp, "imap + collect car", "(car (collect (imap (lambda (x) (* x 2)) (iterator [1 2 3]))))", 2, pass, fail);
+    test_eq(interp, "imap + collect len", "(length (collect (imap (lambda (x) (* x 2)) (iterator [1 2 3]))))", 3, pass, fail);
+    // Lazy ifilter
+    test_eq(interp, "ifilter even car", "(car (collect (ifilter even? (iterator [1 2 3 4 5]))))", 2, pass, fail);
+    test_eq(interp, "ifilter even len", "(length (collect (ifilter even? (iterator [1 2 3 4 5]))))", 2, pass, fail);
+    // Lazy itake
+    test_eq(interp, "itake 2 len", "(length (collect (itake 2 (iterator [10 20 30]))))", 2, pass, fail);
+    test_eq(interp, "itake 2 car", "(car (collect (itake 2 (iterator [10 20 30]))))", 10, pass, fail);
+    // Infinite + itake
+    test_eq(interp, "range-from + itake", "(car (collect (itake 5 (range-from 0))))", 0, pass, fail);
+    test_eq(interp, "range-from + itake len", "(length (collect (itake 5 (range-from 0))))", 5, pass, fail);
+    // imap + ifilter pipeline
+    test_eq(interp, "lazy pipeline len",
+        "(length (collect (itake 3 (ifilter even? (imap (lambda (x) (* x 2)) (range-from 1))))))", 3, pass, fail);
+    // to-array from iterator
+    test_eq(interp, "to-array from iter", "(ref (to-array (iterator [5 6 7])) 1)", 6, pass, fail);
+    // ifoldl
+    test_eq(interp, "ifoldl sum", "(ifoldl (lambda (a x) (+ a x)) 0 (iterator [1 2 3 4 5]))", 15, pass, fail);
+
     // And/or advanced
     test_eq(interp, "nested and/or", "(and (or nil 5) (or false 10))", 10, pass, fail);
     test_eq(interp, "nested or/and", "(or (and nil 5) (and 1 10))", 10, pass, fail);
@@ -1564,8 +1715,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_nil(interp, "variadic empty rest", "(head-rest 1)", pass, fail);
     setup(interp, "(define multi-rest (lambda (a b .. rest) rest))");
     test_eq(interp, "variadic multi rest len", "(length (multi-rest 1 2 3 4 5))", 3, pass, fail);
-    setup(interp, "(define head-only (lambda (h .. t) h))");
-    test_eq(interp, "variadic head-only", "(head-only 42 99 100)", 42, pass, fail);
+    test_eq(interp, "variadic head-only", "((lambda (h .. rest-ho) h) 42 99 100)", 42, pass, fail);
     setup(interp, "(define count-rest (lambda (h .. t) (length t)))");
     test_eq(interp, "variadic count-rest", "(count-rest 1 2 3 4 5)", 4, pass, fail);
 
@@ -1800,6 +1950,27 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "ref cons cdr", "(ref (cons 10 20) 1)", 20, pass, fail);
     // ref - string
     test_eq(interp, "ref string", "(ref \"hello\" 0)", 104, pass, fail);
+    // negative indexing (Python-style: -1 = last, -2 = second-to-last)
+    test_eq(interp, "ref array -1", "(ref [10 20 30] -1)", 30, pass, fail);
+    test_eq(interp, "ref array -2", "(ref [10 20 30] -2)", 20, pass, fail);
+    test_eq(interp, "ref array -3", "(ref [10 20 30] -3)", 10, pass, fail);
+    test_error(interp, "ref array -4 oob", "(ref [10 20 30] -4)", pass, fail);
+    test_eq(interp, "ref string -1", "(ref \"hello\" -1)", 111, pass, fail);
+    test_eq(interp, "ref string -5", "(ref \"hello\" -5)", 104, pass, fail);
+    test_error(interp, "ref string -6 oob", "(ref \"hello\" -6)", pass, fail);
+    // ref on lists (walks cons chain, not just pair 0/1)
+    test_eq(interp, "ref list 0", "(ref '(10 20 30) 0)", 10, pass, fail);
+    test_eq(interp, "ref list 2", "(ref '(10 20 30) 2)", 30, pass, fail);
+    test_eq(interp, "ref list -1", "(ref '(10 20 30) -1)", 30, pass, fail);
+    test_error(interp, "ref list oob", "(ref '(10 20 30) 5)", pass, fail);
+    test_eq(interp, ".[-1] array", "(let ((a [10 20 30])) a.[-1])", 30, pass, fail);
+    test_eq(interp, ".[-1] list", "(let ((l '(10 20 30))) l.[-1])", 30, pass, fail);
+    test_eq(interp, ".[-2] list", "(let ((l '(10 20 30))) l.[-2])", 20, pass, fail);
+    test_error(interp, ".[-4] list oob", "(let ((l '(10 20 30))) l.[-4])", pass, fail);
+    test_str(interp, "char-at -1", "(char-at \"abc\" -1)", pass, fail);
+    setup(interp, "(define neg-arr [1 2 3])");
+    setup(interp, "(array-set! neg-arr -1 99)");
+    test_eq(interp, "array-set! -1", "(ref neg-arr 2)", 99, pass, fail);
     // length - generic
     test_eq(interp, "length array", "(length [1 2 3])", 3, pass, fail);
     test_eq(interp, "length dict", "(length {'a 1 'b 2})", 2, pass, fail);
@@ -1821,34 +1992,71 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "remove! count", "(length gd)", 1, pass, fail);
 
     // === MODULE SYSTEM TESTS ===
-    setup(interp, "(module math-utils (export double triple) (define double (lambda (x) (* x 2))) (define triple (lambda (x) (* x 3))) (define internal (lambda (x) (+ x 100))))");
+    // Qualified access (default import = qualified-only)
+    setup(interp, "(module math-utils (export dbl triple) (define dbl (lambda (x) (* x 2))) (define triple (lambda (x) (* x 3))) (define internal (lambda (x) (+ x 100))))");
     setup(interp, "(import math-utils)");
-    test_eq(interp, "module double", "(double 5)", 10, pass, fail);
-    test_eq(interp, "module triple", "(triple 4)", 12, pass, fail);
-    test_error(interp, "module unexported hidden", "(internal 5)", pass, fail);
+    test_eq(interp, "module qualified dbl", "(math-utils.dbl 5)", 10, pass, fail);
+    test_eq(interp, "module qualified triple", "(math-utils.triple 4)", 12, pass, fail);
+    test_error(interp, "module unexported hidden", "(math-utils.internal 5)", pass, fail);
+    // Unqualified access should fail without selective import
+    test_error(interp, "module unqualified fails", "(triple 4)", pass, fail);
+    // Re-import (cached)
     setup(interp, "(import math-utils)");
-    test_eq(interp, "module re-import cached", "(double 7)", 14, pass, fail);
+    test_eq(interp, "module re-import cached", "(math-utils.dbl 7)", 14, pass, fail);
     test_error(interp, "module duplicate def", "(module math-utils (export) (define x 1))", pass, fail);
+
+    // Selective import: (import mod (sym1 sym2))
+    setup(interp, "(module sel-mod (export add-one sub-one) (define add-one (lambda (x) (+ x 1))) (define sub-one (lambda (x) (- x 1))))");
+    setup(interp, "(import sel-mod (add-one))");
+    test_eq(interp, "selective import add-one", "(add-one 5)", 6, pass, fail);
+    test_error(interp, "selective import sub-one hidden", "(sub-one 5)", pass, fail);
+    // Qualified still works alongside selective
+    test_eq(interp, "selective + qualified", "(sel-mod.sub-one 5)", 4, pass, fail);
+
+    // Rename import: (import mod (sym :as alias))
+    setup(interp, "(module rename-mod (export compute) (define compute (lambda (x) (* x 10))))");
+    setup(interp, "(import rename-mod (compute :as calc))");
+    test_eq(interp, "renamed import", "(calc 3)", 30, pass, fail);
+    test_error(interp, "original name hidden after rename", "(compute 3)", pass, fail);
+
+    // Import :all (explicit opt-in, old behavior)
+    setup(interp, "(module all-mod (export foo bar) (define foo (lambda () 42)) (define bar (lambda () 99)))");
+    setup(interp, "(import all-mod :all)");
+    test_eq(interp, "import all foo", "(foo)", 42, pass, fail);
+    test_eq(interp, "import all bar", "(bar)", 99, pass, fail);
+
+    // Original tests updated to use selective import
     setup(interp, "(module list-utils (export sum-list) (define sum-list (lambda (lst) (((foldl (lambda (a) (lambda (b) (+ a b)))) 0) lst))))");
-    setup(interp, "(import list-utils)");
+    setup(interp, "(import list-utils (sum-list))");
     test_eq(interp, "module stdlib access", "(sum-list (quote (1 2 3 4 5)))", 15, pass, fail);
     setup(interp, "(module base-mod (export base-fn) (define base-fn (lambda (x) (+ x 100))))");
-    setup(interp, "(import base-mod)");
+    setup(interp, "(import base-mod :all)");
     setup(interp, "(module derived-mod (export derived-fn) (define derived-fn (lambda (x) (base-fn (* x 2)))))");
-    setup(interp, "(import derived-mod)");
+    setup(interp, "(import derived-mod (derived-fn))");
     test_eq(interp, "module depends on another", "(derived-fn 5)", 110, pass, fail);
     setup(interp, "(module private-mod (export) (define secret 42))");
     setup(interp, "(import private-mod)");
     test_error(interp, "module empty export hides", "secret", pass, fail);
     setup(interp, "(module closure-mod (export make-counter) (define make-counter (lambda () (let ((n 0)) (lambda () (begin (set! n (+ n 1)) n))))))");
-    setup(interp, "(import closure-mod)");
+    setup(interp, "(import closure-mod (make-counter))");
     setup(interp, "(define my-counter (make-counter))");
     // Counter tests are stateful: JIT-only to avoid double mutation
     test_eq_jit(interp, "module counter 1", "(my-counter)", 1, pass, fail);
     test_eq_jit(interp, "module counter 2", "(my-counter)", 2, pass, fail);
     setup(interp, "(module tail-mod (export tail-sum) (define tail-sum (lambda (n acc) (if (= n 0) acc (tail-sum (- n 1) (+ acc n))))))");
-    setup(interp, "(import tail-mod)");
+    setup(interp, "(import tail-mod (tail-sum))");
     test_eq(interp, "module tail-call sum 1000", "(tail-sum 1000 0)", 500500, pass, fail);
+
+    // Export-from (re-export)
+    setup(interp, "(module inner-mod (export inner-val) (define inner-val 42))");
+    setup(interp, "(module outer-mod (export inner-val) (import inner-mod) (export-from inner-mod (inner-val)))");
+    setup(interp, "(import outer-mod (inner-val))");
+    test_eq(interp, "export-from re-export", "inner-val", 42, pass, fail);
+
+    // Module as first-class value
+    setup(interp, "(module val-mod (export x) (define x 77))");
+    setup(interp, "(import val-mod)");
+    test_eq(interp, "module as value", "(val-mod.x)", 77, pass, fail);
 
     // === SHORTHAND DEFINE TESTS ===
     setup(interp, "(define (sh-double x) (* x 2))");

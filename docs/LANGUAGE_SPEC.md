@@ -1,9 +1,9 @@
 # Omni Lisp Language Specification
 
 **Version:** 0.4.0
-**Date:** 2026-02-20
+**Date:** 2026-02-23
 
-Omni Lisp is a Lisp dialect with first-class delimited continuations, algebraic effects, auto-curried lambdas, multiple dispatch, and a structural type system. It runs on a region-based memory system implemented in C3 with three backends: interpreter, GNU Lightning JIT, and Lisp-to-C3 transpiler.
+Omni Lisp is a Lisp dialect with first-class delimited continuations, algebraic effects, strict-arity multi-param lambdas, multiple dispatch, and a structural type system. It runs on a region-based memory system implemented in C3 with a GNU Lightning JIT engine and a Lisp-to-C3 AOT transpiler.
 
 ---
 
@@ -23,6 +23,7 @@ Omni Lisp is a Lisp dialect with first-class delimited continuations, algebraic 
 12. [Modules](#12-modules)
 13. [REPL](#13-repl)
 14. [Examples](#14-examples)
+15. [CLI & Project Tooling](#15-cli--project-tooling)
 
 ---
 
@@ -70,8 +71,8 @@ null?
 ### 1.2 S-Expression Forms
 
 ```lisp
-; Function application (auto-curried)
-(f arg1 arg2 ...)     ; desugars to (((f arg1) arg2) ...)
+; Function application
+(f arg1 arg2 ...)     ; multi-arg call (strict arity)
 
 ; Examples
 (+ 1 2)              ; adds 1 and 2
@@ -104,7 +105,7 @@ null?
 | nil | `NIL` | Empty/false value | `nil`, `()` |
 | int | `INT` | 64-bit signed integer | `42`, `-17` |
 | double | `DOUBLE` | 64-bit floating point | `3.14`, `-0.5` |
-| string | `STRING` | Immutable string (max 4095 chars) | `"hello"` |
+| string | `STRING` | Immutable string (heap-allocated) | `"hello"` |
 | symbol | `SYMBOL` | Interned identifier | `'foo`, `'hello` |
 | cons | `CONS` | Pair / list cell | `(cons 1 2)`, `'(1 2 3)` |
 | closure | `CLOSURE` | User-defined function with environment | `(lambda (x) x)` |
@@ -142,9 +143,9 @@ null?
 ; Single parameter
 (lambda (x) body)
 
-; Multi-parameter (auto-curried by parser)
+; Multi-parameter (strict arity)
 (lambda (x y z) body)
-; desugars to: (lambda (x) (lambda (y) (lambda (z) body)))
+; requires exactly 3 arguments — use _ placeholder, |> pipe, or partial for partial application
 
 ; Zero-argument
 (lambda () body)
@@ -152,7 +153,7 @@ null?
 ; Variadic
 (lambda (x .. rest) body)
 
-; Typed parameters (for dispatch, NOT curried)
+; Typed parameters (for dispatch)
 (lambda ((^Int x) (^String y)) body)
 ```
 
@@ -417,12 +418,12 @@ For non-Instance values, path notation uses alist lookup (association lists). Co
 | Prim | Arity | Description |
 |------|-------|-------------|
 | `+` | 2 | Addition (int or double) |
-| `-` | 2 | Subtraction |
+| `-` | 1-2 | Subtraction; `(- n)` negates |
 | `*` | 2 | Multiplication |
 | `/` | 2 | Integer/float division |
 | `%` | 2 | Modulo |
 
-Binary primitives auto-curry: `(+ 3)` returns a function that adds 3.
+Binary primitives partially apply when given one argument: `(+ 3)` returns a `PARTIAL_PRIM` that adds 3. This is built-in for binary primitives only — user-defined lambdas have strict arity (see `_` placeholder, `|>` pipe, or `partial` for general partial application).
 
 ### 7.2 Comparison (5)
 
@@ -684,7 +685,7 @@ Higher-order functions and utilities defined in Omni:
 | `assoc` | `(key alist)` | Association list lookup |
 | `assoc-ref` | `(key alist)` | Lookup value only |
 
-All stdlib functions are curried (e.g., `(map inc)` returns a function).
+Stdlib functions take multiple parameters with strict arity. For partial application: binary primitives auto-partial `(map (+ 1) '(1 2 3))`, `_` placeholder creates lambdas `(map (+ 1 _) '(1 2 3))`, or use `partial` from stdlib.
 
 ### 8.1 Macros
 
@@ -792,6 +793,19 @@ I/O operations go through effects with a fast path:
 
 Effect tags: `io/print`, `io/println`, `io/display`, `io/newline`, `io/read-file`, `io/write-file`, `io/file-exists?`, `io/read-lines`
 
+### 10.4 Typed Dispatch in Handlers
+
+Effect handlers match on tag name only. For type-specific behavior, use dispatched functions inside the handler body — this reuses the existing MethodTable dispatch system rather than introducing a parallel matching mechanism:
+
+```lisp
+(define (on-show (^Int x))    (string-append "int: " (to-string x)))
+(define (on-show (^String s)) (string-append "str: " s))
+
+(handle
+  (begin (perform show 42) (perform show "hello"))
+  ((show k x) (println (on-show x)) (k nil)))
+```
+
 ---
 
 ## 11. Macros
@@ -829,15 +843,36 @@ Effect tags: `io/print`, `io/println`, `io/display`, `io/newline`, `io/read-file
   (define (add a b) (+ a b))
   (define (multiply a b) (* a b)))
 
+;; Qualified access (default)
 (import math-utils)
+(math-utils.add 3 4)  ; => 7
+
+;; Selective import
+(import math-utils (add multiply))
 (add 3 4)  ; => 7
+
+;; Rename on import
+(import math-utils (add :as plus))
+(plus 3 4)  ; => 7
+
+;; Import all exports unqualified
+(import math-utils :all)
+(add 3 4)  ; => 7
+
+;; Re-export
+(export-from math-utils (add))
+(export-from math-utils :all)
 ```
 
-- Modules define namespaces with explicit exports
-- `import` brings exported symbols into scope
+- Default import is **qualified-only**: `(import mod)` binds module as value, access via `mod.sym`
+- Selective import: `(import mod (sym1 sym2))` for specific symbols
+- Rename: `(import mod (sym1 :as alias))` for renaming on import
+- `:all` imports all exports unqualified (opt-in)
+- `export-from` re-exports symbols from another module
 - File-based import: `(import "path/to/file.omni")`
 - Cached: modules loaded only once
 - Circular import detection
+- Method extensions are always global (dispatch is cross-cutting)
 
 ---
 
@@ -951,6 +986,37 @@ p.car                   ; => 99
 
 ---
 
+## 15. CLI & Project Tooling
+
+### 15.1 Running Programs
+
+```bash
+LD_LIBRARY_PATH=/usr/local/lib ./build/main script.omni    # Run a script
+LD_LIBRARY_PATH=/usr/local/lib ./build/main --repl          # Interactive REPL
+```
+
+### 15.2 Compilation
+
+```bash
+./build/main --compile input.lisp output.c3                 # Lisp → C3 source
+./build/main --build input.lisp -o output                   # Lisp → standalone binary (AOT)
+```
+
+### 15.3 Project Management
+
+```bash
+./build/main --init myproject                               # Scaffold project directory
+./build/main --bind myproject/                              # Generate FFI bindings from project.toml
+```
+
+- `--init` creates `project.toml`, `project.json`, `src/main.omni`, `lib/ffi/`, `include/`
+- `--bind` reads `project.toml`, parses C headers via libclang, writes typed FFI modules to `lib/ffi/`
+- libclang is an optional runtime dependency (only needed for `--bind`)
+
+See `docs/PROJECT_TOOLING.md` for the complete reference including `project.toml` format, type mapping, and workflow examples.
+
+---
+
 ## Appendix A: Grammar (EBNF)
 
 ```ebnf
@@ -985,12 +1051,12 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 
 | Resource | Limit |
 |----------|-------|
-| Symbol/string length | 4095 characters |
+| Symbol/string length | Dynamic (heap-allocated) |
 | Total symbols | 8192 |
 | Bindings per env frame | 512 |
-| Match clauses | 32 |
+| Match clauses | 128 |
 | Pattern elements | 16 |
-| Effect handler clauses | 16 |
+| Effect handler clauses | 64 |
 | Handler stack depth | 16 |
 | Call arguments | 64 |
 | Path segments | 8 |
@@ -1027,4 +1093,4 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 
 ---
 
-*Omni Lisp -- A Lisp with delimited continuations, algebraic effects, auto-curried lambdas, multiple dispatch, and structural types*
+*Omni Lisp -- A Lisp with delimited continuations, algebraic effects, strict-arity lambdas, multiple dispatch, and structural types*

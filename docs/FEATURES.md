@@ -1,6 +1,6 @@
 # Omni Lisp — Complete Feature Inventory
 
-**Last updated:** 2026-02-20
+**Last updated:** 2026-02-23
 
 ---
 
@@ -9,11 +9,12 @@
 ### 1.1 `lambda` — Function Definition
 ```lisp
 (lambda (x) body)
-(lambda (x y z) body)     ; multi-param (auto-curried by parser)
+(lambda (x y z) body)     ; multi-param with strict arity
 (lambda (x .. rest) body)  ; variadic with rest parameter
 (lambda () body)            ; zero-arg lambda
 ```
-- Multi-param lambdas auto-curry: `(lambda (x y) body)` desugars to nested single-param lambdas
+- Multi-param lambdas have strict arity: `(lambda (x y) body)` requires exactly 2 arguments
+- Use `_` placeholder `(+ 1 _)`, `|>` pipe, or `partial` for partial application
 - Variadic lambdas: `(lambda (x .. rest) body)`, rest collects extra args as list
 - Zero-arg lambdas: `(lambda () body)` uses sentinel param, `has_param=false`
 - Creates closure capturing lexical environment
@@ -23,7 +24,7 @@
 (define name value)
 (define inc (lambda (x) (+ x 1)))
 (define (f x) body)         ; shorthand for (define f (lambda (x) body))
-(define (add a b) (+ a b))  ; shorthand with multi-param (auto-curried)
+(define (add a b) (+ a b))  ; shorthand with multi-param (strict arity)
 (define (thunk) 42)          ; shorthand zero-arg
 ```
 - Binds name in global environment
@@ -212,13 +213,31 @@
 ### 1.18 `module` / `import` — Module System
 ```lisp
 (module name (export sym1 sym2 ...) body...)
-(import name)
+
+;; Qualified access (default)
+(import name)              ; binds module as value, access via name.sym
+name.sym1                  ; qualified access
+
+;; Selective import
+(import name (sym1 sym2))  ; imports specific symbols unqualified
+(import name (sym1 :as alias))  ; rename on import
+
+;; Full namespace import
+(import name :all)         ; imports ALL exports unqualified
+
+;; File-based import
 (import "path/to/file.omni")
+
+;; Re-export
+(export-from name (sym1 sym2))  ; re-export specific symbols
+(export-from name :all)         ; re-export everything
 ```
-- Modules define a namespace with explicit exports
-- `import` brings exported symbols into the current environment
+- Default import is **qualified-only**: `(import mod)` binds module as value, access via `mod.sym`
+- Selective import brings specific symbols into scope unqualified
+- `:all` opt-in for importing all exports unqualified
 - File-based import with caching and circular import detection
 - Auto-export: file imports without explicit module form export all defines
+- Method extensions are always global (dispatch is cross-cutting)
 
 ---
 
@@ -249,7 +268,7 @@ Up to 16 elements per sequence pattern.
 | `nil` | NIL | Empty/false value | `nil`, `()` |
 | `int` | INT | 64-bit signed integer | `42`, `-17`, `0` |
 | `double` | DOUBLE | 64-bit floating point | `3.14`, `-0.5` |
-| `string` | STRING | Immutable string (max 4095 characters) | `"hello"`, `"line\nbreak"` |
+| `string` | STRING | Immutable string (heap-allocated) | `"hello"`, `"line\nbreak"` |
 | `symbol` | SYMBOL | Interned identifier | `foo`, `my-function`, `null?` |
 | `cons` | CONS | Pair (car/cdr) | `(cons 1 2)`, `'(1 2 3)` |
 | `closure` | CLOSURE | Lambda with captured environment | `(lambda (x) x)` |
@@ -327,7 +346,7 @@ pair.cdr                 ; cons cell cdr access
 | `/` | 2 | Integer division (error on div by zero) |
 | `%` | 2 | Modulo (error on div by zero) |
 
-Binary arithmetic primitives auto-curry: `(+ 3)` returns a function that adds 3.
+Binary primitives (`+`, `-`, `*`, `/`, `%`, comparisons, `cons`) partially apply when given one argument: `(+ 3)` returns a `PARTIAL_PRIM` that adds 3. This is a built-in mechanism for binary primitives only — user-defined lambdas have strict arity. For general partial application, use `_` placeholder `(+ 1 _)`, `|>` pipe, or `partial`.
 
 ### 5.2 Comparison (5)
 | Primitive | Arity | Description |
@@ -500,9 +519,11 @@ The Omni compiler (`src/lisp/compiler.c3`) translates Lisp AST to C3 source code
 ## 8. Evaluation Model
 
 ### Application
-- `(f a b c)` parsed as `E_CALL` with func + args list (not curried)
+- `(f a b c)` parsed as `E_CALL` with func + args list
 - Primitives receive all args at once
-- Closures applied one-at-a-time via currying
+- Multi-param closures receive all args at once (strict arity — arity mismatch is an error)
+- Binary primitives are the exception: `(+ 3)` returns a `PARTIAL_PRIM` (not a lambda)
+- `_` placeholder creates a lambda at parse time: `(f 1 _)` → `(lambda (__p1) (f 1 __p1))`
 - Up to 64 arguments per call
 
 ### Scoping
@@ -565,11 +586,13 @@ Val dispatch for value-level matching:
 
 ## 10. JIT Compilation
 
-GNU Lightning-based JIT compiler (`src/lisp/jit.c3`):
+GNU Lightning-based JIT compiler (`src/lisp/jit.c3`) — **sole execution engine**:
 - Compiles expressions to native x86_64 machine code
-- Falls back to interpreter for complex forms (effects, macros, modules, types)
-- Every test runs both interpreter AND JIT for parity verification
-- Supports: lambda, if, let, define, quote, call, arithmetic, comparison, list ops, begin, set!
+- JIT-native support for all expression types including effects, modules, quasiquote, dispatch
+- TCO via trampoline: `_tail` apply variants set bounce fields, `jit_eval()` loop catches bounces
+- 1024-entry `Expr*`→`JitFn` compilation cache with sub-expression caching
+- Per-eval temp regions: `run()` wraps each evaluation in a child region
+- JIT GC: destroys all states + clears cache when pool > 75% between top-level evaluations
 
 ---
 
@@ -592,11 +615,61 @@ Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
 
 ---
 
-## 12. Limits
+## 12. Project Tooling
+
+### 12.1 `--init` — Scaffold a New Project
+
+```bash
+./build/main --init myproject
+```
+
+Creates a project directory with `project.toml`, `project.json`, `src/main.omni`, `lib/ffi/`, and `include/`.
+
+### 12.2 `--bind` — Auto-Generate FFI Bindings
+
+```bash
+./build/main --bind myproject/
+```
+
+Reads `project.toml`, parses C headers using libclang, and generates typed Omni FFI modules in `lib/ffi/`.
+
+**project.toml format:**
+
+```toml
+[project]
+name = "myproject"
+version = "0.1.0"
+
+[dependencies.ffi.math]
+library = "m"
+headers = ["/usr/include/math.h"]
+functions = ["sin", "cos", "sqrt"]    # optional filter
+```
+
+**Generated `lib/ffi/math.omni`:**
+
+```lisp
+(module ffi-math (export cos sin sqrt)
+  (define _lib (ffi-open "libm.so"))
+  (define (sin (^Double arg0))
+    (ffi-call _lib "sin" 'double arg0 'double))
+  ;; ...
+)
+```
+
+**C-to-Omni type mapping:** `int`/`long` → `'int`/`^Int`, `double`/`float` → `'double`/`^Double`, `char*` → `'string`/`^String`, `void*` → `'ptr`/`^Int`.
+
+**Requires:** libclang (optional runtime dependency, only loaded when `--bind` runs).
+
+See `docs/PROJECT_TOOLING.md` for the complete reference.
+
+---
+
+## 13. Limits
 
 | Resource | Limit |
 |----------|-------|
-| Symbol name length | 128 bytes |
+| Symbol name length | Dynamic (heap-allocated) |
 | Total symbols | 8192 |
 | Bindings per env frame | 512 |
 | Values | Region-allocated (no fixed pool) |
@@ -604,8 +677,8 @@ Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
 | Expressions | Region-allocated (no fixed pool) |
 | Patterns | Region-allocated (no fixed pool) |
 | Continuations | Region-allocated (no fixed pool) |
-| Match clauses | 32 |
-| Effect handler clauses | 16 |
+| Match clauses | 128 |
+| Effect handler clauses | 64 |
 | Handler stack depth | 16 |
 | Call arguments | 64 |
 | Path segments | 8 |
@@ -616,7 +689,7 @@ Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
 | Module exports | 128 per module |
 | Begin expressions | 64 |
 | Lambda params | 64 |
-| String | 4095 characters (4096 bytes max) |
+| String | Dynamic (heap-allocated) |
 | Eval depth | 5000 (stack overflow guard) |
 | Registered types | 256 |
 | Type fields | 16 |

@@ -53,6 +53,37 @@ struct StringData {
     usz len;
 }
 
+// UTF-8 helpers for runtime strings
+fn usz rt_utf8_cplen(char c) {
+    uint b = (uint)c;
+    if (b < 0x80) { return 1; }
+    if (b < 0xC0) { return 1; }
+    if (b < 0xE0) { return 2; }
+    if (b < 0xF0) { return 3; }
+    if (b < 0xF8) { return 4; }
+    return 1;
+}
+
+fn usz rt_utf8_strlen(char[] bytes) {
+    usz count = 0;
+    usz pos = 0;
+    while (pos < bytes.len) {
+        pos += rt_utf8_cplen(bytes[pos]);
+        count++;
+    }
+    return count;
+}
+
+fn usz rt_utf8_byte_offset(char[] bytes, usz char_idx) {
+    usz pos = 0;
+    usz count = 0;
+    while (pos < bytes.len && count < char_idx) {
+        pos += rt_utf8_cplen(bytes[pos]);
+        count++;
+    }
+    return pos;
+}
+
 /**
  * ConsCell — Pair cell with region-based storage.
  * car and cdr are handles to Value objects in some region.
@@ -1378,23 +1409,28 @@ fn Value rt_substring_end_fn(void* data, Value end_val) {
     if (end_val.tag != V_INT) return make_nil();
 
     StringData* s = main::dereference_as(StringData, cap.str.str_handle);
+    usz cp_count = rt_utf8_strlen(s.chars[:s.len]);
     long start = cap.start.int_val;
     long end = end_val.int_val;
 
-    // Bounds checking
-    if (start < 0) start = (long)s.len + start;
+    // Bounds checking — codepoint-based
+    if (start < 0) start += (long)cp_count;
     if (start < 0) start = 0;
-    if (start > (long)s.len) start = (long)s.len;
-    if (end < 0) end = (long)s.len + end;
+    if (start > (long)cp_count) start = (long)cp_count;
+    if (end < 0) end += (long)cp_count;
     if (end < 0) end = 0;
-    if (end > (long)s.len) end = (long)s.len;
+    if (end > (long)cp_count) end = (long)cp_count;
     if (end < start) end = start;
 
+    // Convert codepoint indices to byte offsets
+    usz byte_start = rt_utf8_byte_offset(s.chars[:s.len], (usz)start);
+    usz byte_end = rt_utf8_byte_offset(s.chars[:s.len], (usz)end);
+
     StringData result;
-    usz len = (usz)(end - start);
+    usz len = byte_end - byte_start;
     if (len > 4095) len = 4095;
     for (usz i = 0; i < len; i++) {
-        result.chars[i] = s.chars[(usz)start + i];
+        result.chars[i] = s.chars[byte_start + i];
     }
     result.chars[len] = 0;
     result.len = len;
@@ -1485,19 +1521,37 @@ fn Value rt_string_split(Value str, Value sep) {
 fn Value rt_string_length(Value a, Value _unused) {
     if (a.tag != V_STRING) return make_nil();
     StringData* s = main::dereference_as(StringData, a.str_handle);
-    return make_int((long)s.len);
+    usz cp_len = rt_utf8_strlen(s.chars[:s.len]);
+    return make_int((long)cp_len);
 }
 
 fn Value rt_string_to_list(Value a, Value _unused) {
     if (a.tag != V_STRING) return make_nil();
     StringData* s = main::dereference_as(StringData, a.str_handle);
 
+    // Collect codepoint byte offsets (forward pass)
+    usz[512] offsets;
+    usz[512] cp_lens;
+    usz cp_count = 0;
+    usz pos = 0;
+    while (pos < s.len && cp_count < 512) {
+        offsets[cp_count] = pos;
+        usz cplen = rt_utf8_cplen(s.chars[pos]);
+        if (pos + cplen > s.len) cplen = s.len - pos;
+        cp_lens[cp_count] = cplen;
+        pos += cplen;
+        cp_count++;
+    }
+
+    // Build list in reverse order
     Value result = make_nil();
-    for (isz i = (isz)s.len - 1; i >= 0; i--) {
+    for (isz i = (isz)cp_count - 1; i >= 0; i--) {
+        usz off = offsets[(usz)i];
+        usz clen = cp_lens[(usz)i];
         StringData ch;
-        ch.chars[0] = s.chars[(usz)i];
-        ch.chars[1] = 0;
-        ch.len = 1;
+        for (usz j = 0; j < clen; j++) ch.chars[j] = s.chars[off + j];
+        ch.chars[clen] = 0;
+        ch.len = clen;
 
         Value char_val;
         char_val.tag = V_STRING;

@@ -105,7 +105,10 @@ fn Value* jit_lookup_global(Interp* interp, uint sym_id) {
     SymbolId name = (SymbolId)sym_id;
     Value* v = interp.global_env.lookup(name);
     if (v != null) return v;
-    return make_error(interp, "unbound variable");
+    char[256] ebuf;
+    char[] msg = io::bprintf(&ebuf, "unbound variable '%s'",
+        (ZString)interp.symbols.get_name(name))!!;
+    return raise_error(interp, msg);
 }
 
 fn usz format_arity_error(char[] buf, usz expected, usz got) {
@@ -116,7 +119,7 @@ fn usz format_arity_error(char[] buf, usz expected, usz got) {
     char[20] num_buf;
     char[] num_str = int_to_string((long)expected, &num_buf);
     for (usz i = 0; i < num_str.len && pos < buf.len - 1; i++) buf[pos++] = num_str[i];
-    char[] mid = " args, got ";
+    char[] mid = " argument(s), got ";
     for (usz i = 0; i < mid.len && pos < buf.len - 1; i++) buf[pos++] = mid[i];
     num_str = int_to_string((long)got, &num_buf);
     for (usz i = 0; i < num_str.len && pos < buf.len - 1; i++) buf[pos++] = num_str[i];
@@ -125,7 +128,7 @@ fn usz format_arity_error(char[] buf, usz expected, usz got) {
 }
 
 fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
-    if (func == null) return make_error(interp, "cannot apply null");
+    if (func == null) return raise_error(interp, "cannot call nil (not a function)");
 
     switch (func.tag) {
         case CLOSURE: {
@@ -145,14 +148,14 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
                     new_env = new_env.extend(interp, func.closure_val.rest_param, make_nil(interp));
                     return jit_eval(func.closure_val.body, new_env, interp);
                 } else {
-                    return make_error(interp, "too few arguments for variadic lambda");
+                    return raise_error(interp, "too few arguments for variadic lambda");
                 }
             }
             // Arity check: non-variadic multi-param closure called with 1 arg
             if (func.closure_val.param_count > 1) {
                 char[128] buf;
                 usz len = format_arity_error(&buf, func.closure_val.param_count, 1);
-                return make_error(interp, buf[:len]);
+                return raise_error(interp, buf[:len]);
             }
             Env* new_env = func.closure_val.env.extend(interp, func.closure_val.param, arg);
             return jit_eval(func.closure_val.body, new_env, interp);
@@ -193,7 +196,10 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
         }
 
         default:
-            return make_error(interp, "not a function");
+            char[256] ebuf2;
+            char[] msg2 = io::bprintf(&ebuf2, "cannot call %s (not a function)",
+                (ZString)interp.symbols.get_name(value_type_name(func, interp)))!!;
+            return raise_error(interp, msg2);
     }
 }
 
@@ -215,7 +221,7 @@ fn Value* jit_apply_value(Value* func, Value* arg, Interp* interp) {
 // Tail-call variant: sets TCO bounce fields for CLOSURE instead of recursing.
 // ONLY called when the result goes directly to R0 as the function return value.
 fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
-    if (func == null) return make_error(interp, "cannot apply null");
+    if (func == null) return raise_error(interp, "cannot call nil (not a function)");
 
     if (func.tag == CLOSURE) {
         Env* new_env;
@@ -232,13 +238,13 @@ fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
                 new_env = new_env.extend(interp, func.closure_val.params[0], arg);
                 new_env = new_env.extend(interp, func.closure_val.rest_param, make_nil(interp));
             } else {
-                return make_error(interp, "too few arguments for variadic lambda");
+                return raise_error(interp, "too few arguments for variadic lambda");
             }
         } else if (func.closure_val.param_count > 1) {
             // Arity check: non-variadic multi-param closure called with 1 arg
             char[128] buf;
             usz len = format_arity_error(&buf, func.closure_val.param_count, 1);
-            return make_error(interp, buf[:len]);
+            return raise_error(interp, buf[:len]);
         } else {
             new_env = func.closure_val.env.extend(interp, func.closure_val.param, arg);
         }
@@ -277,7 +283,7 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
             if (cached == null) {
                 // JIT can't compile this expression
                 interp.jit_env = saved_env;
-                return make_error(interp, "JIT compilation failed");
+                return raise_error(interp, "JIT compilation failed");
             }
             jit_cache_store(expr, cached);
         }
@@ -322,7 +328,10 @@ fn Value* jit_lookup_var(Interp* interp, uint sym_id) {
     // Fall back to global
     Value* v = interp.global_env.lookup(name);
     if (v != null) return v;
-    return make_error(interp, "unbound variable");
+    char[256] ebuf;
+    char[] msg = io::bprintf(&ebuf, "unbound variable '%s'",
+        (ZString)interp.symbols.get_name(name))!!;
+    return raise_error(interp, msg);
 }
 
 // TCO sentinel — returned by helpers to signal "bounce, don't recurse"
@@ -501,7 +510,7 @@ fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
     // Try local env first, then global
     if (!env.set(name, stored)) {
         if (interp.global_env == null || !interp.global_env.set(name, stored)) {
-            return make_error(interp, "set!: unbound variable");
+            return raise_error(interp, "set!: unbound variable");
         }
     }
     return stored;
@@ -513,7 +522,7 @@ fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) 
     // Resolve root object
     Value* current = env.lookup(expr.set_expr.path_segments[0]);
     if (current == null) current = interp.global_env.lookup(expr.set_expr.path_segments[0]);
-    if (current == null) return make_error(interp, "set!: unbound path root");
+    if (current == null) return raise_error(interp, "set!: unbound path root");
 
     // Traverse intermediate segments
     for (usz si = 1; si < expr.set_expr.path_segment_count - 1; si++) {
@@ -531,14 +540,14 @@ fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) 
                     }
                 }
             }
-            if (!found) return make_error(interp, "set!: field not found in path");
+            if (!found) return raise_error(interp, "set!: field not found in path");
         } else if (current != null && current.tag == CONS) {
             SymbolId seg = expr.set_expr.path_segments[si];
             if ((uint)seg == (uint)interp.sym_car) { current = current.cons_val.car; }
             else if ((uint)seg == (uint)interp.sym_cdr) { current = current.cons_val.cdr; }
-            else { return make_error(interp, "set!: cons only supports .car and .cdr"); }
+            else { return raise_error(interp, "set!: cons only supports .car and .cdr"); }
         } else {
-            return make_error(interp, "set!: path segment is not an instance or cons");
+            return raise_error(interp, "set!: path segment is not an instance or cons");
         }
     }
 
@@ -555,7 +564,7 @@ fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) 
             current.cons_val.cdr = value;
             return value;
         }
-        return make_error(interp, "set!: cons only supports .car and .cdr");
+        return raise_error(interp, "set!: cons only supports .car and .cdr");
     }
 
     // Instance field mutation
@@ -571,9 +580,9 @@ fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) 
                 }
             }
         }
-        return make_error(interp, "set!: field not found");
+        return raise_error(interp, "set!: field not found");
     }
-    return make_error(interp, "set!: target is not an instance or cons");
+    return raise_error(interp, "set!: target is not an instance or cons");
 }
 
 // define helper — called from JIT-compiled code.
@@ -1016,6 +1025,36 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
         return eval_ok(interp.effect_result);
     }
 
+    // Check for pending raise error — dispatch to raise handler in THIS handle block
+    if (interp.flags.raise_pending) {
+        SymbolId raise_sym = interp.sym_raise;
+        // Check if THIS handle block has a raise clause
+        for (usz ci = 0; ci < expr.handle.clause_count; ci++) {
+            if ((uint)expr.handle.clauses[ci].effect_tag == (uint)raise_sym) {
+                EffectClause* clause = &expr.handle.clauses[ci];
+
+                interp.flags.raise_pending = false;
+                Value* msg_val = make_string(interp, interp.raise_msg[:interp.raise_msg_len]);
+                Value* k_val = make_nil(interp);  // Non-resumable
+
+                Env* clause_env = env.extend(interp, clause.k_name, k_val);
+                clause_env = clause_env.extend(interp, clause.arg_name, msg_val);
+
+                interp.handler_count--;
+
+                Value* handler_v = jit_eval(clause.handler_body, clause_env, interp);
+                if (handler_v != null && handler_v.tag != ERROR) {
+                    return eval_ok(handler_v);
+                }
+                if (handler_v != null) {
+                    return eval_error(handler_v.str_val.chars[:handler_v.str_val.len]);
+                }
+                return eval_error("raise handler returned nil");
+            }
+        }
+        // This handle block doesn't handle raise — leave flag set, propagate error
+    }
+
     interp.handler_count--;
 
     return result;
@@ -1045,7 +1084,15 @@ fn EvalResult jit_perform_impl(Expr* expr, Env* env, Interp* interp) {
             if (expected_tid != INVALID_TYPE_ID && expected_tid != interp.tid_Any) {
                 TypeId actual_tid = infer_value_type(arg_result.value, interp);
                 if (actual_tid != INVALID_TYPE_ID && !interp.types.is_subtype(actual_tid, expected_tid)) {
-                    return eval_error("perform: type mismatch for effect");
+                    char[256] ebuf;
+                    char[] tag_name = interp.symbols.get_name(tag);
+                    TypeInfo* exp_ti = interp.types.get(expected_tid);
+                    TypeInfo* act_ti = interp.types.get(actual_tid);
+                    char[] exp_name = exp_ti != null ? interp.symbols.get_name(exp_ti.name) : "?";
+                    char[] act_name = act_ti != null ? interp.symbols.get_name(act_ti.name) : "?";
+                    char[] msg = io::bprintf(&ebuf, "perform '%s': expected %s argument, got %s",
+                        (ZString)tag_name, (ZString)exp_name, (ZString)act_name)!!;
+                    return eval_error(msg);
                 }
             }
         }
@@ -1251,32 +1298,47 @@ fn EvalResult jit_apply_continuation(Value* k_val, Value* arg, Interp* interp) {
 // Index helper — performs collection indexing without going through eval dispatch.
 // Takes already-evaluated collection and index values.
 fn Value* jit_do_index(Interp* interp, Value* collection, Value* index) {
-    if (collection == null) return make_error(interp, "index: nil collection");
-    // List/cons indexing
+    if (collection == null) return raise_error(interp, "index: nil collection");
+    // List/cons indexing — supports negative indexing
     if (is_cons(collection) && is_int(index)) {
         long idx = index.int_val;
-        if (idx < 0) return make_error(interp, "negative list index");
+        if (idx < 0) {
+            // Count list length for negative index resolution
+            long len = 0;
+            Value* c = collection;
+            while (is_cons(c)) { len++; c = cdr(c); }
+            idx += len;
+            if (idx < 0) return raise_error(interp, "list index out of bounds");
+        }
         Value* current = collection;
         for (long i = 0; i < idx; i++) {
-            if (!is_cons(current)) return make_error(interp, "list index out of bounds");
+            if (!is_cons(current)) return raise_error(interp, "list index out of bounds");
             current = cdr(current);
         }
-        if (!is_cons(current)) return make_error(interp, "list index out of bounds");
+        if (!is_cons(current)) return raise_error(interp, "list index out of bounds");
         return car(current);
     }
-    // String indexing
+    // String indexing — supports negative indexing, UTF-8 codepoint index
     if (is_string(collection) && is_int(index)) {
+        char[] bytes = collection.str_val.chars[:collection.str_val.len];
+        usz cp_count = utf8_strlen(bytes);
         long idx = index.int_val;
-        if (idx < 0 || (usz)idx >= collection.str_val.len) {
-            return make_error(interp, "string index out of bounds");
+        if (idx < 0) idx += (long)cp_count;
+        if (idx < 0 || idx >= (long)cp_count) {
+            return raise_error(interp, "string index out of bounds");
         }
-        return make_int(interp, (long)collection.str_val.chars[(usz)idx]);
+        usz byte_off = utf8_byte_offset(bytes, (usz)idx);
+        usz pos = byte_off;
+        uint cp = utf8_decode(bytes, &pos);
+        return make_int(interp, (long)cp);
     }
-    // Array indexing
+    // Array indexing — supports negative indexing
     if (collection.tag == ARRAY && is_int(index)) {
         long idx = index.int_val;
-        if (collection.array_val == null || idx < 0 || (usz)idx >= collection.array_val.length) {
-            return make_error(interp, "array index out of bounds");
+        long alen = (long)collection.array_val.length;
+        if (idx < 0) idx += alen;
+        if (idx < 0 || idx >= alen) {
+            return raise_error(interp, "array index out of bounds");
         }
         return collection.array_val.items[(usz)idx];
     }
@@ -1286,7 +1348,10 @@ fn Value* jit_do_index(Interp* interp, Value* collection, Value* index) {
         if (result == null) return make_nil(interp);
         return result;
     }
-    return make_error(interp, "index: unsupported collection type");
+    char[256] ebuf;
+    char[] msg = io::bprintf(&ebuf, "cannot index %s (expected array, dict, list, or string)",
+        (ZString)interp.symbols.get_name(value_type_name(collection, interp)))!!;
+    return raise_error(interp, msg);
 }
 
 // Path helper — follows field access chain on Instance values.
@@ -1377,6 +1442,9 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
     mod.name = name;
     mod.loaded = false;
     mod.path_len = 0;
+    usz exp_cap = expr.module_expr.export_count < 16 ? 16 : expr.module_expr.export_count;
+    mod.exports = (SymbolId*)mem::malloc(SymbolId.sizeof * exp_cap);
+    mod.export_capacity = exp_cap;
     mod.export_count = expr.module_expr.export_count;
     for (usz i = 0; i < expr.module_expr.export_count; i++) {
         mod.exports[i] = expr.module_expr.exports[i];
@@ -1440,6 +1508,8 @@ fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* inte
         }
         mod.path_len = path.len;
         mod.export_count = 0;
+        mod.export_capacity = 32;
+        mod.exports = (SymbolId*)mem::malloc(SymbolId.sizeof * 32);
 
         Env* mod_env = make_env(interp, interp.global_env);
         mod.env = mod_env;
@@ -1461,7 +1531,15 @@ fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* inte
                 interp.global_env = saved_global;
                 return r;
             }
-            if (exprs[i].tag == E_DEFINE && mod.export_count < 128) {
+            if (exprs[i].tag == E_DEFINE) {
+                if (mod.export_count >= mod.export_capacity) {
+                    usz new_cap = mod.export_capacity * 2;
+                    SymbolId* new_exports = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
+                    for (usz j = 0; j < mod.export_count; j++) new_exports[j] = mod.exports[j];
+                    mem::free(mod.exports);
+                    mod.exports = new_exports;
+                    mod.export_capacity = new_cap;
+                }
                 mod.exports[mod.export_count] = exprs[i].define.name;
                 mod.export_count++;
             }
@@ -1518,12 +1596,44 @@ fn EvalResult jit_eval_import_impl(Expr* expr, Env* env, Interp* interp) {
         return eval_error("module not found");
     }
 
-    for (usz i = 0; i < mod.export_count; i++) {
-        Value* val = mod.env.lookup(mod.exports[i]);
-        if (val != null) {
-            env.define(mod.exports[i], val);
+    // Always bind the module as a first-class value (for qualified access: mod.sym)
+    Value* mod_val = make_module(interp, mod);
+    env.define(name, mod_val);
+
+    if (expr.import_expr.import_all) {
+        // (import mod :all) — copy ALL exports into scope (old behavior, explicit opt-in)
+        for (usz i = 0; i < mod.export_count; i++) {
+            Value* val = mod.env.lookup(mod.exports[i]);
+            if (val != null) {
+                env.define(mod.exports[i], val);
+            }
+        }
+    } else if (expr.import_expr.import_count > 0) {
+        // (import mod (sym1 (sym2 :as rename))) — selective import
+        for (usz si = 0; si < expr.import_expr.import_count; si++) {
+            SymbolId imp_name = expr.import_expr.imports[si];
+            SymbolId rename_to = expr.import_expr.aliases[si];
+            // Verify it's exported
+            bool is_exported = false;
+            for (usz ei = 0; ei < mod.export_count; ei++) {
+                if ((uint)mod.exports[ei] == (uint)imp_name) {
+                    is_exported = true;
+                    break;
+                }
+            }
+            if (!is_exported) {
+                return eval_error("symbol not exported from module");
+            }
+            Value* val = mod.env.lookup(imp_name);
+            if (val == null) {
+                return eval_error("symbol not found in module");
+            }
+            // Bind using rename if provided, otherwise original name
+            SymbolId bind_name = (uint)rename_to != 0 ? rename_to : imp_name;
+            env.define(bind_name, val);
         }
     }
+    // else: qualified-only (import mod) — just the module value is bound
 
     return eval_ok(make_nil(interp));
 }
@@ -1539,7 +1649,7 @@ fn Value* jit_cons(Interp* interp, Value* car, Value* cdr) {
 // For primitives: dispatches directly with all args.
 // Detects variadic closures appearing mid-curry chain.
 fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
-    if (func == null) return make_error(interp, "cannot apply null");
+    if (func == null) return raise_error(interp, "cannot call nil (not a function)");
 
     // Zero-arg non-variadic closure: (lambda () body)
     if (arg_count == 0 && func.tag == CLOSURE && !func.closure_val.has_param && !func.closure_val.has_rest) {
@@ -1549,11 +1659,16 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
     // Direct variadic closure path
     if (func.tag == CLOSURE && func.closure_val.has_rest) {
         usz pc = func.closure_val.param_count;
-        if (arg_count < pc) return make_error(interp, "too few arguments for variadic lambda");
+        if (arg_count < pc) {
+            char[256] ebuf;
+            char[] msg = io::bprintf(&ebuf, "variadic lambda requires at least %d argument(s), got %d",
+                (int)pc, (int)arg_count)!!;
+            return raise_error(interp, msg);
+        }
         Env* new_env = func.closure_val.env;
         Value* curr = arg_list;
         for (usz i = 0; i < pc; i++) {
-            if (curr == null || curr.tag != CONS) return make_error(interp, "arg list too short");
+            if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
             new_env = new_env.extend(interp, func.closure_val.params[i], curr.cons_val.car);
             curr = curr.cons_val.cdr;
         }
@@ -1574,7 +1689,7 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
         }
         usz safe_count = arg_count > 16 ? 16 : arg_count;
         Value* result = func.prim_val.func(args[:safe_count], null, interp);
-        if (is_error(result)) return make_error(interp, result.str_val.chars[:result.str_val.len]);
+        if (is_error(result)) return raise_error(interp, result.str_val.chars[:result.str_val.len]);
         return result;
     }
 
@@ -1586,12 +1701,12 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
             if (arg_count < pc) {
                 char[128] buf;
                 usz len = format_arity_error(&buf, pc, arg_count);
-                return make_error(interp, buf[:len]);
+                return raise_error(interp, buf[:len]);
             }
             Env* call_env = make_env(interp, func.closure_val.env);
             Value* curr = arg_list;
             for (usz i = 0; i < pc; i++) {
-                if (curr == null || curr.tag != CONS) return make_error(interp, "arg list too short");
+                if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
                 call_env.define(func.closure_val.params[i], curr.cons_val.car);
                 curr = curr.cons_val.cdr;
             }
@@ -1646,7 +1761,7 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
 // Tail-call variant: sets TCO bounce fields for CLOSURE instead of recursing.
 // ONLY called when the result goes directly to R0 as the function return value.
 fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
-    if (func == null) return make_error(interp, "cannot apply null");
+    if (func == null) return raise_error(interp, "cannot call nil (not a function)");
 
     // Zero-arg non-variadic closure
     if (arg_count == 0 && func.tag == CLOSURE && !func.closure_val.has_param && !func.closure_val.has_rest) {
@@ -1659,11 +1774,16 @@ fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list
     // Variadic closure
     if (func.tag == CLOSURE && func.closure_val.has_rest) {
         usz pc = func.closure_val.param_count;
-        if (arg_count < pc) return make_error(interp, "too few arguments for variadic lambda");
+        if (arg_count < pc) {
+            char[256] ebuf;
+            char[] msg = io::bprintf(&ebuf, "variadic lambda requires at least %d argument(s), got %d",
+                (int)pc, (int)arg_count)!!;
+            return raise_error(interp, msg);
+        }
         Env* new_env = func.closure_val.env;
         Value* curr = arg_list;
         for (usz i = 0; i < pc; i++) {
-            if (curr == null || curr.tag != CONS) return make_error(interp, "arg list too short");
+            if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
             new_env = new_env.extend(interp, func.closure_val.params[i], curr.cons_val.car);
             curr = curr.cons_val.cdr;
         }
@@ -1682,12 +1802,12 @@ fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list
             if (arg_count < pc) {
                 char[128] buf;
                 usz len = format_arity_error(&buf, pc, arg_count);
-                return make_error(interp, buf[:len]);
+                return raise_error(interp, buf[:len]);
             }
             Env* call_env = make_env(interp, func.closure_val.env);
             Value* curr = arg_list;
             for (usz i = 0; i < pc; i++) {
-                if (curr == null || curr.tag != CONS) return make_error(interp, "arg list too short");
+                if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
                 call_env.define(func.closure_val.params[i], curr.cons_val.car);
                 curr = curr.cons_val.cdr;
             }
@@ -1754,7 +1874,7 @@ fn Value* jit_prim_add(Interp* interp, Value* a, Value* b) {
         }
         if (a.tag == INT && b.tag == INT) return make_int(interp, a.int_val + b.int_val);
     }
-    return make_error(interp, "+: expected numbers");
+    return raise_error(interp, "+: expected numbers");
 }
 
 fn Value* jit_prim_sub(Interp* interp, Value* a, Value* b) {
@@ -1764,7 +1884,7 @@ fn Value* jit_prim_sub(Interp* interp, Value* a, Value* b) {
         }
         if (a.tag == INT && b.tag == INT) return make_int(interp, a.int_val - b.int_val);
     }
-    return make_error(interp, "-: expected numbers");
+    return raise_error(interp, "-: expected numbers");
 }
 
 fn Value* jit_prim_mul(Interp* interp, Value* a, Value* b) {
@@ -1774,21 +1894,21 @@ fn Value* jit_prim_mul(Interp* interp, Value* a, Value* b) {
         }
         if (a.tag == INT && b.tag == INT) return make_int(interp, a.int_val * b.int_val);
     }
-    return make_error(interp, "*: expected numbers");
+    return raise_error(interp, "*: expected numbers");
 }
 
 fn Value* jit_prim_lt(Interp* interp, Value* a, Value* b) {
     if (a != null && b != null && is_number(a) && is_number(b)) {
         return to_double(a) < to_double(b) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
     }
-    return make_error(interp, "<: expected numbers");
+    return raise_error(interp, "<: expected numbers");
 }
 
 fn Value* jit_prim_gt(Interp* interp, Value* a, Value* b) {
     if (a != null && b != null && is_number(a) && is_number(b)) {
         return to_double(a) > to_double(b) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
     }
-    return make_error(interp, ">: expected numbers");
+    return raise_error(interp, ">: expected numbers");
 }
 
 fn Value* jit_prim_eq(Interp* interp, Value* a, Value* b) {
@@ -2104,6 +2224,9 @@ fn bool jit_compile_expr(void* s, Expr* expr, Interp* interp, JitLocals* locals,
 
         case E_DEFEFFECT:
             return jit_compile_defeffect(s, expr, interp, locals);
+
+        case E_EXPORT_FROM:
+            return jit_compile_export_from(s, expr, interp, locals);
 
         case E_UNQUOTE:
         case E_UNQUOTE_SPLICING:
@@ -2736,6 +2859,99 @@ fn bool jit_compile_module(void* s, Expr* expr, Interp* interp, JitLocals* local
 
 fn bool jit_compile_import(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_import);
+}
+
+fn Value* jit_do_export_from(Interp* interp, Expr* expr, Env* env) {
+    EvalResult r = jit_eval_export_from_impl(expr, env, interp);
+    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+    return r.value;
+}
+
+fn EvalResult jit_eval_export_from_impl(Expr* expr, Env* env, Interp* interp) {
+    SymbolId source_name = expr.export_from.source_module;
+    Module* source_mod = find_module(source_name, interp);
+    if (source_mod == null) {
+        return eval_error("export-from: source module not found");
+    }
+
+    // Find the current module being defined (the one whose env we're in)
+    // Walk module table to find which module owns env's parent chain
+    Module* current_mod = null;
+    for (usz i = 0; i < interp.module_count; i++) {
+        if (interp.modules[i].env == env || interp.modules[i].env == env.parent) {
+            current_mod = &interp.modules[i];
+            break;
+        }
+    }
+    // Also try global_env's match (module body swaps global_env)
+    if (current_mod == null) {
+        for (usz i = 0; i < interp.module_count; i++) {
+            if (interp.modules[i].env == interp.global_env) {
+                current_mod = &interp.modules[i];
+                break;
+            }
+        }
+    }
+    if (current_mod == null) {
+        return eval_error("export-from: must be used inside a module");
+    }
+
+    if (expr.export_from.all) {
+        // Re-export all exports from source
+        for (usz i = 0; i < source_mod.export_count; i++) {
+            Value* val = source_mod.env.lookup(source_mod.exports[i]);
+            if (val != null) {
+                env.define(source_mod.exports[i], val);
+                // Add to current module's export list (grow if needed)
+                if (current_mod.export_count >= current_mod.export_capacity) {
+                    usz new_cap = current_mod.export_capacity * 2;
+                    SymbolId* new_exports = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
+                    for (usz j = 0; j < current_mod.export_count; j++) new_exports[j] = current_mod.exports[j];
+                    mem::free(current_mod.exports);
+                    current_mod.exports = new_exports;
+                    current_mod.export_capacity = new_cap;
+                }
+                current_mod.exports[current_mod.export_count] = source_mod.exports[i];
+                current_mod.export_count++;
+            }
+        }
+    } else {
+        // Re-export specific names
+        for (usz ni = 0; ni < expr.export_from.name_count; ni++) {
+            SymbolId sym = expr.export_from.names[ni];
+            // Verify exported from source
+            bool is_exported = false;
+            for (usz ei = 0; ei < source_mod.export_count; ei++) {
+                if ((uint)source_mod.exports[ei] == (uint)sym) {
+                    is_exported = true;
+                    break;
+                }
+            }
+            if (!is_exported) {
+                return eval_error("export-from: symbol not exported from source module");
+            }
+            Value* val = source_mod.env.lookup(sym);
+            if (val != null) {
+                env.define(sym, val);
+                if (current_mod.export_count >= current_mod.export_capacity) {
+                    usz new_cap = current_mod.export_capacity * 2;
+                    SymbolId* new_exports = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
+                    for (usz j = 0; j < current_mod.export_count; j++) new_exports[j] = current_mod.exports[j];
+                    mem::free(current_mod.exports);
+                    current_mod.exports = new_exports;
+                    current_mod.export_capacity = new_cap;
+                }
+                current_mod.exports[current_mod.export_count] = sym;
+                current_mod.export_count++;
+            }
+        }
+    }
+
+    return eval_ok(make_nil(interp));
+}
+
+fn bool jit_compile_export_from(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_export_from);
 }
 
 fn bool jit_compile_deftype(void* s, Expr* expr, Interp* interp, JitLocals* locals) {

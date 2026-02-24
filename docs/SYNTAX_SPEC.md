@@ -1,6 +1,6 @@
 # Omni Lisp Syntax Specification
 
-**Updated:** 2026-02-20
+**Updated:** 2026-02-23
 
 ---
 
@@ -83,9 +83,9 @@
 ;; Single parameter
 (lambda (x) body)
 
-;; Multi-parameter (auto-curried by parser)
+;; Multi-parameter (strict arity)
 (lambda (x y z) body)
-;; desugars to: (lambda (x) (lambda (y) (lambda (z) body)))
+;; requires exactly 3 arguments; use _ placeholder, |> pipe, or partial for partial application
 
 ;; Zero-argument
 (lambda () body)
@@ -93,7 +93,7 @@
 ;; Variadic
 (lambda (x .. rest) body)
 
-;; Typed parameters (no currying)
+;; Typed parameters (for dispatch)
 (lambda ((^Int x) (^String y)) body)
 ```
 
@@ -202,10 +202,16 @@ I/O operations go through effects: `print`, `println`, `display`, `read-file`, e
 ```lisp
 (module name (export sym1 sym2 ...)
   body...)
-(import name)
+
+(import name)                   ; qualified-only: access via name.sym
+(import name (sym1 sym2))       ; selective import
+(import name (sym1 :as alias))  ; rename on import
+(import name :all)              ; import all exports unqualified
+(export-from name (sym1))       ; re-export specific symbols
+(export-from name :all)         ; re-export all
 ```
 
-Modules are cached; circular imports are detected.
+Default import is qualified-only. Modules are cached; circular imports are detected.
 
 ### 3.12 Collection Literals
 
@@ -276,17 +282,53 @@ matrix.[i].[j]    ;; chained indexing
 
 ---
 
-## 7. Currying
+## 7. Partial Application
 
-All functions are curried. Multi-argument calls desugar:
+Lambdas have **strict arity** — `(lambda (x y) body)` requires exactly 2 arguments.
+
+There are three mechanisms for partial application:
+
+### 7.1 Binary Primitive Partial Application (built-in)
+
+Binary primitives (`+`, `-`, `*`, `/`, `%`, `=`, `<`, `>`, `<=`, `>=`, `cons`) automatically
+return a `PARTIAL_PRIM` when given one argument instead of two:
 
 ```lisp
-(f a b c)  =>  (((f a) b) c)
+(+ 3)              ;; => PARTIAL_PRIM that adds 3
+((+ 3) 7)          ;; => 10
+(map (+ 1) '(1 2 3))  ;; => '(2 3 4)
 ```
 
-Exception: typed multi-param lambdas are NOT curried (preserved for dispatch).
+This only works for binary primitives, not for user-defined functions or lambdas.
 
-Binary primitives return partial application when given one argument.
+### 7.2 `_` Placeholder (parser-level desugaring)
+
+The `_` token in a call expression creates a lambda at parse time. Works with any function:
+
+```lisp
+(+ 1 _)            ;; => (lambda (__p1) (+ 1 __p1))
+(f _ 2 _)          ;; => (lambda (__p1 __p2) (f __p1 2 __p2))
+(map (+ 1 _) xs)   ;; adds 1 to each element
+(filter (> _ 0) xs) ;; keep positives
+```
+
+### 7.3 `|>` Pipe Operator (parser-level desugaring)
+
+Left-fold that appends the piped value as the **last** argument:
+
+```lisp
+(|> 5 (+ 1) (* 2))    ;; => (* 2 (+ 1 5)) => 12
+(|> data (filter odd?) (map square))
+```
+
+### 7.4 `partial` (stdlib function)
+
+Runtime partial application — prepends initial args to a variadic lambda:
+
+```lisp
+(partial + 1)       ;; => variadic lambda that prepends 1 to args
+((partial + 1) 2)   ;; => 3
+```
 
 ---
 
@@ -324,14 +366,14 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 
 | Resource | Limit |
 |----------|-------|
-| Symbol/string length | 4095 chars |
+| Symbol/string length | Dynamic (heap-allocated) |
 | Max symbols | 8192 |
 | Max values per region | 4096 |
 | Max bindings per env frame | 512 |
-| Effect clauses per handle | 16 |
+| Effect clauses per handle | 64 |
 | Path segments | 8 |
 | Handler stack depth | 16 |
-| Match clauses | 32 |
+| Match clauses | 128 |
 | Pattern elements | 16 |
 | Type fields | 16 |
 | Method table entries | 64 |
@@ -339,4 +381,4 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 
 ---
 
-*Omni Lisp — A Lisp with delimited continuations, algebraic effects, auto-curried lambdas, and multiple dispatch*
+*Omni Lisp — A Lisp with delimited continuations, algebraic effects, strict-arity lambdas, and multiple dispatch*

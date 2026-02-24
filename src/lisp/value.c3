@@ -32,6 +32,8 @@ enum ValueTag : char {
     TYPE_INFO,      // Type descriptor value
     INSTANCE,       // User-defined type instance
     METHOD_TABLE,   // Dispatch table for multiple dispatch
+    MODULE,         // First-class module reference
+    ITERATOR,       // Lazy iterator (backed by closure thunk)
 }
 
 /**
@@ -607,6 +609,8 @@ struct Value {
         TypeInfo*     type_info_val; // Type descriptor
         Instance*     instance_val;  // User-defined type instance
         MethodTable*  method_table_val; // Dispatch table
+        Module*       module_val;       // First-class module
+        Value*        iterator_val;     // Iterator thunk closure (V_CLOSURE Value*)
     }
 }
 
@@ -773,6 +777,54 @@ fn Value* make_error(Interp* interp, char[] msg) {
     return v;
 }
 
+/**
+ * raise_error — Recoverable error via algebraic effect system.
+ *
+ * If a `raise` handler is on the handler stack, dispatches through the effect
+ * system (evaluates handler body, sets effect_occurred flag, returns V_ERROR
+ * for stack unwinding). If no handler, falls back to V_ERROR (same as make_error).
+ *
+ * Use make_error() for fatal/internal errors only (stack overflow, invariants).
+ */
+fn Value* raise_error(Interp* interp, char[] msg) {
+    // Fast path: no handlers at all → just return error
+    if (interp.handler_count == 0) {
+        return make_error(interp, msg);
+    }
+
+    // If a raise is already pending, don't overwrite it (error re-propagation)
+    if (interp.flags.raise_pending) {
+        return make_error(interp, msg);
+    }
+
+    SymbolId raise_sym = interp.sym_raise;
+
+    // Search handler stack from top (most recent) to bottom
+    for (isz i = (isz)interp.handler_count - 1; i >= 0; i--) {
+        EffectHandler* h = &interp.handler_stack[(usz)i];
+
+        for (usz j = 0; j < h.clause_count; j++) {
+            if ((uint)h.clauses[j].effect_tag == (uint)raise_sym) {
+                // Found a raise handler — set pending flag for jit_handle_impl to dispatch.
+                // We can't safely call jit_eval from within a primitive call chain,
+                // so we store the message and let the handle block dispatch.
+                interp.flags.raise_pending = true;
+                usz copy_len = msg.len;
+                if (copy_len > 255) copy_len = 255;
+                for (usz ci = 0; ci < copy_len; ci++) interp.raise_msg[ci] = msg[ci];
+                interp.raise_msg[copy_len] = 0;
+                interp.raise_msg_len = copy_len;
+                return make_error(interp, msg);
+            }
+        }
+
+        if (h.strict_mode) break;
+    }
+
+    // No raise handler found — fall back to V_ERROR
+    return make_error(interp, msg);
+}
+
 // =============================================================================
 // SECTION 3: VALUE PREDICATES
 // =============================================================================
@@ -846,6 +898,24 @@ fn Value* make_array(Interp* interp, usz capacity) {
     arr.length = 0;
     arr.items = (Value**)mem::malloc(Value*.sizeof * arr.capacity);
     v.array_val = arr;
+    return v;
+}
+
+fn Value* make_module(Interp* interp, Module* mod) {
+    // Allocate Value in root_region so it persists across frame releases
+    main::RegionHandle saved = interp.current_frame;
+    interp.current_frame = interp.root_region;
+    Value* v = interp.alloc_value();
+    interp.current_frame = saved;
+    v.tag = MODULE;
+    v.module_val = mod;
+    return v;
+}
+
+fn Value* make_iterator(Interp* interp, Value* thunk) {
+    Value* v = interp.alloc_value();
+    v.tag = ITERATOR;
+    v.iterator_val = thunk;
     return v;
 }
 
@@ -1208,6 +1278,7 @@ enum ExprTag : char {
     E_DEFUNION,   // (define [union] Name variants...)
     E_DEFALIAS,   // (define [alias] Name Target)
     E_DEFEFFECT,  // (define [effect] (tag (^Type arg)))
+    E_EXPORT_FROM, // (export-from mod (sym1 sym2)) or (export-from mod :all)
 }
 
 struct ExprLit {
@@ -1480,10 +1551,12 @@ struct ExprDefineMacro {
  */
 struct ExprModule {
     SymbolId     name;
-    SymbolId[256] exports;
+    SymbolId*    exports;        // heap-allocated
     usz          export_count;
-    Expr*[256]    body;
+    usz          export_capacity;
+    Expr**       body;           // heap-allocated
     usz          body_count;
+    usz          body_capacity;
 }
 
 /**
@@ -1494,6 +1567,23 @@ struct ExprImport {
     bool     has_path;    // true if importing by file path
     char[256] path;       // file path (if has_path)
     usz      path_len;
+    // Selective imports: (import mod (sym1 (sym2 :as alias2)))
+    SymbolId*    imports;       // Names to import into scope (heap-allocated)
+    SymbolId*    aliases;       // Rename targets (0 = no rename) (heap-allocated)
+    usz          import_count;  // 0 = qualified-only, >0 = selective
+    usz          import_capacity;
+    bool         import_all;    // true for :all
+}
+
+/**
+ * ExprExportFrom — Re-export symbols from another module: (export-from mod (sym1 sym2)) or (export-from mod :all)
+ */
+struct ExprExportFrom {
+    SymbolId     source_module;  // Module to re-export from
+    SymbolId*    names;          // Specific names (heap-allocated, empty if :all)
+    usz          name_count;
+    usz          name_capacity;
+    bool         all;            // true for :all
 }
 
 // =============================================================================
@@ -1564,8 +1654,9 @@ struct ExprDefEffect {
 struct Module {
     SymbolId     name;
     Env*         env;              // Module's internal environment
-    SymbolId[256] exports;         // Exported symbol names
+    SymbolId*    exports;          // Exported symbol names (heap-allocated)
     usz          export_count;
+    usz          export_capacity;
     bool         loaded;           // false during loading (circular import detection)
     char[256]    path;             // Source file path
     usz          path_len;
@@ -1611,6 +1702,7 @@ struct Expr {
         ExprDefUnion*    defunion;     // Pointer-indirect (large struct)
         ExprDefAlias     defalias;
         ExprDefEffect    defeffect;
+        ExprExportFrom   export_from;
     }
 }
 
@@ -1666,13 +1758,14 @@ struct CapturedCont {
 /**
  * InterpFlags — Packed boolean state flags for the interpreter.
  */
-bitstruct InterpFlags : char {
+bitstruct InterpFlags : ushort {
     bool jit_enabled      : 0;  // true after init, enables JIT-first execution
     bool jit_tco_bounce   : 1;  // True = return sentinel, jit_eval loop continues
     bool shift_occurred   : 2;  // shift was invoked in current reset context
     bool effect_occurred  : 3;  // Handler body was evaluated, result should bypass
     bool cont_substituting: 4;  // Are we in replay mode?
     bool cont_is_effect   : 5;  // Is this an effect continuation replay?
+    bool raise_pending    : 6;  // raise_error found handler, pending dispatch
 }
 
 /**
@@ -1732,6 +1825,7 @@ struct Interp {
     SymbolId sym_Val;
     SymbolId sym_Number;
     SymbolId sym_Collection;
+    SymbolId sym_Iterator;
 
     // I/O effect tags
     SymbolId sym_io_print;
@@ -1742,6 +1836,9 @@ struct Interp {
     SymbolId sym_io_write_file;
     SymbolId sym_io_file_exists;
     SymbolId sym_io_read_lines;
+
+    // Error-as-effect
+    SymbolId sym_raise;
 
     // Cached cons path symbols
     SymbolId sym_car;
@@ -1776,6 +1873,7 @@ struct Interp {
     TypeId tid_Any;
     TypeId tid_Number;
     TypeId tid_Collection;
+    TypeId tid_Iterator;
 
     // Type registry
     TypeRegistry types;
@@ -1784,6 +1882,10 @@ struct Interp {
 
     // Packed boolean state flags
     InterpFlags flags;
+
+    // Pending raise error message (for raise_error → jit_handle_impl dispatch)
+    char[256] raise_msg;
+    usz raise_msg_len;
 
     // JIT execution mode
     Env* jit_env;      // Current local env for JIT sub-expression evaluation
@@ -1814,6 +1916,9 @@ struct Interp {
     SymbolId sym_module;
     SymbolId sym_import;
     SymbolId sym_export;
+    SymbolId sym_as;           // ":as" for (import mod (name :as alias))
+    SymbolId sym_all;          // ":all" for (import mod :all)
+    SymbolId sym_export_from;  // "export-from" for (export-from mod (sym...))
 
     // Continuation/shift state
     usz      reset_depth;
@@ -1936,6 +2041,7 @@ fn void Interp.init(Interp* self) {
     self.sym_Val = self.symbols.intern("Val");
     self.sym_Number = self.symbols.intern("Number");
     self.sym_Collection = self.symbols.intern("Collection");
+    self.sym_Iterator = self.symbols.intern("Iterator");
 
     // I/O effect tags
     self.sym_io_print = self.symbols.intern("io/print");
@@ -1946,6 +2052,9 @@ fn void Interp.init(Interp* self) {
     self.sym_io_write_file = self.symbols.intern("io/write-file");
     self.sym_io_file_exists = self.symbols.intern("io/file-exists?");
     self.sym_io_read_lines = self.symbols.intern("io/read-lines");
+
+    // Error-as-effect
+    self.sym_raise = self.symbols.intern("raise");
 
     // Cons path symbols
     self.sym_car = self.symbols.intern("car");
@@ -1963,6 +2072,9 @@ fn void Interp.init(Interp* self) {
     self.sym_module = self.symbols.intern("module");
     self.sym_import = self.symbols.intern("import");
     self.sym_export = self.symbols.intern("export");
+    self.sym_as = self.symbols.intern(":as");
+    self.sym_all = self.symbols.intern(":all");
+    self.sym_export_from = self.symbols.intern("export-from");
     self.module_count = 0;
     self.module_capacity = MODULE_INITIAL_CAPACITY;
     self.modules = (Module*)mem::malloc(Module.sizeof * self.module_capacity);
@@ -2105,7 +2217,15 @@ fn void Interp.destroy(Interp* self) {
     self.types.destroy();
     if (self.macro_table != null) { mem::free(self.macro_table); self.macro_table = null; }
     if (self.macro_hash_index != null) { mem::free(self.macro_hash_index); self.macro_hash_index = null; }
-    if (self.modules != null) { mem::free(self.modules); self.modules = null; }
+    if (self.modules != null) {
+        for (usz i = 0; i < self.module_count; i++) {
+            if (self.modules[i].exports != null) {
+                mem::free(self.modules[i].exports);
+            }
+        }
+        mem::free(self.modules);
+        self.modules = null;
+    }
     if (self.module_hash_index != null) { mem::free(self.module_hash_index); self.module_hash_index = null; }
     if (self.handler_stack != null) { mem::free(self.handler_stack); self.handler_stack = null; }
     if (self.reset_body_stack != null) { mem::free(self.reset_body_stack); self.reset_body_stack = null; }
@@ -2230,6 +2350,14 @@ fn void print_value(Value* v, SymbolTable* syms) {
             } else {
                 io::print("#<method-table:null>");
             }
+        case MODULE:
+            if (v.module_val != null) {
+                io::printf("#<module %s>", syms.get_name(v.module_val.name));
+            } else {
+                io::print("#<module:null>");
+            }
+        case ITERATOR:
+            io::print("#<iterator>");
         default:
             io::print("#<unknown>");
     }
@@ -2328,6 +2456,10 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
                 }
             }
             pb.append_char(']');
+        case MODULE:
+            pb.append_str("#<module>");
+        case ITERATOR:
+            pb.append_str("#<iterator>");
         default:
             pb.append_str("#<unknown>");
     }
