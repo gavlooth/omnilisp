@@ -241,6 +241,7 @@ struct Closure {
     bool      has_param;      // false for zero-arg lambdas: (lambda () body)
     bool      has_typed_params;  // true if any param has type annotations
     MethodSignature* type_sig;   // heap-allocated type signature (null if no types)
+    SymbolId  name;           // Bound name (set by define), 0 if anonymous
 }
 
 /**
@@ -1952,6 +1953,13 @@ struct Interp {
     Env**  reset_env_stack;
     usz    reset_stack_capacity;
 
+    // Last call site symbol (for error messages)
+    SymbolId last_call_name;
+
+    // Source file directory stack (for relative import resolution)
+    char[256][16] source_dirs;  // stack of directory paths (null-terminated)
+    usz source_dir_count;
+
 }
 
 fn void Interp.init(Interp* self) {
@@ -1972,6 +1980,9 @@ fn void Interp.init(Interp* self) {
     self.reset_depth = 0;
     self.reset_body_stack = (Expr**)mem::malloc(Expr*.sizeof * self.reset_stack_capacity);
     self.reset_env_stack = (Env**)mem::malloc(Env*.sizeof * self.reset_stack_capacity);
+
+    // Source directory stack
+    self.source_dir_count = 0;
 
     // Continuation/shift state
     self.flags.shift_occurred = false;
@@ -2290,7 +2301,7 @@ fn void print_value(Value* v, SymbolTable* syms) {
         case STRING:
             io::printf("\"%s\"", (ZString)v.str_val.chars);
         case SYMBOL:
-            io::printf("%s", syms.get_name(v.sym_val));
+            io::printf("%s", (ZString)syms.get_name(v.sym_val));
         case CONS:
             io::print("(");
             print_value(v.cons_val.car, syms);
@@ -2306,17 +2317,41 @@ fn void print_value(Value* v, SymbolTable* syms) {
             }
             io::print(")");
         case CLOSURE:
-            io::print("#<closure>");
+            io::print("#<λ");
+            if ((uint)v.closure_val.name != 0) {
+                io::printf(" %s", (ZString)syms.get_name(v.closure_val.name));
+            }
+            io::print(" (");
+            for (usz i = 0; i < v.closure_val.param_count; i++) {
+                if (i > 0) io::print(" ");
+                io::printf("%s", (ZString)syms.get_name(v.closure_val.params[i]));
+            }
+            if (v.closure_val.has_rest) {
+                if (v.closure_val.param_count > 0) io::print(" ");
+                io::printf(".. %s", (ZString)syms.get_name(v.closure_val.rest_param));
+            }
+            io::print(")>");
         case CONTINUATION:
             io::print("#<continuation>");
         case PRIMITIVE:
             io::printf("#<primitive %s>", (ZString)&v.prim_val.name);
         case PARTIAL_PRIM:
-            io::print("#<partial>");
+            io::printf("#<partial %d more>", v.partial_val.remaining);
         case ERROR:
             io::printf("#<error: %s>", (ZString)v.str_val.chars);
         case HASHMAP:
-            io::printf("#<hashmap:%d>", v.hashmap_val.count);
+            io::print("{");
+            uint printed = 0;
+            for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
+                if (v.hashmap_val.entries[hi].key != null) {
+                    if (printed > 0) io::print(" ");
+                    print_value(v.hashmap_val.entries[hi].key, syms);
+                    io::print(" ");
+                    print_value(v.hashmap_val.entries[hi].value, syms);
+                    printed++;
+                }
+            }
+            io::print("}");
         case FFI_HANDLE:
             io::printf("#<ffi-handle:%s>", (ZString)&v.ffi_val.lib_name);
         case ARRAY:
@@ -2329,7 +2364,7 @@ fn void print_value(Value* v, SymbolTable* syms) {
             }
             io::print("]");
         case TYPE_INFO:
-            io::printf("#<type %s>", syms.get_name(v.type_info_val.name));
+            io::printf("#<type %s>", (ZString)syms.get_name(v.type_info_val.name));
         case INSTANCE:
             if (v.instance_val != null) {
                 io::print("(");
@@ -2346,13 +2381,21 @@ fn void print_value(Value* v, SymbolTable* syms) {
             }
         case METHOD_TABLE:
             if (v.method_table_val != null) {
-                io::printf("#<method-table %s:%d>", syms.get_name(v.method_table_val.name), v.method_table_val.entry_count);
+                io::printf("#<dispatch %s", (ZString)syms.get_name(v.method_table_val.name));
+                if (v.method_table_val.entry_count > 0) {
+                    io::printf(" %d method%s", v.method_table_val.entry_count,
+                        v.method_table_val.entry_count == 1 ? "" : "s");
+                }
+                if (v.method_table_val.fallback != null) {
+                    io::print(" +default");
+                }
+                io::print(">");
             } else {
-                io::print("#<method-table:null>");
+                io::print("#<dispatch:null>");
             }
         case MODULE:
             if (v.module_val != null) {
-                io::printf("#<module %s>", syms.get_name(v.module_val.name));
+                io::printf("#<module %s>", (ZString)syms.get_name(v.module_val.name));
             } else {
                 io::print("#<module:null>");
             }
@@ -2434,7 +2477,22 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             }
             pb.append_char(')');
         case CLOSURE:
-            pb.append_str("#<closure>");
+            pb.append_str("#<\xCE\xBB");
+            if ((uint)v.closure_val.name != 0) {
+                pb.append_char(' ');
+                pb.append_str((String)syms.get_name(v.closure_val.name));
+            }
+            pb.append_str(" (");
+            for (usz i = 0; i < v.closure_val.param_count; i++) {
+                if (i > 0) pb.append_char(' ');
+                pb.append_str((String)syms.get_name(v.closure_val.params[i]));
+            }
+            if (v.closure_val.has_rest) {
+                if (v.closure_val.param_count > 0) pb.append_char(' ');
+                pb.append_str(".. ");
+                pb.append_str((String)syms.get_name(v.closure_val.rest_param));
+            }
+            pb.append_str(")>");
         case CONTINUATION:
             pb.append_str("#<continuation>");
         case PRIMITIVE:
@@ -2444,9 +2502,18 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
         case ERROR:
             pb.append_str("#<error>");
         case HASHMAP:
-            char[32] hbuf;
-            char[] hs = io::bprintf(&hbuf, "#<hashmap:%d>", v.hashmap_val.count)!!;
-            pb.append_str(hs);
+            pb.append_char('{');
+            uint hprinted = 0;
+            for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
+                if (v.hashmap_val.entries[hi].key != null) {
+                    if (hprinted > 0) pb.append_char(' ');
+                    print_value_buf(v.hashmap_val.entries[hi].key, syms, pb);
+                    pb.append_char(' ');
+                    print_value_buf(v.hashmap_val.entries[hi].value, syms, pb);
+                    hprinted++;
+                }
+            }
+            pb.append_char('}');
         case ARRAY:
             pb.append_char('[');
             if (v.array_val != null) {

@@ -1,5 +1,104 @@
 # Changelog
 
+## 2026-02-25 (Session 33): Error messages, value display, module loader, omni-torch
+
+### Summary
+Improved error messages, rewrote value display for all types, enhanced module loader to run top-level expressions after module forms, and converted omni-torch from `load` to proper `module`/`import`.
+
+### Error Messages
+- **Nil call site**: `'tensor/zeros' is not defined` with hint about load/import
+- **Non-function call site**: `'x' is Int, not a function` (shows actual type)
+- Added `last_call_name` field to `Interp` struct for call-site context
+- ERROR tag propagation in all 4 apply functions prevents "is Any" for unbound vars
+
+### Value Display
+- Closures: `#<closure>` → `#<λ say (s)>` / `#<λ (x y)>` / `#<λ (x .. rest)>`
+- Added `name` field to Closure struct, set by `define`
+- Dispatch: `#<method-table [bytes]:N>` → `#<dispatch map 4 methods>` / `#<dispatch + +default>`
+- Dict: `#<hashmap:2>` → `{a 1 b 2}` (shows contents)
+- Symbols: fixed `[byte array]` → proper name (ZString cast fix)
+- Partial: `#<partial>` → `#<partial N more>`
+- Module/Type: fixed garbled names (ZString cast fix)
+
+### Load Error Propagation
+- `prim_load` now raises proper errors instead of silently returning nil
+- Missing file: `load: file not found 'path'`
+- Evaluation error: `load: error in 'path': <details>`
+
+### Module Loader Enhancement
+- `jit_load_module_from_file` now evaluates ALL expressions in file, not just the first module form
+- Expressions after `(module ...)` run in global scope — enables dispatch extensions alongside modules
+
+### omni-torch Conversion
+- `lib/torch.omni`: Converted from `load`-based to proper `(module torch (export ...) ...)`
+- Dispatch extensions (`+`, `-`, `*`, `/` on Tensor) placed after module form in global scope
+- `src/main.omni`: `(load ...)` → `(import "lib/torch.omni" :all)`
+- Error propagation now surfaces FFI failures clearly
+
+### Relative Import Resolution
+- Added `source_dirs` stack (16 deep) to `Interp` struct for resolving imports relative to the importing file
+- `push_source_dir` / `pop_source_dir` / `resolve_import_path` / `path_dir_len` helpers in jit.c3
+- `jit_load_module_from_file`, `jit_eval_import_impl`, `prim_load`, and entry.c3 script runner all push/pop source dirs
+- Fixes: imports now work from Neovim plugin (where CWD differs from source dir)
+
+### Module System Robustness
+- **Null-terminated import paths**: Parser now null-terminates `import_expr.path` buffer; also null-terminates `lib/<name>.omni` path
+- **Failed module retry**: Modules that fail to load (loaded=false) can be re-defined on retry (zeroes stale name)
+- **Idempotent file imports**: `jit_load_module_from_file` skips already-loaded modules (needed for files that import same dependency in multiple scopes)
+- **Path-vs-declared-name resolution**: Path-based imports like `(import "../lib/torch.omni" :all)` intern the path as symbol, but the file declares `(module torch ...)`. Fallback uses `interp.modules[mod_count_before]` (first module registered during load) instead of `find_module(interned_path_name)`
+
+### Bug Fixes
+- Fixed `.pika` → `.omni` file extension in `jit_eval_import_impl`
+- Fixed `Pika Lisp REPL` → `Omni Lisp REPL` in eval.c3
+
+### Modified Files
+- `src/lisp/jit.c3` — Error messages, ERROR propagation, module loader (all expressions, idempotent, path aliasing, source dir stack)
+- `src/lisp/value.c3` — `last_call_name` in Interp, `name` in Closure, `source_dirs` stack, all display rewrites
+- `src/lisp/primitives.c3` — `prim_load` error propagation + relative path resolution
+- `src/lisp/parser.c3` — Null-terminated import path buffer
+- `src/lisp/eval.c3` — REPL banner, symbol display ZString fix
+- `src/entry.c3` — Push source dir when running script files
+- `omni-torch/lib/torch.omni` — Rewritten as module + dispatch extensions
+- `omni-torch/src/main.omni` — load → import, relative path `"../lib/torch.omni"`
+
+### Tests
+- 922 total (845 unified + 77 compiler), 0 failures
+
+## 2026-02-24 (Session 32): P3C + P4D — Multi-arg HOFs, Primitive Consolidation, Nil<:List
+
+### Summary
+Broke the curried HOF convention: all stdlib higher-order functions now use multi-arg dispatch instead of curried chains. `map`, `filter`, `for-each`, `any?`, `every?` get 1-arg `^Closure` dispatch form (returns lambda for pipelines). `foldl`/`foldr`'s `f` takes 2 args directly. 12 primitives moved to dispatched (P4D). `Nil` is now a subtype of `List` (nil IS the empty list).
+
+### P3C: Multi-arg Dispatched HOFs
+- **map**: `(map f lst)` 2-arg dispatched on List/Array/Iterator; `(map f)` 1-arg ^Closure returns lambda
+- **filter**: Same pattern — List/Array/Iterator dispatch + 1-arg ^Closure form
+- **foldl**: `(foldl f acc lst)` — `f` takes 2 args `(f acc x)`, named-let TCO
+- **foldr**: `(foldr f init lst)` — `f` takes 2 args `(f x acc)`, delegates to foldl+reverse
+- **append, compose, nth, take, drop, zip, range**: Multi-arg (no currying)
+- **for-each, any?, every?**: 2-arg dispatched on ^List + 1-arg ^Closure form
+- **try, assert!**: 2-arg (was curried)
+- **assoc, assoc-ref**: 2-arg (was curried)
+- **reverse** moved before map/filter (dependency ordering)
+- Compiler STDLIB_PRELUDE updated to match
+- ~65 test call sites updated from curried to multi-arg syntax
+
+### P4D: Primitive Consolidation
+- 12 primitives moved from regular to dispatched: string-append, string-contains?, string-upcase, string-downcase, abs, floor, ceiling, round, truncate, sqrt, min, max
+- Dispatched prims: 19 → 31, Regular prims: 100 → 88
+
+### Type Hierarchy Fix
+- `Nil` is now a subtype of `List` — nil IS the empty list in Lisp
+- Enables `(map f nil)`, `(filter pred nil)`, `(every? pred nil)` to dispatch correctly
+
+### Modified Files
+- `stdlib/stdlib.lisp` — Complete HOF rewrite (multi-arg + dispatch)
+- `src/lisp/eval.c3` — Nil<:List parent chain, 12 prims moved to dispatched
+- `src/lisp/compiler.c3` — STDLIB_PRELUDE rewritten to multi-arg
+- `src/lisp/tests.c3` — ~65 test call sites updated
+
+### Tests
+- 1290 total (845 unified + 77 compiler + 368 e2e), 0 failures
+
 ## 2026-02-24 (Session 31): Feature Roadmap Phases 2-3 — λ Syntax, UTF-8, Iterators
 
 ### Summary

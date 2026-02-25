@@ -694,24 +694,38 @@ fn Value* prim_read_lines(Value*[] args, Env* env, Interp* interp) {
  */
 fn Value* prim_load(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
-        return make_nil(interp);
+        return raise_error(interp, "load: expected a string path");
     }
 
-    // Get path as slice (using :len for exclusive end)
-    char[] path = args[0].str_val.chars[:args[0].str_val.len];
+    // Resolve path relative to current source directory
+    char[] rel_path = args[0].str_val.chars[:args[0].str_val.len];
+    char[512] resolved;
+    usz rlen = resolve_import_path(rel_path, interp, &resolved, 512);
+    char[] path = resolved[:rlen];
 
     // Try to load file
     if (try content = io::file::load_temp((String)path)) {
         char[] source = content;
 
+        // Push source directory for nested loads/imports
+        push_source_dir(path, interp);
+
         // Run all expressions in the file
         EvalResult r = run_program(source, interp);
+
+        pop_source_dir(interp);
+
         if (r.error.has_error) {
-            return make_nil(interp);
+            char[512] ebuf;
+            char[] msg = io::bprintf(&ebuf, "load: error in '%s': %s",
+                (ZString)path.ptr, (ZString)&r.error.message)!!;
+            return raise_error(interp, msg);
         }
         return r.value;
     }
-    return make_nil(interp);
+    char[256] ebuf;
+    char[] msg = io::bprintf(&ebuf, "load: file not found '%s'", (ZString)path.ptr)!!;
+    return raise_error(interp, msg);
 }
 
 fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {

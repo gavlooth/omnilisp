@@ -128,7 +128,18 @@ fn usz format_arity_error(char[] buf, usz expected, usz got) {
 }
 
 fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
-    if (func == null) return raise_error(interp, "cannot call nil (not a function)");
+    if (func == null) {
+        if ((uint)interp.last_call_name != 0) {
+            char[256] ebuf;
+            char[] msg = io::bprintf(&ebuf, "'%s' is not defined\n  hint: did you (load ...) or (import ...) it?",
+                (ZString)interp.symbols.get_name(interp.last_call_name))!!;
+            return raise_error(interp, msg);
+        }
+        return raise_error(interp, "called value is nil — not a function");
+    }
+
+    // Propagate errors from function evaluation (e.g. unbound variable)
+    if (func.tag == ERROR) return func;
 
     switch (func.tag) {
         case CLOSURE: {
@@ -197,8 +208,15 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
 
         default:
             char[256] ebuf2;
-            char[] msg2 = io::bprintf(&ebuf2, "cannot call %s (not a function)",
-                (ZString)interp.symbols.get_name(value_type_name(func, interp)))!!;
+            char[] type_name = interp.symbols.get_name(value_type_name(func, interp));
+            if ((uint)interp.last_call_name != 0) {
+                char[] msg2 = io::bprintf(&ebuf2, "'%s' is %s, not a function",
+                    (ZString)interp.symbols.get_name(interp.last_call_name),
+                    (ZString)type_name)!!;
+                return raise_error(interp, msg2);
+            }
+            char[] msg2 = io::bprintf(&ebuf2, "called value is %s, not a function",
+                (ZString)type_name)!!;
             return raise_error(interp, msg2);
     }
 }
@@ -221,7 +239,18 @@ fn Value* jit_apply_value(Value* func, Value* arg, Interp* interp) {
 // Tail-call variant: sets TCO bounce fields for CLOSURE instead of recursing.
 // ONLY called when the result goes directly to R0 as the function return value.
 fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
-    if (func == null) return raise_error(interp, "cannot call nil (not a function)");
+    if (func == null) {
+        if ((uint)interp.last_call_name != 0) {
+            char[256] ebuf;
+            char[] msg = io::bprintf(&ebuf, "'%s' is not defined\n  hint: did you (load ...) or (import ...) it?",
+                (ZString)interp.symbols.get_name(interp.last_call_name))!!;
+            return raise_error(interp, msg);
+        }
+        return raise_error(interp, "called value is nil — not a function");
+    }
+
+    // Propagate errors from function evaluation (e.g. unbound variable)
+    if (func.tag == ERROR) return func;
 
     if (func.tag == CLOSURE) {
         Env* new_env;
@@ -675,6 +704,11 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
     if (existing_for_fallback != null && existing_for_fallback.tag == METHOD_TABLE) {
         existing_for_fallback.method_table_val.fallback = stored_val;
         return existing_for_fallback;
+    }
+
+    // Tag closure with its bound name for display
+    if (stored_val != null && stored_val.tag == CLOSURE) {
+        stored_val.closure_val.name = name;
     }
 
     // Normal (untyped) define
@@ -1348,6 +1382,15 @@ fn Value* jit_do_index(Interp* interp, Value* collection, Value* index) {
         if (result == null) return make_nil(interp);
         return result;
     }
+    // Instance indexing — dispatch through `ref` method table if available
+    if (collection.tag == INSTANCE) {
+        SymbolId ref_sym = interp.symbols.intern("ref");
+        Value* ref_fn = interp.global_env.lookup(ref_sym);
+        if (ref_fn != null && ref_fn.tag == METHOD_TABLE) {
+            Value* args = make_cons(interp, collection, make_cons(interp, index, make_nil(interp)));
+            return jit_apply_multi_args(interp, ref_fn, args, 2);
+        }
+    }
     char[256] ebuf;
     char[] msg = io::bprintf(&ebuf, "cannot index %s (expected array, dict, list, or string)",
         (ZString)interp.symbols.get_name(value_type_name(collection, interp)))!!;
@@ -1433,8 +1476,13 @@ fn Value* jit_do_import(Interp* interp, Expr* expr, Env* env) {
 fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
     SymbolId name = expr.module_expr.name;
 
-    if (find_module(name, interp) != null) {
-        return eval_error("module already defined");
+    Module* existing = find_module(name, interp);
+    if (existing != null) {
+        if (existing.loaded) {
+            return eval_error("module already defined");
+        }
+        // Previous load failed — allow re-definition by removing the stale entry
+        existing.name = (SymbolId)0;
     }
 
     if (interp.module_count >= interp.module_capacity) interp.grow_module_table();
@@ -1478,9 +1526,62 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
     return eval_ok(make_nil(interp));
 }
 
+// Extract directory from a file path (e.g. "lib/ffi/torch.omni" → "lib/ffi/")
+// Returns length of directory prefix (including trailing /).  0 if no directory.
+fn usz path_dir_len(char[] path) {
+    usz last_slash = 0;
+    bool found = false;
+    for (usz i = 0; i < path.len; i++) {
+        if (path[i] == '/') { last_slash = i; found = true; }
+    }
+    return found ? last_slash + 1 : 0;
+}
+
+// Resolve a relative path against the current source directory stack.
+// Writes resolved path into buf, returns length.  If no source dir on stack, copies path as-is.
+fn usz resolve_import_path(char[] rel_path, Interp* interp, char* buf, usz buf_cap) {
+    usz pos = 0;
+    if (interp.source_dir_count > 0) {
+        // Copy current source directory
+        char* dir = &interp.source_dirs[interp.source_dir_count - 1];
+        usz di = 0;
+        while (di < 255 && dir[di] != 0 && pos < buf_cap - 1) {
+            buf[pos] = dir[di];
+            pos++;
+            di++;
+        }
+    }
+    // Copy relative path
+    for (usz i = 0; i < rel_path.len && pos < buf_cap - 1; i++) {
+        buf[pos] = rel_path[i];
+        pos++;
+    }
+    buf[pos] = 0;
+    return pos;
+}
+
+// Push a source directory derived from a file path.
+fn void push_source_dir(char[] file_path, Interp* interp) {
+    if (interp.source_dir_count >= 16) return;
+    usz dlen = path_dir_len(file_path);
+    usz slot = interp.source_dir_count;
+    for (usz i = 0; i < dlen && i < 255; i++) {
+        interp.source_dirs[slot][i] = file_path[i];
+    }
+    interp.source_dirs[slot][dlen] = 0;
+    interp.source_dir_count++;
+}
+
+fn void pop_source_dir(Interp* interp) {
+    if (interp.source_dir_count > 0) interp.source_dir_count--;
+}
+
 fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* interp) {
     if (try content = io::file::load_temp((String)path)) {
         char[] source = content;
+
+        // Push source directory for relative import resolution
+        push_source_dir(path, interp);
 
         Lexer lex;
         lex.init(source);
@@ -1490,13 +1591,41 @@ fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* inte
         Expr*[64] exprs;
         usz expr_count = 0;
         while (!lex.at_end()) {
-            if (expr_count >= 64) return eval_error("module: too many expressions (max 64)");
+            if (expr_count >= 64) { pop_source_dir(interp); return eval_error("module: too many expressions (max 64)"); }
             exprs[expr_count] = p.parse_expr();
             expr_count++;
         }
 
         if (expr_count > 0 && exprs[0].tag == E_MODULE) {
-            return jit_eval_to_result(exprs[0], interp.global_env, interp);
+            // If this module is already loaded, skip re-evaluation (idempotent file import)
+            SymbolId declared_name = exprs[0].module_expr.name;
+            Module* already = find_module(declared_name, interp);
+            if (already != null && already.loaded) {
+                pop_source_dir(interp);
+                return eval_ok(make_nil(interp));
+            }
+
+            // Evaluate the module form first
+            EvalResult mod_result = jit_eval_to_result(exprs[0], interp.global_env, interp);
+            if (mod_result.error.has_error) { pop_source_dir(interp); return mod_result; }
+
+            // Record the file path on the module (for path-based import lookup)
+            Module* new_mod = find_module(declared_name, interp);
+            if (new_mod != null && new_mod.path_len == 0) {
+                for (usz pi = 0; pi < path.len && pi < 255; pi++) {
+                    new_mod.path[pi] = path[pi];
+                }
+                new_mod.path_len = path.len;
+            }
+
+            // Evaluate remaining top-level expressions in global scope
+            // (e.g. dispatch extensions that need to modify global method tables)
+            for (usz i = 1; i < expr_count; i++) {
+                EvalResult r = jit_eval_to_result(exprs[i], interp.global_env, interp);
+                if (r.error.has_error) { pop_source_dir(interp); return r; }
+            }
+            pop_source_dir(interp);
+            return mod_result;
         }
 
         if (interp.module_count >= interp.module_capacity) interp.grow_module_table();
@@ -1529,6 +1658,7 @@ fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* inte
             EvalResult r = jit_eval_to_result(exprs[i], mod_env, interp);
             if (r.error.has_error) {
                 interp.global_env = saved_global;
+                pop_source_dir(interp);
                 return r;
             }
             if (exprs[i].tag == E_DEFINE) {
@@ -1547,6 +1677,7 @@ fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* inte
 
         interp.global_env = saved_global;
         mod.loaded = true;
+        pop_source_dir(interp);
         return eval_ok(make_nil(interp));
     }
 
@@ -1563,30 +1694,59 @@ fn EvalResult jit_eval_import_impl(Expr* expr, Env* env, Interp* interp) {
             return eval_error("circular import detected");
         }
     } else if (expr.import_expr.has_path) {
-        char[] path = expr.import_expr.path[:expr.import_expr.path_len];
+        char[] rel_path = expr.import_expr.path[:expr.import_expr.path_len];
+        char[512] resolved;
+        usz rlen = resolve_import_path(rel_path, interp, &resolved, 512);
+        char[] path = resolved[:rlen];
+        usz mod_count_before = interp.module_count;
         EvalResult load_result = jit_load_module_from_file(path, name, interp);
         if (load_result.error.has_error) return load_result;
+        // Try import name first, then find the first new module registered by this file
         mod = find_module(name, interp);
+        if (mod == null && interp.module_count > mod_count_before) {
+            mod = &interp.modules[mod_count_before];
+        }
+        // Path-based fallback: file declared a module with a different name,
+        // or was idempotently skipped. Search by file path.
+        if (mod == null) {
+            for (usz mi = 0; mi < interp.module_count; mi++) {
+                Module* m = &interp.modules[mi];
+                if (m.path_len == rlen) {
+                    bool match = true;
+                    for (usz ci = 0; ci < rlen; ci++) {
+                        if (m.path[ci] != path[ci]) { match = false; break; }
+                    }
+                    if (match && m.loaded) {
+                        mod = m;
+                        break;
+                    }
+                }
+            }
+        }
     } else {
+        // Build lib/<name>.omni, then resolve relative to source dir
         char[] sym_name = interp.symbols.get_name(name);
-        if (4 + sym_name.len + 5 > 511) {
+        if (4 + sym_name.len + 5 > 255) {
             return eval_error("module path too long");
         }
-        char[512] path_buf;
-        usz plen = 0;
-        path_buf[0] = 'l'; path_buf[1] = 'i'; path_buf[2] = 'b'; path_buf[3] = '/';
-        plen = 4;
+        char[256] rel_buf;
+        usz rp = 0;
+        rel_buf[0] = 'l'; rel_buf[1] = 'i'; rel_buf[2] = 'b'; rel_buf[3] = '/';
+        rp = 4;
         for (usz i = 0; i < sym_name.len; i++) {
-            path_buf[plen] = sym_name[i];
-            plen++;
+            rel_buf[rp] = sym_name[i];
+            rp++;
         }
-        path_buf[plen] = '.'; plen++;
-        path_buf[plen] = 'p'; plen++;
-        path_buf[plen] = 'i'; plen++;
-        path_buf[plen] = 'k'; plen++;
-        path_buf[plen] = 'a'; plen++;
+        rel_buf[rp] = '.'; rp++;
+        rel_buf[rp] = 'o'; rp++;
+        rel_buf[rp] = 'm'; rp++;
+        rel_buf[rp] = 'n'; rp++;
+        rel_buf[rp] = 'i'; rp++;
+        rel_buf[rp] = 0;
 
-        char[] path = path_buf[:plen];
+        char[512] resolved;
+        usz rlen = resolve_import_path(rel_buf[:rp], interp, &resolved, 512);
+        char[] path = resolved[:rlen];
         EvalResult load_result = jit_load_module_from_file(path, name, interp);
         if (load_result.error.has_error) return load_result;
         mod = find_module(name, interp);
@@ -1638,6 +1798,16 @@ fn EvalResult jit_eval_import_impl(Expr* expr, Env* env, Interp* interp) {
     return eval_ok(make_nil(interp));
 }
 
+// Set last_call_name for error messages — called from JIT before apply.
+fn void jit_set_call_name(Interp* interp, SymbolId name) {
+    interp.last_call_name = name;
+}
+
+// Clear last_call_name (for computed function positions)
+fn void jit_clear_call_name(Interp* interp) {
+    interp.last_call_name = (SymbolId)0;
+}
+
 // Cons cell creation helper — called from JIT-compiled code for building arg lists.
 fn Value* jit_cons(Interp* interp, Value* car, Value* cdr) {
     return make_cons(interp, car, cdr);
@@ -1649,7 +1819,18 @@ fn Value* jit_cons(Interp* interp, Value* car, Value* cdr) {
 // For primitives: dispatches directly with all args.
 // Detects variadic closures appearing mid-curry chain.
 fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
-    if (func == null) return raise_error(interp, "cannot call nil (not a function)");
+    if (func == null) {
+        if ((uint)interp.last_call_name != 0) {
+            char[256] ebuf;
+            char[] msg = io::bprintf(&ebuf, "'%s' is not defined\n  hint: did you (load ...) or (import ...) it?",
+                (ZString)interp.symbols.get_name(interp.last_call_name))!!;
+            return raise_error(interp, msg);
+        }
+        return raise_error(interp, "called value is nil — not a function");
+    }
+
+    // Propagate errors from function evaluation (e.g. unbound variable)
+    if (func.tag == ERROR) return func;
 
     // Zero-arg non-variadic closure: (lambda () body)
     if (arg_count == 0 && func.tag == CLOSURE && !func.closure_val.has_param && !func.closure_val.has_rest) {
@@ -1761,7 +1942,18 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
 // Tail-call variant: sets TCO bounce fields for CLOSURE instead of recursing.
 // ONLY called when the result goes directly to R0 as the function return value.
 fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
-    if (func == null) return raise_error(interp, "cannot call nil (not a function)");
+    if (func == null) {
+        if ((uint)interp.last_call_name != 0) {
+            char[256] ebuf;
+            char[] msg = io::bprintf(&ebuf, "'%s' is not defined\n  hint: did you (load ...) or (import ...) it?",
+                (ZString)interp.symbols.get_name(interp.last_call_name))!!;
+            return raise_error(interp, msg);
+        }
+        return raise_error(interp, "called value is nil — not a function");
+    }
+
+    // Propagate errors from function evaluation (e.g. unbound variable)
+    if (func.tag == ERROR) return func;
 
     // Zero-arg non-variadic closure
     if (arg_count == 0 && func.tag == CLOSURE && !func.closure_val.has_param && !func.closure_val.has_rest) {
@@ -2472,6 +2664,13 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
 
     // General case: compile function and args
     usz argc = expr.call.arg_count;
+
+    // Set call name for error messages (before any apply call)
+    if (expr.call.func.tag == E_VAR) {
+        emit_call_2i(s, (void*)&jit_set_call_name, JIT_V0, (long)expr.call.func.var_expr.name);
+    } else {
+        emit_call_1(s, (void*)&jit_clear_call_name);
+    }
 
     if (argc == 0) {
         // Zero-arg call: compile function, pass empty list via jit_apply_multi_args.

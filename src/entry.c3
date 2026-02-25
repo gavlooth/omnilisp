@@ -602,6 +602,9 @@ fn int main(int argc, char** argv) {
             lisp::register_stdlib(interp);
             interp.flags.jit_enabled = true;
 
+            // Push script directory for relative import resolution
+            lisp::push_source_dir(script_path, interp);
+
             // Run the script (multiple expressions)
             usz len = source.len;
             if (len > 65535) len = 65535;

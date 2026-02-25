@@ -2444,6 +2444,7 @@ fn Expr* Parser.parse_import(Parser* self) {
         for (usz i = 0; i < len; i++) {
             e.import_expr.path[i] = str[i];
         }
+        e.import_expr.path[len] = 0;
         e.import_expr.path_len = len;
         SymbolId import_sym = self.interp.symbols.intern(str);
         e.import_expr.name = import_sym;

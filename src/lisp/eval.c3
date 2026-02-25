@@ -2014,7 +2014,7 @@ fn void repl(Interp* interp) {
     // Install SIGINT handler so Ctrl+C interrupts eval instead of killing process
     signal(SIGINT_VAL, &sigint_handler);
 
-    io::printn("Pika Lisp REPL (type 'quit' or 'exit' to leave, Ctrl-D for EOF)");
+    io::printn("Omni Lisp REPL (type 'quit' or 'exit' to leave, Ctrl-D for EOF)");
     io::printn("---");
 
     // Buffer for accumulating multi-line input
