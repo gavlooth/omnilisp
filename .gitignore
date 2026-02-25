@@ -1,5 +1,9 @@
 # Build artifacts
 build/
+*.o
+*.a
+
+# Test binaries
 main
 main_test
 test
@@ -7,26 +11,34 @@ test_all
 test_build
 test_runner
 testrun
+test_and_or
 
 # LLVM IR output
 llvm/
 
 # Temporary files
 tmp_tests/
-*.o
-*.a
 
 # Backup files
+*.bak
 *.bak/
-pika.bak/
-types.c3.bak
+*.backup
+*.disabled
+*.new
 
 # Patches
 *.patch
 
-# Python scripts
+# Python scripts (not part of codebase)
 *.py
 
-# Editor files
+# Editor/tool files
 syntax.md
-*.new
+.codegraph/
+.jj/
+
+# Scratch test files
+test.omni
+
+# Report output
+report/
