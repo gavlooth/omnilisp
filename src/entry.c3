@@ -179,10 +179,18 @@ fn int run_init(int argc, char** argv, int init_idx) {
     path_buf[plen] = 0;
     mkdir(&path_buf[0], 0o755);
 
-    // Write project.toml
+    // name/build/
     plen = name_len;
     path_buf[plen] = '/'; plen++;
-    char[] toml_name = "project.toml";
+    char[] sub_build = "build";
+    for (usz i = 0; i < sub_build.len; i++) { path_buf[plen] = sub_build[i]; plen++; }
+    path_buf[plen] = 0;
+    mkdir(&path_buf[0], 0o755);
+
+    // Write omni.toml
+    plen = name_len;
+    path_buf[plen] = '/'; plen++;
+    char[] toml_name = "omni.toml";
     for (usz i = 0; i < toml_name.len; i++) { path_buf[plen] = toml_name[i]; plen++; }
     path_buf[plen] = 0;
     if (try file = io::file::open((String)path_buf[:plen], "w")) {
@@ -191,6 +199,13 @@ fn int run_init(int argc, char** argv, int init_idx) {
         file.write("name = \"")!!;
         file.write(name[:name_len])!!;
         file.write("\"\nversion = \"0.1.0\"\n\n")!!;
+        file.write("[build]\n")!!;
+        file.write("output-dir = \"build\"\n")!!;
+        file.write("safety = \"safe\"        # \"safe\", \"fast\", or \"none\"\n")!!;
+        file.write("opt = \"O0\"             # \"O0\", \"O1\", \"O2\", \"O3\", \"Os\", \"Oz\"\n")!!;
+        file.write("debug-info = \"full\"    # \"full\", \"line-tables\", \"none\"\n")!!;
+        file.write("# sanitize = \"none\"    # \"none\", \"address\", \"memory\", \"thread\"\n")!!;
+        file.write("# single-module = false\n\n")!!;
         file.write("# FFI dependencies — uncomment and edit:\n")!!;
         file.write("# [dependencies.ffi.math]\n")!!;
         file.write("# library = \"m\"\n")!!;
@@ -198,19 +213,23 @@ fn int run_init(int argc, char** argv, int init_idx) {
         file.write("# functions = [\"sin\", \"cos\", \"sqrt\"]\n")!!;
     }
 
-    // Write project.json (C3 build config)
+    // Write build/project.json (C3 build config — generated, do not edit)
     plen = name_len;
     path_buf[plen] = '/'; plen++;
-    char[] json_name = "project.json";
-    for (usz i = 0; i < json_name.len; i++) { path_buf[plen] = json_name[i]; plen++; }
+    char[] json_path = "build/project.json";
+    for (usz i = 0; i < json_path.len; i++) { path_buf[plen] = json_path[i]; plen++; }
     path_buf[plen] = 0;
     if (try file = io::file::open((String)path_buf[:plen], "w")) {
         defer (void)file.close();
+        file.write("// Generated from omni.toml — do not edit\n")!!;
         file.write("{\n")!!;
         file.write("    \"langrev\": \"1\",\n")!!;
         file.write("    \"version\": \"0.1.0\",\n")!!;
-        file.write("    \"sources\": [\"src\"],\n")!!;
-        file.write("    \"output\": \"build\",\n")!!;
+        file.write("    \"sources\": [\"../src\"],\n")!!;
+        file.write("    \"output\": \".\",\n")!!;
+        file.write("    \"safe\": true,\n")!!;
+        file.write("    \"opt\": \"O0\",\n")!!;
+        file.write("    \"debug-info\": \"full\",\n")!!;
         file.write("    \"targets\": {\n")!!;
         file.write("        \"main\": {\n")!!;
         file.write("            \"type\": \"executable\"\n")!!;
@@ -235,21 +254,21 @@ fn int run_init(int argc, char** argv, int init_idx) {
     io::printfn("Created project '%s'", (ZString)name);
     io::printn("");
     io::printfn("  %s/", (ZString)name);
-    io::printn("    project.toml    # Project config");
-    io::printn("    project.json    # C3 build config");
+    io::printn("    omni.toml       # Project config");
     io::printn("    src/main.omni   # Entry point");
     io::printn("    lib/ffi/        # Auto-generated FFI bindings");
     io::printn("    include/        # C headers");
+    io::printn("    build/          # Build artifacts (contains project.json for c3c)");
     io::printn("");
     io::printn("Next steps:");
     io::printfn("  cd %s", (ZString)name);
-    io::printn("  # Edit project.toml to add FFI dependencies");
+    io::printn("  # Edit omni.toml to configure build and add FFI dependencies");
     io::printn("  # Run: omni --bind to generate bindings");
     return 0;
 }
 
 /**
- * Generate FFI bindings from project.toml using libclang.
+ * Generate FFI bindings from omni.toml using libclang.
  * Usage: ./main --bind [project-dir]
  */
 fn int run_bind(int argc, char** argv, int bind_idx) {
@@ -272,12 +291,12 @@ fn int run_bind(int argc, char** argv, int bind_idx) {
         proj_dir_len = 1;
     }
 
-    // Load project.toml
+    // Load omni.toml
     char[512] toml_path;
     usz tlen = 0;
     for (usz i = 0; i < proj_dir_len; i++) { toml_path[tlen] = proj_dir[i]; tlen++; }
     toml_path[tlen] = '/'; tlen++;
-    char[] toml_suffix = "project.toml";
+    char[] toml_suffix = "omni.toml";
     for (usz i = 0; i < toml_suffix.len; i++) { toml_path[tlen] = toml_suffix[i]; tlen++; }
     toml_path[tlen] = 0;
 
@@ -290,7 +309,7 @@ fn int run_bind(int argc, char** argv, int bind_idx) {
     }
 
     if (config.ffi_dep_count == 0) {
-        io::printn("No FFI dependencies found in project.toml");
+        io::printn("No FFI dependencies found in omni.toml");
         io::printn("Add a [dependencies.ffi.NAME] section to generate bindings.");
         return 0;
     }
@@ -392,7 +411,7 @@ fn int print_help() {
     io::printn("");
     io::printn("Project management:");
     io::printn("  omni --init <name>                Scaffold a new Omni project");
-    io::printn("  omni --bind [project-dir]         Generate FFI bindings from project.toml");
+    io::printn("  omni --bind [project-dir]         Generate FFI bindings from omni.toml");
     io::printn("");
     io::printn("Other:");
     io::printn("  omni --gen-e2e                    Generate end-to-end compiler tests");

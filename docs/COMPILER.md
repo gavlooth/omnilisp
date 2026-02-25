@@ -27,7 +27,7 @@ c3c compile output.c3 src/lisp/runtime.c3 src/main.c3 -o program
 # Scaffold a new Omni project
 ./build/main --init myproject
 
-# Generate FFI bindings from project.toml (requires libclang)
+# Generate FFI bindings from omni.toml (requires libclang)
 ./build/main --bind myproject/
 ```
 

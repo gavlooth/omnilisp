@@ -3,7 +3,7 @@ module lisp;
 import std::io;
 
 // =============================================================================
-// Minimal TOML Parser — supports only what project.toml needs:
+// Minimal TOML Parser — supports only what omni.toml needs:
 //   [section] and [section.sub.name] headers
 //   key = "value" string assignments
 //   key = ["a", "b"] string array assignments
@@ -20,6 +20,16 @@ struct TomlProject {
     char[32] version;
 }
 
+// Build configuration — controls project.json generation and C3 compiler flags
+struct TomlBuild {
+    char[128] output_dir;              // Build output directory (default: "build")
+    char[16] safety;                   // "safe" (default), "fast", "none"
+    char[8] opt;                       // "O0" (default), "O1", "O2", "O3", "Os", "Oz"
+    char[16] debug_info;               // "full" (default), "line-tables", "none"
+    bool single_module;                // Compile all modules together (default: false)
+    char[16] sanitize;                 // "none" (default), "address", "memory", "thread"
+}
+
 struct TomlFfiDep {
     char[64] name;                     // Section key (e.g., "math")
     char[128] library;                 // Shared lib name (e.g., "m")
@@ -32,6 +42,7 @@ struct TomlFfiDep {
 
 struct TomlConfig {
     TomlProject project;
+    TomlBuild build;
     TomlFfiDep[TOML_MAX_DEPS] ffi_deps;
     usz ffi_dep_count;
 }
@@ -57,8 +68,26 @@ fn void parse_toml(char[] source, TomlConfig* config) {
     for (usz i = 0; i < 32; i++) config.project.version[i] = 0;
     config.ffi_dep_count = 0;
 
+    // Build defaults
+    for (usz i = 0; i < 128; i++) config.build.output_dir[i] = 0;
+    char[] default_out = "build";
+    for (usz i = 0; i < default_out.len; i++) config.build.output_dir[i] = default_out[i];
+    for (usz i = 0; i < 16; i++) config.build.safety[i] = 0;
+    char[] default_safety = "safe";
+    for (usz i = 0; i < default_safety.len; i++) config.build.safety[i] = default_safety[i];
+    for (usz i = 0; i < 8; i++) config.build.opt[i] = 0;
+    char[] default_opt = "O0";
+    for (usz i = 0; i < default_opt.len; i++) config.build.opt[i] = default_opt[i];
+    for (usz i = 0; i < 16; i++) config.build.debug_info[i] = 0;
+    char[] default_dbg = "full";
+    for (usz i = 0; i < default_dbg.len; i++) config.build.debug_info[i] = default_dbg[i];
+    config.build.single_module = false;
+    for (usz i = 0; i < 16; i++) config.build.sanitize[i] = 0;
+    char[] default_san = "none";
+    for (usz i = 0; i < default_san.len; i++) config.build.sanitize[i] = default_san[i];
+
     // Track current section
-    // 0 = none, 1 = [project], 2 = [dependencies.ffi.X]
+    // 0 = none, 1 = [project], 2 = [dependencies.ffi.X], 3 = [build]
     int section_kind = 0;
     usz current_dep = 0;
 
@@ -120,6 +149,11 @@ fn void toml_parse_section(char[] header, int* section_kind, usz* current_dep, T
         return;
     }
 
+    if (header.len == 5 && toml_str_match(header, "build")) {
+        *section_kind = 3;
+        return;
+    }
+
     // Check for "dependencies.ffi.NAME"
     char[] prefix = "dependencies.ffi.";
     if (header.len > prefix.len && toml_str_match(header[:prefix.len], prefix)) {
@@ -153,12 +187,29 @@ fn void toml_parse_section(char[] header, int* section_kind, usz* current_dep, T
  */
 fn void toml_assign_value(char[] key, char[] val, int section_kind, usz current_dep, TomlConfig* config) {
     if (section_kind == 1) {
+        // [project]
         if (toml_str_match(key, "name")) {
             toml_copy_quoted(val, &config.project.name, 127);
         } else if (toml_str_match(key, "version")) {
             toml_copy_quoted(val, &config.project.version, 31);
         }
+    } else if (section_kind == 3) {
+        // [build]
+        if (toml_str_match(key, "output-dir")) {
+            toml_copy_quoted(val, &config.build.output_dir, 127);
+        } else if (toml_str_match(key, "safety")) {
+            toml_copy_quoted(val, &config.build.safety, 15);
+        } else if (toml_str_match(key, "opt")) {
+            toml_copy_quoted(val, &config.build.opt, 7);
+        } else if (toml_str_match(key, "debug-info")) {
+            toml_copy_quoted(val, &config.build.debug_info, 15);
+        } else if (toml_str_match(key, "single-module")) {
+            config.build.single_module = toml_str_match(val, "true");
+        } else if (toml_str_match(key, "sanitize")) {
+            toml_copy_quoted(val, &config.build.sanitize, 15);
+        }
     } else if (section_kind == 2 && current_dep < config.ffi_dep_count) {
+        // [dependencies.ffi.X]
         TomlFfiDep* dep = &config.ffi_deps[current_dep];
 
         if (toml_str_match(key, "library")) {

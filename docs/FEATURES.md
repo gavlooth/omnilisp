@@ -623,7 +623,7 @@ Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
 ./build/main --init myproject
 ```
 
-Creates a project directory with `project.toml`, `project.json`, `src/main.omni`, `lib/ffi/`, and `include/`.
+Creates a project directory with `omni.toml`, `src/main.omni`, `lib/ffi/`, `include/`, and `build/` (containing the generated `project.json` for C3).
 
 ### 12.2 `--bind` — Auto-Generate FFI Bindings
 
@@ -631,9 +631,9 @@ Creates a project directory with `project.toml`, `project.json`, `src/main.omni`
 ./build/main --bind myproject/
 ```
 
-Reads `project.toml`, parses C headers using libclang, and generates typed Omni FFI modules in `lib/ffi/`.
+Reads `omni.toml`, parses C headers using libclang, and generates typed Omni FFI modules in `lib/ffi/`.
 
-**project.toml format:**
+**omni.toml format:**
 
 ```toml
 [project]

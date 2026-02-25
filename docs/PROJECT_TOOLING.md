@@ -1,6 +1,6 @@
 # Omni Lisp — Project Tooling
 
-**Last updated:** 2026-02-23
+**Last updated:** 2026-02-25
 
 Omni provides CLI commands for creating projects and auto-generating FFI bindings from C headers.
 
@@ -11,20 +11,21 @@ Omni provides CLI commands for creating projects and auto-generating FFI binding
 ### `--init` — Scaffold a New Project
 
 ```bash
-./build/main --init myproject
+omni --init myproject
 ```
 
 Creates a complete project directory:
 
 ```
 myproject/
-  project.toml          # Project config with FFI dependencies
-  project.json          # C3 build config (for AOT compilation)
+  omni.toml             # Project config (the only file you edit)
   src/
     main.omni           # Entry point
   lib/
     ffi/                # Auto-generated FFI bindings go here
   include/              # Drop C headers here for local use
+  build/                # Build artifacts
+    project.json        # C3 build config (generated — do not edit)
 ```
 
 The generated `src/main.omni` contains a hello-world program:
@@ -36,17 +37,17 @@ The generated `src/main.omni` contains a hello-world program:
 ### `--bind` — Generate FFI Bindings
 
 ```bash
-./build/main --bind myproject/
-./build/main --bind                 # uses current directory
+omni --bind myproject/
+omni --bind                 # uses current directory
 ```
 
-Reads `project.toml`, parses C headers using libclang, and writes Omni FFI modules to `lib/ffi/`.
+Reads `omni.toml`, parses C headers using libclang, and writes Omni FFI modules to `lib/ffi/`.
 
 **Requires:** libclang installed on the system (see [Dependencies](#dependencies) below).
 
 ---
 
-## project.toml Format
+## omni.toml Format
 
 The project configuration uses a minimal TOML subset.
 
@@ -57,6 +58,35 @@ The project configuration uses a minimal TOML subset.
 name = "myproject"
 version = "0.1.0"
 ```
+
+### Build Configuration
+
+The `[build]` section controls compilation settings. These map to C3 compiler flags in the generated `build/project.json`.
+
+```toml
+[build]
+output-dir = "build"        # Where build artifacts go
+safety = "safe"             # "safe", "fast", or "none"
+opt = "O0"                  # "O0", "O1", "O2", "O3", "Os", "Oz"
+debug-info = "full"         # "full", "line-tables", "none"
+# sanitize = "none"         # "none", "address", "memory", "thread"
+# single-module = false
+```
+
+| Field | Default | Values | Description |
+|-------|---------|--------|-------------|
+| `output-dir` | `"build"` | Any path | Build output directory |
+| `safety` | `"safe"` | `"safe"`, `"fast"`, `"none"` | Runtime bounds/null checks, contracts |
+| `opt` | `"O0"` | `"O0"`–`"O3"`, `"Os"`, `"Oz"` | Optimization level |
+| `debug-info` | `"full"` | `"full"`, `"line-tables"`, `"none"` | Debug symbol level |
+| `sanitize` | `"none"` | `"none"`, `"address"`, `"memory"`, `"thread"` | Sanitizer |
+| `single-module` | `false` | `true`, `false` | Compile all modules together (more inlining) |
+
+**Safety levels explained:**
+
+- **`"safe"`** (default) — Bounds checking, null pointer checks, contract enforcement. Use during development.
+- **`"fast"`** — Disables safety checks for maximum performance. Use for release/production.
+- **`"none"`** — No safety, no contracts. Only for benchmarking or when you know exactly what you're doing.
 
 ### FFI Dependencies
 
@@ -193,13 +223,19 @@ If libclang is not found, `--bind` prints install instructions and exits with an
 
 ```bash
 # 1. Create a new project
-./build/main --init calculator
+omni --init calculator
 
-# 2. Edit project.toml to add math library
-cat > calculator/project.toml << 'EOF'
+# 2. Edit omni.toml to add math library
+cat > calculator/omni.toml << 'EOF'
 [project]
 name = "calculator"
 version = "0.1.0"
+
+[build]
+output-dir = "build"
+safety = "safe"
+opt = "O0"
+debug-info = "full"
 
 [dependencies.ffi.math]
 library = "m"
@@ -208,7 +244,7 @@ functions = ["sin", "cos", "tan", "sqrt", "pow", "log", "exp", "floor", "ceil"]
 EOF
 
 # 3. Generate FFI bindings
-./build/main --bind calculator/
+omni --bind calculator/
 
 # 4. Write your program
 cat > calculator/src/main.omni << 'EOF'
@@ -231,25 +267,26 @@ LD_LIBRARY_PATH=/usr/local/lib ../build/main src/main.omni
 ### Architecture
 
 ```
-project.toml ──► TOML Parser ──► TomlConfig
-                                      │
+omni.toml ──► TOML Parser ──► TomlConfig
+                                    │
 C Headers ──► libclang (dlopen) ──► ParsedFunc[]
-                                      │
-                                      ▼
-                              Binding Generator ──► lib/ffi/*.omni
+                                    │
+                                    ▼
+                            Binding Generator ──► lib/ffi/*.omni
 ```
 
 ### Source Files
 
 | File | Description |
 |------|-------------|
-| `src/lisp/toml.c3` | Minimal TOML parser (~200 lines) |
+| `src/lisp/toml.c3` | Minimal TOML parser (~260 lines) |
 | `src/lisp/libclang_bind.c3` | libclang dlopen wrapper + C header visitor (~300 lines) |
 | `src/lisp/bindgen.c3` | Omni FFI module code generator (~150 lines) |
 | `src/entry.c3` | `run_init()` and `run_bind()` CLI handlers |
 
 ### Design Decisions
 
+- **`omni.toml` + `build/project.json`**: Omni's config lives at project root; C3's `project.json` is generated inside `build/` to keep the root clean and make the ownership clear. C3 is invoked with `--path build/` to find it.
 - **libclang via C3-level dlopen** (not Omni FFI): libclang returns structs by value (`CXString`, `CXCursor`, `CXType`) which Omni's `ffi-call` can't handle. C3 function pointer aliases with proper struct types handle the x86-64 hidden-pointer ABI correctly.
 - **Optional runtime dependency**: libclang is only loaded when `--bind` is invoked. Projects that don't use `--bind` have zero additional dependencies.
 - **Canonical type resolution**: The type mapper calls `clang_getCanonicalType` to resolve typedefs before mapping, so `size_t` correctly maps to `'int` regardless of the typedef chain.

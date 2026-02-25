@@ -1006,14 +1006,14 @@ LD_LIBRARY_PATH=/usr/local/lib ./build/main --repl          # Interactive REPL
 
 ```bash
 ./build/main --init myproject                               # Scaffold project directory
-./build/main --bind myproject/                              # Generate FFI bindings from project.toml
+./build/main --bind myproject/                              # Generate FFI bindings from omni.toml
 ```
 
-- `--init` creates `project.toml`, `project.json`, `src/main.omni`, `lib/ffi/`, `include/`
-- `--bind` reads `project.toml`, parses C headers via libclang, writes typed FFI modules to `lib/ffi/`
+- `--init` creates `omni.toml`, `src/main.omni`, `lib/ffi/`, `include/`, `build/` (with generated `project.json`)
+- `--bind` reads `omni.toml`, parses C headers via libclang, writes typed FFI modules to `lib/ffi/`
 - libclang is an optional runtime dependency (only needed for `--bind`)
 
-See `docs/PROJECT_TOOLING.md` for the complete reference including `project.toml` format, type mapping, and workflow examples.
+See `docs/PROJECT_TOOLING.md` for the complete reference including `omni.toml` format, build configuration, type mapping, and workflow examples.
 
 ---
 
