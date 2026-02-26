@@ -5,13 +5,55 @@ import std::collections::list;
 import main;
 
 // =============================================================================
-// GNU READLINE FFI DECLARATIONS
+// REPLXX FFI DECLARATIONS
 // =============================================================================
-// readline returns a malloc'd string (null on EOF), must be freed with mem::free.
-// add_history adds a line to the interactive history.
+// replxx is a readline replacement with syntax highlighting, hints, and completions.
+// replxx_input returns a library-managed pointer (do NOT free it). null on EOF.
 
-extern fn char* readline(char* prompt) @extern("readline");
-extern fn void add_history(char* line) @extern("add_history");
+// Opaque replxx handle — use void* since C3 requires uppercase for type defs
+alias ReplxxHighlighterCb = fn void(char*, CInt*, CInt, void*);
+alias ReplxxCompletionCb = fn void(char*, void*, CInt*, void*);
+
+extern fn void* replxx_init() @extern("replxx_init");
+extern fn void replxx_end(void* rx) @extern("replxx_end");
+extern fn char* replxx_input(void* rx, char* prompt) @extern("replxx_input");
+extern fn void replxx_history_add(void* rx, char* line) @extern("replxx_history_add");
+extern fn int replxx_history_load(void* rx, char* filename) @extern("replxx_history_load");
+extern fn int replxx_history_save(void* rx, char* filename) @extern("replxx_history_save");
+extern fn void replxx_set_max_history_size(void* rx, CInt len) @extern("replxx_set_max_history_size");
+extern fn void replxx_set_highlighter_callback(void* rx, ReplxxHighlighterCb cb, void* ud) @extern("replxx_set_highlighter_callback");
+extern fn void replxx_set_completion_callback(void* rx, ReplxxCompletionCb cb, void* ud) @extern("replxx_set_completion_callback");
+extern fn void replxx_add_completion(void* lc, char* str) @extern("replxx_add_completion");
+extern fn void replxx_set_word_break_characters(void* rx, char* wb) @extern("replxx_set_word_break_characters");
+extern fn void replxx_set_unique_history(void* rx, CInt val) @extern("replxx_set_unique_history");
+extern fn int replxx_install_window_change_handler(void* rx) @extern("replxx_install_window_change_handler");
+extern fn void replxx_enable_bracketed_paste(void* rx) @extern("replxx_enable_bracketed_paste");
+extern fn void replxx_set_indent_multiline(void* rx, CInt val) @extern("replxx_set_indent_multiline");
+
+// Replxx color constants
+const CInt RXCOLOR_BLACK         = 0;
+const CInt RXCOLOR_RED           = 1;
+const CInt RXCOLOR_GREEN         = 2;
+const CInt RXCOLOR_BROWN         = 3;
+const CInt RXCOLOR_BLUE          = 4;
+const CInt RXCOLOR_MAGENTA       = 5;
+const CInt RXCOLOR_CYAN          = 6;
+const CInt RXCOLOR_LIGHTGRAY     = 7;
+const CInt RXCOLOR_GRAY          = 8;
+const CInt RXCOLOR_BRIGHTRED     = 9;
+const CInt RXCOLOR_BRIGHTGREEN   = 10;
+const CInt RXCOLOR_YELLOW        = 11;
+const CInt RXCOLOR_BRIGHTBLUE    = 12;
+const CInt RXCOLOR_BRIGHTMAGENTA = 13;
+const CInt RXCOLOR_BRIGHTCYAN    = 14;
+const CInt RXCOLOR_WHITE         = 15;
+const CInt RXCOLOR_DEFAULT       = 1 << 16;
+const CInt RXCOLOR_BOLD          = 1 << 17;
+
+// Global replxx handle for use in callbacks
+void* g_replxx = null;
+// Global interp for completion callback
+Interp* g_repl_interp = null;
 
 // =============================================================================
 // POSIX SIGNAL HANDLING
@@ -1685,7 +1727,7 @@ fn void register_primitives(Interp* interp) {
     }
 
     // --- Regular primitives ---
-    PrimReg[88] regular_prims = {
+    PrimReg[89] regular_prims = {
         // List operations
         { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
         { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 }, { "list", &prim_list, -1 },
@@ -1730,7 +1772,7 @@ fn void register_primitives(Interp* interp) {
         { "string-index-of", &prim_string_index_of, 2 },
         { "string-replace", &prim_string_replace, 3 }, { "char-at", &prim_char_at, 2 },
         { "string-repeat", &prim_string_repeat, 2 }, { "procedure?", &prim_is_procedure, 1 },
-        { "format", &prim_format, -1 },
+        { "format", &prim_format, -1 }, { "cl-format", &prim_cl_format, -1 },
         // Introspection & metaprogramming
         { "macroexpand", &prim_macroexpand, 1 }, { "eval", &prim_eval, 1 },
         { "apply", &prim_apply, 2 }, { "bound?", &prim_bound, 1 },
@@ -1958,6 +2000,181 @@ fn usz read_line(char[] buffer) {
     return len;
 }
 
+// =============================================================================
+// REPLXX CALLBACKS — Syntax Highlighting + Completion
+// =============================================================================
+
+// Check if a symbol name is a keyword (special form)
+fn bool is_keyword(char[] name) {
+    // Special forms
+    char[][] keywords = {
+        "lambda", "define", "let", "if", "begin", "set!", "quote",
+        "and", "or", "match", "reset", "shift", "signal", "handle",
+        "resolve", "module", "import", "export", "with-continuation"
+    };
+    foreach (kw : keywords) {
+        if (kw.len == name.len) {
+            bool eq = true;
+            for (usz i = 0; i < kw.len; i++) {
+                if (kw[i] != name[i]) { eq = false; break; }
+            }
+            if (eq) return true;
+        }
+    }
+    return false;
+}
+
+// Check if a symbol is a builtin constant
+fn bool is_builtin_const(char[] name) {
+    char[][] builtins = { "true", "false", "nil", "pi", "e" };
+    foreach (b : builtins) {
+        if (b.len == name.len) {
+            bool eq = true;
+            for (usz i = 0; i < b.len; i++) {
+                if (b[i] != name[i]) { eq = false; break; }
+            }
+            if (eq) return true;
+        }
+    }
+    return false;
+}
+
+// Helper: classify a symbol name and apply color to the range [start, end) in colors array
+fn void flush_symbol(char* input, CInt* colors, isz start, CInt end_pos) {
+    if (start < 0 || start >= (isz)end_pos) return;
+    usz slen = (usz)end_pos - (usz)start;
+    char[128] sbuf;
+    if (slen > 127) slen = 127;
+    for (usz k = 0; k < slen; k++) sbuf[k] = input[(usz)start + k];
+    char[] sym = sbuf[:slen];
+
+    CInt col = RXCOLOR_DEFAULT;
+    if (is_keyword(sym)) {
+        col = RXCOLOR_BRIGHTCYAN | RXCOLOR_BOLD;
+    } else if (is_builtin_const(sym)) {
+        col = RXCOLOR_BRIGHTMAGENTA;
+    }
+    for (isz j = start; j < (isz)end_pos; j++) {
+        colors[(CInt)j] = col;
+    }
+}
+
+// Syntax highlighter callback for replxx — colors individual code points
+fn void lisp_highlighter(char* input, CInt* colors, CInt size, void* ud) {
+    if (input == null || size <= 0) return;
+
+    bool in_string = false;
+    bool in_comment = false;
+    bool escape_next = false;
+    int paren_depth = 0;
+    CInt[6] paren_colors = { RXCOLOR_BRIGHTCYAN, RXCOLOR_BRIGHTMAGENTA, RXCOLOR_YELLOW, RXCOLOR_BRIGHTGREEN, RXCOLOR_BRIGHTBLUE, RXCOLOR_BRIGHTRED };
+    isz sym_start = -1;
+
+    for (CInt i = 0; i < size; i++) {
+        char c = input[i];
+
+        if (in_comment) {
+            colors[i] = RXCOLOR_GRAY;
+            if (c == '\n') { in_comment = false; }
+            continue;
+        }
+
+        if (in_string) {
+            colors[i] = RXCOLOR_GREEN;
+            if (escape_next) { escape_next = false; continue; }
+            if (c == '\\') { escape_next = true; continue; }
+            if (c == '"') { in_string = false; }
+            continue;
+        }
+
+        // Normal mode
+        if (c == ';') {
+            flush_symbol(input, colors, sym_start, i); sym_start = -1;
+            in_comment = true;
+            colors[i] = RXCOLOR_GRAY;
+        } else if (c == '"') {
+            flush_symbol(input, colors, sym_start, i); sym_start = -1;
+            in_string = true;
+            colors[i] = RXCOLOR_GREEN;
+        } else if (c == '(' || c == ')') {
+            flush_symbol(input, colors, sym_start, i); sym_start = -1;
+            if (c == '(') {
+                colors[i] = paren_colors[paren_depth % 6];
+                paren_depth++;
+            } else {
+                paren_depth--;
+                if (paren_depth < 0) { paren_depth = 0; }
+                colors[i] = paren_colors[paren_depth % 6];
+            }
+        } else if (c == '[' || c == ']') {
+            flush_symbol(input, colors, sym_start, i); sym_start = -1;
+            colors[i] = RXCOLOR_YELLOW;
+        } else if (c == '{' || c == '}') {
+            flush_symbol(input, colors, sym_start, i); sym_start = -1;
+            colors[i] = RXCOLOR_BROWN;
+        } else if (c == '\'' && (i == 0 || input[i-1] == '(' || input[i-1] == ' ' || input[i-1] == '\t')) {
+            colors[i] = RXCOLOR_CYAN;
+        } else if (c >= '0' && c <= '9' && sym_start < 0) {
+            colors[i] = RXCOLOR_BRIGHTMAGENTA;
+        } else if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+            flush_symbol(input, colors, sym_start, i); sym_start = -1;
+        } else {
+            if (sym_start < 0) { sym_start = (isz)i; }
+        }
+    }
+
+    // Flush trailing symbol
+    flush_symbol(input, colors, sym_start, size);
+}
+
+// Completion callback — complete defined symbols
+fn void lisp_completion(char* input, void* completions, CInt* context_len, void* ud) {
+    if (input == null || g_repl_interp == null) return;
+
+    // Find the start of the current word
+    usz len = 0;
+    while (input[len] != 0) { len++; }
+    if (len == 0) return;
+
+    // Walk backward to find word start
+    isz word_start = (isz)len - 1;
+    while (word_start >= 0) {
+        char c = input[word_start];
+        if (c == ' ' || c == '\t' || c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}' || c == '\'' || c == '"') {
+            word_start++;
+            break;
+        }
+        if (word_start == 0) { break; }
+        word_start--;
+    }
+    if (word_start < 0) { word_start = 0; }
+
+    usz prefix_len = len - (usz)word_start;
+    if (prefix_len == 0) return;
+    *context_len = (CInt)prefix_len;
+    char* prefix = &input[word_start];
+
+    // Search global env bindings
+    Env* env = g_repl_interp.global_env;
+    for (usz i = 0; i < env.binding_count; i++) {
+        char[] name = g_repl_interp.symbols.get_name(env.bindings[i].name);
+        if (name.len >= prefix_len) {
+            bool match = true;
+            for (usz k = 0; k < prefix_len; k++) {
+                if (name[k] != prefix[k]) { match = false; break; }
+            }
+            if (match) {
+                char[256] nbuf;
+                usz copy = name.len;
+                if (copy > 255) { copy = 255; }
+                for (usz k = 0; k < copy; k++) { nbuf[k] = name[k]; }
+                nbuf[copy] = 0;
+                replxx_add_completion(completions, &nbuf[0]);
+            }
+        }
+    }
+}
+
 /**
  * Read-Eval-Print-Loop.
  */
@@ -2014,6 +2231,35 @@ fn void repl(Interp* interp) {
     // Install SIGINT handler so Ctrl+C interrupts eval instead of killing process
     signal(SIGINT_VAL, &sigint_handler);
 
+    // Initialize replxx
+    void* rx = replxx_init();
+    if (rx == null) {
+        io::eprintn("Failed to initialize replxx");
+        return;
+    }
+    g_replxx = rx;
+    g_repl_interp = interp;
+
+    // Configure replxx
+    replxx_set_max_history_size(rx, 1000);
+    replxx_set_unique_history(rx, 1);
+    replxx_install_window_change_handler(rx);
+    replxx_set_word_break_characters(rx, " \t\n()[]{}';\"");
+    replxx_set_indent_multiline(rx, 1);
+
+    // Register callbacks
+    replxx_set_highlighter_callback(rx, &lisp_highlighter, null);
+    replxx_set_completion_callback(rx, &lisp_completion, null);
+
+    // Load history from ~/.omni_history
+    char* history_file = ".omni_history";
+    replxx_history_load(rx, history_file);
+
+    // ANSI color codes for output
+    char[] ansi_red     = "\x1b[31m";
+    char[] ansi_green   = "\x1b[32m";
+    char[] ansi_reset   = "\x1b[0m";
+
     io::printn("Omni Lisp REPL (type 'quit' or 'exit' to leave, Ctrl-D for EOF)");
     io::printn("---");
 
@@ -2025,15 +2271,15 @@ fn void repl(Interp* interp) {
         // Determine prompt: primary or continuation
         char* prompt;
         if (buf_len == 0) {
-            prompt = "omni> ";
+            prompt = "\x1b[1;34momni>\x1b[0m ";
         } else {
-            prompt = "...   ";
+            prompt = "\x1b[1;34m ....\x1b[0m ";
         }
 
-        // Use GNU readline for line editing and history support
-        char* line = readline(prompt);
+        // Use replxx for line editing with syntax highlighting
+        char* line = (char*)replxx_input(rx, prompt);
 
-        // readline returns null on EOF (Ctrl-D)
+        // null on EOF (Ctrl-D)
         if (line == null) {
             if (buf_len > 0) {
                 // Cancel incomplete expression on Ctrl-D
@@ -2051,7 +2297,7 @@ fn void repl(Interp* interp) {
             len++;
         }
 
-        defer mem::free(line);
+        // replxx manages the returned pointer — do NOT free it
 
         // If we're in continuation mode and get an empty line, cancel
         if (buf_len > 0 && len == 0) {
@@ -2080,11 +2326,10 @@ fn void repl(Interp* interp) {
             }
         }
 
-        // Append line to buffer (with space separator if continuing)
+        // Append line to buffer (with newline separator if continuing)
         if (buf_len > 0) {
-            // Add a space separator between lines
             if (buf_len < 8191) {
-                buf[buf_len] = ' ';
+                buf[buf_len] = '\n';
                 buf_len++;
             }
         }
@@ -2110,8 +2355,8 @@ fn void repl(Interp* interp) {
 
         // Expression looks complete (balanced or no parens)
         // Add the full accumulated expression to history
-        buf[buf_len] = 0; // null-terminate for add_history
-        add_history(&buf[0]);
+        buf[buf_len] = 0;
+        replxx_history_add(rx, &buf[0]);
 
         // GC JIT states between REPL lines (safe: no JIT code on stack)
         jit_gc();
@@ -2136,33 +2381,39 @@ fn void repl(Interp* interp) {
         interp.current_frame = saved_frame;
 
         if (r.error.has_error) {
-            // Print error with location if available
+            // Print error in red
             usz msg_len = 0;
             while (msg_len < 256 && r.error.message[msg_len] != 0) {
                 msg_len++;
             }
 
+            io::print(ansi_red);
             if (r.error.line > 0) {
                 io::printf("Error at line %d, column %d: ", (int)r.error.line, (int)r.error.column);
-                for (usz i = 0; i < msg_len; i++) {
-                    io::printf("%c", r.error.message[i]);
-                }
-                io::printn("");
             } else {
                 io::print("Error: ");
-                for (usz i = 0; i < msg_len; i++) {
-                    io::printf("%c", r.error.message[i]);
-                }
-                io::printn("");
             }
+            for (usz i = 0; i < msg_len; i++) {
+                io::printf("%c", r.error.message[i]);
+            }
+            io::print(ansi_reset);
+            io::printn("");
         } else {
-            // Print the result
+            // Print result in green
+            io::print(ansi_green);
             print_value(r.value, &interp.symbols);
+            io::print(ansi_reset);
             io::printn("");
         }
 
         // Reset buffer for next expression
         buf_len = 0;
     }
+
+    // Save history and cleanup
+    replxx_history_save(rx, history_file);
+    replxx_end(rx);
+    g_replxx = null;
+    g_repl_interp = null;
 }
 

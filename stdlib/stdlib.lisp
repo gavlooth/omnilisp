@@ -22,7 +22,7 @@
 (define [macro] when ([test .. body] (if test (begin .. body) nil)))
 (define [macro] unless ([test .. body] (if test nil (begin .. body))))
 (define [macro] cond ([] nil) ([test body .. rest] (if test body (cond .. rest))))
-(define with-trampoline (lambda (thunk) (handle (thunk nil) (bounce next-thunk (respond (with-trampoline next-thunk))))))
+(define with-trampoline (lambda (thunk) (handle (thunk nil) (bounce next-thunk (resolve (with-trampoline next-thunk))))))
 
 ;; =========================================================================
 ;; Type Predicates (defined via is? and abstract type hierarchy)

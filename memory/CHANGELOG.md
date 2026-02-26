@@ -1,9 +1,109 @@
 # Changelog
 
-## 2026-02-26 (Session 34): Syntax cleanup — flat-pair let, signal/respond, implicit begin
+## 2026-02-26 (Session 39+40): Effect handler bug fixes — all 4 known bugs resolved
 
 ### Summary
-Major syntax simplification pass. Replaced Scheme-style `(let ((x 10)) body)` with flat-pair `(let (x 10) body)`. Replaced `perform`/`k` effect syntax with `signal`/`respond`. Added implicit begin for lambda and define bodies. No backward compatibility (version < 1.0).
+Fixed all 4 known effect handler bugs: resolve-with-value hang, multi-tag crash, abort hang, and memory explosion with many signals. Root cause was body continuing after handler fired (no non-local exit). Solution: longjmp-based termination via context_capture/context_restore.
+
+### Bug Fixes
+1. **Resolve-with-value hang** — body continued executing after handler fired. Fix: handler clause does `context_restore` to handler's save point, terminating the body.
+2. **Multi-tag crash** — replay check only matched same-tag signals. Fix: removed tag check from replay condition (tag-agnostic multi-tag replay).
+3. **Abort hang** — handler that doesn't call resolve left body running. Fix: all handler clauses now terminate body via `context_restore` to handler save point.
+4. **Memory explosion (>~20 signals)** — each signal allocated ~2KB CapturedCont (embeds EffectHandler with 64-element arrays) in root_region, never freed.
+   - Fix: switch CapturedCont + Continuation to `malloc`/`free`, recycled per handler level via `active_effect_cc[64]` array on Interp.
+   - Root cause of crash at ~256 signals: region system's inline storage invalidated by packed_slots reallocation (Pool growth invalidated `dereference_as` pointers). Fixed by using malloc for Continuation too.
+   - 50,000 signals with resolved values now works correctly.
+
+### Direct Resume Optimization (single-shot resolve)
+- `jit_exec_perform`: `context_capture` for signal save point
+- `jit_exec_resolve`: single-shot path longjmps directly to signal save point (O(1) per signal instead of O(N²) replay)
+- Multi-shot fallback: uses existing replay via `jit_apply_continuation`
+
+### Files Modified
+- **src/lisp/value.c3** — Added `handle_jmp[64]`, `active_effect_cc[64]` to Interp; added `signal_save`, `saved_jit_env`, `resolved`, `handler_idx`, `owned_continuation` to CapturedCont
+- **src/lisp/jit.c3** — Rewrote `jit_handle_impl` (save point + prev_jmp + prev_active_cc management), `jit_perform_impl` (malloc + handler_count unwinding + context_restore), `jit_exec_perform` (signal save point), `jit_exec_resolve` (single-shot direct resume)
+
+### Tests
+- 870 unified + 77 compiler = 947 total, 0 failures
+- Stress: 50,000 signals with resolved values works correctly
+
+## 2026-02-26 (Session 38): match bug fix, omni-torch syntax + XOR NN demo
+
+### Summary
+Fixed critical match bug (TCO bounce not handled when match nested inside define/let/args). Updated omni-torch repo to current syntax. Created XOR neural network example demonstrating effects, match, cond, dispatch, named let, format strings, and module system.
+
+### Bug fix
+- **src/lisp/jit.c3** `jit_do_match` — match used TCO bounce to evaluate clause bodies, but this only works at top-level `jit_eval`. When nested inside `define`/`let`/args, outer compiled code received the TCO sentinel instead of the actual value. Fix: evaluate clause body directly via `jit_eval()` instead of TCO bouncing. This also fixed `cond` in handler bodies (same root cause).
+
+### Changes
+- **src/lisp/jit.c3** — fixed `jit_do_match` TCO bounce bug (match now works from files, nested in any context)
+- **omni-torch/lib/torch.omni** — converted 6 old-style let expressions to flat-pair syntax
+- **omni-torch/examples/xor_nn.omni** — new: 2-layer sigmoid network, manual backprop, chunked training with effect-based monitoring, two demo handlers (verbose + annotated with match/cond)
+- **omni-torch/Makefile** — added `xor` target
+
+### Effect handler findings
+- Single-tag signals with resolve nil: works reliably
+- Using resolved value (not nil) hangs the process
+- Multi-tag signals (nested/multi-clause handles) crash
+- Abort pattern (no resolve) hangs
+- Many signals per handle scope causes memory explosion
+- Workaround: train in pure chunks, signal between chunks, resolve nil, use set! to capture results
+
+## 2026-02-26 (Session 37): Replxx REPL with syntax highlighting, completion, colored output
+
+### Summary
+Replaced GNU readline with replxx for the REPL. Adds real-time syntax highlighting (rainbow parens, keyword/constant coloring, string/comment/number highlighting), tab completion of defined symbols, colored output (green for results, red for errors, blue prompt), and persistent history (~/.omni_history).
+
+### Features
+- **Syntax highlighting**: keywords (bold cyan), builtins (magenta), strings (green), comments (gray), numbers (magenta), rainbow parens (6-color cycle), brackets (yellow), braces (brown)
+- **Tab completion**: completes any symbol defined in the global environment
+- **Colored output**: results in green, errors in red, prompt in bold blue
+- **History**: persistent to `.omni_history`, unique entries, max 1000
+
+### Files Modified
+- `src/lisp/eval.c3` — replaced readline FFI with replxx FFI, added `lisp_highlighter`, `flush_symbol`, `lisp_completion` callbacks, rewrote `repl()` function
+- `project.json` — `readline` → `replxx` + `stdc++` in linked-libraries
+- `src/entry.c3` — updated comment
+
+### Test Count
+- 870 unified + 77 compiler = 947 total, 0 failures
+
+## 2026-02-26 (Session 36): Printf-style format, cl-format backward compat
+
+### Summary
+Added new printf-style `format` primitive with specifiers `%s`, `%d`, `%f`, `%e`, `%x`, `%X`, `%o`, `%b`, `%%`, plus width/precision/left-align support. Renamed old CL-style format (using `~a`, `~s`, `~~`) to `cl-format` for backward compatibility.
+
+### Files Modified
+- `src/lisp/primitives.c3` — renamed `prim_format` to `prim_cl_format`, added new `prim_format` with printf-style parsing, added helpers `strval_append`, `strval_append_padded`, `strval_append_num_padded`, `format_append_display`
+- `src/lisp/eval.c3` — registered both `"format"` (new) and `"cl-format"` (old), bumped `PrimReg` array size from 88 to 89
+- `src/lisp/tests.c3` — replaced 1 old format test with 18 new tests (3 cl-format backward compat + 15 printf-style format)
+
+### Test Count
+- 870 unified + 77 compiler = 947 total, 0 failures
+
+## 2026-02-26 (Session 35): Rename respond → resolve
+
+### Summary
+Renamed `respond` keyword to `resolve` throughout the codebase. `resolve` better conveys "settling an open question" — signal raises something unresolved, the handler resolves it. Works for all patterns (request/response, logging, errors) without implying directionality.
+
+### Files Modified
+- `src/lisp/value.c3` — `E_RESPOND` → `E_RESOLVE`, `ExprRespond` → `ExprResolve`, `sym_respond` → `sym_resolve`
+- `src/lisp/parser.c3` — `parse_respond` → `parse_resolve`, all references updated
+- `src/lisp/jit.c3` — `jit_exec_respond` → `jit_exec_resolve`, `jit_compile_respond` → `jit_compile_resolve`
+- `src/lisp/macros.c3` — `E_RESPOND` → `E_RESOLVE`
+- `src/lisp/compiler.c3` — serializer, stdlib prelude, all references
+- `src/lisp/tests.c3` — all test expressions: `(respond ...)` → `(resolve ...)`
+- `stdlib/stdlib.lisp` — `with-trampoline` handler
+- `docs/EFFECTS_GUIDE.md` — full update including section headers
+- `docs/LANGUAGE_SPEC.md` — full update, also fixed stale let syntax and removed backward compat section
+
+### Test Count
+- 850 unified + 77 compiler = 927 total, 0 failures
+
+## 2026-02-26 (Session 34): Syntax cleanup — flat-pair let, signal/resolve, implicit begin
+
+### Summary
+Major syntax simplification pass. Replaced Scheme-style `(let ((x 10)) body)` with flat-pair `(let (x 10) body)`. Replaced `perform`/`k` effect syntax with `signal`/`resolve`. Added implicit begin for lambda and define bodies. No backward compatibility (version < 1.0).
 
 ### Let Syntax — Flat Pairs
 - **Regular let**: `(let (x 10) body)` and `(let (x 1 y 2) body)` — no double parens
@@ -12,12 +112,12 @@ Major syntax simplification pass. Replaced Scheme-style `(let ((x 10)) body)` wi
 - Updated parser (`parse_let`, `parse_named_let`), macro expander (`value_to_expr`), and compiler serializer
 - All bodies now support implicit begin (multiple expressions)
 
-### Effect Syntax — signal/respond
+### Effect Syntax — signal/resolve
 - `perform` removed from parser — `signal` is the only keyword
-- Old handler clause `((tag k arg) (k expr))` replaced with `(tag arg (respond expr))`
+- Old handler clause `((tag k arg) (k expr))` replaced with `(tag arg (resolve expr))`
 - Old `((tag k arg) expr)` abort style replaced with `(tag arg expr)`
 - Multi-shot tests keep old `((tag k x) (+ (k 10) (k 20)))` syntax (needs explicit `k`)
-- `with-trampoline` stdlib updated: `bounce` handler uses `respond`
+- `with-trampoline` stdlib updated: `bounce` handler uses `resolve`
 
 ### Implicit Begin
 - Added `parse_implicit_begin()` helper in parser
@@ -29,8 +129,8 @@ Major syntax simplification pass. Replaced Scheme-style `(let ((x 10)) body)` wi
 - `src/lisp/macros.c3` — `value_to_expr` updated for flat-pair let, `sym_perform` → `sym_signal`
 - `src/lisp/compiler.c3` — serializer updated, embedded stdlib updated
 - `src/lisp/tests.c3` — all 170+ test expressions updated
-- `stdlib/stdlib.lisp` — all let/signal/respond syntax updated
-- `docs/EFFECTS_GUIDE.md` — already used signal/respond from previous session
+- `stdlib/stdlib.lisp` — all let/signal/resolve syntax updated
+- `docs/EFFECTS_GUIDE.md` — already used signal/resolve from previous session
 
 ### Test Count
 - Before: 850 unified + 77 compiler = 927 total

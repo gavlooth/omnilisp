@@ -664,8 +664,8 @@ fn Expr* expand_macros_in_expr(Expr* expr, Interp* interp) {
             expr.perform.arg = expand_macros_in_expr(expr.perform.arg, interp);
             return expr;
         }
-        case E_RESPOND: {
-            expr.respond.value = expand_macros_in_expr(expr.respond.value, interp);
+        case E_RESOLVE: {
+            expr.resolve.value = expand_macros_in_expr(expr.resolve.value, interp);
             return expr;
         }
         case E_HANDLE: {

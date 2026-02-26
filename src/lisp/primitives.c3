@@ -1717,8 +1717,300 @@ fn Value* prim_is_odd(Value*[] args, Env* env, Interp* interp) {
     return (args[0].int_val % 2 != 0) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
+// Helper: append a char[] slice to a StringVal
+fn void strval_append(StringVal* sv, char[] s) {
+    strval_ensure(sv, s.len);
+    for (usz k = 0; k < s.len; k++) {
+        sv.chars[sv.len++] = s[k];
+    }
+}
+
+// Helper: append with width/precision padding
+fn void strval_append_padded(StringVal* sv, char[] s, int width, int precision, bool left_align, bool has_precision) {
+    // Apply precision (truncate) — only for string-like content
+    char[] content = s;
+    if (has_precision && precision >= 0 && (usz)precision < content.len) {
+        content = content[:(usz)precision];
+    }
+    int content_len = (int)content.len;
+    int pad = 0;
+    if (width > content_len) pad = width - content_len;
+
+    if (!left_align && pad > 0) {
+        strval_ensure(sv, (usz)pad);
+        for (int k = 0; k < pad; k++) sv.chars[sv.len++] = ' ';
+    }
+    strval_append(sv, content);
+    if (left_align && pad > 0) {
+        strval_ensure(sv, (usz)pad);
+        for (int k = 0; k < pad; k++) sv.chars[sv.len++] = ' ';
+    }
+}
+
+// Helper: append numeric string with width padding (no precision truncation)
+fn void strval_append_num_padded(StringVal* sv, char[] s, int width, bool left_align) {
+    int content_len = (int)s.len;
+    int pad = 0;
+    if (width > content_len) pad = width - content_len;
+
+    if (!left_align && pad > 0) {
+        strval_ensure(sv, (usz)pad);
+        for (int k = 0; k < pad; k++) sv.chars[sv.len++] = ' ';
+    }
+    strval_append(sv, s);
+    if (left_align && pad > 0) {
+        strval_ensure(sv, (usz)pad);
+        for (int k = 0; k < pad; k++) sv.chars[sv.len++] = ' ';
+    }
+}
+
+// Helper: append a value in display form to a StringVal (like %s: no quotes on strings)
+fn void format_append_display(StringVal* sv, Value* a, Interp* interp) {
+    if (a == null || is_nil(a)) {
+        strval_append(sv, "nil");
+    } else if (is_int(a)) {
+        char[32] nbuf;
+        char[] nslice = io::bprintf(&nbuf, "%d", a.int_val)!!;
+        strval_append(sv, nslice);
+    } else if (is_double(a)) {
+        char[64] nbuf;
+        char[] nslice = io::bprintf(&nbuf, "%.15g", a.double_val)!!;
+        strval_append(sv, nslice);
+    } else if (a.tag == STRING) {
+        strval_append(sv, a.str_val.chars[:a.str_val.len]);
+    } else if (is_symbol(a)) {
+        strval_append(sv, interp.symbols.get_name(a.sym_val));
+    } else {
+        strval_append(sv, "#<obj>");
+    }
+}
+
 fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "format: expected format string");
+    char[] fmt = args[0].str_val.chars[:args[0].str_val.len];
+    Value* result = interp.alloc_value();
+    result.tag = STRING;
+    result.str_val = strval_new(fmt.len);
+    usz arg_idx = 1;
+
+    for (usz i = 0; i < fmt.len; i++) {
+        if (fmt[i] == '%' && i + 1 < fmt.len) {
+            i++; // skip '%'
+
+            // Parse flags
+            bool left_align = false;
+            if (i < fmt.len && fmt[i] == '-') {
+                left_align = true;
+                i++;
+            }
+
+            // Parse width
+            int width = 0;
+            bool has_width = false;
+            while (i < fmt.len && fmt[i] >= '0' && fmt[i] <= '9') {
+                width = width * 10 + (int)(fmt[i] - '0');
+                has_width = true;
+                i++;
+            }
+
+            // Parse precision
+            int precision = -1;
+            bool has_precision = false;
+            if (i < fmt.len && fmt[i] == '.') {
+                i++;
+                precision = 0;
+                has_precision = true;
+                while (i < fmt.len && fmt[i] >= '0' && fmt[i] <= '9') {
+                    precision = precision * 10 + (int)(fmt[i] - '0');
+                    i++;
+                }
+            }
+
+            if (i >= fmt.len) {
+                // Trailing '%' with no directive — just emit '%'
+                strval_push(result.str_val, '%');
+                break;
+            }
+
+            char directive = fmt[i];
+
+            if (directive == '%') {
+                // %% → literal %
+                strval_push(result.str_val, '%');
+                continue;
+            }
+
+            // All other directives consume an argument
+            if (arg_idx >= args.len) {
+                return raise_error(interp, "format: not enough arguments");
+            }
+            Value* a = args[arg_idx++];
+
+            switch (directive) {
+                case 's':
+                    // Display value (strings without quotes)
+                    // Use a temp StringVal to capture the display output
+                    StringVal* stmp = strval_new(32);
+                    format_append_display(stmp, a, interp);
+                    char[] sval = stmp.chars[:stmp.len];
+                    strval_append_padded(result.str_val, sval, width, precision, left_align, has_precision);
+                    mem::free(stmp.chars);
+                    mem::free(stmp);
+
+                case 'd':
+                    // Decimal integer
+                    if (!is_int(a)) return raise_error(interp, "format: %d expects integer");
+                    char[32] dbuf;
+                    char[] dval = io::bprintf(&dbuf, "%d", a.int_val)!!;
+                    strval_append_num_padded(result.str_val, dval, width, left_align);
+
+                case 'f':
+                    // Fixed-point float
+                    double fnum;
+                    if (is_int(a)) {
+                        fnum = (double)a.int_val;
+                    } else if (is_double(a)) {
+                        fnum = a.double_val;
+                    } else {
+                        return raise_error(interp, "format: %f expects number");
+                    }
+                    char[128] fbuf;
+                    char[] fval;
+                    if (has_precision) {
+                        // Build format string dynamically for precision
+                        char[16] ffmt;
+                        char[] ffmt_s = io::bprintf(&ffmt, "%%.%df", precision)!!;
+                        // We need to use the precision value; use bprintf with a fixed set
+                        // Since C3 bprintf doesn't support dynamic format strings easily,
+                        // we format with max precision and truncate
+                        fval = io::bprintf(&fbuf, "%.20f", fnum)!!;
+                        // Find decimal point and truncate to precision digits after it
+                        usz dot_pos = 0;
+                        bool found_dot = false;
+                        for (usz k = 0; k < fval.len; k++) {
+                            if (fval[k] == '.') { dot_pos = k; found_dot = true; break; }
+                        }
+                        if (found_dot && precision == 0) {
+                            fval = fval[:dot_pos];
+                        } else if (found_dot) {
+                            usz end = dot_pos + 1 + (usz)precision;
+                            if (end > fval.len) end = fval.len;
+                            fval = fval[:end];
+                        }
+                    } else {
+                        // Default: 6 decimal places
+                        fval = io::bprintf(&fbuf, "%.6f", fnum)!!;
+                    }
+                    strval_append_num_padded(result.str_val, fval, width, left_align);
+
+                case 'e':
+                    // Scientific notation
+                    double eval_num;
+                    if (is_int(a)) {
+                        eval_num = (double)a.int_val;
+                    } else if (is_double(a)) {
+                        eval_num = a.double_val;
+                    } else {
+                        return raise_error(interp, "format: %e expects number");
+                    }
+                    char[128] ebuf;
+                    char[] eval_s;
+                    if (has_precision) {
+                        eval_s = io::bprintf(&ebuf, "%.20e", eval_num)!!;
+                        // Find decimal point and truncate to precision digits after it,
+                        // preserving the exponent part
+                        usz edot = 0;
+                        bool efound_dot = false;
+                        for (usz k = 0; k < eval_s.len; k++) {
+                            if (eval_s[k] == '.') { edot = k; efound_dot = true; break; }
+                        }
+                        // Find 'e' or 'E'
+                        usz epos = eval_s.len;
+                        for (usz k = 0; k < eval_s.len; k++) {
+                            if (eval_s[k] == 'e' || eval_s[k] == 'E') { epos = k; break; }
+                        }
+                        if (efound_dot) {
+                            usz trunc_end = edot + 1 + (usz)precision;
+                            if (trunc_end > epos) trunc_end = epos;
+                            // Build: digits before trunc_end + exponent part
+                            char[128] etmp;
+                            usz eidx = 0;
+                            for (usz k = 0; k < trunc_end; k++) { etmp[eidx++] = eval_s[k]; }
+                            for (usz k = epos; k < eval_s.len; k++) { etmp[eidx++] = eval_s[k]; }
+                            eval_s = etmp[:eidx];
+                        }
+                    } else {
+                        eval_s = io::bprintf(&ebuf, "%e", eval_num)!!;
+                    }
+                    strval_append_num_padded(result.str_val, eval_s, width, left_align);
+
+                case 'x':
+                    // Hexadecimal lowercase
+                    if (!is_int(a)) return raise_error(interp, "format: %x expects integer");
+                    char[32] xbuf;
+                    char[] xval = io::bprintf(&xbuf, "%x", a.int_val)!!;
+                    strval_append_num_padded(result.str_val, xval, width, left_align);
+
+                case 'X':
+                    // Hexadecimal uppercase
+                    if (!is_int(a)) return raise_error(interp, "format: %X expects integer");
+                    char[32] xubuf;
+                    // C3 bprintf %X should give uppercase hex
+                    char[] xuval = io::bprintf(&xubuf, "%X", a.int_val)!!;
+                    strval_append_num_padded(result.str_val, xuval, width, left_align);
+
+                case 'o':
+                    // Octal
+                    if (!is_int(a)) return raise_error(interp, "format: %o expects integer");
+                    char[32] obuf;
+                    char[] oval = io::bprintf(&obuf, "%o", a.int_val)!!;
+                    strval_append_num_padded(result.str_val, oval, width, left_align);
+
+                case 'b':
+                    // Binary — manual conversion
+                    if (!is_int(a)) return raise_error(interp, "format: %b expects integer");
+                    char[68] bbuf;
+                    usz bidx = 0;
+                    long bval = a.int_val;
+                    if (bval == 0) {
+                        bbuf[0] = '0';
+                        bidx = 1;
+                    } else {
+                        bool bneg = bval < 0;
+                        // For negative, show minus sign then binary of absolute value
+                        if (bneg) {
+                            bbuf[bidx++] = '-';
+                            bval = -bval;
+                        }
+                        // Write binary digits in reverse
+                        char[64] brev;
+                        usz brev_len = 0;
+                        while (bval > 0) {
+                            brev[brev_len++] = (char)('0' + (char)(bval % 2));
+                            bval = bval / 2;
+                        }
+                        // Reverse into bbuf
+                        for (usz k = 0; k < brev_len; k++) {
+                            bbuf[bidx++] = brev[brev_len - 1 - k];
+                        }
+                    }
+                    strval_append_num_padded(result.str_val, bbuf[:bidx], width, left_align);
+
+                default:
+                    // Unknown directive — emit as literal
+                    strval_push(result.str_val, '%');
+                    strval_push(result.str_val, directive);
+            }
+        } else {
+            strval_push(result.str_val, fmt[i]);
+        }
+    }
+    result.str_val.chars[result.str_val.len] = 0;
+    return result;
+}
+
+fn Value* prim_cl_format(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "cl-format: expected format string");
     char[] fmt = args[0].str_val.chars[:args[0].str_val.len];
     Value* result = interp.alloc_value();
     result.tag = STRING;

@@ -150,7 +150,7 @@ struct LambdaDef {
 | `true` | `runtime::make_true()` |
 | `(+ 1 2)` | `runtime::rt_invoke(runtime::rt_invoke(runtime::make_prim(&runtime::rt_add), runtime::make_int(1)), runtime::make_int(2))` |
 | `(if test then else)` | `(runtime::rt_is_truthy(test) ? then : else)` |
-| `(let ((x 10)) body)` | `{ runtime::Value x = 10; body }` |
+| `(let (x 10) body)` | `{ runtime::Value x = 10; body }` |
 | `(lambda (x) body)` | `runtime::make_closure(...)` with region allocation |
 | `(define name value)` | `name = value;` (with global declaration) |
 
@@ -386,7 +386,7 @@ This produces 5 C3 source files, then invokes `c3c compile`:
 - `generated.c3` — compiled Omni code
 
 AOT binaries link only libc/libm/libdl — no GNU Lightning, no readline.
-All expression types compile natively: reset/shift, handle/perform, quasiquote, defmacro, module, import.
+All expression types compile natively: reset/shift, handle/signal, quasiquote, defmacro, module, import.
 
 ## Generated Code Structure
 

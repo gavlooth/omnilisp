@@ -33,24 +33,25 @@
 
 ### 1.3 `let` — Local Binding
 ```lisp
-(let ((name init)) body)
-(let ((x 1) (y 2)) (+ x y))  ; multi-binding (desugars to nested lets)
+(let (name init) body)
+(let (x 1 y 2) (+ x y))  ; multi-binding (desugars to nested lets)
 ```
+- Flat-pair syntax: `(let (x v) body)`, `(let (x 1 y 2) body)`
 - Multi-binding let desugars to nested single-binding lets in the parser
 - Non-recursive by default
-- Example: `(let ((x 10)) (+ x 1))` => 11
+- Example: `(let (x 10) (+ x 1))` => 11
 
 ### 1.3b `named let` — Looping Construct
 ```lisp
-(let name ((var init) ...) body)
+(let name (var init ...) body)
 ```
-- Named let desugars to: `(let ^rec ((name (lambda (var ...) body))) (name init ...))`
+- Named let desugars to: `(let ^rec (name (lambda (var ...) body)) (name init ...))`
 - Enables iterative loops via tail-recursive named function
-- Example: `(let loop ((n 5) (acc 1)) (if (= n 0) acc (loop (- n 1) (* acc n))))` => 120
+- Example: `(let loop (n 5 acc 1) (if (= n 0) acc (loop (- n 1) (* acc n))))` => 120
 
 ### 1.4 `let ^rec` — Recursive Local Binding
 ```lisp
-(let ^rec ((fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1)))))))
+(let ^rec (fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1))))))
   (fact 5))
 ```
 - Self-referencing closures via `^rec` metadata
@@ -143,23 +144,25 @@
 - One-shot by default in the interpreter
 - Example: `(reset (+ 1 (shift k (k 10))))` => 11
 
-### 1.15 `handle` / `perform` — Algebraic Effect Handlers
+### 1.15 `handle` / `signal` — Algebraic Effect Handlers
 ```lisp
 (handle body
-  ((effect-tag k arg) handler-body)
+  (effect-tag arg (resolve expr))   ; resuming handler
+  (effect-tag arg expr)             ; aborting handler
   ...)
 
-(perform effect-tag argument)
+(signal effect-tag argument)
 ```
-- `perform` signals an effect with a tag and argument
+- `signal` signals an effect with a tag and argument
 - `handle` installs handlers that catch matching effects
-- `k` is the continuation — call `(k value)` to resume with a value
+- `(resolve expr)` resumes the continuation with the value of `expr`
+- Omitting `resolve` aborts — the handler's result replaces the entire `handle` expression
 - Up to 8 clauses per handle expression
 - Handler result bypasses intermediate computation back to `handle`
 - Example:
   ```lisp
-  (handle (+ 1 (perform ask 0))
-    ((ask k x) (k 10)))
+  (handle (+ 1 (signal ask 0))
+    (ask x (resolve 10)))
   ;; => 11
   ```
 
@@ -472,8 +475,8 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 
 ### 6.2 Effect Handlers
 - Installed on prompt frames
-- `perform` searches handler stack top-to-bottom
-- Handler receives continuation `k`, can resume or abort
+- `signal` searches handler stack top-to-bottom
+- Handler can resume via `(resolve expr)` or abort by returning a value directly
 - Handler result bypasses intermediate computation back to `handle`
 
 ### 6.3 What Omni Does NOT Have
@@ -508,7 +511,7 @@ The Omni compiler (`src/lisp/compiler.c3`) translates Lisp AST to C3 source code
 | match | Y | Y |
 | and/or | Y | Y |
 | reset/shift | Y | Y |
-| handle/perform | Y | Y |
+| handle/signal | Y | Y |
 | quasiquote | Y | Y |
 | modules | Y | Y |
 | dot-bracket `.[i]` | Y | Y |
@@ -603,14 +606,14 @@ Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
 - TCO via V_THUNK trampoline pattern
 - All expression types compile natively (no interpreter delegation for effects/modules/quasiquote)
 - Type definitions and dispatch resolution delegate to interpreter
-- Supports: lambda, if, let (incl. ^rec), define, match, begin, and/or, call, reset/shift, handle/perform, quasiquote, modules, literals
+- Supports: lambda, if, let (incl. ^rec), define, match, begin, and/or, call, reset/shift, handle/signal, quasiquote, modules, literals
 
 ### 11b. AOT Compilation
 
 - `./build/main --build input.lisp -o output` — compiles Lisp to C3 to standalone binary
 - Generates 5 files: main.c3, continuation.c3, ghost_index.c3, runtime.c3, generated.c3
 - AOT binaries link only libc/libm/libdl (no GNU Lightning, no readline)
-- All 8 expression types (reset/shift/handle/perform/quasiquote/defmacro/module/import) compile natively
+- All 8 expression types (reset/shift/handle/signal/quasiquote/defmacro/module/import) compile natively
 - Runtime bridge (`runtime_bridge.c3`) provides interpreter-to-runtime conversion
 
 ---

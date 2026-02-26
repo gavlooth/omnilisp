@@ -564,8 +564,8 @@ const E2ETestCase[] E2E_TESTS = {
     { "reset passthrough", "(reset (+ 10 20))" },
     { "shift aborts", "(reset (+ 1 (shift k 42)))" },
     { "shift k resumes", "(reset (+ 1 (shift k (k 10))))" },
-    { "handle no effect", "(handle 42 (ask x (respond 0)))" },
-    { "handle perform resume", "(handle (+ 1 (signal ask 0)) (ask x (respond 10)))" },
+    { "handle no effect", "(handle 42 (ask x (resolve 0)))" },
+    { "handle perform resume", "(handle (+ 1 (signal ask 0)) (ask x (resolve 10)))" },
     { "handle abort", "(handle (+ 1 (signal ask 5)) (ask x x))" },
 
     // === Not ===
@@ -665,8 +665,8 @@ const E2ETestCase[] E2E_TESTS = {
     { "shift resume mul", "(reset (* 2 (shift k (k 5))))" },
     { "shift resume add", "(reset (+ 1 (shift k (k (+ 2 3)))))" },
     { "multi-shot k", "(reset (+ 1 (shift k (+ (k 10) 1000))))" },
-    { "handle get", "(handle (+ 1 (signal get 0)) (get x (respond 100)))" },
-    { "handle double", "(handle (signal double 7) (double x (respond (* x 2))))" },
+    { "handle get", "(handle (+ 1 (signal get 0)) (get x (resolve 100)))" },
+    { "handle double", "(handle (signal double 7) (double x (resolve (* x 2))))" },
     { "handle bail", "(handle (+ 1 (+ 2 (+ 3 (signal bail 42)))) (bail x x))" },
     { "handle no trigger", "(handle (+ 10 20) (unused x 999))" },
 
@@ -812,7 +812,7 @@ const E2ETestCase[] E2E_TESTS = {
     { "drop from range", "(drop 7 (range 10))" },
     { "match on map result", "(match (map (lambda (x) (* x 10)) (quote (1 2 3))) ([a b c] (+ a (+ b c))))" },
     { "closure over let rec", "(let ^rec (f (lambda (n) (if (<= n 1) 1 (* n (f (- n 1)))))) (f 7))" },
-    { "nested handle", "(handle (handle (+ 1 (signal inner 0)) (inner x (respond 10))) (outer x (respond 0)))" },
+    { "nested handle", "(handle (handle (+ 1 (signal inner 0)) (inner x (resolve 10))) (outer x (resolve 0)))" },
     { "shift double resume", "(reset (+ (shift k (+ (k 1) (k 2))) 10))" },
     { "let-rec factorial 8", "(let ^rec (f (lambda (n) (if (= n 0) 1 (* n (f (- n 1)))))) (f 8))" },
 
@@ -1211,8 +1211,8 @@ fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "reset passthrough", "(reset (+ 10 20))", 30, pass, fail);
 
     // Effect handlers
-    test_eq(interp, "handle without effect", "(handle 42 (ask x (respond 0)))", 42, pass, fail);
-    test_eq(interp, "handle + perform + resume", "(handle (+ 1 (signal ask 0)) (ask x (respond 10)))", 11, pass, fail);
+    test_eq(interp, "handle without effect", "(handle 42 (ask x (resolve 0)))", 42, pass, fail);
+    test_eq(interp, "handle + perform + resume", "(handle (+ 1 (signal ask 0)) (ask x (resolve 10)))", 11, pass, fail);
     test_eq(interp, "handle abort", "(handle (+ 1 (signal ask 5)) (ask x x))", 5, pass, fail);
 
     // Empty string truthy
@@ -1512,8 +1512,8 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "reset value", "(reset 42)", 42, pass, fail);
 
     // Effect handlers
-    test_eq(interp, "effect modify", "(handle (+ 1 (signal get 0)) (get x (respond 100)))", 101, pass, fail);
-    test_eq(interp, "effect arg double", "(handle (signal double 7) (double x (respond (* x 2))))", 14, pass, fail);
+    test_eq(interp, "effect modify", "(handle (+ 1 (signal get 0)) (get x (resolve 100)))", 101, pass, fail);
+    test_eq(interp, "effect arg double", "(handle (signal double 7) (double x (resolve (* x 2))))", 14, pass, fail);
     test_eq(interp, "effect bail", "(handle (+ 1 (+ 2 (+ 3 (signal bail 42)))) (bail x x))", 42, pass, fail);
     test_eq(interp, "handle no effect", "(handle (+ 10 20) (unused x 999))", 30, pass, fail);
 
@@ -1674,17 +1674,18 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "TCO let body 4000", "(let-loop 4000)", pass, fail);
 
     // Multi-perform
-    test_eq(interp, "multi-perform 2 sum", "(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x (respond x)))", 30, pass, fail);
-    test_eq(interp, "multi-perform 3 sum", "(handle (+ (signal bounce 1) (+ (signal bounce 2) (signal bounce 3))) (bounce x (respond x)))", 6, pass, fail);
-    test_eq(interp, "multi-perform doubles", "(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x (respond (* x 2))))", 60, pass, fail);
+    test_eq(interp, "multi-perform 2 sum", "(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x (resolve x)))", 30, pass, fail);
+    test_eq(interp, "multi-perform 3 sum", "(handle (+ (signal bounce 1) (+ (signal bounce 2) (signal bounce 3))) (bounce x (resolve x)))", 6, pass, fail);
+    test_eq(interp, "multi-perform doubles", "(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x (resolve (* x 2))))", 60, pass, fail);
     test_eq(interp, "multi-perform abort", "(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x x))", 10, pass, fail);
 
-    // signal/respond syntax (new match-style clauses)
-    test_eq(interp, "signal/respond basic", "(handle (+ 1 (signal read nil)) (read x (respond 41)))", 42, pass, fail);
+    // signal/resolve syntax (new match-style clauses)
+    test_eq(interp, "signal/resolve basic", "(handle (+ 1 (signal read nil)) (read x (resolve 41)))", 42, pass, fail);
     test_eq(interp, "signal abort", "(handle (+ 1 (signal bail 5)) (bail x x))", 5, pass, fail);
-    test_eq(interp, "signal/respond double", "(handle (signal double 7) (double x (respond (* x 2))))", 14, pass, fail);
+    test_eq(interp, "signal/resolve double", "(handle (signal double 7) (double x (resolve (* x 2))))", 14, pass, fail);
     test_eq(interp, "signal no trigger", "(handle (+ 10 20) (unused x 999))", 30, pass, fail);
-    test_eq(interp, "signal multi-resume", "(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x (respond x)))", 30, pass, fail);
+    test_eq(interp, "signal multi-resume", "(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x (resolve x)))", 30, pass, fail);
+    test_error_contains(interp, "resolve outside handler", "(resolve 42)", "resolve", pass, fail);
 
     test_eq(interp, "multi-shift sum", "(reset (+ (shift k1 (k1 10)) (shift k2 (k2 20))))", 30, pass, fail);
 
@@ -1694,6 +1695,10 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "multi-shot let bindings", "(reset (+ 10 (shift k (let (a (k 1) b (k 2)) (+ a b)))))", 23, pass, fail);
     test_eq(interp, "multi-shot conditional", "(reset (+ 5 (shift k (if true (k 10) (k 20)))))", 15, pass, fail);
     test_eq(interp, "multi-shot effect", "(handle (+ 1 (signal dup 0)) ((dup k x) (+ (k 10) (k 20))))", 32, pass, fail);
+
+    // with-continuation (multi-shot escape hatch in handler clauses)
+    test_eq(interp, "with-continuation basic", "(handle (+ 1 (signal choose 0)) (choose x (with-continuation k (+ (k 10) (k 20)))))", 32, pass, fail);
+    test_eq(interp, "with-continuation single", "(handle (+ 1 (signal ask 0)) (ask x (with-continuation k (k 41))))", 42, pass, fail);
 
     // TCO inside reset/shift
     setup(interp, "(define reset-loop (lambda (n acc) (if (= n 0) acc (reset-loop (- n 1) (+ acc 1)))))");
@@ -2239,7 +2244,27 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_nil(interp, "odd? 4", "(odd? 4)", pass, fail);
 
     // === FORMAT & DISPLAY TESTS (Phase 5) ===
-    test_str(interp, "format simple", "(format \"~a plus ~a\" 1 2)", pass, fail);
+    // cl-format backward compatibility (old CL-style ~a ~s ~~)
+    test_str_val(interp, "cl-format ~a", "(cl-format \"~a\" 42)", "42", pass, fail);
+    test_str_val(interp, "cl-format ~a ~a", "(cl-format \"~a plus ~a\" 1 2)", "1 plus 2", pass, fail);
+    test_str_val(interp, "cl-format tilde", "(cl-format \"100~~\")", "100~", pass, fail);
+
+    // New printf-style format
+    test_str_val(interp, "format %s int", "(format \"%s\" 42)", "42", pass, fail);
+    test_str_val(interp, "format %s str", "(format \"%s\" \"hello\")", "hello", pass, fail);
+    test_str_val(interp, "format %s nil", "(format \"%s\" nil)", "nil", pass, fail);
+    test_str_val(interp, "format %d", "(format \"%d\" 42)", "42", pass, fail);
+    test_str_val(interp, "format %x", "(format \"%x\" 255)", "ff", pass, fail);
+    test_str_val(interp, "format %X", "(format \"%X\" 255)", "FF", pass, fail);
+    test_str_val(interp, "format %o", "(format \"%o\" 8)", "10", pass, fail);
+    test_str_val(interp, "format %b", "(format \"%b\" 10)", "1010", pass, fail);
+    test_str(interp, "format %f", "(format \"%f\" 3.14)", pass, fail);
+    test_str_val(interp, "format %.2f", "(format \"%.2f\" 3.14159)", "3.14", pass, fail);
+    test_str_val(interp, "format %%", "(format \"100%%\")", "100%", pass, fail);
+    test_str_val(interp, "format mixed", "(format \"%s is %d\" \"x\" 42)", "x is 42", pass, fail);
+    test_str_val(interp, "format %b zero", "(format \"%b\" 0)", "0", pass, fail);
+    test_str_val(interp, "format %d neg", "(format \"%d\" -7)", "-7", pass, fail);
+    test_str_val(interp, "format %.0f", "(format \"%.0f\" 3.7)", "3", pass, fail);
 
     // === INTROSPECTION TESTS (Phase 7) ===
     setup(interp, "(define [macro] my-inc ([x] (+ x 1)))");
@@ -2567,7 +2592,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
 
     // Custom handler can suppress output
     test_eq_interp(interp, "io handle suppress",
-        "(handle (begin (println \"suppressed\") 42) (io/println x (respond nil)))",
+        "(handle (begin (println \"suppressed\") 42) (io/println x (resolve nil)))",
         42, pass, fail);
 
     // Custom handler can capture output
@@ -2660,7 +2685,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
         117, pass, fail);
     // Handle with 9 effect clauses (was max 8, now 16)
     test_eq(interp, "handle 9 effects",
-        "(handle (signal e9 42) (e1 v (respond v)) (e2 v (respond v)) (e3 v (respond v)) (e4 v (respond v)) (e5 v (respond v)) (e6 v (respond v)) (e7 v (respond v)) (e8 v (respond v)) (e9 v (+ v 1)))",
+        "(handle (signal e9 42) (e1 v (resolve v)) (e2 v (resolve v)) (e3 v (resolve v)) (e4 v (resolve v)) (e5 v (resolve v)) (e6 v (resolve v)) (e7 v (resolve v)) (e8 v (resolve v)) (e9 v (+ v 1)))",
         43, pass, fail);
     // Large method table (>32 methods, was max 32, now 64)
     setup(interp, "(define [type] TestMT33 (^Int val))");
@@ -2856,7 +2881,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 15. handle/perform compiles
     {
-        char[] code = compile_to_c3("(handle (+ 1 (signal ask 0)) (ask x (respond 10)))", interp);
+        char[] code = compile_to_c3("(handle (+ 1 (signal ask 0)) (ask x (resolve 10)))", interp);
         bool ok = !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: handle/perform"); }
         else    { fail++; io::printn("[FAIL] Compiler: handle/perform"); }
@@ -2986,7 +3011,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 30. handle/perform compiles natively
     {
-        char[] code = compile_to_c3("(handle (+ 1 (signal ask 0)) (ask x (respond 10)))", interp);
+        char[] code = compile_to_c3("(handle (+ 1 (signal ask 0)) (ask x (resolve 10)))", interp);
         bool ok = str_contains(code, "rt_compiled_handle") && str_contains(code, "rt_compiled_perform");
         if (ok) { pass++; io::printn("[PASS] Compiler: handle/perform uses native compilation"); }
         else    { fail++; io::printn("[FAIL] Compiler: handle/perform uses native compilation"); }
@@ -3018,7 +3043,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 34. handle with multiple clauses compiles natively
     {
-        char[] code = compile_to_c3("(handle (begin (signal get 0) (signal set 1)) (get x (respond 42)) (set v (respond v)))", interp);
+        char[] code = compile_to_c3("(handle (begin (signal get 0) (signal set 1)) (get x (resolve 42)) (set v (resolve v)))", interp);
         bool ok = str_contains(code, "rt_compiled_handle");
         if (ok) { pass++; io::printn("[PASS] Compiler: handle with multiple clauses"); }
         else    { fail++; io::printn("[FAIL] Compiler: handle with multiple clauses"); }

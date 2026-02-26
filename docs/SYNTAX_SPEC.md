@@ -48,7 +48,7 @@
 | E_APP | `(f arg)` | Function application |
 | E_CALL | `(f a b c)` | Multi-arg call (3+ args) |
 | E_IF | `(if t a b)` | Conditional |
-| E_LET | `(let ((n v)) body)` | Local binding |
+| E_LET | `(let (n v) body)` | Local binding |
 | E_DEFINE | `(define n v)` | Global definition |
 | E_SET | `(set! n v)` | Variable mutation |
 | E_BEGIN | `(begin e1 e2 ...)` | Sequencing |
@@ -61,7 +61,7 @@
 | E_MATCH | `(match expr clauses...)` | Pattern matching |
 | E_RESET | `(reset body)` | Delimited continuation prompt |
 | E_SHIFT | `(shift k body)` | Capture continuation |
-| E_PERFORM | `(perform tag arg)` | Perform algebraic effect |
+| E_PERFORM | `(signal tag arg)` | Signal algebraic effect (internal tag is E_PERFORM, keyword is `signal`) |
 | E_HANDLE | `(handle body clauses...)` | Handle algebraic effects |
 | E_DEFMACRO | `(define [macro] ...)` | Pattern macro definition |
 | E_MODULE | `(module name ...)` | Module definition |
@@ -108,14 +108,17 @@ Three branches required (no two-branch form).
 ### 3.3 `let` - Local Binding
 
 ```lisp
-;; Simple let
-(let ((name init)) body)
+;; Simple let (flat pairs)
+(let (name init) body)
+
+;; Multi-binding let (flat pairs, desugars to nested lets)
+(let (x 1 y 2) (+ x y))
 
 ;; Recursive let
-(let ^rec ((name init)) body)
+(let ^rec (name init) body)
 
 ;; Named let (desugars to let ^rec)
-(let loop ((x 0) (acc nil))
+(let loop (x 0 acc nil)
   (if (= x 10) acc (loop (+ x 1) (cons x acc))))
 ```
 
@@ -186,16 +189,19 @@ Patterns: literals, variables, wildcards `_`, sequences `[a b .. rest]`, quoted 
 (reset (+ 1 (shift k (k (k 10)))))  ;; => 12
 ```
 
-### 3.10 `perform` / `handle` - Algebraic Effects
+### 3.10 `signal` / `handle` - Algebraic Effects
 
 ```lisp
-(perform effect-tag argument)
+(signal effect-tag argument)
 (handle body
-  ((tag1 k arg) handler1)
-  ((tag2 k arg) handler2))
+  (tag1 arg (resolve expr))    ; resuming handler
+  (tag2 arg expr))             ; aborting handler
 ```
 
-I/O operations go through effects: `print`, `println`, `display`, `read-file`, etc. use `io/print`, `io/println`, etc. effect tags. When no handler is installed, a fast path calls the raw primitives directly.
+- `signal` signals an effect with a tag and argument
+- `(resolve expr)` resumes the continuation with the value of `expr`
+- Omitting `resolve` aborts — the handler's result replaces the entire `handle` expression
+- I/O operations go through effects: `print`, `println`, `display`, `read-file`, etc. use `io/print`, `io/println`, etc. effect tags. When no handler is installed, a fast path calls the raw primitives directly.
 
 ### 3.11 `module` / `import`
 

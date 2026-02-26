@@ -253,7 +253,7 @@ When metadata is flat, the **value type** determines meaning:
 - [x] Struct field mutation: `(set! point.x 99)`, nested paths
 - [x] Constructor pattern matching: `(match opt (None 0) ((Some x) x))`
 - [x] Nullary constructor auto-detection in patterns (e.g., `None`)
-- [x] I/O effects: print/println/etc. go through `perform` with fast path
+- [x] I/O effects: print/println/etc. go through `signal` with fast path
 - [x] `type-of`, `is?`, `instance?`, `type-args` introspection primitives
 - [x] Parametric types: `(define [type] (Box T) (^T value))` with type param collection
 - [x] Type arg inference: `(type-args (Box 42))` → `'(Int)` — inferred from field values
@@ -271,4 +271,4 @@ When metadata is flat, the **value type** determines meaning:
 
 **Constructor patterns**: The parser generates PAT_CONSTRUCTOR for `(ConstructorName sub-patterns...)`. In match_pattern, it checks if the value is an INSTANCE whose type matches the constructor name, then recursively matches sub-patterns against fields. Nullary constructors like `None` are detected in the PAT_VAR case by looking up the symbol in the type registry.
 
-**I/O effects**: Primitives are registered as `__raw-print`, `__raw-println`, etc. Stdlib wrappers (`print`, `println`, etc.) call `(perform io/print x)`. In `eval_perform`, before searching the handler stack, a fast path checks if the tag is an I/O effect symbol and no user handler is installed — if so, calls the raw primitive directly.
+**I/O effects**: Primitives are registered as `__raw-print`, `__raw-println`, etc. Stdlib wrappers (`print`, `println`, etc.) call `(signal io/print x)`. In `eval_perform` (internal C3 function), before searching the handler stack, a fast path checks if the tag is an I/O effect symbol and no user handler is installed -- if so, calls the raw primitive directly.

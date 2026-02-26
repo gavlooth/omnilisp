@@ -97,7 +97,7 @@ fn int run_build(int argc, char** argv, int build_idx) {
 
     char[1024] cmd_buf;
     usz cmd_len = 0;
-    // Standalone AOT: only 5 source files, no interpreter/JIT/readline/lightning
+    // Standalone AOT: only 5 source files, no interpreter/JIT/replxx/lightning
     char[] prefix = "env -u LD_LIBRARY_PATH c3c compile src/main.c3 src/continuation.c3 src/ghost_index.c3 src/lisp/runtime.c3 build/_aot_temp.c3 -l dl -l m -L /usr/local/lib -o ";
     for (usz i = 0; i < prefix.len && cmd_len < 1023; i++) {
         cmd_buf[cmd_len] = prefix[i];

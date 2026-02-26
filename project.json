@@ -8,7 +8,7 @@
     "targets": {
         "main": {
             "type": "executable",
-            "linked-libraries": ["mathutils", "m", "lightning", "readline", "dl"],
+            "linked-libraries": ["mathutils", "m", "lightning", "replxx", "stdc++", "dl"],
             "linker-search-paths": ["build", "/usr/local/lib"]
         }
     }

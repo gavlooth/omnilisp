@@ -179,18 +179,18 @@ null?
 ### 3.3 `let` -- Local Binding
 
 ```lisp
-; Simple let
-(let ((name value)) body)
+; Simple let (flat pairs)
+(let (name value) body)
 
 ; Multi-binding (desugars to nested lets)
-(let ((x 1) (y 2)) (+ x y))
+(let (x 1 y 2) (+ x y))
 
 ; Recursive let
-(let ^rec ((fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1)))))))
+(let ^rec (fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1))))))
   (fact 5))
 
 ; Named let (loop construct)
-(let loop ((n 5) (acc 1))
+(let loop (n 5 acc 1)
   (if (= n 0) acc
       (loop (- n 1) (* acc n))))
 ; Named let desugars to let ^rec
@@ -761,27 +761,27 @@ Captures the continuation up to the enclosing `reset` and binds it to `k`.
 
 When an effect is signalled:
 - `arg` is bound to the effect argument
-- `handler-body` can respond with `(respond value)` to resume, or return a value to abort
+- `handler-body` can resolve with `(resolve value)` to resume, or return a value to abort
 
 ```lisp
 (handle
   (+ 1 (signal read nil))
-  (read x (respond 41)))
+  (read x (resolve 41)))
 ; => 42
 ```
 
-### 10.3 `respond` -- Resume Computation
+### 10.3 `resolve` -- Resume Computation
 
-Inside a handler clause, `(respond value)` sends `value` back to the body.
+Inside a handler clause, `(resolve value)` sends `value` back to the body.
 The body continues as if `signal` returned that value.
 
-If `respond` is not called, the handler's return value becomes the result
+If `resolve` is not called, the handler's return value becomes the result
 of the entire `handle` expression (abort).
 
 ```lisp
-; Respond — body continues
+; Resolve — body continues
 (handle (signal double 5)
-  (double x (respond (* x 2))))
+  (double x (resolve (* x 2))))
 ; => 10
 
 ; Abort — body abandoned
@@ -801,7 +801,7 @@ I/O operations go through effects with a fast path:
 
 ; Custom handler intercepts I/O
 (handle (begin (println "suppressed") 42)
-  (io/println x (respond nil)))
+  (io/println x (resolve nil)))
 ; => 42 (output suppressed)
 
 ; Capture output
@@ -822,21 +822,7 @@ Effect handlers match on tag name only. For type-specific behavior, use dispatch
 
 (handle
   (begin (signal show 42) (signal show "hello"))
-  (show x (println (on-show x)) (respond nil)))
-```
-
-### 10.6 Backward Compatibility
-
-The old `perform` keyword and explicit continuation syntax still work:
-
-```lisp
-; Old style
-(handle (+ 1 (perform read nil))
-  ((read k x) (k 41)))
-
-; New style (recommended)
-(handle (+ 1 (signal read nil))
-  (read x (respond 41)))
+  (show x (println (on-show x)) (resolve nil)))
 ```
 
 ---
@@ -970,12 +956,12 @@ Goodbye!
 
 ```lisp
 (handle
-  (let ((x (perform get nil)))
+  (let (x (signal get nil))
     (begin
-      (perform put (+ x 1))
-      (perform get nil)))
-  ((get k _) (k 0))
-  ((put k v) (k nil)))
+      (signal put (+ x 1))
+      (signal get nil)))
+  (get _ (resolve 0))
+  (put v (resolve nil)))
 ```
 
 ### 14.5 Collection Literals and Generic Operations
@@ -1115,7 +1101,7 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 | quote/quasiquote | Y | Y | Y |
 | match | Y | Y | Y |
 | reset/shift | Y | Y | Y |
-| handle/perform | Y | Y | Y |
+| handle/signal/resolve | Y | Y | Y |
 | type definitions | Y | Y | eval* |
 | dispatch | Y | Y | eval* |
 | macros | Y | Y** | Y** |

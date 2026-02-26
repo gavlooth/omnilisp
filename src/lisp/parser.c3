@@ -864,8 +864,8 @@ fn Expr* Parser.parse_expr(Parser* self) {
             if ((uint)head == (uint)self.interp.sym_handle) {
                 return self.parse_handle();
             }
-            if ((uint)head == (uint)self.interp.sym_respond) {
-                return self.parse_respond();
+            if ((uint)head == (uint)self.interp.sym_resolve) {
+                return self.parse_resolve();
             }
             if ((uint)head == (uint)self.interp.sym_with_continuation) {
                 return self.parse_with_continuation();
@@ -1853,17 +1853,17 @@ fn Expr* Parser.parse_perform(Parser* self) {
     return e;
 }
 
-fn Expr* Parser.parse_respond(Parser* self) {
+fn Expr* Parser.parse_resolve(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();
-    self.lexer.advance();  // consume 'respond'
+    self.lexer.advance();  // consume 'resolve'
 
     Expr* val = self.parse_expr();
 
     self.expect(T_RPAREN, ")");
 
-    e.tag = E_RESPOND;
-    e.respond.value = val;
+    e.tag = E_RESOLVE;
+    e.resolve.value = val;
     return e;
 }
 
@@ -1938,7 +1938,7 @@ fn Expr* Parser.parse_handle(Parser* self) {
 
     // Parse handler clauses — two syntaxes:
     //   Old: ((tag k arg) body)     — explicit continuation binding
-    //   New: (tag arg body...)      — match-style, use `respond` to resume
+    //   New: (tag arg body...)      — match-style, use `resolve` to resume
     while (self.lexer.current.type == T_LPAREN && !self.has_error) {
         self.lexer.advance();  // consume outer (
 
@@ -1975,7 +1975,7 @@ fn Expr* Parser.parse_handle(Parser* self) {
             arg_name = self.get_current_symbol();
             self.lexer.advance();
 
-            // Hidden continuation — `respond` will look this up
+            // Hidden continuation — `resolve` will look this up
             k_name = self.interp.sym__k;
 
             // Parse body — if multiple expressions, wrap in begin

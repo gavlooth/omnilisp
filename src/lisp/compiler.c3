@@ -607,8 +607,8 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
         case E_PERFORM:
             self.find_free_vars(expr.perform.arg, bound_vars, free_vars, enclosing_scope);
 
-        case E_RESPOND:
-            self.find_free_vars(expr.respond.value, bound_vars, free_vars, enclosing_scope);
+        case E_RESOLVE:
+            self.find_free_vars(expr.resolve.value, bound_vars, free_vars, enclosing_scope);
 
         case E_HANDLE:
             self.find_free_vars(expr.handle.body, bound_vars, free_vars, enclosing_scope);
@@ -887,8 +887,8 @@ fn void Compiler.prescan_mutable_captures(Compiler* self, Expr* expr) {
             }
         case E_PERFORM:
             self.prescan_mutable_captures(expr.perform.arg);
-        case E_RESPOND:
-            self.prescan_mutable_captures(expr.respond.value);
+        case E_RESOLVE:
+            self.prescan_mutable_captures(expr.resolve.value);
         default:
             return;
     }
@@ -1128,9 +1128,9 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
             self.serialize_expr_to_buf(expr.perform.arg, buf);
             buf.push(')');
 
-        case E_RESPOND:
-            self.buf_append(buf, "(respond ");
-            self.serialize_expr_to_buf(expr.respond.value, buf);
+        case E_RESOLVE:
+            self.buf_append(buf, "(resolve ");
+            self.serialize_expr_to_buf(expr.resolve.value, buf);
             buf.push(')');
 
         case E_HANDLE:
@@ -1482,7 +1482,7 @@ fn List{SymbolId} Compiler.collect_cont_free_vars(Compiler* self, Expr* expr) {
  * These are the same HOFs defined in register_stdlib() in eval.c3.
  */
 const char[] STDLIB_PRELUDE =
-`(define with-trampoline (lambda (thunk) (handle (thunk nil) (bounce next-thunk (respond (with-trampoline next-thunk))))))
+`(define with-trampoline (lambda (thunk) (handle (thunk nil) (bounce next-thunk (resolve (with-trampoline next-thunk))))))
 (define (reverse lst) (let loop (xs lst acc nil) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
 (define (map f lst) (let loop (xs lst acc nil) (if (null? xs) (reverse acc) (loop (cdr xs) (cons (f (car xs)) acc)))))
 (define (filter pred lst) (let loop (xs lst acc nil) (if (null? xs) (reverse acc) (if (pred (car xs)) (loop (cdr xs) (cons (car xs) acc)) (loop (cdr xs) acc)))))
@@ -1802,8 +1802,8 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
         case E_PERFORM:
             return self.scan_lambdas_with_scope(expr.perform.arg, enclosing_bound);
 
-        case E_RESPOND:
-            return self.scan_lambdas_with_scope(expr.respond.value, enclosing_bound);
+        case E_RESOLVE:
+            return self.scan_lambdas_with_scope(expr.resolve.value, enclosing_bound);
 
         case E_HANDLE: {
             // Wrap body as synthetic lambda
@@ -2389,12 +2389,12 @@ fn usz Compiler.compile_to_temp(Compiler* self, Expr* expr) {
         case E_PERFORM:
             return self.compile_perform_flat(expr);
 
-        case E_RESPOND: {
-            // Compile value, then call rt_compiled_respond
-            usz val_r = self.compile_to_temp(expr.respond.value);
+        case E_RESOLVE: {
+            // Compile value, then call rt_compiled_resolve
+            usz val_r = self.compile_to_temp(expr.resolve.value);
             usz id = self.next_result();
             self.emit_temp_decl(id);
-            self.emit(" = runtime::rt_compiled_respond(");
+            self.emit(" = runtime::rt_compiled_resolve(");
             self.emit_temp_ref(val_r);
             self.emit(");\n");
             return id;

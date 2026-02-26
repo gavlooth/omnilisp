@@ -1260,7 +1260,7 @@ enum ExprTag : char {
     E_SHIFT,      // (shift k body)
     E_PERFORM,    // (perform tag arg) or (signal tag arg)
     E_HANDLE,     // (handle body (tag arg body) ...) or (handle body ((tag k arg) body) ...)
-    E_RESPOND,    // (respond value) — resume continuation in handler clause
+    E_RESOLVE,    // (resolve value) — resume continuation in handler clause
     E_INDEX,      // arr.[0] - path index access
     E_PATH,       // point.x, person.address.city - field access
     E_MATCH,      // (match expr (pattern result) ...)
@@ -1343,8 +1343,8 @@ struct ExprPerform {
     Expr*    arg;
 }
 
-struct ExprRespond {
-    Expr* value;   // the value to respond with (resumes the continuation)
+struct ExprResolve {
+    Expr* value;   // the value to resolve with (resumes the continuation)
 }
 
 // Maximum effect clauses per handle expression
@@ -1688,7 +1688,7 @@ struct Expr {
         ExprReset   reset;
         ExprShift   shift;
         ExprPerform perform;
-        ExprRespond respond;
+        ExprResolve resolve;
         ExprHandle* handle;       // Pointer-indirect (large struct)
         ExprIndex   index;
         ExprPath    path;
@@ -1743,7 +1743,12 @@ struct CapturedCont {
     // Copy of handler to reinstall during effect replay
     EffectHandler handler_copy;
     bool has_handler;     // whether handler_copy is valid
-    // Multi-perform tracking
+    usz handler_idx;      // handler stack index (for reinstalling)
+    // Direct resume: longjmp back to the signal point (single-shot)
+    main::RegisterContext* signal_save;  // save point inside jit_exec_perform
+    Env* saved_jit_env;   // body's jit_env at time of signal (restore on resume)
+    bool resolved;        // true after first resolve (second+ uses replay)
+    // Multi-perform tracking (for replay / multi-shot)
     usz perform_index;
     Value** prior_results;
     usz prior_count;
@@ -1756,6 +1761,8 @@ struct CapturedCont {
     // Region pinning: retain the frame where reset_env was allocated
     // to prevent UAF when frame is released before continuation is invoked
     main::RegionHandle captured_frame;
+    // Malloc'd Continuation pointer — freed alongside CapturedCont
+    Continuation* owned_continuation;
 }
 
 // =============================================================================
@@ -1797,7 +1804,7 @@ struct Interp {
     SymbolId sym_perform;
     SymbolId sym_signal;
     SymbolId sym_handle;
-    SymbolId sym_respond;
+    SymbolId sym_resolve;
     SymbolId sym_with_continuation;
     SymbolId sym__k;       // hidden continuation name for match-style handle clauses
     SymbolId sym_match;
@@ -1941,6 +1948,15 @@ struct Interp {
     usz            handler_count;
     usz            handler_capacity;
 
+    // Non-local exit save points for handle expressions.
+    // When a signal fires, context_restore jumps back to the handler's
+    // save point, terminating the body without continued execution.
+    // Indexed by handler stack position (one per handler level).
+    main::RegisterContext[64] handle_jmp;
+
+    // Per-handler-level CapturedCont recycling (malloc'd, freed when resolved)
+    CapturedCont*[64] active_effect_cc;
+
     // Effect handler result propagation
     Value*   effect_result;         // Result of the handler body
 
@@ -2027,7 +2043,7 @@ fn void Interp.init(Interp* self) {
     self.sym_perform = self.symbols.intern("perform");
     self.sym_signal  = self.symbols.intern("signal");
     self.sym_handle  = self.symbols.intern("handle");
-    self.sym_respond = self.symbols.intern("respond");
+    self.sym_resolve = self.symbols.intern("resolve");
     self.sym_with_continuation = self.symbols.intern("with-continuation");
     self.sym__k      = self.symbols.intern("__k");
     self.sym_match   = self.symbols.intern("match");
