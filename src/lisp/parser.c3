@@ -2283,7 +2283,7 @@ fn Expr* Parser.parse_begin(Parser* self) {
     e.begin.expr_count = 0;
 
     while (self.lexer.current.type != T_RPAREN && !self.has_error) {
-        if (e.begin.expr_count >= 64) { self.set_error("too many expressions in begin"); return null; }
+        if (e.begin.expr_count >= 256) { self.set_error("too many expressions in begin"); return null; }
         e.begin.exprs[e.begin.expr_count] = self.parse_expr();
         e.begin.expr_count++;
     }

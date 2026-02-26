@@ -1652,10 +1652,10 @@ fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* inte
         Parser p;
         p.init(&lex, interp);
 
-        Expr*[64] exprs;
+        Expr*[256] exprs;
         usz expr_count = 0;
         while (!lex.at_end()) {
-            if (expr_count >= 64) { pop_source_dir(interp); return eval_error("module: too many expressions (max 64)"); }
+            if (expr_count >= 256) { pop_source_dir(interp); return eval_error("module: too many expressions (max 256)"); }
             exprs[expr_count] = p.parse_expr();
             expr_count++;
         }
