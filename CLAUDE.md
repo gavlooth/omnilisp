@@ -33,6 +33,13 @@ When proposing new features or changes, check whether they align with these para
 - Stdlib functions defined in `register_stdlib()` as Omni code via `run()`
 - Tests go in `run_advanced_tests()` or appropriate test function in eval.c3
 
+## Deferred Work Policy
+When deferring work (skipping something now with intent to do it later):
+- **NEVER** just mention it in a comment or conversation — always add it to the active plan file (`.claude/plans/`)
+- Each deferred item must have: **What**, **Why deferred**, **Risk if not done**, **When** (which phase/milestone), and **How** (concrete approach)
+- Reference the plan item from inline code comments (e.g., `// See plan item D1 in .claude/plans/...`)
+- If no plan file exists yet, create one
+
 ## Audit Mode
 When auditing for naive implementations or production readiness:
 - **DO NOT** create pull requests or make fixes automatically

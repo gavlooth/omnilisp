@@ -889,12 +889,23 @@ fn Value* jit_eval_define_macro(Interp* interp, Expr* expr, Env* env) {
 
 // JIT-native effects — no eval() dependency.
 fn Value* jit_exec_reset(Interp* interp, Expr* expr, Env* env) {
-    EvalResult r = jit_reset_impl(expr, env, interp);
+    EvalResult r;
+    if (interp.use_fiber_continuations) {
+        r = jit_reset_impl_fiber(expr, env, interp);
+    } else {
+        r = jit_reset_impl(expr, env, interp);
+    }
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;
 }
 
 fn Value* jit_exec_shift(Interp* interp, Expr* expr, Env* env) {
+    if (interp.use_fiber_continuations) {
+        // Fiber path returns Value* directly (fits in RAX, no hidden pointer).
+        // This is critical: EvalResult is >16 bytes, so the System V ABI uses
+        // a hidden stack pointer. After coro_clone that pointer is stale.
+        return jit_shift_impl_fiber(expr, env, interp);
+    }
     EvalResult r = jit_shift_impl(expr, env, interp);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;
@@ -1028,6 +1039,268 @@ fn EvalResult jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
 
     return body_result;
 }
+
+// =============================================================================
+// FIBER-BASED RESET/SHIFT (Phase 1 — stack engine continuations)
+// =============================================================================
+
+/**
+ * Shared state between jit_reset_impl_fiber (parent) and jit_shift_impl_fiber (coro).
+ * Lives on the parent's stack frame. The coro reads/writes it via interp.current_reset_state.
+ */
+struct ResetCoroState {
+    Expr*   body;         // Reset body expression
+    Env*    env;          // Environment at reset time
+    Interp* interp;       // Interpreter (for jit_eval)
+    bool    shifted;      // Set true by shift before suspending
+    Expr*   shift_body;   // Shift's body expression (to be eval'd in parent)
+    Env*    shift_env;    // Environment for shift body (includes k binding)
+}
+
+/**
+ * Entry function for the reset coroutine.
+ * Runs the reset body on a separate stack. On normal completion, stores
+ * the result in g_current_coro.result. On shift, the coro is suspended
+ * and this function's frame is preserved on the coro's stack.
+ */
+fn void reset_coro_entry(void* arg) {
+    ResetCoroState* state = (ResetCoroState*)arg;
+    Value* v = jit_eval(state.body, state.env, state.interp);
+    main::g_current_coro.result = v;
+}
+
+/**
+ * Fiber-based reset: runs body on a separate stack (coroutine).
+ *
+ * If the body completes normally, returns its value.
+ * If the body calls (shift k BODY), the coro suspends and BODY is
+ * evaluated in the parent context with k bound to the suspended coro.
+ * The shift body's return value becomes the reset's return value.
+ */
+fn EvalResult jit_reset_impl_fiber(Expr* expr, Env* env, Interp* interp) {
+    main::Coro* coro = main::coro_create(&interp.coro_pool);
+    if (coro == null) return eval_error("stack engine: failed to create coro for reset");
+
+    ResetCoroState state;
+    state.body = expr.reset.body;
+    state.env = env;
+    state.interp = interp;
+    state.shifted = false;
+    state.shift_body = null;
+    state.shift_env = null;
+
+    main::coro_init(coro, &reset_coro_entry, &state);
+
+    // Save/restore the reset state pointer for nesting
+    void* saved_state = interp.current_reset_state;
+    interp.current_reset_state = &state;
+
+    // Save interp state before entering coro. The coro shares the same Interp
+    // and its jit_eval calls modify these fields (eval_depth, jit_env, etc.).
+    // When the coro suspends (shift) or completes, these are left in the coro's
+    // state. We must restore the parent's values.
+    Env*        saved_jit_env       = interp.jit_env;
+    Env*        saved_match_env     = interp.match_env;
+    usz         saved_eval_depth    = interp.eval_depth;
+    InterpFlags saved_flags         = interp.flags;
+    Expr*       saved_tco_expr      = interp.jit_tco_expr;
+    Env*        saved_tco_env       = interp.jit_tco_env;
+    usz         saved_reset_depth   = interp.reset_depth;
+    usz         saved_handler_count = interp.handler_count;
+
+    // Run the coroutine
+    main::StackContext parent_ctx;
+    main::coro_switch_to(coro, &parent_ctx);
+
+    // Restore interp state after coro suspends/completes
+    interp.current_reset_state = saved_state;
+    interp.jit_env        = saved_jit_env;
+    interp.match_env      = saved_match_env;
+    interp.eval_depth     = saved_eval_depth;
+    interp.flags          = saved_flags;
+    interp.jit_tco_expr   = saved_tco_expr;
+    interp.jit_tco_env    = saved_tco_env;
+    interp.reset_depth    = saved_reset_depth;
+    interp.handler_count  = saved_handler_count;
+
+    if (state.shifted) {
+        // Shift occurred — evaluate shift body in parent context
+        Value* shift_result = jit_eval(state.shift_body, state.shift_env, interp);
+        if (shift_result != null && shift_result.tag == ERROR) {
+            return eval_error(shift_result.str_val.chars[:shift_result.str_val.len]);
+        }
+        return eval_ok(shift_result);
+    }
+
+    // Normal completion (no shift)
+    Value* v = (Value*)coro.result;
+    main::coro_destroy(coro, &interp.coro_pool);
+    if (v != null && v.tag == ERROR) {
+        return eval_error(v.str_val.chars[:v.str_val.len]);
+    }
+    return eval_ok(v);
+}
+
+/**
+ * Fiber-based shift: suspends the current coroutine and creates a continuation.
+ *
+ * This function is called INSIDE a coroutine (created by jit_reset_impl_fiber).
+ * It captures the current coro as a continuation, stores the shift body info
+ * in the parent's ResetCoroState, and suspends. When resumed by (k val),
+ * it returns the resume value.
+ */
+fn Value* jit_shift_impl_fiber(Expr* expr, Env* env, Interp* interp) {
+    // IMPORTANT: Returns Value* (not EvalResult) so the return fits in RAX.
+    // EvalResult is >16 bytes, triggering the System V ABI hidden return pointer.
+    // After coro_clone that pointer is stale, causing writes to the wrong stack.
+    main::Coro* current = main::g_current_coro;
+    if (current == null) {
+        return make_error(interp, "shift outside of reset");
+    }
+
+    ResetCoroState* rstate = (ResetCoroState*)interp.current_reset_state;
+    if (rstate == null) {
+        return make_error(interp, "shift outside of reset (no reset state)");
+    }
+
+    // Create continuation wrapping the current coro
+    Continuation* k = interp.alloc_lisp_continuation();
+    k.data = null;
+    k.coro = current;
+    k.is_fiber_based = true;
+
+    Value* k_val = make_continuation(interp, k);
+
+    // Bind k in the shift body's environment
+    Env* shift_env = env.extend(interp, expr.shift.k_name, k_val);
+
+    // Store shift body info for the parent (jit_reset_impl_fiber) to evaluate
+    rstate.shifted = true;
+    rstate.shift_body = expr.shift.body;
+    rstate.shift_env = shift_env;
+
+    // Save interpreter state that the parent's evaluation will corrupt.
+    // These are effectively "callee-saved registers" of the interpreter —
+    // the coro's evaluation expects them to be preserved across the suspend.
+    // The parent shares the same Interp but modifies these fields when
+    // evaluating the shift body. We must restore them on resume.
+    Env*       saved_jit_env    = interp.jit_env;
+    Env*       saved_match_env  = interp.match_env;
+    usz        saved_eval_depth = interp.eval_depth;
+    InterpFlags saved_flags     = interp.flags;
+    Expr*      saved_tco_expr   = interp.jit_tco_expr;
+    Env*       saved_tco_env    = interp.jit_tco_env;
+    usz        saved_reset_depth = interp.reset_depth;
+    usz        saved_handler_count = interp.handler_count;
+
+    // Suspend the coro — control returns to jit_reset_impl_fiber
+    main::coro_suspend();
+
+    // === RESUMED HERE by (k val) via jit_apply_fiber_continuation ===
+    // Restore interpreter state (corrupted by parent's evaluation of shift body)
+    interp.jit_env = saved_jit_env;
+    interp.match_env = saved_match_env;
+    interp.eval_depth = saved_eval_depth;
+    interp.flags = saved_flags;
+    interp.jit_tco_expr = saved_tco_expr;
+    interp.jit_tco_env = saved_tco_env;
+    interp.reset_depth = saved_reset_depth;
+    interp.handler_count = saved_handler_count;
+
+    return interp.resume_value;
+}
+
+/**
+ * Apply a fiber-based continuation: clone the coro and resume it.
+ *
+ * Always clones for multi-shot safety — the original stays suspended
+ * as a "template" for potential future invocations.
+ */
+fn EvalResult jit_apply_fiber_continuation(Value* k_val, Value* arg, Interp* interp) {
+    main::Coro* coro = k_val.cont_val.coro;
+
+    if (coro == null) {
+        return eval_error("cannot resume continuation: null coro");
+    }
+    if (coro.status == main::CoroStatus.CORO_COMPLETED || coro.status == main::CoroStatus.CORO_DEAD) {
+        return eval_error("cannot resume completed/dead continuation");
+    }
+    if (coro.status != main::CoroStatus.CORO_SUSPENDED) {
+        return eval_error("cannot resume running continuation");
+    }
+
+    // Clone for multi-shot safety (original stays suspended as template)
+    main::Coro* target = main::coro_clone(coro, &interp.coro_pool);
+    if (target == null) {
+        return eval_error("stack engine: failed to clone coro for continuation");
+    }
+
+    // Pass the resume value to the shift function
+    interp.resume_value = arg;
+
+    // Set up a reset-like context to catch any shifts in the resumed body
+    ResetCoroState resume_state;
+    resume_state.shifted = false;
+    resume_state.shift_body = null;
+    resume_state.shift_env = null;
+    resume_state.body = null;
+    resume_state.env = null;
+    resume_state.interp = interp;
+
+    void* saved_state = interp.current_reset_state;
+    interp.current_reset_state = &resume_state;
+
+    // Save interp state before resuming clone. The clone's jit_eval unwind
+    // will modify eval_depth, jit_env, etc. on the shared Interp.
+    Env*        saved_jit_env       = interp.jit_env;
+    Env*        saved_match_env     = interp.match_env;
+    usz         saved_eval_depth    = interp.eval_depth;
+    InterpFlags saved_flags         = interp.flags;
+    Expr*       saved_tco_expr      = interp.jit_tco_expr;
+    Env*        saved_tco_env       = interp.jit_tco_env;
+    usz         saved_reset_depth   = interp.reset_depth;
+    usz         saved_handler_count = interp.handler_count;
+
+    // Resume the clone
+    main::StackContext parent_ctx;
+    main::coro_resume(target, &parent_ctx);
+
+    // Restore interp state after clone completes/shifts
+    interp.current_reset_state = saved_state;
+    interp.jit_env        = saved_jit_env;
+    interp.match_env      = saved_match_env;
+    interp.eval_depth     = saved_eval_depth;
+    interp.flags          = saved_flags;
+    interp.jit_tco_expr   = saved_tco_expr;
+    interp.jit_tco_env    = saved_tco_env;
+    interp.reset_depth    = saved_reset_depth;
+    interp.handler_count  = saved_handler_count;
+
+    Value* result;
+    if (resume_state.shifted) {
+        // The resumed body hit another shift — evaluate that shift's body
+        Value* shift_result = jit_eval(resume_state.shift_body, resume_state.shift_env, interp);
+        main::coro_destroy(target, &interp.coro_pool);
+        if (shift_result != null && shift_result.tag == ERROR) {
+            return eval_error(shift_result.str_val.chars[:shift_result.str_val.len]);
+        }
+        return eval_ok(shift_result);
+    }
+
+    // Clone completed normally
+    result = (Value*)target.result;
+    main::coro_destroy(target, &interp.coro_pool);
+
+    if (result != null && ((Value*)result).tag == ERROR) {
+        Value* err = (Value*)result;
+        return eval_error(err.str_val.chars[:err.str_val.len]);
+    }
+    return eval_ok(result);
+}
+
+// =============================================================================
+// END FIBER-BASED RESET/SHIFT
+// =============================================================================
 
 <* @require expr != null : "jit_handle_impl: null expr"
    @require interp != null : "jit_handle_impl: null interp" *>
@@ -1314,6 +1587,12 @@ fn EvalResult jit_apply_continuation(Value* k_val, Value* arg, Interp* interp) {
         return eval_error("cannot resume continuation: null continuation");
     }
 
+    // Fiber-based continuation path
+    if (k_val.cont_val.is_fiber_based) {
+        return jit_apply_fiber_continuation(k_val, arg, interp);
+    }
+
+    // Legacy replay-based continuation path
     CapturedCont* cc = (CapturedCont*)k_val.cont_val.data;
     if (cc == null) {
         return eval_error("cannot resume continuation: no captured state");

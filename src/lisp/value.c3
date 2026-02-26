@@ -245,11 +245,15 @@ struct Closure {
 }
 
 /**
- * Continuation — Stub for delimited continuation.
- * Full implementation will be in continuation.c3
+ * Continuation — Delimited continuation (supports both replay and fiber paths).
+ *
+ * When is_fiber_based == false (legacy): data points to CapturedCont for replay.
+ * When is_fiber_based == true (fiber):   coro points to a suspended Coro.
  */
 struct Continuation {
-    void* data;           // Opaque pointer to continuation data
+    void* data;           // Legacy: opaque pointer to CapturedCont (replay path)
+    Coro* coro;           // Fiber path: suspended coroutine backing this continuation
+    bool  is_fiber_based; // true = use coro, false = use legacy replay
 }
 
 /**
@@ -1986,6 +1990,12 @@ struct Interp {
     char[256][16] source_dirs;  // stack of directory paths (null-terminated)
     usz source_dir_count;
 
+    // Fiber-based continuation system (stack engine)
+    main::StackPool coro_pool;
+    bool use_fiber_continuations;  // Toggle: true = fiber-based, false = replay
+    Value* resume_value;           // Value passed to (k val) — read by shift on resume
+    void* current_reset_state;     // Pointer to current ResetCoroState (in jit.c3)
+
 }
 
 fn void Interp.init(Interp* self) {
@@ -2031,6 +2041,12 @@ fn void Interp.init(Interp* self) {
     self.cont_target_shift_index = 0;
     self.shift_prior_capacity = PRIOR_INITIAL_CAPACITY;
     self.shift_prior_results = (Value**)mem::malloc(Value*.sizeof * self.shift_prior_capacity);
+
+    // Fiber-based continuation system
+    main::stack_pool_init(&self.coro_pool);
+    self.use_fiber_continuations = true;  // Enable fiber system (replay is fallback)
+    self.resume_value = null;
+    self.current_reset_state = null;
 
     // Pre-intern keywords
     self.sym_lambda  = self.symbols.intern("lambda");
@@ -2273,11 +2289,14 @@ fn void Interp.destroy(Interp* self) {
     if (self.reset_env_stack != null) { mem::free(self.reset_env_stack); self.reset_env_stack = null; }
     if (self.effect_prior_results != null) { mem::free(self.effect_prior_results); self.effect_prior_results = null; }
     if (self.shift_prior_results != null) { mem::free(self.shift_prior_results); self.shift_prior_results = null; }
+    main::stack_pool_shutdown(&self.coro_pool);
 }
 
 fn Continuation* Interp.alloc_lisp_continuation(Interp* self) {
     Continuation k;
     k.data = null;
+    k.coro = null;
+    k.is_fiber_based = false;
     main::ObjectHandle h = main::allocate_in(self.root_region, Continuation, k);
     return main::dereference_as(Continuation, h);
 }

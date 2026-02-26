@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-02-26 (Session 42-43): Fiber-based delimited continuations (Phase 0+1)
+
+### Summary
+Implemented stack engine (Phase 0) and wired it into reset/shift (Phase 1) for the fiber-continuation unification plan. Fiber-based continuations use real separate stacks with assembly context switching instead of the replay-based mechanism. Both paths coexist, selected by `interp.use_fiber_continuations` flag (defaults to true).
+
+### Key Implementation Details
+- **Stack engine** (`src/stack_engine.c3`): mmap'd stacks with guard pages, x86_64 assembly context switching (callee-saved regs + stack/frame pointer), cooperative coroutines (Coro), coro_clone with RBP chain fixup for multi-shot continuations, StackPool for reuse
+- **Fiber reset/shift** (`src/lisp/jit.c3`): `jit_reset_impl_fiber` runs body on separate coro stack; `jit_shift_impl_fiber` suspends coro and captures it as continuation; `jit_apply_fiber_continuation` always clones for multi-shot safety
+- **Hidden return pointer fix**: `jit_shift_impl_fiber` returns `Value*` (not `EvalResult`) to avoid System V ABI hidden stack pointer that becomes stale after coro_clone
+- **Interp state isolation**: Save/restore `eval_depth`, `jit_env`, `match_env`, `flags`, `jit_tco_expr/env`, `reset_depth`, `handler_count` at all three boundaries (reset→coro, shift suspend/resume, apply→clone)
+- **Value changes** (`src/lisp/value.c3`): `Continuation` struct gains `coro` and `is_fiber_based` fields; `Interp` gains `coro_pool`, `use_fiber_continuations`, `resume_value`, `current_reset_state`
+
+### Files Modified
+- `src/stack_engine.c3` — New file: stack engine primitives (Phase 0)
+- `src/lisp/jit.c3` — Fiber-based reset/shift/apply functions, dispatch in jit_exec_reset/shift
+- `src/lisp/value.c3` — Continuation and Interp struct additions
+- `.claude/plans/fiber-continuation-unification.md` — Master plan file
+
+### Tests
+- 986 total (up from 927), 0 failures
+- Stack engine: 7 unit tests (basic coro, suspend/resume, clone, lifecycle, pool reuse, clone isolation, result passing)
+- Fiber reset/shift: existing continuation tests pass via new fiber path
+
 ## 2026-02-26 (Session 41): omni-torch refactor + module expression limit increase
 
 ### Summary

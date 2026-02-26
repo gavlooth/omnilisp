@@ -667,6 +667,9 @@ fn int main(int argc, char** argv) {
     // - Effect handler patterns
     run_delimited_tests();
 
+    // Run stack engine tests (mmap stacks, context switch, coroutine lifecycle)
+    run_stack_engine_tests();
+
     // Initialize thread-local registry BEFORE Lisp tests (interpreter uses regions)
     thread_registry_init();
     io::printfn("Thread-local registry initialized, root id=%d", (uint)thread_registry().root_id);
