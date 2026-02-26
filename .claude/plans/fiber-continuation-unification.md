@@ -639,9 +639,16 @@ If any fail, set `use_fiber_continuations = false` to verify existing path still
 
 ---
 
-### PHASE 2: Wire Fibers into handle/signal/resolve
+### PHASE 2: Wire Fibers into handle/signal/resolve — COMPLETE
 
 **Goal**: Implement fiber-based algebraic effects. This is the most complex phase.
+**Status**: Complete. 986 tests pass (0 failures). Key design decisions:
+- `jit_handle_impl_fiber`: runs body on coro, loop dispatches signals to clauses
+- `jit_signal_impl_fiber`: suspends coro, stores signal info in HandleFiberState (same save/restore pattern as shift)
+- `jit_exec_resolve` fiber path: single-shot resume (no clone), reinstalls handler for multi-signal
+- `raise_pending` flag must be captured before interp state restore (coro sets it, restore overwrites it)
+- I/O fast path for unhandled signals handled inline in `jit_signal_impl_fiber`
+- HandleFiberState stores handler_copy for reinstallation by resolve
 
 #### 3.2.1 Implement `jit_handle_impl_fiber`
 

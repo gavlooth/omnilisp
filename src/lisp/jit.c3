@@ -912,21 +912,27 @@ fn Value* jit_exec_shift(Interp* interp, Expr* expr, Env* env) {
 }
 
 fn Value* jit_exec_handle(Interp* interp, Expr* expr, Env* env) {
+    if (interp.use_fiber_continuations) {
+        EvalResult r = jit_handle_impl_fiber(expr, env, interp);
+        if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+        return r.value;
+    }
     EvalResult r = jit_handle_impl(expr, env, interp);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;
 }
 
 fn Value* jit_exec_perform(Interp* interp, Expr* expr, Env* env) {
-    // Save point for direct resume: if the handler calls resolve (single-shot),
-    // it longjmps here and the body continues with the resolved value.
+    if (interp.use_fiber_continuations) {
+        // Fiber path: signal suspends the coro, no longjmp needed
+        return jit_signal_impl_fiber(expr, env, interp);
+    }
+    // Legacy path: save point for direct resume via longjmp
     RegisterContext signal_save;
     int jmp = main::context_capture(&signal_save);
     if (jmp != 0) {
-        // Resumed from resolve — return the resolved value to the body
         return interp.effect_result;
     }
-
     EvalResult r = jit_perform_impl(expr, env, interp, &signal_save);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;
@@ -1300,6 +1306,375 @@ fn EvalResult jit_apply_fiber_continuation(Value* k_val, Value* arg, Interp* int
 
 // =============================================================================
 // END FIBER-BASED RESET/SHIFT
+// =============================================================================
+
+// =============================================================================
+// FIBER-BASED HANDLE/SIGNAL/RESOLVE
+// =============================================================================
+
+/**
+ * Shared state between jit_handle_impl_fiber (parent) and jit_signal_impl_fiber (coro).
+ * Lives on the parent's stack frame (jit_handle_impl_fiber).
+ */
+struct HandleFiberState {
+    Expr*          body;
+    Env*           env;
+    Interp*        interp;
+    bool           signaled;       // Set true by signal before suspending
+    SymbolId       signal_tag;     // Which effect tag was signaled
+    Value*         signal_arg;     // Argument passed to signal
+    EffectHandler  handler_copy;   // Copy of handler for reinstallation by resolve
+    usz            handler_idx;    // Handler stack index
+}
+
+fn void handle_fiber_entry(void* arg) {
+    HandleFiberState* state = (HandleFiberState*)arg;
+    Value* v = jit_eval(state.body, state.env, state.interp);
+    main::g_current_coro.result = v;
+}
+
+/**
+ * Fiber-based signal: suspends the current coro when a matching fiber handler is found.
+ *
+ * Returns Value* directly (same pattern as jit_shift_impl_fiber — avoids the hidden
+ * return pointer issue with EvalResult after coro_clone).
+ *
+ * Falls through to the I/O fast path or error if no fiber handler matches.
+ */
+fn Value* jit_signal_impl_fiber(Expr* expr, Env* env, Interp* interp) {
+    // Evaluate the argument
+    Value* arg_v = jit_eval(expr.perform.arg, env, interp);
+    if (arg_v != null && arg_v.tag == ERROR) return arg_v;
+
+    SymbolId tag = expr.perform.tag;
+
+    // Type check (same as legacy path)
+    TypeId effect_tid = interp.types.lookup(tag, &interp.symbols);
+    if (effect_tid != INVALID_TYPE_ID) {
+        TypeInfo* effect_info = interp.types.get(effect_tid);
+        if (effect_info != null && effect_info.kind == TK_EFFECT && effect_info.field_count > 0) {
+            TypeId expected_tid = effect_info.fields[0].field_type;
+            if (expected_tid != INVALID_TYPE_ID && expected_tid != interp.tid_Any) {
+                TypeId actual_tid = infer_value_type(arg_v, interp);
+                if (actual_tid != INVALID_TYPE_ID && !interp.types.is_subtype(actual_tid, expected_tid)) {
+                    char[256] ebuf;
+                    char[] tag_name = interp.symbols.get_name(tag);
+                    TypeInfo* exp_ti = interp.types.get(expected_tid);
+                    TypeInfo* act_ti = interp.types.get(actual_tid);
+                    char[] exp_name = exp_ti != null ? interp.symbols.get_name(exp_ti.name) : "?";
+                    char[] act_name = act_ti != null ? interp.symbols.get_name(act_ti.name) : "?";
+                    char[] msg = io::bprintf(&ebuf, "perform '%s': expected %s argument, got %s",
+                        (ZString)tag_name, (ZString)exp_name, (ZString)act_name)!!;
+                    return make_error(interp, msg);
+                }
+            }
+        }
+    }
+
+    // Search handler stack for a matching fiber handler
+    main::Coro* current = main::g_current_coro;
+    if (current != null) {
+        bool hit_strict = false;
+        for (isz i = (isz)interp.handler_count - 1; i >= 0; i--) {
+            EffectHandler* h = &interp.handler_stack[(usz)i];
+
+            for (usz j = 0; j < h.clause_count; j++) {
+                if ((uint)h.clauses[j].effect_tag == (uint)tag) {
+                    // Found matching handler
+                    if (h.fiber_state != null) {
+                        // Fiber path: suspend coro, inform handle loop
+                        HandleFiberState* hstate = (HandleFiberState*)h.fiber_state;
+                        hstate.signaled = true;
+                        hstate.signal_tag = tag;
+                        hstate.signal_arg = arg_v;
+
+                        // Save interp state (same pattern as jit_shift_impl_fiber)
+                        Env*        saved_jit_env       = interp.jit_env;
+                        Env*        saved_match_env     = interp.match_env;
+                        usz         saved_eval_depth    = interp.eval_depth;
+                        InterpFlags saved_flags         = interp.flags;
+                        Expr*       saved_tco_expr      = interp.jit_tco_expr;
+                        Env*        saved_tco_env       = interp.jit_tco_env;
+                        usz         saved_reset_depth   = interp.reset_depth;
+                        usz         saved_handler_count = interp.handler_count;
+
+                        // Suspend coro — control returns to handle loop
+                        main::coro_suspend();
+
+                        // === RESUMED by resolve ===
+                        interp.jit_env        = saved_jit_env;
+                        interp.match_env      = saved_match_env;
+                        interp.eval_depth     = saved_eval_depth;
+                        interp.flags          = saved_flags;
+                        interp.jit_tco_expr   = saved_tco_expr;
+                        interp.jit_tco_env    = saved_tco_env;
+                        interp.reset_depth    = saved_reset_depth;
+                        interp.handler_count  = saved_handler_count;
+
+                        return interp.resume_value;
+                    }
+                    // Non-fiber handler — fall through to legacy
+                    break;
+                }
+            }
+
+            if (h.strict_mode) {
+                hit_strict = true;
+                break;
+            }
+        }
+
+        if (hit_strict) {
+            char[256] sbuf;
+            char[] tag_name = interp.symbols.get_name(tag);
+            char[] arg_type = interp.symbols.get_name(value_type_name(arg_v, interp));
+            char[] smsg = io::bprintf(&sbuf, "strict handler: unhandled effect '%s' with arg type %s",
+                (ZString)tag_name, (ZString)arg_type)!!;
+            return make_error(interp, smsg);
+        }
+    }
+
+    // I/O fast path: no handler found → use cached primitives
+    if ((uint)tag == (uint)interp.sym_io_print) {
+        if (interp.raw_print != null) {
+            EvalResult r = apply_primitive(interp.raw_print, arg_v, interp);
+            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+            return r.value;
+        }
+    } else if ((uint)tag == (uint)interp.sym_io_println) {
+        if (interp.raw_println != null) {
+            EvalResult r = apply_primitive(interp.raw_println, arg_v, interp);
+            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+            return r.value;
+        }
+    } else if ((uint)tag == (uint)interp.sym_io_display) {
+        if (interp.raw_display != null) {
+            EvalResult r = apply_primitive(interp.raw_display, arg_v, interp);
+            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+            return r.value;
+        }
+    } else if ((uint)tag == (uint)interp.sym_io_newline) {
+        if (interp.raw_newline != null) {
+            EvalResult r = apply_primitive(interp.raw_newline, make_nil(interp), interp);
+            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+            return r.value;
+        }
+    } else if ((uint)tag == (uint)interp.sym_io_read_file) {
+        if (interp.raw_read_file != null) {
+            EvalResult r = apply_primitive(interp.raw_read_file, arg_v, interp);
+            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+            return r.value;
+        }
+    } else if ((uint)tag == (uint)interp.sym_io_write_file) {
+        if (interp.raw_write_file != null && arg_v != null && is_cons(arg_v)) {
+            EvalResult partial_result = apply_primitive(interp.raw_write_file, car(arg_v), interp);
+            if (partial_result.error.has_error) return make_error(interp, partial_result.error.message[:256]);
+            Value* write_result = jit_apply_value(partial_result.value, cdr(arg_v), interp);
+            if (write_result != null && write_result.tag == ERROR) return write_result;
+            return write_result;
+        }
+    } else if ((uint)tag == (uint)interp.sym_io_file_exists) {
+        if (interp.raw_file_exists != null) {
+            EvalResult r = apply_primitive(interp.raw_file_exists, arg_v, interp);
+            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+            return r.value;
+        }
+    } else if ((uint)tag == (uint)interp.sym_io_read_lines) {
+        if (interp.raw_read_lines != null) {
+            EvalResult r = apply_primitive(interp.raw_read_lines, arg_v, interp);
+            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+            return r.value;
+        }
+    }
+
+    char[256] ubuf;
+    char[] utag = interp.symbols.get_name(tag);
+    char[] uarg = interp.symbols.get_name(value_type_name(arg_v, interp));
+    char[] umsg = io::bprintf(&ubuf, "unhandled effect '%s' with arg type %s", (ZString)utag, (ZString)uarg)!!;
+    return make_error(interp, umsg);
+}
+
+/**
+ * Fiber-based handle: runs body on a coro, dispatches signals to handler clauses.
+ *
+ * Signal suspends the coro. The handle loop finds the matching clause, creates
+ * a continuation k, and evaluates the clause in the parent context. Resolve
+ * resumes the coro (single-shot).
+ */
+fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
+    if (expr.handle.clause_count > MAX_EFFECT_CLAUSES) {
+        return eval_error("too many effect handler clauses (max 16)");
+    }
+
+    main::Coro* coro = main::coro_create(&interp.coro_pool);
+    if (coro == null) return eval_error("stack engine: failed to create coro for handle");
+
+    HandleFiberState state;
+    state.body = expr.handle.body;
+    state.env = env;
+    state.interp = interp;
+    state.signaled = false;
+    state.signal_tag = (SymbolId)0;
+    state.signal_arg = null;
+
+    main::coro_init(coro, &handle_fiber_entry, &state);
+
+    // Push handler on stack
+    if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+    usz my_idx = interp.handler_count;
+    EffectHandler* h = &interp.handler_stack[my_idx];
+    h.clause_count = expr.handle.clause_count;
+    h.handler_env = env;
+    h.body_expr = expr.handle.body;
+    h.body_env = env;
+    h.strict_mode = expr.handle.strict_mode;
+    h.fiber_state = &state;
+
+    for (usz i = 0; i < expr.handle.clause_count; i++) {
+        h.tags[i] = expr.handle.clauses[i].effect_tag;
+        h.clauses[i] = expr.handle.clauses[i];
+    }
+
+    interp.handler_count = my_idx + 1;
+
+    // Save handler copy for reinstallation after clause evaluation
+    state.handler_copy = *h;
+    state.handler_idx = my_idx;
+
+    // Save interp state before entering coro
+    Env*        saved_jit_env       = interp.jit_env;
+    Env*        saved_match_env     = interp.match_env;
+    usz         saved_eval_depth    = interp.eval_depth;
+    InterpFlags saved_flags         = interp.flags;
+    Expr*       saved_tco_expr      = interp.jit_tco_expr;
+    Env*        saved_tco_env       = interp.jit_tco_env;
+    usz         saved_reset_depth   = interp.reset_depth;
+    usz         saved_handler_count = interp.handler_count;  // my_idx + 1
+
+    // Run the body on the coro
+    main::StackContext parent_ctx;
+    main::coro_switch_to(coro, &parent_ctx);
+
+    // Capture raise_pending before restoring flags (the coro may have set it)
+    bool coro_raise_pending = interp.flags.raise_pending;
+
+    // Restore interp state
+    interp.jit_env        = saved_jit_env;
+    interp.match_env      = saved_match_env;
+    interp.eval_depth     = saved_eval_depth;
+    interp.flags          = saved_flags;
+    interp.jit_tco_expr   = saved_tco_expr;
+    interp.jit_tco_env    = saved_tco_env;
+    interp.reset_depth    = saved_reset_depth;
+    interp.handler_count  = saved_handler_count;
+
+    // Propagate raise_pending from coro execution
+    if (coro_raise_pending) interp.flags.raise_pending = true;
+
+    // Handle loop: process signals
+    Value* last_handler_v = null;
+    while (state.signaled) {
+        state.signaled = false;
+
+        // Pop handler for clause evaluation (clause may push its own)
+        interp.handler_count = my_idx;
+
+        // Find matching clause
+        EffectClause* clause = null;
+        for (usz j = 0; j < state.handler_copy.clause_count; j++) {
+            if ((uint)state.handler_copy.tags[j] == (uint)state.signal_tag) {
+                clause = &state.handler_copy.clauses[j];
+                break;
+            }
+        }
+
+        if (clause == null) {
+            // No matching clause — unhandled signal
+            main::coro_destroy(coro, &interp.coro_pool);
+            char[256] ubuf;
+            char[] utag = interp.symbols.get_name(state.signal_tag);
+            char[] uarg = interp.symbols.get_name(value_type_name(state.signal_arg, interp));
+            char[] umsg = io::bprintf(&ubuf, "unhandled effect '%s' with arg type %s", (ZString)utag, (ZString)uarg)!!;
+            return eval_error(umsg);
+        }
+
+        // Create continuation wrapping the suspended coro
+        Continuation* k = interp.alloc_lisp_continuation();
+        k.data = null;
+        k.coro = coro;
+        k.is_fiber_based = true;
+        k.handle_state = &state;
+        Value* k_val = make_continuation(interp, k);
+
+        // Bind k and arg in clause environment
+        Env* clause_env = env.extend(interp, clause.k_name, k_val);
+        clause_env = clause_env.extend(interp, clause.arg_name, state.signal_arg);
+        // Also bind __k for resolve
+        clause_env = clause_env.extend(interp, interp.sym__k, k_val);
+
+        // Evaluate handler clause
+        last_handler_v = jit_eval(clause.handler_body, clause_env, interp);
+
+        // Check coro state after clause returns
+        if (coro.status == main::CoroStatus.CORO_COMPLETED) {
+            // resolve was called, body completed
+            Value* body_result = (Value*)coro.result;
+            main::coro_destroy(coro, &interp.coro_pool);
+            if (body_result != null && body_result.tag == ERROR) {
+                return eval_error(body_result.str_val.chars[:body_result.str_val.len]);
+            }
+            return eval_ok(body_result);
+        }
+
+        if (state.signaled) {
+            // Body hit another signal after being resumed — loop to dispatch
+            continue;
+        }
+
+        // Abort: clause didn't call resolve, coro is still suspended
+        main::coro_destroy(coro, &interp.coro_pool);
+        if (last_handler_v != null && last_handler_v.tag == ERROR) {
+            return eval_error(last_handler_v.str_val.chars[:last_handler_v.str_val.len]);
+        }
+        return eval_ok(last_handler_v);
+    }
+
+    // Normal completion (no signal)
+    interp.handler_count = my_idx;
+    Value* v = (Value*)coro.result;
+    main::coro_destroy(coro, &interp.coro_pool);
+
+    // Check for pending raise error
+    if (interp.flags.raise_pending) {
+        SymbolId raise_sym = interp.sym_raise;
+        for (usz ci = 0; ci < expr.handle.clause_count; ci++) {
+            if ((uint)expr.handle.clauses[ci].effect_tag == (uint)raise_sym) {
+                EffectClause* clause = &expr.handle.clauses[ci];
+                interp.flags.raise_pending = false;
+                Value* msg_val = make_string(interp, interp.raise_msg[:interp.raise_msg_len]);
+                Value* k_val = make_nil(interp);
+                Env* clause_env = env.extend(interp, clause.k_name, k_val);
+                clause_env = clause_env.extend(interp, clause.arg_name, msg_val);
+                Value* handler_v = jit_eval(clause.handler_body, clause_env, interp);
+                if (handler_v != null && handler_v.tag != ERROR) {
+                    return eval_ok(handler_v);
+                }
+                if (handler_v != null) {
+                    return eval_error(handler_v.str_val.chars[:handler_v.str_val.len]);
+                }
+                return eval_error("raise handler returned nil");
+            }
+        }
+    }
+
+    if (v != null && v.tag == ERROR) {
+        return eval_error(v.str_val.chars[:v.str_val.len]);
+    }
+    return eval_ok(v);
+}
+
+// =============================================================================
+// END FIBER-BASED HANDLE/SIGNAL/RESOLVE
 // =============================================================================
 
 <* @require expr != null : "jit_handle_impl: null expr"
@@ -3373,22 +3748,72 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
         return make_error(interp, "resolve: not inside a handler clause");
     }
 
+    // Fiber path: single-shot resume of the coro (no clone)
+    if (k_val.cont_val.is_fiber_based && k_val.cont_val.handle_state != null) {
+        main::Coro* coro = k_val.cont_val.coro;
+        if (coro == null || coro.status != main::CoroStatus.CORO_SUSPENDED) {
+            return make_error(interp, "resolve: continuation not suspended");
+        }
+
+        HandleFiberState* hstate = (HandleFiberState*)k_val.cont_val.handle_state;
+
+        // Reinstall handler so the body can signal again
+        if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+        interp.handler_stack[hstate.handler_idx] = hstate.handler_copy;
+        interp.handler_count = hstate.handler_idx + 1;
+
+        // Set resume value
+        interp.resume_value = val;
+
+        // Save interp state before resuming coro
+        Env*        saved_jit_env       = interp.jit_env;
+        Env*        saved_match_env     = interp.match_env;
+        usz         saved_eval_depth    = interp.eval_depth;
+        InterpFlags saved_flags         = interp.flags;
+        Expr*       saved_tco_expr      = interp.jit_tco_expr;
+        Env*        saved_tco_env       = interp.jit_tco_env;
+        usz         saved_reset_depth   = interp.reset_depth;
+        usz         saved_handler_count = interp.handler_count;
+
+        // Resume the coro (single-shot, no clone)
+        main::StackContext parent_ctx;
+        main::coro_resume(coro, &parent_ctx);
+
+        // Restore interp state
+        interp.jit_env        = saved_jit_env;
+        interp.match_env      = saved_match_env;
+        interp.eval_depth     = saved_eval_depth;
+        interp.flags          = saved_flags;
+        interp.jit_tco_expr   = saved_tco_expr;
+        interp.jit_tco_env    = saved_tco_env;
+        interp.reset_depth    = saved_reset_depth;
+        interp.handler_count  = saved_handler_count;
+
+        // Pop the reinstalled handler
+        interp.handler_count = hstate.handler_idx;
+
+        // Return value: body result if completed, or val as placeholder
+        if (coro.status == main::CoroStatus.CORO_COMPLETED) {
+            Value* body_result = (Value*)coro.result;
+            return body_result != null ? body_result : val;
+        }
+        // Body signaled again (hstate.signaled set by signal) — return val
+        // The handle loop will dispatch the next signal
+        return val;
+    }
+
+    // Legacy path
     CapturedCont* cc = (CapturedCont*)k_val.cont_val.data;
 
     // Single-shot fast path: longjmp directly to the signal point.
-    // The body continues from (signal ...) with val as return value.
-    // This avoids the O(N^2) replay cost for sequential signals.
     if (cc != null && cc.is_effect && !cc.resolved && cc.signal_save != null) {
         cc.resolved = true;
-        // Reinstall the handler so the body can signal again
         if (cc.has_handler) {
             if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
             interp.handler_stack[cc.handler_idx] = cc.handler_copy;
             interp.handler_count = cc.handler_idx + 1;
         }
-        // Restore body's jit_env (clause eval changed it via jit_eval)
         interp.jit_env = cc.saved_jit_env;
-        // Direct resume — longjmp to jit_exec_perform's save point
         interp.effect_result = val;
         main::context_restore(cc.signal_save, 1);
         // Does not return.

@@ -254,6 +254,7 @@ struct Continuation {
     void* data;           // Legacy: opaque pointer to CapturedCont (replay path)
     Coro* coro;           // Fiber path: suspended coroutine backing this continuation
     bool  is_fiber_based; // true = use coro, false = use legacy replay
+    void* handle_state;   // Fiber effect path: HandleFiberState* (for resolve)
 }
 
 /**
@@ -1732,6 +1733,7 @@ struct EffectHandler {
     Expr* body_expr;    // The handle body for continuation capture
     Env*  body_env;     // Environment at handle time
     bool  strict_mode;  // ^strict: reject unhandled effects in body
+    void* fiber_state;  // Fiber path: HandleFiberState* (null for legacy)
 }
 
 /**
@@ -2297,6 +2299,7 @@ fn Continuation* Interp.alloc_lisp_continuation(Interp* self) {
     k.data = null;
     k.coro = null;
     k.is_fiber_based = false;
+    k.handle_state = null;
     main::ObjectHandle h = main::allocate_in(self.root_region, Continuation, k);
     return main::dereference_as(Continuation, h);
 }

@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-02-26 (Session 44): Fiber-based algebraic effects (Phase 2)
+
+### Summary
+Wired stack engine into handle/signal/resolve. Effect handlers now run body on a coro — signal suspends the coro, handler clause evaluates in parent context, resolve resumes the coro (single-shot). Both fiber and legacy paths coexist via `use_fiber_continuations` flag.
+
+### Key Implementation Details
+- `HandleFiberState`: shared state between handle loop and signal, stores signal tag/arg/handler copy
+- `jit_signal_impl_fiber`: suspends coro on signal, saves/restores interp state (same pattern as shift)
+- `jit_handle_impl_fiber`: creates coro for body, loop dispatches signals to matching clauses
+- `jit_exec_resolve` fiber path: single-shot resume, reinstalls handler for multi-signal patterns
+- `raise_pending` flag preservation: captured before interp state restore to prevent loss
+- I/O fast path handled inline for unhandled signals
+
+### Files Modified
+- `src/lisp/jit.c3` — HandleFiberState, handle_fiber_entry, jit_signal_impl_fiber, jit_handle_impl_fiber, jit_exec_handle/perform/resolve dispatch
+- `src/lisp/value.c3` — Added `handle_state` to Continuation, `fiber_state` to EffectHandler
+- `.claude/plans/fiber-continuation-unification.md` — Phase 2 marked complete
+
+### Tests
+- 986 total (unchanged), 0 failures
+- All existing effect tests pass: signal/resolve, abort, multi-signal, raise/try-catch, I/O fast path, nested handles
+
 ## 2026-02-26 (Session 42-43): Fiber-based delimited continuations (Phase 0+1)
 
 ### Summary
