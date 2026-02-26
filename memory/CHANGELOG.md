@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-02-26 (Session 34): Syntax cleanup — flat-pair let, signal/respond, implicit begin
+
+### Summary
+Major syntax simplification pass. Replaced Scheme-style `(let ((x 10)) body)` with flat-pair `(let (x 10) body)`. Replaced `perform`/`k` effect syntax with `signal`/`respond`. Added implicit begin for lambda and define bodies. No backward compatibility (version < 1.0).
+
+### Let Syntax — Flat Pairs
+- **Regular let**: `(let (x 10) body)` and `(let (x 1 y 2) body)` — no double parens
+- **Named let**: `(let loop (n 0 acc 0) body)` — flat pairs in loop bindings
+- **Recursive let**: `(let ^rec (f expr) body)` — same flat-pair pattern
+- Updated parser (`parse_let`, `parse_named_let`), macro expander (`value_to_expr`), and compiler serializer
+- All bodies now support implicit begin (multiple expressions)
+
+### Effect Syntax — signal/respond
+- `perform` removed from parser — `signal` is the only keyword
+- Old handler clause `((tag k arg) (k expr))` replaced with `(tag arg (respond expr))`
+- Old `((tag k arg) expr)` abort style replaced with `(tag arg expr)`
+- Multi-shot tests keep old `((tag k x) (+ (k 10) (k 20)))` syntax (needs explicit `k`)
+- `with-trampoline` stdlib updated: `bounce` handler uses `respond`
+
+### Implicit Begin
+- Added `parse_implicit_begin()` helper in parser
+- Lambda (all variants), shorthand define, let, named let — all support multiple body expressions
+- `(lambda () (println "hi") 42)` now works without explicit `(begin ...)`
+
+### Files Modified
+- `src/lisp/parser.c3` — `parse_implicit_begin`, flat-pair let/named-let, removed `perform` keyword
+- `src/lisp/macros.c3` — `value_to_expr` updated for flat-pair let, `sym_perform` → `sym_signal`
+- `src/lisp/compiler.c3` — serializer updated, embedded stdlib updated
+- `src/lisp/tests.c3` — all 170+ test expressions updated
+- `stdlib/stdlib.lisp` — all let/signal/respond syntax updated
+- `docs/EFFECTS_GUIDE.md` — already used signal/respond from previous session
+
+### Test Count
+- Before: 850 unified + 77 compiler = 927 total
+- After: 850 unified + 77 compiler = 927 total, 0 failures
+
 ## 2026-02-25 (Session 33): Error messages, value display, module loader, omni-torch
 
 ### Summary

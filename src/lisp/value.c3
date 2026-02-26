@@ -1258,8 +1258,9 @@ enum ExprTag : char {
     E_QUOTE,      // (quote datum)
     E_RESET,      // (reset body)
     E_SHIFT,      // (shift k body)
-    E_PERFORM,    // (perform tag arg)
-    E_HANDLE,     // (handle body ((tag k x) handler) ...)
+    E_PERFORM,    // (perform tag arg) or (signal tag arg)
+    E_HANDLE,     // (handle body (tag arg body) ...) or (handle body ((tag k arg) body) ...)
+    E_RESPOND,    // (respond value) — resume continuation in handler clause
     E_INDEX,      // arr.[0] - path index access
     E_PATH,       // point.x, person.address.city - field access
     E_MATCH,      // (match expr (pattern result) ...)
@@ -1340,6 +1341,10 @@ struct ExprShift {
 struct ExprPerform {
     SymbolId tag;
     Expr*    arg;
+}
+
+struct ExprRespond {
+    Expr* value;   // the value to respond with (resumes the continuation)
 }
 
 // Maximum effect clauses per handle expression
@@ -1683,6 +1688,7 @@ struct Expr {
         ExprReset   reset;
         ExprShift   shift;
         ExprPerform perform;
+        ExprRespond respond;
         ExprHandle* handle;       // Pointer-indirect (large struct)
         ExprIndex   index;
         ExprPath    path;
@@ -1789,7 +1795,11 @@ struct Interp {
     SymbolId sym_reset;
     SymbolId sym_shift;
     SymbolId sym_perform;
+    SymbolId sym_signal;
     SymbolId sym_handle;
+    SymbolId sym_respond;
+    SymbolId sym_with_continuation;
+    SymbolId sym__k;       // hidden continuation name for match-style handle clauses
     SymbolId sym_match;
     SymbolId sym_and;
     SymbolId sym_or;
@@ -2015,7 +2025,11 @@ fn void Interp.init(Interp* self) {
     self.sym_reset   = self.symbols.intern("reset");
     self.sym_shift   = self.symbols.intern("shift");
     self.sym_perform = self.symbols.intern("perform");
+    self.sym_signal  = self.symbols.intern("signal");
     self.sym_handle  = self.symbols.intern("handle");
+    self.sym_respond = self.symbols.intern("respond");
+    self.sym_with_continuation = self.symbols.intern("with-continuation");
+    self.sym__k      = self.symbols.intern("__k");
     self.sym_match   = self.symbols.intern("match");
     self.sym_and     = self.symbols.intern("and");
     self.sym_or      = self.symbols.intern("or");

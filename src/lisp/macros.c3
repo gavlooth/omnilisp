@@ -264,29 +264,36 @@ fn Expr* value_to_expr(Value* val, Interp* interp) {
                 return e;
             }
             if ((uint)sym == (uint)interp.sym_let) {
+                // (let (name1 val1 name2 val2 ...) body)
                 Value* rest = val.cons_val.cdr;
                 if (!is_cons(rest)) return value_to_expr(make_nil(interp), interp);
                 Value* bindings_list = rest.cons_val.car;
                 rest = rest.cons_val.cdr;
                 Expr* body = is_cons(rest) ? value_to_expr(rest.cons_val.car, interp) : value_to_expr(make_nil(interp), interp);
-                // Build nested lets from bindings
+                // Build nested lets from flat-pair bindings
                 if (!is_cons(bindings_list)) {
                     return body;
                 }
-                // Collect all bindings
+                // Collect flat-pair bindings: name val name val ...
                 SymbolId[16] names;
                 Value*[16] inits;
                 usz count = 0;
                 Value* bp = bindings_list;
                 while (is_cons(bp) && count < 16) {
-                    Value* binding = bp.cons_val.car;
-                    if (is_cons(binding)) {
-                        Value* name_v = binding.cons_val.car;
-                        names[count] = (name_v != null && name_v.tag == SYMBOL) ? name_v.sym_val : 0;
-                        inits[count] = is_cons(binding.cons_val.cdr) ? binding.cons_val.cdr.cons_val.car : make_nil(interp);
+                    Value* name_v = bp.cons_val.car;
+                    if (name_v != null && name_v.tag == SYMBOL) {
+                        names[count] = name_v.sym_val;
+                        bp = bp.cons_val.cdr;
+                        if (is_cons(bp)) {
+                            inits[count] = bp.cons_val.car;
+                            bp = bp.cons_val.cdr;
+                        } else {
+                            inits[count] = make_nil(interp);
+                        }
                         count++;
+                    } else {
+                        bp = bp.cons_val.cdr;
                     }
-                    bp = bp.cons_val.cdr;
                 }
                 // Build from inside out
                 Expr* inner_body = body;
@@ -353,7 +360,7 @@ fn Expr* value_to_expr(Value* val, Interp* interp) {
                 e.unquote_splicing.body = is_cons(rest) ? value_to_expr(rest.cons_val.car, interp) : value_to_expr(make_nil(interp), interp);
                 return e;
             }
-            if ((uint)sym == (uint)interp.sym_perform) {
+            if ((uint)sym == (uint)interp.sym_signal) {
                 Value* rest = val.cons_val.cdr;
                 if (!is_cons(rest)) return value_to_expr(make_nil(interp), interp);
                 Expr* e = interp.alloc_expr();
@@ -657,6 +664,10 @@ fn Expr* expand_macros_in_expr(Expr* expr, Interp* interp) {
             expr.perform.arg = expand_macros_in_expr(expr.perform.arg, interp);
             return expr;
         }
+        case E_RESPOND: {
+            expr.respond.value = expand_macros_in_expr(expr.respond.value, interp);
+            return expr;
+        }
         case E_HANDLE: {
             expr.handle.body = expand_macros_in_expr(expr.handle.body, interp);
             for (usz i = 0; i < expr.handle.clause_count; i++) {
@@ -713,7 +724,7 @@ fn bool is_special_form_symbol(SymbolId sym, Interp* interp) {
         || (uint)sym == (uint)interp.sym_or
         || (uint)sym == (uint)interp.sym_reset
         || (uint)sym == (uint)interp.sym_shift
-        || (uint)sym == (uint)interp.sym_perform
+        || (uint)sym == (uint)interp.sym_signal
         || (uint)sym == (uint)interp.sym_handle
         || (uint)sym == (uint)interp.sym_match
         || (uint)sym == (uint)interp.sym_quasiquote

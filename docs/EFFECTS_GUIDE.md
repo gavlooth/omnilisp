@@ -2,88 +2,98 @@
 
 Effects are Omni's way of handling side effects — I/O, errors, state — as
 **values you can intercept, redirect, or suppress**. Instead of calling
-`println` and having output go directly to the terminal, `println` *performs*
+`println` and having output go directly to the terminal, `println` *signals*
 an effect. If nobody is listening, the output goes to the terminal as usual.
 If a handler is installed, it gets to decide what happens.
 
 This means you can test code without touching the filesystem, capture printed
 output to a string, or swap a real database for an in-memory mock — all without
-changing the code that performs the effects.
+changing the code that signals the effects.
 
 ---
 
-## 1. The basics: `perform` and `handle`
+## 1. The basics: `signal` and `handle`
 
 An effect has two sides:
 
-- **`perform`** — signals that something should happen
-- **`handle`** — intercepts that signal and decides what to do
+- **`signal`** — asks for something to happen
+- **`handle`** — listens and decides what to do
 
 ```lisp
 (handle
-  (+ 1 (perform read nil))
-  ((read k x) (k 41)))
+  (+ 1 (signal read nil))
+  (read x (respond 41)))
 ;; => 42
 ```
 
 What happened:
-1. The body starts evaluating `(+ 1 (perform read nil))`
-2. `perform` signals the `read` effect with argument `nil`
-3. The handler clause `(read k x)` matches
-4. `k` is the **continuation** — a function representing "the rest of the computation"
-5. `x` is the argument (`nil` in this case)
-6. `(k 41)` resumes the computation, substituting `41` where `perform` was
-7. The body finishes: `(+ 1 41)` => `42`
+1. The body starts evaluating `(+ 1 (signal read nil))`
+2. `signal` asks for the `read` effect with argument `nil`
+3. The handler clause `(read x ...)` matches — because the tag `read` matches
+4. `x` is bound to the argument (`nil` in this case)
+5. `(respond 41)` sends `41` back to the body, substituting it where `signal` was
+6. The body finishes: `(+ 1 41)` => `42`
+
+Each handler clause has two parts — what to match and what to do:
+
+```
+(tag  arg   body...)
+ |     |      |
+ |     |      └── code that runs when this effect is signalled
+ |     └── bound to the value from (signal tag value)
+ └── matched against the effect tag
+```
 
 ---
 
-## 2. The continuation `k`
+## 2. Responding and aborting
 
-`k` is the key concept. It's a function that means "continue where we left off,
-using this value as the result of `perform`."
+### Respond: send a value back
 
-### Resume: call `k`
+`(respond value)` sends a value back to the body. The body continues
+as if `signal` returned that value.
 
 ```lisp
 (handle
-  (* 2 (perform get-factor nil))
-  ((get-factor k _) (k 21)))
-;; => 42   — resumed with 21, body computes (* 2 21)
+  (* 2 (signal get-factor nil))
+  (get-factor x (respond 21)))
+;; => 42   — body gets 21, computes (* 2 21)
 ```
 
-### Abort: don't call `k`
+### Abort: don't respond
+
+If you don't call `respond`, the handler's return value becomes the result
+of the entire `handle` expression. The body is abandoned.
 
 ```lisp
 (handle
-  (+ 1 (+ 2 (+ 3 (perform bail 42))))
-  ((bail k x) x))
+  (+ 1 (+ 2 (+ 3 (signal bail 42))))
+  (bail x x))
 ;; => 42   — the entire (+ 1 (+ 2 ...)) is abandoned
 ```
 
-When you don't call `k`, the handler's return value becomes the result of the
-entire `handle` expression. This is how you implement early return, exceptions,
-or short-circuit logic.
+This is how you implement early return, exceptions, or short-circuit logic.
 
-### Transform: call `k` with a modified value
+### Transform: respond with a modified value
 
 ```lisp
 (handle
-  (perform double 5)
-  ((double k x) (k (* x 2))))
+  (signal double 5)
+  (double x (respond (* x 2))))
 ;; => 10
 ```
 
 ---
 
-## 3. Multiple effects in one body
+## 3. Multiple signals in one body
 
-A handler can intercept many `perform` calls — each one pauses, runs the
-handler, and resumes (if `k` is called).
+A handler can intercept many `signal` calls — each one pauses, runs the
+handler, and responds (if `respond` is called).
 
 ```lisp
 (handle
-  (+ (perform bump 10) (perform bump 20))
-  ((bump k x) (k (+ x 1))))
+  (+ (signal bump 10) (signal bump 20))
+  (bump x (respond (+ x 1))))
 ;; => 32   — first bump gives 11, second gives 21
 ```
 
@@ -94,11 +104,11 @@ Handle different effect tags in the same block:
 ```lisp
 (handle
   (begin
-    (perform log "starting")
-    (+ 1 (perform ask nil)))
-  ((log k msg) (println msg) (k nil))
-  ((ask k _)   (k 41)))
-;; prints "starting", returns 42
+    (signal log "starting")
+    (+ 1 (signal ask nil)))
+  (log msg (respond nil))
+  (ask _   (respond 41)))
+;; returns 42
 ```
 
 ---
@@ -109,10 +119,10 @@ Handle different effect tags in the same block:
 Under the hood:
 
 ```lisp
-(define print   (lambda (x) (perform io/print x)))
-(define println (lambda (x) (perform io/println x)))
-(define display (lambda (x) (perform io/display x)))
-(define newline (lambda ()  (perform io/newline nil)))
+(define print   (lambda (x) (signal io/print x)))
+(define println (lambda (x) (signal io/println x)))
+(define display (lambda (x) (signal io/display x)))
+(define newline (lambda ()  (signal io/newline nil)))
 ```
 
 When no handler is installed, these take a **fast path** — they call the raw
@@ -123,7 +133,7 @@ don't use.
 
 ```lisp
 (handle (begin (println "you won't see this") 42)
-  ((io/println k x) (k nil)))
+  (io/println x (respond nil)))
 ;; => 42   — nothing printed
 ```
 
@@ -131,28 +141,28 @@ don't use.
 
 ```lisp
 (handle (begin (println "captured") nil)
-  ((io/println k x) x))
+  (io/println x x))
 ;; => "captured"
 ```
 
 This works because the handler catches the effect and returns `x` (the string)
-without calling `k` — so the body aborts and the string becomes the result.
+without calling `respond` — so the body aborts and the string becomes the result.
 
-### Capture all output (with resume)
+### Capture all output (with respond)
 
 ```lisp
 (define (with-output-to-string thunk)
   (let ((buf ""))
     (handle (begin (thunk) buf)
-      ((io/println k x)
+      (io/println x
         (set! buf (string-append buf (number->string x) "\n"))
-        (k nil))
-      ((io/print k x)
+        (respond nil))
+      (io/print x
         (set! buf (string-append buf (number->string x)))
-        (k nil))
-      ((io/display k x)
+        (respond nil))
+      (io/display x
         (set! buf (string-append buf (number->string x)))
-        (k nil)))))
+        (respond nil)))))
 
 (with-output-to-string
   (lambda ()
@@ -162,16 +172,16 @@ without calling `k` — so the body aborts and the string becomes the result.
 ;; => "1\n2\n3\n"
 ```
 
-The handler intercepts each print call, appends to the buffer, and resumes
+The handler intercepts each print call, appends to the buffer, and responds
 so the thunk keeps running. After the thunk finishes, the buffer is returned.
 
 ### File I/O effects
 
 ```lisp
-(read-file "data.txt")        ;; performs io/read-file
-(write-file "out.txt" "data") ;; performs io/write-file
-(file-exists? "data.txt")     ;; performs io/file-exists?
-(read-lines "data.txt")       ;; performs io/read-lines
+(read-file "data.txt")        ;; signals io/read-file
+(write-file "out.txt" "data") ;; signals io/write-file
+(file-exists? "data.txt")     ;; signals io/file-exists?
+(read-lines "data.txt")       ;; signals io/read-lines
 ```
 
 These can all be intercepted for testing:
@@ -180,7 +190,7 @@ These can all be intercepted for testing:
 ;; Mock the filesystem
 (handle
   (read-file "config.txt")
-  ((io/read-file k path) (k "mocked content")))
+  (io/read-file path (respond "mocked content")))
 ;; => "mocked content"   — no file was read
 ```
 
@@ -194,8 +204,8 @@ Use `define [effect]` to declare an effect with a type constraint:
 (define [effect] (my/ask (^String prompt)))
 ```
 
-Now `(perform my/ask 42)` will raise a type error because `42` is not a
-string. `(perform my/ask "name?")` works.
+Now `(signal my/ask 42)` will raise a type error because `42` is not a
+string. `(signal my/ask "name?")` works.
 
 ```lisp
 ;; Accept any type
@@ -209,7 +219,7 @@ Effects don't *need* to be declared — undeclared effects work fine, they just
 skip type checking:
 
 ```lisp
-(handle (perform my-tag 42) ((my-tag k x) (k (+ x 1))))
+(handle (signal my-tag 42) (my-tag x (respond (+ x 1))))
 ;; => 43   — works without a declaration
 ```
 
@@ -224,10 +234,10 @@ The stdlib declares a `raise` effect and provides `try` and `assert!`:
 
 (define (try thunk handler)
   (handle (thunk nil)
-    ((raise k msg) (handler msg))))
+    (raise msg (handler msg))))
 
 (define (assert! condition msg)
-  (if condition true (perform raise msg)))
+  (if condition true (signal raise msg)))
 ```
 
 ### Using try/raise
@@ -247,11 +257,11 @@ The stdlib declares a `raise` effect and provides `try` and `assert!`:
 (handle
   (begin
     (println "before")
-    (perform raise "oops")
+    (signal raise "oops")
     (println "after"))
-  ((raise k msg) (string-append "error: " msg)))
+  (raise msg (string-append "error: " msg)))
 ;; prints "before", returns "error: oops"
-;; "after" never executes (k was not called)
+;; "after" never executes (respond was not called)
 ```
 
 ---
@@ -263,9 +273,9 @@ Handlers form a stack. The innermost handler gets first chance to match:
 ```lisp
 (handle
   (handle
-    (perform greet "world")
-    ((greet k x) (k (string-append "hello, " x))))
-  ((greet k x) (k (string-append "hi, " x))))
+    (signal greet "world")
+    (greet x (respond (string-append "hello, " x))))
+  (greet x (respond (string-append "hi, " x))))
 ;; => "hello, world"   — inner handler matched first
 ```
 
@@ -274,15 +284,53 @@ If the inner handler doesn't match the effect tag, it propagates outward:
 ```lisp
 (handle
   (handle
-    (perform outer-tag 1)
-    ((inner-tag k x) (k 0)))
-  ((outer-tag k x) (k (+ x 99))))
+    (signal outer-tag 1)
+    (inner-tag x (respond 0)))
+  (outer-tag x (respond (+ x 99))))
 ;; => 100   — inner didn't match, outer caught it
 ```
 
 ---
 
-## 8. Practical patterns
+## 8. Handlers as functions
+
+Since handlers are just code that wraps a thunk, you can define them as
+regular functions and compose them:
+
+```lisp
+;; A handler is just a function: thunk -> result
+(define (silent-io thunk)
+  (handle (thunk)
+    (io/print x   (respond nil))
+    (io/println x  (respond nil))
+    (io/display x  (respond nil))))
+
+(define (catch-errors thunk)
+  (handle (thunk)
+    (raise msg msg)))
+
+;; Use by nesting
+(catch-errors
+  (lambda () (silent-io
+    (lambda ()
+      (println "suppressed")
+      (signal raise "oops")))))
+;; => "oops"
+
+;; Or compose with a helper
+(define (with-handlers handlers thunk)
+  (foldr (lambda (h acc) (lambda () (h acc))) thunk handlers))
+
+(with-handlers (list catch-errors silent-io)
+  (lambda ()
+    (println "gone")
+    (signal raise "fail")))
+;; => "fail"
+```
+
+---
+
+## 9. Practical patterns
 
 ### State effect
 
@@ -293,16 +341,15 @@ If the inner handler doesn't match the effect tag, it propagates outward:
 (define (with-state initial thunk)
   (let ((state initial))
     (handle (thunk)
-      ((get-state k _)
-        (k state))
-      ((set-state k v)
+      (get-state _ (respond state))
+      (set-state v
         (set! state v)
-        (k nil)))))
+        (respond nil)))))
 
 (with-state 0
   (lambda ()
-    (perform set-state 10)
-    (+ (perform get-state nil) 5)))
+    (signal set-state 10)
+    (+ (signal get-state nil) 5)))
 ;; => 15
 ```
 
@@ -314,15 +361,15 @@ If the inner handler doesn't match the effect tag, it propagates outward:
 (define (with-logger thunk)
   (let ((logs '()))
     (handle (begin (thunk) (reverse logs))
-      ((log k msg)
+      (log msg
         (set! logs (cons msg logs))
-        (k nil)))))
+        (respond nil)))))
 
 (with-logger
   (lambda ()
-    (perform log "step 1")
-    (perform log "step 2")
-    (perform log "done")))
+    (signal log "step 1")
+    (signal log "step 2")
+    (signal log "done")))
 ;; => ("step 1" "step 2" "done")
 ```
 
@@ -334,20 +381,44 @@ If the inner handler doesn't match the effect tag, it propagates outward:
 ;; Production handler
 (define (with-real-db thunk)
   (handle (thunk)
-    ((db/query k sql) (k (real-db-query sql)))))
+    (db/query sql (respond (real-db-query sql)))))
 
 ;; Test handler
 (define (with-mock-db thunk)
   (handle (thunk)
-    ((db/query k sql) (k '((id 1) (name "test"))))))
+    (db/query sql (respond '((id 1) (name "test"))))))
 
 ;; Same code, different handler
 (define (get-user)
-  (perform db/query "SELECT * FROM users LIMIT 1"))
+  (signal db/query "SELECT * FROM users LIMIT 1"))
 
 (with-mock-db get-user)
 ;; => ((id 1) (name "test"))
 ```
+
+---
+
+## 10. Advanced: multi-shot continuations
+
+In rare cases you need to resume the same continuation multiple times — for
+example, to explore multiple branches of a nondeterministic computation.
+
+Use `with-continuation` inside a handler clause to capture the continuation
+as a named value you can call directly:
+
+```lisp
+(handle (+ 1 (signal choose 0))
+  (choose x
+    (with-continuation k
+      (+ (k 10) (k 20)))))
+;; => 32   — body runs twice: (+ 1 10) = 11 and (+ 1 20) = 21, summed
+```
+
+`with-continuation` binds the hidden continuation to a name (`k` here, but
+any name works). You can then call it like a function. Each call resumes the
+body from where `signal` was, with the given value.
+
+This is a power-user feature. For normal effects, `respond` is all you need.
 
 ---
 
@@ -356,10 +427,11 @@ If the inner handler doesn't match the effect tag, it propagates outward:
 | Form | Syntax | Purpose |
 |------|--------|---------|
 | Declare effect | `(define [effect] (tag (^Type arg)))` | Type-checked effect declaration |
-| Perform effect | `(perform tag value)` | Signal an effect |
-| Handle effects | `(handle body ((tag k arg) ...))` | Install a handler |
-| Resume | `(k value)` | Continue computation with value |
-| Abort | don't call `k` | Short-circuit, return handler result |
+| Signal effect | `(signal tag value)` | Ask for something to happen |
+| Handle effects | `(handle body (tag arg body...) ...)` | Install a handler |
+| Respond | `(respond value)` | Send a value back, body continues |
+| Abort | don't call `respond` | Short-circuit, return handler result |
+| Multi-shot | `(with-continuation k ...)` | Name the continuation for direct use |
 
 | I/O Effect | Wrapper | Fast path |
 |-----------|---------|-----------|

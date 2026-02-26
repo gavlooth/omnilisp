@@ -858,11 +858,17 @@ fn Expr* Parser.parse_expr(Parser* self) {
             if ((uint)head == (uint)self.interp.sym_shift) {
                 return self.parse_shift();
             }
-            if ((uint)head == (uint)self.interp.sym_perform) {
+            if ((uint)head == (uint)self.interp.sym_signal) {
                 return self.parse_perform();
             }
             if ((uint)head == (uint)self.interp.sym_handle) {
                 return self.parse_handle();
+            }
+            if ((uint)head == (uint)self.interp.sym_respond) {
+                return self.parse_respond();
+            }
+            if ((uint)head == (uint)self.interp.sym_with_continuation) {
+                return self.parse_with_continuation();
             }
             if ((uint)head == (uint)self.interp.sym_match) {
                 return self.parse_match();
@@ -938,6 +944,31 @@ fn Expr* Parser.parse_expr(Parser* self) {
     return null;
 }
 
+// Parse one or more body expressions before a closing ')'.
+// If multiple expressions, wraps them in an implicit E_BEGIN.
+// Does NOT consume the closing ')'.
+fn Expr* Parser.parse_implicit_begin(Parser* self) {
+    if (self.has_error) return null;
+    Expr* first = self.parse_expr();
+    if (self.has_error) return null;
+    if (self.lexer.current.type == T_RPAREN) {
+        // Single body expression — return as-is
+        return first;
+    }
+    // Multiple body expressions — wrap in begin
+    Expr* begin_e = self.interp.alloc_expr();
+    begin_e.tag = E_BEGIN;
+    begin_e.begin = (ExprBegin*)mem::malloc(ExprBegin.sizeof);
+    begin_e.begin.exprs[0] = first;
+    usz bi = 1;
+    while (self.lexer.current.type != T_RPAREN && !self.has_error && bi < 64) {
+        begin_e.begin.exprs[bi] = self.parse_expr();
+        bi++;
+    }
+    begin_e.begin.expr_count = bi;
+    return begin_e;
+}
+
 fn Expr* Parser.parse_lambda(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'lambda' location
@@ -945,12 +976,12 @@ fn Expr* Parser.parse_lambda(Parser* self) {
 
     self.expect(T_LPAREN, "(");
 
-    // Check for zero-arg lambda: (lambda () body)
+    // Check for zero-arg lambda: (lambda () body...)
     if (self.lexer.current.type == T_RPAREN) {
         self.lexer.advance();  // consume ')'
 
-        // Parse body
-        Expr* body = self.parse_expr();
+        // Parse body (implicit begin for multiple expressions)
+        Expr* body = self.parse_implicit_begin();
         self.expect(T_RPAREN, ")");
 
         e.tag = E_LAMBDA;
@@ -963,7 +994,7 @@ fn Expr* Parser.parse_lambda(Parser* self) {
         return e;
     }
 
-    // Check for (lambda (.. rest) body) - variadic with no fixed params
+    // Check for (lambda (.. rest) body...) - variadic with no fixed params
     if (self.lexer.current.type == T_DOTDOT) {
         self.lexer.advance();  // consume '..'
         if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected rest parameter name after .."); return null; }
@@ -971,7 +1002,7 @@ fn Expr* Parser.parse_lambda(Parser* self) {
         self.lexer.advance();
         self.expect(T_RPAREN, ")");
 
-        Expr* body = self.parse_expr();
+        Expr* body = self.parse_implicit_begin();
         self.expect(T_RPAREN, ")");
         if (self.has_error) return null;
 
@@ -1032,7 +1063,7 @@ fn Expr* Parser.parse_lambda(Parser* self) {
         }
     }
 
-    // Check for '..' rest parameter: (lambda (x y .. rest) body)
+    // Check for '..' rest parameter: (lambda (x y .. rest) body...)
     if (self.lexer.current.type == T_DOTDOT) {
         self.lexer.advance();  // consume '..'
         if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected rest parameter name after .."); return null; }
@@ -1040,7 +1071,7 @@ fn Expr* Parser.parse_lambda(Parser* self) {
         self.lexer.advance();
         self.expect(T_RPAREN, ")");
 
-        Expr* body = self.parse_expr();
+        Expr* body = self.parse_implicit_begin();
         self.expect(T_RPAREN, ")");
 
         e.tag = E_LAMBDA;
@@ -1058,8 +1089,8 @@ fn Expr* Parser.parse_lambda(Parser* self) {
 
     self.expect(T_RPAREN, ")");
 
-    // Parse body
-    Expr* body = self.parse_expr();
+    // Parse body (implicit begin for multiple expressions)
+    Expr* body = self.parse_implicit_begin();
     self.expect(T_RPAREN, ")");
 
     if (self.has_error) return null;
@@ -1158,46 +1189,39 @@ fn Expr* Parser.parse_let(Parser* self) {
         }
     }
 
-    // Check for named let: (let name ((var init) ...) body)
+    // Check for named let: (let name (var init ...) body...)
     // After consuming 'let' and optional '^rec', if next is a symbol
     // followed by '(', this is a named let (loop).
     if (self.lexer.current.type == T_SYMBOL) {
-        // This is a named let — desugar to:
-        // (let ^rec ((name (lambda (var ...) body))) (name init ...))
         SymbolId loop_name = self.get_current_symbol();
         self.lexer.advance();  // consume loop name
 
         return self.parse_named_let(e, loop_name);
     }
 
-    self.expect(T_LPAREN, "(");  // consume outer '(' of bindings list
+    self.expect(T_LPAREN, "(");  // consume '(' of bindings list
 
-    // Collect all bindings: ((x 1) (y 2) (z 3))
+    // Collect flat-pair bindings: (x 1 y 2 z 3)
     SymbolId[64] names;
     Expr*[64] inits;
     usz binding_count = 0;
 
-    while (self.lexer.current.type == T_LPAREN && !self.has_error) {
+    while (self.lexer.current.type == T_SYMBOL && !self.has_error) {
         if (binding_count >= 64) { self.set_error("too many let bindings"); return null; }
-        self.lexer.advance();  // consume '(' of binding pair
-
-        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected binding name"); return null; }
         names[binding_count] = self.get_current_symbol();
         self.lexer.advance();
 
         inits[binding_count] = self.parse_expr();
-
-        self.expect(T_RPAREN, ")");  // consume ')' of binding pair
         binding_count++;
     }
     if (self.has_error) return null;
 
-    self.expect(T_RPAREN, ")");  // consume outer ')' of bindings list
+    self.expect(T_RPAREN, ")");  // consume ')' of bindings list
     if (self.has_error) return null;
 
     if (binding_count < 1) { self.set_error("expected at least one binding in let"); return null; }
 
-    Expr* body = self.parse_expr();
+    Expr* body = self.parse_implicit_begin();
 
     self.expect(T_RPAREN, ")");  // consume outer ')' of let form
 
@@ -1237,41 +1261,36 @@ fn Expr* Parser.parse_let(Parser* self) {
 /**
  * Parse a named let (loop).
  *
- * (let name ((x init-x) (y init-y)) body)
+ * (let name (x init-x y init-y) body...)
  *
  * Desugars to:
- * (let ^rec ((name (lambda (x y) body))) (name init-x init-y))
+ * (let ^rec (name (lambda (x y) body)) (name init-x init-y))
  */
 fn Expr* Parser.parse_named_let(Parser* self, Expr* e, SymbolId loop_name) {
     if (self.has_error) return null;
-    self.expect(T_LPAREN, "(");  // consume outer '(' of bindings list
+    self.expect(T_LPAREN, "(");  // consume '(' of bindings list
 
-    // Collect parameter names and init expressions
+    // Collect flat-pair bindings: name init name init ...
     SymbolId[64] params;
     Expr*[64] inits;
     usz param_count = 0;
 
-    while (self.lexer.current.type == T_LPAREN && !self.has_error) {
+    while (self.lexer.current.type == T_SYMBOL && !self.has_error) {
         if (param_count >= 64) { self.set_error("too many named let bindings"); return null; }
-        self.lexer.advance();  // consume '(' of binding pair
-
-        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected binding name"); return null; }
         params[param_count] = self.get_current_symbol();
         self.lexer.advance();
 
         inits[param_count] = self.parse_expr();
-
-        self.expect(T_RPAREN, ")");  // consume ')' of binding pair
         param_count++;
     }
     if (self.has_error) return null;
 
-    self.expect(T_RPAREN, ")");  // consume outer ')' of bindings list
+    self.expect(T_RPAREN, ")");  // consume ')' of bindings list
     if (self.has_error) return null;
     if (param_count < 1) { self.set_error("expected at least one binding in named let"); return null; }
 
-    // Parse body
-    Expr* body = self.parse_expr();
+    // Parse body (implicit begin for multiple expressions)
+    Expr* body = self.parse_implicit_begin();
     self.expect(T_RPAREN, ")");  // consume outer ')' of let form
 
     // Build the lambda: (lambda (param1 param2 ...) body)
@@ -1424,8 +1443,8 @@ fn Expr* Parser.parse_define(Parser* self) {
 
         self.expect(T_RPAREN, ")");  // close param list
 
-        // Parse body expression
-        Expr* body = self.parse_expr();
+        // Parse body (implicit begin for multiple expressions)
+        Expr* body = self.parse_implicit_begin();
 
         // Consume closing ')' of the define form
         self.expect(T_RPAREN, ")");
@@ -1834,6 +1853,63 @@ fn Expr* Parser.parse_perform(Parser* self) {
     return e;
 }
 
+fn Expr* Parser.parse_respond(Parser* self) {
+    if (self.has_error) return null;
+    Expr* e = self.alloc_expr_here();
+    self.lexer.advance();  // consume 'respond'
+
+    Expr* val = self.parse_expr();
+
+    self.expect(T_RPAREN, ")");
+
+    e.tag = E_RESPOND;
+    e.respond.value = val;
+    return e;
+}
+
+// (with-continuation k body...) → (let ((k __k)) body...)
+fn Expr* Parser.parse_with_continuation(Parser* self) {
+    if (self.has_error) return null;
+    Expr* e = self.alloc_expr_here();
+    self.lexer.advance();  // consume 'with-continuation'
+
+    if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected continuation name"); return null; }
+    SymbolId k_name = self.get_current_symbol();
+    self.lexer.advance();
+
+    // Parse body expressions
+    Expr* body;
+    Expr* first = self.parse_expr();
+    if (self.lexer.current.type != T_RPAREN) {
+        Expr* begin_e = self.interp.alloc_expr();
+        begin_e.tag = E_BEGIN;
+        begin_e.begin = (ExprBegin*)mem::malloc(ExprBegin.sizeof);
+        begin_e.begin.exprs[0] = first;
+        usz bi = 1;
+        while (self.lexer.current.type != T_RPAREN && !self.has_error && bi < 64) {
+            begin_e.begin.exprs[bi] = self.parse_expr();
+            bi++;
+        }
+        begin_e.begin.expr_count = bi;
+        body = begin_e;
+    } else {
+        body = first;
+    }
+
+    self.expect(T_RPAREN, ")");
+
+    // Desugar to (let ((k __k)) body)
+    e.tag = E_LET;
+    e.let_expr.name = k_name;
+    Expr* var_ref = self.interp.alloc_expr();
+    var_ref.tag = E_VAR;
+    var_ref.var_expr.name = self.interp.sym__k;
+    e.let_expr.init = var_ref;
+    e.let_expr.body = body;
+    e.let_expr.is_recursive = false;
+    return e;
+}
+
 fn Expr* Parser.parse_handle(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'handle' location
@@ -1860,28 +1936,70 @@ fn Expr* Parser.parse_handle(Parser* self) {
     e.handle.clause_count = 0;
     e.handle.strict_mode = strict;
 
-    // Parse handler clauses
+    // Parse handler clauses — two syntaxes:
+    //   Old: ((tag k arg) body)     — explicit continuation binding
+    //   New: (tag arg body...)      — match-style, use `respond` to resume
     while (self.lexer.current.type == T_LPAREN && !self.has_error) {
-        self.lexer.advance();
-        self.expect(T_LPAREN, "(");
+        self.lexer.advance();  // consume outer (
 
-        // (tag k arg)
-        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected effect tag"); return null; }
-        SymbolId etag = self.get_current_symbol();
-        self.lexer.advance();
+        SymbolId etag;
+        SymbolId k_name;
+        SymbolId arg_name;
+        Expr* handler_body;
 
-        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected continuation name"); return null; }
-        SymbolId k_name = self.get_current_symbol();
-        self.lexer.advance();
+        if (self.lexer.current.type == T_LPAREN) {
+            // Old syntax: ((tag k arg) body)
+            self.lexer.advance();  // consume inner (
 
-        // Parse arg: plain symbol or typed (^Type name)
-        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected arg name"); return null; }
-        SymbolId arg_name = self.get_current_symbol();
-        self.lexer.advance();
+            if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected effect tag"); return null; }
+            etag = self.get_current_symbol();
+            self.lexer.advance();
 
-        self.expect(T_RPAREN, ")");
+            if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected continuation name"); return null; }
+            k_name = self.get_current_symbol();
+            self.lexer.advance();
 
-        Expr* handler_body = self.parse_expr();
+            if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected arg name"); return null; }
+            arg_name = self.get_current_symbol();
+            self.lexer.advance();
+
+            self.expect(T_RPAREN, ")");
+
+            handler_body = self.parse_expr();
+        } else if (self.lexer.current.type == T_SYMBOL) {
+            // New match-style: (tag arg body...)
+            etag = self.get_current_symbol();
+            self.lexer.advance();
+
+            if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected arg name"); return null; }
+            arg_name = self.get_current_symbol();
+            self.lexer.advance();
+
+            // Hidden continuation — `respond` will look this up
+            k_name = self.interp.sym__k;
+
+            // Parse body — if multiple expressions, wrap in begin
+            Expr* first = self.parse_expr();
+            if (self.lexer.current.type != T_RPAREN) {
+                // Multiple body expressions — wrap in begin
+                Expr* begin_e = self.interp.alloc_expr();
+                begin_e.tag = E_BEGIN;
+                begin_e.begin = (ExprBegin*)mem::malloc(ExprBegin.sizeof);
+                begin_e.begin.exprs[0] = first;
+                usz bi = 1;
+                while (self.lexer.current.type != T_RPAREN && !self.has_error && bi < 64) {
+                    begin_e.begin.exprs[bi] = self.parse_expr();
+                    bi++;
+                }
+                begin_e.begin.expr_count = bi;
+                handler_body = begin_e;
+            } else {
+                handler_body = first;
+            }
+        } else {
+            self.set_error("expected effect tag or '('");
+            return null;
+        }
 
         self.expect(T_RPAREN, ")");
 

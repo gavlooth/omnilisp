@@ -745,33 +745,52 @@ Captures the continuation up to the enclosing `reset` and binds it to `k`.
 
 ## 10. Effect Handlers
 
-### 10.1 `perform` -- Signal Effect
+### 10.1 `signal` -- Signal Effect
 
 ```lisp
-(perform effect-tag argument)
+(signal effect-tag argument)
 ```
 
 ### 10.2 `handle` -- Install Handler
 
 ```lisp
 (handle body
-  ((effect-tag k arg) handler-body)
+  (effect-tag arg handler-body...)
   ...)
 ```
 
-When an effect is performed:
-- `k` is the continuation
-- `arg` is the effect argument
-- `handler-body` can resume with `(k value)` or abort
+When an effect is signalled:
+- `arg` is bound to the effect argument
+- `handler-body` can respond with `(respond value)` to resume, or return a value to abort
 
 ```lisp
 (handle
-  (+ 1 (perform read nil))
-  ((read k x) (k 41)))
+  (+ 1 (signal read nil))
+  (read x (respond 41)))
 ; => 42
 ```
 
-### 10.3 I/O Effects
+### 10.3 `respond` -- Resume Computation
+
+Inside a handler clause, `(respond value)` sends `value` back to the body.
+The body continues as if `signal` returned that value.
+
+If `respond` is not called, the handler's return value becomes the result
+of the entire `handle` expression (abort).
+
+```lisp
+; Respond — body continues
+(handle (signal double 5)
+  (double x (respond (* x 2))))
+; => 10
+
+; Abort — body abandoned
+(handle (+ 1 (signal bail 42))
+  (bail x x))
+; => 42
+```
+
+### 10.4 I/O Effects
 
 I/O operations go through effects with a fast path:
 
@@ -782,28 +801,42 @@ I/O operations go through effects with a fast path:
 
 ; Custom handler intercepts I/O
 (handle (begin (println "suppressed") 42)
-  ((io/println k x) (k nil)))
+  (io/println x (respond nil)))
 ; => 42 (output suppressed)
 
 ; Capture output
 (handle (begin (println "captured") nil)
-  ((io/println k x) x))
+  (io/println x x))
 ; => "captured"
 ```
 
 Effect tags: `io/print`, `io/println`, `io/display`, `io/newline`, `io/read-file`, `io/write-file`, `io/file-exists?`, `io/read-lines`
 
-### 10.4 Typed Dispatch in Handlers
+### 10.5 Typed Dispatch in Handlers
 
 Effect handlers match on tag name only. For type-specific behavior, use dispatched functions inside the handler body — this reuses the existing MethodTable dispatch system rather than introducing a parallel matching mechanism:
 
 ```lisp
-(define (on-show (^Int x))    (string-append "int: " (to-string x)))
+(define (on-show (^Int x))    (string-append "int: " (number->string x)))
 (define (on-show (^String s)) (string-append "str: " s))
 
 (handle
-  (begin (perform show 42) (perform show "hello"))
-  ((show k x) (println (on-show x)) (k nil)))
+  (begin (signal show 42) (signal show "hello"))
+  (show x (println (on-show x)) (respond nil)))
+```
+
+### 10.6 Backward Compatibility
+
+The old `perform` keyword and explicit continuation syntax still work:
+
+```lisp
+; Old style
+(handle (+ 1 (perform read nil))
+  ((read k x) (k 41)))
+
+; New style (recommended)
+(handle (+ 1 (signal read nil))
+  (read x (respond 41)))
 ```
 
 ---

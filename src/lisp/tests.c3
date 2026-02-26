@@ -471,10 +471,10 @@ const E2ETestCase[] E2E_TESTS = {
 
     // === Variables & Bindings ===
     { "var x", "x" },
-    { "let simple", "(let ((y 7)) y)" },
-    { "let nested", "(let ((a 1)) (let ((b 2)) (+ a b)))" },
-    { "let shadow", "(let ((x 99)) x)" },
-    { "let multi", "(let ((a 1) (b 2) (c 3)) (+ a (+ b c)))" },
+    { "let simple", "(let (y 7) y)" },
+    { "let nested", "(let (a 1) (let (b 2) (+ a b)))" },
+    { "let shadow", "(let (x 99) x)" },
+    { "let multi", "(let (a 1 b 2 c 3) (+ a (+ b c)))" },
 
     // === Lambda & Application ===
     { "lambda identity", "((lambda (x) x) 5)" },
@@ -554,19 +554,19 @@ const E2ETestCase[] E2E_TESTS = {
     { "match underscore", "(match (quote (1 2 3)) ([_ second _] second))" },
 
     // === Nested let deep ===
-    { "nested let 5", "(let ((a 1)) (let ((b 2)) (let ((c 3)) (let ((d 4)) (let ((e 5)) (+ a (+ b (+ c (+ d e)))))))))" },
+    { "nested let 5", "(let (a 1) (let (b 2) (let (c 3) (let (d 4) (let (e 5) (+ a (+ b (+ c (+ d e)))))))))" },
 
     // === Let recursive ===
-    { "let rec factorial", "(let ^rec ((f (lambda (n) (if (= n 0) 1 (* n (f (- n 1))))))) (f 5))" },
-    { "named let loop", "(let loop ((n 10) (acc 0)) (if (= n 0) acc (loop (- n 1) (+ acc n))))" },
+    { "let rec factorial", "(let ^rec (f (lambda (n) (if (= n 0) 1 (* n (f (- n 1)))))) (f 5))" },
+    { "named let loop", "(let loop (n 10 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc n))))" },
 
     // === Effects ===
     { "reset passthrough", "(reset (+ 10 20))" },
     { "shift aborts", "(reset (+ 1 (shift k 42)))" },
     { "shift k resumes", "(reset (+ 1 (shift k (k 10))))" },
-    { "handle no effect", "(handle 42 ((ask k x) (k 0)))" },
-    { "handle perform resume", "(handle (+ 1 (perform ask 0)) ((ask k x) (k 10)))" },
-    { "handle abort", "(handle (+ 1 (perform ask 5)) ((ask k x) x))" },
+    { "handle no effect", "(handle 42 (ask x (respond 0)))" },
+    { "handle perform resume", "(handle (+ 1 (signal ask 0)) (ask x (respond 10)))" },
+    { "handle abort", "(handle (+ 1 (signal ask 5)) (ask x x))" },
 
     // === Not ===
     { "not true", "(not true)" },
@@ -632,21 +632,21 @@ const E2ETestCase[] E2E_TESTS = {
 
     // === Zero-arg lambdas ===
     { "thunk 42", "((lambda () 42))" },
-    { "thunk capture", "(let ((a 10)) ((lambda () a)))" },
+    { "thunk capture", "(let (a 10) ((lambda () a)))" },
     { "thunk begin", "((lambda () (begin 1 2 3)))" },
     { "thunk arith", "((lambda () (+ 10 20)))" },
 
     // === Multi-param lambdas (strict arity) ===
     { "multi-param add", "((lambda (x y) (+ x y)) 3 4)" },
     { "multi-param 3", "((lambda (x y z) (+ x (+ y z))) 1 2 3)" },
-    { "multi-param direct", "(let ((add (lambda (x y) (+ x y)))) (add 10 20))" },
+    { "multi-param direct", "(let (add (lambda (x y) (+ x y))) (add 10 20))" },
 
     // === Named let patterns ===
-    { "named let sum 5", "(let loop ((n 5) (acc 0)) (if (= n 0) acc (loop (- n 1) (+ acc n))))" },
-    { "named let fact 10", "(let f ((n 10) (acc 1)) (if (= n 0) acc (f (- n 1) (* acc n))))" },
-    { "named let fib 10", "(let fib ((n 10) (a 0) (b 1)) (if (= n 0) a (fib (- n 1) b (+ a b))))" },
-    { "named let fib 20", "(let fib ((n 20) (a 0) (b 1)) (if (= n 0) a (fib (- n 1) b (+ a b))))" },
-    { "named let count", "(let count ((n 100)) (if (= n 0) 0 (count (- n 1))))" },
+    { "named let sum 5", "(let loop (n 5 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc n))))" },
+    { "named let fact 10", "(let f (n 10 acc 1) (if (= n 0) acc (f (- n 1) (* acc n))))" },
+    { "named let fib 10", "(let fib (n 10 a 0 b 1) (if (= n 0) a (fib (- n 1) b (+ a b))))" },
+    { "named let fib 20", "(let fib (n 20 a 0 b 1) (if (= n 0) a (fib (- n 1) b (+ a b))))" },
+    { "named let count", "(let count (n 100) (if (= n 0) 0 (count (- n 1))))" },
 
     // === More match patterns ===
     { "match multi 1", "(match 1 (1 10) (2 20) (3 30))" },
@@ -665,10 +665,10 @@ const E2ETestCase[] E2E_TESTS = {
     { "shift resume mul", "(reset (* 2 (shift k (k 5))))" },
     { "shift resume add", "(reset (+ 1 (shift k (k (+ 2 3)))))" },
     { "multi-shot k", "(reset (+ 1 (shift k (+ (k 10) 1000))))" },
-    { "handle get", "(handle (+ 1 (perform get 0)) ((get k x) (k 100)))" },
-    { "handle double", "(handle (perform double 7) ((double k x) (k (* x 2))))" },
-    { "handle bail", "(handle (+ 1 (+ 2 (+ 3 (perform bail 42)))) ((bail k x) x))" },
-    { "handle no trigger", "(handle (+ 10 20) ((unused k x) 999))" },
+    { "handle get", "(handle (+ 1 (signal get 0)) (get x (respond 100)))" },
+    { "handle double", "(handle (signal double 7) (double x (respond (* x 2))))" },
+    { "handle bail", "(handle (+ 1 (+ 2 (+ 3 (signal bail 42)))) (bail x x))" },
+    { "handle no trigger", "(handle (+ 10 20) (unused x 999))" },
 
     // === More list operations ===
     { "cadr", "(car (cdr (cons 1 (cons 2 (cons 3 nil)))))" },
@@ -680,8 +680,8 @@ const E2ETestCase[] E2E_TESTS = {
     { "cons dotted", "(cons 1 2)" },
 
     // === Let shadowing ===
-    { "let shadow inner", "(let ((x 10)) (let ((x 20)) x))" },
-    { "let no leak", "(let ((x 10)) (let ((y 20)) x))" },
+    { "let shadow inner", "(let (x 10) (let (x 20) x))" },
+    { "let no leak", "(let (x 10) (let (y 20) x))" },
 
     // === Mutual recursion ===
     { "is-even 10", "(is-even 10)" },
@@ -714,7 +714,7 @@ const E2ETestCase[] E2E_TESTS = {
     { "begin if", "(begin (if true 10 20) (if false 30 40))" },
 
     // === Recursive let 6 ===
-    { "let rec fact 6", "(let ^rec ((f (lambda (n) (if (= n 0) 1 (* n (f (- n 1))))))) (f 6))" },
+    { "let rec fact 6", "(let ^rec (f (lambda (n) (if (= n 0) 1 (* n (f (- n 1)))))) (f 6))" },
 
     // === Misc ===
     { "nested closures", "((lambda (x) ((lambda (y) (+ x y)) 20)) 10)" },
@@ -793,13 +793,13 @@ const E2ETestCase[] E2E_TESTS = {
     // when/unless/cond — skipped: compiler doesn't expand eval-time macros
 
     // === Dot-bracket indexing ===
-    { "dot-bracket 0", "(let ((lst (quote (10 20 30)))) lst.[0])" },
-    { "dot-bracket 2", "(let ((lst (quote (10 20 30)))) lst.[2])" },
-    { "dot-bracket expr", "(let ((lst (quote (10 20 30)))) lst.[(+ 0 1)])" },
+    { "dot-bracket 0", "(let (lst (quote (10 20 30))) lst.[0])" },
+    { "dot-bracket 2", "(let (lst (quote (10 20 30))) lst.[2])" },
+    { "dot-bracket expr", "(let (lst (quote (10 20 30))) lst.[(+ 0 1)])" },
 
     // === Deep recursion / TCO ===
-    { "tco sum 1000", "(let loop ((n 1000) (acc 0)) (if (= n 0) acc (loop (- n 1) (+ acc n))))" },
-    { "tco count 5000", "(let count ((n 5000)) (if (= n 0) 0 (count (- n 1))))" },
+    { "tco sum 1000", "(let loop (n 1000 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc n))))" },
+    { "tco count 5000", "(let count (n 5000) (if (= n 0) 0 (count (- n 1))))" },
 
     // === Complex combinations ===
     { "map then reverse", "(reverse (map (lambda (x) (* x 10)) (quote (1 2 3))))" },
@@ -811,10 +811,10 @@ const E2ETestCase[] E2E_TESTS = {
     { "take from range", "(take 3 (range 10))" },
     { "drop from range", "(drop 7 (range 10))" },
     { "match on map result", "(match (map (lambda (x) (* x 10)) (quote (1 2 3))) ([a b c] (+ a (+ b c))))" },
-    { "closure over let rec", "(let ^rec ((f (lambda (n) (if (<= n 1) 1 (* n (f (- n 1))))))) (f 7))" },
-    { "nested handle", "(handle (handle (+ 1 (perform inner 0)) ((inner k x) (k 10))) ((outer k x) (k 0)))" },
+    { "closure over let rec", "(let ^rec (f (lambda (n) (if (<= n 1) 1 (* n (f (- n 1)))))) (f 7))" },
+    { "nested handle", "(handle (handle (+ 1 (signal inner 0)) (inner x (respond 10))) (outer x (respond 0)))" },
     { "shift double resume", "(reset (+ (shift k (+ (k 1) (k 2))) 10))" },
-    { "let-rec factorial 8", "(let ^rec ((f (lambda (n) (if (= n 0) 1 (* n (f (- n 1))))))) (f 8))" },
+    { "let-rec factorial 8", "(let ^rec (f (lambda (n) (if (= n 0) 1 (* n (f (- n 1)))))) (f 8))" },
 
     // === P1: type-of ===
     { "type-of int", "(type-of 42)" },
@@ -905,9 +905,9 @@ const E2ETestCase[] E2E_TESTS = {
     { "lshift-rshift", "(rshift (lshift 3 8) 8)" },
 
     // === P4: Quasiquote + unquote ===
-    { "qq unquote let", "(let ((x 42)) `(a ,x b))" },
-    { "qq unquote arith", "(let ((n 10)) `(result ,(+ n 5)))" },
-    { "qq unquote nested", "(let ((a 1) (b 2)) `(,a ,b ,(+ a b)))" },
+    { "qq unquote let", "(let (x 42) `(a ,x b))" },
+    { "qq unquote arith", "(let (n 10) `(result ,(+ n 5)))" },
+    { "qq unquote nested", "(let (a 1 b 2) `(,a ,b ,(+ a b)))" },
     { "qq splice literal", "`(1 2 3)" },
 };
 
@@ -1062,24 +1062,24 @@ fn void run_diagnostic_tests(Interp* interp, int* pass, int* fail) {
 
     // Strict handler catches unhandled effect
     test_error_contains(interp, "handle ^strict: catches unhandled",
-        "(handle ^strict (perform my-eff 42) ((other-eff k v) v))",
+        "(handle ^strict (signal my-eff 42) (other-eff v v))",
         "strict handler", pass, fail);
 
     // Strict handler allows handled effects
     test_eq(interp, "handle ^strict: allows handled",
-        "(handle ^strict (perform my-eff 42) ((my-eff k v) (+ v 1)))",
+        "(handle ^strict (signal my-eff 42) (my-eff v (+ v 1)))",
         43, pass, fail);
 
     // --- Unhandled effect diagnostics ---
 
     // Shows tag name
     test_error_contains(interp, "unhandled effect: shows tag name",
-        "(perform unknown-eff 42)",
+        "(signal unknown-eff 42)",
         "unknown-eff", pass, fail);
 
     // Shows arg type
     test_error_contains(interp, "unhandled effect: shows arg type",
-        "(perform unknown-eff \"hello\")",
+        "(signal unknown-eff \"hello\")",
         "String", pass, fail);
 }
 
@@ -1118,7 +1118,7 @@ fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define x 10)");
     test_eq(interp, "variable binding x => 10", "x", 10, pass, fail);
     test_eq(interp, "lambda identity", "((lambda (x) x) 5)", 5, pass, fail);
-    test_eq(interp, "let binding", "(let ((y 7)) y)", 7, pass, fail);
+    test_eq(interp, "let binding", "(let (y 7) y)", 7, pass, fail);
     test_eq(interp, "if true", "(if true 1 2)", 1, pass, fail);
 
     // Primitives
@@ -1187,8 +1187,8 @@ fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
     test_str(interp, "testperson2.address.city => string", "testperson2.address.city", pass, fail);
 
     // Recursive let
-    test_eq(interp, "let ^rec factorial 5 => 120", "(let ^rec ((fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1))))))) (fact 5))", 120, pass, fail);
-    test_eq(interp, "non-recursive let", "(let ((x 10)) (+ x 5))", 15, pass, fail);
+    test_eq(interp, "let ^rec factorial 5 => 120", "(let ^rec (fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1)))))) (fact 5))", 120, pass, fail);
+    test_eq(interp, "non-recursive let", "(let (x 10) (+ x 5))", 15, pass, fail);
 
     // And/or
     test_truthy(interp, "and true true", "(and true true)", pass, fail);
@@ -1211,9 +1211,9 @@ fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "reset passthrough", "(reset (+ 10 20))", 30, pass, fail);
 
     // Effect handlers
-    test_eq(interp, "handle without effect", "(handle 42 ((ask k x) (k 0)))", 42, pass, fail);
-    test_eq(interp, "handle + perform + resume", "(handle (+ 1 (perform ask 0)) ((ask k x) (k 10)))", 11, pass, fail);
-    test_eq(interp, "handle abort", "(handle (+ 1 (perform ask 5)) ((ask k x) x))", 5, pass, fail);
+    test_eq(interp, "handle without effect", "(handle 42 (ask x (respond 0)))", 42, pass, fail);
+    test_eq(interp, "handle + perform + resume", "(handle (+ 1 (signal ask 0)) (ask x (respond 10)))", 11, pass, fail);
+    test_eq(interp, "handle abort", "(handle (+ 1 (signal ask 5)) (ask x x))", 5, pass, fail);
 
     // Empty string truthy
     test_eq(interp, "empty string is truthy", "(if \"\" 1 0)", 1, pass, fail);
@@ -1256,7 +1256,7 @@ fn void run_memory_stress_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "map double last => 10", "(match mapped ([.. last] last))", 10, pass, fail);
 
     // Nested let 10 levels
-    test_eq(interp, "nested let 10 levels => 55", "(let ((a 1)) (let ((b 2)) (let ((c 3)) (let ((d 4)) (let ((e 5)) (let ((f 6)) (let ((g 7)) (let ((h 8)) (let ((i 9)) (let ((j 10)) (+ a (+ b (+ c (+ d (+ e (+ f (+ g (+ h (+ i j)))))))))))))))))))))", 55, pass, fail);
+    test_eq(interp, "nested let 10 levels => 55", "(let (a 1) (let (b 2) (let (c 3) (let (d 4) (let (e 5) (let (f 6) (let (g 7) (let (h 8) (let (i 9) (let (j 10) (+ a (+ b (+ c (+ d (+ e (+ f (+ g (+ h (+ i j)))))))))))))))))))))", 55, pass, fail);
 
     // Repeated evaluation
     setup(interp, "(define mem-counter 0)");
@@ -1455,9 +1455,9 @@ fn void run_list_closure_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "f(x)=2x+3, f(10)=23", "(f2x3 10)", 23, pass, fail);
 
     // Scoping
-    test_eq(interp, "let shadowing", "(let ((x 10)) (let ((x 20)) x))", 20, pass, fail);
+    test_eq(interp, "let shadowing", "(let (x 10) (let (x 20) x))", 20, pass, fail);
     setup(interp, "(define outer-x 100)");
-    setup(interp, "(let ((outer-x 999)) outer-x)");
+    setup(interp, "(let (outer-x 999) outer-x)");
     test_eq(interp, "let no leak", "outer-x", 100, pass, fail);
 
     setup(interp, "(define scope-test 42)");
@@ -1466,7 +1466,7 @@ fn void run_list_closure_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "global preserved", "scope-test", 42, pass, fail);
 
     // Recursive let
-    test_eq(interp, "let ^rec fact 6 => 720", "(let ^rec ((f (lambda (n) (if (= n 0) 1 (* n (f (- n 1))))))) (f 6))", 720, pass, fail);
+    test_eq(interp, "let ^rec fact 6 => 720", "(let ^rec (f (lambda (n) (if (= n 0) 1 (* n (f (- n 1)))))) (f 6))", 720, pass, fail);
 
     // Mutual recursion
     setup(interp, "(define is-even (lambda (n) (if (= n 0) true (is-odd (- n 1)))))");
@@ -1512,10 +1512,10 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "reset value", "(reset 42)", 42, pass, fail);
 
     // Effect handlers
-    test_eq(interp, "effect modify", "(handle (+ 1 (perform get 0)) ((get k x) (k 100)))", 101, pass, fail);
-    test_eq(interp, "effect arg double", "(handle (perform double 7) ((double k x) (k (* x 2))))", 14, pass, fail);
-    test_eq(interp, "effect bail", "(handle (+ 1 (+ 2 (+ 3 (perform bail 42)))) ((bail k x) x))", 42, pass, fail);
-    test_eq(interp, "handle no effect", "(handle (+ 10 20) ((unused k x) 999))", 30, pass, fail);
+    test_eq(interp, "effect modify", "(handle (+ 1 (signal get 0)) (get x (respond 100)))", 101, pass, fail);
+    test_eq(interp, "effect arg double", "(handle (signal double 7) (double x (respond (* x 2))))", 14, pass, fail);
+    test_eq(interp, "effect bail", "(handle (+ 1 (+ 2 (+ 3 (signal bail 42)))) (bail x x))", 42, pass, fail);
+    test_eq(interp, "handle no effect", "(handle (+ 10 20) (unused x 999))", 30, pass, fail);
 
     // If/cond edge cases
     test_eq(interp, "if nil => 2", "(if nil 1 2)", 2, pass, fail);
@@ -1534,7 +1534,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
 
     // Error-as-effect: try/catch via raise effect
     test_eq(interp, "handle catches raise",
-        "(handle (/ 1 0) ((raise k msg) 42))", 42, pass, fail);
+        "(handle (/ 1 0) (raise msg 42))", 42, pass, fail);
     test_str_val(interp, "try catch div-by-zero",
         "(try (lambda (xx) (/ 1 0)) (lambda (msg) msg))",
         "/: division by zero", pass, fail);
@@ -1563,7 +1563,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
         "(try (lambda (xx) (set! no_such_var_xyz 1)) (lambda (msg) msg))",
         "set!: unbound variable", pass, fail);
     test_str_val(interp, "try catch user raise",
-        "(try (lambda (xx) (perform raise \"custom error\")) (lambda (msg) msg))",
+        "(try (lambda (xx) (signal raise \"custom error\")) (lambda (msg) msg))",
         "custom error", pass, fail);
     test_eq(interp, "nested try inner catches",
         "(try (lambda (xx) (try (lambda (yy) (/ 1 0)) (lambda (msg) 99))) (lambda (msg) 0))",
@@ -1574,7 +1574,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     // Phase 2A: λ (lambda) syntax
     test_eq(interp, "\xce\xbb application", "((\xce\xbb (x) (* x x)) 5)", 25, pass, fail);
     test_eq(interp, "\xce\xbb multi-param", "((\xce\xbb (x y) (+ x y)) 3 7)", 10, pass, fail);
-    test_eq(interp, "\xce\xbb closure", "(let ((a 10)) ((\xce\xbb (x) (+ x a)) 5))", 15, pass, fail);
+    test_eq(interp, "\xce\xbb closure", "(let (a 10) ((\xce\xbb (x) (+ x a)) 5))", 15, pass, fail);
     test_eq(interp, "\xce\xbb recursive define", "(begin (define sq (\xce\xbb (x) (* x x))) (sq 6))", 36, pass, fail);
 
     // Phase 2B: UTF-8 string support
@@ -1670,22 +1670,30 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "TCO mutual recursion 1000", "(tco-even 1000)", pass, fail);
     setup(interp, "(define count-down (lambda (n) (match n (0 (quote done)) (n (count-down (- n 1))))))");
     test_truthy(interp, "TCO match tail call 4000", "(count-down 4000)", pass, fail);
-    setup(interp, "(define let-loop (lambda (n) (let ((m (- n 1))) (if (= m 0) (quote done) (let-loop m)))))");
+    setup(interp, "(define let-loop (lambda (n) (let (m (- n 1)) (if (= m 0) (quote done) (let-loop m)))))");
     test_truthy(interp, "TCO let body 4000", "(let-loop 4000)", pass, fail);
 
     // Multi-perform
-    test_eq(interp, "multi-perform 2 sum", "(handle (+ (perform bounce 10) (perform bounce 20)) ((bounce k x) (k x)))", 30, pass, fail);
-    test_eq(interp, "multi-perform 3 sum", "(handle (+ (perform bounce 1) (+ (perform bounce 2) (perform bounce 3))) ((bounce k x) (k x)))", 6, pass, fail);
-    test_eq(interp, "multi-perform doubles", "(handle (+ (perform bounce 10) (perform bounce 20)) ((bounce k x) (k (* x 2))))", 60, pass, fail);
-    test_eq(interp, "multi-perform abort", "(handle (+ (perform bounce 10) (perform bounce 20)) ((bounce k x) x))", 10, pass, fail);
+    test_eq(interp, "multi-perform 2 sum", "(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x (respond x)))", 30, pass, fail);
+    test_eq(interp, "multi-perform 3 sum", "(handle (+ (signal bounce 1) (+ (signal bounce 2) (signal bounce 3))) (bounce x (respond x)))", 6, pass, fail);
+    test_eq(interp, "multi-perform doubles", "(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x (respond (* x 2))))", 60, pass, fail);
+    test_eq(interp, "multi-perform abort", "(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x x))", 10, pass, fail);
+
+    // signal/respond syntax (new match-style clauses)
+    test_eq(interp, "signal/respond basic", "(handle (+ 1 (signal read nil)) (read x (respond 41)))", 42, pass, fail);
+    test_eq(interp, "signal abort", "(handle (+ 1 (signal bail 5)) (bail x x))", 5, pass, fail);
+    test_eq(interp, "signal/respond double", "(handle (signal double 7) (double x (respond (* x 2))))", 14, pass, fail);
+    test_eq(interp, "signal no trigger", "(handle (+ 10 20) (unused x 999))", 30, pass, fail);
+    test_eq(interp, "signal multi-resume", "(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x (respond x)))", 30, pass, fail);
+
     test_eq(interp, "multi-shift sum", "(reset (+ (shift k1 (k1 10)) (shift k2 (k2 20))))", 30, pass, fail);
 
     // Multi-shot continuations
     test_eq(interp, "multi-shot k twice", "(reset (+ 1 (shift k (+ (k 10) (k 20)))))", 32, pass, fail);
     test_eq(interp, "multi-shot k thrice", "(reset (* 2 (shift k (+ (k 3) (+ (k 5) (k 7))))))", 30, pass, fail);
-    test_eq(interp, "multi-shot let bindings", "(reset (+ 10 (shift k (let ((a (k 1)) (b (k 2))) (+ a b)))))", 23, pass, fail);
+    test_eq(interp, "multi-shot let bindings", "(reset (+ 10 (shift k (let (a (k 1) b (k 2)) (+ a b)))))", 23, pass, fail);
     test_eq(interp, "multi-shot conditional", "(reset (+ 5 (shift k (if true (k 10) (k 20)))))", 15, pass, fail);
-    test_eq(interp, "multi-shot effect", "(handle (+ 1 (perform dup 0)) ((dup k x) (+ (k 10) (k 20))))", 32, pass, fail);
+    test_eq(interp, "multi-shot effect", "(handle (+ 1 (signal dup 0)) ((dup k x) (+ (k 10) (k 20))))", 32, pass, fail);
 
     // TCO inside reset/shift
     setup(interp, "(define reset-loop (lambda (n acc) (if (= n 0) acc (reset-loop (- n 1) (+ acc 1)))))");
@@ -1693,17 +1701,17 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define shift-loop (lambda (n acc) (if (= n 0) acc (shift-loop (- n 1) (+ acc 1)))))");
     test_eq(interp, "TCO in shift body", "(reset (+ 1 (shift k (shift-loop 5000 0))))", 5000, pass, fail);
     test_eq(interp, "TCO begin+if in reset", "(reset (begin (+ 1 2) (if true (+ 10 20) 99)))", 30, pass, fail);
-    test_eq(interp, "TCO let chains in shift", "(reset (+ 1 (shift k (let ((x 10)) (let ((y 20)) (+ x y))))))", 30, pass, fail);
+    test_eq(interp, "TCO let chains in shift", "(reset (+ 1 (shift k (let (x 10) (let (y 20) (+ x y))))))", 30, pass, fail);
     setup(interp, "(define cont-use-loop (lambda (k n) (if (= n 0) (k 42) (cont-use-loop k (- n 1)))))");
     test_eq(interp, "TCO tail-recursive k use", "(reset (+ 1 (shift k (cont-use-loop k 1000))))", 43, pass, fail);
     test_eq(interp, "TCO nested reset", "(reset (+ (reset (if true 10 20)) (shift k (k 5))))", 15, pass, fail);
     setup(interp, "(define handle-loop (lambda (n) (if (= n 0) 0 (+ 1 (handle-loop (- n 1))))))");
-    test_eq(interp, "TCO handler body", "(handle (perform count 0) ((count k x) (handle-loop 100)))", 100, pass, fail);
+    test_eq(interp, "TCO handler body", "(handle (signal count 0) (count x (handle-loop 100)))", 100, pass, fail);
 
     // Trampoline (JIT delegates effects to eval which handles them)
     test_eq(interp, "trampoline passthrough", "(with-trampoline (lambda (xx) 42))", 42, pass, fail);
-    test_eq(interp, "trampoline single bounce", "(with-trampoline (lambda (xx) (+ 1 (perform bounce (lambda (xx) 41)))))", 42, pass, fail);
-    setup(interp, "(define fib-t (lambda (n) (if (< n 2) n (+ (perform bounce (lambda (xx) (fib-t (- n 1)))) (perform bounce (lambda (xx) (fib-t (- n 2))))))))");
+    test_eq(interp, "trampoline single bounce", "(with-trampoline (lambda (xx) (+ 1 (signal bounce (lambda (xx) 41)))))", 42, pass, fail);
+    setup(interp, "(define fib-t (lambda (n) (if (< n 2) n (+ (signal bounce (lambda (xx) (fib-t (- n 1)))) (signal bounce (lambda (xx) (fib-t (- n 2))))))))");
     test_eq(interp, "trampoline fib 7", "(with-trampoline (lambda (xx) (fib-t 7)))", 13, pass, fail);
 
     // Variadic lambdas (JIT detects variadic closures and routes to fallback)
@@ -1728,18 +1736,18 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
 
     // Zero-arg lambdas
     test_eq(interp, "zero-arg thunk", "((lambda () 42))", 42, pass, fail);
-    test_eq(interp, "zero-arg closure", "(let ((a 10)) ((lambda () a)))", 10, pass, fail);
-    test_eq(interp, "zero-arg stored thunk", "(let ((thunk (lambda () 99))) (thunk))", 99, pass, fail);
+    test_eq(interp, "zero-arg closure", "(let (a 10) ((lambda () a)))", 10, pass, fail);
+    test_eq(interp, "zero-arg stored thunk", "(let (thunk (lambda () 99)) (thunk))", 99, pass, fail);
     test_eq(interp, "zero-arg begin body", "((lambda () (begin 1 2 3)))", 3, pass, fail);
     test_eq(interp, "zero-arg computation", "((lambda () (+ 10 20)))", 30, pass, fail);
 
     // Multi-param lambda (strict arity)
     test_eq(interp, "multi-param two", "((lambda (x y) (+ x y)) 3 4)", 7, pass, fail);
     test_eq(interp, "multi-param three", "((lambda (x y z) (+ x (+ y z))) 1 2 3)", 6, pass, fail);
-    test_eq(interp, "multi-param direct call", "(let ((add (lambda (x y) (+ x y)))) (add 10 20))", 30, pass, fail);
+    test_eq(interp, "multi-param direct call", "(let (add (lambda (x y) (+ x y))) (add 10 20))", 30, pass, fail);
     setup(interp, "(define mp-add3 (lambda (a b c) (+ a (+ b c))))");
     test_eq(interp, "multi-param defined fn", "(mp-add3 10 20 30)", 60, pass, fail);
-    test_eq(interp, "multi-param three call", "(let ((f (lambda (x y z) (+ x (+ y z))))) (f 1 2 3))", 6, pass, fail);
+    test_eq(interp, "multi-param three call", "(let (f (lambda (x y z) (+ x (+ y z)))) (f 1 2 3))", 6, pass, fail);
 
     // Arity error tests (strict enforcement)
     test_error_contains(interp, "arity err 2-param 1-arg", "((lambda (x y) (+ x y)) 5)", "arity", pass, fail);
@@ -1749,7 +1757,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "placeholder basic", "((+ 1 _) 5)", 6, pass, fail);
     test_eq(interp, "placeholder position", "((- _ 5) 10)", 5, pass, fail);
     test_eq(interp, "placeholder multi", "((+ _ _) 3 4)", 7, pass, fail);
-    test_eq(interp, "placeholder in let", "(let ((f (+ _ 10))) (f 5))", 15, pass, fail);
+    test_eq(interp, "placeholder in let", "(let (f (+ _ 10)) (f 5))", 15, pass, fail);
     test_eq(interp, "placeholder nested call", "((* 2 _) ((+ 1 _) 3))", 8, pass, fail);
 
     // Pipe |> operator
@@ -1770,20 +1778,20 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "partial multi", "((partial + 10) 20)", 30, pass, fail);
 
     // Multi-binding let
-    test_eq(interp, "multi-let two", "(let ((ml-x 10) (ml-y 20)) (+ ml-x ml-y))", 30, pass, fail);
-    test_eq(interp, "multi-let three", "(let ((ml-a 1) (ml-b 2) (ml-c 3)) (+ ml-a (+ ml-b ml-c)))", 6, pass, fail);
-    test_eq(interp, "multi-let sequential", "(let ((ml-p 10) (ml-q (+ ml-p 5))) ml-q)", 15, pass, fail);
-    test_eq(interp, "multi-let with lambda", "(let ((ml-f (lambda (xx) (+ xx 1))) (ml-v (ml-f 10))) ml-v)", 11, pass, fail);
-    test_eq(interp, "multi-let single", "(let ((ml-z 42)) ml-z)", 42, pass, fail);
+    test_eq(interp, "multi-let two", "(let (ml-x 10 ml-y 20) (+ ml-x ml-y))", 30, pass, fail);
+    test_eq(interp, "multi-let three", "(let (ml-a 1 ml-b 2 ml-c 3) (+ ml-a (+ ml-b ml-c)))", 6, pass, fail);
+    test_eq(interp, "multi-let sequential", "(let (ml-p 10 ml-q (+ ml-p 5)) ml-q)", 15, pass, fail);
+    test_eq(interp, "multi-let with lambda", "(let (ml-f (lambda (xx) (+ xx 1)) ml-v (ml-f 10)) ml-v)", 11, pass, fail);
+    test_eq(interp, "multi-let single", "(let (ml-z 42) ml-z)", 42, pass, fail);
 
     // Named let
-    test_eq(interp, "named-let sum 1..5", "(let loop ((n 5) (acc 0)) (if (= n 0) acc (loop (- n 1) (+ acc n))))", 15, pass, fail);
-    test_eq(interp, "named-let fact 10", "(let fact ((n 10) (acc 1)) (if (= n 0) acc (fact (- n 1) (* acc n))))", 3628800, pass, fail);
-    test_eq(interp, "named-let fib 10", "(let fib ((n 10) (a 0) (b 1)) (if (= n 0) a (fib (- n 1) b (+ a b))))", 55, pass, fail);
-    test_eq(interp, "named-let fib 20", "(let fib ((n 20) (a 0) (b 1)) (if (= n 0) a (fib (- n 1) b (+ a b))))", 6765, pass, fail);
-    test_eq(interp, "named-let countdown", "(let count ((n 100)) (if (= n 0) 0 (count (- n 1))))", 0, pass, fail);
-    test_eq(interp, "named-let build list car", "(car (let build ((n 3) (acc (quote ()))) (if (= n 0) acc (build (- n 1) (cons n acc)))))", 1, pass, fail);
-    test_eq(interp, "named-let 10000 iters", "(let loop ((n 10000) (acc 0)) (if (= n 0) acc (loop (- n 1) (+ acc 1))))", 10000, pass, fail);
+    test_eq(interp, "named-let sum 1..5", "(let loop (n 5 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc n))))", 15, pass, fail);
+    test_eq(interp, "named-let fact 10", "(let fact (n 10 acc 1) (if (= n 0) acc (fact (- n 1) (* acc n))))", 3628800, pass, fail);
+    test_eq(interp, "named-let fib 10", "(let fib (n 10 a 0 b 1) (if (= n 0) a (fib (- n 1) b (+ a b))))", 55, pass, fail);
+    test_eq(interp, "named-let fib 20", "(let fib (n 20 a 0 b 1) (if (= n 0) a (fib (- n 1) b (+ a b))))", 6765, pass, fail);
+    test_eq(interp, "named-let countdown", "(let count (n 100) (if (= n 0) 0 (count (- n 1))))", 0, pass, fail);
+    test_eq(interp, "named-let build list car", "(car (let build (n 3 acc (quote ())) (if (= n 0) acc (build (- n 1) (cons n acc)))))", 1, pass, fail);
+    test_eq(interp, "named-let 10000 iters", "(let loop (n 10000 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc 1))))", 10000, pass, fail);
 
     // set!
     setup(interp, "(define set-test 10)");
@@ -1791,14 +1799,14 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "set! basic", "set-test", 20, pass, fail);
 
     // Counter tests are stateful (calling counter1 mutates), use JIT-only to avoid double mutation
-    setup(interp, "(define make-counter (lambda () (let ((count 0)) (lambda () (begin (set! count (+ count 1)) count)))))");
+    setup(interp, "(define make-counter (lambda () (let (count 0) (lambda () (begin (set! count (+ count 1)) count)))))");
     setup(interp, "(define counter1 (make-counter))");
     test_eq_jit(interp, "set! counter 1", "(counter1)", 1, pass, fail);
     test_eq_jit(interp, "set! counter 2", "(counter1)", 2, pass, fail);
     test_eq_jit(interp, "set! counter 3", "(counter1)", 3, pass, fail);
 
     // set! on let-local in closure (JIT detects and falls back to interpreter)
-    test_eq(interp, "set! parent scope", "(let ((x 1)) (let ((f (lambda () (set! x 42)))) (begin (f) x)))", 42, pass, fail);
+    test_eq(interp, "set! parent scope", "(let (x 1) (let (f (lambda () (set! x 42))) (begin (f) x)))", 42, pass, fail);
     test_error(interp, "set! unbound", "(set! undefined-var-xyz 1)", pass, fail);
     setup(interp, "(define sr-test 100)");
     setup(interp, "(set! sr-test (+ sr-test 1))");
@@ -1814,7 +1822,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "number->string round-trip -99", "(string->number (number->string -99))", -99, pass, fail);
 
     // Stack overflow
-    test_error(interp, "stack overflow caught", "(let ^rec ((f (lambda (n) (+ 1 (f (+ n 1)))))) (f 0))", pass, fail);
+    test_error(interp, "stack overflow caught", "(let ^rec (f (lambda (n) (+ 1 (f (+ n 1))))) (f 0))", pass, fail);
 
     // Quasiquote
     test_tag(interp, "quasiquote basic", "`(a b c)", CONS, pass, fail);
@@ -1833,18 +1841,18 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define [macro] unless ([test .. body] (if test nil (begin .. body))))");
     test_eq(interp, "unless false", "(unless false 99)", 99, pass, fail);
     test_nil(interp, "unless true", "(unless true 99)", pass, fail);
-    setup(interp, "(define [macro] with-val ([name val body] (let ((name val)) body)))");
+    setup(interp, "(define [macro] with-val ([name val body] (let (name val) body)))");
     test_eq(interp, "macro with-val", "(with-val z 100 (+ z 1))", 101, pass, fail);
     setup(interp, "(define [macro] cond ([] nil) ([test body .. rest] (if test body (cond .. rest))))");
     test_eq(interp, "cond macro", "(cond false 1 true 2 true 3)", 2, pass, fail);
     test_nil(interp, "cond all false", "(cond false 1 false 2)", pass, fail);
     setup(interp, "(define [macro] my-and ([a b] (if a b false)))");
     test_eq(interp, "my-and true", "(my-and true 42)", 42, pass, fail);
-    setup(interp, "(define [macro] let1 ([name val body] (let ((name val)) body)))");
+    setup(interp, "(define [macro] let1 ([name val body] (let (name val) body)))");
     test_eq(interp, "let1 macro", "(let1 x 10 (+ x 5))", 15, pass, fail);
 
     // Auto-gensym
-    setup(interp, "(define [macro] swap! ([a b] (let ((tmp# a)) (begin (set! a b) (set! b tmp#)))))");
+    setup(interp, "(define [macro] swap! ([a b] (let (tmp# a) (begin (set! a b) (set! b tmp#)))))");
     setup(interp, "(define swap-x 10)");
     setup(interp, "(define swap-y 20)");
     setup(interp, "(swap! swap-x swap-y)");
@@ -1878,7 +1886,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define hyg-b 2000)");
     test_eq(interp, "hygiene multi immune", "(hyg-sum 5)", 35, pass, fail);
     setup(interp, "(define hyg-op (lambda (x) (* x 2)))");
-    setup(interp, "(define [macro] hyg-with-tmp ([x] (let ((tmp# (hyg-op x))) tmp#)))");
+    setup(interp, "(define [macro] hyg-with-tmp ([x] (let (tmp# (hyg-op x)) tmp#)))");
     test_eq(interp, "hygiene gensym+def", "(hyg-with-tmp 5)", 10, pass, fail);
     setup(interp, "(define hyg-op (lambda (x) 0))");
     test_eq(interp, "hygiene gensym+def immune", "(hyg-with-tmp 5)", 10, pass, fail);
@@ -1914,7 +1922,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "dict? yes", "(dict? (dict 1 2))", pass, fail);
     test_nil(interp, "dict? no", "(dict? 42)", pass, fail);
     setup(interp, "(define hm-big (dict))");
-    setup(interp, "(let loop ((i 0)) (if (= i 50) hm-big (begin (dict-set! hm-big i (* i i)) (loop (+ i 1)))))");
+    setup(interp, "(let loop (i 0) (if (= i 50) hm-big (begin (dict-set! hm-big i (* i i)) (loop (+ i 1)))))");
     test_eq(interp, "dict auto-grow count", "(length hm-big)", 50, pass, fail);
     test_eq(interp, "dict auto-grow ref 7", "(ref hm-big 7)", 49, pass, fail);
 
@@ -1930,13 +1938,13 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "[] literal", "(ref [10 20 30] 1)", 20, pass, fail);
     test_eq(interp, "[] length", "(length [1 2 3])", 3, pass, fail);
     test_eq(interp, "[] nested", "(ref (ref [1 [2 3]] 1) 0)", 2, pass, fail);
-    test_eq(interp, "[] index", "(let ((a [10 20 30])) a.[1])", 20, pass, fail);
+    test_eq(interp, "[] index", "(let (a [10 20 30]) a.[1])", 20, pass, fail);
     // Cons cell dot-path access and mutation
-    test_eq(interp, "cons .car", "(let ((p (cons 1 2))) p.car)", 1, pass, fail);
-    test_eq(interp, "cons .cdr", "(let ((p (cons 1 2))) p.cdr)", 2, pass, fail);
-    test_eq_interp(interp, "set! cons .car", "(let ((p (cons 1 2))) (begin (set! p.car 99) p.car))", 99, pass, fail);
-    test_eq_interp(interp, "set! cons .cdr", "(let ((p (cons 1 2))) (begin (set! p.cdr 50) p.cdr))", 50, pass, fail);
-    test_eq_interp(interp, "set! cons preserves", "(let ((p (cons 1 2))) (begin (set! p.car 99) p.cdr))", 2, pass, fail);
+    test_eq(interp, "cons .car", "(let (p (cons 1 2)) p.car)", 1, pass, fail);
+    test_eq(interp, "cons .cdr", "(let (p (cons 1 2)) p.cdr)", 2, pass, fail);
+    test_eq_interp(interp, "set! cons .car", "(let (p (cons 1 2)) (begin (set! p.car 99) p.car))", 99, pass, fail);
+    test_eq_interp(interp, "set! cons .cdr", "(let (p (cons 1 2)) (begin (set! p.cdr 50) p.cdr))", 50, pass, fail);
+    test_eq_interp(interp, "set! cons preserves", "(let (p (cons 1 2)) (begin (set! p.car 99) p.cdr))", 2, pass, fail);
 
     // === GENERIC OPERATIONS TESTS ===
     // ref - array
@@ -1963,10 +1971,10 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "ref list 2", "(ref '(10 20 30) 2)", 30, pass, fail);
     test_eq(interp, "ref list -1", "(ref '(10 20 30) -1)", 30, pass, fail);
     test_error(interp, "ref list oob", "(ref '(10 20 30) 5)", pass, fail);
-    test_eq(interp, ".[-1] array", "(let ((a [10 20 30])) a.[-1])", 30, pass, fail);
-    test_eq(interp, ".[-1] list", "(let ((l '(10 20 30))) l.[-1])", 30, pass, fail);
-    test_eq(interp, ".[-2] list", "(let ((l '(10 20 30))) l.[-2])", 20, pass, fail);
-    test_error(interp, ".[-4] list oob", "(let ((l '(10 20 30))) l.[-4])", pass, fail);
+    test_eq(interp, ".[-1] array", "(let (a [10 20 30]) a.[-1])", 30, pass, fail);
+    test_eq(interp, ".[-1] list", "(let (l '(10 20 30)) l.[-1])", 30, pass, fail);
+    test_eq(interp, ".[-2] list", "(let (l '(10 20 30)) l.[-2])", 20, pass, fail);
+    test_error(interp, ".[-4] list oob", "(let (l '(10 20 30)) l.[-4])", pass, fail);
     test_str(interp, "char-at -1", "(char-at \"abc\" -1)", pass, fail);
     setup(interp, "(define neg-arr [1 2 3])");
     setup(interp, "(array-set! neg-arr -1 99)");
@@ -2037,7 +2045,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(module private-mod (export) (define secret 42))");
     setup(interp, "(import private-mod)");
     test_error(interp, "module empty export hides", "secret", pass, fail);
-    setup(interp, "(module closure-mod (export make-counter) (define make-counter (lambda () (let ((n 0)) (lambda () (begin (set! n (+ n 1)) n))))))");
+    setup(interp, "(module closure-mod (export make-counter) (define make-counter (lambda () (let (n 0) (lambda () (begin (set! n (+ n 1)) n))))))");
     setup(interp, "(import closure-mod (make-counter))");
     setup(interp, "(define my-counter (make-counter))");
     // Counter tests are stateful: JIT-only to avoid double mutation
@@ -2107,10 +2115,10 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "every? all", "(every? (lambda (x) (> x 0)) (quote (1 2 3 4)))", pass, fail);
     test_nil(interp, "every? not all", "(every? (lambda (x) (> x 2)) (quote (1 2 3 4)))", pass, fail);
     test_truthy(interp, "every? empty", "(every? (lambda (x) (> x 0)) nil)", pass, fail);
-    test_eq(interp, "try/raise catch", "(try (lambda (xx) (+ 1 (perform raise 42))) (lambda (msg) msg))", 42, pass, fail);
+    test_eq(interp, "try/raise catch", "(try (lambda (xx) (+ 1 (signal raise 42))) (lambda (msg) msg))", 42, pass, fail);
     test_eq(interp, "try no error", "(try (lambda (xx) (+ 1 2)) (lambda (msg) msg))", 3, pass, fail);
     test_truthy(interp, "assert! true", "(assert! (= 1 1) \"ok\")", pass, fail);
-    test_truthy(interp, "assert! false raises", "(handle (assert! (= 1 2) \"fail\") ((raise k msg) msg))", pass, fail);
+    test_truthy(interp, "assert! false raises", "(handle (assert! (= 1 2) \"fail\") (raise msg msg))", pass, fail);
     setup(interp, "(define test-alist (list (cons 1 10) (cons 2 20) (cons 3 30)))");
     test_eq(interp, "assoc find", "(cdr (assoc 2 test-alist))", 20, pass, fail);
     test_nil(interp, "assoc not found", "(assoc 99 test-alist)", pass, fail);
@@ -2312,8 +2320,8 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define [type] Point (^Int x) (^Int y))");
     test_truthy_interp(interp, "type constructor", "(instance? (Point 3 4))", pass, fail);
     test_truthy_interp(interp, "type-of instance", "(= (type-of (Point 3 4)) 'Point)", pass, fail);
-    test_eq_interp(interp, "type field access x", "(let ((p (Point 3 4))) p.x)", 3, pass, fail);
-    test_eq_interp(interp, "type field access y", "(let ((p (Point 3 4))) p.y)", 4, pass, fail);
+    test_eq_interp(interp, "type field access x", "(let (p (Point 3 4)) p.x)", 3, pass, fail);
+    test_eq_interp(interp, "type field access y", "(let (p (Point 3 4)) p.y)", 4, pass, fail);
     test_truthy_interp(interp, "is? instance type", "(is? (Point 3 4) 'Point)", pass, fail);
 
     // define [abstract] — abstract type
@@ -2326,12 +2334,12 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_truthy_interp(interp, "is? subtype", "(is? (Circle 5) 'Circle)", pass, fail);
     test_truthy_interp(interp, "is? parent type", "(is? (Circle 5) 'Shape)", pass, fail);
     test_nil_interp(interp, "is? wrong parent", "(is? (Point 1 2) 'Shape)", pass, fail);
-    test_eq_interp(interp, "subtype field access", "(let ((c (Circle 5))) c.radius)", 5, pass, fail);
+    test_eq_interp(interp, "subtype field access", "(let (c (Circle 5)) c.radius)", 5, pass, fail);
 
     // Nested type access
     setup(interp, "(define [type] Line (^Point start) (^Point end))");
-    test_eq_interp(interp, "nested type access", "(let ((l (Line (Point 1 2) (Point 3 4)))) l.start.x)", 1, pass, fail);
-    test_eq_interp(interp, "nested type access 2", "(let ((l (Line (Point 1 2) (Point 3 4)))) l.end.y)", 4, pass, fail);
+    test_eq_interp(interp, "nested type access", "(let (l (Line (Point 1 2) (Point 3 4))) l.start.x)", 1, pass, fail);
+    test_eq_interp(interp, "nested type access 2", "(let (l (Line (Point 1 2) (Point 3 4))) l.end.y)", 4, pass, fail);
 
     // define [union] — union types
     setup(interp, "(define [union] (Option T) None (Some T))");
@@ -2353,7 +2361,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     // Parametric type with single type param
     setup(interp, "(define [type] (Box T) (^T value))");
     test_truthy_interp(interp, "Box constructor", "(instance? (Box 42))", pass, fail);
-    test_eq_interp(interp, "Box field access", "(let ((b (Box 42))) b.value)", 42, pass, fail);
+    test_eq_interp(interp, "Box field access", "(let (b (Box 42)) b.value)", 42, pass, fail);
     test_truthy_interp(interp, "Box type-of", "(= (type-of (Box 42)) 'Box)", pass, fail);
 
     // type-args primitive — infer T=Int from (Box 42)
@@ -2362,8 +2370,8 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
 
     // Parametric type with two type params
     setup(interp, "(define [type] (Pair A B) (^A first) (^B second))");
-    test_eq_interp(interp, "Pair field first", "(let ((p (Pair 1 \"two\"))) p.first)", 1, pass, fail);
-    test_truthy_interp(interp, "Pair field second", "(= (let ((p (Pair 1 \"two\"))) p.second) \"two\")", pass, fail);
+    test_eq_interp(interp, "Pair field first", "(let (p (Pair 1 \"two\")) p.first)", 1, pass, fail);
+    test_truthy_interp(interp, "Pair field second", "(= (let (p (Pair 1 \"two\")) p.second) \"two\")", pass, fail);
     test_truthy_interp(interp, "type-args Pair A", "(= (car (type-args (Pair 1 \"two\"))) 'Int)", pass, fail);
     test_truthy_interp(interp, "type-args Pair B", "(= (car (cdr (type-args (Pair 1 \"two\")))) 'String)", pass, fail);
 
@@ -2453,30 +2461,30 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     // Constraint expressed via dict annotation on field: ^{'T Number}
     setup(interp, "(define [type] (NumBox T) (^{'T Number} value))");
     // Int <: Number — should succeed
-    test_eq_interp(interp, "NumBox Int ok", "(let ((b (NumBox 42))) b.value)", 42, pass, fail);
+    test_eq_interp(interp, "NumBox Int ok", "(let (b (NumBox 42)) b.value)", 42, pass, fail);
     // Double <: Number — should succeed
     test_truthy_interp(interp, "NumBox Dbl ok", "(= (type-of (NumBox 3.14)) 'NumBox)", pass, fail);
     // String not <: Number — should error
     test_error(interp, "NumBox String fail", "(NumBox \"hi\")", pass, fail);
 
     // Array/dict indexing (Phase 3)
-    test_eq(interp, "array index", "(let ((v (array 10 20 30))) v.[0])", 10, pass, fail);
-    test_eq(interp, "array index 2", "(let ((v (array 10 20 30))) v.[2])", 30, pass, fail);
+    test_eq(interp, "array index", "(let (v (array 10 20 30)) v.[0])", 10, pass, fail);
+    test_eq(interp, "array index 2", "(let (v (array 10 20 30)) v.[2])", 30, pass, fail);
 
     // Struct field mutation (Phase 3)
-    test_eq_interp(interp, "set! struct field", "(let ((p (Point 1 2))) (begin (set! p.x 99) p.x))", 99, pass, fail);
-    test_eq_interp(interp, "set! struct field y", "(let ((p (Point 1 2))) (begin (set! p.y 50) p.y))", 50, pass, fail);
-    test_eq_interp(interp, "set! nested field", "(let ((ln (Line (Point 0 0) (Point 10 10)))) (begin (set! ln.start.x 5) ln.start.x))", 5, pass, fail);
-    test_eq_interp(interp, "set! preserves other", "(let ((p (Point 3 4))) (begin (set! p.x 99) p.y))", 4, pass, fail);
+    test_eq_interp(interp, "set! struct field", "(let (p (Point 1 2)) (begin (set! p.x 99) p.x))", 99, pass, fail);
+    test_eq_interp(interp, "set! struct field y", "(let (p (Point 1 2)) (begin (set! p.y 50) p.y))", 50, pass, fail);
+    test_eq_interp(interp, "set! nested field", "(let (ln (Line (Point 0 0) (Point 10 10))) (begin (set! ln.start.x 5) ln.start.x))", 5, pass, fail);
+    test_eq_interp(interp, "set! preserves other", "(let (p (Point 3 4)) (begin (set! p.x 99) p.y))", 4, pass, fail);
 
     // Hashmap indexing (Phase 3)
-    test_eq_interp(interp, "dict index", "(let ((m {'a 1 'b 2})) m.['a])", 1, pass, fail);
+    test_eq_interp(interp, "dict index", "(let (m {'a 1 'b 2}) m.['a])", 1, pass, fail);
 
     // === PRIMITIVE CONSOLIDATION TESTS (Phase 4) ===
     // Overload + for Point type (primitive becomes fallback)
     setup(interp, "(define (add-points (^Point a) (^Point b)) (Point (+ a.x b.x) (+ a.y b.y)))");
-    test_eq_interp(interp, "typed dispatch Point+", "(let ((r (add-points (Point 1 2) (Point 3 4)))) r.x)", 4, pass, fail);
-    test_eq_interp(interp, "typed dispatch Point+ y", "(let ((r (add-points (Point 1 2) (Point 3 4)))) r.y)", 6, pass, fail);
+    test_eq_interp(interp, "typed dispatch Point+", "(let (r (add-points (Point 1 2) (Point 3 4))) r.x)", 4, pass, fail);
+    test_eq_interp(interp, "typed dispatch Point+ y", "(let (r (add-points (Point 1 2) (Point 3 4))) r.y)", 6, pass, fail);
     // Built-in + still works (dispatch preserves primitive fallback)
     test_eq_interp(interp, "builtin + after dispatch", "(+ 10 20)", 30, pass, fail);
     // Overload length for custom type
@@ -2538,9 +2546,9 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define [type] Vec2 (^Double vx) (^Double vy))");
     setup(interp, "(define (+ (^Vec2 a) (^Vec2 b)) (Vec2 (+ a.vx b.vx) (+ a.vy b.vy)))");
     test_truthy_interp(interp, "Vec2 + dispatch x",
-        "(= (let ((v (+ (Vec2 1.0 2.0) (Vec2 3.0 4.0)))) v.vx) 4.0)", pass, fail);
+        "(= (let (v (+ (Vec2 1.0 2.0) (Vec2 3.0 4.0))) v.vx) 4.0)", pass, fail);
     test_truthy_interp(interp, "Vec2 + dispatch y",
-        "(= (let ((v (+ (Vec2 1.0 2.0) (Vec2 3.0 4.0)))) v.vy) 6.0)", pass, fail);
+        "(= (let (v (+ (Vec2 1.0 2.0) (Vec2 3.0 4.0))) v.vy) 6.0)", pass, fail);
     // Built-in + still works after Vec2 extension
     test_eq_interp(interp, "builtin + after Vec2", "(+ 1 2)", 3, pass, fail);
     // Extend length for Vec2
@@ -2559,12 +2567,12 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
 
     // Custom handler can suppress output
     test_eq_interp(interp, "io handle suppress",
-        "(handle (begin (println \"suppressed\") 42) ((io/println k x) (k nil)))",
+        "(handle (begin (println \"suppressed\") 42) (io/println x (respond nil)))",
         42, pass, fail);
 
     // Custom handler can capture output
     test_truthy_interp(interp, "io handle capture",
-        "(= (handle (begin (println \"captured\") nil) ((io/println k x) x)) \"captured\")",
+        "(= (handle (begin (println \"captured\") nil) (io/println x x)) \"captured\")",
         pass, fail);
 
     // __raw-print still works directly
@@ -2578,23 +2586,23 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
 
     // Perform with correct type works
     test_str_interp(interp, "effect correct type",
-        "(handle (perform test/greet \"hello\") ((test/greet k x) x))", pass, fail);
+        "(handle (signal test/greet \"hello\") (test/greet x x))", pass, fail);
     test_eq_interp(interp, "effect int correct",
-        "(handle (perform test/count 42) ((test/count k x) x))", 42, pass, fail);
+        "(handle (signal test/count 42) (test/count x x))", 42, pass, fail);
 
     // Perform with wrong type errors
     test_error(interp, "effect wrong type int",
-        "(handle (perform test/greet 42) ((test/greet k x) x))", pass, fail);
+        "(handle (signal test/greet 42) (test/greet x x))", pass, fail);
     test_error(interp, "effect wrong type str",
-        "(handle (perform test/count \"bad\") ((test/count k x) x))", pass, fail);
+        "(handle (signal test/count \"bad\") (test/count x x))", pass, fail);
 
     // Undeclared effects still work (backward compat)
     test_eq_interp(interp, "effect undeclared ok",
-        "(handle (perform custom-tag 42) ((custom-tag k x) (+ x 1)))", 43, pass, fail);
+        "(handle (signal custom-tag 42) (custom-tag x (+ x 1)))", 43, pass, fail);
 
     // Nullary effect (no arg type) accepts anything
     test_eq_interp(interp, "effect nullary any",
-        "(handle (perform test/ping 99) ((test/ping k x) x))", 99, pass, fail);
+        "(handle (signal test/ping 99) (test/ping x x))", 99, pass, fail);
 
     // ^Any effects accept all types
     test_nil_interp(interp, "io effect Any int", "(print 42)", pass, fail);
@@ -2602,18 +2610,18 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
 
     // io/read-file with wrong type should error (^String)
     test_error(interp, "io/read-file wrong type",
-        "(handle (perform io/read-file 42) ((io/read-file k x) x))", pass, fail);
+        "(handle (signal io/read-file 42) (io/read-file x x))", pass, fail);
 
     // io/read-file with correct type works
     test_str_interp(interp, "io/read-file correct type",
-        "(handle (perform io/read-file \"test.txt\") ((io/read-file k x) x))", pass, fail);
+        "(handle (signal io/read-file \"test.txt\") (io/read-file x x))", pass, fail);
 
     // Subtype check: Number accepts Int and Double
     test_nil_interp(interp, "defeffect number arg", "(define [effect] (test/num (^Number n)))", pass, fail);
     test_eq_interp(interp, "effect number int",
-        "(handle (perform test/num 42) ((test/num k x) x))", 42, pass, fail);
+        "(handle (signal test/num 42) (test/num x x))", 42, pass, fail);
     test_error(interp, "effect number str",
-        "(handle (perform test/num \"bad\") ((test/num k x) x))", pass, fail);
+        "(handle (signal test/num \"bad\") (test/num x x))", pass, fail);
 
     // === UNION PATTERN MATCHING TESTS (Phase 6) ===
     // Option and Result types already defined in Phase 1 tests above
@@ -2637,9 +2645,9 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
 
     // === MEMORY RECLAMATION TESTS ===
     // unsafe-free! on array: releases backing, accessing freed value errors
-    test_error(interp, "unsafe-free! array UAF", "(let ((a [1 2 3])) (begin (unsafe-free! a) a))", pass, fail);
+    test_error(interp, "unsafe-free! array UAF", "(let (a [1 2 3]) (begin (unsafe-free! a) a))", pass, fail);
     // unsafe-free! on dict: releases backing, accessing freed value errors
-    test_error(interp, "unsafe-free! dict UAF", "(let ((d {'a 1 'b 2})) (begin (unsafe-free! d) d))", pass, fail);
+    test_error(interp, "unsafe-free! dict UAF", "(let (d {'a 1 'b 2}) (begin (unsafe-free! d) d))", pass, fail);
     // unsafe-free! on non-collection: no-op, returns nil
     test_nil_interp(interp, "unsafe-free! int noop", "(unsafe-free! 42)", pass, fail);
     // unsafe-free! on nil: no-op
@@ -2652,7 +2660,7 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
         117, pass, fail);
     // Handle with 9 effect clauses (was max 8, now 16)
     test_eq(interp, "handle 9 effects",
-        "(handle (perform e9 42) ((e1 k v) (k v)) ((e2 k v) (k v)) ((e3 k v) (k v)) ((e4 k v) (k v)) ((e5 k v) (k v)) ((e6 k v) (k v)) ((e7 k v) (k v)) ((e8 k v) (k v)) ((e9 k v) (+ v 1)))",
+        "(handle (signal e9 42) (e1 v (respond v)) (e2 v (respond v)) (e3 v (respond v)) (e4 v (respond v)) (e5 v (respond v)) (e6 v (respond v)) (e7 v (respond v)) (e8 v (respond v)) (e9 v (+ v 1)))",
         43, pass, fail);
     // Large method table (>32 methods, was max 32, now 64)
     setup(interp, "(define [type] TestMT33 (^Int val))");
@@ -2778,7 +2786,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 7. zero-arg in let
     {
-        char[] code = compile_to_c3("(let ((f (lambda () 10))) (f))", interp);
+        char[] code = compile_to_c3("(let (f (lambda () 10)) (f))", interp);
         bool ok = !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: zero-arg in let"); }
         else    { fail++; io::printn("[FAIL] Compiler: zero-arg in let"); }
@@ -2796,7 +2804,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 9. multi-binding let (desugared by parser to nested)
     {
-        char[] code = compile_to_c3("(let ((x 1) (y 2)) (+ x y))", interp);
+        char[] code = compile_to_c3("(let (x 1 y 2) (+ x y))", interp);
         bool ok = !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: multi-binding let"); }
         else    { fail++; io::printn("[FAIL] Compiler: multi-binding let"); }
@@ -2848,7 +2856,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 15. handle/perform compiles
     {
-        char[] code = compile_to_c3("(handle (+ 1 (perform ask 0)) ((ask k x) (k 10)))", interp);
+        char[] code = compile_to_c3("(handle (+ 1 (signal ask 0)) (ask x (respond 10)))", interp);
         bool ok = !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: handle/perform"); }
         else    { fail++; io::printn("[FAIL] Compiler: handle/perform"); }
@@ -2856,7 +2864,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 16. zero-arg lambda with closure capture
     {
-        char[] code = compile_to_c3("(let ((x 42)) (let ((f (lambda () x))) (f)))", interp);
+        char[] code = compile_to_c3("(let (x 42) (let (f (lambda () x)) (f)))", interp);
         bool ok = !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: zero-arg closure capture"); }
         else    { fail++; io::printn("[FAIL] Compiler: zero-arg closure capture"); }
@@ -2978,7 +2986,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 30. handle/perform compiles natively
     {
-        char[] code = compile_to_c3("(handle (+ 1 (perform ask 0)) ((ask k x) (k 10)))", interp);
+        char[] code = compile_to_c3("(handle (+ 1 (signal ask 0)) (ask x (respond 10)))", interp);
         bool ok = str_contains(code, "rt_compiled_handle") && str_contains(code, "rt_compiled_perform");
         if (ok) { pass++; io::printn("[PASS] Compiler: handle/perform uses native compilation"); }
         else    { fail++; io::printn("[FAIL] Compiler: handle/perform uses native compilation"); }
@@ -2986,7 +2994,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 31. standalone perform compiles natively
     {
-        char[] code = compile_to_c3("(perform raise \"error\")", interp);
+        char[] code = compile_to_c3("(signal raise \"error\")", interp);
         bool ok = str_contains(code, "rt_compiled_perform");
         if (ok) { pass++; io::printn("[PASS] Compiler: perform uses rt_compiled_perform"); }
         else    { fail++; io::printn("[FAIL] Compiler: perform uses rt_compiled_perform"); }
@@ -3010,7 +3018,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 34. handle with multiple clauses compiles natively
     {
-        char[] code = compile_to_c3("(handle (begin (perform get 0) (perform set 1)) ((get k x) (k 42)) ((set k v) (k v)))", interp);
+        char[] code = compile_to_c3("(handle (begin (signal get 0) (signal set 1)) (get x (respond 42)) (set v (respond v)))", interp);
         bool ok = str_contains(code, "rt_compiled_handle");
         if (ok) { pass++; io::printn("[PASS] Compiler: handle with multiple clauses"); }
         else    { fail++; io::printn("[FAIL] Compiler: handle with multiple clauses"); }
@@ -3137,7 +3145,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 48. Quasiquote compiles natively with rt_cons
     {
-        char[] code = compile_to_c3("(let ((x 5)) `(a ,x))", interp);
+        char[] code = compile_to_c3("(let (x 5) `(a ,x))", interp);
         bool ok = str_contains(code, "rt_cons") && str_contains(code, "make_symbol");
         if (ok) { pass++; io::printn("[PASS] Compiler: quasiquote compiles natively"); }
         else    { fail++; io::printn("[FAIL] Compiler: quasiquote compiles natively"); }
@@ -3145,7 +3153,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 49. Quasiquote with unquote uses make_symbol for literal parts
     {
-        char[] code = compile_to_c3("(let ((x 5)) `(a ,x))", interp);
+        char[] code = compile_to_c3("(let (x 5) `(a ,x))", interp);
         bool ok = str_contains(code, "make_symbol(\"a\")");
         if (ok) { pass++; io::printn("[PASS] Compiler: quasiquote uses make_symbol"); }
         else    { fail++; io::printn("[FAIL] Compiler: quasiquote uses make_symbol"); }
@@ -3241,7 +3249,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 60. Mutable capture detected and uses rt_define_var
     {
-        char[] code = compile_to_c3("(let ((x 0)) (let ((inc (lambda () (set! x (+ x 1))))) (inc) x))", interp);
+        char[] code = compile_to_c3("(let (x 0) (let (inc (lambda () (set! x (+ x 1)))) (inc) x))", interp);
         // Mutable capture test - checks generated code for interpreter env usage
         bool ok = str_contains(code, "rt_define_var") && str_contains(code, "rt_set_var");
         if (ok) { pass++; io::printn("[PASS] Compiler: mutable capture uses rt_define_var/rt_set_var"); }
@@ -3250,7 +3258,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 61. Mutable capture reads use rt_lookup_var
     {
-        char[] code = compile_to_c3("(let ((x 0)) (let ((inc (lambda () (set! x (+ x 1))))) (inc) x))", interp);
+        char[] code = compile_to_c3("(let (x 0) (let (inc (lambda () (set! x (+ x 1)))) (inc) x))", interp);
         bool ok = str_contains(code, "rt_lookup_var");
         if (ok) { pass++; io::printn("[PASS] Compiler: mutable capture reads use rt_lookup_var"); }
         else    { fail++; io::printn("[FAIL] Compiler: mutable capture reads use rt_lookup_var"); }
@@ -3258,7 +3266,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 62. Non-mutable let uses C3 local variable (Value x = ...)
     {
-        char[] code = compile_to_c3("(let ((x 42)) x)", interp);
+        char[] code = compile_to_c3("(let (x 42) x)", interp);
         // The main fn body should contain "Value x = " for a non-mutable let
         bool ok = str_contains(code, "Value x = ");
         if (ok) { pass++; io::printn("[PASS] Compiler: non-mutable let uses C3 local"); }
@@ -3281,7 +3289,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 64. Let-rec with tail call emits make_thunk
     {
         char[] code = compile_to_c3(
-            "(let ^rec ((loop (lambda (n) (if (= n 0) 'done (loop (- n 1)))))) (loop 100))", interp);
+            "(let ^rec (loop (lambda (n) (if (= n 0) 'done (loop (- n 1))))) (loop 100))", interp);
         bool ok = str_contains(code, "make_thunk") && !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: let-rec tail call emits thunk"); }
         else    { fail++; io::printn("[FAIL] Compiler: let-rec tail call emits thunk"); }
@@ -3347,7 +3355,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // 70. TCO depth via runtime (named-let loop to 5000)
     {
-        runtime::Value result = runtime::rt_eval_source("(let loop ((n 5000) (acc 0)) (if (= n 0) acc (loop (- n 1) (+ acc 1))))");
+        runtime::Value result = runtime::rt_eval_source("(let loop (n 5000 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc 1))))");
         bool ok = (result.tag == runtime::ValueTag.V_INT && result.int_val == 5000);
         if (ok) { pass++; io::printn("[PASS] Runtime: TCO depth 5000"); }
         else    { fail++; io::printn("[FAIL] Runtime: TCO depth 5000"); }

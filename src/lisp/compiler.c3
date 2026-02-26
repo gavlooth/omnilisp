@@ -607,6 +607,9 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
         case E_PERFORM:
             self.find_free_vars(expr.perform.arg, bound_vars, free_vars, enclosing_scope);
 
+        case E_RESPOND:
+            self.find_free_vars(expr.respond.value, bound_vars, free_vars, enclosing_scope);
+
         case E_HANDLE:
             self.find_free_vars(expr.handle.body, bound_vars, free_vars, enclosing_scope);
             for (usz i = 0; i < expr.handle.clause_count; i++) {
@@ -884,6 +887,8 @@ fn void Compiler.prescan_mutable_captures(Compiler* self, Expr* expr) {
             }
         case E_PERFORM:
             self.prescan_mutable_captures(expr.perform.arg);
+        case E_RESPOND:
+            self.prescan_mutable_captures(expr.respond.value);
         default:
             return;
     }
@@ -1078,15 +1083,15 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
 
         case E_LET:
             if (expr.let_expr.is_recursive) {
-                self.buf_append(buf, "(let ^rec ((");
+                self.buf_append(buf, "(let ^rec (");
             } else {
-                self.buf_append(buf, "(let ((");
+                self.buf_append(buf, "(let (");
             }
             char[] let_name = self.interp.symbols.get_name(expr.let_expr.name);
             self.buf_append(buf, let_name);
             buf.push(' ');
             self.serialize_expr_to_buf(expr.let_expr.init, buf);
-            self.buf_append(buf, ")) ");
+            self.buf_append(buf, ") ");
             self.serialize_expr_to_buf(expr.let_expr.body, buf);
             buf.push(')');
 
@@ -1121,6 +1126,11 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
             self.buf_append(buf, tag_name);
             buf.push(' ');
             self.serialize_expr_to_buf(expr.perform.arg, buf);
+            buf.push(')');
+
+        case E_RESPOND:
+            self.buf_append(buf, "(respond ");
+            self.serialize_expr_to_buf(expr.respond.value, buf);
             buf.push(')');
 
         case E_HANDLE:
@@ -1472,27 +1482,27 @@ fn List{SymbolId} Compiler.collect_cont_free_vars(Compiler* self, Expr* expr) {
  * These are the same HOFs defined in register_stdlib() in eval.c3.
  */
 const char[] STDLIB_PRELUDE =
-`(define with-trampoline (lambda (thunk) (handle (thunk nil) ((bounce k next-thunk) (k (with-trampoline next-thunk))))))
-(define (reverse lst) (let loop ((xs lst) (acc nil)) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
-(define (map f lst) (let loop ((xs lst) (acc nil)) (if (null? xs) (reverse acc) (loop (cdr xs) (cons (f (car xs)) acc)))))
-(define (filter pred lst) (let loop ((xs lst) (acc nil)) (if (null? xs) (reverse acc) (if (pred (car xs)) (loop (cdr xs) (cons (car xs) acc)) (loop (cdr xs) acc)))))
-(define (foldl f acc lst) (let loop ((a acc) (xs lst)) (if (null? xs) a (loop (f a (car xs)) (cdr xs)))))
+`(define with-trampoline (lambda (thunk) (handle (thunk nil) (bounce next-thunk (respond (with-trampoline next-thunk))))))
+(define (reverse lst) (let loop (xs lst acc nil) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
+(define (map f lst) (let loop (xs lst acc nil) (if (null? xs) (reverse acc) (loop (cdr xs) (cons (f (car xs)) acc)))))
+(define (filter pred lst) (let loop (xs lst acc nil) (if (null? xs) (reverse acc) (if (pred (car xs)) (loop (cdr xs) (cons (car xs) acc)) (loop (cdr xs) acc)))))
+(define (foldl f acc lst) (let loop (a acc xs lst) (if (null? xs) a (loop (f a (car xs)) (cdr xs)))))
 (define (foldr f init lst) (foldl (lambda (acc x) (f x acc)) init (reverse lst)))
-(define (append a b) (let loop ((xs (reverse a)) (acc b)) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
+(define (append a b) (let loop (xs (reverse a) acc b) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
 (define (compose f g) (lambda (x) (f (g x))))
 (define (id x) x)
-(define (nth n lst) (let loop ((i n) (xs lst)) (if (= i 0) (car xs) (loop (- i 1) (cdr xs)))))
-(define (take n lst) (let loop ((i n) (xs lst) (acc nil)) (if (= i 0) (reverse acc) (if (null? xs) (reverse acc) (loop (- i 1) (cdr xs) (cons (car xs) acc))))))
-(define (drop n lst) (let loop ((i n) (xs lst)) (if (= i 0) xs (if (null? xs) nil (loop (- i 1) (cdr xs))))))
-(define (zip a b) (let loop ((xs a) (ys b) (acc nil)) (if (or (null? xs) (null? ys)) (reverse acc) (loop (cdr xs) (cdr ys) (cons (cons (car xs) (car ys)) acc)))))
-(define (range n) (let loop ((i (- n 1)) (acc nil)) (if (< i 0) acc (loop (- i 1) (cons i acc)))))
-(define (for-each f lst) (let loop ((xs lst)) (if (null? xs) nil (begin (f (car xs)) (loop (cdr xs))))))
-(define (any? pred lst) (let loop ((xs lst)) (if (null? xs) nil (if (pred (car xs)) true (loop (cdr xs))))))
-(define (every? pred lst) (let loop ((xs lst)) (if (null? xs) true (if (pred (car xs)) (loop (cdr xs)) nil))))
-(define (try thunk handler) (handle (thunk nil) ((raise k msg) (handler msg))))
-(define (assert! condition msg) (if condition true (perform raise msg)))
-(define (assoc key alist) (let loop ((xs alist)) (if (null? xs) nil (if (= (car (car xs)) key) (car xs) (loop (cdr xs))))))
-(define (assoc-ref key alist) (let ((pair (assoc key alist))) (if (null? pair) nil (cdr pair))))
+(define (nth n lst) (let loop (i n xs lst) (if (= i 0) (car xs) (loop (- i 1) (cdr xs)))))
+(define (take n lst) (let loop (i n xs lst acc nil) (if (= i 0) (reverse acc) (if (null? xs) (reverse acc) (loop (- i 1) (cdr xs) (cons (car xs) acc))))))
+(define (drop n lst) (let loop (i n xs lst) (if (= i 0) xs (if (null? xs) nil (loop (- i 1) (cdr xs))))))
+(define (zip a b) (let loop (xs a ys b acc nil) (if (or (null? xs) (null? ys)) (reverse acc) (loop (cdr xs) (cdr ys) (cons (cons (car xs) (car ys)) acc)))))
+(define (range n) (let loop (i (- n 1) acc nil) (if (< i 0) acc (loop (- i 1) (cons i acc)))))
+(define (for-each f lst) (let loop (xs lst) (if (null? xs) nil (begin (f (car xs)) (loop (cdr xs))))))
+(define (any? pred lst) (let loop (xs lst) (if (null? xs) nil (if (pred (car xs)) true (loop (cdr xs))))))
+(define (every? pred lst) (let loop (xs lst) (if (null? xs) true (if (pred (car xs)) (loop (cdr xs)) nil))))
+(define (try thunk handler) (handle (thunk nil) (raise msg (handler msg))))
+(define (assert! condition msg) (if condition true (signal raise msg)))
+(define (assoc key alist) (let loop (xs alist) (if (null? xs) nil (if (= (car (car xs)) key) (car xs) (loop (cdr xs))))))
+(define (assoc-ref key alist) (let (pair (assoc key alist)) (if (null? pair) nil (cdr pair))))
 (define when (lambda (test body) (if test body nil)))
 (define unless (lambda (test body) (if test nil body)))`;
 
@@ -1791,6 +1801,9 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
 
         case E_PERFORM:
             return self.scan_lambdas_with_scope(expr.perform.arg, enclosing_bound);
+
+        case E_RESPOND:
+            return self.scan_lambdas_with_scope(expr.respond.value, enclosing_bound);
 
         case E_HANDLE: {
             // Wrap body as synthetic lambda
@@ -2375,6 +2388,17 @@ fn usz Compiler.compile_to_temp(Compiler* self, Expr* expr) {
 
         case E_PERFORM:
             return self.compile_perform_flat(expr);
+
+        case E_RESPOND: {
+            // Compile value, then call rt_compiled_respond
+            usz val_r = self.compile_to_temp(expr.respond.value);
+            usz id = self.next_result();
+            self.emit_temp_decl(id);
+            self.emit(" = runtime::rt_compiled_respond(");
+            self.emit_temp_ref(val_r);
+            self.emit(");\n");
+            return id;
+        }
 
         case E_HANDLE:
             return self.compile_handle_flat(expr);

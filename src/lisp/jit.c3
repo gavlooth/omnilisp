@@ -2387,6 +2387,9 @@ fn bool jit_compile_expr(void* s, Expr* expr, Interp* interp, JitLocals* locals,
         case E_PERFORM:
             return jit_compile_perform(s, expr, interp, locals);
 
+        case E_RESPOND:
+            return jit_compile_respond(s, expr, interp, locals);
+
         case E_QUOTE:
             return jit_compile_quote(s, expr, interp);
 
@@ -3010,6 +3013,33 @@ fn bool jit_compile_perform(void* s, Expr* expr, Interp* interp, JitLocals* loca
     bool has_env = emit_build_locals_env(s, interp, locals);
     if (!has_env) emit_load_env(s, JIT_V2);
     emit_call_3i(s, (void*)&jit_exec_perform, JIT_V0, (long)expr, JIT_V2);
+    return true;
+}
+
+fn Value* jit_exec_respond(Interp* interp, Expr* expr, Env* env) {
+    // Evaluate the value to respond with
+    Value* val = jit_eval(expr.respond.value, env, interp);
+    if (val != null && val.tag == ERROR) return val;
+
+    // Look up __k in the current environment (set by handle clause)
+    Value* k_val = env.lookup(interp.sym__k);
+    if (k_val == null) {
+        k_val = interp.global_env.lookup(interp.sym__k);
+    }
+    if (k_val == null || k_val.tag != CONTINUATION) {
+        return make_error(interp, "respond: not inside a handler clause");
+    }
+
+    // Apply the continuation
+    EvalResult r = jit_apply_continuation(k_val, val, interp);
+    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+    return r.value;
+}
+
+fn bool jit_compile_respond(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    bool has_env = emit_build_locals_env(s, interp, locals);
+    if (!has_env) emit_load_env(s, JIT_V2);
+    emit_call_3i(s, (void*)&jit_exec_respond, JIT_V0, (long)expr, JIT_V2);
     return true;
 }
 
