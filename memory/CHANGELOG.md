@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-02-26 (Session 41): omni-torch refactor + module expression limit increase
+
+### Summary
+Refactored omni-torch XOR example to use resolved effect values (no more workarounds). Added sub-scalar-i dispatch. Increased module/begin expression limit from 64 to 256.
+
+### Changes
+- **omni-torch/examples/xor_nn.omni** — Removed `train-chunk` workaround; direct per-epoch training with checkpoint signals every 500 epochs; resolved value for early stopping; clean handle return without `set!`
+- **omni-torch/lib/torch.omni** — Added `- (Tensor, Int)` dispatch via `omni-torch-sub-scalar-i`
+- **omni-torch/csrc/torch_shim.{h,cpp}** — Added `omni_torch_sub_scalar_i`
+- **omni-torch/lib/ffi/torch.omni** — Added `omni-torch-sub-scalar-i` FFI binding + export
+- **src/lisp/jit.c3** — Increased module expression limit from 64 to 256
+- **src/lisp/parser.c3** — Increased begin expression limit from 64 to 256
+
+### Tests
+- 947 total (unchanged), 0 failures
+- omni-torch: `make test` and `make xor` pass
+
 ## 2026-02-26 (Session 39+40): Effect handler bug fixes — all 4 known bugs resolved
 
 ### Summary
