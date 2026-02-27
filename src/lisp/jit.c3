@@ -889,165 +889,30 @@ fn Value* jit_eval_define_macro(Interp* interp, Expr* expr, Env* env) {
 
 // JIT-native effects — no eval() dependency.
 fn Value* jit_exec_reset(Interp* interp, Expr* expr, Env* env) {
-    EvalResult r;
-    if (interp.use_fiber_continuations) {
-        r = jit_reset_impl_fiber(expr, env, interp);
-    } else {
-        r = jit_reset_impl(expr, env, interp);
-    }
+    EvalResult r = jit_reset_impl_fiber(expr, env, interp);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;
 }
 
 fn Value* jit_exec_shift(Interp* interp, Expr* expr, Env* env) {
-    if (interp.use_fiber_continuations) {
-        // Fiber path returns Value* directly (fits in RAX, no hidden pointer).
-        // This is critical: EvalResult is >16 bytes, so the System V ABI uses
-        // a hidden stack pointer. After coro_clone that pointer is stale.
-        return jit_shift_impl_fiber(expr, env, interp);
-    }
-    EvalResult r = jit_shift_impl(expr, env, interp);
-    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-    return r.value;
+    // Returns Value* directly (fits in RAX, no hidden pointer).
+    // EvalResult is >16 bytes, so the System V ABI uses a hidden stack pointer.
+    // After coro_clone that pointer is stale.
+    return jit_shift_impl_fiber(expr, env, interp);
 }
 
 fn Value* jit_exec_handle(Interp* interp, Expr* expr, Env* env) {
-    if (interp.use_fiber_continuations) {
-        EvalResult r = jit_handle_impl_fiber(expr, env, interp);
-        if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-        return r.value;
-    }
-    EvalResult r = jit_handle_impl(expr, env, interp);
+    EvalResult r = jit_handle_impl_fiber(expr, env, interp);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;
 }
 
 fn Value* jit_exec_perform(Interp* interp, Expr* expr, Env* env) {
-    if (interp.use_fiber_continuations) {
-        // Fiber path: signal suspends the coro, no longjmp needed
-        return jit_signal_impl_fiber(expr, env, interp);
-    }
-    // Legacy path: save point for direct resume via longjmp
-    RegisterContext signal_save;
-    int jmp = main::context_capture(&signal_save);
-    if (jmp != 0) {
-        return interp.effect_result;
-    }
-    EvalResult r = jit_perform_impl(expr, env, interp, &signal_save);
-    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-    return r.value;
-}
-
-fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
-    usz saved_shift_counter = interp.shift_counter;
-    interp.shift_counter = 0;
-
-    if (interp.reset_depth >= interp.reset_stack_capacity) interp.grow_reset_stacks();
-    interp.reset_depth++;
-
-    interp.reset_body_stack[interp.reset_depth - 1] = expr.reset.body;
-    interp.reset_env_stack[interp.reset_depth - 1] = env;
-
-    Value* v = jit_eval(expr.reset.body, env, interp);
-    EvalResult result;
-    if (v != null && v.tag == ERROR) {
-        result = eval_error(v.str_val.chars[:v.str_val.len]);
-    } else {
-        result = eval_ok(v);
-    }
-
-    interp.shift_counter = saved_shift_counter;
-    interp.reset_depth--;
-
-    if (result.error.has_error) {
-        interp.flags.shift_occurred = false;
-        return result;
-    }
-
-    if (interp.flags.shift_occurred && interp.reset_depth == interp.shift_target_depth) {
-        interp.flags.shift_occurred = false;
-        return eval_ok(interp.shift_result);
-    }
-
-    return result;
-}
-
-fn EvalResult jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
-    // REPLAY CHECK
-    if (interp.flags.cont_substituting && !interp.flags.cont_is_effect) {
-        usz current_index = interp.shift_counter;
-        interp.shift_counter++;
-        if (current_index < interp.cont_target_shift_index) {
-            return eval_ok(interp.shift_prior_results[current_index]);
-        }
-        if (current_index == interp.cont_target_shift_index) {
-            interp.flags.cont_substituting = false;
-            interp.ensure_shift_prior(current_index);
-            interp.shift_prior_results[current_index] = interp.cont_substitution;
-            return eval_ok(interp.cont_substitution);
-        }
-    }
-
-    if (interp.reset_depth == 0) {
-        return eval_error("shift outside of reset");
-    }
-
-    CapturedCont cc_init;
-    main::ObjectHandle cc_handle = main::allocate_in(interp.root_region, CapturedCont, cc_init);
-    CapturedCont* cc = main::dereference_as(CapturedCont, cc_handle);
-    cc.reset_body = interp.reset_body_stack[interp.reset_depth - 1];
-    cc.reset_env = interp.reset_env_stack[interp.reset_depth - 1];
-    cc.is_effect = false;
-    cc.has_handler = false;
-    cc.shift_index = interp.shift_counter;
-    cc.shift_prior_count = interp.shift_counter;
-    // Allocate and copy shift prior results
-    if (cc.shift_prior_count > 0) {
-        cc.shift_prior_capacity = cc.shift_prior_count;
-        cc.shift_prior_results = (Value**)mem::malloc(Value*.sizeof * cc.shift_prior_capacity);
-        for (usz si = 0; si < cc.shift_prior_count; si++) {
-            cc.shift_prior_results[si] = interp.shift_prior_results[si];
-        }
-    } else {
-        cc.shift_prior_results = null;
-        cc.shift_prior_capacity = 0;
-    }
-    cc.prior_results = null;
-    cc.prior_count = 0;
-    cc.prior_capacity = 0;
-    cc.owned_continuation = null;
-    // Pin the current frame to prevent UAF: reset_env may be allocated there
-    cc.captured_frame = main::retain_region(interp.current_frame);
-    interp.shift_counter++;
-
-    Continuation* k = interp.alloc_lisp_continuation();
-    k.data = cc;
-
-    Value* k_val = make_continuation(interp, k);
-
-    Env* shift_env = env.extend(interp, expr.shift.k_name, k_val);
-
-    Value* body_v = jit_eval(expr.shift.body, shift_env, interp);
-    EvalResult body_result;
-    if (body_v != null && body_v.tag == ERROR) {
-        body_result = eval_error(body_v.str_val.chars[:body_v.str_val.len]);
-    } else {
-        body_result = eval_ok(body_v);
-    }
-
-    if (body_result.error.has_error) {
-        return body_result;
-    }
-
-    interp.flags.shift_occurred = true;
-    interp.shift_target_depth = interp.reset_depth - 1;
-    interp.shift_result = body_result.value;
-
-    return body_result;
+    return jit_signal_impl_fiber(expr, env, interp);
 }
 
 // =============================================================================
-// FIBER-BASED RESET/SHIFT (Phase 1 — stack engine continuations)
+// FIBER-BASED RESET/SHIFT
 // =============================================================================
 
 /**
@@ -1129,6 +994,12 @@ fn EvalResult jit_reset_impl_fiber(Expr* expr, Env* env, Interp* interp) {
     interp.reset_depth    = saved_reset_depth;
     interp.handler_count  = saved_handler_count;
 
+    // Stack overflow — coro hit guard page
+    if (coro.status == main::CoroStatus.CORO_DEAD) {
+        main::coro_destroy(coro, &interp.coro_pool);
+        return eval_error("stack overflow in reset body");
+    }
+
     if (state.shifted) {
         // Shift occurred — evaluate shift body in parent context
         Value* shift_result = jit_eval(state.shift_body, state.shift_env, interp);
@@ -1171,7 +1042,6 @@ fn Value* jit_shift_impl_fiber(Expr* expr, Env* env, Interp* interp) {
 
     // Create continuation wrapping the current coro
     Continuation* k = interp.alloc_lisp_continuation();
-    k.data = null;
     k.coro = current;
     k.is_fiber_based = true;
 
@@ -1281,6 +1151,12 @@ fn EvalResult jit_apply_fiber_continuation(Value* k_val, Value* arg, Interp* int
     interp.jit_tco_env    = saved_tco_env;
     interp.reset_depth    = saved_reset_depth;
     interp.handler_count  = saved_handler_count;
+
+    // Stack overflow — clone hit guard page
+    if (target.status == main::CoroStatus.CORO_DEAD) {
+        main::coro_destroy(target, &interp.coro_pool);
+        return eval_error("stack overflow in continuation");
+    }
 
     Value* result;
     if (resume_state.shifted) {
@@ -1571,6 +1447,13 @@ fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
     // Propagate raise_pending from coro execution
     if (coro_raise_pending) interp.flags.raise_pending = true;
 
+    // Stack overflow — coro hit guard page
+    if (coro.status == main::CoroStatus.CORO_DEAD) {
+        interp.handler_count = my_idx;
+        main::coro_destroy(coro, &interp.coro_pool);
+        return eval_error("stack overflow in handle body");
+    }
+
     // Handle loop: process signals
     Value* last_handler_v = null;
     while (state.signaled) {
@@ -1600,7 +1483,6 @@ fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
 
         // Create continuation wrapping the suspended coro
         Continuation* k = interp.alloc_lisp_continuation();
-        k.data = null;
         k.coro = coro;
         k.is_fiber_based = true;
         k.handle_state = &state;
@@ -1677,375 +1559,11 @@ fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
 // END FIBER-BASED HANDLE/SIGNAL/RESOLVE
 // =============================================================================
 
-<* @require expr != null : "jit_handle_impl: null expr"
-   @require interp != null : "jit_handle_impl: null interp" *>
-fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
-    if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
-
-    EffectHandler* h = &interp.handler_stack[interp.handler_count];
-    if (expr.handle.clause_count > MAX_EFFECT_CLAUSES) {
-        return eval_error("too many effect handler clauses (max 16)");
-    }
-    h.clause_count = expr.handle.clause_count;
-    h.handler_env = env;
-    h.body_expr = expr.handle.body;
-    h.body_env = env;
-    h.strict_mode = expr.handle.strict_mode;
-
-    for (usz i = 0; i < expr.handle.clause_count; i++) {
-        h.tags[i] = expr.handle.clauses[i].effect_tag;
-        h.clauses[i] = expr.handle.clauses[i];
-    }
-
-    usz saved_perform_counter = interp.effect_perform_counter;
-    interp.effect_perform_counter = 0;
-
-    usz my_idx = interp.handler_count;
-    interp.handler_count++;
-
-    // Save previous state for this slot — a recursive or nested handle
-    // can reuse the same index while this handler is popped during clause eval.
-    RegisterContext prev_jmp = interp.handle_jmp[my_idx];
-    CapturedCont* prev_active_cc = interp.active_effect_cc[my_idx];
-    interp.active_effect_cc[my_idx] = null;
-
-    // Set non-local exit point.  When a signal is caught by this handler,
-    // jit_perform_impl evaluates the clause then context_restore's here,
-    // terminating the body without letting it continue.
-    int jmp = main::context_capture(&interp.handle_jmp[my_idx]);
-    if (jmp != 0) {
-        // Handler fired — body terminated via non-local exit.
-        // handler_count was already set to my_idx by jit_perform_impl.
-        interp.handle_jmp[my_idx] = prev_jmp;
-        interp.effect_perform_counter = saved_perform_counter;
-        interp.flags.cont_substituting = false;
-        // Free malloc'd CapturedCont + Continuation for this handler level
-        CapturedCont* last_cc = interp.active_effect_cc[my_idx];
-        if (last_cc != null) {
-            if (last_cc.owned_continuation != null) mem::free(last_cc.owned_continuation);
-            mem::free(last_cc);
-        }
-        interp.active_effect_cc[my_idx] = prev_active_cc;
-        Value* r = interp.effect_result;
-        if (r != null && r.tag == ERROR) {
-            return eval_error(r.str_val.chars[:r.str_val.len]);
-        }
-        return eval_ok(r);
-    }
-
-    Value* v = jit_eval(expr.handle.body, env, interp);
-    EvalResult result;
-    if (v != null && v.tag == ERROR) {
-        result = eval_error(v.str_val.chars[:v.str_val.len]);
-    } else {
-        result = eval_ok(v);
-    }
-
-    interp.effect_perform_counter = saved_perform_counter;
-
-    // Check for pending raise error — dispatch to raise handler in THIS handle block
-    if (interp.flags.raise_pending) {
-        SymbolId raise_sym = interp.sym_raise;
-        for (usz ci = 0; ci < expr.handle.clause_count; ci++) {
-            if ((uint)expr.handle.clauses[ci].effect_tag == (uint)raise_sym) {
-                EffectClause* clause = &expr.handle.clauses[ci];
-
-                interp.flags.raise_pending = false;
-                Value* msg_val = make_string(interp, interp.raise_msg[:interp.raise_msg_len]);
-                Value* k_val = make_nil(interp);  // Non-resumable
-
-                Env* clause_env = env.extend(interp, clause.k_name, k_val);
-                clause_env = clause_env.extend(interp, clause.arg_name, msg_val);
-
-                interp.handler_count = my_idx;
-
-                Value* handler_v = jit_eval(clause.handler_body, clause_env, interp);
-                interp.handle_jmp[my_idx] = prev_jmp;
-                if (handler_v != null && handler_v.tag != ERROR) {
-                    return eval_ok(handler_v);
-                }
-                if (handler_v != null) {
-                    return eval_error(handler_v.str_val.chars[:handler_v.str_val.len]);
-                }
-                return eval_error("raise handler returned nil");
-            }
-        }
-        // This handle block doesn't handle raise — leave flag set, propagate error
-    }
-
-    interp.handle_jmp[my_idx] = prev_jmp;
-    interp.handler_count = my_idx;
-
-    // Free malloc'd CapturedCont + Continuation for this handler level (normal exit)
-    CapturedCont* last_cc = interp.active_effect_cc[my_idx];
-    if (last_cc != null) {
-        if (last_cc.owned_continuation != null) mem::free(last_cc.owned_continuation);
-        mem::free(last_cc);
-    }
-    interp.active_effect_cc[my_idx] = prev_active_cc;
-
-    return result;
-}
-
-fn EvalResult jit_perform_impl(Expr* expr, Env* env, Interp* interp, RegisterContext* signal_save) {
-    // Evaluate the argument via JIT
-    Value* arg_v = jit_eval(expr.perform.arg, env, interp);
-    EvalResult arg_result;
-    if (arg_v != null && arg_v.tag == ERROR) {
-        arg_result = eval_error(arg_v.str_val.chars[:arg_v.str_val.len]);
-    } else {
-        arg_result = eval_ok(arg_v);
-    }
-    if (arg_result.error.has_error) {
-        return arg_result;
-    }
-
-    SymbolId tag = expr.perform.tag;
-
-    // Check effect declaration for type safety
-    TypeId effect_tid = interp.types.lookup(tag, &interp.symbols);
-    if (effect_tid != INVALID_TYPE_ID) {
-        TypeInfo* effect_info = interp.types.get(effect_tid);
-        if (effect_info != null && effect_info.kind == TK_EFFECT && effect_info.field_count > 0) {
-            TypeId expected_tid = effect_info.fields[0].field_type;
-            if (expected_tid != INVALID_TYPE_ID && expected_tid != interp.tid_Any) {
-                TypeId actual_tid = infer_value_type(arg_result.value, interp);
-                if (actual_tid != INVALID_TYPE_ID && !interp.types.is_subtype(actual_tid, expected_tid)) {
-                    char[256] ebuf;
-                    char[] tag_name = interp.symbols.get_name(tag);
-                    TypeInfo* exp_ti = interp.types.get(expected_tid);
-                    TypeInfo* act_ti = interp.types.get(actual_tid);
-                    char[] exp_name = exp_ti != null ? interp.symbols.get_name(exp_ti.name) : "?";
-                    char[] act_name = act_ti != null ? interp.symbols.get_name(act_ti.name) : "?";
-                    char[] msg = io::bprintf(&ebuf, "perform '%s': expected %s argument, got %s",
-                        (ZString)tag_name, (ZString)exp_name, (ZString)act_name)!!;
-                    return eval_error(msg);
-                }
-            }
-        }
-    }
-
-    // REPLAY CHECK — fast-forward performs that already executed before this
-    // continuation was captured.  Tag-agnostic: handles multi-tag bodies.
-    if (interp.flags.cont_substituting && interp.flags.cont_is_effect) {
-        usz current_index = interp.effect_perform_counter;
-        interp.effect_perform_counter++;
-        if (current_index < interp.cont_target_perform_index) {
-            return eval_ok(interp.effect_prior_results[current_index]);
-        }
-        if (current_index == interp.cont_target_perform_index) {
-            interp.flags.cont_substituting = false;
-            interp.ensure_effect_prior(current_index);
-            interp.effect_prior_results[current_index] = interp.cont_substitution;
-            return eval_ok(interp.cont_substitution);
-        }
-    }
-
-    // Search handler stack for a matching handler
-    bool hit_strict = false;
-    for (isz i = (isz)interp.handler_count - 1; i >= 0; i--) {
-        EffectHandler* h = &interp.handler_stack[(usz)i];
-
-        for (usz j = 0; j < h.clause_count; j++) {
-            if ((uint)h.clauses[j].effect_tag == (uint)tag) {
-                EffectClause* clause = &h.clauses[j];
-                usz handler_idx = (usz)i;
-
-                // Free previous CapturedCont at this handler level if single-shot resolved
-                CapturedCont* prev_cc = interp.active_effect_cc[handler_idx];
-                if (prev_cc != null && prev_cc.resolved) {
-                    if (prev_cc.owned_continuation != null) mem::free(prev_cc.owned_continuation);
-                    mem::free(prev_cc);
-                }
-                CapturedCont* cc = (CapturedCont*)mem::malloc(CapturedCont.sizeof);
-                interp.active_effect_cc[handler_idx] = cc;
-                cc.reset_body = h.body_expr;
-                cc.reset_env = h.body_env;
-                cc.is_effect = true;
-                cc.effect_tag = tag;
-                cc.handler_copy = *h;
-                cc.has_handler = true;
-                cc.perform_index = interp.effect_perform_counter;
-                // Defer prior_results allocation — only needed for multi-shot replay.
-                // Single-shot direct resume doesn't use them.
-                cc.prior_count = interp.effect_perform_counter;
-                cc.prior_results = null;
-                cc.prior_capacity = 0;
-                cc.shift_prior_results = null;
-                cc.shift_prior_count = 0;
-                cc.shift_prior_capacity = 0;
-                cc.captured_frame = interp.current_frame;  // Don't retain — single-shot doesn't need it
-                cc.signal_save = signal_save;
-                cc.saved_jit_env = interp.jit_env;
-                cc.handler_idx = handler_idx;
-                cc.resolved = false;
-                interp.effect_perform_counter++;
-
-                // Use malloc for the Continuation to avoid stale inline pointers
-                // (root_region's packed_slots can reallocate, invalidating dereference_as ptrs)
-                Continuation* k = (Continuation*)mem::malloc(Continuation.sizeof);
-                k.data = cc;
-                cc.owned_continuation = k;
-                Value* k_val = make_continuation(interp, k);
-
-                Env* clause_env = h.handler_env.extend(interp, clause.k_name, k_val);
-                clause_env = clause_env.extend(interp, clause.arg_name, arg_result.value);
-
-                // Pop this handler and all above it
-                interp.handler_count = handler_idx;
-
-                // Evaluate handler clause body
-                Value* handler_v = jit_eval(clause.handler_body, clause_env, interp);
-
-                // Non-local exit: jump back to the save point in jit_handle_impl
-                // (or jit_apply_continuation if this handler was reinstalled for replay).
-                // This terminates the body — it does NOT continue after the signal.
-                interp.effect_result = handler_v;
-                main::context_restore(&interp.handle_jmp[handler_idx], 1);
-                // Does not return.
-            }
-        }
-
-        // If this handler is strict and didn't match, block propagation
-        if (h.strict_mode) {
-            hit_strict = true;
-            break;
-        }
-    }
-
-    if (hit_strict) {
-        char[256] sbuf;
-        char[] tag_name = interp.symbols.get_name(tag);
-        char[] arg_type = interp.symbols.get_name(value_type_name(arg_result.value, interp));
-        char[] smsg = io::bprintf(&sbuf, "strict handler: unhandled effect '%s' with arg type %s",
-            (ZString)tag_name, (ZString)arg_type)!!;
-        return eval_error(smsg);
-    }
-
-    // I/O fast path: no handler found for io/* effects → use cached primitives
-    if ((uint)tag == (uint)interp.sym_io_print) {
-        if (interp.raw_print != null) return apply_primitive(interp.raw_print, arg_result.value, interp);
-    } else if ((uint)tag == (uint)interp.sym_io_println) {
-        if (interp.raw_println != null) return apply_primitive(interp.raw_println, arg_result.value, interp);
-    } else if ((uint)tag == (uint)interp.sym_io_display) {
-        if (interp.raw_display != null) return apply_primitive(interp.raw_display, arg_result.value, interp);
-    } else if ((uint)tag == (uint)interp.sym_io_newline) {
-        if (interp.raw_newline != null) return apply_primitive(interp.raw_newline, make_nil(interp), interp);
-    } else if ((uint)tag == (uint)interp.sym_io_read_file) {
-        if (interp.raw_read_file != null) return apply_primitive(interp.raw_read_file, arg_result.value, interp);
-    } else if ((uint)tag == (uint)interp.sym_io_write_file) {
-        if (interp.raw_write_file != null && arg_result.value != null && is_cons(arg_result.value)) {
-            EvalResult partial_result = apply_primitive(interp.raw_write_file, car(arg_result.value), interp);
-            if (partial_result.error.has_error) return partial_result;
-            // Use jit_apply_value instead of apply()
-            Value* write_result = jit_apply_value(partial_result.value, cdr(arg_result.value), interp);
-            if (write_result != null && write_result.tag == ERROR) {
-                return eval_error(write_result.str_val.chars[:write_result.str_val.len]);
-            }
-            return eval_ok(write_result);
-        }
-    } else if ((uint)tag == (uint)interp.sym_io_file_exists) {
-        if (interp.raw_file_exists != null) return apply_primitive(interp.raw_file_exists, arg_result.value, interp);
-    } else if ((uint)tag == (uint)interp.sym_io_read_lines) {
-        if (interp.raw_read_lines != null) return apply_primitive(interp.raw_read_lines, arg_result.value, interp);
-    }
-
-    char[256] ubuf;
-    char[] utag = interp.symbols.get_name(tag);
-    char[] uarg = interp.symbols.get_name(value_type_name(arg_result.value, interp));
-    char[] umsg = io::bprintf(&ubuf, "unhandled effect '%s' with arg type %s", (ZString)utag, (ZString)uarg)!!;
-    return eval_error(umsg);
-}
-
 fn EvalResult jit_apply_continuation(Value* k_val, Value* arg, Interp* interp) {
     if (k_val.cont_val == null) {
         return eval_error("cannot resume continuation: null continuation");
     }
-
-    // Fiber-based continuation path
-    if (k_val.cont_val.is_fiber_based) {
-        return jit_apply_fiber_continuation(k_val, arg, interp);
-    }
-
-    // Legacy replay-based continuation path
-    CapturedCont* cc = (CapturedCont*)k_val.cont_val.data;
-    if (cc == null) {
-        return eval_error("cannot resume continuation: no captured state");
-    }
-
-    interp.cont_substitution = arg;
-    interp.flags.cont_substituting = true;
-    interp.flags.cont_is_effect = cc.is_effect;
-    if (cc.is_effect) {
-        interp.cont_effect_tag = cc.effect_tag;
-    }
-
-    EvalResult result;
-
-    if (cc.is_effect && cc.has_handler) {
-        if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
-        usz handler_idx = interp.handler_count;
-        interp.handler_stack[handler_idx] = cc.handler_copy;
-        interp.handler_stack[handler_idx].body_expr = cc.reset_body;
-        interp.handler_stack[handler_idx].body_env = cc.reset_env;
-        interp.handler_count = handler_idx + 1;
-
-        interp.cont_target_perform_index = cc.perform_index;
-        interp.effect_perform_counter = 0;
-        // Lazily copy prior results (may have been deferred from capture)
-        if (cc.prior_results != null) {
-            interp.ensure_effect_prior(cc.prior_count > 0 ? cc.prior_count - 1 : 0);
-            for (usz i = 0; i < cc.prior_count; i++) {
-                interp.effect_prior_results[i] = cc.prior_results[i];
-            }
-        }
-
-        // Save parent's jmp point, set ours for this replay.
-        // If a signal fires during replay, jit_perform_impl will
-        // context_restore here, terminating the replayed body.
-        RegisterContext prev_jmp = interp.handle_jmp[handler_idx];
-        int jmp = main::context_capture(&interp.handle_jmp[handler_idx]);
-        if (jmp != 0) {
-            // Signal fired during replay — handler clause already evaluated.
-            // Restore parent's save point so the parent can be longjmp'd to.
-            interp.handle_jmp[handler_idx] = prev_jmp;
-            interp.flags.cont_substituting = false;
-            result = eval_ok(interp.effect_result);
-            if (interp.effect_result != null && interp.effect_result.tag == ERROR) {
-                result = eval_error(interp.effect_result.str_val.chars[:interp.effect_result.str_val.len]);
-            }
-            return result;
-        }
-
-        Value* v = jit_eval(cc.reset_body, cc.reset_env, interp);
-        if (v != null && v.tag == ERROR) {
-            result = eval_error(v.str_val.chars[:v.str_val.len]);
-        } else {
-            result = eval_ok(v);
-        }
-
-        // Normal completion — no signal during replay. Pop handler, restore parent jmp.
-        interp.handler_count = handler_idx;
-        interp.handle_jmp[handler_idx] = prev_jmp;
-    } else {
-        interp.cont_target_shift_index = cc.shift_index;
-        interp.shift_counter = 0;
-        interp.ensure_shift_prior(cc.shift_prior_count > 0 ? cc.shift_prior_count - 1 : 0);
-        for (usz i = 0; i < cc.shift_prior_count; i++) {
-            interp.shift_prior_results[i] = cc.shift_prior_results[i];
-        }
-
-        Value* v = jit_eval(cc.reset_body, cc.reset_env, interp);
-        if (v != null && v.tag == ERROR) {
-            result = eval_error(v.str_val.chars[:v.str_val.len]);
-        } else {
-            result = eval_ok(v);
-        }
-    }
-
-    interp.flags.cont_substituting = false;
-
-    return result;
+    return jit_apply_fiber_continuation(k_val, arg, interp);
 }
 
 // Index helper — performs collection indexing without going through eval dispatch.
@@ -2176,6 +1694,14 @@ fn Value* jit_do_defeffect(Interp* interp, Expr* expr, Env* env) {
     EvalResult r = eval_defeffect(expr, env, interp);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;
+}
+
+fn Value* jit_do_ffi_lib(Interp* interp, Expr* expr, Env* env) {
+    return eval_ffi_lib(expr, env, interp);
+}
+
+fn Value* jit_do_ffi_fn(Interp* interp, Expr* expr, Env* env) {
+    return eval_ffi_fn(expr, env, interp);
 }
 
 // JIT-native module/import — no eval() dependency.
@@ -2577,8 +2103,9 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
 
     // Direct primitive path for multi-arg primitives
     if (func.tag == PRIMITIVE) {
-        // Set constructor type_id (needed for type constructor primitives)
+        // Set constructor type_id and user_data (needed for type constructor / FFI primitives)
         interp.constructor_type_id = func.prim_val.tag;
+        interp.prim_user_data = func.prim_val.user_data;
         Value*[16] args;
         Value* curr = arg_list;
         for (usz i = 0; i < arg_count && i < 16; i++) {
@@ -3140,6 +2667,12 @@ fn bool jit_compile_expr(void* s, Expr* expr, Interp* interp, JitLocals* locals,
 
         case E_EXPORT_FROM:
             return jit_compile_export_from(s, expr, interp, locals);
+
+        case E_FFI_LIB:
+            return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_ffi_lib);
+
+        case E_FFI_FN:
+            return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_ffi_fn);
 
         case E_UNQUOTE:
         case E_UNQUOTE_SPLICING:
@@ -3792,6 +3325,11 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
         // Pop the reinstalled handler
         interp.handler_count = hstate.handler_idx;
 
+        // Stack overflow — coro hit guard page after resolve
+        if (coro.status == main::CoroStatus.CORO_DEAD) {
+            return make_error(interp, "stack overflow after resolve");
+        }
+
         // Return value: body result if completed, or val as placeholder
         if (coro.status == main::CoroStatus.CORO_COMPLETED) {
             Value* body_result = (Value*)coro.result;
@@ -3802,24 +3340,7 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
         return val;
     }
 
-    // Legacy path
-    CapturedCont* cc = (CapturedCont*)k_val.cont_val.data;
-
-    // Single-shot fast path: longjmp directly to the signal point.
-    if (cc != null && cc.is_effect && !cc.resolved && cc.signal_save != null) {
-        cc.resolved = true;
-        if (cc.has_handler) {
-            if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
-            interp.handler_stack[cc.handler_idx] = cc.handler_copy;
-            interp.handler_count = cc.handler_idx + 1;
-        }
-        interp.jit_env = cc.saved_jit_env;
-        interp.effect_result = val;
-        main::context_restore(cc.signal_save, 1);
-        // Does not return.
-    }
-
-    // Multi-shot fallback: replay-based continuation application
+    // All continuations are fiber-based — apply directly
     EvalResult r = jit_apply_continuation(k_val, val, interp);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;

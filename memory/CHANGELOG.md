@@ -1,5 +1,83 @@
 # Changelog
 
+## 2026-02-27 (Session 47): FFI Redesign Phase 1 — define [ffi lib] + define [ffi λ]
+
+### Summary
+Implemented the new FFI syntax: `(define [ffi lib] libc "libc.so.6")` and `(define [ffi λ libc] (strlen (^String s)) ^Int)`. FFI calls now look native: `(strlen "hello")` → 5. Uses libffi for correct ABI handling (mixed int/double args, zero-arg calls, void return). Old ffi-open/ffi-call/ffi-close/ffi-sym remain for backward compatibility.
+
+### New Files
+- `csrc/ffi_helpers.c` — thin C wrapper around libffi: `omni_ffi_call` (fixed arity) and `omni_ffi_call_var` (variadic)
+
+### Modified Files
+- `project.json` — Added `"ffi"` to linked-libraries, added `csrc/ffi_helpers.c` to c-sources
+- `src/lisp/value.c3` — New ExprTag E_FFI_LIB/E_FFI_FN, ExprFfiLib/ExprFfiFn/FfiBoundFn structs, FfiTypeTag enum, type_ann_to_ffi_tag helper, sym_ffi/sym_lib/sym_Ptr/sym_Void interned symbols
+- `src/lisp/parser.c3` — Multi-word attribute parsing `[ffi lib]`/`[ffi λ libname]`, parse_ffi_lib, parse_ffi_fn, λ UTF-8 detection
+- `src/lisp/eval.c3` — eval_ffi_lib (dlopen + bind), eval_ffi_fn (dlsym + build bound primitive), prim_ffi_bound_call (libffi dispatch), omni_ffi_call extern
+- `src/lisp/jit.c3` — E_FFI_LIB/E_FFI_FN compile cases via jit_do_ffi_lib/jit_do_ffi_fn, prim_user_data set in multi-arg primitive path
+- `src/lisp/bindgen.c3` — Updated --bind output to emit `define [ffi lib]`/`define [ffi lambda]` syntax
+- `src/lisp/tests.c3` — 14 new FFI redesign tests
+
+### Tests
+- 892 unified + 77 compiler + 9 stack engine = 978 (up from 964: +14 new FFI tests)
+- 0 failures
+
+## 2026-02-26 (Session 46): FPU save/restore (D1) + stack overflow detection (D2)
+
+### Summary
+Implemented two deferred items from the fiber-continuation plan. D1: FPU state (MXCSR + x87 control word) is now saved/restored across all coroutine context switches, preventing FPU rounding mode leaks from FFI code. D2: Stack overflows in coroutines are caught via SIGSEGV handler on sigaltstack and recovered gracefully as Omni errors instead of crashing.
+
+### New Files
+- `csrc/stack_helpers.c` — C helper providing fpu_save/fpu_restore (GCC inline asm), SIGSEGV handler with sigaltstack, guard page registry, and `stack_guard_protected_switch` (sigsetjmp-wrapped context switch)
+
+### Modified Files
+- `project.json` — Added `c-sources: ["csrc/stack_helpers.c"]`
+- `src/stack_engine.c3` — Extern declarations for C helpers; `stack_context_switch` exported as `omni_context_switch`; `coro_switch_to`/`coro_resume` use `fpu_save`/`fpu_restore` + `stack_guard_protected_switch` for overflow recovery; `coro_suspend` uses `fpu_save`/`fpu_restore`; guard page registration in `coro_create`/`coro_destroy`; `stack_guard_init`/`shutdown` in pool lifecycle; 2 new tests (FPU preservation, stack overflow recovery)
+- `src/lisp/jit.c3` — CORO_DEAD checks at all 4 coro switch sites (reset, apply-continuation, handle, resolve) returning "stack overflow" errors
+- `src/lisp/primitives.c3` — CORO_DEAD check in `prim_resume` returning "stack overflow in fiber" error
+- `.claude/plans/fiber-continuation-unification.md` — D1, D2 marked COMPLETE; D3, D4 marked NOT IMPLEMENTING
+
+### Tests
+- 878 unified + 77 compiler + 9 stack engine = 964 (up from 962: +2 new stack engine tests)
+- 0 failures
+
+## 2026-02-26 (Session 45): Remove legacy replay mechanism (Phase 4)
+
+### Summary
+Removed the entire legacy replay-based continuation system. Fiber-based continuations are now the only path — no more `use_fiber_continuations` flag, no more CapturedCont, no more context_capture/context_restore setjmp/longjmp, no more replay state machine.
+
+### Deleted Files (~110KB of legacy code)
+- `src/context.c3` — RegisterContext, context_capture/context_restore (x86_64 asm setjmp/longjmp)
+- `src/continuation.c3` — PromptTag, SavedContext, PromptStack (unused scaffolding)
+- `src/delimited.c3` — Low-level reset/shift/resume using context_capture (unused by interpreter)
+
+### Modified Files
+- `src/lisp/jit.c3` — Removed `jit_reset_impl`, `jit_shift_impl`, `jit_handle_impl`, `jit_perform_impl`, legacy replay path in `jit_apply_continuation`, legacy CapturedCont path in `jit_exec_resolve`. Simplified dispatch functions (no more if/else on flag).
+- `src/lisp/value.c3` — Removed `CapturedCont` struct, `data` field from `Continuation`, legacy InterpFlags (`shift_occurred`, `effect_occurred`, `cont_substituting`, `cont_is_effect`), ~20 legacy Interp fields (replay state, handle_jmp, active_effect_cc, reset body/env stacks, etc.), `ensure_effect_prior`, `ensure_shift_prior`, `grow_reset_stacks`.
+- `src/entry.c3` — Removed `run_context_tests()` and `run_delimited_tests()` calls
+- `src/main.c3` — Removed g_prompt_stack and prompt_stack_init/shutdown references
+
+### Tests
+- 878 unified + 77 compiler + 7 stack engine = 962 (down from 994 due to removed context/delimited test suites)
+- 0 failures
+
+## 2026-02-26 (Session 44): User-facing fibers (Phase 3)
+
+### Summary
+Implemented `fiber`, `resume`, `yield`, `fiber?` primitives backed by the stack engine. Added FIBER ValueTag. Renamed stdlib `yield` macro to `stream-yield` to avoid conflict.
+
+### Changes
+- `src/lisp/value.c3` — FIBER ValueTag, `fiber_val` in Value union, `make_fiber`, `yield_value` on Interp
+- `src/lisp/primitives.c3` — `prim_fiber`, `prim_resume`, `prim_yield`, `prim_fiber_p`, `FiberThunkState`, `fiber_thunk_entry`
+- `src/lisp/eval.c3` — Register fiber/resume/yield/fiber? primitives, FIBER in value_type_name
+- `src/lisp/tests.c3` — 8 new fiber tests (basic, yield, complete, resume value, nested, deep, multi-yield, generator)
+- `src/stack_engine.c3` — Added `user_data` field to Coro struct
+- `stdlib/stdlib.lisp` — Renamed `yield` macro to `stream-yield`
+- `tests/test_iterators_extended.lisp` — Updated to use `stream-yield`
+
+### Tests
+- 994 total (up from 986), 0 failures
+- test_yield.lisp and test_nested_fiber.lisp (Tests 1, 3) pass externally
+
 ## 2026-02-26 (Session 44): Fiber-based algebraic effects (Phase 2)
 
 ### Summary

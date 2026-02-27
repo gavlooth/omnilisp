@@ -737,7 +737,7 @@ Captures the continuation up to the enclosing `reset` and binds it to `k`.
 
 ### 9.3 Semantics
 
-- Continuations are **one-shot** by default
+- Continuations are **multi-shot**: each invocation of `k` clones the captured stack, so `k` can be called multiple times
 - `k` is a function: `(k value)` resumes with `value`
 - The result of `shift`'s body becomes the result of `reset`
 

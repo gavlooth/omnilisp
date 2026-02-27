@@ -1719,6 +1719,17 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define fib-t (lambda (n) (if (< n 2) n (+ (signal bounce (lambda (xx) (fib-t (- n 1)))) (signal bounce (lambda (xx) (fib-t (- n 2))))))))");
     test_eq(interp, "trampoline fib 7", "(with-trampoline (lambda (xx) (fib-t 7)))", 13, pass, fail);
 
+    // Fiber primitives (fiber/resume/yield)
+    test_eq(interp, "fiber basic", "(resume (fiber (lambda () (+ 1 2))))", 3, pass, fail);
+    test_eq(interp, "fiber yield", "(let (f (fiber (lambda () (yield 42) 99))) (resume f))", 42, pass, fail);
+    test_eq(interp, "fiber yield complete", "(let (f (fiber (lambda () (yield 42) 99))) (resume f) (resume f))", 99, pass, fail);
+    test_eq(interp, "fiber resume value", "(let (f (fiber (lambda () (+ 1 (yield 0))))) (resume f) (resume f 10))", 11, pass, fail);
+    test_eq(interp, "fiber nested", "(let (outer (fiber (lambda () (let (inner (fiber (lambda () 10))) (+ (resume inner) 5))))) (resume outer))", 15, pass, fail);
+    test_eq(interp, "fiber deep nest", "(let (f (fiber (lambda () (let (a (fiber (lambda () (let (b (fiber (lambda () 1))) (+ (resume b) 2))))) (+ (resume a) 3))))) (resume f))", 6, pass, fail);
+    test_eq(interp, "fiber multi yield", "(let (g (fiber (lambda () (yield 1) (yield 2) 3))) (+ (resume g) (+ (resume g) (resume g))))", 6, pass, fail);
+    setup(interp, "(define (fiber-gen n) (fiber (lambda () (let loop (i 0) (if (= i n) i (begin (yield i) (loop (+ i 1))))))))");
+    test_eq(interp, "fiber generator", "(let (g (fiber-gen 3)) (+ (resume g) (+ (resume g) (+ (resume g) (resume g)))))", 6, pass, fail);
+
     // Variadic lambdas (JIT detects variadic closures and routes to fallback)
     setup(interp, "(define collect (lambda (.. args) args))");
     test_eq(interp, "variadic collect length", "(length (collect 1 2 3))", 3, pass, fail);
@@ -2715,6 +2726,48 @@ fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     test_error(interp, "ffi-open bad lib", "(ffi-open \"nonexistent_lib_xyz.so\")", pass, fail);
     test_eq(interp, "ffi-call cached", "(ffi-call test-libc \"abs\" 'int (- 0 7) 'int)", 7, pass, fail);
     setup(interp, "(ffi-close test-libc)");
+
+    // === FFI REDESIGN TESTS (define [ffi lib] / define [ffi λ]) ===
+    // Library declaration
+    setup(interp, "(define [ffi lib] libc \"libc.so.6\")");
+    test_tag(interp, "ffi lib handle", "libc", FFI_HANDLE, pass, fail);
+
+    // Function bindings — integer functions
+    setup(interp, "(define [ffi λ libc] (strlen (^String s)) ^Int)");
+    test_eq(interp, "ffi λ strlen", "(strlen \"hello\")", 5, pass, fail);
+    test_eq(interp, "ffi λ strlen empty", "(strlen \"\")", 0, pass, fail);
+
+    setup(interp, "(define [ffi λ libc] (abs (^Int n)) ^Int)");
+    test_eq(interp, "ffi λ abs", "(abs -42)", 42, pass, fail);
+    test_eq(interp, "ffi λ abs zero", "(abs 0)", 0, pass, fail);
+
+    setup(interp, "(define [ffi λ libc] (atoi (^String s)) ^Int)");
+    test_eq(interp, "ffi λ atoi", "(atoi \"12345\")", 12345, pass, fail);
+    test_eq(interp, "ffi λ atoi neg", "(atoi \"-99\")", -99, pass, fail);
+
+    // Zero-arg function
+    setup(interp, "(define [ffi λ libc] (getpid) ^Int)");
+    test_gt(interp, "ffi λ getpid", "(getpid)", 0, pass, fail);
+
+    // Math library — double functions
+    setup(interp, "(define [ffi lib] libm \"libm.so.6\")");
+    setup(interp, "(define [ffi λ libm] (sqrt (^Double x)) ^Double)");
+    test_eq_double(interp, "ffi λ sqrt", "(sqrt 4.0)", 2.0, pass, fail);
+    test_eq_double(interp, "ffi λ sqrt 9", "(sqrt 9.0)", 3.0, pass, fail);
+
+    setup(interp, "(define [ffi λ libm] (pow (^Double x) (^Double y)) ^Double)");
+    test_eq_double(interp, "ffi λ pow", "(pow 2.0 10.0)", 1024.0, pass, fail);
+
+    // Mixed int/double (libffi enables this — old FFI couldn't)
+    setup(interp, "(define [ffi λ libm] (ldexp (^Double x) (^Int exp)) ^Double)");
+    test_eq_double(interp, "ffi λ ldexp", "(ldexp 1.0 10)", 1024.0, pass, fail);
+
+    // Void return
+    setup(interp, "(define [ffi λ libc] (free (^Ptr p)))");
+    test_nil_jit(interp, "ffi λ free null", "(free 0)", pass, fail);
+
+    // Error cases
+    test_error(interp, "ffi lib bad", "(define [ffi lib] bad-lib \"nonexistent_xyz.so\")", pass, fail);
 }
 
 // =============================================================================

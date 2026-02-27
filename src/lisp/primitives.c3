@@ -2657,3 +2657,147 @@ fn Value* prim_to_array(Value*[] args, Env* env, Interp* interp) {
     return arr;
 }
 
+// ============================================================================
+// FIBER PRIMITIVES
+// ============================================================================
+
+struct FiberThunkState {
+    Value*  thunk;
+    Interp* interp;
+}
+
+fn void fiber_thunk_entry(void* arg) {
+    FiberThunkState* state = (FiberThunkState*)arg;
+    Value* result = jit_apply_value(state.thunk, null, state.interp);
+    main::g_current_coro.result = result;
+}
+
+fn Value* prim_fiber_p(Value*[] args, Env* env, Interp* interp) {
+    if (args[0].tag == FIBER) return make_symbol(interp, interp.sym_true);
+    return make_nil(interp);
+}
+
+fn Value* prim_fiber(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return raise_error(interp, "fiber: expected a thunk argument");
+    Value* thunk = args[0];
+    if (thunk == null || thunk.tag != CLOSURE) {
+        return raise_error(interp, "fiber: argument must be a closure");
+    }
+
+    main::Coro* coro = main::coro_create(&interp.coro_pool);
+    if (coro == null) return raise_error(interp, "fiber: failed to create coro");
+
+    // Store thunk state on the coro's user_data (lives as long as the coro)
+    FiberThunkState* state = (FiberThunkState*)mem::malloc(FiberThunkState.sizeof);
+    state.thunk = thunk;
+    state.interp = interp;
+    coro.user_data = state;
+
+    main::coro_init(coro, &fiber_thunk_entry, state);
+
+    return make_fiber(interp, coro);
+}
+
+fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return raise_error(interp, "resume: expected a fiber argument");
+    Value* fiber_val = args[0];
+    if (fiber_val == null || fiber_val.tag != FIBER) {
+        return raise_error(interp, "resume: argument must be a fiber");
+    }
+
+    main::Coro* coro = fiber_val.fiber_val;
+    if (coro == null) return raise_error(interp, "resume: null fiber");
+
+    if (coro.status == main::CoroStatus.CORO_COMPLETED || coro.status == main::CoroStatus.CORO_DEAD) {
+        return raise_error(interp, "resume: fiber already completed");
+    }
+
+    Value* resume_val = args.len > 1 ? args[1] : make_nil(interp);
+    interp.resume_value = resume_val;
+
+    // Save interp state before entering fiber
+    Env*        saved_jit_env       = interp.jit_env;
+    Env*        saved_match_env     = interp.match_env;
+    usz         saved_eval_depth    = interp.eval_depth;
+    InterpFlags saved_flags         = interp.flags;
+    Expr*       saved_tco_expr      = interp.jit_tco_expr;
+    Env*        saved_tco_env       = interp.jit_tco_env;
+    usz         saved_reset_depth   = interp.reset_depth;
+    usz         saved_handler_count = interp.handler_count;
+
+    main::StackContext parent_ctx;
+    if (coro.status == main::CoroStatus.CORO_READY) {
+        main::coro_switch_to(coro, &parent_ctx);
+    } else {
+        main::coro_resume(coro, &parent_ctx);
+    }
+
+    // Restore interp state
+    interp.jit_env        = saved_jit_env;
+    interp.match_env      = saved_match_env;
+    interp.eval_depth     = saved_eval_depth;
+    interp.flags          = saved_flags;
+    interp.jit_tco_expr   = saved_tco_expr;
+    interp.jit_tco_env    = saved_tco_env;
+    interp.reset_depth    = saved_reset_depth;
+    interp.handler_count  = saved_handler_count;
+
+    // Stack overflow — fiber hit guard page
+    if (coro.status == main::CoroStatus.CORO_DEAD) {
+        if (coro.user_data != null) {
+            mem::free(coro.user_data);
+            coro.user_data = null;
+        }
+        return raise_error(interp, "stack overflow in fiber");
+    }
+
+    if (coro.status == main::CoroStatus.CORO_COMPLETED) {
+        Value* result = (Value*)coro.result;
+        // Free thunk state
+        if (coro.user_data != null) {
+            mem::free(coro.user_data);
+            coro.user_data = null;
+        }
+        return result != null ? result : make_nil(interp);
+    }
+
+    // Fiber yielded
+    return interp.yield_value != null ? interp.yield_value : make_nil(interp);
+}
+
+fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {
+    main::Coro* current = main::g_current_coro;
+    if (current == null) {
+        return raise_error(interp, "yield: not inside a fiber");
+    }
+
+    Value* yield_val = args.len > 0 ? args[0] : make_nil(interp);
+    interp.yield_value = yield_val;
+
+    // Save interp state (same pattern as jit_shift_impl_fiber)
+    Env*        saved_jit_env       = interp.jit_env;
+    Env*        saved_match_env     = interp.match_env;
+    usz         saved_eval_depth    = interp.eval_depth;
+    InterpFlags saved_flags         = interp.flags;
+    Expr*       saved_tco_expr      = interp.jit_tco_expr;
+    Env*        saved_tco_env       = interp.jit_tco_env;
+    usz         saved_reset_depth   = interp.reset_depth;
+    usz         saved_handler_count = interp.handler_count;
+
+    main::coro_suspend();
+
+    // Resumed — restore interp state
+    interp.jit_env        = saved_jit_env;
+    interp.match_env      = saved_match_env;
+    interp.eval_depth     = saved_eval_depth;
+    interp.flags          = saved_flags;
+    interp.jit_tco_expr   = saved_tco_expr;
+    interp.jit_tco_env    = saved_tco_env;
+    interp.reset_depth    = saved_reset_depth;
+    interp.handler_count  = saved_handler_count;
+
+    return interp.resume_value != null ? interp.resume_value : make_nil(interp);
+}
+
+
+

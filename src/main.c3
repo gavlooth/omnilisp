@@ -1635,15 +1635,6 @@ fn void RegionRegistry.destroy_region(RegionRegistry* self, RegionId id) {
     bool has_parent = (parent_id != NO_PARENT);
 
     // ============================================================
-    //  PHASE 0: INVALIDATE REGION CONTINUATIONS
-    // ============================================================
-    // Any continuations whose home_region is this dying region
-    // must be marked as invalidated so they cannot be resumed
-    if (g_prompt_stack != null) {
-        g_prompt_stack.invalidate_region_continuations(id, region.generation);
-    }
-
-    // ============================================================
     //  PHASE 1: PROMOTE ESCAPED OBJECTS, DESTROY LOCAL OBJECTS
     // ============================================================
     // Only objects that escaped (handles crossed region boundary) are promoted.
@@ -2345,10 +2336,6 @@ fn void thread_registry_init() {
     reg.init();
     g_thread_registry = reg;
 
-    // Initialize prompt stack for continuations
-    if (!prompt_stack_is_initialized()) {
-        prompt_stack_init();
-    }
 }
 
 /**
@@ -2357,11 +2344,6 @@ fn void thread_registry_init() {
  */
 fn void thread_registry_shutdown() {
     if (g_thread_registry == null) return;
-
-    // Shutdown prompt stack
-    if (prompt_stack_is_initialized()) {
-        prompt_stack_shutdown();
-    }
 
     // Destroy all live regions' internals before freeing registry
     for (usz i = 0; i < g_thread_registry.region_storage.len(); i++) {

@@ -655,18 +655,6 @@ fn int main(int argc, char** argv) {
     // Run ghost lookup tests (O(1) optimization verification)
     run_ghost_lookup_tests();
 
-    // Run context capture/restore tests (x86_64 assembly primitives)
-    // Note: These tests exercise low-level CPU state manipulation
-    run_context_tests();
-
-    // Run delimited continuation tests (reset/shift/resume system)
-    // Note: These tests verify the continuation machinery including:
-    // - Prompt stack operations
-    // - Continuation allocation and lifecycle
-    // - Region integration
-    // - Effect handler patterns
-    run_delimited_tests();
-
     // Run stack engine tests (mmap stacks, context switch, coroutine lifecycle)
     run_stack_engine_tests();
 

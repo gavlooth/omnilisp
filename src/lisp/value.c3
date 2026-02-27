@@ -34,6 +34,7 @@ enum ValueTag : char {
     METHOD_TABLE,   // Dispatch table for multiple dispatch
     MODULE,         // First-class module reference
     ITERATOR,       // Lazy iterator (backed by closure thunk)
+    FIBER,          // User-facing fiber (wraps Coro*)
 }
 
 /**
@@ -45,8 +46,6 @@ typedef SymbolId = uint;
 const usz MACRO_INITIAL_CAPACITY = 32;
 const usz MODULE_INITIAL_CAPACITY = 16;
 const usz HANDLER_INITIAL_CAPACITY = 16;
-const usz RESET_STACK_INITIAL = 16;
-const usz PRIOR_INITIAL_CAPACITY = 16;
 // Invalid symbol ID sentinel (returned on exhaustion; must not alias any valid index)
 const SymbolId INVALID_SYMBOL_ID = (SymbolId)0xFFFFFFFF;
 
@@ -245,16 +244,15 @@ struct Closure {
 }
 
 /**
- * Continuation — Delimited continuation (supports both replay and fiber paths).
+ * Continuation — Delimited continuation backed by a fiber (coroutine).
  *
- * When is_fiber_based == false (legacy): data points to CapturedCont for replay.
- * When is_fiber_based == true (fiber):   coro points to a suspended Coro.
+ * The coro field points to a suspended Coro. Multi-shot continuations
+ * clone the coro on each invocation.
  */
 struct Continuation {
-    void* data;           // Legacy: opaque pointer to CapturedCont (replay path)
-    Coro* coro;           // Fiber path: suspended coroutine backing this continuation
-    bool  is_fiber_based; // true = use coro, false = use legacy replay
-    void* handle_state;   // Fiber effect path: HandleFiberState* (for resolve)
+    Coro* coro;           // Suspended coroutine backing this continuation
+    bool  is_fiber_based; // Always true (kept for resolve dispatch)
+    void* handle_state;   // HandleFiberState* (for resolve to reinstall handler)
 }
 
 /**
@@ -617,6 +615,7 @@ struct Value {
         MethodTable*  method_table_val; // Dispatch table
         Module*       module_val;       // First-class module
         Value*        iterator_val;     // Iterator thunk closure (V_CLOSURE Value*)
+        main::Coro*   fiber_val;        // User-facing fiber (Coro*)
     }
 }
 
@@ -786,9 +785,9 @@ fn Value* make_error(Interp* interp, char[] msg) {
 /**
  * raise_error — Recoverable error via algebraic effect system.
  *
- * If a `raise` handler is on the handler stack, dispatches through the effect
- * system (evaluates handler body, sets effect_occurred flag, returns V_ERROR
- * for stack unwinding). If no handler, falls back to V_ERROR (same as make_error).
+ * If a `raise` handler is on the handler stack, sets raise_pending flag and
+ * returns V_ERROR for stack unwinding. If no handler, falls back to V_ERROR
+ * (same as make_error).
  *
  * Use make_error() for fatal/internal errors only (stack overflow, invariants).
  */
@@ -888,6 +887,18 @@ fn bool is_ffi_handle(Value* v) @inline {
     return v != null && v.tag == FFI_HANDLE;
 }
 
+// Convert a ^Type annotation base_type symbol to FfiTypeTag
+fn FfiTypeTag type_ann_to_ffi_tag(SymbolId base_type, Interp* interp) {
+    if (base_type == interp.sym_Int) return FFI_TYPE_INT;
+    if (base_type == interp.sym_Double) return FFI_TYPE_DOUBLE;
+    if (base_type == interp.sym_String) return FFI_TYPE_PTR;
+    if (base_type == interp.sym_Ptr) return FFI_TYPE_PTR;
+    if (base_type == interp.sym_Bool) return FFI_TYPE_BOOL;
+    if (base_type == interp.sym_Void) return FFI_TYPE_VOID;
+    // Unknown type — default to pointer (handles opaque types)
+    return FFI_TYPE_PTR;
+}
+
 fn bool is_array(Value* v) @inline {
     return v != null && v.tag == ARRAY;
 }
@@ -922,6 +933,13 @@ fn Value* make_iterator(Interp* interp, Value* thunk) {
     Value* v = interp.alloc_value();
     v.tag = ITERATOR;
     v.iterator_val = thunk;
+    return v;
+}
+
+fn Value* make_fiber(Interp* interp, main::Coro* coro) {
+    Value* v = interp.alloc_value();
+    v.tag = FIBER;
+    v.fiber_val = coro;
     return v;
 }
 
@@ -1286,6 +1304,8 @@ enum ExprTag : char {
     E_DEFALIAS,   // (define [alias] Name Target)
     E_DEFEFFECT,  // (define [effect] (tag (^Type arg)))
     E_EXPORT_FROM, // (export-from mod (sym1 sym2)) or (export-from mod :all)
+    E_FFI_LIB,    // (define [ffi lib] name "path.so")
+    E_FFI_FN,     // (define [ffi λ libname] (fname (^T arg)...) ^RetT)
 }
 
 struct ExprLit {
@@ -1598,6 +1618,48 @@ struct ExprExportFrom {
 }
 
 // =============================================================================
+// SECTION 6.6: FFI AST NODES
+// =============================================================================
+
+// FFI type tag — must stay in sync with csrc/ffi_helpers.c OMNI_FFI_* enum
+// Values: VOID=0, INT=1, DOUBLE=2, PTR=3, BOOL=4
+enum FfiTypeTag : char {
+    FFI_TYPE_VOID,
+    FFI_TYPE_INT,
+    FFI_TYPE_DOUBLE,
+    FFI_TYPE_PTR,
+    FFI_TYPE_BOOL,
+}
+
+struct ExprFfiLib {
+    SymbolId name;           // e.g. "libc"
+    Expr* path_expr;         // string literal "libc.so.6"
+}
+
+struct ExprFfiFn {
+    SymbolId lib_name;       // which library (e.g. "libc")
+    SymbolId fn_name;        // Omni name (auto kebab-cased)
+    char[128] c_name;        // original C name for dlsym
+    usz c_name_len;
+    usz param_count;
+    SymbolId[16] param_names;
+    TypeAnnotation[16] param_types;
+    TypeAnnotation return_type;
+    bool has_return_type;
+    bool is_variadic;
+}
+
+// FfiBoundFn — runtime state for a bound FFI function (used as Primitive.user_data)
+struct FfiBoundFn {
+    void* fn_ptr;
+    usz param_count;
+    FfiTypeTag[16] param_types;
+    FfiTypeTag return_type;
+    bool has_return;
+    bool is_variadic;
+}
+
+// =============================================================================
 // SECTION 6.7: TYPE DEFINITION AST NODES
 // =============================================================================
 
@@ -1715,6 +1777,8 @@ struct Expr {
         ExprDefAlias     defalias;
         ExprDefEffect    defeffect;
         ExprExportFrom   export_from;
+        ExprFfiLib       ffi_lib;
+        ExprFfiFn*       ffi_fn;       // Pointer-indirect (large struct)
     }
 }
 
@@ -1733,42 +1797,7 @@ struct EffectHandler {
     Expr* body_expr;    // The handle body for continuation capture
     Env*  body_env;     // Environment at handle time
     bool  strict_mode;  // ^strict: reject unhandled effects in body
-    void* fiber_state;  // Fiber path: HandleFiberState* (null for legacy)
-}
-
-/**
- * CapturedCont - Captured continuation state for replay-based continuations.
- * Stores the reset/handle body and environment so that calling (k value)
- * re-evaluates the body with the shift/perform replaced by value.
- */
-struct CapturedCont {
-    Expr*  reset_body;    // The reset or handle body to re-evaluate
-    Env*   reset_env;     // Environment at reset/handle time
-    bool   is_effect;     // true for effect handler continuations
-    SymbolId effect_tag;  // For effect continuations: which effect tag
-    // Copy of handler to reinstall during effect replay
-    EffectHandler handler_copy;
-    bool has_handler;     // whether handler_copy is valid
-    usz handler_idx;      // handler stack index (for reinstalling)
-    // Direct resume: longjmp back to the signal point (single-shot)
-    main::RegisterContext* signal_save;  // save point inside jit_exec_perform
-    Env* saved_jit_env;   // body's jit_env at time of signal (restore on resume)
-    bool resolved;        // true after first resolve (second+ uses replay)
-    // Multi-perform tracking (for replay / multi-shot)
-    usz perform_index;
-    Value** prior_results;
-    usz prior_count;
-    usz prior_capacity;
-    // Multi-shift tracking
-    usz shift_index;
-    Value** shift_prior_results;
-    usz shift_prior_count;
-    usz shift_prior_capacity;
-    // Region pinning: retain the frame where reset_env was allocated
-    // to prevent UAF when frame is released before continuation is invoked
-    main::RegionHandle captured_frame;
-    // Malloc'd Continuation pointer — freed alongside CapturedCont
-    Continuation* owned_continuation;
+    void* fiber_state;  // HandleFiberState* (set by fiber handle, null otherwise)
 }
 
 // =============================================================================
@@ -1781,11 +1810,7 @@ struct CapturedCont {
 bitstruct InterpFlags : ushort {
     bool jit_enabled      : 0;  // true after init, enables JIT-first execution
     bool jit_tco_bounce   : 1;  // True = return sentinel, jit_eval loop continues
-    bool shift_occurred   : 2;  // shift was invoked in current reset context
-    bool effect_occurred  : 3;  // Handler body was evaluated, result should bypass
-    bool cont_substituting: 4;  // Are we in replay mode?
-    bool cont_is_effect   : 5;  // Is this an effect continuation replay?
-    bool raise_pending    : 6;  // raise_error found handler, pending dispatch
+    bool raise_pending    : 2;  // raise_error found handler, pending dispatch
 }
 
 /**
@@ -1796,7 +1821,7 @@ struct Interp {
     Env*         global_env;
 
     // Region-based allocation
-    main::RegionHandle root_region;      // For Expr, Pattern, Continuation, CapturedCont, closure envs
+    main::RegionHandle root_region;      // For Expr, Pattern, Continuation, closure envs
     main::RegionHandle current_frame;    // For Values, Envs during eval
 
     // Pre-interned common symbols
@@ -1833,6 +1858,12 @@ struct Interp {
     SymbolId sym_union;     // "union" for [union] annotation
     SymbolId sym_alias;     // "alias" for [alias] annotation
     SymbolId sym_effect;    // "effect" for [effect] annotation
+
+    // FFI annotation symbols
+    SymbolId sym_ffi;       // "ffi" for [ffi ...] annotation
+    SymbolId sym_lib;       // "lib" for [ffi lib]
+    SymbolId sym_Ptr;       // "Ptr" for ^Ptr type
+    SymbolId sym_Void;      // "Void" for ^Void type
 
     // Built-in type name symbols
     SymbolId sym_Int;
@@ -1944,46 +1975,13 @@ struct Interp {
     SymbolId sym_all;          // ":all" for (import mod :all)
     SymbolId sym_export_from;  // "export-from" for (export-from mod (sym...))
 
-    // Continuation/shift state
+    // Continuation/reset depth (saved/restored across coro boundaries)
     usz      reset_depth;
-    usz      shift_target_depth;
-    Value*   shift_result;
 
     // Effect handler stack (dynamic)
     EffectHandler* handler_stack;
     usz            handler_count;
     usz            handler_capacity;
-
-    // Non-local exit save points for handle expressions.
-    // When a signal fires, context_restore jumps back to the handler's
-    // save point, terminating the body without continued execution.
-    // Indexed by handler stack position (one per handler level).
-    main::RegisterContext[64] handle_jmp;
-
-    // Per-handler-level CapturedCont recycling (malloc'd, freed when resolved)
-    CapturedCont*[64] active_effect_cc;
-
-    // Effect handler result propagation
-    Value*   effect_result;         // Result of the handler body
-
-    // Continuation replay state
-    Value*   cont_substitution;     // Value to substitute during replay
-    SymbolId cont_effect_tag;       // Effect tag for effect replay
-    // Multi-perform replay tracking
-    usz    effect_perform_counter;
-    Value** effect_prior_results;
-    usz    effect_prior_capacity;
-    usz    cont_target_perform_index;
-    // Multi-shift replay tracking
-    usz    shift_counter;
-    Value** shift_prior_results;
-    usz    shift_prior_capacity;
-    usz    cont_target_shift_index;
-
-    // Reset body/env stack (dynamic, for continuation capture)
-    Expr** reset_body_stack;
-    Env**  reset_env_stack;
-    usz    reset_stack_capacity;
 
     // Last call site symbol (for error messages)
     SymbolId last_call_name;
@@ -1994,8 +1992,8 @@ struct Interp {
 
     // Fiber-based continuation system (stack engine)
     main::StackPool coro_pool;
-    bool use_fiber_continuations;  // Toggle: true = fiber-based, false = replay
     Value* resume_value;           // Value passed to (k val) — read by shift on resume
+    Value* yield_value;            // Value passed by (yield val) — read by resume
     void* current_reset_state;     // Pointer to current ResetCoroState (in jit.c3)
 
 }
@@ -2013,41 +2011,16 @@ fn void Interp.init(Interp* self) {
     self.handler_count = 0;
     self.handler_stack = (EffectHandler*)mem::malloc(EffectHandler.sizeof * self.handler_capacity);
 
-    // Reset body/env stacks (dynamic)
-    self.reset_stack_capacity = RESET_STACK_INITIAL;
+    // Reset depth (saved/restored across coro boundaries)
     self.reset_depth = 0;
-    self.reset_body_stack = (Expr**)mem::malloc(Expr*.sizeof * self.reset_stack_capacity);
-    self.reset_env_stack = (Env**)mem::malloc(Env*.sizeof * self.reset_stack_capacity);
 
     // Source directory stack
     self.source_dir_count = 0;
 
-    // Continuation/shift state
-    self.flags.shift_occurred = false;
-    self.shift_target_depth = 0;
-    self.shift_result = null;
-    self.flags.effect_occurred = false;
-    self.effect_result = null;
-
-    // Continuation replay state
-    self.cont_substitution = null;
-    self.flags.cont_substituting = false;
-    self.flags.cont_is_effect = false;
-    // Multi-perform replay tracking (dynamic)
-    self.effect_perform_counter = 0;
-    self.cont_target_perform_index = 0;
-    self.effect_prior_capacity = PRIOR_INITIAL_CAPACITY;
-    self.effect_prior_results = (Value**)mem::malloc(Value*.sizeof * self.effect_prior_capacity);
-    // Multi-shift replay tracking (dynamic)
-    self.shift_counter = 0;
-    self.cont_target_shift_index = 0;
-    self.shift_prior_capacity = PRIOR_INITIAL_CAPACITY;
-    self.shift_prior_results = (Value**)mem::malloc(Value*.sizeof * self.shift_prior_capacity);
-
     // Fiber-based continuation system
     main::stack_pool_init(&self.coro_pool);
-    self.use_fiber_continuations = true;  // Enable fiber system (replay is fallback)
     self.resume_value = null;
+    self.yield_value = null;
     self.current_reset_state = null;
 
     // Pre-intern keywords
@@ -2084,6 +2057,12 @@ fn void Interp.init(Interp* self) {
     self.sym_union = self.symbols.intern("union");
     self.sym_alias = self.symbols.intern("alias");
     self.sym_effect = self.symbols.intern("effect");
+
+    // FFI annotation symbols
+    self.sym_ffi = self.symbols.intern("ffi");
+    self.sym_lib = self.symbols.intern("lib");
+    self.sym_Ptr = self.symbols.intern("Ptr");
+    self.sym_Void = self.symbols.intern("Void");
 
     // Built-in type name symbols
     self.sym_Int = self.symbols.intern("Int");
@@ -2234,43 +2213,6 @@ fn void Interp.grow_handler_stack(Interp* self) {
     self.handler_capacity = new_cap;
 }
 
-fn void Interp.grow_reset_stacks(Interp* self) {
-    usz new_cap = self.reset_stack_capacity * 2;
-    Expr** new_body = (Expr**)mem::malloc(Expr*.sizeof * new_cap);
-    Env** new_env = (Env**)mem::malloc(Env*.sizeof * new_cap);
-    for (usz i = 0; i < self.reset_depth; i++) {
-        new_body[i] = self.reset_body_stack[i];
-        new_env[i] = self.reset_env_stack[i];
-    }
-    mem::free(self.reset_body_stack);
-    mem::free(self.reset_env_stack);
-    self.reset_body_stack = new_body;
-    self.reset_env_stack = new_env;
-    self.reset_stack_capacity = new_cap;
-}
-
-fn void Interp.ensure_effect_prior(Interp* self, usz needed) {
-    if (needed < self.effect_prior_capacity) return;
-    usz new_cap = self.effect_prior_capacity;
-    while (new_cap <= needed) new_cap *= 2;
-    Value** new_buf = (Value**)mem::malloc(Value*.sizeof * new_cap);
-    for (usz i = 0; i < self.effect_prior_capacity; i++) new_buf[i] = self.effect_prior_results[i];
-    mem::free(self.effect_prior_results);
-    self.effect_prior_results = new_buf;
-    self.effect_prior_capacity = new_cap;
-}
-
-fn void Interp.ensure_shift_prior(Interp* self, usz needed) {
-    if (needed < self.shift_prior_capacity) return;
-    usz new_cap = self.shift_prior_capacity;
-    while (new_cap <= needed) new_cap *= 2;
-    Value** new_buf = (Value**)mem::malloc(Value*.sizeof * new_cap);
-    for (usz i = 0; i < self.shift_prior_capacity; i++) new_buf[i] = self.shift_prior_results[i];
-    mem::free(self.shift_prior_results);
-    self.shift_prior_results = new_buf;
-    self.shift_prior_capacity = new_cap;
-}
-
 fn void Interp.destroy(Interp* self) {
     self.symbols.destroy();
     self.types.destroy();
@@ -2287,16 +2229,11 @@ fn void Interp.destroy(Interp* self) {
     }
     if (self.module_hash_index != null) { mem::free(self.module_hash_index); self.module_hash_index = null; }
     if (self.handler_stack != null) { mem::free(self.handler_stack); self.handler_stack = null; }
-    if (self.reset_body_stack != null) { mem::free(self.reset_body_stack); self.reset_body_stack = null; }
-    if (self.reset_env_stack != null) { mem::free(self.reset_env_stack); self.reset_env_stack = null; }
-    if (self.effect_prior_results != null) { mem::free(self.effect_prior_results); self.effect_prior_results = null; }
-    if (self.shift_prior_results != null) { mem::free(self.shift_prior_results); self.shift_prior_results = null; }
     main::stack_pool_shutdown(&self.coro_pool);
 }
 
 fn Continuation* Interp.alloc_lisp_continuation(Interp* self) {
     Continuation k;
-    k.data = null;
     k.coro = null;
     k.is_fiber_based = false;
     k.handle_state = null;
@@ -2453,6 +2390,8 @@ fn void print_value(Value* v, SymbolTable* syms) {
             }
         case ITERATOR:
             io::print("#<iterator>");
+        case FIBER:
+            io::print("#<fiber>");
         default:
             io::print("#<unknown>");
     }
@@ -2579,6 +2518,8 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             pb.append_str("#<module>");
         case ITERATOR:
             pb.append_str("#<iterator>");
+        case FIBER:
+            pb.append_str("#<fiber>");
         default:
             pb.append_str("#<unknown>");
     }

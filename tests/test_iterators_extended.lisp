@@ -163,9 +163,9 @@
 
 ;; Create simple generator
 (define my-gen []
-  (yield 1)
-  (yield 2)
-  (yield 3))
+  (stream-yield 1)
+  (stream-yield 2)
+  (stream-yield 3))
 
 ;; Note: This test depends on generator implementation working
 ;; (define g (make-generator my-gen))
@@ -197,9 +197,9 @@
 
 ;; Create generator and collect values
 (define seq-gen []
-  (yield 10)
-  (yield 20)
-  (yield 30))
+  (stream-yield 10)
+  (stream-yield 20)
+  (stream-yield 30))
 
 ;; (define sg (make-generator seq-gen))
 ;; (define seq-collected (collect sg 'array))

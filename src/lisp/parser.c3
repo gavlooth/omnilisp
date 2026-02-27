@@ -1340,13 +1340,21 @@ fn Expr* Parser.parse_define(Parser* self) {
     Expr* e = self.alloc_expr_here();  // Capture 'define' location
     self.lexer.advance();  // consume 'define'
 
-    // Check for bracket annotation: (define [attr] ...)
+    // Check for bracket annotation: (define [attr...] ...)
     if (self.lexer.current.type == T_LBRACKET) {
         self.lexer.advance();  // consume '['
-        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected attribute after ["); return null; }
-        SymbolId annotation = self.get_current_symbol();
-        self.lexer.advance();
+        // Read all symbols until ']'
+        SymbolId[8] attrs;
+        usz attr_count = 0;
+        while (self.lexer.current.type == T_SYMBOL && attr_count < 8) {
+            attrs[attr_count] = self.get_current_symbol();
+            attr_count++;
+            self.lexer.advance();
+        }
+        if (attr_count == 0) { self.set_error("expected attribute after ["); return null; }
         self.expect(T_RBRACKET, "]");
+
+        SymbolId annotation = attrs[0];
 
         if (annotation == self.interp.sym_macro) {
             // [macro]: Parse macro definition
@@ -1386,6 +1394,23 @@ fn Expr* Parser.parse_define(Parser* self) {
         }
         if (annotation == self.interp.sym_effect) {
             return self.parse_defeffect(e);
+        }
+        if (annotation == self.interp.sym_ffi) {
+            // [ffi ...] — FFI declarations
+            if (attr_count < 2) { self.set_error("expected 'lib' or 'λ'/'lambda' after [ffi"); return null; }
+            if (attrs[1] == self.interp.sym_lib) {
+                return self.parse_ffi_lib(e);
+            }
+            if (attrs[1] == self.interp.sym_lambda) {
+                return self.parse_ffi_fn(e, &attrs, attr_count);
+            }
+            // Check for λ (U+03BB, UTF-8: CE BB)
+            char[] attr1_text = self.interp.symbols.get_name(attrs[1]);
+            if (attr1_text.len == 2 && attr1_text[0] == (char)0xCE && attr1_text[1] == (char)0xBB) {
+                return self.parse_ffi_fn(e, &attrs, attr_count);
+            }
+            self.set_error("unknown [ffi ...] form: expected 'lib' or 'λ'");
+            return null;
         }
         self.set_error("unknown define attribute");
         return null;
@@ -1783,6 +1808,125 @@ fn Expr* Parser.parse_defeffect(Parser* self, Expr* e) {
     }
 
     self.expect(T_RPAREN, ")");  // close effect form
+    self.expect(T_RPAREN, ")");  // close define
+    return e;
+}
+
+// (define [ffi lib] name "path.so")
+fn Expr* Parser.parse_ffi_lib(Parser* self, Expr* e) {
+    e.tag = E_FFI_LIB;
+
+    // Read library name symbol
+    if (self.lexer.current.type != T_SYMBOL) {
+        self.set_error("expected library name after [ffi lib]");
+        return null;
+    }
+    e.ffi_lib.name = self.get_current_symbol();
+    self.lexer.advance();
+
+    // Read path expression (string literal)
+    e.ffi_lib.path_expr = self.parse_expr();
+    if (e.ffi_lib.path_expr == null) {
+        self.set_error("expected library path string");
+        return null;
+    }
+
+    self.expect(T_RPAREN, ")");  // close define
+    return e;
+}
+
+// (define [ffi λ libname] (fname (^Type param)...) ^RetType)
+fn Expr* Parser.parse_ffi_fn(Parser* self, Expr* e, SymbolId[8]* attrs, usz attr_count) {
+    // attrs[0] = ffi, attrs[1] = λ/lambda, attrs[2] = library name
+    if (attr_count < 3) {
+        self.set_error("expected library name: [ffi λ libname]");
+        return null;
+    }
+
+    // Heap-allocate ExprFfiFn (large struct)
+    ExprFfiFn* ffi = (ExprFfiFn*)mem::malloc(ExprFfiFn.sizeof);
+    e.tag = E_FFI_FN;
+    e.ffi_fn = ffi;
+
+    ffi.lib_name = (*attrs)[2];
+    ffi.is_variadic = false;
+    ffi.has_return_type = false;
+    ffi.param_count = 0;
+
+    // Check for modifier attributes in attrs[3..]
+    for (usz i = 3; i < attr_count; i++) {
+        char[] attr_name = self.interp.symbols.get_name((*attrs)[i]);
+        if (attr_name.len == 8) {
+            // "variadic" check
+            bool is_var = true;
+            char[] vstr = "variadic";
+            for (usz j = 0; j < 8; j++) {
+                if (attr_name[j] != vstr[j]) { is_var = false; break; }
+            }
+            if (is_var) ffi.is_variadic = true;
+        }
+    }
+
+    // Expect ( for function signature
+    if (self.lexer.current.type != T_LPAREN) {
+        self.set_error("expected ( for FFI function signature");
+        return null;
+    }
+    self.lexer.advance();  // consume '('
+
+    // Read function name
+    if (self.lexer.current.type != T_SYMBOL) {
+        self.set_error("expected function name in FFI signature");
+        return null;
+    }
+    ffi.fn_name = self.get_current_symbol();
+
+    // Store original C name (the symbol text, before any kebab conversion)
+    char[] sym_text = self.interp.symbols.get_name(ffi.fn_name);
+    usz clen = sym_text.len;
+    if (clen > 127) clen = 127;
+    for (usz i = 0; i < clen; i++) {
+        // Convert kebab-case to underscore for dlsym
+        if (sym_text[i] == '-') {
+            ffi.c_name[i] = '_';
+        } else {
+            ffi.c_name[i] = sym_text[i];
+        }
+    }
+    ffi.c_name[clen] = 0;
+    ffi.c_name_len = clen;
+    self.lexer.advance();
+
+    // Parse typed parameters: (^Type name) ...
+    while (self.lexer.current.type == T_LPAREN && !self.has_error) {
+        if (ffi.param_count >= 16) { self.set_error("too many FFI parameters (max 16)"); return null; }
+        self.lexer.advance();  // consume '('
+
+        TypeAnnotation ann = self.parse_type_annotation();
+        if (!ann.has_annotation) {
+            self.set_error("expected type annotation in FFI parameter");
+            return null;
+        }
+        ffi.param_types[ffi.param_count] = ann;
+
+        if (self.lexer.current.type != T_SYMBOL) {
+            self.set_error("expected parameter name after type annotation");
+            return null;
+        }
+        ffi.param_names[ffi.param_count] = self.get_current_symbol();
+        self.lexer.advance();
+        self.expect(T_RPAREN, ")");  // close param
+        ffi.param_count++;
+    }
+
+    self.expect(T_RPAREN, ")");  // close function signature
+
+    // Parse optional return type annotation: ^RetType
+    if (self.lexer.current.type == T_SYMBOL && self.lexer.current.text[0] == '^') {
+        ffi.return_type = self.parse_type_annotation();
+        ffi.has_return_type = ffi.return_type.has_annotation;
+    }
+
     self.expect(T_RPAREN, ")");  // close define
     return e;
 }

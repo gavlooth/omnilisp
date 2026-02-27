@@ -958,9 +958,13 @@ Same test suite. Critical effect tests:
 
 ---
 
-### PHASE 3: Implement User-Facing Fibers
+### PHASE 3: Implement User-Facing Fibers — COMPLETE
 
 **Goal**: Implement `fiber`, `yield`, `resume` primitives that the test files expect.
+**Status**: Complete. 994 tests pass (0 failures). Primitives: `fiber`, `resume`, `yield`, `fiber?`.
+- `yield` macro renamed to `stream-yield` in stdlib (fiber primitive takes precedence)
+- test_yield.lisp and test_nested_fiber.lisp (Test 1, 3) pass
+- test_nested_fiber.lisp Test 2 (`with-fibers`/`spawn`/`join`) deferred to Phase 5 (scheduler)
 
 #### 3.3.1 Add `FIBER` ValueTag
 
@@ -1091,9 +1095,10 @@ The `tests/test_with_fibers.lisp` uses `with-fibers`, `spawn`, `join`, and `chan
 
 ---
 
-### PHASE 4: Cleanup and Remove Replay Mechanism
+### PHASE 4: Cleanup and Remove Replay Mechanism — COMPLETE
 
 **Goal**: Remove the replay code path, simplify the Interp struct, delete unused scaffolding.
+**Status**: Complete. All legacy replay code removed. 878 unified + 77 compiler tests pass, 0 failures.
 
 #### 3.4.1 Remove from `Interp` struct (value.c3)
 
@@ -1139,17 +1144,9 @@ All 927 existing tests pass with `use_fiber_continuations` flag removed (fiber p
 
 ---
 
-### PHASE 5: Scheduler for `with-fibers` / `spawn` / `join`
+### PHASE 5: Scheduler for `with-fibers` / `spawn` / `join` — DEFERRED (NOT NEEDED)
 
-**Goal**: Implement cooperative scheduler for the `with-fibers` API.
-
-This is a separate feature beyond the core continuation unification and can be deferred. Brief outline:
-
-- `FiberScheduler` struct with run queue (circular buffer of Fiber*)
-- `spawn` adds fiber to run queue
-- `join` suspends current fiber until target completes
-- `with-fibers` creates a scheduler scope, runs until all fibers complete
-- `chan` / `send` / `recv` for inter-fiber communication (bounded channel with blocking)
+**Status**: Deferred indefinitely. The existing `fiber`/`resume`/`yield`/`fiber?` primitives provide sufficient building blocks. A cooperative scheduler (`with-fibers`/`spawn`/`join`) and channels (`chan`/`send`/`recv`) can be built in userland if ever needed. The effects + fibers pattern covers the use cases that channels would address.
 
 ---
 
@@ -1244,7 +1241,7 @@ Phase 1 (2 days): Fiber-based reset/shift with toggle flag
 Phase 2 (3 days): Fiber-based handle/signal/resolve with toggle flag
 Phase 3 (1 day):  User-facing fiber/yield/resume primitives
 Phase 4 (1 day):  Remove replay mechanism, delete unused files
-Phase 5 (later):  Scheduler for with-fibers/spawn/join
+Phase 5 (deferred): Scheduler not needed — existing primitives sufficient
 ```
 
 Phases 1 and 2 are the critical ones. The toggle flag (`use_fiber_continuations`) provides a safety net: if anything breaks, flip the flag and all existing tests pass on the old path while the fiber path is debugged.
@@ -1253,31 +1250,17 @@ Phases 1 and 2 are the critical ones. The toggle flag (`use_fiber_continuations`
 
 ## 7. Deferred Work (must be done, not yet scheduled)
 
-### D1: MXCSR + x87 FPU Control Word Save/Restore
-**What**: `stack_context_switch` currently skips saving MXCSR (SSE control/status) and x87 FPU control word. These are callee-saved per SysV ABI.
-**Why deferred**: C3 inline asm doesn't support `stmxcsr`/`ldmxcsr`/`fnstcw`/`fldcw`. Need to either encode as raw bytes or create a small C helper file (e.g., `csrc/context_helpers.c`) that exports these as functions callable from C3.
-**Risk if not done**: If any C library called from Omni (e.g., libtorch, libm) changes FPU rounding mode, the change could leak across coroutine switches. Low probability but hard to debug.
-**When**: Before Phase 2 (effects on fibers), since effect handlers may call FFI code that modifies FPU state.
-**How**: Create `csrc/fpu_save.c` with `void fpu_save(uint32_t* mxcsr, uint16_t* x87cw)` and `void fpu_restore(uint32_t mxcsr, uint16_t x87cw)`, link via C3's extern mechanism.
+### D1: MXCSR + x87 FPU Control Word Save/Restore — COMPLETE
+**Implementation**: Created `csrc/stack_helpers.c` with `fpu_save()`/`fpu_restore()` using GCC inline asm for stmxcsr/ldmxcsr/fnstcw/fldcw. Called from `coro_switch_to`, `coro_resume`, `coro_suspend` wrapper functions via C3 extern. FPU state saved into StackContext (offset 64: mxcsr, offset 68: x87cw) before each context switch and restored after.
 
-### D2: Stack Overflow Detection (SIGSEGV handler + sigaltstack)
-**What**: When a coroutine overflows its 64KB stack, it hits the guard page and crashes with SIGSEGV. Currently this is an unrecoverable crash.
-**Why deferred**: Requires installing a signal handler on an alternate stack (`sigaltstack`), catching SIGSEGV, determining if the faulting address is in a guard page, and converting to an Omni error.
-**Risk if not done**: Deeply recursive Omni code on a coroutine stack will segfault instead of producing a helpful error message.
-**When**: After Phase 3 (user-facing fibers), before any production use. Users writing recursive code in fibers will hit this.
-**How**: Install `sigaltstack` at startup. Register SIGSEGV handler. In handler: check if fault address falls in any active coroutine's guard page region. If yes, mark coro as DEAD and longjmp to a recovery point. If no, re-raise the signal.
+### D2: Stack Overflow Detection (SIGSEGV handler + sigaltstack) — COMPLETE
+**Implementation**: `csrc/stack_helpers.c` provides sigaltstack + SIGSEGV handler. Guard pages registered per-coro in `coro_create`, unregistered in `coro_destroy`/pool shutdown. `stack_guard_protected_switch()` wraps sigsetjmp + context switch — if coro overflows, siglongjmp recovers. Recovery stack supports nested switches (MAX_RECOVERY_DEPTH=64). Coro marked CORO_DEAD on overflow. All jit.c3 call sites and prim_resume check CORO_DEAD and return "stack overflow" errors.
 
-### D3: Cooperative Scheduler (with-fibers / spawn / join)
-**What**: The test files `tests/test_with_fibers.lisp` expect a scheduler that can run multiple fibers cooperatively: `with-fibers` creates a scope, `spawn` adds a fiber to the run queue, `join` waits for a fiber to complete.
-**Why deferred**: Requires a run queue, round-robin scheduling, and blocking semantics. Independent of the core continuation unification.
-**When**: Phase 5, after all core phases are complete and stable.
-**How**: `FiberScheduler` struct with circular buffer run queue. `spawn` adds to queue. `join` suspends current coro until target completes (tracked via completion callbacks). `with-fibers` runs the scheduler loop until all fibers complete.
+### D3: Cooperative Scheduler (with-fibers / spawn / join) — NOT IMPLEMENTING
+**Decision**: Not needed. The existing `fiber`/`resume`/`yield`/`fiber?` primitives provide sufficient building blocks. A cooperative scheduler can be built in userland if ever needed. The effects + fibers pattern covers the scheduling use cases.
 
-### D4: CSP Channels (chan / send / recv)
-**What**: `tests/test_with_fibers.lisp` also expects buffered channels for inter-fiber communication.
-**Why deferred**: Depends on the scheduler (D3). Channels need blocking send/recv which requires the ability to suspend a fiber and wake it when the channel is ready.
-**When**: After D3 (scheduler).
-**How**: `Channel` struct with bounded ring buffer. `send` writes to buffer or suspends if full. `recv` reads from buffer or suspends if empty. Suspended fibers are added to per-channel wait queues.
+### D4: CSP Channels (chan / send / recv) — NOT IMPLEMENTING
+**Decision**: Not needed. The effects + fibers pattern covers inter-fiber communication use cases without dedicated channel primitives.
 
 ---
 

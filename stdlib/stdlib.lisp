@@ -155,8 +155,9 @@
 ;; Generators & Lazy Streams (using existing effects)
 ;; =========================================================================
 
-;; yield: (yield val) inside a generator — returns (cons val continuation)
-(define [macro] yield ([val] (shift k (cons val k))))
+;; stream-yield: (stream-yield val) inside a generator — returns (cons val continuation)
+;; Note: yield is now a primitive for fibers. Use stream-yield for generator patterns.
+(define [macro] stream-yield ([val] (shift k (cons val k))))
 
 ;; stream-take: consume n values from a generator continuation
 (define (stream-take n gen) (let loop (i n g gen acc nil) (if (= i 0) (reverse acc) (if (null? g) (reverse acc) (let (pair (if (procedure? g) (g nil) g)) (if (null? pair) (reverse acc) (loop (- i 1) (cdr pair) (cons (car pair) acc))))))))

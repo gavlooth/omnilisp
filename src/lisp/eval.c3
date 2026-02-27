@@ -393,6 +393,7 @@ fn SymbolId value_type_name(Value* v, Interp* interp) {
         case ARRAY:     return interp.sym_Array;
         case HASHMAP:   return interp.sym_Dict;
         case ITERATOR:  return interp.sym_Iterator;
+        case FIBER:     return interp.symbols.intern("Fiber");
         case INSTANCE:
             if (v.instance_val != null) {
                 TypeInfo* ti = interp.types.get(v.instance_val.type_id);
@@ -890,6 +891,206 @@ fn EvalResult eval_defeffect(Expr* expr, Env* env, Interp* interp) {
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
 
     return eval_ok(make_nil(interp));
+}
+
+// =============================================================================
+// SECTION 2.3.1: FFI EVALUATION (define [ffi lib], define [ffi λ])
+// =============================================================================
+
+// C helper from csrc/ffi_helpers.c
+extern fn int omni_ffi_call(void* fn_ptr, int nargs, int* arg_types, void** arg_values,
+                            int ret_type, void* ret_value) @extern("omni_ffi_call");
+
+// eval_ffi_lib — (define [ffi lib] name "path.so")
+fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
+    ExprFfiLib* fl = &expr.ffi_lib;
+
+    // Evaluate path expression
+    Value* path_val = jit_eval(fl.path_expr, env, interp);
+    if (path_val == null || path_val.tag == ERROR) return path_val;
+    if (path_val.tag != STRING) return raise_error(interp, "ffi lib: path must be a string");
+
+    // dlopen
+    void* handle = dlopen((ZString)path_val.str_val.chars, RTLD_LAZY);
+    if (handle == null) {
+        char[256] ebuf;
+        char[] msg = io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s'",
+            (ZString)path_val.str_val.chars)!!;
+        return raise_error(interp, msg);
+    }
+
+    // Create FFI handle value and bind in global env
+    Value* ffi_handle = make_ffi_handle(interp, handle, path_val.str_val.chars[:path_val.str_val.len]);
+    interp.global_env = interp.global_env.extend(interp, fl.name, ffi_handle);
+    return ffi_handle;
+}
+
+// prim_ffi_bound_call — primitive handler for bound FFI functions.
+// user_data points to a heap-allocated FfiBoundFn.
+fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
+    FfiBoundFn* bound = (FfiBoundFn*)interp.prim_user_data;
+    if (bound == null) return raise_error(interp, "ffi: internal error — no bound function");
+
+    // Validate arg count
+    if (args.len < bound.param_count) {
+        char[256] ebuf;
+        char[] msg = io::bprintf(&ebuf, "ffi: expected %d args, got %d",
+            (int)bound.param_count, (int)args.len)!!;
+        return raise_error(interp, msg);
+    }
+
+    // Prepare C argument storage
+    long[16] int_store;
+    double[16] dbl_store;
+    void*[16] ptr_store;
+    int[16] arg_types;
+    void*[16] arg_values;
+
+    for (usz i = 0; i < bound.param_count; i++) {
+        Value* arg = args[i];
+        switch (bound.param_types[i]) {
+            case FFI_TYPE_INT:
+            case FFI_TYPE_BOOL:
+                if (arg.tag == INT) {
+                    int_store[i] = arg.int_val;
+                } else if (arg.tag == DOUBLE) {
+                    int_store[i] = (long)arg.double_val;
+                } else if (!is_falsy(arg, interp)) {
+                    int_store[i] = 1;
+                } else {
+                    int_store[i] = 0;
+                }
+                arg_types[i] = (int)bound.param_types[i];
+                arg_values[i] = (void*)&int_store[i];
+            case FFI_TYPE_DOUBLE:
+                if (arg.tag == DOUBLE) {
+                    dbl_store[i] = arg.double_val;
+                } else if (arg.tag == INT) {
+                    dbl_store[i] = (double)arg.int_val;
+                } else {
+                    dbl_store[i] = 0.0;
+                }
+                arg_types[i] = (int)bound.param_types[i];
+                arg_values[i] = (void*)&dbl_store[i];
+            case FFI_TYPE_PTR:
+                if (arg.tag == STRING) {
+                    ptr_store[i] = (void*)arg.str_val.chars;
+                } else if (arg.tag == INT) {
+                    ptr_store[i] = (void*)(uptr)arg.int_val;
+                } else if (arg.tag == NIL) {
+                    ptr_store[i] = null;
+                } else if (arg.tag == FFI_HANDLE) {
+                    ptr_store[i] = arg.ffi_val.lib_handle;
+                } else {
+                    ptr_store[i] = (void*)(uptr)arg.int_val;
+                }
+                arg_types[i] = (int)bound.param_types[i];
+                arg_values[i] = (void*)&ptr_store[i];
+            default:
+                arg_types[i] = (int)FfiTypeTag.FFI_TYPE_PTR;
+                ptr_store[i] = null;
+                arg_values[i] = (void*)&ptr_store[i];
+        }
+    }
+
+    // Call via libffi
+    int ret_type = (int)bound.return_type;
+    long ret_int = 0;
+    double ret_dbl = 0.0;
+    void* ret_ptr = null;
+    void* ret_storage;
+
+    switch (bound.return_type) {
+        case FFI_TYPE_INT:
+        case FFI_TYPE_BOOL:
+            ret_storage = (void*)&ret_int;
+        case FFI_TYPE_DOUBLE:
+            ret_storage = (void*)&ret_dbl;
+        case FFI_TYPE_PTR:
+            ret_storage = (void*)&ret_ptr;
+        case FFI_TYPE_VOID:
+            ret_storage = (void*)&ret_int;  // unused but must be valid
+        default:
+            ret_storage = (void*)&ret_int;
+    }
+
+    int rc = omni_ffi_call(bound.fn_ptr, (int)bound.param_count,
+                           &arg_types, &arg_values, ret_type, ret_storage);
+    if (rc != 0) return raise_error(interp, "ffi: libffi call failed");
+
+    // Convert result
+    switch (bound.return_type) {
+        case FFI_TYPE_INT:
+            return make_int(interp, ret_int);
+        case FFI_TYPE_BOOL:
+            if (ret_int != 0) return make_symbol(interp, interp.sym_true);
+            return make_symbol(interp, interp.sym_false);
+        case FFI_TYPE_DOUBLE:
+            return make_double(interp, ret_dbl);
+        case FFI_TYPE_PTR:
+            if (ret_ptr == null) return make_nil(interp);
+            return make_int(interp, (long)(uptr)ret_ptr);
+        case FFI_TYPE_VOID:
+            return make_nil(interp);
+        default:
+            return make_nil(interp);
+    }
+}
+
+// eval_ffi_fn — (define [ffi λ libname] (fname (^T arg)...) ^RetT)
+fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
+    ExprFfiFn* ff = expr.ffi_fn;
+
+    // Look up library handle
+    Value* lib_val = env.lookup(ff.lib_name);
+    if (lib_val == null) lib_val = interp.global_env.lookup(ff.lib_name);
+    if (lib_val == null || lib_val.tag != FFI_HANDLE) {
+        char[256] ebuf;
+        char[] msg = io::bprintf(&ebuf, "ffi λ: library '%s' not found",
+            (ZString)interp.symbols.get_name(ff.lib_name))!!;
+        return raise_error(interp, msg);
+    }
+    if (lib_val.ffi_val.lib_handle == null) {
+        return raise_error(interp, "ffi λ: library handle is closed");
+    }
+
+    // dlsym to get function pointer
+    void* fn_ptr = dlsym(lib_val.ffi_val.lib_handle, (ZString)&ff.c_name);
+    if (fn_ptr == null) {
+        char[256] ebuf;
+        char[] msg = io::bprintf(&ebuf, "ffi λ: dlsym failed for '%s'",
+            (ZString)&ff.c_name)!!;
+        return raise_error(interp, msg);
+    }
+
+    // Build FfiBoundFn
+    FfiBoundFn* bound = (FfiBoundFn*)mem::malloc(FfiBoundFn.sizeof);
+    bound.fn_ptr = fn_ptr;
+    bound.param_count = ff.param_count;
+    bound.is_variadic = ff.is_variadic;
+
+    for (usz i = 0; i < ff.param_count; i++) {
+        bound.param_types[i] = type_ann_to_ffi_tag(ff.param_types[i].base_type, interp);
+    }
+
+    if (ff.has_return_type) {
+        bound.return_type = type_ann_to_ffi_tag(ff.return_type.base_type, interp);
+        bound.has_return = true;
+    } else {
+        bound.return_type = FFI_TYPE_VOID;
+        bound.has_return = false;
+    }
+
+    // Create a primitive value with user_data pointing to bound
+    Value* prim = make_primitive(interp,
+        interp.symbols.get_name(ff.fn_name),
+        &prim_ffi_bound_call,
+        (int)ff.param_count);
+    prim.prim_val.user_data = (void*)bound;
+
+    // Bind in global env
+    interp.global_env = interp.global_env.extend(interp, ff.fn_name, prim);
+    return prim;
 }
 
 // =============================================================================
@@ -1727,7 +1928,7 @@ fn void register_primitives(Interp* interp) {
     }
 
     // --- Regular primitives ---
-    PrimReg[89] regular_prims = {
+    PrimReg[93] regular_prims = {
         // List operations
         { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
         { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 }, { "list", &prim_list, -1 },
@@ -1795,6 +1996,11 @@ fn void register_primitives(Interp* interp) {
         { "iterator?", &prim_iterator_p, 1 }, { "make-iterator", &prim_make_iterator, 1 },
         { "next", &prim_next, 1 }, { "collect", &prim_collect, 1 },
         { "to-array", &prim_to_array, 1 },
+        // Fibers
+        { "fiber", &prim_fiber, 1 },
+        { "resume", &prim_resume, -1 },
+        { "yield", &prim_yield, -1 },
+        { "fiber?", &prim_fiber_p, 1 },
     };
     foreach (&r : regular_prims) {
         register_prim(interp, r.name, r.func, r.arity);

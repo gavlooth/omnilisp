@@ -47,6 +47,19 @@ const usz PAGE_SIZE = 4096;
 const usz MAP_FAILED_VAL = ~(usz)0;
 
 // =============================================================================
+// C HELPERS (csrc/stack_helpers.c)
+// =============================================================================
+// D1: FPU state save/restore (stmxcsr/ldmxcsr/fnstcw/fldcw)
+extern fn void fpu_save(uint* mxcsr, uint* x87cw) @extern("fpu_save");
+extern fn void fpu_restore(uint mxcsr, uint x87cw) @extern("fpu_restore");
+// D2: Stack overflow detection via SIGSEGV + sigaltstack
+extern fn int stack_guard_init() @extern("stack_guard_init");
+extern fn void stack_guard_shutdown() @extern("stack_guard_shutdown");
+extern fn void stack_guard_register(void* base, usz size) @extern("stack_guard_register");
+extern fn void stack_guard_unregister(void* base) @extern("stack_guard_unregister");
+extern fn int stack_guard_protected_switch(void* old_ctx, void* new_ctx) @extern("stack_guard_protected_switch");
+
+// =============================================================================
 // SECTION 2: STACK CONTEXT (72 bytes — one cache line on most CPUs)
 // =============================================================================
 //
@@ -86,7 +99,7 @@ struct StackContext {
  * @param old_ctx  Where to save current state (RDI)
  * @param new_ctx  State to restore and jump to (RSI)
  */
-fn void stack_context_switch(StackContext* old_ctx, StackContext* new_ctx) @naked {
+fn void stack_context_switch(StackContext* old_ctx, StackContext* new_ctx) @naked @extern("omni_context_switch") {
     asm {
         // ---- Save current context into old_ctx (RDI) ----
 
@@ -107,10 +120,8 @@ fn void stack_context_switch(StackContext* old_ctx, StackContext* new_ctx) @nake
         movq $rax, [$rsp];
         movq [$rdi + 56], $rax;         // offset 56: rip
 
-        // NOTE: MXCSR and x87 FPU control word not saved here —
-        // C3 inline asm doesn't support stmxcsr/fnstcw/ldmxcsr/fldcw.
-        // See plan item D1 in .claude/plans/fiber-continuation-unification.md
-        // for the fix: create a C helper file with FPU save/restore functions.
+        // MXCSR/x87CW saved via fpu_save() in wrapper functions
+        // (coro_switch_to, coro_resume, coro_suspend) before calling switch.
 
         // ---- Restore from new_ctx (RSI) ----
 
@@ -246,6 +257,7 @@ struct Coro {
     uint           id;          // Unique identifier
     Coro*          pool_next;   // Free-list link for StackPool
     CoroBootstrap  boot;        // Bootstrap info for first switch
+    void*          user_data;   // Application-level data (e.g. FiberThunkState*)
 }
 
 // =============================================================================
@@ -268,19 +280,22 @@ fn void stack_pool_init(StackPool* pool) {
     pool.max_pool = STACK_POOL_MAX;
     pool.next_id = 1;
     pool.stack_size = DEFAULT_STACK_SIZE;
+    stack_guard_init();
 }
 
 fn void stack_pool_shutdown(StackPool* pool) {
-    // Free all cached coros
+    // Free all cached coros and unregister their guard pages
     Coro* c = pool.free_list;
     while (c != null) {
         Coro* next = c.pool_next;
+        stack_guard_unregister(c.stack.base);
         stack_region_free(&c.stack);
         mem::free(c);
         c = next;
     }
     pool.free_list = null;
     pool.pool_size = 0;
+    stack_guard_shutdown();
 }
 
 // =============================================================================
@@ -306,6 +321,8 @@ fn Coro* coro_create(StackPool* pool) {
             mem::free(c);
             return null;  // mmap failed
         }
+        // Register guard page for stack overflow detection
+        stack_guard_register(c.stack.base, GUARD_SIZE);
     }
 
     // Initialize state
@@ -337,7 +354,8 @@ fn void coro_destroy(Coro* c, StackPool* pool) {
         pool.free_list = c;
         pool.pool_size++;
     } else {
-        // Pool full — free everything
+        // Pool full — unregister guard page and free everything
+        stack_guard_unregister(c.stack.base);
         stack_region_free(&c.stack);
         mem::free(c);
     }
@@ -442,7 +460,20 @@ fn void coro_switch_to(Coro* c, StackContext* parent_ctx) {
 
     Coro* saved = g_current_coro;
     g_current_coro = c;
-    stack_context_switch(parent_ctx, &c.ctx);
+
+    // D1: Save parent FPU state before switch
+    fpu_save(&parent_ctx.mxcsr, &parent_ctx.x87cw);
+
+    // D2: Protected switch with stack overflow recovery
+    int overflow = stack_guard_protected_switch(parent_ctx, &c.ctx);
+
+    // D1: Restore parent FPU state (also after overflow — siglongjmp doesn't restore FPU)
+    fpu_restore(parent_ctx.mxcsr, parent_ctx.x87cw);
+
+    if (overflow != 0) {
+        c.status = CORO_DEAD;
+    }
+
     g_current_coro = saved;
 }
 
@@ -457,8 +488,12 @@ fn void coro_suspend() {
     Coro* c = g_current_coro;
     assert(c != null, "coro_suspend: not inside a coroutine");
     c.status = CORO_SUSPENDED;
+    // D1: Save coro FPU state before switch to parent
+    fpu_save(&c.ctx.mxcsr, &c.ctx.x87cw);
     stack_context_switch(&c.ctx, c.parent_ctx);
-    // Execution resumes here when parent calls coro_switch_to again
+    // Execution resumes here when parent calls coro_resume
+    // D1: Restore coro FPU state on resume
+    fpu_restore(c.ctx.mxcsr, c.ctx.x87cw);
 }
 
 /**
@@ -470,7 +505,20 @@ fn void coro_resume(Coro* c, StackContext* parent_ctx) {
     c.status = CORO_RUNNING;
     Coro* saved = g_current_coro;
     g_current_coro = c;
-    stack_context_switch(parent_ctx, &c.ctx);
+
+    // D1: Save parent FPU state before switch
+    fpu_save(&parent_ctx.mxcsr, &parent_ctx.x87cw);
+
+    // D2: Protected switch with stack overflow recovery
+    int overflow = stack_guard_protected_switch(parent_ctx, &c.ctx);
+
+    // D1: Restore parent FPU state
+    fpu_restore(parent_ctx.mxcsr, parent_ctx.x87cw);
+
+    if (overflow != 0) {
+        c.status = CORO_DEAD;
+    }
+
     g_current_coro = saved;
 }
 
@@ -796,6 +844,96 @@ fn bool test_two_coros_interleaved() {
     return ok;
 }
 
+// Stack overflow entry — recurses until guard page hit
+fn void test_entry_overflow(void* arg) {
+    TestState* s = (TestState*)arg;
+    test_overflow_recurse(s, 0);
+}
+
+fn int test_overflow_recurse(TestState* s, int depth) {
+    s.value = depth;
+    // 256-byte frame ensures we overflow the 64KB stack quickly (~250 frames)
+    char[256] padding;
+    padding[0] = (char)depth;
+    return test_overflow_recurse(s, depth + 1) + (int)padding[0];
+}
+
+fn bool test_stack_overflow_recovery() {
+    StackPool pool;
+    stack_pool_init(&pool);
+
+    Coro* c = coro_create(&pool);
+    if (c == null) { stack_pool_shutdown(&pool); return false; }
+
+    TestState state;
+    state.value = 0;
+
+    coro_init(c, &test_entry_overflow, &state);
+
+    StackContext main_ctx;
+    coro_switch_to(c, &main_ctx);
+
+    // Should recover gracefully — coro marked DEAD, not crashed
+    bool ok = (c.status == CORO_DEAD);
+    // Should have recursed some before overflow
+    ok = ok && (state.value > 10);
+
+    coro_destroy(c, &pool);
+    stack_pool_shutdown(&pool);
+    return ok;
+}
+
+// Test that FPU state is preserved across coro switches
+fn void test_entry_fpu(void* arg) {
+    TestState* s = (TestState*)arg;
+    // The FPU state should be default values on entry
+    // Just set a marker to confirm we ran
+    s.value = 99;
+    coro_suspend();
+    s.value = 100;
+}
+
+fn bool test_fpu_preservation() {
+    StackPool pool;
+    stack_pool_init(&pool);
+
+    Coro* c = coro_create(&pool);
+    if (c == null) { stack_pool_shutdown(&pool); return false; }
+
+    TestState state;
+    state.value = 0;
+    coro_init(c, &test_entry_fpu, &state);
+
+    // Save current FPU state
+    uint mxcsr_before;
+    uint x87cw_before;
+    fpu_save(&mxcsr_before, &x87cw_before);
+
+    StackContext main_ctx;
+    coro_switch_to(c, &main_ctx);  // runs until suspend
+    bool ok = (state.value == 99) && (c.status == CORO_SUSPENDED);
+
+    // Verify parent FPU state preserved after switch
+    uint mxcsr_after;
+    uint x87cw_after;
+    fpu_save(&mxcsr_after, &x87cw_after);
+    ok = ok && (mxcsr_before == mxcsr_after);
+    ok = ok && (x87cw_before == x87cw_after);
+
+    // Resume and complete
+    coro_resume(c, &main_ctx);
+    ok = ok && (state.value == 100) && (c.status == CORO_COMPLETED);
+
+    // FPU still preserved
+    fpu_save(&mxcsr_after, &x87cw_after);
+    ok = ok && (mxcsr_before == mxcsr_after);
+    ok = ok && (x87cw_before == x87cw_after);
+
+    coro_destroy(c, &pool);
+    stack_pool_shutdown(&pool);
+    return ok;
+}
+
 /**
  * Run all stack engine tests.
  */
@@ -827,6 +965,12 @@ fn void run_stack_engine_tests() {
 
     if (test_two_coros_interleaved()) { io::printfn("  PASS: two coros interleaved"); pass++; }
     else { io::printfn("  FAIL: two coros interleaved"); fail++; }
+
+    if (test_fpu_preservation()) { io::printfn("  PASS: FPU state preserved across switch"); pass++; }
+    else { io::printfn("  FAIL: FPU state preserved across switch"); fail++; }
+
+    if (test_stack_overflow_recovery()) { io::printfn("  PASS: stack overflow recovery"); pass++; }
+    else { io::printfn("  FAIL: stack overflow recovery"); fail++; }
 
     io::printfn("\nStack engine: %d passed, %d failed", pass, fail);
     io::printfn("========================================\n");

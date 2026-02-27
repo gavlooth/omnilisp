@@ -4,7 +4,7 @@ import std::io;
 
 // =============================================================================
 // FFI Binding Generator — takes ParsedFunc[] + library info, writes Omni module.
-// Generates (ffi-open)/(ffi-call) wrappers with typed parameters.
+// Generates (define [ffi lib])/(define [ffi λ]) declarations.
 // =============================================================================
 
 const usz BINDGEN_BUF_SIZE = 32768;
@@ -14,8 +14,8 @@ const usz BINDGEN_BUF_SIZE = 32768;
  *
  * Output format:
  *   (module ffi-{name} (export fn1 fn2 ...)
- *     (define _lib (ffi-open "lib{library}.so"))
- *     (define (fn1 (^Type arg0) ...) (ffi-call _lib "fn1" 'ret arg0 'type ...))
+ *     (define [ffi lib] _lib "lib{library}.so")
+ *     (define [ffi λ _lib] (fn1 (^Type arg0) ...) ^RetType)
  *   )
  */
 fn bool generate_ffi_module(
@@ -46,10 +46,10 @@ fn bool generate_ffi_module(
     }
     pos = buf_append(buf[..], pos, ")\n\n");
 
-    // Library handle
-    pos = buf_append(buf[..], pos, "  (define _lib (ffi-open \"lib");
+    // Library handle: (define [ffi lib] _lib "lib{so_name}.so")
+    pos = buf_append(buf[..], pos, "  (define [ffi lib] _lib \"lib");
     pos = buf_append(buf[..], pos, so_name);
-    pos = buf_append(buf[..], pos, ".so\"))\n\n");
+    pos = buf_append(buf[..], pos, ".so\")\n\n");
 
     // Function definitions
     for (usz i = 0; i < func_count; i++) {
@@ -63,8 +63,8 @@ fn bool generate_ffi_module(
             continue;
         }
 
-        // (define (kebab-name (^Type arg0) (^Type arg1) ...)
-        pos = buf_append(buf[..], pos, "  (define (");
+        // (define [ffi λ _lib] (kebab-name (^Type arg0) ...) ^RetType)
+        pos = buf_append(buf[..], pos, "  (define [ffi lambda _lib] (");
         pos = buf_append_kebab(buf[..], pos, &f.name);
 
         for (usz j = 0; j < f.param_count; j++) {
@@ -76,23 +76,13 @@ fn bool generate_ffi_module(
             pos = buf_append_char(buf[..], pos, ')');
         }
 
-        pos = buf_append(buf[..], pos, ")\n");
+        pos = buf_append(buf[..], pos, ")");
 
-        // (ffi-call _lib "c_name" 'ret_type arg0 'type0 arg1 'type1 ...)
-        pos = buf_append(buf[..], pos, "    (ffi-call _lib \"");
-        pos = buf_append_cstr(buf[..], pos, &f.name);
-        pos = buf_append(buf[..], pos, "\" ");
-        pos = buf_append_cstr(buf[..], pos, &f.return_ffi_type);
+        // Return type annotation
+        pos = buf_append(buf[..], pos, " ^");
+        pos = buf_append_cstr(buf[..], pos, &f.return_omni_type);
 
-        for (usz j = 0; j < f.param_count; j++) {
-            ParsedParam* p = &f.params[j];
-            pos = buf_append_char(buf[..], pos, ' ');
-            pos = buf_append_cstr(buf[..], pos, &p.name);
-            pos = buf_append_char(buf[..], pos, ' ');
-            pos = buf_append_cstr(buf[..], pos, &p.ffi_type);
-        }
-
-        pos = buf_append(buf[..], pos, "))\n\n");
+        pos = buf_append(buf[..], pos, ")\n\n");
     }
 
     // Close module
