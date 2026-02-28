@@ -11,14 +11,9 @@ import main;
 /**
  * Compiler — Translates Lisp AST to C3 source code.
  *
- * The compiler generates C3 code that uses a minimal runtime library
- * for value representation and function invocation.
- *
- * Region-based memory management:
- * - Objects are allocated in regions
- * - Closures track their home region
- * - Write barriers mark objects as escaped when stored across regions
- * - When a region dies, escaped objects are promoted to the parent
+ * Generated code calls aot:: wrapper functions (src/lisp/aot.c3)
+ * which delegate to the JIT interpreter infrastructure (Value*,
+ * scope-region memory, primitives, StackCtx-based effects).
  */
 struct Compiler {
     Interp*     interp;          // For symbol table access
@@ -36,7 +31,7 @@ struct Compiler {
     // Lambda definitions to emit after scanning
     List{LambdaDef} lambda_defs;
 
-    // Track which lambdas create nested closures (for frame region optimization)
+    // Track which lambdas create nested closures
     bool[256] lambda_creates_closure;
 
     // Track mutable-captured variables (stored in interpreter env, not C3 locals)
@@ -45,10 +40,13 @@ struct Compiler {
     // Track variables declared in current function scope (to avoid re-declaration/shadowing)
     List{SymbolId} declared_vars;
 
-    // When true, emit rt_print_value for the last non-define expression
+    // D2: Track referenced primitives for global caching
+    List{SymbolId} referenced_prims;
+
+    // When true, emit aot::print_value for the last non-define expression
     bool print_last;
 
-    // When true, emit rt_print_value for EVERY non-define expression
+    // When true, emit aot::print_value for EVERY non-define expression
     bool print_all;
 
     // When true, find_free_vars uses is_builtin_primitive instead of is_primitive
@@ -140,113 +138,114 @@ fn void init_prim_hash(Interp* interp) {
 
     SymbolTable* st = &interp.symbols;
 
+    // All primitives looked up by name at runtime via aot::lookup_prim
     // Arithmetic
-    prim_hash_insert(st.intern("+"), "runtime::make_prim(&runtime::rt_add)");
-    prim_hash_insert(st.intern("-"), "runtime::make_prim(&runtime::rt_sub)");
-    prim_hash_insert(st.intern("*"), "runtime::make_prim(&runtime::rt_mul)");
-    prim_hash_insert(st.intern("/"), "runtime::make_prim(&runtime::rt_div)");
-    prim_hash_insert(st.intern("%"), "runtime::make_prim(&runtime::rt_mod)");
+    prim_hash_insert(st.intern("+"), "aot::lookup_prim(\"+\")");
+    prim_hash_insert(st.intern("-"), "aot::lookup_prim(\"-\")");
+    prim_hash_insert(st.intern("*"), "aot::lookup_prim(\"*\")");
+    prim_hash_insert(st.intern("/"), "aot::lookup_prim(\"/\")");
+    prim_hash_insert(st.intern("%"), "aot::lookup_prim(\"%\")");
 
     // Comparison
-    prim_hash_insert(st.intern("="), "runtime::make_prim(&runtime::rt_eq)");
-    prim_hash_insert(st.intern("<"), "runtime::make_prim(&runtime::rt_lt)");
-    prim_hash_insert(st.intern(">"), "runtime::make_prim(&runtime::rt_gt)");
-    prim_hash_insert(st.intern("<="), "runtime::make_prim(&runtime::rt_le)");
-    prim_hash_insert(st.intern(">="), "runtime::make_prim(&runtime::rt_ge)");
+    prim_hash_insert(st.intern("="), "aot::lookup_prim(\"=\")");
+    prim_hash_insert(st.intern("<"), "aot::lookup_prim(\"<\")");
+    prim_hash_insert(st.intern(">"), "aot::lookup_prim(\">\")");
+    prim_hash_insert(st.intern("<="), "aot::lookup_prim(\"<=\")");
+    prim_hash_insert(st.intern(">="), "aot::lookup_prim(\">=\")");
 
     // List ops
-    prim_hash_insert(st.intern("cons"), "runtime::make_prim(&runtime::rt_cons_prim)");
-    prim_hash_insert(st.intern("car"), "runtime::make_prim_unary(&runtime::rt_car)");
-    prim_hash_insert(st.intern("cdr"), "runtime::make_prim_unary(&runtime::rt_cdr)");
-    prim_hash_insert(st.intern("null?"), "runtime::make_prim_unary(&runtime::rt_null_p)");
-    prim_hash_insert(st.intern("pair?"), "runtime::make_prim_unary(&runtime::rt_pair_p)");
-    prim_hash_insert(st.intern("list"), "runtime::make_prim_unary(&runtime::rt_list)");
-    prim_hash_insert(st.intern("length"), "runtime::make_prim_unary(&runtime::rt_length)");
-    prim_hash_insert(st.intern("not"), "runtime::make_prim_unary(&runtime::rt_not)");
+    prim_hash_insert(st.intern("cons"), "aot::lookup_prim(\"cons\")");
+    prim_hash_insert(st.intern("car"), "aot::lookup_prim(\"car\")");
+    prim_hash_insert(st.intern("cdr"), "aot::lookup_prim(\"cdr\")");
+    prim_hash_insert(st.intern("null?"), "aot::lookup_prim(\"null?\")");
+    prim_hash_insert(st.intern("pair?"), "aot::lookup_prim(\"pair?\")");
+    prim_hash_insert(st.intern("list"), "aot::lookup_prim(\"list\")");
+    prim_hash_insert(st.intern("length"), "aot::lookup_prim(\"length\")");
+    prim_hash_insert(st.intern("not"), "aot::lookup_prim(\"not\")");
 
     // I/O
-    prim_hash_insert(st.intern("print"), "runtime::make_prim_unary(&runtime::rt_print)");
-    prim_hash_insert(st.intern("println"), "runtime::make_prim_unary(&runtime::rt_println)");
-    prim_hash_insert(st.intern("newline"), "runtime::make_prim_unary(&runtime::rt_newline)");
-    prim_hash_insert(st.intern("display"), "runtime::make_prim_unary(&runtime::rt_display)");
+    prim_hash_insert(st.intern("print"), "aot::lookup_prim(\"print\")");
+    prim_hash_insert(st.intern("println"), "aot::lookup_prim(\"println\")");
+    prim_hash_insert(st.intern("newline"), "aot::lookup_prim(\"newline\")");
+    prim_hash_insert(st.intern("display"), "aot::lookup_prim(\"display\")");
 
     // String ops
-    prim_hash_insert(st.intern("string-append"), "runtime::make_prim(&runtime::rt_string_append)");
-    prim_hash_insert(st.intern("string-join"), "runtime::make_prim(&runtime::rt_string_join)");
-    prim_hash_insert(st.intern("substring"), "runtime::make_prim(&runtime::rt_substring_step1)");
-    prim_hash_insert(st.intern("string-split"), "runtime::make_prim(&runtime::rt_string_split)");
-    prim_hash_insert(st.intern("string-length"), "runtime::make_prim_unary(&runtime::rt_string_length)");
-    prim_hash_insert(st.intern("string->list"), "runtime::make_prim_unary(&runtime::rt_string_to_list)");
-    prim_hash_insert(st.intern("list->string"), "runtime::make_prim_unary(&runtime::rt_list_to_string)");
-    prim_hash_insert(st.intern("string-upcase"), "runtime::make_prim_unary(&runtime::rt_string_upcase)");
-    prim_hash_insert(st.intern("string-downcase"), "runtime::make_prim_unary(&runtime::rt_string_downcase)");
-    prim_hash_insert(st.intern("string-trim"), "runtime::make_prim_unary(&runtime::rt_string_trim)");
-    prim_hash_insert(st.intern("string->number"), "runtime::make_prim_unary(&runtime::rt_string_to_number)");
-    prim_hash_insert(st.intern("number->string"), "runtime::make_prim_unary(&runtime::rt_number_to_string)");
+    prim_hash_insert(st.intern("string-append"), "aot::lookup_prim(\"string-append\")");
+    prim_hash_insert(st.intern("string-join"), "aot::lookup_prim(\"string-join\")");
+    prim_hash_insert(st.intern("substring"), "aot::lookup_prim(\"substring\")");
+    prim_hash_insert(st.intern("string-split"), "aot::lookup_prim(\"string-split\")");
+    prim_hash_insert(st.intern("string-length"), "aot::lookup_prim(\"string-length\")");
+    prim_hash_insert(st.intern("string->list"), "aot::lookup_prim(\"string->list\")");
+    prim_hash_insert(st.intern("list->string"), "aot::lookup_prim(\"list->string\")");
+    prim_hash_insert(st.intern("string-upcase"), "aot::lookup_prim(\"string-upcase\")");
+    prim_hash_insert(st.intern("string-downcase"), "aot::lookup_prim(\"string-downcase\")");
+    prim_hash_insert(st.intern("string-trim"), "aot::lookup_prim(\"string-trim\")");
+    prim_hash_insert(st.intern("string->number"), "aot::lookup_prim(\"string->number\")");
+    prim_hash_insert(st.intern("number->string"), "aot::lookup_prim(\"number->string\")");
 
     // Type predicates
-    prim_hash_insert(st.intern("string?"), "runtime::make_prim_unary(&runtime::rt_string_p)");
-    prim_hash_insert(st.intern("int?"), "runtime::make_prim_unary(&runtime::rt_int_p)");
-    prim_hash_insert(st.intern("symbol?"), "runtime::make_prim_unary(&runtime::rt_symbol_p)");
-    prim_hash_insert(st.intern("closure?"), "runtime::make_prim_unary(&runtime::rt_closure_p)");
-    prim_hash_insert(st.intern("continuation?"), "runtime::make_prim_unary(&runtime::rt_continuation_p)");
-    prim_hash_insert(st.intern("double?"), "runtime::make_prim_unary(&runtime::rt_double_p)");
-    prim_hash_insert(st.intern("list?"), "runtime::make_prim_unary(&runtime::rt_list_p)");
-    prim_hash_insert(st.intern("boolean?"), "runtime::make_prim_unary(&runtime::rt_boolean_p)");
-    prim_hash_insert(st.intern("number?"), "runtime::make_prim_unary(&runtime::rt_number_p)");
-    prim_hash_insert(st.intern("equal?"), "runtime::make_prim(&runtime::rt_equal_p)");
-    prim_hash_insert(st.intern("type-of"), "runtime::make_prim_unary(&runtime::rt_type_of)");
+    prim_hash_insert(st.intern("string?"), "aot::lookup_prim(\"string?\")");
+    prim_hash_insert(st.intern("int?"), "aot::lookup_prim(\"int?\")");
+    prim_hash_insert(st.intern("symbol?"), "aot::lookup_prim(\"symbol?\")");
+    prim_hash_insert(st.intern("closure?"), "aot::lookup_prim(\"closure?\")");
+    prim_hash_insert(st.intern("continuation?"), "aot::lookup_prim(\"continuation?\")");
+    prim_hash_insert(st.intern("double?"), "aot::lookup_prim(\"double?\")");
+    prim_hash_insert(st.intern("list?"), "aot::lookup_prim(\"list?\")");
+    prim_hash_insert(st.intern("boolean?"), "aot::lookup_prim(\"boolean?\")");
+    prim_hash_insert(st.intern("number?"), "aot::lookup_prim(\"number?\")");
+    prim_hash_insert(st.intern("equal?"), "aot::lookup_prim(\"equal?\")");
+    prim_hash_insert(st.intern("type-of"), "aot::lookup_prim(\"type-of\")");
 
     // File I/O
-    prim_hash_insert(st.intern("read-file"), "runtime::make_prim_unary(&runtime::rt_read_file)");
-    prim_hash_insert(st.intern("write-file"), "runtime::make_prim(&runtime::rt_write_file)");
-    prim_hash_insert(st.intern("file-exists?"), "runtime::make_prim_unary(&runtime::rt_file_exists)");
-    prim_hash_insert(st.intern("read-lines"), "runtime::make_prim_unary(&runtime::rt_read_lines)");
+    prim_hash_insert(st.intern("read-file"), "aot::lookup_prim(\"read-file\")");
+    prim_hash_insert(st.intern("write-file"), "aot::lookup_prim(\"write-file\")");
+    prim_hash_insert(st.intern("file-exists?"), "aot::lookup_prim(\"file-exists?\")");
+    prim_hash_insert(st.intern("read-lines"), "aot::lookup_prim(\"read-lines\")");
 
     // Misc
-    prim_hash_insert(st.intern("gensym"), "runtime::make_prim_unary(&runtime::rt_gensym)");
-    prim_hash_insert(st.intern("load"), "runtime::make_prim_unary(&runtime::rt_load)");
-    prim_hash_insert(st.intern("apply"), "runtime::make_prim(&runtime::rt_apply_prim)");
+    prim_hash_insert(st.intern("gensym"), "aot::lookup_prim(\"gensym\")");
+    prim_hash_insert(st.intern("load"), "aot::lookup_prim(\"load\")");
+    prim_hash_insert(st.intern("apply"), "aot::lookup_prim(\"apply\")");
 
     // Dict/collection ops
-    prim_hash_insert(st.intern("dict"), "runtime::make_prim_unary(&runtime::rt_hash_map_create)");
-    prim_hash_insert(st.intern("dict-set!"), "runtime::make_prim(&runtime::rt_hash_set)");
-    prim_hash_insert(st.intern("dict?"), "runtime::make_prim_unary(&runtime::rt_hash_map_p)");
-    prim_hash_insert(st.intern("ref"), "runtime::make_prim(&runtime::rt_hash_ref)");
-    prim_hash_insert(st.intern("keys"), "runtime::make_prim_unary(&runtime::rt_hash_keys)");
-    prim_hash_insert(st.intern("values"), "runtime::make_prim_unary(&runtime::rt_hash_values)");
-    prim_hash_insert(st.intern("has?"), "runtime::make_prim(&runtime::rt_hash_has)");
-    prim_hash_insert(st.intern("remove!"), "runtime::make_prim(&runtime::rt_hash_remove)");
-    prim_hash_insert(st.intern("push!"), "runtime::make_prim(&runtime::rt_hash_set)");
+    prim_hash_insert(st.intern("dict"), "aot::lookup_prim(\"dict\")");
+    prim_hash_insert(st.intern("dict-set!"), "aot::lookup_prim(\"dict-set!\")");
+    prim_hash_insert(st.intern("dict?"), "aot::lookup_prim(\"dict?\")");
+    prim_hash_insert(st.intern("ref"), "aot::lookup_prim(\"ref\")");
+    prim_hash_insert(st.intern("keys"), "aot::lookup_prim(\"keys\")");
+    prim_hash_insert(st.intern("values"), "aot::lookup_prim(\"values\")");
+    prim_hash_insert(st.intern("has?"), "aot::lookup_prim(\"has?\")");
+    prim_hash_insert(st.intern("remove!"), "aot::lookup_prim(\"remove!\")");
+    prim_hash_insert(st.intern("push!"), "aot::lookup_prim(\"push!\")");
 
     // Math
-    prim_hash_insert(st.intern("abs"), "runtime::make_prim_unary(&runtime::rt_abs)");
-    prim_hash_insert(st.intern("min"), "runtime::make_prim(&runtime::rt_min)");
-    prim_hash_insert(st.intern("max"), "runtime::make_prim(&runtime::rt_max)");
-    prim_hash_insert(st.intern("floor"), "runtime::make_prim_unary(&runtime::rt_floor)");
-    prim_hash_insert(st.intern("ceiling"), "runtime::make_prim_unary(&runtime::rt_ceiling)");
-    prim_hash_insert(st.intern("round"), "runtime::make_prim_unary(&runtime::rt_round)");
-    prim_hash_insert(st.intern("truncate"), "runtime::make_prim_unary(&runtime::rt_truncate)");
-    prim_hash_insert(st.intern("sqrt"), "runtime::make_prim_unary(&runtime::rt_sqrt)");
-    prim_hash_insert(st.intern("even?"), "runtime::make_prim_unary(&runtime::rt_even_p)");
-    prim_hash_insert(st.intern("odd?"), "runtime::make_prim_unary(&runtime::rt_odd_p)");
-    prim_hash_insert(st.intern("zero?"), "runtime::make_prim_unary(&runtime::rt_zero_p)");
-    prim_hash_insert(st.intern("positive?"), "runtime::make_prim_unary(&runtime::rt_positive_p)");
-    prim_hash_insert(st.intern("negative?"), "runtime::make_prim_unary(&runtime::rt_negative_p)");
-    prim_hash_insert(st.intern("gcd"), "runtime::make_prim(&runtime::rt_gcd)");
+    prim_hash_insert(st.intern("abs"), "aot::lookup_prim(\"abs\")");
+    prim_hash_insert(st.intern("min"), "aot::lookup_prim(\"min\")");
+    prim_hash_insert(st.intern("max"), "aot::lookup_prim(\"max\")");
+    prim_hash_insert(st.intern("floor"), "aot::lookup_prim(\"floor\")");
+    prim_hash_insert(st.intern("ceiling"), "aot::lookup_prim(\"ceiling\")");
+    prim_hash_insert(st.intern("round"), "aot::lookup_prim(\"round\")");
+    prim_hash_insert(st.intern("truncate"), "aot::lookup_prim(\"truncate\")");
+    prim_hash_insert(st.intern("sqrt"), "aot::lookup_prim(\"sqrt\")");
+    prim_hash_insert(st.intern("even?"), "aot::lookup_prim(\"even?\")");
+    prim_hash_insert(st.intern("odd?"), "aot::lookup_prim(\"odd?\")");
+    prim_hash_insert(st.intern("zero?"), "aot::lookup_prim(\"zero?\")");
+    prim_hash_insert(st.intern("positive?"), "aot::lookup_prim(\"positive?\")");
+    prim_hash_insert(st.intern("negative?"), "aot::lookup_prim(\"negative?\")");
+    prim_hash_insert(st.intern("gcd"), "aot::lookup_prim(\"gcd\")");
 
     // Bitwise
-    prim_hash_insert(st.intern("bitwise-and"), "runtime::make_prim(&runtime::rt_bitwise_and)");
-    prim_hash_insert(st.intern("bitwise-or"), "runtime::make_prim(&runtime::rt_bitwise_or)");
-    prim_hash_insert(st.intern("bitwise-xor"), "runtime::make_prim(&runtime::rt_bitwise_xor)");
-    prim_hash_insert(st.intern("bitwise-not"), "runtime::make_prim_unary(&runtime::rt_bitwise_not)");
-    prim_hash_insert(st.intern("lshift"), "runtime::make_prim(&runtime::rt_lshift)");
-    prim_hash_insert(st.intern("rshift"), "runtime::make_prim(&runtime::rt_rshift)");
+    prim_hash_insert(st.intern("bitwise-and"), "aot::lookup_prim(\"bitwise-and\")");
+    prim_hash_insert(st.intern("bitwise-or"), "aot::lookup_prim(\"bitwise-or\")");
+    prim_hash_insert(st.intern("bitwise-xor"), "aot::lookup_prim(\"bitwise-xor\")");
+    prim_hash_insert(st.intern("bitwise-not"), "aot::lookup_prim(\"bitwise-not\")");
+    prim_hash_insert(st.intern("lshift"), "aot::lookup_prim(\"lshift\")");
+    prim_hash_insert(st.intern("rshift"), "aot::lookup_prim(\"rshift\")");
 
     // Literals
-    prim_hash_insert(st.intern("true"), "runtime::make_true()");
-    prim_hash_insert(st.intern("false"), "runtime::make_nil()");
-    prim_hash_insert(st.intern("nil"), "runtime::make_nil()");
+    prim_hash_insert(st.intern("true"), "aot::make_true()");
+    prim_hash_insert(st.intern("false"), "aot::make_false()");
+    prim_hash_insert(st.intern("nil"), "aot::make_nil()");
 }
 
 // =============================================================================
@@ -273,6 +272,7 @@ fn void Compiler.free(Compiler* self) {
     self.lambda_defs.free();
     self.mutable_captures.free();
     self.declared_vars.free();
+    self.referenced_prims.free();
     for (usz i = 0; i < self.compiled_module_count; i++) {
         if (self.compiled_modules[i].exports != null) {
             mem::free(self.compiled_modules[i].exports);
@@ -285,11 +285,19 @@ fn void Compiler.free(Compiler* self) {
 }
 
 fn bool Compiler.is_declared(Compiler* self, SymbolId sym) {
-    foreach (s : self.declared_vars) {
-        if ((uint)s == (uint)sym) return true;
+    foreach (v : self.declared_vars) {
+        if (v == sym) return true;
     }
     return false;
 }
+
+fn bool Compiler.is_global(Compiler* self, SymbolId sym) {
+    foreach (g : self.defined_globals) {
+        if (g == sym) return true;
+    }
+    return false;
+}
+
 
 fn void Compiler.mark_declared(Compiler* self, SymbolId sym) {
     if (!self.is_declared(sym)) {
@@ -428,6 +436,26 @@ fn void Compiler.emit_symbol_name(Compiler* self, SymbolId sym) {
 
 fn char[] Compiler.get_output(Compiler* self) {
     return self.output.str_view();
+}
+
+/**
+ * D2: Emit the global variable name for a cached primitive.
+ * Uses _prim_ prefix followed by the sanitized symbol name.
+ */
+fn void Compiler.emit_prim_global_name(Compiler* self, SymbolId sym) {
+    self.emit("_prim_");
+    self.emit_symbol_name(sym);
+}
+
+/**
+ * D2: Record a primitive as referenced (for global caching).
+ * Only adds if not already present.
+ */
+fn void Compiler.record_prim_ref(Compiler* self, SymbolId sym) {
+    foreach (s : self.referenced_prims) {
+        if ((uint)s == (uint)sym) return;
+    }
+    self.referenced_prims.push(sym);
 }
 
 // =============================================================================
@@ -601,8 +629,26 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
         case E_PERFORM:
             self.find_free_vars(expr.perform.arg, bound_vars, free_vars, enclosing_scope);
 
-        case E_RESOLVE:
+        case E_RESOLVE: {
             self.find_free_vars(expr.resolve.value, bound_vars, free_vars, enclosing_scope);
+            bool k_bound = false;
+            foreach (b : *bound_vars) {
+                if ((uint)b == (uint)self.interp.sym__k) { k_bound = true; break; }
+            }
+            if (!k_bound && enclosing_scope != null) {
+                foreach (e : *enclosing_scope) {
+                    if ((uint)e == (uint)self.interp.sym__k) {
+                        bool already_free = false;
+                        foreach (f : *free_vars) {
+                            if ((uint)f == (uint)self.interp.sym__k) { already_free = true; break; }
+                        }
+                        if (!already_free) free_vars.push(self.interp.sym__k);
+                        break;
+                    }
+                }
+            }
+            break;
+        }
 
         case E_HANDLE:
             self.find_free_vars(expr.handle.body, bound_vars, free_vars, enclosing_scope);
@@ -1518,8 +1564,24 @@ fn char[] Compiler.compile_program(Compiler* self, char[] source) {
     char[] full = full_buf[:total];
 
     // Parse the program
-    List{Expr*} exprs = parse_program(full, self.interp);
+    Lexer lex;
+    lex.init(full);
+    Parser p;
+    p.init(&lex, self.interp);
+
+    List{Expr*} exprs;
+    while (!lex.at_end() && !p.has_error) {
+        Expr* e = p.parse_expr();
+        if (e != null) {
+            exprs.push(e);
+        }
+    }
     defer exprs.free();
+
+    if (p.has_error) {
+        io::printfn("Syntax Error at line %d, column %d: %s", (int)p.error_line, (int)p.error_col, (ZString)&p.error_msg[0]);
+        return "";
+    }
 
     // First pass: collect all top-level defines (including inside module bodies)
     foreach (expr : exprs) {
@@ -1540,28 +1602,50 @@ fn char[] Compiler.compile_program(Compiler* self, char[] source) {
         self.prescan_mutable_captures(expr);
     }
 
-    // Emit prelude
-    self.emit_prelude();
-
     // Second pass: scan all lambdas to generate definitions
     foreach (expr : exprs) {
         self.scan_lambdas(expr);
     }
 
-    // Emit lambda struct and function definitions
+    // D2: Two-pass compilation — compile all code into a temp buffer first
+    // so we discover all referenced prims before emitting global declarations.
+    DString code_buf;
+    code_buf.init(mem, 8192);
+    DString orig_output = self.output;
+    self.output = code_buf;
+
+    // Emit lambda struct and function definitions (compiles lambda bodies → discovers prims)
     self.emit_lambda_definitions();
 
-    // Emit global variable declarations for defined globals
-    self.emit_global_declarations();
+    // Mark where lambda defs end and main() begins
+    usz lambda_defs_end = self.output.str_view().len;
 
-    // Emit main function
-    self.emit_main_start();
+    // Emit main function body
+    self.emit("fn int main() {\n");
+    self.indent++;
+    self.emit_line("aot::aot_init();");
+    self.emit_newline();
+
+    // Initialize all global variables to nil
+    if (self.defined_globals.len() > 0) {
+        self.emit_line("// Initialize global variables to nil");
+        foreach (name : self.defined_globals) {
+            self.emit_indent();
+            self.emit_symbol_name(name);
+            self.emit(" = aot::make_nil();\n");
+        }
+        self.emit_newline();
+    }
+
+    // Mark position for prim init insertion
+    usz prim_init_pos = self.output.str_view().len;
+
+    self.emit_newline();
 
     // Clear declared vars for main scope
     self.declared_vars.free();
 
     // Compile each top-level expression
-    // Find the last non-define expression index for print_last mode
     isz last_non_define = -1;
     if (self.print_last) {
         for (usz i = 0; i < exprs.len(); i++) {
@@ -1571,18 +1655,32 @@ fn char[] Compiler.compile_program(Compiler* self, char[] source) {
         }
     }
 
+    bool print_all_active = false;
     for (usz i = 0; i < exprs.len(); i++) {
-        bool should_print = (self.print_all && exprs[i].tag != E_DEFINE)
+        if (exprs[i].tag == E_DEFINE) {
+            char[] dname = self.interp.symbols.get_name(exprs[i].define.name);
+            if (self.str_eq(dname, "__e2e_start__")) {
+                print_all_active = true;
+                usz init_r = self.compile_to_temp(exprs[i].define.value);
+                self.emit_indent();
+                self.emit_symbol_name(exprs[i].define.name);
+                self.emit(" = ");
+                self.emit_temp_ref(init_r);
+                self.emit(";\n");
+                continue;
+            }
+        }
+
+        bool should_print = (self.print_all && print_all_active)
             || (self.print_last && (isz)i == last_non_define);
+
         if (should_print) {
-            // Compile to temp, then print the result
             usz r = self.compile_to_temp(exprs[i]);
             self.emit_indent();
-            self.emit("runtime::rt_print_value(");
+            self.emit("aot::print_value(");
             self.emit_temp_ref(r);
-            self.emit("); io::printn(\"\");\n");
+            self.emit(");\n");
         } else if (exprs[i].tag == E_DEFINE) {
-            // Define: compile init to temp, assign to global
             usz init_r = self.compile_to_temp(exprs[i].define.value);
             self.emit_indent();
             self.emit_symbol_name(exprs[i].define.name);
@@ -1590,12 +1688,45 @@ fn char[] Compiler.compile_program(Compiler* self, char[] source) {
             self.emit_temp_ref(init_r);
             self.emit(";\n");
         } else {
-            // Other statements: compile to temp (discards result)
             self.compile_to_temp(exprs[i]);
         }
     }
 
     self.emit_main_end();
+
+    // Swap back to original output — now we know all referenced prims
+    code_buf = self.output;
+    self.output = orig_output;
+
+    // Assemble final output: prelude + globals + compiled code (with prim init inserted)
+    self.emit_prelude();
+    self.emit_global_declarations();
+
+    char[] code_str = code_buf.str_view();
+
+    if (self.referenced_prims.len() > 0 && prim_init_pos <= code_str.len) {
+        // Emit code before prim init point
+        self.emit(code_str[:prim_init_pos]);
+        // Emit prim init code
+        self.emit("    // Initialize cached primitives\n");
+        foreach (sym : self.referenced_prims) {
+            self.emit("    ");
+            self.emit_prim_global_name(sym);
+            self.emit(" = ");
+            char[] init_code = prim_hash_lookup(sym);
+            self.emit(init_code);
+            self.emit(";\n");
+        }
+        self.emit("\n");
+        // Emit rest of code after init point
+        if (prim_init_pos < code_str.len) {
+            self.emit(code_str[prim_init_pos..]);
+        }
+    } else {
+        self.emit(code_str);
+    }
+
+    code_buf.free();
 
     return self.get_output();
 }
@@ -1938,11 +2069,12 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
 // =============================================================================
 
 fn void Compiler.emit_prelude(Compiler* self) {
-    self.emit("// Generated by Pika Lisp Compiler\n");
+    self.emit("// Generated by Omni Lisp Compiler\n");
     self.emit("// Do not edit manually\n\n");
     self.emit("import std::io;\n");
     self.emit("import main;\n");
-    self.emit("import lisp::runtime;\n\n");
+    self.emit("import lisp;\n");
+    self.emit("import lisp::aot;\n\n");
 }
 
 fn void Compiler.emit_lambda_definitions(Compiler* self) {
@@ -1953,11 +2085,8 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
             self.emit_usz(def.id);
             self.emit(" {\n");
 
-            // Add home_region for region tracking
-            self.emit("    main::RegionHandle home_region;\n");
-
             for (usz i = 0; i < def.capture_count; i++) {
-                self.emit("    runtime::Value captured_");
+                self.emit("    lisp::Value* captured_");
                 self.emit_symbol_name(def.captures[i]);
                 self.emit(";\n");
             }
@@ -1971,16 +2100,16 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
         // Check if this is a zero-arg lambda (sentinel param)
         bool is_zero_arg = (uint)def.param == 0xFFFFFFFF;
 
-        self.emit("fn runtime::Value invoke_lambda_");
+        self.emit("fn lisp::Value* invoke_lambda_");
         self.emit_usz(def.id);
 
         if (def.has_rest || (def.param_count > 1)) {
             // Variadic or multi-param lambda: receives all args as a cons list
-            self.emit("(void* _self, runtime::Value _arg_list) {\n");
+            self.emit("(void* _self, lisp::Value* _arg_list) {\n");
         } else if (is_zero_arg) {
-            self.emit("(void* _self, runtime::Value _unused) {\n");
+            self.emit("(void* _self, lisp::Value* _unused) {\n");
         } else {
-            self.emit("(void* _self, runtime::Value ");
+            self.emit("(void* _self, lisp::Value* ");
             self.emit_symbol_name(def.param);
             self.emit(") {\n");
         }
@@ -1993,21 +2122,21 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
         if (def.has_rest || (def.param_count > 1 && !def.has_rest)) {
             // Variadic or multi-param: unpack params from arg list
             self.emit_indent();
-            self.emit("runtime::Value _curr = _arg_list;\n");
+            self.emit("lisp::Value* _curr = _arg_list;\n");
             for (usz pi = 0; pi < def.param_count; pi++) {
                 self.mark_declared(def.params[pi]);
                 self.emit_indent();
-                self.emit("runtime::Value ");
+                self.emit("lisp::Value* ");
                 self.emit_symbol_name(def.params[pi]);
-                self.emit(" = runtime::rt_car1(_curr);\n");
+                self.emit(" = aot::car(_curr);\n");
                 self.emit_indent();
-                self.emit("_curr = runtime::rt_cdr1(_curr);\n");
+                self.emit("_curr = aot::cdr(_curr);\n");
             }
             if (def.has_rest) {
                 // Rest param gets remaining list
                 self.mark_declared(def.rest_param);
                 self.emit_indent();
-                self.emit("runtime::Value ");
+                self.emit("lisp::Value* ");
                 self.emit_symbol_name(def.rest_param);
                 self.emit(" = _curr;\n");
             }
@@ -2018,11 +2147,7 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
             }
         }
 
-        // If this lambda creates closures, push a frame region
-        if (def.creates_closure) {
-            self.emit_indent();
-            self.emit("main::RegionHandle _frame = runtime::rt_push_frame();\n");
-        }
+        // Frame region push removed: scope-region handles memory management
 
         // Extract captures if any
         if (def.capture_count > 0) {
@@ -2036,7 +2161,7 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
             for (usz i = 0; i < def.capture_count; i++) {
                 self.mark_declared(def.captures[i]);
                 self.emit_indent();
-                self.emit("runtime::Value ");
+                self.emit("lisp::Value* ");
                 self.emit_symbol_name(def.captures[i]);
                 self.emit(" = self.captured_");
                 self.emit_symbol_name(def.captures[i]);
@@ -2049,10 +2174,7 @@ fn void Compiler.emit_lambda_definitions(Compiler* self) {
             self.emit_lambda_return_with_frame(def.body, def.creates_closure);
         } else {
             usz body_r = self.compile_to_temp_tail(def.body);
-            if (def.creates_closure) {
-                self.emit_indent();
-                self.emit("runtime::rt_pop_frame(_frame);\n");
-            }
+            // Frame region pop removed: scope-region handles memory management
             self.emit_indent();
             self.emit("return ");
             self.emit_temp_ref(body_r);
@@ -2101,17 +2223,17 @@ fn void Compiler.emit_lambda_return(Compiler* self, Expr* expr) {
     }
 
     if (found_def != null && found_def.capture_count > 0) {
-        // Allocate closure struct in current region
+        // Allocate closure struct on heap
         self.emit_indent();
         self.emit("Lambda_");
         self.emit_usz(lambda_id);
-        self.emit(" _closure_data;\n");
+        self.emit("* _closure_data = (Lambda_");
+        self.emit_usz(lambda_id);
+        self.emit("*)mem::malloc(Lambda_");
+        self.emit_usz(lambda_id);
+        self.emit(".sizeof);\n");
 
-        // Set home region
-        self.emit_indent();
-        self.emit("_closure_data.home_region = runtime::rt_current_region();\n");
-
-        // Set captured values with write barriers
+        // Set captured values
         for (usz i = 0; i < found_def.capture_count; i++) {
             self.emit_indent();
             self.emit("_closure_data.captured_");
@@ -2119,30 +2241,18 @@ fn void Compiler.emit_lambda_return(Compiler* self, Expr* expr) {
             self.emit(" = ");
             self.emit_symbol_name(found_def.captures[i]);
             self.emit(";\n");
-
-            // Emit write barrier for captured value
-            self.emit_indent();
-            self.emit("runtime::rt_capture_value(_closure_data.home_region, ");
-            self.emit_symbol_name(found_def.captures[i]);
-            self.emit(");\n");
         }
 
-        // Allocate in region
         self.emit_indent();
-        self.emit("main::ObjectHandle _closure_handle = main::allocate_in(runtime::rt_current_region(), Lambda_");
-        self.emit_usz(lambda_id);
-        self.emit(", _closure_data);\n");
-
-        self.emit_indent();
-        self.emit("return runtime::");
+        self.emit("return aot::");
         self.emit_make_closure_call(lambda_id);
-        self.emit("(main::dereference(_closure_handle), &invoke_lambda_");
+        self.emit("((void*)_closure_data, &invoke_lambda_");
         self.emit_usz(lambda_id);
         self.emit(");\n");
     } else {
         // Simple closure without captures
         self.emit_indent();
-        self.emit("return runtime::");
+        self.emit("return aot::");
         self.emit_make_closure_call(lambda_id);
         self.emit("(null, &invoke_lambda_");
         self.emit_usz(lambda_id);
@@ -2164,17 +2274,17 @@ fn void Compiler.emit_lambda_return_with_frame(Compiler* self, Expr* expr, bool 
     }
 
     if (found_def != null && found_def.capture_count > 0) {
-        // Allocate closure struct in current region
+        // Allocate closure struct on heap
         self.emit_indent();
         self.emit("Lambda_");
         self.emit_usz(lambda_id);
-        self.emit(" _closure_data;\n");
+        self.emit("* _closure_data = (Lambda_");
+        self.emit_usz(lambda_id);
+        self.emit("*)mem::malloc(Lambda_");
+        self.emit_usz(lambda_id);
+        self.emit(".sizeof);\n");
 
-        // Set home region
-        self.emit_indent();
-        self.emit("_closure_data.home_region = runtime::rt_current_region();\n");
-
-        // Set captured values with write barriers
+        // Set captured values
         for (usz i = 0; i < found_def.capture_count; i++) {
             self.emit_indent();
             self.emit("_closure_data.captured_");
@@ -2182,50 +2292,31 @@ fn void Compiler.emit_lambda_return_with_frame(Compiler* self, Expr* expr, bool 
             self.emit(" = ");
             self.emit_symbol_name(found_def.captures[i]);
             self.emit(";\n");
-
-            // Emit write barrier for captured value
-            self.emit_indent();
-            self.emit("runtime::rt_capture_value(_closure_data.home_region, ");
-            self.emit_symbol_name(found_def.captures[i]);
-            self.emit(");\n");
         }
-
-        // Allocate in region
-        self.emit_indent();
-        self.emit("main::ObjectHandle _closure_handle = main::allocate_in(runtime::rt_current_region(), Lambda_");
-        self.emit_usz(lambda_id);
-        self.emit(", _closure_data);\n");
 
         // Make closure value
         self.emit_indent();
-        self.emit("runtime::Value _result = runtime::");
+        self.emit("lisp::Value* _result = aot::");
         self.emit_make_closure_call(lambda_id);
-        self.emit("(main::dereference(_closure_handle), &invoke_lambda_");
+        self.emit("((void*)_closure_data, &invoke_lambda_");
         self.emit_usz(lambda_id);
         self.emit(");\n");
 
-        // Pop frame if we have one
-        if (has_frame) {
-            self.emit_indent();
-            self.emit("runtime::rt_pop_frame(_frame);\n");
-        }
+        // Frame pop removed: scope-region handles memory management
+        // (has_frame parameter retained for API compatibility but unused)
 
         self.emit_indent();
         self.emit("return _result;\n");
     } else {
         // Simple closure without captures
         self.emit_indent();
-        self.emit("runtime::Value _result = runtime::");
+        self.emit("lisp::Value* _result = aot::");
         self.emit_make_closure_call(lambda_id);
         self.emit("(null, &invoke_lambda_");
         self.emit_usz(lambda_id);
         self.emit(");\n");
 
-        // Pop frame if we have one
-        if (has_frame) {
-            self.emit_indent();
-            self.emit("runtime::rt_pop_frame(_frame);\n");
-        }
+        // Frame pop removed: scope-region handles memory management
 
         self.emit_indent();
         self.emit("return _result;\n");
@@ -2233,24 +2324,48 @@ fn void Compiler.emit_lambda_return_with_frame(Compiler* self, Expr* expr, bool 
 }
 
 fn void Compiler.emit_global_declarations(Compiler* self) {
-    if (self.defined_globals.len() == 0) return;
+    if (self.defined_globals.len() == 0 && self.referenced_prims.len() == 0) return;
 
-    self.emit("// Global variables\n");
-    foreach (name : self.defined_globals) {
-        self.emit("runtime::Value ");
-        self.emit_symbol_name(name);
-        self.emit(";\n");
+    if (self.defined_globals.len() > 0) {
+        self.emit("// Global variables\n");
+        foreach (name : self.defined_globals) {
+            self.emit("lisp::Value* ");
+            self.emit_symbol_name(name);
+            self.emit(";\n");
+        }
+        self.emit_newline();
     }
-    self.emit_newline();
+
+    // D2: Cached primitive globals (initialized once in main after aot_init)
+    if (self.referenced_prims.len() > 0) {
+        self.emit("// Cached primitives\n");
+        foreach (sym : self.referenced_prims) {
+            self.emit("lisp::Value* ");
+            self.emit_prim_global_name(sym);
+            self.emit(";\n");
+        }
+        self.emit_newline();
+    }
 }
 
 fn void Compiler.emit_main_start(Compiler* self) {
     self.emit("fn int main() {\n");
     self.indent++;
 
-    // Initialize runtime
-    self.emit_line("runtime::rt_init();");
+    // Initialize AOT interpreter
+    self.emit_line("aot::aot_init();");
     self.emit_newline();
+
+    // Initialize all global variables to nil
+    if (self.defined_globals.len() > 0) {
+        self.emit_line("// Initialize global variables to nil");
+        foreach (name : self.defined_globals) {
+            self.emit_indent();
+            self.emit_symbol_name(name);
+            self.emit(" = aot::make_nil();\n");
+        }
+        self.emit_newline();
+    }
 
     // Macros (when, unless, cond) are expanded at compile time — no runtime registration needed
     self.emit_newline();
@@ -2258,8 +2373,8 @@ fn void Compiler.emit_main_start(Compiler* self) {
 
 fn void Compiler.emit_main_end(Compiler* self) {
     self.emit_newline();
-    // Shutdown runtime to clean up regions
-    self.emit_line("runtime::rt_shutdown();");
+    // Shutdown AOT interpreter
+    self.emit_line("aot::aot_shutdown();");
     self.emit_line("return 0;");
     self.indent--;
     self.emit("}\n");
@@ -2294,7 +2409,7 @@ fn void Compiler.compile_statement(Compiler* self, Expr* expr) {
 
 fn void Compiler.compile_expr(Compiler* self, Expr* expr) {
     if (expr == null) {
-        self.emit("runtime::make_nil()");
+        self.emit("aot::make_nil()");
         return;
     }
 
@@ -2321,7 +2436,7 @@ fn void Compiler.compile_expr(Compiler* self, Expr* expr) {
 
         default:
             io::printfn("WARNING: compiler: unsupported expr tag %d", expr.tag.ordinal);
-            self.emit("runtime::make_nil() /* WARNING: unsupported expr type */");
+            self.emit("aot::make_nil() /* WARNING: unsupported expr type */");
     }
 }
 
@@ -2341,7 +2456,7 @@ fn usz Compiler.next_result(Compiler* self) {
 
 fn void Compiler.emit_temp_decl(Compiler* self, usz id) {
     self.emit_indent();
-    self.emit("runtime::Value _r");
+    self.emit("lisp::Value* _r");
     self.emit_usz(id);
 }
 
@@ -2358,7 +2473,7 @@ fn usz Compiler.compile_to_temp(Compiler* self, Expr* expr) {
     if (expr == null) {
         usz id = self.next_result();
         self.emit_temp_decl(id);
-        self.emit(" = runtime::make_nil();\n");
+        self.emit(" = aot::make_nil();\n");
         return id;
     }
 
@@ -2391,11 +2506,23 @@ fn usz Compiler.compile_to_temp(Compiler* self, Expr* expr) {
             return self.compile_perform_flat(expr);
 
         case E_RESOLVE: {
-            // Compile value, then call rt_compiled_resolve
+            // Compile value, then call aot::compiled_resolve(__k, val)
             usz val_r = self.compile_to_temp(expr.resolve.value);
+            // Emit __k resolution (since it is a free var, we can emit a var read)
+            // Wait! The symbol is literally __k.
+            // I'll emit it as a C3 identifier `__k` or as captured.
+            // But how do I emit a variable read without an AST node?
+            // Actually, I can just create a dummy E_VAR node!
+            Expr dummy_k;
+            dummy_k.tag = E_VAR;
+            dummy_k.var_expr.name = self.interp.sym__k;
+            usz k_r = self.compile_to_temp(&dummy_k);
+
             usz id = self.next_result();
             self.emit_temp_decl(id);
-            self.emit(" = runtime::rt_compiled_resolve(");
+            self.emit(" = aot::compiled_resolve(");
+            self.emit_temp_ref(k_r);
+            self.emit(", ");
             self.emit_temp_ref(val_r);
             self.emit(");\n");
             return id;
@@ -2411,7 +2538,7 @@ fn usz Compiler.compile_to_temp(Compiler* self, Expr* expr) {
             // Macros expanded at compile time — no-op at runtime
             usz defmacro_id = self.next_result();
             self.emit_temp_decl(defmacro_id);
-            self.emit(" = runtime::make_nil(); // macro: expanded at compile time\n");
+            self.emit(" = aot::make_nil(); // macro: expanded at compile time\n");
             return defmacro_id;
 
         case E_MODULE:
@@ -2440,7 +2567,7 @@ fn usz Compiler.compile_to_temp(Compiler* self, Expr* expr) {
             usz idx_idx_r = self.compile_to_temp(expr.index.index);
             usz idx_id = self.next_result();
             self.emit_temp_decl(idx_id);
-            self.emit(" = runtime::rt_index(");
+            self.emit(" = aot::index(");
             self.emit_temp_ref(idx_coll_r);
             self.emit(", ");
             self.emit_temp_ref(idx_idx_r);
@@ -2475,7 +2602,7 @@ fn usz Compiler.compile_to_temp_tail(Compiler* self, Expr* expr) {
     if (expr == null) {
         usz id = self.next_result();
         self.emit_temp_decl(id);
-        self.emit(" = runtime::make_nil();\n");
+        self.emit(" = aot::make_nil();\n");
         return id;
     }
 
@@ -2493,7 +2620,7 @@ fn usz Compiler.compile_to_temp_tail(Compiler* self, Expr* expr) {
             self.emit_temp_decl(id);
             self.emit(";\n");
             self.emit_indent();
-            self.emit("if (runtime::rt_is_truthy(");
+            self.emit("if (aot::is_truthy(");
             self.emit_temp_ref(cond);
             self.emit(")) {\n");
             self.indent++;
@@ -2523,7 +2650,7 @@ fn usz Compiler.compile_to_temp_tail(Compiler* self, Expr* expr) {
             if (bcount == 0) {
                 usz bid = self.next_result();
                 self.emit_temp_decl(bid);
-                self.emit(" = runtime::make_nil();\n");
+                self.emit(" = aot::make_nil();\n");
                 return bid;
             }
             for (usz i = 0; i < bcount - 1; i++) {
@@ -2540,7 +2667,7 @@ fn usz Compiler.compile_to_temp_tail(Compiler* self, Expr* expr) {
             self.emit_temp_decl(and_id);
             self.emit(";\n");
             self.emit_indent();
-            self.emit("if (runtime::rt_is_truthy(");
+            self.emit("if (aot::is_truthy(");
             self.emit_temp_ref(and_left);
             self.emit(")) {\n");
             self.indent++;
@@ -2570,7 +2697,7 @@ fn usz Compiler.compile_to_temp_tail(Compiler* self, Expr* expr) {
             self.emit_temp_decl(or_id);
             self.emit(";\n");
             self.emit_indent();
-            self.emit("if (runtime::rt_is_truthy(");
+            self.emit("if (aot::is_truthy(");
             self.emit_temp_ref(or_left);
             self.emit(")) {\n");
             self.indent++;
@@ -2605,29 +2732,26 @@ fn usz Compiler.compile_to_temp_tail(Compiler* self, Expr* expr) {
 fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
     usz arg_count = expr.call.arg_count;
 
-    // Special case: (dict ...) is variadic — use rt_dict_from_args directly
-    // Special case: (list ...) is variadic — build cons chain directly
     if (expr.call.func.tag == E_VAR) {
         char[] fname = self.interp.symbols.get_name(expr.call.func.var_expr.name);
         if (self.str_eq(fname, "dict")) {
             if (arg_count == 0) {
                 usz id = self.next_result();
                 self.emit_temp_decl(id);
-                self.emit(" = runtime::rt_dict_from_args(runtime::make_nil());\n");
+                self.emit(" = aot::dict_from_args(aot::make_nil());\n");
                 return id;
             }
-            // Compile args and build cons list
             usz[32] arg_temps;
             for (usz i = 0; i < arg_count && i < 32; i++) {
                 arg_temps[i] = self.compile_to_temp(expr.call.args[i]);
             }
             usz args_list = self.next_result();
             self.emit_temp_decl(args_list);
-            self.emit(" = runtime::make_nil();\n");
+            self.emit(" = aot::make_nil();\n");
             for (isz i = (isz)arg_count - 1; i >= 0; i--) {
                 self.emit_indent();
                 self.emit_temp_ref(args_list);
-                self.emit(" = runtime::rt_cons(");
+                self.emit(" = aot::cons(");
                 self.emit_temp_ref(arg_temps[(usz)i]);
                 self.emit(", ");
                 self.emit_temp_ref(args_list);
@@ -2635,17 +2759,16 @@ fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
             }
             usz id = self.next_result();
             self.emit_temp_decl(id);
-            self.emit(" = runtime::rt_dict_from_args(");
+            self.emit(" = aot::dict_from_args(");
             self.emit_temp_ref(args_list);
             self.emit(");\n");
             return id;
         }
         if (self.str_eq(fname, "list")) {
-            // list is variadic: (list a b c) → cons chain (a b c)
             if (arg_count == 0) {
                 usz id = self.next_result();
                 self.emit_temp_decl(id);
-                self.emit(" = runtime::make_nil();\n");
+                self.emit(" = aot::make_nil();\n");
                 return id;
             }
             usz[32] arg_temps;
@@ -2654,11 +2777,11 @@ fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
             }
             usz result_r = self.next_result();
             self.emit_temp_decl(result_r);
-            self.emit(" = runtime::make_nil();\n");
+            self.emit(" = aot::make_nil();\n");
             for (isz i = (isz)arg_count - 1; i >= 0; i--) {
                 self.emit_indent();
                 self.emit_temp_ref(result_r);
-                self.emit(" = runtime::rt_cons(");
+                self.emit(" = aot::cons(");
                 self.emit_temp_ref(arg_temps[(usz)i]);
                 self.emit(", ");
                 self.emit_temp_ref(result_r);
@@ -2672,29 +2795,26 @@ fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
         usz func_r = self.compile_to_temp(expr.call.func);
         usz id = self.next_result();
         self.emit_temp_decl(id);
-        self.emit(" = runtime::rt_invoke(");
+        self.emit(" = aot::invoke(");
         self.emit_temp_ref(func_r);
-        self.emit(", runtime::make_nil());\n");
+        self.emit(", aot::make_nil());\n");
         return id;
     }
 
-    // Compile each arg to a temp
     usz[32] arg_temps;
     for (usz i = 0; i < arg_count && i < 32; i++) {
         arg_temps[i] = self.compile_to_temp(expr.call.args[i]);
     }
 
-    // Compile func to temp
     usz func_r = self.compile_to_temp(expr.call.func);
 
-    // Build cons list of args for rt_apply_multi (handles variadic + non-variadic)
     usz args_list = self.next_result();
     self.emit_temp_decl(args_list);
-    self.emit(" = runtime::make_nil();\n");
+    self.emit(" = aot::make_nil();\n");
     for (isz i = (isz)arg_count - 1; i >= 0; i--) {
         self.emit_indent();
         self.emit_temp_ref(args_list);
-        self.emit(" = runtime::rt_cons(");
+        self.emit(" = aot::cons(");
         self.emit_temp_ref(arg_temps[(usz)i]);
         self.emit(", ");
         self.emit_temp_ref(args_list);
@@ -2703,7 +2823,7 @@ fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
 
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = runtime::rt_apply_multi(");
+    self.emit(" = aot::apply_multi(");
     self.emit_temp_ref(func_r);
     self.emit(", ");
     self.emit_temp_ref(args_list);
@@ -2728,31 +2848,9 @@ fn usz Compiler.compile_call_tail_flat(Compiler* self, Expr* expr) {
         usz func_r = self.compile_to_temp(expr.call.func);
         usz id = self.next_result();
         self.emit_temp_decl(id);
-        self.emit(";\n");
-        self.emit_indent();
-        self.emit("if (");
+        self.emit(" = aot::invoke_tail(");
         self.emit_temp_ref(func_r);
-        self.emit(".tag == runtime::ValueTag.V_CLOSURE) {\n");
-        self.indent++;
-        self.emit_indent();
-        self.emit_temp_ref(id);
-        self.emit(" = runtime::make_thunk(");
-        self.emit_temp_ref(func_r);
-        self.emit(".closure_val.invoke, ");
-        self.emit_temp_ref(func_r);
-        self.emit(".closure_val.data, runtime::make_nil());\n");
-        self.indent--;
-        self.emit_indent();
-        self.emit("} else {\n");
-        self.indent++;
-        self.emit_indent();
-        self.emit_temp_ref(id);
-        self.emit(" = runtime::rt_invoke_once(");
-        self.emit_temp_ref(func_r);
-        self.emit(", runtime::make_nil());\n");
-        self.indent--;
-        self.emit_indent();
-        self.emit("}\n");
+        self.emit(", aot::make_nil());\n");
         return id;
     }
 
@@ -2765,14 +2863,14 @@ fn usz Compiler.compile_call_tail_flat(Compiler* self, Expr* expr) {
     // Compile func
     usz func_r = self.compile_to_temp(expr.call.func);
 
-    // Build cons list of args (needed for variadic path)
+    // Build cons list of args
     usz args_list = self.next_result();
     self.emit_temp_decl(args_list);
-    self.emit(" = runtime::make_nil();\n");
+    self.emit(" = aot::make_nil();\n");
     for (isz i = (isz)arg_count - 1; i >= 0; i--) {
         self.emit_indent();
         self.emit_temp_ref(args_list);
-        self.emit(" = runtime::rt_cons(");
+        self.emit(" = aot::cons(");
         self.emit_temp_ref(arg_temps[(usz)i]);
         self.emit(", ");
         self.emit_temp_ref(args_list);
@@ -2781,77 +2879,13 @@ fn usz Compiler.compile_call_tail_flat(Compiler* self, Expr* expr) {
 
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(";\n");
-
-    // Variadic closure: make_thunk with full arg list (preserves TCO)
-    self.emit_indent();
-    self.emit("if (");
+    self.emit(" = aot::apply_multi_tail(");
     self.emit_temp_ref(func_r);
-    self.emit(".tag == runtime::ValueTag.V_CLOSURE && ");
-    self.emit_temp_ref(func_r);
-    self.emit(".closure_val.is_variadic) {\n");
-    self.indent++;
-    self.emit_indent();
-    self.emit_temp_ref(id);
-    self.emit(" = runtime::make_thunk(");
-    self.emit_temp_ref(func_r);
-    self.emit(".closure_val.invoke, ");
-    self.emit_temp_ref(func_r);
-    self.emit(".closure_val.data, ");
+    self.emit(", ");
     self.emit_temp_ref(args_list);
+    self.emit(", ");
+    self.emit_usz(arg_count);
     self.emit(");\n");
-    self.indent--;
-    self.emit_indent();
-    self.emit("} else {\n");
-    self.indent++;
-
-    // Non-variadic: curry one at a time; last arg is tail position (thunk)
-    usz tf = func_r;
-    for (usz i = 0; i < arg_count; i++) {
-        if (i == arg_count - 1) {
-            self.emit_indent();
-            self.emit("if (");
-            self.emit_temp_ref(tf);
-            self.emit(".tag == runtime::ValueTag.V_CLOSURE) {\n");
-            self.indent++;
-            self.emit_indent();
-            self.emit_temp_ref(id);
-            self.emit(" = runtime::make_thunk(");
-            self.emit_temp_ref(tf);
-            self.emit(".closure_val.invoke, ");
-            self.emit_temp_ref(tf);
-            self.emit(".closure_val.data, ");
-            self.emit_temp_ref(arg_temps[i]);
-            self.emit(");\n");
-            self.indent--;
-            self.emit_indent();
-            self.emit("} else {\n");
-            self.indent++;
-            self.emit_indent();
-            self.emit_temp_ref(id);
-            self.emit(" = runtime::rt_invoke_once(");
-            self.emit_temp_ref(tf);
-            self.emit(", ");
-            self.emit_temp_ref(arg_temps[i]);
-            self.emit(");\n");
-            self.indent--;
-            self.emit_indent();
-            self.emit("}\n");
-        } else {
-            usz next_tf = self.next_result();
-            self.emit_temp_decl(next_tf);
-            self.emit(" = runtime::rt_invoke_once(");
-            self.emit_temp_ref(tf);
-            self.emit(", ");
-            self.emit_temp_ref(arg_temps[i]);
-            self.emit(");\n");
-            tf = next_tf;
-        }
-    }
-
-    self.indent--;
-    self.emit_indent();
-    self.emit("}\n");
     return id;
 }
 
@@ -2860,7 +2894,7 @@ fn usz Compiler.compile_app_flat(Compiler* self, Expr* expr) {
     usz arg_r = self.compile_to_temp(expr.app.arg);
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = runtime::rt_invoke(");
+    self.emit(" = aot::invoke(");
     self.emit_temp_ref(func_r);
     self.emit(", ");
     self.emit_temp_ref(arg_r);
@@ -2873,35 +2907,11 @@ fn usz Compiler.compile_app_tail_flat(Compiler* self, Expr* expr) {
     usz arg_r = self.compile_to_temp(expr.app.arg);
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(";\n");
-    self.emit_indent();
-    self.emit("if (");
-    self.emit_temp_ref(func_r);
-    self.emit(".tag == runtime::ValueTag.V_CLOSURE) {\n");
-    self.indent++;
-    self.emit_indent();
-    self.emit_temp_ref(id);
-    self.emit(" = runtime::make_thunk(");
-    self.emit_temp_ref(func_r);
-    self.emit(".closure_val.invoke, ");
-    self.emit_temp_ref(func_r);
-    self.emit(".closure_val.data, ");
-    self.emit_temp_ref(arg_r);
-    self.emit(");\n");
-    self.indent--;
-    self.emit_indent();
-    self.emit("} else {\n");
-    self.indent++;
-    self.emit_indent();
-    self.emit_temp_ref(id);
-    self.emit(" = runtime::rt_invoke_once(");
+    self.emit(" = aot::invoke_tail(");
     self.emit_temp_ref(func_r);
     self.emit(", ");
     self.emit_temp_ref(arg_r);
     self.emit(");\n");
-    self.indent--;
-    self.emit_indent();
-    self.emit("}\n");
     return id;
 }
 
@@ -2911,7 +2921,7 @@ fn usz Compiler.compile_if_flat(Compiler* self, Expr* expr) {
     self.emit_temp_decl(id);
     self.emit(";\n");
     self.emit_indent();
-    self.emit("if (runtime::rt_is_truthy(");
+    self.emit("if (aot::is_truthy(");
     self.emit_temp_ref(cond);
     self.emit(")) {\n");
     self.indent++;
@@ -2941,10 +2951,9 @@ fn usz Compiler.compile_let_flat(Compiler* self, Expr* expr) {
     bool is_mc = self.is_mutable_captured_var(expr.let_expr.name);
 
     if (is_mc) {
-        // Mutable-captured: define in interpreter env
         usz init_r = self.compile_to_temp(expr.let_expr.init);
         self.emit_indent();
-        self.emit("runtime::rt_define_var(\"");
+        self.emit("aot::define_var(\"");
         char[] mc_name = self.interp.symbols.get_name(expr.let_expr.name);
         self.emit_escaped(mc_name);
         self.emit("\", ");
@@ -2956,10 +2965,9 @@ fn usz Compiler.compile_let_flat(Compiler* self, Expr* expr) {
     bool already = self.is_declared(expr.let_expr.name);
 
     if (expr.let_expr.is_recursive) {
-        // Recursive let: declare first (if needed), then assign
         if (!already) {
             self.emit_indent();
-            self.emit("runtime::Value ");
+            self.emit("lisp::Value* ");
             self.emit_symbol_name(expr.let_expr.name);
             self.emit(";\n");
             self.mark_declared(expr.let_expr.name);
@@ -2971,15 +2979,18 @@ fn usz Compiler.compile_let_flat(Compiler* self, Expr* expr) {
         self.emit_temp_ref(init_r);
         self.emit(";\n");
 
-        // Patch self-reference: the closure captured an uninitialized copy of name.
-        // Now that name holds the closure, update the capture in the region-allocated data.
         Expr* rec_init = expr.let_expr.init;
         if (rec_init.tag == E_LAMBDA) {
             foreach (&def : self.lambda_defs) {
                 if (def.body == rec_init.lambda.body && (uint)def.param == (uint)rec_init.lambda.param) {
                     for (usz ci = 0; ci < def.capture_count; ci++) {
                         if ((uint)def.captures[ci] == (uint)expr.let_expr.name) {
-                            // Patch: Lambda_N* _sp_N = (Lambda_N*)name.closure_val.data; _sp_N.captured_name = name;
+                            self.emit_indent();
+                            self.emit("lisp::aot::AotClosureData* _acd_");
+                            self.emit_usz(def.id);
+                            self.emit(" = (lisp::aot::AotClosureData*)");
+                            self.emit_symbol_name(expr.let_expr.name);
+                            self.emit(".prim_val.user_data;\n");
                             self.emit_indent();
                             self.emit("Lambda_");
                             self.emit_usz(def.id);
@@ -2987,9 +2998,9 @@ fn usz Compiler.compile_let_flat(Compiler* self, Expr* expr) {
                             self.emit_usz(def.id);
                             self.emit(" = (Lambda_");
                             self.emit_usz(def.id);
-                            self.emit("*)");
-                            self.emit_symbol_name(expr.let_expr.name);
-                            self.emit(".closure_val.data;\n");
+                            self.emit("*)_acd_");
+                            self.emit_usz(def.id);
+                            self.emit(".data;\n");
                             self.emit_indent();
                             self.emit("_sp_");
                             self.emit_usz(def.id);
@@ -3006,11 +3017,10 @@ fn usz Compiler.compile_let_flat(Compiler* self, Expr* expr) {
             }
         }
     } else {
-        // Non-recursive let
         usz init_r = self.compile_to_temp(expr.let_expr.init);
         self.emit_indent();
         if (!already) {
-            self.emit("runtime::Value ");
+            self.emit("lisp::Value* ");
             self.mark_declared(expr.let_expr.name);
         }
         self.emit_symbol_name(expr.let_expr.name);
@@ -3021,14 +3031,13 @@ fn usz Compiler.compile_let_flat(Compiler* self, Expr* expr) {
 
     return self.compile_to_temp(expr.let_expr.body);
 }
-
 fn usz Compiler.compile_let_flat_tail(Compiler* self, Expr* expr) {
     bool is_mc = self.is_mutable_captured_var(expr.let_expr.name);
 
     if (is_mc) {
         usz init_r = self.compile_to_temp(expr.let_expr.init);
         self.emit_indent();
-        self.emit("runtime::rt_define_var(\"");
+        self.emit("aot::define_var(\"");
         char[] mc_name = self.interp.symbols.get_name(expr.let_expr.name);
         self.emit_escaped(mc_name);
         self.emit("\", ");
@@ -3042,7 +3051,7 @@ fn usz Compiler.compile_let_flat_tail(Compiler* self, Expr* expr) {
     if (expr.let_expr.is_recursive) {
         if (!already) {
             self.emit_indent();
-            self.emit("runtime::Value ");
+            self.emit("lisp::Value* ");
             self.emit_symbol_name(expr.let_expr.name);
             self.emit(";\n");
             self.mark_declared(expr.let_expr.name);
@@ -3061,7 +3070,14 @@ fn usz Compiler.compile_let_flat_tail(Compiler* self, Expr* expr) {
                 if (def.body == rec_init.lambda.body && (uint)def.param == (uint)rec_init.lambda.param) {
                     for (usz ci = 0; ci < def.capture_count; ci++) {
                         if ((uint)def.captures[ci] == (uint)expr.let_expr.name) {
-                            // Patch: Lambda_N* _sp_N = (Lambda_N*)name.closure_val.data; _sp_N.captured_name = name;
+                            // Patch: AOT closures are wrapped as Primitives
+                            // Access via prim_val.user_data -> AotClosureData -> data
+                            self.emit_indent();
+                            self.emit("lisp::aot::AotClosureData* _acd_");
+                            self.emit_usz(def.id);
+                            self.emit(" = (lisp::aot::AotClosureData*)");
+                            self.emit_symbol_name(expr.let_expr.name);
+                            self.emit(".prim_val.user_data;\n");
                             self.emit_indent();
                             self.emit("Lambda_");
                             self.emit_usz(def.id);
@@ -3069,9 +3085,9 @@ fn usz Compiler.compile_let_flat_tail(Compiler* self, Expr* expr) {
                             self.emit_usz(def.id);
                             self.emit(" = (Lambda_");
                             self.emit_usz(def.id);
-                            self.emit("*)");
-                            self.emit_symbol_name(expr.let_expr.name);
-                            self.emit(".closure_val.data;\n");
+                            self.emit("*)_acd_");
+                            self.emit_usz(def.id);
+                            self.emit(".data;\n");
                             self.emit_indent();
                             self.emit("_sp_");
                             self.emit_usz(def.id);
@@ -3091,7 +3107,7 @@ fn usz Compiler.compile_let_flat_tail(Compiler* self, Expr* expr) {
         usz init_r = self.compile_to_temp(expr.let_expr.init);
         self.emit_indent();
         if (!already) {
-            self.emit("runtime::Value ");
+            self.emit("lisp::Value* ");
             self.mark_declared(expr.let_expr.name);
         }
         self.emit_symbol_name(expr.let_expr.name);
@@ -3109,7 +3125,7 @@ fn usz Compiler.compile_and_flat(Compiler* self, Expr* expr) {
     self.emit_temp_decl(id);
     self.emit(";\n");
     self.emit_indent();
-    self.emit("if (runtime::rt_is_truthy(");
+    self.emit("if (aot::is_truthy(");
     self.emit_temp_ref(left);
     self.emit(")) {\n");
     self.indent++;
@@ -3140,7 +3156,7 @@ fn usz Compiler.compile_or_flat(Compiler* self, Expr* expr) {
     self.emit_temp_decl(id);
     self.emit(";\n");
     self.emit_indent();
-    self.emit("if (runtime::rt_is_truthy(");
+    self.emit("if (aot::is_truthy(");
     self.emit_temp_ref(left);
     self.emit(")) {\n");
     self.indent++;
@@ -3170,7 +3186,7 @@ fn usz Compiler.compile_begin_flat(Compiler* self, Expr* expr) {
     if (count == 0) {
         usz id = self.next_result();
         self.emit_temp_decl(id);
-        self.emit(" = runtime::make_nil();\n");
+        self.emit(" = aot::make_nil();\n");
         return id;
     }
     // Compile all but last as discarded statements
@@ -3186,7 +3202,7 @@ fn usz Compiler.compile_set_flat(Compiler* self, Expr* expr) {
         usz val_r = self.compile_to_temp(expr.set_expr.value);
         usz id = self.next_result();
         self.emit_temp_decl(id);
-        self.emit(" = runtime::rt_set_var(\"");
+        self.emit(" = aot::set_var(\"");
         char[] set_name = self.interp.symbols.get_name(expr.set_expr.name);
         self.emit_escaped(set_name);
         self.emit("\", ");
@@ -3258,7 +3274,7 @@ fn usz Compiler.compile_qq_flat(Compiler* self, Expr* tmpl, usz depth) {
     if (tmpl == null) {
         usz id = self.next_result();
         self.emit_temp_decl(id);
-        self.emit(" = runtime::make_nil();\n");
+        self.emit(" = aot::make_nil();\n");
         return id;
     }
 
@@ -3272,11 +3288,11 @@ fn usz Compiler.compile_qq_flat(Compiler* self, Expr* tmpl, usz depth) {
             usz inner_r = self.compile_qq_flat(tmpl.unquote.body, depth - 1);
             usz nil_r = self.next_result();
             self.emit_temp_decl(nil_r);
-            self.emit(" = runtime::make_nil();\n");
+            self.emit(" = aot::make_nil();\n");
 
             usz rest_r = self.next_result();
             self.emit_temp_decl(rest_r);
-            self.emit(" = runtime::rt_cons(");
+            self.emit(" = aot::cons(");
             self.emit_temp_ref(inner_r);
             self.emit(", ");
             self.emit_temp_ref(nil_r);
@@ -3284,11 +3300,11 @@ fn usz Compiler.compile_qq_flat(Compiler* self, Expr* tmpl, usz depth) {
 
             usz sym_r = self.next_result();
             self.emit_temp_decl(sym_r);
-            self.emit(" = runtime::make_symbol(\"unquote\");\n");
+            self.emit(" = aot::make_symbol(\"unquote\");\n");
 
             usz id = self.next_result();
             self.emit_temp_decl(id);
-            self.emit(" = runtime::rt_cons(");
+            self.emit(" = aot::cons(");
             self.emit_temp_ref(sym_r);
             self.emit(", ");
             self.emit_temp_ref(rest_r);
@@ -3300,18 +3316,18 @@ fn usz Compiler.compile_qq_flat(Compiler* self, Expr* tmpl, usz depth) {
                 // Splicing at top level is an error
                 usz id = self.next_result();
                 self.emit_temp_decl(id);
-                self.emit(" = runtime::make_nil(); /* ERROR: ,@ in non-list context */\n");
+                self.emit(" = aot::make_nil(); /* ERROR: ,@ in non-list context */\n");
                 return id;
             }
             // Nested: build (unquote-splicing <inner>)
             usz inner_r = self.compile_qq_flat(tmpl.unquote_splicing.body, depth - 1);
             usz nil_r = self.next_result();
             self.emit_temp_decl(nil_r);
-            self.emit(" = runtime::make_nil();\n");
+            self.emit(" = aot::make_nil();\n");
 
             usz rest_r = self.next_result();
             self.emit_temp_decl(rest_r);
-            self.emit(" = runtime::rt_cons(");
+            self.emit(" = aot::cons(");
             self.emit_temp_ref(inner_r);
             self.emit(", ");
             self.emit_temp_ref(nil_r);
@@ -3319,11 +3335,11 @@ fn usz Compiler.compile_qq_flat(Compiler* self, Expr* tmpl, usz depth) {
 
             usz sym_r = self.next_result();
             self.emit_temp_decl(sym_r);
-            self.emit(" = runtime::make_symbol(\"unquote-splicing\");\n");
+            self.emit(" = aot::make_symbol(\"unquote-splicing\");\n");
 
             usz id = self.next_result();
             self.emit_temp_decl(id);
-            self.emit(" = runtime::rt_cons(");
+            self.emit(" = aot::cons(");
             self.emit_temp_ref(sym_r);
             self.emit(", ");
             self.emit_temp_ref(rest_r);
@@ -3335,11 +3351,11 @@ fn usz Compiler.compile_qq_flat(Compiler* self, Expr* tmpl, usz depth) {
             usz inner_r = self.compile_qq_flat(tmpl.quasiquote.body, depth + 1);
             usz nil_r = self.next_result();
             self.emit_temp_decl(nil_r);
-            self.emit(" = runtime::make_nil();\n");
+            self.emit(" = aot::make_nil();\n");
 
             usz rest_r = self.next_result();
             self.emit_temp_decl(rest_r);
-            self.emit(" = runtime::rt_cons(");
+            self.emit(" = aot::cons(");
             self.emit_temp_ref(inner_r);
             self.emit(", ");
             self.emit_temp_ref(nil_r);
@@ -3347,11 +3363,11 @@ fn usz Compiler.compile_qq_flat(Compiler* self, Expr* tmpl, usz depth) {
 
             usz sym_r = self.next_result();
             self.emit_temp_decl(sym_r);
-            self.emit(" = runtime::make_symbol(\"quasiquote\");\n");
+            self.emit(" = aot::make_symbol(\"quasiquote\");\n");
 
             usz id = self.next_result();
             self.emit_temp_decl(id);
-            self.emit(" = runtime::rt_cons(");
+            self.emit(" = aot::cons(");
             self.emit_temp_ref(sym_r);
             self.emit(", ");
             self.emit_temp_ref(rest_r);
@@ -3369,7 +3385,7 @@ fn usz Compiler.compile_qq_flat(Compiler* self, Expr* tmpl, usz depth) {
         case E_VAR: {
             usz id = self.next_result();
             self.emit_temp_decl(id);
-            self.emit(" = runtime::make_symbol(\"");
+            self.emit(" = aot::make_symbol(\"");
             char[] name = self.interp.symbols.get_name(tmpl.var_expr.name);
             self.emit_escaped(name);
             self.emit("\");\n");
@@ -3390,11 +3406,11 @@ fn usz Compiler.compile_qq_flat(Compiler* self, Expr* tmpl, usz depth) {
 
             usz nil_r = self.next_result();
             self.emit_temp_decl(nil_r);
-            self.emit(" = runtime::make_nil();\n");
+            self.emit(" = aot::make_nil();\n");
 
             usz inner_r = self.next_result();
             self.emit_temp_decl(inner_r);
-            self.emit(" = runtime::rt_cons(");
+            self.emit(" = aot::cons(");
             self.emit_temp_ref(arg_r);
             self.emit(", ");
             self.emit_temp_ref(nil_r);
@@ -3402,7 +3418,7 @@ fn usz Compiler.compile_qq_flat(Compiler* self, Expr* tmpl, usz depth) {
 
             usz id = self.next_result();
             self.emit_temp_decl(id);
-            self.emit(" = runtime::rt_cons(");
+            self.emit(" = aot::cons(");
             self.emit_temp_ref(func_r);
             self.emit(", ");
             self.emit_temp_ref(inner_r);
@@ -3414,7 +3430,7 @@ fn usz Compiler.compile_qq_flat(Compiler* self, Expr* tmpl, usz depth) {
         default: {
             usz id = self.next_result();
             self.emit_temp_decl(id);
-            self.emit(" = runtime::make_nil();\n");
+            self.emit(" = aot::make_nil();\n");
             return id;
         }
     }
@@ -3448,13 +3464,13 @@ fn usz Compiler.compile_qq_call_flat(Compiler* self, Expr* tmpl, usz depth) {
         // Start with nil, then cons each element from the end
         usz result_r = self.next_result();
         self.emit_temp_decl(result_r);
-        self.emit(" = runtime::make_nil();\n");
+        self.emit(" = aot::make_nil();\n");
 
         for (usz i = total; i > 0; i--) {
             usz elem_r = self.compile_qq_flat(elements[i - 1], depth);
             usz new_r = self.next_result();
             self.emit_temp_decl(new_r);
-            self.emit(" = runtime::rt_cons(");
+            self.emit(" = aot::cons(");
             self.emit_temp_ref(elem_r);
             self.emit(", ");
             self.emit_temp_ref(result_r);
@@ -3470,7 +3486,7 @@ fn usz Compiler.compile_qq_call_flat(Compiler* self, Expr* tmpl, usz depth) {
     //   - otherwise: compile qq, cons to accumulated result
     usz result_r = self.next_result();
     self.emit_temp_decl(result_r);
-    self.emit(" = runtime::make_nil();\n");
+    self.emit(" = aot::make_nil();\n");
 
     for (usz i = total; i > 0; i--) {
         Expr* elem = elements[i - 1];
@@ -3479,7 +3495,7 @@ fn usz Compiler.compile_qq_call_flat(Compiler* self, Expr* tmpl, usz depth) {
             usz splice_r = self.compile_to_temp(elem.unquote_splicing.body);
             usz new_r = self.next_result();
             self.emit_temp_decl(new_r);
-            self.emit(" = runtime::rt_list_append(");
+            self.emit(" = aot::list_append(");
             self.emit_temp_ref(splice_r);
             self.emit(", ");
             self.emit_temp_ref(result_r);
@@ -3490,7 +3506,7 @@ fn usz Compiler.compile_qq_call_flat(Compiler* self, Expr* tmpl, usz depth) {
             usz elem_r = self.compile_qq_flat(elem, depth);
             usz new_r = self.next_result();
             self.emit_temp_decl(new_r);
-            self.emit(" = runtime::rt_cons(");
+            self.emit(" = aot::cons(");
             self.emit_temp_ref(elem_r);
             self.emit(", ");
             self.emit_temp_ref(result_r);
@@ -3510,7 +3526,7 @@ fn usz Compiler.compile_reset_flat(Compiler* self, Expr* expr) {
     usz body_r = self.compile_to_temp(expr.reset.body);
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = runtime::rt_compiled_reset(");
+    self.emit(" = aot::compiled_reset(");
     self.emit_temp_ref(body_r);
     self.emit(");\n");
     return id;
@@ -3521,7 +3537,7 @@ fn usz Compiler.compile_shift_flat(Compiler* self, Expr* expr) {
     usz body_r = self.compile_to_temp(expr.shift.body);
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = runtime::rt_compiled_shift(");
+    self.emit(" = aot::compiled_shift(");
     self.emit_temp_ref(body_r);
     self.emit(");\n");
     return id;
@@ -3533,14 +3549,14 @@ fn usz Compiler.compile_perform_flat(Compiler* self, Expr* expr) {
     // Create tag symbol
     usz tag_r = self.next_result();
     self.emit_temp_decl(tag_r);
-    self.emit(" = runtime::make_symbol(\"");
+    self.emit(" = aot::make_symbol(\"");
     char[] tag_name = self.interp.symbols.get_name(expr.perform.tag);
     self.emit_escaped(tag_name);
     self.emit("\");\n");
 
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = runtime::rt_compiled_perform(");
+    self.emit(" = aot::compiled_signal(");
     self.emit_temp_ref(tag_r);
     self.emit(", ");
     self.emit_temp_ref(arg_r);
@@ -3558,7 +3574,7 @@ fn usz Compiler.compile_handle_flat(Compiler* self, Expr* expr) {
         // Tag symbol
         tag_rs[i] = self.next_result();
         self.emit_temp_decl(tag_rs[i]);
-        self.emit(" = runtime::make_symbol(\"");
+        self.emit(" = aot::make_symbol(\"");
         char[] tag_name = self.interp.symbols.get_name(expr.handle.clauses[i].effect_tag);
         self.emit_escaped(tag_name);
         self.emit("\");\n");
@@ -3573,7 +3589,7 @@ fn usz Compiler.compile_handle_flat(Compiler* self, Expr* expr) {
     // Build tags and handlers arrays (C3 array syntax: Type[N] name)
     usz tags_arr = self.next_result();
     self.emit_indent();
-    self.emit("runtime::Value[");
+    self.emit("lisp::Value*[");
     self.emit_usz(clause_count > 0 ? clause_count : 1);
     self.emit("] _eff_tags_");
     self.emit_usz(tags_arr);
@@ -3581,7 +3597,7 @@ fn usz Compiler.compile_handle_flat(Compiler* self, Expr* expr) {
 
     usz hdlrs_arr = self.next_result();
     self.emit_indent();
-    self.emit("runtime::Value[");
+    self.emit("lisp::Value*[");
     self.emit_usz(clause_count > 0 ? clause_count : 1);
     self.emit("] _eff_hdlrs_");
     self.emit_usz(hdlrs_arr);
@@ -3609,7 +3625,7 @@ fn usz Compiler.compile_handle_flat(Compiler* self, Expr* expr) {
 
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = runtime::rt_compiled_handle(&_eff_tags_");
+    self.emit(" = aot::compiled_handle(&_eff_tags_");
     self.emit_usz(tags_arr);
     self.emit(", &_eff_hdlrs_");
     self.emit_usz(hdlrs_arr);
@@ -3635,21 +3651,19 @@ fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
     }
 
     if (found_def != null && found_def.capture_count > 0) {
-        // Closure with captures - emit as statements
+        // Closure with captures - allocate on heap
         self.emit_indent();
         self.emit("Lambda_");
         self.emit_usz(lambda_id);
-        self.emit(" _closure_data_");
+        self.emit("* _closure_data_");
         self.emit_usz(lambda_id);
-        self.emit(";\n");
-
-        // Set home region
-        self.emit_indent();
-        self.emit("_closure_data_");
+        self.emit(" = (Lambda_");
         self.emit_usz(lambda_id);
-        self.emit(".home_region = runtime::rt_current_region();\n");
+        self.emit("*)mem::malloc(Lambda_");
+        self.emit_usz(lambda_id);
+        self.emit(".sizeof);\n");
 
-        // Set captured values with write barriers
+        // Set captured values
         for (usz i = 0; i < found_def.capture_count; i++) {
             self.emit_indent();
             self.emit("_closure_data_");
@@ -3659,33 +3673,15 @@ fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
             self.emit(" = ");
             self.emit_symbol_name(found_def.captures[i]);
             self.emit(";\n");
-
-            // Write barrier
-            self.emit_indent();
-            self.emit("runtime::rt_capture_value(_closure_data_");
-            self.emit_usz(lambda_id);
-            self.emit(".home_region, ");
-            self.emit_symbol_name(found_def.captures[i]);
-            self.emit(");\n");
         }
-
-        // Allocate in region
-        self.emit_indent();
-        self.emit("main::ObjectHandle _closure_handle_");
-        self.emit_usz(lambda_id);
-        self.emit(" = main::allocate_in(runtime::rt_current_region(), Lambda_");
-        self.emit_usz(lambda_id);
-        self.emit(", _closure_data_");
-        self.emit_usz(lambda_id);
-        self.emit(");\n");
 
         usz id = self.next_result();
         self.emit_temp_decl(id);
-        self.emit(" = runtime::");
+        self.emit(" = aot::");
         self.emit_make_closure_call(lambda_id);
-        self.emit("(main::dereference(_closure_handle_");
+        self.emit("((void*)_closure_data_");
         self.emit_usz(lambda_id);
-        self.emit("), &invoke_lambda_");
+        self.emit(", &invoke_lambda_");
         self.emit_usz(lambda_id);
         self.emit(");\n");
         return id;
@@ -3693,7 +3689,7 @@ fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
         // Simple closure without captures
         usz id = self.next_result();
         self.emit_temp_decl(id);
-        self.emit(" = runtime::");
+        self.emit(" = aot::");
         self.emit_make_closure_call(lambda_id);
         self.emit("(null, &invoke_lambda_");
         self.emit_usz(lambda_id);
@@ -3709,7 +3705,7 @@ fn usz Compiler.compile_match_flat(Compiler* self, Expr* expr) {
     // Declare result temp
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = runtime::make_nil();\n");
+    self.emit(" = aot::make_nil();\n");
 
     for (usz i = 0; i < expr.match.clause_count; i++) {
         self.emit_indent();
@@ -3746,25 +3742,25 @@ fn usz Compiler.compile_match_flat(Compiler* self, Expr* expr) {
 
 fn void Compiler.compile_literal(Compiler* self, Value* v) {
     if (v == null || v.tag == NIL) {
-        self.emit("runtime::make_nil()");
+        self.emit("aot::make_nil()");
         return;
     }
 
     switch (v.tag) {
         case INT:
-            self.emit("runtime::make_int(");
+            self.emit("aot::make_int(");
             self.emit_int(v.int_val);
             self.emit(")");
 
         case DOUBLE:
-            self.emit("runtime::rt_make_double(");
+            self.emit("aot::make_double(");
             char[64] dbuf;
             char[] dslice = io::bprintf(&dbuf, "%.17g", v.double_val)!!;
             self.emit(dslice);
             self.emit(")");
 
         case STRING:
-            self.emit("runtime::make_string(\"");
+            self.emit("aot::make_string(\"");
             // Emit string with escaping
             for (usz i = 0; i < v.str_val.len; i++) {
                 char c = v.str_val.chars[i];
@@ -3783,20 +3779,20 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
             self.emit("\")");
 
         case SYMBOL:
-            self.emit("runtime::make_symbol(\"");
+            self.emit("aot::make_symbol(\"");
             char[] name = self.interp.symbols.get_name(v.sym_val);
             self.emit_escaped(name);
             self.emit("\")");
 
         case CONS:
-            self.emit("runtime::rt_cons(");
+            self.emit("aot::cons(");
             self.compile_literal(v.cons_val.car);
             self.emit(", ");
             self.compile_literal(v.cons_val.cdr);
             self.emit(")");
 
         default:
-            self.emit("runtime::make_nil()");
+            self.emit("aot::make_nil()");
     }
 }
 
@@ -3806,14 +3802,23 @@ fn void Compiler.compile_var(Compiler* self, Expr* expr) {
     // O(1) hash lookup for known primitives and literals
     char[] emit_code = prim_hash_lookup(name);
     if (emit_code.len > 0) {
-        self.emit(emit_code);
+        // D2: For actual primitives (lookup_prim calls), use cached global instead.
+        // Literals (true/false/nil) are cheap constructors — emit inline.
+        if (emit_code.len > 18 && emit_code[0] == 'a' && emit_code[4] == ':') {
+            // Starts with "aot::" — it's a lookup_prim call, use cached global
+            self.record_prim_ref(name);
+            self.emit_prim_global_name(name);
+        } else {
+            // Literal (make_true, make_false, make_nil) — emit inline
+            self.emit(emit_code);
+        }
         return;
     }
 
     // Mutable-captured variable: look up from interpreter env
     if (self.is_mutable_captured_var(name)) {
         char[] sym_name = self.interp.symbols.get_name(name);
-        self.emit("runtime::rt_lookup_var(\"");
+        self.emit("aot::lookup_var(\"");
         self.emit_escaped(sym_name);
         self.emit("\")");
         return;
@@ -3842,14 +3847,14 @@ fn void Compiler.compile_pattern_check(Compiler* self, Pattern* pat, char[] val_
             self.emit("true");
 
         case PAT_LIT:
-            self.emit("runtime::rt_values_equal(");
+            self.emit("aot::values_equal(");
             self.emit(val_name);
             self.emit(", ");
             self.compile_literal(pat.lit_value);
             self.emit(")");
 
         case PAT_QUOTE:
-            self.emit("runtime::rt_values_equal(");
+            self.emit("aot::values_equal(");
             self.emit(val_name);
             self.emit(", ");
             self.compile_literal(pat.quote_datum);
@@ -3857,19 +3862,19 @@ fn void Compiler.compile_pattern_check(Compiler* self, Pattern* pat, char[] val_
 
         case PAT_SEQ:
             // Check list length and elements
-            self.emit("runtime::rt_is_list(");
+            self.emit("aot::is_list(");
             self.emit(val_name);
             self.emit(")");
 
             if (pat.rest_pos == REST_NONE) {
                 // Exact length match
-                self.emit(" && runtime::rt_list_length(");
+                self.emit(" && aot::list_length(");
                 self.emit(val_name);
                 self.emit(") == ");
                 self.emit_usz(pat.elem_count);
             } else if (pat.rest_pos == REST_START || pat.rest_pos == REST_MIDDLE || pat.rest_pos == REST_END) {
                 // At least N elements
-                self.emit(" && runtime::rt_list_length(");
+                self.emit(" && aot::list_length(");
                 self.emit(val_name);
                 self.emit(") >= ");
                 self.emit_usz(pat.elem_count);
@@ -3886,7 +3891,7 @@ fn void Compiler.compile_pattern_check(Compiler* self, Pattern* pat, char[] val_
 
 fn void Compiler.emit_pattern_var_decl(Compiler* self, SymbolId name) {
     if (!self.is_declared(name)) {
-        self.emit("runtime::Value ");
+        self.emit("lisp::Value* ");
         self.mark_declared(name);
     }
 }
@@ -3906,20 +3911,20 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
             // Bind sequence elements
             for (usz i = 0; i < pat.elem_count; i++) {
                 // Generate element access — index depends on rest position
-                self.emit("runtime::Value _elem_");
+                self.emit("lisp::Value* _elem_");
                 self.emit_usz(i);
                 if (pat.rest_pos == REST_START) {
                     // [.. a b] — elements are at end of list
-                    self.emit(" = runtime::rt_list_nth(");
+                    self.emit(" = aot::list_nth(");
                     self.emit(val_name);
-                    self.emit(", runtime::rt_list_length(");
+                    self.emit(", aot::list_length(");
                     self.emit(val_name);
                     self.emit(") - ");
                     self.emit_usz(pat.elem_count - i);
                     self.emit("); ");
                 } else {
                     // REST_NONE, REST_END, REST_MIDDLE — elements at start
-                    self.emit(" = runtime::rt_list_nth(");
+                    self.emit(" = aot::list_nth(");
                     self.emit(val_name);
                     self.emit(", ");
                     self.emit_usz(i);
@@ -3940,7 +3945,7 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
             if (pat.rest_pos == REST_MIDDLE) {
                 self.emit_pattern_var_decl(pat.rest_binding);
                 self.emit_symbol_name(pat.rest_binding);
-                self.emit(" = runtime::rt_list_rest(");
+                self.emit(" = aot::list_rest(");
                 self.emit(val_name);
                 self.emit(", ");
                 self.emit_usz(pat.elem_count);
@@ -3964,13 +3969,13 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
  */
 fn void Compiler.compile_path(Compiler* self, Expr* expr) {
     if (expr.path.segment_count == 0) {
-        self.emit("runtime::make_nil()");
+        self.emit("aot::make_nil()");
         return;
     }
 
     // First segment is a variable, remaining segments are field lookups
     for (usz i = 1; i < expr.path.segment_count; i++) {
-        self.emit("runtime::rt_field_access(");
+        self.emit("aot::field_access(");
     }
 
     // Emit first segment as variable reference
@@ -3978,7 +3983,7 @@ fn void Compiler.compile_path(Compiler* self, Expr* expr) {
 
     // Emit remaining segments as string field names (wrapped in make_string for Value type)
     for (usz i = 1; i < expr.path.segment_count; i++) {
-        self.emit(", runtime::make_string(\"");
+        self.emit(", aot::make_string(\"");
         char[] name = self.interp.symbols.get_name(expr.path.segments[i]);
         self.emit_escaped(name);
         self.emit("\"))");
@@ -4039,7 +4044,7 @@ fn usz Compiler.compile_module_flat(Compiler* self, Expr* expr) {
     // Module evaluates to nil
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = runtime::make_nil();\n");
+    self.emit(" = aot::make_nil();\n");
     return id;
 }
 
@@ -4050,7 +4055,7 @@ fn usz Compiler.compile_module_flat(Compiler* self, Expr* expr) {
 fn usz Compiler.compile_import_flat(Compiler* self, Expr* expr) {
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = runtime::make_nil(); // import: inline module\n");
+    self.emit(" = aot::make_nil(); // import: inline module\n");
     return id;
 }
 
@@ -4061,7 +4066,7 @@ fn usz Compiler.compile_import_flat(Compiler* self, Expr* expr) {
 fn usz Compiler.compile_export_from_flat(Compiler* self, Expr* expr) {
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = runtime::make_nil(); // export-from: no-op in compiled mode\n");
+    self.emit(" = aot::make_nil(); // export-from: no-op in compiled mode\n");
     return id;
 }
 
@@ -4074,13 +4079,15 @@ fn usz Compiler.compile_export_from_flat(Compiler* self, Expr* expr) {
  * Returns the generated C3 code as a string.
  */
 fn char[] compile_to_c3(char[] source, Interp* interp) {
+    return compile_to_c3_ext(source, interp, false, false);
+}
+
+fn char[] compile_to_c3_ext(char[] source, Interp* interp, bool print_last, bool print_all) {
     Compiler compiler;
     compiler.init(interp);
-
-    char[] result = compiler.compile_program(source);
-
-    // Note: caller must copy result before compiler is freed
-    return result;
+    compiler.print_last = print_last;
+    compiler.print_all = print_all;
+    return compiler.compile_program(source);
 }
 
 /**

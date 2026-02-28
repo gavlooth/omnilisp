@@ -911,7 +911,8 @@ fn Value* raise_error(Interp* interp, char[] msg) {
         EffectHandler* h = &interp.handler_stack[(usz)i];
 
         for (usz j = 0; j < h.clause_count; j++) {
-            if ((uint)h.clauses[j].effect_tag == (uint)raise_sym) {
+            SymbolId ctag = h.clauses != null ? h.clauses[j].effect_tag : h.tags[j];
+            if ((uint)ctag == (uint)raise_sym) {
                 // Found a raise handler — set pending flag for jit_handle_impl to dispatch.
                 // We can't safely call jit_eval from within a primitive call chain,
                 // so we store the message and let the handle block dispatch.
@@ -1895,6 +1896,7 @@ struct Expr {
 struct EffectHandler {
     SymbolId* tags;
     EffectClause* clauses;
+    Value** closures;
     usz clause_count;
     Env* handler_env;
     Expr* body_expr;    // The handle body for continuation capture
@@ -2411,11 +2413,13 @@ fn void print_value(Value* v, SymbolTable* syms) {
         case DOUBLE:
             char[64] dbuf;
             char[] dstr = double_to_string(v.double_val, &dbuf);
-            io::printf("%s", (ZString)&dbuf);
+            io::printf("%s", dstr);
         case STRING:
-            io::printf("\"%s\"", (ZString)v.str_val.chars);
+            io::print("\"");
+            io::print(v.str_val.chars[:v.str_val.len]);
+            io::print("\"");
         case SYMBOL:
-            io::printf("%s", (ZString)syms.get_name(v.sym_val));
+            io::print(syms.get_name(v.sym_val));
         case CONS:
             io::print("(");
             print_value(v.cons_val.car, syms);

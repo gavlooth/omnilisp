@@ -1,5 +1,66 @@
 # Changelog
 
+## 2026-03-01 (Session 61): AOT Deferred Items D1+D2+D3
+
+### Summary
+Implemented the three deferred optimizations from the AOT unification plan. Found D1 (fast path) and D3 (TCO trampoline) were already implemented in prior sessions. Implemented D2 (compile-time primitive caching) which eliminates per-reference `aot::lookup_prim()` hash lookups by caching primitives in global variables initialized once in `main()`.
+
+### Changes
+- **D2: Compile-time primitive caching** (`src/lisp/compiler.c3`):
+  - Added `referenced_prims` list to `Compiler` struct for tracking used primitives
+  - Added `emit_prim_global_name()` and `record_prim_ref()` helpers
+  - Two-pass compilation: compile code to temp buffer first (discovers all prims), then assemble final output with proper global declarations and init code
+  - `compile_var` now emits `_prim_xxx` global reference instead of `aot::lookup_prim("xxx")` for primitives; literals (true/false/nil) stay inline
+  - `emit_global_declarations` now also emits cached primitive globals
+  - Prim init code inserted in `main()` after `aot_init()`
+  - Result: 81 runtime hash lookups eliminated for hello.lisp, replaced with global variable reads
+
+- **D1: AOT closure fast path** (`src/lisp/aot.c3`): Already implemented — `invoke()` and `apply_multi()` check for `aot_closure_apply`/`aot_variadic_apply` function pointers to bypass JIT apply indirection
+
+- **D3: AOT TCO trampoline** (`src/lisp/aot.c3` + `compiler.c3`): Already implemented — compiler emits `invoke_tail`/`apply_multi_tail` in tail position, `invoke`/`apply_multi` have `while (g_tail_pending)` trampoline loops. Verified: 1M-deep recursion works without stack overflow.
+
+### E2E verification
+- factorial(10) = 3628800
+- closure(make-adder 5 10) = 15
+- TCO sum-to(1M) = 500000500000
+- TCO loop-test(1M) = 0 (no stack overflow)
+
+### Files modified
+| File | Changes |
+|------|---------|
+| `src/lisp/compiler.c3` | D2: referenced_prims tracking, two-pass compilation, prim globals |
+
+### Test results
+928 unified + 73 compiler + 9 stack + 30 scope = **1040 PASS, 0 failures**
+
+---
+
+## 2026-02-28 (Session 60): AOT Compiler Unification Cleanup
+
+### Summary
+Cleaned up remaining issues in the AOT compiler unification (bulk work done in prior sessions). Removed `home_region` from Lambda structs in generated code, removed debug print from `compiled_signal`, fixed `make_false()` to return the false symbol instead of nil, and updated stale comments in `compiler.c3`.
+
+### Changes
+- **`src/lisp/aot.c3`**: Removed debug `io::printfn` from `compiled_signal`. Fixed `make_false()` to return `sym_false` instead of nil.
+- **`src/lisp/compiler.c3`**: Removed `home_region` field from emitted Lambda structs (dead field, wasted 16 bytes per closure). Updated doc comment to describe AOT→aot:: architecture instead of old region-based approach. Fixed stale comment references to `rt_print_value`.
+
+### E2E verification
+- `c3c build` succeeds
+- All tests pass: 928 unified + 73 compiler + 9 stack + 30 scope = 1040 PASS
+- AOT builds work: factorial, closures, effects, let, named let loops
+- Generated code contains zero `runtime::` references, zero `home_region` references
+
+### Files modified
+| File | Changes |
+|------|---------|
+| `src/lisp/aot.c3` | Remove debug print, fix make_false |
+| `src/lisp/compiler.c3` | Remove home_region from Lambda structs, update comments |
+
+### Test results
+928 unified + 73 compiler + 9 stack + 30 scope = **1040 PASS, 0 failures**
+
+---
+
 ## 2026-02-28 (Session 59): Fiber→Coroutine Rename + Engine→StackCtx Rename
 
 ### Summary

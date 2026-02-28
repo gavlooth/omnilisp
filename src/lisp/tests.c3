@@ -785,7 +785,7 @@ const E2ETestCase[] E2E_TESTS = {
     { "set! read back", "(begin (set! s_acc 1) (set! s_acc (+ s_acc 1)) s_acc)" },
     { "set! in lambda", "(begin ((lambda (n) (set! s_count n)) 42) s_count)" },
 
-    // === Quasiquote (no unquote — rt_eval_source can't see let-bound vars) ===
+    // === Quasiquote (no unquote — eval_source can't see let-bound vars) ===
     { "quasiquote literal", "`42" },
     { "quasiquote list", "`(1 2 3)" },
     { "quasiquote no unquote", "`(a b c)" },
@@ -948,6 +948,12 @@ fn void generate_e2e_tests(Interp* interp) {
         source_buf[source_pos++] = '\n';
     }
 
+    // Add E2E start marker
+    char[] marker = "(define __e2e_start__ true)\n";
+    for (usz i = 0; i < marker.len && source_pos < buf_size - 2; i++) {
+        source_buf[source_pos++] = marker[i];
+    }
+
     // Now process each test expression
     for (usz i = 0; i < E2E_TESTS.len; i++) {
         // Run through interpreter to get expected output
@@ -1091,7 +1097,6 @@ fn void run_lisp_tests() {
     register_primitives(interp);
 
     register_stdlib(interp);
-    bridge_init();  // Register eval_source hook for runtime bridge tests
 
     int pass = 0;
     int fail = 0;
@@ -3052,6 +3057,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     Interp* interp = (Interp*)mem::malloc(Interp.sizeof);
     interp.init();
     register_primitives(interp);
+    register_stdlib(interp);  // Needed for map, filter, etc.
 
 
     // --- E_BEGIN tests ---
@@ -3239,7 +3245,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 22. list indexing with .[i]
     {
         char[] code = compile_to_c3("(define lst (list 10 20 30)) lst.[1]", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "rt_index");
+        bool ok = !str_contains(code, "unsupported") && str_contains(code, "aot::index");
         if (ok) { pass++; io::printn("[PASS] Compiler: lst.[1]"); }
         else    { fail++; io::printn("[FAIL] Compiler: lst.[1]"); }
     }
@@ -3247,7 +3253,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 23. indexing with expression
     {
         char[] code = compile_to_c3("(define lst (list 1 2 3)) lst.[(+ 0 1)]", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "rt_index");
+        bool ok = !str_contains(code, "unsupported") && str_contains(code, "aot::index");
         if (ok) { pass++; io::printn("[PASS] Compiler: lst.[(+ 0 1)]"); }
         else    { fail++; io::printn("[FAIL] Compiler: lst.[(+ 0 1)]"); }
     }
@@ -3257,7 +3263,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 24. simple path a.b
     {
         char[] code = compile_to_c3("(define point (list (cons 'x 10) (cons 'y 20))) point.x", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "rt_field_access");
+        bool ok = !str_contains(code, "unsupported") && str_contains(code, "aot::field_access");
         if (ok) { pass++; io::printn("[PASS] Compiler: point.x"); }
         else    { fail++; io::printn("[FAIL] Compiler: point.x"); }
     }
@@ -3265,7 +3271,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 25. nested path a.b.c
     {
         char[] code = compile_to_c3("(define obj (list (cons 'inner (list (cons 'val 42))))) obj.inner.val", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "rt_field_access");
+        bool ok = !str_contains(code, "unsupported") && str_contains(code, "aot::field_access");
         if (ok) { pass++; io::printn("[PASS] Compiler: obj.inner.val"); }
         else    { fail++; io::printn("[FAIL] Compiler: obj.inner.val"); }
     }
@@ -3280,10 +3286,10 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // --- reset/shift via interpreter delegation ---
 
-    // 27. reset/shift compiles natively (no rt_eval_source)
+    // 27. reset/shift compiles natively (no eval_source)
     {
         char[] code = compile_to_c3("(reset (+ 1 (shift k (k 10))))", interp);
-        bool ok = str_contains(code, "rt_compiled_reset") && !str_contains(code, "unsupported");
+        bool ok = str_contains(code, "compiled_reset") && !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: reset/shift compiles natively"); }
         else    { fail++; io::printn("[FAIL] Compiler: reset/shift compiles natively"); }
     }
@@ -3298,42 +3304,42 @@ fn void run_compiler_tests(Interp* _unused_interp) {
 
     // --- Continuation form tests (native compilation) ---
 
-    // 29. reset compiles to rt_compiled_reset (not rt_eval_source for the reset)
+    // 29. reset compiles to compiled_reset (not eval_source for the reset)
     {
         char[] code = compile_to_c3("(define x 5) (reset (+ x (shift k (k 10))))", interp);
-        bool ok = str_contains(code, "rt_compiled_reset");
-        if (ok) { pass++; io::printn("[PASS] Compiler: reset uses rt_compiled_reset"); }
-        else    { fail++; io::printn("[FAIL] Compiler: reset uses rt_compiled_reset"); }
+        bool ok = str_contains(code, "compiled_reset");
+        if (ok) { pass++; io::printn("[PASS] Compiler: reset uses compiled_reset"); }
+        else    { fail++; io::printn("[FAIL] Compiler: reset uses compiled_reset"); }
     }
 
-    // 30. handle/perform compiles natively
+    // 30. handle/signal compiles natively
     {
         char[] code = compile_to_c3("(handle (+ 1 (signal ask 0)) (ask x (resolve 10)))", interp);
-        bool ok = str_contains(code, "rt_compiled_handle") && str_contains(code, "rt_compiled_perform");
-        if (ok) { pass++; io::printn("[PASS] Compiler: handle/perform uses native compilation"); }
-        else    { fail++; io::printn("[FAIL] Compiler: handle/perform uses native compilation"); }
+        bool ok = str_contains(code, "compiled_handle") && str_contains(code, "compiled_signal");
+        if (ok) { pass++; io::printn("[PASS] Compiler: handle/signal uses native compilation"); }
+        else    { fail++; io::printn("[FAIL] Compiler: handle/signal uses native compilation"); }
     }
 
-    // 31. standalone perform compiles natively
+    // 31. standalone signal compiles natively
     {
         char[] code = compile_to_c3("(signal raise \"error\")", interp);
-        bool ok = str_contains(code, "rt_compiled_perform");
-        if (ok) { pass++; io::printn("[PASS] Compiler: perform uses rt_compiled_perform"); }
-        else    { fail++; io::printn("[FAIL] Compiler: perform uses rt_compiled_perform"); }
+        bool ok = str_contains(code, "compiled_signal");
+        if (ok) { pass++; io::printn("[PASS] Compiler: signal uses compiled_signal"); }
+        else    { fail++; io::printn("[FAIL] Compiler: signal uses compiled_signal"); }
     }
 
     // 32. shift compiles natively
     {
         char[] code = compile_to_c3("(shift k 42)", interp);
-        bool ok = str_contains(code, "rt_compiled_shift");
-        if (ok) { pass++; io::printn("[PASS] Compiler: shift uses rt_compiled_shift"); }
-        else    { fail++; io::printn("[FAIL] Compiler: shift uses rt_compiled_shift"); }
+        bool ok = str_contains(code, "compiled_shift");
+        if (ok) { pass++; io::printn("[PASS] Compiler: shift uses compiled_shift"); }
+        else    { fail++; io::printn("[FAIL] Compiler: shift uses compiled_shift"); }
     }
 
     // 33. reset compiles with native function
     {
         char[] code = compile_to_c3("(reset (+ 1 2))", interp);
-        bool ok = str_contains(code, "rt_compiled_reset");
+        bool ok = str_contains(code, "compiled_reset");
         if (ok) { pass++; io::printn("[PASS] Compiler: reset compiles natively"); }
         else    { fail++; io::printn("[FAIL] Compiler: reset compiles natively"); }
     }
@@ -3341,12 +3347,12 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 34. handle with multiple clauses compiles natively
     {
         char[] code = compile_to_c3("(handle (begin (signal get 0) (signal set 1)) (get x (resolve 42)) (set v (resolve v)))", interp);
-        bool ok = str_contains(code, "rt_compiled_handle");
+        bool ok = str_contains(code, "compiled_handle");
         if (ok) { pass++; io::printn("[PASS] Compiler: handle with multiple clauses"); }
         else    { fail++; io::printn("[FAIL] Compiler: handle with multiple clauses"); }
     }
 
-    // 35. try from stdlib (uses handle/perform internally) compiles
+    // 35. try from stdlib (uses handle/signal internally) compiles
     {
         char[] code = compile_to_c3("(try (lambda (xx) (+ 1 2)) (lambda (msg) 0))", interp);
         bool ok = !str_contains(code, "unsupported");
@@ -3357,7 +3363,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 36. reset with nested shift compiles natively
     {
         char[] code = compile_to_c3("(reset (+ 1 (shift k (+ (k 10) (k 20)))))", interp);
-        bool ok = str_contains(code, "rt_compiled_reset") && str_contains(code, "rt_compiled_shift");
+        bool ok = str_contains(code, "compiled_reset") && str_contains(code, "compiled_shift");
         if (ok) { pass++; io::printn("[PASS] Compiler: reset with nested shift"); }
         else    { fail++; io::printn("[FAIL] Compiler: reset with nested shift"); }
     }
@@ -3367,51 +3373,51 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // Phase 1: Multi-arg calls (inline currying)
     // =========================================================================
 
-    // 41. Multi-arg call uses inline currying (rt_invoke_once + rt_invoke)
+    // 41. Multi-arg call uses inline currying (invoke_once + invoke)
     {
         char[] code = compile_to_c3("(+ 1 2)", interp);
-        bool ok = str_contains(code, "rt_invoke") && !str_contains(code, "unsupported");
+        bool ok = str_contains(code, "invoke") && !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: multi-arg uses inline currying"); }
         else    { fail++; io::printn("[FAIL] Compiler: multi-arg uses inline currying"); }
     }
 
-    // 42. Multi-arg uses rt_invoke_once for intermediate args
+    // 42. Multi-arg uses invoke_once for intermediate args
     {
         char[] code = compile_to_c3("(+ 1 2)", interp);
-        bool ok = str_contains(code, "rt_invoke_once") || str_contains(code, "rt_invoke");
-        if (ok) { pass++; io::printn("[PASS] Compiler: multi-arg uses rt_invoke"); }
-        else    { fail++; io::printn("[FAIL] Compiler: multi-arg uses rt_invoke"); }
+        bool ok = str_contains(code, "invoke_once") || str_contains(code, "invoke");
+        if (ok) { pass++; io::printn("[PASS] Compiler: multi-arg uses invoke"); }
+        else    { fail++; io::printn("[FAIL] Compiler: multi-arg uses invoke"); }
     }
 
-    // 43. 3-arg call uses rt_apply_multi
+    // 43. 3-arg call uses apply_multi
     {
         char[] code = compile_to_c3("(substring \"hello\" 1 3)", interp);
-        bool ok = str_contains(code, "rt_apply_multi");
-        if (ok) { pass++; io::printn("[PASS] Compiler: 3-arg rt_apply_multi"); }
-        else    { fail++; io::printn("[FAIL] Compiler: 3-arg rt_apply_multi"); }
+        bool ok = str_contains(code, "apply_multi");
+        if (ok) { pass++; io::printn("[PASS] Compiler: 3-arg apply_multi"); }
+        else    { fail++; io::printn("[FAIL] Compiler: 3-arg apply_multi"); }
     }
 
-    // 44. Zero-arg call via rt_invoke
+    // 44. Zero-arg call via invoke
     {
         char[] code = compile_to_c3("((lambda () 42))", interp);
-        bool ok = str_contains(code, "rt_invoke") && str_contains(code, "make_nil()");
-        if (ok) { pass++; io::printn("[PASS] Compiler: zero-arg rt_invoke"); }
-        else    { fail++; io::printn("[FAIL] Compiler: zero-arg rt_invoke"); }
+        bool ok = str_contains(code, "invoke") && str_contains(code, "make_nil()");
+        if (ok) { pass++; io::printn("[PASS] Compiler: zero-arg invoke"); }
+        else    { fail++; io::printn("[FAIL] Compiler: zero-arg invoke"); }
     }
 
     // =========================================================================
     // Phase 2: TCO via trampoline
     // =========================================================================
 
-    // 45. Tail calls in lambda body emit make_thunk
+    // 45. Tail calls in lambda body emit apply_multi_tail
     {
         char[] code = compile_to_c3("(define (f x) (f (+ x 1)))", interp);
-        bool ok = str_contains(code, "make_thunk");
-        if (ok) { pass++; io::printn("[PASS] Compiler: tail call emits make_thunk"); }
-        else    { fail++; io::printn("[FAIL] Compiler: tail call emits make_thunk"); }
+        bool ok = str_contains(code, "apply_multi_tail");
+        if (ok) { pass++; io::printn("[PASS] Compiler: tail call emits apply_multi_tail"); }
+        else    { fail++; io::printn("[FAIL] Compiler: tail call emits apply_multi_tail"); }
     }
 
-    // 46. Non-tail calls don't emit make_thunk
+    // 46. Non-tail calls use apply_multi (not tail variant)
     {
         char[] code = compile_to_c3("(define (f x) (+ (f x) 1))", interp);
         // The (f x) is not in tail position (it's an argument to +)
@@ -3423,7 +3429,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 47. If branches propagate tail position
     {
         char[] code = compile_to_c3("(define (f x) (if (= x 0) 1 (f (- x 1))))", interp);
-        bool ok = str_contains(code, "make_thunk");
+        bool ok = str_contains(code, "apply_multi_tail");
         if (ok) { pass++; io::printn("[PASS] Compiler: if branch tail position"); }
         else    { fail++; io::printn("[FAIL] Compiler: if branch tail position"); }
     }
@@ -3432,10 +3438,10 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // Phase 3: Quasiquote, macros, modules
     // =========================================================================
 
-    // 48. Quasiquote compiles natively with rt_cons
+    // 48. Quasiquote compiles natively with aot::cons
     {
         char[] code = compile_to_c3("(let (x 5) `(a ,x))", interp);
-        bool ok = str_contains(code, "rt_cons") && str_contains(code, "make_symbol");
+        bool ok = str_contains(code, "aot::cons") && str_contains(code, "make_symbol");
         if (ok) { pass++; io::printn("[PASS] Compiler: quasiquote compiles natively"); }
         else    { fail++; io::printn("[FAIL] Compiler: quasiquote compiles natively"); }
     }
@@ -3448,7 +3454,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
         else    { fail++; io::printn("[FAIL] Compiler: quasiquote uses make_symbol"); }
     }
 
-    // 50. Defmacro delegates to rt_eval_source
+    // 50. Defmacro delegates to eval_source
     {
         char[] code = compile_to_c3("(define [macro] double ([x] (+ x x)))", interp);
         bool ok = str_contains(code, "make_nil") && !str_contains(code, "unsupported");
@@ -3471,7 +3477,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 52. string->number compiles
     {
         char[] code = compile_to_c3("(string->number \"42\")", interp);
-        bool ok = str_contains(code, "rt_string_to_number") && !str_contains(code, "unsupported");
+        bool ok = str_contains(code, "lookup_prim(\"string->number\")") && !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: string->number"); }
         else    { fail++; io::printn("[FAIL] Compiler: string->number"); }
     }
@@ -3479,7 +3485,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 53. number->string compiles
     {
         char[] code = compile_to_c3("(number->string 42)", interp);
-        bool ok = str_contains(code, "rt_number_to_string") && !str_contains(code, "unsupported");
+        bool ok = str_contains(code, "lookup_prim(\"number->string\")") && !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: number->string"); }
         else    { fail++; io::printn("[FAIL] Compiler: number->string"); }
     }
@@ -3487,7 +3493,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 54. gensym compiles
     {
         char[] code = compile_to_c3("(gensym)", interp);
-        bool ok = str_contains(code, "rt_gensym") && !str_contains(code, "unsupported");
+        bool ok = str_contains(code, "lookup_prim(\"gensym\")") && !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: gensym"); }
         else    { fail++; io::printn("[FAIL] Compiler: gensym"); }
     }
@@ -3495,7 +3501,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 55. apply compiles
     {
         char[] code = compile_to_c3("(apply + (list 1 2))", interp);
-        bool ok = str_contains(code, "rt_apply_prim") && !str_contains(code, "unsupported");
+        bool ok = str_contains(code, "lookup_prim(\"apply\")") && !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: apply"); }
         else    { fail++; io::printn("[FAIL] Compiler: apply"); }
     }
@@ -3503,7 +3509,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 56. equal? compiles
     {
         char[] code = compile_to_c3("(equal? 1 2)", interp);
-        bool ok = str_contains(code, "rt_equal_p") && !str_contains(code, "unsupported");
+        bool ok = str_contains(code, "lookup_prim(\"equal?\")") && !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: equal?"); }
         else    { fail++; io::printn("[FAIL] Compiler: equal?"); }
     }
@@ -3511,7 +3517,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 57. display compiles
     {
         char[] code = compile_to_c3("(display \"hello\")", interp);
-        bool ok = str_contains(code, "rt_display") && !str_contains(code, "unsupported");
+        bool ok = str_contains(code, "lookup_prim(\"display\")") && !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: display"); }
         else    { fail++; io::printn("[FAIL] Compiler: display"); }
     }
@@ -3519,7 +3525,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 58. ref compiles
     {
         char[] code = compile_to_c3("(ref (dict) 'a)", interp);
-        bool ok = str_contains(code, "rt_hash_ref") && !str_contains(code, "unsupported");
+        bool ok = str_contains(code, "lookup_prim(\"ref\")") && !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: ref"); }
         else    { fail++; io::printn("[FAIL] Compiler: ref"); }
     }
@@ -3527,7 +3533,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 59. load compiles
     {
         char[] code = compile_to_c3("(load \"test.omni\")", interp);
-        bool ok = str_contains(code, "rt_load") && !str_contains(code, "unsupported");
+        bool ok = str_contains(code, "lookup_prim(\"load\")") && !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: load"); }
         else    { fail++; io::printn("[FAIL] Compiler: load"); }
     }
@@ -3536,28 +3542,28 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // Phase 5: Mutable capture boxing
     // =========================================================================
 
-    // 60. Mutable capture detected and uses rt_define_var
+    // 60. Mutable capture detected and uses aot::define_var
     {
         char[] code = compile_to_c3("(let (x 0) (let (inc (lambda () (set! x (+ x 1)))) (inc) x))", interp);
         // Mutable capture test - checks generated code for interpreter env usage
-        bool ok = str_contains(code, "rt_define_var") && str_contains(code, "rt_set_var");
-        if (ok) { pass++; io::printn("[PASS] Compiler: mutable capture uses rt_define_var/rt_set_var"); }
-        else    { fail++; io::printn("[FAIL] Compiler: mutable capture uses rt_define_var/rt_set_var"); }
+        bool ok = str_contains(code, "aot::define_var") && str_contains(code, "aot::set_var");
+        if (ok) { pass++; io::printn("[PASS] Compiler: mutable capture uses aot::define_var/aot::set_var"); }
+        else    { fail++; io::printn("[FAIL] Compiler: mutable capture uses aot::define_var/aot::set_var"); }
     }
 
-    // 61. Mutable capture reads use rt_lookup_var
+    // 61. Mutable capture reads use aot::lookup_var
     {
         char[] code = compile_to_c3("(let (x 0) (let (inc (lambda () (set! x (+ x 1)))) (inc) x))", interp);
-        bool ok = str_contains(code, "rt_lookup_var");
-        if (ok) { pass++; io::printn("[PASS] Compiler: mutable capture reads use rt_lookup_var"); }
-        else    { fail++; io::printn("[FAIL] Compiler: mutable capture reads use rt_lookup_var"); }
+        bool ok = str_contains(code, "aot::lookup_var");
+        if (ok) { pass++; io::printn("[PASS] Compiler: mutable capture reads use aot::lookup_var"); }
+        else    { fail++; io::printn("[FAIL] Compiler: mutable capture reads use aot::lookup_var"); }
     }
 
-    // 62. Non-mutable let uses C3 local variable (Value x = ...)
+    // 62. Non-mutable let uses C3 local variable (Value* x =...)
     {
         char[] code = compile_to_c3("(let (x 42) x)", interp);
-        // The main fn body should contain "Value x = " for a non-mutable let
-        bool ok = str_contains(code, "Value x = ");
+        // The main fn body should contain "Value* x =" for a non-mutable let
+        bool ok = str_contains(code, "Value* x =");
         if (ok) { pass++; io::printn("[PASS] Compiler: non-mutable let uses C3 local"); }
         else    { fail++; io::printn("[FAIL] Compiler: non-mutable let uses C3 local"); }
     }
@@ -3575,19 +3581,19 @@ fn void run_compiler_tests(Interp* _unused_interp) {
         else    { fail++; io::printn("[FAIL] Compiler: factorial compiles"); }
     }
 
-    // 64. Let-rec with tail call emits make_thunk
+    // 64. Let-rec with tail call emits apply_multi_tail
     {
         char[] code = compile_to_c3(
             "(let ^rec (loop (lambda (n) (if (= n 0) 'done (loop (- n 1))))) (loop 100))", interp);
-        bool ok = str_contains(code, "make_thunk") && !str_contains(code, "unsupported");
-        if (ok) { pass++; io::printn("[PASS] Compiler: let-rec tail call emits thunk"); }
-        else    { fail++; io::printn("[FAIL] Compiler: let-rec tail call emits thunk"); }
+        bool ok = str_contains(code, "apply_multi_tail") && !str_contains(code, "unsupported");
+        if (ok) { pass++; io::printn("[PASS] Compiler: let-rec tail call emits apply_multi_tail"); }
+        else    { fail++; io::printn("[FAIL] Compiler: let-rec tail call emits apply_multi_tail"); }
     }
 
     // 65. Nested multi-arg calls compile correctly
     {
         char[] code = compile_to_c3("(+ (* 2 3) (* 4 5))", interp);
-        bool ok = str_contains(code, "rt_invoke") && !str_contains(code, "unsupported");
+        bool ok = str_contains(code, "invoke") && !str_contains(code, "unsupported");
         if (ok) { pass++; io::printn("[PASS] Compiler: nested multi-arg calls"); }
         else    { fail++; io::printn("[FAIL] Compiler: nested multi-arg calls"); }
     }
@@ -3613,65 +3619,64 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     }
 
     // =========================================================================
-    // Phase 7: Runtime bridge tests (rt_eval_source correctness)
+    // Phase 7: JIT infrastructure tests (via lisp::run)
     // =========================================================================
 
-    // 68. map correctness via runtime
+    // 68. map correctness via JIT
     {
-        runtime::Value result = runtime::rt_eval_source("(map (lambda (x) (+ x 1)) (list 1 2 3))");
-        // Should be list (2 3 4) — check first element is 2
+        EvalResult r = run("(map (lambda (x) (+ x 1)) (list 1 2 3))", interp);
         bool ok = false;
-        if (result.tag == runtime::ValueTag.V_CONS) {
-            runtime::Value* car = main::dereference_as(runtime::Value, result.cons_val.car);
-            ok = (car.tag == runtime::ValueTag.V_INT && car.int_val == 2);
+        if (!r.error.has_error && r.value != null) {
+            if (r.value.tag == ValueTag.CONS) {
+                Value* car = r.value.cons_val.car;
+                ok = (car.tag == ValueTag.INT && car.int_val == 2);
+            }
         }
-        if (ok) { pass++; io::printn("[PASS] Runtime: map correctness"); }
-        else    { fail++; io::printn("[FAIL] Runtime: map correctness"); }
+        if (ok) { pass++; io::printn("[PASS] JIT: map correctness"); }
+        else    { fail++; io::printn("[FAIL] JIT: map correctness"); }
     }
 
-    // 69. filter correctness via runtime
+    // 69. filter correctness via JIT
     {
-        runtime::Value result = runtime::rt_eval_source("(filter (lambda (x) (> x 2)) (list 1 2 3 4))");
-        // Should be list (3 4) — check first element is 3
+        EvalResult r = run("(filter (lambda (x) (> x 2)) (list 1 2 3 4))", interp);
         bool ok = false;
-        if (result.tag == runtime::ValueTag.V_CONS) {
-            runtime::Value* car = main::dereference_as(runtime::Value, result.cons_val.car);
-            ok = (car.tag == runtime::ValueTag.V_INT && car.int_val == 3);
+        if (!r.error.has_error && r.value != null && r.value.tag == ValueTag.CONS) {
+            ok = (r.value.cons_val.car.tag == ValueTag.INT && r.value.cons_val.car.int_val == 3);
         }
-        if (ok) { pass++; io::printn("[PASS] Runtime: filter correctness"); }
-        else    { fail++; io::printn("[FAIL] Runtime: filter correctness"); }
+        if (ok) { pass++; io::printn("[PASS] JIT: filter correctness"); }
+        else    { fail++; io::printn("[FAIL] JIT: filter correctness"); }
     }
 
-    // 70. TCO depth via runtime (named-let loop to 5000)
+    // 70. TCO depth via JIT (named-let loop to 5000)
     {
-        runtime::Value result = runtime::rt_eval_source("(let loop (n 5000 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc 1))))");
-        bool ok = (result.tag == runtime::ValueTag.V_INT && result.int_val == 5000);
-        if (ok) { pass++; io::printn("[PASS] Runtime: TCO depth 5000"); }
-        else    { fail++; io::printn("[FAIL] Runtime: TCO depth 5000"); }
+        EvalResult r = run("(let loop (n 5000 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc 1))))", interp);
+        bool ok = (!r.error.has_error && r.value != null && r.value.tag == ValueTag.INT && r.value.int_val == 5000);
+        if (ok) { pass++; io::printn("[PASS] JIT: TCO depth 5000"); }
+        else    { fail++; io::printn("[FAIL] JIT: TCO depth 5000"); }
     }
 
-    // 71. multi-arg via runtime
+    // 71. multi-arg via JIT
     {
-        runtime::Value result = runtime::rt_eval_source("((lambda (x y z) (+ x (+ y z))) 1 2 3)");
-        bool ok = (result.tag == runtime::ValueTag.V_INT && result.int_val == 6);
-        if (ok) { pass++; io::printn("[PASS] Runtime: multi-arg call"); }
-        else    { fail++; io::printn("[FAIL] Runtime: multi-arg call"); }
+        EvalResult r = run("((lambda (x y z) (+ x (+ y z))) 1 2 3)", interp);
+        bool ok = (!r.error.has_error && r.value != null && r.value.tag == ValueTag.INT && r.value.int_val == 6);
+        if (ok) { pass++; io::printn("[PASS] JIT: multi-arg call"); }
+        else    { fail++; io::printn("[FAIL] JIT: multi-arg call"); }
     }
 
-    // 72. mutable capture via runtime (using begin + define for set!)
+    // 72. mutable capture via JIT (using begin + define for set!)
     {
-        runtime::Value result = runtime::rt_eval_source("(begin (define x 0) (set! x (+ x 1)) (set! x (+ x 1)) x)");
-        bool ok = (result.tag == runtime::ValueTag.V_INT && result.int_val == 2);
-        if (ok) { pass++; io::printn("[PASS] Runtime: mutable capture"); }
-        else    { fail++; io::printn("[FAIL] Runtime: mutable capture"); }
+        EvalResult r = run("(begin (define x 0) (set! x (+ x 1)) (set! x (+ x 1)) x)", interp);
+        bool ok = (!r.error.has_error && r.value != null && r.value.tag == ValueTag.INT && r.value.int_val == 2);
+        if (ok) { pass++; io::printn("[PASS] JIT: mutable capture"); }
+        else    { fail++; io::printn("[FAIL] JIT: mutable capture"); }
     }
 
-    // 73. macro via runtime
+    // 73. macro via JIT
     {
-        runtime::Value result = runtime::rt_eval_source("(begin (define [macro] double ([x] (+ x x))) (double 21))");
-        bool ok = (result.tag == runtime::ValueTag.V_INT && result.int_val == 42);
-        if (ok) { pass++; io::printn("[PASS] Runtime: macro expansion"); }
-        else    { fail++; io::printn("[FAIL] Runtime: macro expansion"); }
+        EvalResult r = run("(begin (define [macro] double ([x] (+ x x))) (double 21))", interp);
+        bool ok = (!r.error.has_error && r.value != null && r.value.tag == ValueTag.INT && r.value.int_val == 42);
+        if (ok) { pass++; io::printn("[PASS] JIT: macro expansion"); }
+        else    { fail++; io::printn("[FAIL] JIT: macro expansion"); }
     }
 
     // =========================================================================
@@ -3681,7 +3686,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 74. print_last works for literals
     {
         char[] code = compile_to_c3_with_print("42", interp);
-        bool ok = str_contains(code, "rt_print_value");
+        bool ok = str_contains(code, "aot::print_value");
         if (ok) { pass++; io::printn("[PASS] Compiler: print_last literal"); }
         else    { fail++; io::printn("[FAIL] Compiler: print_last literal"); }
     }
@@ -3689,7 +3694,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 75. print_last works for calls
     {
         char[] code = compile_to_c3_with_print("(+ 1 2)", interp);
-        bool ok = str_contains(code, "rt_print_value");
+        bool ok = str_contains(code, "aot::print_value");
         if (ok) { pass++; io::printn("[PASS] Compiler: print_last call"); }
         else    { fail++; io::printn("[FAIL] Compiler: print_last call"); }
     }
@@ -3697,7 +3702,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     // 76. print_last skips defines, wraps last non-define
     {
         char[] code = compile_to_c3_with_print("(define x 1) x", interp);
-        bool ok = str_contains(code, "rt_print_value");
+        bool ok = str_contains(code, "aot::print_value");
         if (ok) { pass++; io::printn("[PASS] Compiler: print_last skips defines"); }
         else    { fail++; io::printn("[FAIL] Compiler: print_last skips defines"); }
     }

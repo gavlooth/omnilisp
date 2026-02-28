@@ -67,13 +67,27 @@ fn int run_build(int argc, char** argv, int build_idx) {
         return 1;
     }
 
+    // Parse build flags
+    bool print_last = false;
+    bool print_all = false;
+    for (int i = 0; i < argc; i++) {
+        if (str_eq(argv[i], "--print-last")) print_last = true;
+        if (str_eq(argv[i], "--print-all")) print_all = true;
+    }
+
     // Step 1: Compile Lisp → C3
     io::printfn("Compiling %s...", (ZString)input_file);
     thread_registry_init();
     lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
     interp.init();
 
-    char[] c3_code = lisp::compile_to_c3(source, interp);
+    char[] c3_code = lisp::compile_to_c3_ext(source, interp, print_last, print_all);
+
+    if (c3_code.len == 0) {
+        mem::free(interp);
+        thread_registry_shutdown();
+        return 1;
+    }
 
     // Step 2: Write temp C3 file
     char[] temp_path = "build/_aot_temp.c3";
@@ -95,11 +109,18 @@ fn int run_build(int argc, char** argv, int build_idx) {
     char* op = output_binary;
     while (*op != 0) { out_len++; op++; }
 
-    char[1024] cmd_buf;
+    char[2048] cmd_buf;
     usz cmd_len = 0;
-    // Standalone AOT: only 5 source files, no interpreter/JIT/replxx/lightning
-    char[] prefix = "env -u LD_LIBRARY_PATH c3c compile src/main.c3 src/continuation.c3 src/ghost_index.c3 src/lisp/runtime.c3 build/_aot_temp.c3 -l dl -l m -L /usr/local/lib -o ";
-    for (usz i = 0; i < prefix.len && cmd_len < 1023; i++) {
+    // AOT binary links against JIT infrastructure (scope-region, stack engine, lisp module)
+    // Includes aot.c3 wrapper which provides a clean API for generated code
+    // C helpers pre-compiled into build/libomni_chelpers.a
+    char[] prefix = "env -u LD_LIBRARY_PATH c3c compile "
+        "src/main.c3 src/scope_region.c3 src/stack_engine.c3 "
+        "src/lisp/aot.c3 src/lisp/value.c3 src/lisp/eval.c3 src/lisp/parser.c3 "
+        "src/lisp/jit.c3 src/lisp/primitives.c3 src/lisp/macros.c3 src/lisp/compiler.c3 "
+        "src/lisp/utf8.c3 "
+        "build/_aot_temp.c3 -l omni_chelpers -l lightning -l ffi -l dl -l m -L build -L /usr/local/lib -o ";
+    for (usz i = 0; i < prefix.len && cmd_len < 2047; i++) {
         cmd_buf[cmd_len] = prefix[i];
         cmd_len++;
     }
@@ -501,6 +522,12 @@ fn int main(int argc, char** argv) {
 
             // Compile to C3
             char[] c3_code = lisp::compile_to_c3(source, interp);
+
+            if (c3_code.len == 0) {
+                mem::free(interp);
+                thread_registry_shutdown();
+                return 1;
+            }
 
             // Write output file
             char[] output_path;

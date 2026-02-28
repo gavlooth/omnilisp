@@ -3177,7 +3177,11 @@ fn List{Expr*} parse_program(char[] source, Interp* interp) {
 
     List{Expr*} exprs;
     while (!lex.at_end() && !p.has_error) {
-        exprs.push(p.parse_expr());
+        Expr* e = p.parse_expr();
+        if (e != null) {
+            exprs.push(e);
+        }
     }
+
     return exprs;
 }

@@ -188,7 +188,7 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
         }
 
         case CONTINUATION: {
-            EvalResult r = jit_apply_continuation(func, arg, interp);
+            EvalResult r = jit_apply_continuation_impl(func, arg, interp);
             if (r.error.has_error) return make_error(interp, r.error.message[:256]);
             return r.value;
         }
@@ -1336,11 +1336,18 @@ struct HandleEffectState {
     Value*         signal_arg;     // Argument passed to signal
     EffectHandler  handler_copy;   // Copy of handler for reinstallation by resolve
     usz            handler_idx;    // Handler stack index
+    bool           is_aot;
+    Value*         aot_body;
 }
 
 fn void handle_effect_entry(void* arg) {
     HandleEffectState* state = (HandleEffectState*)arg;
-    Value* v = jit_eval(state.body, state.env, state.interp);
+    Value* v;
+    if (state.is_aot) {
+        v = jit_apply_value(state.aot_body, make_nil(state.interp), state.interp);
+    } else {
+        v = jit_eval(state.body, state.env, state.interp);
+    }
     main::g_current_stack_ctx.result = v;
 }
 
@@ -1390,7 +1397,8 @@ fn Value* jit_signal_impl(Expr* expr, Env* env, Interp* interp) {
             EffectHandler* h = &interp.handler_stack[(usz)i];
 
             for (usz j = 0; j < h.clause_count; j++) {
-                if ((uint)h.clauses[j].effect_tag == (uint)tag) {
+                SymbolId ctag = h.clauses != null ? h.clauses[j].effect_tag : h.tags[j];
+                if ((uint)ctag == (uint)tag) {
                     // Found matching handler
                     if (h.effect_state != null) {
                         // StackCtx path: suspend context, inform handle loop
@@ -3824,4 +3832,264 @@ fn bool emit_build_locals_env(void* s, Interp* interp, JitLocals* locals) {
  */
 fn Expr* parse_for_jit(char[] source, Interp* interp) {
     return parse(source, interp);
+}
+// Parallel state for Value-based (AOT) effects
+struct ResetValueState {
+    Value*  body;         // Reset body closure
+    Interp* interp;
+    bool    shifted;
+    Value*  shift_body;   // Shift body closure
+    Value*  shift_k;      // Captured k for shift body
+}
+
+fn void reset_value_entry(void* arg) {
+    ResetValueState* state = (ResetValueState*)arg;
+    Value* v = jit_apply_value(state.body, make_nil(state.interp), state.interp);
+    main::g_current_stack_ctx.result = v;
+}
+
+fn Value* jit_reset_value(Interp* interp, Value* body) {
+    main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
+    if (ctx == null) return raise_error(interp, "stack engine: failed to create context");
+
+    ResetValueState state;
+    state.body = body;
+    state.interp = interp;
+    state.shifted = false;
+    state.shift_body = null;
+    state.shift_k = null;
+
+    main::stack_ctx_init(ctx, &reset_value_entry, &state);
+
+    void* saved_state = interp.current_reset_state;
+    interp.current_reset_state = &state;
+
+    // Save state (omitted for brevity, same as jit_reset_impl)
+    Env* saved_jit_env = interp.jit_env;
+    usz saved_eval_depth = interp.eval_depth;
+    InterpFlags saved_flags = interp.flags;
+
+    main::StackContext parent_ctx;
+    main::stack_ctx_switch_to(ctx, &parent_ctx);
+
+    interp.current_reset_state = saved_state;
+    interp.jit_env = saved_jit_env;
+    interp.eval_depth = saved_eval_depth;
+    interp.flags = saved_flags;
+
+    if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
+        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
+        return raise_error(interp, "stack overflow in reset");
+    }
+
+    if (state.shifted) {
+        return jit_apply_value(state.shift_body, state.shift_k, interp);
+    }
+
+    Value* v = (Value*)ctx.result;
+    main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
+    return v;
+}
+fn Value* jit_shift_value(Interp* interp, Value* body) {
+    main::StackCtx* current = main::g_current_stack_ctx;
+    if (current == null) return raise_error(interp, "shift outside of reset");
+
+    ResetValueState* rstate = (ResetValueState*)interp.current_reset_state;
+    if (rstate == null) return raise_error(interp, "shift outside of reset");
+
+    Continuation* k = interp.alloc_lisp_continuation();
+    k.ctx = current;
+    k.is_coroutine_based = true;
+    Value* k_val = make_continuation(interp, k);
+
+    rstate.shifted = true;
+    rstate.shift_body = body;
+    rstate.shift_k = k_val;
+
+    main::stack_ctx_suspend();
+    return interp.resume_value;
+}
+
+fn Value* jit_signal_value(Interp* interp, Value* tag, Value* arg) {
+    // Search handler stack
+    main::StackCtx* current = main::g_current_stack_ctx;
+    if (current != null) {
+        for (isz i = (isz)interp.handler_count - 1; i >= 0; i--) {
+            EffectHandler* h = &interp.handler_stack[(usz)i];
+            for (usz j = 0; j < h.clause_count; j++) {
+                if (h.tags[j] == tag.sym_val) {
+                    if (h.effect_state != null) {
+                        HandleEffectState* hstate = (HandleEffectState*)h.effect_state;
+                        hstate.signaled = true;
+                        hstate.signal_tag = (SymbolId)tag.sym_val;
+                        hstate.signal_arg = arg;
+                        main::stack_ctx_suspend();
+                        return interp.resume_value;
+                    }
+                }
+            }
+        }
+    }
+    // I/O fast path
+    if (tag.sym_val == interp.sym_io_print) {
+        print_value(arg, &interp.symbols);
+        return make_nil(interp);
+    }
+    if (tag.sym_val == interp.sym_io_println) {
+        print_value(arg, &interp.symbols);
+        io::printn("");
+        return make_nil(interp);
+    }
+    return raise_error(interp, "unhandled effect");
+}
+
+fn Value* jit_resolve_value(Interp* interp, Value* k_val, Value* val) {
+    if (k_val == null || k_val.tag != CONTINUATION) {
+        return raise_error(interp, "resolve: __k is not a valid continuation");
+    }
+
+    Continuation* k = k_val.cont_val;
+
+    // Single-shot check
+    if (k.ctx == null) {
+        return raise_error(interp, "resolve: continuation already resumed (one-shot only)");
+    }
+
+    if (!k.is_coroutine_based) {
+        return raise_error(interp, "resolve: expected coroutine-based continuation");
+    }
+
+    if (k.ctx.status == main::StackCtxStatus.CTX_COMPLETED || k.ctx.status == main::StackCtxStatus.CTX_DEAD) {
+        return raise_error(interp, "resolve: continuation context is dead");
+    }
+
+    // Reinstall effect handler copy from when the signal occurred
+    HandleEffectState* hstate = (HandleEffectState*)k.handle_state;
+    if (hstate != null) {
+        if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+        interp.handler_stack[interp.handler_count] = hstate.handler_copy;
+        interp.handler_count++;
+    }
+
+    // Pass resolve value to suspended context
+    interp.resume_value = val;
+
+    // Resume the context
+    main::StackContext parent_ctx;
+    main::stack_ctx_switch_to(k.ctx, &parent_ctx);
+
+    // Context returned (either completed, signaled again, or died)
+    if (hstate != null) {
+        interp.handler_count--;
+    }
+
+    Value* result;
+    if (k.ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
+        result = (Value*)k.ctx.result;
+    } else {
+        result = interp.resume_value;
+    }
+
+    // Single-shot: invalidate continuation
+    k.ctx = null;
+    k.handle_state = null;
+
+    return result;
+}
+
+fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz count, Value* body_closure) {
+    main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
+    if (ctx == null) return raise_error(interp, "stack engine: failed to create context for handle");
+
+    HandleEffectState state;
+    state.body = null;
+    state.env = null;
+    state.interp = interp;
+    state.signaled = false;
+    state.signal_tag = (SymbolId)0;
+    state.signal_arg = null;
+    state.is_aot = true;
+    state.aot_body = body_closure;
+
+    main::stack_ctx_init(ctx, &handle_effect_entry, &state);
+
+    if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+    usz my_idx = interp.handler_count;
+    EffectHandler* h = &interp.handler_stack[my_idx];
+    h.clause_count = count;
+    h.handler_env = null;
+    h.body_expr = null;
+    h.body_env = null;
+    h.strict_mode = false;
+    h.effect_state = &state;
+
+    h.tags = (SymbolId*)mem::malloc(SymbolId.sizeof * count);
+    h.closures = (Value**)mem::malloc(Value*.sizeof * count);
+    for (usz i = 0; i < count; i++) {
+        h.tags[i] = tags[i].sym_val;
+        h.closures[i] = closures[i];
+    }
+    h.clauses = null;
+
+    interp.handler_count = my_idx + 1;
+
+    state.handler_copy = *h;
+    state.handler_idx = my_idx;
+
+    main::StackContext parent_ctx;
+    main::stack_ctx_switch_to(ctx, &parent_ctx);
+
+    if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
+        interp.handler_count = my_idx;
+        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
+        return raise_error(interp, "stack overflow in handle body");
+    }
+
+    Value* last_handler_v = null;
+    while (state.signaled) {
+        state.signaled = false;
+        interp.handler_count = my_idx;
+
+        Value* handler_closure = null;
+        for (usz j = 0; j < state.handler_copy.clause_count; j++) {
+            if ((uint)state.handler_copy.tags[j] == (uint)state.signal_tag) {
+                handler_closure = state.handler_copy.closures[j];
+                break;
+            }
+        }
+
+        if (handler_closure == null) {
+            main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
+            return raise_error(interp, "unhandled effect");
+        }
+
+        Continuation* k = interp.alloc_lisp_continuation();
+        k.ctx = ctx;
+        k.is_coroutine_based = true;
+        k.handle_state = &state;
+        Value* k_val = make_continuation(interp, k);
+
+        Value* pair = make_cons(interp, k_val, state.signal_arg);
+
+        last_handler_v = jit_apply_value(handler_closure, pair, interp);
+
+        if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
+            break;
+        }
+    }
+
+    Value* result;
+    if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
+        result = (Value*)ctx.result;
+    } else {
+        result = last_handler_v;
+    }
+
+    mem::free(state.handler_copy.tags);
+    mem::free(state.handler_copy.closures);
+
+    interp.handler_count = my_idx;
+    main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
+
+    return result;
 }
