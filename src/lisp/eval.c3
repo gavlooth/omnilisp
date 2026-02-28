@@ -71,7 +71,7 @@ fn void sigint_handler(CInt sig) {
 }
 
 // =============================================================================
-// LIBDL FFI DECLARATIONS
+// LIBDL DECLARATIONS (used by declarative FFI: define [ffi lib] / define [ffi λ])
 // =============================================================================
 
 extern fn void* dlopen(char* filename, int flags) @extern("dlopen");
@@ -80,29 +80,6 @@ extern fn int dlclose(void* handle) @extern("dlclose");
 extern fn char* dlerror() @extern("dlerror");
 const int RTLD_LAZY = 1;
 
-// Function pointer aliases for FFI calls — integer args
-alias FfiFn0 = fn long();
-alias FfiFn1 = fn long(long);
-alias FfiFn2 = fn long(long, long);
-alias FfiFn3 = fn long(long, long, long);
-alias FfiFn4 = fn long(long, long, long, long);
-alias FfiFn5 = fn long(long, long, long, long, long);
-alias FfiFn6 = fn long(long, long, long, long, long, long);
-
-// Function pointer aliases for FFI calls — double args, double return (x86-64: XMM regs)
-alias FfiFnD0 = fn double();
-alias FfiFnD1 = fn double(double);
-alias FfiFnD2 = fn double(double, double);
-alias FfiFnD3 = fn double(double, double, double);
-
-// Function pointer aliases for FFI calls — integer args, double return
-alias FfiFnID0 = fn double();
-alias FfiFnID1 = fn double(long);
-alias FfiFnID2 = fn double(long, long);
-
-// Function pointer aliases for FFI calls — double args, integer return
-alias FfiFnDI1 = fn long(double);
-alias FfiFnDI2 = fn long(double, double);
 
 // =============================================================================
 // SECTION 1: EVALUATOR CORE
@@ -393,7 +370,7 @@ fn SymbolId value_type_name(Value* v, Interp* interp) {
         case ARRAY:     return interp.sym_Array;
         case HASHMAP:   return interp.sym_Dict;
         case ITERATOR:  return interp.sym_Iterator;
-        case FIBER:     return interp.symbols.intern("Fiber");
+        case COROUTINE:     return interp.symbols.intern("Coroutine");
         case INSTANCE:
             if (v.instance_val != null) {
                 TypeInfo* ti = interp.types.get(v.instance_val.type_id);
@@ -524,11 +501,12 @@ fn Value* make_instance(Interp* interp, TypeId type_id, Value** fields, usz fiel
     for (usz i = 0; i < field_count && i < MAX_TYPE_FIELDS; i++) {
         inst.fields[i] = fields[i];
     }
-    // Allocate Value in root_region so it persists across frame releases
-    main::RegionHandle saved = interp.current_frame;
-    interp.current_frame = interp.root_region;
+    // Allocate Value in root_scope so it persists across scope releases
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
     Value* v = interp.alloc_value();
-    interp.current_frame = saved;
+    main::scope_register_dtor(interp.root_scope, (void*)v, &scope_dtor_value);
+    interp.current_scope = saved_scope;
     v.tag = INSTANCE;
     v.instance_val = inst;
     return v;
@@ -603,26 +581,10 @@ fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
     // Register in type registry
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
 
-    // Create constructor primitive
-    // Constructor is a closure that takes field_count args and creates an Instance
-    // We'll implement it as a special primitive that captures the type_id
-    Value* constructor = interp.alloc_value();
-    constructor.tag = PRIMITIVE;
-    constructor.prim_val = (Primitive*)mem::malloc(Primitive.sizeof);
-    // Store type name as primitive name
+    // Create constructor primitive in root_scope (lives permanently in global env)
     char[] name_str = interp.symbols.get_name(dt.name);
-    for (usz i = 0; i < name_str.len && i < 63; i++) {
-        constructor.prim_val.name[i] = name_str[i];
-    }
-    constructor.prim_val.name[name_str.len < 63 ? name_str.len : 63] = 0;
-    constructor.prim_val.arity = (int)dt.field_count;
-    constructor.prim_val.func = &prim_type_constructor;
+    Value* constructor = make_primitive(interp, name_str, &prim_type_constructor, (int)dt.field_count);
     constructor.prim_val.tag = (int)type_id;
-
-    // Copy constructor to root_region for globals
-    if (interp.current_frame.region_id != interp.root_region.region_id) {
-        constructor = copy_to_parent(constructor, interp, interp.root_region);
-    }
 
     // Define constructor in global env
     interp.global_env.define(dt.name, constructor);
@@ -806,28 +768,14 @@ fn EvalResult eval_defunion(Expr* expr, Env* env, Interp* interp) {
 
         // Create constructor for this variant
         if (variant.field_count == 0) {
-            // Nullary variant: define as a constant instance
+            // Nullary variant: define as a constant instance (make_instance uses root_scope)
             Value* inst = make_instance(interp, var_id, null, 0);
-            if (interp.current_frame.region_id != interp.root_region.region_id) {
-                inst = copy_to_parent(inst, interp, interp.root_region);
-            }
             interp.global_env.define(variant.name, inst);
         } else {
-            // Variant with fields: define as constructor primitive
-            Value* ctor = interp.alloc_value();
-            ctor.tag = PRIMITIVE;
-            ctor.prim_val = (Primitive*)mem::malloc(Primitive.sizeof);
+            // Variant with fields: define as constructor primitive (make_primitive uses root_scope)
             char[] vname = interp.symbols.get_name(variant.name);
-            for (usz k = 0; k < vname.len && k < 63; k++) {
-                ctor.prim_val.name[k] = vname[k];
-            }
-            ctor.prim_val.name[vname.len < 63 ? vname.len : 63] = 0;
-            ctor.prim_val.arity = (int)variant.field_count;
-            ctor.prim_val.func = &prim_type_constructor;
+            Value* ctor = make_primitive(interp, vname, &prim_type_constructor, (int)variant.field_count);
             ctor.prim_val.tag = (int)var_id;
-            if (interp.current_frame.region_id != interp.root_region.region_id) {
-                ctor = copy_to_parent(ctor, interp, interp.root_region);
-            }
             interp.global_env.define(variant.name, ctor);
         }
     }
@@ -921,7 +869,7 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
 
     // Create FFI handle value and bind in global env
     Value* ffi_handle = make_ffi_handle(interp, handle, path_val.str_val.chars[:path_val.str_val.len]);
-    interp.global_env = interp.global_env.extend(interp, fl.name, ffi_handle);
+    interp.global_env.define(fl.name, ffi_handle);
     return ffi_handle;
 }
 
@@ -930,6 +878,17 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
 fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
     FfiBoundFn* bound = (FfiBoundFn*)interp.prim_user_data;
     if (bound == null) return raise_error(interp, "ffi: internal error — no bound function");
+
+    // Lazy dlsym: resolve on first call
+    if (bound.fn_ptr == null) {
+        bound.fn_ptr = dlsym(bound.lib_handle, (ZString)&bound.c_name);
+        if (bound.fn_ptr == null) {
+            char[256] ebuf;
+            char[] msg = io::bprintf(&ebuf, "ffi: dlsym failed for '%s'",
+                (ZString)&bound.c_name)!!;
+            return raise_error(interp, msg);
+        }
+    }
 
     // Validate arg count
     if (args.len < bound.param_count) {
@@ -1054,18 +1013,15 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
         return raise_error(interp, "ffi λ: library handle is closed");
     }
 
-    // dlsym to get function pointer
-    void* fn_ptr = dlsym(lib_val.ffi_val.lib_handle, (ZString)&ff.c_name);
-    if (fn_ptr == null) {
-        char[256] ebuf;
-        char[] msg = io::bprintf(&ebuf, "ffi λ: dlsym failed for '%s'",
-            (ZString)&ff.c_name)!!;
-        return raise_error(interp, msg);
-    }
-
-    // Build FfiBoundFn
+    // Build FfiBoundFn — dlsym is deferred to first call (lazy resolution)
     FfiBoundFn* bound = (FfiBoundFn*)mem::malloc(FfiBoundFn.sizeof);
-    bound.fn_ptr = fn_ptr;
+    bound.fn_ptr = null;  // resolved lazily on first call
+    bound.lib_handle = lib_val.ffi_val.lib_handle;
+    // Copy C symbol name for lazy dlsym
+    for (usz i = 0; i < ff.c_name.len && i < 127; i++) {
+        bound.c_name[i] = ff.c_name[i];
+    }
+    bound.c_name[ff.c_name.len < 127 ? ff.c_name.len : 127] = 0;
     bound.param_count = ff.param_count;
     bound.is_variadic = ff.is_variadic;
 
@@ -1089,7 +1045,7 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     prim.prim_val.user_data = (void*)bound;
 
     // Bind in global env
-    interp.global_env = interp.global_env.extend(interp, ff.fn_name, prim);
+    interp.global_env.define(ff.fn_name, prim);
     return prim;
 }
 
@@ -1099,126 +1055,23 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
 
 // Frame push/pop is now active: run() wraps each evaluation in a child region.
 // Temporary Values (ints, cons cells, intermediate strings) die with the child
-// region. Long-lived values are promoted to root_region by existing infrastructure:
-// - jit_make_closure_from_expr: allocates closures in root_region, deep-copies env
-// - jit_eval_define: copies defined values to root_region via copy_to_parent
-// - jit_eval_let_rec: promotes rec_env to root_region when in child frame
+// scope. Long-lived values are promoted to root_scope by existing infrastructure:
+// - jit_make_closure_from_expr: allocates closures + env in per-closure env_scope
+// - jit_eval_define: copies defined values to root_scope via copy_to_parent
+// - jit_eval_let_rec: creates weak self-reference in closure's env_scope
 // - alloc_expr/alloc_pattern: always use root_region (AST nodes survive)
 
-/**
- * Destructor for Value objects — frees malloc'd backing storage.
- * Called automatically by the region system when a Value is destroyed.
- */
-fn void destroy_value(void* ptr) {
-    Value* v = (Value*)ptr;
-    switch (v.tag) {
-        case STRING:
-        case ERROR:
-            if (v.str_val != null) {
-                if (v.str_val.chars != null) mem::free(v.str_val.chars);
-                mem::free(v.str_val);
-                v.str_val = null;
-            }
-        case ARRAY:
-            if (v.array_val != null) {
-                if (v.array_val.items != null) mem::free(v.array_val.items);
-                mem::free(v.array_val);
-                v.array_val = null;
-            }
-        case INSTANCE:
-            if (v.instance_val != null) {
-                mem::free(v.instance_val);
-                v.instance_val = null;
-            }
-        case METHOD_TABLE:
-            if (v.method_table_val != null) {
-                if (v.method_table_val.entries != null) {
-                    mem::free(v.method_table_val.entries);
-                }
-                mem::free(v.method_table_val);
-                v.method_table_val = null;
-            }
-        case CLOSURE:
-            if (v.closure_val != null) {
-                if (v.closure_val.type_sig != null) {
-                    mem::free(v.closure_val.type_sig);
-                }
-                mem::free(v.closure_val);
-                v.closure_val = null;
-            }
-        case PRIMITIVE:
-            if (v.prim_val != null) {
-                mem::free(v.prim_val);
-                v.prim_val = null;
-            }
-        case FFI_HANDLE:
-            if (v.ffi_val != null) {
-                if (v.ffi_val.lib_handle != null) {
-                    dlclose(v.ffi_val.lib_handle);
-                    v.ffi_val.lib_handle = null;
-                }
-                mem::free(v.ffi_val);
-                v.ffi_val = null;
-            }
-        case ITERATOR: {}  // iterator_val is a Value* (CLOSURE), owned by region
-        default: {}
-    }
-}
+// Old region-system destructors removed (Phase 7).
+// Scope-region destructors are scope_dtor_value and scope_dtor_env in value.c3.
 
 /**
- * Destructor for HashMap objects — frees malloc'd entries buffer.
- * Called automatically by the region system when a HashMap is destroyed.
- */
-fn void destroy_hashmap(void* ptr) {
-    HashMap* map = (HashMap*)ptr;
-    if (map.entries != null) {
-        mem::free(map.entries);
-        map.entries = null;
-    }
-}
-
-/**
- * Destructor for Env objects — frees malloc'd bindings array.
- */
-fn void destroy_env(void* ptr) {
-    Env* env = (Env*)ptr;
-    if (env.bindings != null) {
-        mem::free(env.bindings);
-        env.bindings = null;
-    }
-    if (env.hash_table != null) {
-        mem::free(env.hash_table);
-        env.hash_table = null;
-    }
-}
-
-/**
- * Register destructors for types with malloc'd backing storage.
- * Initializes the global destructor registry if not already initialized.
- */
-fn void register_destructors() {
-    if (main::g_destructor_registry.capacity == 0) {
-        main::g_destructor_registry.init();
-    }
-    main::g_destructor_registry.register(Value.typeid, &destroy_value);
-    main::g_destructor_registry.register(HashMap.typeid, &destroy_hashmap);
-    main::g_destructor_registry.register(Env.typeid, &destroy_env);
-}
-
-/**
- * Copy a Value and everything it transitively references to a target region.
- * Used to promote return values out of a child frame before releasing it.
+ * Copy a Value and everything it transitively references to current_scope.
+ * Used to promote return values out of a child scope before releasing it.
+ * Caller must set current_scope to the target scope before calling.
  */
 <* @require interp != null : "copy_to_parent: null interp" *>
-fn Value* copy_to_parent(Value* v, Interp* interp, main::RegionHandle target) {
+fn Value* copy_to_parent(Value* v, Interp* interp) {
     if (v == null) return null;
-    $if DEBUG_BUILD:
-        if (target.region_id == interp.root_region.region_id && v.tag != ValueTag.NIL && v.tag != ValueTag.INT) {
-            io::eprintfn("[debug] copy_to_parent: promoting tag=%d to root region", v.tag.ordinal);
-        }
-    $endif
-    main::RegionHandle saved = interp.current_frame;
-    interp.current_frame = target;
 
     Value* result;
     switch (v.tag) {
@@ -1233,76 +1086,116 @@ fn Value* copy_to_parent(Value* v, Interp* interp, main::RegionHandle target) {
         case SYMBOL:
             result = make_symbol(interp, v.sym_val);
         case CONS: {
-            // Need to restore frame for recursive calls
-            interp.current_frame = saved;
-            Value* new_car = copy_to_parent(v.cons_val.car, interp, target);
-            Value* new_cdr = copy_to_parent(v.cons_val.cdr, interp, target);
-            interp.current_frame = target;
+            Value* new_car = copy_to_parent(v.cons_val.car, interp);
+            Value* new_cdr = copy_to_parent(v.cons_val.cdr, interp);
             result = make_cons(interp, new_car, new_cdr);
         }
-        case CLOSURE:
-            result = v;  // closures already in root_region
+        case CLOSURE: {
+            // Shared Closure: new Value wrapper in target scope, bump refcount
+            result = interp.alloc_value();
+            result.tag = CLOSURE;
+            result.closure_val = v.closure_val;
+            result.closure_val.refcount++;
+            main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+        }
         case PRIMITIVE:
             result = v;
-        case PARTIAL_PRIM:
-            result = v;
+        case PARTIAL_PRIM: {
+            // Deep copy: Value wrapper may be in child scope, and first_arg/second_arg may too
+            result = interp.alloc_value();
+            result.tag = PARTIAL_PRIM;
+            result.partial_val.func = v.partial_val.func;
+            result.partial_val.remaining = v.partial_val.remaining;
+            result.partial_val.first_arg = copy_to_parent(v.partial_val.first_arg, interp);
+            result.partial_val.second_arg = copy_to_parent(v.partial_val.second_arg, interp);
+        }
         case CONTINUATION:
-            result = v;
+            // Shallow copy: Value wrapper may be in child scope, cont_val itself is in root_region
+            result = interp.alloc_value();
+            result.tag = CONTINUATION;
+            result.cont_val = v.cont_val;
         case HASHMAP:
         case ARRAY:
         case INSTANCE:
         case METHOD_TABLE:
-            result = v;  // Value allocated in root_region; backing data is malloc'd with registered destructors
+            result = v;  // Value allocated in root_scope; backing data is malloc'd with registered destructors
         case FFI_HANDLE:
-            result = v;  // FfiHandle is inline in Value; Value allocated in root_region
+            result = v;  // FfiHandle is inline in Value; Value allocated in root_scope
         case TYPE_INFO:
             result = v;  // type info lives in registry
+        case ITERATOR: {
+            // Phase 4b: iterator_val is a Value* to a CLOSURE that may be in a child scope.
+            // Promote the underlying closure too so it outlives the ITERATOR.
+            Value* promoted_thunk = copy_to_parent(v.iterator_val, interp);
+            result = interp.alloc_value();
+            result.tag = ITERATOR;
+            result.iterator_val = promoted_thunk;
+        }
+        case COROUTINE:
+            // Shallow copy: Value wrapper may be in child scope, coroutine_val (Coro*) managed by stack pool
+            result = interp.alloc_value();
+            result.tag = COROUTINE;
+            result.coroutine_val = v.coroutine_val;
+        case MODULE:
+            result = v;  // Module lives in interp.modules array
         case ERROR:
             result = make_error(interp, v.str_val.chars[:v.str_val.len]);
         default:
             result = v;
     }
-    interp.current_frame = saved;
     return result;
 }
 
 /**
- * Deep-copy an env chain to root_region so closures survive frame release.
- * Stops at global_env (already in root_region).
+ * Promote a value to root_scope so it survives child scope release.
+ * No-op when already in root_scope (fast path for stdlib loading, etc.).
+ * Used when storing values into root-scope data structures (hashmap, array).
  */
-fn Env* deep_copy_env(Env* env, Interp* interp, usz depth = 0) {
+fn Value* promote_to_root(Value* v, Interp* interp) {
+    if (v == null || interp.current_scope == interp.root_scope) return v;
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
+    Value* result = copy_to_parent(v, interp);
+    interp.current_scope = saved_scope;
+    return result;
+}
+
+/**
+ * Copy an env chain into interp.current_scope (caller must set this to the target scope,
+ * typically a closure's env_scope). Uses copy_to_parent for each binding value.
+ * Stops at global_env (already in root_region). Skips persistent env nodes (mutable boxes).
+ * Replaces deep_copy_env — allocates into any scope, not just root_scope.
+ */
+fn Env* copy_env_to_scope(Env* env, Interp* interp, usz depth = 0) {
     if (env == null || env == interp.global_env) return env;
     if (depth >= 256) return null;
 
     // Persistent env nodes (mutable boxes allocated in root_region) are kept
     // as-is to preserve sharing between JIT stack slots and closure captures.
-    // Their parent chain still needs fixing up since it may point to child-region envs.
+    // Their parent chain still needs fixing up since it may point to child-scope envs.
     if (env.persistent) {
-        env.parent = deep_copy_env(env.parent, interp, depth + 1);
+        env.parent = copy_env_to_scope(env.parent, interp, depth + 1);
         return env;
     }
 
-    main::RegionHandle saved = interp.current_frame;
-    interp.current_frame = interp.root_region;
     Env* new_env = interp.alloc_env();
-    interp.current_frame = saved;
-    // Reallocate bindings to match source capacity
-    if (env.binding_count > new_env.capacity) {
-        mem::free(new_env.bindings);
-        new_env.bindings = (Binding*)mem::malloc(Binding.sizeof * env.binding_count);
-        new_env.capacity = env.binding_count;
-    }
+    // Allocate bindings to match source
+    new_env.bindings = (Binding*)mem::malloc(Binding.sizeof * env.binding_count);
+    new_env.capacity = env.binding_count;
     new_env.binding_count = env.binding_count;
     for (usz i = 0; i < env.binding_count; i++) {
         new_env.bindings[i].name = env.bindings[i].name;
         new_env.bindings[i].value = copy_to_parent(
-            env.bindings[i].value, interp, interp.root_region);
+            env.bindings[i].value, interp);
     }
-    new_env.parent = deep_copy_env(env.parent, interp, depth + 1);
+    new_env.parent = copy_env_to_scope(env.parent, interp, depth + 1);
     // Rebuild hash table if source had one
     if (env.hash_table != null) {
         new_env.build_hash_table();
     }
+    // Register destructor for the newly malloc'd bindings
+    main::scope_register_dtor(interp.current_scope, (void*)new_env, &scope_dtor_env);
+
     return new_env;
 }
 
@@ -1928,7 +1821,7 @@ fn void register_primitives(Interp* interp) {
     }
 
     // --- Regular primitives ---
-    PrimReg[93] regular_prims = {
+    PrimReg[97] regular_prims = {
         // List operations
         { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
         { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 }, { "list", &prim_list, -1 },
@@ -1956,9 +1849,6 @@ fn void register_primitives(Interp* interp) {
         { "gensym", &prim_gensym, 0 },
         // Dict
         { "dict", &prim_dict, -1 }, { "dict-set!", &prim_dict_set, 3 },
-        // FFI
-        { "ffi-open", &prim_ffi_open, 1 }, { "ffi-call", &prim_ffi_call, -1 },
-        { "ffi-close", &prim_ffi_close, 1 }, { "ffi-sym", &prim_ffi_sym, 2 },
         // Math library
         { "sin", &prim_sin, 1 }, { "cos", &prim_cos, 1 }, { "tan", &prim_tan, 1 },
         { "asin", &prim_asin, 1 }, { "acos", &prim_acos, 1 }, { "atan", &prim_atan, 1 },
@@ -1996,11 +1886,20 @@ fn void register_primitives(Interp* interp) {
         { "iterator?", &prim_iterator_p, 1 }, { "make-iterator", &prim_make_iterator, 1 },
         { "next", &prim_next, 1 }, { "collect", &prim_collect, 1 },
         { "to-array", &prim_to_array, 1 },
-        // Fibers
-        { "fiber", &prim_fiber, 1 },
+        // Coroutines
+        { "coroutine", &prim_coroutine, 1 },
         { "resume", &prim_resume, -1 },
         { "yield", &prim_yield, -1 },
-        { "fiber?", &prim_fiber_p, 1 },
+        { "coroutine?", &prim_coroutine_p, 1 },
+        // System / OS
+        { "shell", &prim_shell, 1 },
+        { "random", &prim_random, 0 },
+        { "random-int", &prim_random_int, 1 },
+        { "getenv", &prim_getenv, 1 },
+        { "time", &prim_time, 0 },
+        { "time-ms", &prim_time_ms, 0 },
+        { "exit", &prim_exit, -1 },
+        { "sleep", &prim_sleep, 1 },
     };
     foreach (&r : regular_prims) {
         register_prim(interp, r.name, r.func, r.arity);
@@ -2038,10 +1937,11 @@ fn void register_dispatched_prim(Interp* interp, char[] name, PrimitiveFn func, 
     mt.capacity = METHOD_INITIAL_CAPACITY;
     mt.fallback = prim;
 
-    main::RegionHandle saved = interp.current_frame;
-    interp.current_frame = interp.root_region;
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
     Value* mt_val = interp.alloc_value();
-    interp.current_frame = saved;
+    main::scope_register_dtor(interp.root_scope, (void*)mt_val, &scope_dtor_value);
+    interp.current_scope = saved_scope;
     mt_val.tag = METHOD_TABLE;
     mt_val.method_table_val = mt;
 
@@ -2131,12 +2031,13 @@ fn EvalResult run(char[] source, Interp* interp) {
         return r;
     }
 
-    // JIT path: compile + execute in child region
+    // JIT path: compile + execute in child region + child scope
     expr = expand_macros_in_expr(expr, interp);
 
-    // Push temp frame for evaluation — temporaries die on release
-    main::RegionHandle saved_frame = interp.current_frame;
-    interp.current_frame = main::create_region(saved_frame);
+    // Push child scope — temporaries freed after eval
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* child_scope = main::scope_create(saved_scope);
+    interp.current_scope = child_scope;
 
     JitFn f = jit_compile(expr, interp);
     EvalResult result;
@@ -2145,9 +2046,10 @@ fn EvalResult run(char[] source, Interp* interp) {
         if (jit_result != null && jit_result.tag == ERROR) {
             result = eval_error_expr(jit_result.str_val.chars[:jit_result.str_val.len], expr);
         } else {
-            // Copy result to parent before releasing child frame
             if (jit_result != null) {
-                jit_result = copy_to_parent(jit_result, interp, saved_frame);
+                // Promote result to parent scope before releasing child
+                interp.current_scope = saved_scope;
+                jit_result = copy_to_parent(jit_result, interp);
             }
             result = eval_ok(jit_result);
         }
@@ -2155,9 +2057,10 @@ fn EvalResult run(char[] source, Interp* interp) {
         result = eval_error_expr("JIT compilation failed", expr);
     }
 
-    // Pop temp frame
-    main::release_region(interp.current_frame);
-    interp.current_frame = saved_frame;
+    // Pop child scope — frees all temporaries from this eval
+    interp.current_scope = saved_scope;
+    main::scope_release(child_scope);
+
     return result;
 }
 
@@ -2567,24 +2470,20 @@ fn void repl(Interp* interp) {
         // GC JIT states between REPL lines (safe: no JIT code on stack)
         jit_gc();
 
-        // Parse and evaluate in temp region
+        // Parse and evaluate in child scope
         char[] input = buf[:buf_len];
         g_interrupted = false;
 
-        // Push temp frame
-        main::RegionHandle saved_frame = interp.current_frame;
-        interp.current_frame = main::create_region(saved_frame);
+        // Push child scope — REPL-line temporaries freed after print
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* repl_child_scope = main::scope_create(saved_scope);
+        interp.current_scope = repl_child_scope;
 
         EvalResult r = run(input, interp);
 
-        // Copy result to parent before releasing
         if (!r.error.has_error && r.value != null) {
-            r.value = copy_to_parent(r.value, interp, saved_frame);
+            r.value = copy_to_parent(r.value, interp);
         }
-
-        // Pop temp frame
-        main::release_region(interp.current_frame);
-        interp.current_frame = saved_frame;
 
         if (r.error.has_error) {
             // Print error in red
@@ -2611,6 +2510,10 @@ fn void repl(Interp* interp) {
             io::print(ansi_reset);
             io::printn("");
         }
+
+        // Pop REPL child scope — frees all REPL-line temporaries
+        interp.current_scope = saved_scope;
+        main::scope_release(repl_child_scope);
 
         // Reset buffer for next expression
         buf_len = 0;

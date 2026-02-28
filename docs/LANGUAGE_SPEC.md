@@ -1,9 +1,9 @@
 # Omni Lisp Language Specification
 
-**Version:** 0.4.0
-**Date:** 2026-02-23
+**Version:** 0.4.5
+**Date:** 2026-02-28
 
-Omni Lisp is a Lisp dialect with first-class delimited continuations, algebraic effects, strict-arity multi-param lambdas, multiple dispatch, and a structural type system. It runs on a region-based memory system implemented in C3 with a GNU Lightning JIT engine and a Lisp-to-C3 AOT transpiler.
+Omni Lisp is a Lisp dialect with first-class delimited continuations, algebraic effects, strict-arity multi-param lambdas, multiple dispatch, and a structural type system. It runs on a scope-region memory system (arena-per-call with reference-counted closures) implemented in C3 with a GNU Lightning JIT engine and a Lisp-to-C3 AOT transpiler.
 
 ---
 
@@ -115,7 +115,8 @@ null?
 | error | `ERROR` | Error value | `(error "oops")` |
 | dict | `HASHMAP` | Mutable hash table | `{'a 1}`, `(dict 'a 1)` |
 | array | `ARRAY` | Mutable dynamic array | `[1 2 3]`, `(array 1 2 3)` |
-| ffi-handle | `FFI_HANDLE` | Foreign library handle | `(ffi-open "libc.so.6")` |
+| coroutine | `COROUTINE` | User-level coroutine | `(coroutine (lambda () body))` |
+| ffi-handle | `FFI_HANDLE` | Foreign library handle | `(define [ffi lib] libc "libc.so.6")` |
 | instance | `INSTANCE` | User-defined type instance | `(Point 3 4)` |
 | method-table | `METHOD_TABLE` | Multiple dispatch table | internal |
 
@@ -250,7 +251,7 @@ Quasiquote supports nesting with depth tracking (Bawden's algorithm).
   (_ default))
 ```
 
-Up to 16 clauses. Pattern types:
+Dynamic clause count (no fixed limit). Pattern types:
 
 | Pattern | Description | Example |
 |---------|-------------|---------|
@@ -619,23 +620,23 @@ Note: `length` (Section 7.3) is also generic — works on lists, arrays, dicts, 
 | `sort-by` | Sort list by comparator |
 | `read-string` | Parse string to Lisp value |
 
-### 7.20 FFI (4)
-
-| Prim | Arity | Description |
-|------|-------|-------------|
-| `ffi-open` | 1 | Open shared library via dlopen |
-| `ffi-call` | variadic | Call foreign function with type annotations |
-| `ffi-close` | 1 | Close library handle |
-| `ffi-sym` | 2 | Get function pointer as integer |
+### 7.20 FFI (Declarative)
 
 ```lisp
-(define libc (ffi-open "libc.so.6"))
-(ffi-call libc "strlen" 'size "hello" 'string)  ; => 5
-(ffi-call libc "abs" 'int -42 'int)             ; => 42
-(ffi-close libc)
+;; Declare a library handle
+(define [ffi lib] libc "libc.so.6")
+
+;; Bind a C function as a native Omni function
+(define [ffi λ libc] (strlen (^String s)) ^Int)
+(define [ffi λ libc] (abs (^Int n)) ^Int)
+
+(strlen "hello")  ; => 5
+(abs -42)          ; => 42
 ```
 
-FFI type symbols: `'int`, `'size`, `'string`, `'void`, `'ptr`, `'double`
+- Uses libffi via C wrapper for portable ABI support
+- Type annotations: `^Int` → sint64, `^Double` → double, `^String`/`^Ptr` → pointer, `^Void` → void, `^Bool` → sint64
+- Lazy dlsym: symbol resolution deferred to first call and cached
 
 ### 7.21 Constants
 
@@ -1073,14 +1074,15 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 | Symbol/string length | Dynamic (heap-allocated) |
 | Total symbols | 8192 |
 | Bindings per env frame | 512 |
-| Match clauses | 128 |
-| Pattern elements | 16 |
-| Effect handler clauses | 64 |
+| Match clauses | Dynamic (no fixed limit) |
+| Pattern elements | Dynamic (no fixed limit) |
+| Effect handler clauses | Dynamic (no fixed limit) |
 | Handler stack depth | 16 |
-| Call arguments | 64 |
+| Call arguments | Dynamic AST (JIT compiles up to 16 natively) |
 | Path segments | 8 |
-| Begin expressions | 64 |
-| Lambda params | 64 |
+| Begin expressions | Dynamic (no fixed limit) |
+| Lambda params | Dynamic (no fixed limit) |
+| String literal (inline) | 63 bytes (lexer limit) |
 | Macros | 64 |
 | Macro clauses | 8 |
 | Modules | 32 |

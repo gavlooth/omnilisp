@@ -1,6 +1,6 @@
 # Omni Lisp — Complete Feature Inventory
 
-**Last updated:** 2026-02-23
+**Last updated:** 2026-02-28
 
 ---
 
@@ -98,7 +98,7 @@
 ```
 - Evaluates all expressions in order, returns the last
 - Last expression is in tail position (TCO)
-- Up to 64 expressions
+- Dynamic expression count (no fixed limit)
 
 ### 1.10 `set!` — Variable Mutation
 ```lisp
@@ -124,7 +124,7 @@
   (pattern2 result2)
   ...)
 ```
-- Up to 16 clauses
+- Dynamic clause count (no fixed limit)
 - Falls through on mismatch, returns nil if no match
 - See Section 2 for pattern types
 
@@ -157,7 +157,7 @@
 - `handle` installs handlers that catch matching effects
 - `(resolve expr)` resumes the continuation with the value of `expr`
 - Omitting `resolve` aborts — the handler's result replaces the entire `handle` expression
-- Up to 8 clauses per handle expression
+- Dynamic clause count (no fixed limit)
 - Handler result bypasses intermediate computation back to `handle`
 - Example:
   ```lisp
@@ -260,7 +260,7 @@ name.sym1                  ; qualified access
 | Constructor | `(Some x)` | Matches union variant, binds fields |
 | Nullary ctor | `None` | Matches nullary constructor (auto-detected) |
 
-Up to 16 elements per sequence pattern.
+Dynamic element count per pattern (no fixed limit).
 
 ---
 
@@ -281,7 +281,8 @@ Up to 16 elements per sequence pattern.
 | `error` | ERROR | Error value | `(error "oops")` |
 | `dict` | HASHMAP | Mutable hash table | `{'a 1}`, `(dict 'a 1)` |
 | `array` | ARRAY | Mutable dynamic array | `[1 2 3]`, `(array 1 2 3)` |
-| `ffi_handle` | FFI_HANDLE | Foreign library handle | `(ffi-open "libc.so.6")` |
+| `coroutine` | COROUTINE | User-level coroutine | `(coroutine (lambda () body))` |
+| `ffi_handle` | FFI_HANDLE | Foreign library handle | `(define [ffi lib] libc "libc.so.6")` |
 | `instance` | INSTANCE | User-defined type instance | `(Point 3 4)` |
 | `method_table` | METHOD_TABLE | Multiple dispatch table | internal |
 
@@ -430,33 +431,45 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 **Total: 129+ primitives + 2 constants** (includes math library, bitwise ops, sorting, introspection, type system, generic collection ops, and more not listed above)
 
 ### 5.10 FFI (Foreign Function Interface)
-| Primitive | Arity | Description |
-|-----------|-------|-------------|
-| `ffi-open` | 1 | Open shared library via dlopen |
-| `ffi-call` | variadic | Call foreign function with type annotations |
-| `ffi-close` | 1 | Close shared library handle |
-| `ffi-sym` | 2 | Get raw function pointer as integer |
 
-**FFI type symbols:** `'int`, `'size`, `'string`, `'void`, `'ptr`, `'double`
-
+#### Declarative FFI (recommended)
 ```lisp
-(define libc (ffi-open "libc.so.6"))
-(ffi-call libc "strlen" 'size "hello" 'string)   ;; => 5
-(ffi-call libc "abs" 'int -42 'int)              ;; => 42
-(ffi-call libc "getpid" 'int)                     ;; => <pid>
-(ffi-call libc "atoi" 'int "12345" 'string)       ;; => 12345
-(ffi-sym libc "strlen")                            ;; => <pointer as int>
-(ffi-close libc)
+;; Declare a library handle
+(define [ffi lib] libc "libc.so.6")
+
+;; Bind a C function as a native Omni function
+(define [ffi λ libc] (strlen (^String s)) ^Int)
+(define [ffi λ libc] (abs (^Int n)) ^Int)
+
+(strlen "hello")  ;; => 5
+(abs -42)          ;; => 42
 ```
 
-- Up to 6 C arguments per call
-- x86_64 ABI: all args passed as `long` (pointer-sized), cast via type annotations
-- No libffi dependency — uses function pointer casting (same approach as OmniLisp)
-- Handles allocated in root_region (survive REPL line reclamation)
-- Error on bad library or bad symbol returns error value
-- Supported in interpreter, JIT (via fallback), and compiler
+- Uses libffi via C wrapper (`csrc/ffi_helpers.c`) for portable ABI support
+- Type annotations: `^Int` → sint64, `^Double` → double, `^String`/`^Ptr` → pointer, `^Void` → void, `^Bool` → sint64
+- Lazy dlsym: symbol resolution deferred to first call and cached
+- Handles allocated in root scope (permanent, survive scope release)
 
-### 5.11 Memory
+
+### 5.11 Coroutine Primitives (4)
+| Primitive | Arity | Description |
+|-----------|-------|-------------|
+| `coroutine` | 1 | Create a coroutine from a zero-arg thunk |
+| `resume` | 1 | Resume a suspended coroutine, returns yielded or final value |
+| `yield` | 1 | Yield a value from inside a coroutine, suspending execution |
+| `coroutine?` | 1 | Test if value is a coroutine |
+
+```lisp
+(define f (coroutine (lambda () (yield 1) (yield 2) 3)))
+(resume f)  ;; => 1
+(resume f)  ;; => 2
+(resume f)  ;; => 3
+```
+
+- Coroutines run on dedicated mmap'd stacks (64KB) with guard pages
+- Stack overflow detected via SIGSEGV handler on guard page
+
+### 5.12 Memory
 
 | Primitive | Arity | Description |
 |-----------|-------|-------------|
@@ -468,10 +481,10 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 
 ### 6.1 Delimited Continuations
 - `reset`/`shift` based (not call/cc)
-- One-shot by default, multi-shot via `clone_continuation()`
-- Stack captured by copying (x86_64 register save/restore)
-- Continuations invalidated when their home region dies
-- Thread-local prompt stacks
+- Multi-shot: each invocation of `k` clones the captured stack via `coro_clone`
+- `reset` body runs on a dedicated coroutine (mmap'd 64KB stack)
+- x86_64 assembly context switching with FPU state isolation
+- Stack overflow detection via guard pages + SIGSEGV handler
 
 ### 6.2 Effect Handlers
 - Installed on prompt frames
@@ -481,7 +494,7 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 
 ### 6.3 What Omni Does NOT Have
 - **No call/cc** — uses delimited continuations instead
-- **No garbage collection** — uses region-based memory with per-REPL-line reclamation
+- **No garbage collection** — uses scope-region memory with deterministic reclamation (arena-per-call + reference counting)
 - **No continuations across threads** — continuations are thread-local
 
 ### 6.4 Tail-Call Optimization
@@ -527,18 +540,20 @@ The Omni compiler (`src/lisp/compiler.c3`) translates Lisp AST to C3 source code
 - Multi-param closures receive all args at once (strict arity — arity mismatch is an error)
 - Binary primitives are the exception: `(+ 3)` returns a `PARTIAL_PRIM` (not a lambda)
 - `_` placeholder creates a lambda at parse time: `(f 1 _)` → `(lambda (__p1) (f 1 __p1))`
-- Up to 64 arguments per call
+- Dynamic argument count (no fixed limit on AST; JIT compiles up to 16 args natively)
 
 ### Scoping
 - Lexical scoping with closure-based environments
 - Linked-list environment frames (up to 256 bindings per frame)
 - Global environment searched after local
 
-### Memory
-- Region-based allocation for all Lisp objects (values, envs, exprs, patterns, continuations)
-- Per-REPL-line temp regions: push child region before eval, pop after (frees temporaries)
-- Closure env promotion: `deep_copy_env()` copies captured environments to root region
-- Global defines copied to root region to survive temp frame release
+### Memory — Arena-per-Call with RC Escape Hatch
+- **Scope regions**: Lexically-scoped bump arenas. Each function call, `let`, and `run()` gets its own `ScopeRegion` — a bump allocator (~3 instructions per allocation) with a linked-list destructor chain
+- **Deterministic release**: Scopes are freed at known program points (function return, let exit, run completion). No GC pauses
+- **Reference-counted closures**: When a closure escapes its scope (e.g., returned from a function), `copy_to_parent` creates a new Value wrapper sharing the `Closure*` via refcount. The Closure owns a standalone `env_scope` holding its captured environment. Freed when the last reference's destructor runs
+- **TCO scope recycling**: At each tail-call bounce, if the current scope has RC=1 (nothing escaped), the scope is swapped for a fresh one — all body temporaries freed per loop iteration (Perceus-style reuse analysis)
+- **Root scope**: Permanent scope for `define`'d values, primitives, and type instances. Never released
+- **AST allocation**: Expr and Pattern nodes use a separate pool-based region (`root_region`) — permanent, never freed
 - Hash map entries use `mem::malloc` for contiguous array indexing
 
 ---
@@ -594,7 +609,8 @@ GNU Lightning-based JIT compiler (`src/lisp/jit.c3`) — **sole execution engine
 - JIT-native support for all expression types including effects, modules, quasiquote, dispatch
 - TCO via trampoline: `_tail` apply variants set bounce fields, `jit_eval()` loop catches bounces
 - 1024-entry `Expr*`→`JitFn` compilation cache with sub-expression caching
-- Per-eval temp regions: `run()` wraps each evaluation in a child region
+- Per-eval scope: `run()` wraps each evaluation in a child scope region (freed on return)
+- Per-call scope: each closure body evaluation gets its own scope via `jit_eval_in_call_scope`
 - JIT GC: destroys all states + clears cache when pool > 75% between top-level evaluations
 
 ---
@@ -675,24 +691,24 @@ See `docs/PROJECT_TOOLING.md` for the complete reference.
 | Symbol name length | Dynamic (heap-allocated) |
 | Total symbols | 8192 |
 | Bindings per env frame | 512 |
-| Values | Region-allocated (no fixed pool) |
-| Environments | Region-allocated (no fixed pool) |
-| Expressions | Region-allocated (no fixed pool) |
-| Patterns | Region-allocated (no fixed pool) |
-| Continuations | Region-allocated (no fixed pool) |
-| Match clauses | 128 |
-| Effect handler clauses | 64 |
+| Values | Scope-region bump-allocated (no fixed pool) |
+| Environments | Scope-region bump-allocated (no fixed pool) |
+| Expressions | Pool-allocated in root region (no fixed pool) |
+| Patterns | Pool-allocated in root region (no fixed pool) |
+| Match clauses | Dynamic (no fixed limit) |
+| Effect handler clauses | Dynamic (no fixed limit) |
 | Handler stack depth | 16 |
-| Call arguments | 64 |
+| Call arguments | Dynamic AST (JIT compiles up to 16 natively) |
 | Path segments | 8 |
-| Pattern elements | 16 |
+| Pattern elements | Dynamic (no fixed limit) |
 | Macros | 64 |
 | Modules | 32 |
 | Macro clauses | 8 per macro |
 | Module exports | 128 per module |
-| Begin expressions | 64 |
-| Lambda params | 64 |
-| String | Dynamic (heap-allocated) |
+| Begin expressions | Dynamic (no fixed limit) |
+| Lambda params | Dynamic (no fixed limit) |
+| String literal (inline) | 63 bytes (Token.text[64] lexer limit) |
+| String value | Dynamic (heap-allocated, no limit) |
 | Eval depth | 5000 (stack overflow guard) |
 | Registered types | 256 |
 | Type fields | 16 |

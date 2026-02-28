@@ -1,6 +1,7 @@
 module lisp;
 
 import std::io;
+import std::collections::list;
 import main;
 
 // =============================================================================
@@ -144,7 +145,7 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
     switch (func.tag) {
         case CLOSURE: {
             if (!func.closure_val.has_param && !func.closure_val.has_rest) {
-                return jit_eval(func.closure_val.body, func.closure_val.env, interp);
+                return jit_eval_in_call_scope(func.closure_val.body, func.closure_val.env, interp);
             }
             if (func.closure_val.has_rest) {
                 usz pc = func.closure_val.param_count;
@@ -152,12 +153,12 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
                     Env* new_env = func.closure_val.env;
                     Value* rest_list = make_cons(interp, arg, make_nil(interp));
                     new_env = new_env.extend(interp, func.closure_val.rest_param, rest_list);
-                    return jit_eval(func.closure_val.body, new_env, interp);
+                    return jit_eval_in_call_scope(func.closure_val.body, new_env, interp);
                 } else if (pc == 1) {
                     Env* new_env = func.closure_val.env;
                     new_env = new_env.extend(interp, func.closure_val.params[0], arg);
                     new_env = new_env.extend(interp, func.closure_val.rest_param, make_nil(interp));
-                    return jit_eval(func.closure_val.body, new_env, interp);
+                    return jit_eval_in_call_scope(func.closure_val.body, new_env, interp);
                 } else {
                     return raise_error(interp, "too few arguments for variadic lambda");
                 }
@@ -169,7 +170,7 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
                 return raise_error(interp, buf[:len]);
             }
             Env* new_env = func.closure_val.env.extend(interp, func.closure_val.param, arg);
-            return jit_eval(func.closure_val.body, new_env, interp);
+            return jit_eval_in_call_scope(func.closure_val.body, new_env, interp);
         }
 
         case PRIMITIVE: {
@@ -328,12 +329,91 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
             expr = interp.jit_tco_expr;
             env = interp.jit_tco_env;
             interp.flags.jit_tco_bounce = false;
+
+            // TCO scope recycling: only when current_scope is the scope created by
+            // jit_eval_in_call_scope (not a scope from handle clause or other context).
+            // Guards: scope is marked recyclable, nothing escaped (RC=1).
+            // Phase 4b: copy_tco_env_chain copies the FULL chain to global_env so the
+            // fresh scope is independent of any env_scope freed during scope_release.
+            main::ScopeRegion* cs = interp.current_scope;
+            if (cs == interp.tco_recycle_scope && cs.refcount == 1) {
+                main::ScopeRegion* fresh = main::scope_create(cs.parent);
+                interp.current_scope = fresh;
+                interp.tco_recycle_scope = fresh;  // Update: fresh is now the recyclable scope
+                env = copy_tco_env_chain(env, interp);
+                main::scope_release(cs);
+            }
+
             continue;
         }
 
         interp.jit_env = saved_env;
         return result;
     }
+}
+
+// Scope-per-call wrapper: evaluates closure body in a child scope.
+// Temporaries from the body (CONS cells, format buffers, etc.) are freed per call.
+// TCO scope recycling may replace the call_scope during jit_eval's trampoline,
+// so we capture interp.current_scope after jit_eval returns (not the original).
+fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* call_scope = main::scope_create(saved_scope);
+    interp.current_scope = call_scope;
+
+    // Mark this scope as eligible for TCO recycling
+    main::ScopeRegion* saved_recycle = interp.tco_recycle_scope;
+    interp.tco_recycle_scope = call_scope;
+
+    Value* result = jit_eval(body, call_env, interp);
+
+    // After jit_eval, current_scope may differ from call_scope (TCO recycling)
+    main::ScopeRegion* active_scope = interp.current_scope;
+
+    // Restore recycle scope eligibility
+    interp.tco_recycle_scope = saved_recycle;
+
+    // Promote result to caller's scope before releasing
+    interp.current_scope = saved_scope;
+    if (result != null) {
+        result = copy_to_parent(result, interp);
+    }
+
+    // Release the scope that jit_eval was using (may be call_scope or a TCO replacement)
+    main::scope_release(active_scope);
+
+    return result;
+}
+
+/// Copy env frames from `src` up to (but not including) `stop_at` into current_scope.
+/// Copy env frames from `src` up to (but not including) `global_env` into current_scope.
+/// Used at TCO bounce to preserve the next iteration's env while releasing old scope.
+/// Phase 4b: copies the FULL chain (including env_scope frames from closures) so the
+/// fresh scope is independent of any env_scope that might be freed during scope_release.
+fn Env* copy_tco_env_chain(Env* src, Interp* interp) {
+    if (src == null || src == interp.global_env) return src;
+
+    // Persistent env nodes (mutable boxes in root_region) are kept as-is.
+    // Their parent chain still needs fixing up since it may point to env_scope frames.
+    if (src.persistent) {
+        src.parent = copy_tco_env_chain(src.parent, interp);
+        return src;
+    }
+
+    // Recursive: copy parent chain first (bottom-up)
+    Env* parent_copy = copy_tco_env_chain(src.parent, interp);
+
+    // Create new env frame in current_scope (already switched to fresh scope)
+    Env* dst = make_env(interp, parent_copy);
+    for (usz i = 0; i < src.binding_count; i++) {
+        Value* v = copy_to_parent(src.bindings[i].value, interp);
+        dst.define(src.bindings[i].name, v);
+    }
+    // Rebuild hash table if source had one
+    if (src.hash_table != null) {
+        dst.build_hash_table();
+    }
+    return dst;
 }
 
 // Adapter: converts jit_eval's Value* return to EvalResult.
@@ -401,29 +481,36 @@ fn Value* jit_make_false(Interp* interp) {
 
 // Lambda/closure creation helper — called from JIT-compiled code.
 // Mirrors eval_lambda from eval.c3: creates a closure value from an E_LAMBDA Expr*.
+// Phase 4b: Closures allocated in current_scope (not root_scope). Env copied to a
+// standalone env_scope (refcounted). Temporary closures freed when scope releases.
 fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
-    // Allocate closures in root_region so env pointers remain valid
-    main::RegionHandle saved = interp.current_frame;
-    interp.current_frame = interp.root_region;
+    main::ScopeRegion* creation_scope = interp.current_scope;
+    bool need_env_copy = (creation_scope != interp.root_scope);
 
     // Check for zero-arg lambda (sentinel param)
     if ((uint)expr.lambda.param == 0xFFFFFFFF && !expr.lambda.has_rest) {
         Value* closure = make_closure_no_param(interp, expr.lambda.body, env);
-        if (saved.region_id != interp.root_region.region_id) {
-            closure.closure_val.env = deep_copy_env(env, interp);
+        if (need_env_copy) {
+            main::ScopeRegion* env_scope = main::scope_create(null);
+            interp.current_scope = env_scope;
+            closure.closure_val.env = copy_env_to_scope(env, interp);
+            closure.closure_val.env_scope = env_scope;
+            interp.current_scope = creation_scope;
         }
-        interp.current_frame = saved;
         return closure;
     }
 
-    // Create a closure capturing the environment
+    // Create closure in current_scope
     Value* closure = make_closure(interp, expr.lambda.param, expr.lambda.body, env);
 
     // Copy variadic info from ExprLambda to Closure
-    if (expr.lambda.param_count > 64) return null;
     closure.closure_val.param_count = expr.lambda.param_count;
-    for (usz i = 0; i < expr.lambda.param_count; i++) {
-        closure.closure_val.params[i] = expr.lambda.params[i];
+    if (expr.lambda.param_count > 0) {
+        mem::free(closure.closure_val.params);
+        closure.closure_val.params = (SymbolId*)mem::malloc(SymbolId.sizeof * expr.lambda.param_count);
+        for (usz i = 0; i < expr.lambda.param_count; i++) {
+            closure.closure_val.params[i] = expr.lambda.params[i];
+        }
     }
     closure.closure_val.has_rest = expr.lambda.has_rest;
     closure.closure_val.rest_param = expr.lambda.rest_param;
@@ -473,12 +560,15 @@ fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
         closure.closure_val.type_sig = sig;
     }
 
-    // Promote captured env to root_region if in temp frame
-    if (saved.region_id != interp.root_region.region_id) {
-        closure.closure_val.env = deep_copy_env(env, interp);
+    // Copy env to standalone env_scope if in a non-root scope/frame
+    if (need_env_copy) {
+        main::ScopeRegion* env_scope = main::scope_create(null);
+        interp.current_scope = env_scope;
+        closure.closure_val.env = copy_env_to_scope(env, interp);
+        closure.closure_val.env_scope = env_scope;
+        interp.current_scope = creation_scope;
     }
 
-    interp.current_frame = saved;
     return closure;
 }
 
@@ -496,20 +586,32 @@ fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
     Value* actual_value = jit_eval(expr.let_expr.init, rec_env, interp);
     if (actual_value != null && actual_value.tag == ERROR) return actual_value;
 
-    // 4. Patch: if closure, set its env to rec_env for self-reference
+    // 4. Patch: if closure, create self-reference in its env
     if (is_closure(actual_value)) {
-        if (interp.current_frame.region_id != interp.root_region.region_id) {
-            // Promote rec_env to root_region (closure lives in root_region)
-            actual_value.closure_val.env = deep_copy_env(rec_env, interp);
-            // Update the self-reference binding to point to the closure
-            Env* promoted_env = actual_value.closure_val.env;
-            for (usz i = 0; i < promoted_env.binding_count; i++) {
-                if ((uint)promoted_env.bindings[i].name == (uint)expr.let_expr.name) {
-                    promoted_env.bindings[i].value = actual_value;
+        if (actual_value.closure_val.env_scope != null) {
+            // Non-root closure: create weak self-reference in env_scope.
+            // "Weak" means no refcount bump and no dtor — breaks the RC cycle
+            // (closure→env→self_ref→closure). Safe because self_ref is only
+            // accessed during body evaluation while the Closure is alive.
+            main::ScopeRegion* saved_scope = interp.current_scope;
+            interp.current_scope = actual_value.closure_val.env_scope;
+            Value* self_ref = interp.alloc_value();
+            self_ref.tag = CLOSURE;
+            self_ref.closure_val = actual_value.closure_val;
+            // NO refcount bump — weak reference
+            // NO dtor registration — just data in env_scope chunks
+            interp.current_scope = saved_scope;
+
+            // Patch self-reference in the COPIED env (inside env_scope)
+            Env* closure_env = actual_value.closure_val.env;
+            for (usz i = 0; i < closure_env.binding_count; i++) {
+                if ((uint)closure_env.bindings[i].name == (uint)expr.let_expr.name) {
+                    closure_env.bindings[i].value = self_ref;
                     break;
                 }
             }
         } else {
+            // Root-scope closure: direct assignment (permanent, no copy needed)
             actual_value.closure_val.env = rec_env;
         }
     }
@@ -522,19 +624,27 @@ fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
         }
     }
 
-    // 5. JIT-compile body in extended env
-    return jit_eval(expr.let_expr.body, rec_env, interp);
+    // 5. Evaluate body in its own call scope.
+    // Named-let desugars to (let ^rec (loop (lambda ...)) (loop init...)).
+    // The body (loop init...) triggers TCO bounces for the loop iterations.
+    // Using jit_eval_in_call_scope gives each named-let its own scope, so
+    // nested named-lets (e.g., flatten's loop calling loop2) don't recycle
+    // the outer loop's scope — each loop's tco_recycle_scope is independent.
+    return jit_eval_in_call_scope(expr.let_expr.body, rec_env, interp);
 }
 
 // set! helper — called from JIT-compiled code.
 // Evaluates to the set value, mirrors E_SET in eval().
 fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
-    // When in child frame, promote value to root_region so it survives frame release.
-    // Env bindings (closures, globals) live in root_region; storing a child-region
+    // When in child scope/frame, promote value to root so it survives scope release.
+    // Env bindings (closures, globals) live in root scope; storing a child-scope
     // value would create a dangling pointer.
     Value* stored = value;
-    if (interp.current_frame.region_id != interp.root_region.region_id) {
-        stored = copy_to_parent(value, interp, interp.root_region);
+    if (interp.current_scope != interp.root_scope) {
+        main::ScopeRegion* saved_scope_ctp = interp.current_scope;
+        interp.current_scope = interp.root_scope;
+        stored = copy_to_parent(value, interp);
+        interp.current_scope = saved_scope_ctp;
     }
     // Try local env first, then global
     if (!env.set(name, stored)) {
@@ -583,6 +693,10 @@ fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) 
     // Mutate the last field
     SymbolId last_seg = expr.set_expr.path_segments[expr.set_expr.path_segment_count - 1];
 
+    // Promote value to root scope — cons cells and instances live in root_scope,
+    // so storing a child-scope value would create a dangling pointer after scope release.
+    value = promote_to_root(value, interp);
+
     // Cons cell mutation
     if (current != null && current.tag == CONS) {
         if ((uint)last_seg == (uint)interp.sym_car) {
@@ -619,10 +733,13 @@ fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) 
 <* @require interp != null : "jit_eval_define: null interp"
    @require value != null : "jit_eval_define: null value" *>
 fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
-    // Copy to root_region for globals (so value survives temp frame release)
+    // Copy to root scope/region for globals (so value survives scope release)
     Value* stored_val = value;
-    if (interp.current_frame.region_id != interp.root_region.region_id) {
-        stored_val = copy_to_parent(value, interp, interp.root_region);
+    if (interp.current_scope != interp.root_scope) {
+        main::ScopeRegion* saved_scope_ctp = interp.current_scope;
+        interp.current_scope = interp.root_scope;
+        stored_val = copy_to_parent(value, interp);
+        interp.current_scope = saved_scope_ctp;
     }
 
     // Check for typed closure → method table dispatch
@@ -653,12 +770,14 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
             mt.entries[0].sig = *stored_val.closure_val.type_sig;
             mt.entries[0].implementation = stored_val;
             mt.entry_count = 1;
-            main::RegionHandle saved_mt = interp.current_frame;
-            interp.current_frame = interp.root_region;
+            main::ScopeRegion* saved_mt_scope = interp.current_scope;
+            interp.current_scope = interp.root_scope;
             Value* mt_val = interp.alloc_value();
-            interp.current_frame = saved_mt;
+            main::scope_register_dtor(interp.root_scope, (void*)mt_val, &scope_dtor_value);
+            interp.current_scope = saved_mt_scope;
             mt_val.tag = METHOD_TABLE;
             mt_val.method_table_val = mt;
+
             interp.global_env.define(name, mt_val);
             return mt_val;
         } else if (existing != null && existing.tag == PRIMITIVE) {
@@ -671,12 +790,14 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
             mt.entries[0].sig = *stored_val.closure_val.type_sig;
             mt.entries[0].implementation = stored_val;
             mt.entry_count = 1;
-            main::RegionHandle saved_mt = interp.current_frame;
-            interp.current_frame = interp.root_region;
+            main::ScopeRegion* saved_mt_scope = interp.current_scope;
+            interp.current_scope = interp.root_scope;
             Value* mt_val = interp.alloc_value();
-            interp.current_frame = saved_mt;
+            main::scope_register_dtor(interp.root_scope, (void*)mt_val, &scope_dtor_value);
+            interp.current_scope = saved_mt_scope;
             mt_val.tag = METHOD_TABLE;
             mt_val.method_table_val = mt;
+
             interp.global_env.define(name, mt_val);
             return mt_val;
         } else {
@@ -688,12 +809,14 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
             mt.entries[0].implementation = stored_val;
             mt.entry_count = 1;
             mt.fallback = null;
-            main::RegionHandle saved_mt = interp.current_frame;
-            interp.current_frame = interp.root_region;
+            main::ScopeRegion* saved_mt_scope = interp.current_scope;
+            interp.current_scope = interp.root_scope;
             Value* mt_val = interp.alloc_value();
-            interp.current_frame = saved_mt;
+            main::scope_register_dtor(interp.root_scope, (void*)mt_val, &scope_dtor_value);
+            interp.current_scope = saved_mt_scope;
             mt_val.tag = METHOD_TABLE;
             mt_val.method_table_val = mt;
+
             interp.global_env.define(name, mt_val);
             return mt_val;
         }
@@ -728,13 +851,13 @@ fn Env* jit_env_extend(Interp* interp, Env* env, SymbolId name, Value* value) {
 // the enclosing JIT scope share the same mutable box.
 <* @require interp != null : "jit_env_extend_root: null interp" *>
 fn Env* jit_env_extend_root(Interp* interp, Env* env, SymbolId name, Value* value) {
-    main::RegionHandle saved = interp.current_frame;
-    interp.current_frame = interp.root_region;
-    // Promote the initial value to root_region
-    Value* promoted = copy_to_parent(value, interp, interp.root_region);
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
+    // Promote the initial value to root_scope
+    Value* promoted = copy_to_parent(value, interp);
     Env* box = env.extend(interp, name, promoted);
     box.persistent = true;
-    interp.current_frame = saved;
+    interp.current_scope = saved_scope;
     return box;
 }
 
@@ -889,7 +1012,7 @@ fn Value* jit_eval_define_macro(Interp* interp, Expr* expr, Env* env) {
 
 // JIT-native effects — no eval() dependency.
 fn Value* jit_exec_reset(Interp* interp, Expr* expr, Env* env) {
-    EvalResult r = jit_reset_impl_fiber(expr, env, interp);
+    EvalResult r = jit_reset_impl(expr, env, interp);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;
 }
@@ -897,29 +1020,29 @@ fn Value* jit_exec_reset(Interp* interp, Expr* expr, Env* env) {
 fn Value* jit_exec_shift(Interp* interp, Expr* expr, Env* env) {
     // Returns Value* directly (fits in RAX, no hidden pointer).
     // EvalResult is >16 bytes, so the System V ABI uses a hidden stack pointer.
-    // After coro_clone that pointer is stale.
-    return jit_shift_impl_fiber(expr, env, interp);
+    // After stack_ctx_clone that pointer is stale.
+    return jit_shift_impl(expr, env, interp);
 }
 
 fn Value* jit_exec_handle(Interp* interp, Expr* expr, Env* env) {
-    EvalResult r = jit_handle_impl_fiber(expr, env, interp);
+    EvalResult r = jit_handle_impl(expr, env, interp);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;
 }
 
 fn Value* jit_exec_perform(Interp* interp, Expr* expr, Env* env) {
-    return jit_signal_impl_fiber(expr, env, interp);
+    return jit_signal_impl(expr, env, interp);
 }
 
 // =============================================================================
-// FIBER-BASED RESET/SHIFT
+// STACK-CONTEXT-BASED RESET/SHIFT
 // =============================================================================
 
 /**
- * Shared state between jit_reset_impl_fiber (parent) and jit_shift_impl_fiber (coro).
- * Lives on the parent's stack frame. The coro reads/writes it via interp.current_reset_state.
+ * Shared state between jit_reset_impl (parent) and jit_shift_impl (body context).
+ * Lives on the parent's stack frame. The body reads/writes via interp.current_reset_state.
  */
-struct ResetCoroState {
+struct ResetState {
     Expr*   body;         // Reset body expression
     Env*    env;          // Environment at reset time
     Interp* interp;       // Interpreter (for jit_eval)
@@ -929,30 +1052,30 @@ struct ResetCoroState {
 }
 
 /**
- * Entry function for the reset coroutine.
+ * Entry function for the reset body context.
  * Runs the reset body on a separate stack. On normal completion, stores
- * the result in g_current_coro.result. On shift, the coro is suspended
- * and this function's frame is preserved on the coro's stack.
+ * the result in g_current_stack_ctx.result. On shift, the context is suspended
+ * and this function's frame is preserved on the context's stack.
  */
-fn void reset_coro_entry(void* arg) {
-    ResetCoroState* state = (ResetCoroState*)arg;
+fn void reset_entry(void* arg) {
+    ResetState* state = (ResetState*)arg;
     Value* v = jit_eval(state.body, state.env, state.interp);
-    main::g_current_coro.result = v;
+    main::g_current_stack_ctx.result = v;
 }
 
 /**
- * Fiber-based reset: runs body on a separate stack (coroutine).
+ * Stack-context-based reset: runs body on a separate stack.
  *
  * If the body completes normally, returns its value.
- * If the body calls (shift k BODY), the coro suspends and BODY is
- * evaluated in the parent context with k bound to the suspended coro.
+ * If the body calls (shift k BODY), the context suspends and BODY is
+ * evaluated in the parent context with k bound to the suspended context.
  * The shift body's return value becomes the reset's return value.
  */
-fn EvalResult jit_reset_impl_fiber(Expr* expr, Env* env, Interp* interp) {
-    main::Coro* coro = main::coro_create(&interp.coro_pool);
-    if (coro == null) return eval_error("stack engine: failed to create coro for reset");
+fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
+    main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
+    if (ctx == null) return eval_error("stack engine: failed to create context for reset");
 
-    ResetCoroState state;
+    ResetState state;
     state.body = expr.reset.body;
     state.env = env;
     state.interp = interp;
@@ -960,15 +1083,15 @@ fn EvalResult jit_reset_impl_fiber(Expr* expr, Env* env, Interp* interp) {
     state.shift_body = null;
     state.shift_env = null;
 
-    main::coro_init(coro, &reset_coro_entry, &state);
+    main::stack_ctx_init(ctx, &reset_entry, &state);
 
     // Save/restore the reset state pointer for nesting
     void* saved_state = interp.current_reset_state;
     interp.current_reset_state = &state;
 
-    // Save interp state before entering coro. The coro shares the same Interp
+    // Save interp state before entering context. The context shares the same Interp
     // and its jit_eval calls modify these fields (eval_depth, jit_env, etc.).
-    // When the coro suspends (shift) or completes, these are left in the coro's
+    // When the context suspends (shift) or completes, these are left in the context's
     // state. We must restore the parent's values.
     Env*        saved_jit_env       = interp.jit_env;
     Env*        saved_match_env     = interp.match_env;
@@ -976,14 +1099,16 @@ fn EvalResult jit_reset_impl_fiber(Expr* expr, Env* env, Interp* interp) {
     InterpFlags saved_flags         = interp.flags;
     Expr*       saved_tco_expr      = interp.jit_tco_expr;
     Env*        saved_tco_env       = interp.jit_tco_env;
+    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
     usz         saved_reset_depth   = interp.reset_depth;
     usz         saved_handler_count = interp.handler_count;
+    main::ScopeRegion* saved_scope = interp.current_scope;
 
-    // Run the coroutine
+    // Run the body context
     main::StackContext parent_ctx;
-    main::coro_switch_to(coro, &parent_ctx);
+    main::stack_ctx_switch_to(ctx, &parent_ctx);
 
-    // Restore interp state after coro suspends/completes
+    // Restore interp state after context suspends/completes
     interp.current_reset_state = saved_state;
     interp.jit_env        = saved_jit_env;
     interp.match_env      = saved_match_env;
@@ -991,12 +1116,14 @@ fn EvalResult jit_reset_impl_fiber(Expr* expr, Env* env, Interp* interp) {
     interp.flags          = saved_flags;
     interp.jit_tco_expr   = saved_tco_expr;
     interp.jit_tco_env    = saved_tco_env;
+    interp.tco_recycle_scope = saved_tco_recycle;
     interp.reset_depth    = saved_reset_depth;
     interp.handler_count  = saved_handler_count;
+    interp.current_scope  = saved_scope;
 
-    // Stack overflow — coro hit guard page
-    if (coro.status == main::CoroStatus.CORO_DEAD) {
-        main::coro_destroy(coro, &interp.coro_pool);
+    // Stack overflow — context hit guard page
+    if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
+        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
         return eval_error("stack overflow in reset body");
     }
 
@@ -1010,8 +1137,8 @@ fn EvalResult jit_reset_impl_fiber(Expr* expr, Env* env, Interp* interp) {
     }
 
     // Normal completion (no shift)
-    Value* v = (Value*)coro.result;
-    main::coro_destroy(coro, &interp.coro_pool);
+    Value* v = (Value*)ctx.result;
+    main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
     if (v != null && v.tag == ERROR) {
         return eval_error(v.str_val.chars[:v.str_val.len]);
     }
@@ -1019,45 +1146,45 @@ fn EvalResult jit_reset_impl_fiber(Expr* expr, Env* env, Interp* interp) {
 }
 
 /**
- * Fiber-based shift: suspends the current coroutine and creates a continuation.
+ * Stack-context-based shift: suspends the current context and creates a continuation.
  *
- * This function is called INSIDE a coroutine (created by jit_reset_impl_fiber).
- * It captures the current coro as a continuation, stores the shift body info
- * in the parent's ResetCoroState, and suspends. When resumed by (k val),
+ * This function is called INSIDE a context (created by jit_reset_impl).
+ * It captures the current context as a continuation, stores the shift body info
+ * in the parent's ResetState, and suspends. When resumed by (k val),
  * it returns the resume value.
  */
-fn Value* jit_shift_impl_fiber(Expr* expr, Env* env, Interp* interp) {
+fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     // IMPORTANT: Returns Value* (not EvalResult) so the return fits in RAX.
     // EvalResult is >16 bytes, triggering the System V ABI hidden return pointer.
-    // After coro_clone that pointer is stale, causing writes to the wrong stack.
-    main::Coro* current = main::g_current_coro;
+    // After stack_ctx_clone that pointer is stale, causing writes to the wrong stack.
+    main::StackCtx* current = main::g_current_stack_ctx;
     if (current == null) {
         return make_error(interp, "shift outside of reset");
     }
 
-    ResetCoroState* rstate = (ResetCoroState*)interp.current_reset_state;
+    ResetState* rstate = (ResetState*)interp.current_reset_state;
     if (rstate == null) {
         return make_error(interp, "shift outside of reset (no reset state)");
     }
 
-    // Create continuation wrapping the current coro
+    // Create continuation wrapping the current context
     Continuation* k = interp.alloc_lisp_continuation();
-    k.coro = current;
-    k.is_fiber_based = true;
+    k.ctx = current;
+    k.is_coroutine_based = true;
 
     Value* k_val = make_continuation(interp, k);
 
     // Bind k in the shift body's environment
     Env* shift_env = env.extend(interp, expr.shift.k_name, k_val);
 
-    // Store shift body info for the parent (jit_reset_impl_fiber) to evaluate
+    // Store shift body info for the parent (jit_reset_impl) to evaluate
     rstate.shifted = true;
     rstate.shift_body = expr.shift.body;
     rstate.shift_env = shift_env;
 
     // Save interpreter state that the parent's evaluation will corrupt.
     // These are effectively "callee-saved registers" of the interpreter —
-    // the coro's evaluation expects them to be preserved across the suspend.
+    // the context's evaluation expects them to be preserved across the suspend.
     // The parent shares the same Interp but modifies these fields when
     // evaluating the shift body. We must restore them on resume.
     Env*       saved_jit_env    = interp.jit_env;
@@ -1066,13 +1193,15 @@ fn Value* jit_shift_impl_fiber(Expr* expr, Env* env, Interp* interp) {
     InterpFlags saved_flags     = interp.flags;
     Expr*      saved_tco_expr   = interp.jit_tco_expr;
     Env*       saved_tco_env    = interp.jit_tco_env;
+    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
     usz        saved_reset_depth = interp.reset_depth;
     usz        saved_handler_count = interp.handler_count;
+    main::ScopeRegion* saved_scope = interp.current_scope;
 
-    // Suspend the coro — control returns to jit_reset_impl_fiber
-    main::coro_suspend();
+    // Suspend the context — control returns to jit_reset_impl
+    main::stack_ctx_suspend();
 
-    // === RESUMED HERE by (k val) via jit_apply_fiber_continuation ===
+    // === RESUMED HERE by (k val) via jit_apply_continuation_impl ===
     // Restore interpreter state (corrupted by parent's evaluation of shift body)
     interp.jit_env = saved_jit_env;
     interp.match_env = saved_match_env;
@@ -1080,42 +1209,44 @@ fn Value* jit_shift_impl_fiber(Expr* expr, Env* env, Interp* interp) {
     interp.flags = saved_flags;
     interp.jit_tco_expr = saved_tco_expr;
     interp.jit_tco_env = saved_tco_env;
+    interp.tco_recycle_scope = saved_tco_recycle;
     interp.reset_depth = saved_reset_depth;
     interp.handler_count = saved_handler_count;
+    interp.current_scope = saved_scope;
 
     return interp.resume_value;
 }
 
 /**
- * Apply a fiber-based continuation: clone the coro and resume it.
+ * Apply a continuation: clone the context and resume it.
  *
  * Always clones for multi-shot safety — the original stays suspended
  * as a "template" for potential future invocations.
  */
-fn EvalResult jit_apply_fiber_continuation(Value* k_val, Value* arg, Interp* interp) {
-    main::Coro* coro = k_val.cont_val.coro;
+fn EvalResult jit_apply_continuation_impl(Value* k_val, Value* arg, Interp* interp) {
+    main::StackCtx* ctx = k_val.cont_val.ctx;
 
-    if (coro == null) {
-        return eval_error("cannot resume continuation: null coro");
+    if (ctx == null) {
+        return eval_error("cannot resume continuation: null stack context");
     }
-    if (coro.status == main::CoroStatus.CORO_COMPLETED || coro.status == main::CoroStatus.CORO_DEAD) {
+    if (ctx.status == main::StackCtxStatus.CTX_COMPLETED || ctx.status == main::StackCtxStatus.CTX_DEAD) {
         return eval_error("cannot resume completed/dead continuation");
     }
-    if (coro.status != main::CoroStatus.CORO_SUSPENDED) {
+    if (ctx.status != main::StackCtxStatus.CTX_SUSPENDED) {
         return eval_error("cannot resume running continuation");
     }
 
     // Clone for multi-shot safety (original stays suspended as template)
-    main::Coro* target = main::coro_clone(coro, &interp.coro_pool);
+    main::StackCtx* target = main::stack_ctx_clone(ctx, &interp.stack_ctx_pool);
     if (target == null) {
-        return eval_error("stack engine: failed to clone coro for continuation");
+        return eval_error("stack engine: failed to clone context for continuation");
     }
 
     // Pass the resume value to the shift function
     interp.resume_value = arg;
 
     // Set up a reset-like context to catch any shifts in the resumed body
-    ResetCoroState resume_state;
+    ResetState resume_state;
     resume_state.shifted = false;
     resume_state.shift_body = null;
     resume_state.shift_env = null;
@@ -1134,12 +1265,14 @@ fn EvalResult jit_apply_fiber_continuation(Value* k_val, Value* arg, Interp* int
     InterpFlags saved_flags         = interp.flags;
     Expr*       saved_tco_expr      = interp.jit_tco_expr;
     Env*        saved_tco_env       = interp.jit_tco_env;
+    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
     usz         saved_reset_depth   = interp.reset_depth;
     usz         saved_handler_count = interp.handler_count;
+    main::ScopeRegion* saved_scope = interp.current_scope;
 
     // Resume the clone
     main::StackContext parent_ctx;
-    main::coro_resume(target, &parent_ctx);
+    main::stack_ctx_resume(target, &parent_ctx);
 
     // Restore interp state after clone completes/shifts
     interp.current_reset_state = saved_state;
@@ -1149,12 +1282,14 @@ fn EvalResult jit_apply_fiber_continuation(Value* k_val, Value* arg, Interp* int
     interp.flags          = saved_flags;
     interp.jit_tco_expr   = saved_tco_expr;
     interp.jit_tco_env    = saved_tco_env;
+    interp.tco_recycle_scope = saved_tco_recycle;
     interp.reset_depth    = saved_reset_depth;
     interp.handler_count  = saved_handler_count;
+    interp.current_scope  = saved_scope;
 
     // Stack overflow — clone hit guard page
-    if (target.status == main::CoroStatus.CORO_DEAD) {
-        main::coro_destroy(target, &interp.coro_pool);
+    if (target.status == main::StackCtxStatus.CTX_DEAD) {
+        main::stack_ctx_destroy(target, &interp.stack_ctx_pool);
         return eval_error("stack overflow in continuation");
     }
 
@@ -1162,7 +1297,7 @@ fn EvalResult jit_apply_fiber_continuation(Value* k_val, Value* arg, Interp* int
     if (resume_state.shifted) {
         // The resumed body hit another shift — evaluate that shift's body
         Value* shift_result = jit_eval(resume_state.shift_body, resume_state.shift_env, interp);
-        main::coro_destroy(target, &interp.coro_pool);
+        main::stack_ctx_destroy(target, &interp.stack_ctx_pool);
         if (shift_result != null && shift_result.tag == ERROR) {
             return eval_error(shift_result.str_val.chars[:shift_result.str_val.len]);
         }
@@ -1171,7 +1306,7 @@ fn EvalResult jit_apply_fiber_continuation(Value* k_val, Value* arg, Interp* int
 
     // Clone completed normally
     result = (Value*)target.result;
-    main::coro_destroy(target, &interp.coro_pool);
+    main::stack_ctx_destroy(target, &interp.stack_ctx_pool);
 
     if (result != null && ((Value*)result).tag == ERROR) {
         Value* err = (Value*)result;
@@ -1181,18 +1316,18 @@ fn EvalResult jit_apply_fiber_continuation(Value* k_val, Value* arg, Interp* int
 }
 
 // =============================================================================
-// END FIBER-BASED RESET/SHIFT
+// END CORO-BASED RESET/SHIFT
 // =============================================================================
 
 // =============================================================================
-// FIBER-BASED HANDLE/SIGNAL/RESOLVE
+// STACK-CONTEXT-BASED HANDLE/SIGNAL/RESOLVE
 // =============================================================================
 
 /**
- * Shared state between jit_handle_impl_fiber (parent) and jit_signal_impl_fiber (coro).
- * Lives on the parent's stack frame (jit_handle_impl_fiber).
+ * Shared state between jit_handle_impl (parent) and jit_signal_impl (body context).
+ * Lives on the parent's stack frame.
  */
-struct HandleFiberState {
+struct HandleEffectState {
     Expr*          body;
     Env*           env;
     Interp*        interp;
@@ -1203,21 +1338,21 @@ struct HandleFiberState {
     usz            handler_idx;    // Handler stack index
 }
 
-fn void handle_fiber_entry(void* arg) {
-    HandleFiberState* state = (HandleFiberState*)arg;
+fn void handle_effect_entry(void* arg) {
+    HandleEffectState* state = (HandleEffectState*)arg;
     Value* v = jit_eval(state.body, state.env, state.interp);
-    main::g_current_coro.result = v;
+    main::g_current_stack_ctx.result = v;
 }
 
 /**
- * Fiber-based signal: suspends the current coro when a matching fiber handler is found.
+ * Stack-context-based signal: suspends the current context when a matching handler is found.
  *
- * Returns Value* directly (same pattern as jit_shift_impl_fiber — avoids the hidden
- * return pointer issue with EvalResult after coro_clone).
+ * Returns Value* directly (same pattern as jit_shift_impl — avoids the hidden
+ * return pointer issue with EvalResult after stack_ctx_clone).
  *
- * Falls through to the I/O fast path or error if no fiber handler matches.
+ * Falls through to the I/O fast path or error if no handler matches.
  */
-fn Value* jit_signal_impl_fiber(Expr* expr, Env* env, Interp* interp) {
+fn Value* jit_signal_impl(Expr* expr, Env* env, Interp* interp) {
     // Evaluate the argument
     Value* arg_v = jit_eval(expr.perform.arg, env, interp);
     if (arg_v != null && arg_v.tag == ERROR) return arg_v;
@@ -1247,8 +1382,8 @@ fn Value* jit_signal_impl_fiber(Expr* expr, Env* env, Interp* interp) {
         }
     }
 
-    // Search handler stack for a matching fiber handler
-    main::Coro* current = main::g_current_coro;
+    // Search handler stack for a matching stack-context handler
+    main::StackCtx* current = main::g_current_stack_ctx;
     if (current != null) {
         bool hit_strict = false;
         for (isz i = (isz)interp.handler_count - 1; i >= 0; i--) {
@@ -1257,25 +1392,27 @@ fn Value* jit_signal_impl_fiber(Expr* expr, Env* env, Interp* interp) {
             for (usz j = 0; j < h.clause_count; j++) {
                 if ((uint)h.clauses[j].effect_tag == (uint)tag) {
                     // Found matching handler
-                    if (h.fiber_state != null) {
-                        // Fiber path: suspend coro, inform handle loop
-                        HandleFiberState* hstate = (HandleFiberState*)h.fiber_state;
+                    if (h.effect_state != null) {
+                        // StackCtx path: suspend context, inform handle loop
+                        HandleEffectState* hstate = (HandleEffectState*)h.effect_state;
                         hstate.signaled = true;
                         hstate.signal_tag = tag;
                         hstate.signal_arg = arg_v;
 
-                        // Save interp state (same pattern as jit_shift_impl_fiber)
+                        // Save interp state before suspending context
                         Env*        saved_jit_env       = interp.jit_env;
                         Env*        saved_match_env     = interp.match_env;
                         usz         saved_eval_depth    = interp.eval_depth;
                         InterpFlags saved_flags         = interp.flags;
                         Expr*       saved_tco_expr      = interp.jit_tco_expr;
                         Env*        saved_tco_env       = interp.jit_tco_env;
+                        main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
                         usz         saved_reset_depth   = interp.reset_depth;
                         usz         saved_handler_count = interp.handler_count;
+                        main::ScopeRegion* saved_scope = interp.current_scope;
 
-                        // Suspend coro — control returns to handle loop
-                        main::coro_suspend();
+                        // Suspend context — control returns to handle loop
+                        main::stack_ctx_suspend();
 
                         // === RESUMED by resolve ===
                         interp.jit_env        = saved_jit_env;
@@ -1284,12 +1421,14 @@ fn Value* jit_signal_impl_fiber(Expr* expr, Env* env, Interp* interp) {
                         interp.flags          = saved_flags;
                         interp.jit_tco_expr   = saved_tco_expr;
                         interp.jit_tco_env    = saved_tco_env;
+                        interp.tco_recycle_scope = saved_tco_recycle;
                         interp.reset_depth    = saved_reset_depth;
                         interp.handler_count  = saved_handler_count;
+                        interp.current_scope  = saved_scope;
 
                         return interp.resume_value;
                     }
-                    // Non-fiber handler — fall through to legacy
+                    // Non-context handler — fall through to legacy
                     break;
                 }
             }
@@ -1371,21 +1510,17 @@ fn Value* jit_signal_impl_fiber(Expr* expr, Env* env, Interp* interp) {
 }
 
 /**
- * Fiber-based handle: runs body on a coro, dispatches signals to handler clauses.
+ * Stack-context-based handle: runs body on a context, dispatches signals to handler clauses.
  *
- * Signal suspends the coro. The handle loop finds the matching clause, creates
+ * Signal suspends the context. The handle loop finds the matching clause, creates
  * a continuation k, and evaluates the clause in the parent context. Resolve
- * resumes the coro (single-shot).
+ * resumes the body context (single-shot).
  */
-fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
-    if (expr.handle.clause_count > MAX_EFFECT_CLAUSES) {
-        return eval_error("too many effect handler clauses (max 16)");
-    }
+fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
+    main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
+    if (ctx == null) return eval_error("stack engine: failed to create context for handle");
 
-    main::Coro* coro = main::coro_create(&interp.coro_pool);
-    if (coro == null) return eval_error("stack engine: failed to create coro for handle");
-
-    HandleFiberState state;
+    HandleEffectState state;
     state.body = expr.handle.body;
     state.env = env;
     state.interp = interp;
@@ -1393,7 +1528,7 @@ fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
     state.signal_tag = (SymbolId)0;
     state.signal_arg = null;
 
-    main::coro_init(coro, &handle_fiber_entry, &state);
+    main::stack_ctx_init(ctx, &handle_effect_entry, &state);
 
     // Push handler on stack
     if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
@@ -1404,8 +1539,11 @@ fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
     h.body_expr = expr.handle.body;
     h.body_env = env;
     h.strict_mode = expr.handle.strict_mode;
-    h.fiber_state = &state;
+    h.effect_state = &state;
 
+    // Allocate dynamic arrays for handler clauses
+    h.tags = (SymbolId*)mem::malloc(SymbolId.sizeof * expr.handle.clause_count);
+    h.clauses = (EffectClause*)mem::malloc(EffectClause.sizeof * expr.handle.clause_count);
     for (usz i = 0; i < expr.handle.clause_count; i++) {
         h.tags[i] = expr.handle.clauses[i].effect_tag;
         h.clauses[i] = expr.handle.clauses[i];
@@ -1417,22 +1555,24 @@ fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
     state.handler_copy = *h;
     state.handler_idx = my_idx;
 
-    // Save interp state before entering coro
+    // Save interp state before entering body context
     Env*        saved_jit_env       = interp.jit_env;
     Env*        saved_match_env     = interp.match_env;
     usz         saved_eval_depth    = interp.eval_depth;
     InterpFlags saved_flags         = interp.flags;
     Expr*       saved_tco_expr      = interp.jit_tco_expr;
     Env*        saved_tco_env       = interp.jit_tco_env;
+    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
     usz         saved_reset_depth   = interp.reset_depth;
     usz         saved_handler_count = interp.handler_count;  // my_idx + 1
+    main::ScopeRegion* saved_scope = interp.current_scope;
 
-    // Run the body on the coro
+    // Run the body on the context
     main::StackContext parent_ctx;
-    main::coro_switch_to(coro, &parent_ctx);
+    main::stack_ctx_switch_to(ctx, &parent_ctx);
 
-    // Capture raise_pending before restoring flags (the coro may have set it)
-    bool coro_raise_pending = interp.flags.raise_pending;
+    // Capture raise_pending before restoring flags (the context may have set it)
+    bool body_raise_pending = interp.flags.raise_pending;
 
     // Restore interp state
     interp.jit_env        = saved_jit_env;
@@ -1441,16 +1581,18 @@ fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
     interp.flags          = saved_flags;
     interp.jit_tco_expr   = saved_tco_expr;
     interp.jit_tco_env    = saved_tco_env;
+    interp.tco_recycle_scope = saved_tco_recycle;
     interp.reset_depth    = saved_reset_depth;
     interp.handler_count  = saved_handler_count;
+    interp.current_scope  = saved_scope;
 
-    // Propagate raise_pending from coro execution
-    if (coro_raise_pending) interp.flags.raise_pending = true;
+    // Propagate raise_pending from body context execution
+    if (body_raise_pending) interp.flags.raise_pending = true;
 
-    // Stack overflow — coro hit guard page
-    if (coro.status == main::CoroStatus.CORO_DEAD) {
+    // Stack overflow — context hit guard page
+    if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
         interp.handler_count = my_idx;
-        main::coro_destroy(coro, &interp.coro_pool);
+        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
         return eval_error("stack overflow in handle body");
     }
 
@@ -1473,7 +1615,7 @@ fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
 
         if (clause == null) {
             // No matching clause — unhandled signal
-            main::coro_destroy(coro, &interp.coro_pool);
+            main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
             char[256] ubuf;
             char[] utag = interp.symbols.get_name(state.signal_tag);
             char[] uarg = interp.symbols.get_name(value_type_name(state.signal_arg, interp));
@@ -1481,10 +1623,10 @@ fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
             return eval_error(umsg);
         }
 
-        // Create continuation wrapping the suspended coro
+        // Create continuation wrapping the suspended context
         Continuation* k = interp.alloc_lisp_continuation();
-        k.coro = coro;
-        k.is_fiber_based = true;
+        k.ctx = ctx;
+        k.is_coroutine_based = true;
         k.handle_state = &state;
         Value* k_val = make_continuation(interp, k);
 
@@ -1497,11 +1639,11 @@ fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
         // Evaluate handler clause
         last_handler_v = jit_eval(clause.handler_body, clause_env, interp);
 
-        // Check coro state after clause returns
-        if (coro.status == main::CoroStatus.CORO_COMPLETED) {
+        // Check context state after clause returns
+        if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
             // resolve was called, body completed
-            Value* body_result = (Value*)coro.result;
-            main::coro_destroy(coro, &interp.coro_pool);
+            Value* body_result = (Value*)ctx.result;
+            main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
             if (body_result != null && body_result.tag == ERROR) {
                 return eval_error(body_result.str_val.chars[:body_result.str_val.len]);
             }
@@ -1513,8 +1655,8 @@ fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
             continue;
         }
 
-        // Abort: clause didn't call resolve, coro is still suspended
-        main::coro_destroy(coro, &interp.coro_pool);
+        // Abort: clause didn't call resolve, context is still suspended
+        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
         if (last_handler_v != null && last_handler_v.tag == ERROR) {
             return eval_error(last_handler_v.str_val.chars[:last_handler_v.str_val.len]);
         }
@@ -1523,8 +1665,8 @@ fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
 
     // Normal completion (no signal)
     interp.handler_count = my_idx;
-    Value* v = (Value*)coro.result;
-    main::coro_destroy(coro, &interp.coro_pool);
+    Value* v = (Value*)ctx.result;
+    main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
 
     // Check for pending raise error
     if (interp.flags.raise_pending) {
@@ -1556,14 +1698,14 @@ fn EvalResult jit_handle_impl_fiber(Expr* expr, Env* env, Interp* interp) {
 }
 
 // =============================================================================
-// END FIBER-BASED HANDLE/SIGNAL/RESOLVE
+// END CORO-BASED HANDLE/SIGNAL/RESOLVE
 // =============================================================================
 
 fn EvalResult jit_apply_continuation(Value* k_val, Value* arg, Interp* interp) {
     if (k_val.cont_val == null) {
         return eval_error("cannot resume continuation: null continuation");
     }
-    return jit_apply_fiber_continuation(k_val, arg, interp);
+    return jit_apply_continuation_impl(k_val, arg, interp);
 }
 
 // Index helper — performs collection indexing without going through eval dispatch.
@@ -1742,7 +1884,11 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
         mod.exports[i] = expr.module_expr.exports[i];
     }
 
+    // Module env must live in root_scope (module persists beyond run() scope)
+    main::ScopeRegion* saved_mod_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
     Env* mod_env = make_env(interp, interp.global_env);
+    interp.current_scope = saved_mod_scope;
     mod.env = mod_env;
     interp.module_count++;
 
@@ -1832,26 +1978,25 @@ fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* inte
         Parser p;
         p.init(&lex, interp);
 
-        Expr*[256] exprs;
-        usz expr_count = 0;
+        List{Expr*} expr_list;
         while (!lex.at_end()) {
-            if (expr_count >= 256) { pop_source_dir(interp); return eval_error("module: too many expressions (max 256)"); }
-            exprs[expr_count] = p.parse_expr();
-            expr_count++;
+            expr_list.push(p.parse_expr());
         }
+        usz expr_count = expr_list.len();
 
-        if (expr_count > 0 && exprs[0].tag == E_MODULE) {
+        if (expr_count > 0 && expr_list[0].tag == E_MODULE) {
             // If this module is already loaded, skip re-evaluation (idempotent file import)
-            SymbolId declared_name = exprs[0].module_expr.name;
+            SymbolId declared_name = expr_list[0].module_expr.name;
             Module* already = find_module(declared_name, interp);
             if (already != null && already.loaded) {
+                expr_list.free();
                 pop_source_dir(interp);
                 return eval_ok(make_nil(interp));
             }
 
             // Evaluate the module form first
-            EvalResult mod_result = jit_eval_to_result(exprs[0], interp.global_env, interp);
-            if (mod_result.error.has_error) { pop_source_dir(interp); return mod_result; }
+            EvalResult mod_result = jit_eval_to_result(expr_list[0], interp.global_env, interp);
+            if (mod_result.error.has_error) { expr_list.free(); pop_source_dir(interp); return mod_result; }
 
             // Record the file path on the module (for path-based import lookup)
             Module* new_mod = find_module(declared_name, interp);
@@ -1865,9 +2010,10 @@ fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* inte
             // Evaluate remaining top-level expressions in global scope
             // (e.g. dispatch extensions that need to modify global method tables)
             for (usz i = 1; i < expr_count; i++) {
-                EvalResult r = jit_eval_to_result(exprs[i], interp.global_env, interp);
-                if (r.error.has_error) { pop_source_dir(interp); return r; }
+                EvalResult r = jit_eval_to_result(expr_list[i], interp.global_env, interp);
+                if (r.error.has_error) { expr_list.free(); pop_source_dir(interp); return r; }
             }
+            expr_list.free();
             pop_source_dir(interp);
             return mod_result;
         }
@@ -1884,7 +2030,11 @@ fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* inte
         mod.export_capacity = 32;
         mod.exports = (SymbolId*)mem::malloc(SymbolId.sizeof * 32);
 
+        // Module env must live in root_scope (module persists beyond run() scope)
+        main::ScopeRegion* saved_mod_scope2 = interp.current_scope;
+        interp.current_scope = interp.root_scope;
         Env* mod_env = make_env(interp, interp.global_env);
+        interp.current_scope = saved_mod_scope2;
         mod.env = mod_env;
         interp.module_count++;
 
@@ -1899,13 +2049,14 @@ fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* inte
         interp.global_env = mod_env;
 
         for (usz i = 0; i < expr_count; i++) {
-            EvalResult r = jit_eval_to_result(exprs[i], mod_env, interp);
+            EvalResult r = jit_eval_to_result(expr_list[i], mod_env, interp);
             if (r.error.has_error) {
                 interp.global_env = saved_global;
+                expr_list.free();
                 pop_source_dir(interp);
                 return r;
             }
-            if (exprs[i].tag == E_DEFINE) {
+            if (expr_list[i].tag == E_DEFINE) {
                 if (mod.export_count >= mod.export_capacity) {
                     usz new_cap = mod.export_capacity * 2;
                     SymbolId* new_exports = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
@@ -1914,13 +2065,14 @@ fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* inte
                     mod.exports = new_exports;
                     mod.export_capacity = new_cap;
                 }
-                mod.exports[mod.export_count] = exprs[i].define.name;
+                mod.exports[mod.export_count] = expr_list[i].define.name;
                 mod.export_count++;
             }
         }
 
         interp.global_env = saved_global;
         mod.loaded = true;
+        expr_list.free();
         pop_source_dir(interp);
         return eval_ok(make_nil(interp));
     }
@@ -2078,7 +2230,7 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
 
     // Zero-arg non-variadic closure: (lambda () body)
     if (arg_count == 0 && func.tag == CLOSURE && !func.closure_val.has_param && !func.closure_val.has_rest) {
-        return jit_eval(func.closure_val.body, func.closure_val.env, interp);
+        return jit_eval_in_call_scope(func.closure_val.body, func.closure_val.env, interp);
     }
 
     // Direct variadic closure path
@@ -2098,7 +2250,7 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
             curr = curr.cons_val.cdr;
         }
         new_env = new_env.extend(interp, func.closure_val.rest_param, curr);
-        return jit_eval(func.closure_val.body, new_env, interp);
+        return jit_eval_in_call_scope(func.closure_val.body, new_env, interp);
     }
 
     // Direct primitive path for multi-arg primitives
@@ -2136,7 +2288,7 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
                 call_env.define(func.closure_val.params[i], curr.cons_val.car);
                 curr = curr.cons_val.cdr;
             }
-            Value* result = jit_eval(func.closure_val.body, call_env, interp);
+            Value* result = jit_eval_in_call_scope(func.closure_val.body, call_env, interp);
             // If extra args remain and result is callable, chain-apply them
             if (arg_count > pc && result != null && result.tag != ERROR) {
                 usz remaining = arg_count - pc;
@@ -2250,7 +2402,7 @@ fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list
             }
             if (arg_count > pc) {
                 // Extra args: evaluate body, then chain-apply rest
-                Value* result = jit_eval(func.closure_val.body, call_env, interp);
+                Value* result = jit_eval_in_call_scope(func.closure_val.body, call_env, interp);
                 if (result != null && result.tag != ERROR) {
                     usz remaining = arg_count - pc;
                     return jit_apply_multi_args_tail(interp, result, curr, remaining);
@@ -2259,7 +2411,7 @@ fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list
             }
             interp.jit_tco_expr = func.closure_val.body;
             interp.jit_tco_env = call_env;
-            interp.flags.jit_tco_bounce = true;
+                interp.flags.jit_tco_bounce = true;
             return jit_tco_sentinel();
         }
         // Single-param: fall through to one-at-a-time loop
@@ -2374,9 +2526,10 @@ struct JitLocal {
     bool is_mutable;   // true if closure-captured-and-mutated, uses env-based boxing
 }
 
+alias JitLocalList = List{JitLocal};
+
 struct JitLocals {
-    JitLocal[32] locals;
-    usz count;
+    JitLocalList locals;
 }
 
 // Global JIT initialization flag
@@ -2516,7 +2669,6 @@ fn JitFn jit_compile(Expr* expr, Interp* interp) {
 
     // Compile the expression, result goes to R0
     JitLocals locals;
-    locals.count = 0;
     bool ok = jit_compile_expr(s, expr, interp, &locals, true);
     if (!ok) {
         _jit_destroy_state(s);
@@ -2708,7 +2860,7 @@ fn bool jit_compile_var(void* s, Expr* expr, Interp* interp, JitLocals* locals) 
     uint sym_id = (uint)expr.var_expr.name;
 
     // Check JIT locals first (reverse order for proper scoping of shadowed names)
-    for (usz i = locals.count; i > 0; i--) {
+    for (usz i = locals.locals.len(); i > 0; i--) {
         if ((uint)locals.locals[i - 1].name == sym_id) {
             if (locals.locals[i - 1].is_mutable) {
                 // Mutable local: stack slot holds Env* (the box). Lookup value in it.
@@ -3125,17 +3277,14 @@ fn bool jit_compile_let(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
     }
 
     // Push local binding into the locals table
-    if (locals.count >= 32) return false;  // Too many locals — fall back to interpreter
-    locals.locals[locals.count].name = expr.let_expr.name;
-    locals.locals[locals.count].stack_offset = offset;
-    locals.locals[locals.count].is_mutable = is_mutable;
-    locals.count++;
+    JitLocal local = { .name = expr.let_expr.name, .stack_offset = offset, .is_mutable = is_mutable };
+    locals.locals.push(local);
 
     // Compile body -> result in R0 (body inherits tail position)
     bool ok = jit_compile_expr(s, expr.let_expr.body, interp, locals, is_tail);
 
-    // Pop local binding (restore count for proper scoping)
-    locals.count--;
+    // Pop local binding (restore scope)
+    locals.locals.pop()!!;
 
     return ok;
 }
@@ -3177,7 +3326,7 @@ fn bool jit_compile_set(void* s, Expr* expr, Interp* interp, JitLocals* locals) 
     }
 
     // Check if target is a JIT local variable
-    for (usz i = locals.count; i > 0; i--) {
+    for (usz i = locals.locals.len(); i > 0; i--) {
         if (locals.locals[i - 1].name == expr.set_expr.name) {
             if (locals.locals[i - 1].is_mutable) {
                 // Mutable local: stack slot holds Env* (the box). Set value through it.
@@ -3281,14 +3430,14 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
         return make_error(interp, "resolve: not inside a handler clause");
     }
 
-    // Fiber path: single-shot resume of the coro (no clone)
-    if (k_val.cont_val.is_fiber_based && k_val.cont_val.handle_state != null) {
-        main::Coro* coro = k_val.cont_val.coro;
-        if (coro == null || coro.status != main::CoroStatus.CORO_SUSPENDED) {
+    // Effect handler path: single-shot resume (no clone)
+    if (k_val.cont_val.is_coroutine_based && k_val.cont_val.handle_state != null) {
+        main::StackCtx* ctx = k_val.cont_val.ctx;
+        if (ctx == null || ctx.status != main::StackCtxStatus.CTX_SUSPENDED) {
             return make_error(interp, "resolve: continuation not suspended");
         }
 
-        HandleFiberState* hstate = (HandleFiberState*)k_val.cont_val.handle_state;
+        HandleEffectState* hstate = (HandleEffectState*)k_val.cont_val.handle_state;
 
         // Reinstall handler so the body can signal again
         if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
@@ -3298,19 +3447,21 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
         // Set resume value
         interp.resume_value = val;
 
-        // Save interp state before resuming coro
+        // Save interp state before resuming context
         Env*        saved_jit_env       = interp.jit_env;
         Env*        saved_match_env     = interp.match_env;
         usz         saved_eval_depth    = interp.eval_depth;
         InterpFlags saved_flags         = interp.flags;
         Expr*       saved_tco_expr      = interp.jit_tco_expr;
         Env*        saved_tco_env       = interp.jit_tco_env;
+        main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
         usz         saved_reset_depth   = interp.reset_depth;
         usz         saved_handler_count = interp.handler_count;
+        main::ScopeRegion* saved_scope = interp.current_scope;
 
-        // Resume the coro (single-shot, no clone)
+        // Resume the context (single-shot, no clone)
         main::StackContext parent_ctx;
-        main::coro_resume(coro, &parent_ctx);
+        main::stack_ctx_resume(ctx, &parent_ctx);
 
         // Restore interp state
         interp.jit_env        = saved_jit_env;
@@ -3319,20 +3470,22 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
         interp.flags          = saved_flags;
         interp.jit_tco_expr   = saved_tco_expr;
         interp.jit_tco_env    = saved_tco_env;
+        interp.tco_recycle_scope = saved_tco_recycle;
         interp.reset_depth    = saved_reset_depth;
         interp.handler_count  = saved_handler_count;
+        interp.current_scope  = saved_scope;
 
         // Pop the reinstalled handler
         interp.handler_count = hstate.handler_idx;
 
-        // Stack overflow — coro hit guard page after resolve
-        if (coro.status == main::CoroStatus.CORO_DEAD) {
+        // Stack overflow — context hit guard page after resolve
+        if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
             return make_error(interp, "stack overflow after resolve");
         }
 
         // Return value: body result if completed, or val as placeholder
-        if (coro.status == main::CoroStatus.CORO_COMPLETED) {
-            Value* body_result = (Value*)coro.result;
+        if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
+            Value* body_result = (Value*)ctx.result;
             return body_result != null ? body_result : val;
         }
         // Body signaled again (hstate.signaled set by signal) — return val
@@ -3340,7 +3493,7 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
         return val;
     }
 
-    // All continuations are fiber-based — apply directly
+    // All continuations are context-based — apply directly
     EvalResult r = jit_apply_continuation(k_val, val, interp);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;
@@ -3631,12 +3784,12 @@ fn void emit_load_env(void* s, int target_reg) {
 }
 
 fn bool emit_build_locals_env(void* s, Interp* interp, JitLocals* locals) {
-    if (locals.count == 0) return false;
+    if (locals.locals.len() == 0) return false;
 
     // Start with current env in V2 (jit_env if in sub-expression context, else global_env)
     emit_load_env(s, JIT_V2);
 
-    for (usz i = 0; i < locals.count; i++) {
+    for (usz i = 0; i < locals.locals.len(); i++) {
         if (locals.locals[i].is_mutable) {
             // Mutable local: stack slot holds a shared Env* (the box).
             // Reparent it to the current chain (V2) so it links in properly,

@@ -1,6 +1,7 @@
 module lisp;
 
 import std::io;
+import std::collections::list;
 import main;
 
 // Quasiquote eval — handled by JIT (jit.c3)
@@ -173,15 +174,18 @@ fn Expr* value_to_expr(Value* val, Interp* interp) {
             }
             if ((uint)sym == (uint)interp.sym_begin) {
                 Value* rest = val.cons_val.cdr;
+                List{Expr*} items;
+                while (is_cons(rest)) {
+                    items.push(value_to_expr(rest.cons_val.car, interp));
+                    rest = rest.cons_val.cdr;
+                }
                 Expr* e = interp.alloc_expr();
                 e.tag = E_BEGIN;
                 e.begin = mem::malloc(ExprBegin.sizeof);
-                e.begin.expr_count = 0;
-                while (is_cons(rest) && e.begin.expr_count < 16) {
-                    e.begin.exprs[e.begin.expr_count] = value_to_expr(rest.cons_val.car, interp);
-                    e.begin.expr_count++;
-                    rest = rest.cons_val.cdr;
-                }
+                e.begin.expr_count = items.len();
+                e.begin.exprs = (Expr**)mem::malloc(Expr*.sizeof * items.len());
+                for (usz i = 0; i < items.len(); i++) { e.begin.exprs[i] = items[i]; }
+                items.free();
                 return e;
             }
             if ((uint)sym == (uint)interp.sym_define) {
@@ -203,26 +207,29 @@ fn Expr* value_to_expr(Value* val, Interp* interp) {
                 Expr* body = is_cons(rest) ? value_to_expr(rest.cons_val.car, interp) : value_to_expr(make_nil(interp), interp);
 
                 // Collect params
-                SymbolId[16] params;
-                usz param_count = 0;
+                List{SymbolId} params;
                 Value* p = params_list;
-                while (is_cons(p) && param_count < 16) {
+                while (is_cons(p)) {
                     if (p.cons_val.car != null && p.cons_val.car.tag == SYMBOL) {
-                        params[param_count] = p.cons_val.car.sym_val;
-                        param_count++;
+                        params.push(p.cons_val.car.sym_val);
                     }
                     p = p.cons_val.cdr;
                 }
+                usz param_count = params.len();
 
                 if (param_count == 0) {
                     // Zero-arg lambda
+                    params.free();
                     Expr* e = interp.alloc_expr();
                     e.tag = E_LAMBDA;
                     e.lambda = mem::malloc(ExprLambda.sizeof);
                     e.lambda.param = (SymbolId)0xFFFFFFFF;
                     e.lambda.param_count = 0;
+                    e.lambda.params = null;
                     e.lambda.has_rest = false;
                     e.lambda.rest_param = 0;
+                    e.lambda.has_typed_params = false;
+                    e.lambda.param_annotations = null;
                     e.lambda.body = body;
                     return e;
                 }
@@ -232,10 +239,14 @@ fn Expr* value_to_expr(Value* val, Interp* interp) {
                     e.lambda = mem::malloc(ExprLambda.sizeof);
                     e.lambda.param = params[0];
                     e.lambda.param_count = 1;
+                    e.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
                     e.lambda.params[0] = params[0];
                     e.lambda.has_rest = false;
                     e.lambda.rest_param = 0;
+                    e.lambda.has_typed_params = false;
+                    e.lambda.param_annotations = null;
                     e.lambda.body = body;
+                    params.free();
                     return e;
                 }
                 // Multi-param: desugar to nested lambdas
@@ -246,9 +257,12 @@ fn Expr* value_to_expr(Value* val, Interp* interp) {
                     wrapper.lambda = mem::malloc(ExprLambda.sizeof);
                     wrapper.lambda.param = params[i - 1];
                     wrapper.lambda.param_count = 1;
+                    wrapper.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
                     wrapper.lambda.params[0] = params[i - 1];
                     wrapper.lambda.has_rest = false;
                     wrapper.lambda.rest_param = 0;
+                    wrapper.lambda.has_typed_params = false;
+                    wrapper.lambda.param_annotations = null;
                     wrapper.lambda.body = inner;
                     inner = wrapper;
                 }
@@ -257,10 +271,14 @@ fn Expr* value_to_expr(Value* val, Interp* interp) {
                 e.lambda = mem::malloc(ExprLambda.sizeof);
                 e.lambda.param = params[0];
                 e.lambda.param_count = 1;
+                e.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
                 e.lambda.params[0] = params[0];
                 e.lambda.has_rest = false;
                 e.lambda.rest_param = 0;
+                e.lambda.has_typed_params = false;
+                e.lambda.param_annotations = null;
                 e.lambda.body = inner;
+                params.free();
                 return e;
             }
             if ((uint)sym == (uint)interp.sym_let) {
@@ -275,29 +293,27 @@ fn Expr* value_to_expr(Value* val, Interp* interp) {
                     return body;
                 }
                 // Collect flat-pair bindings: name val name val ...
-                SymbolId[16] names;
-                Value*[16] inits;
-                usz count = 0;
+                List{SymbolId} names;
+                List{Value*} inits;
                 Value* bp = bindings_list;
-                while (is_cons(bp) && count < 16) {
+                while (is_cons(bp)) {
                     Value* name_v = bp.cons_val.car;
                     if (name_v != null && name_v.tag == SYMBOL) {
-                        names[count] = name_v.sym_val;
+                        names.push(name_v.sym_val);
                         bp = bp.cons_val.cdr;
                         if (is_cons(bp)) {
-                            inits[count] = bp.cons_val.car;
+                            inits.push(bp.cons_val.car);
                             bp = bp.cons_val.cdr;
                         } else {
-                            inits[count] = make_nil(interp);
+                            inits.push(make_nil(interp));
                         }
-                        count++;
                     } else {
                         bp = bp.cons_val.cdr;
                     }
                 }
                 // Build from inside out
                 Expr* inner_body = body;
-                for (usz i = count; i > 0; i--) {
+                for (usz i = names.len(); i > 0; i--) {
                     Expr* e = interp.alloc_expr();
                     e.tag = E_LET;
                     e.let_expr.name = names[i - 1];
@@ -306,6 +322,7 @@ fn Expr* value_to_expr(Value* val, Interp* interp) {
                     e.let_expr.is_recursive = false;
                     inner_body = e;
                 }
+                names.free(); inits.free();
                 return inner_body;
             }
             if ((uint)sym == (uint)interp.sym_set) {
@@ -383,17 +400,21 @@ fn Expr* value_to_expr(Value* val, Interp* interp) {
             return e;
         }
 
+        Expr* func_e = value_to_expr(val.cons_val.car, interp);
+        List{Expr*} args;
+        Value* rest = val.cons_val.cdr;
+        while (is_cons(rest)) {
+            args.push(value_to_expr(rest.cons_val.car, interp));
+            rest = rest.cons_val.cdr;
+        }
         Expr* e = interp.alloc_expr();
         e.tag = E_CALL;
         e.call = mem::malloc(ExprCall.sizeof);
-        e.call.func = value_to_expr(val.cons_val.car, interp);
-        e.call.arg_count = 0;
-        Value* rest = val.cons_val.cdr;
-        while (is_cons(rest) && e.call.arg_count < 64) {
-            e.call.args[e.call.arg_count] = value_to_expr(rest.cons_val.car, interp);
-            e.call.arg_count++;
-            rest = rest.cons_val.cdr;
-        }
+        e.call.func = func_e;
+        e.call.arg_count = args.len();
+        e.call.args = (Expr**)mem::malloc(Expr*.sizeof * args.len());
+        for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }
+        args.free();
         return e;
     }
 

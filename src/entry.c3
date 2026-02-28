@@ -198,7 +198,7 @@ fn int run_init(int argc, char** argv, int init_idx) {
         file.write("[project]\n")!!;
         file.write("name = \"")!!;
         file.write(name[:name_len])!!;
-        file.write("\"\nversion = \"0.1.0\"\n\n")!!;
+        file.write("\"\nversion = \"0.1.5\"\n\n")!!;
         file.write("[build]\n")!!;
         file.write("output-dir = \"build\"\n")!!;
         file.write("safety = \"safe\"        # \"safe\", \"fast\", or \"none\"\n")!!;
@@ -224,7 +224,7 @@ fn int run_init(int argc, char** argv, int init_idx) {
         file.write("// Generated from omni.toml — do not edit\n")!!;
         file.write("{\n")!!;
         file.write("    \"langrev\": \"1\",\n")!!;
-        file.write("    \"version\": \"0.1.0\",\n")!!;
+        file.write("    \"version\": \"0.1.5\",\n")!!;
         file.write("    \"sources\": [\"../src\"],\n")!!;
         file.write("    \"output\": \".\",\n")!!;
         file.write("    \"safe\": true,\n")!!;
@@ -396,7 +396,7 @@ fn int run_bind(int argc, char** argv, int bind_idx) {
 }
 
 fn int print_help() {
-    io::printn("omni 0.1.0 — A Lisp with modern semantics");
+    io::printn("omni 0.1.5 — A Lisp with modern semantics");
     io::printn("");
     io::printn("Usage: omni [options] [script.omni]");
     io::printn("");
@@ -432,7 +432,7 @@ fn int main(int argc, char** argv) {
     // Check for --version / -v flag
     for (int i = 1; i < argc; i++) {
         if (str_eq(argv[i], "--version") || str_eq(argv[i], "-v")) {
-            io::printn("omni 0.1.0");
+            io::printn("omni 0.1.5");
             return 0;
         }
     }
@@ -535,7 +535,7 @@ fn int main(int argc, char** argv) {
             lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
             interp.init();
             lisp::register_primitives(interp);
-            lisp::register_destructors();
+
             lisp::register_stdlib(interp);
             interp.flags.jit_enabled = true;
 
@@ -567,7 +567,6 @@ fn int main(int argc, char** argv) {
         lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
         interp.init();
         lisp::register_primitives(interp);
-        lisp::register_destructors();
         lisp::register_stdlib(interp);
         interp.flags.jit_enabled = true;
 
@@ -598,7 +597,7 @@ fn int main(int argc, char** argv) {
             lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
             interp.init();
             lisp::register_primitives(interp);
-            lisp::register_destructors();
+
             lisp::register_stdlib(interp);
             interp.flags.jit_enabled = true;
 
@@ -649,14 +648,11 @@ fn int main(int argc, char** argv) {
     // Run tests mode
     io::printfn("Region Memory System v3 initialized");
 
-    // Run destructor registry tests (O(1) lookup implementation)
-    run_destructor_registry_tests();
-
-    // Run ghost lookup tests (O(1) optimization verification)
-    run_ghost_lookup_tests();
-
     // Run stack engine tests (mmap stacks, context switch, coroutine lifecycle)
     run_stack_engine_tests();
+
+    // Run scope region tests (bump allocator, RC, freelist recycling)
+    run_scope_region_tests();
 
     // Initialize thread-local registry BEFORE Lisp tests (interpreter uses regions)
     thread_registry_init();
@@ -665,13 +661,6 @@ fn int main(int argc, char** argv) {
     // Run Lisp interpreter tests
     lisp::run_lisp_tests();
 
-    // Create a child region using convenience function
-    RegionHandle child = create_region();
-    io::printfn("Child region created: id=%d, gen=%d",
-        (uint)child.region_id, (uint)child.generation);
-
-    // Clean up
-    release_region(child);  // Release our reference
     thread_registry_shutdown();
 
     io::printfn("System ready.");

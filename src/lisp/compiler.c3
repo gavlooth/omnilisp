@@ -203,12 +203,6 @@ fn void init_prim_hash(Interp* interp) {
     prim_hash_insert(st.intern("file-exists?"), "runtime::make_prim_unary(&runtime::rt_file_exists)");
     prim_hash_insert(st.intern("read-lines"), "runtime::make_prim_unary(&runtime::rt_read_lines)");
 
-    // FFI
-    prim_hash_insert(st.intern("ffi-open"), "runtime::make_prim_unary(&runtime::rt_ffi_open)");
-    prim_hash_insert(st.intern("ffi-close"), "runtime::make_prim_unary(&runtime::rt_ffi_close)");
-    prim_hash_insert(st.intern("ffi-sym"), "runtime::make_prim(&runtime::rt_ffi_sym)");
-    prim_hash_insert(st.intern("ffi-call"), "runtime::make_prim(&runtime::rt_ffi_call)");
-
     // Misc
     prim_hash_insert(st.intern("gensym"), "runtime::make_prim_unary(&runtime::rt_gensym)");
     prim_hash_insert(st.intern("load"), "runtime::make_prim_unary(&runtime::rt_load)");
@@ -780,7 +774,6 @@ fn bool Compiler.is_primitive(Compiler* self, SymbolId sym) {
         "dict", "dict-set!", "dict?",
         "ref", "push!", "keys", "values", "has?", "remove!",
         "read-file", "write-file", "file-exists?", "read-lines",
-        "ffi-open", "ffi-call", "ffi-close", "ffi-sym",
         "type-of",
         "abs", "min", "max", "floor", "ceiling", "round",
         "truncate", "sqrt", "even?", "odd?", "zero?",
@@ -1771,7 +1764,9 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
             wrapper.loc_column = expr.loc_column;
             wrapper.lambda.param = dummy_param;
             wrapper.lambda.param_count = 1;
+            wrapper.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
             wrapper.lambda.params[0] = dummy_param;
+            wrapper.lambda.param_annotations = null;
             wrapper.lambda.has_rest = false;
             wrapper.lambda.rest_param = 0;
             wrapper.lambda.has_typed_params = false;
@@ -1790,7 +1785,9 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
             wrapper.loc_column = expr.loc_column;
             wrapper.lambda.param = expr.shift.k_name;
             wrapper.lambda.param_count = 1;
+            wrapper.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
             wrapper.lambda.params[0] = expr.shift.k_name;
+            wrapper.lambda.param_annotations = null;
             wrapper.lambda.has_rest = false;
             wrapper.lambda.rest_param = 0;
             wrapper.lambda.has_typed_params = false;
@@ -1816,7 +1813,9 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
             body_wrapper.loc_column = expr.loc_column;
             body_wrapper.lambda.param = dummy_param;
             body_wrapper.lambda.param_count = 1;
+            body_wrapper.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
             body_wrapper.lambda.params[0] = dummy_param;
+            body_wrapper.lambda.param_annotations = null;
             body_wrapper.lambda.has_rest = false;
             body_wrapper.lambda.rest_param = 0;
             body_wrapper.lambda.has_typed_params = false;
@@ -1881,7 +1880,9 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
                 handler_wrapper.loc_column = expr.loc_column;
                 handler_wrapper.lambda.param = pair_param;
                 handler_wrapper.lambda.param_count = 1;
+                handler_wrapper.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
                 handler_wrapper.lambda.params[0] = pair_param;
+                handler_wrapper.lambda.param_annotations = null;
                 handler_wrapper.lambda.has_rest = false;
                 handler_wrapper.lambda.rest_param = 0;
                 handler_wrapper.lambda.has_typed_params = false;
@@ -3231,7 +3232,6 @@ fn bool Compiler.is_builtin_primitive(Compiler* self, SymbolId sym) {
         "dict", "dict-set!", "dict?",
         "ref", "push!", "keys", "values", "has?", "remove!",
         "read-file", "write-file", "file-exists?", "read-lines",
-        "ffi-open", "ffi-call", "ffi-close", "ffi-sym",
         "type-of",
         "abs", "min", "max", "floor", "ceiling", "round",
         "truncate", "sqrt", "even?", "odd?", "zero?",

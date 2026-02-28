@@ -8,18 +8,18 @@
  *
  *   - Delimited continuations (reset/shift)
  *   - Algebraic effects (handle/signal/resolve)
- *   - User-facing coroutines (fiber/yield/resume)
+ *   - User-facing coroutines (coroutine/yield/resume)
  *
  * Semantic layering (what users see):
  *   continuations (reset/shift) ← the primitive
  *     ├── effects (handle/signal/resolve) ← tagged continuations
- *     └── coroutines (fiber/yield/resume) ← a usage pattern
+ *     └── coroutines (coroutine/yield/resume) ← a usage pattern
  *
  * Implementation layering (this file):
  *   StackContext + stack_context_switch ← x86_64 assembly
  *   StackRegion (mmap + guard page)    ← stack allocation
  *   StackPool (free-list)              ← recycling
- *   Coro (coroutine handle)            ← lifecycle management
+ *   StackCtx (execution context handle)     ← lifecycle management
  *
  * Platform: x86_64 Linux only.
  */
@@ -121,7 +121,7 @@ fn void stack_context_switch(StackContext* old_ctx, StackContext* new_ctx) @nake
         movq [$rdi + 56], $rax;         // offset 56: rip
 
         // MXCSR/x87CW saved via fpu_save() in wrapper functions
-        // (coro_switch_to, coro_resume, coro_suspend) before calling switch.
+        // (stack_ctx_switch_to, stack_ctx_resume, stack_ctx_suspend) before calling switch.
 
         // ---- Restore from new_ctx (RSI) ----
 
@@ -147,26 +147,26 @@ fn void stack_context_switch(StackContext* old_ctx, StackContext* new_ctx) @nake
 // SECTION 4: COROUTINE STATUS
 // =============================================================================
 
-enum CoroStatus : char {
-    CORO_READY,       // Created, not yet started
-    CORO_RUNNING,     // Currently executing
-    CORO_SUSPENDED,   // Yielded/shifted, can be resumed
-    CORO_COMPLETED,   // Returned normally
-    CORO_DEAD         // Error or invalidated
+enum StackCtxStatus : char {
+    CTX_READY,       // Created, not yet started
+    CTX_RUNNING,     // Currently executing
+    CTX_SUSPENDED,   // Yielded/shifted, can be resumed
+    CTX_COMPLETED,   // Returned normally
+    CTX_DEAD         // Error or invalidated
 }
 
 /**
  * Entry function signature for coroutines.
  */
-alias CoroEntryFn = fn void(void*);
+alias StackCtxEntryFn = fn void(void*);
 
 /**
  * Bootstrap state — tells the trampoline what function to call.
  */
-struct CoroBootstrap {
-    CoroEntryFn entry;
+struct StackCtxBootstrap {
+    StackCtxEntryFn entry;
     void*       arg;
-    Coro*       self;
+    StackCtx*       self;
 }
 
 // =============================================================================
@@ -242,22 +242,22 @@ fn bool stack_region_contains(StackRegion* r, void* ptr) {
 // =============================================================================
 
 /**
- * Coro — A coroutine: an execution context with its own stack.
+ * StackCtx — An execution context with its own stack.
  *
  * This is the runtime unit that backs delimited continuations, effect handlers,
- * and user-facing coroutines. The name "Coro" is internal — users see
- * "continuation" or "fiber" depending on the abstraction layer.
+ * and user-facing coroutines. The name "StackCtx" is internal — users see
+ * "continuation" or "coroutine" depending on the abstraction layer.
  */
-struct Coro {
+struct StackCtx {
     StackContext    ctx;         // Saved register state
     StackRegion    stack;       // Owned stack memory
-    CoroStatus     status;
+    StackCtxStatus     status;
     void*          result;      // Return value when COMPLETED
     StackContext*   parent_ctx;  // Where to switch back to on yield/complete
     uint           id;          // Unique identifier
-    Coro*          pool_next;   // Free-list link for StackPool
-    CoroBootstrap  boot;        // Bootstrap info for first switch
-    void*          user_data;   // Application-level data (e.g. FiberThunkState*)
+    StackCtx*          pool_next;   // Free-list link for StackPool
+    StackCtxBootstrap  boot;        // Bootstrap info for first switch
+    void*          user_data;   // Application-level data (e.g. CoroutineThunkState*)
 }
 
 // =============================================================================
@@ -265,7 +265,7 @@ struct Coro {
 // =============================================================================
 
 struct StackPool {
-    Coro*  free_list;   // Singly-linked list of available coros
+    StackCtx*  free_list;   // Singly-linked list of available coros
     usz    pool_size;   // Current count in free list
     usz    max_pool;    // Max cached before freeing
     uint   next_id;     // Monotonic ID counter
@@ -285,9 +285,9 @@ fn void stack_pool_init(StackPool* pool) {
 
 fn void stack_pool_shutdown(StackPool* pool) {
     // Free all cached coros and unregister their guard pages
-    Coro* c = pool.free_list;
+    StackCtx* c = pool.free_list;
     while (c != null) {
-        Coro* next = c.pool_next;
+        StackCtx* next = c.pool_next;
         stack_guard_unregister(c.stack.base);
         stack_region_free(&c.stack);
         mem::free(c);
@@ -305,8 +305,8 @@ fn void stack_pool_shutdown(StackPool* pool) {
 /**
  * Create a coroutine. Pops from pool if available, else allocates fresh.
  */
-fn Coro* coro_create(StackPool* pool) {
-    Coro* c;
+fn StackCtx* stack_ctx_create(StackPool* pool) {
+    StackCtx* c;
 
     if (pool.free_list != null) {
         // Recycle from pool
@@ -315,7 +315,7 @@ fn Coro* coro_create(StackPool* pool) {
         pool.pool_size--;
     } else {
         // Fresh allocation
-        c = (Coro*)mem::malloc(Coro.sizeof);
+        c = (StackCtx*)mem::malloc(StackCtx.sizeof);
         c.stack = stack_region_alloc(pool.stack_size);
         if (c.stack.base == null) {
             mem::free(c);
@@ -331,7 +331,7 @@ fn Coro* coro_create(StackPool* pool) {
         ((char*)&empty_ctx)[i] = 0;
     }
     c.ctx = empty_ctx;
-    c.status = CORO_READY;
+    c.status = CTX_READY;
     c.result = null;
     c.parent_ctx = null;
     c.pool_next = null;
@@ -344,10 +344,10 @@ fn Coro* coro_create(StackPool* pool) {
 /**
  * Return a coroutine to the pool, or free it if pool is full.
  */
-fn void coro_destroy(Coro* c, StackPool* pool) {
+fn void stack_ctx_destroy(StackCtx* c, StackPool* pool) {
     if (pool.pool_size < pool.max_pool) {
         // Return to pool — keep the stack allocation
-        c.status = CORO_DEAD;
+        c.status = CTX_DEAD;
         c.result = null;
         c.parent_ctx = null;
         c.pool_next = pool.free_list;
@@ -365,9 +365,9 @@ fn void coro_destroy(Coro* c, StackPool* pool) {
 // SECTION 9: COROUTINE INITIALIZATION (set up initial stack frame)
 // =============================================================================
 
-// Global bootstrap pointer — set before first context switch into a coro.
-// Safe because coroutine switches are cooperative (single-threaded).
-tlocal CoroBootstrap* g_coro_bootstrap;
+// Global bootstrap pointer — set before first context switch into a stack context.
+// Safe because context switches are cooperative (single-threaded).
+tlocal StackCtxBootstrap* g_stack_ctx_bootstrap;
 
 /**
  * Trampoline that runs when a coroutine starts for the first time.
@@ -376,24 +376,24 @@ tlocal CoroBootstrap* g_coro_bootstrap;
  * It reads the bootstrap info from the thread-local, calls the entry function,
  * then marks the coroutine as completed and switches back to the parent.
  */
-fn void coro_trampoline() {
-    CoroBootstrap* boot = g_coro_bootstrap;
-    CoroEntryFn entry = boot.entry;
+fn void stack_ctx_trampoline() {
+    StackCtxBootstrap* boot = g_stack_ctx_bootstrap;
+    StackCtxEntryFn entry = boot.entry;
     void* arg = boot.arg;
 
-    // Set current coro from bootstrap (only valid for first switch)
-    g_current_coro = boot.self;
+    // Set current context from bootstrap (only valid for first switch)
+    g_current_stack_ctx = boot.self;
 
     // Call the actual entry function
     entry(arg);
 
     // Entry returned — mark as completed and switch back to parent.
-    // IMPORTANT: Re-read g_current_coro here (do NOT use the stale boot.self).
-    // After coro_clone + coro_resume, g_current_coro points to the clone,
+    // IMPORTANT: Re-read g_current_stack_ctx here (do NOT use the stale boot.self).
+    // After stack_ctx_clone + stack_ctx_resume, g_current_stack_ctx points to the clone,
     // but local variables on the cloned stack still reference the original.
-    Coro* self = g_current_coro;
-    self.status = CORO_COMPLETED;
-    g_current_coro = null;
+    StackCtx* self = g_current_stack_ctx;
+    self.status = CTX_COMPLETED;
+    g_current_stack_ctx = null;
     stack_context_switch(&self.ctx, self.parent_ctx);
 
     // Should never reach here
@@ -402,15 +402,15 @@ fn void coro_trampoline() {
 /**
  * Initialize a coroutine's context to start executing entry(arg).
  *
- * Sets up the stack so that the first context_switch into this coro
- * will jump to coro_trampoline, which reads the bootstrap info and
+ * Sets up the stack so that the first context_switch into this context
+ * will jump to stack_ctx_trampoline, which reads the bootstrap info and
  * calls entry(arg).
  *
- * @param c     Coroutine to initialize
+ * @param c     Stack context to initialize
  * @param entry Entry function: fn void(void*)
  * @param arg   Argument passed to entry
  */
-fn void coro_init(Coro* c, CoroEntryFn entry, void* arg) {
+fn void stack_ctx_init(StackCtx* c, StackCtxEntryFn entry, void* arg) {
     // Start RSP at top of usable stack, 16-byte aligned
     usz sp = (usz)c.stack.stack_top;
     sp &= ~(usz)15;  // Align to 16
@@ -423,7 +423,7 @@ fn void coro_init(Coro* c, CoroEntryFn entry, void* arg) {
     sp -= 8;
 
     c.ctx.rsp = sp;
-    c.ctx.rip = (ulong)&coro_trampoline;
+    c.ctx.rip = (ulong)&stack_ctx_trampoline;
     c.ctx.rbp = 0;  // Clean frame pointer (no parent frame)
     c.ctx.rbx = 0;
     c.ctx.r12 = 0;
@@ -435,31 +435,31 @@ fn void coro_init(Coro* c, CoroEntryFn entry, void* arg) {
     c.ctx.mxcsr = 0x1F80;  // All exceptions masked
     c.ctx.x87cw = 0x037F;  // Double precision, all masked
 
-    // Store bootstrap info on the Coro itself (read by trampoline)
+    // Store bootstrap info on the StackCtx itself (read by trampoline)
     c.boot.entry = entry;
     c.boot.arg = arg;
     c.boot.self = c;
 
-    c.status = CORO_READY;
+    c.status = CTX_READY;
 }
 
 /**
- * Switch into a coroutine. Sets up bootstrap and parent, then context-switches.
+ * Switch into a stack context. Sets up bootstrap and parent, then context-switches.
  *
- * @param c          Coroutine to run
+ * @param c          Stack context to run
  * @param parent_ctx Where to save the caller's context
  */
-fn void coro_switch_to(Coro* c, StackContext* parent_ctx) {
+fn void stack_ctx_switch_to(StackCtx* c, StackContext* parent_ctx) {
     c.parent_ctx = parent_ctx;
 
     // Set bootstrap for first switch (trampoline reads this)
-    if (c.status == CORO_READY) {
-        g_coro_bootstrap = &c.boot;
-        c.status = CORO_RUNNING;
+    if (c.status == CTX_READY) {
+        g_stack_ctx_bootstrap = &c.boot;
+        c.status = CTX_RUNNING;
     }
 
-    Coro* saved = g_current_coro;
-    g_current_coro = c;
+    StackCtx* saved = g_current_stack_ctx;
+    g_current_stack_ctx = c;
 
     // D1: Save parent FPU state before switch
     fpu_save(&parent_ctx.mxcsr, &parent_ctx.x87cw);
@@ -471,40 +471,40 @@ fn void coro_switch_to(Coro* c, StackContext* parent_ctx) {
     fpu_restore(parent_ctx.mxcsr, parent_ctx.x87cw);
 
     if (overflow != 0) {
-        c.status = CORO_DEAD;
+        c.status = CTX_DEAD;
     }
 
-    g_current_coro = saved;
+    g_current_stack_ctx = saved;
 }
 
 // Thread-local: currently executing coroutine (null if on main stack)
-tlocal Coro* g_current_coro;
+tlocal StackCtx* g_current_stack_ctx;
 
 /**
  * Suspend the current coroutine and switch back to its parent.
  * This is the primitive behind yield/shift/signal.
  */
-fn void coro_suspend() {
-    Coro* c = g_current_coro;
-    assert(c != null, "coro_suspend: not inside a coroutine");
-    c.status = CORO_SUSPENDED;
-    // D1: Save coro FPU state before switch to parent
+fn void stack_ctx_suspend() {
+    StackCtx* c = g_current_stack_ctx;
+    assert(c != null, "stack_ctx_suspend: not inside a coroutine");
+    c.status = CTX_SUSPENDED;
+    // D1: Save FPU state before switch to parent
     fpu_save(&c.ctx.mxcsr, &c.ctx.x87cw);
     stack_context_switch(&c.ctx, c.parent_ctx);
-    // Execution resumes here when parent calls coro_resume
-    // D1: Restore coro FPU state on resume
+    // Execution resumes here when parent calls stack_ctx_resume
+    // D1: Restore FPU state on resume
     fpu_restore(c.ctx.mxcsr, c.ctx.x87cw);
 }
 
 /**
  * Resume a suspended coroutine. Updates tracking and switches.
  */
-fn void coro_resume(Coro* c, StackContext* parent_ctx) {
-    assert(c.status == CORO_SUSPENDED, "coro_resume: coro not suspended");
+fn void stack_ctx_resume(StackCtx* c, StackContext* parent_ctx) {
+    assert(c.status == CTX_SUSPENDED, "stack_ctx_resume: context not suspended");
     c.parent_ctx = parent_ctx;
-    c.status = CORO_RUNNING;
-    Coro* saved = g_current_coro;
-    g_current_coro = c;
+    c.status = CTX_RUNNING;
+    StackCtx* saved = g_current_stack_ctx;
+    g_current_stack_ctx = c;
 
     // D1: Save parent FPU state before switch
     fpu_save(&parent_ctx.mxcsr, &parent_ctx.x87cw);
@@ -516,14 +516,14 @@ fn void coro_resume(Coro* c, StackContext* parent_ctx) {
     fpu_restore(parent_ctx.mxcsr, parent_ctx.x87cw);
 
     if (overflow != 0) {
-        c.status = CORO_DEAD;
+        c.status = CTX_DEAD;
     }
 
-    g_current_coro = saved;
+    g_current_stack_ctx = saved;
 }
 
-// Also update coro_switch_to to track current coro
-// (done inline below in the existing coro_switch_to — we add tracking)
+// Also update stack_ctx_switch_to to track current context
+// (done inline below in the existing stack_ctx_switch_to — we add tracking)
 
 // =============================================================================
 // SECTION 10: STACK CLONING (for multi-shot continuations)
@@ -540,15 +540,15 @@ fn void coro_resume(Coro* c, StackContext* parent_ctx) {
  * @param pool    Stack pool for allocation
  * @return New coroutine (caller owns), or null on failure
  */
-fn Coro* coro_clone(Coro* source, StackPool* pool) {
-    if (source.status != CORO_SUSPENDED) return null;
+fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
+    if (source.status != CTX_SUSPENDED) return null;
 
-    Coro* clone = coro_create(pool);
+    StackCtx* clone = stack_ctx_create(pool);
     if (clone == null) return null;
 
     // Ensure clone has same-sized stack
     if (clone.stack.usable_size < source.stack.usable_size) {
-        coro_destroy(clone, pool);
+        stack_ctx_destroy(clone, pool);
         return null;
     }
 
@@ -563,7 +563,7 @@ fn Coro* coro_clone(Coro* source, StackPool* pool) {
 
     // Copy register context
     clone.ctx = source.ctx;
-    clone.status = CORO_SUSPENDED;
+    clone.status = CTX_SUSPENDED;
     clone.result = source.result;
 
     // Compute relocation delta: difference between stack bases
@@ -628,11 +628,11 @@ fn void test_entry_generator(void* arg) {
 
     s.value = 10;
     s.step = 1;
-    coro_suspend();  // yield 10
+    stack_ctx_suspend();  // yield 10
 
     s.value = 20;
     s.step = 2;
-    coro_suspend();  // yield 20
+    stack_ctx_suspend();  // yield 20
 
     s.value = 30;
     s.step = 3;
@@ -673,21 +673,21 @@ fn bool test_pool_lifecycle() {
     StackPool pool;
     stack_pool_init(&pool);
 
-    Coro* c1 = coro_create(&pool);
+    StackCtx* c1 = stack_ctx_create(&pool);
     if (c1 == null) return false;
     uint id1 = c1.id;
 
-    coro_destroy(c1, &pool);
+    stack_ctx_destroy(c1, &pool);
     if (pool.pool_size != 1) return false;
 
-    Coro* c2 = coro_create(&pool);
+    StackCtx* c2 = stack_ctx_create(&pool);
     if (c2 == null) return false;
     if (pool.pool_size != 0) return false;
 
     bool same_ptr = (c2 == c1);
     bool new_id = (c2.id != id1);
 
-    coro_destroy(c2, &pool);
+    stack_ctx_destroy(c2, &pool);
     stack_pool_shutdown(&pool);
     return same_ptr && new_id;
 }
@@ -696,44 +696,44 @@ fn bool test_basic_coro() {
     StackPool pool;
     stack_pool_init(&pool);
 
-    Coro* c = coro_create(&pool);
+    StackCtx* c = stack_ctx_create(&pool);
     if (c == null) { stack_pool_shutdown(&pool); return false; }
 
     TestState state;
     state.value = 0;
 
-    coro_init(c, &test_entry_simple, &state);
+    stack_ctx_init(c, &test_entry_simple, &state);
 
-    // Switch into the coro — it runs test_entry_simple, sets value=42,
+    // Switch into the context — it runs test_entry_simple, sets value=42,
     // returns, trampoline marks COMPLETED and switches back
     StackContext main_ctx;
-    coro_switch_to(c, &main_ctx);
+    stack_ctx_switch_to(c, &main_ctx);
 
-    bool ok = (c.status == CORO_COMPLETED) && (state.value == 42);
+    bool ok = (c.status == CTX_COMPLETED) && (state.value == 42);
 
-    coro_destroy(c, &pool);
+    stack_ctx_destroy(c, &pool);
     stack_pool_shutdown(&pool);
     return ok;
 }
 
-fn bool test_coro_second() {
+fn bool test_stack_ctx_second() {
     StackPool pool;
     stack_pool_init(&pool);
 
-    Coro* c = coro_create(&pool);
+    StackCtx* c = stack_ctx_create(&pool);
     if (c == null) { stack_pool_shutdown(&pool); return false; }
 
     TestState state;
     state.value = 0;
 
-    coro_init(c, &test_entry_100, &state);
+    stack_ctx_init(c, &test_entry_100, &state);
 
     StackContext main_ctx;
-    coro_switch_to(c, &main_ctx);
+    stack_ctx_switch_to(c, &main_ctx);
 
-    bool ok = (c.status == CORO_COMPLETED) && (state.value == 100);
+    bool ok = (c.status == CTX_COMPLETED) && (state.value == 100);
 
-    coro_destroy(c, &pool);
+    stack_ctx_destroy(c, &pool);
     stack_pool_shutdown(&pool);
     return ok;
 }
@@ -743,56 +743,56 @@ fn bool test_suspend_resume() {
     StackPool pool;
     stack_pool_init(&pool);
 
-    Coro* c = coro_create(&pool);
+    StackCtx* c = stack_ctx_create(&pool);
     if (c == null) { stack_pool_shutdown(&pool); return false; }
 
     TestState state;
     state.value = 0;
     state.step = 0;
 
-    coro_init(c, &test_entry_generator, &state);
+    stack_ctx_init(c, &test_entry_generator, &state);
 
-    // First switch: runs until first coro_suspend()
+    // First switch: runs until first stack_ctx_suspend()
     StackContext main_ctx;
-    coro_switch_to(c, &main_ctx);
+    stack_ctx_switch_to(c, &main_ctx);
 
-    bool ok = (c.status == CORO_SUSPENDED) && (state.value == 10) && (state.step == 1);
+    bool ok = (c.status == CTX_SUSPENDED) && (state.value == 10) && (state.step == 1);
 
-    // Resume: runs until second coro_suspend()
-    coro_resume(c, &main_ctx);
+    // Resume: runs until second stack_ctx_suspend()
+    stack_ctx_resume(c, &main_ctx);
 
-    ok = ok && (c.status == CORO_SUSPENDED) && (state.value == 20) && (state.step == 2);
+    ok = ok && (c.status == CTX_SUSPENDED) && (state.value == 20) && (state.step == 2);
 
     // Resume again: runs to completion
-    coro_resume(c, &main_ctx);
+    stack_ctx_resume(c, &main_ctx);
 
-    ok = ok && (c.status == CORO_COMPLETED) && (state.value == 30) && (state.step == 3);
+    ok = ok && (c.status == CTX_COMPLETED) && (state.value == 30) && (state.step == 3);
 
-    coro_destroy(c, &pool);
+    stack_ctx_destroy(c, &pool);
     stack_pool_shutdown(&pool);
     return ok;
 }
 
 // Test that recursive code works on separate stack
-fn bool test_coro_recursion() {
+fn bool test_stack_ctx_recursion() {
     StackPool pool;
     stack_pool_init(&pool);
 
-    Coro* c = coro_create(&pool);
+    StackCtx* c = stack_ctx_create(&pool);
     if (c == null) { stack_pool_shutdown(&pool); return false; }
 
     TestState state;
     state.value = 0;
 
-    coro_init(c, &test_entry_recursive, &state);
+    stack_ctx_init(c, &test_entry_recursive, &state);
 
     StackContext main_ctx;
-    coro_switch_to(c, &main_ctx);
+    stack_ctx_switch_to(c, &main_ctx);
 
     // sum(1..100) = 5050
-    bool ok = (c.status == CORO_COMPLETED) && (state.value == 5050);
+    bool ok = (c.status == CTX_COMPLETED) && (state.value == 5050);
 
-    coro_destroy(c, &pool);
+    stack_ctx_destroy(c, &pool);
     stack_pool_shutdown(&pool);
     return ok;
 }
@@ -802,8 +802,8 @@ fn bool test_two_coros_interleaved() {
     StackPool pool;
     stack_pool_init(&pool);
 
-    Coro* c1 = coro_create(&pool);
-    Coro* c2 = coro_create(&pool);
+    StackCtx* c1 = stack_ctx_create(&pool);
+    StackCtx* c2 = stack_ctx_create(&pool);
     if (c1 == null || c2 == null) { stack_pool_shutdown(&pool); return false; }
 
     TestState s1;
@@ -811,35 +811,35 @@ fn bool test_two_coros_interleaved() {
     s1.value = 0; s1.step = 0;
     s2.value = 0; s2.step = 0;
 
-    coro_init(c1, &test_entry_generator, &s1);
-    coro_init(c2, &test_entry_generator, &s2);
+    stack_ctx_init(c1, &test_entry_generator, &s1);
+    stack_ctx_init(c2, &test_entry_generator, &s2);
 
     StackContext main_ctx;
 
     // Run c1 to first yield
-    coro_switch_to(c1, &main_ctx);
-    bool ok = (s1.value == 10) && (c1.status == CORO_SUSPENDED);
+    stack_ctx_switch_to(c1, &main_ctx);
+    bool ok = (s1.value == 10) && (c1.status == CTX_SUSPENDED);
 
     // Run c2 to first yield
-    coro_switch_to(c2, &main_ctx);
-    ok = ok && (s2.value == 10) && (c2.status == CORO_SUSPENDED);
+    stack_ctx_switch_to(c2, &main_ctx);
+    ok = ok && (s2.value == 10) && (c2.status == CTX_SUSPENDED);
 
     // Resume c1 to second yield
-    coro_resume(c1, &main_ctx);
+    stack_ctx_resume(c1, &main_ctx);
     ok = ok && (s1.value == 20);
 
     // Resume c2 to completion (skip second yield, go to end)
-    coro_resume(c2, &main_ctx);
-    ok = ok && (s2.value == 20) && (c2.status == CORO_SUSPENDED);
-    coro_resume(c2, &main_ctx);
-    ok = ok && (s2.value == 30) && (c2.status == CORO_COMPLETED);
+    stack_ctx_resume(c2, &main_ctx);
+    ok = ok && (s2.value == 20) && (c2.status == CTX_SUSPENDED);
+    stack_ctx_resume(c2, &main_ctx);
+    ok = ok && (s2.value == 30) && (c2.status == CTX_COMPLETED);
 
     // Resume c1 to completion
-    coro_resume(c1, &main_ctx);
-    ok = ok && (s1.value == 30) && (c1.status == CORO_COMPLETED);
+    stack_ctx_resume(c1, &main_ctx);
+    ok = ok && (s1.value == 30) && (c1.status == CTX_COMPLETED);
 
-    coro_destroy(c1, &pool);
-    coro_destroy(c2, &pool);
+    stack_ctx_destroy(c1, &pool);
+    stack_ctx_destroy(c2, &pool);
     stack_pool_shutdown(&pool);
     return ok;
 }
@@ -862,34 +862,34 @@ fn bool test_stack_overflow_recovery() {
     StackPool pool;
     stack_pool_init(&pool);
 
-    Coro* c = coro_create(&pool);
+    StackCtx* c = stack_ctx_create(&pool);
     if (c == null) { stack_pool_shutdown(&pool); return false; }
 
     TestState state;
     state.value = 0;
 
-    coro_init(c, &test_entry_overflow, &state);
+    stack_ctx_init(c, &test_entry_overflow, &state);
 
     StackContext main_ctx;
-    coro_switch_to(c, &main_ctx);
+    stack_ctx_switch_to(c, &main_ctx);
 
-    // Should recover gracefully — coro marked DEAD, not crashed
-    bool ok = (c.status == CORO_DEAD);
+    // Should recover gracefully — context marked DEAD, not crashed
+    bool ok = (c.status == CTX_DEAD);
     // Should have recursed some before overflow
     ok = ok && (state.value > 10);
 
-    coro_destroy(c, &pool);
+    stack_ctx_destroy(c, &pool);
     stack_pool_shutdown(&pool);
     return ok;
 }
 
-// Test that FPU state is preserved across coro switches
+// Test that FPU state is preserved across context switches
 fn void test_entry_fpu(void* arg) {
     TestState* s = (TestState*)arg;
     // The FPU state should be default values on entry
     // Just set a marker to confirm we ran
     s.value = 99;
-    coro_suspend();
+    stack_ctx_suspend();
     s.value = 100;
 }
 
@@ -897,12 +897,12 @@ fn bool test_fpu_preservation() {
     StackPool pool;
     stack_pool_init(&pool);
 
-    Coro* c = coro_create(&pool);
+    StackCtx* c = stack_ctx_create(&pool);
     if (c == null) { stack_pool_shutdown(&pool); return false; }
 
     TestState state;
     state.value = 0;
-    coro_init(c, &test_entry_fpu, &state);
+    stack_ctx_init(c, &test_entry_fpu, &state);
 
     // Save current FPU state
     uint mxcsr_before;
@@ -910,8 +910,8 @@ fn bool test_fpu_preservation() {
     fpu_save(&mxcsr_before, &x87cw_before);
 
     StackContext main_ctx;
-    coro_switch_to(c, &main_ctx);  // runs until suspend
-    bool ok = (state.value == 99) && (c.status == CORO_SUSPENDED);
+    stack_ctx_switch_to(c, &main_ctx);  // runs until suspend
+    bool ok = (state.value == 99) && (c.status == CTX_SUSPENDED);
 
     // Verify parent FPU state preserved after switch
     uint mxcsr_after;
@@ -921,15 +921,15 @@ fn bool test_fpu_preservation() {
     ok = ok && (x87cw_before == x87cw_after);
 
     // Resume and complete
-    coro_resume(c, &main_ctx);
-    ok = ok && (state.value == 100) && (c.status == CORO_COMPLETED);
+    stack_ctx_resume(c, &main_ctx);
+    ok = ok && (state.value == 100) && (c.status == CTX_COMPLETED);
 
     // FPU still preserved
     fpu_save(&mxcsr_after, &x87cw_after);
     ok = ok && (mxcsr_before == mxcsr_after);
     ok = ok && (x87cw_before == x87cw_after);
 
-    coro_destroy(c, &pool);
+    stack_ctx_destroy(c, &pool);
     stack_pool_shutdown(&pool);
     return ok;
 }
@@ -951,20 +951,20 @@ fn void run_stack_engine_tests() {
     if (test_pool_lifecycle()) { io::printfn("  PASS: pool create/recycle"); pass++; }
     else { io::printfn("  FAIL: pool create/recycle"); fail++; }
 
-    if (test_basic_coro()) { io::printfn("  PASS: basic coro run + complete"); pass++; }
-    else { io::printfn("  FAIL: basic coro run + complete"); fail++; }
+    if (test_basic_coro()) { io::printfn("  PASS: basic context run + complete"); pass++; }
+    else { io::printfn("  FAIL: basic context run + complete"); fail++; }
 
-    if (test_coro_second()) { io::printfn("  PASS: second coro entry"); pass++; }
-    else { io::printfn("  FAIL: second coro entry"); fail++; }
+    if (test_stack_ctx_second()) { io::printfn("  PASS: second context entry"); pass++; }
+    else { io::printfn("  FAIL: second context entry"); fail++; }
 
     if (test_suspend_resume()) { io::printfn("  PASS: suspend/resume (generator)"); pass++; }
     else { io::printfn("  FAIL: suspend/resume (generator)"); fail++; }
 
-    if (test_coro_recursion()) { io::printfn("  PASS: recursion on separate stack"); pass++; }
+    if (test_stack_ctx_recursion()) { io::printfn("  PASS: recursion on separate stack"); pass++; }
     else { io::printfn("  FAIL: recursion on separate stack"); fail++; }
 
-    if (test_two_coros_interleaved()) { io::printfn("  PASS: two coros interleaved"); pass++; }
-    else { io::printfn("  FAIL: two coros interleaved"); fail++; }
+    if (test_two_coros_interleaved()) { io::printfn("  PASS: two contexts interleaved"); pass++; }
+    else { io::printfn("  FAIL: two contexts interleaved"); fail++; }
 
     if (test_fpu_preservation()) { io::printfn("  PASS: FPU state preserved across switch"); pass++; }
     else { io::printfn("  FAIL: FPU state preserved across switch"); fail++; }

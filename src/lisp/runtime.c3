@@ -1458,15 +1458,33 @@ fn Value rt_string_split(Value str, Value sep) {
     usz dlen = d.len;
     Value result = make_nil();
 
-    // Scan forward, split at delimiter occurrences
-    usz[256] starts;  // start indices of each segment
-    usz[256] lens;    // lengths of each segment
+    // First pass: count delimiter matches to determine segment count
     usz seg_count = 0;
-    usz seg_start = 0;  // start of current segment
-    usz pos = 0;
+    {
+        usz pos = 0;
+        while (pos + dlen <= s.len) {
+            bool match = true;
+            for (usz k = 0; k < dlen; k++) {
+                if (s.chars[pos + k] != d.chars[k]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) { seg_count++; pos += dlen; }
+            else { pos++; }
+        }
+    }
+    seg_count++;  // final segment after last delimiter
 
+    // Allocate exact-size arrays via temp allocator
+    usz[] starts = mem::temp_array(usz, seg_count);
+    usz[] lens = mem::temp_array(usz, seg_count);
+
+    // Second pass: fill starts and lens
+    usz si = 0;
+    usz seg_start = 0;
+    usz pos = 0;
     while (pos + dlen <= s.len) {
-        // Check if delimiter matches at pos
         bool match = true;
         for (usz k = 0; k < dlen; k++) {
             if (s.chars[pos + k] != d.chars[k]) {
@@ -1474,26 +1492,19 @@ fn Value rt_string_split(Value str, Value sep) {
                 break;
             }
         }
-
         if (match) {
-            if (seg_count < 256) {
-                starts[seg_count] = seg_start;
-                lens[seg_count] = pos - seg_start;
-                seg_count++;
-            }
+            starts[si] = seg_start;
+            lens[si] = pos - seg_start;
+            si++;
             pos += dlen;
             seg_start = pos;
         } else {
             pos++;
         }
     }
-
-    // Final segment (from last delimiter to end of string)
-    if (seg_count < 256) {
-        starts[seg_count] = seg_start;
-        lens[seg_count] = s.len - seg_start;
-        seg_count++;
-    }
+    // Final segment
+    starts[si] = seg_start;
+    lens[si] = s.len - seg_start;
 
     // Build list in reverse order so cons produces correct order
     for (usz i = seg_count; i > 0; i--) {
@@ -1529,18 +1540,30 @@ fn Value rt_string_to_list(Value a, Value _unused) {
     if (a.tag != V_STRING) return make_nil();
     StringData* s = main::dereference_as(StringData, a.str_handle);
 
-    // Collect codepoint byte offsets (forward pass)
-    usz[512] offsets;
-    usz[512] cp_lens;
+    // First pass: count codepoints
     usz cp_count = 0;
     usz pos = 0;
-    while (pos < s.len && cp_count < 512) {
-        offsets[cp_count] = pos;
+    while (pos < s.len) {
         usz cplen = rt_utf8_cplen(s.chars[pos]);
         if (pos + cplen > s.len) cplen = s.len - pos;
-        cp_lens[cp_count] = cplen;
         pos += cplen;
         cp_count++;
+    }
+
+    if (cp_count == 0) return make_nil();
+
+    // Allocate exact-size arrays via temp allocator
+    usz[] offsets = mem::temp_array(usz, cp_count);
+    usz[] cp_lens = mem::temp_array(usz, cp_count);
+
+    // Second pass: fill offsets and lens
+    pos = 0;
+    for (usz i = 0; i < cp_count; i++) {
+        offsets[i] = pos;
+        usz cplen = rt_utf8_cplen(s.chars[pos]);
+        if (pos + cplen > s.len) cplen = s.len - pos;
+        cp_lens[i] = cplen;
+        pos += cplen;
     }
 
     // Build list in reverse order

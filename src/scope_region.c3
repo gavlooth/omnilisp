@@ -1,0 +1,558 @@
+/**
+ * =============================================================================
+ * SCOPE REGION — Lightweight bump-allocating scopes with reference counting
+ * =============================================================================
+ *
+ * Replaces the heavyweight Region system for Value/Env allocation with
+ * fine-grained scopes at let/loop/lambda boundaries.
+ *
+ * Key properties:
+ * - Bump allocation: ~3 instructions per alloc (load, add, compare)
+ * - Reference counting: scopes freed deterministically at known program points
+ * - No cycles: closures form a lexical tree (child→parent, never reverse)
+ * - Freelist recycling: ScopeRegion structs reused across scope lifetimes
+ * - Destructor list: heap-backed values (strings, arrays, etc.) cleaned up on scope death
+ *
+ * Memory layout:
+ *   ScopeRegion → ScopeChunk (linked list of bump chunks)
+ *                 ScopeDtor  (linked list of destructors, bump-allocated in chunks)
+ */
+module main;
+
+import std::io;
+
+// =============================================================================
+// Types
+// =============================================================================
+
+alias ScopeDestructorFn = fn void(void* ptr);
+
+// =============================================================================
+// Structs
+// =============================================================================
+
+/**
+ * ScopeChunk — A contiguous block of memory for bump allocation.
+ * Chunks form a singly-linked list (newest first). Data follows inline
+ * after the struct fields.
+ */
+struct ScopeChunk {
+    ScopeChunk* next;       // Previous chunk (linked list, newest→oldest)
+    usz         capacity;   // Usable bytes in this chunk (after header)
+}
+
+/**
+ * ScopeDtor — Destructor entry for heap-backed values.
+ * Allocated within the scope's own chunks (freed automatically).
+ */
+struct ScopeDtor {
+    ScopeDtor*       next;  // Linked list (LIFO — last registered runs first)
+    void*            ptr;   // Object to destroy
+    ScopeDestructorFn func; // Destructor function
+}
+
+/**
+ * ScopeRegion — A lightweight, bump-allocating memory scope.
+ *
+ * Typical size: ~80 bytes (vs hundreds for the old Region).
+ * Fast path allocation: load bump, add size, compare limit.
+ */
+struct ScopeRegion {
+    // Identity & lifetime
+    uint         generation;    // Incremented on recycle (for handle validation)
+    uint         refcount;      // +1 per external reference (owner + captures)
+
+    // Hierarchy
+    ScopeRegion* parent;        // Lexical parent scope (retained via RC)
+
+    // Bump allocator
+    char*        bump;          // Current allocation pointer
+    char*        limit;         // End of current chunk's data area
+    ScopeChunk*  chunks;        // Linked list of chunks (head = current)
+
+    // Cleanup
+    ScopeDtor*   dtors;         // Destructor list (LIFO)
+    usz          alloc_bytes;   // Total bytes allocated (for split decisions)
+    usz          alloc_count;   // Object count (for stats)
+
+    // Recycling
+    ScopeRegion* pool_next;     // Freelist link (only used when in freelist)
+}
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+const usz SCOPE_CHUNK_INITIAL   = 512;      // First chunk size (bytes)
+const usz SCOPE_CHUNK_MAX       = 65536;    // Maximum chunk size (64KB)
+
+// =============================================================================
+// Global freelist
+// =============================================================================
+
+ScopeRegion* g_scope_freelist = null;
+usz g_scope_freelist_count = 0;
+const usz SCOPE_FREELIST_MAX = 64;  // Don't hoard too many recycled scopes
+
+// =============================================================================
+// Chunk allocation
+// =============================================================================
+
+/**
+ * Allocate a new chunk with at least `min_bytes` of usable data space.
+ * The chunk struct header is placed at the start; data follows inline.
+ */
+fn ScopeChunk* scope_chunk_alloc(usz min_bytes) {
+    // Double from initial, capped at max
+    usz capacity = SCOPE_CHUNK_INITIAL;
+    while (capacity < min_bytes) {
+        capacity *= 2;
+        if (capacity > SCOPE_CHUNK_MAX) {
+            capacity = min_bytes;  // Oversized allocation — exact fit
+            break;
+        }
+    }
+    usz total = ScopeChunk.sizeof + capacity;
+    ScopeChunk* chunk = (ScopeChunk*)mem::malloc(total);
+    chunk.next = null;
+    chunk.capacity = capacity;
+    return chunk;
+}
+
+/**
+ * Get the data start pointer for a chunk (immediately after the header).
+ */
+fn char* scope_chunk_data(ScopeChunk* chunk) @inline {
+    return (char*)chunk + ScopeChunk.sizeof;
+}
+
+// =============================================================================
+// ScopeRegion lifecycle
+// =============================================================================
+
+/**
+ * Create a new ScopeRegion, optionally as a child of `parent`.
+ * If parent is non-null, it is retained (RC incremented).
+ * Returns a scope with refcount=1 (the caller owns it).
+ */
+fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
+    ScopeRegion* scope;
+
+    // Try freelist first
+    if (g_scope_freelist != null) {
+        scope = g_scope_freelist;
+        g_scope_freelist = scope.pool_next;
+        g_scope_freelist_count--;
+    } else {
+        scope = (ScopeRegion*)mem::malloc(ScopeRegion.sizeof);
+        scope.generation = 0;
+    }
+
+    // Allocate initial chunk
+    ScopeChunk* chunk = scope_chunk_alloc(SCOPE_CHUNK_INITIAL);
+    chunk.next = null;
+
+    // Initialize scope
+    scope.refcount = 1;
+    scope.parent = parent;
+    scope.chunks = chunk;
+    scope.bump = scope_chunk_data(chunk);
+    scope.limit = scope.bump + chunk.capacity;
+    scope.dtors = null;
+    scope.alloc_bytes = 0;
+    scope.alloc_count = 0;
+    scope.pool_next = null;
+
+    // Retain parent
+    if (parent != null) {
+        scope_retain(parent);
+    }
+
+    return scope;
+}
+
+/**
+ * Increment the reference count of a scope.
+ */
+fn void scope_retain(ScopeRegion* scope) @inline {
+    if (scope != null) scope.refcount++;
+}
+
+/**
+ * Decrement the reference count. Destroys the scope when RC hits 0.
+ */
+fn void scope_release(ScopeRegion* scope) @inline {
+    if (scope == null) return;
+    if (--scope.refcount == 0) {
+        scope_destroy(scope);
+    }
+}
+
+/**
+ * Run all registered destructors in reverse order (LIFO).
+ * Does NOT free chunks or the scope itself — use for scope reuse.
+ */
+fn void scope_run_dtors(ScopeRegion* scope) {
+    ScopeDtor* d = scope.dtors;
+    while (d != null) {
+        d.func(d.ptr);
+        d = d.next;
+    }
+}
+
+/**
+ * Destroy a scope: run destructors, release parent, free chunks, recycle struct.
+ * Called when refcount reaches 0. MUST NOT be called directly — use scope_release.
+ */
+fn void scope_destroy(ScopeRegion* scope) {
+    // 1. Run destructors (reverse order — LIFO)
+    scope_run_dtors(scope);
+
+    // 2. Release parent scope (may cascade)
+    if (scope.parent != null) {
+        scope_release(scope.parent);
+        scope.parent = null;
+    }
+
+    // 3. Free all chunks
+    ScopeChunk* c = scope.chunks;
+    while (c != null) {
+        ScopeChunk* next = c.next;
+        mem::free(c);
+        c = next;
+    }
+    scope.chunks = null;
+    scope.bump = null;
+    scope.limit = null;
+    scope.dtors = null;
+
+    // 4. Recycle ScopeRegion struct (increment generation, add to freelist)
+    scope.generation++;
+    if (g_scope_freelist_count < SCOPE_FREELIST_MAX) {
+        scope.pool_next = g_scope_freelist;
+        g_scope_freelist = scope;
+        g_scope_freelist_count++;
+    } else {
+        mem::free(scope);
+    }
+}
+
+// =============================================================================
+// Bump allocator
+// =============================================================================
+
+/**
+ * Slow path: allocate a new chunk when the current one is full.
+ */
+fn void* ScopeRegion.alloc_slow(ScopeRegion* self, usz aligned_size) {
+    // Determine new chunk capacity: double the previous, or at least fit the request
+    usz prev_cap = SCOPE_CHUNK_INITIAL;
+    if (self.chunks != null) {
+        prev_cap = self.chunks.capacity;
+    }
+    usz new_cap = prev_cap * 2;
+    if (new_cap > SCOPE_CHUNK_MAX) new_cap = SCOPE_CHUNK_MAX;
+    if (new_cap < aligned_size) new_cap = aligned_size;
+
+    ScopeChunk* chunk = scope_chunk_alloc(new_cap);
+    chunk.next = self.chunks;
+    self.chunks = chunk;
+
+    char* data = scope_chunk_data(chunk);
+    self.bump = data + aligned_size;
+    self.limit = data + chunk.capacity;
+    self.alloc_bytes += aligned_size;
+    self.alloc_count++;
+    return (void*)data;
+}
+
+/**
+ * Bump-allocate `size` bytes from this scope. 8-byte aligned.
+ * Fast path: ~3 instructions (load bump, add, compare).
+ */
+fn void* ScopeRegion.alloc(ScopeRegion* self, usz size) @inline {
+    usz mask = 7;
+    usz aligned = (size + mask) & ~mask;
+    char* result = self.bump;
+    char* new_bump = result + aligned;
+    if (new_bump <= self.limit) {
+        self.bump = new_bump;
+        self.alloc_bytes += aligned;
+        self.alloc_count++;
+        return (void*)result;
+    }
+    return self.alloc_slow(aligned);
+}
+
+// =============================================================================
+// Destructor registration
+// =============================================================================
+
+/**
+ * Register a destructor to run when this scope is destroyed.
+ * The ScopeDtor struct itself is bump-allocated in the scope's chunks.
+ */
+fn void scope_register_dtor(ScopeRegion* scope, void* ptr, ScopeDestructorFn func) {
+    ScopeDtor* d = (ScopeDtor*)scope.alloc(ScopeDtor.sizeof);
+    d.ptr = ptr;
+    d.func = func;
+    d.next = scope.dtors;
+    scope.dtors = d;
+}
+
+// =============================================================================
+// Scope reset (for loop reuse — Perceus reuse analysis)
+// =============================================================================
+
+/**
+ * Reset a scope for reuse: run destructors, reset bump pointer to start of first chunk.
+ * Only safe when RC == 1 (no external references — nothing escaped).
+ *
+ * Frees overflow chunks (keeps only the first), resets bump to start.
+ * O(1) amortized per loop iteration when no escapes occur.
+ */
+fn void scope_reset(ScopeRegion* scope) {
+    assert(scope.refcount == 1, "scope_reset: refcount must be 1 (nothing escaped)");
+    // Run destructors first
+    scope_run_dtors(scope);
+
+    // Free overflow chunks (keep only the oldest = last in linked list)
+    ScopeChunk* keep = null;
+    ScopeChunk* c = scope.chunks;
+    while (c != null) {
+        ScopeChunk* next = c.next;
+        if (next == null) {
+            // This is the oldest (first allocated) chunk — keep it
+            keep = c;
+        } else {
+            mem::free(c);
+        }
+        c = next;
+    }
+
+    // Reset to the kept chunk
+    if (keep != null) {
+        keep.next = null;
+        scope.chunks = keep;
+        scope.bump = scope_chunk_data(keep);
+        scope.limit = scope.bump + keep.capacity;
+    }
+
+    scope.dtors = null;
+    scope.alloc_bytes = 0;
+    scope.alloc_count = 0;
+}
+
+// =============================================================================
+// Freelist cleanup (for shutdown)
+// =============================================================================
+
+/**
+ * Free all ScopeRegion structs in the global freelist.
+ * Call at program shutdown.
+ */
+fn void scope_freelist_cleanup() {
+    ScopeRegion* s = g_scope_freelist;
+    while (s != null) {
+        ScopeRegion* next = s.pool_next;
+        mem::free(s);
+        s = next;
+    }
+    g_scope_freelist = null;
+    g_scope_freelist_count = 0;
+}
+
+// =============================================================================
+// Unit tests
+// =============================================================================
+
+fn void run_scope_region_tests() {
+    io::print("  Scope region tests... ");
+    usz passed = 0;
+    usz failed = 0;
+
+    // Test 1: Create and destroy a scope
+    {
+        ScopeRegion* s = scope_create(null);
+        if (s != null && s.refcount == 1 && s.parent == null && s.chunks != null) {
+            passed++;
+        } else {
+            io::printn("FAIL: scope_create basic");
+            failed++;
+        }
+        scope_release(s);
+        passed++; // didn't crash
+    }
+
+    // Test 2: Bump allocation
+    {
+        ScopeRegion* s = scope_create(null);
+        void* p1 = s.alloc(24);  // Value-sized
+        void* p2 = s.alloc(24);
+        void* p3 = s.alloc(8);
+        // Allocations should be sequential (8-byte aligned)
+        if (p1 != null && p2 != null && p3 != null) {
+            usz diff = (usz)p2 - (usz)p1;
+            if (diff == 24) { passed++; } else { io::printfn("FAIL: bump sequential (diff=%d)", (int)diff); failed++; }
+        } else {
+            io::printn("FAIL: bump alloc returned null");
+            failed++;
+        }
+        if (s.alloc_count == 3) { passed++; } else { io::printn("FAIL: alloc_count"); failed++; }
+        if (s.alloc_bytes == 24 + 24 + 8) { passed++; } else { io::printfn("FAIL: alloc_bytes=%d", (int)s.alloc_bytes); failed++; }
+        scope_release(s);
+    }
+
+    // Test 3: Chunk overflow (allocate more than initial chunk)
+    {
+        ScopeRegion* s = scope_create(null);
+        // Fill initial chunk (512 bytes) and overflow
+        for (usz i = 0; i < 100; i++) {
+            void* p = s.alloc(64);  // 100 * 64 = 6400 bytes
+            if (p == null) { io::printn("FAIL: overflow alloc null"); failed++; break; }
+        }
+        // Should have multiple chunks
+        usz chunk_count = 0;
+        ScopeChunk* c = s.chunks;
+        while (c != null) { chunk_count++; c = c.next; }
+        if (chunk_count > 1) { passed++; } else { io::printn("FAIL: no overflow chunks"); failed++; }
+        scope_release(s);
+        passed++;
+    }
+
+    // Test 4: Reference counting (parent-child)
+    {
+        ScopeRegion* parent = scope_create(null);
+        ScopeRegion* child = scope_create(parent);
+        // Parent RC should be 2 (original + child's reference)
+        if (parent.refcount == 2) { passed++; } else { io::printfn("FAIL: parent RC=%d", (int)parent.refcount); failed++; }
+        if (child.refcount == 1) { passed++; } else { io::printfn("FAIL: child RC=%d", (int)child.refcount); failed++; }
+        if (child.parent == parent) { passed++; } else { io::printn("FAIL: child.parent"); failed++; }
+        // Release child — parent RC drops to 1
+        scope_release(child);
+        if (parent.refcount == 1) { passed++; } else { io::printfn("FAIL: parent RC after child release=%d", (int)parent.refcount); failed++; }
+        scope_release(parent);
+        passed++;
+    }
+
+    // Test 5: Destructor execution
+    {
+        ScopeRegion* s = scope_create(null);
+        // Allocate a small heap buffer, register its destructor
+        int* counter = (int*)mem::malloc(int.sizeof);
+        *counter = 0;
+
+        // We'll use a trick: allocate an int in the scope, point dtor at the malloc'd counter
+        // The destructor increments the counter
+        scope_register_dtor(s, (void*)counter, fn void(void* ptr) {
+            int* c = (int*)ptr;
+            *c = *c + 1;
+        });
+        scope_register_dtor(s, (void*)counter, fn void(void* ptr) {
+            int* c = (int*)ptr;
+            *c = *c + 10;
+        });
+
+        // Destroy scope — dtors should run in LIFO order (10 first, then 1)
+        scope_release(s);
+        if (*counter == 11) { passed++; } else { io::printfn("FAIL: dtor counter=%d", *counter); failed++; }
+        mem::free(counter);
+    }
+
+    // Test 6: Freelist recycling (generation increment)
+    {
+        ScopeRegion* s = scope_create(null);
+        uint gen_before = s.generation;
+        scope_release(s);
+        // After release, scope should be in freelist with incremented generation
+        // Create a new scope — should get the recycled one
+        ScopeRegion* s2 = scope_create(null);
+        if (s2.generation == gen_before + 1) { passed++; } else { io::printfn("FAIL: gen=%d expected=%d", (int)s2.generation, (int)(gen_before + 1)); failed++; }
+        scope_release(s2);
+    }
+
+    // Test 7: Scope reset (loop reuse)
+    {
+        ScopeRegion* s = scope_create(null);
+        // Allocate some data
+        void* p1 = s.alloc(64);
+        void* p2 = s.alloc(64);
+
+        int* dtor_counter = (int*)mem::malloc(int.sizeof);
+        *dtor_counter = 0;
+        scope_register_dtor(s, (void*)dtor_counter, fn void(void* ptr) {
+            int* c = (int*)ptr;
+            *c = *c + 1;
+        });
+
+        // Reset the scope
+        scope_reset(s);
+        if (*dtor_counter == 1) { passed++; } else { io::printfn("FAIL: reset dtor counter=%d", *dtor_counter); failed++; }
+        if (s.alloc_bytes == 0) { passed++; } else { io::printn("FAIL: reset alloc_bytes"); failed++; }
+        if (s.alloc_count == 0) { passed++; } else { io::printn("FAIL: reset alloc_count"); failed++; }
+        if (s.dtors == null) { passed++; } else { io::printn("FAIL: reset dtors"); failed++; }
+
+        // Can allocate again after reset
+        void* p3 = s.alloc(32);
+        if (p3 != null) { passed++; } else { io::printn("FAIL: alloc after reset"); failed++; }
+
+        scope_release(s);
+        mem::free(dtor_counter);
+    }
+
+    // Test 10: Large allocation (bigger than initial chunk)
+    {
+        ScopeRegion* s = scope_create(null);
+        void* big = s.alloc(2048);  // Bigger than initial 512-byte chunk
+        if (big != null) { passed++; } else { io::printn("FAIL: large alloc"); failed++; }
+        scope_release(s);
+    }
+
+    // Test 11: Deep parent chain
+    {
+        ScopeRegion* root = scope_create(null);
+        ScopeRegion* prev = root;
+        for (usz i = 0; i < 10; i++) {
+            ScopeRegion* child = scope_create(prev);
+            if (i > 0) scope_release(prev);  // Release our reference (child holds one)
+            prev = child;
+        }
+        // Release the leaf — should cascade all the way up
+        if (root.refcount == 2) { passed++; } else { io::printfn("FAIL: deep chain root RC=%d", (int)root.refcount); failed++; }
+        scope_release(prev);
+        // Root should now have RC=1 (our original reference)
+        if (root.refcount == 1) { passed++; } else { io::printfn("FAIL: deep chain root RC after cascade=%d", (int)root.refcount); failed++; }
+        scope_release(root);
+        passed++;
+    }
+
+    // Test 12: Retain/release symmetry
+    {
+        ScopeRegion* s = scope_create(null);
+        scope_retain(s);
+        scope_retain(s);
+        if (s.refcount == 3) { passed++; } else { io::printfn("FAIL: triple retain RC=%d", (int)s.refcount); failed++; }
+        scope_release(s);
+        scope_release(s);
+        if (s.refcount == 1) { passed++; } else { io::printfn("FAIL: after double release RC=%d", (int)s.refcount); failed++; }
+        scope_release(s);
+        passed++;
+    }
+
+    // Test 13: Alignment check
+    {
+        ScopeRegion* s = scope_create(null);
+        void* p1 = s.alloc(1);   // 1 byte → 8-aligned
+        void* p2 = s.alloc(3);   // 3 bytes → 8-aligned
+        void* p3 = s.alloc(16);  // 16 bytes → 16-aligned (already 8-aligned)
+        if ((usz)p1 % 8 == 0) { passed++; } else { io::printn("FAIL: align p1"); failed++; }
+        if ((usz)p2 % 8 == 0) { passed++; } else { io::printn("FAIL: align p2"); failed++; }
+        if ((usz)p3 % 8 == 0) { passed++; } else { io::printn("FAIL: align p3"); failed++; }
+        // p2 should be 8 bytes after p1 (1 byte rounded up to 8)
+        usz gap = (usz)p2 - (usz)p1;
+        if (gap == 8) { passed++; } else { io::printfn("FAIL: align gap=%d", (int)gap); failed++; }
+        scope_release(s);
+    }
+
+    io::printfn("%d passed, %d failed", (int)passed, (int)failed);
+}

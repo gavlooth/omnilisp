@@ -439,18 +439,30 @@ fn Value* prim_string_to_list(Value*[] args, Env* env, Interp* interp) {
 
     char[] bytes = args[0].str_val.chars[:args[0].str_val.len];
 
-    // Collect codepoint byte offsets first (forward pass)
-    usz[512] offsets;
-    usz[512] cp_lens;
+    // First pass: count codepoints
     usz cp_count = 0;
     usz pos = 0;
-    while (pos < bytes.len && cp_count < 512) {
-        offsets[cp_count] = pos;
+    while (pos < bytes.len) {
         usz cplen = utf8_codepoint_len(bytes[pos]);
         if (pos + cplen > bytes.len) cplen = bytes.len - pos;
-        cp_lens[cp_count] = cplen;
         pos += cplen;
         cp_count++;
+    }
+
+    if (cp_count == 0) return make_nil(interp);
+
+    // Allocate exact-size arrays via temp allocator
+    usz[] offsets = mem::temp_array(usz, cp_count);
+    usz[] cp_lens = mem::temp_array(usz, cp_count);
+
+    // Second pass: fill offsets and lens
+    pos = 0;
+    for (usz i = 0; i < cp_count; i++) {
+        offsets[i] = pos;
+        usz cplen = utf8_codepoint_len(bytes[pos]);
+        if (pos + cplen > bytes.len) cplen = bytes.len - pos;
+        cp_lens[i] = cplen;
+        pos += cplen;
     }
 
     // Build list in reverse order
@@ -728,6 +740,146 @@ fn Value* prim_load(Value*[] args, Env* env, Interp* interp) {
     return raise_error(interp, msg);
 }
 
+// === System primitives (libc-backed) ===
+
+extern fn void* c_popen(char* command, char* mode) @extern("popen");
+extern fn int c_pclose(void* stream) @extern("pclose");
+extern fn usz c_fread(void* ptr, usz size, usz count, void* stream) @extern("fread");
+extern fn int c_feof(void* stream) @extern("feof");
+extern fn char* c_getenv(char* name) @extern("getenv");
+extern fn long c_time(long* t) @extern("time");
+extern fn int c_usleep(uint usec) @extern("usleep");
+extern fn void c_exit(int status) @extern("_exit");
+extern fn int c_getrandom(void* buf, usz buflen, uint flags) @extern("getrandom");
+
+/**
+ * (shell cmd) -> string (stdout of command)
+ * (shell cmd true) -> list (stdout-string exit-code)
+ * Runs cmd via popen, captures stdout, returns output as string.
+ */
+fn Value* prim_shell(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1 || !is_string(args[0])) {
+        return raise_error(interp, "shell: expected string command");
+    }
+
+    void* fp = c_popen((ZString)args[0].str_val.chars, "r");
+    if (fp == null) {
+        return raise_error(interp, "shell: popen failed");
+    }
+
+    // Read output into buffer
+    char[8192] buf;
+    usz total = 0;
+    while (c_feof(fp) == 0) {
+        usz n = c_fread(&buf[total], 1, 8192 - total, fp);
+        if (n == 0) break;
+        total += n;
+        if (total >= 8192) break;
+    }
+    int status = c_pclose(fp);
+    int exit_code = status >> 8;  // WEXITSTATUS
+
+    // Strip trailing newline
+    if (total > 0 && buf[total - 1] == '\n') total--;
+
+    Value* output = make_string(interp, buf[:total]);
+
+    // If second arg is truthy, return (output exit-code)
+    if (args.len >= 2 && !is_falsy(args[1], interp)) {
+        Value* code = make_int(interp, exit_code);
+        return make_cons(interp, output, make_cons(interp, code, make_nil(interp)));
+    }
+    return output;
+}
+
+/**
+ * (random) -> double in [0.0, 1.0)
+ * (random-int n) -> integer in [0, n)
+ * Uses getrandom() for quality randomness.
+ */
+fn Value* prim_random(Value*[] args, Env* env, Interp* interp) {
+    ulong buf;
+    c_getrandom(&buf, 8, 0);
+    // Convert to double in [0, 1): mask to 52 bits, divide by 2^52
+    ulong mantissa = buf & 0x000F_FFFF_FFFF_FFFF;
+    double val = (double)mantissa / 4503599627370496.0;  // 2^52
+    return make_double(interp, val);
+}
+
+fn Value* prim_random_int(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return raise_error(interp, "random-int: expected max value");
+    long n;
+    if (args[0].tag == INT) { n = args[0].int_val; }
+    else if (args[0].tag == DOUBLE) { n = (long)args[0].double_val; }
+    else { return raise_error(interp, "random-int: expected number"); }
+    if (n <= 0) return make_int(interp, 0);
+
+    ulong buf;
+    c_getrandom(&buf, 8, 0);
+    long result = (long)(buf % (ulong)n);
+    return make_int(interp, result);
+}
+
+/**
+ * (getenv name) -> string or nil
+ */
+fn Value* prim_getenv(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1 || !is_string(args[0])) {
+        return raise_error(interp, "getenv: expected string");
+    }
+    char* val = c_getenv((ZString)args[0].str_val.chars);
+    if (val == null) return make_nil(interp);
+    // Measure length
+    usz len = 0;
+    while (val[len] != 0) len++;
+    return make_string(interp, val[:len]);
+}
+
+/**
+ * (time) -> integer epoch seconds
+ * (time-ms) -> integer epoch milliseconds (via clock_gettime)
+ */
+fn Value* prim_time(Value*[] args, Env* env, Interp* interp) {
+    long t = c_time(null);
+    return make_int(interp, t);
+}
+
+// clock_gettime for millisecond precision
+extern fn int c_clock_gettime(int clk_id, void* tp) @extern("clock_gettime");
+const int CLOCK_REALTIME = 0;
+
+fn Value* prim_time_ms(Value*[] args, Env* env, Interp* interp) {
+    long[2] ts;  // tv_sec, tv_nsec
+    c_clock_gettime(CLOCK_REALTIME, &ts);
+    long ms = ts[0] * 1000 + ts[1] / 1000000;
+    return make_int(interp, ms);
+}
+
+/**
+ * (exit) or (exit code) -> exits process
+ */
+fn Value* prim_exit(Value*[] args, Env* env, Interp* interp) {
+    int code = 0;
+    if (args.len >= 1 && args[0].tag == INT) code = (int)args[0].int_val;
+    c_exit(code);
+    return make_nil(interp);  // unreachable
+}
+
+/**
+ * (sleep secs) -> nil
+ * secs can be int or double (fractional seconds supported)
+ */
+fn Value* prim_sleep(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return raise_error(interp, "sleep: expected number of seconds");
+    double secs;
+    if (args[0].tag == INT) { secs = (double)args[0].int_val; }
+    else if (args[0].tag == DOUBLE) { secs = args[0].double_val; }
+    else { return raise_error(interp, "sleep: expected number"); }
+    uint usec = (uint)(secs * 1000000.0);
+    c_usleep(usec);
+    return make_nil(interp);
+}
+
 fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) return make_nil(interp);
     char[] s = args[0].str_val.chars[:args[0].str_val.len];
@@ -837,13 +989,11 @@ fn uint hash_value(Value* key) {
 }
 
 fn HashMap* hashmap_new(uint capacity, Interp* interp) {
-    // Allocate HashMap struct in root_region
-    HashMap hm;
-    hm.capacity = capacity;
-    hm.count = 0;
-    hm.mask = capacity - 1;
-    main::ObjectHandle hm_handle = main::allocate_in(interp.root_region, HashMap, hm);
-    HashMap* map = main::dereference_as(HashMap, hm_handle);
+    // Allocate HashMap struct via malloc (freed by scope_dtor_value)
+    HashMap* map = (HashMap*)mem::malloc(HashMap.sizeof);
+    map.capacity = capacity;
+    map.count = 0;
+    map.mask = capacity - 1;
 
     // Allocate entries array via malloc (contiguous needed for indexing)
     map.entries = (HashEntry*)mem::malloc(HashEntry.sizeof * capacity);
@@ -908,6 +1058,11 @@ fn void hashmap_set(HashMap* map, Value* key, Value* value, Interp* interp) {
         hashmap_grow(map, interp);
     }
 
+    // Promote key/value to root_scope — hashmap lives in root_scope,
+    // so its entries must survive child scope release
+    key = promote_to_root(key, interp);
+    value = promote_to_root(value, interp);
+
     uint h = hash_value(key) & map.mask;
     for (uint i = 0; i < map.capacity; i++) {
         uint idx = (h + i) & map.mask;
@@ -960,13 +1115,14 @@ fn bool hashmap_remove(HashMap* map, Value* key) {
 }
 
 fn Value* make_hashmap(Interp* interp, uint capacity) {
-    // Allocate value in root_region so it persists
-    main::RegionHandle saved = interp.current_frame;
-    interp.current_frame = interp.root_region;
+    // Allocate value in root_scope so it persists
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
     Value* v = interp.alloc_value();
     v.tag = HASHMAP;
+    main::scope_register_dtor(interp.root_scope, (void*)v, &scope_dtor_value);
     v.hashmap_val = hashmap_new(capacity, interp);
-    interp.current_frame = saved;
+    interp.current_scope = saved_scope;
     return v;
 }
 
@@ -992,295 +1148,6 @@ fn Value* prim_dict_set(Value*[] args, Env* env, Interp* interp) {
 // prim_dict_has, prim_dict_remove, prim_dict_keys, prim_dict_values
 // inlined into their dispatch wrappers (prim_has, prim_remove, prim_keys, prim_values)
 
-// =============================================================================
-// SECTION 7.8: FFI PRIMITIVES
-// =============================================================================
-
-fn bool ffi_is_double_type(char[] type_name) @inline {
-    return type_name.len == 6 && type_name[0] == 'd' && type_name[1] == 'o' && type_name[2] == 'u'
-        && type_name[3] == 'b' && type_name[4] == 'l' && type_name[5] == 'e';
-}
-
-fn double ffi_value_to_double(Value* val) @inline {
-    if (val != null && is_double(val)) return val.double_val;
-    if (val != null && val.tag == INT) return (double)val.int_val;
-    return 0.0;
-}
-
-/**
- * Convert a Pika value to a long based on FFI type symbol.
- * Returns the value as a long suitable for passing through function pointer casts.
- */
-fn long ffi_value_to_long(Value* val, char[] type_name, Interp* interp) {
-    if (type_name.len == 3 && type_name[0] == 'i' && type_name[1] == 'n' && type_name[2] == 't') {
-        // 'int
-        if (val != null && val.tag == INT) return val.int_val;
-        return 0;
-    }
-    if (type_name.len == 4 && type_name[0] == 's' && type_name[1] == 'i' && type_name[2] == 'z' && type_name[3] == 'e') {
-        // 'size
-        if (val != null && val.tag == INT) return val.int_val;
-        return 0;
-    }
-    if (type_name.len == 6 && type_name[0] == 's' && type_name[1] == 't' && type_name[2] == 'r') {
-        // 'string
-        if (val != null && val.tag == STRING) return (long)val.str_val.chars;
-        return 0;
-    }
-    if (type_name.len == 3 && type_name[0] == 'p' && type_name[1] == 't' && type_name[2] == 'r') {
-        // 'ptr
-        if (val != null && val.tag == FFI_HANDLE) return (long)val.ffi_val.lib_handle;
-        if (val != null && val.tag == INT) return val.int_val;
-        return 0;
-    }
-    if (ffi_is_double_type(type_name)) {
-        // 'double — use ffi_value_to_double() and proper double calling convention.
-        // This path returns 0; actual double args are handled in prim_ffi_call dispatch.
-        return 0;
-    }
-    return 0;
-}
-
-/**
- * Convert a C long result back to a Pika value based on FFI return type symbol.
- */
-fn Value* ffi_long_to_value(long result, char[] type_name, Interp* interp) {
-    if (type_name.len == 3 && type_name[0] == 'i' && type_name[1] == 'n' && type_name[2] == 't') {
-        return make_int(interp, result);
-    }
-    if (type_name.len == 4 && type_name[0] == 's' && type_name[1] == 'i' && type_name[2] == 'z' && type_name[3] == 'e') {
-        return make_int(interp, result);
-    }
-    if (type_name.len == 6 && type_name[0] == 's' && type_name[1] == 't' && type_name[2] == 'r') {
-        // 'string — result is a char*
-        char* ptr = (char*)(uptr)result;
-        if (ptr == null) return make_nil(interp);
-        // Measure length
-        usz len = 0;
-        while (ptr[len] != 0) len++;
-        return make_string(interp, ptr[:len]);
-    }
-    if (type_name.len == 4 && type_name[0] == 'v' && type_name[1] == 'o' && type_name[2] == 'i' && type_name[3] == 'd') {
-        return make_nil(interp);
-    }
-    if (type_name.len == 3 && type_name[0] == 'p' && type_name[1] == 't' && type_name[2] == 'r') {
-        return make_int(interp, result);
-    }
-    if (ffi_is_double_type(type_name)) {
-        // 'double returns are handled directly in prim_ffi_call dispatch
-        // (proper XMM register convention). Should not reach here.
-        return make_double(interp, 0.0);
-    }
-    return make_nil(interp);
-}
-
-/**
- * (ffi-open "libc.so.6") => V_FFI_HANDLE
- */
-fn Value* prim_ffi_open(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != STRING) {
-        return raise_error(interp, "ffi-open: expected 1 string argument");
-    }
-    char[] name = args[0].str_val.chars[:args[0].str_val.len];
-    void* handle = dlopen((ZString)args[0].str_val.chars, RTLD_LAZY);
-    if (handle == null) {
-        char* err = dlerror();
-        if (err != null) {
-            // Build error message
-            usz elen = 0;
-            while (err[elen] != 0 && elen < 200) elen++;
-            return raise_error(interp, err[:elen]);
-        }
-        return raise_error(interp, "ffi-open: dlopen failed");
-    }
-    return make_ffi_handle(interp, handle, name);
-}
-
-/**
- * (ffi-call handle "func_name" 'return-type arg1 'type1 arg2 'type2 ...)
- * Variadic: minimum 3 args (handle, name, return type).
- * After return type, args come in pairs: (value, type_symbol).
- */
-fn Value* prim_ffi_call(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 3) {
-        return raise_error(interp, "ffi-call: expected at least 3 args (handle, name, return-type)");
-    }
-    // Arg 0: FFI handle
-    if (args[0].tag != FFI_HANDLE) {
-        return raise_error(interp, "ffi-call: first argument must be an ffi-handle");
-    }
-    if (args[0].ffi_val.lib_handle == null) {
-        return raise_error(interp, "ffi-call: handle is closed");
-    }
-    // Arg 1: function name (string)
-    if (args[1].tag != STRING) {
-        return raise_error(interp, "ffi-call: second argument must be a string (function name)");
-    }
-    // Arg 2: return type (symbol)
-    if (args[2].tag != SYMBOL) {
-        return raise_error(interp, "ffi-call: third argument must be a symbol (return type)");
-    }
-
-    // Look up the function (with dlsym cache)
-    char[] fn_name = args[1].str_val.chars[:args[1].str_val.len];
-    void* fn_ptr = null;
-    // Check cache first
-    for (usz ci = 0; ci < args[0].ffi_val.sym_cache_count; ci++) {
-        bool match = fn_name.len < 64;
-        if (match) {
-            for (usz cj = 0; cj < fn_name.len; cj++) {
-                if (args[0].ffi_val.sym_cache_names[ci][cj] != fn_name[cj]) { match = false; break; }
-            }
-            if (match && args[0].ffi_val.sym_cache_names[ci][fn_name.len] != 0) match = false;
-        }
-        if (match) { fn_ptr = args[0].ffi_val.sym_cache_ptrs[ci]; break; }
-    }
-    if (fn_ptr == null) {
-        fn_ptr = dlsym(args[0].ffi_val.lib_handle, (ZString)args[1].str_val.chars);
-        if (fn_ptr == null) {
-            char* err = dlerror();
-            if (err != null) {
-                usz elen = 0;
-                while (err[elen] != 0 && elen < 200) elen++;
-                return raise_error(interp, err[:elen]);
-            }
-            return raise_error(interp, "ffi-call: dlsym failed");
-        }
-        // Populate cache
-        if (args[0].ffi_val.sym_cache_count < 64 && fn_name.len < 64) {
-            usz ci = args[0].ffi_val.sym_cache_count;
-            args[0].ffi_val.sym_cache_ptrs[ci] = fn_ptr;
-            for (usz cj = 0; cj < fn_name.len; cj++) {
-                args[0].ffi_val.sym_cache_names[ci][cj] = fn_name[cj];
-            }
-            args[0].ffi_val.sym_cache_names[ci][fn_name.len] = 0;
-            args[0].ffi_val.sym_cache_count++;
-        }
-    }
-
-    // Parse arg pairs: (value, type_symbol) after the first 3 args
-    usz remaining = args.len - 3;
-    if (remaining % 2 != 0) {
-        return raise_error(interp, "ffi-call: args after return-type must be (value type) pairs");
-    }
-    usz c_argc = remaining / 2;
-    if (c_argc > 6) {
-        return raise_error(interp, "ffi-call: max 6 C arguments supported");
-    }
-
-    // Classify arg types (double vs integer)
-    char[][6] arg_types;
-    long[6] c_args;
-    double[6] d_args;
-    usz double_count = 0;
-    for (usz i = 0; i < c_argc; i++) {
-        Value* val = args[3 + i * 2];
-        Value* type_sym = args[3 + i * 2 + 1];
-        if (type_sym == null || type_sym.tag != SYMBOL) {
-            return raise_error(interp, "ffi-call: type annotation must be a symbol");
-        }
-        arg_types[i] = interp.symbols.get_name(type_sym.sym_val);
-        if (ffi_is_double_type(arg_types[i])) {
-            d_args[i] = ffi_value_to_double(val);
-            double_count++;
-        } else {
-            c_args[i] = ffi_value_to_long(val, arg_types[i], interp);
-        }
-    }
-
-    // Get return type
-    char[] ret_type = interp.symbols.get_name(args[2].sym_val);
-    bool ret_is_double = ffi_is_double_type(ret_type);
-
-    // Dispatch based on arg types and return type.
-    // All-double args with double return (most common: sqrt, sin, pow, etc.)
-    if (double_count > 0 && double_count == c_argc && ret_is_double) {
-        double dresult;
-        switch (c_argc) {
-            case 0: dresult = ((FfiFnD0)(uptr)fn_ptr)();
-            case 1: dresult = ((FfiFnD1)(uptr)fn_ptr)(d_args[0]);
-            case 2: dresult = ((FfiFnD2)(uptr)fn_ptr)(d_args[0], d_args[1]);
-            case 3: dresult = ((FfiFnD3)(uptr)fn_ptr)(d_args[0], d_args[1], d_args[2]);
-            default: return raise_error(interp, "ffi-call: max 3 double args supported");
-        }
-        return make_double(interp, dresult);
-    }
-
-    // All-double args with integer return (e.g., lround)
-    if (double_count > 0 && double_count == c_argc && !ret_is_double) {
-        long result;
-        switch (c_argc) {
-            case 1: result = ((FfiFnDI1)(uptr)fn_ptr)(d_args[0]);
-            case 2: result = ((FfiFnDI2)(uptr)fn_ptr)(d_args[0], d_args[1]);
-            default: return raise_error(interp, "ffi-call: unsupported double-arg int-return combo");
-        }
-        return ffi_long_to_value(result, ret_type, interp);
-    }
-
-    // All-integer args with double return (e.g., converting int to double)
-    if (double_count == 0 && ret_is_double) {
-        double dresult;
-        switch (c_argc) {
-            case 0: dresult = ((FfiFnID0)(uptr)fn_ptr)();
-            case 1: dresult = ((FfiFnID1)(uptr)fn_ptr)(c_args[0]);
-            case 2: dresult = ((FfiFnID2)(uptr)fn_ptr)(c_args[0], c_args[1]);
-            default: return raise_error(interp, "ffi-call: unsupported int-arg double-return combo");
-        }
-        return make_double(interp, dresult);
-    }
-
-    // All-integer args with integer return (original behavior)
-    if (double_count == 0) {
-        long result;
-        switch (c_argc) {
-            case 0: result = ((FfiFn0)(uptr)fn_ptr)();
-            case 1: result = ((FfiFn1)(uptr)fn_ptr)(c_args[0]);
-            case 2: result = ((FfiFn2)(uptr)fn_ptr)(c_args[0], c_args[1]);
-            case 3: result = ((FfiFn3)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2]);
-            case 4: result = ((FfiFn4)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2], c_args[3]);
-            case 5: result = ((FfiFn5)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2], c_args[3], c_args[4]);
-            case 6: result = ((FfiFn6)(uptr)fn_ptr)(c_args[0], c_args[1], c_args[2], c_args[3], c_args[4], c_args[5]);
-            default: return raise_error(interp, "ffi-call: unreachable arg count");
-        }
-        return ffi_long_to_value(result, ret_type, interp);
-    }
-
-    return raise_error(interp, "ffi-call: mixed int/double args not yet supported");
-}
-
-/**
- * (ffi-close handle) => nil
- */
-fn Value* prim_ffi_close(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != FFI_HANDLE) {
-        return raise_error(interp, "ffi-close: expected 1 ffi-handle argument");
-    }
-    if (args[0].ffi_val.lib_handle != null) {
-        dlclose(args[0].ffi_val.lib_handle);
-        args[0].ffi_val.lib_handle = null;
-        args[0].ffi_val.sym_cache_count = 0;
-    }
-    return make_nil(interp);
-}
-
-/**
- * (ffi-sym handle "func_name") => int (pointer as integer)
- */
-fn Value* prim_ffi_sym(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "ffi-sym: expected 2 arguments");
-    if (args[0].tag != FFI_HANDLE) {
-        return raise_error(interp, "ffi-sym: first argument must be ffi-handle");
-    }
-    if (args[0].ffi_val.lib_handle == null) {
-        return raise_error(interp, "ffi-sym: handle is closed");
-    }
-    if (args[1].tag != STRING) {
-        return raise_error(interp, "ffi-sym: second argument must be a string");
-    }
-    void* sym = dlsym(args[0].ffi_val.lib_handle, (ZString)args[1].str_val.chars);
-    if (sym == null) return make_int(interp, 0);
-    return make_int(interp, (long)(uptr)sym);
-}
 
 // =============================================================================
 // PHASE 1-7 NEW PRIMITIVES
@@ -2176,7 +2043,7 @@ fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
         Value* v = make_array(interp, count);
         cur = args[0];
         for (usz i = 0; i < count; i++) {
-            v.array_val.items[i] = cur.cons_val.car;
+            v.array_val.items[i] = promote_to_root(cur.cons_val.car, interp);
             cur = cur.cons_val.cdr;
         }
         v.array_val.length = count;
@@ -2185,7 +2052,7 @@ fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
 
     Value* v = make_array(interp, args.len < 4 ? 4 : args.len);
     for (usz i = 0; i < args.len; i++) {
-        v.array_val.items[i] = args[i];
+        v.array_val.items[i] = promote_to_root(args[i], interp);
     }
     v.array_val.length = args.len;
     return v;
@@ -2197,7 +2064,7 @@ fn Value* prim_array_set(Value*[] args, Env* env, Interp* interp) {
     long alen = (long)args[0].array_val.length;
     if (idx < 0) idx += alen;
     if (idx < 0 || idx >= alen) return raise_error(interp, "array-set!: index out of range");
-    args[0].array_val.items[(usz)idx] = args[2];
+    args[0].array_val.items[(usz)idx] = promote_to_root(args[2], interp);
     return make_nil(interp);
 }
 
@@ -2248,7 +2115,7 @@ fn Value* prim_array_push(Value*[] args, Env* env, Interp* interp) {
         vec.items = new_items;
         vec.capacity = new_cap;
     }
-    vec.items[vec.length++] = args[1];
+    vec.items[vec.length++] = promote_to_root(args[1], interp);
     return make_nil(interp);
 }
 
@@ -2359,22 +2226,14 @@ fn Value* prim_remove(Value*[] args, Env* env, Interp* interp) {
 // --- Phase 9: Set primitives (built on dict) ---
 
 fn Value* prim_set(Value*[] args, Env* env, Interp* interp) {
-    // Create a new hash map, using args as keys, value = true
-    Value* map_val = interp.alloc_value();
-    map_val.tag = HASHMAP;
+    // Create a new hash map in root_scope, using args as keys, value = true
     uint cap = 16;
-    HashMap* map = (HashMap*)mem::malloc(HashMap.sizeof);
-    map.capacity = cap;
-    map.count = 0;
-    map.mask = cap - 1;
-    map.entries = (HashEntry*)mem::malloc(HashEntry.sizeof * cap);
-    for (uint i = 0; i < cap; i++) { map.entries[i].key = null; }
-    map_val.hashmap_val = map;
+    Value* map_val = make_hashmap(interp, cap);
+    HashMap* map = map_val.hashmap_val;
     Value* true_val = make_symbol(interp, interp.sym_true);
     for (usz i = 0; i < args.len; i++) {
         hashmap_set(map, args[i], true_val, interp);
     }
-    map_val.tag = HASHMAP; // Use HASHMAP tag - sets are hashmaps with true values
     return map_val;
 }
 
@@ -2658,64 +2517,68 @@ fn Value* prim_to_array(Value*[] args, Env* env, Interp* interp) {
 }
 
 // ============================================================================
-// FIBER PRIMITIVES
+// COROUTINE PRIMITIVES
 // ============================================================================
 
-struct FiberThunkState {
+struct CoroutineThunkState {
     Value*  thunk;
     Interp* interp;
 }
 
-fn void fiber_thunk_entry(void* arg) {
-    FiberThunkState* state = (FiberThunkState*)arg;
+fn void coroutine_thunk_entry(void* arg) {
+    CoroutineThunkState* state = (CoroutineThunkState*)arg;
     Value* result = jit_apply_value(state.thunk, null, state.interp);
-    main::g_current_coro.result = result;
+    main::g_current_stack_ctx.result = result;
 }
 
-fn Value* prim_fiber_p(Value*[] args, Env* env, Interp* interp) {
-    if (args[0].tag == FIBER) return make_symbol(interp, interp.sym_true);
+fn Value* prim_coroutine_p(Value*[] args, Env* env, Interp* interp) {
+    if (args[0].tag == COROUTINE) return make_symbol(interp, interp.sym_true);
     return make_nil(interp);
 }
 
-fn Value* prim_fiber(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "fiber: expected a thunk argument");
+fn Value* prim_coroutine(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return raise_error(interp, "coroutine: expected a thunk argument");
     Value* thunk = args[0];
     if (thunk == null || thunk.tag != CLOSURE) {
-        return raise_error(interp, "fiber: argument must be a closure");
+        return raise_error(interp, "coroutine: argument must be a closure");
     }
 
-    main::Coro* coro = main::coro_create(&interp.coro_pool);
-    if (coro == null) return raise_error(interp, "fiber: failed to create coro");
+    // Phase 4b: Promote thunk to root_scope so it survives call_scope release.
+    // The coroutine may be resumed after the creating scope is freed.
+    thunk = promote_to_root(thunk, interp);
 
-    // Store thunk state on the coro's user_data (lives as long as the coro)
-    FiberThunkState* state = (FiberThunkState*)mem::malloc(FiberThunkState.sizeof);
+    main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
+    if (ctx == null) return raise_error(interp, "coroutine: failed to create context");
+
+    // Store thunk state on the context's user_data (lives as long as the context)
+    CoroutineThunkState* state = (CoroutineThunkState*)mem::malloc(CoroutineThunkState.sizeof);
     state.thunk = thunk;
     state.interp = interp;
-    coro.user_data = state;
+    ctx.user_data = state;
 
-    main::coro_init(coro, &fiber_thunk_entry, state);
+    main::stack_ctx_init(ctx, &coroutine_thunk_entry, state);
 
-    return make_fiber(interp, coro);
+    return make_coroutine(interp, ctx);
 }
 
 fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "resume: expected a fiber argument");
-    Value* fiber_val = args[0];
-    if (fiber_val == null || fiber_val.tag != FIBER) {
-        return raise_error(interp, "resume: argument must be a fiber");
+    if (args.len < 1) return raise_error(interp, "resume: expected a coroutine argument");
+    Value* coroutine_val = args[0];
+    if (coroutine_val == null || coroutine_val.tag != COROUTINE) {
+        return raise_error(interp, "resume: argument must be a coroutine");
     }
 
-    main::Coro* coro = fiber_val.fiber_val;
-    if (coro == null) return raise_error(interp, "resume: null fiber");
+    main::StackCtx* ctx = coroutine_val.coroutine_val;
+    if (ctx == null) return raise_error(interp, "resume: null coroutine");
 
-    if (coro.status == main::CoroStatus.CORO_COMPLETED || coro.status == main::CoroStatus.CORO_DEAD) {
-        return raise_error(interp, "resume: fiber already completed");
+    if (ctx.status == main::StackCtxStatus.CTX_COMPLETED || ctx.status == main::StackCtxStatus.CTX_DEAD) {
+        return raise_error(interp, "resume: coroutine already completed");
     }
 
     Value* resume_val = args.len > 1 ? args[1] : make_nil(interp);
     interp.resume_value = resume_val;
 
-    // Save interp state before entering fiber
+    // Save interp state before entering coroutine
     Env*        saved_jit_env       = interp.jit_env;
     Env*        saved_match_env     = interp.match_env;
     usz         saved_eval_depth    = interp.eval_depth;
@@ -2724,12 +2587,13 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
     Env*        saved_tco_env       = interp.jit_tco_env;
     usz         saved_reset_depth   = interp.reset_depth;
     usz         saved_handler_count = interp.handler_count;
+    main::ScopeRegion* saved_scope = interp.current_scope;
 
     main::StackContext parent_ctx;
-    if (coro.status == main::CoroStatus.CORO_READY) {
-        main::coro_switch_to(coro, &parent_ctx);
+    if (ctx.status == main::StackCtxStatus.CTX_READY) {
+        main::stack_ctx_switch_to(ctx, &parent_ctx);
     } else {
-        main::coro_resume(coro, &parent_ctx);
+        main::stack_ctx_resume(ctx, &parent_ctx);
     }
 
     // Restore interp state
@@ -2741,40 +2605,48 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
     interp.jit_tco_env    = saved_tco_env;
     interp.reset_depth    = saved_reset_depth;
     interp.handler_count  = saved_handler_count;
+    interp.current_scope  = saved_scope;
 
-    // Stack overflow — fiber hit guard page
-    if (coro.status == main::CoroStatus.CORO_DEAD) {
-        if (coro.user_data != null) {
-            mem::free(coro.user_data);
-            coro.user_data = null;
+    // Stack overflow — coroutine hit guard page
+    if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
+        if (ctx.user_data != null) {
+            mem::free(ctx.user_data);
+            ctx.user_data = null;
         }
-        return raise_error(interp, "stack overflow in fiber");
+        return raise_error(interp, "stack overflow in coroutine");
     }
 
-    if (coro.status == main::CoroStatus.CORO_COMPLETED) {
-        Value* result = (Value*)coro.result;
+    if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
+        Value* result = (Value*)ctx.result;
         // Free thunk state
-        if (coro.user_data != null) {
-            mem::free(coro.user_data);
-            coro.user_data = null;
+        if (ctx.user_data != null) {
+            mem::free(ctx.user_data);
+            ctx.user_data = null;
         }
         return result != null ? result : make_nil(interp);
     }
 
-    // Fiber yielded
-    return interp.yield_value != null ? interp.yield_value : make_nil(interp);
+    // Coroutine yielded — copy value to caller's scope.
+    // Yield values live in the coroutine's call_scope (created by jit_eval_in_call_scope).
+    // When the coroutine completes, that scope is released, invalidating all yield values.
+    // The caller may still hold pointers to previously yielded values, so we must
+    // copy each yield value into the caller's scope (current_scope, restored above).
+    if (interp.yield_value != null) {
+        return copy_to_parent(interp.yield_value, interp);
+    }
+    return make_nil(interp);
 }
 
 fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {
-    main::Coro* current = main::g_current_coro;
+    main::StackCtx* current = main::g_current_stack_ctx;
     if (current == null) {
-        return raise_error(interp, "yield: not inside a fiber");
+        return raise_error(interp, "yield: not inside a coroutine");
     }
 
     Value* yield_val = args.len > 0 ? args[0] : make_nil(interp);
     interp.yield_value = yield_val;
 
-    // Save interp state (same pattern as jit_shift_impl_fiber)
+    // Save interp state (same pattern as jit_shift_impl)
     Env*        saved_jit_env       = interp.jit_env;
     Env*        saved_match_env     = interp.match_env;
     usz         saved_eval_depth    = interp.eval_depth;
@@ -2783,8 +2655,9 @@ fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {
     Env*        saved_tco_env       = interp.jit_tco_env;
     usz         saved_reset_depth   = interp.reset_depth;
     usz         saved_handler_count = interp.handler_count;
+    main::ScopeRegion* saved_scope = interp.current_scope;
 
-    main::coro_suspend();
+    main::stack_ctx_suspend();
 
     // Resumed — restore interp state
     interp.jit_env        = saved_jit_env;
@@ -2795,6 +2668,7 @@ fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {
     interp.jit_tco_env    = saved_tco_env;
     interp.reset_depth    = saved_reset_depth;
     interp.handler_count  = saved_handler_count;
+    interp.current_scope  = saved_scope;
 
     return interp.resume_value != null ? interp.resume_value : make_nil(interp);
 }

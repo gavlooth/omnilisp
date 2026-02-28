@@ -34,7 +34,7 @@ enum ValueTag : char {
     METHOD_TABLE,   // Dispatch table for multiple dispatch
     MODULE,         // First-class module reference
     ITERATOR,       // Lazy iterator (backed by closure thunk)
-    FIBER,          // User-facing fiber (wraps Coro*)
+    COROUTINE,          // User-facing coroutine (wraps StackCtx*)
 }
 
 /**
@@ -230,8 +230,10 @@ struct Cons {
  * Supports variadic lambdas: (lambda (x y .. rest) body)
  */
 struct Closure {
+    uint      refcount;       // Number of Value* sharing this Closure (RC lifecycle)
+    main::ScopeRegion* env_scope; // Standalone scope holding env copy (null if root-scope closure)
     SymbolId  param;          // Parameter name (first/only param, or unused if param_count==0)
-    SymbolId[256] params;     // All fixed params (including first)
+    SymbolId* params;         // All fixed params (including first), malloc'd
     usz       param_count;    // Number of fixed params
     bool      has_rest;       // True if variadic (.. rest)
     SymbolId  rest_param;     // Rest parameter name (if has_rest)
@@ -244,15 +246,15 @@ struct Closure {
 }
 
 /**
- * Continuation — Delimited continuation backed by a fiber (coroutine).
+ * Continuation — Delimited continuation backed by a coroutine (StackCtx).
  *
- * The coro field points to a suspended Coro. Multi-shot continuations
- * clone the coro on each invocation.
+ * The ctx field points to a suspended StackCtx. Multi-shot continuations
+ * clone the context on each invocation.
  */
 struct Continuation {
-    Coro* coro;           // Suspended coroutine backing this continuation
-    bool  is_fiber_based; // Always true (kept for resolve dispatch)
-    void* handle_state;   // HandleFiberState* (for resolve to reinstall handler)
+    StackCtx* ctx;            // Suspended stack context backing this continuation
+    bool  is_coroutine_based; // Always true (kept for resolve dispatch)
+    void* handle_state;   // HandleEffectState* (for resolve to reinstall handler)
 }
 
 /**
@@ -344,10 +346,6 @@ struct FfiHandle {
     void*    lib_handle;     // dlopen() result
     char[256] lib_name;      // for display/debugging
     usz      name_len;
-    // dlsym cache — linear scan, populated on miss
-    void*[64] sym_cache_ptrs;
-    char[64][64] sym_cache_names;
-    usz      sym_cache_count;
 }
 
 /**
@@ -615,13 +613,95 @@ struct Value {
         MethodTable*  method_table_val; // Dispatch table
         Module*       module_val;       // First-class module
         Value*        iterator_val;     // Iterator thunk closure (V_CLOSURE Value*)
-        main::Coro*   fiber_val;        // User-facing fiber (Coro*)
+        main::StackCtx*   coroutine_val;        // User-facing coroutine (StackCtx*)
     }
 }
 
 // =============================================================================
 // SECTION 2: VALUE CONSTRUCTORS
 // =============================================================================
+
+// Global stack context pool pointer for scope_dtor_value — set by Interp.init()
+main::StackPool* g_stack_ctx_pool = null;
+
+// Scope destructor for Values with heap-allocated backing data.
+// Mirrors destroy_value in eval.c3 but called from scope_region lifecycle.
+fn void scope_dtor_value(void* ptr) {
+    // Dtors re-enabled after fixing use-after-free (parser literals, module env)
+    Value* v = (Value*)ptr;
+    switch (v.tag) {
+        case STRING:
+        case ERROR:
+            if (v.str_val != null) {
+                if (v.str_val.chars != null) mem::free(v.str_val.chars);
+                mem::free(v.str_val);
+                v.str_val = null;
+            }
+        case CLOSURE:
+            if (v.closure_val != null) {
+                if (--v.closure_val.refcount == 0) {
+                    // Last reference — release env_scope and free Closure
+                    if (v.closure_val.env_scope != null) {
+                        main::scope_release(v.closure_val.env_scope);
+                    }
+                    if (v.closure_val.params != null) mem::free(v.closure_val.params);
+                    if (v.closure_val.type_sig != null) mem::free(v.closure_val.type_sig);
+                    mem::free(v.closure_val);
+                }
+                v.closure_val = null;
+            }
+        case PRIMITIVE:
+            if (v.prim_val != null) {
+                mem::free(v.prim_val);
+                v.prim_val = null;
+            }
+        case ARRAY:
+            if (v.array_val != null) {
+                if (v.array_val.items != null) mem::free(v.array_val.items);
+                mem::free(v.array_val);
+                v.array_val = null;
+            }
+        case INSTANCE:
+            if (v.instance_val != null) {
+                mem::free(v.instance_val);
+                v.instance_val = null;
+            }
+        case METHOD_TABLE:
+            if (v.method_table_val != null) {
+                if (v.method_table_val.entries != null) mem::free(v.method_table_val.entries);
+                mem::free(v.method_table_val);
+                v.method_table_val = null;
+            }
+        case HASHMAP:
+            if (v.hashmap_val != null) {
+                if (v.hashmap_val.entries != null) mem::free(v.hashmap_val.entries);
+                mem::free(v.hashmap_val);
+                v.hashmap_val = null;
+            }
+        case FFI_HANDLE:
+            if (v.ffi_val != null) {
+                // Note: don't dlclose here — FFI handles are long-lived
+                mem::free(v.ffi_val);
+                v.ffi_val = null;
+            }
+        // COROUTINE and CONTINUATION dtors deferred — lifecycle managed by coroutine primitives.
+        // See plan Phase 4c step 3 for details.
+        default: {}
+    }
+}
+
+// Scope destructor for Env objects — frees malloc'd bindings and hash table.
+fn void scope_dtor_env(void* ptr) {
+    Env* env = (Env*)ptr;
+    if (env.bindings != null) {
+        mem::free(env.bindings);
+        env.bindings = null;
+    }
+    if (env.hash_table != null) {
+        mem::free(env.hash_table);
+        env.hash_table = null;
+    }
+}
 
 <* @ensure return != null *>
 fn Value* make_nil(Interp* interp) @inline {
@@ -650,6 +730,7 @@ fn Value* make_double(Interp* interp, double d) @inline {
 fn Value* make_string(Interp* interp, char[] str) {
     Value* v = interp.alloc_value();
     v.tag = STRING;
+    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
     v.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
     usz len = str.len;
     usz cap = len + 1;
@@ -661,6 +742,7 @@ fn Value* make_string(Interp* interp, char[] str) {
     }
     v.str_val.chars[len] = 0;
     v.str_val.len = len;
+
     return v;
 }
 
@@ -684,8 +766,12 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
 fn Value* make_closure(Interp* interp, SymbolId param, Expr* body, Env* env) {
     Value* v = interp.alloc_value();
     v.tag = CLOSURE;
+    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
     v.closure_val = (Closure*)mem::malloc(Closure.sizeof);
+    v.closure_val.refcount = 1;
+    v.closure_val.env_scope = null;
     v.closure_val.param = param;
+    v.closure_val.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
     v.closure_val.params[0] = param;
     v.closure_val.param_count = 1;
     v.closure_val.has_rest = false;
@@ -701,8 +787,12 @@ fn Value* make_closure(Interp* interp, SymbolId param, Expr* body, Env* env) {
 fn Value* make_closure_no_param(Interp* interp, Expr* body, Env* env) {
     Value* v = interp.alloc_value();
     v.tag = CLOSURE;
+    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
     v.closure_val = (Closure*)mem::malloc(Closure.sizeof);
+    v.closure_val.refcount = 1;
+    v.closure_val.env_scope = null;
     v.closure_val.param = 0;
+    v.closure_val.params = null;
     v.closure_val.param_count = 0;
     v.closure_val.has_rest = false;
     v.closure_val.rest_param = 0;
@@ -711,19 +801,26 @@ fn Value* make_closure_no_param(Interp* interp, Expr* body, Env* env) {
     v.closure_val.has_param = false;
     v.closure_val.has_typed_params = false;
     v.closure_val.type_sig = null;
+
     return v;
 }
 
 fn Value* make_continuation(Interp* interp, Continuation* k) @inline {
     Value* v = interp.alloc_value();
     v.tag = CONTINUATION;
+    // No dtor registered — lifecycle managed by effect handlers (reset/shift/handle).
+    // Scope dtor would fire too early (before handler is done with the context).
     v.cont_val = k;
     return v;
 }
 
 fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arity) {
+    // Allocate in root_scope — primitives are permanent (defined in global env)
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
     Value* v = interp.alloc_value();
     v.tag = PRIMITIVE;
+    main::scope_register_dtor(interp.root_scope, (void*)v, &scope_dtor_value);
     v.prim_val = (Primitive*)mem::malloc(Primitive.sizeof);
     // Copy name into fixed buffer
     usz len = name.len;
@@ -739,18 +836,20 @@ fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arit
     v.prim_val.arity = arity;
     v.prim_val.tag = 0;
     v.prim_val.user_data = null;
+    interp.current_scope = saved_scope;
+
     return v;
 }
 
 fn Value* make_ffi_handle(Interp* interp, void* handle, char[] name) {
-    // Allocate in root_region so handle survives REPL line reclamation
-    main::RegionHandle saved = interp.current_frame;
-    interp.current_frame = interp.root_region;
+    // Allocate in root_scope so handle survives REPL line reclamation
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
     Value* v = interp.alloc_value();
     v.tag = FFI_HANDLE;
+    main::scope_register_dtor(interp.root_scope, (void*)v, &scope_dtor_value);
     v.ffi_val = (FfiHandle*)mem::malloc(FfiHandle.sizeof);
     v.ffi_val.lib_handle = handle;
-    v.ffi_val.sym_cache_count = 0;
     usz len = name.len;
     if (len > 255) {
         io::eprintfn("WARNING: FFI handle name truncated from %d to 255 bytes", name.len);
@@ -761,13 +860,15 @@ fn Value* make_ffi_handle(Interp* interp, void* handle, char[] name) {
     }
     v.ffi_val.lib_name[len] = 0;
     v.ffi_val.name_len = len;
-    interp.current_frame = saved;
+
+    interp.current_scope = saved_scope;
     return v;
 }
 
 fn Value* make_error(Interp* interp, char[] msg) {
     Value* v = interp.alloc_value();
     v.tag = ERROR;
+    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
     v.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
     usz len = msg.len;
     usz cap = len + 1;
@@ -779,6 +880,7 @@ fn Value* make_error(Interp* interp, char[] msg) {
     }
     v.str_val.chars[len] = 0;
     v.str_val.len = len;
+
     return v;
 }
 
@@ -904,26 +1006,28 @@ fn bool is_array(Value* v) @inline {
 }
 
 fn Value* make_array(Interp* interp, usz capacity) {
-    // Allocate Value in root_region so it persists across frame releases
-    main::RegionHandle saved = interp.current_frame;
-    interp.current_frame = interp.root_region;
+    // Allocate Value in root_scope so it persists across scope releases
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
     Value* v = interp.alloc_value();
-    interp.current_frame = saved;
+    main::scope_register_dtor(interp.root_scope, (void*)v, &scope_dtor_value);
+    interp.current_scope = saved_scope;
     v.tag = ARRAY;
     Array* arr = (Array*)mem::malloc(Array.sizeof);
     arr.capacity = capacity < 4 ? 4 : capacity;
     arr.length = 0;
     arr.items = (Value**)mem::malloc(Value*.sizeof * arr.capacity);
     v.array_val = arr;
+
     return v;
 }
 
 fn Value* make_module(Interp* interp, Module* mod) {
-    // Allocate Value in root_region so it persists across frame releases
-    main::RegionHandle saved = interp.current_frame;
-    interp.current_frame = interp.root_region;
+    // Allocate Value in root_scope so it persists across scope releases
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
     Value* v = interp.alloc_value();
-    interp.current_frame = saved;
+    interp.current_scope = saved_scope;
     v.tag = MODULE;
     v.module_val = mod;
     return v;
@@ -936,10 +1040,14 @@ fn Value* make_iterator(Interp* interp, Value* thunk) {
     return v;
 }
 
-fn Value* make_fiber(Interp* interp, main::Coro* coro) {
+fn Value* make_coroutine(Interp* interp, main::StackCtx* ctx) {
     Value* v = interp.alloc_value();
-    v.tag = FIBER;
-    v.fiber_val = coro;
+    v.tag = COROUTINE;
+    // No dtor registered — lifecycle managed by coroutine primitives (resume/yield).
+    // Coroutines that complete return their context to the pool in coroutine_thunk_entry.
+    // Abandoned coroutines leak their stack (~64KB) until program exit — acceptable for now.
+    // TODO: Track active coroutines in interp for cleanup on shutdown.
+    v.coroutine_val = ctx;
     return v;
 }
 
@@ -1103,6 +1211,7 @@ fn Env* make_env(Interp* interp, Env* parent) {
     env.hash_table = null;
     env.hash_capacity = 0;
     env.persistent = false;
+    main::scope_register_dtor(interp.current_scope, (void*)env, &scope_dtor_env);
     return env;
 }
 
@@ -1318,12 +1427,12 @@ struct ExprVar {
 
 struct ExprLambda {
     SymbolId param;           // First/only param (or unused if param_count==0)
-    SymbolId[256] params;     // All fixed params
+    SymbolId* params;         // All fixed params (malloc'd)
     usz      param_count;     // Number of fixed params
     bool     has_rest;        // True if variadic (.. rest)
     SymbolId rest_param;      // Rest parameter name
     Expr*    body;
-    TypeAnnotation[32] param_annotations;  // Type annotations for params
+    TypeAnnotation* param_annotations;  // Type annotations for params (malloc'd, null if none)
     bool has_typed_params;    // True if any param has a type annotation
 }
 
@@ -1372,9 +1481,6 @@ struct ExprResolve {
     Expr* value;   // the value to resolve with (resumes the continuation)
 }
 
-// Maximum effect clauses per handle expression
-const usz MAX_EFFECT_CLAUSES = 64;
-
 struct EffectClause {
     SymbolId effect_tag;    // Effect name
     SymbolId k_name;        // Continuation param
@@ -1383,10 +1489,10 @@ struct EffectClause {
 }
 
 struct ExprHandle {
-    Expr*                          body;
-    EffectClause[MAX_EFFECT_CLAUSES] clauses;
-    usz                            clause_count;
-    bool                           strict_mode;   // ^strict annotation
+    Expr*          body;
+    EffectClause*  clauses;
+    usz            clause_count;
+    bool           strict_mode;   // ^strict annotation
 }
 
 /**
@@ -1409,11 +1515,6 @@ struct ExprPath {
 // =============================================================================
 // SECTION 6.5: PATTERN MATCHING
 // =============================================================================
-
-// Maximum elements in a sequence pattern
-const usz MAX_PATTERN_ELEMS = 64;
-// Maximum match clauses
-const usz MAX_MATCH_CLAUSES = 128;
 
 /**
  * PatternTag — Type of pattern.
@@ -1459,7 +1560,7 @@ struct Pattern {
 
         // PAT_SEQ: sequence pattern [a b c], [head .. tail], etc.
         struct {
-            Pattern*[MAX_PATTERN_ELEMS] elements;
+            Pattern** elements;
             usz elem_count;
             RestPosition rest_pos;
             SymbolId rest_binding;  // Name to bind rest to (if REST_MIDDLE)
@@ -1468,7 +1569,7 @@ struct Pattern {
         // PAT_CONSTRUCTOR: (TypeName sub-patterns...)
         struct {
             SymbolId constructor_name;
-            Pattern*[MAX_TYPE_FIELDS] ctor_sub_patterns;
+            Pattern** ctor_sub_patterns;
             usz ctor_sub_count;
         }
 
@@ -1494,7 +1595,7 @@ struct MatchClause {
  */
 struct ExprMatch {
     Expr* scrutinee;
-    MatchClause[MAX_MATCH_CLAUSES] clauses;
+    MatchClause* clauses;
     usz clause_count;
 }
 
@@ -1522,7 +1623,7 @@ struct ExprOr {
  */
 struct ExprCall {
     Expr* func;
-    Expr*[256] args;
+    Expr** args;
     usz arg_count;
 }
 
@@ -1531,7 +1632,7 @@ struct ExprCall {
  * Evaluates all expressions, returns the last.
  */
 struct ExprBegin {
-    Expr*[256] exprs;
+    Expr** exprs;
     usz expr_count;
 }
 
@@ -1651,7 +1752,9 @@ struct ExprFfiFn {
 
 // FfiBoundFn — runtime state for a bound FFI function (used as Primitive.user_data)
 struct FfiBoundFn {
-    void* fn_ptr;
+    void* fn_ptr;           // null until first call (lazy dlsym)
+    void* lib_handle;       // dlopen handle for lazy resolution
+    char[128] c_name;       // C symbol name for lazy dlsym
     usz param_count;
     FfiTypeTag[16] param_types;
     FfiTypeTag return_type;
@@ -1790,14 +1893,14 @@ struct Expr {
  * EffectHandler - Active effect handler in the handler stack.
  */
 struct EffectHandler {
-    SymbolId[MAX_EFFECT_CLAUSES] tags;
-    EffectClause[MAX_EFFECT_CLAUSES] clauses;
+    SymbolId* tags;
+    EffectClause* clauses;
     usz clause_count;
     Env* handler_env;
     Expr* body_expr;    // The handle body for continuation capture
     Env*  body_env;     // Environment at handle time
     bool  strict_mode;  // ^strict: reject unhandled effects in body
-    void* fiber_state;  // HandleFiberState* (set by fiber handle, null otherwise)
+    void* effect_state;  // HandleEffectState* (set by stack-context-based handle, null otherwise)
 }
 
 // =============================================================================
@@ -1820,9 +1923,12 @@ struct Interp {
     SymbolTable  symbols;
     Env*         global_env;
 
-    // Region-based allocation
-    main::RegionHandle root_region;      // For Expr, Pattern, Continuation, closure envs
-    main::RegionHandle current_frame;    // For Values, Envs during eval
+    // Region-based allocation (Expr/Pattern only)
+    main::RegionHandle root_region;      // For Expr, Pattern allocation (AST nodes are permanent)
+
+    // Scope-region allocation (Values, Envs, closures)
+    main::ScopeRegion* root_scope;       // Permanent scope for defines (lives forever)
+    main::ScopeRegion* current_scope;    // Current scope (changes at let/lambda/loop)
 
     // Pre-interned common symbols
     SymbolId sym_lambda;
@@ -1947,8 +2053,9 @@ struct Interp {
     Env* match_env;    // Current env for evaluating guard predicates in match
 
     // JIT trampoline TCO state
-    Expr* jit_tco_expr;   // Next expression to evaluate (set by tail-call helpers)
-    Env*  jit_tco_env;    // Environment for next expression
+    Expr* jit_tco_expr;        // Next expression to evaluate (set by tail-call helpers)
+    Env*  jit_tco_env;         // Environment for next expression
+    main::ScopeRegion* tco_recycle_scope; // Scope eligible for TCO recycling (set by jit_eval_in_call_scope)
 
     // Stack overflow protection
     usz eval_depth;
@@ -1975,7 +2082,7 @@ struct Interp {
     SymbolId sym_all;          // ":all" for (import mod :all)
     SymbolId sym_export_from;  // "export-from" for (export-from mod (sym...))
 
-    // Continuation/reset depth (saved/restored across coro boundaries)
+    // Continuation/reset depth (saved/restored across context boundaries)
     usz      reset_depth;
 
     // Effect handler stack (dynamic)
@@ -1990,11 +2097,11 @@ struct Interp {
     char[256][16] source_dirs;  // stack of directory paths (null-terminated)
     usz source_dir_count;
 
-    // Fiber-based continuation system (stack engine)
-    main::StackPool coro_pool;
+    // StackCtx-based continuation system (stack engine)
+    main::StackPool stack_ctx_pool;
     Value* resume_value;           // Value passed to (k val) — read by shift on resume
     Value* yield_value;            // Value passed by (yield val) — read by resume
-    void* current_reset_state;     // Pointer to current ResetCoroState (in jit.c3)
+    void* current_reset_state;     // Pointer to current ResetState (in jit.c3)
 
 }
 
@@ -2002,23 +2109,27 @@ fn void Interp.init(Interp* self) {
     self.symbols.init();
     self.global_env = null;
 
-    // Region setup (thread_registry_init must be called before this)
+    // Region setup for Expr/Pattern allocation
     self.root_region = main::thread_root_region();
-    self.current_frame = self.root_region;
+
+    // Scope-region setup for Values, Envs, closures
+    self.root_scope = main::scope_create(null);
+    self.current_scope = self.root_scope;
 
     // Effect handler stack (dynamic)
     self.handler_capacity = HANDLER_INITIAL_CAPACITY;
     self.handler_count = 0;
     self.handler_stack = (EffectHandler*)mem::malloc(EffectHandler.sizeof * self.handler_capacity);
 
-    // Reset depth (saved/restored across coro boundaries)
+    // Reset depth (saved/restored across context boundaries)
     self.reset_depth = 0;
 
     // Source directory stack
     self.source_dir_count = 0;
 
-    // Fiber-based continuation system
-    main::stack_pool_init(&self.coro_pool);
+    // StackCtx-based continuation system
+    main::stack_pool_init(&self.stack_ctx_pool);
+    g_stack_ctx_pool = &self.stack_ctx_pool;
     self.resume_value = null;
     self.yield_value = null;
     self.current_reset_state = null;
@@ -2125,6 +2236,7 @@ fn void Interp.init(Interp* self) {
     self.jit_env = null;
     self.jit_tco_expr = null;
     self.jit_tco_env = null;
+    self.tco_recycle_scope = null;
     self.flags.jit_tco_bounce = false;
 
     // Stack overflow protection
@@ -2229,33 +2341,46 @@ fn void Interp.destroy(Interp* self) {
     }
     if (self.module_hash_index != null) { mem::free(self.module_hash_index); self.module_hash_index = null; }
     if (self.handler_stack != null) { mem::free(self.handler_stack); self.handler_stack = null; }
-    main::stack_pool_shutdown(&self.coro_pool);
+    main::stack_pool_shutdown(&self.stack_ctx_pool);
 }
 
 fn Continuation* Interp.alloc_lisp_continuation(Interp* self) {
     Continuation k;
-    k.coro = null;
-    k.is_fiber_based = false;
+    k.ctx = null;
+    k.is_coroutine_based = false;
     k.handle_state = null;
     main::ObjectHandle h = main::allocate_in(self.root_region, Continuation, k);
     return main::dereference_as(Continuation, h);
 }
 
-fn Value* Interp.alloc_value(Interp* self) {
-    Value v;
-    main::ObjectHandle h = main::allocate_in(self.current_frame, Value, v);
-    return main::dereference_as(Value, h);
+fn Value* Interp.alloc_value(Interp* self) @inline {
+    Value* v = (Value*)self.current_scope.alloc(Value.sizeof);
+    v.tag = NIL;  // Safe default
+    // Dtor registration moved to heap-backed constructors (make_string, make_closure, etc.)
+    // Flat types (NIL, INT, DOUBLE, SYMBOL, CONS, BOOL) skip dtor — no heap backing.
+    return v;
 }
 
-fn Env* Interp.alloc_env(Interp* self) {
-    Env e;
+// Allocate a Value in root_scope (for Expr literals and other permanent values).
+// Root-scope dtors only run at program exit, so unconditional registration is fine here.
+// The perf win is from removing dtors in alloc_value() (child scopes, per-call teardown).
+fn Value* Interp.alloc_value_root(Interp* self) @inline {
+    Value* v = (Value*)self.root_scope.alloc(Value.sizeof);
+    v.tag = NIL;
+    main::scope_register_dtor(self.root_scope, (void*)v, &scope_dtor_value);
+    return v;
+}
+
+fn Env* Interp.alloc_env(Interp* self) @inline {
+    Env* e = (Env*)self.current_scope.alloc(Env.sizeof);
+    e.bindings = null;
     e.binding_count = 0;
+    e.capacity = 0;
     e.parent = null;
     e.hash_table = null;
     e.hash_capacity = 0;
     e.persistent = false;
-    main::ObjectHandle h = main::allocate_in(self.current_frame, Env, e);
-    return main::dereference_as(Env, h);
+    return e;
 }
 
 fn Expr* Interp.alloc_expr(Interp* self) {
@@ -2390,8 +2515,8 @@ fn void print_value(Value* v, SymbolTable* syms) {
             }
         case ITERATOR:
             io::print("#<iterator>");
-        case FIBER:
-            io::print("#<fiber>");
+        case COROUTINE:
+            io::print("#<coroutine>");
         default:
             io::print("#<unknown>");
     }
@@ -2518,8 +2643,8 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             pb.append_str("#<module>");
         case ITERATOR:
             pb.append_str("#<iterator>");
-        case FIBER:
-            pb.append_str("#<fiber>");
+        case COROUTINE:
+            pb.append_str("#<coroutine>");
         default:
             pb.append_str("#<unknown>");
     }
