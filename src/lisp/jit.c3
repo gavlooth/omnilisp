@@ -292,6 +292,69 @@ fn Value* jit_eval_fallback(Expr* expr, Env* env, Interp* interp) {
     return jit_eval(expr, env, interp);
 }
 
+/// Recursively check if an Expr tree contains E_SHIFT.
+/// Used to detect named-let bodies that capture continuations,
+/// which need normal env chain copying (can't use escape-scope env).
+fn bool expr_contains_shift(Expr* e) {
+    if (e == null) return false;
+    if (e.tag == E_SHIFT) return true;
+    switch (e.tag) {
+        case E_IF:
+            return expr_contains_shift(e.if_expr.test) ||
+                   expr_contains_shift(e.if_expr.then_branch) ||
+                   expr_contains_shift(e.if_expr.else_branch);
+        case E_LET:
+            return expr_contains_shift(e.let_expr.init) ||
+                   expr_contains_shift(e.let_expr.body);
+        case E_LAMBDA:
+            // Lambda creates a closure boundary — shift inside captures
+            // the lambda's context, not the named-let's. Safe to skip.
+            return false;
+        case E_BEGIN:
+            for (usz i = 0; i < e.begin.expr_count; i++) {
+                if (expr_contains_shift(e.begin.exprs[i])) return true;
+            }
+            return false;
+        case E_CALL:
+            if (expr_contains_shift(e.call.func)) return true;
+            for (usz i = 0; i < e.call.arg_count; i++) {
+                if (expr_contains_shift(e.call.args[i])) return true;
+            }
+            return false;
+        case E_APP:
+            return expr_contains_shift(e.app.func) ||
+                   expr_contains_shift(e.app.arg);
+        case E_MATCH:
+            if (expr_contains_shift(e.match.scrutinee)) return true;
+            for (usz i = 0; i < e.match.clause_count; i++) {
+                if (expr_contains_shift(e.match.clauses[i].result)) return true;
+            }
+            return false;
+        case E_AND:
+            return expr_contains_shift(e.and_expr.left) ||
+                   expr_contains_shift(e.and_expr.right);
+        case E_OR:
+            return expr_contains_shift(e.or_expr.left) ||
+                   expr_contains_shift(e.or_expr.right);
+        case E_SET:
+            return expr_contains_shift(e.set_expr.value);
+        case E_DEFINE:
+            return expr_contains_shift(e.define.value);
+        case E_PERFORM:
+            return expr_contains_shift(e.perform.arg);
+        case E_RESOLVE:
+            return expr_contains_shift(e.resolve.value);
+        case E_RESET:
+            // shift inside reset is delimited — doesn't escape to named-let scope
+            return false;
+        case E_HANDLE:
+            // Handle body runs on its own StackCtx — shift inside is delimited
+            return false;
+        default:
+            return false;
+    }
+}
+
 // JIT-aware eval replacement with trampoline TCO.
 // Compiles sub-expressions with cache, executes with env context.
 // When a tail-call helper sets jit_tco_bounce, loops instead of recursing.
@@ -337,10 +400,15 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
             // fresh scope is independent of any env_scope freed during scope_release.
             main::ScopeRegion* cs = interp.current_scope;
             if (cs == interp.tco_recycle_scope && cs.refcount == 1) {
-                main::ScopeRegion* fresh = main::scope_create(cs.parent);
+                // Create fresh call_scope as child of escape_scope (result_scope)
+                // so accumulator values in escape_scope survive the recycle.
+                main::ScopeRegion* parent = interp.escape_scope != null ? interp.escape_scope : cs.parent;
+                main::ScopeRegion* fresh = main::scope_create(parent);
                 interp.current_scope = fresh;
                 interp.tco_recycle_scope = fresh;  // Update: fresh is now the recyclable scope
+                interp.releasing_scope = cs;       // Tell copy_to_parent what's being released
                 env = copy_tco_env_chain(env, interp);
+                interp.releasing_scope = null;
                 main::scope_release(cs);
             }
 
@@ -353,15 +421,21 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
 }
 
 // Scope-per-call wrapper: evaluates closure body in a child scope.
-// Temporaries from the body (CONS cells, format buffers, etc.) are freed per call.
-// TCO scope recycling may replace the call_scope during jit_eval's trampoline,
-// so we capture interp.current_scope after jit_eval returns (not the original).
+// Three-tier hierarchy: result_scope (persists across TCO bounces) → call_scope (recycled).
+// Accumulator cons cells go in result_scope; temporaries go in call_scope.
 fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
     main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* call_scope = main::scope_create(saved_scope);
+
+    // Two-scope hierarchy: result_scope persists, call_scope recycles
+    main::ScopeRegion* result_scope = main::scope_create(saved_scope);
+    main::ScopeRegion* call_scope = main::scope_create(result_scope);
     interp.current_scope = call_scope;
 
-    // Mark this scope as eligible for TCO recycling
+    // Set escape_scope so make_cons can redirect accumulator cells
+    main::ScopeRegion* saved_escape = interp.escape_scope;
+    interp.escape_scope = result_scope;
+
+    // Mark call_scope (not result_scope) as eligible for TCO recycling
     main::ScopeRegion* saved_recycle = interp.tco_recycle_scope;
     interp.tco_recycle_scope = call_scope;
 
@@ -370,17 +444,38 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
     // After jit_eval, current_scope may differ from call_scope (TCO recycling)
     main::ScopeRegion* active_scope = interp.current_scope;
 
-    // Restore recycle scope eligibility
+    // Restore saved state
     interp.tco_recycle_scope = saved_recycle;
+    interp.escape_scope = saved_escape;
 
-    // Promote result to caller's scope before releasing
+    // Step 1: Merge active_scope (call_scope) into result_scope.
+    // If nothing escaped (RC=1), adopt is safe and O(1) — chunks move to result_scope.
+    // Otherwise, copy the result value from active_scope to result_scope.
+    if (active_scope != result_scope) {
+        if (active_scope.refcount == 1) {
+            // O(1) adoption: move chunks/dtors to result_scope, recycle active_scope
+            main::scope_adopt(result_scope, active_scope);
+        } else {
+            // Something escaped from call_scope — copy result, then release
+            interp.current_scope = result_scope;
+            interp.releasing_scope = active_scope;
+            if (result != null) {
+                result = copy_to_parent(result, interp);
+            }
+            interp.releasing_scope = null;
+            main::scope_release(active_scope);
+        }
+    }
+
+    // Step 2: Promote result from result_scope to caller's scope.
+    // This is the O(n) copy of the final list (instead of O(n) per TCO bounce).
     interp.current_scope = saved_scope;
+    interp.releasing_scope = result_scope;
     if (result != null) {
         result = copy_to_parent(result, interp);
     }
-
-    // Release the scope that jit_eval was using (may be call_scope or a TCO replacement)
-    main::scope_release(active_scope);
+    interp.releasing_scope = null;
+    main::scope_release(result_scope);
 
     return result;
 }
@@ -398,6 +493,22 @@ fn Env* copy_tco_env_chain(Env* src, Interp* interp) {
     if (src.persistent) {
         src.parent = copy_tco_env_chain(src.parent, interp);
         return src;
+    }
+
+    // Escape-env optimization: Env in escape_scope survives the bounce.
+    // Skip frame copy — just promote binding values to escape_scope.
+    // Eliminates make_env + malloc(Binding[]) + scope_register_dtor + build_hash_table per bounce.
+    if (interp.escape_scope != null &&
+        src.scope_gen == interp.escape_scope.generation) {
+        // Env is NOT in the dying scope. Update binding values in-place.
+        main::ScopeRegion* saved = interp.current_scope;
+        interp.current_scope = interp.escape_scope;
+        for (usz i = 0; i < src.binding_count; i++) {
+            src.bindings[i].value = copy_to_parent(src.bindings[i].value, interp);
+        }
+        interp.current_scope = saved;
+        src.parent = copy_tco_env_chain(src.parent, interp);
+        return src;  // same Env, updated values, no alloc
     }
 
     // Recursive: copy parent chain first (bottom-up)
@@ -630,7 +741,24 @@ fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
     // Using jit_eval_in_call_scope gives each named-let its own scope, so
     // nested named-lets (e.g., flatten's loop calling loop2) don't recycle
     // the outer loop's scope — each loop's tco_recycle_scope is independent.
-    return jit_eval_in_call_scope(expr.let_expr.body, rec_env, interp);
+
+    // Escape-env optimization: if the loop body doesn't contain shift,
+    // enable escape_env_mode so the loop's param env is allocated in
+    // escape_scope (survives TCO bounces without frame copy).
+    bool body_has_shift = false;
+    if (is_closure(actual_value)) {
+        Expr* lambda_body = expr.let_expr.init;
+        if (lambda_body != null && lambda_body.tag == E_LAMBDA) {
+            body_has_shift = expr_contains_shift(lambda_body.lambda.body);
+        }
+    }
+    bool saved_escape_env = interp.escape_env_mode;
+    if (!body_has_shift) {
+        interp.escape_env_mode = true;
+    }
+    Value* result = jit_eval_in_call_scope(expr.let_expr.body, rec_env, interp);
+    interp.escape_env_mode = saved_escape_env;
+    return result;
 }
 
 // set! helper — called from JIT-compiled code.
@@ -1103,6 +1231,8 @@ fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
     usz         saved_reset_depth   = interp.reset_depth;
     usz         saved_handler_count = interp.handler_count;
     main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* saved_escape_scope = interp.escape_scope;
+    bool saved_escape_env_mode = interp.escape_env_mode;
 
     // Run the body context
     main::StackContext parent_ctx;
@@ -1120,6 +1250,8 @@ fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
     interp.reset_depth    = saved_reset_depth;
     interp.handler_count  = saved_handler_count;
     interp.current_scope  = saved_scope;
+    interp.escape_scope   = saved_escape_scope;
+    interp.escape_env_mode = saved_escape_env_mode;
 
     // Stack overflow — context hit guard page
     if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
@@ -1197,6 +1329,8 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     usz        saved_reset_depth = interp.reset_depth;
     usz        saved_handler_count = interp.handler_count;
     main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* saved_escape_scope = interp.escape_scope;
+    bool saved_escape_env_mode = interp.escape_env_mode;
 
     // Suspend the context — control returns to jit_reset_impl
     main::stack_ctx_suspend();
@@ -1213,6 +1347,8 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     interp.reset_depth = saved_reset_depth;
     interp.handler_count = saved_handler_count;
     interp.current_scope = saved_scope;
+    interp.escape_scope = saved_escape_scope;
+    interp.escape_env_mode = saved_escape_env_mode;
 
     return interp.resume_value;
 }
@@ -1269,6 +1405,8 @@ fn EvalResult jit_apply_continuation_impl(Value* k_val, Value* arg, Interp* inte
     usz         saved_reset_depth   = interp.reset_depth;
     usz         saved_handler_count = interp.handler_count;
     main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* saved_escape_scope = interp.escape_scope;
+    bool saved_escape_env_mode = interp.escape_env_mode;
 
     // Resume the clone
     main::StackContext parent_ctx;
@@ -1286,6 +1424,8 @@ fn EvalResult jit_apply_continuation_impl(Value* k_val, Value* arg, Interp* inte
     interp.reset_depth    = saved_reset_depth;
     interp.handler_count  = saved_handler_count;
     interp.current_scope  = saved_scope;
+    interp.escape_scope   = saved_escape_scope;
+    interp.escape_env_mode = saved_escape_env_mode;
 
     // Stack overflow — clone hit guard page
     if (target.status == main::StackCtxStatus.CTX_DEAD) {
@@ -1418,6 +1558,8 @@ fn Value* jit_signal_impl(Expr* expr, Env* env, Interp* interp) {
                         usz         saved_reset_depth   = interp.reset_depth;
                         usz         saved_handler_count = interp.handler_count;
                         main::ScopeRegion* saved_scope = interp.current_scope;
+                        main::ScopeRegion* saved_escape_scope = interp.escape_scope;
+                        bool saved_escape_env_mode = interp.escape_env_mode;
 
                         // Suspend context — control returns to handle loop
                         main::stack_ctx_suspend();
@@ -1433,6 +1575,8 @@ fn Value* jit_signal_impl(Expr* expr, Env* env, Interp* interp) {
                         interp.reset_depth    = saved_reset_depth;
                         interp.handler_count  = saved_handler_count;
                         interp.current_scope  = saved_scope;
+                        interp.escape_scope   = saved_escape_scope;
+                        interp.escape_env_mode = saved_escape_env_mode;
 
                         return interp.resume_value;
                     }
@@ -1574,6 +1718,8 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
     usz         saved_reset_depth   = interp.reset_depth;
     usz         saved_handler_count = interp.handler_count;  // my_idx + 1
     main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* saved_escape_scope = interp.escape_scope;
+    bool saved_escape_env_mode = interp.escape_env_mode;
 
     // Run the body on the context
     main::StackContext parent_ctx;
@@ -1593,6 +1739,8 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
     interp.reset_depth    = saved_reset_depth;
     interp.handler_count  = saved_handler_count;
     interp.current_scope  = saved_scope;
+    interp.escape_scope   = saved_escape_scope;
+    interp.escape_env_mode = saved_escape_env_mode;
 
     // Propagate raise_pending from body context execution
     if (body_raise_pending) interp.flags.raise_pending = true;
@@ -3466,6 +3614,8 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
         usz         saved_reset_depth   = interp.reset_depth;
         usz         saved_handler_count = interp.handler_count;
         main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* saved_escape_scope = interp.escape_scope;
+        bool saved_escape_env_mode = interp.escape_env_mode;
 
         // Resume the context (single-shot, no clone)
         main::StackContext parent_ctx;
@@ -3482,6 +3632,8 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
         interp.reset_depth    = saved_reset_depth;
         interp.handler_count  = saved_handler_count;
         interp.current_scope  = saved_scope;
+        interp.escape_scope   = saved_escape_scope;
+        interp.escape_env_mode = saved_escape_env_mode;
 
         // Pop the reinstalled handler
         interp.handler_count = hstate.handler_idx;

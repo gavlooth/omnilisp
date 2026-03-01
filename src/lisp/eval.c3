@@ -1073,6 +1073,20 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
 fn Value* copy_to_parent(Value* v, Interp* interp) {
     if (v == null) return null;
 
+    // Scope-aware optimization: if value is NOT in the scope being released,
+    // it's in a surviving scope and can be returned as-is (no copy needed).
+    // Note: uses is_in_scope (chunk walk) rather than scope_gen stamp because
+    // scope_adopt moves chunks between scopes without updating value stamps.
+    if (interp.releasing_scope != null && !main::is_in_scope((void*)v, interp.releasing_scope)) {
+        return v;
+    }
+
+    // Disable escape-scope during copy operations. copy_to_parent calls make_cons
+    // which would otherwise redirect cons cells to escape_scope. This is wrong —
+    // the escape path should only trigger for fresh user-code allocations, not copies.
+    main::ScopeRegion* saved_escape = interp.escape_scope;
+    interp.escape_scope = null;
+
     Value* result;
     switch (v.tag) {
         case NIL:
@@ -1143,6 +1157,7 @@ fn Value* copy_to_parent(Value* v, Interp* interp) {
         default:
             result = v;
     }
+    interp.escape_scope = saved_escape;
     return result;
 }
 

@@ -594,6 +594,7 @@ struct MethodTable {
  */
 struct Value {
     ValueTag tag;
+    uint scope_gen;  // Scope generation stamp — set at allocation, used for O(1) scope checks
 
     union {
         long          int_val;
@@ -754,8 +755,47 @@ fn Value* make_symbol(Interp* interp, SymbolId sym) @inline {
     return v;
 }
 
+/**
+ * Allocate a cons cell in escape_scope (result_scope).
+ * Promotes car/cdr from call_scope to escape_scope if needed.
+ * Called when accumulator pattern detected (cdr is NIL or already in escape_scope).
+ */
+fn Value* make_cons_escape(Interp* interp, Value* car, Value* cdr) {
+    main::ScopeRegion* call_scope = interp.current_scope;
+
+    // Switch to escape_scope for allocation
+    interp.current_scope = interp.escape_scope;
+
+    // Promote car/cdr: copy from call_scope to escape_scope if needed.
+    main::ScopeRegion* saved_releasing = interp.releasing_scope;
+    interp.releasing_scope = call_scope;
+    Value* safe_car = copy_to_parent(car, interp);
+    Value* safe_cdr = copy_to_parent(cdr, interp);
+    interp.releasing_scope = saved_releasing;
+
+    // Allocate cons in escape_scope
+    Value* v = interp.alloc_value();
+    v.tag = CONS;
+    v.cons_val.car = safe_car;
+    v.cons_val.cdr = safe_cdr;
+
+    // Restore call_scope
+    interp.current_scope = call_scope;
+    return v;
+}
+
 <* @ensure return != null *>
 fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
+    // Escape-scope optimization: detect accumulator pattern (cons x acc)
+    // where acc starts as NIL and grows by consing onto the front.
+    // Trigger: cdr is NIL (start of accumulator) or cdr stamped with escape_scope's generation.
+    if (interp.escape_scope != null &&
+        interp.current_scope != interp.escape_scope &&
+        (cdr.tag == NIL || cdr.scope_gen == interp.escape_scope.generation)) {
+        return make_cons_escape(interp, car, cdr);
+    }
+
+    // Normal path: allocate in current_scope
     Value* v = interp.alloc_value();
     v.tag = CONS;
     v.cons_val.car = car;
@@ -1201,9 +1241,20 @@ struct Env {
     EnvHashEntry*         hash_table;     // NULL if not using hash
     usz                   hash_capacity;  // Power of 2
     bool                  persistent;     // true = allocated in root_region, skip in deep_copy_env
+    uint                  scope_gen;      // Scope generation stamp for O(1) membership check
 }
 
 fn Env* make_env(Interp* interp, Env* parent) {
+    // Escape-env optimization: allocate loop envs in escape_scope
+    // so they survive TCO bounces without copy_tco_env_chain frame copy.
+    bool use_escape = interp.escape_env_mode &&
+                      interp.escape_scope != null &&
+                      interp.current_scope != interp.escape_scope;
+
+    main::ScopeRegion* target = use_escape ? interp.escape_scope : interp.current_scope;
+    main::ScopeRegion* saved = interp.current_scope;
+    if (use_escape) interp.current_scope = target;
+
     Env* env = interp.alloc_env();
     env.bindings = (Binding*)mem::malloc(Binding.sizeof * ENV_INITIAL_CAPACITY);
     env.binding_count = 0;
@@ -1212,7 +1263,10 @@ fn Env* make_env(Interp* interp, Env* parent) {
     env.hash_table = null;
     env.hash_capacity = 0;
     env.persistent = false;
-    main::scope_register_dtor(interp.current_scope, (void*)env, &scope_dtor_env);
+    env.scope_gen = target.generation;
+    main::scope_register_dtor(target, (void*)env, &scope_dtor_env);
+
+    if (use_escape) interp.current_scope = saved;
     return env;
 }
 
@@ -2058,6 +2112,9 @@ struct Interp {
     Expr* jit_tco_expr;        // Next expression to evaluate (set by tail-call helpers)
     Env*  jit_tco_env;         // Environment for next expression
     main::ScopeRegion* tco_recycle_scope; // Scope eligible for TCO recycling (set by jit_eval_in_call_scope)
+    main::ScopeRegion* releasing_scope;   // Set during copy_to_parent to skip values not in this scope
+    main::ScopeRegion* escape_scope;      // Result scope for escape-aware cons allocation (null when inactive)
+    bool escape_env_mode;                 // When true, make_env allocates in escape_scope (for TCO loop envs)
 
     // Stack overflow protection
     usz eval_depth;
@@ -2239,6 +2296,9 @@ fn void Interp.init(Interp* self) {
     self.jit_tco_expr = null;
     self.jit_tco_env = null;
     self.tco_recycle_scope = null;
+    self.releasing_scope = null;
+    self.escape_scope = null;
+    self.escape_env_mode = false;
     self.flags.jit_tco_bounce = false;
 
     // Stack overflow protection
@@ -2358,6 +2418,7 @@ fn Continuation* Interp.alloc_lisp_continuation(Interp* self) {
 fn Value* Interp.alloc_value(Interp* self) @inline {
     Value* v = (Value*)self.current_scope.alloc(Value.sizeof);
     v.tag = NIL;  // Safe default
+    v.scope_gen = self.current_scope.generation;  // Stamp for O(1) scope checks
     // Dtor registration moved to heap-backed constructors (make_string, make_closure, etc.)
     // Flat types (NIL, INT, DOUBLE, SYMBOL, CONS, BOOL) skip dtor — no heap backing.
     return v;
@@ -2369,6 +2430,7 @@ fn Value* Interp.alloc_value(Interp* self) @inline {
 fn Value* Interp.alloc_value_root(Interp* self) @inline {
     Value* v = (Value*)self.root_scope.alloc(Value.sizeof);
     v.tag = NIL;
+    v.scope_gen = self.root_scope.generation;  // Stamp for O(1) scope checks
     main::scope_register_dtor(self.root_scope, (void*)v, &scope_dtor_value);
     return v;
 }
@@ -2382,6 +2444,7 @@ fn Env* Interp.alloc_env(Interp* self) @inline {
     e.hash_table = null;
     e.hash_capacity = 0;
     e.persistent = false;
+    e.scope_gen = self.current_scope.generation;
     return e;
 }
 

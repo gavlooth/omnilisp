@@ -94,6 +94,10 @@ ScopeRegion* g_scope_freelist = null;
 usz g_scope_freelist_count = 0;
 const usz SCOPE_FREELIST_MAX = 64;  // Don't hoard too many recycled scopes
 
+// Global monotonic generation counter — ensures every scope gets a unique generation.
+// Used by Value.scope_gen stamps for O(1) scope membership checks.
+uint g_scope_generation_counter = 0;
+
 // =============================================================================
 // Chunk allocation
 // =============================================================================
@@ -145,8 +149,10 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
         g_scope_freelist_count--;
     } else {
         scope = (ScopeRegion*)mem::malloc(ScopeRegion.sizeof);
-        scope.generation = 0;
     }
+
+    // Assign globally unique generation (monotonic counter)
+    scope.generation = ++g_scope_generation_counter;
 
     // Allocate initial chunk
     ScopeChunk* chunk = scope_chunk_alloc(SCOPE_CHUNK_INITIAL);
@@ -341,6 +347,80 @@ fn void scope_reset(ScopeRegion* scope) {
     scope.dtors = null;
     scope.alloc_bytes = 0;
     scope.alloc_count = 0;
+}
+
+// =============================================================================
+// Scope membership check (for escape-scope optimization)
+// =============================================================================
+
+/**
+ * Check whether a pointer was allocated within a given scope.
+ * Walks the scope's chunk list checking address ranges.
+ * Used by copy_to_parent to skip values not in the scope being released.
+ */
+fn bool is_in_scope(void* ptr, ScopeRegion* scope) {
+    if (ptr == null || scope == null) return false;
+    ScopeChunk* chunk = scope.chunks;
+    while (chunk != null) {
+        char* data = scope_chunk_data(chunk);
+        if ((char*)ptr >= data && (char*)ptr < data + chunk.capacity) return true;
+        chunk = chunk.next;
+    }
+    return false;
+}
+
+// =============================================================================
+// Scope adoption (merge child memory into parent)
+// =============================================================================
+
+/**
+ * Merge child's memory into parent. Child's chunks and dtors become parent's.
+ * Child struct is recycled but its memory lives on in parent.
+ * O(1) amortized — avoids copying values when returning from function calls.
+ */
+fn void scope_adopt(ScopeRegion* parent, ScopeRegion* child) {
+    if (child == null || parent == null) return;
+
+    // Move child's dtors to parent (prepend child's dtor list to parent's)
+    if (child.dtors != null) {
+        ScopeDtor* last = child.dtors;
+        while (last.next != null) last = last.next;
+        last.next = parent.dtors;
+        parent.dtors = child.dtors;
+        child.dtors = null;
+    }
+
+    // Move child's chunks to parent (prepend to parent's chunk list)
+    if (child.chunks != null) {
+        ScopeChunk* last = child.chunks;
+        while (last.next != null) last = last.next;
+        last.next = parent.chunks;
+        parent.chunks = child.chunks;
+        child.chunks = null;
+    }
+
+    // Update parent stats
+    parent.alloc_bytes += child.alloc_bytes;
+    parent.alloc_count += child.alloc_count;
+
+    // Detach child from parent (don't release — parent is the same scope we're adopting into)
+    if (child.parent != null) {
+        scope_release(child.parent);
+        child.parent = null;
+    }
+
+    // Reset child and return to freelist
+    child.bump = null;
+    child.limit = null;
+    child.refcount = 0;
+    child.generation++;
+    if (g_scope_freelist_count < SCOPE_FREELIST_MAX) {
+        child.pool_next = g_scope_freelist;
+        g_scope_freelist = child;
+        g_scope_freelist_count++;
+    } else {
+        mem::free(child);
+    }
 }
 
 // =============================================================================
@@ -552,6 +632,52 @@ fn void run_scope_region_tests() {
         usz gap = (usz)p2 - (usz)p1;
         if (gap == 8) { passed++; } else { io::printfn("FAIL: align gap=%d", (int)gap); failed++; }
         scope_release(s);
+    }
+
+    // Test 14: is_in_scope
+    {
+        ScopeRegion* s = scope_create(null);
+        void* p1 = s.alloc(24);
+        void* p2 = s.alloc(24);
+        ScopeRegion* other = scope_create(null);
+        void* p3 = other.alloc(24);
+
+        if (is_in_scope(p1, s)) { passed++; } else { io::printn("FAIL: is_in_scope p1 in s"); failed++; }
+        if (is_in_scope(p2, s)) { passed++; } else { io::printn("FAIL: is_in_scope p2 in s"); failed++; }
+        if (!is_in_scope(p3, s)) { passed++; } else { io::printn("FAIL: is_in_scope p3 not in s"); failed++; }
+        if (is_in_scope(p3, other)) { passed++; } else { io::printn("FAIL: is_in_scope p3 in other"); failed++; }
+        if (!is_in_scope(null, s)) { passed++; } else { io::printn("FAIL: is_in_scope null"); failed++; }
+
+        scope_release(other);
+        scope_release(s);
+    }
+
+    // Test 15: scope_adopt
+    {
+        ScopeRegion* parent = scope_create(null);
+        ScopeRegion* child = scope_create(parent);
+        void* p1 = child.alloc(24);
+        void* p2 = child.alloc(24);
+        usz child_bytes = child.alloc_bytes;
+        usz child_count = child.alloc_count;
+        usz parent_bytes_before = parent.alloc_bytes;
+
+        // p1 and p2 should be in child, not parent
+        if (is_in_scope(p1, child)) { passed++; } else { io::printn("FAIL: adopt: p1 in child before"); failed++; }
+        if (!is_in_scope(p1, parent)) { passed++; } else { io::printn("FAIL: adopt: p1 not in parent before"); failed++; }
+
+        // Adopt child into parent
+        scope_adopt(parent, child);
+        // child is now recycled — don't use it
+
+        // p1 and p2 should now be findable in parent
+        if (is_in_scope(p1, parent)) { passed++; } else { io::printn("FAIL: adopt: p1 in parent after"); failed++; }
+        if (is_in_scope(p2, parent)) { passed++; } else { io::printn("FAIL: adopt: p2 in parent after"); failed++; }
+
+        // Parent stats updated
+        if (parent.alloc_bytes == parent_bytes_before + child_bytes) { passed++; } else { io::printn("FAIL: adopt: bytes"); failed++; }
+
+        scope_release(parent);
     }
 
     io::printfn("%d passed, %d failed", (int)passed, (int)failed);

@@ -1,5 +1,117 @@
 # Changelog
 
+## 2026-03-01 (Session 64): Escape-Scope Env Optimization (Unified 10+7A)
+
+### Summary
+Implemented the escape-scope env optimization from Explorations 10+7A. Named-let loop envs are now allocated in escape_scope (result_scope) so they survive TCO bounces without `copy_tco_env_chain` frame copy. Per-bounce cost drops from ~100 instructions (make_env + malloc + dtor + copies) to ~10 instructions (scope_gen check + in-place value updates).
+
+### Changes
+- **Phase 1**: Added `scope_gen` (uint) field to Env struct — stamped from `current_scope.generation` at allocation. O(1) scope membership check. Also stamped in `alloc_env()` for env copies.
+- **Phase 2a**: Added `expr_contains_shift()` helper — recursive AST walker to detect E_SHIFT in named-let bodies. Lambda/Reset/Handle return false (closure/delimited boundaries). Used for Piece 6 safety (shift detection).
+- **Phase 2b-f**: Added `escape_env_mode` bool to Interp. Modified `make_env` to redirect env allocation to `escape_scope` when flag is set. Set in `jit_eval_let_rec` (guarded by shift check). Save/restore at all 7 context boundary sites (reset, shift, continuation, signal, handle body, AOT resolve).
+- **Phase 3**: Added fast path in `copy_tco_env_chain` — when env's `scope_gen` matches `escape_scope.generation`, skips frame copy entirely (no make_env, no malloc, no dtor, no hash table rebuild). Instead promotes binding values in-place via `copy_to_parent`.
+- **Key fix during development**: `jit_eval_in_call_scope` is on the hot recursion path — adding ANY local variable (even 1 bool) increases C stack frame size enough to cause native stack overflow on 5000-deep recursion tests. Solution: `jit_eval_let_rec` saves/restores `escape_env_mode` instead.
+- **Key fix**: Fast path check must be `src.scope_gen == escape_scope.generation` (env IS in escape_scope), NOT `src.scope_gen != releasing_scope.generation` (env is NOT in dying scope). The latter incorrectly catches closure env_scope envs.
+
+### Files modified
+| File | Changes |
+|------|---------|
+| `src/lisp/value.c3` | `scope_gen` on Env, `escape_env_mode` on Interp, `make_env` escape redirect, `alloc_env` stamps scope_gen |
+| `src/lisp/jit.c3` | `expr_contains_shift`, `copy_tco_env_chain` fast path, `jit_eval_let_rec` escape_env, 7 context boundary save/restores |
+| `src/lisp/tests.c3` | 13 new escape-scope env tests |
+
+### Test results
+956 unified + 73 compiler + 9 stack + 40 scope = **1078 PASS, 0 failures** (was 1065)
+
+---
+
+## 2026-03-01 (Session 63 continued): Dialectic Analysis — Dual Refcount, Closure Arenas, Env Chain
+
+### Summary
+Extended dialectic reasoning analysis to three optimization areas: (1) eliminating copy_to_parent via dual refcount with selective deferred free, (2) eliminating per-closure malloc via scratch arena + RC with batch promote, (3) eliminating copy_tco_env_chain overhead via inline bindings + escape-scope env allocation. All validated through 4-round multi-provider dialectic (groq/deepseek/zai).
+
+### Changes
+- **Exploration 5** (Dual Refcount): `structural_rc` + `value_rc` on ScopeRegion. Large scopes skip copy_to_parent entirely — deferred free keeps scope alive until escaped values are released. Flat DAG alternative rejected (TCO causes unbounded memory growth).
+- **Exploration 6** (Closure Scratch Arena + RC): Bump-allocate Closures in scope arena instead of malloc. Keep RC for shared ownership. Batch-scan at scope death promotes shared closures (rc>1), ephemeral closures (rc=1) freed in bulk with arena. Variant B (optimistic scratch) rejected — fatal with continuations/coroutines (dangling pointers after stack clone).
+- **Exploration 7** (Inline Bindings + Escape-Scope Env): Embed small binding arrays (≤4) directly in Env struct (no malloc, no dtor). Allocate named-let env frames in escape_scope so they survive TCO bounces. Optional C: mutate-in-place for lambda-free loop bodies. Per-bounce cost drops from ~100 to ~10 instructions. Promoted to #2 priority.
+- **Exploration 8** (Separated Name-Value Storage): Split Binding into immutable SymbolId[] + mutable Value*[]. Halves copy cost. High refactor surface (all env access sites).
+- **Exploration 9** (Loop Register Slots): Compile named-let to pre-allocated Value* slots. Zero per-bounce allocation for lambda-free loops. Dialectic validated (4 rounds, 0.8 confidence). Multi-shot continuations are the hard edge case — need snapshot at shift time. Common case (reverse, map, fib, etc.) gets true zero-alloc.
+- **Exploration 10** (Scope-Gen Stamps on Env): Add scope_gen to Env struct for O(1) skip in copy_tco_env_chain. Trivial extension of Exploration 1. No scope_adopt issue (Envs aren't adopted).
+- **Unified Design (10+7A)**: Graph-of-thoughts brainstorming (25 nodes, groq/deepseek/zai) converged on "Slot-Backed Env" — Env in escape_scope with scope_gen stamp. Followed by dialectic stress-test (4 rounds). Key finding: the "value promotion problem" is NOT a new codepath — it's the existing copy_to_parent loop targeting escape_scope instead of call_scope. ~8 lines of code eliminates ~90% of per-bounce cost. **Largely obsoletes Exploration 9** (Loop Register Slots) which needed a second codepath, closure materialization, and JIT changes.
+- **C1 solution** (Piece 6): Graph-of-thoughts converged on detect-and-fall-back — if shift in named-let body, don't use escape_scope for loop Env. Zero cost for common case.
+- **C7 solution** (Piece 7): Graph-of-thoughts converged on continuation holds scope reference — bump escape_scope.refcount at shift, decrement when StackCtx freed. Minimal change (~6 lines).
+- C1+C7 compose perfectly: loops with shift fall back to call_scope Env (no shared mutable state), while escape_scope stays alive for accumulator cons cells.
+- Restructured priority order into 4 tiers. Explorations 10+7A promoted to Tier 1 (#2 priority).
+
+### Files modified
+| File | Changes |
+|------|---------|
+| `memory/ESCAPE_SCOPE_EXPLORATIONS.md` | Added Explorations 6-10, unified design (10+7A), 4-tier priority order |
+
+### Test results
+943 unified + 73 compiler + 9 stack + 40 scope = **1065 PASS, 0 failures** (unchanged — research only)
+
+---
+
+## 2026-03-01 (Session 63): Scope Generation Stamps — O(1) make_cons escape check
+
+### Summary
+Added `uint scope_gen` field to Value struct (fits in existing padding, zero size increase). Stamped at allocation with globally unique generation from monotonic counter. Replaces `is_in_scope()` chunk-list walk with O(1) `uint == uint` comparison in `make_cons` hot path. `copy_to_parent` retains `is_in_scope` because `scope_adopt` moves chunks between scopes without updating value stamps.
+
+### Changes
+- **Value struct** (`value.c3:596`): Added `uint scope_gen` field after `tag` — fits in 7-byte padding, struct stays 40 bytes
+- **alloc_value/alloc_value_root** (`value.c3:2403,2414`): Stamp `scope_gen` from `current_scope.generation` / `root_scope.generation`
+- **make_cons** (`value.c3:791`): Replaced `is_in_scope(cdr, escape_scope)` chunk walk with `cdr.scope_gen == escape_scope.generation` — O(1)
+- **scope_region.c3**: Added `g_scope_generation_counter` global monotonic counter; `scope_create` assigns `++g_scope_generation_counter` for globally unique generations (fixes collision bug where recycled scopes shared low generation numbers)
+- **copy_to_parent** (`eval.c3:1078`): Kept `is_in_scope` (chunk walk) — scope_adopt moves chunks without updating stamps, so scope_gen can't be used here
+- **Dialectic reasoning analysis**: Explored 5 optimization directions (scope_gen, JIT hint, arena zero-copy, escape binding flag, lazy adoption). Wrote up in `memory/ESCAPE_SCOPE_EXPLORATIONS.md`. Fixed reasoning-tools service config (timeouts, concurrency, missing API keys).
+
+### Bug found and fixed during implementation
+- **Global generation counter needed**: Initial implementation used per-scope `generation` field (incremented on recycle). Multiple scopes could share the same generation number (e.g., malloc'd scope starts at 0, first recycled scope is 1). Caused false skips in copy_to_parent → segfault on fib test. Fixed with `g_scope_generation_counter` monotonic global.
+
+### Files modified
+| File | Changes |
+|------|---------|
+| `src/lisp/value.c3` | `scope_gen` field, stamp in alloc, O(1) make_cons check |
+| `src/lisp/eval.c3` | Comment update in copy_to_parent (kept is_in_scope) |
+| `src/scope_region.c3` | `g_scope_generation_counter`, assigned in `scope_create` |
+| `memory/ESCAPE_SCOPE_EXPLORATIONS.md` | New file — 5 optimization explorations |
+
+### Test results
+943 unified + 73 compiler + 9 stack + 40 scope = **1065 PASS, 0 failures** (unchanged)
+
+---
+
+## 2026-03-01 (Session 62): Three-Tier Escape-Scope Optimization
+
+### Summary
+Implemented escape-scope optimization to reduce O(n²) copying in TCO loops with accumulator patterns (reverse, map, filter) to O(n). Introduces a three-tier scope hierarchy: parent_scope → result_scope → call_scope. Accumulator cons cells are automatically detected and allocated in a persistent result_scope that survives TCO bounces, eliminating redundant deep copies.
+
+### Changes
+- **Phase 1: Scope-aware `copy_to_parent`** — Added `is_in_scope()` helper and `releasing_scope` field to Interp. `copy_to_parent` skips values not in the dying scope (already in a surviving scope).
+- **Phase 2: Result scope + escape-aware cons** — `jit_eval_in_call_scope` creates two-scope hierarchy (result_scope + call_scope). `make_cons` detects accumulator pattern (cdr is NIL or in escape_scope) and redirects allocation to result_scope via `make_cons_escape`. Critical fix: `copy_to_parent` saves/nulls `escape_scope` to prevent copy operations from triggering escape path.
+- **Phase 3: Context boundary save/restore** — `escape_scope` saved/restored at all 6 StackCtx boundary sites (reset, shift, apply_continuation, signal, handle, resolve).
+- **Phase 4: Scope adoption** — Added `scope_adopt()` for O(1) merge of child scope chunks/dtors into parent when refcount == 1. Used in `jit_eval_in_call_scope` step 1 (active_scope → result_scope).
+- **Phase 5: Tests** — 15 new escape-scope functional tests + 10 new scope region unit tests.
+
+### Key bugs fixed during implementation
+1. Two-step promotion needed: result can be in active_scope OR result_scope, requiring active→result→parent promotion
+2. `copy_to_parent` must disable `escape_scope` to prevent internal `make_cons` calls from triggering escape path during copy operations
+
+### Files modified
+| File | Changes |
+|------|---------|
+| `src/scope_region.c3` | `is_in_scope()`, `scope_adopt()`, 10 unit tests |
+| `src/lisp/value.c3` | `releasing_scope`/`escape_scope` fields, `make_cons_escape`, modified `make_cons` |
+| `src/lisp/eval.c3` | Scope-aware skip check + escape_scope save/null/restore in `copy_to_parent` |
+| `src/lisp/jit.c3` | Two-scope `jit_eval_in_call_scope`, TCO trampoline update, 6 context boundary save/restores |
+| `src/lisp/tests.c3` | `run_escape_scope_tests()` with 15 functional tests |
+
+### Test results
+943 unified + 73 compiler + 9 stack + 40 scope = **1065 PASS, 0 failures** (was 1040)
+
+---
+
 ## 2026-03-01 (Session 61): AOT Deferred Items D1+D2+D3
 
 ### Summary
