@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-03-01 (Session 65): Exploration 7C - Mutate-in-Place (Skipped)
+
+### Summary
+Evaluated "Exploration 7C: Mutate-in-Place" which proposed skipping `copy_to_parent` on binding values during the `copy_tco_env_chain` fast path for lambda-free loop bodies. The premise was that new iteration values would overwrite the previous iteration's values, meaning the old values could be safely freed without copying.
+
+### Findings
+This exploration was skipped because its core assumption about the TCO architecture is incorrect:
+1. `copy_tco_env_chain` does NOT operate on the "old" environment from the previous iteration. It operates on the `new_env` created by `Env.extend()` in `jit_apply_value_tail`.
+2. The values being processed in `copy_tco_env_chain` are the **NEW** values for the next iteration, which were evaluated inside the highly transient `call_scope`.
+3. If we skip `copy_to_parent` for these bindings, the new values would be left in `call_scope`, which is immediately cleared by the TCO bounce trampoline. This would result in dangling pointers and complete evaluation failure on the very next iteration.
+4. Because the `new_env` contains the new values, `copy_to_parent` is strictly required to rescue them from the dying `call_scope` into the surviving `escape_scope`.
+5. True mutate-in-place would require rewriting `jit_apply_value_tail` and `Env` semantics to actually overwrite the previous environment's bindings instead of allocating a new `Env` frame, which breaks lexical scoping invariants for any captured continuations or async fibers.
+
+The O(N) overhead of `copy_to_parent` on TCO args is already minimized by the inline bindings optimization and the fast-path liveness checks, making this complex refactoring unnecessary.
+
 ## 2026-03-01 (Session 65): Exploration 5 - Iterative O(n) Copy Optimization
 
 ### Summary

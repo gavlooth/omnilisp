@@ -563,8 +563,11 @@ fn EvalResult eval_define_macro(Expr* expr, Env* env, Interp* interp) {
         collect_pattern_vars(mdef.clauses[i].pattern, &pat_vars_slice, &pat_var_count);
 
         // Walk template and capture bindings
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        interp.current_scope = interp.root_scope;
         capture_template_bindings(mdef.clauses[i].tmpl, &pat_vars, pat_var_count,
                                   &mdef.captured_bindings, &mdef.captured_count, interp);
+        interp.current_scope = saved_scope;
     }
 
     interp.macro_count++;

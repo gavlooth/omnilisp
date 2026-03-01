@@ -493,7 +493,9 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
     }
 
     // Step 2: Promote result from result_scope to caller's scope.
-    // This is the O(n) copy of the final list (instead of O(n) per TCO bounce).
+    // The O(n) copy is now iterative (no C stack overflow).
+    // Exploration 5 (Deferred Free) proved too risky as it caused heap corruption
+    // during complex quasiquote/macro expansions due to scope lifetime intertwining.
     interp.current_scope = saved_scope;
     interp.releasing_scope = result_scope;
     if (result != null) {
@@ -815,7 +817,9 @@ fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
     if (interp.current_scope != interp.root_scope) {
         main::ScopeRegion* saved_scope_ctp = interp.current_scope;
         interp.current_scope = interp.root_scope;
+        interp.releasing_scope = saved_scope_ctp;
         stored = copy_to_parent(value, interp);
+        interp.releasing_scope = null;
         interp.current_scope = saved_scope_ctp;
     }
     // Try local env first, then global
