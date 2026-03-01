@@ -145,7 +145,7 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
     switch (func.tag) {
         case CLOSURE: {
             if (!func.closure_val.has_param && !func.closure_val.has_rest) {
-                return jit_eval_in_call_scope(func.closure_val.body, func.closure_val.env, interp);
+                return jit_eval_in_single_scope(func.closure_val.body, func.closure_val.env, interp);
             }
             if (func.closure_val.has_rest) {
                 usz pc = func.closure_val.param_count;
@@ -153,12 +153,12 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
                     Env* new_env = func.closure_val.env;
                     Value* rest_list = make_cons(interp, arg, make_nil(interp));
                     new_env = new_env.extend(interp, func.closure_val.rest_param, rest_list);
-                    return jit_eval_in_call_scope(func.closure_val.body, new_env, interp);
+                    return jit_eval_in_single_scope(func.closure_val.body, new_env, interp);
                 } else if (pc == 1) {
                     Env* new_env = func.closure_val.env;
                     new_env = new_env.extend(interp, func.closure_val.params[0], arg);
                     new_env = new_env.extend(interp, func.closure_val.rest_param, make_nil(interp));
-                    return jit_eval_in_call_scope(func.closure_val.body, new_env, interp);
+                    return jit_eval_in_single_scope(func.closure_val.body, new_env, interp);
                 } else {
                     return raise_error(interp, "too few arguments for variadic lambda");
                 }
@@ -170,7 +170,7 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
                 return raise_error(interp, buf[:len]);
             }
             Env* new_env = func.closure_val.env.extend(interp, func.closure_val.param, arg);
-            return jit_eval_in_call_scope(func.closure_val.body, new_env, interp);
+            return jit_eval_in_single_scope(func.closure_val.body, new_env, interp);
         }
 
         case PRIMITIVE: {
@@ -418,6 +418,29 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
         interp.jit_env = saved_env;
         return result;
     }
+}
+
+// Single-scope wrapper: evaluates closure body in ONE child scope.
+// Used for non-loop function calls. No escape_scope/tco_recycle_scope set.
+// Avoids the overhead of two scopes (result_scope + call_scope).
+fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* call_scope = main::scope_create(saved_scope);
+    interp.current_scope = call_scope;
+
+    Value* result = jit_eval(body, call_env, interp);
+
+    main::ScopeRegion* active_scope = interp.current_scope;
+
+    interp.current_scope = saved_scope;
+    interp.releasing_scope = active_scope;
+    if (result != null) {
+        result = copy_to_parent(result, interp);
+    }
+    interp.releasing_scope = null;
+    main::scope_release(active_scope);
+
+    return result;
 }
 
 // Scope-per-call wrapper: evaluates closure body in a child scope.
@@ -2386,7 +2409,7 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
 
     // Zero-arg non-variadic closure: (lambda () body)
     if (arg_count == 0 && func.tag == CLOSURE && !func.closure_val.has_param && !func.closure_val.has_rest) {
-        return jit_eval_in_call_scope(func.closure_val.body, func.closure_val.env, interp);
+        return jit_eval_in_single_scope(func.closure_val.body, func.closure_val.env, interp);
     }
 
     // Direct variadic closure path
@@ -2406,7 +2429,7 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
             curr = curr.cons_val.cdr;
         }
         new_env = new_env.extend(interp, func.closure_val.rest_param, curr);
-        return jit_eval_in_call_scope(func.closure_val.body, new_env, interp);
+        return jit_eval_in_single_scope(func.closure_val.body, new_env, interp);
     }
 
     // Direct primitive path for multi-arg primitives
@@ -2444,7 +2467,7 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
                 call_env.define(func.closure_val.params[i], curr.cons_val.car);
                 curr = curr.cons_val.cdr;
             }
-            Value* result = jit_eval_in_call_scope(func.closure_val.body, call_env, interp);
+            Value* result = jit_eval_in_single_scope(func.closure_val.body, call_env, interp);
             // If extra args remain and result is callable, chain-apply them
             if (arg_count > pc && result != null && result.tag != ERROR) {
                 usz remaining = arg_count - pc;
@@ -2558,7 +2581,7 @@ fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list
             }
             if (arg_count > pc) {
                 // Extra args: evaluate body, then chain-apply rest
-                Value* result = jit_eval_in_call_scope(func.closure_val.body, call_env, interp);
+                Value* result = jit_eval_in_single_scope(func.closure_val.body, call_env, interp);
                 if (result != null && result.tag != ERROR) {
                     usz remaining = arg_count - pc;
                     return jit_apply_multi_args_tail(interp, result, curr, remaining);

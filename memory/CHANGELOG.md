@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-03-01 (Session 65): Exploration 2 - JIT Accumulator Hint
+
+### Summary
+Skipped two-scope (result_scope + call_scope) setup for non-accumulator function calls, avoiding the overhead of creating and destroying two scopes per normal function application.
+
+### Changes
+- Added `jit_eval_in_single_scope(body, env, interp)` in `src/lisp/jit.c3` which creates just ONE child scope (no result_scope, no escape_scope, no tco_recycle_scope).
+- Replaced `jit_eval_in_call_scope` with `jit_eval_in_single_scope` in `jit_apply_value_impl` and `jit_apply_multi_args` for regular closure applications.
+- Retained `jit_eval_in_call_scope` for `jit_eval_let_rec` (which needs the two-scope setup for TCO recycling and accumulator cell redirection).
+
+### Files modified
+| File | Changes |
+|------|---------|
+| `src/lisp/jit.c3` | Added `jit_eval_in_single_scope`, modified closure application paths |
+
 ## 2026-03-01 (Session 65): Exploration 7B - Inline Bindings
 
 ### Summary
