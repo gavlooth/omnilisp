@@ -149,19 +149,23 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
         g_scope_freelist_count--;
     } else {
         scope = (ScopeRegion*)mem::malloc(ScopeRegion.sizeof);
+        scope.chunks = null;
     }
 
     // Assign globally unique generation (monotonic counter)
     scope.generation = ++g_scope_generation_counter;
 
-    // Allocate initial chunk
-    ScopeChunk* chunk = scope_chunk_alloc(SCOPE_CHUNK_INITIAL);
-    chunk.next = null;
+    // Reuse existing chunk if present, else allocate
+    ScopeChunk* chunk = scope.chunks;
+    if (chunk == null) {
+        chunk = scope_chunk_alloc(SCOPE_CHUNK_INITIAL);
+        chunk.next = null;
+        scope.chunks = chunk;
+    }
 
     // Initialize scope
     scope.refcount = 1;
     scope.parent = parent;
-    scope.chunks = chunk;
     scope.bump = scope_chunk_data(chunk);
     scope.limit = scope.bump + chunk.capacity;
     scope.dtors = null;

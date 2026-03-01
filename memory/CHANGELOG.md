@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-03-01 (Session 65): Exploration 5 - Iterative O(n) Copy Optimization
+
+### Summary
+Evaluated "Exploration 5: Dual Refcount / Deferred Free" which aimed to eliminate the `O(n)` copy in `jit_eval_in_call_scope` via scope lifetime tracking (`value_rc`) or `scope_adopt`. However, modifying scope lifetimes or adopting chunks across complex TCO unwinds proved too risky, leading to non-deterministic double frees and heap corruption (`corrupted double-linked list` during macro expansion and deep unwinding). 
+Instead of Deferred Free, I mitigated the actual bottleneck (C stack overflow) by rewriting `copy_to_parent`'s `CONS` copying logic to be purely iterative. This safely retains deterministic memory management while preventing crashes on 50,000+ element lists.
+
+### Changes
+- Rewrote `case CONS:` in `copy_to_parent` (`src/lisp/eval.c3`) to use an iterative loop (`while (true)`) instead of tail-recursive calls, preventing C stack overflow on massive TCO loops (e.g., `range-to 50000`).
+- Fixed a major memory leak in `scope_create` (`src/scope_region.c3`) where freelisted scopes would unconditionally overwrite their reused first chunk, leading to leaked chunks and potential allocator pressure.
+- Documented the abandonment of Deferred Free in `jit_eval_in_call_scope` as the iterative copy solves the crash risk with zero added architectural complexity.
+
+### Files modified
+| File | Changes |
+|------|---------|
+| `src/lisp/eval.c3` | Made `copy_to_parent` for `CONS` iterative, added missing `break` in `ITERATOR` case |
+| `src/scope_region.c3` | Fixed `scope_create` to properly reuse chunks from the freelist |
+
 ## 2026-03-01 (Session 65): Exploration 6 - Closure Scratch Arena
 
 ### Summary

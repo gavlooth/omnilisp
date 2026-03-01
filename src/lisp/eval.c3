@@ -1100,9 +1100,33 @@ fn Value* copy_to_parent(Value* v, Interp* interp) {
         case SYMBOL:
             result = make_symbol(interp, v.sym_val);
         case CONS: {
-            Value* new_car = copy_to_parent(v.cons_val.car, interp);
-            Value* new_cdr = copy_to_parent(v.cons_val.cdr, interp);
-            result = make_cons(interp, new_car, new_cdr);
+            // Iterative copy to prevent C stack overflow on long lists
+            Value* head = interp.alloc_value();
+            head.tag = CONS;
+            Value* current_new = head;
+            Value* current_old = v;
+            
+            while (true) {
+                current_new.cons_val.car = copy_to_parent(current_old.cons_val.car, interp);
+                
+                Value* old_cdr = current_old.cons_val.cdr;
+                if (old_cdr != null && old_cdr.tag == CONS) {
+                    if (interp.releasing_scope != null && !main::is_in_scope((void*)old_cdr, interp.releasing_scope)) {
+                        current_new.cons_val.cdr = old_cdr;
+                        break;
+                    }
+                    Value* next_new = interp.alloc_value();
+                    next_new.tag = CONS;
+                    current_new.cons_val.cdr = next_new;
+                    current_new = next_new;
+                    current_old = old_cdr;
+                } else {
+                    current_new.cons_val.cdr = copy_to_parent(old_cdr, interp);
+                    break;
+                }
+            }
+            result = head;
+            break;
         }
         case CLOSURE: {
             if (interp.releasing_scope != null && 
