@@ -230,10 +230,10 @@ struct Cons {
  * Supports variadic lambdas: (lambda (x y .. rest) body)
  */
 struct Closure {
-    uint      refcount;       // Number of Value* sharing this Closure (RC lifecycle)
+    uint      scope_gen;      // Scope generation stamp for O(1) membership check
     main::ScopeRegion* env_scope; // Standalone scope holding env copy (null if root-scope closure)
     SymbolId  param;          // Parameter name (first/only param, or unused if param_count==0)
-    SymbolId* params;         // All fixed params (including first), malloc'd
+    SymbolId* params;         // All fixed params (including first), bump-allocated
     usz       param_count;    // Number of fixed params
     bool      has_rest;       // True if variadic (.. rest)
     SymbolId  rest_param;     // Rest parameter name (if has_rest)
@@ -241,7 +241,7 @@ struct Closure {
     Env*      env;            // Captured environment
     bool      has_param;      // false for zero-arg lambdas: (lambda () body)
     bool      has_typed_params;  // true if any param has type annotations
-    MethodSignature* type_sig;   // heap-allocated type signature (null if no types)
+    MethodSignature* type_sig;   // bump-allocated type signature (null if no types)
     SymbolId  name;           // Bound name (set by define), 0 if anonymous
 }
 
@@ -639,18 +639,8 @@ fn void scope_dtor_value(void* ptr) {
                 v.str_val = null;
             }
         case CLOSURE:
-            if (v.closure_val != null) {
-                if (--v.closure_val.refcount == 0) {
-                    // Last reference — release env_scope and free Closure
-                    if (v.closure_val.env_scope != null) {
-                        main::scope_release(v.closure_val.env_scope);
-                    }
-                    if (v.closure_val.params != null) mem::free(v.closure_val.params);
-                    if (v.closure_val.type_sig != null) mem::free(v.closure_val.type_sig);
-                    mem::free(v.closure_val);
-                }
-                v.closure_val = null;
-            }
+            // Handled by scope_dtor_closure now
+            break;
         case PRIMITIVE:
             if (v.prim_val != null) {
                 mem::free(v.prim_val);
@@ -692,6 +682,14 @@ fn void scope_dtor_value(void* ptr) {
 }
 
 // Scope destructor for Env objects — frees malloc'd bindings and hash table.
+fn void scope_dtor_closure(void* ptr) {
+    Value* v = (Value*)ptr;
+    if (v.closure_val != null && v.closure_val.env_scope != null) {
+        main::scope_release(v.closure_val.env_scope);
+        v.closure_val.env_scope = null;
+    }
+}
+
 fn void scope_dtor_env(void* ptr) {
     Env* env = (Env*)ptr;
     if (!env.is_inline && env.bindings != null) {
@@ -806,12 +804,12 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
 fn Value* make_closure(Interp* interp, SymbolId param, Expr* body, Env* env) {
     Value* v = interp.alloc_value();
     v.tag = CLOSURE;
-    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
-    v.closure_val = (Closure*)mem::malloc(Closure.sizeof);
-    v.closure_val.refcount = 1;
+    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_closure);
+    v.closure_val = (Closure*)interp.current_scope.alloc(Closure.sizeof);
+    v.closure_val.scope_gen = interp.current_scope.generation;
     v.closure_val.env_scope = null;
     v.closure_val.param = param;
-    v.closure_val.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
+    v.closure_val.params = (SymbolId*)interp.current_scope.alloc(SymbolId.sizeof * 1);
     v.closure_val.params[0] = param;
     v.closure_val.param_count = 1;
     v.closure_val.has_rest = false;
@@ -827,9 +825,9 @@ fn Value* make_closure(Interp* interp, SymbolId param, Expr* body, Env* env) {
 fn Value* make_closure_no_param(Interp* interp, Expr* body, Env* env) {
     Value* v = interp.alloc_value();
     v.tag = CLOSURE;
-    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
-    v.closure_val = (Closure*)mem::malloc(Closure.sizeof);
-    v.closure_val.refcount = 1;
+    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_closure);
+    v.closure_val = (Closure*)interp.current_scope.alloc(Closure.sizeof);
+    v.closure_val.scope_gen = interp.current_scope.generation;
     v.closure_val.env_scope = null;
     v.closure_val.param = 0;
     v.closure_val.params = null;

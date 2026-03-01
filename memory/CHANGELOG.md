@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-03-01 (Session 65): Exploration 6 - Closure Scratch Arena
+
+### Summary
+Eliminated per-closure `malloc(Closure)` by bump-allocating `Closure` structs in the scope arena. All standard closures (and their inner parameters/signatures) are now exclusively bump-allocated and freed exactly when their creating scopes die. Deep-copy semantics and robust scope tracking via `scope_contains` solve the complex lifecycle challenges of escaping closures and named-let TCO loops.
+
+### Changes
+- Replaced heap allocation of `Closure` in `make_closure`, `make_closure_no_param`, and `jit_make_closure_from_expr` with `interp.current_scope.alloc()`.
+- Replaced `Closure.refcount` with `Closure.scope_gen` to enable O(1) liveness checking without RC overhead.
+- Added `scope_dtor_closure` to safely release the inner `env_scope` when the bump-allocated closure dies.
+- Added `scope_contains(ScopeRegion*, void*)` to `src/scope_region.c3` to correctly detect memory that was `scope_adopt`ed from a child scope.
+- Fixed `copy_to_parent` for closures: it now performs a full structural deep-copy when returning closures that are trapped inside a dying or adopted scope (`scope_gen` or `scope_contains` matches `releasing_scope`).
+- Fixed `copy_env_to_scope` to recursively deep-copy closures and iterators when building captured environments.
+- Handled edge cases where zero-param closures need `params = null` explicitly during deep copies to avoid dangling pointers.
+- Fixed `jit_eval_let_rec` memory leak/dangling pointer issues by explicitly deep-copying the loop body closure into the `env_scope` and removing dtors to prevent cycle memory leaks.
+- Set `interp.releasing_scope` properly in `eval.c3` `run` loop and `jit.c3` `jit_eval_define` to ensure globals created dynamically survive TCO and execution boundaries.
+
+### Files modified
+| File | Changes |
+|------|---------|
+| `src/lisp/value.c3` | Added `scope_dtor_closure`, updated `Closure` struct, modified `make_closure` |
+| `src/lisp/eval.c3` | Re-wrote `copy_to_parent` closures/iterators, added scope checks to `run` and `copy_env_to_scope` |
+| `src/lisp/jit.c3` | Adjusted `jit_make_closure_from_expr`, fixed `jit_eval_let_rec` TCO loops, added `releasing_scope` to env extensions |
+| `src/scope_region.c3` | Added `scope_contains` |
+
 ## 2026-03-01 (Session 65): Exploration 2 - JIT Accumulator Hint
 
 ### Summary

@@ -1105,12 +1105,40 @@ fn Value* copy_to_parent(Value* v, Interp* interp) {
             result = make_cons(interp, new_car, new_cdr);
         }
         case CLOSURE: {
-            // Shared Closure: new Value wrapper in target scope, bump refcount
-            result = interp.alloc_value();
-            result.tag = CLOSURE;
-            result.closure_val = v.closure_val;
-            result.closure_val.refcount++;
-            main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+            if (interp.releasing_scope != null && 
+               (v.closure_val.scope_gen == interp.releasing_scope.generation || 
+                main::scope_contains(interp.releasing_scope, (void*)v.closure_val))) {
+                // Deep copy: new Value and new Closure in target scope
+                result = interp.alloc_value();
+                result.tag = CLOSURE;
+                result.closure_val = (Closure*)interp.current_scope.alloc(Closure.sizeof);
+                *result.closure_val = *v.closure_val;
+                result.closure_val.scope_gen = interp.current_scope.generation;
+                
+                // Copy params array to new scope
+                if (v.closure_val.param_count > 0) {
+                    result.closure_val.params = (SymbolId*)interp.current_scope.alloc(SymbolId.sizeof * v.closure_val.param_count);
+                    for (usz i = 0; i < v.closure_val.param_count; i++) {
+                        result.closure_val.params[i] = v.closure_val.params[i];
+                    }
+                } else {
+                    result.closure_val.params = null;
+                }
+                
+                // Copy type_sig if present
+                if (v.closure_val.type_sig != null) {
+                    result.closure_val.type_sig = (MethodSignature*)interp.current_scope.alloc(MethodSignature.sizeof);
+                    *result.closure_val.type_sig = *v.closure_val.type_sig;
+                }
+
+                // Refcount env_scope
+                if (result.closure_val.env_scope != null) {
+                    result.closure_val.env_scope.refcount++;
+                }
+                main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_closure);
+            } else {
+                result = v; // Return as-is
+            }
         }
         case PRIMITIVE:
             result = v;
@@ -1144,6 +1172,7 @@ fn Value* copy_to_parent(Value* v, Interp* interp) {
             result = interp.alloc_value();
             result.tag = ITERATOR;
             result.iterator_val = promoted_thunk;
+            break;
         }
         case COROUTINE:
             // Shallow copy: Value wrapper may be in child scope, coroutine_val (Coro*) managed by stack pool
@@ -1208,8 +1237,70 @@ fn Env* copy_env_to_scope(Env* env, Interp* interp, usz depth = 0) {
 
     for (usz i = 0; i < env.binding_count; i++) {
         new_env.bindings[i].name = env.bindings[i].name;
-        new_env.bindings[i].value = copy_to_parent(
-            env.bindings[i].value, interp);
+        Value* val = env.bindings[i].value;
+        // Deep copy closures and iterators to ensure they survive if they were in a dying scope
+        if (val != null && val.tag == CLOSURE && val.closure_val.env_scope != null) {
+            if (val.closure_val.scope_gen != interp.current_scope.generation) {
+                Value* result = interp.alloc_value();
+                result.tag = CLOSURE;
+                result.closure_val = (Closure*)interp.current_scope.alloc(Closure.sizeof);
+                *result.closure_val = *val.closure_val;
+                result.closure_val.scope_gen = interp.current_scope.generation;
+                if (val.closure_val.param_count > 0) {
+                    result.closure_val.params = (SymbolId*)interp.current_scope.alloc(SymbolId.sizeof * val.closure_val.param_count);
+                    for (usz p = 0; p < val.closure_val.param_count; p++) {
+                        result.closure_val.params[p] = val.closure_val.params[p];
+                    }
+                } else {
+                    result.closure_val.params = null;
+                }
+                if (val.closure_val.type_sig != null) {
+                    result.closure_val.type_sig = (MethodSignature*)interp.current_scope.alloc(MethodSignature.sizeof);
+                    *result.closure_val.type_sig = *val.closure_val.type_sig;
+                }
+                if (result.closure_val.env_scope != null) {
+                    result.closure_val.env_scope.refcount++;
+                }
+                main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_closure);
+                val = result;
+            }
+        } else if (val != null && val.tag == ITERATOR) {
+            // ITERATOR contains a closure, deep copy it!
+            Value* inner = val.iterator_val;
+            if (inner != null && inner.tag == CLOSURE && inner.closure_val.env_scope != null) {
+                if (inner.closure_val.scope_gen != interp.current_scope.generation) {
+                    Value* inner_result = interp.alloc_value();
+                    inner_result.tag = CLOSURE;
+                    inner_result.closure_val = (Closure*)interp.current_scope.alloc(Closure.sizeof);
+                    *inner_result.closure_val = *inner.closure_val;
+                    inner_result.closure_val.scope_gen = interp.current_scope.generation;
+                    if (inner.closure_val.param_count > 0) {
+                        inner_result.closure_val.params = (SymbolId*)interp.current_scope.alloc(SymbolId.sizeof * inner.closure_val.param_count);
+                        for (usz p = 0; p < inner.closure_val.param_count; p++) {
+                            inner_result.closure_val.params[p] = inner.closure_val.params[p];
+                        }
+                    } else {
+                        inner_result.closure_val.params = null;
+                    }
+                    if (inner.closure_val.type_sig != null) {
+                        inner_result.closure_val.type_sig = (MethodSignature*)interp.current_scope.alloc(MethodSignature.sizeof);
+                        *inner_result.closure_val.type_sig = *inner.closure_val.type_sig;
+                    }
+                    if (inner_result.closure_val.env_scope != null) {
+                        inner_result.closure_val.env_scope.refcount++;
+                    }
+                    main::scope_register_dtor(interp.current_scope, (void*)inner_result, &scope_dtor_closure);
+                    inner = inner_result;
+                }
+            }
+            Value* iter_result = interp.alloc_value();
+            iter_result.tag = ITERATOR;
+            iter_result.iterator_val = inner;
+            val = iter_result;
+        } else {
+            val = copy_to_parent(val, interp);
+        }
+        new_env.bindings[i].value = val;
     }
     new_env.parent = copy_env_to_scope(env.parent, interp, depth + 1);
     // Rebuild hash table if source had one
@@ -2072,7 +2163,9 @@ fn EvalResult run(char[] source, Interp* interp) {
             if (jit_result != null) {
                 // Promote result to parent scope before releasing child
                 interp.current_scope = saved_scope;
+                interp.releasing_scope = child_scope;
                 jit_result = copy_to_parent(jit_result, interp);
+                interp.releasing_scope = null;
             }
             result = eval_ok(jit_result);
         }

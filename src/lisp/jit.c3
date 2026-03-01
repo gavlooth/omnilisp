@@ -144,6 +144,7 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
 
     switch (func.tag) {
         case CLOSURE: {
+            assert(func.closure_val != null, "jit_apply_value_impl: func.closure_val is null");
             if (!func.closure_val.has_param && !func.closure_val.has_rest) {
                 return jit_eval_in_single_scope(func.closure_val.body, func.closure_val.env, interp);
             }
@@ -169,6 +170,7 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
                 usz len = format_arity_error(&buf, func.closure_val.param_count, 1);
                 return raise_error(interp, buf[:len]);
             }
+            assert(func.closure_val.env != null, "jit_apply_value_impl: env is null");
             Env* new_env = func.closure_val.env.extend(interp, func.closure_val.param, arg);
             return jit_eval_in_single_scope(func.closure_val.body, new_env, interp);
         }
@@ -640,8 +642,7 @@ fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
     // Copy variadic info from ExprLambda to Closure
     closure.closure_val.param_count = expr.lambda.param_count;
     if (expr.lambda.param_count > 0) {
-        mem::free(closure.closure_val.params);
-        closure.closure_val.params = (SymbolId*)mem::malloc(SymbolId.sizeof * expr.lambda.param_count);
+        closure.closure_val.params = (SymbolId*)interp.current_scope.alloc(SymbolId.sizeof * expr.lambda.param_count);
         for (usz i = 0; i < expr.lambda.param_count; i++) {
             closure.closure_val.params[i] = expr.lambda.params[i];
         }
@@ -659,7 +660,7 @@ fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
     closure.closure_val.has_typed_params = expr.lambda.has_typed_params;
     closure.closure_val.type_sig = null;
     if (expr.lambda.has_typed_params) {
-        MethodSignature* sig = (MethodSignature*)mem::malloc(MethodSignature.sizeof);
+        MethodSignature* sig = (MethodSignature*)interp.current_scope.alloc(MethodSignature.sizeof);
         sig.param_count = expr.lambda.param_count;
         sig.constraint_count = 0;
         usz ann_count = expr.lambda.param_count;
@@ -724,16 +725,36 @@ fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
     if (is_closure(actual_value)) {
         if (actual_value.closure_val.env_scope != null) {
             // Non-root closure: create weak self-reference in env_scope.
-            // "Weak" means no refcount bump and no dtor — breaks the RC cycle
-            // (closure→env→self_ref→closure). Safe because self_ref is only
-            // accessed during body evaluation while the Closure is alive.
+            // Deep copy the closure struct into env_scope so it survives even if call_scope dies.
             main::ScopeRegion* saved_scope = interp.current_scope;
             interp.current_scope = actual_value.closure_val.env_scope;
+            
             Value* self_ref = interp.alloc_value();
             self_ref.tag = CLOSURE;
-            self_ref.closure_val = actual_value.closure_val;
-            // NO refcount bump — weak reference
-            // NO dtor registration — just data in env_scope chunks
+            
+            Closure* copied_closure = (Closure*)interp.current_scope.alloc(Closure.sizeof);
+            *copied_closure = *actual_value.closure_val;
+            copied_closure.scope_gen = interp.current_scope.generation;
+            
+            if (copied_closure.param_count > 0) {
+                copied_closure.params = (SymbolId*)interp.current_scope.alloc(SymbolId.sizeof * copied_closure.param_count);
+                for (usz i = 0; i < copied_closure.param_count; i++) {
+                    copied_closure.params[i] = actual_value.closure_val.params[i];
+                }
+            } else {
+                copied_closure.params = null;
+            }
+            
+            if (copied_closure.type_sig != null) {
+                copied_closure.type_sig = (MethodSignature*)interp.current_scope.alloc(MethodSignature.sizeof);
+                *copied_closure.type_sig = *actual_value.closure_val.type_sig;
+            }
+            
+            self_ref.closure_val = copied_closure;
+            
+            // NO refcount bump on env_scope (self-reference cycle prevention)
+            // NO dtor registration — data is in env_scope chunks, freed automatically
+            
             interp.current_scope = saved_scope;
 
             // Patch self-reference in the COPIED env (inside env_scope)
@@ -889,7 +910,9 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
     if (interp.current_scope != interp.root_scope) {
         main::ScopeRegion* saved_scope_ctp = interp.current_scope;
         interp.current_scope = interp.root_scope;
+        interp.releasing_scope = saved_scope_ctp;
         stored_val = copy_to_parent(value, interp);
+        interp.releasing_scope = null;
         interp.current_scope = saved_scope_ctp;
     }
 
@@ -1004,8 +1027,10 @@ fn Env* jit_env_extend(Interp* interp, Env* env, SymbolId name, Value* value) {
 fn Env* jit_env_extend_root(Interp* interp, Env* env, SymbolId name, Value* value) {
     main::ScopeRegion* saved_scope = interp.current_scope;
     interp.current_scope = interp.root_scope;
+    interp.releasing_scope = saved_scope;
     // Promote the initial value to root_scope
     Value* promoted = copy_to_parent(value, interp);
+    interp.releasing_scope = null;
     Env* box = env.extend(interp, name, promoted);
     box.persistent = true;
     interp.current_scope = saved_scope;

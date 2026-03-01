@@ -306,6 +306,23 @@ fn void scope_register_dtor(ScopeRegion* scope, void* ptr, ScopeDestructorFn fun
     scope.dtors = d;
 }
 
+/**
+ * Check if a pointer points to memory allocated within this scope's chunks.
+ * O(N) where N is the number of chunks in this scope (usually 1 or 2).
+ */
+fn bool scope_contains(ScopeRegion* scope, void* ptr) {
+    if (scope == null || ptr == null) return false;
+    usz p = (usz)ptr;
+    ScopeChunk* chunk = scope.chunks;
+    while (chunk != null) {
+        usz start = (usz)chunk + ScopeChunk.sizeof;
+        usz end = start + chunk.capacity;
+        if (p >= start && p < end) return true;
+        chunk = chunk.next;
+    }
+    return false;
+}
+
 // =============================================================================
 // Scope reset (for loop reuse — Perceus reuse analysis)
 // =============================================================================
