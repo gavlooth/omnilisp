@@ -1194,10 +1194,18 @@ fn Env* copy_env_to_scope(Env* env, Interp* interp, usz depth = 0) {
     }
 
     Env* new_env = interp.alloc_env();
-    // Allocate bindings to match source
-    new_env.bindings = (Binding*)mem::malloc(Binding.sizeof * env.binding_count);
-    new_env.capacity = env.binding_count;
     new_env.binding_count = env.binding_count;
+    
+    if (env.binding_count <= 4) {
+        new_env.is_inline = true;
+        new_env.bindings = &new_env.inline_bindings[0];
+        new_env.capacity = 4;
+    } else {
+        new_env.is_inline = false;
+        new_env.bindings = (Binding*)mem::malloc(Binding.sizeof * env.binding_count);
+        new_env.capacity = env.binding_count;
+    }
+
     for (usz i = 0; i < env.binding_count; i++) {
         new_env.bindings[i].name = env.bindings[i].name;
         new_env.bindings[i].value = copy_to_parent(

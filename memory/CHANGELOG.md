@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-03-01 (Session 65): Exploration 7B - Inline Bindings
+
+### Summary
+Implemented inline bindings for `Env` structs to eliminate `malloc(Binding[])` and `scope_register_dtor` for small environment frames (<=4 bindings). Since most `Env` frames are small (1-3 bindings for lambda parameters and let bindings), the vast majority of frame allocations now bypass the heap and destructor registration entirely.
+
+### Changes
+- Added `Binding inline_bindings[4]` and `bool is_inline` flag to `Env` struct in `src/lisp/value.c3`.
+- Updated `ENV_INITIAL_CAPACITY` from 8 to 4.
+- Modified `make_env` to set `env.bindings = &env.inline_bindings`, `env.capacity = 4`, and `env.is_inline = true`. No malloc, no dtor for bindings array.
+- Updated `Env.define` to transition from inline array to heap array only when `binding_count` exceeds 4.
+- Modified `scope_dtor_env` to skip `free(env.bindings)` when `is_inline` is true.
+- Updated `copy_env_to_scope` in `eval.c3` to use the inline path for small copied frames.
+
+### Files modified
+| File | Changes |
+|------|---------|
+| `src/lisp/value.c3` | Added inline bindings array to `Env`, updated `ENV_INITIAL_CAPACITY`, modified `make_env`, `Env.define`, and `scope_dtor_env` |
+| `src/lisp/eval.c3`  | Modified `copy_env_to_scope` to respect inline size threshold |
+
 ## 2026-03-01 (Session 64): Escape-Scope Env Optimization (Unified 10+7A)
 
 ### Summary

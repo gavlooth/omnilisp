@@ -694,7 +694,7 @@ fn void scope_dtor_value(void* ptr) {
 // Scope destructor for Env objects — frees malloc'd bindings and hash table.
 fn void scope_dtor_env(void* ptr) {
     Env* env = (Env*)ptr;
-    if (env.bindings != null) {
+    if (!env.is_inline && env.bindings != null) {
         mem::free(env.bindings);
         env.bindings = null;
     }
@@ -1204,7 +1204,7 @@ fn char[] double_to_string(double val, char[] buffer) {
 // =============================================================================
 
 // Initial capacity for dynamically-sized Env binding arrays
-const usz ENV_INITIAL_CAPACITY = 8;
+const usz ENV_INITIAL_CAPACITY = 4;
 
 // Threshold: build hash table when binding_count exceeds this
 const usz ENV_HASH_THRESHOLD = 16;
@@ -1242,6 +1242,8 @@ struct Env {
     usz                   hash_capacity;  // Power of 2
     bool                  persistent;     // true = allocated in root_region, skip in deep_copy_env
     uint                  scope_gen;      // Scope generation stamp for O(1) membership check
+    bool                  is_inline;
+    Binding[4]            inline_bindings;
 }
 
 fn Env* make_env(Interp* interp, Env* parent) {
@@ -1256,9 +1258,10 @@ fn Env* make_env(Interp* interp, Env* parent) {
     if (use_escape) interp.current_scope = target;
 
     Env* env = interp.alloc_env();
-    env.bindings = (Binding*)mem::malloc(Binding.sizeof * ENV_INITIAL_CAPACITY);
+    env.is_inline = true;
+    env.bindings = &env.inline_bindings[0];
     env.binding_count = 0;
-    env.capacity = ENV_INITIAL_CAPACITY;
+    env.capacity = 4;
     env.parent = parent;
     env.hash_table = null;
     env.hash_capacity = 0;
@@ -1355,7 +1358,10 @@ fn void Env.define(Env* self, SymbolId name, Value* value) {
         for (usz i = 0; i < self.binding_count; i++) {
             new_bindings[i] = self.bindings[i];
         }
-        mem::free(self.bindings);
+        if (!self.is_inline) {
+            mem::free(self.bindings);
+        }
+        self.is_inline = false;
         self.bindings = new_bindings;
         self.capacity = new_cap;
     }
