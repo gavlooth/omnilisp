@@ -184,13 +184,13 @@ fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
     mdb_env_set_maxdbs(db.env, 64);
 
     // Determine path
-    char[256] path_buf;
+    char[256] path_buf;  // buffer: C-interop (keep) — null-terminated for mdb_env_open
     uint flags = 0;
 
     if (args[0].tag == SYMBOL) {
         // 'memory → use unique temp path with NOSUBDIR
         // Generate unique name using address of db pointer
-        char[32] suffix;
+        char[32] suffix;  // buffer: C-interop (keep) — hex-formatted, copied into path_buf
         usz slen = io::bprintf(&suffix, "%x", (uint)(usz)db)!!.len;
         char[] base = "/tmp/deduce-";
         for (usz i = 0; i < base.len; i++) path_buf[i] = base[i];
@@ -255,7 +255,7 @@ fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Encode tuple
-    char[4096] key_buf;
+    char[4096] key_buf;  // buffer: C-interop (keep) — binary tuple encoding for mdb_put
     usz key_len = encode_tuple(args[1..], key_buf[..], 4096);
 
     MdbVal key;
@@ -307,7 +307,7 @@ fn Value* prim_retract_fact(Value*[] args, Env* env, Interp* interp) {
         return raise_error(interp, "retract!: wrong number of values for relation");
     }
 
-    char[4096] key_buf;
+    char[4096] key_buf;  // buffer: C-interop (keep) — binary tuple encoding for mdb_del
     usz key_len = encode_tuple(args[1..], key_buf[..], 4096);
 
     MdbVal key;
@@ -414,7 +414,7 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
 
     // Open LMDB named database for this relation
     char[] name_str = interp.symbols.get_name(rel_name);
-    char[64] dbi_name;
+    char[64] dbi_name;  // buffer: C-interop (keep) — null-terminated for mdb_dbi_open
     usz nlen = name_str.len < 63 ? name_str.len : 63;
     for (usz i = 0; i < nlen; i++) dbi_name[i] = name_str[i];
     dbi_name[nlen] = 0;

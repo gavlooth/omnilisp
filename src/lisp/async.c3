@@ -29,7 +29,7 @@ struct SockaddrIn {
     ushort sin_family;
     ushort sin_port;
     uint   sin_addr;
-    char[8] sin_zero;
+    char[8] sin_zero;  // buffer: C-interop (keep) — POSIX sockaddr_in struct padding
 }
 
 // addrinfo result — we only need ai_family, ai_addrlen, ai_addr, ai_next
@@ -89,13 +89,13 @@ fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
     int port = (int)args[1].int_val;
 
     // Null-terminate host for C
-    char[256] host_buf;
+    char[256] host_buf;  // buffer: C-interop (keep) — null-terminated for c_getaddrinfo
     usz hlen = host.len < 255 ? host.len : 255;
     for (usz i = 0; i < hlen; i++) host_buf[i] = host[i];
     host_buf[hlen] = 0;
 
     // Null-terminate port
-    char[8] port_buf;
+    char[8] port_buf;  // buffer: C-interop (keep) — null-terminated for c_getaddrinfo
     int plen = io::bprintf(&port_buf, "%d", port)!!.len;
     port_buf[plen] = 0;
 
@@ -225,7 +225,7 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
 
     char[] host = args[0].str_chars[:args[0].str_len];
 
-    char[256] host_buf;
+    char[256] host_buf;  // buffer: C-interop (keep) — null-terminated for c_getaddrinfo
     usz hlen = host.len < 255 ? host.len : 255;
     for (usz i = 0; i < hlen; i++) host_buf[i] = host[i];
     host_buf[hlen] = 0;
@@ -241,7 +241,7 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
     int ai_family = *((int*)((char*)result + 4));
     void* ai_addr = *((void**)((char*)result + 24));
 
-    char[64] ip_buf;
+    char[64] ip_buf;  // buffer: C-interop (keep) — output buffer for c_inet_ntop
     if (ai_family == AF_INET) {
         // sockaddr_in: sin_addr is at offset 4 (after sin_family + sin_port)
         void* sin_addr = (char*)ai_addr + 4;

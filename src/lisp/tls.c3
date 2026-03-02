@@ -92,7 +92,7 @@ fn Value* prim_tls_connect(Value*[] args, Env* env, Interp* interp) {
     char[] hostname = args[1].str_chars[:args[1].str_len];
 
     // Null-terminate hostname
-    char[256] host_buf;
+    char[256] host_buf;  // buffer: C-interop (keep) — passed to br_ssl_client_reset
     usz hlen = hostname.len < 255 ? hostname.len : 255;
     for (usz i = 0; i < hlen; i++) host_buf[i] = hostname[i];
     host_buf[hlen] = 0;

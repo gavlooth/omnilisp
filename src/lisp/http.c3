@@ -14,10 +14,10 @@ import main;
 // Parse URL into (scheme host port path)
 struct ParsedUrl {
     bool   is_https;
-    char[256] host;
+    char[256] host;   // buffer: C-interop (keep) — null-terminated, passed to tcp-connect
     usz    host_len;
     int    port;
-    char[1024] path;
+    char[1024] path;  // buffer: C-interop (keep) — null-terminated, copied into request line
     usz    path_len;
 }
 
@@ -103,7 +103,7 @@ fn usz build_request(char[] method, ParsedUrl* url, char[] headers, char[] body,
 
     // Content-Length for body
     if (body.len > 0) {
-        char[32] cl_buf;
+        char[32] cl_buf;  // buffer: build-string (DString candidate) — formats Content-Length header
         usz cl_len = io::bprintf(&cl_buf, "Content-Length: %d\r\n", (int)body.len)!!.len;
         for (usz i = 0; i < cl_len && pos < buf_size; i++) buf[pos++] = cl_buf[i];
     }
@@ -210,7 +210,7 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Build and send request
-    char[4096] req_buf;
+    char[4096] req_buf;  // buffer: accumulator (keep) — HTTP request assembly, passed to tcp/tls_write
     usz req_len = build_request("GET", &parsed, "", "", &req_buf, 4096);
     Value* req_str = make_string(interp, req_buf[:req_len]);
 
@@ -226,7 +226,7 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
     if (write_result != null && write_result.tag == ERROR) return write_result;
 
     // Read response (accumulate until connection closes)
-    char[65536] resp_buf;
+    char[65536] resp_buf;  // buffer: accumulator (keep) — HTTP response bytes, passed to parse_response
     usz resp_len = 0;
 
     while (resp_len < 65000) {
@@ -299,7 +299,7 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Send request
-    char[8192] req_buf;
+    char[8192] req_buf;  // buffer: accumulator (keep) — HTTP request assembly, passed to tcp/tls_write
     usz req_len = build_request(method, &parsed, headers, body, &req_buf, 8192);
     Value* req_str = make_string(interp, req_buf[:req_len]);
 
@@ -308,7 +308,7 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
     else { prim_tcp_write(wa[..], null, interp); }
 
     // Read response
-    char[65536] resp_buf;
+    char[65536] resp_buf;  // buffer: accumulator (keep) — HTTP response bytes, passed to parse_response
     usz resp_len = 0;
     while (resp_len < 65000) {
         Value*[1] ra = { conn };
