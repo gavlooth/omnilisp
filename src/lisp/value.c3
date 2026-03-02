@@ -644,7 +644,10 @@ struct Value {
     union {
         long          int_val;
         double        double_val;     // Floating-point value
-        StringVal*    str_val;        // String value (heap-allocated)
+        struct {
+            char* str_chars;
+            usz   str_len;
+        }
         SymbolId      sym_val;
         Cons          cons_val;
         Closure*      closure_val;    // Closure (heap-allocated)
@@ -678,10 +681,9 @@ fn void scope_dtor_value(void* ptr) {
     switch (v.tag) {
         case STRING:
         case ERROR:
-            if (v.str_val != null) {
-                if (v.str_val.chars != null) mem::free(v.str_val.chars);
-                mem::free(v.str_val);
-                v.str_val = null;
+            if (v.str_chars != null) {
+                mem::free(v.str_chars);
+                v.str_chars = null;
             }
         case CLOSURE:
             // Handled by scope_dtor_closure now
@@ -775,17 +777,15 @@ fn Value* make_string(Interp* interp, char[] str) {
     Value* v = interp.alloc_value();
     v.tag = STRING;
     main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
-    v.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
     usz len = str.len;
     usz cap = len + 1;
     if (cap < 32) cap = 32;  // minimum allocation
-    v.str_val.chars = (char*)mem::malloc(cap);
-    v.str_val.capacity = cap;
+    v.str_chars = (char*)mem::malloc(cap);
     for (usz i = 0; i < len; i++) {
-        v.str_val.chars[i] = str[i];
+        v.str_chars[i] = str[i];
     }
-    v.str_val.chars[len] = 0;
-    v.str_val.len = len;
+    v.str_chars[len] = 0;
+    v.str_len = len;
 
     return v;
 }
@@ -952,17 +952,15 @@ fn Value* make_error(Interp* interp, char[] msg) {
     Value* v = interp.alloc_value();
     v.tag = ERROR;
     main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
-    v.str_val = (StringVal*)mem::malloc(StringVal.sizeof);
     usz len = msg.len;
     usz cap = len + 1;
     if (cap < 32) cap = 32;
-    v.str_val.chars = (char*)mem::malloc(cap);
-    v.str_val.capacity = cap;
+    v.str_chars = (char*)mem::malloc(cap);
     for (usz i = 0; i < len; i++) {
-        v.str_val.chars[i] = msg[i];
+        v.str_chars[i] = msg[i];
     }
-    v.str_val.chars[len] = 0;
-    v.str_val.len = len;
+    v.str_chars[len] = 0;
+    v.str_len = len;
 
     return v;
 }
@@ -2505,7 +2503,7 @@ fn void print_value(Value* v, SymbolTable* syms) {
             io::printf("%s", dstr);
         case STRING:
             io::print("\"");
-            io::print(v.str_val.chars[:v.str_val.len]);
+            io::print(v.str_chars[:v.str_len]);
             io::print("\"");
         case SYMBOL:
             io::print(syms.get_name(v.sym_val));
@@ -2545,7 +2543,7 @@ fn void print_value(Value* v, SymbolTable* syms) {
         case PARTIAL_PRIM:
             io::printf("#<partial %d more>", v.partial_val.remaining);
         case ERROR:
-            io::printf("#<error: %s>", (ZString)v.str_val.chars);
+            io::printf("#<error: %s>", (ZString)v.str_chars);
         case HASHMAP:
             io::print("{");
             uint printed = 0;
@@ -2667,7 +2665,7 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             pb.append_str(dstr2);
         case STRING:
             pb.append_char('"');
-            pb.append_zstr((ZString)v.str_val.chars);
+            pb.append_zstr((ZString)v.str_chars);
             pb.append_char('"');
         case SYMBOL:
             pb.append_str(syms.get_name(v.sym_val));

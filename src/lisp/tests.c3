@@ -161,8 +161,8 @@ fn bool str_starts_with(char[] haystack, char[] needle) {
 fn void test_str_val(Interp* interp, char[] name, char[] expr, char[] expected, int* pass, int* fail) {
     EvalResult ri = run(expr, interp);
     bool interp_ok = !ri.error.has_error && is_string(ri.value) &&
-        str_starts_with(ri.value.str_val.chars[:ri.value.str_val.len], expected) &&
-        ri.value.str_val.len == expected.len;
+        str_starts_with(ri.value.str_chars[:ri.value.str_len], expected) &&
+        ri.value.str_len == expected.len;
 
     Expr* ast = parse_for_jit(expr, interp);
     bool jit_ok = false;
@@ -171,8 +171,8 @@ fn void test_str_val(Interp* interp, char[] name, char[] expr, char[] expected, 
         if (f != null) {
             Value* jv = jit_exec(f, interp);
             jit_ok = jv != null && jv.tag == STRING &&
-                str_starts_with(jv.str_val.chars[:jv.str_val.len], expected) &&
-                jv.str_val.len == expected.len;
+                str_starts_with(jv.str_chars[:jv.str_len], expected) &&
+                jv.str_len == expected.len;
         }
     }
 
@@ -183,7 +183,7 @@ fn void test_str_val(Interp* interp, char[] name, char[] expr, char[] expected, 
         char[256] got_buf;
         char[] got_str = "?";
         if (!ri.error.has_error && is_string(ri.value)) {
-            got_str = ri.value.str_val.chars[:ri.value.str_val.len];
+            got_str = ri.value.str_chars[:ri.value.str_len];
         }
         io::printfn("[FAIL] %s (interp=%s, jit=%s, got='%s')", (ZString)name,
             interp_ok ? "ok" : "FAIL", jit_ok ? "ok" : "FAIL", (ZString)got_str);

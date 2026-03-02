@@ -37,7 +37,7 @@ fn Value* prim_string_upcase_unicode(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "string-upcase: expected 1 argument");
     if (!is_string(args[0])) return raise_error(interp, "string-upcase: expected string argument");
 
-    char[] src = args[0].str_val.chars[:args[0].str_val.len];
+    char[] src = args[0].str_chars[:args[0].str_len];
     // Worst case: each codepoint could expand (e.g. ß → SS = 2 bytes → 2 bytes, but some expand more)
     // Use utf8proc_map with an uppercase custom function? No, utf8proc_map doesn't have UPPERCASE.
     // Do it codepoint by codepoint.
@@ -73,7 +73,7 @@ fn Value* prim_string_downcase_unicode(Value*[] args, Env* env, Interp* interp) 
     if (args.len < 1) return raise_error(interp, "string-downcase: expected 1 argument");
     if (!is_string(args[0])) return raise_error(interp, "string-downcase: expected string argument");
 
-    char[] src = args[0].str_val.chars[:args[0].str_val.len];
+    char[] src = args[0].str_chars[:args[0].str_len];
     char[1024] buf;
     usz out = 0;
     usz pos = 0;
@@ -106,7 +106,7 @@ fn Value* prim_string_normalize(Value*[] args, Env* env, Interp* interp) {
     if (!is_string(args[0])) return raise_error(interp, "string-normalize: first arg must be string");
     if (args[1].tag != SYMBOL) return raise_error(interp, "string-normalize: mode must be a symbol (NFC, NFD, NFKC, NFKD)");
 
-    char[] src = args[0].str_val.chars[:args[0].str_val.len];
+    char[] src = args[0].str_chars[:args[0].str_len];
     char[] mode_name = interp.symbols.get_name(args[1].sym_val);
 
     int options = UTF8PROC_STABLE;
@@ -141,7 +141,7 @@ fn Value* prim_string_graphemes(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "string-graphemes: expected 1 argument");
     if (!is_string(args[0])) return raise_error(interp, "string-graphemes: expected string argument");
 
-    char[] src = args[0].str_val.chars[:args[0].str_val.len];
+    char[] src = args[0].str_chars[:args[0].str_len];
 
     // Collect grapheme cluster boundaries
     Value* result = make_nil(interp);
@@ -191,7 +191,7 @@ fn Value* prim_string_codepoints(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "string-codepoints: expected 1 argument");
     if (!is_string(args[0])) return raise_error(interp, "string-codepoints: expected string argument");
 
-    char[] src = args[0].str_val.chars[:args[0].str_val.len];
+    char[] src = args[0].str_chars[:args[0].str_len];
 
     Value*[1024] cps;
     int count = 0;

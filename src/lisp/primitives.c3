@@ -46,11 +46,9 @@ fn void strval_push(StringVal* sv, char c) {
 // Transfer builder contents into a Value. Frees the StringVal struct
 // but keeps the chars buffer (Value takes ownership).
 fn void strval_into_value(StringVal* sv, Value* v) {
-    v.str_val = sv;  // For now: direct assignment (pre-M1.6b)
-    // After M1.6b (inline string):
-    //   v.str_chars = sv.chars;
-    //   v.str_len = sv.len;
-    //   mem::free(sv);  // free struct only, chars owned by Value
+    v.str_chars = sv.chars;
+    v.str_len = sv.len;
+    mem::free(sv);  // free struct only, chars owned by Value
 }
 
 fn Value* prim_add(Value*[] args, Env* env, Interp* interp) {
@@ -198,7 +196,7 @@ fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
 
     // String length
     if (is_string(args[0])) {
-        return make_int(interp, (long)args[0].str_val.len);
+        return make_int(interp, (long)args[0].str_len);
     }
 
     // Array length
@@ -293,7 +291,7 @@ fn Value* prim_string_append(Value*[] args, Env* env, Interp* interp) {
     DString ds;
     ds.init(mem);
     for (usz i = 0; i < args.len; i++) {
-        ds.append_string((String)args[i].str_val.chars[:args[i].str_val.len]);
+        ds.append_string((String)args[i].str_chars[:args[i].str_len]);
     }
     Value* result = make_string(interp, ds.str_view());
     ds.free();
@@ -317,7 +315,7 @@ fn Value* prim_string_join(Value*[] args, Env* env, Interp* interp) {
         return raise_error(interp, "string-join: expected list as second argument");
     }
 
-    char[] sep = args[0].str_val.chars[:args[0].str_val.len];
+    char[] sep = args[0].str_chars[:args[0].str_len];
 
     DString ds;
     ds.init(mem);
@@ -335,7 +333,7 @@ fn Value* prim_string_join(Value*[] args, Env* env, Interp* interp) {
         first = false;
 
         if (is_string(elem)) {
-            ds.append_string((String)elem.str_val.chars[:elem.str_val.len]);
+            ds.append_string((String)elem.str_chars[:elem.str_len]);
         }
     }
 
@@ -352,7 +350,7 @@ fn Value* prim_substring(Value*[] args, Env* env, Interp* interp) {
         return raise_error(interp, "substring: expected integer indices");
     }
 
-    char[] bytes = args[0].str_val.chars[:args[0].str_val.len];
+    char[] bytes = args[0].str_chars[:args[0].str_len];
     usz cp_len = utf8_strlen(bytes);
     long start = args[1].int_val;
     long end = args[2].int_val;
@@ -381,15 +379,15 @@ fn Value* prim_string_split(Value*[] args, Env* env, Interp* interp) {
     if (!is_string(args[0]) || !is_string(args[1])) {
         return raise_error(interp, "string-split: expected string arguments");
     }
-    if (args[1].str_val.len == 0) {
+    if (args[1].str_len == 0) {
         return raise_error(interp, "string-split: empty separator");
     }
 
-    char* str = args[0].str_val.chars;
-    usz str_len = args[0].str_val.len;
+    char* str = args[0].str_chars;
+    usz str_len = args[0].str_len;
     // NOTE: Currently only supports single-character delimiters.
     // The first character of the separator string is used.
-    char delim = args[1].str_val.chars[0];
+    char delim = args[1].str_chars[0];
 
     // Collect parts in reverse order, then reverse
     Value* parts = make_nil(interp);
@@ -403,7 +401,7 @@ fn Value* prim_string_split(Value*[] args, Env* env, Interp* interp) {
             if (part_len == 0) {
                 part = make_string(interp, "");
             } else {
-                part = make_string(interp, args[0].str_val.chars[start:part_len]);
+                part = make_string(interp, args[0].str_chars[start:part_len]);
             }
             parts = make_cons(interp, part, parts);
             start = i + 1;
@@ -427,7 +425,7 @@ fn Value* prim_string_length(Value*[] args, Env* env, Interp* interp) {
         return make_int(interp, 0);
     }
     // Count UTF-8 codepoints, not bytes
-    usz cp_len = utf8_strlen(args[0].str_val.chars[:args[0].str_val.len]);
+    usz cp_len = utf8_strlen(args[0].str_chars[:args[0].str_len]);
     return make_int(interp, (long)cp_len);
 }
 
@@ -435,7 +433,7 @@ fn Value* prim_string_byte_length(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return make_int(interp, 0);
     }
-    return make_int(interp, (long)args[0].str_val.len);
+    return make_int(interp, (long)args[0].str_len);
 }
 
 /**
@@ -447,7 +445,7 @@ fn Value* prim_string_to_list(Value*[] args, Env* env, Interp* interp) {
         return raise_error(interp, "string->list: expected string argument");
     }
 
-    char[] bytes = args[0].str_val.chars[:args[0].str_val.len];
+    char[] bytes = args[0].str_chars[:args[0].str_len];
 
     // First pass: count codepoints
     usz cp_count = 0;
@@ -513,8 +511,8 @@ fn Value* prim_list_to_string(Value*[] args, Env* env, Interp* interp) {
         Value* elem = list.cons_val.car;
         list = list.cons_val.cdr;
 
-        if (is_string(elem) && elem.str_val.len > 0) {
-            ds.append_char(elem.str_val.chars[0]);
+        if (is_string(elem) && elem.str_len > 0) {
+            ds.append_char(elem.str_chars[0]);
         }
     }
 
@@ -531,11 +529,11 @@ fn Value* prim_string_upcase(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Allocate result, then transform in place
-    Value* result = make_string(interp, args[0].str_val.chars[:args[0].str_val.len]);
-    for (usz i = 0; i < result.str_val.len; i++) {
-        char c = result.str_val.chars[i];
+    Value* result = make_string(interp, args[0].str_chars[:args[0].str_len]);
+    for (usz i = 0; i < result.str_len; i++) {
+        char c = result.str_chars[i];
         if (c >= 'a' && c <= 'z') {
-            result.str_val.chars[i] = c - 32;
+            result.str_chars[i] = c - 32;
         }
     }
     return result;
@@ -551,11 +549,11 @@ fn Value* prim_string_downcase(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Allocate result, then transform in place
-    Value* result = make_string(interp, args[0].str_val.chars[:args[0].str_val.len]);
-    for (usz i = 0; i < result.str_val.len; i++) {
-        char c = result.str_val.chars[i];
+    Value* result = make_string(interp, args[0].str_chars[:args[0].str_len]);
+    for (usz i = 0; i < result.str_len; i++) {
+        char c = result.str_chars[i];
         if (c >= 'A' && c <= 'Z') {
-            result.str_val.chars[i] = c + 32;
+            result.str_chars[i] = c + 32;
         }
     }
     return result;
@@ -570,8 +568,8 @@ fn Value* prim_string_trim(Value*[] args, Env* env, Interp* interp) {
         return raise_error(interp, "string-trim: expected string argument");
     }
 
-    char* str = args[0].str_val.chars;
-    usz len = args[0].str_val.len;
+    char* str = args[0].str_chars;
+    usz len = args[0].str_len;
 
     // Find start (skip leading whitespace)
     usz start = 0;
@@ -593,7 +591,7 @@ fn Value* prim_string_trim(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Direct slice — no temp buffer needed
-    return make_string(interp, args[0].str_val.chars[start:end - start]);
+    return make_string(interp, args[0].str_chars[start:end - start]);
 }
 
 /**
@@ -618,7 +616,7 @@ fn Value* prim_read_file(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Get path as slice (using :len for exclusive end)
-    char[] path = args[0].str_val.chars[:args[0].str_val.len];
+    char[] path = args[0].str_chars[:args[0].str_len];
 
     // Try to load file using C3's file::load_temp
     if (try content = io::file::load_temp((String)path)) {
@@ -636,8 +634,8 @@ fn Value* prim_write_file(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Get path and content as slices (using :len for exclusive end)
-    char[] path = args[0].str_val.chars[:args[0].str_val.len];
-    char[] content = args[1].str_val.chars[:args[1].str_val.len];
+    char[] path = args[0].str_chars[:args[0].str_len];
+    char[] content = args[1].str_chars[:args[1].str_len];
 
     // Open file for writing
     if (try file = io::file::open((String)path, "w")) {
@@ -658,7 +656,7 @@ fn Value* prim_file_exists(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Get path as slice (using :len for exclusive end)
-    char[] path = args[0].str_val.chars[:args[0].str_val.len];
+    char[] path = args[0].str_chars[:args[0].str_len];
 
     // Use file::is_file to check existence
     if (io::file::is_file((String)path)) {
@@ -676,7 +674,7 @@ fn Value* prim_read_lines(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Get path as slice (using :len for exclusive end)
-    char[] path = args[0].str_val.chars[:args[0].str_val.len];
+    char[] path = args[0].str_chars[:args[0].str_len];
 
     // Try to load file using C3's file::load_temp
     if (try content = io::file::load_temp((String)path)) {
@@ -720,7 +718,7 @@ fn Value* prim_load(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Resolve path relative to current source directory
-    char[] rel_path = args[0].str_val.chars[:args[0].str_val.len];
+    char[] rel_path = args[0].str_chars[:args[0].str_len];
     char[512] resolved;
     usz rlen = resolve_import_path(rel_path, interp, &resolved, 512);
     char[] path = resolved[:rlen];
@@ -772,7 +770,7 @@ fn Value* prim_shell(Value*[] args, Env* env, Interp* interp) {
         return raise_error(interp, "shell: expected string command");
     }
 
-    void* fp = c_popen((ZString)args[0].str_val.chars, "r");
+    void* fp = c_popen((ZString)args[0].str_chars, "r");
     if (fp == null) {
         return raise_error(interp, "shell: popen failed");
     }
@@ -837,7 +835,7 @@ fn Value* prim_getenv(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return raise_error(interp, "getenv: expected string");
     }
-    char* val = c_getenv((ZString)args[0].str_val.chars);
+    char* val = c_getenv((ZString)args[0].str_chars);
     if (val == null) return make_nil(interp);
     // Measure length
     usz len = 0;
@@ -892,7 +890,7 @@ fn Value* prim_sleep(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) return make_nil(interp);
-    char[] s = args[0].str_val.chars[:args[0].str_val.len];
+    char[] s = args[0].str_chars[:args[0].str_len];
     if (s.len == 0) return make_nil(interp);
     // Check if it contains a dot or exponent → parse as float
     bool is_float = false;
@@ -1010,7 +1008,7 @@ fn uint hash_value(Value* key) {
     if (key == null) return 0;
     switch (key.tag) {
         case INT: return murmur_finalizer((uint)key.int_val);
-        case STRING: return fnv1a(key.str_val.chars[:key.str_val.len]);
+        case STRING: return fnv1a(key.str_chars[:key.str_len]);
         case SYMBOL: return murmur_finalizer((uint)key.sym_val);
         default: return 0;
     }
@@ -1365,12 +1363,12 @@ fn Value* prim_sort(Value*[] args, Env* env, Interp* interp) {
                 gt = to_double(arr[(usz)j]) > to_double(key);
             } else if (arr[(usz)j].tag == STRING && key.tag == STRING) {
                 // Lexicographic string comparison
-                usz al = arr[(usz)j].str_val.len; usz bl = key.str_val.len;
+                usz al = arr[(usz)j].str_len; usz bl = key.str_len;
                 usz ml = al < bl ? al : bl;
                 int cmp = 0;
                 for (usz k = 0; k < ml; k++) {
-                    if (arr[(usz)j].str_val.chars[k] != key.str_val.chars[k]) {
-                        cmp = arr[(usz)j].str_val.chars[k] > key.str_val.chars[k] ? 1 : -1;
+                    if (arr[(usz)j].str_chars[k] != key.str_chars[k]) {
+                        cmp = arr[(usz)j].str_chars[k] > key.str_chars[k] ? 1 : -1;
                         break;
                     }
                 }
@@ -1470,8 +1468,8 @@ fn Value* prim_rshift(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_string_contains(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != STRING || args[1].tag != STRING) return raise_error(interp, "string-contains?: expected 2 strings");
-    char[] haystack = args[0].str_val.chars[:args[0].str_val.len];
-    char[] needle = args[1].str_val.chars[:args[1].str_val.len];
+    char[] haystack = args[0].str_chars[:args[0].str_len];
+    char[] needle = args[1].str_chars[:args[1].str_len];
     if (needle.len == 0) return make_symbol(interp, interp.sym_true);
     if (needle.len > haystack.len) return make_nil(interp);
     for (usz i = 0; i <= haystack.len - needle.len; i++) {
@@ -1486,8 +1484,8 @@ fn Value* prim_string_contains(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_string_index_of(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != STRING || args[1].tag != STRING) return raise_error(interp, "string-index-of: expected 2 strings");
-    char[] haystack = args[0].str_val.chars[:args[0].str_val.len];
-    char[] needle = args[1].str_val.chars[:args[1].str_val.len];
+    char[] haystack = args[0].str_chars[:args[0].str_len];
+    char[] needle = args[1].str_chars[:args[1].str_len];
     if (needle.len == 0) return make_int(interp, 0);
     if (needle.len > haystack.len) return make_int(interp, -1);
     for (usz i = 0; i <= haystack.len - needle.len; i++) {
@@ -1504,9 +1502,9 @@ fn Value* prim_string_replace(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3 || args[0].tag != STRING || args[1].tag != STRING || args[2].tag != STRING) {
         return raise_error(interp, "string-replace: expected 3 strings");
     }
-    char[] str = args[0].str_val.chars[:args[0].str_val.len];
-    char[] old = args[1].str_val.chars[:args[1].str_val.len];
-    char[] new_str = args[2].str_val.chars[:args[2].str_val.len];
+    char[] str = args[0].str_chars[:args[0].str_len];
+    char[] old = args[1].str_chars[:args[1].str_len];
+    char[] new_str = args[2].str_chars[:args[2].str_len];
     if (old.len == 0) return args[0]; // nothing to replace
     StringVal* builder = strval_new(str.len);
     usz i = 0;
@@ -1537,7 +1535,7 @@ fn Value* prim_string_replace(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_char_at(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != STRING || !is_int(args[1])) return raise_error(interp, "char-at: expected string and int");
-    char[] bytes = args[0].str_val.chars[:args[0].str_val.len];
+    char[] bytes = args[0].str_chars[:args[0].str_len];
     usz cp_count = utf8_strlen(bytes);
     long idx = args[1].int_val;
     if (idx < 0) idx += (long)cp_count;
@@ -1553,11 +1551,11 @@ fn Value* prim_string_repeat(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != STRING || !is_int(args[1])) return raise_error(interp, "string-repeat: expected string and int");
     long n = args[1].int_val;
     if (n <= 0) return make_string(interp, "");
-    StringVal* builder = strval_new(args[0].str_val.len * (usz)n);
+    StringVal* builder = strval_new(args[0].str_len * (usz)n);
     for (long i = 0; i < n; i++) {
-        strval_ensure(builder, args[0].str_val.len);
-        for (usz j = 0; j < args[0].str_val.len; j++) {
-            builder.chars[builder.len++] = args[0].str_val.chars[j];
+        strval_ensure(builder, args[0].str_len);
+        for (usz j = 0; j < args[0].str_len; j++) {
+            builder.chars[builder.len++] = args[0].str_chars[j];
         }
     }
     builder.chars[builder.len] = 0;
@@ -1674,7 +1672,7 @@ fn void format_append_display(StringVal* sv, Value* a, Interp* interp) {
         char[] nslice = io::bprintf(&nbuf, "%.15g", a.double_val)!!;
         strval_append(sv, nslice);
     } else if (a.tag == STRING) {
-        strval_append(sv, a.str_val.chars[:a.str_val.len]);
+        strval_append(sv, a.str_chars[:a.str_len]);
     } else if (is_symbol(a)) {
         strval_append(sv, interp.symbols.get_name(a.sym_val));
     } else {
@@ -1684,7 +1682,7 @@ fn void format_append_display(StringVal* sv, Value* a, Interp* interp) {
 
 fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "format: expected format string");
-    char[] fmt = args[0].str_val.chars[:args[0].str_val.len];
+    char[] fmt = args[0].str_chars[:args[0].str_len];
     StringVal* builder = strval_new(fmt.len);
     usz arg_idx = 1;
 
@@ -1909,7 +1907,7 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_cl_format(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "cl-format: expected format string");
-    char[] fmt = args[0].str_val.chars[:args[0].str_val.len];
+    char[] fmt = args[0].str_chars[:args[0].str_len];
     StringVal* builder = strval_new(fmt.len);
     usz arg_idx = 1;
     for (usz i = 0; i < fmt.len; i++) {
@@ -1943,9 +1941,9 @@ fn Value* prim_cl_format(Value*[] args, Env* env, Interp* interp) {
                         if (directive == 's') {
                             strval_push(builder, '"');
                         }
-                        strval_ensure(builder, a.str_val.len);
-                        for (usz k = 0; k < a.str_val.len; k++) {
-                            builder.chars[builder.len++] = a.str_val.chars[k];
+                        strval_ensure(builder, a.str_len);
+                        for (usz k = 0; k < a.str_len; k++) {
+                            builder.chars[builder.len++] = a.str_chars[k];
                         }
                         if (directive == 's') {
                             strval_push(builder, '"');
@@ -1987,7 +1985,7 @@ fn Value* prim_display(Value*[] args, Env* env, Interp* interp) {
     if (v == null || is_nil(v)) {
         io::print("nil");
     } else if (v.tag == STRING) {
-        io::printf("%s", (ZString)v.str_val.chars); // No quotes for display
+        io::printf("%s", (ZString)v.str_chars); // No quotes for display
     } else {
         print_value(v, &interp.symbols);
     }
@@ -2056,12 +2054,12 @@ fn Value* prim_bound(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_error(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "error: expected string message");
-    return raise_error(interp, args[0].str_val.chars[:args[0].str_val.len]);
+    return raise_error(interp, args[0].str_chars[:args[0].str_len]);
 }
 
 fn Value* prim_error_message(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != ERROR) return raise_error(interp, "error-message: expected error value");
-    return make_string(interp, args[0].str_val.chars[:args[0].str_val.len]);
+    return make_string(interp, args[0].str_chars[:args[0].str_len]);
 }
 
 // --- Phase 8: Array primitives ---
@@ -2200,10 +2198,10 @@ fn Value* prim_ref(Value*[] args, Env* env, Interp* interp) {
     if (coll.tag == STRING) {
         if (!is_int(args[1])) return raise_error(interp, "ref: string requires int index");
         long idx = args[1].int_val;
-        long slen = (long)coll.str_val.len;
+        long slen = (long)coll.str_len;
         if (idx < 0) idx += slen;
         if (idx < 0 || idx >= slen) { return raise_error(interp, "ref: string index out of bounds"); }
-        return make_int(interp, (long)coll.str_val.chars[(usz)idx]);
+        return make_int(interp, (long)coll.str_chars[(usz)idx]);
     }
 
     return raise_error(interp, "ref: expected array, dict, cons, or string");
@@ -2309,7 +2307,7 @@ fn Value* prim_set_to_list(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_read_string(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "read-string: expected string");
-    char[] src = args[0].str_val.chars[:args[0].str_val.len];
+    char[] src = args[0].str_chars[:args[0].str_len];
     EvalResult r = run(src, interp);
     if (r.error.has_error) return raise_error(interp, "read-string: parse/eval error");
     return r.value;
@@ -2317,7 +2315,7 @@ fn Value* prim_read_string(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_string_to_symbol(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "string->symbol: expected string");
-    SymbolId sym = interp.symbols.intern(args[0].str_val.chars[:args[0].str_val.len]);
+    SymbolId sym = interp.symbols.intern(args[0].str_chars[:args[0].str_len]);
     return make_symbol(interp, sym);
 }
 
@@ -2447,10 +2445,9 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
             }
         case STRING:
         case ERROR:
-            if (v.str_val != null) {
-                if (v.str_val.chars != null) mem::free(v.str_val.chars);
-                mem::free(v.str_val);
-                v.str_val = null;
+            if (v.str_chars != null) {
+                mem::free(v.str_chars);
+                v.str_chars = null;
             }
         default: return make_nil(interp);  // No backing to free
     }

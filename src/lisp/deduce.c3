@@ -100,11 +100,11 @@ fn usz encode_tuple(Value*[] vals, char* buf, usz buf_size) {
             for (usz j = 0; j < 8; j++) buf[pos++] = dp[j];
         } else if (v.tag == STRING) {
             buf[pos++] = 3;
-            usz slen = v.str_val.len;
+            usz slen = v.str_len;
             if (slen > 0xFFFF) slen = 0xFFFF;
             buf[pos++] = (char)(slen & 0xFF);
             buf[pos++] = (char)((slen >> 8) & 0xFF);
-            for (usz j = 0; j < slen && pos < buf_size; j++) buf[pos++] = v.str_val.chars[j];
+            for (usz j = 0; j < slen && pos < buf_size; j++) buf[pos++] = v.str_chars[j];
         } else if (v.tag == SYMBOL) {
             buf[pos++] = 4;
             uint sid = (uint)v.sym_val;
@@ -195,7 +195,7 @@ fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
         path_buf[base.len + slen] = 0;
         flags = MDB_NOSUBDIR;
     } else if (is_string(args[0])) {
-        char[] path = args[0].str_val.chars[:args[0].str_val.len];
+        char[] path = args[0].str_chars[:args[0].str_len];
         usz plen = path.len < 255 ? path.len : 255;
         for (usz i = 0; i < plen; i++) path_buf[i] = path[i];
         path_buf[plen] = 0;

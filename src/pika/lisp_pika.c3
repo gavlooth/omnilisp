@@ -30,8 +30,8 @@ fn lisp::Value* prim_re_match(lisp::Value*[] args, lisp::Env* env, lisp::Interp*
     }
 
     // C3 slice [a..b] is INCLUSIVE on both ends, [:n] means first n elements
-    char[] pattern = pattern_val.str_val.chars[:pattern_val.str_val.len];
-    char[] input = input_val.str_val.chars[:input_val.str_val.len];
+    char[] pattern = pattern_val.str_chars[:pattern_val.str_len];
+    char[] input = input_val.str_chars[:input_val.str_len];
 
     RegexMatch m = regex_search(pattern, input);
 
@@ -55,8 +55,8 @@ fn lisp::Value* prim_re_fullmatch(lisp::Value*[] args, lisp::Env* env, lisp::Int
         return lisp::make_nil(interp);
     }
 
-    char[] pattern = pattern_val.str_val.chars[:pattern_val.str_val.len];
-    char[] input = input_val.str_val.chars[:input_val.str_val.len];
+    char[] pattern = pattern_val.str_chars[:pattern_val.str_len];
+    char[] input = input_val.str_chars[:input_val.str_len];
 
     RegexMatch m = regex_fullmatch(pattern, input);
 
@@ -80,8 +80,8 @@ fn lisp::Value* prim_re_find_all(lisp::Value*[] args, lisp::Env* env, lisp::Inte
         return lisp::make_nil(interp);
     }
 
-    char[] pattern = pattern_val.str_val.chars[:pattern_val.str_val.len];
-    char[] input = input_val.str_val.chars[:input_val.str_val.len];
+    char[] pattern = pattern_val.str_chars[:pattern_val.str_len];
+    char[] input = input_val.str_chars[:input_val.str_len];
 
     int count = 0;
     RegexMatch[64] matches = regex_find_all(pattern, input, &count);
@@ -109,8 +109,8 @@ fn lisp::Value* prim_re_split(lisp::Value*[] args, lisp::Env* env, lisp::Interp*
         return lisp::make_nil(interp);
     }
 
-    char[] pattern = pattern_val.str_val.chars[:pattern_val.str_val.len];
-    char[] input = input_val.str_val.chars[:input_val.str_val.len];
+    char[] pattern = pattern_val.str_chars[:pattern_val.str_len];
+    char[] input = input_val.str_chars[:input_val.str_len];
 
     // Find all matches
     int count = 0;
@@ -161,9 +161,9 @@ fn lisp::Value* prim_re_replace(lisp::Value*[] args, lisp::Env* env, lisp::Inter
         return lisp::make_nil(interp);
     }
 
-    char[] pattern = pattern_val.str_val.chars[:pattern_val.str_val.len];
-    char[] replacement = replacement_val.str_val.chars[:replacement_val.str_val.len];
-    char[] input = input_val.str_val.chars[:input_val.str_val.len];
+    char[] pattern = pattern_val.str_chars[:pattern_val.str_len];
+    char[] replacement = replacement_val.str_chars[:replacement_val.str_len];
+    char[] input = input_val.str_chars[:input_val.str_len];
 
     bool global = false;
     if (args.len >= 4 && args[3].tag == lisp::ValueTag.SYMBOL) {
@@ -405,7 +405,7 @@ fn int compile_clause(GrammarCompiler* gc, lisp::Value* clause) {
 
     // String literal -> TOKENS
     if (lisp::is_string(clause)) {
-        char[] str = clause.str_val.chars[:clause.str_val.len];
+        char[] str = clause.str_chars[:clause.str_len];
         if (str.len == 1) {
             char[16] name = "_tok_";
             name[5] = str[0];
@@ -551,7 +551,7 @@ fn int compile_clause(GrammarCompiler* gc, lisp::Value* clause) {
                 return gc.rb.add("_fail", mk_fail());
             }
             lisp::Value* pattern_val = rest.cons_val.car;
-            char[] pattern = pattern_val.str_val.chars[:pattern_val.str_val.len];
+            char[] pattern = pattern_val.str_chars[:pattern_val.str_len];
             return make_char_class_scanner(gc, pattern);
         }
 
@@ -736,7 +736,7 @@ fn lisp::Value* prim_pika_parse(lisp::Value*[] args, lisp::Env* env, lisp::Inter
         return lisp::make_nil(interp);
     }
 
-    char[] input = args[1].str_val.chars[:args[1].str_val.len];
+    char[] input = args[1].str_chars[:args[1].str_len];
 
     // Parse
     ParserState st = parse_simple(&ng.grammar, input);
@@ -826,7 +826,7 @@ fn lisp::Value* prim_pika_fold(lisp::Value*[] args, lisp::Env* env, lisp::Interp
         return lisp::make_nil(interp);
     }
 
-    char[] input = args[1].str_val.chars[:args[1].str_val.len];
+    char[] input = args[1].str_chars[:args[1].str_len];
 
     // Get fold function
     lisp::Value* fold_fn = args[2];
@@ -922,8 +922,8 @@ fn lisp::Value* prim_re_match_pos(lisp::Value*[] args, lisp::Env* env, lisp::Int
         return lisp::make_nil(interp);
     }
 
-    char[] pattern = pattern_val.str_val.chars[:pattern_val.str_val.len];
-    char[] input = input_val.str_val.chars[:input_val.str_val.len];
+    char[] pattern = pattern_val.str_chars[:pattern_val.str_len];
+    char[] input = input_val.str_chars[:input_val.str_len];
 
     RegexMatch m = regex_search(pattern, input);
 
@@ -952,8 +952,8 @@ fn lisp::Value* prim_re_find_all_pos(lisp::Value*[] args, lisp::Env* env, lisp::
         return lisp::make_nil(interp);
     }
 
-    char[] pattern = pattern_val.str_val.chars[:pattern_val.str_val.len];
-    char[] input = input_val.str_val.chars[:input_val.str_val.len];
+    char[] pattern = pattern_val.str_chars[:pattern_val.str_len];
+    char[] input = input_val.str_chars[:input_val.str_len];
 
     int count = 0;
     RegexMatch[64] matches = regex_find_all(pattern, input, &count);
@@ -988,7 +988,7 @@ fn lisp::Value* prim_pika_parse_lisp(lisp::Value*[] args, lisp::Env* env, lisp::
         return lisp::make_nil(interp);
     }
 
-    char[] input = args[0].str_val.chars[:args[0].str_val.len];
+    char[] input = args[0].str_chars[:args[0].str_len];
 
     // Use the global Lisp parser
     ensure_pika_parser();
@@ -1106,7 +1106,7 @@ fn lisp::Value* prim_pika_match_span(lisp::Value*[] args, lisp::Env* env, lisp::
         return lisp::make_nil(interp);
     }
 
-    char[] input = args[1].str_val.chars[:args[1].str_val.len];
+    char[] input = args[1].str_chars[:args[1].str_len];
     char[] rule_name = interp.symbols.get_name(args[2].sym_val);
 
     // Parse

@@ -86,7 +86,7 @@ fn Value* prim_tls_connect(Value*[] args, Env* env, Interp* interp) {
     TcpHandle* tcp = get_tcp_handle(args[0]);
     if (tcp == null || !tcp.connected) return raise_error(interp, "tls-connect: invalid TCP handle");
 
-    char[] hostname = args[1].str_val.chars[:args[1].str_val.len];
+    char[] hostname = args[1].str_chars[:args[1].str_len];
 
     // Null-terminate hostname
     char[256] host_buf;
@@ -173,7 +173,7 @@ fn Value* prim_tls_write(Value*[] args, Env* env, Interp* interp) {
     TlsHandle* th = get_tls_handle(args[0]);
     if (th == null || !th.connected) return raise_error(interp, "tls-write: invalid or closed handle");
 
-    char[] data = args[1].str_val.chars[:args[1].str_val.len];
+    char[] data = args[1].str_chars[:args[1].str_len];
     int status = br_sslio_write_all(th.sslio_ctx, data.ptr, data.len);
     if (status < 0) return raise_error(interp, "tls-write: write failed");
 

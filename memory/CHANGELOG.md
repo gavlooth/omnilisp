@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-03-02: M1.6b — Inline String Descriptor into Value Union
+
+### Summary
+Eliminated one `malloc`/`free` per string by inlining the string descriptor (chars pointer + length) directly into the Value union. Previously, each STRING/ERROR Value held a `StringVal*` pointer to a heap-allocated struct containing `chars`, `len`, `capacity`. Now `str_chars` and `str_len` live directly in the Value union, removing the indirection.
+
+### Changes
+- **Value union** (`value.c3`): Replaced `StringVal* str_val` with inline `struct { char* str_chars; usz str_len; }`
+- **make_string / make_error** (`value.c3`): Removed `StringVal` malloc — write directly to `v.str_chars`/`v.str_len`
+- **scope_dtor_value** (`value.c3`): Simplified STRING/ERROR case — just free `str_chars` (no struct free)
+- **strval_into_value** (`primitives.c3`): Now transfers `chars`/`len` from builder, then frees the `StringVal` struct
+- **prim_unsafe_free** (`primitives.c3`): Updated destructor to match new layout
+- **Parser** (`parser.c3`): 5 string literal sites converted to use local `StringVal* builder` + `strval_into_value()`
+- **Bulk rename across 17 files**: `.str_val.chars` -> `.str_chars`, `.str_val.len` -> `.str_len`
+- **StringVal struct retained**: Still used as string builder API (`strval_new`, `strval_push`, etc.)
+
+### Files Modified
+- `src/lisp/value.c3` — Value union, make_string, make_error, scope_dtor_value
+- `src/lisp/primitives.c3` — strval_into_value, prim_unsafe_free
+- `src/lisp/parser.c3` — 5 string literal construction sites
+- `src/lisp/eval.c3` — copy_to_parent STRING/ERROR cases
+- `src/lisp/jit.c3` — all str_val.chars/len references
+- `src/lisp/tests.c3`, `src/lisp/compiler.c3`, `src/lisp/async.c3`, `src/lisp/tls.c3`
+- `src/lisp/http.c3`, `src/lisp/json.c3`, `src/lisp/compress.c3`, `src/lisp/unicode.c3`
+- `src/lisp/schema.c3`, `src/lisp/unify.c3`, `src/lisp/deduce.c3`
+- `src/pika/lisp_pika.c3`
+
+### Test Count
+- Before: 1037 unified + 73 compiler + 9 stack + 40 scope = 1159 PASS
+- After: 1037 unified + 73 compiler + 9 stack + 40 scope = 1159 PASS (no change)
+
+---
+
 ## 2026-03-02 (Session 67): Full Library Integration — 6 Libraries, 41 New Primitives
 
 ### Summary

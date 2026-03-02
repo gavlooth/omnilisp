@@ -128,7 +128,7 @@ fn Value* prim_json_parse(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "json-parse: expected 1 argument");
     if (!is_string(args[0])) return raise_error(interp, "json-parse: expected string argument");
 
-    char[] src = args[0].str_val.chars[:args[0].str_val.len];
+    char[] src = args[0].str_chars[:args[0].str_len];
 
     YyjsonDoc* doc = omni_yyjson_read(src.ptr, src.len);
     if (doc == null) return raise_error(interp, "json-parse: invalid JSON");
@@ -155,7 +155,7 @@ fn YyjsonMutVal* omni_to_json_val(Value* val, YyjsonMutDoc* doc, Interp* interp)
         case DOUBLE:
             return omni_yyjson_mut_real(doc, val.double_val);
         case STRING:
-            return omni_yyjson_mut_strn(doc, val.str_val.chars, val.str_val.len);
+            return omni_yyjson_mut_strn(doc, val.str_chars, val.str_len);
         case SYMBOL: {
             char[] name = interp.symbols.get_name(val.sym_val);
             // "true" → JSON true, "false" → JSON false
@@ -196,7 +196,7 @@ fn YyjsonMutVal* omni_to_json_val(Value* val, YyjsonMutDoc* doc, Interp* interp)
                     // Key as string
                     YyjsonMutVal* key;
                     if (is_string(entry.key)) {
-                        key = omni_yyjson_mut_strn(doc, entry.key.str_val.chars, entry.key.str_val.len);
+                        key = omni_yyjson_mut_strn(doc, entry.key.str_chars, entry.key.str_len);
                     } else if (entry.key.tag == SYMBOL) {
                         char[] name = interp.symbols.get_name(entry.key.sym_val);
                         key = omni_yyjson_mut_strn(doc, name.ptr, name.len);

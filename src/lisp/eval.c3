@@ -861,16 +861,16 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
     if (path_val.tag != STRING) return raise_error(interp, "ffi lib: path must be a string");
 
     // dlopen
-    void* handle = dlopen((ZString)path_val.str_val.chars, RTLD_LAZY);
+    void* handle = dlopen((ZString)path_val.str_chars, RTLD_LAZY);
     if (handle == null) {
         char[256] ebuf;
         char[] msg = io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s'",
-            (ZString)path_val.str_val.chars)!!;
+            (ZString)path_val.str_chars)!!;
         return raise_error(interp, msg);
     }
 
     // Create FFI handle value and bind in global env
-    Value* ffi_handle = make_ffi_handle(interp, handle, path_val.str_val.chars[:path_val.str_val.len]);
+    Value* ffi_handle = make_ffi_handle(interp, handle, path_val.str_chars[:path_val.str_len]);
     interp.global_env.define(fl.name, ffi_handle);
     return ffi_handle;
 }
@@ -935,7 +935,7 @@ fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
                 arg_values[i] = (void*)&dbl_store[i];
             case FFI_TYPE_PTR:
                 if (arg.tag == STRING) {
-                    ptr_store[i] = (void*)arg.str_val.chars;
+                    ptr_store[i] = (void*)arg.str_chars;
                 } else if (arg.tag == INT) {
                     ptr_store[i] = (void*)(uptr)arg.int_val;
                 } else if (arg.tag == NIL) {
@@ -1101,7 +1101,7 @@ fn Value* copy_to_parent(Value* v, Interp* interp) {
         case DOUBLE:
             result = make_double(interp, v.double_val);
         case STRING:
-            result = make_string(interp, v.str_val.chars[:v.str_val.len]);
+            result = make_string(interp, v.str_chars[:v.str_len]);
         case SYMBOL:
             result = make_symbol(interp, v.sym_val);
         case CONS: {
@@ -1211,7 +1211,7 @@ fn Value* copy_to_parent(Value* v, Interp* interp) {
         case MODULE:
             result = v;  // Module lives in interp.modules array
         case ERROR:
-            result = make_error(interp, v.str_val.chars[:v.str_val.len]);
+            result = make_error(interp, v.str_chars[:v.str_len]);
         default:
             result = v;
     }
@@ -1573,9 +1573,9 @@ fn bool values_equal(Value* a, Value* b, usz depth = 0) {
         case DOUBLE:
             return a.double_val == b.double_val;
         case STRING:
-            if (a.str_val.len != b.str_val.len) return false;
-            for (usz i = 0; i < a.str_val.len; i++) {
-                if (a.str_val.chars[i] != b.str_val.chars[i]) return false;
+            if (a.str_len != b.str_len) return false;
+            for (usz i = 0; i < a.str_len; i++) {
+                if (a.str_chars[i] != b.str_chars[i]) return false;
             }
             return true;
         case SYMBOL:
@@ -1848,7 +1848,7 @@ fn EvalResult apply_primitive(Value* prim, Value* arg, Interp* interp) {
         interp.prim_user_data = prim.prim_val.user_data;
         Value* result = prim.prim_val.func(args[:1], null, interp);
         if (is_error(result)) {
-            return eval_error(result.str_val.chars[:result.str_val.len]);
+            return eval_error(result.str_chars[:result.str_len]);
         }
         return eval_ok(result);
     }
@@ -1883,13 +1883,13 @@ fn EvalResult apply_partial(Value* partial, Value* arg, Interp* interp) {
         args[1] = partial.partial_val.second_arg;
         args[2] = arg;
         Value* result = partial.partial_val.func(args[:3], null, interp);
-        if (is_error(result)) { return eval_error(result.str_val.chars[:result.str_val.len]); }
+        if (is_error(result)) { return eval_error(result.str_chars[:result.str_len]); }
         return eval_ok(result);
     }
     args[1] = arg;
     Value* result = partial.partial_val.func(args[:2], null, interp);
     if (is_error(result)) {
-        return eval_error(result.str_val.chars[:result.str_val.len]);
+        return eval_error(result.str_chars[:result.str_len]);
     }
     return eval_ok(result);
 }
@@ -2213,7 +2213,7 @@ fn EvalResult run_program(char[] source, Interp* interp) {
         if (f != null) {
             Value* jit_result = jit_exec(f, interp);
             if (jit_result != null && jit_result.tag == ERROR) {
-                result = eval_error_expr(jit_result.str_val.chars[:jit_result.str_val.len], expr);
+                result = eval_error_expr(jit_result.str_chars[:jit_result.str_len], expr);
             } else {
                 result = eval_ok(jit_result);
             }
@@ -2270,7 +2270,7 @@ fn EvalResult run(char[] source, Interp* interp) {
     if (f != null) {
         Value* jit_result = jit_exec(f, interp);
         if (jit_result != null && jit_result.tag == ERROR) {
-            result = eval_error_expr(jit_result.str_val.chars[:jit_result.str_val.len], expr);
+            result = eval_error_expr(jit_result.str_chars[:jit_result.str_len], expr);
         } else {
             if (jit_result != null) {
                 // ALWAYS deep-copy result to parent scope before releasing child.

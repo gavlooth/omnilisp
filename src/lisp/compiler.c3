@@ -1375,8 +1375,8 @@ fn void Compiler.serialize_value_to_buf(Compiler* self, Value* v, List{char}* bu
 
         case STRING:
             buf.push('"');
-            for (usz i = 0; i < v.str_val.len; i++) {
-                char c = v.str_val.chars[i];
+            for (usz i = 0; i < v.str_len; i++) {
+                char c = v.str_chars[i];
                 if (c == '"') {
                     buf.push('\\');
                     buf.push('"');
@@ -3762,8 +3762,8 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
         case STRING:
             self.emit("aot::make_string(\"");
             // Emit string with escaping
-            for (usz i = 0; i < v.str_val.len; i++) {
-                char c = v.str_val.chars[i];
+            for (usz i = 0; i < v.str_len; i++) {
+                char c = v.str_chars[i];
                 if (c == '"') {
                     self.emit("\\\"");
                 } else if (c == '\\') {

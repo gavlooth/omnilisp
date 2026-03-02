@@ -179,7 +179,7 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
         return raise_error(interp, "http-get: expected (http-get url)");
     }
 
-    char[] url = args[0].str_val.chars[:args[0].str_val.len];
+    char[] url = args[0].str_chars[:args[0].str_len];
 
     ParsedUrl parsed;
     if (!parse_url(url, &parsed)) {
@@ -240,12 +240,12 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
         }
 
         if (chunk == null || chunk.tag == ERROR) break;
-        if (!is_string(chunk) || chunk.str_val.len == 0) break;
+        if (!is_string(chunk) || chunk.str_len == 0) break;
 
         // Append to buffer
-        usz copy_len = chunk.str_val.len;
+        usz copy_len = chunk.str_len;
         if (resp_len + copy_len > 65000) copy_len = 65000 - resp_len;
-        for (usz i = 0; i < copy_len; i++) resp_buf[resp_len++] = chunk.str_val.chars[i];
+        for (usz i = 0; i < copy_len; i++) resp_buf[resp_len++] = chunk.str_chars[i];
     }
 
     // Close connection
@@ -271,12 +271,12 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
         return raise_error(interp, "http-request: method and url must be strings");
     }
 
-    char[] method = args[0].str_val.chars[:args[0].str_val.len];
-    char[] url = args[1].str_val.chars[:args[1].str_val.len];
+    char[] method = args[0].str_chars[:args[0].str_len];
+    char[] url = args[1].str_chars[:args[1].str_len];
     char[] headers = "";
     char[] body = "";
-    if (args.len > 2 && is_string(args[2])) headers = args[2].str_val.chars[:args[2].str_val.len];
-    if (args.len > 3 && is_string(args[3])) body = args[3].str_val.chars[:args[3].str_val.len];
+    if (args.len > 2 && is_string(args[2])) headers = args[2].str_chars[:args[2].str_len];
+    if (args.len > 3 && is_string(args[3])) body = args[3].str_chars[:args[3].str_len];
 
     ParsedUrl parsed;
     if (!parse_url(url, &parsed)) return raise_error(interp, "http-request: invalid URL");
@@ -315,10 +315,10 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
         Value* chunk;
         if (parsed.is_https) { chunk = prim_tls_read(ra[..], null, interp); }
         else { chunk = prim_tcp_read(ra[..], null, interp); }
-        if (chunk == null || chunk.tag == ERROR || !is_string(chunk) || chunk.str_val.len == 0) break;
-        usz cl = chunk.str_val.len;
+        if (chunk == null || chunk.tag == ERROR || !is_string(chunk) || chunk.str_len == 0) break;
+        usz cl = chunk.str_len;
         if (resp_len + cl > 65000) cl = 65000 - resp_len;
-        for (usz i = 0; i < cl; i++) resp_buf[resp_len++] = chunk.str_val.chars[i];
+        for (usz i = 0; i < cl; i++) resp_buf[resp_len++] = chunk.str_chars[i];
     }
 
     // Close

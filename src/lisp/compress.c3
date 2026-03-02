@@ -32,7 +32,7 @@ fn Value* prim_gzip(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "gzip: expected 1 argument");
     if (!is_string(args[0])) return raise_error(interp, "gzip: expected string argument");
 
-    char[] src = args[0].str_val.chars[:args[0].str_val.len];
+    char[] src = args[0].str_chars[:args[0].str_len];
 
     DeflateCompressor* c = libdeflate_alloc_compressor(6);  // default compression level
     if (c == null) return raise_error(interp, "gzip: failed to allocate compressor");
@@ -60,7 +60,7 @@ fn Value* prim_gunzip(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "gunzip: expected 1 argument");
     if (!is_string(args[0])) return raise_error(interp, "gunzip: expected string argument");
 
-    char[] src = args[0].str_val.chars[:args[0].str_val.len];
+    char[] src = args[0].str_chars[:args[0].str_len];
     if (src.len == 0) return make_string(interp, "");
 
     DeflateDecompressor* d = libdeflate_alloc_decompressor();
@@ -109,7 +109,7 @@ fn Value* prim_deflate(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "deflate: expected 1 argument");
     if (!is_string(args[0])) return raise_error(interp, "deflate: expected string argument");
 
-    char[] src = args[0].str_val.chars[:args[0].str_val.len];
+    char[] src = args[0].str_chars[:args[0].str_len];
 
     DeflateCompressor* c = libdeflate_alloc_compressor(6);
     if (c == null) return raise_error(interp, "deflate: failed to allocate compressor");
@@ -137,7 +137,7 @@ fn Value* prim_inflate(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "inflate: expected 1-2 arguments");
     if (!is_string(args[0])) return raise_error(interp, "inflate: expected string argument");
 
-    char[] src = args[0].str_val.chars[:args[0].str_val.len];
+    char[] src = args[0].str_chars[:args[0].str_len];
     if (src.len == 0) return make_string(interp, "");
 
     DeflateDecompressor* d = libdeflate_alloc_decompressor();

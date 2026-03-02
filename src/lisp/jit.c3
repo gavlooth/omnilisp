@@ -629,7 +629,7 @@ fn Env* copy_tco_env_chain(Env* src, Interp* interp) {
 fn EvalResult jit_eval_to_result(Expr* expr, Env* env, Interp* interp) {
     Value* v = jit_eval(expr, env, interp);
     if (v != null && v.tag == ERROR) {
-        return eval_error_expr(v.str_val.chars[:v.str_val.len], expr);
+        return eval_error_expr(v.str_chars[:v.str_len], expr);
     }
     return eval_ok(v);
 }
@@ -1358,7 +1358,7 @@ fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
         // Shift occurred — evaluate shift body in parent context
         Value* shift_result = jit_eval(state.shift_body, state.shift_env, interp);
         if (shift_result != null && shift_result.tag == ERROR) {
-            return eval_error(shift_result.str_val.chars[:shift_result.str_val.len]);
+            return eval_error(shift_result.str_chars[:shift_result.str_len]);
         }
         return eval_ok(shift_result);
     }
@@ -1367,7 +1367,7 @@ fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
     Value* v = (Value*)ctx.result;
     main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
     if (v != null && v.tag == ERROR) {
-        return eval_error(v.str_val.chars[:v.str_val.len]);
+        return eval_error(v.str_chars[:v.str_len]);
     }
     return eval_ok(v);
 }
@@ -1482,7 +1482,7 @@ fn EvalResult jit_apply_continuation_impl(Value* k_val, Value* arg, Interp* inte
         Value* shift_result = jit_eval(resume_state.shift_body, resume_state.shift_env, interp);
         main::stack_ctx_destroy(target, &interp.stack_ctx_pool);
         if (shift_result != null && shift_result.tag == ERROR) {
-            return eval_error(shift_result.str_val.chars[:shift_result.str_val.len]);
+            return eval_error(shift_result.str_chars[:shift_result.str_len]);
         }
         return eval_ok(shift_result);
     }
@@ -1493,7 +1493,7 @@ fn EvalResult jit_apply_continuation_impl(Value* k_val, Value* arg, Interp* inte
 
     if (result != null && ((Value*)result).tag == ERROR) {
         Value* err = (Value*)result;
-        return eval_error(err.str_val.chars[:err.str_val.len]);
+        return eval_error(err.str_chars[:err.str_len]);
     }
     return eval_ok(result);
 }
@@ -1767,7 +1767,7 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
             Value* body_result = (Value*)ctx.result;
             main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
             if (body_result != null && body_result.tag == ERROR) {
-                return eval_error(body_result.str_val.chars[:body_result.str_val.len]);
+                return eval_error(body_result.str_chars[:body_result.str_len]);
             }
             return eval_ok(body_result);
         }
@@ -1780,7 +1780,7 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
         // Abort: clause didn't call resolve, context is still suspended
         main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
         if (last_handler_v != null && last_handler_v.tag == ERROR) {
-            return eval_error(last_handler_v.str_val.chars[:last_handler_v.str_val.len]);
+            return eval_error(last_handler_v.str_chars[:last_handler_v.str_len]);
         }
         return eval_ok(last_handler_v);
     }
@@ -1806,7 +1806,7 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
                     return eval_ok(handler_v);
                 }
                 if (handler_v != null) {
-                    return eval_error(handler_v.str_val.chars[:handler_v.str_val.len]);
+                    return eval_error(handler_v.str_chars[:handler_v.str_len]);
                 }
                 return eval_error("raise handler returned nil");
             }
@@ -1814,7 +1814,7 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
     }
 
     if (v != null && v.tag == ERROR) {
-        return eval_error(v.str_val.chars[:v.str_val.len]);
+        return eval_error(v.str_chars[:v.str_len]);
     }
     return eval_ok(v);
 }
@@ -1855,7 +1855,7 @@ fn Value* jit_do_index(Interp* interp, Value* collection, Value* index) {
     }
     // String indexing — supports negative indexing, UTF-8 codepoint index
     if (is_string(collection) && is_int(index)) {
-        char[] bytes = collection.str_val.chars[:collection.str_val.len];
+        char[] bytes = collection.str_chars[:collection.str_len];
         usz cp_count = utf8_strlen(bytes);
         long idx = index.int_val;
         if (idx < 0) idx += (long)cp_count;
@@ -2389,7 +2389,7 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
         }
         usz safe_count = arg_count > 16 ? 16 : arg_count;
         Value* result = func.prim_val.func(args[:safe_count], null, interp);
-        if (is_error(result)) return raise_error(interp, result.str_val.chars[:result.str_val.len]);
+        if (is_error(result)) return raise_error(interp, result.str_chars[:result.str_len]);
         return result;
     }
 

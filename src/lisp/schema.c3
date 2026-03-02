@@ -122,9 +122,9 @@ fn bool schema_check(Value* schema, Value* val, Interp* interp) {
             if (expected == null || val == null) return expected == val;
             if (expected.tag == INT && val.tag == INT) return expected.int_val == val.int_val;
             if (expected.tag == STRING && val.tag == STRING) {
-                if (expected.str_val.len != val.str_val.len) return false;
-                for (usz i = 0; i < expected.str_val.len; i++) {
-                    if (expected.str_val.chars[i] != val.str_val.chars[i]) return false;
+                if (expected.str_len != val.str_len) return false;
+                for (usz i = 0; i < expected.str_len; i++) {
+                    if (expected.str_chars[i] != val.str_chars[i]) return false;
                 }
                 return true;
             }
@@ -195,10 +195,10 @@ fn bool schema_check(Value* schema, Value* val, Interp* interp) {
                 // Simple equality check
                 if (opt.tag == INT && val != null && val.tag == INT && opt.int_val == val.int_val) return true;
                 if (opt.tag == STRING && val != null && val.tag == STRING) {
-                    if (opt.str_val.len == val.str_val.len) {
+                    if (opt.str_len == val.str_len) {
                         bool eq = true;
-                        for (usz i = 0; i < opt.str_val.len; i++) {
-                            if (opt.str_val.chars[i] != val.str_val.chars[i]) { eq = false; break; }
+                        for (usz i = 0; i < opt.str_len; i++) {
+                            if (opt.str_chars[i] != val.str_chars[i]) { eq = false; break; }
                         }
                         if (eq) return true;
                     }

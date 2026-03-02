@@ -82,7 +82,7 @@ fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
     if (!is_string(args[0])) return raise_error(interp, "tcp-connect: host must be a string");
     if (!is_int(args[1])) return raise_error(interp, "tcp-connect: port must be an integer");
 
-    char[] host = args[0].str_val.chars[:args[0].str_val.len];
+    char[] host = args[0].str_chars[:args[0].str_len];
     int port = (int)args[1].int_val;
 
     // Null-terminate host for C
@@ -140,7 +140,7 @@ fn Value* prim_tcp_write(Value*[] args, Env* env, Interp* interp) {
     TcpHandle* th = get_tcp_handle(args[0]);
     if (th == null || !th.connected) return raise_error(interp, "tcp-write: invalid or closed handle");
 
-    char[] data = args[1].str_val.chars[:args[1].str_val.len];
+    char[] data = args[1].str_chars[:args[1].str_len];
     long sent = c_send(th.fd, data.ptr, data.len, 0);
     if (sent < 0) return raise_error(interp, "tcp-write: send failed");
 
@@ -205,7 +205,7 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "dns-resolve: expected (dns-resolve hostname)");
     if (!is_string(args[0])) return raise_error(interp, "dns-resolve: hostname must be a string");
 
-    char[] host = args[0].str_val.chars[:args[0].str_val.len];
+    char[] host = args[0].str_chars[:args[0].str_len];
 
     char[256] host_buf;
     usz hlen = host.len < 255 ? host.len : 255;

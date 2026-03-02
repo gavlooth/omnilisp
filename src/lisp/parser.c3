@@ -862,12 +862,13 @@ fn Expr* Parser.parse_expr(Parser* self) {
         e.lit.value = self.interp.alloc_value_root();
         e.lit.value.tag = STRING;
         usz len = lex.current.text_len;
-        e.lit.value.str_val = strval_new(len);
+        StringVal* builder = strval_new(len);
         for (usz i = 0; i < len; i++) {
-            e.lit.value.str_val.chars[i] = lex.current.text[i];
+            builder.chars[i] = lex.current.text[i];
         }
-        e.lit.value.str_val.chars[len] = 0;
-        e.lit.value.str_val.len = len;
+        builder.chars[len] = 0;
+        builder.len = len;
+        strval_into_value(builder, e.lit.value);
         lex.advance();
         return self.parse_postfix_index(e);
     }
@@ -2372,12 +2373,13 @@ fn Pattern* Parser.parse_pattern(Parser* self) {
         p.lit_value = self.interp.alloc_value_root();
         p.lit_value.tag = STRING;
         usz len = lex.current.text_len;
-        p.lit_value.str_val = strval_new(len);
+        StringVal* builder = strval_new(len);
         for (usz i = 0; i < len; i++) {
-            p.lit_value.str_val.chars[i] = lex.current.text[i];
+            builder.chars[i] = lex.current.text[i];
         }
-        p.lit_value.str_val.chars[len] = 0;
-        p.lit_value.str_val.len = len;
+        builder.chars[len] = 0;
+        builder.len = len;
+        strval_into_value(builder, p.lit_value);
         lex.advance();
         return p;
     }
@@ -2709,12 +2711,13 @@ fn Value* Parser.parse_template_datum(Parser* self) {
         Value* v = self.interp.alloc_value_root();
         v.tag = STRING;
         usz len = lex.current.text_len;
-        v.str_val = strval_new(len);
+        StringVal* builder = strval_new(len);
         for (usz i = 0; i < len; i++) {
-            v.str_val.chars[i] = lex.current.text[i];
+            builder.chars[i] = lex.current.text[i];
         }
-        v.str_val.chars[len] = 0;
-        v.str_val.len = len;
+        builder.chars[len] = 0;
+        builder.len = len;
+        strval_into_value(builder, v);
         lex.advance();
         return v;
     }
@@ -3103,12 +3106,13 @@ fn Expr* Parser.parse_qq_template(Parser* self) {
         e.lit.value = self.interp.alloc_value_root();
         e.lit.value.tag = STRING;
         usz len = lex.current.text_len;
-        e.lit.value.str_val = strval_new(len);
+        StringVal* builder = strval_new(len);
         for (usz i = 0; i < len; i++) {
-            e.lit.value.str_val.chars[i] = lex.current.text[i];
+            builder.chars[i] = lex.current.text[i];
         }
-        e.lit.value.str_val.chars[len] = 0;
-        e.lit.value.str_val.len = len;
+        builder.chars[len] = 0;
+        builder.len = len;
+        strval_into_value(builder, e.lit.value);
         lex.advance();
         return e;
     }
@@ -3343,12 +3347,13 @@ fn Value* Parser.parse_datum(Parser* self) {
         Value* v = self.interp.alloc_value_root();
         v.tag = STRING;
         usz len = lex.current.text_len;
-        v.str_val = strval_new(len);
+        StringVal* builder = strval_new(len);
         for (usz i = 0; i < len; i++) {
-            v.str_val.chars[i] = lex.current.text[i];
+            builder.chars[i] = lex.current.text[i];
         }
-        v.str_val.chars[len] = 0;
-        v.str_val.len = len;
+        builder.chars[len] = 0;
+        builder.len = len;
+        strval_into_value(builder, v);
         lex.advance();
         return v;
     }

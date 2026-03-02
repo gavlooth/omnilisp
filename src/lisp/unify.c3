@@ -51,9 +51,9 @@ fn bool deduce_val_eq(Value* a, Value* b) {
         case INT: return a.int_val == b.int_val;
         case DOUBLE: return a.double_val == b.double_val;
         case STRING: {
-            if (a.str_val.len != b.str_val.len) return false;
-            for (usz i = 0; i < a.str_val.len; i++) {
-                if (a.str_val.chars[i] != b.str_val.chars[i]) return false;
+            if (a.str_len != b.str_len) return false;
+            for (usz i = 0; i < a.str_len; i++) {
+                if (a.str_chars[i] != b.str_chars[i]) return false;
             }
             return true;
         }
