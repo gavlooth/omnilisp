@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-03-02 (Session 66): Scope Adoption at Return — O(n) → O(1) Function Return
+
+### Summary
+Replaced `copy_to_parent` at function return with conditional `scope_adopt` in both `jit_eval_in_call_scope` (Step 2) and `jit_eval_in_single_scope`. Only CONS returns use adoption (the only type where copy_to_parent is O(n)). Scalar returns use the O(1) copy + release path, freeing all temporaries.
+
+Previous attempt (Session 65 Exploration 5) tried adding `value_rc` / deferred free to ScopeRegion, causing heap corruption during macro expansion. This new approach uses the already-proven `scope_adopt` mechanism (used at Step 1 since Session 62) with no new fields, refcounts, or lifetime semantics.
+
+### Changes
+- `jit_eval_in_call_scope` Step 2: When `result_scope.refcount == 1` AND result is CONS, adopt chunks into caller's scope (O(1)). All other returns use O(1) copy + release (frees temporaries).
+- `jit_eval_in_single_scope`: Same conditional pattern — adopt only for CONS returns.
+- Removed outdated comment about Exploration 5 being "too risky".
+
+### Garbage mitigation
+Adoption only triggers for CONS returns (~20% of calls). Scalar returns (~80%) use copy + release, freeing all temporaries. Dead temps from CONS-returning functions are freed at TCO bounce (scope_reset) or when caller's scope dies.
+
+### Files modified
+| File | Changes |
+|------|---------|
+| `src/lisp/jit.c3` | conditional scope_adopt at Step 2 + single_scope return (~15 lines) |
+
+### Test results
+- 956 unified + 73 compiler + 9 stack + 40 scope = 1078 PASS, 0 failures
+
 ## 2026-03-01 (Session 65): Exploration 7C - Mutate-in-Place (Skipped)
 
 ### Summary

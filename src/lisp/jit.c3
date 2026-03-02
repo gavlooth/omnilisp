@@ -435,12 +435,18 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
     main::ScopeRegion* active_scope = interp.current_scope;
 
     interp.current_scope = saved_scope;
-    interp.releasing_scope = active_scope;
-    if (result != null) {
-        result = copy_to_parent(result, interp);
+    if (active_scope.refcount == 1 && result != null && result.tag == CONS) {
+        // CONS return: adopt O(1) to avoid O(n) spine copy. Temps leak as garbage.
+        main::scope_adopt(saved_scope, active_scope);
+    } else {
+        // Scalar return: copy O(1) + release frees all temporaries.
+        interp.releasing_scope = active_scope;
+        if (result != null) {
+            result = copy_to_parent(result, interp);
+        }
+        interp.releasing_scope = null;
+        main::scope_release(active_scope);
     }
-    interp.releasing_scope = null;
-    main::scope_release(active_scope);
 
     return result;
 }
@@ -493,16 +499,19 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
     }
 
     // Step 2: Promote result from result_scope to caller's scope.
-    // The O(n) copy is now iterative (no C stack overflow).
-    // Exploration 5 (Deferred Free) proved too risky as it caused heap corruption
-    // during complex quasiquote/macro expansions due to scope lifetime intertwining.
+    // Only adopt for CONS returns (the O(n) case). Scalar returns use O(1) copy + release
+    // to free temporaries and avoid garbage accumulation.
     interp.current_scope = saved_scope;
-    interp.releasing_scope = result_scope;
-    if (result != null) {
-        result = copy_to_parent(result, interp);
+    if (result_scope.refcount == 1 && result != null && result.tag == CONS) {
+        main::scope_adopt(saved_scope, result_scope);
+    } else {
+        interp.releasing_scope = result_scope;
+        if (result != null) {
+            result = copy_to_parent(result, interp);
+        }
+        interp.releasing_scope = null;
+        main::scope_release(result_scope);
     }
-    interp.releasing_scope = null;
-    main::scope_release(result_scope);
 
     return result;
 }
