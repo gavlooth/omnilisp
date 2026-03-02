@@ -1659,6 +1659,55 @@ fn Value* jit_signal_impl(Expr* expr, Env* env, Interp* interp) {
 }
 
 /**
+ * Dispatch a single signal to a handler clause: find the matching clause, create
+ * a continuation, bind k and arg, evaluate the clause body.
+ *
+ * Returns the handler clause result (Value*). On unmatched clause, returns an
+ * ERROR-tagged value. Caller checks ctx.status and hstate.signaled to determine
+ * whether to loop, return body result, or abort.
+ */
+fn Value* jit_handle_dispatch_signal(HandleEffectState* hstate, Expr* expr, Env* env, Interp* interp, main::StackCtx* ctx) {
+    hstate.signaled = false;
+
+    // Pop handler for clause evaluation (clause may push its own)
+    interp.handler_count = hstate.handler_idx;
+
+    // Find matching clause
+    EffectClause* clause = null;
+    for (usz j = 0; j < hstate.handler_copy.clause_count; j++) {
+        if ((uint)hstate.handler_copy.tags[j] == (uint)hstate.signal_tag) {
+            clause = &hstate.handler_copy.clauses[j];
+            break;
+        }
+    }
+
+    if (clause == null) {
+        // No matching clause — return error for caller to handle
+        char[256] ubuf;
+        char[] utag = interp.symbols.get_name(hstate.signal_tag);
+        char[] uarg = interp.symbols.get_name(value_type_name(hstate.signal_arg, interp));
+        char[] umsg = io::bprintf(&ubuf, "unhandled effect '%s' with arg type %s", (ZString)utag, (ZString)uarg)!!;
+        return make_error(interp, umsg);
+    }
+
+    // Create continuation wrapping the suspended context
+    Continuation* k = interp.alloc_lisp_continuation();
+    k.ctx = ctx;
+    k.is_coroutine_based = true;
+    k.handle_state = hstate;
+    Value* k_val = make_continuation(interp, k);
+
+    // Bind k and arg in clause environment
+    Env* clause_env = env.extend(interp, clause.k_name, k_val);
+    clause_env = clause_env.extend(interp, clause.arg_name, hstate.signal_arg);
+    // Also bind __k for resolve
+    clause_env = clause_env.extend(interp, interp.sym__k, k_val);
+
+    // Evaluate handler clause
+    return jit_eval(clause.handler_body, clause_env, interp);
+}
+
+/**
  * Stack-context-based handle: runs body on a context, dispatches signals to handler clauses.
  *
  * Signal suspends the context. The handle loop finds the matching clause, creates
@@ -1724,49 +1773,10 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
     // Handle loop: process signals
     Value* last_handler_v = null;
     while (state.signaled) {
-        state.signaled = false;
+        last_handler_v = jit_handle_dispatch_signal(&state, expr, env, interp, ctx);
 
-        // Pop handler for clause evaluation (clause may push its own)
-        interp.handler_count = my_idx;
-
-        // Find matching clause
-        EffectClause* clause = null;
-        for (usz j = 0; j < state.handler_copy.clause_count; j++) {
-            if ((uint)state.handler_copy.tags[j] == (uint)state.signal_tag) {
-                clause = &state.handler_copy.clauses[j];
-                break;
-            }
-        }
-
-        if (clause == null) {
-            // No matching clause — unhandled signal
-            main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
-            char[256] ubuf;
-            char[] utag = interp.symbols.get_name(state.signal_tag);
-            char[] uarg = interp.symbols.get_name(value_type_name(state.signal_arg, interp));
-            char[] umsg = io::bprintf(&ubuf, "unhandled effect '%s' with arg type %s", (ZString)utag, (ZString)uarg)!!;
-            return eval_error(umsg);
-        }
-
-        // Create continuation wrapping the suspended context
-        Continuation* k = interp.alloc_lisp_continuation();
-        k.ctx = ctx;
-        k.is_coroutine_based = true;
-        k.handle_state = &state;
-        Value* k_val = make_continuation(interp, k);
-
-        // Bind k and arg in clause environment
-        Env* clause_env = env.extend(interp, clause.k_name, k_val);
-        clause_env = clause_env.extend(interp, clause.arg_name, state.signal_arg);
-        // Also bind __k for resolve
-        clause_env = clause_env.extend(interp, interp.sym__k, k_val);
-
-        // Evaluate handler clause
-        last_handler_v = jit_eval(clause.handler_body, clause_env, interp);
-
-        // Check context state after clause returns
+        // resolve was called, body completed
         if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
-            // resolve was called, body completed
             Value* body_result = (Value*)ctx.result;
             main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
             if (body_result != null && body_result.tag == ERROR) {
@@ -1775,12 +1785,12 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
             return eval_ok(body_result);
         }
 
+        // Body hit another signal after being resumed — loop to dispatch
         if (state.signaled) {
-            // Body hit another signal after being resumed — loop to dispatch
             continue;
         }
 
-        // Abort: clause didn't call resolve, context is still suspended
+        // Abort or unmatched clause: context still suspended, return handler result
         main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
         if (last_handler_v != null && last_handler_v.tag == ERROR) {
             return eval_error(last_handler_v.str_chars[:last_handler_v.str_len]);

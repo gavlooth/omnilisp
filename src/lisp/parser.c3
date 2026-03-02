@@ -1514,181 +1514,21 @@ fn Expr* Parser.parse_define(Parser* self) {
 
         SymbolId annotation = attrs[0];
 
-        if (annotation == self.interp.sym_macro) {
-            // [macro]: Parse macro definition
-            if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected macro name"); return null; }
-            SymbolId name = self.get_current_symbol();
-            self.lexer.advance();
-
-            e.tag = E_DEFMACRO;
-            e.define_macro.name = name;
-            e.define_macro.clause_count = 0;
-
-            while (self.lexer.current.type == T_LPAREN && !self.has_error) {
-                if (e.define_macro.clause_count >= 8) { self.set_error("too many macro clauses"); return null; }
-                self.lexer.advance();
-                Pattern* pat = self.parse_pattern();
-                Value* tmpl = self.parse_template_datum();
-                self.expect(T_RPAREN, ")");
-                e.define_macro.clauses[e.define_macro.clause_count].pattern = pat;
-                e.define_macro.clauses[e.define_macro.clause_count].tmpl = tmpl;
-                e.define_macro.clause_count++;
-            }
-            self.expect(T_RPAREN, ")");
-            return e;
+        // Type-related defines: [type], [abstract], [union], [alias]
+        if (annotation == self.interp.sym_type ||
+            annotation == self.interp.sym_abstract ||
+            annotation == self.interp.sym_union ||
+            annotation == self.interp.sym_alias) {
+            return self.parse_define_type(e, annotation);
         }
 
-        if (annotation == self.interp.sym_type) {
-            return self.parse_deftype(e);
-        }
-        if (annotation == self.interp.sym_abstract) {
-            return self.parse_defabstract(e);
-        }
-        if (annotation == self.interp.sym_union) {
-            return self.parse_defunion(e);
-        }
-        if (annotation == self.interp.sym_alias) {
-            return self.parse_defalias(e);
-        }
-        if (annotation == self.interp.sym_effect) {
-            return self.parse_defeffect(e);
-        }
+        // FFI defines: [ffi lib], [ffi λ]
         if (annotation == self.interp.sym_ffi) {
-            // [ffi ...] — FFI declarations
-            if (attr_count < 2) { self.set_error("expected 'lib' or 'λ'/'lambda' after [ffi"); return null; }
-            if (attrs[1] == self.interp.sym_lib) {
-                return self.parse_ffi_lib(e);
-            }
-            if (attrs[1] == self.interp.sym_lambda) {
-                return self.parse_ffi_fn(e, &attrs, attr_count);
-            }
-            // Check for λ (U+03BB, UTF-8: CE BB)
-            char[] attr1_text = self.interp.symbols.get_name(attrs[1]);
-            if (attr1_text.len == 2 && attr1_text[0] == (char)0xCE && attr1_text[1] == (char)0xBB) {
-                return self.parse_ffi_fn(e, &attrs, attr_count);
-            }
-            self.set_error("unknown [ffi ...] form: expected 'lib' or 'λ'");
-            return null;
-        }
-        // [relation db ...]: Relation definition
-        SymbolId sym_relation = self.interp.symbols.intern("relation");
-        if (annotation == sym_relation) {
-            // attrs[1..] contains: db name, optional key/index/history/schema
-            if (attr_count < 2) { self.set_error("expected db after [relation"); return null; }
-            SymbolId db_name = attrs[1];
-
-            // Collect config attrs (key, index, history, schema) from attrs[2..]
-            SymbolId key_col = 0;
-            SymbolId index_col = 0;
-            SymbolId sym_key = self.interp.symbols.intern("key");
-            SymbolId sym_index = self.interp.symbols.intern("index");
-            for (usz i = 2; i < attr_count; i++) {
-                if ((uint)attrs[i] == (uint)sym_key && i + 1 < attr_count) {
-                    key_col = attrs[++i];
-                } else if ((uint)attrs[i] == (uint)sym_index && i + 1 < attr_count) {
-                    index_col = attrs[++i];
-                }
-            }
-
-            // Read relation name
-            if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected relation name"); return null; }
-            SymbolId rel_name = self.get_current_symbol();
-            self.lexer.advance();
-
-            // Read column definitions: (^Type name), (key ^Type name), or (name)
-            SymbolId[16] col_names;
-            usz col_count = 0;
-            while (self.lexer.current.type == T_LPAREN && !self.has_error && col_count < 16) {
-                self.lexer.advance();  // consume (
-
-                // Check for role prefix: key, index
-                if (self.lexer.current.type == T_SYMBOL) {
-                    SymbolId first = self.get_current_symbol();
-                    if ((uint)first == (uint)sym_key || (uint)first == (uint)sym_index) {
-                        if ((uint)first == (uint)sym_key) { /* role = key, skip */ }
-                        if ((uint)first == (uint)sym_index) { /* role = index, skip */ }
-                        self.lexer.advance();
-                    }
-                }
-
-                // Skip type annotation if present
-                if (self.lexer.current.type == T_SYMBOL && self.lexer.current.text[0] == '^') {
-                    self.lexer.advance();  // skip ^Type
-                }
-
-                // Column name
-                if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected column name"); return null; }
-                col_names[col_count] = self.get_current_symbol();
-                col_count++;
-                self.lexer.advance();
-
-                self.expect(T_RPAREN, ")");
-            }
-
-            self.expect(T_RPAREN, ")");  // close define
-
-            // Build runtime call: (__define-relation 'db-name 'rel-name 'col1 'col2 ...)
-            usz total_args = 2 + col_count;  // __define-relation + db-name + rel-name + cols
-            Expr** call_args = (Expr**)mem::malloc(Expr*.sizeof * (total_args + 1));
-
-            // Function: __define-relation
-            call_args[0] = self.interp.alloc_expr();
-            call_args[0].tag = E_VAR;
-            call_args[0].var_expr.name = self.interp.symbols.intern("__define-relation");
-
-            // Arg 1: db symbol
-            call_args[1] = self.interp.alloc_expr();
-            call_args[1].tag = E_VAR;
-            call_args[1].var_expr.name = db_name;
-
-            // Arg 2: quoted relation name
-            call_args[2] = self.interp.alloc_expr();
-            call_args[2].tag = E_LIT;
-            call_args[2].lit.value = self.interp.alloc_value_root();
-            call_args[2].lit.value.tag = SYMBOL;
-            call_args[2].lit.value.sym_val = rel_name;
-
-            // Args 3+: quoted column names
-            for (usz i = 0; i < col_count; i++) {
-                call_args[3 + i] = self.interp.alloc_expr();
-                call_args[3 + i].tag = E_LIT;
-                call_args[3 + i].lit.value = self.interp.alloc_value_root();
-                call_args[3 + i].lit.value.tag = SYMBOL;
-                call_args[3 + i].lit.value.sym_val = col_names[i];
-            }
-
-            // Build E_CALL + E_DEFINE to bind the result
-            Expr* call = self.interp.alloc_expr();
-            call.tag = E_CALL;
-            call.call.args = call_args;
-            call.call.arg_count = total_args + 1;
-
-            e.tag = E_DEFINE;
-            e.define.name = rel_name;
-            e.define.value = call;
-            return e;
+            return self.parse_define_ffi(e, &attrs, attr_count);
         }
 
-        // [schema]: Schema definition — stores body datum under name
-        SymbolId sym_schema = self.interp.symbols.intern("schema");
-        if (annotation == sym_schema) {
-            if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected schema name"); return null; }
-            SymbolId name = self.get_current_symbol();
-            self.lexer.advance();
-            // Parse body as a datum (quoted data) — the schema definition
-            Value* body = self.parse_datum();
-            self.expect(T_RPAREN, ")");
-            // Desugar to: (define name (quote body))
-            e.tag = E_DEFINE;
-            e.define.name = name;
-            Expr* quote_expr = self.interp.alloc_expr();
-            quote_expr.tag = E_QUOTE;
-            quote_expr.quote.datum = body;
-            e.define.value = quote_expr;
-            return e;
-        }
-        self.set_error("unknown define attribute");
-        return null;
+        // Special defines: [macro], [effect], [schema], [relation]
+        return self.parse_define_special(e, annotation, &attrs, attr_count);
     }
 
     // Shorthand define: (define (name params...) body) => (define name (lambda (params...) body))
@@ -1796,6 +1636,202 @@ fn Expr* Parser.parse_define(Parser* self) {
     e.define.name = name;
     e.define.value = value;
     return e;
+}
+
+/**
+ * Handle type-related bracket defines: [type], [abstract], [union], [alias]
+ * Dispatches to the appropriate existing sub-parser.
+ */
+fn Expr* Parser.parse_define_type(Parser* self, Expr* e, SymbolId annotation) {
+    if (annotation == self.interp.sym_type) {
+        return self.parse_deftype(e);
+    }
+    if (annotation == self.interp.sym_abstract) {
+        return self.parse_defabstract(e);
+    }
+    if (annotation == self.interp.sym_union) {
+        return self.parse_defunion(e);
+    }
+    if (annotation == self.interp.sym_alias) {
+        return self.parse_defalias(e);
+    }
+    self.set_error("unknown type define attribute");
+    return null;
+}
+
+/**
+ * Handle FFI bracket defines: [ffi lib], [ffi λ]
+ * Dispatches to parse_ffi_lib or parse_ffi_fn.
+ */
+fn Expr* Parser.parse_define_ffi(Parser* self, Expr* e, SymbolId[8]* attrs, usz attr_count) {
+    if (attr_count < 2) { self.set_error("expected 'lib' or 'λ'/'lambda' after [ffi"); return null; }
+    if ((*attrs)[1] == self.interp.sym_lib) {
+        return self.parse_ffi_lib(e);
+    }
+    if ((*attrs)[1] == self.interp.sym_lambda) {
+        return self.parse_ffi_fn(e, attrs, attr_count);
+    }
+    // Check for λ (U+03BB, UTF-8: CE BB)
+    char[] attr1_text = self.interp.symbols.get_name((*attrs)[1]);
+    if (attr1_text.len == 2 && attr1_text[0] == (char)0xCE && attr1_text[1] == (char)0xBB) {
+        return self.parse_ffi_fn(e, attrs, attr_count);
+    }
+    self.set_error("unknown [ffi ...] form: expected 'lib' or 'λ'");
+    return null;
+}
+
+/**
+ * Handle special bracket defines: [macro], [effect], [relation], [schema]
+ */
+fn Expr* Parser.parse_define_special(Parser* self, Expr* e, SymbolId annotation, SymbolId[8]* attrs, usz attr_count) {
+    if (annotation == self.interp.sym_macro) {
+        // [macro]: Parse macro definition
+        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected macro name"); return null; }
+        SymbolId name = self.get_current_symbol();
+        self.lexer.advance();
+
+        e.tag = E_DEFMACRO;
+        e.define_macro.name = name;
+        e.define_macro.clause_count = 0;
+
+        while (self.lexer.current.type == T_LPAREN && !self.has_error) {
+            if (e.define_macro.clause_count >= 8) { self.set_error("too many macro clauses"); return null; }
+            self.lexer.advance();
+            Pattern* pat = self.parse_pattern();
+            Value* tmpl = self.parse_template_datum();
+            self.expect(T_RPAREN, ")");
+            e.define_macro.clauses[e.define_macro.clause_count].pattern = pat;
+            e.define_macro.clauses[e.define_macro.clause_count].tmpl = tmpl;
+            e.define_macro.clause_count++;
+        }
+        self.expect(T_RPAREN, ")");
+        return e;
+    }
+
+    if (annotation == self.interp.sym_effect) {
+        return self.parse_defeffect(e);
+    }
+
+    // [relation db ...]: Relation definition
+    SymbolId sym_relation = self.interp.symbols.intern("relation");
+    if (annotation == sym_relation) {
+        // attrs[1..] contains: db name, optional key/index/history/schema
+        if (attr_count < 2) { self.set_error("expected db after [relation"); return null; }
+        SymbolId db_name = (*attrs)[1];
+
+        // Collect config attrs (key, index, history, schema) from attrs[2..]
+        SymbolId key_col = 0;
+        SymbolId index_col = 0;
+        SymbolId sym_key = self.interp.symbols.intern("key");
+        SymbolId sym_index = self.interp.symbols.intern("index");
+        for (usz i = 2; i < attr_count; i++) {
+            if ((uint)(*attrs)[i] == (uint)sym_key && i + 1 < attr_count) {
+                key_col = (*attrs)[++i];
+            } else if ((uint)(*attrs)[i] == (uint)sym_index && i + 1 < attr_count) {
+                index_col = (*attrs)[++i];
+            }
+        }
+
+        // Read relation name
+        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected relation name"); return null; }
+        SymbolId rel_name = self.get_current_symbol();
+        self.lexer.advance();
+
+        // Read column definitions: (^Type name), (key ^Type name), or (name)
+        SymbolId[16] col_names;
+        usz col_count = 0;
+        while (self.lexer.current.type == T_LPAREN && !self.has_error && col_count < 16) {
+            self.lexer.advance();  // consume (
+
+            // Check for role prefix: key, index
+            if (self.lexer.current.type == T_SYMBOL) {
+                SymbolId first = self.get_current_symbol();
+                if ((uint)first == (uint)sym_key || (uint)first == (uint)sym_index) {
+                    if ((uint)first == (uint)sym_key) { /* role = key, skip */ }
+                    if ((uint)first == (uint)sym_index) { /* role = index, skip */ }
+                    self.lexer.advance();
+                }
+            }
+
+            // Skip type annotation if present
+            if (self.lexer.current.type == T_SYMBOL && self.lexer.current.text[0] == '^') {
+                self.lexer.advance();  // skip ^Type
+            }
+
+            // Column name
+            if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected column name"); return null; }
+            col_names[col_count] = self.get_current_symbol();
+            col_count++;
+            self.lexer.advance();
+
+            self.expect(T_RPAREN, ")");
+        }
+
+        self.expect(T_RPAREN, ")");  // close define
+
+        // Build runtime call: (__define-relation 'db-name 'rel-name 'col1 'col2 ...)
+        usz total_args = 2 + col_count;  // __define-relation + db-name + rel-name + cols
+        Expr** call_args = (Expr**)mem::malloc(Expr*.sizeof * (total_args + 1));
+
+        // Function: __define-relation
+        call_args[0] = self.interp.alloc_expr();
+        call_args[0].tag = E_VAR;
+        call_args[0].var_expr.name = self.interp.symbols.intern("__define-relation");
+
+        // Arg 1: db symbol
+        call_args[1] = self.interp.alloc_expr();
+        call_args[1].tag = E_VAR;
+        call_args[1].var_expr.name = db_name;
+
+        // Arg 2: quoted relation name
+        call_args[2] = self.interp.alloc_expr();
+        call_args[2].tag = E_LIT;
+        call_args[2].lit.value = self.interp.alloc_value_root();
+        call_args[2].lit.value.tag = SYMBOL;
+        call_args[2].lit.value.sym_val = rel_name;
+
+        // Args 3+: quoted column names
+        for (usz i = 0; i < col_count; i++) {
+            call_args[3 + i] = self.interp.alloc_expr();
+            call_args[3 + i].tag = E_LIT;
+            call_args[3 + i].lit.value = self.interp.alloc_value_root();
+            call_args[3 + i].lit.value.tag = SYMBOL;
+            call_args[3 + i].lit.value.sym_val = col_names[i];
+        }
+
+        // Build E_CALL + E_DEFINE to bind the result
+        Expr* call = self.interp.alloc_expr();
+        call.tag = E_CALL;
+        call.call.args = call_args;
+        call.call.arg_count = total_args + 1;
+
+        e.tag = E_DEFINE;
+        e.define.name = rel_name;
+        e.define.value = call;
+        return e;
+    }
+
+    // [schema]: Schema definition — stores body datum under name
+    SymbolId sym_schema = self.interp.symbols.intern("schema");
+    if (annotation == sym_schema) {
+        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected schema name"); return null; }
+        SymbolId name = self.get_current_symbol();
+        self.lexer.advance();
+        // Parse body as a datum (quoted data) — the schema definition
+        Value* body = self.parse_datum();
+        self.expect(T_RPAREN, ")");
+        // Desugar to: (define name (quote body))
+        e.tag = E_DEFINE;
+        e.define.name = name;
+        Expr* quote_expr = self.interp.alloc_expr();
+        quote_expr.tag = E_QUOTE;
+        quote_expr.quote.datum = body;
+        e.define.value = quote_expr;
+        return e;
+    }
+
+    self.set_error("unknown define attribute");
+    return null;
 }
 
 /**
