@@ -1,31 +1,5 @@
 module lisp;
 
-/**
- * /// REFACTORING NOTES (based on C3_STYLE.md) ///
- *
- * 1. TEST HELPER PATTERN (General):
- *    - test_eq, test_eq_double, test_truthy, test_nil, test_tag, test_gt
- *      all share similar structure - could use generic test framework:
- *      ```c3
- *      fn void test_generic(T, Interp*, char[] name, char[] expr,
- *          fn bool(T, Value*) check, T expected, int* pass, int* fail)
- *          <T> @generic
- *      ```
- *
- * 2. @PURE FOR PREDICATES (Section 5):
- *    - is_int, is_double, is_nil, is_string used as predicates;
- *      they're already @pure in value.c3 (good)
- *
- * 3. ERROR HANDLING (Section 6):
- *    - Tests use pattern: if (!ri.error.has_error && ...) 
- *      Consider helper: fn bool eval_success(EvalResult r) @pure
- *
- * 4. DUPLICATE CODE (Section 4):
- *    - JIT test pattern repeated; could extract:
- *      ```c3
- *      fn bool jit_check(char[] expr, fn bool(Value*) pred, Interp* interp)
- *      ```
- */
 
 import std::io;
 import main;
