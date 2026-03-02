@@ -554,7 +554,99 @@ Users who want channel abstractions write a handler:
 **What's NOT needed (share-nothing eliminates):**
 - Locks/mutexes — no shared mutable state
 - STM — no shared state to transact on
-- Atomics — no shared memory to CAS on (except the inter-thread queue, handled in C)
+
+#### Fine-Grained Shared State: Agent Pattern + Atomic Refs
+
+Share-nothing is correct for 95% of concurrency. For the remaining 5% (hot counters,
+parallel accumulators), two escape hatches — neither requires locks.
+
+**Tier A: Agent pattern (Omni-native, no new types)**
+
+An agent is a fiber that owns mutable state and processes update messages serially.
+Other threads send requests, the agent applies them one at a time. No races by construction.
+This is how Erlang's `gen_server` works.
+
+```lisp
+;; Agent = fiber that owns state, processes messages serially
+(define (make-counter initial)
+  (spawn (lambda ()
+    (let loop (n initial)
+      (let (msg (yield n))
+        (match msg
+          ('inc   (loop (+ n 1)))
+          ('dec   (loop (- n 1)))
+          ('get   (loop n))))))))
+
+;; Any thread sends update requests
+(signal io/thread-send (cons counter-agent 'inc))
+```
+
+**Tier B: Atomic refs (hardware atomics, ~30 lines C3)**
+
+When message roundtrip overhead matters (millions of increments per second),
+atomic integers provide direct hardware CAS. Uses C3's native `std::atomic` module —
+no C builtins, no FFI, pure C3:
+
+```lisp
+;; Omni API
+(define counter (atomic 0))      ;; shared atomic integer
+(atomic-add! counter 1)          ;; hardware fetch-and-add, returns old value
+(atomic-read counter)            ;; atomic load
+(atomic-cas! counter 0 1)        ;; compare-and-swap, returns true/false
+```
+
+C3 implementation (uses `std::atomic::Atomic{long}`):
+
+```c3
+import std::atomic;
+
+// atomic ref = malloc'd Atomic{long}, shared across threads (not in any scope-region)
+fn Value* prim_atomic(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1 || !is_int(args[0])) return raise_error(interp, "atomic: expected integer");
+    atomic::Atomic{long}* atom = (atomic::Atomic{long}*)mem::malloc(atomic::Atomic{long}.sizeof);
+    atom.store(args[0].int_val);
+    // Wrap as FFI_HANDLE in root_scope — lives for program lifetime
+    return make_ffi_handle(interp, (void*)atom, "atomic");
+}
+
+fn Value* prim_atomic_add(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 2) return raise_error(interp, "atomic-add!: expected (atomic-add! ref n)");
+    atomic::Atomic{long}* atom = (atomic::Atomic{long}*)args[0].ffi_val;
+    long old = atom.add(args[1].int_val);
+    return make_int(interp, old);
+}
+
+fn Value* prim_atomic_read(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return raise_error(interp, "atomic-read: expected (atomic-read ref)");
+    atomic::Atomic{long}* atom = (atomic::Atomic{long}*)args[0].ffi_val;
+    return make_int(interp, atom.load());
+}
+
+fn Value* prim_atomic_cas(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 3) return raise_error(interp, "atomic-cas!: expected (atomic-cas! ref old new)");
+    atomic::Atomic{long}* atom = (atomic::Atomic{long}*)args[0].ffi_val;
+    long expected = args[1].int_val;
+    long desired = args[2].int_val;
+    long* exp_ptr = &expected;
+    bool ok = mem::compare_exchange((long*)atom, exp_ptr, desired);
+    return ok ? interp.global_env.lookup(interp.symbols.intern("true")) : make_nil(interp);
+}
+```
+
+**Only integers.** No atomic closures, no atomic dicts. Atomic refs live outside
+scope-regions (plain `malloc`) — shared across threads with zero coordination.
+
+**When to use which:**
+
+| Need | Solution | Overhead |
+|------|----------|----------|
+| Shared mutable state (general) | Agent pattern | Message roundtrip (~µs) |
+| Hot counter / parallel accumulator | `atomic` + `atomic-add!` | Hardware CAS (~ns) |
+| Shared large data (rare) | FFI to C (e.g., omni-torch tensors) | Zero (C manages it) |
+
+**Not a GIL.** Python's GIL = one interpreter, N threads fighting for it.
+Omni = N interpreters, zero contention, true parallelism. Same model as Erlang
+(powers WhatsApp 2B users, Discord, RabbitMQ).
 
 **Implementation:**
 
@@ -563,8 +655,9 @@ Users who want channel abstractions write a handler:
 | Fiber scheduler (effect handler + libuv poll loop) | ~150 C3 | E |
 | `spawn` / `await` primitives | ~50 C3 | E |
 | Thread spawn (`uv_thread_create` + per-thread Interp init) | ~100 C3 | G |
-| Inter-thread message queue (lock-free, `uv_async_t` wakeup) | ~80 C3 | G |
+| Inter-thread message queue (`uv_async_t` wakeup) | ~80 C3 | G |
 | Cross-thread value copy (flat data only, no closures) | ~50 C3 | G |
+| Atomic refs (`atomic`, `atomic-add!`, `atomic-read`, `atomic-cas!`) | ~30 C3 | G |
 
 ---
 
