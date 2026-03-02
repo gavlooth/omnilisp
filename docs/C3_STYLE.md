@@ -311,6 +311,41 @@ switch (v.tag) {
 
 **Context boundaries**: Save/restore ALL interp state (eval_depth, jit_env, match_env, flags, TCO, scope, escape_scope) at every StackCtx switch. Use defer for restore.
 
+---
+
+## Adoption Roadmap
+
+Priority order — highest-impact fixes first, based on bugs found.
+
+### P0: Critical (prevents heap corruption)
+- [ ] Add `defer` to ALL LMDB transactions in `deduce.c3` (`mdb_txn_abort`)
+- [ ] Add `defer` to scope save/restore in `make_tcp_handle`, `make_tls_handle`, `make_hashmap`, `make_array`
+- [ ] Add `@require interp.current_scope != null` to `alloc_value`, `make_string`, `make_cons`
+- [ ] Run ASAN in CI: `c3c build --sanitize=address && ./build/main`
+
+### P1: High (prevents type confusion, catches bugs at compile time)
+- [ ] Introduce `distinct` types for handle pointers (TcpHandle, Relation, AtomicRef, TlsHandle)
+- [ ] Add `$assert` for `regular_prims` and `dispatched_prims` array sizes
+- [ ] Add `@require v.tag == expected_tag` at top of `prim_*` functions that access specific union fields
+- [ ] Replace `scope_dtor_value` FFI_HANDLE case with per-type destructors
+
+### P2: Medium (code quality, maintainability)
+- [ ] Define `fault` types: `ParseError`, `EvalError`, `IoError`, `TypeError`
+- [ ] Convert `hashmap_get`, `Env.lookup` to return `Value*!` (optionals)
+- [ ] Replace manual index loops with `foreach` in `scope_run_dtors`, `jit_gc`, tuple encoding
+- [ ] Extract generic `Pool{Type}` module for JIT state pool and StackCtx pool
+- [ ] Use `bitstruct` for InterpFlags (strict_mode, escape_env_mode, raise_pending)
+
+### P3: Low (nice to have, long-term)
+- [ ] Convert all `prim_*` to return `Value*!` instead of ERROR-tagged values
+- [ ] Generic `LookupTable{Key, Value, N}` for FastPathEntry and JitCache
+- [ ] Exhaustive switch (no default) for all ValueTag dispatches
+- [ ] `@pure` annotations on side-effect-free functions (is_int, is_string, is_cons)
+- [ ] SIMD for tuple encoding/comparison in Deduce (if profiling shows bottleneck)
+
+### How to Apply
+When modifying a file, apply the relevant patterns from P0-P1 to the code you're touching. Don't refactor unrelated code. Each PR should include style fixes alongside feature work — no separate "style cleanup" PRs.
+
 Sources:
 - [C3 Language](https://c3-lang.org/)
 - [C3 Features](https://c3-lang.org/getting-started/faq/allfeatures)

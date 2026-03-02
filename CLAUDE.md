@@ -26,6 +26,17 @@ When proposing new features or changes, check whether they align with these para
 - Run: `LD_LIBRARY_PATH=/usr/local/lib ./build/main` (needs GNU Lightning)
 - All tests must pass before committing
 
+## C3 Style Guide (MANDATORY)
+Read `docs/C3_STYLE.md` before writing any C3 code. Key rules:
+- **defer**: acquire → defer release → use. Every `mem::malloc` → `defer mem::free`. Every LMDB txn → `defer mdb_txn_abort`. Every scope save → `defer restore`.
+- **distinct**: Never cast unrelated structs to `FfiHandle*`. Use distinct types or separate ValueTags.
+- **contracts**: Add `@require` to functions with non-obvious preconditions (scope state, non-null, valid tags).
+- **optionals**: Prefer `Type!` returns over null + raise_error for functions that can fail.
+- **$assert**: Verify array sizes, struct sizes, alignment at compile time.
+- **foreach**: Use foreach over manual index loops.
+- **switch**: Exhaustive — no default case for ValueTag switches (compiler catches missing tags).
+- **ASAN**: Run `c3c build --sanitize=address` when debugging memory issues.
+
 ## Conventions
 - Multi-param lambdas with strict arity (NO auto-curry); use `_` placeholder, `|>` pipe, or `partial` for partial application
 - `_` is T_UNDERSCORE — wildcard in match patterns, placeholder in call args `(+ 1 _)` → lambda
