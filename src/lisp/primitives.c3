@@ -992,14 +992,9 @@ fn bool ValueKey.is_eq(self, ValueKey other) {
     return values_equal(self.val, other.val);
 }
 
-// C3 native list for Array replacement
-import std::collections::list;
-alias ValueList = list::List{Value*};
-
-// C3 native map BLOCKED: std::collections::map fully instantiates ALL methods,
-// including has_value() which requires Value type to be equatable.
-// Value* (pointer) lacks .equals/.is_eq/.less methods that C3 generics require.
-// Custom HashMap retained — not historical debt, it's a necessary workaround.
+// Custom HashMap and Array RETAINED — C3's generic collections require
+// equatable Value types (map) or add churn for no benefit (list).
+// These are Omni language types with scope-region integration, not reimplementations.
 
 fn uint hash_value(Value* key) {
     if (key == null) return 0;
