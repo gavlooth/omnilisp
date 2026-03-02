@@ -78,8 +78,11 @@ fn TcpHandle* get_tcp_handle(Value* v) {
 // ============================================================
 
 fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 2) return raise_error(interp, "tcp-connect: expected (tcp-connect host port)");
+    // fault: lisp::EXPECTED_STRING
     if (!is_string(args[0])) return raise_error(interp, "tcp-connect: host must be a string");
+    // fault: lisp::EXPECTED_INT
     if (!is_int(args[1])) return raise_error(interp, "tcp-connect: port must be an integer");
 
     char[] host = args[0].str_chars[:args[0].str_len];
@@ -100,6 +103,7 @@ fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
     void* result = null;
     int status = c_getaddrinfo(&host_buf, &port_buf, null, &result);
     if (status != 0 || result == null) {
+        // fault: lisp::DNS_FAILED
         return raise_error(interp, "tcp-connect: DNS resolution failed");
     }
 
@@ -114,6 +118,7 @@ fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
     int fd = c_socket(ai_family, ai_socktype, ai_protocol);
     if (fd < 0) {
         c_freeaddrinfo(result);
+        // fault: lisp::CONNECTION_REFUSED
         return raise_error(interp, "tcp-connect: socket creation failed");
     }
 
@@ -123,6 +128,7 @@ fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
 
     if (conn_status < 0) {
         c_close_fd(fd);
+        // fault: lisp::CONNECTION_REFUSED
         return raise_error(interp, "tcp-connect: connection failed");
     }
 
@@ -134,13 +140,17 @@ fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_tcp_write(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 2) return raise_error(interp, "tcp-write: expected (tcp-write handle data)");
+    // fault: lisp::EXPECTED_STRING
     if (!is_string(args[1])) return raise_error(interp, "tcp-write: data must be a string");
 
     TcpHandle* th = get_tcp_handle(args[0]);
+    // fault: lisp::TYPE_MISMATCH
     if (th == null || !th.connected) return raise_error(interp, "tcp-write: invalid or closed handle");
 
     char[] data = args[1].str_chars[:args[1].str_len];
+    // fault: lisp::WRITE_FAILED
     long sent = c_send(th.fd, data.ptr, data.len, 0);
     if (sent < 0) return raise_error(interp, "tcp-write: send failed");
 
@@ -152,9 +162,11 @@ fn Value* prim_tcp_write(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "tcp-read: expected (tcp-read handle [max-bytes])");
 
     TcpHandle* th = get_tcp_handle(args[0]);
+    // fault: lisp::TYPE_MISMATCH
     if (th == null || !th.connected) return raise_error(interp, "tcp-read: invalid or closed handle");
 
     usz max_bytes = 4096;
@@ -164,11 +176,13 @@ fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
     }
 
     char* buf = (char*)mem::malloc(max_bytes);
+    // fault: lisp::READ_FAILED
     if (buf == null) return raise_error(interp, "tcp-read: out of memory");
     defer mem::free(buf);
 
     long received = c_recv(th.fd, buf, max_bytes, 0);
     if (received < 0) {
+        // fault: lisp::READ_FAILED
         return raise_error(interp, "tcp-read: recv failed");
     }
     if (received == 0) {
@@ -184,9 +198,11 @@ fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_tcp_close(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "tcp-close: expected (tcp-close handle)");
 
     TcpHandle* th = get_tcp_handle(args[0]);
+    // fault: lisp::TYPE_MISMATCH
     if (th == null) return raise_error(interp, "tcp-close: invalid handle");
 
     if (th.connected) {
@@ -202,7 +218,9 @@ fn Value* prim_tcp_close(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "dns-resolve: expected (dns-resolve hostname)");
+    // fault: lisp::EXPECTED_STRING
     if (!is_string(args[0])) return raise_error(interp, "dns-resolve: hostname must be a string");
 
     char[] host = args[0].str_chars[:args[0].str_len];
@@ -215,6 +233,7 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
     void* result = null;
     int status = c_getaddrinfo(&host_buf, null, null, &result);
     if (status != 0 || result == null) {
+        // fault: lisp::DNS_FAILED
         return raise_error(interp, "dns-resolve: resolution failed");
     }
 
@@ -229,6 +248,7 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
         c_inet_ntop(AF_INET, sin_addr, &ip_buf, 64);
     } else {
         c_freeaddrinfo(result);
+        // fault: lisp::DNS_FAILED
         return raise_error(interp, "dns-resolve: IPv6 not yet supported");
     }
 
@@ -246,7 +266,9 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_async_sleep(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "async-sleep: expected (async-sleep ms)");
+    // fault: lisp::EXPECTED_INT
     if (!is_int(args[0])) return raise_error(interp, "async-sleep: ms must be an integer");
 
     long ms = args[0].int_val;

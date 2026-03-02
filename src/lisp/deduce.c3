@@ -166,14 +166,17 @@ fn usz decode_tuple(char* buf, usz buf_size, Value*[] out, Interp* interp) {
 // ============================================================
 
 fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "deduce-open: expected path or 'memory");
 
     DeduceDb* db = (DeduceDb*)mem::malloc(DeduceDb.sizeof);
+    // fault: lisp::WRITE_FAILED
     if (db == null) return raise_error(interp, "deduce-open: out of memory");
 
     int rc = mdb_env_create(&db.env);
     if (rc != MDB_SUCCESS) {
         mem::free(db);
+        // fault: lisp::WRITE_FAILED
         return raise_error(interp, "deduce-open: failed to create LMDB env");
     }
 
@@ -202,6 +205,7 @@ fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
         flags = MDB_NOSUBDIR;
     } else {
         mem::free(db);
+        // fault: lisp::TYPE_MISMATCH
         return raise_error(interp, "deduce-open: expected path string or 'memory");
     }
 
@@ -209,6 +213,7 @@ fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
     if (rc != MDB_SUCCESS) {
         mdb_env_close(db.env);
         mem::free(db);
+        // fault: lisp::WRITE_FAILED
         return raise_error(interp, "deduce-open: failed to open database");
     }
 
@@ -230,18 +235,22 @@ fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "fact!: expected (fact! relation val...)");
 
     // First arg should be a Relation value (FFI_HANDLE wrapping Relation*)
     Value* rel_val = args[0];
     if (rel_val == null || rel_val.tag != FFI_HANDLE) {
+        // fault: lisp::TYPE_MISMATCH
         return raise_error(interp, "fact!: first argument must be a relation");
     }
     Relation* rel = (Relation*)rel_val.ffi_val;
+    // fault: lisp::TYPE_MISMATCH
     if (rel.db == null || !rel.db.open) return raise_error(interp, "fact!: database not open");
 
     usz val_count = args.len - 1;
     if (val_count != rel.col_count) {
+        // fault: lisp::ARITY_MISMATCH
         return raise_error(interp, "fact!: wrong number of values for relation");
     }
 
@@ -261,11 +270,13 @@ fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
     // Write to LMDB
     MdbTxn* txn = null;
     int rc = mdb_txn_begin(rel.db.env, null, 0, &txn);
+    // fault: lisp::WRITE_FAILED
     if (rc != MDB_SUCCESS) return raise_error(interp, "fact!: txn begin failed");
 
     rc = mdb_put(txn, rel.dbi, &key, &data, 0);
     if (rc != MDB_SUCCESS) {
         mdb_txn_abort(txn);
+        // fault: lisp::WRITE_FAILED
         return raise_error(interp, "fact!: put failed");
     }
 
@@ -278,17 +289,21 @@ fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_retract_fact(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "retract!: expected (retract! relation val...)");
 
     Value* rel_val = args[0];
     if (rel_val == null || rel_val.tag != FFI_HANDLE) {
+        // fault: lisp::TYPE_MISMATCH
         return raise_error(interp, "retract!: first argument must be a relation");
     }
     Relation* rel = (Relation*)rel_val.ffi_val;
+    // fault: lisp::TYPE_MISMATCH
     if (rel.db == null || !rel.db.open) return raise_error(interp, "retract!: database not open");
 
     usz val_count = args.len - 1;
     if (val_count != rel.col_count) {
+        // fault: lisp::ARITY_MISMATCH
         return raise_error(interp, "retract!: wrong number of values for relation");
     }
 
@@ -301,6 +316,7 @@ fn Value* prim_retract_fact(Value*[] args, Env* env, Interp* interp) {
 
     MdbTxn* txn = null;
     int rc = mdb_txn_begin(rel.db.env, null, 0, &txn);
+    // fault: lisp::WRITE_FAILED
     if (rc != MDB_SUCCESS) return raise_error(interp, "retract!: txn begin failed");
 
     rc = mdb_del(txn, rel.dbi, &key, null);
@@ -360,19 +376,24 @@ fn Value* relation_scan_all(Relation* rel, Interp* interp) {
 // ============================================================
 
 fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "__define-relation: expected (cons db '(name col...))");
 
     // arg 0: (cons db (name col1 col2 ...))
     Value* pair = args[0];
+    // fault: lisp::TYPE_MISMATCH
     if (!is_cons(pair)) return raise_error(interp, "__define-relation: expected cons pair");
     Value* db_val = car(pair);
     if (db_val == null || db_val.tag != FFI_HANDLE) {
+        // fault: lisp::TYPE_MISMATCH
         return raise_error(interp, "__define-relation: car must be a deduce-open handle");
     }
     DeduceDb* db = (DeduceDb*)db_val.ffi_val;
 
     Value* spec = cdr(pair);
+    // fault: lisp::TYPE_MISMATCH
     if (!is_cons(spec)) return raise_error(interp, "__define-relation: expected (name col...) in cdr");
+    // fault: lisp::EXPECTED_SYMBOL
     if (car(spec).tag != SYMBOL) return raise_error(interp, "__define-relation: first element must be relation name");
     SymbolId rel_name = car(spec).sym_val;
 
@@ -402,6 +423,7 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
     int rc = mdb_txn_begin(db.env, null, 0, &txn);
     if (rc != MDB_SUCCESS) {
         mem::free(rel);
+        // fault: lisp::WRITE_FAILED
         return raise_error(interp, "__define-relation: txn begin failed");
     }
 
@@ -409,6 +431,7 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
     if (rc != MDB_SUCCESS) {
         mdb_txn_abort(txn);
         mem::free(rel);
+        // fault: lisp::WRITE_FAILED
         return raise_error(interp, "__define-relation: dbi open failed");
     }
 
@@ -432,10 +455,12 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 2) return raise_error(interp, "deduce-query: expected (deduce-query relation filter-fn)");
 
     Value* rel_val = args[0];
     if (rel_val == null || rel_val.tag != FFI_HANDLE) {
+        // fault: lisp::TYPE_MISMATCH
         return raise_error(interp, "deduce-query: first argument must be a relation");
     }
     Relation* rel = (Relation*)rel_val.ffi_val;
@@ -471,10 +496,12 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_deduce_count(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "deduce-count: expected (deduce-count relation)");
 
     Value* rel_val = args[0];
     if (rel_val == null || rel_val.tag != FFI_HANDLE) {
+        // fault: lisp::TYPE_MISMATCH
         return raise_error(interp, "deduce-count: first argument must be a relation");
     }
     Relation* rel = (Relation*)rel_val.ffi_val;
@@ -502,10 +529,12 @@ fn Value* prim_deduce_count(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_deduce_scan(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "deduce-scan: expected (deduce-scan relation)");
 
     Value* rel_val = args[0];
     if (rel_val == null || rel_val.tag != FFI_HANDLE) {
+        // fault: lisp::TYPE_MISMATCH
         return raise_error(interp, "deduce-scan: first argument must be a relation");
     }
     Relation* rel = (Relation*)rel_val.ffi_val;

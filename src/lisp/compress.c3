@@ -29,23 +29,28 @@ const int LIBDEFLATE_SUCCESS = 0;
 // ============================================================
 
 fn Value* prim_gzip(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "gzip: expected 1 argument");
+    // fault: lisp::EXPECTED_STRING
     if (!is_string(args[0])) return raise_error(interp, "gzip: expected string argument");
 
     char[] src = args[0].str_chars[:args[0].str_len];
 
     DeflateCompressor* c = libdeflate_alloc_compressor(6);  // default compression level
+    // fault: lisp::WRITE_FAILED
     if (c == null) return raise_error(interp, "gzip: failed to allocate compressor");
     defer libdeflate_free_compressor(c);
 
     usz bound = libdeflate_gzip_compress_bound(c, src.len);
     char* out_buf = (char*)mem::malloc(bound);
+    // fault: lisp::WRITE_FAILED
     if (out_buf == null) return raise_error(interp, "gzip: out of memory");
     defer mem::free(out_buf);
 
     usz actual = libdeflate_gzip_compress(c, src.ptr, src.len, out_buf, bound);
 
     if (actual == 0) {
+        // fault: lisp::WRITE_FAILED
         return raise_error(interp, "gzip: compression failed");
     }
 
@@ -57,13 +62,16 @@ fn Value* prim_gzip(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_gunzip(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "gunzip: expected 1 argument");
+    // fault: lisp::EXPECTED_STRING
     if (!is_string(args[0])) return raise_error(interp, "gunzip: expected string argument");
 
     char[] src = args[0].str_chars[:args[0].str_len];
     if (src.len == 0) return make_string(interp, "");
 
     DeflateDecompressor* d = libdeflate_alloc_decompressor();
+    // fault: lisp::READ_FAILED
     if (d == null) return raise_error(interp, "gunzip: failed to allocate decompressor");
     defer libdeflate_free_decompressor(d);
 
@@ -74,6 +82,7 @@ fn Value* prim_gunzip(Value*[] args, Env* env, Interp* interp) {
     for (int attempt = 0; attempt < 8; attempt++) {
         char* out_buf = (char*)mem::malloc(try_size);
         if (out_buf == null) {
+            // fault: lisp::READ_FAILED
             return raise_error(interp, "gunzip: out of memory");
         }
 
@@ -95,9 +104,11 @@ fn Value* prim_gunzip(Value*[] args, Env* env, Interp* interp) {
         }
 
         // Bad data or other error
+        // fault: lisp::READ_FAILED
         return raise_error(interp, "gunzip: decompression failed (bad data)");
     }
 
+    // fault: lisp::READ_FAILED
     return raise_error(interp, "gunzip: decompressed data too large");
 }
 
@@ -106,23 +117,28 @@ fn Value* prim_gunzip(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_deflate(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "deflate: expected 1 argument");
+    // fault: lisp::EXPECTED_STRING
     if (!is_string(args[0])) return raise_error(interp, "deflate: expected string argument");
 
     char[] src = args[0].str_chars[:args[0].str_len];
 
     DeflateCompressor* c = libdeflate_alloc_compressor(6);
+    // fault: lisp::WRITE_FAILED
     if (c == null) return raise_error(interp, "deflate: failed to allocate compressor");
     defer libdeflate_free_compressor(c);
 
     usz bound = libdeflate_deflate_compress_bound(c, src.len);
     char* out_buf = (char*)mem::malloc(bound);
+    // fault: lisp::WRITE_FAILED
     if (out_buf == null) return raise_error(interp, "deflate: out of memory");
     defer mem::free(out_buf);
 
     usz actual = libdeflate_deflate_compress(c, src.ptr, src.len, out_buf, bound);
 
     if (actual == 0) {
+        // fault: lisp::WRITE_FAILED
         return raise_error(interp, "deflate: compression failed");
     }
 
@@ -134,13 +150,16 @@ fn Value* prim_deflate(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_inflate(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "inflate: expected 1-2 arguments");
+    // fault: lisp::EXPECTED_STRING
     if (!is_string(args[0])) return raise_error(interp, "inflate: expected string argument");
 
     char[] src = args[0].str_chars[:args[0].str_len];
     if (src.len == 0) return make_string(interp, "");
 
     DeflateDecompressor* d = libdeflate_alloc_decompressor();
+    // fault: lisp::READ_FAILED
     if (d == null) return raise_error(interp, "inflate: failed to allocate decompressor");
     defer libdeflate_free_decompressor(d);
 
@@ -156,6 +175,7 @@ fn Value* prim_inflate(Value*[] args, Env* env, Interp* interp) {
     for (int attempt = 0; attempt < 8; attempt++) {
         char* out_buf = (char*)mem::malloc(try_size);
         if (out_buf == null) {
+            // fault: lisp::READ_FAILED
             return raise_error(interp, "inflate: out of memory");
         }
 
@@ -175,8 +195,10 @@ fn Value* prim_inflate(Value*[] args, Env* env, Interp* interp) {
             continue;
         }
 
+        // fault: lisp::READ_FAILED
         return raise_error(interp, "inflate: decompression failed (bad data)");
     }
 
+    // fault: lisp::READ_FAILED
     return raise_error(interp, "inflate: decompressed data too large");
 }

@@ -80,10 +80,13 @@ fn void tls_handle_free(TlsHandle* th) {
 // ============================================================
 
 fn Value* prim_tls_connect(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 2) return raise_error(interp, "tls-connect: expected (tls-connect tcp-handle hostname)");
+    // fault: lisp::EXPECTED_STRING
     if (!is_string(args[1])) return raise_error(interp, "tls-connect: hostname must be a string");
 
     TcpHandle* tcp = get_tcp_handle(args[0]);
+    // fault: lisp::TYPE_MISMATCH
     if (tcp == null || !tcp.connected) return raise_error(interp, "tls-connect: invalid TCP handle");
 
     char[] hostname = args[1].str_chars[:args[1].str_len];
@@ -96,6 +99,7 @@ fn Value* prim_tls_connect(Value*[] args, Env* env, Interp* interp) {
 
     // Allocate BearSSL state
     TlsHandle* th = (TlsHandle*)mem::malloc(TlsHandle.sizeof);
+    // fault: lisp::TLS_HANDSHAKE_FAILED
     if (th == null) return raise_error(interp, "tls-connect: out of memory");
 
     th.client_ctx = mem::malloc(BEARSSL_CLIENT_CTX_SIZE);
@@ -108,6 +112,7 @@ fn Value* prim_tls_connect(Value*[] args, Env* env, Interp* interp) {
         th.iobuf == null || th.fd_ptr == null) {
         tls_handle_free(th);
         mem::free(th);
+        // fault: lisp::TLS_HANDSHAKE_FAILED
         return raise_error(interp, "tls-connect: out of memory");
     }
 
@@ -135,9 +140,11 @@ fn Value* prim_tls_connect(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_tls_read(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "tls-read: expected (tls-read handle [max-bytes])");
 
     TlsHandle* th = get_tls_handle(args[0]);
+    // fault: lisp::TYPE_MISMATCH
     if (th == null || !th.connected) return raise_error(interp, "tls-read: invalid or closed handle");
 
     usz max_bytes = 4096;
@@ -147,11 +154,13 @@ fn Value* prim_tls_read(Value*[] args, Env* env, Interp* interp) {
     }
 
     char* buf = (char*)mem::malloc(max_bytes);
+    // fault: lisp::READ_FAILED
     if (buf == null) return raise_error(interp, "tls-read: out of memory");
     defer mem::free(buf);
 
     int received = br_sslio_read(th.sslio_ctx, buf, max_bytes);
     if (received < 0) {
+        // fault: lisp::READ_FAILED
         return raise_error(interp, "tls-read: read failed");
     }
     if (received == 0) {
@@ -167,17 +176,22 @@ fn Value* prim_tls_read(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_tls_write(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 2) return raise_error(interp, "tls-write: expected (tls-write handle data)");
+    // fault: lisp::EXPECTED_STRING
     if (!is_string(args[1])) return raise_error(interp, "tls-write: data must be a string");
 
     TlsHandle* th = get_tls_handle(args[0]);
+    // fault: lisp::TYPE_MISMATCH
     if (th == null || !th.connected) return raise_error(interp, "tls-write: invalid or closed handle");
 
     char[] data = args[1].str_chars[:args[1].str_len];
     int status = br_sslio_write_all(th.sslio_ctx, data.ptr, data.len);
+    // fault: lisp::WRITE_FAILED
     if (status < 0) return raise_error(interp, "tls-write: write failed");
 
     int flush_status = br_sslio_flush(th.sslio_ctx);
+    // fault: lisp::WRITE_FAILED
     if (flush_status < 0) return raise_error(interp, "tls-write: flush failed");
 
     return make_int(interp, (long)data.len);
@@ -188,9 +202,11 @@ fn Value* prim_tls_write(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_tls_close(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return raise_error(interp, "tls-close: expected (tls-close handle)");
 
     TlsHandle* th = get_tls_handle(args[0]);
+    // fault: lisp::TYPE_MISMATCH
     if (th == null) return raise_error(interp, "tls-close: invalid handle");
 
     if (th.connected) {
