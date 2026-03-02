@@ -462,6 +462,212 @@ fn void Compiler.record_prim_ref(Compiler* self, SymbolId sym) {
 // SECTION 4: FREE VARIABLE ANALYSIS
 // =============================================================================
 
+// --- find_free_vars helpers ---
+
+fn void Compiler.find_free_vars_var(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {
+    SymbolId name = expr.var_expr.name;
+    // Check if bound locally (this lambda's own params/lets)
+    foreach (b : *bound_vars) {
+        if ((uint)b == (uint)name) return;
+    }
+    // Check if in enclosing scope (outer lambda params/lets) — must capture,
+    // even if the name also exists as a global define
+    if (enclosing_scope != null) {
+        foreach (e : *enclosing_scope) {
+            if ((uint)e == (uint)name) {
+                foreach (f : *free_vars) {
+                    if ((uint)f == (uint)name) return;
+                }
+                free_vars.push(name);
+                return;
+            }
+        }
+    }
+    // Check if it's a global primitive (for delegation, only skip builtins)
+    if (self.for_delegation) {
+        if (self.is_builtin_primitive(name)) return;
+    } else {
+        if (self.is_primitive(name)) return;
+    }
+    // Check if it's a mutable-captured variable (accessed via interpreter env)
+    if (self.is_mutable_captured_var(name)) return;
+    // Check if already in free vars
+    foreach (f : *free_vars) {
+        if ((uint)f == (uint)name) return;
+    }
+    // It's a free variable
+    free_vars.push(name);
+}
+
+fn void Compiler.find_free_vars_lambda(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {
+    // Add ALL parameters to bound vars (multi-param lambdas have param_count > 1)
+    List{SymbolId} new_bound;
+    foreach (b : *bound_vars) {
+        new_bound.push(b);
+    }
+    if (expr.lambda.param_count > 1) {
+        for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
+            new_bound.push(expr.lambda.params[pi]);
+        }
+    } else if ((uint)expr.lambda.param != 0xFFFFFFFF) {
+        new_bound.push(expr.lambda.param);
+    }
+    self.find_free_vars(expr.lambda.body, &new_bound, free_vars, enclosing_scope);
+    new_bound.free();
+}
+
+fn void Compiler.find_free_vars_let(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {
+    // For recursive let, name is bound in both init and body
+    List{SymbolId} let_bound;
+    foreach (b : *bound_vars) {
+        let_bound.push(b);
+    }
+    if (expr.let_expr.is_recursive) {
+        let_bound.push(expr.let_expr.name);
+    }
+    // Init expression
+    self.find_free_vars(expr.let_expr.init, &let_bound, free_vars, enclosing_scope);
+    // Body with name bound
+    if (!expr.let_expr.is_recursive) {
+        let_bound.push(expr.let_expr.name);
+    }
+    self.find_free_vars(expr.let_expr.body, &let_bound, free_vars, enclosing_scope);
+    let_bound.free();
+}
+
+fn void Compiler.find_free_vars_match(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {
+    self.find_free_vars(expr.match.scrutinee, bound_vars, free_vars, enclosing_scope);
+    for (usz i = 0; i < expr.match.clause_count; i++) {
+        // Add pattern bindings to bound vars
+        List{SymbolId} clause_bound;
+        foreach (b : *bound_vars) {
+            clause_bound.push(b);
+        }
+        self.collect_pattern_bindings(expr.match.clauses[i].pattern, &clause_bound);
+        self.find_free_vars(expr.match.clauses[i].result, &clause_bound, free_vars, enclosing_scope);
+        clause_bound.free();
+    }
+}
+
+fn void Compiler.find_free_vars_call(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {
+    self.find_free_vars(expr.call.func, bound_vars, free_vars, enclosing_scope);
+    for (usz i = 0; i < expr.call.arg_count; i++) {
+        self.find_free_vars(expr.call.args[i], bound_vars, free_vars, enclosing_scope);
+    }
+}
+
+fn void Compiler.find_free_vars_path(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {
+    // First segment is a variable reference
+    SymbolId path_name = expr.path.segments[0];
+    foreach (b : *bound_vars) {
+        if ((uint)b == (uint)path_name) return;
+    }
+    // Check enclosing scope before is_primitive (enclosing var shadows global)
+    if (enclosing_scope != null) {
+        foreach (e : *enclosing_scope) {
+            if ((uint)e == (uint)path_name) {
+                foreach (f : *free_vars) {
+                    if ((uint)f == (uint)path_name) return;
+                }
+                free_vars.push(path_name);
+                return;
+            }
+        }
+    }
+    if (self.is_primitive(path_name)) return;
+    foreach (f : *free_vars) {
+        if ((uint)f == (uint)path_name) return;
+    }
+    free_vars.push(path_name);
+}
+
+fn void Compiler.find_free_vars_shift(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {
+    // k_name is bound in the body
+    List{SymbolId} shift_bound;
+    foreach (b : *bound_vars) {
+        shift_bound.push(b);
+    }
+    shift_bound.push(expr.shift.k_name);
+    self.find_free_vars(expr.shift.body, &shift_bound, free_vars, enclosing_scope);
+    shift_bound.free();
+}
+
+fn void Compiler.find_free_vars_resolve(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {
+    self.find_free_vars(expr.resolve.value, bound_vars, free_vars, enclosing_scope);
+    bool k_bound = false;
+    foreach (b : *bound_vars) {
+        if ((uint)b == (uint)self.interp.sym__k) { k_bound = true; break; }
+    }
+    if (!k_bound && enclosing_scope != null) {
+        foreach (e : *enclosing_scope) {
+            if ((uint)e == (uint)self.interp.sym__k) {
+                bool already_free = false;
+                foreach (f : *free_vars) {
+                    if ((uint)f == (uint)self.interp.sym__k) { already_free = true; break; }
+                }
+                if (!already_free) free_vars.push(self.interp.sym__k);
+                break;
+            }
+        }
+    }
+}
+
+fn void Compiler.find_free_vars_handle(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {
+    self.find_free_vars(expr.handle.body, bound_vars, free_vars, enclosing_scope);
+    for (usz i = 0; i < expr.handle.clause_count; i++) {
+        // k_name and arg_name are bound in handler body
+        List{SymbolId} handle_bound;
+        foreach (b : *bound_vars) {
+            handle_bound.push(b);
+        }
+        handle_bound.push(expr.handle.clauses[i].k_name);
+        handle_bound.push(expr.handle.clauses[i].arg_name);
+        self.find_free_vars(expr.handle.clauses[i].handler_body, &handle_bound, free_vars, enclosing_scope);
+        handle_bound.free();
+    }
+}
+
+fn void Compiler.find_free_vars_set(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {
+    // The variable being set might be free
+    SymbolId set_name = expr.set_expr.name;
+    foreach (b : *bound_vars) {
+        if ((uint)b == (uint)set_name) {
+            // Bound locally, just analyze the value
+            self.find_free_vars(expr.set_expr.value, bound_vars, free_vars, enclosing_scope);
+            return;
+        }
+    }
+    // Check enclosing scope before is_primitive (enclosing var shadows global)
+    if (enclosing_scope != null) {
+        foreach (e : *enclosing_scope) {
+            if ((uint)e == (uint)set_name) {
+                bool set_enc_free = false;
+                foreach (f : *free_vars) {
+                    if ((uint)f == (uint)set_name) { set_enc_free = true; break; }
+                }
+                if (!set_enc_free) {
+                    free_vars.push(set_name);
+                }
+                self.find_free_vars(expr.set_expr.value, bound_vars, free_vars, enclosing_scope);
+                return;
+            }
+        }
+    }
+    if (self.is_primitive(set_name)) {
+        self.find_free_vars(expr.set_expr.value, bound_vars, free_vars, enclosing_scope);
+        return;
+    }
+    // Check if already in free vars
+    bool set_already_free = false;
+    foreach (f : *free_vars) {
+        if ((uint)f == (uint)set_name) { set_already_free = true; break; }
+    }
+    if (!set_already_free) {
+        free_vars.push(set_name);
+    }
+    self.find_free_vars(expr.set_expr.value, bound_vars, free_vars, enclosing_scope);
+}
+
 /**
  * Find free variables in an expression that need to be captured.
  * bound_vars contains variables that are bound in the current scope.
@@ -471,58 +677,13 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
 
     switch (expr.tag) {
         case E_LIT:
-            // Literals have no free variables
             return;
 
         case E_VAR:
-            SymbolId name = expr.var_expr.name;
-            // Check if bound locally (this lambda's own params/lets)
-            foreach (b : *bound_vars) {
-                if ((uint)b == (uint)name) return;
-            }
-            // Check if in enclosing scope (outer lambda params/lets) — must capture,
-            // even if the name also exists as a global define
-            if (enclosing_scope != null) {
-                foreach (e : *enclosing_scope) {
-                    if ((uint)e == (uint)name) {
-                        foreach (f : *free_vars) {
-                            if ((uint)f == (uint)name) return;
-                        }
-                        free_vars.push(name);
-                        return;
-                    }
-                }
-            }
-            // Check if it's a global primitive (for delegation, only skip builtins)
-            if (self.for_delegation) {
-                if (self.is_builtin_primitive(name)) return;
-            } else {
-                if (self.is_primitive(name)) return;
-            }
-            // Check if it's a mutable-captured variable (accessed via interpreter env)
-            if (self.is_mutable_captured_var(name)) return;
-            // Check if already in free vars
-            foreach (f : *free_vars) {
-                if ((uint)f == (uint)name) return;
-            }
-            // It's a free variable
-            free_vars.push(name);
+            self.find_free_vars_var(expr, bound_vars, free_vars, enclosing_scope);
 
         case E_LAMBDA:
-            // Add ALL parameters to bound vars (multi-param lambdas have param_count > 1)
-            List{SymbolId} new_bound;
-            foreach (b : *bound_vars) {
-                new_bound.push(b);
-            }
-            if (expr.lambda.param_count > 1) {
-                for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
-                    new_bound.push(expr.lambda.params[pi]);
-                }
-            } else if ((uint)expr.lambda.param != 0xFFFFFFFF) {
-                new_bound.push(expr.lambda.param);
-            }
-            self.find_free_vars(expr.lambda.body, &new_bound, free_vars, enclosing_scope);
-            new_bound.free();
+            self.find_free_vars_lambda(expr, bound_vars, free_vars, enclosing_scope);
 
         case E_APP:
             self.find_free_vars(expr.app.func, bound_vars, free_vars, enclosing_scope);
@@ -534,28 +695,12 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
             self.find_free_vars(expr.if_expr.else_branch, bound_vars, free_vars, enclosing_scope);
 
         case E_LET:
-            // For recursive let, name is bound in both init and body
-            List{SymbolId} let_bound;
-            foreach (b : *bound_vars) {
-                let_bound.push(b);
-            }
-            if (expr.let_expr.is_recursive) {
-                let_bound.push(expr.let_expr.name);
-            }
-            // Init expression
-            self.find_free_vars(expr.let_expr.init, &let_bound, free_vars, enclosing_scope);
-            // Body with name bound
-            if (!expr.let_expr.is_recursive) {
-                let_bound.push(expr.let_expr.name);
-            }
-            self.find_free_vars(expr.let_expr.body, &let_bound, free_vars, enclosing_scope);
-            let_bound.free();
+            self.find_free_vars_let(expr, bound_vars, free_vars, enclosing_scope);
 
         case E_DEFINE:
             self.find_free_vars(expr.define.value, bound_vars, free_vars, enclosing_scope);
 
         case E_QUOTE:
-            // Quoted data has no free variables
             return;
 
         case E_AND:
@@ -567,102 +712,32 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
             self.find_free_vars(expr.or_expr.right, bound_vars, free_vars, enclosing_scope);
 
         case E_MATCH:
-            self.find_free_vars(expr.match.scrutinee, bound_vars, free_vars, enclosing_scope);
-            for (usz i = 0; i < expr.match.clause_count; i++) {
-                // Add pattern bindings to bound vars
-                List{SymbolId} clause_bound;
-                foreach (b : *bound_vars) {
-                    clause_bound.push(b);
-                }
-                self.collect_pattern_bindings(expr.match.clauses[i].pattern, &clause_bound);
-                self.find_free_vars(expr.match.clauses[i].result, &clause_bound, free_vars, enclosing_scope);
-                clause_bound.free();
-            }
+            self.find_free_vars_match(expr, bound_vars, free_vars, enclosing_scope);
 
         case E_CALL:
-            self.find_free_vars(expr.call.func, bound_vars, free_vars, enclosing_scope);
-            for (usz i = 0; i < expr.call.arg_count; i++) {
-                self.find_free_vars(expr.call.args[i], bound_vars, free_vars, enclosing_scope);
-            }
+            self.find_free_vars_call(expr, bound_vars, free_vars, enclosing_scope);
 
         case E_INDEX:
             self.find_free_vars(expr.index.collection, bound_vars, free_vars, enclosing_scope);
             self.find_free_vars(expr.index.index, bound_vars, free_vars, enclosing_scope);
 
         case E_PATH:
-            // First segment is a variable reference
-            SymbolId path_name = expr.path.segments[0];
-            foreach (b : *bound_vars) {
-                if ((uint)b == (uint)path_name) return;
-            }
-            // Check enclosing scope before is_primitive (enclosing var shadows global)
-            if (enclosing_scope != null) {
-                foreach (e : *enclosing_scope) {
-                    if ((uint)e == (uint)path_name) {
-                        foreach (f : *free_vars) {
-                            if ((uint)f == (uint)path_name) return;
-                        }
-                        free_vars.push(path_name);
-                        return;
-                    }
-                }
-            }
-            if (self.is_primitive(path_name)) return;
-            foreach (f : *free_vars) {
-                if ((uint)f == (uint)path_name) return;
-            }
-            free_vars.push(path_name);
+            self.find_free_vars_path(expr, bound_vars, free_vars, enclosing_scope);
 
         case E_RESET:
             self.find_free_vars(expr.reset.body, bound_vars, free_vars, enclosing_scope);
 
         case E_SHIFT:
-            // k_name is bound in the body
-            List{SymbolId} shift_bound;
-            foreach (b : *bound_vars) {
-                shift_bound.push(b);
-            }
-            shift_bound.push(expr.shift.k_name);
-            self.find_free_vars(expr.shift.body, &shift_bound, free_vars, enclosing_scope);
-            shift_bound.free();
+            self.find_free_vars_shift(expr, bound_vars, free_vars, enclosing_scope);
 
         case E_PERFORM:
             self.find_free_vars(expr.perform.arg, bound_vars, free_vars, enclosing_scope);
 
-        case E_RESOLVE: {
-            self.find_free_vars(expr.resolve.value, bound_vars, free_vars, enclosing_scope);
-            bool k_bound = false;
-            foreach (b : *bound_vars) {
-                if ((uint)b == (uint)self.interp.sym__k) { k_bound = true; break; }
-            }
-            if (!k_bound && enclosing_scope != null) {
-                foreach (e : *enclosing_scope) {
-                    if ((uint)e == (uint)self.interp.sym__k) {
-                        bool already_free = false;
-                        foreach (f : *free_vars) {
-                            if ((uint)f == (uint)self.interp.sym__k) { already_free = true; break; }
-                        }
-                        if (!already_free) free_vars.push(self.interp.sym__k);
-                        break;
-                    }
-                }
-            }
-            break;
-        }
+        case E_RESOLVE:
+            self.find_free_vars_resolve(expr, bound_vars, free_vars, enclosing_scope);
 
         case E_HANDLE:
-            self.find_free_vars(expr.handle.body, bound_vars, free_vars, enclosing_scope);
-            for (usz i = 0; i < expr.handle.clause_count; i++) {
-                // k_name and arg_name are bound in handler body
-                List{SymbolId} handle_bound;
-                foreach (b : *bound_vars) {
-                    handle_bound.push(b);
-                }
-                handle_bound.push(expr.handle.clauses[i].k_name);
-                handle_bound.push(expr.handle.clauses[i].arg_name);
-                self.find_free_vars(expr.handle.clauses[i].handler_body, &handle_bound, free_vars, enclosing_scope);
-                handle_bound.free();
-            }
+            self.find_free_vars_handle(expr, bound_vars, free_vars, enclosing_scope);
 
         case E_BEGIN:
             for (usz i = 0; i < expr.begin.expr_count; i++) {
@@ -670,7 +745,6 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
             }
 
         case E_QUASIQUOTE:
-            // Only look for free vars inside unquote nodes — the rest is quoted (literal symbols)
             self.find_free_vars_in_qq(expr.quasiquote.body, bound_vars, free_vars, enclosing_scope);
 
         case E_UNQUOTE:
@@ -680,8 +754,6 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
             self.find_free_vars(expr.unquote_splicing.body, bound_vars, free_vars, enclosing_scope);
 
         case E_DEFMACRO:
-            // Macro templates may reference free vars at expansion time
-            // Conservative: treat as having no free vars (macros expand at compile time)
             return;
 
         case E_MODULE:
@@ -691,51 +763,12 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
 
         case E_IMPORT:
         case E_EXPORT_FROM:
-            // No free variables
             return;
 
         case E_SET:
-            // The variable being set might be free
-            SymbolId set_name = expr.set_expr.name;
-            foreach (b : *bound_vars) {
-                if ((uint)b == (uint)set_name) {
-                    // Bound locally, just analyze the value
-                    self.find_free_vars(expr.set_expr.value, bound_vars, free_vars, enclosing_scope);
-                    return;
-                }
-            }
-            // Check enclosing scope before is_primitive (enclosing var shadows global)
-            if (enclosing_scope != null) {
-                foreach (e : *enclosing_scope) {
-                    if ((uint)e == (uint)set_name) {
-                        bool set_enc_free = false;
-                        foreach (f : *free_vars) {
-                            if ((uint)f == (uint)set_name) { set_enc_free = true; break; }
-                        }
-                        if (!set_enc_free) {
-                            free_vars.push(set_name);
-                        }
-                        self.find_free_vars(expr.set_expr.value, bound_vars, free_vars, enclosing_scope);
-                        return;
-                    }
-                }
-            }
-            if (self.is_primitive(set_name)) {
-                self.find_free_vars(expr.set_expr.value, bound_vars, free_vars, enclosing_scope);
-                return;
-            }
-            // Check if already in free vars
-            bool set_already_free = false;
-            foreach (f : *free_vars) {
-                if ((uint)f == (uint)set_name) { set_already_free = true; break; }
-            }
-            if (!set_already_free) {
-                free_vars.push(set_name);
-            }
-            self.find_free_vars(expr.set_expr.value, bound_vars, free_vars, enclosing_scope);
+            self.find_free_vars_set(expr, bound_vars, free_vars, enclosing_scope);
 
         default:
-            // Handle other expression types conservatively
             return;
     }
 }
@@ -1077,6 +1110,152 @@ fn bool Compiler.is_captured_by_nested_lambda(Compiler* self, SymbolId name, Exp
  * The serialized output is appended to the compiler's output buffer temporarily
  * via a separate List{char} buffer.
  */
+// --- serialize_expr_to_buf helpers ---
+
+fn void Compiler.serialize_lambda_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
+    self.buf_append(buf, "(lambda (");
+    // Check for zero-arg lambda
+    if ((uint)expr.lambda.param == 0xFFFFFFFF) {
+        // zero-arg
+    } else {
+        char[] pname = self.interp.symbols.get_name(expr.lambda.param);
+        self.buf_append(buf, pname);
+    }
+    self.buf_append(buf, ") ");
+    self.serialize_expr_to_buf(expr.lambda.body, buf);
+    buf.push(')');
+}
+
+fn void Compiler.serialize_let_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
+    if (expr.let_expr.is_recursive) {
+        self.buf_append(buf, "(let ^rec (");
+    } else {
+        self.buf_append(buf, "(let (");
+    }
+    char[] let_name = self.interp.symbols.get_name(expr.let_expr.name);
+    self.buf_append(buf, let_name);
+    buf.push(' ');
+    self.serialize_expr_to_buf(expr.let_expr.init, buf);
+    self.buf_append(buf, ") ");
+    self.serialize_expr_to_buf(expr.let_expr.body, buf);
+    buf.push(')');
+}
+
+fn void Compiler.serialize_call_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
+    buf.push('(');
+    self.serialize_expr_to_buf(expr.call.func, buf);
+    for (usz i = 0; i < expr.call.arg_count; i++) {
+        buf.push(' ');
+        self.serialize_expr_to_buf(expr.call.args[i], buf);
+    }
+    buf.push(')');
+}
+
+fn void Compiler.serialize_handle_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
+    self.buf_append(buf, "(handle ");
+    self.serialize_expr_to_buf(expr.handle.body, buf);
+    for (usz i = 0; i < expr.handle.clause_count; i++) {
+        self.buf_append(buf, " ((");
+        char[] etag = self.interp.symbols.get_name(expr.handle.clauses[i].effect_tag);
+        self.buf_append(buf, etag);
+        buf.push(' ');
+        char[] ek = self.interp.symbols.get_name(expr.handle.clauses[i].k_name);
+        self.buf_append(buf, ek);
+        buf.push(' ');
+        char[] ea = self.interp.symbols.get_name(expr.handle.clauses[i].arg_name);
+        self.buf_append(buf, ea);
+        self.buf_append(buf, ") ");
+        self.serialize_expr_to_buf(expr.handle.clauses[i].handler_body, buf);
+        buf.push(')');
+    }
+    buf.push(')');
+}
+
+fn void Compiler.serialize_match_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
+    self.buf_append(buf, "(match ");
+    self.serialize_expr_to_buf(expr.match.scrutinee, buf);
+    for (usz i = 0; i < expr.match.clause_count; i++) {
+        buf.push(' ');
+        self.serialize_pattern_to_buf(expr.match.clauses[i].pattern, buf);
+        buf.push(' ');
+        self.serialize_expr_to_buf(expr.match.clauses[i].result, buf);
+    }
+    buf.push(')');
+}
+
+fn void Compiler.serialize_defmacro_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
+    self.buf_append(buf, "(define [macro] ");
+    char[] macro_name = self.interp.symbols.get_name(expr.define_macro.name);
+    self.buf_append(buf, macro_name);
+    for (usz i = 0; i < expr.define_macro.clause_count; i++) {
+        self.buf_append(buf, " (");
+        self.serialize_pattern_to_buf(expr.define_macro.clauses[i].pattern, buf);
+        buf.push(' ');
+        self.buf_append(buf, "(");
+        self.serialize_value_to_buf(expr.define_macro.clauses[i].tmpl, buf);
+        self.buf_append(buf, "))");
+    }
+    buf.push(')');
+}
+
+fn void Compiler.serialize_module_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
+    self.buf_append(buf, "(module ");
+    char[] mod_name = self.interp.symbols.get_name(expr.module_expr.name);
+    self.buf_append(buf, mod_name);
+    self.buf_append(buf, " (export");
+    for (usz i = 0; i < expr.module_expr.export_count; i++) {
+        buf.push(' ');
+        char[] exp_name = self.interp.symbols.get_name(expr.module_expr.exports[i]);
+        self.buf_append(buf, exp_name);
+    }
+    buf.push(')');
+    for (usz i = 0; i < expr.module_expr.body_count; i++) {
+        buf.push(' ');
+        self.serialize_expr_to_buf(expr.module_expr.body[i], buf);
+    }
+    buf.push(')');
+}
+
+fn void Compiler.serialize_import_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
+    self.buf_append(buf, "(import ");
+    char[] imp_name = self.interp.symbols.get_name(expr.import_expr.name);
+    self.buf_append(buf, imp_name);
+    if (expr.import_expr.import_all) {
+        self.buf_append(buf, " :all");
+    } else if (expr.import_expr.import_count > 0) {
+        self.buf_append(buf, " (");
+        for (usz i = 0; i < expr.import_expr.import_count; i++) {
+            if (i > 0) buf.push(' ');
+            char[] sel_name = self.interp.symbols.get_name(expr.import_expr.imports[i]);
+            self.buf_append(buf, sel_name);
+            if ((uint)expr.import_expr.aliases[i] != 0) {
+                self.buf_append(buf, " :as ");
+                char[] alias_name = self.interp.symbols.get_name(expr.import_expr.aliases[i]);
+                self.buf_append(buf, alias_name);
+            }
+        }
+        buf.push(')');
+    }
+    buf.push(')');
+}
+
+fn void Compiler.serialize_export_from_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
+    self.buf_append(buf, "(export-from ");
+    char[] efmod = self.interp.symbols.get_name(expr.export_from.source_module);
+    self.buf_append(buf, efmod);
+    if (expr.export_from.all) {
+        self.buf_append(buf, " :all)");
+    } else {
+        self.buf_append(buf, " (");
+        for (usz i = 0; i < expr.export_from.name_count; i++) {
+            if (i > 0) buf.push(' ');
+            char[] ef_name = self.interp.symbols.get_name(expr.export_from.names[i]);
+            self.buf_append(buf, ef_name);
+        }
+        self.buf_append(buf, "))");
+    }
+}
+
 fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
     if (expr == null) {
         self.buf_append(buf, "nil");
@@ -1092,17 +1271,7 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
             self.buf_append(buf, name);
 
         case E_LAMBDA:
-            self.buf_append(buf, "(lambda (");
-            // Check for zero-arg lambda
-            if ((uint)expr.lambda.param == 0xFFFFFFFF) {
-                // zero-arg
-            } else {
-                char[] pname = self.interp.symbols.get_name(expr.lambda.param);
-                self.buf_append(buf, pname);
-            }
-            self.buf_append(buf, ") ");
-            self.serialize_expr_to_buf(expr.lambda.body, buf);
-            buf.push(')');
+            self.serialize_lambda_to_buf(expr, buf);
 
         case E_APP:
             buf.push('(');
@@ -1121,18 +1290,7 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
             buf.push(')');
 
         case E_LET:
-            if (expr.let_expr.is_recursive) {
-                self.buf_append(buf, "(let ^rec (");
-            } else {
-                self.buf_append(buf, "(let (");
-            }
-            char[] let_name = self.interp.symbols.get_name(expr.let_expr.name);
-            self.buf_append(buf, let_name);
-            buf.push(' ');
-            self.serialize_expr_to_buf(expr.let_expr.init, buf);
-            self.buf_append(buf, ") ");
-            self.serialize_expr_to_buf(expr.let_expr.body, buf);
-            buf.push(')');
+            self.serialize_let_to_buf(expr, buf);
 
         case E_DEFINE:
             self.buf_append(buf, "(define ");
@@ -1173,23 +1331,7 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
             buf.push(')');
 
         case E_HANDLE:
-            self.buf_append(buf, "(handle ");
-            self.serialize_expr_to_buf(expr.handle.body, buf);
-            for (usz i = 0; i < expr.handle.clause_count; i++) {
-                self.buf_append(buf, " ((");
-                char[] etag = self.interp.symbols.get_name(expr.handle.clauses[i].effect_tag);
-                self.buf_append(buf, etag);
-                buf.push(' ');
-                char[] ek = self.interp.symbols.get_name(expr.handle.clauses[i].k_name);
-                self.buf_append(buf, ek);
-                buf.push(' ');
-                char[] ea = self.interp.symbols.get_name(expr.handle.clauses[i].arg_name);
-                self.buf_append(buf, ea);
-                self.buf_append(buf, ") ");
-                self.serialize_expr_to_buf(expr.handle.clauses[i].handler_body, buf);
-                buf.push(')');
-            }
-            buf.push(')');
+            self.serialize_handle_to_buf(expr, buf);
 
         case E_AND:
             self.buf_append(buf, "(and ");
@@ -1214,13 +1356,7 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
             buf.push(')');
 
         case E_CALL:
-            buf.push('(');
-            self.serialize_expr_to_buf(expr.call.func, buf);
-            for (usz i = 0; i < expr.call.arg_count; i++) {
-                buf.push(' ');
-                self.serialize_expr_to_buf(expr.call.args[i], buf);
-            }
-            buf.push(')');
+            self.serialize_call_to_buf(expr, buf);
 
         case E_SET:
             self.buf_append(buf, "(set! ");
@@ -1231,15 +1367,7 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
             buf.push(')');
 
         case E_MATCH:
-            self.buf_append(buf, "(match ");
-            self.serialize_expr_to_buf(expr.match.scrutinee, buf);
-            for (usz i = 0; i < expr.match.clause_count; i++) {
-                buf.push(' ');
-                self.serialize_pattern_to_buf(expr.match.clauses[i].pattern, buf);
-                buf.push(' ');
-                self.serialize_expr_to_buf(expr.match.clauses[i].result, buf);
-            }
-            buf.push(')');
+            self.serialize_match_to_buf(expr, buf);
 
         case E_INDEX:
             self.serialize_expr_to_buf(expr.index.collection, buf);
@@ -1267,73 +1395,16 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
             self.serialize_expr_to_buf(expr.unquote_splicing.body, buf);
 
         case E_DEFMACRO:
-            self.buf_append(buf, "(define [macro] ");
-            char[] macro_name = self.interp.symbols.get_name(expr.define_macro.name);
-            self.buf_append(buf, macro_name);
-            for (usz i = 0; i < expr.define_macro.clause_count; i++) {
-                self.buf_append(buf, " (");
-                self.serialize_pattern_to_buf(expr.define_macro.clauses[i].pattern, buf);
-                buf.push(' ');
-                self.buf_append(buf, "(");
-                self.serialize_value_to_buf(expr.define_macro.clauses[i].tmpl, buf);
-                self.buf_append(buf, "))");
-            }
-            buf.push(')');
+            self.serialize_defmacro_to_buf(expr, buf);
 
         case E_MODULE:
-            self.buf_append(buf, "(module ");
-            char[] mod_name = self.interp.symbols.get_name(expr.module_expr.name);
-            self.buf_append(buf, mod_name);
-            self.buf_append(buf, " (export");
-            for (usz i = 0; i < expr.module_expr.export_count; i++) {
-                buf.push(' ');
-                char[] exp_name = self.interp.symbols.get_name(expr.module_expr.exports[i]);
-                self.buf_append(buf, exp_name);
-            }
-            buf.push(')');
-            for (usz i = 0; i < expr.module_expr.body_count; i++) {
-                buf.push(' ');
-                self.serialize_expr_to_buf(expr.module_expr.body[i], buf);
-            }
-            buf.push(')');
+            self.serialize_module_to_buf(expr, buf);
 
         case E_IMPORT:
-            self.buf_append(buf, "(import ");
-            char[] imp_name = self.interp.symbols.get_name(expr.import_expr.name);
-            self.buf_append(buf, imp_name);
-            if (expr.import_expr.import_all) {
-                self.buf_append(buf, " :all");
-            } else if (expr.import_expr.import_count > 0) {
-                self.buf_append(buf, " (");
-                for (usz i = 0; i < expr.import_expr.import_count; i++) {
-                    if (i > 0) buf.push(' ');
-                    char[] sel_name = self.interp.symbols.get_name(expr.import_expr.imports[i]);
-                    self.buf_append(buf, sel_name);
-                    if ((uint)expr.import_expr.aliases[i] != 0) {
-                        self.buf_append(buf, " :as ");
-                        char[] alias_name = self.interp.symbols.get_name(expr.import_expr.aliases[i]);
-                        self.buf_append(buf, alias_name);
-                    }
-                }
-                buf.push(')');
-            }
-            buf.push(')');
+            self.serialize_import_to_buf(expr, buf);
 
         case E_EXPORT_FROM:
-            self.buf_append(buf, "(export-from ");
-            char[] efmod = self.interp.symbols.get_name(expr.export_from.source_module);
-            self.buf_append(buf, efmod);
-            if (expr.export_from.all) {
-                self.buf_append(buf, " :all)");
-            } else {
-                self.buf_append(buf, " (");
-                for (usz i = 0; i < expr.export_from.name_count; i++) {
-                    if (i > 0) buf.push(' ');
-                    char[] ef_name = self.interp.symbols.get_name(expr.export_from.names[i]);
-                    self.buf_append(buf, ef_name);
-                }
-                self.buf_append(buf, "))");
-            }
+            self.serialize_export_from_to_buf(expr, buf);
 
         default:
             self.buf_append(buf, "nil");
@@ -1741,91 +1812,256 @@ fn void Compiler.scan_lambdas(Compiler* self, Expr* expr) {
 }
 
 // Returns true if any E_LAMBDA was found in the subtree (replaces body_creates_closure)
+// --- scan_lambdas_with_scope helpers ---
+
+fn bool Compiler.scan_lambdas_lambda(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
+    List{SymbolId} own_bound;
+    // Add all params to bound set for free-var scanning
+    if (expr.lambda.param_count > 1) {
+        for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
+            own_bound.push(expr.lambda.params[pi]);
+        }
+    } else if ((uint)expr.lambda.param != 0xFFFFFFFF) {
+        own_bound.push(expr.lambda.param);
+    }
+    // For variadic lambdas, add all fixed params + rest param to bound set
+    if (expr.lambda.has_rest) {
+        for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
+            own_bound.push(expr.lambda.params[pi]);
+        }
+        if ((uint)expr.lambda.rest_param != 0) {
+            own_bound.push(expr.lambda.rest_param);
+        }
+    }
+    List{SymbolId} free;
+    self.find_free_vars(expr.lambda.body, &own_bound, &free, enclosing_bound);
+
+    LambdaDef def;
+    def.id = self.lambda_counter++;
+    def.param = expr.lambda.param;
+    def.body = expr.lambda.body;
+    def.capture_count = 0;
+    def.capture_capacity = LAMBDA_CAPTURE_INITIAL;
+    def.captures = (SymbolId*)mem::malloc(SymbolId.sizeof * def.capture_capacity);
+    // Store variadic info
+    def.has_rest = expr.lambda.has_rest;
+    def.rest_param = expr.lambda.rest_param;
+    def.param_count = expr.lambda.param_count;
+    def.param_capacity = expr.lambda.param_count < LAMBDA_CAPTURE_INITIAL ? LAMBDA_CAPTURE_INITIAL : expr.lambda.param_count;
+    def.params = (SymbolId*)mem::malloc(SymbolId.sizeof * def.param_capacity);
+    for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
+        def.params[pi] = expr.lambda.params[pi];
+    }
+
+    foreach (f : free) {
+        if (def.capture_count >= def.capture_capacity) {
+            usz new_cap = def.capture_capacity * 2;
+            SymbolId* new_caps = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
+            for (usz ci = 0; ci < def.capture_count; ci++) new_caps[ci] = def.captures[ci];
+            mem::free(def.captures);
+            def.captures = new_caps;
+            def.capture_capacity = new_cap;
+        }
+        def.captures[def.capture_count++] = f;
+    }
+
+    // Recursively scan body — the return value tells us if body has nested lambdas
+    List{SymbolId} new_enclosing;
+    foreach (b : *enclosing_bound) {
+        new_enclosing.push(b);
+    }
+    // Add all params to enclosing scope for nested lambda free var analysis
+    if (expr.lambda.param_count > 1) {
+        for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
+            new_enclosing.push(expr.lambda.params[pi]);
+        }
+    } else if ((uint)expr.lambda.param != 0xFFFFFFFF) {
+        new_enclosing.push(expr.lambda.param);
+    }
+    if (expr.lambda.has_rest && (uint)expr.lambda.rest_param != 0) {
+        new_enclosing.push(expr.lambda.rest_param);
+    }
+    bool body_has_lambda = self.scan_lambdas_with_scope(expr.lambda.body, &new_enclosing);
+
+    // Set creates_closure from recursive scan (replaces body_creates_closure)
+    def.creates_closure = body_has_lambda;
+    if (def.id < 256) {
+        self.lambda_creates_closure[def.id] = body_has_lambda;
+    }
+
+    self.lambda_defs.push(def);
+
+    new_enclosing.free();
+    own_bound.free();
+    free.free();
+    return true;  // This node IS a lambda
+}
+
+fn bool Compiler.scan_lambdas_let(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
+    List{SymbolId} let_scope;
+    foreach (b : *enclosing_bound) {
+        let_scope.push(b);
+    }
+    let_scope.push(expr.let_expr.name);
+    bool let_found;
+    if (expr.let_expr.is_recursive) {
+        let_found = self.scan_lambdas_with_scope(expr.let_expr.init, &let_scope);
+    } else {
+        let_found = self.scan_lambdas_with_scope(expr.let_expr.init, enclosing_bound);
+    }
+    bool let_body = self.scan_lambdas_with_scope(expr.let_expr.body, &let_scope);
+    let_scope.free();
+    return let_found || let_body;
+}
+
+fn bool Compiler.scan_lambdas_call(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
+    bool c_found = self.scan_lambdas_with_scope(expr.call.func, enclosing_bound);
+    for (usz i = 0; i < expr.call.arg_count; i++) {
+        c_found |= self.scan_lambdas_with_scope(expr.call.args[i], enclosing_bound);
+    }
+    return c_found;
+}
+
+fn bool Compiler.scan_lambdas_reset(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
+    // Wrap body as synthetic lambda: (lambda (_eff_dummy) body)
+    SymbolId dummy_param = self.interp.symbols.intern("_eff_dummy");
+    Expr* orig_body = expr.reset.body;
+    Expr* wrapper = self.interp.alloc_expr();
+    wrapper.tag = E_LAMBDA;
+    wrapper.lambda = (ExprLambda*)mem::malloc(ExprLambda.sizeof);
+    wrapper.loc_line = expr.loc_line;
+    wrapper.loc_column = expr.loc_column;
+    wrapper.lambda.param = dummy_param;
+    wrapper.lambda.param_count = 1;
+    wrapper.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
+    wrapper.lambda.params[0] = dummy_param;
+    wrapper.lambda.param_annotations = null;
+    wrapper.lambda.has_rest = false;
+    wrapper.lambda.rest_param = 0;
+    wrapper.lambda.has_typed_params = false;
+    wrapper.lambda.body = orig_body;
+    expr.reset.body = wrapper;
+    return self.scan_lambdas_with_scope(wrapper, enclosing_bound);
+}
+
+fn bool Compiler.scan_lambdas_shift(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
+    // Wrap body as synthetic lambda: (lambda (k_name) body)
+    Expr* orig_body = expr.shift.body;
+    Expr* wrapper = self.interp.alloc_expr();
+    wrapper.tag = E_LAMBDA;
+    wrapper.lambda = (ExprLambda*)mem::malloc(ExprLambda.sizeof);
+    wrapper.loc_line = expr.loc_line;
+    wrapper.loc_column = expr.loc_column;
+    wrapper.lambda.param = expr.shift.k_name;
+    wrapper.lambda.param_count = 1;
+    wrapper.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
+    wrapper.lambda.params[0] = expr.shift.k_name;
+    wrapper.lambda.param_annotations = null;
+    wrapper.lambda.has_rest = false;
+    wrapper.lambda.rest_param = 0;
+    wrapper.lambda.has_typed_params = false;
+    wrapper.lambda.body = orig_body;
+    expr.shift.body = wrapper;
+    return self.scan_lambdas_with_scope(wrapper, enclosing_bound);
+}
+
+fn bool Compiler.scan_lambdas_handle(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
+    // Wrap body as synthetic lambda
+    SymbolId dummy_param = self.interp.symbols.intern("_eff_dummy");
+    Expr* orig_body = expr.handle.body;
+    Expr* body_wrapper = self.interp.alloc_expr();
+    body_wrapper.tag = E_LAMBDA;
+    body_wrapper.lambda = (ExprLambda*)mem::malloc(ExprLambda.sizeof);
+    body_wrapper.loc_line = expr.loc_line;
+    body_wrapper.loc_column = expr.loc_column;
+    body_wrapper.lambda.param = dummy_param;
+    body_wrapper.lambda.param_count = 1;
+    body_wrapper.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
+    body_wrapper.lambda.params[0] = dummy_param;
+    body_wrapper.lambda.param_annotations = null;
+    body_wrapper.lambda.has_rest = false;
+    body_wrapper.lambda.rest_param = 0;
+    body_wrapper.lambda.has_typed_params = false;
+    body_wrapper.lambda.body = orig_body;
+    expr.handle.body = body_wrapper;
+    bool h_found = self.scan_lambdas_with_scope(body_wrapper, enclosing_bound);
+
+    // Wrap each handler clause as synthetic lambda: (lambda (_pair) (let (k (car _pair)) (let (arg (cdr _pair)) body)))
+    SymbolId pair_param = self.interp.symbols.intern("_eff_pair");
+    SymbolId sym_car = self.interp.symbols.intern("car");
+    SymbolId sym_cdr = self.interp.symbols.intern("cdr");
+    for (usz i = 0; i < expr.handle.clause_count; i++) {
+        Expr* orig_handler = expr.handle.clauses[i].handler_body;
+        SymbolId k_name = expr.handle.clauses[i].k_name;
+        SymbolId arg_name = expr.handle.clauses[i].arg_name;
+
+        // Build (cdr _pair) for arg extraction
+        Expr* pair_ref2 = self.interp.alloc_expr();
+        pair_ref2.tag = E_VAR;
+        pair_ref2.var_expr.name = pair_param;
+        Expr* cdr_fn = self.interp.alloc_expr();
+        cdr_fn.tag = E_VAR;
+        cdr_fn.var_expr.name = sym_cdr;
+        Expr* cdr_call = self.interp.alloc_expr();
+        cdr_call.tag = E_APP;
+        cdr_call.app.func = cdr_fn;
+        cdr_call.app.arg = pair_ref2;
+
+        // Build: (let (arg_name (cdr _pair)) orig_handler)
+        Expr* let_arg = self.interp.alloc_expr();
+        let_arg.tag = E_LET;
+        let_arg.let_expr.name = arg_name;
+        let_arg.let_expr.init = cdr_call;
+        let_arg.let_expr.body = orig_handler;
+        let_arg.let_expr.is_recursive = false;
+
+        // Build (car _pair) for k extraction
+        Expr* pair_ref1 = self.interp.alloc_expr();
+        pair_ref1.tag = E_VAR;
+        pair_ref1.var_expr.name = pair_param;
+        Expr* car_fn = self.interp.alloc_expr();
+        car_fn.tag = E_VAR;
+        car_fn.var_expr.name = sym_car;
+        Expr* car_call = self.interp.alloc_expr();
+        car_call.tag = E_APP;
+        car_call.app.func = car_fn;
+        car_call.app.arg = pair_ref1;
+
+        // Build: (let (k_name (car _pair)) (let (arg_name ...) ...))
+        Expr* let_k = self.interp.alloc_expr();
+        let_k.tag = E_LET;
+        let_k.let_expr.name = k_name;
+        let_k.let_expr.init = car_call;
+        let_k.let_expr.body = let_arg;
+        let_k.let_expr.is_recursive = false;
+
+        // Lambda wrapper: (lambda (_pair) (let (k ...) (let (arg ...) body)))
+        Expr* handler_wrapper = self.interp.alloc_expr();
+        handler_wrapper.tag = E_LAMBDA;
+        handler_wrapper.lambda = (ExprLambda*)mem::malloc(ExprLambda.sizeof);
+        handler_wrapper.loc_line = expr.loc_line;
+        handler_wrapper.loc_column = expr.loc_column;
+        handler_wrapper.lambda.param = pair_param;
+        handler_wrapper.lambda.param_count = 1;
+        handler_wrapper.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
+        handler_wrapper.lambda.params[0] = pair_param;
+        handler_wrapper.lambda.param_annotations = null;
+        handler_wrapper.lambda.has_rest = false;
+        handler_wrapper.lambda.rest_param = 0;
+        handler_wrapper.lambda.has_typed_params = false;
+        handler_wrapper.lambda.body = let_k;
+        expr.handle.clauses[i].handler_body = handler_wrapper;
+        h_found |= self.scan_lambdas_with_scope(handler_wrapper, enclosing_bound);
+    }
+    return h_found;
+}
+
 fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
     if (expr == null) return false;
 
     switch (expr.tag) {
         case E_LAMBDA:
-            List{SymbolId} own_bound;
-            // Add all params to bound set for free-var scanning
-            if (expr.lambda.param_count > 1) {
-                for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
-                    own_bound.push(expr.lambda.params[pi]);
-                }
-            } else if ((uint)expr.lambda.param != 0xFFFFFFFF) {
-                own_bound.push(expr.lambda.param);
-            }
-            // For variadic lambdas, add all fixed params + rest param to bound set
-            if (expr.lambda.has_rest) {
-                for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
-                    own_bound.push(expr.lambda.params[pi]);
-                }
-                if ((uint)expr.lambda.rest_param != 0) {
-                    own_bound.push(expr.lambda.rest_param);
-                }
-            }
-            List{SymbolId} free;
-            self.find_free_vars(expr.lambda.body, &own_bound, &free, enclosing_bound);
-
-            LambdaDef def;
-            def.id = self.lambda_counter++;
-            def.param = expr.lambda.param;
-            def.body = expr.lambda.body;
-            def.capture_count = 0;
-            def.capture_capacity = LAMBDA_CAPTURE_INITIAL;
-            def.captures = (SymbolId*)mem::malloc(SymbolId.sizeof * def.capture_capacity);
-            // Store variadic info
-            def.has_rest = expr.lambda.has_rest;
-            def.rest_param = expr.lambda.rest_param;
-            def.param_count = expr.lambda.param_count;
-            def.param_capacity = expr.lambda.param_count < LAMBDA_CAPTURE_INITIAL ? LAMBDA_CAPTURE_INITIAL : expr.lambda.param_count;
-            def.params = (SymbolId*)mem::malloc(SymbolId.sizeof * def.param_capacity);
-            for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
-                def.params[pi] = expr.lambda.params[pi];
-            }
-
-            foreach (f : free) {
-                if (def.capture_count >= def.capture_capacity) {
-                    usz new_cap = def.capture_capacity * 2;
-                    SymbolId* new_caps = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
-                    for (usz ci = 0; ci < def.capture_count; ci++) new_caps[ci] = def.captures[ci];
-                    mem::free(def.captures);
-                    def.captures = new_caps;
-                    def.capture_capacity = new_cap;
-                }
-                def.captures[def.capture_count++] = f;
-            }
-
-            // Recursively scan body — the return value tells us if body has nested lambdas
-            List{SymbolId} new_enclosing;
-            foreach (b : *enclosing_bound) {
-                new_enclosing.push(b);
-            }
-            // Add all params to enclosing scope for nested lambda free var analysis
-            if (expr.lambda.param_count > 1) {
-                for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
-                    new_enclosing.push(expr.lambda.params[pi]);
-                }
-            } else if ((uint)expr.lambda.param != 0xFFFFFFFF) {
-                new_enclosing.push(expr.lambda.param);
-            }
-            if (expr.lambda.has_rest && (uint)expr.lambda.rest_param != 0) {
-                new_enclosing.push(expr.lambda.rest_param);
-            }
-            bool body_has_lambda = self.scan_lambdas_with_scope(expr.lambda.body, &new_enclosing);
-
-            // Set creates_closure from recursive scan (replaces body_creates_closure)
-            def.creates_closure = body_has_lambda;
-            if (def.id < 256) {
-                self.lambda_creates_closure[def.id] = body_has_lambda;
-            }
-
-            self.lambda_defs.push(def);
-
-            new_enclosing.free();
-            own_bound.free();
-            free.free();
-            return true;  // This node IS a lambda
+            return self.scan_lambdas_lambda(expr, enclosing_bound);
 
         case E_APP:
             bool app_f = self.scan_lambdas_with_scope(expr.app.func, enclosing_bound);
@@ -1837,20 +2073,7 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
             return self.scan_lambdas_with_scope(expr.if_expr.else_branch, enclosing_bound) || if_t || if_th;
 
         case E_LET:
-            List{SymbolId} let_scope;
-            foreach (b : *enclosing_bound) {
-                let_scope.push(b);
-            }
-            let_scope.push(expr.let_expr.name);
-            bool let_found;
-            if (expr.let_expr.is_recursive) {
-                let_found = self.scan_lambdas_with_scope(expr.let_expr.init, &let_scope);
-            } else {
-                let_found = self.scan_lambdas_with_scope(expr.let_expr.init, enclosing_bound);
-            }
-            bool let_body = self.scan_lambdas_with_scope(expr.let_expr.body, &let_scope);
-            let_scope.free();
-            return let_found || let_body;
+            return self.scan_lambdas_let(expr, enclosing_bound);
 
         case E_DEFINE:
             return self.scan_lambdas_with_scope(expr.define.value, enclosing_bound);
@@ -1871,11 +2094,7 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
             return m_found;
 
         case E_CALL:
-            bool c_found = self.scan_lambdas_with_scope(expr.call.func, enclosing_bound);
-            for (usz i = 0; i < expr.call.arg_count; i++) {
-                c_found |= self.scan_lambdas_with_scope(expr.call.args[i], enclosing_bound);
-            }
-            return c_found;
+            return self.scan_lambdas_call(expr, enclosing_bound);
 
         case E_INDEX:
             bool idx_c = self.scan_lambdas_with_scope(expr.index.collection, enclosing_bound);
@@ -1884,48 +2103,11 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
         case E_PATH:
             return false;
 
-        case E_RESET: {
-            // Wrap body as synthetic lambda: (lambda (_eff_dummy) body)
-            SymbolId dummy_param = self.interp.symbols.intern("_eff_dummy");
-            Expr* orig_body = expr.reset.body;
-            Expr* wrapper = self.interp.alloc_expr();
-            wrapper.tag = E_LAMBDA;
-            wrapper.lambda = (ExprLambda*)mem::malloc(ExprLambda.sizeof);
-            wrapper.loc_line = expr.loc_line;
-            wrapper.loc_column = expr.loc_column;
-            wrapper.lambda.param = dummy_param;
-            wrapper.lambda.param_count = 1;
-            wrapper.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
-            wrapper.lambda.params[0] = dummy_param;
-            wrapper.lambda.param_annotations = null;
-            wrapper.lambda.has_rest = false;
-            wrapper.lambda.rest_param = 0;
-            wrapper.lambda.has_typed_params = false;
-            wrapper.lambda.body = orig_body;
-            expr.reset.body = wrapper;
-            return self.scan_lambdas_with_scope(wrapper, enclosing_bound);
-        }
+        case E_RESET:
+            return self.scan_lambdas_reset(expr, enclosing_bound);
 
-        case E_SHIFT: {
-            // Wrap body as synthetic lambda: (lambda (k_name) body)
-            Expr* orig_body = expr.shift.body;
-            Expr* wrapper = self.interp.alloc_expr();
-            wrapper.tag = E_LAMBDA;
-            wrapper.lambda = (ExprLambda*)mem::malloc(ExprLambda.sizeof);
-            wrapper.loc_line = expr.loc_line;
-            wrapper.loc_column = expr.loc_column;
-            wrapper.lambda.param = expr.shift.k_name;
-            wrapper.lambda.param_count = 1;
-            wrapper.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
-            wrapper.lambda.params[0] = expr.shift.k_name;
-            wrapper.lambda.param_annotations = null;
-            wrapper.lambda.has_rest = false;
-            wrapper.lambda.rest_param = 0;
-            wrapper.lambda.has_typed_params = false;
-            wrapper.lambda.body = orig_body;
-            expr.shift.body = wrapper;
-            return self.scan_lambdas_with_scope(wrapper, enclosing_bound);
-        }
+        case E_SHIFT:
+            return self.scan_lambdas_shift(expr, enclosing_bound);
 
         case E_PERFORM:
             return self.scan_lambdas_with_scope(expr.perform.arg, enclosing_bound);
@@ -1933,96 +2115,8 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
         case E_RESOLVE:
             return self.scan_lambdas_with_scope(expr.resolve.value, enclosing_bound);
 
-        case E_HANDLE: {
-            // Wrap body as synthetic lambda
-            SymbolId dummy_param = self.interp.symbols.intern("_eff_dummy");
-            Expr* orig_body = expr.handle.body;
-            Expr* body_wrapper = self.interp.alloc_expr();
-            body_wrapper.tag = E_LAMBDA;
-            body_wrapper.lambda = (ExprLambda*)mem::malloc(ExprLambda.sizeof);
-            body_wrapper.loc_line = expr.loc_line;
-            body_wrapper.loc_column = expr.loc_column;
-            body_wrapper.lambda.param = dummy_param;
-            body_wrapper.lambda.param_count = 1;
-            body_wrapper.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
-            body_wrapper.lambda.params[0] = dummy_param;
-            body_wrapper.lambda.param_annotations = null;
-            body_wrapper.lambda.has_rest = false;
-            body_wrapper.lambda.rest_param = 0;
-            body_wrapper.lambda.has_typed_params = false;
-            body_wrapper.lambda.body = orig_body;
-            expr.handle.body = body_wrapper;
-            bool h_found = self.scan_lambdas_with_scope(body_wrapper, enclosing_bound);
-
-            // Wrap each handler clause as synthetic lambda: (lambda (_pair) (let (k (car _pair)) (let (arg (cdr _pair)) body)))
-            SymbolId pair_param = self.interp.symbols.intern("_eff_pair");
-            SymbolId sym_car = self.interp.symbols.intern("car");
-            SymbolId sym_cdr = self.interp.symbols.intern("cdr");
-            for (usz i = 0; i < expr.handle.clause_count; i++) {
-                Expr* orig_handler = expr.handle.clauses[i].handler_body;
-                SymbolId k_name = expr.handle.clauses[i].k_name;
-                SymbolId arg_name = expr.handle.clauses[i].arg_name;
-
-                // Build (cdr _pair) for arg extraction
-                Expr* pair_ref2 = self.interp.alloc_expr();
-                pair_ref2.tag = E_VAR;
-                pair_ref2.var_expr.name = pair_param;
-                Expr* cdr_fn = self.interp.alloc_expr();
-                cdr_fn.tag = E_VAR;
-                cdr_fn.var_expr.name = sym_cdr;
-                Expr* cdr_call = self.interp.alloc_expr();
-                cdr_call.tag = E_APP;
-                cdr_call.app.func = cdr_fn;
-                cdr_call.app.arg = pair_ref2;
-
-                // Build: (let (arg_name (cdr _pair)) orig_handler)
-                Expr* let_arg = self.interp.alloc_expr();
-                let_arg.tag = E_LET;
-                let_arg.let_expr.name = arg_name;
-                let_arg.let_expr.init = cdr_call;
-                let_arg.let_expr.body = orig_handler;
-                let_arg.let_expr.is_recursive = false;
-
-                // Build (car _pair) for k extraction
-                Expr* pair_ref1 = self.interp.alloc_expr();
-                pair_ref1.tag = E_VAR;
-                pair_ref1.var_expr.name = pair_param;
-                Expr* car_fn = self.interp.alloc_expr();
-                car_fn.tag = E_VAR;
-                car_fn.var_expr.name = sym_car;
-                Expr* car_call = self.interp.alloc_expr();
-                car_call.tag = E_APP;
-                car_call.app.func = car_fn;
-                car_call.app.arg = pair_ref1;
-
-                // Build: (let (k_name (car _pair)) (let (arg_name ...) ...))
-                Expr* let_k = self.interp.alloc_expr();
-                let_k.tag = E_LET;
-                let_k.let_expr.name = k_name;
-                let_k.let_expr.init = car_call;
-                let_k.let_expr.body = let_arg;
-                let_k.let_expr.is_recursive = false;
-
-                // Lambda wrapper: (lambda (_pair) (let (k ...) (let (arg ...) body)))
-                Expr* handler_wrapper = self.interp.alloc_expr();
-                handler_wrapper.tag = E_LAMBDA;
-                handler_wrapper.lambda = (ExprLambda*)mem::malloc(ExprLambda.sizeof);
-                handler_wrapper.loc_line = expr.loc_line;
-                handler_wrapper.loc_column = expr.loc_column;
-                handler_wrapper.lambda.param = pair_param;
-                handler_wrapper.lambda.param_count = 1;
-                handler_wrapper.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * 1);
-                handler_wrapper.lambda.params[0] = pair_param;
-                handler_wrapper.lambda.param_annotations = null;
-                handler_wrapper.lambda.has_rest = false;
-                handler_wrapper.lambda.rest_param = 0;
-                handler_wrapper.lambda.has_typed_params = false;
-                handler_wrapper.lambda.body = let_k;
-                expr.handle.clauses[i].handler_body = handler_wrapper;
-                h_found |= self.scan_lambdas_with_scope(handler_wrapper, enclosing_bound);
-            }
-            return h_found;
-        }
+        case E_HANDLE:
+            return self.scan_lambdas_handle(expr, enclosing_bound);
 
         case E_BEGIN:
             bool b_found = false;
