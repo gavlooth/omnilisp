@@ -810,18 +810,11 @@ fn Expr* Parser.parse_expr(Parser* self) {
 
     // Regex literal: #r"pattern" => pre-compiled regex value
     if (lex.current.type == T_REGEX) {
-        // Treat regex literal same as T_STRING: save text, then advance
+        // Use make_string which handles allocation correctly
+        char[] pat = lex.current.text[:lex.current.text_len];
         Expr* e = self.alloc_expr_here();
         e.tag = E_LIT;
-        e.lit.value = self.interp.alloc_value_root();
-        e.lit.value.tag = STRING;
-        // Save text BEFORE advance (advance overwrites current token)
-        usz plen = lex.current.text_len;
-        e.lit.value.str_val.chars = (char*)mem::malloc(plen + 1);
-        for (usz i = 0; i < plen; i++) e.lit.value.str_val.chars[i] = lex.current.text[i];
-        e.lit.value.str_val.chars[plen] = 0;
-        e.lit.value.str_val.len = plen;
-        e.lit.value.str_val.capacity = plen + 1;
+        e.lit.value = make_string(self.interp, pat);
         lex.advance();
         return e;
     }

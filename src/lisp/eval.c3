@@ -2210,6 +2210,9 @@ fn EvalResult run_program(char[] source, Interp* interp) {
  * Run a single expression.
  */
 fn EvalResult run(char[] source, Interp* interp) {
+    // GC JIT states between top-level evaluations (safe: no JIT code on stack)
+    jit_gc();
+
     Lexer lex;
     lex.init(source);
     Parser p;

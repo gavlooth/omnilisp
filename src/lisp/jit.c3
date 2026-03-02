@@ -2831,19 +2831,13 @@ fn void jit_global_shutdown() {
 fn void jit_gc() {
     if (!g_jit_gc_needed) return;
 
-    $if DEBUG_BUILD:
-        io::eprintfn("[debug] JIT GC: reclaiming %d states, %d cache entries", g_jit_state_count, g_jit_cache_count);
-    $endif
-
-    // Destroy all JIT states — their code buffers become invalid
-    for (usz i = 0; i < g_jit_state_count; i++) {
-        _jit_destroy_state(g_jit_states[i]);
-    }
+    // Instead of destroying states (which is slow/hangs in GNU Lightning),
+    // just reset the pool counter. The states are already cleared via
+    // _jit_clear_state() — only the code buffer remains. We leak the code
+    // buffers but they're small (~100 bytes each after clear_state).
+    // The cache is cleared so expressions get recompiled into new states.
     g_jit_state_count = 0;
-
-    // Clear cache since all code buffers are freed
     jit_cache_clear();
-
     g_jit_gc_needed = false;
     g_jit_pool_warned = false;
 }
@@ -2861,6 +2855,11 @@ alias JitFn = fn Value*(Interp*);
  */
 fn JitFn jit_compile(Expr* expr, Interp* interp) {
     jit_global_init();
+
+    // GC old states when pool is near capacity
+    if (g_jit_gc_needed) {
+        jit_gc();
+    }
 
     void* s = jit_new_state();
     if (s == null) return null;

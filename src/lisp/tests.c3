@@ -1346,9 +1346,7 @@ fn void run_deduce_tests(Interp* interp, int* pass, int* fail) {
         }
     }
 
-    // deduce-match with ?vars — deferred (hangs, needs investigation)
-    // The unification engine code (unify.c3) is correct but deduce-match
-    // primitive hangs during JIT execution — likely LMDB cursor issue.
+    // deduce-match deferred — heap corruption (malloc hangs after ~1000 tests)
 }
 
 fn void run_schema_tests(Interp* interp, int* pass, int* fail) {
@@ -1397,7 +1395,7 @@ fn void run_schema_tests(Interp* interp, int* pass, int* fail) {
 fn void run_reader_dispatch_tests(Interp* interp, int* pass, int* fail) {
     io::printn("\n--- Reader Dispatch Tests ---");
 
-    // #r"" deferred — hangs in test_str (interp+JIT double-evaluation path)
+    // #r"" deferred — heap corruption (malloc hangs after ~1000 tests)
 
     // Block comment
     test_eq(interp, "block comment",
