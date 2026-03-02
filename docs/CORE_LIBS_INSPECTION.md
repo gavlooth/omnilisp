@@ -454,11 +454,117 @@ Single-header image decoder. Relevant given omni-torch exists. Public domain, ~1
 Build on libuv TCP + BearSSL TLS. Parse with Pika grammar.
 Alternative: libcurl via FFI if building from scratch is too slow.
 
-### 12. Async scheduler (effect-based)
+### 12. Concurrency Model — Fibers, Scheduler, Threads
 
-Full libuv event loop integration with fiber scheduler. The scheduler is an effect
-handler wrapping user code — fibers signal I/O effects, scheduler dispatches to libuv,
-libuv callbacks resume fibers via resolve. ~150 lines C3.
+Omni's concurrency builds entirely on existing primitives (coroutines + effects).
+No new concepts — just composition.
+
+**Three tiers, increasing isolation:**
+
+```
+Coroutines    — cooperative, same thread, share everything (zero copy)
+Fibers        — cooperative, same thread, scheduler manages (zero copy)
+Threads       — parallel, isolated Interp, share NOTHING (copy flat data only)
+```
+
+#### Tier 1: Coroutines (LANDED)
+
+Manual cooperative multitasking. `coroutine`/`resume`/`yield`. StackCtx-based.
+User explicitly controls scheduling. Good for generators, lazy sequences, streams.
+
+#### Tier 2: Fibers = Coroutines + Scheduler Effect Handler
+
+A fiber is a coroutine whose `resume` is called by the scheduler, not the user.
+The scheduler is an effect handler wrapping user code:
+
+```lisp
+;; spawn creates a coroutine, registers it with the scheduler
+(spawn (lambda () (tcp-read (tcp-connect "a.com" 80))))
+
+;; Under the hood:
+;; 1. spawn = create coroutine + add to scheduler's ready queue
+;; 2. tcp-connect signals io/tcp-connect effect
+;; 3. Scheduler handler catches it, starts libuv async op, suspends fiber
+;; 4. libuv callback fires → scheduler marks fiber as ready
+;; 5. Scheduler resumes fiber with the result via resolve
+```
+
+Scheduler loop (~150 lines C3):
+```
+while fibers exist:
+    while ready_queue not empty:
+        resume next fiber
+        if it signaled I/O effect → start libuv op, keep suspended
+    uv_run(loop, UV_RUN_ONCE)   ;; poll libuv for completions
+    ;; callbacks push fibers back to ready_queue
+```
+
+No new types. A fiber IS a coroutine. The scheduler IS an effect handler.
+
+#### Tier 3: Threads = Fibers on OS Threads (share-nothing)
+
+Each thread gets its own `Interp` + scope-region (complete isolation).
+Communication via effects — the handler manages a lock-free inter-thread queue.
+`uv_thread_create` + `uv_async_t` (cross-thread wakeup) from libuv.
+
+**Critical design: send DATA, not closures.**
+
+Copying closures across threads is heavy (env chain + all captured bindings = O(n)).
+Instead, send flat data (int, string, symbol, list of scalars). Each thread loads
+the same source code, so all functions are already defined in every Interp:
+
+```lisp
+;; LIGHT — send a symbol + an int (O(1) copy)
+(signal io/thread-send (cons target '(compute-fib 40)))
+;; Receiving thread already has compute-fib, just calls it
+
+;; NOT THIS — copying a closure means copying the entire env chain
+;; (signal io/thread-send (cons target (lambda () (compute big-captured-data))))
+```
+
+**No built-in channels.** Inter-thread communication goes through effects.
+The "channel" is a queue inside the effect handler — not a language primitive.
+Users who want channel abstractions write a handler:
+
+```lisp
+;; Channel = effect handler managing a queue
+(define (make-channel)
+  (let (queue (array))
+    (dict 'send (lambda (msg) (signal io/chan-send (cons queue msg)))
+          'recv (lambda () (signal io/chan-recv queue)))))
+```
+
+**Why no channels as primitives:**
+- Effects already provide the suspend/resume mechanism
+- A channel is just a queue + two effects (send/recv)
+- Baking it in adds a concept where composition suffices
+- Different channel types (buffered, unbuffered, broadcast) = different handlers
+
+**What this model provides (all via composition):**
+
+| Pattern | How |
+|---------|-----|
+| Message passing | Effect handler + queue |
+| Future/Promise | Spawn fiber, await via effect |
+| Fork/Join | Spawn N fibers, collect via effects |
+| Map-reduce | Scatter data to threads, gather via effects |
+| Pipeline | Chain of effect handlers |
+| Supervision | Parent handler monitors child fibers |
+
+**What's NOT needed (share-nothing eliminates):**
+- Locks/mutexes — no shared mutable state
+- STM — no shared state to transact on
+- Atomics — no shared memory to CAS on (except the inter-thread queue, handled in C)
+
+**Implementation:**
+
+| Component | Lines (est.) | Phase |
+|-----------|-------------|-------|
+| Fiber scheduler (effect handler + libuv poll loop) | ~150 C3 | E |
+| `spawn` / `await` primitives | ~50 C3 | E |
+| Thread spawn (`uv_thread_create` + per-thread Interp init) | ~100 C3 | G |
+| Inter-thread message queue (lock-free, `uv_async_t` wakeup) | ~80 C3 | G |
+| Cross-thread value copy (flat data only, no closures) | ~50 C3 | G |
 
 ---
 
@@ -475,15 +581,18 @@ Phase C:           Contracts (define [schema]) — ~300 lines, pure Omni + dispa
                    ↓
 Phase D:           LMDB integration + Datalog engine (define [relation], define [rule])
                    ↓
-Phase E:           Async scheduler (effect handler over libuv event loop)
+Phase E:           Fiber scheduler (coroutines + effect handler + libuv event loop)
                    ↓
 Phase F:           HTTP/1.1 client (libuv + BearSSL + Pika grammar)
                    ↓
-Phase G (extras):  stb_image
+Phase G:           Threads (uv_thread_create + per-thread Interp + effect-mediated messaging)
+                   ↓
+Phase H (extras):  stb_image
 ```
 
-Phase B is pure parser work (no C dependencies). Phase C is pure Omni + dispatch.
-Phase D adds LMDB (~50KB). Phase E is ~150 lines C3. Phase F composes existing libraries.
+Phase B is pure parser work. Phase C is pure Omni + dispatch. Phase D adds LMDB (~50KB).
+Phase E is ~200 lines C3 (scheduler + spawn/await). Phase F composes existing libraries.
+Phase G is ~230 lines C3 (threads + messaging). No new external dependencies after Phase D.
 PCRE2 eliminated — three-tier pattern matching covers all use cases.
 
 ---
