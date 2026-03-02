@@ -754,6 +754,192 @@ fn Expr* Parser.parse_postfix_index(Parser* self, Expr* base) {
 }
 
 /**
+ * Parse a dict literal after the opening '{' has been consumed.
+ * Desugars {k1 v1 k2 v2 ...} to (dict k1 v1 k2 v2 ...).
+ */
+fn Expr* Parser.parse_dict_literal(Parser* self) {
+    Lexer* lex = self.lexer;
+    Expr* e = self.alloc_expr_here();
+
+    // Build E_CALL: func = E_VAR("dict"), args = collected expressions
+    Expr* func = self.interp.alloc_expr();
+    func.tag = E_VAR;
+    func.var_expr.name = self.interp.symbols.intern("dict");
+
+    List{Expr*} args;
+    while (lex.current.type != T_RBRACE && !self.has_error) {
+        Expr* arg = self.parse_expr();
+        if (arg == null) { args.free(); return null; }
+        args.push(arg);
+    }
+
+    e.tag = E_CALL;
+    e.call = mem::malloc(ExprCall.sizeof);
+    e.call.func = func;
+    e.call.arg_count = args.len();
+    e.call.args = (Expr**)mem::malloc(Expr*.sizeof * args.len());
+    for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }
+    args.free();
+
+    if (e.call.arg_count % 2 != 0) {
+        self.set_error("dict literal requires even number of elements");
+        return null;
+    }
+
+    self.expect(T_RBRACE, "}");
+    return self.parse_postfix_index(e);
+}
+
+/**
+ * Parse an array literal after the opening '[' has been consumed.
+ * Desugars [e1 e2 e3 ...] to (array e1 e2 e3 ...).
+ */
+fn Expr* Parser.parse_array_literal(Parser* self) {
+    Lexer* lex = self.lexer;
+    Expr* e = self.alloc_expr_here();
+
+    // Build E_CALL: func = E_VAR("array"), args = collected expressions
+    Expr* func = self.interp.alloc_expr();
+    func.tag = E_VAR;
+    func.var_expr.name = self.interp.symbols.intern("array");
+
+    List{Expr*} args;
+    while (lex.current.type != T_RBRACKET && !self.has_error) {
+        Expr* arg = self.parse_expr();
+        if (arg == null) { args.free(); return null; }
+        args.push(arg);
+    }
+
+    e.tag = E_CALL;
+    e.call = mem::malloc(ExprCall.sizeof);
+    e.call.func = func;
+    e.call.arg_count = args.len();
+    e.call.args = (Expr**)mem::malloc(Expr*.sizeof * args.len());
+    for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }
+    args.free();
+
+    self.expect(T_RBRACKET, "]");
+    return self.parse_postfix_index(e);
+}
+
+/**
+ * Parse a list form after the opening '(' has been consumed.
+ * Handles special forms (lambda, if, let, define, ...) and regular application.
+ */
+fn Expr* Parser.parse_list_form(Parser* self) {
+    Lexer* lex = self.lexer;
+
+    if (lex.current.type == T_RPAREN) {
+        // Empty list () = nil literal
+        Expr* e = self.alloc_expr_here();  // Capture location before consuming
+        lex.advance();
+        e.tag = E_LIT;
+        e.lit.value = self.interp.alloc_value_root();
+        e.lit.value.tag = NIL;
+        return e;
+    }
+
+    // Get the first element to check for special forms
+    if (lex.current.type == T_SYMBOL) {
+        SymbolId head = self.get_current_symbol();
+
+        // Check special forms
+        if ((uint)head == (uint)self.interp.sym_lambda) {
+            return self.parse_lambda();
+        }
+        // Check for λ (U+03BB, UTF-8: CE BB)
+        char[] head_text = self.interp.symbols.get_name(head);
+        if (head_text.len == 2 && head_text[0] == (char)0xCE && head_text[1] == (char)0xBB) {
+            return self.parse_lambda();
+        }
+        if ((uint)head == (uint)self.interp.sym_if) {
+            return self.parse_if();
+        }
+        if ((uint)head == (uint)self.interp.sym_let) {
+            return self.parse_let();
+        }
+        if ((uint)head == (uint)self.interp.sym_define) {
+            return self.parse_define();
+        }
+        if ((uint)head == (uint)self.interp.sym_quote) {
+            return self.parse_quote();
+        }
+        if ((uint)head == (uint)self.interp.sym_reset) {
+            return self.parse_reset();
+        }
+        if ((uint)head == (uint)self.interp.sym_shift) {
+            return self.parse_shift();
+        }
+        if ((uint)head == (uint)self.interp.sym_signal) {
+            return self.parse_perform();
+        }
+        if ((uint)head == (uint)self.interp.sym_handle) {
+            return self.parse_handle();
+        }
+        if ((uint)head == (uint)self.interp.sym_resolve) {
+            return self.parse_resolve();
+        }
+        if ((uint)head == (uint)self.interp.sym_with_continuation) {
+            return self.parse_with_continuation();
+        }
+        if ((uint)head == (uint)self.interp.sym_match) {
+            return self.parse_match();
+        }
+        if ((uint)head == (uint)self.interp.sym_and) {
+            return self.parse_and();
+        }
+        if ((uint)head == (uint)self.interp.sym_or) {
+            return self.parse_or();
+        }
+        if ((uint)head == (uint)self.interp.sym_begin) {
+            return self.parse_begin();
+        }
+        if ((uint)head == (uint)self.interp.sym_set) {
+            return self.parse_set();
+        }
+        if ((uint)head == (uint)self.interp.sym_quasiquote) {
+            Expr* e = self.alloc_expr_here();
+            self.lexer.advance();  // consume 'quasiquote'
+            e.tag = E_QUASIQUOTE;
+            e.quasiquote.body = self.parse_qq_template();
+            self.expect(T_RPAREN, ")");
+            return e;
+        }
+        if ((uint)head == (uint)self.interp.sym_unquote) {
+            Expr* e = self.alloc_expr_here();
+            self.lexer.advance();  // consume 'unquote'
+            e.tag = E_UNQUOTE;
+            e.unquote.body = self.parse_expr();
+            self.expect(T_RPAREN, ")");
+            return e;
+        }
+        if ((uint)head == (uint)self.interp.sym_unquote_splicing) {
+            Expr* e = self.alloc_expr_here();
+            self.lexer.advance();  // consume 'unquote-splicing'
+            e.tag = E_UNQUOTE_SPLICING;
+            e.unquote_splicing.body = self.parse_expr();
+            self.expect(T_RPAREN, ")");
+            return e;
+        }
+        if ((uint)head == (uint)self.interp.sym_module) {
+            return self.parse_module();
+        }
+        if ((uint)head == (uint)self.interp.sym_import) {
+            return self.parse_import();
+        }
+        if ((uint)head == (uint)self.interp.sym_export_from) {
+            return self.parse_export_from();
+        }
+        if ((uint)head == (uint)self.interp.sym_pipe) {
+            return self.parse_pipe();
+        }
+    }
+
+    // Regular application
+    return self.parse_application();
+}
+
+/**
  * Parse a complete expression.
  */
 fn Expr* Parser.parse_expr(Parser* self) {
@@ -931,179 +1117,20 @@ fn Expr* Parser.parse_expr(Parser* self) {
 
     // Dict literal: {k1 v1 k2 v2 ...} → (dict k1 v1 k2 v2 ...)
     if (lex.current.type == T_LBRACE) {
-        Expr* e = self.alloc_expr_here();
         lex.advance();  // consume {
-
-        // Build E_CALL: func = E_VAR("dict"), args = collected expressions
-        Expr* func = self.interp.alloc_expr();
-        func.tag = E_VAR;
-        func.var_expr.name = self.interp.symbols.intern("dict");
-
-        List{Expr*} args;
-        while (lex.current.type != T_RBRACE && !self.has_error) {
-            Expr* arg = self.parse_expr();
-            if (arg == null) { args.free(); return null; }
-            args.push(arg);
-        }
-
-        e.tag = E_CALL;
-        e.call = mem::malloc(ExprCall.sizeof);
-        e.call.func = func;
-        e.call.arg_count = args.len();
-        e.call.args = (Expr**)mem::malloc(Expr*.sizeof * args.len());
-        for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }
-        args.free();
-
-        if (e.call.arg_count % 2 != 0) {
-            self.set_error("dict literal requires even number of elements");
-            return null;
-        }
-
-        self.expect(T_RBRACE, "}");
-        return self.parse_postfix_index(e);
+        return self.parse_dict_literal();
     }
 
     // Array literal: [e1 e2 e3 ...] → (array e1 e2 e3 ...)
     if (lex.current.type == T_LBRACKET) {
-        Expr* e = self.alloc_expr_here();
         lex.advance();  // consume [
-
-        // Build E_CALL: func = E_VAR("array"), args = collected expressions
-        Expr* func = self.interp.alloc_expr();
-        func.tag = E_VAR;
-        func.var_expr.name = self.interp.symbols.intern("array");
-
-        List{Expr*} args;
-        while (lex.current.type != T_RBRACKET && !self.has_error) {
-            Expr* arg = self.parse_expr();
-            if (arg == null) { args.free(); return null; }
-            args.push(arg);
-        }
-
-        e.tag = E_CALL;
-        e.call = mem::malloc(ExprCall.sizeof);
-        e.call.func = func;
-        e.call.arg_count = args.len();
-        e.call.args = (Expr**)mem::malloc(Expr*.sizeof * args.len());
-        for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }
-        args.free();
-
-        self.expect(T_RBRACKET, "]");
-        return self.parse_postfix_index(e);
+        return self.parse_array_literal();
     }
 
     // List form: (...)
     if (lex.current.type == T_LPAREN) {
         lex.advance();
-
-        if (lex.current.type == T_RPAREN) {
-            // Empty list () = nil literal
-            Expr* e = self.alloc_expr_here();  // Capture location before consuming
-            lex.advance();
-            e.tag = E_LIT;
-            e.lit.value = self.interp.alloc_value_root();
-            e.lit.value.tag = NIL;
-            return e;
-        }
-
-        // Get the first element to check for special forms
-        if (lex.current.type == T_SYMBOL) {
-            SymbolId head = self.get_current_symbol();
-
-            // Check special forms
-            if ((uint)head == (uint)self.interp.sym_lambda) {
-                return self.parse_lambda();
-            }
-            // Check for λ (U+03BB, UTF-8: CE BB)
-            char[] head_text = self.interp.symbols.get_name(head);
-            if (head_text.len == 2 && head_text[0] == (char)0xCE && head_text[1] == (char)0xBB) {
-                return self.parse_lambda();
-            }
-            if ((uint)head == (uint)self.interp.sym_if) {
-                return self.parse_if();
-            }
-            if ((uint)head == (uint)self.interp.sym_let) {
-                return self.parse_let();
-            }
-            if ((uint)head == (uint)self.interp.sym_define) {
-                return self.parse_define();
-            }
-            if ((uint)head == (uint)self.interp.sym_quote) {
-                return self.parse_quote();
-            }
-            if ((uint)head == (uint)self.interp.sym_reset) {
-                return self.parse_reset();
-            }
-            if ((uint)head == (uint)self.interp.sym_shift) {
-                return self.parse_shift();
-            }
-            if ((uint)head == (uint)self.interp.sym_signal) {
-                return self.parse_perform();
-            }
-            if ((uint)head == (uint)self.interp.sym_handle) {
-                return self.parse_handle();
-            }
-            if ((uint)head == (uint)self.interp.sym_resolve) {
-                return self.parse_resolve();
-            }
-            if ((uint)head == (uint)self.interp.sym_with_continuation) {
-                return self.parse_with_continuation();
-            }
-            if ((uint)head == (uint)self.interp.sym_match) {
-                return self.parse_match();
-            }
-            if ((uint)head == (uint)self.interp.sym_and) {
-                return self.parse_and();
-            }
-            if ((uint)head == (uint)self.interp.sym_or) {
-                return self.parse_or();
-            }
-            if ((uint)head == (uint)self.interp.sym_begin) {
-                return self.parse_begin();
-            }
-            if ((uint)head == (uint)self.interp.sym_set) {
-                return self.parse_set();
-            }
-            if ((uint)head == (uint)self.interp.sym_quasiquote) {
-                Expr* e = self.alloc_expr_here();
-                self.lexer.advance();  // consume 'quasiquote'
-                e.tag = E_QUASIQUOTE;
-                e.quasiquote.body = self.parse_qq_template();
-                self.expect(T_RPAREN, ")");
-                return e;
-            }
-            if ((uint)head == (uint)self.interp.sym_unquote) {
-                Expr* e = self.alloc_expr_here();
-                self.lexer.advance();  // consume 'unquote'
-                e.tag = E_UNQUOTE;
-                e.unquote.body = self.parse_expr();
-                self.expect(T_RPAREN, ")");
-                return e;
-            }
-            if ((uint)head == (uint)self.interp.sym_unquote_splicing) {
-                Expr* e = self.alloc_expr_here();
-                self.lexer.advance();  // consume 'unquote-splicing'
-                e.tag = E_UNQUOTE_SPLICING;
-                e.unquote_splicing.body = self.parse_expr();
-                self.expect(T_RPAREN, ")");
-                return e;
-            }
-            if ((uint)head == (uint)self.interp.sym_module) {
-                return self.parse_module();
-            }
-            if ((uint)head == (uint)self.interp.sym_import) {
-                return self.parse_import();
-            }
-            if ((uint)head == (uint)self.interp.sym_export_from) {
-                return self.parse_export_from();
-            }
-            if ((uint)head == (uint)self.interp.sym_pipe) {
-                return self.parse_pipe();
-            }
-        }
-
-        // Regular application
-        return self.parse_application();
+        return self.parse_list_form();
     }
 
     // Placeholder _ in expression context (for partial application desugaring)
