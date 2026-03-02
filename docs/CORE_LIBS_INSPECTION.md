@@ -359,18 +359,102 @@ Tier 3: Omni code (unlimited)       — 0.1% of use cases
 
 ---
 
+### 9. Reader Dispatch and Symbol-as-Function
+
+**Two syntax enhancements** that unlock ergonomics across contracts, Datalog, and pipelines.
+
+#### `'symbol` as lookup function
+
+When a quoted symbol is applied as a function, it performs a key lookup:
+
+```lisp
+('name (dict 'name "Alice" 'age 30))   ;; => "Alice"
+
+;; Powerful with HOFs and pipelines
+(map 'name people)                       ;; => ("Alice" "Bob")
+(filter 'active? users)
+(sort-by 'age people)
+
+;; Works with Datalog results
+(map 'age (query '((person ?name ?age _))))
+
+;; Pipe-friendly
+(|> people (filter 'active?) (sort-by 'age) (map 'name))
+```
+
+Implementation: ~10 lines in `jit_apply_value` — when applying a SYMBOL, treat as `(ref arg symbol)`.
+
+**Why not `.name` accessor lambdas:** `.name` conflicts visually with `person.name` field access.
+`person.name.city` vs `.name.city` — same characters, different meanings. Confusing.
+`'name` has zero ambiguity: it's always a quoted symbol, never a field access.
+
+#### `#` reader dispatch extensions
+
+| Syntax | Meaning | Example |
+|--------|---------|---------|
+| `;` | Line comment | `; this is a comment` |
+| `#\| ... \|#` | Block comment (nestable) | `#\| multi-line \|#` |
+| `#_` | Skip next form | `#_ (ignored) (this runs)` |
+| `#N_` | Skip next N forms | `#3_ (a) (b) (c) (this runs)` |
+| `#{}` | Set literal | `#{"red" "green" "blue"}` |
+| `#r"pat"` | Compiled Pika regex | `#r"[0-9]+"` |
+
+**Set literals** complete the collection trinity:
+```lisp
+'(1 2 3)          ;; list
+[1 2 3]           ;; array
+{'a 1 'b 2}       ;; dict
+#{"a" "b" "c"}    ;; set (desugars to (set "a" "b" "c"))
+```
+
+**Regex literals** make Pika regex first-class:
+```lisp
+;; #r"" compiles regex at read time, no string escaping needed
+(re-match #r"[0-9]+" "abc123")      ;; vs (re-match "[0-9]+" "abc123")
+(re-split #r"\s+" "hello world")    ;; vs (re-split "\\s+" "hello world")
+
+;; Particularly valuable for complex patterns
+(re-match #r"(\w+)\s*=\s*(\w+)" "key = value")
+```
+
+**Multi-form comment** `#N_` — the number comes BEFORE `_` to avoid ambiguity with `#_ 3`:
+```lisp
+;; Disable a function and its test
+#2_ (define (broken x) ...)
+     (assert (= (broken 1) 2))
+
+;; Disable one branch of a cond
+(cond
+  (< x 0) "negative"
+  #1_ (= x 0) "zero"       ;; disabled: skip 1 form (the "zero" string)
+  true "non-negative")
+```
+
+**Block comments** nest — safe to comment out code containing block comments:
+```lisp
+#|
+  This whole section is disabled.
+  #| Even nested comments |# are fine.
+  (define (unused) ...)
+|#
+```
+
+**Implementation:** ~80 lines in parser (reader dispatch table for `#`).
+
+---
+
 ## Tier 3: Nice to Have
 
-### 9. stb_image — Image loading
+### 10. stb_image — Image loading
 
 Single-header image decoder. Relevant given omni-torch exists. Public domain, ~100KB.
 
-### 10. HTTP/1.1 client
+### 11. HTTP/1.1 client
 
 Build on libuv TCP + BearSSL TLS. Parse with Pika grammar.
 Alternative: libcurl via FFI if building from scratch is too slow.
 
-### 11. Async scheduler (effect-based)
+### 12. Async scheduler (effect-based)
 
 Full libuv event loop integration with fiber scheduler. The scheduler is an effect
 handler wrapping user code — fibers signal I/O effects, scheduler dispatches to libuv,
@@ -384,20 +468,23 @@ libuv callbacks resume fibers via resolve. ~150 lines C3.
 Phase A (DONE):    libuv + utf8proc + Pika + yyjson + libdeflate + BearSSL
                    Effect fast-path dispatch table
                    ↓
-Phase B (next):    Contracts (define [schema]) — ~300 lines, pure Omni + dispatch
+Phase B (next):    Reader dispatch (#r"", #{}, #N_, #| |#) + symbol-as-function
+                   ~90 lines parser, pure syntax — no new deps
                    ↓
-Phase C:           LMDB integration + Datalog engine (define [relation], define [rule])
+Phase C:           Contracts (define [schema]) — ~300 lines, pure Omni + dispatch
                    ↓
-Phase D:           Async scheduler (effect handler over libuv event loop)
+Phase D:           LMDB integration + Datalog engine (define [relation], define [rule])
                    ↓
-Phase E:           HTTP/1.1 client (libuv + BearSSL + Pika grammar)
+Phase E:           Async scheduler (effect handler over libuv event loop)
                    ↓
-Phase F (extras):  stb_image
+Phase F:           HTTP/1.1 client (libuv + BearSSL + Pika grammar)
+                   ↓
+Phase G (extras):  stb_image
 ```
 
-Phase B is pure Omni code (no new C dependencies). Phase C adds LMDB (~50KB).
-Phase D is ~150 lines C3. Phase E composes existing libraries.
-PCRE2 eliminated — three-tier pattern matching (re-match / pika/grammar / Omni code) covers all use cases.
+Phase B is pure parser work (no C dependencies). Phase C is pure Omni + dispatch.
+Phase D adds LMDB (~50KB). Phase E is ~150 lines C3. Phase F composes existing libraries.
+PCRE2 eliminated — three-tier pattern matching covers all use cases.
 
 ---
 
