@@ -12,6 +12,16 @@
 (define [effect] (io/write-file (^Any x)))
 (define [effect] (io/file-exists? (^String path)))
 (define [effect] (io/read-lines (^String path)))
+(define [effect] (io/tcp-connect (^Any args)))
+(define [effect] (io/tcp-read (^Any handle)))
+(define [effect] (io/tcp-write (^Any args)))
+(define [effect] (io/tcp-close (^Any handle)))
+(define [effect] (io/dns-resolve (^String host)))
+(define [effect] (io/async-sleep (^Int ms)))
+(define [effect] (io/tls-connect (^Any args)))
+(define [effect] (io/tls-read (^Any handle)))
+(define [effect] (io/tls-write (^Any args)))
+(define [effect] (io/tls-close (^Any handle)))
 
 ;; Error effect — all recoverable errors flow through this
 (define [effect] (raise (^Any msg)))
@@ -211,6 +221,16 @@
 (define write-file (lambda (path content) (signal io/write-file (cons path content))))
 (define file-exists? (lambda (path) (signal io/file-exists? path)))
 (define read-lines (lambda (path) (signal io/read-lines path)))
+(define tcp-connect (lambda (host port) (signal io/tcp-connect (cons host port))))
+(define tcp-read (lambda (handle) (signal io/tcp-read handle)))
+(define tcp-write (lambda (handle data) (signal io/tcp-write (cons handle data))))
+(define tcp-close (lambda (handle) (signal io/tcp-close handle)))
+(define dns-resolve (lambda (host) (signal io/dns-resolve host)))
+(define async-sleep (lambda (ms) (signal io/async-sleep ms)))
+(define tls-connect (lambda (tcp-handle hostname) (signal io/tls-connect (cons tcp-handle hostname))))
+(define tls-read (lambda (handle) (signal io/tls-read handle)))
+(define tls-write (lambda (handle data) (signal io/tls-write (cons handle data))))
+(define tls-close (lambda (handle) (signal io/tls-close handle)))
 
 ;; =========================================================================
 ;; Handler Composition

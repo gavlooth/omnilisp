@@ -1089,6 +1089,162 @@ fn void run_diagnostic_tests(Interp* interp, int* pass, int* fail) {
         "String", pass, fail);
 }
 
+fn void run_async_tests(Interp* interp, int* pass, int* fail) {
+    io::printn("\n--- Async I/O Tests ---");
+
+    // DNS resolve localhost
+    test_str_val(interp, "dns-resolve localhost",
+        "(dns-resolve \"localhost\")", "127.0.0.1", pass, fail);
+
+    // async-sleep returns nil
+    test_tag(interp, "async-sleep returns nil",
+        "(async-sleep 1)", NIL, pass, fail);
+
+    // DNS resolve returns a string
+    test_str(interp, "dns-resolve returns string",
+        "(dns-resolve \"localhost\")", pass, fail);
+}
+
+fn void run_json_tests(Interp* interp, int* pass, int* fail) {
+    io::printn("\n--- JSON Tests ---");
+
+    // Parse basic types
+    test_eq(interp, "json-parse integer",
+        "(json-parse \"42\")", 42, pass, fail);
+    test_str_val(interp, "json-parse string",
+        "(json-parse \"\\\"hello\\\"\")", "hello", pass, fail);
+    test_tag(interp, "json-parse null",
+        "(json-parse \"null\")", NIL, pass, fail);
+
+    // Parse array
+    test_tag(interp, "json-parse array is array",
+        "(json-parse \"[1,2,3]\")", ARRAY, pass, fail);
+    test_eq(interp, "json-parse array length",
+        "(length (json-parse \"[1,2,3]\"))", 3, pass, fail);
+
+    // Parse object
+    test_tag(interp, "json-parse object is dict",
+        "(json-parse \"{\\\"a\\\": 1}\")", HASHMAP, pass, fail);
+
+    // Emit basic types
+    test_str_val(interp, "json-emit integer",
+        "(json-emit 42)", "42", pass, fail);
+    test_str_val(interp, "json-emit string",
+        "(json-emit \"hello\")", "\"hello\"", pass, fail);
+    test_str_val(interp, "json-emit nil",
+        "(json-emit nil)", "null", pass, fail);
+
+    // Round-trip: array
+    test_str_val(interp, "json-emit array",
+        "(json-emit [1 2 3])", "[1,2,3]", pass, fail);
+
+    // Round-trip: emit then parse
+    test_eq(interp, "json round-trip integer",
+        "(json-parse (json-emit 99))", 99, pass, fail);
+}
+
+fn void run_compression_tests(Interp* interp, int* pass, int* fail) {
+    io::printn("\n--- Compression Tests ---");
+
+    // gzip round-trip
+    test_str_val(interp, "gzip/gunzip round-trip",
+        "(gunzip (gzip \"hello world\"))", "hello world", pass, fail);
+
+    // deflate round-trip
+    test_str_val(interp, "deflate/inflate round-trip",
+        "(inflate (deflate \"test data\"))", "test data", pass, fail);
+
+    // Empty string round-trip
+    test_str_val(interp, "gzip/gunzip empty",
+        "(gunzip (gzip \"\"))", "", pass, fail);
+}
+
+fn void run_unicode_tests(Interp* interp, int* pass, int* fail) {
+    io::printn("\n--- Unicode Tests ---");
+
+    // Upcase: ASCII
+    test_str_val(interp, "string-upcase ASCII",
+        "(string-upcase \"hello\")", "HELLO", pass, fail);
+
+    // Downcase: ASCII
+    test_str_val(interp, "string-downcase ASCII",
+        "(string-downcase \"HELLO\")", "hello", pass, fail);
+
+    // Codepoints: ASCII
+    test_eq(interp, "string-codepoints ASCII count",
+        "(length (string-codepoints \"abc\"))", 3, pass, fail);
+    test_eq(interp, "string-codepoints first is 97",
+        "(car (string-codepoints \"abc\"))", 97, pass, fail);
+
+    // Char-category: letter
+    test_str_val(interp, "char-category uppercase A",
+        "(char-category 65)", "Lu", pass, fail);
+    test_str_val(interp, "char-category lowercase a",
+        "(char-category 97)", "Ll", pass, fail);
+    test_str_val(interp, "char-category digit 0",
+        "(char-category 48)", "Nd", pass, fail);
+
+    // Normalization: NFC (identity for ASCII)
+    test_str_val(interp, "string-normalize NFC ASCII",
+        "(string-normalize \"hello\" 'NFC)", "hello", pass, fail);
+
+    // Graphemes: ASCII chars are each a grapheme
+    test_eq(interp, "string-graphemes ASCII",
+        "(length (string-graphemes \"abc\"))", 3, pass, fail);
+}
+
+fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
+    io::printn("\n--- Pika Regex/Grammar Tests ---");
+
+    // Regex: re-match
+    test_str_val(interp, "re-match literal",
+        "(re-match \"hello\" \"say hello world\")", "hello", pass, fail);
+    test_tag(interp, "re-match no match returns nil",
+        "(re-match \"xyz\" \"hello\")", NIL, pass, fail);
+    test_str(interp, "re-match digits finds digit",
+        "(re-match \"[0-9]+\" \"abc123def\")", pass, fail);
+    test_str_val(interp, "re-match dot",
+        "(re-match \"a.c\" \"abc\")", "abc", pass, fail);
+
+    // Regex: re-fullmatch
+    test_str_val(interp, "re-fullmatch exact",
+        "(re-fullmatch \"hello\" \"hello\")", "hello", pass, fail);
+    test_tag(interp, "re-fullmatch rejects partial",
+        "(re-fullmatch \"hello\" \"hello world\")", NIL, pass, fail);
+
+    // Regex: re-find-all
+    test_eq(interp, "re-find-all count",
+        "(length (re-find-all \"a\" \"abracadabra\"))", 5, pass, fail);
+    test_str_val(interp, "re-find-all first",
+        "(car (re-find-all \"[0-9]+\" \"a1 b22 c333\"))", "1", pass, fail);
+
+    // Regex: re-split
+    test_eq(interp, "re-split count",
+        "(length (re-split \" \" \"hello world foo\"))", 3, pass, fail);
+    test_str_val(interp, "re-split first",
+        "(car (re-split \" \" \"hello world\"))", "hello", pass, fail);
+
+    // Regex: re-replace
+    test_str_val(interp, "re-replace first",
+        "(re-replace \"[0-9]+\" \"X\" \"a1b2c3\")", "aXb2c3", pass, fail);
+    test_str(interp, "re-replace global returns string",
+        "(re-replace \"a\" \"X\" \"abaca\" 'global)", pass, fail);
+
+    // Regex: re-match-pos
+    test_eq(interp, "re-match-pos start",
+        "(car (re-match-pos \"hello\" \"say hello\"))", 4, pass, fail);
+
+    // Regex: re-find-all-pos
+    test_eq(interp, "re-find-all-pos count",
+        "(length (re-find-all-pos \"a\" \"abaca\"))", 3, pass, fail);
+
+    // Regex: escaped chars
+    test_str(interp, "re-match \\d",
+        "(re-match \"\\\\d+\" \"abc123\")", pass, fail);
+    test_str(interp, "re-match \\w+",
+        "(re-match \"\\\\w+\" \"hello_world\")", pass, fail);
+}
+
 fn void run_lisp_tests() {
     io::printn("=== Unified Tests (Interpreter + JIT) ===");
 
@@ -1112,6 +1268,12 @@ fn void run_lisp_tests() {
     run_limit_busting_tests(interp, &pass, &fail);
     run_tco_recycling_tests(interp, &pass, &fail);
     run_closure_lifecycle_tests(interp, &pass, &fail);
+
+    run_pika_tests(interp, &pass, &fail);
+    run_unicode_tests(interp, &pass, &fail);
+    run_compression_tests(interp, &pass, &fail);
+    run_json_tests(interp, &pass, &fail);
+    run_async_tests(interp, &pass, &fail);
 
     io::printfn("\n=== Unified Tests: %d passed, %d failed ===", pass, fail);
     assert(fail == 0, "tests failed");

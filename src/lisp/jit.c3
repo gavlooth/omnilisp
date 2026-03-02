@@ -1662,56 +1662,33 @@ fn Value* jit_signal_impl(Expr* expr, Env* env, Interp* interp) {
         }
     }
 
-    // I/O fast path: no handler found → use cached primitives
-    if ((uint)tag == (uint)interp.sym_io_print) {
-        if (interp.raw_print != null) {
-            EvalResult r = apply_primitive(interp.raw_print, arg_v, interp);
-            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-            return r.value;
-        }
-    } else if ((uint)tag == (uint)interp.sym_io_println) {
-        if (interp.raw_println != null) {
-            EvalResult r = apply_primitive(interp.raw_println, arg_v, interp);
-            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-            return r.value;
-        }
-    } else if ((uint)tag == (uint)interp.sym_io_display) {
-        if (interp.raw_display != null) {
-            EvalResult r = apply_primitive(interp.raw_display, arg_v, interp);
-            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-            return r.value;
-        }
-    } else if ((uint)tag == (uint)interp.sym_io_newline) {
-        if (interp.raw_newline != null) {
-            EvalResult r = apply_primitive(interp.raw_newline, make_nil(interp), interp);
-            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-            return r.value;
-        }
-    } else if ((uint)tag == (uint)interp.sym_io_read_file) {
-        if (interp.raw_read_file != null) {
-            EvalResult r = apply_primitive(interp.raw_read_file, arg_v, interp);
-            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-            return r.value;
-        }
-    } else if ((uint)tag == (uint)interp.sym_io_write_file) {
-        if (interp.raw_write_file != null && arg_v != null && is_cons(arg_v)) {
-            EvalResult partial_result = apply_primitive(interp.raw_write_file, car(arg_v), interp);
-            if (partial_result.error.has_error) return make_error(interp, partial_result.error.message[:256]);
-            Value* write_result = jit_apply_value(partial_result.value, cdr(arg_v), interp);
-            if (write_result != null && write_result.tag == ERROR) return write_result;
-            return write_result;
-        }
-    } else if ((uint)tag == (uint)interp.sym_io_file_exists) {
-        if (interp.raw_file_exists != null) {
-            EvalResult r = apply_primitive(interp.raw_file_exists, arg_v, interp);
-            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-            return r.value;
-        }
-    } else if ((uint)tag == (uint)interp.sym_io_read_lines) {
-        if (interp.raw_read_lines != null) {
-            EvalResult r = apply_primitive(interp.raw_read_lines, arg_v, interp);
-            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-            return r.value;
+    // I/O fast path: no handler found → look up dispatch table
+    for (usz fp_i = 0; fp_i < interp.fast_path_count; fp_i++) {
+        if ((uint)interp.fast_path_table[fp_i].tag == (uint)tag) {
+            Value* fp_prim = interp.fast_path_table[fp_i].prim;
+            int fp_arity = fp_prim.prim_val.arity;
+
+            if (fp_arity == 0) {
+                // Zero-arg effect (e.g., newline): pass nil
+                EvalResult r = apply_primitive(fp_prim, make_nil(interp), interp);
+                if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+                return r.value;
+            } else if (fp_arity == 1 || fp_arity == -1) {
+                // Single-arg effect: pass signal arg directly
+                EvalResult r = apply_primitive(fp_prim, arg_v, interp);
+                if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+                return r.value;
+            } else {
+                // Multi-arg effect: signal arg is a cons pair, curry through
+                if (arg_v != null && is_cons(arg_v)) {
+                    EvalResult r = apply_primitive(fp_prim, car(arg_v), interp);
+                    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+                    Value* result = jit_apply_value(r.value, cdr(arg_v), interp);
+                    if (result != null && result.tag == ERROR) return result;
+                    return result;
+                }
+            }
+            break;
         }
     }
 
@@ -4143,15 +4120,29 @@ fn Value* jit_signal_value(Interp* interp, Value* tag, Value* arg) {
             }
         }
     }
-    // I/O fast path
-    if (tag.sym_val == interp.sym_io_print) {
-        print_value(arg, &interp.symbols);
-        return make_nil(interp);
-    }
-    if (tag.sym_val == interp.sym_io_println) {
-        print_value(arg, &interp.symbols);
-        io::printn("");
-        return make_nil(interp);
+    // I/O fast path: look up dispatch table
+    for (usz fp_i = 0; fp_i < interp.fast_path_count; fp_i++) {
+        if ((uint)interp.fast_path_table[fp_i].tag == (uint)tag.sym_val) {
+            Value* fp_prim = interp.fast_path_table[fp_i].prim;
+            int fp_arity = fp_prim.prim_val.arity;
+
+            if (fp_arity == 0) {
+                EvalResult r = apply_primitive(fp_prim, make_nil(interp), interp);
+                if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+                return r.value;
+            } else if (fp_arity == 1 || fp_arity == -1) {
+                EvalResult r = apply_primitive(fp_prim, arg, interp);
+                if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+                return r.value;
+            } else if (arg != null && is_cons(arg)) {
+                EvalResult r = apply_primitive(fp_prim, car(arg), interp);
+                if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+                Value* result = jit_apply_value(r.value, cdr(arg), interp);
+                if (result != null && result.tag == ERROR) return result;
+                return result;
+            }
+            break;
+        }
     }
     return raise_error(interp, "unhandled effect");
 }

@@ -349,6 +349,15 @@ struct FfiHandle {
 }
 
 /**
+ * FastPathEntry — Maps an effect tag to its default (unhandled) primitive.
+ * Used by jit_signal_impl to dispatch effects when no handler is installed.
+ */
+struct FastPathEntry {
+    SymbolId tag;        // effect tag (e.g., sym for "io/print")
+    Value*   prim;       // raw primitive (e.g., __raw-print)
+}
+
+/**
  * Array — Mutable dynamic array. Heap-allocated like HashMap.
  */
 struct Array {
@@ -2048,16 +2057,6 @@ struct Interp {
     SymbolId sym_Collection;
     SymbolId sym_Iterator;
 
-    // I/O effect tags
-    SymbolId sym_io_print;
-    SymbolId sym_io_println;
-    SymbolId sym_io_display;
-    SymbolId sym_io_newline;
-    SymbolId sym_io_read_file;
-    SymbolId sym_io_write_file;
-    SymbolId sym_io_file_exists;
-    SymbolId sym_io_read_lines;
-
     // Error-as-effect
     SymbolId sym_raise;
 
@@ -2070,15 +2069,10 @@ struct Interp {
     SymbolId sym_pipe;         // "|>" pipe operator
     SymbolId sym_question;     // "?" guard pattern
 
-    // Cached I/O fast path primitives (set after register_primitives)
-    Value* raw_print;
-    Value* raw_println;
-    Value* raw_display;
-    Value* raw_newline;
-    Value* raw_read_file;
-    Value* raw_write_file;
-    Value* raw_file_exists;
-    Value* raw_read_lines;
+    // Effect fast-path dispatch table: maps effect tag → raw primitive
+    // When a signal has no handler, the fast path looks up this table.
+    FastPathEntry[32] fast_path_table;
+    usz fast_path_count;
 
     // Cached TypeIds for built-in types (avoid repeated hash lookups)
     TypeId tid_Int;
@@ -2256,15 +2250,6 @@ fn void Interp.init(Interp* self) {
     self.sym_Iterator = self.symbols.intern("Iterator");
 
     // I/O effect tags
-    self.sym_io_print = self.symbols.intern("io/print");
-    self.sym_io_println = self.symbols.intern("io/println");
-    self.sym_io_display = self.symbols.intern("io/display");
-    self.sym_io_newline = self.symbols.intern("io/newline");
-    self.sym_io_read_file = self.symbols.intern("io/read-file");
-    self.sym_io_write_file = self.symbols.intern("io/write-file");
-    self.sym_io_file_exists = self.symbols.intern("io/file-exists?");
-    self.sym_io_read_lines = self.symbols.intern("io/read-lines");
-
     // Error-as-effect
     self.sym_raise = self.symbols.intern("raise");
 

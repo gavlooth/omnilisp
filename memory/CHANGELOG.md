@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-03-02 (Session 67): Full Library Integration — 6 Libraries, 41 New Primitives
+
+### Summary
+Integrated 6 external libraries into Omni: Pika regex/grammar, utf8proc (Unicode), yyjson (JSON), libdeflate (compression), libuv (TCP/DNS/timers), BearSSL (TLS). All I/O through effects with dispatch table fast-path. Refactored hardcoded effect fast-path (14 else-if branches) into a generic dispatch table.
+
+### Libraries Integrated
+- **Pika** (src/pika/, 11 files): Regex + PEG grammar engine, copied from pika.bak/ with API fixes
+- **utf8proc** (src/lisp/unicode.c3): Unicode string ops replacing ASCII-only implementations
+- **yyjson** (src/lisp/json.c3 + csrc/json_helpers.c): JSON parse/emit with native Omni types
+- **libdeflate** (src/lisp/compress.c3): gzip/deflate compression
+- **libuv** (src/lisp/async.c3): TCP/DNS/timer with POSIX blocking fast-path
+- **BearSSL** (src/lisp/tls.c3 + csrc/tls_helpers.c): TLS client connections
+
+### Architecture: Effect Fast-Path Dispatch Table
+- Replaced 14 hardcoded `else if` branches in `jit_signal_impl` with `FastPathEntry[32]` table
+- `register_fast_path(interp, "io/foo", "__raw-foo")` — zero JIT changes for new effects
+- Arity-based dispatch: 0→nil, 1/-1→direct, 2+→curry via cons pair
+- Removed 22 individual Interp fields (8 sym_io_* + 14 raw_*), replaced with 2 fields
+
+### Files Modified
+- `project.json` — added utf8proc, deflate, yyjson, uv, bearssl to linked-libraries; json/tls c-sources
+- `src/lisp/eval.c3` — register 22 new primitives, register_fast_path(), import pika
+- `src/lisp/value.c3` — FastPathEntry struct, fast_path_table on Interp, removed old sym_io_*/raw_* fields
+- `src/lisp/jit.c3` — replaced 2 fast-path chains with table lookups
+- `src/lisp/tests.c3` — 4 new test suites (pika, unicode, compression, json, async)
+- `stdlib/stdlib.lisp` — 11 new effect declarations + user-facing wrappers
+
+### Test Count
+Before: 1078 (956 unified + 73 compiler + 9 stack + 40 scope)
+After: 1120 (998 unified + 73 compiler + 9 stack + 40 scope) — 42 new tests, 0 failures
+
+---
+
 ## 2026-03-02 (Session 66): Scope Adoption at Return — O(n) → O(1) Function Return
 
 ### Summary

@@ -3,6 +3,7 @@ module lisp;
 import std::io;
 import std::collections::list;
 import main;
+import pika;
 
 // =============================================================================
 // REPLXX FFI DECLARATIONS
@@ -1946,8 +1947,8 @@ fn void register_primitives(Interp* interp) {
         // String ops (extensible for user-defined string-like types)
         { "string-append", &prim_string_append, -1 },
         { "string-contains?", &prim_string_contains, 2 },
-        { "string-upcase", &prim_string_upcase, 1 },
-        { "string-downcase", &prim_string_downcase, 1 },
+        { "string-upcase", &prim_string_upcase_unicode, 1 },
+        { "string-downcase", &prim_string_downcase_unicode, 1 },
         // Math (extensible for user-defined numeric types)
         { "abs", &prim_abs, 1 }, { "floor", &prim_floor, 1 },
         { "ceiling", &prim_ceiling, 1 }, { "round", &prim_round, 1 },
@@ -1959,7 +1960,7 @@ fn void register_primitives(Interp* interp) {
     }
 
     // --- Regular primitives ---
-    PrimReg[97] regular_prims = {
+    PrimReg[118] regular_prims = {
         // List operations
         { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
         { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 }, { "list", &prim_list, -1 },
@@ -2038,6 +2039,32 @@ fn void register_primitives(Interp* interp) {
         { "time-ms", &prim_time_ms, 0 },
         { "exit", &prim_exit, -1 },
         { "sleep", &prim_sleep, 1 },
+        // Unicode
+        { "string-normalize", &prim_string_normalize, 2 },
+        { "string-graphemes", &prim_string_graphemes, 1 },
+        { "string-codepoints", &prim_string_codepoints, 1 },
+        { "char-category", &prim_char_category, 1 },
+        // Compression
+        { "gzip", &prim_gzip, 1 },
+        { "gunzip", &prim_gunzip, 1 },
+        { "deflate", &prim_deflate, 1 },
+        { "inflate", &prim_inflate, -1 },
+        // JSON
+        { "json-parse", &prim_json_parse, 1 },
+        { "json-emit", &prim_json_emit, 1 },
+        { "json-emit-pretty", &prim_json_emit_pretty, 1 },
+        // Networking / async I/O (raw primitives for effect fast path)
+        { "__raw-tcp-connect", &prim_tcp_connect, 2 },
+        { "__raw-tcp-read", &prim_tcp_read, -1 },
+        { "__raw-tcp-write", &prim_tcp_write, 2 },
+        { "__raw-tcp-close", &prim_tcp_close, 1 },
+        { "__raw-dns-resolve", &prim_dns_resolve, 1 },
+        { "__raw-async-sleep", &prim_async_sleep, 1 },
+        // TLS
+        { "__raw-tls-connect", &prim_tls_connect, 2 },
+        { "__raw-tls-read", &prim_tls_read, -1 },
+        { "__raw-tls-write", &prim_tls_write, 2 },
+        { "__raw-tls-close", &prim_tls_close, 1 },
     };
     foreach (&r : regular_prims) {
         register_prim(interp, r.name, r.func, r.arity);
@@ -2046,15 +2073,39 @@ fn void register_primitives(Interp* interp) {
     // Register built-in types
     register_builtin_types(interp);
 
-    // Cache I/O fast path primitives for O(1) access in eval_perform
-    interp.raw_print = interp.global_env.lookup(interp.symbols.intern("__raw-print"));
-    interp.raw_println = interp.global_env.lookup(interp.symbols.intern("__raw-println"));
-    interp.raw_display = interp.global_env.lookup(interp.symbols.intern("__raw-display"));
-    interp.raw_newline = interp.global_env.lookup(interp.symbols.intern("__raw-newline"));
-    interp.raw_read_file = interp.global_env.lookup(interp.symbols.intern("__raw-read-file"));
-    interp.raw_write_file = interp.global_env.lookup(interp.symbols.intern("__raw-write-file"));
-    interp.raw_file_exists = interp.global_env.lookup(interp.symbols.intern("__raw-file-exists?"));
-    interp.raw_read_lines = interp.global_env.lookup(interp.symbols.intern("__raw-read-lines"));
+    // Register Pika parser/regex primitives
+    pika::register_pika_primitives(interp);
+
+    // Register effect fast-path table: maps effect tag → raw primitive
+    // When a signal has no handler, jit_signal_impl looks up this table.
+    interp.fast_path_count = 0;
+    register_fast_path(interp, "io/print",      "__raw-print");
+    register_fast_path(interp, "io/println",     "__raw-println");
+    register_fast_path(interp, "io/display",     "__raw-display");
+    register_fast_path(interp, "io/newline",     "__raw-newline");
+    register_fast_path(interp, "io/read-file",   "__raw-read-file");
+    register_fast_path(interp, "io/write-file",  "__raw-write-file");
+    register_fast_path(interp, "io/file-exists?","__raw-file-exists?");
+    register_fast_path(interp, "io/read-lines",  "__raw-read-lines");
+    register_fast_path(interp, "io/tcp-connect", "__raw-tcp-connect");
+    register_fast_path(interp, "io/tcp-read",    "__raw-tcp-read");
+    register_fast_path(interp, "io/tcp-write",   "__raw-tcp-write");
+    register_fast_path(interp, "io/tcp-close",   "__raw-tcp-close");
+    register_fast_path(interp, "io/dns-resolve", "__raw-dns-resolve");
+    register_fast_path(interp, "io/async-sleep", "__raw-async-sleep");
+    register_fast_path(interp, "io/tls-connect", "__raw-tls-connect");
+    register_fast_path(interp, "io/tls-read",    "__raw-tls-read");
+    register_fast_path(interp, "io/tls-write",   "__raw-tls-write");
+    register_fast_path(interp, "io/tls-close",   "__raw-tls-close");
+}
+
+fn void register_fast_path(Interp* interp, char[] effect_name, char[] raw_prim_name) {
+    Value* prim = interp.global_env.lookup(interp.symbols.intern(raw_prim_name));
+    if (prim != null && interp.fast_path_count < 32) {
+        interp.fast_path_table[interp.fast_path_count].tag = interp.symbols.intern(effect_name);
+        interp.fast_path_table[interp.fast_path_count].prim = prim;
+        interp.fast_path_count++;
+    }
 }
 
 fn void register_prim(Interp* interp, char[] name, PrimitiveFn func, int arity) {
