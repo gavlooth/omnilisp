@@ -1,0 +1,1 @@
+(handle (println (+ 1 (signal 'ask 42))) (ask val (resolve (+ val 100))))

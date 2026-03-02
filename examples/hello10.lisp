@@ -1,0 +1,1 @@
+(handle 42 (ask val (resolve (+ val 100))))

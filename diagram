@@ -1,0 +1,112 @@
+● Here's the full picture:
+
+  Memory System Architecture
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │                        OMNI LISP MEMORY                            │
+  ├──────────────────────────────────┬──────────────────────────────────┤
+  │   SCOPE-REGION SYSTEM (active)  │  OLD REGION SYSTEM (vestigial)   │
+  │   src/scope_region.c3           │  src/main.c3 (351 lines)         │
+  │                                 │                                  │
+  │   All Value* / Env* allocation  │  Expr* / Pattern* only           │
+  │   Bump alloc O(1), ~3 instr     │  ObjectHandle/RegionHandle       │
+  │   RC lifecycle, LIFO dtors      │  No reclamation (lives forever)  │
+  ├─────────────────────────────────┴──────────────────────────────────┤
+  │                                                                    │
+  │  ┌─────────────────────────────────────────────────────────────┐   │
+  │  │                      SCOPE HIERARCHY                        │   │
+  │  │                                                             │   │
+  │  │  root_scope (permanent)                                     │   │
+  │  │  ├── Primitives, stdlib globals, FFI handles                │   │
+  │  │  │   (make_primitive switches here, never freed)            │   │
+  │  │  │                                                          │   │
+  │  │  ├── current_scope (per call / per run)                     │   │
+  │  │  │   ├── call_scope (lambda body)                           │   │
+  │  │  │   │   ├── Values, Envs (freed on return)                 │   │
+  │  │  │   │   └── TCO recycling: if RC=1, recycle & copy env     │   │
+  │  │  │   │       chain (tco_recycle_scope)                      │   │
+  │  │  │   │                                                      │   │
+  │  │  │   ├── env_scope (closure environments)                   │   │
+  │  │  │   │   └── RC-shared: Closure* refcount, env chain        │   │
+  │  │  │   │       copied via copy_env_to_scope                   │   │
+  │  │  │   │                                                      │   │
+  │  │  │   └── run_scope (per run() call in interpreter)          │   │
+  │  │  │       └── Result promoted via copy_to_parent             │   │
+  │  │  │                                                          │   │
+  │  │  └── Context boundaries (8+ sites)                          │   │
+  │  │      save/restore: current_scope, tco_recycle_scope,        │   │
+  │  │      eval_depth, jit_env, match_env, flags, etc.            │   │
+  │  └─────────────────────────────────────────────────────────────┘   │
+  │                                                                    │
+  │  ┌─────────────────────────────────────────────────────────────┐   │
+  │  │                   VALUE PROMOTION RULES                     │   │
+  │  │                                                             │   │
+  │  │  copy_to_parent(val):                                       │   │
+  │  │    INT/DOUBLE/STRING/CONS/ERROR → deep copy to parent scope │   │
+  │  │    CLOSURE → refcount share (new wrapper, shared Closure*)  │   │
+  │  │    ARRAY/HASHMAP/INSTANCE/MODULE → as-is (already root)     │   │
+  │  │    PRIMITIVE/METHOD_TABLE/FFI_HANDLE → as-is (permanent)    │   │
+  │  │    ITERATOR → recursive promote of thunk                    │   │
+  │  │    COROUTINE/CONTINUATION → shallow copy                    │   │
+  │  │                                                             │   │
+  │  │  promote_to_root(val):                                      │   │
+  │  │    Used for: hashmap/array insert, set! path, coroutine     │   │
+  │  └─────────────────────────────────────────────────────────────┘   │
+  │                                                                    │
+  │  ┌─────────────────────────────────────────────────────────────┐   │
+  │  │                   DESTRUCTOR STRATEGY                       │   │
+  │  │                                                             │   │
+  │  │  ~90% of allocations skip dtors (flat types):               │   │
+  │  │    INT, DOUBLE, SYMBOL, CONS, NIL, BOOL → no dtor           │   │
+  │  │                                                             │   │
+  │  │  Heap-backed types register 24-byte ScopeDtor:              │   │
+  │  │    STRING → free chars                                      │   │
+  │  │    CLOSURE → RC decrement, free env_scope if RC=0           │   │
+  │  │    ARRAY/HASHMAP/INSTANCE → free backing storage            │   │
+  │  │    FFI_HANDLE → (no dlclose, deferred)                      │   │
+  │  │    ERROR → free message                                     │   │
+  │  │    COROUTINE/CONTINUATION → deferred (pool manages)         │   │
+  │  └─────────────────────────────────────────────────────────────┘   │
+  │                                                                    │
+  │  ┌─────────────────────────────────────────────────────────────┐   │
+  │  │                  CHUNK ALLOCATION                           │   │
+  │  │                                                             │   │
+  │  │  ScopeChunk: linked list, doubles on overflow               │   │
+  │  │    512B → 1KB → 2KB → ... → 64KB max                       │   │
+  │  │  Freelist: up to 64 recycled ScopeRegion structs            │   │
+  │  └─────────────────────────────────────────────────────────────┘   │
+  └────────────────────────────────────────────────────────────────────┘
+
+  Completeness
+
+  ┌────────────────────────┬─────────┬────────────────────────────────────────────────────────────────┐
+  │         Phase          │ Status  │                          Description                           │
+  ├────────────────────────┼─────────┼────────────────────────────────────────────────────────────────┤
+  │ P0: ScopeRegion infra  │ Done    │ Bump alloc, RC, dtors, chunks, freelist                        │
+  ├────────────────────────┼─────────┼────────────────────────────────────────────────────────────────┤
+  │ P1-P2: Value/Env alloc │ Done    │ alloc_value() / alloc_env() from current_scope                 │
+  ├────────────────────────┼─────────┼────────────────────────────────────────────────────────────────┤
+  │ P3: Scope-per-run      │ Done    │ Each run() gets child scope, promotes result                   │
+  ├────────────────────────┼─────────┼────────────────────────────────────────────────────────────────┤
+  │ P4a: Scope-per-lambda  │ Done    │ jit_eval_in_call_scope, 8 apply sites                          │
+  ├────────────────────────┼─────────┼────────────────────────────────────────────────────────────────┤
+  │ P4b: Closure lifecycle │ Done    │ RC closures, env_scope, weak self-ref for letrec               │
+  ├────────────────────────┼─────────┼────────────────────────────────────────────────────────────────┤
+  │ P4c: Audit fixes       │ Done    │ set! path promotion, conditional dtors, coroutine/continuation │
+  ├────────────────────────┼─────────┼────────────────────────────────────────────────────────────────┤
+  │ P5: TCO recycling      │ Done    │ Scope recycled at each TCO bounce if RC=1                      │
+  ├────────────────────────┼─────────┼────────────────────────────────────────────────────────────────┤
+  │ P6: Shallow env copy   │ Skipped │ Breaks TCO recycling, rejected                                 │
+  ├────────────────────────┼─────────┼────────────────────────────────────────────────────────────────┤
+  │ P7: Old region removal │ Done    │ Removed from interpreter path                                  │
+  └────────────────────────┴─────────┴────────────────────────────────────────────────────────────────┘
+
+  What Remains
+
+  The memory system is functionally complete. The only remaining work:
+
+  1. Old region system (main.c3, 351 lines) — still used for Expr* / Pattern* / Continuation* allocation. These are AST nodes that live forever, so the old system is appropriate. Could be migrated to scope-region or a simpler
+  arena allocator, but it's low priority and zero risk.
+  2. Abandoned coroutine stacks — a coroutine that's never resumed leaks ~64KB until program exit. Documented, acceptable for pre-1.0.
+  3. No GC, by design — cycles between non-closure heap objects (if they existed) wouldn't be collected. In practice this doesn't happen because the only RC-managed type is CLOSURE, and letrec cycles are broken with weak refs.
+

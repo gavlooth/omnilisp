@@ -43,6 +43,16 @@ fn void strval_push(StringVal* sv, char c) {
     sv.chars[sv.len++] = c;
 }
 
+// Transfer builder contents into a Value. Frees the StringVal struct
+// but keeps the chars buffer (Value takes ownership).
+fn void strval_into_value(StringVal* sv, Value* v) {
+    v.str_val = sv;  // For now: direct assignment (pre-M1.6b)
+    // After M1.6b (inline string):
+    //   v.str_chars = sv.chars;
+    //   v.str_len = sv.len;
+    //   mem::free(sv);  // free struct only, chars owned by Value
+}
+
 fn Value* prim_add(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "+: expected at least 1 argument");
 
@@ -1498,9 +1508,7 @@ fn Value* prim_string_replace(Value*[] args, Env* env, Interp* interp) {
     char[] old = args[1].str_val.chars[:args[1].str_val.len];
     char[] new_str = args[2].str_val.chars[:args[2].str_val.len];
     if (old.len == 0) return args[0]; // nothing to replace
-    Value* result = interp.alloc_value();
-    result.tag = STRING;
-    result.str_val = strval_new(str.len);
+    StringVal* builder = strval_new(str.len);
     usz i = 0;
     while (i < str.len) {
         if (i + old.len <= str.len) {
@@ -1509,18 +1517,21 @@ fn Value* prim_string_replace(Value*[] args, Env* env, Interp* interp) {
                 if (str[i + j] != old[j]) { match = false; break; }
             }
             if (match) {
-                strval_ensure(result.str_val, new_str.len);
+                strval_ensure(builder, new_str.len);
                 for (usz j = 0; j < new_str.len; j++) {
-                    result.str_val.chars[result.str_val.len++] = new_str[j];
+                    builder.chars[builder.len++] = new_str[j];
                 }
                 i += old.len;
                 continue;
             }
         }
-        strval_push(result.str_val, str[i]);
+        strval_push(builder, str[i]);
         i++;
     }
-    result.str_val.chars[result.str_val.len] = 0;
+    builder.chars[builder.len] = 0;
+    Value* result = interp.alloc_value();
+    result.tag = STRING;
+    strval_into_value(builder, result);
     return result;
 }
 
@@ -1542,16 +1553,17 @@ fn Value* prim_string_repeat(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != STRING || !is_int(args[1])) return raise_error(interp, "string-repeat: expected string and int");
     long n = args[1].int_val;
     if (n <= 0) return make_string(interp, "");
-    Value* result = interp.alloc_value();
-    result.tag = STRING;
-    result.str_val = strval_new(args[0].str_val.len * (usz)n);
+    StringVal* builder = strval_new(args[0].str_val.len * (usz)n);
     for (long i = 0; i < n; i++) {
-        strval_ensure(result.str_val, args[0].str_val.len);
+        strval_ensure(builder, args[0].str_val.len);
         for (usz j = 0; j < args[0].str_val.len; j++) {
-            result.str_val.chars[result.str_val.len++] = args[0].str_val.chars[j];
+            builder.chars[builder.len++] = args[0].str_val.chars[j];
         }
     }
-    result.str_val.chars[result.str_val.len] = 0;
+    builder.chars[builder.len] = 0;
+    Value* result = interp.alloc_value();
+    result.tag = STRING;
+    strval_into_value(builder, result);
     return result;
 }
 
@@ -1673,9 +1685,7 @@ fn void format_append_display(StringVal* sv, Value* a, Interp* interp) {
 fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "format: expected format string");
     char[] fmt = args[0].str_val.chars[:args[0].str_val.len];
-    Value* result = interp.alloc_value();
-    result.tag = STRING;
-    result.str_val = strval_new(fmt.len);
+    StringVal* builder = strval_new(fmt.len);
     usz arg_idx = 1;
 
     for (usz i = 0; i < fmt.len; i++) {
@@ -1713,7 +1723,7 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
 
             if (i >= fmt.len) {
                 // Trailing '%' with no directive — just emit '%'
-                strval_push(result.str_val, '%');
+                strval_push(builder, '%');
                 break;
             }
 
@@ -1721,7 +1731,7 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
 
             if (directive == '%') {
                 // %% → literal %
-                strval_push(result.str_val, '%');
+                strval_push(builder, '%');
                 continue;
             }
 
@@ -1738,7 +1748,7 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
                     StringVal* stmp = strval_new(32);
                     format_append_display(stmp, a, interp);
                     char[] sval = stmp.chars[:stmp.len];
-                    strval_append_padded(result.str_val, sval, width, precision, left_align, has_precision);
+                    strval_append_padded(builder, sval, width, precision, left_align, has_precision);
                     mem::free(stmp.chars);
                     mem::free(stmp);
 
@@ -1747,7 +1757,7 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
                     if (!is_int(a)) return raise_error(interp, "format: %d expects integer");
                     char[32] dbuf;
                     char[] dval = io::bprintf(&dbuf, "%d", a.int_val)!!;
-                    strval_append_num_padded(result.str_val, dval, width, left_align);
+                    strval_append_num_padded(builder, dval, width, left_align);
 
                 case 'f':
                     // Fixed-point float
@@ -1786,7 +1796,7 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
                         // Default: 6 decimal places
                         fval = io::bprintf(&fbuf, "%.6f", fnum)!!;
                     }
-                    strval_append_num_padded(result.str_val, fval, width, left_align);
+                    strval_append_num_padded(builder, fval, width, left_align);
 
                 case 'e':
                     // Scientific notation
@@ -1827,14 +1837,14 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
                     } else {
                         eval_s = io::bprintf(&ebuf, "%e", eval_num)!!;
                     }
-                    strval_append_num_padded(result.str_val, eval_s, width, left_align);
+                    strval_append_num_padded(builder, eval_s, width, left_align);
 
                 case 'x':
                     // Hexadecimal lowercase
                     if (!is_int(a)) return raise_error(interp, "format: %x expects integer");
                     char[32] xbuf;
                     char[] xval = io::bprintf(&xbuf, "%x", a.int_val)!!;
-                    strval_append_num_padded(result.str_val, xval, width, left_align);
+                    strval_append_num_padded(builder, xval, width, left_align);
 
                 case 'X':
                     // Hexadecimal uppercase
@@ -1842,14 +1852,14 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
                     char[32] xubuf;
                     // C3 bprintf %X should give uppercase hex
                     char[] xuval = io::bprintf(&xubuf, "%X", a.int_val)!!;
-                    strval_append_num_padded(result.str_val, xuval, width, left_align);
+                    strval_append_num_padded(builder, xuval, width, left_align);
 
                 case 'o':
                     // Octal
                     if (!is_int(a)) return raise_error(interp, "format: %o expects integer");
                     char[32] obuf;
                     char[] oval = io::bprintf(&obuf, "%o", a.int_val)!!;
-                    strval_append_num_padded(result.str_val, oval, width, left_align);
+                    strval_append_num_padded(builder, oval, width, left_align);
 
                 case 'b':
                     // Binary — manual conversion
@@ -1879,27 +1889,28 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
                             bbuf[bidx++] = brev[brev_len - 1 - k];
                         }
                     }
-                    strval_append_num_padded(result.str_val, bbuf[:bidx], width, left_align);
+                    strval_append_num_padded(builder, bbuf[:bidx], width, left_align);
 
                 default:
                     // Unknown directive — emit as literal
-                    strval_push(result.str_val, '%');
-                    strval_push(result.str_val, directive);
+                    strval_push(builder, '%');
+                    strval_push(builder, directive);
             }
         } else {
-            strval_push(result.str_val, fmt[i]);
+            strval_push(builder, fmt[i]);
         }
     }
-    result.str_val.chars[result.str_val.len] = 0;
+    builder.chars[builder.len] = 0;
+    Value* result = interp.alloc_value();
+    result.tag = STRING;
+    strval_into_value(builder, result);
     return result;
 }
 
 fn Value* prim_cl_format(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "cl-format: expected format string");
     char[] fmt = args[0].str_val.chars[:args[0].str_val.len];
-    Value* result = interp.alloc_value();
-    result.tag = STRING;
-    result.str_val = strval_new(fmt.len);
+    StringVal* builder = strval_new(fmt.len);
     usz arg_idx = 1;
     for (usz i = 0; i < fmt.len; i++) {
         if (fmt[i] == '~' && i + 1 < fmt.len) {
@@ -1910,60 +1921,63 @@ fn Value* prim_cl_format(Value*[] args, Env* env, Interp* interp) {
                     Value* a = args[arg_idx++];
                     if (a == null || is_nil(a)) {
                         char[] s = "nil";
-                        strval_ensure(result.str_val, 3);
+                        strval_ensure(builder, 3);
                         for (usz k = 0; k < 3; k++) {
-                            result.str_val.chars[result.str_val.len++] = s[k];
+                            builder.chars[builder.len++] = s[k];
                         }
                     } else if (is_int(a)) {
                         char[32] nbuf;
                         char[] nslice = io::bprintf(&nbuf, "%d", a.int_val)!!;
-                        strval_ensure(result.str_val, nslice.len);
+                        strval_ensure(builder, nslice.len);
                         for (usz k = 0; k < nslice.len; k++) {
-                            result.str_val.chars[result.str_val.len++] = nslice[k];
+                            builder.chars[builder.len++] = nslice[k];
                         }
                     } else if (is_double(a)) {
                         char[64] nbuf;
                         char[] nslice = io::bprintf(&nbuf, "%.15g", a.double_val)!!;
-                        strval_ensure(result.str_val, nslice.len);
+                        strval_ensure(builder, nslice.len);
                         for (usz k = 0; k < nslice.len; k++) {
-                            result.str_val.chars[result.str_val.len++] = nslice[k];
+                            builder.chars[builder.len++] = nslice[k];
                         }
                     } else if (a.tag == STRING) {
                         if (directive == 's') {
-                            strval_push(result.str_val, '"');
+                            strval_push(builder, '"');
                         }
-                        strval_ensure(result.str_val, a.str_val.len);
+                        strval_ensure(builder, a.str_val.len);
                         for (usz k = 0; k < a.str_val.len; k++) {
-                            result.str_val.chars[result.str_val.len++] = a.str_val.chars[k];
+                            builder.chars[builder.len++] = a.str_val.chars[k];
                         }
                         if (directive == 's') {
-                            strval_push(result.str_val, '"');
+                            strval_push(builder, '"');
                         }
                     } else if (is_symbol(a)) {
                         char[] sname = interp.symbols.get_name(a.sym_val);
-                        strval_ensure(result.str_val, sname.len);
+                        strval_ensure(builder, sname.len);
                         for (usz k = 0; k < sname.len; k++) {
-                            result.str_val.chars[result.str_val.len++] = sname[k];
+                            builder.chars[builder.len++] = sname[k];
                         }
                     } else {
                         char[] s = "#<obj>";
-                        strval_ensure(result.str_val, s.len);
+                        strval_ensure(builder, s.len);
                         for (usz k = 0; k < s.len; k++) {
-                            result.str_val.chars[result.str_val.len++] = s[k];
+                            builder.chars[builder.len++] = s[k];
                         }
                     }
                 }
             } else if (directive == '~') {
-                strval_push(result.str_val, '~');
+                strval_push(builder, '~');
             } else {
-                strval_push(result.str_val, '~');
-                strval_push(result.str_val, directive);
+                strval_push(builder, '~');
+                strval_push(builder, directive);
             }
         } else {
-            strval_push(result.str_val, fmt[i]);
+            strval_push(builder, fmt[i]);
         }
     }
-    result.str_val.chars[result.str_val.len] = 0;
+    builder.chars[builder.len] = 0;
+    Value* result = interp.alloc_value();
+    result.tag = STRING;
+    strval_into_value(builder, result);
     return result;
 }
 
@@ -2443,12 +2457,13 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
     // Mark as error so use-after-free is caught instead of silently becoming nil
     v.tag = ERROR;
     char[] msg = "use after unsafe-free!";
-    v.str_val = strval_new(msg.len);
+    StringVal* err_builder = strval_new(msg.len);
     for (usz i = 0; i < msg.len; i++) {
-        v.str_val.chars[i] = msg[i];
+        err_builder.chars[i] = msg[i];
     }
-    v.str_val.chars[msg.len] = 0;
-    v.str_val.len = msg.len;
+    err_builder.chars[msg.len] = 0;
+    err_builder.len = msg.len;
+    strval_into_value(err_builder, v);
     return make_nil(interp);
 }
 
