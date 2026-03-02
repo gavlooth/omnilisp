@@ -4,6 +4,8 @@ import std::io;
 import std::collections::list;
 import main;
 
+faultdef JIT_COMPILE_FAILED;
+
 // =============================================================================
 // Context boundary state — saved/restored at every StackCtx switch point.
 // Replaces 12-field manual save/restore (24 lines per site → 2 lines).
@@ -2791,8 +2793,7 @@ fn JitFn jit_compile(Expr* expr, Interp* interp) {
 
     // Compile the expression, result goes to R0
     JitLocals locals;
-    bool ok = jit_compile_expr(s, expr, interp, &locals, true);
-    if (!ok) {
+    if (catch err = jit_compile_expr(s, expr, interp, &locals, true)) {
         _jit_destroy_state(s);
         return null;
     }
@@ -2838,123 +2839,123 @@ fn JitFn jit_compile(Expr* expr, Interp* interp) {
 
 /**
  * Compile an expression node. Result is left in JIT_R0.
- * Returns false if the expression can't be compiled.
+ * Returns a fault if the expression can't be compiled.
  * locals tracks JIT-compiled let bindings for stack-based variable access.
  */
-fn bool jit_compile_expr(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail = false) {
+fn void? jit_compile_expr(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail = false) {
     if (expr == null) {
         // null expr -> nil
         emit_call_1(s, (void*)&jit_make_nil);  // R0 = make_nil(V0=interp)
-        return true;
+        return;
     }
 
     switch (expr.tag) {
         case E_LIT:
-            return jit_compile_lit(s, expr, interp);
+            jit_compile_lit(s, expr, interp)!;
 
         case E_VAR:
-            return jit_compile_var(s, expr, interp, locals);
+            jit_compile_var(s, expr, interp, locals)!;
 
         case E_IF:
-            return jit_compile_if(s, expr, interp, locals, is_tail);
+            jit_compile_if(s, expr, interp, locals, is_tail)!;
 
         case E_AND:
-            return jit_compile_and(s, expr, interp, locals, is_tail);
+            jit_compile_and(s, expr, interp, locals, is_tail)!;
 
         case E_OR:
-            return jit_compile_or(s, expr, interp, locals, is_tail);
+            jit_compile_or(s, expr, interp, locals, is_tail)!;
 
         case E_BEGIN:
-            return jit_compile_begin(s, expr, interp, locals, is_tail);
+            jit_compile_begin(s, expr, interp, locals, is_tail)!;
 
         case E_APP:
-            return jit_compile_app(s, expr, interp, locals, is_tail);
+            jit_compile_app(s, expr, interp, locals, is_tail)!;
 
         case E_CALL:
-            return jit_compile_call(s, expr, interp, locals, is_tail);
+            jit_compile_call(s, expr, interp, locals, is_tail)!;
 
         case E_LET:
-            return jit_compile_let(s, expr, interp, locals, is_tail);
+            jit_compile_let(s, expr, interp, locals, is_tail)!;
 
         case E_LAMBDA:
-            return jit_compile_lambda(s, expr, interp, locals);
+            jit_compile_lambda(s, expr, interp, locals)!;
 
         case E_SET:
-            return jit_compile_set(s, expr, interp, locals);
+            jit_compile_set(s, expr, interp, locals)!;
 
         case E_DEFINE:
-            return jit_compile_define(s, expr, interp, locals);
+            jit_compile_define(s, expr, interp, locals)!;
 
         case E_QUASIQUOTE:
-            return jit_compile_quasiquote(s, expr, interp, locals);
+            jit_compile_quasiquote(s, expr, interp, locals)!;
 
         case E_MATCH:
-            return jit_compile_match(s, expr, interp, locals);
+            jit_compile_match(s, expr, interp, locals)!;
 
         case E_DEFMACRO:
-            return jit_compile_define_macro(s, expr, interp, locals);
+            jit_compile_define_macro(s, expr, interp, locals)!;
 
         case E_RESET:
-            return jit_compile_reset(s, expr, interp, locals);
+            jit_compile_reset(s, expr, interp, locals)!;
 
         case E_SHIFT:
-            return jit_compile_shift(s, expr, interp, locals);
+            jit_compile_shift(s, expr, interp, locals)!;
 
         case E_HANDLE:
-            return jit_compile_handle(s, expr, interp, locals);
+            jit_compile_handle(s, expr, interp, locals)!;
 
         case E_PERFORM:
-            return jit_compile_perform(s, expr, interp, locals);
+            jit_compile_perform(s, expr, interp, locals)!;
 
         case E_RESOLVE:
-            return jit_compile_resolve(s, expr, interp, locals);
+            jit_compile_resolve(s, expr, interp, locals)!;
 
         case E_QUOTE:
-            return jit_compile_quote(s, expr, interp);
+            jit_compile_quote(s, expr, interp)!;
 
         case E_INDEX:
-            return jit_compile_index(s, expr, interp, locals);
+            jit_compile_index(s, expr, interp, locals)!;
 
         case E_PATH:
-            return jit_compile_path(s, expr, interp, locals);
+            jit_compile_path(s, expr, interp, locals)!;
 
         case E_MODULE:
-            return jit_compile_module(s, expr, interp, locals);
+            jit_compile_module(s, expr, interp, locals)!;
 
         case E_IMPORT:
-            return jit_compile_import(s, expr, interp, locals);
+            jit_compile_import(s, expr, interp, locals)!;
 
         case E_DEFTYPE:
-            return jit_compile_deftype(s, expr, interp, locals);
+            jit_compile_deftype(s, expr, interp, locals)!;
 
         case E_DEFABSTRACT:
-            return jit_compile_defabstract(s, expr, interp, locals);
+            jit_compile_defabstract(s, expr, interp, locals)!;
 
         case E_DEFUNION:
-            return jit_compile_defunion(s, expr, interp, locals);
+            jit_compile_defunion(s, expr, interp, locals)!;
 
         case E_DEFALIAS:
-            return jit_compile_defalias(s, expr, interp, locals);
+            jit_compile_defalias(s, expr, interp, locals)!;
 
         case E_DEFEFFECT:
-            return jit_compile_defeffect(s, expr, interp, locals);
+            jit_compile_defeffect(s, expr, interp, locals)!;
 
         case E_EXPORT_FROM:
-            return jit_compile_export_from(s, expr, interp, locals);
+            jit_compile_export_from(s, expr, interp, locals)!;
 
         case E_FFI_LIB:
-            return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_ffi_lib);
+            jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_ffi_lib)!;
 
         case E_FFI_FN:
-            return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_ffi_fn);
+            jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_ffi_fn)!;
 
         case E_UNQUOTE:
         case E_UNQUOTE_SPLICING:
             // These should never appear outside quasiquote
-            return false;
+            return JIT_COMPILE_FAILED~;
 
         default:
-            return jit_compile_fallback(s, expr, interp, locals);
+            jit_compile_fallback(s, expr, interp, locals)!;
     }
 }
 
@@ -2962,23 +2963,22 @@ fn bool jit_compile_expr(void* s, Expr* expr, Interp* interp, JitLocals* locals,
 // Expression compilers
 // -----------------------------------------------------------------------------
 
-fn bool jit_compile_lit(void* s, Expr* expr, Interp* interp) {
+fn void? jit_compile_lit(void* s, Expr* expr, Interp* interp) {
     Value* lit = expr.lit.value;
     if (lit == null || lit.tag == NIL) {
         emit_call_1(s, (void*)&jit_make_nil);
-        return true;
+        return;
     }
     if (lit.tag == INT) {
         emit_call_2i(s, (void*)&jit_make_int, JIT_V0, lit.int_val);
-        return true;
+        return;
     }
     // For other literal types, use the literal value directly
     // (it's a pointer to a pre-existing Value in the expr pool)
     _jit_new_node_ww(s, CODE_MOVI, JIT_R0, (long)lit);
-    return true;
 }
 
-fn bool jit_compile_var(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+fn void? jit_compile_var(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     uint sym_id = (uint)expr.var_expr.name;
 
     // Check JIT locals first (reverse order for proper scoping of shadowed names)
@@ -2988,22 +2988,21 @@ fn bool jit_compile_var(void* s, Expr* expr, Interp* interp, JitLocals* locals) 
                 // Mutable local: stack slot holds Env* (the box). Lookup value in it.
                 _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)locals.locals[i - 1].stack_offset);
                 emit_call_2i(s, (void*)&jit_env_lookup_local, JIT_V1, (long)sym_id);
-                return true;
+                return;
             }
             // Non-mutable: load value directly from stack slot
             _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_R0, (long)JIT_FP, (long)locals.locals[i - 1].stack_offset);
-            return true;
+            return;
         }
     }
 
     // Fall back to jit_lookup_var: checks jit_env (for sub-expression local bindings), then global
     emit_call_2i(s, (void*)&jit_lookup_var, JIT_V0, (long)sym_id);
-    return true;
 }
 
-fn bool jit_compile_if(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
+fn void? jit_compile_if(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     // Compile test expression -> R0 (test is never in tail position)
-    if (!jit_compile_expr(s, expr.if_expr.test, interp, locals)) return false;
+    jit_compile_expr(s, expr.if_expr.test, interp, locals)!;
 
     // Save test result to V1, call is_falsy(V1, interp)
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = test result
@@ -3013,21 +3012,20 @@ fn bool jit_compile_if(void* s, Expr* expr, Interp* interp, JitLocals* locals, b
     void* jump_else = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
 
     // Then branch — inherits tail position
-    if (!jit_compile_expr(s, expr.if_expr.then_branch, interp, locals, is_tail)) return false;
+    jit_compile_expr(s, expr.if_expr.then_branch, interp, locals, is_tail)!;
     void* jump_end = _jit_new_node_p(s, CODE_JMPI, null);
 
     // Else branch — inherits tail position
     _jit_patch(s, jump_else);
-    if (!jit_compile_expr(s, expr.if_expr.else_branch, interp, locals, is_tail)) return false;
+    jit_compile_expr(s, expr.if_expr.else_branch, interp, locals, is_tail)!;
 
     // End
     _jit_patch(s, jump_end);
-    return true;
 }
 
-fn bool jit_compile_and(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
+fn void? jit_compile_and(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     // Evaluate left -> R0 (left is never in tail position)
-    if (!jit_compile_expr(s, expr.and_expr.left, interp, locals)) return false;
+    jit_compile_expr(s, expr.and_expr.left, interp, locals)!;
 
     // Check if left is falsy
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = left result
@@ -3037,7 +3035,7 @@ fn bool jit_compile_and(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
     void* jump_done = _jit_new_node_pww(s, CODE_BNEI, null, (long)JIT_R0, 0);
 
     // Not falsy: evaluate right — inherits tail position
-    if (!jit_compile_expr(s, expr.and_expr.right, interp, locals, is_tail)) return false;
+    jit_compile_expr(s, expr.and_expr.right, interp, locals, is_tail)!;
     void* jump_end = _jit_new_node_p(s, CODE_JMPI, null);
 
     // Short-circuit: restore V1 to R0
@@ -3045,12 +3043,11 @@ fn bool jit_compile_and(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
     _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V1);
 
     _jit_patch(s, jump_end);
-    return true;
 }
 
-fn bool jit_compile_or(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
+fn void? jit_compile_or(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     // Evaluate left -> R0 (left is never in tail position)
-    if (!jit_compile_expr(s, expr.or_expr.left, interp, locals)) return false;
+    jit_compile_expr(s, expr.or_expr.left, interp, locals)!;
 
     // Check if left is falsy
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = left result
@@ -3060,7 +3057,7 @@ fn bool jit_compile_or(void* s, Expr* expr, Interp* interp, JitLocals* locals, b
     void* jump_done = _jit_new_node_pww(s, CODE_BEQI, null, (long)JIT_R0, 0);
 
     // Falsy: evaluate right — inherits tail position
-    if (!jit_compile_expr(s, expr.or_expr.right, interp, locals, is_tail)) return false;
+    jit_compile_expr(s, expr.or_expr.right, interp, locals, is_tail)!;
     void* jump_end = _jit_new_node_p(s, CODE_JMPI, null);
 
     // Short-circuit: restore V1 to R0
@@ -3068,36 +3065,33 @@ fn bool jit_compile_or(void* s, Expr* expr, Interp* interp, JitLocals* locals, b
     _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V1);
 
     _jit_patch(s, jump_end);
-    return true;
 }
 
-fn bool jit_compile_begin(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
+fn void? jit_compile_begin(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     usz count = expr.begin.expr_count;
     if (count == 0) {
         emit_call_1(s, (void*)&jit_make_nil);
-        return true;
+        return;
     }
     // Evaluate all expressions; last inherits tail position
     for (usz i = 0; i < count; i++) {
         bool tail = is_tail && (i == count - 1);
-        if (!jit_compile_expr(s, expr.begin.exprs[i], interp, locals, tail)) return false;
+        jit_compile_expr(s, expr.begin.exprs[i], interp, locals, tail)!;
     }
-    return true;
 }
 
-fn bool jit_compile_app(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
+fn void? jit_compile_app(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     // Compile function -> R0, save to V1 (not in tail position)
-    if (!jit_compile_expr(s, expr.app.func, interp, locals)) return false;
+    jit_compile_expr(s, expr.app.func, interp, locals)!;
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = func
 
     // Compile argument -> R0, save to V2 (not in tail position)
-    if (!jit_compile_expr(s, expr.app.arg, interp, locals)) return false;
+    jit_compile_expr(s, expr.app.arg, interp, locals)!;
     _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);  // V2 = arg
 
     // Call apply — use _tail variant when in tail position
     void* apply_fn = is_tail ? (void*)&jit_apply_value_tail : (void*)&jit_apply_value;
     emit_call_3(s, apply_fn, JIT_V1, JIT_V2, JIT_V0);
-    return true;
 }
 
 /**
@@ -3132,15 +3126,16 @@ fn bool jit_is_simple_expr(Expr* expr) {
     return expr.tag == E_LIT || expr.tag == E_VAR;
 }
 
-fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
+fn void? jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     // Check for macro expansion at compile time
     if (expr.call.func.tag == E_VAR) {
         MacroDef* macro_def = lookup_macro(expr.call.func.var_expr.name, interp);
         if (macro_def != null) {
             EvalResult macro_result = expand_pattern_macro(macro_def, expr, interp);
-            if (macro_result.error.has_error) return false;
+            if (macro_result.error.has_error) return JIT_COMPILE_FAILED~;
             Expr* expanded = value_to_expr(macro_result.value, interp);
-            return jit_compile_expr(s, expanded, interp, locals, is_tail);
+            jit_compile_expr(s, expanded, interp, locals, is_tail)!;
+            return;
         }
     }
 
@@ -3156,11 +3151,11 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
             if (arg0_simple && arg1_simple) {
                 // Fast path: both args are simple, no spilling needed
                 // Compile arg0 -> R0, save to V1
-                if (!jit_compile_expr(s, expr.call.args[0], interp, locals)) return false;
+                jit_compile_expr(s, expr.call.args[0], interp, locals)!;
                 _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = arg0
 
                 // Compile arg1 -> R0, save to V2
-                if (!jit_compile_expr(s, expr.call.args[1], interp, locals)) return false;
+                jit_compile_expr(s, expr.call.args[1], interp, locals)!;
                 _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);  // V2 = arg1
             } else {
                 // Nested path: at least one arg is complex (e.g. a function call).
@@ -3172,12 +3167,12 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
                 int spill_offset = _jit_allocai(s, 8);  // 8 bytes for a pointer
 
                 // Compile first arg -> result in R0
-                if (!jit_compile_expr(s, expr.call.args[0], interp, locals)) return false;
+                jit_compile_expr(s, expr.call.args[0], interp, locals)!;
                 // Spill arg0 result to stack: *(FP + spill_offset) = R0
                 _jit_new_node_www(s, CODE_STXI_L, (long)spill_offset, (long)JIT_FP, (long)JIT_R0);
 
                 // Compile second arg -> result in R0, move to V2
-                if (!jit_compile_expr(s, expr.call.args[1], interp, locals)) return false;
+                jit_compile_expr(s, expr.call.args[1], interp, locals)!;
                 _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);  // V2 = arg1
 
                 // Restore arg0 from stack into V1: V1 = *(FP + spill_offset)
@@ -3186,7 +3181,7 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
 
             // Call direct_fn(interp=V0, a=V1, b=V2) -> R0
             emit_call_3(s, direct_fn, JIT_V0, JIT_V1, JIT_V2);
-            return true;
+            return;
         }
     }
 
@@ -3204,7 +3199,7 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
         // Zero-arg call: compile function, pass empty list via jit_apply_multi_args.
         // This correctly handles both zero-arg closures (lambda () body)
         // and zero-arg variadic closures (lambda (.. args) body).
-        if (!jit_compile_expr(s, expr.call.func, interp, locals)) return false;
+        jit_compile_expr(s, expr.call.func, interp, locals)!;
         _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = func
 
         // Make nil (empty arg list)
@@ -3214,7 +3209,7 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
         // Call apply — use _tail variant when in tail position
         void* apply_fn = is_tail ? (void*)&jit_apply_multi_args_tail : (void*)&jit_apply_multi_args;
         emit_call_4_rrri(s, apply_fn, JIT_V0, JIT_V1, JIT_V2, 0);
-        return true;
+        return;
     }
 
     if (argc == 1) {
@@ -3222,10 +3217,10 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
         // Compile func, spill to stack, compile arg, restore func, apply
         int spill_fn = _jit_allocai(s, 8);
 
-        if (!jit_compile_expr(s, expr.call.func, interp, locals)) return false;
+        jit_compile_expr(s, expr.call.func, interp, locals)!;
         _jit_new_node_www(s, CODE_STXI_L, (long)spill_fn, (long)JIT_FP, (long)JIT_R0);
 
-        if (!jit_compile_expr(s, expr.call.args[0], interp, locals)) return false;
+        jit_compile_expr(s, expr.call.args[0], interp, locals)!;
         _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);  // V2 = arg
 
         _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)spill_fn);  // V1 = func
@@ -3233,7 +3228,7 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
         // Use _tail variant when in tail position
         void* apply_fn = is_tail ? (void*)&jit_apply_value_tail : (void*)&jit_apply_value;
         emit_call_3(s, apply_fn, JIT_V1, JIT_V2, JIT_V0);
-        return true;
+        return;
     }
 
     // Multi-arg call: build cons list and use jit_apply_multi_args.
@@ -3242,7 +3237,7 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
     // then dispatches through the smart apply helper.
 
     // C8: Refuse to JIT-compile calls with >16 args; fall back to interpreter
-    if (argc > 16) return false;
+    if (argc > 16) return JIT_COMPILE_FAILED~;
 
     // Allocate stack slots for all args
     int[16] arg_slots;
@@ -3252,13 +3247,13 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
 
     // Compile each arg and spill to its stack slot (args are not in tail position)
     for (usz i = 0; i < argc; i++) {
-        if (!jit_compile_expr(s, expr.call.args[i], interp, locals)) return false;
+        jit_compile_expr(s, expr.call.args[i], interp, locals)!;
         _jit_new_node_www(s, CODE_STXI_L, (long)arg_slots[i], (long)JIT_FP, (long)JIT_R0);
     }
 
     // Compile function and spill to stack (not in tail position)
     int func_slot = _jit_allocai(s, 8);
-    if (!jit_compile_expr(s, expr.call.func, interp, locals)) return false;
+    jit_compile_expr(s, expr.call.func, interp, locals)!;
     _jit_new_node_www(s, CODE_STXI_L, (long)func_slot, (long)JIT_FP, (long)JIT_R0);
 
     // Build cons list right-to-left: start with nil
@@ -3279,7 +3274,6 @@ fn bool jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals,
     // Call apply — use _tail variant when in tail position
     void* apply_fn = is_tail ? (void*)&jit_apply_multi_args_tail : (void*)&jit_apply_multi_args;
     emit_call_4_rrri(s, apply_fn, JIT_V0, JIT_V1, JIT_V2, (long)argc);
-    return true;
 }
 
 // Check if expr tree contains (set! name ...) at any depth
@@ -3361,16 +3355,17 @@ fn bool has_closure_set_on_local(Expr* body, SymbolId name) {
     }
 }
 
-fn bool jit_compile_let(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
+fn void? jit_compile_let(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     // Recursive let (let ^rec): use dedicated helper that does full env setup + patching
     if (expr.let_expr.is_recursive) {
-        return jit_compile_let_rec(s, expr, interp, locals);
+        jit_compile_let_rec(s, expr, interp, locals)!;
+        return;
     }
 
     bool is_mutable = has_closure_set_on_local(expr.let_expr.body, expr.let_expr.name);
 
     // Compile init expression -> result in R0 (init is not in tail position)
-    if (!jit_compile_expr(s, expr.let_expr.init, interp, locals)) return false;
+    jit_compile_expr(s, expr.let_expr.init, interp, locals)!;
 
     // Allocate a stack slot for this local variable
     int offset = _jit_allocai(s, 8);
@@ -3403,39 +3398,33 @@ fn bool jit_compile_let(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
     locals.locals.push(local);
 
     // Compile body -> result in R0 (body inherits tail position)
-    bool ok = jit_compile_expr(s, expr.let_expr.body, interp, locals, is_tail);
-
-    // Pop local binding (restore scope)
-    locals.locals.pop()!!;
-
-    return ok;
+    defer locals.locals.pop()!!;
+    jit_compile_expr(s, expr.let_expr.body, interp, locals, is_tail)!;
 }
 
-fn bool jit_compile_lambda(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+fn void? jit_compile_lambda(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     // Build env from JIT locals into V2 (callee-saved), or load runtime env
     bool has_env = emit_build_locals_env(s, interp, locals);
     if (!has_env) emit_load_env(s, JIT_V2);
 
     // Call jit_make_closure_from_expr(interp, expr, env)
     emit_call_3i(s, (void*)&jit_make_closure_from_expr, JIT_V0, (long)expr, JIT_V2);
-    return true;
 }
 
-fn bool jit_compile_let_rec(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+fn void? jit_compile_let_rec(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     // Build env from JIT locals into V2 (callee-saved), or load runtime env
     bool has_env = emit_build_locals_env(s, interp, locals);
     if (!has_env) emit_load_env(s, JIT_V2);
 
     // Call jit_eval_let_rec(interp, expr, env)
     emit_call_3i(s, (void*)&jit_eval_let_rec, JIT_V0, (long)expr, JIT_V2);
-    return true;
 }
 
-fn bool jit_compile_set(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+fn void? jit_compile_set(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     // Dot-path set!: (set! obj.field value) — use runtime helper
     if (expr.set_expr.is_path && expr.set_expr.path_segment_count >= 2) {
         // Compile the value expression -> R0
-        if (!jit_compile_expr(s, expr.set_expr.value, interp, locals)) return false;
+        jit_compile_expr(s, expr.set_expr.value, interp, locals)!;
         _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = value
 
         // Build env into V2
@@ -3444,7 +3433,7 @@ fn bool jit_compile_set(void* s, Expr* expr, Interp* interp, JitLocals* locals) 
 
         // Call jit_eval_set_path(interp, expr, value, env)
         emit_call_4_rirr(s, (void*)&jit_eval_set_path, JIT_V0, (long)expr, JIT_V1, JIT_V2);
-        return true;
+        return;
     }
 
     // Check if target is a JIT local variable
@@ -3452,7 +3441,7 @@ fn bool jit_compile_set(void* s, Expr* expr, Interp* interp, JitLocals* locals) 
         if (locals.locals[i - 1].name == expr.set_expr.name) {
             if (locals.locals[i - 1].is_mutable) {
                 // Mutable local: stack slot holds Env* (the box). Set value through it.
-                if (!jit_compile_expr(s, expr.set_expr.value, interp, locals)) return false;
+                jit_compile_expr(s, expr.set_expr.value, interp, locals)!;
                 _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = new value
 
                 // Load Env* box from stack slot
@@ -3460,19 +3449,19 @@ fn bool jit_compile_set(void* s, Expr* expr, Interp* interp, JitLocals* locals) 
 
                 // Call jit_eval_set(interp, name, value, env_box)
                 emit_call_4_rirr(s, (void*)&jit_eval_set, JIT_V0, (long)(uint)expr.set_expr.name, JIT_V1, JIT_V2);
-                return true;
+                return;
             }
             // Non-mutable local: update stack slot directly
-            if (!jit_compile_expr(s, expr.set_expr.value, interp, locals)) return false;
+            jit_compile_expr(s, expr.set_expr.value, interp, locals)!;
             _jit_new_node_www(s, CODE_STXI_L, (long)locals.locals[i - 1].stack_offset,
                              (long)JIT_FP, (long)JIT_R0);
-            return true;
+            return;
         }
     }
 
     // Not a local: use env-based set!
     // Compile the value expression -> R0
-    if (!jit_compile_expr(s, expr.set_expr.value, interp, locals)) return false;
+    jit_compile_expr(s, expr.set_expr.value, interp, locals)!;
 
     // Save compiled value to V1 before env building (which clobbers R0/R1)
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = value
@@ -3483,26 +3472,24 @@ fn bool jit_compile_set(void* s, Expr* expr, Interp* interp, JitLocals* locals) 
 
     // Call jit_eval_set(interp, name, value, env)
     emit_call_4_rirr(s, (void*)&jit_eval_set, JIT_V0, (long)(uint)expr.set_expr.name, JIT_V1, JIT_V2);
-    return true;
 }
 
-fn bool jit_compile_define(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+fn void? jit_compile_define(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     // Compile the value expression -> R0
-    if (!jit_compile_expr(s, expr.define.value, interp, locals)) return false;
+    jit_compile_expr(s, expr.define.value, interp, locals)!;
 
     // Call jit_eval_define(interp, name, value)
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = value
     emit_call_3i(s, (void*)&jit_eval_define, JIT_V0, (long)(uint)expr.define.name, JIT_V1);
-    return true;
 }
 
-fn bool jit_compile_quasiquote(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_eval_quasiquote);
+fn void? jit_compile_quasiquote(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_eval_quasiquote)!;
 }
 
-fn bool jit_compile_match(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+fn void? jit_compile_match(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     // Compile scrutinee natively → R0
-    if (!jit_compile_expr(s, expr.match.scrutinee, interp, locals)) return false;
+    jit_compile_expr(s, expr.match.scrutinee, interp, locals)!;
     // Save scrutinee to V1
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);
 
@@ -3512,30 +3499,28 @@ fn bool jit_compile_match(void* s, Expr* expr, Interp* interp, JitLocals* locals
 
     // Call jit_do_match(interp, scrutinee, expr, env)
     emit_call_4_rrir(s, (void*)&jit_do_match, JIT_V0, JIT_V1, (long)expr, JIT_V2);
-    return true;
 }
 
-fn bool jit_compile_define_macro(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_eval_define_macro);
+fn void? jit_compile_define_macro(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_eval_define_macro)!;
 }
 
-fn bool jit_compile_reset(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_exec_reset);
+fn void? jit_compile_reset(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_exec_reset)!;
 }
 
-fn bool jit_compile_shift(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_exec_shift);
+fn void? jit_compile_shift(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_exec_shift)!;
 }
 
-fn bool jit_compile_handle(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_exec_handle);
+fn void? jit_compile_handle(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_exec_handle)!;
 }
 
-fn bool jit_compile_perform(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+fn void? jit_compile_perform(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     bool has_env = emit_build_locals_env(s, interp, locals);
     if (!has_env) emit_load_env(s, JIT_V2);
     emit_call_3i(s, (void*)&jit_exec_perform, JIT_V0, (long)expr, JIT_V2);
-    return true;
 }
 
 fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
@@ -3600,16 +3585,15 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
     return r.value;
 }
 
-fn bool jit_compile_resolve(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+fn void? jit_compile_resolve(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     bool has_env = emit_build_locals_env(s, interp, locals);
     if (!has_env) emit_load_env(s, JIT_V2);
     emit_call_3i(s, (void*)&jit_exec_resolve, JIT_V0, (long)expr, JIT_V2);
-    return true;
 }
 
 // --- Native compilation for previously-fallback expression types ---
 
-fn bool jit_compile_quote(void* s, Expr* expr, Interp* interp) {
+fn void? jit_compile_quote(void* s, Expr* expr, Interp* interp) {
     // Quote returns the literal datum directly — no eval needed
     Value* datum = expr.quote.datum;
     if (datum == null) {
@@ -3617,41 +3601,38 @@ fn bool jit_compile_quote(void* s, Expr* expr, Interp* interp) {
     } else {
         _jit_new_node_ww(s, CODE_MOVI, JIT_R0, (long)datum);
     }
-    return true;
 }
 
-fn bool jit_compile_index(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+fn void? jit_compile_index(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     // Compile collection sub-expression → R0, save to V1
-    if (!jit_compile_expr(s, expr.index.collection, interp, locals)) return false;
+    jit_compile_expr(s, expr.index.collection, interp, locals)!;
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);
 
     // Compile index sub-expression → R0, save to V2
-    if (!jit_compile_expr(s, expr.index.index, interp, locals)) return false;
+    jit_compile_expr(s, expr.index.index, interp, locals)!;
     _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
 
     // Call jit_do_index(interp=V0, collection=V1, index=V2)
     emit_call_3(s, (void*)&jit_do_index, JIT_V0, JIT_V1, JIT_V2);
-    return true;
 }
 
-fn bool jit_compile_path(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_path);
+fn void? jit_compile_path(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_path)!;
 }
 
 // Emit a standard 3-arg call pattern: helper(interp, expr, env)
-fn bool jit_compile_3arg_helper(void* s, Expr* expr, Interp* interp, JitLocals* locals, void* helper_fn) {
+fn void? jit_compile_3arg_helper(void* s, Expr* expr, Interp* interp, JitLocals* locals, void* helper_fn) {
     bool has_env = emit_build_locals_env(s, interp, locals);
     if (!has_env) emit_load_env(s, JIT_V2);
     emit_call_3i(s, helper_fn, JIT_V0, (long)expr, JIT_V2);
-    return true;
 }
 
-fn bool jit_compile_module(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_module);
+fn void? jit_compile_module(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_module)!;
 }
 
-fn bool jit_compile_import(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_import);
+fn void? jit_compile_import(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_import)!;
 }
 
 fn Value* jit_do_export_from(Interp* interp, Expr* expr, Env* env) {
@@ -3743,31 +3724,31 @@ fn EvalResult jit_eval_export_from_impl(Expr* expr, Env* env, Interp* interp) {
     return eval_ok(make_nil(interp));
 }
 
-fn bool jit_compile_export_from(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_export_from);
+fn void? jit_compile_export_from(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_export_from)!;
 }
 
-fn bool jit_compile_deftype(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_deftype);
+fn void? jit_compile_deftype(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_deftype)!;
 }
 
-fn bool jit_compile_defabstract(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_defabstract);
+fn void? jit_compile_defabstract(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_defabstract)!;
 }
 
-fn bool jit_compile_defunion(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_defunion);
+fn void? jit_compile_defunion(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_defunion)!;
 }
 
-fn bool jit_compile_defalias(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_defalias);
+fn void? jit_compile_defalias(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_defalias)!;
 }
 
-fn bool jit_compile_defeffect(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    return jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_defeffect);
+fn void? jit_compile_defeffect(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    jit_compile_3arg_helper(s, expr, interp, locals, (void*)&jit_do_defeffect)!;
 }
 
-fn bool jit_compile_fallback(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+fn void? jit_compile_fallback(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     // Build env from JIT locals into V2 (callee-saved), or load runtime env
     bool has_env = emit_build_locals_env(s, interp, locals);
     if (!has_env) emit_load_env(s, JIT_V2);
@@ -3779,7 +3760,6 @@ fn bool jit_compile_fallback(void* s, Expr* expr, Interp* interp, JitLocals* loc
     _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                       // arg2 = interp
     _jit_finishi(s, (void*)&jit_eval_fallback);
     _jit_retval_l(s, JIT_R0);
-    return true;
 }
 
 // -----------------------------------------------------------------------------
