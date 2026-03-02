@@ -316,10 +316,12 @@ fn Value* relation_scan_all(Relation* rel, Interp* interp) {
     MdbTxn* txn = null;
     int rc = mdb_txn_begin(rel.db.env, null, MDB_RDONLY, &txn);
     if (rc != MDB_SUCCESS) return make_nil(interp);
+    defer mdb_txn_abort(txn);
 
     MdbCursor* cursor = null;
     rc = mdb_cursor_open(txn, rel.dbi, &cursor);
-    if (rc != MDB_SUCCESS) { mdb_txn_abort(txn); return make_nil(interp); }
+    if (rc != MDB_SUCCESS) return make_nil(interp);
+    defer mdb_cursor_close(cursor);
 
     Value* result = make_nil(interp);
     Value*[MAX_RELATION_COLS] vals;
@@ -344,8 +346,6 @@ fn Value* relation_scan_all(Relation* rel, Interp* interp) {
         rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
     }
 
-    mdb_cursor_close(cursor);
-    mdb_txn_abort(txn);
     return result;
 }
 
@@ -482,10 +482,12 @@ fn Value* prim_deduce_count(Value*[] args, Env* env, Interp* interp) {
     MdbTxn* txn = null;
     int rc = mdb_txn_begin(rel.db.env, null, MDB_RDONLY, &txn);
     if (rc != MDB_SUCCESS) return make_int(interp, 0);
+    defer mdb_txn_abort(txn);
 
     MdbCursor* cursor = null;
     rc = mdb_cursor_open(txn, rel.dbi, &cursor);
-    if (rc != MDB_SUCCESS) { mdb_txn_abort(txn); return make_int(interp, 0); }
+    if (rc != MDB_SUCCESS) return make_int(interp, 0);
+    defer mdb_cursor_close(cursor);
 
     long count = 0;
     MdbVal key;
@@ -496,8 +498,6 @@ fn Value* prim_deduce_count(Value*[] args, Env* env, Interp* interp) {
         rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
     }
 
-    mdb_cursor_close(cursor);
-    mdb_txn_abort(txn);
     return make_int(interp, count);
 }
 

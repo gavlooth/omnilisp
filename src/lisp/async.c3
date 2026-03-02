@@ -165,19 +165,17 @@ fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
 
     char* buf = (char*)mem::malloc(max_bytes);
     if (buf == null) return raise_error(interp, "tcp-read: out of memory");
+    defer mem::free(buf);
 
     long received = c_recv(th.fd, buf, max_bytes, 0);
     if (received < 0) {
-        mem::free(buf);
         return raise_error(interp, "tcp-read: recv failed");
     }
     if (received == 0) {
-        mem::free(buf);
         return make_string(interp, "");  // EOF
     }
 
     Value* result = make_string(interp, buf[:(usz)received]);
-    mem::free(buf);
     return result;
 }
 

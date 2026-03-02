@@ -148,19 +148,17 @@ fn Value* prim_tls_read(Value*[] args, Env* env, Interp* interp) {
 
     char* buf = (char*)mem::malloc(max_bytes);
     if (buf == null) return raise_error(interp, "tls-read: out of memory");
+    defer mem::free(buf);
 
     int received = br_sslio_read(th.sslio_ctx, buf, max_bytes);
     if (received < 0) {
-        mem::free(buf);
         return raise_error(interp, "tls-read: read failed");
     }
     if (received == 0) {
-        mem::free(buf);
         return make_string(interp, "");
     }
 
     Value* result = make_string(interp, buf[:(usz)received]);
-    mem::free(buf);
     return result;
 }
 

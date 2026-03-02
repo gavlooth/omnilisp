@@ -36,25 +36,20 @@ fn Value* prim_gzip(Value*[] args, Env* env, Interp* interp) {
 
     DeflateCompressor* c = libdeflate_alloc_compressor(6);  // default compression level
     if (c == null) return raise_error(interp, "gzip: failed to allocate compressor");
+    defer libdeflate_free_compressor(c);
 
     usz bound = libdeflate_gzip_compress_bound(c, src.len);
     char* out_buf = (char*)mem::malloc(bound);
-    if (out_buf == null) {
-        libdeflate_free_compressor(c);
-        return raise_error(interp, "gzip: out of memory");
-    }
+    if (out_buf == null) return raise_error(interp, "gzip: out of memory");
+    defer mem::free(out_buf);
 
     usz actual = libdeflate_gzip_compress(c, src.ptr, src.len, out_buf, bound);
-    libdeflate_free_compressor(c);
 
     if (actual == 0) {
-        mem::free(out_buf);
         return raise_error(interp, "gzip: compression failed");
     }
 
-    Value* result = make_string(interp, out_buf[:actual]);
-    mem::free(out_buf);
-    return result;
+    return make_string(interp, out_buf[:actual]);
 }
 
 // ============================================================
@@ -70,6 +65,7 @@ fn Value* prim_gunzip(Value*[] args, Env* env, Interp* interp) {
 
     DeflateDecompressor* d = libdeflate_alloc_decompressor();
     if (d == null) return raise_error(interp, "gunzip: failed to allocate decompressor");
+    defer libdeflate_free_decompressor(d);
 
     // Try progressively larger buffers
     usz try_size = src.len * 4;
@@ -78,7 +74,6 @@ fn Value* prim_gunzip(Value*[] args, Env* env, Interp* interp) {
     for (int attempt = 0; attempt < 8; attempt++) {
         char* out_buf = (char*)mem::malloc(try_size);
         if (out_buf == null) {
-            libdeflate_free_decompressor(d);
             return raise_error(interp, "gunzip: out of memory");
         }
 
@@ -88,7 +83,6 @@ fn Value* prim_gunzip(Value*[] args, Env* env, Interp* interp) {
         if (status == LIBDEFLATE_SUCCESS) {
             Value* result = make_string(interp, out_buf[:actual]);
             mem::free(out_buf);
-            libdeflate_free_decompressor(d);
             return result;
         }
 
@@ -101,11 +95,9 @@ fn Value* prim_gunzip(Value*[] args, Env* env, Interp* interp) {
         }
 
         // Bad data or other error
-        libdeflate_free_decompressor(d);
         return raise_error(interp, "gunzip: decompression failed (bad data)");
     }
 
-    libdeflate_free_decompressor(d);
     return raise_error(interp, "gunzip: decompressed data too large");
 }
 
@@ -121,25 +113,20 @@ fn Value* prim_deflate(Value*[] args, Env* env, Interp* interp) {
 
     DeflateCompressor* c = libdeflate_alloc_compressor(6);
     if (c == null) return raise_error(interp, "deflate: failed to allocate compressor");
+    defer libdeflate_free_compressor(c);
 
     usz bound = libdeflate_deflate_compress_bound(c, src.len);
     char* out_buf = (char*)mem::malloc(bound);
-    if (out_buf == null) {
-        libdeflate_free_compressor(c);
-        return raise_error(interp, "deflate: out of memory");
-    }
+    if (out_buf == null) return raise_error(interp, "deflate: out of memory");
+    defer mem::free(out_buf);
 
     usz actual = libdeflate_deflate_compress(c, src.ptr, src.len, out_buf, bound);
-    libdeflate_free_compressor(c);
 
     if (actual == 0) {
-        mem::free(out_buf);
         return raise_error(interp, "deflate: compression failed");
     }
 
-    Value* result = make_string(interp, out_buf[:actual]);
-    mem::free(out_buf);
-    return result;
+    return make_string(interp, out_buf[:actual]);
 }
 
 // ============================================================
@@ -155,6 +142,7 @@ fn Value* prim_inflate(Value*[] args, Env* env, Interp* interp) {
 
     DeflateDecompressor* d = libdeflate_alloc_decompressor();
     if (d == null) return raise_error(interp, "inflate: failed to allocate decompressor");
+    defer libdeflate_free_decompressor(d);
 
     // If original size provided, use it directly
     usz try_size;
@@ -168,7 +156,6 @@ fn Value* prim_inflate(Value*[] args, Env* env, Interp* interp) {
     for (int attempt = 0; attempt < 8; attempt++) {
         char* out_buf = (char*)mem::malloc(try_size);
         if (out_buf == null) {
-            libdeflate_free_decompressor(d);
             return raise_error(interp, "inflate: out of memory");
         }
 
@@ -178,7 +165,6 @@ fn Value* prim_inflate(Value*[] args, Env* env, Interp* interp) {
         if (status == LIBDEFLATE_SUCCESS) {
             Value* result = make_string(interp, out_buf[:actual]);
             mem::free(out_buf);
-            libdeflate_free_decompressor(d);
             return result;
         }
 
@@ -189,10 +175,8 @@ fn Value* prim_inflate(Value*[] args, Env* env, Interp* interp) {
             continue;
         }
 
-        libdeflate_free_decompressor(d);
         return raise_error(interp, "inflate: decompression failed (bad data)");
     }
 
-    libdeflate_free_decompressor(d);
     return raise_error(interp, "inflate: decompressed data too large");
 }

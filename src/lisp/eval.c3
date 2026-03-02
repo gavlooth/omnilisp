@@ -1147,7 +1147,10 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
  * Used to promote return values out of a child scope before releasing it.
  * Caller must set current_scope to the target scope before calling.
  */
-<* @require interp != null : "copy_to_parent: null interp" *>
+<*
+ @require interp != null : "copy_to_parent: null interp"
+ @require interp.current_scope != null : "copy_to_parent: null current_scope"
+*>
 fn Value* copy_to_parent(Value* v, Interp* interp) {
     if (v == null) return null;
 
@@ -2007,7 +2010,8 @@ fn void register_primitives(Interp* interp) {
     interp.global_env.define(sym_nil, nil_val);
 
     // --- Dispatched primitives (have MethodTable for user-defined type extension) ---
-    PrimReg[31] dispatched_prims = {
+    const DISPATCHED_PRIM_COUNT = 31;
+    PrimReg[DISPATCHED_PRIM_COUNT] dispatched_prims = {
         // Arithmetic
         { "+", &prim_add, 2 }, { "-", &prim_sub, 2 }, { "*", &prim_mul, 2 },
         { "/", &prim_div, 2 }, { "%", &prim_mod, 2 },
@@ -2032,12 +2036,14 @@ fn void register_primitives(Interp* interp) {
         { "truncate", &prim_truncate, 1 }, { "sqrt", &prim_sqrt, 1 },
         { "min", &prim_min, 2 }, { "max", &prim_max, 2 },
     };
+    $assert(dispatched_prims.len == DISPATCHED_PRIM_COUNT);
     foreach (&d : dispatched_prims) {
         register_dispatched_prim(interp, d.name, d.func, d.arity);
     }
 
     // --- Regular primitives ---
-    PrimReg[137] regular_prims = {
+    const REGULAR_PRIM_COUNT = 137;
+    PrimReg[REGULAR_PRIM_COUNT] regular_prims = {
         // List operations
         { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
         { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 }, { "list", &prim_list, -1 },
@@ -2167,6 +2173,7 @@ fn void register_primitives(Interp* interp) {
         { "atomic-read", &prim_atomic_read, 1 },
         { "atomic-cas!", &prim_atomic_cas, 3 },
     };
+    $assert(regular_prims.len == REGULAR_PRIM_COUNT);
     foreach (&r : regular_prims) {
         register_prim(interp, r.name, r.func, r.arity);
     }
