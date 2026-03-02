@@ -196,58 +196,61 @@ No separate "in-memory mode" — LMDB already IS in-memory with persistence as s
 **Relations — columns with `^` metadata (types, roles, flags):**
 
 `^` is Omni's metadata mechanism — types, flags, and dict metadata all in one prefix.
+Metadata **precedes** what it annotates, matching `(^Int x)` in types and lambdas.
 For Deduce columns, the dict key IS the column role, the value IS the type:
 
 ```lisp
 ;; Minimal — bare column names, no types or roles
 (define [relation db] edge (from to))
 
-;; Typed columns — ^Type for plain columns
+;; Typed columns — ^Type BEFORE column name (like (^Int x) in types)
 (define [relation db] road
-  (city1 ^String)
-  (city2 ^String)
-  (km ^Int))
+  (^String city1)
+  (^String city2)
+  (^Int km))
 
-;; Roles via metadata dict — ^{'role Type}
+;; Roles via metadata dict — ^{'role Type} BEFORE column name
 (define [relation db] person
-  (name ^{'key String})         ;; primary key, type String
-  (age ^{'index Int})           ;; indexed, type Int
-  (email ^String))              ;; plain, type String
+  (^{'key String} name)         ;; primary key, type String
+  (^{'index Int} age)           ;; indexed, type Int
+  (^String email))              ;; plain, type String
 
 ;; Relation-level metadata in bracket attr or ^{...}
 (define [relation db history] person
-  (name ^{'key String})
-  (age ^{'index Int})
-  (email ^String))
+  (^{'key String} name)
+  (^{'index Int} age)
+  (^String email))
 
 ;; Rich metadata when needed
 (define [relation db] ^{'schema person-schema} employee
-  (id ^{'key Int})
-  (name ^String)
-  (dept ^{'index String})
-  (salary ^Int))
+  (^{'key Int} id)
+  (^String name)
+  (^{'index String} dept)
+  (^Int salary))
 ```
 
-**Column metadata — two equivalent forms:**
+**Column metadata — two equivalent forms (metadata always precedes name):**
 
 Short form (bare `^` modifiers, like `^rec`/`^strict`):
 ```lisp
-(name ^String ^key)        ;; type + role as separate hints
-(age ^Int ^index)
+(^String ^key name)        ;; type + role before column name
+(^Int ^index age)
 ```
 
 Dict form (`^{'role Type}`, role carries the type):
 ```lisp
-(name ^{'key String})      ;; same thing, one annotation
-(age ^{'index Int})
+(^{'key String} name)      ;; same thing, one annotation
+(^{'index Int} age)
 ```
 
 | Metadata | Short form | Dict form | Meaning |
 |----------|-----------|-----------|---------|
-| Plain typed | `^String` | — | Column with type, no special role |
-| Primary key | `^String ^key` | `^{'key String}` | Upsert on duplicate |
-| Indexed | `^Int ^index` | `^{'index Int}` | Secondary B+ tree for range scans |
-| Key + indexed | `^String ^key ^index` | `^{'key String 'index true}` | Both roles |
+| Plain typed | `(^String name)` | — | Column with type, no special role |
+| Primary key | `(^String ^key name)` | `(^{'key String} name)` | Upsert on duplicate |
+| Indexed | `(^Int ^index name)` | `(^{'index Int} name)` | Secondary B+ tree for range scans |
+| Key + indexed | `(^String ^key ^index name)` | `(^{'key String 'index true} name)` | Both roles |
+
+Matches existing Omni: `(^Int x)` in `define [type]`, `(^String s)` in lambda params.
 
 **Relation-level metadata:**
 
