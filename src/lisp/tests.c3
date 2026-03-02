@@ -1345,6 +1345,9 @@ fn void run_deduce_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+
+    // Pattern matching with ?vars — deferred, needs JIT investigation
+    // deduce-match hangs in current JIT compilation path
 }
 
 fn void run_schema_tests(Interp* interp, int* pass, int* fail) {
