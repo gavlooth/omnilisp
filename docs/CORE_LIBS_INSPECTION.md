@@ -308,6 +308,57 @@ Schemas validate data before insertion:
 
 ---
 
+## Three-Tier Pattern Matching (PCRE2 eliminated)
+
+Backreferences (`\1`, `\2`) are **context-sensitive** — they make regex matching NP-complete.
+Pika is a **context-free** bottom-up DP engine with linear/polynomial guarantees.
+These are fundamentally incompatible. Adding backreferences would break Pika's architecture.
+
+**Dialectic reasoning (4 rounds):**
+
+1. "Add semantic predicates" → fails: Pika parses R→L, capture group doesn't exist yet when
+   backreference is encountered (it's to the left in the string, parsed later)
+2. "Parse `\1` as `.*`, filter post-hoc" → fails: combinatorial explosion of spurious parse
+   trees, destroys O(n³) guarantee, exponential memory
+3. "Redirect to grammar DSL" → viable but ergonomically painful for simple cases
+4. "Accept the theoretical boundary" → correct: backreferences are NP-complete, don't pretend
+   a polynomial engine can handle them
+
+**Resolution: three tiers, no PCRE2.**
+
+```
+Tier 1: re-match (fast, linear)     — 95% of use cases
+         [0-9]+, \w+, (foo|bar), (?=...), [a-z]{3,5}
+         Zero external deps, Pika-native
+
+Tier 2: pika/grammar (powerful)     — 4.9% of use cases
+         Recursive grammars, left recursion, structural parsing
+         Handles what backreferences typically solve:
+
+         ;; Match balanced quotes (would need \1 in PCRE)
+         ;; Instead: match with Omni code
+         (define (match-quoted s)
+           (let (q (char-at s 0))
+             (and (or (= q "'") (= q "\""))
+                  (= q (char-at s (- (string-length s) 1))))))
+
+Tier 3: Omni code (unlimited)       — 0.1% of use cases
+         When you need context-sensitive matching, write a function.
+         Multiple dispatch + Pika regex + string ops = anything.
+```
+
+**Why this beats PCRE2:**
+
+| | PCRE2 via FFI | Three-tier (no PCRE2) |
+|---|---|---|
+| Dependencies | +1 C library (~500KB) | Zero new deps |
+| Two regex engines | Confusing: which to use? | One engine, clear escalation |
+| Catastrophic backtracking | PCRE2 can ReDoS | Pika always terminates |
+| Learning curve | Two regex flavors | One system to learn |
+| Maintenance | Two engines to maintain | One engine + grammar DSL |
+
+---
+
 ## Tier 3: Nice to Have
 
 ### 9. stb_image — Image loading
@@ -325,11 +376,6 @@ Full libuv event loop integration with fiber scheduler. The scheduler is an effe
 handler wrapping user code — fibers signal I/O effects, scheduler dispatches to libuv,
 libuv callbacks resume fibers via resolve. ~150 lines C3.
 
-### 12. PCRE2 — Regex fallback
-
-For patterns the Pika engine can't handle (backreferences, recursive patterns).
-FFI binding to PCRE2. ~95% of patterns covered by built-in Pika engine.
-
 ---
 
 ## Recommended Adoption Order
@@ -346,11 +392,12 @@ Phase D:           Async scheduler (effect handler over libuv event loop)
                    ↓
 Phase E:           HTTP/1.1 client (libuv + BearSSL + Pika grammar)
                    ↓
-Phase F (extras):  stb_image, PCRE2
+Phase F (extras):  stb_image
 ```
 
 Phase B is pure Omni code (no new C dependencies). Phase C adds LMDB (~50KB).
 Phase D is ~150 lines C3. Phase E composes existing libraries.
+PCRE2 eliminated — three-tier pattern matching (re-match / pika/grammar / Omni code) covers all use cases.
 
 ---
 
@@ -367,7 +414,6 @@ INTEGRATED:
 
 PLANNED:
   LMDB (OpenLDAP PL)  ── embedded B+ tree DB for Datalog storage
-  PCRE2 (BSD)          ── regex fallback for backreferences
 
 EXISTING:
   GNU Lightning (LGPL) ── JIT code generation
