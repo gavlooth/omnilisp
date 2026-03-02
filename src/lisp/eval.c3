@@ -1960,7 +1960,7 @@ fn void register_primitives(Interp* interp) {
     }
 
     // --- Regular primitives ---
-    PrimReg[131] regular_prims = {
+    PrimReg[133] regular_prims = {
         // List operations
         { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
         { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 }, { "list", &prim_list, -1 },
@@ -2081,6 +2081,9 @@ fn void register_primitives(Interp* interp) {
         { "spawn", &prim_spawn, 1 },
         { "await", &prim_await, 1 },
         { "run-fibers", &prim_run_fibers, 0 },
+        // HTTP
+        { "__raw-http-get", &prim_http_get, 1 },
+        { "__raw-http-request", &prim_http_request, -1 },
     };
     foreach (&r : regular_prims) {
         register_prim(interp, r.name, r.func, r.arity);
@@ -2113,6 +2116,8 @@ fn void register_primitives(Interp* interp) {
     register_fast_path(interp, "io/tls-read",    "__raw-tls-read");
     register_fast_path(interp, "io/tls-write",   "__raw-tls-write");
     register_fast_path(interp, "io/tls-close",   "__raw-tls-close");
+    register_fast_path(interp, "io/http-get",    "__raw-http-get");
+    register_fast_path(interp, "io/http-request","__raw-http-request");
 }
 
 fn void register_fast_path(Interp* interp, char[] effect_name, char[] raw_prim_name) {

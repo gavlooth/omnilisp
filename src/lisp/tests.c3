@@ -1245,6 +1245,26 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "(re-match \"\\\\w+\" \"hello_world\")", pass, fail);
 }
 
+fn void run_http_tests(Interp* interp, int* pass, int* fail) {
+    io::printn("\n--- HTTP Tests ---");
+
+    // http-get is defined (bound in env)
+    test_tag(interp, "http-get is bound",
+        "(procedure? http-get)", SYMBOL, pass, fail);
+
+    // http-get with bad URL returns error
+    {
+        EvalResult r = run("(http-get \"not-a-url\")", interp);
+        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
+            io::printn("[PASS] http-get rejects bad URL");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] http-get should reject bad URL");
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
     io::printn("\n--- Scheduler Tests ---");
 
@@ -1491,6 +1511,7 @@ fn void run_lisp_tests() {
     run_schema_tests(interp, &pass, &fail);
     run_deduce_tests(interp, &pass, &fail);
     run_scheduler_tests(interp, &pass, &fail);
+    run_http_tests(interp, &pass, &fail);
 
     io::printfn("\n=== Unified Tests: %d passed, %d failed ===", pass, fail);
     assert(fail == 0, "tests failed");

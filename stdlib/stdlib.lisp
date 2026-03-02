@@ -231,6 +231,9 @@
 (define tls-read (lambda (handle) (signal io/tls-read handle)))
 (define tls-write (lambda (handle data) (signal io/tls-write (cons handle data))))
 (define tls-close (lambda (handle) (signal io/tls-close handle)))
+(define [effect] (io/http-get (^String url)))
+(define [effect] (io/http-request (^Any args)))
+(define http-get (lambda (url) (signal io/http-get url)))
 
 ;; =========================================================================
 ;; Handler Composition
