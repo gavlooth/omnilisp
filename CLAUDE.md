@@ -44,6 +44,13 @@ Read `docs/C3_STYLE.md` before writing any C3 code. Key rules:
 - Stdlib functions defined in `register_stdlib()` as Omni code via `run()`
 - Tests go in `run_advanced_tests()` or appropriate test function in eval.c3
 
+## Anti-Skip Rule
+When a migration or refactoring step feels "too big" or "too risky":
+- **Split it** until each sub-step touches ≤1 file and ≤30 lines
+- **Never skip** — if a step can't be done, split it smaller, don't jump to an easier one
+- **Commit after every sub-step** — build + test + commit. No batching.
+- **Start with the smallest instance** — don't begin with the file that has 50 call sites. Begin with the file that has 3.
+
 ## Deferred Work Policy
 When deferring work (skipping something now with intent to do it later):
 - **NEVER** just mention it in a comment or conversation — always add it to the active plan file (`.claude/plans/`)

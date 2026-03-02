@@ -978,6 +978,20 @@ fn uint murmur_finalizer(uint h) {
     return h;
 }
 
+// ValueKey — wrapper for using Value* as C3 map key
+// Provides .hash() and == required by std::collections::map
+struct ValueKey {
+    Value* val;
+}
+
+fn uint ValueKey.hash(self) {
+    return hash_value(self.val);
+}
+
+fn bool ValueKey.is_eq(self, ValueKey other) {
+    return values_equal(self.val, other.val);
+}
+
 fn uint hash_value(Value* key) {
     if (key == null) return 0;
     switch (key.tag) {
