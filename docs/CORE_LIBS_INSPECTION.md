@@ -137,8 +137,9 @@ Validates dicts, arrays, and values against structural schemas.
 
 ### 8. Relational Datalog on LMDB
 
-**What:** Embedded deductive database. Named relations (tables) with Datalog queries
-and recursive rules. Backed by LMDB for persistence.
+**Deduce** — embedded relational Datalog for Omni. Named relations (not EAV triples),
+bottom-up semi-naive evaluation, recursive rules, LMDB-backed persistence.
+Query results are **lists of dicts** (keyed by variable name, `?` stripped).
 
 **Design lineage:**
 
@@ -148,6 +149,7 @@ Datalevin/Datomic ──→ LMDB backend (kept), EAV triples (DROPPED)
 Soufflé ──→ relational model, bottom-up evaluation (adopted)
 
 Result: Soufflé's query model + Datalevin's storage + Omni's define [attr] syntax
+Name: Deduce (the engine deduces new facts from rules)
 ```
 
 **Why not Datomic/DataScript style (EAV triples):**
@@ -177,79 +179,145 @@ Result: Soufflé's query model + Datalevin's storage + Omni's define [attr] synt
 - **Copy-on-write B+ tree** — ACID transactions, crash-safe
 - **Proven** — Datalevin (Clojure) and Mentat (Rust/Mozilla) both do Datalog-on-LMDB
 
-**Syntax:**
+#### Deduce Grammar
 
+**Schema — declare relations with named columns:**
 ```lisp
-;; Open database
-(define db (db-open "app.db"))
-
-;; Define relations (named columns, explicit schema)
 (define [relation] person (name age email))
-(define [relation] follows (follower followee))
+(define [relation] edge (from to))
 (define [relation] road (city1 city2 km))
+```
 
-;; Assert facts — tuples, not triples
-(assert! 'person "Alice" 30 "alice@b.com")
-(assert! 'person "Bob" 25 "bob@b.com")
-(assert! 'follows "Alice" "Bob")
+**Facts — assert tuples into relations:**
+```lisp
+;; person is a first-class Relation value (from define [relation])
+(assert! person "Alice" 30 "alice@b.com")
+(assert! person "Bob" 25 "bob@b.com")
+(assert! edge "A" "B")
+(assert! edge "B" "C")
+```
 
-;; Datalog query — ?vars are logic variables
-(query
-  '((person ?name ?age _)
-    (> ?age 28)))
-;; => (("Alice" 30 "alice@b.com"))
-
-;; Rules — derived relations
-(define [rule] (adult ?name ?age)
+**Rules — derived relations (name, output vars, body clauses):**
+```lisp
+(define [rule] adult (?name ?age)
   (person ?name ?age _)
   (>= ?age 18))
 
-;; Recursive rules — Datalog's strength (always terminates)
-(define [rule] (reachable ?a ?b)
-  (follows ?a ?b))
+;; Recursive — multiple defines = implicit OR (standard Datalog)
+(define [rule] reachable (?a ?b)
+  (edge ?a ?b))
 
-(define [rule] (reachable ?a ?b)
-  (follows ?a ?mid)
+(define [rule] reachable (?a ?b)
+  (edge ?a ?mid)
   (reachable ?mid ?b))
-
-;; Query derived relations
-(query '((reachable "Alice" ?who)))
-;; => (("Bob"))
 ```
 
-**Graph encoding — Datalog's sweet spot:**
+**Query — special form, no quoting. Returns list of dicts (? stripped from keys):**
+```lisp
+;; All columns
+(query (person ?name ?age _) (> ?age 28))
+;; => ((dict 'name "Alice" 'age 30 'email "alice@b.com"))
+
+;; Projection — [...] selects which variables to return
+(query [?name ?age]
+  (person ?name ?age _)
+  (> ?age 28))
+;; => ((dict 'name "Alice" 'age 30))
+
+;; Synergy with 'symbol-as-function:
+(|> (query [?name ?age] (person ?name ?age _) (> ?age 28))
+    (map 'name))
+;; => ("Alice")
+```
+
+**Negation — (not ...) as a clause (stratified):**
+```lisp
+(query [?name]
+  (person ?name _ _)
+  (not (edge ?name "BadNode")))
+```
+
+**Aggregation — aggregates in select, bare vars become group-by:**
+```lisp
+(query [(count ?name)]
+  (adult ?name _))
+;; => ((dict 'count 5))
+
+(query [?dept (avg ?salary) (max ?salary)]
+  (employee ?name ?dept ?salary))
+;; => ((dict 'dept "engineering" 'avg 95000 'max 140000)
+;;     (dict 'dept "sales" 'avg 72000 'max 90000))
+```
+
+**Ordering — (order-by ?var 'asc/'desc) as final clause:**
+```lisp
+(query [?name ?age]
+  (person ?name ?age _)
+  (order-by ?age 'desc))
+;; => ((dict 'name "Alice" 'age 30) (dict 'name "Bob" 'age 25))
+```
+
+**Retract — with wildcard support:**
+```lisp
+(retract! person "Alice" 30 "alice@b.com")  ;; exact match
+(retract! person "Alice" _ _)               ;; wildcard: all Alice records
+```
+
+#### Graph Encoding — Datalog's Sweet Spot
 
 ```lisp
-;; Graphs are just relations
 (define [relation] edge (from to))
 (define [relation] road (city1 city2 km))
 
 ;; Reachability — 2 rules
-(define [rule] (reachable ?a ?b) (edge ?a ?b))
-(define [rule] (reachable ?a ?b) (edge ?a ?mid) (reachable ?mid ?b))
+(define [rule] reachable (?a ?b) (edge ?a ?b))
+(define [rule] reachable (?a ?b) (edge ?a ?mid) (reachable ?mid ?b))
 
 ;; Cycle detection
-(define [rule] (has-cycle ?node) (reachable ?node ?node))
+(define [rule] has-cycle (?node) (reachable ?node ?node))
 
 ;; Shortest path (weighted + aggregation)
-(define [rule] (path ?a ?b ?cost) (road ?a ?b ?cost))
-(define [rule] (path ?a ?b ?cost)
+(define [rule] path (?a ?b ?cost) (road ?a ?b ?cost))
+(define [rule] path (?a ?b ?cost)
   (road ?a ?mid ?c1)
   (path ?mid ?b ?c2)
   (= ?cost (+ ?c1 ?c2)))
 
-(query '((path "Athens" ?dest ?km))
-       '(aggregate (min ?km) (group ?dest)))
+(query [?dest (min ?km)]
+  (path "Athens" ?dest ?km))
 
 ;; Social graph
-(define [rule] (fof ?a ?c)
-  (follows ?a ?b)
-  (follows ?b ?c)
+(define [rule] fof (?a ?c)
+  (edge ?a ?b)
+  (edge ?b ?c)
   (not (= ?a ?c)))
 
-(define [rule] (mutual ?a ?b)
-  (follows ?a ?b)
-  (follows ?b ?a))
+(define [rule] mutual (?a ?b)
+  (edge ?a ?b)
+  (edge ?b ?a))
+
+(query [?who] (reachable "A" ?who))
+;; => ((dict 'who "B") (dict 'who "C"))
+```
+
+#### Contracts + Deduce Integration
+
+Schemas validate data before insertion:
+```lisp
+(define [schema] person-valid
+  (map
+    (name string)
+    (age (and int (> 0)))
+    (email (re "^[^@]+@.+"))))
+
+;; assert! can check schema before writing to LMDB
+;; (configurable per-relation)
+```
+
+Query results are dicts — validatable with the same contract system:
+```lisp
+(map (lambda (row) (validate 'person-valid row))
+     (query [?name ?age ?email] (person ?name ?age ?email)))
 ```
 
 **LMDB storage model:**
@@ -279,30 +347,26 @@ Bottom-up semi-naive evaluation (like Soufflé):
 Semi-naive optimization: only join with *newly derived* facts each round,
 avoiding redundant re-derivation.
 
-**Contracts + Datalog integration:**
-
-Schemas validate data before insertion:
-```lisp
-(define [schema] person-valid
-  (tuple string (and int (> 0)) (re "^[^@]+@.+")))
-
-;; assert! checks schema before writing to LMDB
-(assert! 'person "Alice" -1 "bad")
-;; => error: age must satisfy (> 0)
-```
-
-**Implementation approach:**
+**Deduce implementation:**
 
 | Component | Lines (est.) | Notes |
 |-----------|-------------|-------|
-| LMDB extern fn | ~30 | `mdb_env_*`, `mdb_txn_*`, `mdb_cursor_*` |
-| Relation storage | ~200 | Tuple encoding/decoding, index management |
-| Unification engine | ~150 | Pattern matching with logic variables |
+| LMDB extern fn (C3 native, no wrapper) | ~30 | `mdb_env_*`, `mdb_txn_*`, `mdb_cursor_*` |
+| Relation storage | ~200 | Tuple encoding/decoding, LMDB index management |
+| Unification engine | ~150 | `?var` pattern matching with logic variables |
 | Semi-naive evaluator | ~200 | Bottom-up fixpoint with stratified negation |
-| Query compiler | ~150 | Omni query syntax → evaluation plan |
-| Parser (`define [relation]`, `define [rule]`) | ~80 | New bracket attributes |
-| Primitives (assert!, retract!, query) | ~100 | Omni-facing API |
-| **Total** | **~910** | |
+| Query compiler | ~150 | `query` special form → evaluation plan |
+| Dict result builder | ~50 | Query results as dicts (strip `?` from var names) |
+| Aggregation engine | ~100 | `count`, `sum`, `avg`, `min`, `max` + group-by |
+| Parser (`[relation]`, `[rule]`, `query`, `?var`) | ~100 | New bracket attrs + `?` reader char |
+| Primitives (`assert!`, `retract!`) | ~80 | Relation as first-class value |
+| **Total** | **~1060** | |
+
+**Parser changes needed:**
+- `?` as reader prefix for logic variables → `T_LOGIC_VAR` token type
+- `define [relation]` → `E_DEFRELATION` expr tag
+- `define [rule]` → `E_DEFRULE` expr tag (name, output vars list, body clauses)
+- `query` → special form, treats body as pattern data (like `match`), `[...]` = projection
 
 **Dependencies:** LMDB (BSD, ~50KB compiled). Build from source like the other 5 libraries.
 
