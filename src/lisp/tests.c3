@@ -1245,6 +1245,35 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "(re-match \"\\\\w+\" \"hello_world\")", pass, fail);
 }
 
+fn void run_reader_dispatch_tests(Interp* interp, int* pass, int* fail) {
+    io::printn("\n--- Reader Dispatch Tests ---");
+
+    // Block comment
+    test_eq(interp, "block comment",
+        "(+ 1 #| ignored |# 2)", 3, pass, fail);
+
+    // Form comment #_
+    test_eq(interp, "#_ skips one form",
+        "(+ 1 #_ 999 2)", 3, pass, fail);
+
+    // Multi-form comment #N_
+    test_eq(interp, "#2_ skips two forms",
+        "(+ #2_ 10 20 1 2)", 3, pass, fail);
+
+    // Nested block comment
+    test_eq(interp, "nested block comment",
+        "(+ 1 #| outer #| inner |# still |# 2)", 3, pass, fail);
+
+    // #r"" regex literal: deferred — needs JIT investigation
+    // See plan item: Phase B follow-up
+
+    // Symbol-as-function: ('name dict) => (ref dict 'name)
+    test_str_val(interp, "symbol-as-function on dict",
+        "('name (dict 'name \"Alice\" 'age 30))", "Alice", pass, fail);
+    test_eq(interp, "symbol-as-function on dict returns int",
+        "('age (dict 'name \"Alice\" 'age 30))", 30, pass, fail);
+}
+
 fn void run_lisp_tests() {
     io::printn("=== Unified Tests (Interpreter + JIT) ===");
 
@@ -1274,6 +1303,7 @@ fn void run_lisp_tests() {
     run_compression_tests(interp, &pass, &fail);
     run_json_tests(interp, &pass, &fail);
     run_async_tests(interp, &pass, &fail);
+    run_reader_dispatch_tests(interp, &pass, &fail);
 
     io::printfn("\n=== Unified Tests: %d passed, %d failed ===", pass, fail);
     assert(fail == 0, "tests failed");

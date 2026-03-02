@@ -27,6 +27,9 @@ enum TokenType : char {
     T_COMMA_AT,     // ,@ unquote-splicing
     T_LBRACE,       // { for metadata dictionaries
     T_RBRACE,       // } for metadata dictionaries
+    T_HASH_LBRACE,  // #{ for set literals
+    T_HASH_UNDERSCORE, // #_ or #N_ form comment (int_value = N)
+    T_REGEX,        // #r"pattern" compiled regex literal
     T_ERROR,
 }
 
@@ -81,9 +84,27 @@ fn void Lexer.skip_whitespace(Lexer* self) {
         if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
             self.next_char();  // Track line/column
         } else if (c == ';') {
-            // Comment: skip to end of line
+            // Line comment: skip to end of line
             while (self.pos < self.len && self.source[self.pos] != '\n') {
                 self.next_char();
+            }
+        } else if (c == '#' && self.pos + 1 < self.len && self.source[self.pos + 1] == '|') {
+            // Block comment: #| ... |# (nestable)
+            self.next_char();  // consume #
+            self.next_char();  // consume |
+            int depth = 1;
+            while (self.pos < self.len && depth > 0) {
+                if (self.source[self.pos] == '#' && self.pos + 1 < self.len && self.source[self.pos + 1] == '|') {
+                    depth++;
+                    self.next_char();
+                    self.next_char();
+                } else if (self.source[self.pos] == '|' && self.pos + 1 < self.len && self.source[self.pos + 1] == '#') {
+                    depth--;
+                    self.next_char();
+                    self.next_char();
+                } else {
+                    self.next_char();
+                }
             }
         } else {
             break;
@@ -178,6 +199,68 @@ fn void Lexer.advance(Lexer* self) {
         self.current.type = T_RBRACE;
         self.next_char();
         return;
+    }
+
+    // Reader dispatch: # followed by {, r", _, N_
+    if (c == '#') {
+        if (self.pos + 1 < self.len) {
+            char next = self.source[self.pos + 1];
+            if (next == '{') {
+                // #{} set literal
+                self.next_char();  // consume #
+                self.next_char();  // consume {
+                self.current.type = T_HASH_LBRACE;
+                return;
+            }
+            if (next == '_') {
+                // #_ or #N_ form comment — handled as T_HASH_UNDERSCORE
+                self.next_char();  // consume #
+                self.next_char();  // consume _
+                self.current.type = T_HASH_UNDERSCORE;
+                self.current.int_value = 1;  // default: skip 1 form
+                return;
+            }
+            if (next >= '1' && next <= '9') {
+                // #N_ form comment (e.g., #3_)
+                char digit = next;
+                if (self.pos + 2 < self.len && self.source[self.pos + 2] == '_') {
+                    self.next_char();  // consume #
+                    self.next_char();  // consume N
+                    self.next_char();  // consume _
+                    self.current.type = T_HASH_UNDERSCORE;
+                    self.current.int_value = (long)(digit - '0');
+                    return;
+                }
+            }
+            if (next == 'r' && self.pos + 2 < self.len && self.source[self.pos + 2] == '"') {
+                // #r"pattern" regex literal
+                self.next_char();  // consume #
+                self.next_char();  // consume r
+                // Now parse the string literal (pos is at ")
+                // Reuse string parsing but set type to T_REGEX
+                self.next_char();  // consume opening "
+                usz out_idx = 0;
+                while (self.pos < self.len && self.source[self.pos] != '"') {
+                    char ch = self.source[self.pos];
+                    if (ch == '\\' && self.pos + 1 < self.len) {
+                        self.next_char();
+                        char escaped = self.source[self.pos];
+                        if (out_idx < 63) { self.current.text[out_idx++] = '\\'; }
+                        if (out_idx < 63) { self.current.text[out_idx++] = escaped; }
+                        self.next_char();
+                    } else {
+                        if (out_idx < 63) { self.current.text[out_idx++] = ch; }
+                        self.next_char();
+                    }
+                }
+                if (self.pos < self.len) self.next_char();  // consume closing "
+                self.current.text[out_idx] = 0;
+                self.current.text_len = out_idx;
+                self.current.type = T_REGEX;
+                return;
+            }
+        }
+        // Unrecognized # dispatch — treat as symbol char for backward compat
     }
 
     // String literal: "..."
@@ -664,6 +747,61 @@ fn Expr* Parser.parse_expr(Parser* self) {
         lex.advance();
         e.tag = E_UNQUOTE_SPLICING;
         e.unquote_splicing.body = self.parse_expr();
+        return e;
+    }
+
+    // Form comment: #_ or #N_ — skip next N forms, then parse the real expr
+    if (lex.current.type == T_HASH_UNDERSCORE) {
+        long skip_count = lex.current.int_value;
+        lex.advance();
+        for (long i = 0; i < skip_count; i++) {
+            Expr* discarded = self.parse_expr();
+            if (discarded == null || self.has_error) return null;
+            // Intentionally discarded
+        }
+        return self.parse_expr();  // Parse the real expression after skipped forms
+    }
+
+    // Set literal: #{a b c} => (set a b c)
+    if (lex.current.type == T_HASH_LBRACE) {
+        Expr* e = self.alloc_expr_here();
+        lex.advance();  // consume #{ (already past it)
+        // Collect elements until }
+        Expr*[64] elems;
+        usz elem_count = 0;
+        while (lex.current.type != T_RBRACE && lex.current.type != T_EOF && !self.has_error) {
+            if (elem_count >= 64) { self.set_error("set literal too large (max 64 elements)"); return null; }
+            elems[elem_count++] = self.parse_expr();
+        }
+        self.expect(T_RBRACE, "}");
+        // Desugar to (set elem1 elem2 ...)
+        e.tag = E_CALL;
+        usz total = elem_count + 1;  // set + elements
+        Expr** args = (Expr**)mem::malloc(Expr*.sizeof * total);
+        // First arg: the symbol 'set'
+        args[0] = self.interp.alloc_expr();
+        args[0].tag = E_VAR;
+        args[0].var_expr.name = self.interp.symbols.intern("set");
+        for (usz i = 0; i < elem_count; i++) args[i + 1] = elems[i];
+        e.call.args = args;
+        e.call.arg_count = total;
+        return e;
+    }
+
+    // Regex literal: #r"pattern" => pre-compiled regex value
+    if (lex.current.type == T_REGEX) {
+        Expr* e = self.alloc_expr_here();
+        e.tag = E_LIT;
+        e.lit.value = self.interp.alloc_value_root();
+        // Store as STRING for now — re-match will compile it on first use
+        e.lit.value.tag = STRING;
+        char[] pat = lex.current.text[:lex.current.text_len];
+        e.lit.value.str_val.chars = (char*)mem::malloc(pat.len + 1);
+        for (usz i = 0; i < pat.len; i++) e.lit.value.str_val.chars[i] = pat[i];
+        e.lit.value.str_val.chars[pat.len] = 0;
+        e.lit.value.str_val.len = pat.len;
+        e.lit.value.str_val.capacity = pat.len + 1;
+        lex.advance();
         return e;
     }
 

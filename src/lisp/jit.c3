@@ -209,6 +209,15 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
             return jit_apply_value(resolved, arg, interp);
         }
 
+        case SYMBOL: {
+            // Symbol-as-function: ('name dict) => (ref dict 'name)
+            // Call prim_ref directly — avoids recursion through jit_apply_value
+            Value*[2] ref_args;
+            ref_args[0] = arg;
+            ref_args[1] = func;
+            return prim_ref(ref_args[..], null, interp);
+        }
+
         default:
             char[256] ebuf2;
             char[] type_name = interp.symbols.get_name(value_type_name(func, interp));
