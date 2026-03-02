@@ -21,7 +21,7 @@ struct ParsedUrl {
     usz    path_len;
 }
 
-fn bool parse_url(char[] url, ParsedUrl* out) {
+fn void? parse_url(char[] url, ParsedUrl* out) {
     usz pos = 0;
 
     // Scheme
@@ -35,10 +35,10 @@ fn bool parse_url(char[] url, ParsedUrl* out) {
         } else if (url[4] == ':' && url[5] == '/' && url[6] == '/') {
             pos = 7;
         } else {
-            return false;
+            return INVALID_SYNTAX?;
         }
     } else {
-        return false;
+        return INVALID_SYNTAX?;
     }
 
     // Host
@@ -71,7 +71,7 @@ fn bool parse_url(char[] url, ParsedUrl* out) {
     }
     out.path[out.path_len] = 0;
 
-    return out.host_len > 0;
+    if (out.host_len == 0) return INVALID_SYNTAX?;
 }
 
 // Build HTTP/1.1 request string
@@ -182,7 +182,8 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
     char[] url = args[0].str_chars[:args[0].str_len];
 
     ParsedUrl parsed;
-    if (!parse_url(url, &parsed)) {
+    // fault: lisp::INVALID_SYNTAX
+    if (catch err = parse_url(url, &parsed)) {
         return raise_error(interp, "http-get: invalid URL");
     }
 
@@ -279,7 +280,8 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
     if (args.len > 3 && is_string(args[3])) body = args[3].str_chars[:args[3].str_len];
 
     ParsedUrl parsed;
-    if (!parse_url(url, &parsed)) return raise_error(interp, "http-request: invalid URL");
+    // fault: lisp::INVALID_SYNTAX
+    if (catch err = parse_url(url, &parsed)) return raise_error(interp, "http-request: invalid URL");
 
     // Connect
     Value* host_val = make_string(interp, parsed.host[:parsed.host_len]);
