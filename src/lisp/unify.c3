@@ -29,18 +29,18 @@ fn Value* bindings_lookup(Bindings* b, SymbolId vname) {
     return null;
 }
 
-fn bool bindings_bind(Bindings* b, SymbolId vname, Value* val) {
+fn void? bindings_bind(Bindings* b, SymbolId vname, Value* val) {
     // Check if already bound
     Value* existing = bindings_lookup(b, vname);
     if (existing != null) {
         // Already bound — check consistency
-        return deduce_val_eq(existing, val);
+        if (!deduce_val_eq(existing, val)) return TYPE_MISMATCH~;
+        return;
     }
-    if (b.count >= MAX_BINDINGS) return false;
+    if (b.count >= MAX_BINDINGS) return TYPE_MISMATCH~;
     b.vars[b.count] = vname;
     b.vals[b.count] = val;
     b.count++;
-    return true;
 }
 
 fn bool deduce_val_eq(Value* a, Value* b) {
@@ -82,10 +82,10 @@ fn bool is_wildcard(Value* v, Interp* interp) {
 // Row: dict with column keys
 // Relation: provides column name ordering
 //
-// Returns true if the pattern matches, updating bindings.
+// Returns void on match success, TYPE_MISMATCH~ on failure.
 // ============================================================
 
-fn bool match_clause_against_row(
+fn void? match_clause_against_row(
     Value* clause,       // list: (rel-name arg1 arg2 ...)
     Value* row,          // dict from deduce-scan
     Relation* rel,       // relation for column names
@@ -107,18 +107,17 @@ fn bool match_clause_against_row(
             // _ matches anything
         } else if (is_logic_var(pattern_elem, interp)) {
             // ?var — bind or check consistency
-            if (!bindings_bind(bindings, pattern_elem.sym_val, col_val)) {
-                return false;  // inconsistent binding
+            if (catch err = bindings_bind(bindings, pattern_elem.sym_val, col_val)) {
+                return TYPE_MISMATCH~;  // inconsistent binding
             }
         } else {
             // Literal — must match exactly
             if (!deduce_val_eq(pattern_elem, col_val)) {
-                return false;
+                return TYPE_MISMATCH~;
             }
         }
         args = cdr(args);
     }
-    return true;
 }
 
 // ============================================================
@@ -208,7 +207,9 @@ fn Value* prim_deduce_match(Value*[] args, Env* env, Interp* interp) {
         Bindings bindings;
         bindings_init(&bindings);
 
-        if (match_clause_against_row(pattern, row, rel, &bindings, interp)) {
+        if (catch err = match_clause_against_row(pattern, row, rel, &bindings, interp)) {
+            // Pattern didn't match this row — skip
+        } else {
             Value* result_dict = build_result_dict(&bindings, null, interp);
             matches[match_count++] = result_dict;
         }

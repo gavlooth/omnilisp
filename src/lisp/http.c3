@@ -35,10 +35,10 @@ fn void? parse_url(char[] url, ParsedUrl* out) {
         } else if (url[4] == ':' && url[5] == '/' && url[6] == '/') {
             pos = 7;
         } else {
-            return INVALID_SYNTAX?;
+            return INVALID_SYNTAX~;
         }
     } else {
-        return INVALID_SYNTAX?;
+        return INVALID_SYNTAX~;
     }
 
     // Host
@@ -71,11 +71,11 @@ fn void? parse_url(char[] url, ParsedUrl* out) {
     }
     out.path[out.path_len] = 0;
 
-    if (out.host_len == 0) return INVALID_SYNTAX?;
+    if (out.host_len == 0) return INVALID_SYNTAX~;
 }
 
 // Build HTTP/1.1 request string
-fn usz build_request(char[] method, ParsedUrl* url, char[] headers, char[] body, char* buf, usz buf_size) {
+fn usz? build_request(char[] method, ParsedUrl* url, char[] headers, char[] body, char* buf, usz buf_size) {
     usz pos = 0;
 
     // Request line: GET /path HTTP/1.1\r\n
@@ -113,6 +113,9 @@ fn usz build_request(char[] method, ParsedUrl* url, char[] headers, char[] body,
 
     // Body
     for (usz i = 0; i < body.len && pos < buf_size; i++) buf[pos++] = body[i];
+
+    // Buffer too small to hold the full request
+    if (pos >= buf_size) return WRITE_FAILED~;
 
     return pos;
 }
@@ -212,7 +215,10 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
 
     // Build and send request
     char[4096] req_buf;  // buffer: accumulator (keep) — HTTP request assembly, passed to tcp/tls_write
-    usz req_len = build_request("GET", &parsed, "", "", &req_buf, 4096);
+    usz? req_len = build_request("GET", &parsed, "", "", &req_buf, 4096);
+    if (catch err = req_len) {
+        return raise_error(interp, "http-get: request too large for buffer");
+    }
     Value* req_str = make_string(interp, req_buf[:req_len]);
 
     Value*[2] write_args;
@@ -302,7 +308,10 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
 
     // Send request
     char[8192] req_buf;  // buffer: accumulator (keep) — HTTP request assembly, passed to tcp/tls_write
-    usz req_len = build_request(method, &parsed, headers, body, &req_buf, 8192);
+    usz? req_len = build_request(method, &parsed, headers, body, &req_buf, 8192);
+    if (catch err = req_len) {
+        return raise_error(interp, "http-request: request too large for buffer");
+    }
     Value* req_str = make_string(interp, req_buf[:req_len]);
 
     Value*[2] wa = { conn, req_str };

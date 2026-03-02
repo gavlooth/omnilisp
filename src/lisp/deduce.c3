@@ -80,13 +80,15 @@ struct Relation {
 
 // Encode a tuple of Values into a byte buffer. Format: [tag byte][data]...
 // Tags: 0=nil, 1=int(8 bytes LE), 2=double(8 bytes), 3=string(2 byte len + data), 4=symbol(2 byte id)
-fn usz encode_tuple(Value*[] vals, char* buf, usz buf_size) {
+fn usz? encode_tuple(Value*[] vals, char* buf, usz buf_size) {
     usz pos = 0;
-    for (usz i = 0; i < vals.len && pos < buf_size - 10; i++) {
+    for (usz i = 0; i < vals.len; i++) {
         Value* v = vals[i];
         if (v == null || v.tag == NIL) {
+            if (pos >= buf_size) return WRITE_FAILED~;
             buf[pos++] = 0;
         } else if (v.tag == INT) {
+            if (pos + 9 > buf_size) return WRITE_FAILED~;
             buf[pos++] = 1;
             long val = v.int_val;
             for (usz j = 0; j < 8; j++) {
@@ -94,23 +96,27 @@ fn usz encode_tuple(Value*[] vals, char* buf, usz buf_size) {
                 val >>= 8;
             }
         } else if (v.tag == DOUBLE) {
+            if (pos + 9 > buf_size) return WRITE_FAILED~;
             buf[pos++] = 2;
             double dval = v.double_val;
             char* dp = (char*)&dval;
             for (usz j = 0; j < 8; j++) buf[pos++] = dp[j];
         } else if (v.tag == STRING) {
-            buf[pos++] = 3;
             usz slen = v.str_len;
             if (slen > 0xFFFF) slen = 0xFFFF;
+            if (pos + 3 + slen > buf_size) return WRITE_FAILED~;
+            buf[pos++] = 3;
             buf[pos++] = (char)(slen & 0xFF);
             buf[pos++] = (char)((slen >> 8) & 0xFF);
-            for (usz j = 0; j < slen && pos < buf_size; j++) buf[pos++] = v.str_chars[j];
+            for (usz j = 0; j < slen; j++) buf[pos++] = v.str_chars[j];
         } else if (v.tag == SYMBOL) {
+            if (pos + 3 > buf_size) return WRITE_FAILED~;
             buf[pos++] = 4;
             uint sid = (uint)v.sym_val;
             buf[pos++] = (char)(sid & 0xFF);
             buf[pos++] = (char)((sid >> 8) & 0xFF);
         } else {
+            if (pos >= buf_size) return WRITE_FAILED~;
             buf[pos++] = 0;  // unsupported → nil
         }
     }
@@ -118,35 +124,35 @@ fn usz encode_tuple(Value*[] vals, char* buf, usz buf_size) {
 }
 
 // Decode a tuple from bytes back to Values
-fn usz decode_tuple(char* buf, usz buf_size, Value*[] out, Interp* interp) {
+fn usz? decode_tuple(char* buf, usz buf_size, Value*[] out, Interp* interp) {
     usz pos = 0;
     usz count = 0;
     while (pos < buf_size && count < out.len) {
         char tag = buf[pos++];
         if (tag == 0) {
             out[count++] = make_nil(interp);
-        } else if (tag == 1 && pos + 8 <= buf_size) {
+        } else if (tag == 1) {
+            if (pos + 8 > buf_size) return READ_FAILED~;
             long val = 0;
             for (usz j = 0; j < 8; j++) val |= ((long)(uint)(char)buf[pos + j]) << (j * 8);
             pos += 8;
             out[count++] = make_int(interp, val);
-        } else if (tag == 2 && pos + 8 <= buf_size) {
+        } else if (tag == 2) {
+            if (pos + 8 > buf_size) return READ_FAILED~;
             double dval;
             char* dp = (char*)&dval;
             for (usz j = 0; j < 8; j++) dp[j] = buf[pos + j];
             pos += 8;
             out[count++] = make_double(interp, dval);
-        } else if (tag == 3 && pos + 2 <= buf_size) {
+        } else if (tag == 3) {
+            if (pos + 2 > buf_size) return READ_FAILED~;
             usz slen = (usz)(uint)(char)buf[pos] | ((usz)(uint)(char)buf[pos + 1] << 8);
             pos += 2;
-            if (pos + slen <= buf_size) {
-                out[count++] = make_string(interp, buf[pos..pos + slen - 1]);
-                pos += slen;
-            } else {
-                out[count++] = make_nil(interp);
-                break;
-            }
-        } else if (tag == 4 && pos + 2 <= buf_size) {
+            if (pos + slen > buf_size) return READ_FAILED~;
+            out[count++] = make_string(interp, buf[pos..pos + slen - 1]);
+            pos += slen;
+        } else if (tag == 4) {
+            if (pos + 2 > buf_size) return READ_FAILED~;
             uint sid = (uint)(char)buf[pos] | ((uint)(char)buf[pos + 1] << 8);
             pos += 2;
             Value* v = interp.alloc_value();
@@ -154,7 +160,7 @@ fn usz decode_tuple(char* buf, usz buf_size, Value*[] out, Interp* interp) {
             v.sym_val = (SymbolId)sid;
             out[count++] = v;
         } else {
-            break;
+            return READ_FAILED~;  // unknown tag = malformed data
         }
     }
     return count;
@@ -256,7 +262,10 @@ fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
 
     // Encode tuple
     char[4096] key_buf;  // buffer: C-interop (keep) — binary tuple encoding for mdb_put
-    usz key_len = encode_tuple(args[1..], key_buf[..], 4096);
+    usz? key_len = encode_tuple(args[1..], key_buf[..], 4096);
+    if (catch err = key_len) {
+        return raise_error(interp, "fact!: tuple too large for buffer");
+    }
 
     MdbVal key;
     key.mv_size = key_len;
@@ -308,7 +317,10 @@ fn Value* prim_retract_fact(Value*[] args, Env* env, Interp* interp) {
     }
 
     char[4096] key_buf;  // buffer: C-interop (keep) — binary tuple encoding for mdb_del
-    usz key_len = encode_tuple(args[1..], key_buf[..], 4096);
+    usz? key_len = encode_tuple(args[1..], key_buf[..], 4096);
+    if (catch err = key_len) {
+        return raise_error(interp, "retract!: tuple too large for buffer");
+    }
 
     MdbVal key;
     key.mv_size = key_len;
@@ -347,8 +359,13 @@ fn Value* relation_scan_all(Relation* rel, Interp* interp) {
     rc = mdb_cursor_get(cursor, &key, &data, MDB_FIRST);
     while (rc == MDB_SUCCESS) {
         // Decode tuple
-        usz count = decode_tuple((char*)key.mv_data, key.mv_size, vals[..rel.col_count], interp);
-        if (count == rel.col_count) {
+        usz? count_opt = decode_tuple((char*)key.mv_data, key.mv_size, vals[..rel.col_count], interp);
+        if (catch err = count_opt) {
+            // Malformed data — skip this entry
+            rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
+            continue;
+        }
+        if (count_opt == rel.col_count) {
             // Build dict with column names as keys
             Value* dict = make_hashmap(interp, 8);
             for (usz i = 0; i < rel.col_count; i++) {
