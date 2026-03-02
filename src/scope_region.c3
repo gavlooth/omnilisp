@@ -134,11 +134,12 @@ fn char* scope_chunk_data(ScopeChunk* chunk) @inline {
 // ScopeRegion lifecycle
 // =============================================================================
 
-/**
+<*
  * Create a new ScopeRegion, optionally as a child of `parent`.
  * If parent is non-null, it is retained (RC incremented).
  * Returns a scope with refcount=1 (the caller owns it).
- */
+ @ensure return != null
+*>
 fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
     ScopeRegion* scope;
 
@@ -198,10 +199,6 @@ fn void scope_release(ScopeRegion* scope) @inline {
     }
 }
 
-/**
- * Run all registered destructors in reverse order (LIFO).
- * Does NOT free chunks or the scope itself — use for scope reuse.
- */
 fn void scope_run_dtors(ScopeRegion* scope) {
     ScopeDtor* d = scope.dtors;
     while (d != null) {
@@ -210,10 +207,6 @@ fn void scope_run_dtors(ScopeRegion* scope) {
     }
 }
 
-/**
- * Destroy a scope: run destructors, release parent, free chunks, recycle struct.
- * Called when refcount reaches 0. MUST NOT be called directly — use scope_release.
- */
 fn void scope_destroy(ScopeRegion* scope) {
     // 1. Run destructors (reverse order — LIFO)
     scope_run_dtors(scope);
@@ -394,11 +387,6 @@ fn bool is_in_scope(void* ptr, ScopeRegion* scope) {
 // Scope adoption (merge child memory into parent)
 // =============================================================================
 
-/**
- * Merge child's memory into parent. Child's chunks and dtors become parent's.
- * Child struct is recycled but its memory lives on in parent.
- * O(1) amortized — avoids copying values when returning from function calls.
- */
 fn void scope_adopt(ScopeRegion* parent, ScopeRegion* child) {
     if (child == null || parent == null) return;
 
