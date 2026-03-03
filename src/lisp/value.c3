@@ -2462,6 +2462,15 @@ fn Value* Interp.alloc_value(Interp* self) @inline {
     return v;
 }
 
+// Allocate a Value in current scope's ESCAPE lane.
+// Not wired into constructors yet; used by dual-lane rollout phases.
+fn Value* Interp.alloc_value_escape(Interp* self) @inline {
+    Value* v = (Value*)self.current_scope.alloc_escape(Value.sizeof);
+    v.tag = NIL;  // Safe default
+    v.scope_gen = self.current_scope.escape_generation;
+    return v;
+}
+
 // Allocate a Value in root_scope (for Expr literals and other permanent values).
 // Root-scope dtors only run at program exit, so unconditional registration is fine here.
 // The perf win is from removing dtors in alloc_value() (child scopes, per-call teardown).

@@ -70,10 +70,17 @@ struct ScopeRegion {
     char*        limit;         // End of current chunk's data area
     ScopeChunk*  chunks;        // Linked list of chunks (head = current)
 
+    // Escape lane bump allocator (return values / boundary survivors)
+    char*        escape_bump;   // Current escape allocation pointer
+    char*        escape_limit;  // End of current escape chunk's data area
+    ScopeChunk*  escape_chunks; // Linked list of escape chunks (head = current)
+
     // Cleanup
     ScopeDtor*   dtors;         // Destructor list (LIFO)
+    ScopeDtor*   escape_dtors;  // Escape-lane destructors (LIFO)
     usz          alloc_bytes;   // Total bytes allocated (for split decisions)
     usz          alloc_count;   // Object count (for stats)
+    uint         escape_generation; // Unique stamp for ESCAPE-lane membership checks
 
     // Recycling
     ScopeRegion* pool_next;     // Freelist link (only used when in freelist)
@@ -151,10 +158,12 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
     } else {
         scope = (ScopeRegion*)mem::malloc(ScopeRegion.sizeof);
         scope.chunks = null;
+        scope.escape_chunks = null;
     }
 
     // Assign globally unique generation (monotonic counter)
     scope.generation = ++g_scope_generation_counter;
+    scope.escape_generation = ++g_scope_generation_counter;
 
     // Reuse existing chunk if present, else allocate
     ScopeChunk* chunk = scope.chunks;
@@ -169,7 +178,10 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
     scope.parent = parent;
     scope.bump = scope_chunk_data(chunk);
     scope.limit = scope.bump + chunk.capacity;
+    scope.escape_bump = null;
+    scope.escape_limit = null;
     scope.dtors = null;
+    scope.escape_dtors = null;
     scope.alloc_bytes = 0;
     scope.alloc_count = 0;
     scope.pool_next = null;
@@ -199,13 +211,21 @@ fn void scope_release(ScopeRegion* scope) @inline {
     }
 }
 
-<* @require scope != null *>
-fn void scope_run_dtors(ScopeRegion* scope) {
-    ScopeDtor* d = scope.dtors;
+fn void scope_run_dtor_chain(ScopeDtor* d) @inline {
     while (d != null) {
         d.func(d.ptr);
         d = d.next;
     }
+}
+
+<* @require scope != null *>
+fn void scope_run_dtors(ScopeRegion* scope) {
+    scope_run_dtor_chain(scope.dtors);
+}
+
+<* @require scope != null *>
+fn void scope_run_escape_dtors(ScopeRegion* scope) {
+    scope_run_dtor_chain(scope.escape_dtors);
 }
 
 <*
@@ -213,8 +233,9 @@ fn void scope_run_dtors(ScopeRegion* scope) {
  @require scope.refcount == 0 : "scope_destroy: refcount not zero"
 *>
 fn void scope_destroy(ScopeRegion* scope) {
-    // 1. Run destructors (reverse order — LIFO)
+    // 1. Run destructors (reverse order — LIFO) for both lanes
     scope_run_dtors(scope);
+    scope_run_escape_dtors(scope);
 
     // 2. Release parent scope (may cascade)
     if (scope.parent != null) {
@@ -222,20 +243,34 @@ fn void scope_destroy(ScopeRegion* scope) {
         scope.parent = null;
     }
 
-    // 3. Free all chunks
+    // 3. Free all TEMP chunks
     ScopeChunk* c = scope.chunks;
     while (c != null) {
         ScopeChunk* next = c.next;
         mem::free(c);
         c = next;
     }
+
+    // 4. Free all ESCAPE chunks
+    c = scope.escape_chunks;
+    while (c != null) {
+        ScopeChunk* next = c.next;
+        mem::free(c);
+        c = next;
+    }
+
     scope.chunks = null;
     scope.bump = null;
     scope.limit = null;
+    scope.escape_chunks = null;
+    scope.escape_bump = null;
+    scope.escape_limit = null;
     scope.dtors = null;
+    scope.escape_dtors = null;
 
-    // 4. Recycle ScopeRegion struct (increment generation, add to freelist)
+    // 5. Recycle ScopeRegion struct (increment generation, add to freelist)
     scope.generation++;
+    scope.escape_generation++;
     if (g_scope_freelist_count < SCOPE_FREELIST_MAX) {
         scope.pool_next = g_scope_freelist;
         g_scope_freelist = scope;
@@ -275,6 +310,30 @@ fn void* ScopeRegion.alloc_slow(ScopeRegion* self, usz aligned_size) {
 }
 
 /**
+ * Escape slow path: allocate a new ESCAPE chunk when current escape chunk is full.
+ */
+fn void* ScopeRegion.alloc_escape_slow(ScopeRegion* self, usz aligned_size) {
+    usz prev_cap = SCOPE_CHUNK_INITIAL;
+    if (self.escape_chunks != null) {
+        prev_cap = self.escape_chunks.capacity;
+    }
+    usz new_cap = prev_cap * 2;
+    if (new_cap > SCOPE_CHUNK_MAX) new_cap = SCOPE_CHUNK_MAX;
+    if (new_cap < aligned_size) new_cap = aligned_size;
+
+    ScopeChunk* chunk = scope_chunk_alloc(new_cap);
+    chunk.next = self.escape_chunks;
+    self.escape_chunks = chunk;
+
+    char* data = scope_chunk_data(chunk);
+    self.escape_bump = data + aligned_size;
+    self.escape_limit = data + chunk.capacity;
+    self.alloc_bytes += aligned_size;
+    self.alloc_count++;
+    return (void*)data;
+}
+
+/**
  * Bump-allocate `size` bytes from this scope. 8-byte aligned.
  * Fast path: ~3 instructions (load bump, add, compare).
  */
@@ -290,6 +349,25 @@ fn void* ScopeRegion.alloc(ScopeRegion* self, usz size) @inline {
         return (void*)result;
     }
     return self.alloc_slow(aligned);
+}
+
+/**
+ * Bump-allocate `size` bytes from ESCAPE lane. 8-byte aligned.
+ */
+fn void* ScopeRegion.alloc_escape(ScopeRegion* self, usz size) @inline {
+    usz mask = 7;
+    usz aligned = (size + mask) & ~mask;
+    if (self.escape_bump != null) {
+        char* result = self.escape_bump;
+        char* new_bump = result + aligned;
+        if (new_bump <= self.escape_limit) {
+            self.escape_bump = new_bump;
+            self.alloc_bytes += aligned;
+            self.alloc_count++;
+            return (void*)result;
+        }
+    }
+    return self.alloc_escape_slow(aligned);
 }
 
 // =============================================================================
@@ -309,6 +387,18 @@ fn void scope_register_dtor(ScopeRegion* scope, void* ptr, ScopeDestructorFn fun
 }
 
 /**
+ * Register a destructor to run when this scope's ESCAPE lane is destroyed.
+ * The ScopeDtor struct itself is ESCAPE-lane allocated.
+ */
+fn void scope_register_dtor_escape(ScopeRegion* scope, void* ptr, ScopeDestructorFn func) {
+    ScopeDtor* d = (ScopeDtor*)scope.alloc_escape(ScopeDtor.sizeof);
+    d.ptr = ptr;
+    d.func = func;
+    d.next = scope.escape_dtors;
+    scope.escape_dtors = d;
+}
+
+/**
  * Check if a pointer points to memory allocated within this scope's chunks.
  * O(N) where N is the number of chunks in this scope (usually 1 or 2).
  */
@@ -316,6 +406,13 @@ fn bool scope_contains(ScopeRegion* scope, void* ptr) {
     if (scope == null || ptr == null) return false;
     usz p = (usz)ptr;
     ScopeChunk* chunk = scope.chunks;
+    while (chunk != null) {
+        usz start = (usz)chunk + ScopeChunk.sizeof;
+        usz end = start + chunk.capacity;
+        if (p >= start && p < end) return true;
+        chunk = chunk.next;
+    }
+    chunk = scope.escape_chunks;
     while (chunk != null) {
         usz start = (usz)chunk + ScopeChunk.sizeof;
         usz end = start + chunk.capacity;
@@ -338,8 +435,9 @@ fn bool scope_contains(ScopeRegion* scope, void* ptr) {
  */
 fn void scope_reset(ScopeRegion* scope) {
     assert(scope.refcount == 1, "scope_reset: refcount must be 1 (nothing escaped)");
-    // Run destructors first
+    // Run destructors first for both lanes
     scope_run_dtors(scope);
+    scope_run_escape_dtors(scope);
 
     // Free overflow chunks (keep only the oldest = last in linked list)
     ScopeChunk* keep = null;
@@ -363,7 +461,19 @@ fn void scope_reset(ScopeRegion* scope) {
         scope.limit = scope.bump + keep.capacity;
     }
 
+    // Free all ESCAPE chunks on full reset.
+    ScopeChunk* ec = scope.escape_chunks;
+    while (ec != null) {
+        ScopeChunk* next = ec.next;
+        mem::free(ec);
+        ec = next;
+    }
+    scope.escape_chunks = null;
+    scope.escape_bump = null;
+    scope.escape_limit = null;
+
     scope.dtors = null;
+    scope.escape_dtors = null;
     scope.alloc_bytes = 0;
     scope.alloc_count = 0;
 }
@@ -380,6 +490,12 @@ fn void scope_reset(ScopeRegion* scope) {
 fn bool is_in_scope(void* ptr, ScopeRegion* scope) {
     if (ptr == null || scope == null) return false;
     ScopeChunk* chunk = scope.chunks;
+    while (chunk != null) {
+        char* data = scope_chunk_data(chunk);
+        if ((char*)ptr >= data && (char*)ptr < data + chunk.capacity) return true;
+        chunk = chunk.next;
+    }
+    chunk = scope.escape_chunks;
     while (chunk != null) {
         char* data = scope_chunk_data(chunk);
         if ((char*)ptr >= data && (char*)ptr < data + chunk.capacity) return true;
@@ -404,6 +520,15 @@ fn void scope_adopt(ScopeRegion* parent, ScopeRegion* child) {
         child.dtors = null;
     }
 
+    // Move child's escape dtors to parent
+    if (child.escape_dtors != null) {
+        ScopeDtor* last = child.escape_dtors;
+        while (last.next != null) last = last.next;
+        last.next = parent.escape_dtors;
+        parent.escape_dtors = child.escape_dtors;
+        child.escape_dtors = null;
+    }
+
     // Move child's chunks to parent (prepend to parent's chunk list)
     if (child.chunks != null) {
         ScopeChunk* last = child.chunks;
@@ -411,6 +536,15 @@ fn void scope_adopt(ScopeRegion* parent, ScopeRegion* child) {
         last.next = parent.chunks;
         parent.chunks = child.chunks;
         child.chunks = null;
+    }
+
+    // Move child's escape chunks to parent
+    if (child.escape_chunks != null) {
+        ScopeChunk* last = child.escape_chunks;
+        while (last.next != null) last = last.next;
+        last.next = parent.escape_chunks;
+        parent.escape_chunks = child.escape_chunks;
+        child.escape_chunks = null;
     }
 
     // Update parent stats
@@ -426,8 +560,11 @@ fn void scope_adopt(ScopeRegion* parent, ScopeRegion* child) {
     // Reset child and return to freelist
     child.bump = null;
     child.limit = null;
+    child.escape_bump = null;
+    child.escape_limit = null;
     child.refcount = 0;
     child.generation++;
+    child.escape_generation++;
     if (g_scope_freelist_count < SCOPE_FREELIST_MAX) {
         child.pool_next = g_scope_freelist;
         g_scope_freelist = child;
@@ -497,6 +634,40 @@ fn void run_scope_region_tests() {
         scope_release(s);
     }
 
+    // Test 2b: Escape-lane allocation + generation separation
+    {
+        ScopeRegion* s = scope_create(null);
+        void* e1 = s.alloc_escape(24);
+        void* e2 = s.alloc_escape(24);
+        if (e1 != null && e2 != null && ((usz)e2 - (usz)e1) == 24) {
+            passed++;
+        } else {
+            io::printn("FAIL: escape alloc sequential");
+            failed++;
+        }
+        if (s.escape_generation != s.generation) { passed++; } else { io::printn("FAIL: escape_generation separation"); failed++; }
+        if (s.escape_chunks != null) { passed++; } else { io::printn("FAIL: escape chunks missing"); failed++; }
+        scope_release(s);
+    }
+
+    // Test 2c: Escape-lane destructor execution
+    {
+        ScopeRegion* s = scope_create(null);
+        int* counter = (int*)mem::malloc(int.sizeof);
+        *counter = 0;
+        scope_register_dtor_escape(s, (void*)counter, fn void(void* ptr) {
+            int* c = (int*)ptr;
+            *c = *c + 1;
+        });
+        scope_register_dtor_escape(s, (void*)counter, fn void(void* ptr) {
+            int* c = (int*)ptr;
+            *c = *c + 10;
+        });
+        scope_release(s);
+        if (*counter == 11) { passed++; } else { io::printfn("FAIL: escape dtor counter=%d", *counter); failed++; }
+        mem::free(counter);
+    }
+
     // Test 3: Chunk overflow (allocate more than initial chunk)
     {
         ScopeRegion* s = scope_create(null);
@@ -561,7 +732,12 @@ fn void run_scope_region_tests() {
         // After release, scope should be in freelist with incremented generation
         // Create a new scope — should get the recycled one
         ScopeRegion* s2 = scope_create(null);
-        if (s2.generation == gen_before + 1) { passed++; } else { io::printfn("FAIL: gen=%d expected=%d", (int)s2.generation, (int)(gen_before + 1)); failed++; }
+        if (s2.generation > gen_before) {
+            passed++;
+        } else {
+            io::printfn("FAIL: gen=%d expected > %d", (int)s2.generation, (int)gen_before);
+            failed++;
+        }
         scope_release(s2);
     }
 
@@ -592,6 +768,18 @@ fn void run_scope_region_tests() {
 
         scope_release(s);
         mem::free(dtor_counter);
+    }
+
+    // Test 7b: scope_reset clears ESCAPE lane
+    {
+        ScopeRegion* s = scope_create(null);
+        void* e = s.alloc_escape(32);
+        if (e != null) { passed++; } else { io::printn("FAIL: reset escape alloc null"); failed++; }
+        scope_reset(s);
+        if (s.escape_chunks == null) { passed++; } else { io::printn("FAIL: reset escape chunks"); failed++; }
+        if (s.escape_dtors == null) { passed++; } else { io::printn("FAIL: reset escape dtors"); failed++; }
+        if (s.escape_bump == null && s.escape_limit == null) { passed++; } else { io::printn("FAIL: reset escape bump/limit"); failed++; }
+        scope_release(s);
     }
 
     // Test 10: Large allocation (bigger than initial chunk)
