@@ -602,10 +602,13 @@ fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {
     SavedInterpState saved;
     save_interp_state(interp, &saved);
 
+    // Keep the active scope alive while this context is suspended.
+    main::stack_ctx_pin_scope(current, interp.current_scope);
     main::stack_ctx_suspend();
 
     // Resumed — restore full interpreter state.
     restore_interp_state(interp, &saved);
+    main::stack_ctx_unpin_scope(current);
 
     return interp.resume_value != null ? interp.resume_value : make_nil(interp);
 }

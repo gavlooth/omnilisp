@@ -738,6 +738,15 @@ fn bool has_closure_set_on_local(Expr* body, SymbolId name) {
 }
 
 fn void? jit_compile_let(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
+    // Destructuring let: fall back to interpreter helper
+    if (expr.let_expr.pattern != null) {
+        // Build env from JIT locals, then call jit_eval_let_destruct(interp, expr, env)
+        bool has_env = emit_build_locals_env(s, interp, locals);
+        if (!has_env) emit_load_env(s, JIT_V2);
+        emit_call_3i(s, (void*)&jit_eval_let_destruct, JIT_V0, (long)expr, JIT_V2);
+        return;
+    }
+
     // Recursive let (let ^rec): use dedicated helper that does full env setup + patching
     if (expr.let_expr.is_recursive) {
         jit_compile_let_rec(s, expr, interp, locals)!;
@@ -1360,7 +1369,9 @@ fn Value* jit_shift_value(Interp* interp, Value* body) {
     rstate.shift_body = body;
     rstate.shift_k = k_val;
 
+    main::stack_ctx_pin_scope(current, interp.current_scope);
     main::stack_ctx_suspend();
+    main::stack_ctx_unpin_scope(current);
     return interp.resume_value;
 }
 
@@ -1377,7 +1388,9 @@ fn Value* jit_signal_value(Interp* interp, Value* tag, Value* arg) {
                         hstate.signaled = true;
                         hstate.signal_tag = (SymbolId)tag.sym_val;
                         hstate.signal_arg = arg;
+                        main::stack_ctx_pin_scope(current, interp.current_scope);
                         main::stack_ctx_suspend();
+                        main::stack_ctx_unpin_scope(current);
                         return interp.resume_value;
                     }
                 }

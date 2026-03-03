@@ -261,6 +261,7 @@ struct StackCtx {
     void*          result;      // Return value when COMPLETED
     StackContext*   parent_ctx;  // Where to switch back to on yield/complete
     StackCtx*       parent_stack_ctx; // Parent stack context (null = main stack)
+    ScopeRegion*    pinned_scope; // Scope retained across suspend points (prevents UAF)
     void*           asan_fake_stack;  // ASAN fiber-switch token for this stack
     uint           id;          // Unique identifier
     StackCtx*          pool_next;   // Free-list link for StackPool
@@ -343,6 +344,7 @@ fn StackCtx* stack_ctx_create(StackPool* pool) {
     c.result = null;
     c.parent_ctx = null;
     c.parent_stack_ctx = null;
+    c.pinned_scope = null;
     c.asan_fake_stack = null;
     c.pool_next = null;
     c.user_data = null;
@@ -352,16 +354,32 @@ fn StackCtx* stack_ctx_create(StackPool* pool) {
     return c;
 }
 
+fn void stack_ctx_pin_scope(StackCtx* c, ScopeRegion* scope) {
+    if (c == null || scope == null) return;
+    if (c.pinned_scope == scope) return;
+    if (c.pinned_scope != null) scope_release(c.pinned_scope);
+    c.pinned_scope = scope;
+    scope_retain(scope);
+}
+
+fn void stack_ctx_unpin_scope(StackCtx* c) {
+    if (c == null || c.pinned_scope == null) return;
+    scope_release(c.pinned_scope);
+    c.pinned_scope = null;
+}
+
 /**
  * Return a coroutine to the pool, or free it if pool is full.
  */
 fn void stack_ctx_destroy(StackCtx* c, StackPool* pool) {
+    stack_ctx_unpin_scope(c);
     if (pool.pool_size < pool.max_pool) {
         // Return to pool — keep the stack allocation
         c.status = CTX_DEAD;
         c.result = null;
         c.parent_ctx = null;
         c.parent_stack_ctx = null;
+        c.pinned_scope = null;
         c.asan_fake_stack = null;
         c.user_data = null;
         c.pool_next = pool.free_list;

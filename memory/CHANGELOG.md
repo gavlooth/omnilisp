@@ -1,5 +1,83 @@
 # Changelog
 
+## 2026-03-03: Fiber Suspend Lifetime Pinning + libuv tcp-read Bridge
+
+### Summary
+Hardened coroutine/fiber suspend lifetimes and wired the first real scheduler-to-libuv async I/O path for `io/tcp-read`.
+
+### Changes
+- **Suspend-point scope pinning**:
+  - Added `pinned_scope` to `main::StackCtx`.
+  - Added `stack_ctx_pin_scope` / `stack_ctx_unpin_scope`.
+  - `stack_ctx_destroy` now always unpins retained scope references.
+  - Applied pin/unpin around every coroutine suspension path used by yield/effects:
+    - `prim_yield` (`src/lisp/primitives.c3`)
+    - `jit_shift_impl` + stack-context effect suspend path (`src/lisp/jit_jit_helper_functions.c3`)
+    - `jit_shift_value` + `jit_signal_value` (`src/lisp/jit_jit_compiler.c3`)
+- **Coroutine abandonment cleanup**:
+  - `COROUTINE` values now run teardown in `scope_dtor_value` (free thunk state + return `StackCtx` to pool).
+  - `make_coroutine` now allocates wrapper values in `root_scope` with registered destructor to ensure cleanup even when abandoned.
+- **Scheduler async bridge (MVP)**:
+  - Reworked scheduler state machine to `ready/running/blocked/done`.
+  - Added libuv loop initialization in scheduler bootstrap.
+  - Added pending async read slots keyed by fiber id.
+  - Added non-blocking read fast probe + `uv_poll` registration path for fiber-local `tcp-read`.
+  - Fiber calling `tcp-read` inside scheduler now:
+    1. yields and transitions to `blocked`,
+    2. wakes on libuv readability callback,
+    3. resumes and returns read result.
+  - Callback path only manipulates C buffers/state and marks fibers ready; Omni value allocation happens on scheduler resume path.
+- **Async extern plumbing**:
+  - Added `uv_poll_*`, `uv_handle_size`, `uv_close`, and errno helpers in `src/lisp/async.c3`.
+  - `prim_tcp_read` now attempts scheduler async path first, then falls back to blocking path outside scheduler fibers.
+
+### Files Modified
+- `src/stack_engine.c3`
+- `src/lisp/primitives.c3`
+- `src/lisp/jit_jit_helper_functions.c3`
+- `src/lisp/jit_jit_compiler.c3`
+- `src/lisp/value.c3`
+- `src/lisp/async.c3`
+- `src/lisp/scheduler.c3`
+
+### Validation
+- `c3c build` ✅
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` (full runtime test mode) ✅
+  - Stack engine: 10 pass / 0 fail
+  - Scope region: 50 pass / 0 fail
+  - Unified Lisp tests: 1117 pass / 0 fail
+  - Compiler tests: 73 pass / 0 fail
+- Targeted smoke scripts ✅
+  - fiber `spawn/await`
+  - fiber `tcp-connect` + `tcp-write` + `tcp-read`
+
+## 2026-03-03: Unified Deduce API + Destructuring in let/lambda/define
+
+### Summary
+Unified all `deduce-*` primitives into a single `(deduce 'command args...)` dispatch form. Added array and dict destructuring to `let` bindings and dict destructuring to function params (lambda/define).
+
+### Changes
+- **Unified deduce primitive**: `(deduce 'open ...)`, `(deduce 'scan ...)`, `(deduce 'query ...)`, `(deduce 'count ...)`, `(deduce 'match ...)`, `(deduce 'fact! ...)`, `(deduce 'retract! ...)`. Single primitive dispatches on first quoted symbol. Legacy primitives kept for backward compat.
+- **Array destructuring in let**: `(let ([x y] [10 20]) ...)`, `(let ([head .. tail] '(1 2 3)) ...)`. Parser accepts `[` in let binding position, reuses PAT_SEQ pattern matcher.
+- **PAT_SEQ now matches ARRAY values**: `match_seq_pattern` and `get_list_rest` support both CONS lists and ARRAY (contiguous) values.
+- **Dict destructuring pattern (PAT_DICT)**: `{name age}` in pattern position extracts `'name` and `'age` keys from dict. Works in `let` and `match`.
+- **Dict destructuring in let**: `(let ({name age} {'name "Alice" 'age 30}) ...)`.
+- **Dict destructuring in function params**: `(define (f {x y} z) ...)` and `(lambda ({x y}) ...)`. Desugars to positional param + let-destruct in body. Multiple dict params allowed, mixed with positional.
+- Removed debug print from `prim_define_relation`.
+
+### Files Modified
+- `src/lisp/deduce.c3` — unified `prim_deduce` dispatcher, removed debug print
+- `src/lisp/eval.c3` — PAT_DICT in match_pattern, ARRAY support in match_seq_pattern/get_list_rest, registered `deduce` prim
+- `src/lisp/value.c3` — PAT_DICT enum, dict_keys/dict_key_count in Pattern, pattern field in ExprLet
+- `src/lisp/parser_parser.c3` — `{` in parse_pattern (PAT_DICT), `[`/`{` in parse_let, `{` in lambda/define param parsing with body desugaring
+- `src/lisp/jit_jit_compiler.c3` — destructuring let fallback to interpreter helper
+- `src/lisp/jit_jit_helper_functions.c3` — `jit_eval_let_destruct` helper
+- `src/lisp/tests_tests.c3` — 18 updated/new tests (9 deduce, 5 let array, 4 let dict, 4 function dict params)
+
+### Test Count
+- Before: 1159 PASS, 0 failures
+- After: 1172+ PASS, 0 failures
+
 ## 2026-03-03: Documentation Sync — Memory Model Completion
 
 ### Summary

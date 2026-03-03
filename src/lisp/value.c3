@@ -722,8 +722,17 @@ fn void scope_dtor_value(void* ptr) {
                 mem::free(v.ffi_val);
                 v.ffi_val = null;
             }
-        // COROUTINE and CONTINUATION dtors deferred — lifecycle managed by coroutine primitives.
-        // See plan Phase 4c step 3 for details.
+        case COROUTINE:
+            // Abandoned coroutines must return their StackCtx to the pool at scope teardown.
+            if (v.coroutine_val != null && g_stack_ctx_pool != null) {
+                if (v.coroutine_val.user_data != null) {
+                    mem::free(v.coroutine_val.user_data);
+                    v.coroutine_val.user_data = null;
+                }
+                main::stack_ctx_destroy(v.coroutine_val, g_stack_ctx_pool);
+                v.coroutine_val = null;
+            }
+        // CONTINUATION lifetime remains managed by reset/shift/handle paths.
         default: {}
     }
 }
@@ -1099,12 +1108,14 @@ fn Value* make_iterator(Interp* interp, Value* thunk) {
 }
 
 fn Value* make_coroutine(Interp* interp, main::StackCtx* ctx) {
+    // Allocate coroutine wrapper in root_scope so abandonment still runs a dtor.
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
     Value* v = interp.alloc_value();
+    main::scope_register_dtor(interp.root_scope, (void*)v, &scope_dtor_value);
+    interp.current_scope = saved_scope;
+
     v.tag = COROUTINE;
-    // No dtor registered — lifecycle managed by coroutine primitives (resume/yield).
-    // Coroutines that complete return their context to the pool in coroutine_thunk_entry.
-    // Abandoned coroutines leak their stack (~64KB) until program exit — acceptable for now.
-    // TODO: Track active coroutines in interp for cleanup on shutdown.
     v.coroutine_val = ctx;
     return v;
 }
@@ -1590,6 +1601,7 @@ struct ExprLet {
     Expr*    init;
     Expr*    body;
     bool     is_recursive;  // true for (let ^rec ...) recursive bindings
+    Pattern* pattern;       // non-null for destructuring: (let ([x y] init) body)
 }
 
 struct ExprDefine {
@@ -1666,6 +1678,7 @@ enum PatternTag : char {
     PAT_QUOTE,      // 'symbol or 'literal - matches quoted datum
     PAT_CONSTRUCTOR, // (TypeName sub-patterns...) - matches type instance
     PAT_GUARD,      // (? pred) or (? pred sub-pattern) - guarded pattern
+    PAT_DICT,       // {name age} - dict destructuring, binds 'name and 'age keys
 }
 
 /**
@@ -1715,6 +1728,12 @@ struct Pattern {
         struct {
             Expr* guard_pred;       // Predicate expression
             Pattern* guard_sub;     // Optional sub-pattern (null = match anything)
+        }
+
+        // PAT_DICT: {name age} - extract keys from dict
+        struct {
+            SymbolId* dict_keys;    // Symbol IDs to look up (and bind to)
+            usz dict_key_count;
         }
     }
 }

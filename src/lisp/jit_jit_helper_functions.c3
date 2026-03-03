@@ -814,6 +814,28 @@ fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
 // Recursive let helper — called from JIT-compiled code.
 // Mirrors the is_recursive branch of eval_let from eval.c3.
 // Creates placeholder, extends env, evaluates init, patches closure, evaluates body.
+// Destructuring let: evaluate init, match against pattern, bind results in env.
+// Called from JIT-compiled code when let_expr.pattern != null.
+fn Value* jit_eval_let_destruct(Interp* interp, Expr* expr, Env* env) {
+    Value* init_val = jit_eval(expr.let_expr.init, env, interp);
+    if (init_val != null && init_val.tag == ERROR) return init_val;
+
+    MatchResult mr = match_pattern(expr.let_expr.pattern, init_val, interp);
+    if (!mr.matched) {
+        mr.cleanup();
+        return raise_error(interp, "let destructuring: pattern did not match value");
+    }
+
+    Env* dest_env = env;
+    for (usz i = 0; i < mr.binding_count; i++) {
+        dest_env = make_env(interp, dest_env);
+        env_define_with_barrier(dest_env, mr.bindings[i].name, mr.bindings[i].value, interp);
+    }
+    mr.cleanup();
+
+    return jit_eval(expr.let_expr.body, dest_env, interp);
+}
+
 fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
     // 1. Create placeholder
     Value* placeholder = make_nil(interp);
@@ -1427,10 +1449,12 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     save_interp_state(interp, &saved);
 
     // Suspend the context — control returns to jit_reset_impl
+    main::stack_ctx_pin_scope(current, interp.current_scope);
     main::stack_ctx_suspend();
 
     // === RESUMED HERE by (k val) via jit_apply_continuation_impl ===
     restore_interp_state(interp, &saved);
+    main::stack_ctx_unpin_scope(current);
 
     return interp.resume_value;
 }
@@ -1599,9 +1623,11 @@ fn Value* jit_signal_impl(Expr* expr, Env* env, Interp* interp) {
 
                         SavedInterpState* saved_sig = (SavedInterpState*)interp.current_scope.alloc(SavedInterpState.sizeof);
                         save_interp_state(interp, saved_sig);
+                        main::stack_ctx_pin_scope(current, interp.current_scope);
                         main::stack_ctx_suspend();
                         // === RESUMED by resolve ===
                         restore_interp_state(interp, saved_sig);
+                        main::stack_ctx_unpin_scope(current);
 
                         return interp.resume_value;
                     }

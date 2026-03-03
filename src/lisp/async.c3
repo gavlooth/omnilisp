@@ -23,6 +23,25 @@ extern fn int uv_loop_init(void* loop) @extern("uv_loop_init");
 extern fn int uv_run(void* loop, int mode) @extern("uv_run");
 extern fn int uv_loop_close(void* loop) @extern("uv_loop_close");
 extern fn usz uv_loop_size() @extern("uv_loop_size");
+extern fn usz uv_handle_size(int handle_type) @extern("uv_handle_size");
+alias UvPollCb = fn void(void* handle, int status, int events);
+alias UvCloseCb = fn void(void* handle);
+extern fn int uv_poll_init(void* loop, void* handle, int fd) @extern("uv_poll_init");
+extern fn int uv_poll_start(void* handle, int events, UvPollCb cb) @extern("uv_poll_start");
+extern fn int uv_poll_stop(void* handle) @extern("uv_poll_stop");
+extern fn void uv_close(void* handle, UvCloseCb cb) @extern("uv_close");
+extern fn int uv_loop_alive(void* loop) @extern("uv_loop_alive");
+const int UV_HANDLE_POLL = 8;
+const int UV_READABLE = 1;
+const int UV_RUN_DEFAULT = 0;
+const int UV_RUN_ONCE = 1;
+const int UV_RUN_NOWAIT = 2;
+
+// errno helpers (Linux/glibc)
+extern fn int* c_errno_location() @extern("__errno_location");
+const int ERRNO_EAGAIN = 11;
+const int ERRNO_EWOULDBLOCK = 11;
+const int MSG_DONTWAIT = 0x40;
 
 // sockaddr_in layout (for IPv4)
 struct SockaddrIn {
@@ -174,6 +193,11 @@ fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
         max_bytes = (usz)args[1].int_val;
         if (max_bytes > 65536) max_bytes = 65536;
     }
+
+    // Async bridge: when called from a scheduler-managed fiber, register a non-blocking
+    // read with libuv and suspend this fiber until data is ready.
+    Value* async_result = scheduler_try_async_tcp_read(th.fd, max_bytes, interp);
+    if (async_result != null) return async_result;
 
     char* buf = (char*)mem::malloc(max_bytes);
     // fault: lisp::READ_FAILED
