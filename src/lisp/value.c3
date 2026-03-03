@@ -829,6 +829,16 @@ fn Value* make_cons_escape(Interp* interp, Value* car, Value* cdr) {
 
 <* @ensure return != null *>
 fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
+    // Dual-lane path: if cdr is already in current scope's ESCAPE lane,
+    // allocate pair in ESCAPE lane and promote inputs before linking.
+    if (cdr != null && cdr.scope_gen == interp.current_scope.escape_generation) {
+        Value* v = interp.alloc_value_escape();
+        v.tag = CONS;
+        v.cons_val.car = promote_to_escape(car, interp);
+        v.cons_val.cdr = promote_to_escape(cdr, interp);
+        return v;
+    }
+
     // Escape-scope optimization: detect accumulator pattern (cons x acc)
     // where acc starts as NIL and grows by consing onto the front.
     // Trigger: cdr is NIL (start of accumulator) or cdr stamped with escape_scope's generation.
