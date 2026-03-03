@@ -1418,6 +1418,108 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
         io::printn("[PASS] run-fibers completes");
         (*pass)++;
     }
+
+    // Wakeup ring smoke: enqueue/drain with no active pending reads should be a no-op.
+    {
+        scheduler_init();
+        void* saved_async = g_scheduler.async_handle;
+        g_scheduler.async_handle = null;
+        scheduler_reset_wakeup_queue();
+
+        bool pushed = wakeup_enqueue(WAKEUP_TIMER_EXPIRED, MAX_FIBERS + 1, 0);
+        drain_wakeups();
+        usz head = g_scheduler.wakeup_head.load();
+        usz tail = g_scheduler.wakeup_tail.load();
+        g_scheduler.async_handle = saved_async;
+
+        if (pushed && head == tail) {
+            io::printn("[PASS] wakeup ring smoke");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] wakeup ring smoke (pushed=%s head=%d tail=%d)",
+                pushed ? "yes" : "no", (long)head, (long)tail);
+            (*fail)++;
+        }
+    }
+
+    // Wakeup ring wraparound: fill capacity, reject overflow, then drain to empty.
+    {
+        scheduler_init();
+        void* saved_async = g_scheduler.async_handle;
+        g_scheduler.async_handle = null;
+        scheduler_reset_wakeup_queue();
+
+        usz pushed = 0;
+        for (usz i = 0; i < WAKEUP_RING_SIZE; i++) {
+            if (wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + i + 1, -1)) pushed++;
+        }
+        bool overflow_rejected = !wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + 999, -2);
+        drain_wakeups();
+        usz head = g_scheduler.wakeup_head.load();
+        usz tail = g_scheduler.wakeup_tail.load();
+        g_scheduler.async_handle = saved_async;
+
+        if (pushed == WAKEUP_RING_SIZE && overflow_rejected && head == tail) {
+            io::printn("[PASS] wakeup ring wraparound");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] wakeup ring wraparound (pushed=%d overflow_rejected=%s head=%d tail=%d)",
+                (long)pushed, overflow_rejected ? "yes" : "no", (long)head, (long)tail);
+            (*fail)++;
+        }
+    }
+
+    // Timer wakeup must only flip scheduler state during drain phase.
+    {
+        scheduler_init();
+        void* saved_async = g_scheduler.async_handle;
+        g_scheduler.async_handle = null;
+        scheduler_reset_wakeup_queue();
+
+        g_scheduler.fiber_count = 1;
+        g_scheduler.current_fiber_id = NO_FIBER;
+        g_scheduler.fibers[0] = {};
+        g_scheduler.fibers[0].state = FIBER_BLOCKED;
+        g_scheduler.pending_reads[0] = {};
+        g_scheduler.pending_reads[0].active = true;
+
+        bool pushed = wakeup_enqueue(WAKEUP_TIMER_EXPIRED, 0, 0);
+        drain_wakeups();
+
+        bool ok = pushed &&
+                  g_scheduler.pending_reads[0].timed_out &&
+                  g_scheduler.pending_reads[0].completed &&
+                  g_scheduler.fibers[0].state == FIBER_READY;
+
+        g_scheduler.pending_reads[0] = {};
+        g_scheduler.fibers[0] = {};
+        g_scheduler.fiber_count = 0;
+        scheduler_reset_wakeup_queue();
+        g_scheduler.async_handle = saved_async;
+
+        if (ok) {
+            io::printn("[PASS] timer wakeup transitions in drain");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] timer wakeup transitions in drain");
+            (*fail)++;
+        }
+    }
+
+    // Atomic CAS semantics regression: mismatch must not modify value.
+    {
+        setup(interp, "(define sched-cas (atomic 7))");
+        EvalResult ok_swap = run("(begin (atomic-cas! sched-cas 7 9) (atomic-read sched-cas))", interp);
+        EvalResult bad_swap = run("(begin (atomic-cas! sched-cas 7 11) (atomic-read sched-cas))", interp);
+        if (!ok_swap.error.has_error && is_int(ok_swap.value) && ok_swap.value.int_val == 9 &&
+            !bad_swap.error.has_error && is_int(bad_swap.value) && bad_swap.value.int_val == 9) {
+            io::printn("[PASS] atomic-cas semantics");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] atomic-cas semantics");
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_deduce_tests(Interp* interp, int* pass, int* fail) {

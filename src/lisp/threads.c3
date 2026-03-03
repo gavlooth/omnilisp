@@ -78,10 +78,9 @@ fn Value* prim_atomic_cas(Value*[] args, Env* env, Interp* interp) {
 
     long expected = args[1].int_val;
     long desired = args[2].int_val;
-    // Manual CAS: read, compare, write if match
-    long current = ref.value.load();
-    if (current == expected) {
-        ref.value.store(desired);
+    // True atomic CAS: single compare-exchange operation.
+    long previous = mem::compare_exchange(&ref.value.data, expected, desired);
+    if (previous == expected) {
         return interp.global_env.lookup(interp.symbols.intern("true"));
     }
     return make_nil(interp);

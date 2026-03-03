@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-03-03: Async-Safe Scheduler Wakeup Queue Boundary
+
+### Summary
+Hardened libuv callback boundaries in the fiber scheduler by introducing a thread-safe MPSC wakeup ring with `uv_async` signaling. libuv callbacks now enqueue lightweight wakeup events only; all `tcp-read` I/O and fiber state transitions execute in scheduler drain phase on the main thread.
+
+### Changes
+- **libuv async wake support** (`src/lisp/async.c3`):
+  - Added `uv_async_init` / `uv_async_send` externs and `UV_HANDLE_ASYNC`.
+- **Thread-safe wakeup queue + drain ownership** (`src/lisp/scheduler.c3`):
+  - Added wake event type (`POLL_READABLE`, `POLL_ERROR`, `TIMER_EXPIRED`) and ring storage.
+  - Added atomic queue state (`wakeup_head`, `wakeup_tail`, per-slot ready flags) with CAS-based producer reservation (`wakeup_enqueue`).
+  - Added scheduler-owned `drain_wakeups()` consumer path that performs:
+    - non-blocking `c_recv`,
+    - `PendingTcpRead` completion updates,
+    - `FIBER_BLOCKED -> FIBER_READY` transitions via shared completion path.
+  - Added `uv_async_t` initialization in `scheduler_init` and noop async callback.
+  - Refactored `scheduler_uv_poll_cb` / `scheduler_uv_timer_cb` to enqueue-only.
+  - Wired wakeup draining into scheduler loops (`scheduler_run_until`, `scheduler_run_all`) and ring reset in idle reset path.
+- **Atomic CAS correctness** (`src/lisp/threads.c3`):
+  - `atomic-cas!` now uses true single-operation compare-exchange (`mem::compare_exchange`) instead of load/compare/store.
+- **Regression coverage** (`src/lisp/tests_tests.c3`):
+  - Added wakeup ring smoke test.
+  - Added ring wraparound/overflow rejection test.
+  - Added timer wakeup drain-transition test.
+  - Added atomic CAS mismatch-preserves-value regression test.
+
+### Invariants Enforced
+1. libuv callbacks do not allocate Omni values or touch scope/region-owned runtime objects.
+2. libuv callbacks do not perform fiber state transitions.
+3. `c_recv` for async `tcp-read` is performed only in scheduler drain phase.
+4. Cross-thread wake signaling uses atomics + `uv_async_send`.
+5. Effect names and fast-path dispatch (`io/tcp-*`) remain unchanged.
+
+### Files Modified
+- `src/lisp/async.c3`
+- `src/lisp/scheduler.c3`
+- `src/lisp/threads.c3`
+- `src/lisp/tests_tests.c3`
+
 ## 2026-03-03: Structured Fiber spawn/await Lifetime Model
 
 ### Summary

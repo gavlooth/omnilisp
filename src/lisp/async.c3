@@ -18,7 +18,7 @@ extern fn int c_getaddrinfo(char* node, char* service, void* hints, void** res) 
 extern fn void c_freeaddrinfo(void* res) @extern("freeaddrinfo");
 extern fn char* c_inet_ntop(int af, void* src, char* dst, uint size) @extern("inet_ntop");
 
-// libuv — linked for future async scheduler use
+// libuv — scheduler async I/O and wake signaling
 extern fn int uv_loop_init(void* loop) @extern("uv_loop_init");
 extern fn int uv_run(void* loop, int mode) @extern("uv_run");
 extern fn int uv_loop_close(void* loop) @extern("uv_loop_close");
@@ -27,14 +27,18 @@ extern fn usz uv_handle_size(int handle_type) @extern("uv_handle_size");
 alias UvPollCb = fn void(void* handle, int status, int events);
 alias UvCloseCb = fn void(void* handle);
 alias UvTimerCb = fn void(void* handle);
+alias UvAsyncCb = fn void(void* handle);
 extern fn int uv_poll_init(void* loop, void* handle, int fd) @extern("uv_poll_init");
 extern fn int uv_poll_start(void* handle, int events, UvPollCb cb) @extern("uv_poll_start");
 extern fn int uv_poll_stop(void* handle) @extern("uv_poll_stop");
 extern fn int uv_timer_init(void* loop, void* handle) @extern("uv_timer_init");
 extern fn int uv_timer_start(void* handle, UvTimerCb cb, ulong timeout, ulong repeat) @extern("uv_timer_start");
 extern fn int uv_timer_stop(void* handle) @extern("uv_timer_stop");
+extern fn int uv_async_init(void* loop, void* handle, UvAsyncCb cb) @extern("uv_async_init");
+extern fn int uv_async_send(void* handle) @extern("uv_async_send");
 extern fn void uv_close(void* handle, UvCloseCb cb) @extern("uv_close");
 extern fn int uv_loop_alive(void* loop) @extern("uv_loop_alive");
+const int UV_HANDLE_ASYNC = 1;
 const int UV_HANDLE_POLL = 8;
 const int UV_HANDLE_TIMER = 13;
 const int UV_READABLE = 1;

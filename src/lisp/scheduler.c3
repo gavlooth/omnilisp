@@ -1,6 +1,7 @@
 module lisp;
 
 import std::core::mem;
+import std::atomic::types;
 import std::io;
 import main;
 
@@ -48,19 +49,52 @@ struct PendingTcpRead {
     void* timer_handle;
 }
 
+enum WakeupEventType : char {
+    WAKEUP_POLL_READABLE,
+    WAKEUP_POLL_ERROR,
+    WAKEUP_TIMER_EXPIRED
+}
+
+struct WakeupEvent {
+    usz fiber_id;
+    WakeupEventType type;
+    int status;
+}
+
+const usz WAKEUP_RING_SIZE = 256;
+const usz WAKEUP_RING_MASK = WAKEUP_RING_SIZE - 1;
+
 struct Scheduler {
     FiberEntry[MAX_FIBERS] fibers;
     PendingTcpRead[MAX_FIBERS] pending_reads;
+    WakeupEvent[WAKEUP_RING_SIZE] wakeup_ring;
+    types::Atomic{bool}[WAKEUP_RING_SIZE] wakeup_ready;
+    types::Atomic{usz} wakeup_head;    // producers reserve slots
+    types::Atomic{usz} wakeup_tail;    // consumer drains slots
     usz fiber_count;
     usz current_fiber_id;
     bool running;
     bool uv_loop_ready;
     void* uv_loop;
+    void* async_handle;                // uv_async_t*
 }
 
 // Global scheduler (single-threaded)
 Scheduler g_scheduler;
 bool g_scheduler_initialized = false;
+
+fn void scheduler_async_noop_cb(void* handle) {
+    // Intentionally empty; uv_async_send only wakes the loop.
+    (void)handle;
+}
+
+fn void scheduler_reset_wakeup_queue() {
+    g_scheduler.wakeup_head.store(0);
+    g_scheduler.wakeup_tail.store(0);
+    for (usz i = 0; i < WAKEUP_RING_SIZE; i++) {
+        g_scheduler.wakeup_ready[i].store(false);
+    }
+}
 
 fn void scheduler_init() {
     if (g_scheduler_initialized) return;
@@ -69,6 +103,7 @@ fn void scheduler_init() {
     g_scheduler.fiber_count = 0;
     g_scheduler.current_fiber_id = NO_FIBER;
     g_scheduler.running = false;
+    scheduler_reset_wakeup_queue();
 
     usz loop_size = uv_loop_size();
     if (loop_size > 0) {
@@ -76,6 +111,18 @@ fn void scheduler_init() {
         if (loop_mem != null && uv_loop_init(loop_mem) == 0) {
             g_scheduler.uv_loop_ready = true;
             g_scheduler.uv_loop = loop_mem;
+
+            usz async_size = uv_handle_size(UV_HANDLE_ASYNC);
+            if (async_size > 0) {
+                void* async_mem = mem::malloc(async_size);
+                if (async_mem != null) {
+                    if (uv_async_init(g_scheduler.uv_loop, async_mem, &scheduler_async_noop_cb) == 0) {
+                        g_scheduler.async_handle = async_mem;
+                    } else {
+                        mem::free(async_mem);
+                    }
+                }
+            }
         } else if (loop_mem != null) {
             mem::free(loop_mem);
         }
@@ -182,6 +229,28 @@ fn void scheduler_complete_pending_tcp_read(usz fiber_id) {
     if (f.state == FIBER_BLOCKED) f.state = FIBER_READY;
 }
 
+fn bool wakeup_enqueue(WakeupEventType type, usz fiber_id, int status) {
+    while (true) {
+        usz tail = g_scheduler.wakeup_tail.load();
+        usz head = g_scheduler.wakeup_head.load();
+        if (head - tail >= WAKEUP_RING_SIZE) return false;
+
+        usz prev = mem::compare_exchange(&g_scheduler.wakeup_head.data, head, head + 1);
+        if (prev != head) continue;
+
+        usz slot = head & WAKEUP_RING_MASK;
+        WakeupEvent ev = {};
+        ev.fiber_id = fiber_id;
+        ev.type = type;
+        ev.status = status;
+        g_scheduler.wakeup_ring[slot] = ev;
+        g_scheduler.wakeup_ready[slot].store(true);
+
+        if (g_scheduler.async_handle != null) (void)uv_async_send(g_scheduler.async_handle);
+        return true;
+    }
+}
+
 fn void scheduler_uv_timer_cb(void* handle) {
     isz idx = scheduler_find_pending_by_handle(handle);
     if (idx < 0) return;
@@ -189,9 +258,7 @@ fn void scheduler_uv_timer_cb(void* handle) {
     PendingTcpRead* op = &g_scheduler.pending_reads[(usz)idx];
     if (!op.active || op.completed) return;
 
-    op.timed_out = true;
-    op.completed = true;
-    scheduler_complete_pending_tcp_read((usz)idx);
+    (void)wakeup_enqueue(WAKEUP_TIMER_EXPIRED, (usz)idx, 0);
 }
 
 fn void scheduler_uv_poll_cb(void* handle, int status, int events) {
@@ -202,27 +269,58 @@ fn void scheduler_uv_poll_cb(void* handle, int status, int events) {
     if (!op.active || op.completed) return;
 
     if (status < 0) {
-        op.error_code = status;
-        op.completed = true;
+        (void)wakeup_enqueue(WAKEUP_POLL_ERROR, (usz)idx, status);
     } else if ((events & UV_READABLE) != 0) {
-        long n = c_recv(op.fd, op.buffer, op.max_bytes, MSG_DONTWAIT);
-        if (n >= 0) {
-            op.nread = n;
-            op.completed = true;
-        } else {
-            int err = 0;
-            int* err_ptr = c_errno_location();
-            if (err_ptr != null) err = *err_ptr;
-            if (err != ERRNO_EAGAIN && err != ERRNO_EWOULDBLOCK) {
-                op.error_code = err;
+        (void)wakeup_enqueue(WAKEUP_POLL_READABLE, (usz)idx, 0);
+    }
+}
+
+fn void drain_wakeups() {
+    usz tail = g_scheduler.wakeup_tail.load();
+    while (true) {
+        usz head = g_scheduler.wakeup_head.load();
+        if (tail == head) break;
+
+        usz slot = tail & WAKEUP_RING_MASK;
+        if (!g_scheduler.wakeup_ready[slot].load()) break;
+
+        WakeupEvent ev = g_scheduler.wakeup_ring[slot];
+        g_scheduler.wakeup_ready[slot].store(false);
+        tail++;
+
+        usz fid = ev.fiber_id;
+        if (fid >= g_scheduler.fiber_count) continue;
+
+        PendingTcpRead* op = &g_scheduler.pending_reads[fid];
+        if (!op.active || op.completed) continue;
+
+        switch (ev.type) {
+            case WAKEUP_TIMER_EXPIRED:
+                op.timed_out = true;
                 op.completed = true;
-            }
+                scheduler_complete_pending_tcp_read(fid);
+            case WAKEUP_POLL_ERROR:
+                op.error_code = ev.status;
+                op.completed = true;
+                scheduler_complete_pending_tcp_read(fid);
+            case WAKEUP_POLL_READABLE:
+                long n = c_recv(op.fd, op.buffer, op.max_bytes, MSG_DONTWAIT);
+                if (n >= 0) {
+                    op.nread = n;
+                    op.completed = true;
+                } else {
+                    int err = 0;
+                    int* err_ptr = c_errno_location();
+                    if (err_ptr != null) err = *err_ptr;
+                    if (err != ERRNO_EAGAIN && err != ERRNO_EWOULDBLOCK) {
+                        op.error_code = err;
+                        op.completed = true;
+                    }
+                }
+                if (op.completed) scheduler_complete_pending_tcp_read(fid);
         }
     }
-
-    if (!op.completed) return;
-
-    scheduler_complete_pending_tcp_read((usz)idx);
+    g_scheduler.wakeup_tail.store(tail);
 }
 
 fn Value* scheduler_consume_pending_tcp_read(usz fiber_id, Interp* interp) {
@@ -599,6 +697,7 @@ fn void scheduler_run_until(usz target, Interp* interp) {
     usz round = 0;
 
     while (g_scheduler.fibers[target].state != FIBER_DONE && round < max_rounds) {
+        drain_wakeups();
         bool ran_ready = false;
 
         for (usz i = 0; i < g_scheduler.fiber_count; i++) {
@@ -617,6 +716,7 @@ fn void scheduler_run_until(usz target, Interp* interp) {
 
         if (scheduler_has_blocked_fibers()) {
             scheduler_wait_for_io_once();
+            drain_wakeups();
             round++;
             continue;
         }
@@ -627,6 +727,7 @@ fn void scheduler_run_until(usz target, Interp* interp) {
     if (g_scheduler.uv_loop_ready && g_scheduler.uv_loop != null) {
         (void)uv_run(g_scheduler.uv_loop, UV_RUN_NOWAIT);
     }
+    drain_wakeups();
 }
 
 fn void scheduler_reset_if_idle() {
@@ -638,6 +739,7 @@ fn void scheduler_reset_if_idle() {
 
     g_scheduler.fiber_count = 0;
     g_scheduler.current_fiber_id = NO_FIBER;
+    scheduler_reset_wakeup_queue();
     for (usz i = 0; i < MAX_FIBERS; i++) {
         g_scheduler.fibers[i] = {};
         g_scheduler.pending_reads[i] = {};
@@ -655,6 +757,7 @@ fn void scheduler_run_all(Interp* interp) {
     usz round = 0;
 
     while (round < max_rounds) {
+        drain_wakeups();
         bool ran_ready = false;
 
         for (usz i = 0; i < g_scheduler.fiber_count; i++) {
@@ -672,6 +775,7 @@ fn void scheduler_run_all(Interp* interp) {
 
         if (scheduler_has_blocked_fibers()) {
             scheduler_wait_for_io_once();
+            drain_wakeups();
             round++;
             continue;
         }
@@ -679,5 +783,6 @@ fn void scheduler_run_all(Interp* interp) {
         break;
     }
 
+    drain_wakeups();
     scheduler_reset_if_idle();
 }
