@@ -1841,6 +1841,44 @@ fn void run_memory_lifetime_regression_tests(Interp* interp, int* pass, int* fai
             (*fail)++;
         }
     }
+
+    // Invariant: legacy accumulator path should avoid graph-copy churn.
+    // Budget gate: cons-escape car fallback copies must stay near-zero,
+    // and cdr copies must remain zero (tail is already in escape lane).
+    {
+        usz base_total = copy_to_parent_total_calls();
+        usz base_car = copy_to_parent_site_calls(COPY_SITE_MAKE_CONS_ESCAPE_CAR);
+        usz base_cdr = copy_to_parent_site_calls(COPY_SITE_MAKE_CONS_ESCAPE_CDR);
+
+        EvalResult r = run(
+            "(let ^rec (loop (lambda (n acc) (if (= n 2000) acc (loop (+ n 1) (cons n acc))))) (length (loop 0 nil)))",
+            interp);
+
+        usz total_delta = copy_to_parent_total_calls() - base_total;
+        usz car_delta = copy_to_parent_site_calls(COPY_SITE_MAKE_CONS_ESCAPE_CAR) - base_car;
+        usz cdr_delta = copy_to_parent_site_calls(COPY_SITE_MAKE_CONS_ESCAPE_CDR) - base_cdr;
+
+        bool ok_eval = !r.error.has_error &&
+                       r.value != null &&
+                       r.value.tag == INT &&
+                       r.value.int_val == 2000;
+        bool ok_budget = car_delta <= 16 && cdr_delta == 0;
+        bool ok = ok_eval && ok_budget;
+
+        if (ok) {
+            io::printn("[PASS] lifetime: cons-escape copy budget gate");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: cons-escape copy budget gate (total_delta=%d car_delta=%d cdr_delta=%d tag=%d int=%d err=%s)",
+                (long)total_delta,
+                (long)car_delta,
+                (long)cdr_delta,
+                r.value != null ? (int)r.value.tag : -1,
+                (r.value != null && r.value.tag == INT) ? (int)r.value.int_val : -1,
+                r.error.has_error ? "yes" : "no");
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_basic_tests(Interp* interp, int* pass, int* fail) {

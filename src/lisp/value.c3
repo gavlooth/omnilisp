@@ -798,6 +798,30 @@ fn Value* make_symbol(Interp* interp, SymbolId sym) @inline {
     return v;
 }
 
+// Fast promotion path for legacy call-scope -> escape_scope cons building.
+// Handles common scalar/string/error payloads without going through full graph copy.
+fn Value* promote_to_escape_scope_fast(Value* v, main::ScopeRegion* src_scope, Interp* interp) {
+    if (v == null || src_scope == null) return v;
+    if (!main::is_in_scope((void*)v, src_scope)) return v;
+
+    switch (v.tag) {
+        case NIL:
+            return make_nil(interp);
+        case INT:
+            return make_int(interp, v.int_val);
+        case DOUBLE:
+            return make_double(interp, v.double_val);
+        case SYMBOL:
+            return make_symbol(interp, v.sym_val);
+        case STRING:
+            return make_string(interp, v.str_chars[:v.str_len]);
+        case ERROR:
+            return make_error(interp, v.str_chars[:v.str_len]);
+        default:
+            return copy_to_parent_site(v, interp, COPY_SITE_MAKE_CONS_ESCAPE_CAR);
+    }
+}
+
 /**
  * Allocate a cons cell in escape_scope (result_scope).
  * Promotes car/cdr from call_scope to escape_scope if needed.
@@ -812,10 +836,7 @@ fn Value* make_cons_escape(Interp* interp, Value* car, Value* cdr) {
     // Promote car/cdr: copy from call_scope to escape_scope if needed.
     main::ScopeRegion* saved_releasing = interp.releasing_scope;
     interp.releasing_scope = call_scope;
-    Value* safe_car = car;
-    if (car != null && main::is_in_scope((void*)car, call_scope)) {
-        safe_car = copy_to_parent_site(car, interp, COPY_SITE_MAKE_CONS_ESCAPE_CAR);
-    }
+    Value* safe_car = promote_to_escape_scope_fast(car, call_scope, interp);
 
     Value* safe_cdr = cdr;
     if (cdr == null || cdr.tag == NIL) {

@@ -152,6 +152,19 @@ fn void print_memory_promotion_stats() {
         (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_ENV_EXTEND_ROOT]);
 }
 
+fn void reset_memory_promotion_stats() {
+    g_copy_to_parent_stats = {};
+}
+
+fn usz copy_to_parent_total_calls() @inline {
+    return g_copy_to_parent_stats.total_calls;
+}
+
+fn usz copy_to_parent_site_calls(uint site) @inline {
+    if (site >= 20) return 0;
+    return g_copy_to_parent_stats.site_calls[(usz)site];
+}
+
 // =============================================================================
 // POSIX SIGNAL HANDLING
 // =============================================================================
