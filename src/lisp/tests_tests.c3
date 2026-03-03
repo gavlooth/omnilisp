@@ -1385,7 +1385,7 @@ fn void run_deduce_tests(Interp* interp, int* pass, int* fail) {
             fargs[0] = make_cons(interp, db_val, spec);
             Value* rel = prim_define_relation(fargs[..], null, interp);
             if (rel != null && rel.tag == FFI_HANDLE) {
-                interp.global_env.define(interp.symbols.intern("person"), rel);
+                env_define_with_barrier(interp.global_env, interp.symbols.intern("person"), rel, interp);
             }
         }
     }

@@ -268,7 +268,7 @@ fn lisp::Value* make_variadic_closure(void* data, AotVariadicFn invoke) {
 
 fn void define_var(char[] name, lisp::Value* val) {
     lisp::SymbolId sid = g_aot_interp.symbols.intern(name);
-    g_aot_interp.global_env.define(sid, val);
+    lisp::env_define_with_barrier(g_aot_interp.global_env, sid, val, g_aot_interp);
 }
 
 fn lisp::Value* lookup_var(char[] name) {
@@ -280,7 +280,7 @@ fn lisp::Value* lookup_var(char[] name) {
 fn void set_var(char[] name, lisp::Value* val) {
     lisp::SymbolId sid = g_aot_interp.symbols.intern(name);
     // AOT set_var on global env — silently ignore if unbound (define_var should be called first)
-    g_aot_interp.global_env.set(sid, val)!!;
+    lisp::env_set_with_barrier(g_aot_interp.global_env, sid, val, g_aot_interp)!!;
 }
 
 // =============================================================================

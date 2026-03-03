@@ -1058,7 +1058,7 @@ fn EvalResult jit_eval_export_from_impl(Expr* expr, Env* env, Interp* interp) {
         for (usz i = 0; i < source_mod.export_count; i++) {
             Value* val = source_mod.env.lookup(source_mod.exports[i]);
             if (val != null) {
-                env.define(source_mod.exports[i], val);
+                env_define_with_barrier(env, source_mod.exports[i], val, interp);
                 // Add to current module's export list (grow if needed)
                 if (current_mod.export_count >= current_mod.export_capacity) {
                     usz new_cap = current_mod.export_capacity * 2;
@@ -1089,7 +1089,7 @@ fn EvalResult jit_eval_export_from_impl(Expr* expr, Env* env, Interp* interp) {
             }
             Value* val = source_mod.env.lookup(sym);
             if (val != null) {
-                env.define(sym, val);
+                env_define_with_barrier(env, sym, val, interp);
                 if (current_mod.export_count >= current_mod.export_capacity) {
                     usz new_cap = current_mod.export_capacity * 2;
                     SymbolId* new_exports = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
