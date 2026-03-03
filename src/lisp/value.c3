@@ -812,8 +812,19 @@ fn Value* make_cons_escape(Interp* interp, Value* car, Value* cdr) {
     // Promote car/cdr: copy from call_scope to escape_scope if needed.
     main::ScopeRegion* saved_releasing = interp.releasing_scope;
     interp.releasing_scope = call_scope;
-    Value* safe_car = copy_to_parent_site(car, interp, COPY_SITE_MAKE_CONS_ESCAPE_CAR);
-    Value* safe_cdr = copy_to_parent_site(cdr, interp, COPY_SITE_MAKE_CONS_ESCAPE_CDR);
+    Value* safe_car = car;
+    if (car != null && main::is_in_scope((void*)car, call_scope)) {
+        safe_car = copy_to_parent_site(car, interp, COPY_SITE_MAKE_CONS_ESCAPE_CAR);
+    }
+
+    Value* safe_cdr = cdr;
+    if (cdr == null || cdr.tag == NIL) {
+        // Avoid copying per-iteration NIL sentinels from the dying call scope.
+        safe_cdr = make_nil(interp);
+    } else if (cdr.scope_gen != interp.escape_scope.generation &&
+               main::is_in_scope((void*)cdr, call_scope)) {
+        safe_cdr = copy_to_parent_site(cdr, interp, COPY_SITE_MAKE_CONS_ESCAPE_CDR);
+    }
     interp.releasing_scope = saved_releasing;
 
     // Allocate cons in escape_scope
@@ -1451,6 +1462,9 @@ fn Value* promote_for_env_target(Env* target, Value* value, Interp* interp) {
         target.scope_gen == interp.escape_scope.generation) {
         main::ScopeRegion* saved_scope = interp.current_scope;
         main::ScopeRegion* saved_releasing = interp.releasing_scope;
+        if (!main::is_in_scope((void*)value, saved_scope)) {
+            return value;
+        }
         interp.current_scope = interp.escape_scope;
         interp.releasing_scope = saved_scope;
         Value* promoted = copy_to_parent_site(value, interp, COPY_SITE_ENV_PROMOTE_FOR_TARGET);
