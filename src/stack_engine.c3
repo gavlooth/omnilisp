@@ -35,6 +35,7 @@ extern fn void* mmap(void* addr, usz length, int prot, int flags,
                      int fd, long offset) @extern("mmap");
 extern fn int munmap(void* addr, usz length) @extern("munmap");
 extern fn int mprotect(void* addr, usz length, int prot) @extern("mprotect");
+extern fn ZString getenv(ZString name) @extern("getenv");
 
 const int PROT_NONE  = 0x0;
 const int PROT_READ  = 0x1;
@@ -58,6 +59,10 @@ extern fn void stack_guard_shutdown() @extern("stack_guard_shutdown");
 extern fn void stack_guard_register(void* base, usz size) @extern("stack_guard_register");
 extern fn void stack_guard_unregister(void* base) @extern("stack_guard_unregister");
 extern fn int stack_guard_protected_switch(void* old_ctx, void* new_ctx) @extern("stack_guard_protected_switch");
+extern fn void stack_asan_start_switch(void** fake_stack_save, void* stack_bottom, usz stack_size) @extern("stack_asan_start_switch");
+extern fn void stack_asan_finish_switch(void* fake_stack_save) @extern("stack_asan_finish_switch");
+extern fn void stack_raw_copy(void* dst, void* src, usz size) @extern("stack_raw_copy");
+extern fn int stack_asan_enabled() @extern("stack_asan_enabled");
 
 // =============================================================================
 // SECTION 2: STACK CONTEXT (72 bytes — one cache line on most CPUs)
@@ -180,7 +185,8 @@ struct StackRegion {
     void* stack_top;   // Top of usable stack (highest address, initial RSP)
 }
 
-const usz DEFAULT_STACK_SIZE = 65536;  // 64KB usable stack
+const usz DEFAULT_STACK_SIZE = 65536;        // 64KB usable stack (normal builds)
+const usz ASAN_STACK_SIZE = 262144;          // 256KB usable stack (ASAN-instrumented builds)
 const usz GUARD_SIZE = PAGE_SIZE;      // 4KB guard page
 
 /**
@@ -254,6 +260,8 @@ struct StackCtx {
     StackCtxStatus     status;
     void*          result;      // Return value when COMPLETED
     StackContext*   parent_ctx;  // Where to switch back to on yield/complete
+    StackCtx*       parent_stack_ctx; // Parent stack context (null = main stack)
+    void*           asan_fake_stack;  // ASAN fiber-switch token for this stack
     uint           id;          // Unique identifier
     StackCtx*          pool_next;   // Free-list link for StackPool
     StackCtxBootstrap  boot;        // Bootstrap info for first switch
@@ -279,7 +287,7 @@ fn void stack_pool_init(StackPool* pool) {
     pool.pool_size = 0;
     pool.max_pool = STACK_POOL_MAX;
     pool.next_id = 1;
-    pool.stack_size = DEFAULT_STACK_SIZE;
+    pool.stack_size = stack_asan_enabled() != 0 ? ASAN_STACK_SIZE : DEFAULT_STACK_SIZE;
     stack_guard_init();
 }
 
@@ -334,7 +342,10 @@ fn StackCtx* stack_ctx_create(StackPool* pool) {
     c.status = CTX_READY;
     c.result = null;
     c.parent_ctx = null;
+    c.parent_stack_ctx = null;
+    c.asan_fake_stack = null;
     c.pool_next = null;
+    c.user_data = null;
     c.id = pool.next_id;
     pool.next_id++;
 
@@ -350,6 +361,9 @@ fn void stack_ctx_destroy(StackCtx* c, StackPool* pool) {
         c.status = CTX_DEAD;
         c.result = null;
         c.parent_ctx = null;
+        c.parent_stack_ctx = null;
+        c.asan_fake_stack = null;
+        c.user_data = null;
         c.pool_next = pool.free_list;
         pool.free_list = c;
         pool.pool_size++;
@@ -368,6 +382,34 @@ fn void stack_ctx_destroy(StackCtx* c, StackPool* pool) {
 // Global bootstrap pointer — set before first context switch into a stack context.
 // Safe because context switches are cooperative (single-threaded).
 tlocal StackCtxBootstrap* g_stack_ctx_bootstrap;
+// ASAN fake-stack token for the main thread stack.
+tlocal void* g_main_asan_fake_stack;
+
+fn void* stack_ctx_bottom(StackCtx* c) @inline {
+    return (void*)((usz)c.stack.base + GUARD_SIZE);
+}
+
+fn void asan_switch_out(StackCtx* from_ctx, StackCtx* to_ctx) @inline {
+    void** save_slot;
+    if (from_ctx != null) {
+        save_slot = &from_ctx.asan_fake_stack;
+    } else {
+        save_slot = &g_main_asan_fake_stack;
+    }
+
+    void* to_bottom = null;
+    usz to_size = 0;
+    if (to_ctx != null) {
+        to_bottom = stack_ctx_bottom(to_ctx);
+        to_size = to_ctx.stack.usable_size;
+    }
+    stack_asan_start_switch(save_slot, to_bottom, to_size);
+}
+
+fn void asan_switch_in(StackCtx* current_ctx) @inline {
+    void* token = current_ctx != null ? current_ctx.asan_fake_stack : g_main_asan_fake_stack;
+    stack_asan_finish_switch(token);
+}
 
 /**
  * Trampoline that runs when a coroutine starts for the first time.
@@ -383,6 +425,7 @@ fn void stack_ctx_trampoline() {
 
     // Set current context from bootstrap (only valid for first switch)
     g_current_stack_ctx = boot.self;
+    asan_switch_in(g_current_stack_ctx);
 
     // Call the actual entry function
     entry(arg);
@@ -394,6 +437,7 @@ fn void stack_ctx_trampoline() {
     StackCtx* self = g_current_stack_ctx;
     self.status = CTX_COMPLETED;
     g_current_stack_ctx = null;
+    asan_switch_out(self, self.parent_stack_ctx);
     stack_context_switch(&self.ctx, self.parent_ctx);
 
     // Should never reach here
@@ -459,13 +503,16 @@ fn void stack_ctx_switch_to(StackCtx* c, StackContext* parent_ctx) {
     }
 
     StackCtx* saved = g_current_stack_ctx;
+    c.parent_stack_ctx = saved;
     g_current_stack_ctx = c;
 
     // D1: Save parent FPU state before switch
     fpu_save(&parent_ctx.mxcsr, &parent_ctx.x87cw);
 
     // D2: Protected switch with stack overflow recovery
+    asan_switch_out(saved, c);
     int overflow = stack_guard_protected_switch(parent_ctx, &c.ctx);
+    asan_switch_in(saved);
 
     // D1: Restore parent FPU state (also after overflow — siglongjmp doesn't restore FPU)
     fpu_restore(parent_ctx.mxcsr, parent_ctx.x87cw);
@@ -490,7 +537,9 @@ fn void stack_ctx_suspend() {
     c.status = CTX_SUSPENDED;
     // D1: Save FPU state before switch to parent
     fpu_save(&c.ctx.mxcsr, &c.ctx.x87cw);
+    asan_switch_out(c, c.parent_stack_ctx);
     stack_context_switch(&c.ctx, c.parent_ctx);
+    asan_switch_in(c);
     // Execution resumes here when parent calls stack_ctx_resume
     // D1: Restore FPU state on resume
     fpu_restore(c.ctx.mxcsr, c.ctx.x87cw);
@@ -504,13 +553,16 @@ fn void stack_ctx_resume(StackCtx* c, StackContext* parent_ctx) {
     c.parent_ctx = parent_ctx;
     c.status = CTX_RUNNING;
     StackCtx* saved = g_current_stack_ctx;
+    c.parent_stack_ctx = saved;
     g_current_stack_ctx = c;
 
     // D1: Save parent FPU state before switch
     fpu_save(&parent_ctx.mxcsr, &parent_ctx.x87cw);
 
     // D2: Protected switch with stack overflow recovery
+    asan_switch_out(saved, c);
     int overflow = stack_guard_protected_switch(parent_ctx, &c.ctx);
+    asan_switch_in(saved);
 
     // D1: Restore parent FPU state
     fpu_restore(parent_ctx.mxcsr, parent_ctx.x87cw);
@@ -542,39 +594,42 @@ fn void stack_ctx_resume(StackCtx* c, StackContext* parent_ctx) {
  */
 fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
     if (source.status != CTX_SUSPENDED) return null;
+    if (source.stack.base == null || source.stack.stack_top == null || source.stack.usable_size == 0) return null;
+
+    usz src_lo = (usz)source.stack.base + GUARD_SIZE;
+    usz src_hi = (usz)source.stack.stack_top;
+    usz src_rsp = (usz)source.ctx.rsp;
+    if (src_rsp < src_lo || src_rsp > src_hi) return null;
+    if ((usz)source.ctx.rbp != 0 && ((usz)source.ctx.rbp < src_lo || (usz)source.ctx.rbp > src_hi)) return null;
 
     StackCtx* clone = stack_ctx_create(pool);
     if (clone == null) return null;
 
-    // Ensure clone has same-sized stack
-    if (clone.stack.usable_size < source.stack.usable_size) {
+    // Copy only the active stack segment [RSP, stack_top). This preserves live frames
+    // and avoids touching unrelated bytes below RSP.
+    usz active_bytes = src_hi - src_rsp;
+    if (active_bytes > clone.stack.usable_size) {
         stack_ctx_destroy(clone, pool);
         return null;
     }
 
-    // Copy entire usable stack contents
-    char* src_usable = (char*)((usz)source.stack.base + GUARD_SIZE);
-    char* dst_usable = (char*)((usz)clone.stack.base + GUARD_SIZE);
-    usz usable = source.stack.usable_size;
+    usz dst_hi = (usz)clone.stack.stack_top;
+    usz dst_rsp = dst_hi - active_bytes;
+    stack_raw_copy((void*)dst_rsp, (void*)src_rsp, active_bytes);
 
-    for (usz i = 0; i < usable; i++) {
-        dst_usable[i] = src_usable[i];
-    }
-
-    // Copy register context
+    // Copy register context and relocate stack pointers into the cloned stack.
     clone.ctx = source.ctx;
     clone.status = CTX_SUSPENDED;
     clone.result = source.result;
+    clone.parent_ctx = null;
+    clone.parent_stack_ctx = null;
+    clone.asan_fake_stack = null;
 
-    // Compute relocation delta: difference between stack bases
-    long delta = (long)((usz)clone.stack.base - (usz)source.stack.base);
-
-    // Adjust RSP and RBP in the cloned context
+    long delta = (long)(dst_rsp - src_rsp);
     clone.ctx.rsp = (ulong)((long)source.ctx.rsp + delta);
     clone.ctx.rbp = (ulong)((long)source.ctx.rbp + delta);
 
-    // Walk and fixup the RBP chain on the cloned stack
-    // Each frame's saved RBP points to the previous frame — adjust all
+    // Walk and fixup the RBP chain on the cloned stack.
     usz lo = (usz)clone.stack.base + GUARD_SIZE;
     usz hi = (usz)clone.stack.stack_top;
 
@@ -586,16 +641,13 @@ fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
         ulong old_val = *bp;
         if (old_val == 0) break;  // End of chain
 
-        // Only fixup if the saved RBP points into the source stack
-        usz src_lo = (usz)source.stack.base + GUARD_SIZE;
-        usz src_hi = (usz)source.stack.stack_top;
         if (old_val >= src_lo && old_val < src_hi) {
             *bp = (ulong)((long)old_val + delta);
         } else {
-            break;  // RBP points outside source stack — end of chain
+            break;
         }
 
-        bp = (ulong*)*bp;  // Follow chain
+        bp = (ulong*)*bp;
     }
 
     return clone;
@@ -934,6 +986,55 @@ fn bool test_fpu_preservation() {
     return ok;
 }
 
+// Clone a suspended context and verify multi-shot behavior:
+// cloned execution completes independently while the source remains resumable.
+fn bool test_stack_ctx_clone_multishot() {
+    StackPool pool;
+    stack_pool_init(&pool);
+
+    StackCtx* source = stack_ctx_create(&pool);
+    if (source == null) { stack_pool_shutdown(&pool); return false; }
+
+    TestState state;
+    state.value = 0;
+    state.step = 0;
+    stack_ctx_init(source, &test_entry_generator, &state);
+
+    StackContext main_ctx;
+    stack_ctx_switch_to(source, &main_ctx);  // yield #1
+    if (source.status != CTX_SUSPENDED || state.step != 1) {
+        stack_ctx_destroy(source, &pool);
+        stack_pool_shutdown(&pool);
+        return false;
+    }
+
+    StackCtx* clone = stack_ctx_clone(source, &pool);
+    if (clone == null || clone.status != CTX_SUSPENDED) {
+        stack_ctx_destroy(source, &pool);
+        if (clone != null) stack_ctx_destroy(clone, &pool);
+        stack_pool_shutdown(&pool);
+        return false;
+    }
+
+    // Drive clone to completion first.
+    stack_ctx_resume(clone, &main_ctx);  // yield #2
+    bool ok = (clone.status == CTX_SUSPENDED);
+    stack_ctx_resume(clone, &main_ctx);  // complete
+    ok = ok && (clone.status == CTX_COMPLETED);
+
+    // Source must remain suspended and independently resumable.
+    ok = ok && (source.status == CTX_SUSPENDED);
+    stack_ctx_resume(source, &main_ctx);
+    ok = ok && (source.status == CTX_SUSPENDED);
+    stack_ctx_resume(source, &main_ctx);
+    ok = ok && (source.status == CTX_COMPLETED);
+
+    stack_ctx_destroy(clone, &pool);
+    stack_ctx_destroy(source, &pool);
+    stack_pool_shutdown(&pool);
+    return ok;
+}
+
 /**
  * Run all stack engine tests.
  */
@@ -969,8 +1070,13 @@ fn void run_stack_engine_tests() {
     if (test_fpu_preservation()) { io::printfn("  PASS: FPU state preserved across switch"); pass++; }
     else { io::printfn("  FAIL: FPU state preserved across switch"); fail++; }
 
-    if (test_stack_overflow_recovery()) { io::printfn("  PASS: stack overflow recovery"); pass++; }
+    if (stack_asan_enabled() != 0 || getenv("ASAN_OPTIONS") != null) {
+        io::printfn("  SKIP: stack overflow recovery (ASAN runtime)");
+    } else if (test_stack_overflow_recovery()) { io::printfn("  PASS: stack overflow recovery"); pass++; }
     else { io::printfn("  FAIL: stack overflow recovery"); fail++; }
+
+    if (test_stack_ctx_clone_multishot()) { io::printfn("  PASS: clone/resume multi-shot"); pass++; }
+    else { io::printfn("  FAIL: clone/resume multi-shot"); fail++; }
 
     io::printfn("\nStack engine: %d passed, %d failed", pass, fail);
     io::printfn("========================================\n");

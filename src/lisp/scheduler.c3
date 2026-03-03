@@ -38,9 +38,10 @@ fn void scheduler_init() {
     g_scheduler_initialized = true;
 }
 
-fn usz scheduler_add_fiber(Value* coroutine) {
+fn usz scheduler_add_fiber(Value* coroutine, Interp* interp) {
     scheduler_init();
     if (g_scheduler.fiber_count >= MAX_FIBERS) return MAX_FIBERS;  // full
+    coroutine = promote_to_root(coroutine, interp);
     usz id = g_scheduler.fiber_count;
     g_scheduler.fibers[id].coroutine = coroutine;
     g_scheduler.fibers[id].result = null;
@@ -70,7 +71,7 @@ fn Value* prim_spawn(Value*[] args, Env* env, Interp* interp) {
     Value* co = prim_coroutine(co_args[..], env, interp);
     if (co == null || co.tag == ERROR) return co;
 
-    usz id = scheduler_add_fiber(co);
+    usz id = scheduler_add_fiber(co, interp);
     if (id >= MAX_FIBERS) return raise_error(interp, "spawn: scheduler full");
 
     return make_int(interp, (long)id);
@@ -145,7 +146,7 @@ fn void scheduler_run_until(usz target, Interp* interp) {
             // Check if coroutine completed or errored
             if (result != null && result.tag == ERROR) {
                 f.completed = true;
-                f.result = result;
+                f.result = promote_to_root(result, interp);
                 continue;
             }
 
@@ -154,7 +155,7 @@ fn void scheduler_run_until(usz target, Interp* interp) {
                 StackCtx* ctx = f.coroutine.coroutine_val;
                 if (ctx.status == main::StackCtxStatus.CTX_COMPLETED || ctx.status == main::StackCtxStatus.CTX_DEAD) {
                     f.completed = true;
-                    f.result = result;
+                    f.result = promote_to_root(result, interp);
                 }
             }
         }
@@ -186,7 +187,7 @@ fn void scheduler_run_all(Interp* interp) {
 
             if (result != null && result.tag == ERROR) {
                 f.completed = true;
-                f.result = result;
+                f.result = promote_to_root(result, interp);
                 continue;
             }
 
@@ -194,7 +195,7 @@ fn void scheduler_run_all(Interp* interp) {
                 StackCtx* ctx = f.coroutine.coroutine_val;
                 if (ctx.status == main::StackCtxStatus.CTX_COMPLETED || ctx.status == main::StackCtxStatus.CTX_DEAD) {
                     f.completed = true;
-                    f.result = result;
+                    f.result = promote_to_root(result, interp);
                 }
             }
         }

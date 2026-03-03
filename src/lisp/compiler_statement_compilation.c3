@@ -1,0 +1,28 @@
+module lisp;
+
+import std::io;
+import std::collections::list;
+import main;
+// =============================================================================
+// SECTION 7: STATEMENT COMPILATION
+// =============================================================================
+
+fn void Compiler.compile_statement(Compiler* self, Expr* expr) {
+    if (expr == null) return;
+
+    switch (expr.tag) {
+        case E_DEFINE:
+            // (define name value) => name = <compile value>;
+            usz init_r = self.compile_to_temp(expr.define.value);
+            self.emit_indent();
+            self.emit_symbol_name(expr.define.name);
+            self.emit(" = ");
+            self.emit_temp_ref(init_r);
+            self.emit(";\n");
+
+        default:
+            // Other expressions: evaluate and discard result
+            self.compile_to_temp(expr);
+    }
+}
+

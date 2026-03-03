@@ -399,7 +399,7 @@ fn Value* format_dispatch_error(MethodTable* mt, Value*[] args, Interp* interp) 
         if (i > 0) ds.append_string(", ");
         ds.append_string((String)interp.symbols.get_name(value_type_name(args[i], interp)));
     }
-    char[] arg_types = ds.str_view();
+    ZString arg_types = ds.zstr_view();
 
     // Check if arity mismatch is the issue
     bool has_arity_match = false;
@@ -428,10 +428,10 @@ fn Value* format_dispatch_error(MethodTable* mt, Value*[] args, Interp* interp) 
             }
         }
         msg = io::bprintf(&buf, "no matching method '%s': got %d arg(s) (%s), expected %s arg(s)",
-            (ZString)name, (int)args.len, (ZString)arg_types, (ZString)arities.str_view())!!;
+            (ZString)name, (int)args.len, arg_types, arities.zstr_view())!!;
     } else {
         msg = io::bprintf(&buf, "no matching method '%s' for (%s)",
-            (ZString)name, (ZString)arg_types)!!;
+            (ZString)name, arg_types)!!;
     }
     return raise_error(interp, msg);
 }
@@ -480,7 +480,7 @@ fn Value* format_match_error(Value* scrutinee, Expr* expr, Interp* interp) {
                 if (missing_count > 0) {
                     char[] parent_name = interp.symbols.get_name(parent.name);
                     char[] msg = io::bprintf(&buf, "no pattern matched: %s value '%s', missing variants: %s",
-                        (ZString)parent_name, (ZString)type_name, (ZString)missing.str_view())!!;
+                        (ZString)parent_name, (ZString)type_name, missing.zstr_view())!!;
                     return raise_error(interp, msg);
                 }
             }
@@ -501,7 +501,8 @@ fn Value* make_instance(Interp* interp, TypeId type_id, Value** fields, usz fiel
     inst.field_count = field_count;
     inst.type_arg_count = 0;
     for (usz i = 0; i < field_count && i < MAX_TYPE_FIELDS; i++) {
-        inst.fields[i] = fields[i];
+        // Instance wrapper lives in root_scope, so field values must also be rooted.
+        inst.fields[i] = promote_to_root(fields[i], interp);
     }
     // Allocate Value in root_scope so it persists across scope releases
     main::ScopeRegion* saved_scope = interp.current_scope;
@@ -1075,15 +1076,28 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
  @require interp != null : "copy_to_parent: null interp"
  @require interp.current_scope != null : "copy_to_parent: null current_scope"
 *>
+fn bool in_target_scope_chain(void* ptr, Interp* interp) {
+    main::ScopeRegion* s = interp.current_scope;
+    while (s != null) {
+        if (main::is_in_scope(ptr, s)) return true;
+        s = s.parent;
+    }
+    return false;
+}
+
 fn Value* copy_to_parent(Value* v, Interp* interp) {
     if (v == null) return null;
 
     // Scope-aware optimization: if value is NOT in the scope being released,
-    // it's in a surviving scope and can be returned as-is (no copy needed).
+    // reuse only when it is already in the target scope chain.
     // Note: uses is_in_scope (chunk walk) rather than scope_gen stamp because
     // scope_adopt moves chunks between scopes without updating value stamps.
     if (interp.releasing_scope != null && !main::is_in_scope((void*)v, interp.releasing_scope)) {
-        return v;
+        if (in_target_scope_chain((void*)v, interp)) {
+            return v;
+        }
+        // Not in releasing_scope, but also not in a known surviving scope.
+        // Copy defensively to avoid dangling pointers from transient env scopes.
     }
 
     // Disable escape-scope during copy operations. copy_to_parent calls make_cons
@@ -1116,10 +1130,14 @@ fn Value* copy_to_parent(Value* v, Interp* interp) {
                 
                 Value* old_cdr = current_old.cons_val.cdr;
                 if (old_cdr != null && old_cdr.tag == CONS) {
-                    if (interp.releasing_scope != null && !main::is_in_scope((void*)old_cdr, interp.releasing_scope)) {
+                    if (interp.releasing_scope != null &&
+                        !main::is_in_scope((void*)old_cdr, interp.releasing_scope) &&
+                        in_target_scope_chain((void*)old_cdr, interp)) {
+                        // Safe fast-path: tail already lives in a surviving scope chain.
                         current_new.cons_val.cdr = old_cdr;
                         break;
                     }
+                    // Deep-copy tail iteratively to avoid recursive overflow on long lists.
                     Value* next_new = interp.alloc_value();
                     next_new.tag = CONS;
                     current_new.cons_val.cdr = next_new;
@@ -1134,9 +1152,11 @@ fn Value* copy_to_parent(Value* v, Interp* interp) {
             break;
         }
         case CLOSURE: {
-            if (interp.releasing_scope != null && 
-               (v.closure_val.scope_gen == interp.releasing_scope.generation || 
-                main::scope_contains(interp.releasing_scope, (void*)v.closure_val))) {
+            bool closure_in_releasing_scope =
+                interp.releasing_scope != null &&
+                (v.closure_val.scope_gen == interp.releasing_scope.generation ||
+                 main::scope_contains(interp.releasing_scope, (void*)v.closure_val));
+            if (closure_in_releasing_scope || !in_target_scope_chain((void*)v, interp)) {
                 // Deep copy: new Value and new Closure in target scope
                 result = interp.alloc_value();
                 result.tag = CLOSURE;
@@ -2269,19 +2289,18 @@ fn EvalResult run(char[] source, Interp* interp) {
     EvalResult result;
     if (f != null) {
         Value* jit_result = jit_exec(f, interp);
+        if (jit_result != null) {
+            // Promote result before any tag/string access. JIT helpers may return
+            // pointers from scopes that were already released during evaluation.
+            interp.current_scope = saved_scope;
+            main::ScopeRegion* saved_releasing = interp.releasing_scope;
+            interp.releasing_scope = child_scope;
+            jit_result = copy_to_parent(jit_result, interp);
+            interp.releasing_scope = saved_releasing;
+        }
         if (jit_result != null && jit_result.tag == ERROR) {
             result = eval_error_expr(jit_result.str_chars[:jit_result.str_len], expr);
         } else {
-            if (jit_result != null) {
-                // ALWAYS deep-copy result to parent scope before releasing child.
-                // Cannot rely on is_in_scope check because scope_adopt may have moved
-                // chunks, and closure dtor cascades may free related scopes.
-                interp.current_scope = saved_scope;
-                main::ScopeRegion* saved_releasing = interp.releasing_scope;
-                interp.releasing_scope = null;  // Force deep copy (no scope skip)
-                jit_result = copy_to_parent(jit_result, interp);
-                interp.releasing_scope = saved_releasing;
-            }
             result = eval_ok(jit_result);
         }
     } else {
@@ -2756,4 +2775,3 @@ fn void repl(Interp* interp) {
     g_replxx = null;
     g_repl_interp = null;
 }
-

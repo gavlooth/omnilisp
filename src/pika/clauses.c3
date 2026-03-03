@@ -65,7 +65,6 @@ fn bool clause_can_match_epsilon(Clause* c, bool[] child_eps) {
         case TIE:
             return child_eps[0];
     }
-    return false;
 }
 
 // seeded_by: which children seed this clause

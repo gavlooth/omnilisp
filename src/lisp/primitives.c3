@@ -499,6 +499,10 @@ fn Value* prim_coroutine(Value*[] args, Env* env, Interp* interp) {
     // Phase 4b: Promote thunk to root_scope so it survives call_scope release.
     // The coroutine may be resumed after the creating scope is freed.
     thunk = promote_to_root(thunk, interp);
+    if (thunk != null && thunk.tag == CLOSURE) {
+        // Precompile coroutine body before first execution on switched stack.
+        jit_warm_expr_cache(thunk.closure_val.body, interp);
+    }
 
     main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
     if (ctx == null) return raise_error(interp, "coroutine: failed to create context");
@@ -525,22 +529,25 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
     if (ctx == null) return raise_error(interp, "resume: null coroutine");
 
     if (ctx.status == main::StackCtxStatus.CTX_COMPLETED || ctx.status == main::StackCtxStatus.CTX_DEAD) {
+        if (ctx.user_data != null) {
+            mem::free(ctx.user_data);
+            ctx.user_data = null;
+        }
+        coroutine_val.coroutine_val = null;
+        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
         return raise_error(interp, "resume: coroutine already completed");
     }
 
     Value* resume_val = args.len > 1 ? args[1] : make_nil(interp);
     interp.resume_value = resume_val;
 
-    // Save interp state before entering coroutine
-    Env*        saved_jit_env       = interp.jit_env;
-    Env*        saved_match_env     = interp.match_env;
-    usz         saved_eval_depth    = interp.eval_depth;
-    InterpFlags saved_flags         = interp.flags;
-    Expr*       saved_tco_expr      = interp.jit_tco_expr;
-    Env*        saved_tco_env       = interp.jit_tco_env;
-    usz         saved_reset_depth   = interp.reset_depth;
-    usz         saved_handler_count = interp.handler_count;
-    main::ScopeRegion* saved_scope = interp.current_scope;
+    // Save full interpreter state across coroutine switch.
+    SavedInterpState* saved = (SavedInterpState*)mem::malloc(SavedInterpState.sizeof);
+    if (saved == null) {
+        return raise_error(interp, "resume: failed to allocate state save");
+    }
+    defer mem::free(saved);
+    save_interp_state(interp, saved);
 
     main::StackContext parent_ctx;
     if (ctx.status == main::StackCtxStatus.CTX_READY) {
@@ -549,16 +556,8 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
         main::stack_ctx_resume(ctx, &parent_ctx);
     }
 
-    // Restore interp state
-    interp.jit_env        = saved_jit_env;
-    interp.match_env      = saved_match_env;
-    interp.eval_depth     = saved_eval_depth;
-    interp.flags          = saved_flags;
-    interp.jit_tco_expr   = saved_tco_expr;
-    interp.jit_tco_env    = saved_tco_env;
-    interp.reset_depth    = saved_reset_depth;
-    interp.handler_count  = saved_handler_count;
-    interp.current_scope  = saved_scope;
+    // Restore full interpreter state.
+    restore_interp_state(interp, saved);
 
     // Stack overflow — coroutine hit guard page
     if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
@@ -566,6 +565,8 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
             mem::free(ctx.user_data);
             ctx.user_data = null;
         }
+        coroutine_val.coroutine_val = null;
+        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
         return raise_error(interp, "stack overflow in coroutine");
     }
 
@@ -576,6 +577,8 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
             mem::free(ctx.user_data);
             ctx.user_data = null;
         }
+        coroutine_val.coroutine_val = null;
+        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
         return result != null ? result : make_nil(interp);
     }
 
@@ -599,32 +602,14 @@ fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {
     Value* yield_val = args.len > 0 ? args[0] : make_nil(interp);
     interp.yield_value = yield_val;
 
-    // Save interp state (same pattern as jit_shift_impl)
-    Env*        saved_jit_env       = interp.jit_env;
-    Env*        saved_match_env     = interp.match_env;
-    usz         saved_eval_depth    = interp.eval_depth;
-    InterpFlags saved_flags         = interp.flags;
-    Expr*       saved_tco_expr      = interp.jit_tco_expr;
-    Env*        saved_tco_env       = interp.jit_tco_env;
-    usz         saved_reset_depth   = interp.reset_depth;
-    usz         saved_handler_count = interp.handler_count;
-    main::ScopeRegion* saved_scope = interp.current_scope;
+    // Save full interpreter state across suspend/resume.
+    SavedInterpState* saved = (SavedInterpState*)interp.current_scope.alloc(SavedInterpState.sizeof);
+    save_interp_state(interp, saved);
 
     main::stack_ctx_suspend();
 
-    // Resumed — restore interp state
-    interp.jit_env        = saved_jit_env;
-    interp.match_env      = saved_match_env;
-    interp.eval_depth     = saved_eval_depth;
-    interp.flags          = saved_flags;
-    interp.jit_tco_expr   = saved_tco_expr;
-    interp.jit_tco_env    = saved_tco_env;
-    interp.reset_depth    = saved_reset_depth;
-    interp.handler_count  = saved_handler_count;
-    interp.current_scope  = saved_scope;
+    // Resumed — restore full interpreter state.
+    restore_interp_state(interp, saved);
 
     return interp.resume_value != null ? interp.resume_value : make_nil(interp);
 }
-
-
-

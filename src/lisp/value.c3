@@ -2327,7 +2327,8 @@ fn void Interp.init(Interp* self) {
 
     // Stack overflow protection
     self.eval_depth = 0;
-    self.max_eval_depth = 5000;
+    // Keep recursion guard comfortably below OS stack exhaustion in ASAN builds.
+    self.max_eval_depth = 1024;
 
     // Macro table (dynamic)
     self.macro_count = 0;
@@ -2412,6 +2413,18 @@ fn void Interp.grow_handler_stack(Interp* self) {
 }
 
 fn void Interp.destroy(Interp* self) {
+    // Release root scope last among value-owned structures so registered dtors run.
+    // This is the primary deterministic cleanup point for scope-managed values/envs.
+    if (self.root_scope != null) {
+        self.current_scope = self.root_scope;
+        self.escape_scope = null;
+        self.releasing_scope = null;
+        self.tco_recycle_scope = null;
+        main::scope_release(self.root_scope);
+        self.root_scope = null;
+        self.current_scope = null;
+    }
+
     self.symbols.destroy();
     self.types.destroy();
     if (self.macro_table != null) { mem::free(self.macro_table); self.macro_table = null; }
@@ -2428,15 +2441,16 @@ fn void Interp.destroy(Interp* self) {
     if (self.module_hash_index != null) { mem::free(self.module_hash_index); self.module_hash_index = null; }
     if (self.handler_stack != null) { mem::free(self.handler_stack); self.handler_stack = null; }
     main::stack_pool_shutdown(&self.stack_ctx_pool);
+    if (g_stack_ctx_pool == &self.stack_ctx_pool) g_stack_ctx_pool = null;
+    jit_global_shutdown();
 }
 
 fn Continuation* Interp.alloc_lisp_continuation(Interp* self) {
-    Continuation k;
+    Continuation* k = (Continuation*)self.root_scope.alloc(Continuation.sizeof);
     k.ctx = null;
     k.is_coroutine_based = false;
     k.handle_state = null;
-    main::ObjectHandle h = main::allocate_in(self.root_region, Continuation, k);
-    return main::dereference_as(Continuation, h);
+    return k;
 }
 
 fn Value* Interp.alloc_value(Interp* self) @inline {

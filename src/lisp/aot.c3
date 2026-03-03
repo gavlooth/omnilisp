@@ -24,8 +24,7 @@ fn void aot_init() {
 
 fn void aot_shutdown() {
     if (g_aot_interp != null) {
-        g_aot_interp.symbols.destroy();
-        g_aot_interp.types.destroy();
+        g_aot_interp.destroy();
         mem::free(g_aot_interp);
         g_aot_interp = null;
     }

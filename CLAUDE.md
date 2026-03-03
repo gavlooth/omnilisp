@@ -28,6 +28,9 @@ When proposing new features or changes, check whether they align with these para
 
 ## C3 Style Guide (MANDATORY)
 Read `docs/C3_STYLE.md` before writing any C3 code. Key rules:
+- `docs/C3_STYLE.md` is the authoritative C3 standard for this repo and is
+  derived from official C3 docs (starting point:
+  `https://c3-lang.org/language-overview/examples/`).
 - **defer**: acquire → defer release → use. Every `mem::malloc` → `defer mem::free`. Every LMDB txn → `defer mdb_txn_abort`. Every scope save → `defer restore`.
 - **distinct**: Never cast unrelated structs to `FfiHandle*`. Use distinct types or separate ValueTags.
 - **contracts**: Add `@require` to functions with non-obvious preconditions (scope state, non-null, valid tags).

@@ -154,22 +154,25 @@ fn PoolId Pool.allocate(Pool* self, void* source_data, usz size, typeid type_id)
             self.pool_id_position_index.push((PoolIndex)0);
         }
     }
-    PoolSlot slot = { .size = size, .type_id = type_id, .owner_id = pid };
+    if (self.packed_slots.len() <= (usz)self.slot_count) {
+        self.packed_slots.push({});
+        self.position_owner_index.push(pid);
+    } else {
+        self.position_owner_index[(usz)self.slot_count] = pid;
+    }
+    PoolSlot* slot = &self.packed_slots[(usz)self.slot_count];
+    slot.size = size;
+    slot.type_id = type_id;
+    slot.owner_id = pid;
     if (size <= INLINE_THRESHOLD) {
         slot.is_inline = true;
+        slot.heap_ptr = null;
         mem::copy(&slot.inline_data[0], source_data, size);
     } else {
         slot.is_inline = false;
         void* arena_ptr = self.arena_alloc(size);
         mem::copy(arena_ptr, source_data, size);
         slot.heap_ptr = arena_ptr;
-    }
-    if (self.packed_slots.len() <= (usz)self.slot_count) {
-        self.packed_slots.push(slot);
-        self.position_owner_index.push(pid);
-    } else {
-        self.packed_slots[(usz)self.slot_count] = slot;
-        self.position_owner_index[(usz)self.slot_count] = pid;
     }
     self.pool_id_position_index[(usz)(uint)pid] = (PoolIndex)self.slot_count;
     self.slot_count += 1;

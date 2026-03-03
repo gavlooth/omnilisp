@@ -84,6 +84,7 @@ fn int run_build(int argc, char** argv, int build_idx) {
     char[] c3_code = lisp::compile_to_c3_ext(source, interp, print_last, print_all);
 
     if (c3_code.len == 0) {
+        interp.destroy();
         mem::free(interp);
         thread_registry_shutdown();
         return 1;
@@ -96,6 +97,7 @@ fn int run_build(int argc, char** argv, int build_idx) {
         file.write(c3_code)!!;
     } else {
         io::printn("Error: cannot write temp file build/_aot_temp.c3");
+        interp.destroy();
         mem::free(interp);
         thread_registry_shutdown();
         return 1;
@@ -132,6 +134,7 @@ fn int run_build(int argc, char** argv, int build_idx) {
 
     int exit_code = system(&cmd_buf[0]);
 
+    interp.destroy();
     mem::free(interp);
     thread_registry_shutdown();
 
@@ -524,6 +527,7 @@ fn int main(int argc, char** argv) {
             char[] c3_code = lisp::compile_to_c3(source, interp);
 
             if (c3_code.len == 0) {
+                interp.destroy();
                 mem::free(interp);
                 thread_registry_shutdown();
                 return 1;
@@ -540,11 +544,13 @@ fn int main(int argc, char** argv) {
                 defer (void)file.close();
                 file.write(c3_code)!!;
                 io::printfn("Compilation successful: %s", (ZString)output_file);
+                interp.destroy();
                 mem::free(interp);
                 thread_registry_shutdown();
                 return 0;
             } else {
                 io::printfn("Error: cannot write output file %s", (ZString)output_file);
+                interp.destroy();
                 mem::free(interp);
                 thread_registry_shutdown();
                 return 1;
@@ -568,6 +574,7 @@ fn int main(int argc, char** argv) {
 
             lisp::generate_e2e_tests(interp);
 
+            interp.destroy();
             mem::free(interp);
             thread_registry_shutdown();
             return 0;
@@ -601,6 +608,7 @@ fn int main(int argc, char** argv) {
         lisp::repl(interp);
 
         // Clean up
+        interp.destroy();
         mem::free(interp);
         thread_registry_shutdown();
         return 0;
@@ -652,6 +660,7 @@ fn int main(int argc, char** argv) {
                     io::printf("%c", r.error.message[i]);
                 }
                 io::printn("");
+                interp.destroy();
                 mem::free(interp);
                 thread_registry_shutdown();
                 return 1;
@@ -663,6 +672,7 @@ fn int main(int argc, char** argv) {
                 io::printn("");
             }
 
+            interp.destroy();
             mem::free(interp);
             thread_registry_shutdown();
             return 0;
@@ -675,8 +685,13 @@ fn int main(int argc, char** argv) {
     // Run tests mode
     io::printfn("Region Memory System v3 initialized");
 
-    // Run stack engine tests (mmap stacks, context switch, coroutine lifecycle)
-    run_stack_engine_tests();
+    // Run stack engine tests (mmap stacks, context switch, coroutine lifecycle).
+    // Under ASAN, explicit guard-page SIGSEGV tests can destabilize later phases.
+    if (stack_asan_enabled() != 0) {
+        io::printfn("Skipping stack engine tests under ASAN");
+    } else {
+        run_stack_engine_tests();
+    }
 
     // Run scope region tests (bump allocator, RC, freelist recycling)
     run_scope_region_tests();
