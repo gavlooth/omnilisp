@@ -910,18 +910,9 @@ fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
 // set! helper — called from JIT-compiled code.
 // Evaluates to the set value, mirrors E_SET in eval().
 fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
-    // When in child scope/frame, promote value to root so it survives scope release.
-    // Env bindings (closures, globals) live in root scope; storing a child-scope
-    // value would create a dangling pointer.
-    Value* stored = value;
-    if (interp.current_scope != interp.root_scope) {
-        main::ScopeRegion* saved_scope_ctp = interp.current_scope;
-        interp.current_scope = interp.root_scope;
-        interp.releasing_scope = saved_scope_ctp;
-        stored = copy_to_parent_site(value, interp, COPY_SITE_JIT_EVAL_SET);
-        interp.releasing_scope = null;
-        interp.current_scope = saved_scope_ctp;
-    }
+    // Env bindings (closures, globals) live in root scope; promote child-lifetime
+    // values before storing to avoid dangling pointers.
+    Value* stored = promote_to_root_site(value, interp, COPY_SITE_JIT_EVAL_SET);
     // Try local env first, then global
     if (catch err = env_set_with_barrier(env, name, stored, interp)) {
         if (interp.global_env == null) return raise_error(interp, "set!: unbound variable");
@@ -1011,15 +1002,7 @@ fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) 
    @require value != null : "jit_eval_define: null value" *>
 fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
     // Copy to root scope/region for globals (so value survives scope release)
-    Value* stored_val = value;
-    if (interp.current_scope != interp.root_scope) {
-        main::ScopeRegion* saved_scope_ctp = interp.current_scope;
-        interp.current_scope = interp.root_scope;
-        interp.releasing_scope = saved_scope_ctp;
-        stored_val = copy_to_parent_site(value, interp, COPY_SITE_JIT_EVAL_DEFINE);
-        interp.releasing_scope = null;
-        interp.current_scope = saved_scope_ctp;
-    }
+    Value* stored_val = promote_to_root_site(value, interp, COPY_SITE_JIT_EVAL_DEFINE);
 
     // Check for typed closure → method table dispatch
     if (stored_val != null && stored_val.tag == CLOSURE && stored_val.closure_val.has_typed_params) {
@@ -1131,11 +1114,9 @@ fn Env* jit_env_extend(Interp* interp, Env* env, SymbolId name, Value* value) {
 <* @require interp != null : "jit_env_extend_root: null interp" *>
 fn Env* jit_env_extend_root(Interp* interp, Env* env, SymbolId name, Value* value) {
     main::ScopeRegion* saved_scope = interp.current_scope;
+    // Promote initial payload before publishing into persistent root env box.
+    Value* promoted = promote_to_root_site(value, interp, COPY_SITE_JIT_ENV_EXTEND_ROOT);
     interp.current_scope = interp.root_scope;
-    interp.releasing_scope = saved_scope;
-    // Promote the initial value to root_scope
-    Value* promoted = copy_to_parent_site(value, interp, COPY_SITE_JIT_ENV_EXTEND_ROOT);
-    interp.releasing_scope = null;
     Env* box = env.extend(interp, name, promoted);
     box.persistent = true;
     interp.current_scope = saved_scope;

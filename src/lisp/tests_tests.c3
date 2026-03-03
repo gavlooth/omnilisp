@@ -1804,20 +1804,20 @@ fn void run_memory_lifetime_regression_tests(Interp* interp, int* pass, int* fai
         }
     }
 
-    // Invariant: legacy cons-escape copy sites must remain unused.
+    // Invariant: cons-barrier fallback copy sites must remain unused.
     // If these counters rise, an old path was accidentally reintroduced.
     {
         usz base_total = copy_to_parent_total_calls();
-        usz base_car = copy_to_parent_site_calls(COPY_SITE_MAKE_CONS_ESCAPE_CAR);
-        usz base_cdr = copy_to_parent_site_calls(COPY_SITE_MAKE_CONS_ESCAPE_CDR);
+        usz base_car = copy_to_parent_site_calls(COPY_SITE_CONS_BARRIER_CAR);
+        usz base_cdr = copy_to_parent_site_calls(COPY_SITE_CONS_BARRIER_CDR);
 
         EvalResult r = run(
             "(let ^rec (loop (lambda (n acc) (if (= n 2000) acc (loop (+ n 1) (cons n acc))))) (length (loop 0 nil)))",
             interp);
 
         usz total_delta = copy_to_parent_total_calls() - base_total;
-        usz car_delta = copy_to_parent_site_calls(COPY_SITE_MAKE_CONS_ESCAPE_CAR) - base_car;
-        usz cdr_delta = copy_to_parent_site_calls(COPY_SITE_MAKE_CONS_ESCAPE_CDR) - base_cdr;
+        usz car_delta = copy_to_parent_site_calls(COPY_SITE_CONS_BARRIER_CAR) - base_car;
+        usz cdr_delta = copy_to_parent_site_calls(COPY_SITE_CONS_BARRIER_CDR) - base_cdr;
 
         bool ok_eval = !r.error.has_error &&
                        r.value != null &&
@@ -1827,10 +1827,10 @@ fn void run_memory_lifetime_regression_tests(Interp* interp, int* pass, int* fai
         bool ok = ok_eval && ok_budget;
 
         if (ok) {
-            io::printn("[PASS] lifetime: legacy cons-escape sites stay at zero");
+            io::printn("[PASS] lifetime: cons-barrier fallback sites stay at zero");
             (*pass)++;
         } else {
-            io::printfn("[FAIL] lifetime: legacy cons-escape sites stay at zero (total_delta=%d car_delta=%d cdr_delta=%d tag=%d int=%d err=%s)",
+            io::printfn("[FAIL] lifetime: cons-barrier fallback sites stay at zero (total_delta=%d car_delta=%d cdr_delta=%d tag=%d int=%d err=%s)",
                 (long)total_delta,
                 (long)car_delta,
                 (long)cdr_delta,

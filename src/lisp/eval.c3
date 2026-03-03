@@ -82,8 +82,8 @@ const uint COPY_SITE_COPY_ENV_TO_SCOPE = 2;
 const uint COPY_SITE_RUN_JIT_RESULT = 3;
 const uint COPY_SITE_REPL_LINE_RESULT = 4;
 const uint COPY_SITE_PRIM_RESUME = 5;
-const uint COPY_SITE_MAKE_CONS_ESCAPE_CAR = 6;
-const uint COPY_SITE_MAKE_CONS_ESCAPE_CDR = 7;
+const uint COPY_SITE_CONS_BARRIER_CAR = 6;
+const uint COPY_SITE_CONS_BARRIER_CDR = 7;
 const uint COPY_SITE_ENV_PROMOTE_FOR_TARGET = 8;
 const uint COPY_SITE_JIT_SINGLE_SCOPE_RETURN = 9;
 const uint COPY_SITE_JIT_CALL_SCOPE_STEP1 = 10;
@@ -137,9 +137,9 @@ fn void print_memory_promotion_stats() {
         (long)g_copy_to_parent_stats.site_calls[COPY_SITE_RUN_JIT_RESULT],
         (long)g_copy_to_parent_stats.site_calls[COPY_SITE_REPL_LINE_RESULT],
         (long)g_copy_to_parent_stats.site_calls[COPY_SITE_PRIM_RESUME]);
-    io::printfn("copy_to_parent by site: cons_escape_car=%d cons_escape_cdr=%d env_promote=%d",
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_MAKE_CONS_ESCAPE_CAR],
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_MAKE_CONS_ESCAPE_CDR],
+    io::printfn("copy_to_parent by site: cons_barrier_car=%d cons_barrier_cdr=%d env_promote=%d",
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_CONS_BARRIER_CAR],
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_CONS_BARRIER_CDR],
         (long)g_copy_to_parent_stats.site_calls[COPY_SITE_ENV_PROMOTE_FOR_TARGET]);
     io::printfn("copy_to_parent by site: jit_single=%d jit_call_step1=%d jit_call_step2=%d",
         (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_SINGLE_SCOPE_RETURN],
@@ -1625,18 +1625,27 @@ fn Value* promote_to_escape(Value* v, Interp* interp) {
     return result;
 }
 
+// Boundary helper: promote a child-scope value into root while preserving
+// releasing_scope context for copy-to-parent fast reuse checks.
+fn Value* promote_to_root_site(Value* v, Interp* interp, uint site) {
+    if (v == null || interp == null || interp.current_scope == interp.root_scope) return v;
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* saved_releasing = interp.releasing_scope;
+    interp.current_scope = interp.root_scope;
+    interp.releasing_scope = saved_scope;
+    Value* result = copy_value_if_owned_by_scope(v, interp, saved_scope, site);
+    interp.releasing_scope = saved_releasing;
+    interp.current_scope = saved_scope;
+    return result;
+}
+
 /**
  * Promote a value to root_scope so it survives child scope release.
  * No-op when already in root_scope (fast path for stdlib loading, etc.).
  * Used when storing values into root-scope data structures (hashmap, array).
  */
 fn Value* promote_to_root(Value* v, Interp* interp) {
-    if (v == null || interp.current_scope == interp.root_scope) return v;
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    interp.current_scope = interp.root_scope;
-    Value* result = copy_to_parent_site(v, interp, COPY_SITE_PROMOTE_TO_ROOT);
-    interp.current_scope = saved_scope;
-    return result;
+    return promote_to_root_site(v, interp, COPY_SITE_PROMOTE_TO_ROOT);
 }
 
 fn Value* copy_env_value_fast(Value* v, Interp* interp) {
