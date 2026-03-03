@@ -1436,14 +1436,35 @@ fn void Env.define(Env* self, SymbolId name, Value* value) {
 
 // Barrier-aware env write helper for dual-lane rollout.
 // If target env is in current scope's ESCAPE lane, promote TEMP values first.
+fn Value* promote_for_env_target(Env* target, Value* value, Interp* interp) {
+    if (target == null || interp == null || interp.current_scope == null) return value;
+    if (value == null) return null;
+
+    // Dual-lane intra-scope target: TEMP -> ESCAPE lane promotion.
+    if (target.scope_gen == interp.current_scope.escape_generation) {
+        return promote_to_escape(value, interp);
+    }
+
+    // Legacy two-scope target: current call-scope -> escape_scope.
+    if (interp.escape_scope != null &&
+        interp.current_scope != interp.escape_scope &&
+        target.scope_gen == interp.escape_scope.generation) {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* saved_releasing = interp.releasing_scope;
+        interp.current_scope = interp.escape_scope;
+        interp.releasing_scope = saved_scope;
+        Value* promoted = copy_to_parent(value, interp);
+        interp.releasing_scope = saved_releasing;
+        interp.current_scope = saved_scope;
+        return promoted;
+    }
+
+    return value;
+}
+
 fn void env_define_with_barrier(Env* env, SymbolId name, Value* value, Interp* interp) {
     if (env == null) return;
-    Value* stored = value;
-    if (interp != null &&
-        interp.current_scope != null &&
-        env.scope_gen == interp.current_scope.escape_generation) {
-        stored = promote_to_escape(value, interp);
-    }
+    Value* stored = promote_for_env_target(env, value, interp);
     env.define(name, stored);
 }
 
@@ -1455,24 +1476,14 @@ fn void? env_set_with_barrier(Env* env, SymbolId name, Value* value, Interp* int
         if (cur.hash_table != null) {
             usz idx = cur.hash_lookup(name);
             if (idx != ~(usz)0) {
-                Value* stored = value;
-                if (interp != null &&
-                    interp.current_scope != null &&
-                    cur.scope_gen == interp.current_scope.escape_generation) {
-                    stored = promote_to_escape(value, interp);
-                }
+                Value* stored = promote_for_env_target(cur, value, interp);
                 cur.bindings[idx].value = stored;
                 return;
             }
         } else {
             for (usz i = 0; i < cur.binding_count; i++) {
                 if (cur.bindings[i].name == name) {
-                    Value* stored = value;
-                    if (interp != null &&
-                        interp.current_scope != null &&
-                        cur.scope_gen == interp.current_scope.escape_generation) {
-                        stored = promote_to_escape(value, interp);
-                    }
+                    Value* stored = promote_for_env_target(cur, value, interp);
                     cur.bindings[i].value = stored;
                     return;
                 }
