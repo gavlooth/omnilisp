@@ -17,6 +17,9 @@ Added a minimal `io/offload` effect path for worker-thread execution with fiber 
   - Added pending offload slots per fiber.
   - Added worker queue + dedicated worker thread.
   - Added wakeup event type `WAKEUP_OFFLOAD_READY` with payload pointer.
+  - Added internal `SharedBlob` (atomic refcount + immutable bytes) to tether offload payload lifetimes across scheduler/worker threads.
+  - Offload compression now passes `SharedBlob` payloads across thread boundaries instead of raw region-owned pointers.
+  - Offload byte results are transferred into runtime values with owned-byte handoff on the scheduler thread (no extra copy at completion materialization).
   - `prim_offload` behavior:
     - in fiber context: enqueue work, block fiber, resume on completion,
     - outside fiber context: synchronous fallback execution.
@@ -27,6 +30,8 @@ Added a minimal `io/offload` effect path for worker-thread execution with fiber 
   - All Omni value allocation remains on scheduler/main thread.
 - **Wakeup drain correctness fix**:
   - `drain_wakeups()` now handles offload events independently from pending TCP-read state.
+- **Owned string constructor** (`src/lisp/value.c3`):
+  - Added `make_string_owned(interp, owned_chars, len)` so scheduler-side offload completion can adopt heap bytes directly while preserving scope dtor cleanup.
 - **Scope-region thread-safety hardening** (`src/scope_region.c3`):
   - Added global mutex + once-init for shared freelist/generation state.
   - Guarded freelist pop/push and generation increments in:
@@ -46,6 +51,7 @@ Added a minimal `io/offload` effect path for worker-thread execution with fiber 
 - `src/lisp/scheduler.c3`
 - `src/lisp/tests_tests.c3`
 - `src/scope_region.c3`
+- `src/lisp/value.c3`
 
 ### Validation
 - `c3c build` ✅

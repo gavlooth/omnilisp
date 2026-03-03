@@ -800,6 +800,20 @@ fn Value* make_string(Interp* interp, char[] str) {
 }
 
 <* @ensure return != null *>
+fn Value* make_string_owned(Interp* interp, char* owned_chars, usz len) {
+    if (owned_chars == null) return make_string(interp, "");
+
+    Value* v = interp.alloc_value();
+    v.tag = STRING;
+    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
+    v.str_chars = owned_chars;
+    v.str_len = len;
+    // owned_chars must have capacity >= len + 1.
+    v.str_chars[len] = 0;
+    return v;
+}
+
+<* @ensure return != null *>
 fn Value* make_symbol(Interp* interp, SymbolId sym) @inline {
     Value* v = interp.alloc_value();
     v.tag = SYMBOL;

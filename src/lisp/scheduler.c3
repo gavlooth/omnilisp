@@ -56,6 +56,12 @@ struct PendingOffload {
     void* completion; // OffloadCompletion*
 }
 
+struct SharedBlob {
+    types::Atomic{long} refcount;
+    char* bytes;
+    usz len;
+}
+
 enum WakeupEventType : char {
     WAKEUP_POLL_READABLE,
     WAKEUP_POLL_ERROR,
@@ -90,15 +96,15 @@ struct OffloadWork {
     usz fiber_id;
     OffloadOp op;
     long int_arg;
-    char* bytes;
-    usz bytes_len;
+    SharedBlob* blob;
 }
 
 struct OffloadCompletion {
     OffloadResultKind kind;
     long int_result;
-    char* payload;
-    usz payload_len;
+    SharedBlob* blob;
+    char* error_msg;
+    usz error_len;
 }
 
 const usz OFFLOAD_QUEUE_SIZE = 256;
@@ -156,28 +162,72 @@ fn bool scheduler_str_eq(char[] a, char[] b) @inline {
     return true;
 }
 
+fn SharedBlob* shared_blob_new_owned(char* owned_bytes, usz len) {
+    if (owned_bytes == null) return null;
+    SharedBlob* blob = (SharedBlob*)mem::malloc(SharedBlob.sizeof);
+    if (blob == null) {
+        mem::free(owned_bytes);
+        return null;
+    }
+    blob.refcount.store(1);
+    blob.bytes = owned_bytes;
+    blob.len = len;
+    return blob;
+}
+
+fn SharedBlob* shared_blob_new_copy(char[] bytes) {
+    usz cap = bytes.len + 1;
+    if (cap < 32) cap = 32;
+    char* copy = (char*)mem::malloc(cap);
+    if (copy == null) return null;
+    for (usz i = 0; i < bytes.len; i++) copy[i] = bytes[i];
+    copy[bytes.len] = 0;
+    return shared_blob_new_owned(copy, bytes.len);
+}
+
+fn void shared_blob_release(SharedBlob* blob) @inline {
+    if (blob == null) return;
+    long old = blob.refcount.add(-1);
+    if (old <= 1) {
+        if (blob.bytes != null) {
+            mem::free(blob.bytes);
+            blob.bytes = null;
+        }
+        mem::free(blob);
+    }
+}
+
 fn void scheduler_free_offload_completion(void* raw_completion) {
     if (raw_completion == null) return;
     OffloadCompletion* completion = (OffloadCompletion*)raw_completion;
-    if (completion.payload != null) {
-        mem::free(completion.payload);
-        completion.payload = null;
+    if (completion.blob != null) {
+        shared_blob_release(completion.blob);
+        completion.blob = null;
+    }
+    if (completion.error_msg != null) {
+        mem::free(completion.error_msg);
+        completion.error_msg = null;
     }
     mem::free(completion);
 }
 
 fn void scheduler_set_offload_error(OffloadCompletion* completion, char[] message) {
     completion.kind = OFFLOAD_RES_ERROR;
-    completion.payload_len = message.len;
-    completion.payload = (char*)mem::malloc(message.len);
-    if (completion.payload == null) {
-        completion.payload_len = 0;
+    completion.error_len = message.len;
+    completion.error_msg = (char*)mem::malloc(message.len);
+    if (completion.error_msg == null) {
+        completion.error_len = 0;
         return;
     }
-    for (usz i = 0; i < message.len; i++) completion.payload[i] = message[i];
+    for (usz i = 0; i < message.len; i++) completion.error_msg[i] = message[i];
 }
 
-fn bool scheduler_offload_compress(bool gzip_mode, char* input, usz input_len, OffloadCompletion* completion) {
+fn bool scheduler_offload_compress(bool gzip_mode, SharedBlob* input, OffloadCompletion* completion) {
+    if (input == null || input.bytes == null) {
+        scheduler_set_offload_error(completion, "offload: missing input");
+        return false;
+    }
+
     DeflateCompressor* compressor = libdeflate_alloc_compressor(6);
     if (compressor == null) {
         scheduler_set_offload_error(completion, "offload: compressor allocation failed");
@@ -185,33 +235,43 @@ fn bool scheduler_offload_compress(bool gzip_mode, char* input, usz input_len, O
     }
     defer libdeflate_free_compressor(compressor);
 
+    usz input_len = input.len;
     usz bound = gzip_mode
         ? libdeflate_gzip_compress_bound(compressor, input_len)
         : libdeflate_deflate_compress_bound(compressor, input_len);
-    char* out = (char*)mem::malloc(bound);
+    char* out = (char*)mem::malloc(bound + 1);
     if (out == null) {
         scheduler_set_offload_error(completion, "offload: out of memory");
         return false;
     }
 
     usz written = gzip_mode
-        ? libdeflate_gzip_compress(compressor, input, input_len, out, bound)
-        : libdeflate_deflate_compress(compressor, input, input_len, out, bound);
+        ? libdeflate_gzip_compress(compressor, input.bytes, input_len, out, bound)
+        : libdeflate_deflate_compress(compressor, input.bytes, input_len, out, bound);
     if (written == 0) {
         mem::free(out);
         scheduler_set_offload_error(completion, "offload: compression failed");
         return false;
     }
+    out[written] = 0;
+
+    SharedBlob* result = shared_blob_new_owned(out, written);
+    if (result == null) {
+        scheduler_set_offload_error(completion, "offload: result allocation failed");
+        return false;
+    }
 
     completion.kind = OFFLOAD_RES_BYTES;
-    completion.payload = out;
-    completion.payload_len = written;
+    completion.blob = result;
     return true;
 }
 
 fn OffloadCompletion* scheduler_execute_offload(OffloadWork work) {
     OffloadCompletion* completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
-    if (completion == null) return null;
+    if (completion == null) {
+        shared_blob_release(work.blob);
+        return null;
+    }
     *completion = {};
 
     switch (work.op) {
@@ -219,15 +279,12 @@ fn OffloadCompletion* scheduler_execute_offload(OffloadWork work) {
             if (work.int_arg > 0) c_usleep((uint)(work.int_arg * 1000));
             completion.kind = OFFLOAD_RES_NIL;
         case OFFLOAD_GZIP:
-            scheduler_offload_compress(true, work.bytes, work.bytes_len, completion);
+            scheduler_offload_compress(true, work.blob, completion);
         case OFFLOAD_DEFLATE:
-            scheduler_offload_compress(false, work.bytes, work.bytes_len, completion);
+            scheduler_offload_compress(false, work.blob, completion);
     }
 
-    if (work.bytes != null) {
-        mem::free(work.bytes);
-        work.bytes = null;
-    }
+    shared_blob_release(work.blob);
     return completion;
 }
 
@@ -605,14 +662,21 @@ fn Value* scheduler_value_from_offload_completion(OffloadCompletion* completion,
         case OFFLOAD_RES_INT:
             out = make_int(interp, completion.int_result);
         case OFFLOAD_RES_BYTES:
-            if (completion.payload == null) {
+            if (completion.blob == null || completion.blob.bytes == null) {
                 out = make_string(interp, "");
             } else {
-                out = make_string(interp, completion.payload[:completion.payload_len]);
+                // Transfer byte ownership into a Value on the scheduler thread.
+                char* owned = completion.blob.bytes;
+                usz len = completion.blob.len;
+                completion.blob.bytes = null;
+                completion.blob.len = 0;
+                shared_blob_release(completion.blob);
+                completion.blob = null;
+                out = make_string_owned(interp, owned, len);
             }
         case OFFLOAD_RES_ERROR:
-            if (completion.payload != null && completion.payload_len > 0) {
-                out = raise_error(interp, completion.payload[:completion.payload_len]);
+            if (completion.error_msg != null && completion.error_len > 0) {
+                out = raise_error(interp, completion.error_msg[:completion.error_len]);
             } else {
                 out = raise_error(interp, "offload: worker failed");
             }
@@ -894,10 +958,8 @@ fn Value* prim_offload(Value*[] args, Env* env, Interp* interp) {
         }
         Value* src = arg_list.cons_val.car;
         work.op = scheduler_str_eq(op_name, "gzip") ? OFFLOAD_GZIP : OFFLOAD_DEFLATE;
-        work.bytes_len = src.str_len;
-        work.bytes = (char*)mem::malloc(work.bytes_len);
-        if (work.bytes == null) return raise_error(interp, "offload: out of memory");
-        for (usz i = 0; i < work.bytes_len; i++) work.bytes[i] = src.str_chars[i];
+        work.blob = shared_blob_new_copy(src.str_chars[:src.str_len]);
+        if (work.blob == null) return raise_error(interp, "offload: out of memory");
     } else {
         return raise_error(interp, "offload: unsupported op");
     }
@@ -913,13 +975,13 @@ fn Value* prim_offload(Value*[] args, Env* env, Interp* interp) {
     usz fiber_id = g_scheduler.current_fiber_id;
     PendingOffload* pending = &g_scheduler.pending_offloads[fiber_id];
     if (pending.active) {
-        if (work.bytes != null) mem::free(work.bytes);
+        shared_blob_release(work.blob);
         return raise_error(interp, "offload: pending work already exists for this fiber");
     }
 
     work.fiber_id = fiber_id;
     if (!scheduler_enqueue_offload(work)) {
-        if (work.bytes != null) mem::free(work.bytes);
+        shared_blob_release(work.blob);
         return raise_error(interp, "offload: queue is full");
     }
 
