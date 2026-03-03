@@ -1447,6 +1447,42 @@ fn void env_define_with_barrier(Env* env, SymbolId name, Value* value, Interp* i
     env.define(name, stored);
 }
 
+// Barrier-aware env set helper for dual-lane rollout.
+// Walks parent chain and applies TEMP->ESCAPE promotion at the actual write site.
+fn void? env_set_with_barrier(Env* env, SymbolId name, Value* value, Interp* interp) {
+    Env* cur = env;
+    while (cur != null) {
+        if (cur.hash_table != null) {
+            usz idx = cur.hash_lookup(name);
+            if (idx != ~(usz)0) {
+                Value* stored = value;
+                if (interp != null &&
+                    interp.current_scope != null &&
+                    cur.scope_gen == interp.current_scope.escape_generation) {
+                    stored = promote_to_escape(value, interp);
+                }
+                cur.bindings[idx].value = stored;
+                return;
+            }
+        } else {
+            for (usz i = 0; i < cur.binding_count; i++) {
+                if (cur.bindings[i].name == name) {
+                    Value* stored = value;
+                    if (interp != null &&
+                        interp.current_scope != null &&
+                        cur.scope_gen == interp.current_scope.escape_generation) {
+                        stored = promote_to_escape(value, interp);
+                    }
+                    cur.bindings[i].value = stored;
+                    return;
+                }
+            }
+        }
+        cur = cur.parent;
+    }
+    return UNBOUND_VARIABLE~;
+}
+
 fn Value* Env.lookup(Env* self, SymbolId name) {
     // Fast path: use hash table if available
     if (self.hash_table != null) {

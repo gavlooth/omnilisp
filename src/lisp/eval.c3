@@ -590,7 +590,7 @@ fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
     constructor.prim_val.tag = (int)type_id;
 
     // Define constructor in global env
-    interp.global_env.define(dt.name, constructor);
+    env_define_with_barrier(interp.global_env, dt.name, constructor, interp);
 
     // Also make type info available as a value
     Value* type_val = interp.alloc_value();
@@ -773,13 +773,13 @@ fn EvalResult eval_defunion(Expr* expr, Env* env, Interp* interp) {
         if (variant.field_count == 0) {
             // Nullary variant: define as a constant instance (make_instance uses root_scope)
             Value* inst = make_instance(interp, var_id, null, 0);
-            interp.global_env.define(variant.name, inst);
+            env_define_with_barrier(interp.global_env, variant.name, inst, interp);
         } else {
             // Variant with fields: define as constructor primitive (make_primitive uses root_scope)
             char[] vname = interp.symbols.get_name(variant.name);
             Value* ctor = make_primitive(interp, vname, &prim_type_constructor, (int)variant.field_count);
             ctor.prim_val.tag = (int)var_id;
-            interp.global_env.define(variant.name, ctor);
+            env_define_with_barrier(interp.global_env, variant.name, ctor, interp);
         }
     }
 
@@ -872,7 +872,7 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
 
     // Create FFI handle value and bind in global env
     Value* ffi_handle = make_ffi_handle(interp, handle, path_val.str_chars[:path_val.str_len]);
-    interp.global_env.define(fl.name, ffi_handle);
+    env_define_with_barrier(interp.global_env, fl.name, ffi_handle, interp);
     return ffi_handle;
 }
 
@@ -1048,7 +1048,7 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     prim.prim_val.user_data = (void*)bound;
 
     // Bind in global env
-    interp.global_env.define(ff.fn_name, prim);
+    env_define_with_barrier(interp.global_env, ff.fn_name, prim, interp);
     return prim;
 }
 
@@ -1882,7 +1882,7 @@ fn MatchResult match_pattern(Pattern* pat, Value* val, Interp* interp) {
                 // Evaluate guard with sub bindings in scope
                 Env* guard_env = make_env(interp, interp.match_env);
                 for (usz j = 0; j < sub_r.binding_count; j++) {
-                    guard_env.define(sub_r.bindings[j].name, sub_r.bindings[j].value);
+                    env_define_with_barrier(guard_env, sub_r.bindings[j].name, sub_r.bindings[j].value, interp);
                 }
                 Value* pred = jit_eval(pat.guard_pred, guard_env, interp);
                 if (pred == null || pred.tag == ERROR) { sub_r.cleanup(); return match_fail(); }
@@ -2082,10 +2082,10 @@ fn void register_primitives(Interp* interp) {
     Value* true_val = make_symbol(interp, interp.sym_true);
     Value* false_val = make_nil(interp);  // false is nil
     Value* nil_val = make_nil(interp);
-    interp.global_env.define(interp.sym_true, true_val);
-    interp.global_env.define(interp.sym_false, false_val);
+    env_define_with_barrier(interp.global_env, interp.sym_true, true_val, interp);
+    env_define_with_barrier(interp.global_env, interp.sym_false, false_val, interp);
     SymbolId sym_nil = interp.symbols.intern("nil");
-    interp.global_env.define(sym_nil, nil_val);
+    env_define_with_barrier(interp.global_env, sym_nil, nil_val, interp);
 
     // --- Dispatched primitives (have MethodTable for user-defined type extension) ---
     const DISPATCHED_PRIM_COUNT = 31;
@@ -2299,7 +2299,7 @@ fn void register_fast_path(Interp* interp, char[] effect_name, char[] raw_prim_n
 fn void register_prim(Interp* interp, char[] name, PrimitiveFn func, int arity) {
     SymbolId sym = interp.symbols.intern(name);
     Value* prim = make_primitive(interp, name, func, arity);
-    interp.global_env.define(sym, prim);
+    env_define_with_barrier(interp.global_env, sym, prim, interp);
 }
 
 fn void register_dispatched_prim(Interp* interp, char[] name, PrimitiveFn func, int arity) {
@@ -2322,7 +2322,7 @@ fn void register_dispatched_prim(Interp* interp, char[] name, PrimitiveFn func, 
     mt_val.tag = METHOD_TABLE;
     mt_val.method_table_val = mt;
 
-    interp.global_env.define(sym, mt_val);
+    env_define_with_barrier(interp.global_env, sym, mt_val, interp);
 }
 
 /**

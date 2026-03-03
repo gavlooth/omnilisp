@@ -611,7 +611,7 @@ fn Env* copy_tco_env_chain(Env* src, Interp* interp) {
         } else {
             v = copy_to_parent(sv, interp);
         }
-        dst.define(src.bindings[i].name, v);
+        env_define_with_barrier(dst, src.bindings[i].name, v, interp);
     }
     // Rebuild hash table if source had one
     if (src.hash_table != null) {
@@ -889,9 +889,9 @@ fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
         interp.current_scope = saved_scope_ctp;
     }
     // Try local env first, then global
-    if (catch err = env.set(name, stored)) {
+    if (catch err = env_set_with_barrier(env, name, stored, interp)) {
         if (interp.global_env == null) return raise_error(interp, "set!: unbound variable");
-        if (catch err2 = interp.global_env.set(name, stored)) {
+        if (catch err2 = env_set_with_barrier(interp.global_env, name, stored, interp)) {
             return raise_error(interp, "set!: unbound variable");
         }
     }
@@ -1023,7 +1023,7 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
             mt_val.tag = METHOD_TABLE;
             mt_val.method_table_val = mt;
 
-            interp.global_env.define(name, mt_val);
+            env_define_with_barrier(interp.global_env, name, mt_val, interp);
             return mt_val;
         } else if (existing != null && existing.tag == PRIMITIVE) {
             MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
@@ -1043,7 +1043,7 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
             mt_val.tag = METHOD_TABLE;
             mt_val.method_table_val = mt;
 
-            interp.global_env.define(name, mt_val);
+            env_define_with_barrier(interp.global_env, name, mt_val, interp);
             return mt_val;
         } else {
             MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
@@ -1062,7 +1062,7 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
             mt_val.tag = METHOD_TABLE;
             mt_val.method_table_val = mt;
 
-            interp.global_env.define(name, mt_val);
+            env_define_with_barrier(interp.global_env, name, mt_val, interp);
             return mt_val;
         }
     }
@@ -1080,7 +1080,7 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
     }
 
     // Normal (untyped) define
-    interp.global_env.define(name, stored_val);
+    env_define_with_barrier(interp.global_env, name, stored_val, interp);
     return stored_val;
 }
 
@@ -1947,7 +1947,7 @@ fn Value* jit_do_match(Interp* interp, Value* scrutinee, Expr* expr, Env* env) {
         if (match_r.matched) {
             Env* clause_env = make_env(interp, env);
             for (usz j = 0; j < match_r.binding_count; j++) {
-                clause_env.define(match_r.bindings[j].name, match_r.bindings[j].value);
+                env_define_with_barrier(clause_env, match_r.bindings[j].name, match_r.bindings[j].value, interp);
             }
             match_r.cleanup();
             // Evaluate clause body directly — TCO bounce doesn't work when
@@ -2306,14 +2306,14 @@ fn EvalResult jit_eval_import_impl(Expr* expr, Env* env, Interp* interp) {
 
     // Always bind the module as a first-class value (for qualified access: mod.sym)
     Value* mod_val = make_module(interp, mod);
-    env.define(name, mod_val);
+    env_define_with_barrier(env, name, mod_val, interp);
 
     if (expr.import_expr.import_all) {
         // (import mod :all) — copy ALL exports into scope (old behavior, explicit opt-in)
         for (usz i = 0; i < mod.export_count; i++) {
             Value* val = mod.env.lookup(mod.exports[i]);
             if (val != null) {
-                env.define(mod.exports[i], val);
+                env_define_with_barrier(env, mod.exports[i], val, interp);
             }
         }
     } else if (expr.import_expr.import_count > 0) {
@@ -2338,7 +2338,7 @@ fn EvalResult jit_eval_import_impl(Expr* expr, Env* env, Interp* interp) {
             }
             // Bind using rename if provided, otherwise original name
             SymbolId bind_name = (uint)rename_to != 0 ? rename_to : imp_name;
-            env.define(bind_name, val);
+            env_define_with_barrier(env, bind_name, val, interp);
         }
     }
     // else: qualified-only (import mod) — just the module value is bound
@@ -2445,7 +2445,7 @@ fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz
             Value* curr = arg_list;
             for (usz i = 0; i < pc; i++) {
                 if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
-                call_env.define(func.closure_val.params[i], curr.cons_val.car);
+                env_define_with_barrier(call_env, func.closure_val.params[i], curr.cons_val.car, interp);
                 curr = curr.cons_val.cdr;
             }
             Value* result = jit_eval_in_single_scope(func.closure_val.body, call_env, interp);
@@ -2567,7 +2567,7 @@ fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list
             Value* curr = arg_list;
             for (usz i = 0; i < pc; i++) {
                 if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
-                call_env.define(func.closure_val.params[i], curr.cons_val.car);
+                env_define_with_barrier(call_env, func.closure_val.params[i], curr.cons_val.car, interp);
                 curr = curr.cons_val.cdr;
             }
             if (arg_count > pc) {

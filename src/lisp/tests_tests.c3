@@ -1738,6 +1738,71 @@ fn void run_memory_lifetime_regression_tests(Interp* interp, int* pass, int* fai
             (*fail)++;
         }
     }
+
+    // Invariant: env_define_with_barrier promotes temp payload for ESCAPE-lane env.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* s = main::scope_create(saved);
+        interp.current_scope = s;
+
+        Env* e = make_env(interp, null);
+        e.scope_gen = s.escape_generation; // Simulate ESCAPE-lane env frame
+        SymbolId sid = interp.symbols.intern("__barrier_define");
+        Value* tmp = make_int(interp, 11);
+        env_define_with_barrier(e, sid, tmp, interp);
+        Value* got = e.lookup(sid);
+
+        bool ok = got != null &&
+                  got.tag == INT &&
+                  got.int_val == 11 &&
+                  got.scope_gen == s.escape_generation;
+
+        interp.current_scope = saved;
+        main::scope_release(s);
+
+        if (ok) {
+            io::printn("[PASS] lifetime: env_define_with_barrier promotes temp value");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] lifetime: env_define_with_barrier promotes temp value");
+            (*fail)++;
+        }
+    }
+
+    // Invariant: env_set_with_barrier promotes temp payload at write target frame.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* s = main::scope_create(saved);
+        interp.current_scope = s;
+
+        Env* e = make_env(interp, null);
+        e.scope_gen = s.escape_generation; // Simulate ESCAPE-lane env frame
+        SymbolId sid = interp.symbols.intern("__barrier_set");
+        env_define_with_barrier(e, sid, make_int(interp, 1), interp);
+        Value* tmp_new = make_int(interp, 99);
+        bool set_ok = true;
+        if (catch err = env_set_with_barrier(e, sid, tmp_new, interp)) {
+            set_ok = false;
+        }
+        Value* got = e.lookup(sid);
+
+        bool ok = set_ok &&
+                  got != null &&
+                  got.tag == INT &&
+                  got.int_val == 99 &&
+                  got.scope_gen == s.escape_generation;
+
+        interp.current_scope = saved;
+        main::scope_release(s);
+
+        if (ok) {
+            io::printn("[PASS] lifetime: env_set_with_barrier promotes temp value");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] lifetime: env_set_with_barrier promotes temp value");
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
