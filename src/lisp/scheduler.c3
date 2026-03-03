@@ -13,6 +13,7 @@ import main;
 // ============================================================
 
 const usz MAX_FIBERS = 256;
+const usz NO_FIBER = MAX_FIBERS;
 
 enum FiberState : char {
     FIBER_READY,
@@ -24,6 +25,12 @@ enum FiberState : char {
 struct FiberEntry {
     Value* coroutine;    // COROUTINE value
     Value* result;       // Final result (set on completion)
+    Value* pending_result;   // Completion result while waiting on children
+    usz parent_id;
+    usz live_children;
+    usz await_target;
+    bool awaiting_fiber;
+    bool waiting_children;
     FiberState state;
 }
 
@@ -60,7 +67,7 @@ fn void scheduler_init() {
 
     g_scheduler = {};
     g_scheduler.fiber_count = 0;
-    g_scheduler.current_fiber_id = MAX_FIBERS;
+    g_scheduler.current_fiber_id = NO_FIBER;
     g_scheduler.running = false;
 
     usz loop_size = uv_loop_size();
@@ -77,18 +84,34 @@ fn void scheduler_init() {
     g_scheduler_initialized = true;
 }
 
-fn usz scheduler_add_fiber(Value* coroutine, Interp* interp) {
+fn usz scheduler_add_fiber(Value* coroutine, usz parent_id, Interp* interp) {
     scheduler_init();
     if (g_scheduler.fiber_count >= MAX_FIBERS) return MAX_FIBERS;
 
     coroutine = promote_to_root(coroutine, interp);
     usz id = g_scheduler.fiber_count;
-    g_scheduler.fibers[id].coroutine = coroutine;
-    g_scheduler.fibers[id].result = null;
-    g_scheduler.fibers[id].state = FIBER_READY;
+    FiberEntry* f = &g_scheduler.fibers[id];
+    f.coroutine = coroutine;
+    f.result = null;
+    f.pending_result = null;
+    f.parent_id = parent_id;
+    f.live_children = 0;
+    f.await_target = NO_FIBER;
+    f.awaiting_fiber = false;
+    f.waiting_children = false;
+    f.state = FIBER_READY;
     g_scheduler.pending_reads[id] = {};
     g_scheduler.fiber_count++;
     return id;
+}
+
+fn bool scheduler_is_running_fiber_context() @inline {
+    if (!g_scheduler.running) return false;
+    if (g_scheduler.current_fiber_id >= g_scheduler.fiber_count) return false;
+    FiberEntry* f = &g_scheduler.fibers[g_scheduler.current_fiber_id];
+    if (f.state != FIBER_RUNNING) return false;
+    if (f.coroutine == null || f.coroutine.tag != COROUTINE || f.coroutine.coroutine_val == null) return false;
+    return main::g_current_stack_ctx == f.coroutine.coroutine_val;
 }
 
 fn isz scheduler_find_pending_by_handle(void* handle) {
@@ -247,7 +270,43 @@ fn void scheduler_mark_done(usz fiber_id, Value* result, Interp* interp) {
     FiberEntry* f = &g_scheduler.fibers[fiber_id];
     f.state = FIBER_DONE;
     f.result = promote_to_root(result, interp);
+    f.pending_result = null;
+    f.awaiting_fiber = false;
+    f.await_target = NO_FIBER;
+    f.waiting_children = false;
     scheduler_close_pending_tcp_read(fiber_id);
+
+    if (f.parent_id < g_scheduler.fiber_count) {
+        FiberEntry* parent = &g_scheduler.fibers[f.parent_id];
+        if (parent.live_children > 0) parent.live_children--;
+
+        if (parent.waiting_children && parent.live_children == 0) {
+            Value* final_result = parent.pending_result != null ? parent.pending_result : make_nil(interp);
+            parent.pending_result = null;
+            parent.waiting_children = false;
+            scheduler_complete_fiber(f.parent_id, final_result, interp);
+            return;
+        }
+
+        if (parent.awaiting_fiber && parent.await_target == fiber_id && parent.state == FIBER_BLOCKED) {
+            parent.awaiting_fiber = false;
+            parent.await_target = NO_FIBER;
+            parent.state = FIBER_READY;
+        }
+    }
+}
+
+fn void scheduler_complete_fiber(usz fiber_id, Value* result, Interp* interp) {
+    FiberEntry* f = &g_scheduler.fibers[fiber_id];
+    if (f.live_children > 0) {
+        f.pending_result = promote_to_root(result, interp);
+        f.waiting_children = true;
+        f.awaiting_fiber = false;
+        f.await_target = NO_FIBER;
+        f.state = FIBER_BLOCKED;
+        return;
+    }
+    scheduler_mark_done(fiber_id, result, interp);
 }
 
 fn void scheduler_resume_fiber(usz fiber_id, Interp* interp) {
@@ -261,21 +320,21 @@ fn void scheduler_resume_fiber(usz fiber_id, Interp* interp) {
     resume_args[0] = f.coroutine;
     Value* result = prim_resume(resume_args[..], null, interp);
 
-    g_scheduler.current_fiber_id = MAX_FIBERS;
+    g_scheduler.current_fiber_id = NO_FIBER;
 
     if (result != null && result.tag == ERROR) {
-        scheduler_mark_done(fiber_id, result, interp);
+        scheduler_complete_fiber(fiber_id, result, interp);
         return;
     }
 
     if (f.coroutine == null || f.coroutine.coroutine_val == null) {
-        scheduler_mark_done(fiber_id, result, interp);
+        scheduler_complete_fiber(fiber_id, result, interp);
         return;
     }
 
     StackCtx* ctx = f.coroutine.coroutine_val;
     if (ctx.status == main::StackCtxStatus.CTX_COMPLETED || ctx.status == main::StackCtxStatus.CTX_DEAD) {
-        scheduler_mark_done(fiber_id, result, interp);
+        scheduler_complete_fiber(fiber_id, result, interp);
         return;
     }
 
@@ -296,14 +355,10 @@ fn void scheduler_wait_for_io_once() {
 // null means "fall back to blocking path".
 fn Value* scheduler_try_async_tcp_read(int fd, usz max_bytes, long timeout_ms, Interp* interp) {
     scheduler_init();
-    if (!g_scheduler.running) return null;
-    if (g_scheduler.current_fiber_id >= g_scheduler.fiber_count) return null;
+    if (!scheduler_is_running_fiber_context()) return null;
 
     usz fiber_id = g_scheduler.current_fiber_id;
     FiberEntry* f = &g_scheduler.fibers[fiber_id];
-    if (f.state != FIBER_RUNNING) return null;
-    if (f.coroutine == null || f.coroutine.tag != COROUTINE || f.coroutine.coroutine_val == null) return null;
-    if (main::g_current_stack_ctx != f.coroutine.coroutine_val) return null;
 
     PendingTcpRead* op = &g_scheduler.pending_reads[fiber_id];
     if (op.active) return raise_error(interp, "tcp-read: pending async read already exists for this fiber");
@@ -441,8 +496,17 @@ fn Value* prim_spawn(Value*[] args, Env* env, Interp* interp) {
     Value* co = prim_coroutine(co_args[..], env, interp);
     if (co == null || co.tag == ERROR) return co;
 
-    usz id = scheduler_add_fiber(co, interp);
+    usz parent_id = NO_FIBER;
+    if (scheduler_is_running_fiber_context()) {
+        parent_id = g_scheduler.current_fiber_id;
+    }
+
+    usz id = scheduler_add_fiber(co, parent_id, interp);
     if (id >= MAX_FIBERS) return raise_error(interp, "spawn: scheduler full");
+
+    if (parent_id < g_scheduler.fiber_count) {
+        g_scheduler.fibers[parent_id].live_children++;
+    }
 
     return make_int(interp, (long)id);
 }
@@ -462,6 +526,40 @@ fn Value* prim_await(Value*[] args, Env* env, Interp* interp) {
     usz target = (usz)args[0].int_val;
     if (target >= g_scheduler.fiber_count) {
         return raise_error(interp, "await: invalid fiber id");
+    }
+
+    if (scheduler_is_running_fiber_context()) {
+        usz waiter_id = g_scheduler.current_fiber_id;
+        FiberEntry* waiter = &g_scheduler.fibers[waiter_id];
+
+        if (target == waiter_id) return raise_error(interp, "await: fiber cannot await itself");
+        if (g_scheduler.fibers[target].parent_id != waiter_id) {
+            return raise_error(interp, "await: fiber can only await direct children");
+        }
+        if (waiter.waiting_children) {
+            return raise_error(interp, "await: parent is already waiting for child completion");
+        }
+
+        if (g_scheduler.fibers[target].state == FIBER_DONE) {
+            Value* done_result = g_scheduler.fibers[target].result;
+            return done_result != null ? done_result : make_nil(interp);
+        }
+
+        waiter.awaiting_fiber = true;
+        waiter.await_target = target;
+        waiter.state = FIBER_BLOCKED;
+
+        Value*[1] yargs;
+        yargs[0] = make_nil(interp);
+        Value* y = prim_yield(yargs[..], null, interp);
+        if (y != null && y.tag == ERROR) return y;
+
+        if (g_scheduler.fibers[target].state != FIBER_DONE) {
+            return raise_error(interp, "await: resumed before child completed");
+        }
+
+        Value* done_result = g_scheduler.fibers[target].result;
+        return done_result != null ? done_result : make_nil(interp);
     }
 
     if (g_scheduler.fibers[target].state == FIBER_DONE) {
@@ -494,7 +592,7 @@ fn void scheduler_run_until(usz target, Interp* interp) {
     g_scheduler.running = true;
     defer {
         g_scheduler.running = false;
-        g_scheduler.current_fiber_id = MAX_FIBERS;
+        g_scheduler.current_fiber_id = NO_FIBER;
     }
 
     usz max_rounds = 100000;
@@ -539,7 +637,7 @@ fn void scheduler_reset_if_idle() {
     }
 
     g_scheduler.fiber_count = 0;
-    g_scheduler.current_fiber_id = MAX_FIBERS;
+    g_scheduler.current_fiber_id = NO_FIBER;
     for (usz i = 0; i < MAX_FIBERS; i++) {
         g_scheduler.fibers[i] = {};
         g_scheduler.pending_reads[i] = {};
@@ -550,7 +648,7 @@ fn void scheduler_run_all(Interp* interp) {
     g_scheduler.running = true;
     defer {
         g_scheduler.running = false;
-        g_scheduler.current_fiber_id = MAX_FIBERS;
+        g_scheduler.current_fiber_id = NO_FIBER;
     }
 
     usz max_rounds = 100000;

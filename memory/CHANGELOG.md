@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-03-03: Structured Fiber spawn/await Lifetime Model
+
+### Summary
+Implemented structured parent-child lifetimes for fibers: child tasks are scoped to the spawning fiber, in-fiber `await` suspends until child completion, and parent completion is deferred until all live children finish.
+
+### Changes
+- **Scheduler parent/child tracking** (`src/lisp/scheduler.c3`):
+  - Extended `FiberEntry` with `parent_id`, `live_children`, and await/wait bookkeeping.
+  - `spawn` now records parent fiber when called from a scheduler-managed running fiber.
+  - Parent live-child count increments on child spawn and decrements on child completion.
+- **Structured await semantics** (`src/lisp/scheduler.c3`):
+  - `await` inside a running fiber now blocks/yields the current fiber until target completes.
+  - In-fiber await is restricted to direct children (`await` on non-child now errors).
+- **Parent completion gating** (`src/lisp/scheduler.c3`):
+  - Fibers that return while children are still live transition to blocked waiting state.
+  - Final result is held until last child completes, then parent is marked done.
+- **Regression tests** (`src/lisp/tests_tests.c3`):
+  - Added scheduler tests for:
+    - direct child await,
+    - parent waiting for unawaited child,
+    - non-child await rejection.
+
+### Files Modified
+- `src/lisp/scheduler.c3`
+- `src/lisp/tests_tests.c3`
+
+### Validation
+- `c3c build` ✅
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` ✅
+  - Unified tests: `1120 passed, 0 failed`
+  - Compiler tests: `73 passed, 0 failed`
+
 ## 2026-03-03: Fiber tcp-read Timeouts via libuv Timers
 
 ### Summary

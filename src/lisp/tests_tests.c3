@@ -1355,6 +1355,61 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
         }
     }
 
+    // In-fiber await of direct child works
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (define p (spawn (lambda () (let (c (spawn (lambda () 7))) (+ 1 (await c)))))) "
+            "  (await p))",
+            interp);
+        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 8) {
+            io::printn("[PASS] await direct child");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] await direct child (got %d)", is_int(r.value) ? (int)r.value.int_val : -1);
+            (*fail)++;
+        }
+    }
+
+    // Parent completion waits for spawned child lifetime, even without explicit await
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (define sched-done 0) "
+            "  (define p "
+            "    (spawn (lambda () "
+            "      (begin "
+            "        (spawn (lambda () (begin (set! sched-done 1) 99))) "
+            "        42)))) "
+            "  (await p) "
+            "  sched-done)",
+            interp);
+        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 1) {
+            io::printn("[PASS] parent waits for unawaited child");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] parent waits for unawaited child (got %d)", is_int(r.value) ? (int)r.value.int_val : -1);
+            (*fail)++;
+        }
+    }
+
+    // Structured rule: fibers cannot await non-children
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (define b (spawn (lambda () 99))) "
+            "  (define a (spawn (lambda () (await b)))) "
+            "  (await a))",
+            interp);
+        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
+            io::printn("[PASS] await non-child rejected");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] await non-child rejected");
+            (*fail)++;
+        }
+    }
+
     // Multiple fibers with run-fibers
     {
         setup(interp, "(define fib-a (spawn (lambda () 10)))");
