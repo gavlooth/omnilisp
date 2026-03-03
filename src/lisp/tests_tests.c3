@@ -1804,6 +1804,56 @@ fn void run_memory_lifetime_regression_tests(Interp* interp, int* pass, int* fai
         }
     }
 
+    // Invariant: root-boundary promotion keeps defensive-copy semantics for
+    // disjoint scope values (value not owned by releasing scope and not rooted).
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* scope_a = main::scope_create(saved);
+        main::ScopeRegion* scope_b = main::scope_create(saved);
+
+        interp.current_scope = scope_b;
+        Value* foreign = make_cons(interp, make_int(interp, 21), make_nil(interp));
+
+        interp.current_scope = scope_a;
+        usz base_site = copy_to_parent_site_calls(COPY_SITE_JIT_EVAL_SET);
+        Value* promoted = promote_to_root_site(foreign, interp, COPY_SITE_JIT_EVAL_SET);
+        usz site_delta = copy_to_parent_site_calls(COPY_SITE_JIT_EVAL_SET) - base_site;
+
+        bool pre_ok = promoted != null &&
+                      promoted != foreign &&
+                      promoted.tag == CONS &&
+                      promoted.cons_val.car != null &&
+                      promoted.cons_val.car.tag == INT &&
+                      promoted.cons_val.car.int_val == 21 &&
+                      site_delta == 1 &&
+                      !main::is_in_scope((void*)promoted, scope_b);
+
+        // Releasing source scope must not invalidate promoted value.
+        main::scope_release(scope_b);
+
+        bool post_ok = promoted != null &&
+                       promoted.tag == CONS &&
+                       promoted.cons_val.car != null &&
+                       promoted.cons_val.car.tag == INT &&
+                       promoted.cons_val.car.int_val == 21;
+
+        interp.current_scope = saved;
+        main::scope_release(scope_a);
+
+        bool ok = pre_ok && post_ok;
+        if (ok) {
+            io::printn("[PASS] lifetime: root-boundary promotion defends disjoint scope");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: root-boundary promotion defends disjoint scope (site_delta=%d same=%s pre_ok=%s post_ok=%s)",
+                (long)site_delta,
+                (promoted == foreign) ? "yes" : "no",
+                pre_ok ? "yes" : "no",
+                post_ok ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+
     // Invariant: cons-barrier fallback copy sites must remain unused.
     // If these counters rise, an old path was accidentally reintroduced.
     {

@@ -1626,14 +1626,15 @@ fn Value* promote_to_escape(Value* v, Interp* interp) {
 }
 
 // Boundary helper: promote a child-scope value into root while preserving
-// releasing_scope context for copy-to-parent fast reuse checks.
+// releasing_scope context so copy_to_parent keeps its defensive-copy behavior
+// for disjoint transient lifetimes.
 fn Value* promote_to_root_site(Value* v, Interp* interp, uint site) {
     if (v == null || interp == null || interp.current_scope == interp.root_scope) return v;
     main::ScopeRegion* saved_scope = interp.current_scope;
     main::ScopeRegion* saved_releasing = interp.releasing_scope;
     interp.current_scope = interp.root_scope;
     interp.releasing_scope = saved_scope;
-    Value* result = copy_value_if_owned_by_scope(v, interp, saved_scope, site);
+    Value* result = copy_to_parent_site(v, interp, site);
     interp.releasing_scope = saved_releasing;
     interp.current_scope = saved_scope;
     return result;
