@@ -387,6 +387,27 @@ fn void jit_warm_expr_cache(Expr* expr, Interp* interp) {
     }
 }
 
+fn bool env_chain_contains_scope_gen(Env* env, uint scope_gen, Env* stop_at) {
+    Env* cur = env;
+    while (cur != null && cur != stop_at) {
+        if (!cur.persistent && cur.scope_gen == scope_gen) return true;
+        cur = cur.parent;
+    }
+    return false;
+}
+
+fn bool env_chain_has_binding_in_scope(Env* env, main::ScopeRegion* scope, Env* stop_at) {
+    Env* cur = env;
+    while (cur != null && cur != stop_at) {
+        for (usz i = 0; i < cur.binding_count; i++) {
+            Value* v = cur.bindings[i].value;
+            if (v != null && main::is_in_scope((void*)v, scope)) return true;
+        }
+        cur = cur.parent;
+    }
+    return false;
+}
+
 // JIT-aware eval replacement with trampoline TCO.
 // Compiles sub-expressions with cache, executes with env context.
 // When a tail-call helper sets jit_tco_bounce, loops instead of recursing.
@@ -432,16 +453,34 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
             // fresh scope is independent of any env_scope freed during scope_release.
             main::ScopeRegion* cs = interp.current_scope;
             if (cs == interp.tco_recycle_scope && cs.refcount == 1) {
-                // Create fresh call_scope as child of escape_scope (result_scope)
-                // so accumulator values in escape_scope survive the recycle.
-                main::ScopeRegion* parent = interp.escape_scope != null ? interp.escape_scope : cs.parent;
-                main::ScopeRegion* fresh = main::scope_create(parent);
-                interp.current_scope = fresh;
-                interp.tco_recycle_scope = fresh;  // Update: fresh is now the recyclable scope
-                interp.releasing_scope = cs;       // Tell copy_to_parent what's being released
-                env = copy_tco_env_chain(env, interp);
-                interp.releasing_scope = null;
-                main::scope_release(cs);
+                bool env_in_escape_lane =
+                    interp.escape_scope != null &&
+                    env != null &&
+                    env.scope_gen == interp.escape_scope.generation;
+                bool chain_touches_releasing_scope =
+                    env_chain_contains_scope_gen(env, cs.generation, interp.global_env);
+                bool bindings_touch_releasing_scope =
+                    env_chain_has_binding_in_scope(env, cs, interp.global_env);
+
+                if (env_in_escape_lane &&
+                    !chain_touches_releasing_scope &&
+                    !bindings_touch_releasing_scope) {
+                    // Fast path: loop env is fully detached from releasing call_scope.
+                    // Recycle TEMP lane in-place and keep env as-is.
+                    main::scope_reset_temp_lane(cs);
+                    interp.current_scope = cs;
+                    interp.tco_recycle_scope = cs;
+                } else {
+                    // Fallback: allocate fresh call_scope and copy full env chain.
+                    main::ScopeRegion* parent = interp.escape_scope != null ? interp.escape_scope : cs.parent;
+                    main::ScopeRegion* fresh = main::scope_create(parent);
+                    interp.current_scope = fresh;
+                    interp.tco_recycle_scope = fresh;  // Update: fresh is now the recyclable scope
+                    interp.releasing_scope = cs;       // Tell copy_to_parent what's being released
+                    env = copy_tco_env_chain(env, interp);
+                    interp.releasing_scope = null;
+                    main::scope_release(cs);
+                }
             }
 
             continue;
