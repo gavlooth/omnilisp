@@ -1426,7 +1426,7 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
         g_scheduler.async_handle = null;
         scheduler_reset_wakeup_queue();
 
-        bool pushed = wakeup_enqueue(WAKEUP_TIMER_EXPIRED, MAX_FIBERS + 1, 0);
+        bool pushed = wakeup_enqueue(WAKEUP_TIMER_EXPIRED, MAX_FIBERS + 1, 0, null);
         drain_wakeups();
         usz head = g_scheduler.wakeup_head.load();
         usz tail = g_scheduler.wakeup_tail.load();
@@ -1451,9 +1451,9 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
 
         usz pushed = 0;
         for (usz i = 0; i < WAKEUP_RING_SIZE; i++) {
-            if (wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + i + 1, -1)) pushed++;
+            if (wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + i + 1, -1, null)) pushed++;
         }
-        bool overflow_rejected = !wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + 999, -2);
+        bool overflow_rejected = !wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + 999, -2, null);
         drain_wakeups();
         usz head = g_scheduler.wakeup_head.load();
         usz tail = g_scheduler.wakeup_tail.load();
@@ -1483,7 +1483,7 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
         g_scheduler.pending_reads[0] = {};
         g_scheduler.pending_reads[0].active = true;
 
-        bool pushed = wakeup_enqueue(WAKEUP_TIMER_EXPIRED, 0, 0);
+        bool pushed = wakeup_enqueue(WAKEUP_TIMER_EXPIRED, 0, 0, null);
         drain_wakeups();
 
         bool ok = pushed &&
@@ -1517,6 +1517,51 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
             (*pass)++;
         } else {
             io::printn("[FAIL] atomic-cas semantics");
+            (*fail)++;
+        }
+    }
+
+    // Offload sync fallback executes worker operation and returns bytes.
+    {
+        EvalResult r = run("(gunzip (offload 'gzip \"hello-offload\"))", interp);
+        if (!r.error.has_error && is_string(r.value) &&
+            r.value.str_len == 13 &&
+            str_starts_with(r.value.str_chars[:r.value.str_len], "hello-offload")) {
+            io::printn("[PASS] offload sync gzip roundtrip");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] offload sync gzip roundtrip");
+            (*fail)++;
+        }
+    }
+
+    // Offload async path: worker completion resumes blocked fibers.
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (define a (spawn (lambda () (offload 'sleep-ms 5)))) "
+            "  (define b (spawn (lambda () (offload 'sleep-ms 5)))) "
+            "  (await a) "
+            "  (await b) "
+            "  1)",
+            interp);
+        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 1) {
+            io::printn("[PASS] offload async fiber resume");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] offload async fiber resume");
+            (*fail)++;
+        }
+    }
+
+    // Unsupported offload op should raise.
+    {
+        EvalResult r = run("(offload 'nope 1)", interp);
+        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
+            io::printn("[PASS] offload rejects unsupported op");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] offload rejects unsupported op");
             (*fail)++;
         }
     }

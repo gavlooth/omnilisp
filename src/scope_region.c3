@@ -20,6 +20,7 @@
 module main;
 
 import std::io;
+import std::thread;
 
 // =============================================================================
 // Types
@@ -105,6 +106,22 @@ const usz SCOPE_FREELIST_MAX = 64;  // Don't hoard too many recycled scopes
 // Used by Value.scope_gen stamps for O(1) scope membership checks.
 uint g_scope_generation_counter = 0;
 
+thread::Mutex g_scope_global_mu;
+thread::OnceFlag g_scope_global_once;
+
+fn void scope_global_mu_init_once() {
+    g_scope_global_mu.init()!!;
+}
+
+fn void scope_global_lock() @inline {
+    g_scope_global_once.call(&scope_global_mu_init_once);
+    g_scope_global_mu.lock();
+}
+
+fn void scope_global_unlock() @inline {
+    g_scope_global_mu.unlock();
+}
+
 struct ScopeTransferStats {
     usz splice_calls;
     usz splice_escape_chunk_bytes;
@@ -185,22 +202,28 @@ fn char* scope_chunk_data(ScopeChunk* chunk) @inline {
  @ensure return != null
 *>
 fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
-    ScopeRegion* scope;
+    ScopeRegion* scope = null;
+    uint generation = 0;
+    uint escape_generation = 0;
 
-    // Try freelist first
+    // Global freelist and generation stamps are shared across threads.
+    scope_global_lock();
     if (g_scope_freelist != null) {
         scope = g_scope_freelist;
         g_scope_freelist = scope.pool_next;
         g_scope_freelist_count--;
-    } else {
+    }
+    generation = ++g_scope_generation_counter;
+    escape_generation = ++g_scope_generation_counter;
+    scope_global_unlock();
+
+    if (scope == null) {
         scope = (ScopeRegion*)mem::malloc(ScopeRegion.sizeof);
         scope.chunks = null;
         scope.escape_chunks = null;
     }
-
-    // Assign globally unique generation (monotonic counter)
-    scope.generation = ++g_scope_generation_counter;
-    scope.escape_generation = ++g_scope_generation_counter;
+    scope.generation = generation;
+    scope.escape_generation = escape_generation;
 
     // Reuse existing chunk if present, else allocate
     ScopeChunk* chunk = scope.chunks;
@@ -308,11 +331,14 @@ fn void scope_destroy(ScopeRegion* scope) {
     // 5. Recycle ScopeRegion struct (increment generation, add to freelist)
     scope.generation++;
     scope.escape_generation++;
+    scope_global_lock();
     if (g_scope_freelist_count < SCOPE_FREELIST_MAX) {
         scope.pool_next = g_scope_freelist;
         g_scope_freelist = scope;
         g_scope_freelist_count++;
+        scope_global_unlock();
     } else {
+        scope_global_unlock();
         mem::free(scope);
     }
 }
@@ -638,11 +664,14 @@ fn void scope_splice_escapes(ScopeRegion* parent, ScopeRegion* child) {
     child.refcount = 0;
     child.generation++;
     child.escape_generation++;
+    scope_global_lock();
     if (g_scope_freelist_count < SCOPE_FREELIST_MAX) {
         child.pool_next = g_scope_freelist;
         g_scope_freelist = child;
         g_scope_freelist_count++;
+        scope_global_unlock();
     } else {
+        scope_global_unlock();
         mem::free(child);
     }
 }
@@ -656,14 +685,17 @@ fn void scope_splice_escapes(ScopeRegion* parent, ScopeRegion* child) {
  * Call at program shutdown.
  */
 fn void scope_freelist_cleanup() {
+    scope_global_lock();
     ScopeRegion* s = g_scope_freelist;
+    g_scope_freelist = null;
+    g_scope_freelist_count = 0;
+    scope_global_unlock();
+
     while (s != null) {
         ScopeRegion* next = s.pool_next;
         mem::free(s);
         s = next;
     }
-    g_scope_freelist = null;
-    g_scope_freelist_count = 0;
 }
 
 // =============================================================================

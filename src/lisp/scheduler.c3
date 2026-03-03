@@ -3,6 +3,7 @@ module lisp;
 import std::core::mem;
 import std::atomic::types;
 import std::io;
+import std::thread;
 import main;
 
 // ============================================================
@@ -49,24 +50,76 @@ struct PendingTcpRead {
     void* timer_handle;
 }
 
+struct PendingOffload {
+    bool active;
+    bool completed;
+    void* completion; // OffloadCompletion*
+}
+
 enum WakeupEventType : char {
     WAKEUP_POLL_READABLE,
     WAKEUP_POLL_ERROR,
-    WAKEUP_TIMER_EXPIRED
+    WAKEUP_TIMER_EXPIRED,
+    WAKEUP_OFFLOAD_READY
 }
 
 struct WakeupEvent {
     usz fiber_id;
     WakeupEventType type;
     int status;
+    void* payload;
 }
 
 const usz WAKEUP_RING_SIZE = 256;
 const usz WAKEUP_RING_MASK = WAKEUP_RING_SIZE - 1;
 
+enum OffloadOp : char {
+    OFFLOAD_SLEEP_MS,
+    OFFLOAD_GZIP,
+    OFFLOAD_DEFLATE
+}
+
+enum OffloadResultKind : char {
+    OFFLOAD_RES_NIL,
+    OFFLOAD_RES_INT,
+    OFFLOAD_RES_BYTES,
+    OFFLOAD_RES_ERROR
+}
+
+struct OffloadWork {
+    usz fiber_id;
+    OffloadOp op;
+    long int_arg;
+    char* bytes;
+    usz bytes_len;
+}
+
+struct OffloadCompletion {
+    OffloadResultKind kind;
+    long int_result;
+    char* payload;
+    usz payload_len;
+}
+
+const usz OFFLOAD_QUEUE_SIZE = 256;
+const usz OFFLOAD_QUEUE_MASK = OFFLOAD_QUEUE_SIZE - 1;
+
+struct OffloadQueue {
+    OffloadWork[OFFLOAD_QUEUE_SIZE] ring;
+    usz head;
+    usz tail;
+    usz count;
+    thread::Mutex mu;
+    thread::ConditionVariable cv;
+    bool running;
+    bool initialized;
+    thread::Thread worker;
+}
+
 struct Scheduler {
     FiberEntry[MAX_FIBERS] fibers;
     PendingTcpRead[MAX_FIBERS] pending_reads;
+    PendingOffload[MAX_FIBERS] pending_offloads;
     WakeupEvent[WAKEUP_RING_SIZE] wakeup_ring;
     types::Atomic{bool}[WAKEUP_RING_SIZE] wakeup_ready;
     types::Atomic{usz} wakeup_head;    // producers reserve slots
@@ -77,6 +130,7 @@ struct Scheduler {
     bool uv_loop_ready;
     void* uv_loop;
     void* async_handle;                // uv_async_t*
+    OffloadQueue offload_queue;
 }
 
 // Global scheduler (single-threaded)
@@ -96,6 +150,156 @@ fn void scheduler_reset_wakeup_queue() {
     }
 }
 
+fn bool scheduler_str_eq(char[] a, char[] b) @inline {
+    if (a.len != b.len) return false;
+    for (usz i = 0; i < a.len; i++) if (a[i] != b[i]) return false;
+    return true;
+}
+
+fn void scheduler_free_offload_completion(void* raw_completion) {
+    if (raw_completion == null) return;
+    OffloadCompletion* completion = (OffloadCompletion*)raw_completion;
+    if (completion.payload != null) {
+        mem::free(completion.payload);
+        completion.payload = null;
+    }
+    mem::free(completion);
+}
+
+fn void scheduler_set_offload_error(OffloadCompletion* completion, char[] message) {
+    completion.kind = OFFLOAD_RES_ERROR;
+    completion.payload_len = message.len;
+    completion.payload = (char*)mem::malloc(message.len);
+    if (completion.payload == null) {
+        completion.payload_len = 0;
+        return;
+    }
+    for (usz i = 0; i < message.len; i++) completion.payload[i] = message[i];
+}
+
+fn bool scheduler_offload_compress(bool gzip_mode, char* input, usz input_len, OffloadCompletion* completion) {
+    DeflateCompressor* compressor = libdeflate_alloc_compressor(6);
+    if (compressor == null) {
+        scheduler_set_offload_error(completion, "offload: compressor allocation failed");
+        return false;
+    }
+    defer libdeflate_free_compressor(compressor);
+
+    usz bound = gzip_mode
+        ? libdeflate_gzip_compress_bound(compressor, input_len)
+        : libdeflate_deflate_compress_bound(compressor, input_len);
+    char* out = (char*)mem::malloc(bound);
+    if (out == null) {
+        scheduler_set_offload_error(completion, "offload: out of memory");
+        return false;
+    }
+
+    usz written = gzip_mode
+        ? libdeflate_gzip_compress(compressor, input, input_len, out, bound)
+        : libdeflate_deflate_compress(compressor, input, input_len, out, bound);
+    if (written == 0) {
+        mem::free(out);
+        scheduler_set_offload_error(completion, "offload: compression failed");
+        return false;
+    }
+
+    completion.kind = OFFLOAD_RES_BYTES;
+    completion.payload = out;
+    completion.payload_len = written;
+    return true;
+}
+
+fn OffloadCompletion* scheduler_execute_offload(OffloadWork work) {
+    OffloadCompletion* completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
+    if (completion == null) return null;
+    *completion = {};
+
+    switch (work.op) {
+        case OFFLOAD_SLEEP_MS:
+            if (work.int_arg > 0) c_usleep((uint)(work.int_arg * 1000));
+            completion.kind = OFFLOAD_RES_NIL;
+        case OFFLOAD_GZIP:
+            scheduler_offload_compress(true, work.bytes, work.bytes_len, completion);
+        case OFFLOAD_DEFLATE:
+            scheduler_offload_compress(false, work.bytes, work.bytes_len, completion);
+    }
+
+    if (work.bytes != null) {
+        mem::free(work.bytes);
+        work.bytes = null;
+    }
+    return completion;
+}
+
+fn int scheduler_offload_worker_main(void* arg) {
+    (void)arg;
+    while (true) {
+        OffloadWork work = {};
+
+        g_scheduler.offload_queue.mu.lock();
+        while (g_scheduler.offload_queue.count == 0 && g_scheduler.offload_queue.running) {
+            g_scheduler.offload_queue.cv.wait(&g_scheduler.offload_queue.mu);
+        }
+        if (!g_scheduler.offload_queue.running) {
+            g_scheduler.offload_queue.mu.unlock();
+            return 0;
+        }
+
+        usz slot = g_scheduler.offload_queue.tail & OFFLOAD_QUEUE_MASK;
+        work = g_scheduler.offload_queue.ring[slot];
+        g_scheduler.offload_queue.tail++;
+        g_scheduler.offload_queue.count--;
+        g_scheduler.offload_queue.mu.unlock();
+
+        OffloadCompletion* completion = scheduler_execute_offload(work);
+        if (completion == null) {
+            continue;
+        }
+
+        while (!wakeup_enqueue(WAKEUP_OFFLOAD_READY, work.fiber_id, 0, completion)) {
+            c_usleep(1000);
+        }
+    }
+}
+
+fn void scheduler_init_offload_queue() {
+    OffloadQueue* q = &g_scheduler.offload_queue;
+    if (q.initialized) return;
+
+    *q = {};
+    if (catch err = q.mu.init()) return;
+    if (catch err = q.cv.init()) {
+        q.mu.destroy();
+        return;
+    }
+    q.running = true;
+
+    if (catch err = q.worker.create(&scheduler_offload_worker_main, null)) {
+        q.cv.destroy();
+        q.mu.destroy();
+        *q = {};
+        return;
+    }
+
+    q.initialized = true;
+}
+
+fn bool scheduler_enqueue_offload(OffloadWork work) {
+    OffloadQueue* q = &g_scheduler.offload_queue;
+    if (!q.initialized) return false;
+
+    q.mu.lock();
+    defer q.mu.unlock();
+
+    if (q.count >= OFFLOAD_QUEUE_SIZE) return false;
+    usz slot = q.head & OFFLOAD_QUEUE_MASK;
+    q.ring[slot] = work;
+    q.head++;
+    q.count++;
+    q.cv.signal();
+    return true;
+}
+
 fn void scheduler_init() {
     if (g_scheduler_initialized) return;
 
@@ -104,6 +308,7 @@ fn void scheduler_init() {
     g_scheduler.current_fiber_id = NO_FIBER;
     g_scheduler.running = false;
     scheduler_reset_wakeup_queue();
+    scheduler_init_offload_queue();
 
     usz loop_size = uv_loop_size();
     if (loop_size > 0) {
@@ -148,6 +353,7 @@ fn usz scheduler_add_fiber(Value* coroutine, usz parent_id, Interp* interp) {
     f.waiting_children = false;
     f.state = FIBER_READY;
     g_scheduler.pending_reads[id] = {};
+    g_scheduler.pending_offloads[id] = {};
     g_scheduler.fiber_count++;
     return id;
 }
@@ -199,6 +405,18 @@ fn void scheduler_close_pending_tcp_read(usz fiber_id) {
     g_scheduler.pending_reads[fiber_id] = {};
 }
 
+fn void scheduler_close_pending_offload(usz fiber_id) {
+    if (fiber_id >= g_scheduler.fiber_count) return;
+    PendingOffload* off = &g_scheduler.pending_offloads[fiber_id];
+    if (!off.active) return;
+
+    if (off.completion != null) {
+        scheduler_free_offload_completion(off.completion);
+        off.completion = null;
+    }
+    g_scheduler.pending_offloads[fiber_id] = {};
+}
+
 fn void scheduler_uv_close_cb(void* handle) {
     isz idx = scheduler_find_pending_by_handle(handle);
     if (idx < 0) {
@@ -229,7 +447,16 @@ fn void scheduler_complete_pending_tcp_read(usz fiber_id) {
     if (f.state == FIBER_BLOCKED) f.state = FIBER_READY;
 }
 
-fn bool wakeup_enqueue(WakeupEventType type, usz fiber_id, int status) {
+fn void scheduler_complete_pending_offload(usz fiber_id) {
+    if (fiber_id >= g_scheduler.fiber_count) return;
+    PendingOffload* off = &g_scheduler.pending_offloads[fiber_id];
+    if (!off.active) return;
+
+    FiberEntry* f = &g_scheduler.fibers[fiber_id];
+    if (f.state == FIBER_BLOCKED) f.state = FIBER_READY;
+}
+
+fn bool wakeup_enqueue(WakeupEventType type, usz fiber_id, int status, void* payload) {
     while (true) {
         usz tail = g_scheduler.wakeup_tail.load();
         usz head = g_scheduler.wakeup_head.load();
@@ -243,6 +470,7 @@ fn bool wakeup_enqueue(WakeupEventType type, usz fiber_id, int status) {
         ev.fiber_id = fiber_id;
         ev.type = type;
         ev.status = status;
+        ev.payload = payload;
         g_scheduler.wakeup_ring[slot] = ev;
         g_scheduler.wakeup_ready[slot].store(true);
 
@@ -258,7 +486,7 @@ fn void scheduler_uv_timer_cb(void* handle) {
     PendingTcpRead* op = &g_scheduler.pending_reads[(usz)idx];
     if (!op.active || op.completed) return;
 
-    (void)wakeup_enqueue(WAKEUP_TIMER_EXPIRED, (usz)idx, 0);
+    (void)wakeup_enqueue(WAKEUP_TIMER_EXPIRED, (usz)idx, 0, null);
 }
 
 fn void scheduler_uv_poll_cb(void* handle, int status, int events) {
@@ -269,9 +497,9 @@ fn void scheduler_uv_poll_cb(void* handle, int status, int events) {
     if (!op.active || op.completed) return;
 
     if (status < 0) {
-        (void)wakeup_enqueue(WAKEUP_POLL_ERROR, (usz)idx, status);
+        (void)wakeup_enqueue(WAKEUP_POLL_ERROR, (usz)idx, status, null);
     } else if ((events & UV_READABLE) != 0) {
-        (void)wakeup_enqueue(WAKEUP_POLL_READABLE, (usz)idx, 0);
+        (void)wakeup_enqueue(WAKEUP_POLL_READABLE, (usz)idx, 0, null);
     }
 }
 
@@ -289,21 +517,29 @@ fn void drain_wakeups() {
         tail++;
 
         usz fid = ev.fiber_id;
-        if (fid >= g_scheduler.fiber_count) continue;
-
-        PendingTcpRead* op = &g_scheduler.pending_reads[fid];
-        if (!op.active || op.completed) continue;
+        if (fid >= g_scheduler.fiber_count) {
+            if (ev.type == WAKEUP_OFFLOAD_READY && ev.payload != null) {
+                scheduler_free_offload_completion(ev.payload);
+            }
+            continue;
+        }
 
         switch (ev.type) {
             case WAKEUP_TIMER_EXPIRED:
+                PendingTcpRead* op = &g_scheduler.pending_reads[fid];
+                if (!op.active || op.completed) continue;
                 op.timed_out = true;
                 op.completed = true;
                 scheduler_complete_pending_tcp_read(fid);
             case WAKEUP_POLL_ERROR:
+                PendingTcpRead* op = &g_scheduler.pending_reads[fid];
+                if (!op.active || op.completed) continue;
                 op.error_code = ev.status;
                 op.completed = true;
                 scheduler_complete_pending_tcp_read(fid);
             case WAKEUP_POLL_READABLE:
+                PendingTcpRead* op = &g_scheduler.pending_reads[fid];
+                if (!op.active || op.completed) continue;
                 long n = c_recv(op.fd, op.buffer, op.max_bytes, MSG_DONTWAIT);
                 if (n >= 0) {
                     op.nread = n;
@@ -318,6 +554,15 @@ fn void drain_wakeups() {
                     }
                 }
                 if (op.completed) scheduler_complete_pending_tcp_read(fid);
+            case WAKEUP_OFFLOAD_READY:
+                PendingOffload* off = &g_scheduler.pending_offloads[fid];
+                if (!off.active || off.completed) {
+                    scheduler_free_offload_completion(ev.payload);
+                    continue;
+                }
+                off.completion = ev.payload;
+                off.completed = true;
+                scheduler_complete_pending_offload(fid);
         }
     }
     g_scheduler.wakeup_tail.store(tail);
@@ -350,6 +595,45 @@ fn Value* scheduler_consume_pending_tcp_read(usz fiber_id, Interp* interp) {
     return out;
 }
 
+fn Value* scheduler_value_from_offload_completion(OffloadCompletion* completion, Interp* interp) {
+    if (completion == null) return raise_error(interp, "offload: missing completion");
+
+    Value* out;
+    switch (completion.kind) {
+        case OFFLOAD_RES_NIL:
+            out = make_nil(interp);
+        case OFFLOAD_RES_INT:
+            out = make_int(interp, completion.int_result);
+        case OFFLOAD_RES_BYTES:
+            if (completion.payload == null) {
+                out = make_string(interp, "");
+            } else {
+                out = make_string(interp, completion.payload[:completion.payload_len]);
+            }
+        case OFFLOAD_RES_ERROR:
+            if (completion.payload != null && completion.payload_len > 0) {
+                out = raise_error(interp, completion.payload[:completion.payload_len]);
+            } else {
+                out = raise_error(interp, "offload: worker failed");
+            }
+    }
+    return out;
+}
+
+fn Value* scheduler_consume_pending_offload(usz fiber_id, Interp* interp) {
+    PendingOffload* off = &g_scheduler.pending_offloads[fiber_id];
+    if (!off.active || !off.completed || off.completion == null) {
+        return raise_error(interp, "offload: resumed before completion");
+    }
+
+    OffloadCompletion* completion = (OffloadCompletion*)off.completion;
+    Value* out = scheduler_value_from_offload_completion(completion, interp);
+
+    scheduler_free_offload_completion(off.completion);
+    g_scheduler.pending_offloads[fiber_id] = {};
+    return out;
+}
+
 fn bool scheduler_has_blocked_fibers() @inline {
     for (usz i = 0; i < g_scheduler.fiber_count; i++) {
         if (g_scheduler.fibers[i].state == FIBER_BLOCKED) return true;
@@ -373,6 +657,7 @@ fn void scheduler_mark_done(usz fiber_id, Value* result, Interp* interp) {
     f.await_target = NO_FIBER;
     f.waiting_children = false;
     scheduler_close_pending_tcp_read(fiber_id);
+    scheduler_close_pending_offload(fiber_id);
 
     if (f.parent_id < g_scheduler.fiber_count) {
         FiberEntry* parent = &g_scheduler.fibers[f.parent_id];
@@ -575,6 +860,83 @@ fn Value* scheduler_try_async_tcp_read(int fd, usz max_bytes, long timeout_ms, I
 }
 
 // ============================================================
+// (__raw-offload (op arg...)) -> value
+//
+// Worker-thread offload bridge:
+// - In fiber context: enqueue job, block current fiber, resume on completion.
+// - Outside fiber context: execute synchronously as fallback.
+// ============================================================
+
+fn Value* prim_offload(Value*[] args, Env* env, Interp* interp) {
+    (void)env;
+    scheduler_init();
+
+    if (args.len < 1) return raise_error(interp, "offload: expected job list");
+    Value* job = args[0];
+    if (!is_cons(job)) return raise_error(interp, "offload: expected (op args...)");
+
+    Value* op_val = job.cons_val.car;
+    if (!is_symbol(op_val)) return raise_error(interp, "offload: op must be a symbol");
+    char[] op_name = interp.symbols.get_name(op_val.sym_val);
+
+    Value* arg_list = job.cons_val.cdr;
+    OffloadWork work = {};
+
+    if (scheduler_str_eq(op_name, "sleep-ms")) {
+        if (!is_cons(arg_list) || !is_int(arg_list.cons_val.car)) {
+            return raise_error(interp, "offload sleep-ms: expected integer milliseconds");
+        }
+        work.op = OFFLOAD_SLEEP_MS;
+        work.int_arg = arg_list.cons_val.car.int_val;
+    } else if (scheduler_str_eq(op_name, "gzip") || scheduler_str_eq(op_name, "deflate")) {
+        if (!is_cons(arg_list) || !is_string(arg_list.cons_val.car)) {
+            return raise_error(interp, "offload compress: expected string payload");
+        }
+        Value* src = arg_list.cons_val.car;
+        work.op = scheduler_str_eq(op_name, "gzip") ? OFFLOAD_GZIP : OFFLOAD_DEFLATE;
+        work.bytes_len = src.str_len;
+        work.bytes = (char*)mem::malloc(work.bytes_len);
+        if (work.bytes == null) return raise_error(interp, "offload: out of memory");
+        for (usz i = 0; i < work.bytes_len; i++) work.bytes[i] = src.str_chars[i];
+    } else {
+        return raise_error(interp, "offload: unsupported op");
+    }
+
+    if (!scheduler_is_running_fiber_context()) {
+        OffloadCompletion* completion = scheduler_execute_offload(work);
+        if (completion == null) return raise_error(interp, "offload: worker completion alloc failed");
+        Value* out = scheduler_value_from_offload_completion(completion, interp);
+        scheduler_free_offload_completion(completion);
+        return out;
+    }
+
+    usz fiber_id = g_scheduler.current_fiber_id;
+    PendingOffload* pending = &g_scheduler.pending_offloads[fiber_id];
+    if (pending.active) {
+        if (work.bytes != null) mem::free(work.bytes);
+        return raise_error(interp, "offload: pending work already exists for this fiber");
+    }
+
+    work.fiber_id = fiber_id;
+    if (!scheduler_enqueue_offload(work)) {
+        if (work.bytes != null) mem::free(work.bytes);
+        return raise_error(interp, "offload: queue is full");
+    }
+
+    pending.active = true;
+    pending.completed = false;
+    pending.completion = null;
+    g_scheduler.fibers[fiber_id].state = FIBER_BLOCKED;
+
+    Value*[1] yargs;
+    yargs[0] = make_nil(interp);
+    Value* y = prim_yield(yargs[..], null, interp);
+    if (y != null && y.tag == ERROR) return y;
+
+    return scheduler_consume_pending_offload(fiber_id, interp);
+}
+
+// ============================================================
 // (spawn thunk) → fiber-id (integer)
 //
 // Creates a coroutine from thunk, adds to scheduler.
@@ -741,8 +1103,12 @@ fn void scheduler_reset_if_idle() {
     g_scheduler.current_fiber_id = NO_FIBER;
     scheduler_reset_wakeup_queue();
     for (usz i = 0; i < MAX_FIBERS; i++) {
+        if (g_scheduler.pending_offloads[i].completion != null) {
+            scheduler_free_offload_completion(g_scheduler.pending_offloads[i].completion);
+        }
         g_scheduler.fibers[i] = {};
         g_scheduler.pending_reads[i] = {};
+        g_scheduler.pending_offloads[i] = {};
     }
 }
 

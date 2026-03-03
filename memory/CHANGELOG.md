@@ -1,5 +1,58 @@
 # Changelog
 
+## 2026-03-03: `io/offload` Effect + Scope Freelist Thread-Safety
+
+### Summary
+Added a minimal `io/offload` effect path for worker-thread execution with fiber suspension/resume semantics, and hardened `ScopeRegion` global freelist/generation access for concurrent threads.
+
+### Changes
+- **Effect surface (minimal exposure)**:
+  - Added `(define [effect] (io/offload (^Any job)))` and stdlib wrapper:
+    - `(define offload (lambda (op .. args) (signal io/offload (cons op args))))`
+  - No channel/thread primitives added to Lisp surface.
+- **Runtime fast-path wiring** (`src/lisp/eval.c3`):
+  - Registered raw primitive `__raw-offload`.
+  - Registered fast-path dispatch `io/offload -> __raw-offload`.
+- **Scheduler worker offload bridge** (`src/lisp/scheduler.c3`):
+  - Added pending offload slots per fiber.
+  - Added worker queue + dedicated worker thread.
+  - Added wakeup event type `WAKEUP_OFFLOAD_READY` with payload pointer.
+  - `prim_offload` behavior:
+    - in fiber context: enqueue work, block fiber, resume on completion,
+    - outside fiber context: synchronous fallback execution.
+  - Implemented initial worker ops:
+    - `sleep-ms` -> returns `nil`
+    - `gzip` -> returns compressed bytes string
+    - `deflate` -> returns compressed bytes string
+  - All Omni value allocation remains on scheduler/main thread.
+- **Wakeup drain correctness fix**:
+  - `drain_wakeups()` now handles offload events independently from pending TCP-read state.
+- **Scope-region thread-safety hardening** (`src/scope_region.c3`):
+  - Added global mutex + once-init for shared freelist/generation state.
+  - Guarded freelist pop/push and generation increments in:
+    - `scope_create`
+    - `scope_destroy`
+    - `scope_splice_escapes`
+    - `scope_freelist_cleanup`
+- **Regression tests** (`src/lisp/tests_tests.c3`):
+  - Added scheduler tests:
+    - offload sync gzip roundtrip
+    - offload async fiber resume
+    - unsupported op rejection
+
+### Files Modified
+- `stdlib/stdlib.lisp`
+- `src/lisp/eval.c3`
+- `src/lisp/scheduler.c3`
+- `src/lisp/tests_tests.c3`
+- `src/scope_region.c3`
+
+### Validation
+- `c3c build` ✅
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` ✅
+  - Unified tests: `1127 passed, 0 failed`
+  - Compiler tests: `73 passed, 0 failed`
+
 ## 2026-03-03: Async-Safe Scheduler Wakeup Queue Boundary
 
 ### Summary
