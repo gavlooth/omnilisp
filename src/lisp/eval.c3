@@ -2472,7 +2472,7 @@ fn void register_primitives(Interp* interp) {
     }
 
     // --- Regular primitives ---
-    const REGULAR_PRIM_COUNT = 143;
+    const REGULAR_PRIM_COUNT = 144;
     PrimReg[REGULAR_PRIM_COUNT] regular_prims = {
         // List operations
         { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
@@ -2578,6 +2578,7 @@ fn void register_primitives(Interp* interp) {
         { "__raw-thread-join", &prim_thread_join, 1 },
         { "__raw-thread-join-timeout", &prim_thread_join_timeout, 1 },
         { "__raw-thread-cancel", &prim_thread_cancel, 1 },
+        { "fiber-cancel", &prim_fiber_cancel, 1 },
         // TLS
         { "__raw-tls-connect", &prim_tls_connect, 2 },
         { "__raw-tls-read", &prim_tls_read, -1 },

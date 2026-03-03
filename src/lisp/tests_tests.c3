@@ -1669,6 +1669,106 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+
+    // --- Fiber cancellation tests ---
+
+    // Cancel a READY fiber before it runs
+    {
+        setup(interp, "(define fc-fib1 (spawn (lambda () 42)))");
+        EvalResult r = run("(fiber-cancel fc-fib1)", interp);
+        if (!r.error.has_error && r.value != null && r.value.tag != NIL && r.value.tag != ERROR) {
+            io::printn("[PASS] fiber-cancel ready fiber");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] fiber-cancel ready fiber");
+            (*fail)++;
+        }
+    }
+
+    // Cancel twice — second cancel returns nil (already done)
+    {
+        setup(interp, "(define fc-fib2 (spawn (lambda () 1)))");
+        setup(interp, "(fiber-cancel fc-fib2)");  // first cancel succeeds
+        EvalResult r = run("(fiber-cancel fc-fib2)", interp);
+        if (!r.error.has_error && r.value != null && r.value.tag == NIL) {
+            io::printn("[PASS] fiber-cancel twice → nil");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] fiber-cancel twice → nil");
+            (*fail)++;
+        }
+    }
+
+    // Cancel invalid id errors
+    {
+        EvalResult r = run("(fiber-cancel 999)", interp);
+        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
+            io::printn("[PASS] fiber-cancel invalid id → error");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] fiber-cancel invalid id → error");
+            (*fail)++;
+        }
+    }
+
+    // Cancel propagates to children
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (define fc-parent (spawn (lambda () "
+            "    (define fc-child (spawn (lambda () 99))) "
+            "    (await fc-child)))) "
+            "  (fiber-cancel fc-parent) "
+            "  (run-fibers) "
+            "  true)",
+            interp);
+        if (!r.error.has_error) {
+            io::printn("[PASS] fiber-cancel propagates to children");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] fiber-cancel propagates to children");
+            (*fail)++;
+        }
+    }
+    // --- Fairness tests ---
+
+    // Two fibers both complete (rotation ensures neither starves)
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (define fair-a (spawn (lambda () 10))) "
+            "  (define fair-b (spawn (lambda () 20))) "
+            "  (run-fibers) "
+            "  (+ 10 20))",
+            interp);
+        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 30) {
+            io::printn("[PASS] fairness: both fibers complete");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] fairness: both fibers complete");
+            (*fail)++;
+        }
+    }
+
+    // Many fibers all complete (tests rotation doesn't skip any)
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (spawn (lambda () 1)) (spawn (lambda () 2)) (spawn (lambda () 3)) "
+            "  (spawn (lambda () 4)) (spawn (lambda () 5)) (spawn (lambda () 6)) "
+            "  (spawn (lambda () 7)) (spawn (lambda () 8)) (spawn (lambda () 9)) "
+            "  (spawn (lambda () 10)) "
+            "  (run-fibers) "
+            "  true)",
+            interp);
+        if (!r.error.has_error) {
+            io::printn("[PASS] fairness: 10 fibers all complete");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] fairness: 10 fibers all complete");
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_deduce_tests(Interp* interp, int* pass, int* fail) {

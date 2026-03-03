@@ -157,6 +157,10 @@ struct Scheduler {
     ThreadTaskEntry[MAX_THREAD_TASKS] thread_tasks;
     thread::Mutex thread_task_mu;
     bool thread_task_mu_ready;
+    // Fairness: rotate resume start index so no fiber is permanently first
+    usz resume_offset;
+    // Observability: wakeup drops (ring full)
+    usz wakeup_drops;
 }
 
 // Global scheduler (single-threaded)
@@ -733,7 +737,10 @@ fn bool wakeup_enqueue(WakeupEventType type, usz fiber_id, int status, void* pay
     while (true) {
         usz tail = g_scheduler.wakeup_tail.load();
         usz head = g_scheduler.wakeup_head.load();
-        if (head - tail >= WAKEUP_RING_SIZE) return false;
+        if (head - tail >= WAKEUP_RING_SIZE) {
+            g_scheduler.wakeup_drops++;
+            return false;
+        }
 
         usz prev = mem::compare_exchange(&g_scheduler.wakeup_head.data, head, head + 1);
         if (prev != head) continue;
@@ -1313,6 +1320,60 @@ fn Value* prim_thread_cancel(Value*[] args, Env* env, Interp* interp) {
 }
 
 // ============================================================
+// (fiber-cancel fiber-id) → true/nil
+//
+// Cancels a BLOCKED or READY fiber. Cleans up pending I/O,
+// marks fiber DONE with error result, notifies parent.
+// Cannot cancel RUNNING or already-DONE fibers.
+// ============================================================
+
+fn bool scheduler_cancel_fiber(usz fiber_id, Interp* interp) {
+    if (fiber_id >= g_scheduler.fiber_count) return false;
+    FiberEntry* f = &g_scheduler.fibers[fiber_id];
+
+    // Can only cancel READY or BLOCKED fibers
+    if (f.state != FIBER_READY && f.state != FIBER_BLOCKED) return false;
+
+    // Cancel all children first (recursive)
+    for (usz i = 0; i < g_scheduler.fiber_count; i++) {
+        if (g_scheduler.fibers[i].parent_id == fiber_id &&
+            g_scheduler.fibers[i].state != FIBER_DONE) {
+            scheduler_cancel_fiber(i, interp);
+        }
+    }
+
+    // Complete with cancellation error
+    Value* cancel_err = raise_error(interp, "fiber cancelled");
+    scheduler_mark_done(fiber_id, cancel_err, interp);
+    return true;
+}
+
+fn Value* prim_fiber_cancel(Value*[] args, Env* env, Interp* interp) {
+    (void)env;
+    scheduler_init();
+    if (args.len < 1 || !is_int(args[0])) {
+        return raise_error(interp, "fiber-cancel: expected fiber-id integer");
+    }
+
+    long raw_id = args[0].int_val;
+    if (raw_id < 0) return raise_error(interp, "fiber-cancel: invalid fiber id");
+    usz fiber_id = (usz)raw_id;
+    if (fiber_id >= g_scheduler.fiber_count) {
+        return raise_error(interp, "fiber-cancel: invalid fiber id");
+    }
+
+    // Cannot cancel self
+    if (scheduler_is_running_fiber_context() && g_scheduler.current_fiber_id == fiber_id) {
+        return raise_error(interp, "fiber-cancel: fiber cannot cancel itself");
+    }
+
+    if (!scheduler_cancel_fiber(fiber_id, interp)) {
+        return make_nil(interp);  // already done or running
+    }
+    return interp.global_env.lookup(interp.symbols.intern("true"));
+}
+
+// ============================================================
 // (spawn thunk) → fiber-id (integer)
 //
 // Creates a coroutine from thunk, adds to scheduler.
@@ -1437,13 +1498,17 @@ fn void scheduler_run_until(usz target, Interp* interp) {
     while (g_scheduler.fibers[target].state != FIBER_DONE && round < max_rounds) {
         drain_wakeups();
         bool ran_ready = false;
+        usz fc = g_scheduler.fiber_count;
+        usz off = g_scheduler.resume_offset % (fc > 0 ? fc : 1);
 
-        for (usz i = 0; i < g_scheduler.fiber_count; i++) {
+        for (usz j = 0; j < fc; j++) {
+            usz i = (off + j) % fc;
             if (g_scheduler.fibers[i].state != FIBER_READY) continue;
             ran_ready = true;
             scheduler_resume_fiber(i, interp);
             if (g_scheduler.fibers[target].state == FIBER_DONE) break;
         }
+        g_scheduler.resume_offset = off + 1;
 
         if (g_scheduler.fibers[target].state == FIBER_DONE) break;
 
@@ -1501,12 +1566,16 @@ fn void scheduler_run_all(Interp* interp) {
     while (round < max_rounds) {
         drain_wakeups();
         bool ran_ready = false;
+        usz fc = g_scheduler.fiber_count;
+        usz off = g_scheduler.resume_offset % (fc > 0 ? fc : 1);
 
-        for (usz i = 0; i < g_scheduler.fiber_count; i++) {
+        for (usz j = 0; j < fc; j++) {
+            usz i = (off + j) % fc;
             if (g_scheduler.fibers[i].state != FIBER_READY) continue;
             ran_ready = true;
             scheduler_resume_fiber(i, interp);
         }
+        g_scheduler.resume_offset = off + 1;
 
         if (scheduler_all_done()) break;
 

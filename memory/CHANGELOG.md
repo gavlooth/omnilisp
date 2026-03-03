@@ -1,5 +1,47 @@
 # Changelog
 
+## 2026-03-03: Fiber Cancellation + Scheduler Fairness + Destructuring
+
+### Summary
+Added fiber-level cancellation with recursive child propagation, scheduler fairness via rotating resume offset, wakeup drop tracking, unified deduce API, and array/dict destructuring in let/lambda/define.
+
+### Changes
+- **Fiber cancellation** (`src/lisp/scheduler.c3`):
+  - `scheduler_cancel_fiber` cancels READY/BLOCKED fibers, recursively cancels children, cleans up pending I/O
+  - `prim_fiber_cancel` registered as `fiber-cancel` primitive
+  - Returns true if cancelled, nil if already done/running, error if invalid
+- **Scheduler fairness** (`src/lisp/scheduler.c3`):
+  - Added `resume_offset` to Scheduler — rotating start index for fiber resume scan
+  - Both `scheduler_run_until` and `scheduler_run_all` scan `(offset + j) % count`
+  - Prevents fiber 0 from always running first
+- **Wakeup drop tracking** (`src/lisp/scheduler.c3`):
+  - `wakeup_drops` counter incremented when ring is full
+- **Unified deduce API** (`src/lisp/deduce.c3`):
+  - Single `(deduce 'command args...)` replaces deduce-open/scan/query/count/match + fact!/retract!
+- **Destructuring** (`src/lisp/parser_parser.c3`, `src/lisp/eval.c3`, `src/lisp/value.c3`):
+  - Array destructuring in let: `(let ([x y] [10 20]) ...)`
+  - Dict destructuring (PAT_DICT) in let/match: `(let ({name age} dict) ...)`
+  - Array/dict destructuring in lambda/define params: `(define (f {x y} [a b] z) ...)`
+  - PAT_SEQ now matches ARRAY values (not just CONS lists)
+- **Multi-line stdlib loader** (`src/lisp/eval.c3`):
+  - Paren-depth s-expression reader replaces line-by-line processing
+- **Stdlib additions** (`stdlib/stdlib.lisp`):
+  - `default` function, `with-defaults` macro
+- **Docs updated**: LANGUAGE_SPEC, SYNTAX_SPEC, FEATURES, CORE_LIBS_INSPECTION
+
+### Files Modified
+- `src/lisp/scheduler.c3`, `src/lisp/deduce.c3`, `src/lisp/eval.c3`
+- `src/lisp/parser_parser.c3`, `src/lisp/value.c3`
+- `src/lisp/jit_jit_compiler.c3`, `src/lisp/jit_jit_helper_functions.c3`
+- `src/lisp/tests_tests.c3`, `stdlib/stdlib.lisp`
+- `docs/LANGUAGE_SPEC.md`, `docs/SYNTAX_SPEC.md`, `docs/FEATURES.md`, `docs/CORE_LIBS_INSPECTION.md`
+- `memory/CHANGELOG.md`
+
+### Test Count
+- Unified: 1139 passed, 0 failed
+- Compiler: 73 passed, 0 failed
+- Stack: 10, Scope: 50
+
 ## 2026-03-03: Thread Task Timeouts/Cancellation + Variadic Lambda Parse Fix
 
 ### Summary
