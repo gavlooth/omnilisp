@@ -70,9 +70,29 @@ struct CopyToParentStats {
     usz cons_calls;
     usz closure_calls;
     usz other_calls;
+
+    usz[20] site_calls;
 }
 
 CopyToParentStats g_copy_to_parent_stats;
+
+const uint COPY_SITE_GENERIC = 0;
+const uint COPY_SITE_PROMOTE_TO_ROOT = 1;
+const uint COPY_SITE_COPY_ENV_TO_SCOPE = 2;
+const uint COPY_SITE_RUN_JIT_RESULT = 3;
+const uint COPY_SITE_REPL_LINE_RESULT = 4;
+const uint COPY_SITE_PRIM_RESUME = 5;
+const uint COPY_SITE_MAKE_CONS_ESCAPE_CAR = 6;
+const uint COPY_SITE_MAKE_CONS_ESCAPE_CDR = 7;
+const uint COPY_SITE_ENV_PROMOTE_FOR_TARGET = 8;
+const uint COPY_SITE_JIT_SINGLE_SCOPE_RETURN = 9;
+const uint COPY_SITE_JIT_CALL_SCOPE_STEP1 = 10;
+const uint COPY_SITE_JIT_CALL_SCOPE_STEP2 = 11;
+const uint COPY_SITE_JIT_TCO_ESCAPE_REFRESH = 12;
+const uint COPY_SITE_JIT_TCO_FRAME_COPY = 13;
+const uint COPY_SITE_JIT_EVAL_SET = 14;
+const uint COPY_SITE_JIT_EVAL_DEFINE = 15;
+const uint COPY_SITE_JIT_ENV_EXTEND_ROOT = 16;
 
 fn void copy_to_parent_note_tag(ValueTag tag) @inline {
     switch (tag) {
@@ -109,6 +129,27 @@ fn void print_memory_promotion_stats() {
         (long)g_copy_to_parent_stats.cons_calls,
         (long)g_copy_to_parent_stats.closure_calls,
         (long)g_copy_to_parent_stats.other_calls);
+    io::printfn("copy_to_parent by site: promote_to_root=%d copy_env=%d run_jit=%d repl=%d prim_resume=%d",
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_PROMOTE_TO_ROOT],
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_COPY_ENV_TO_SCOPE],
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_RUN_JIT_RESULT],
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_REPL_LINE_RESULT],
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_PRIM_RESUME]);
+    io::printfn("copy_to_parent by site: cons_escape_car=%d cons_escape_cdr=%d env_promote=%d",
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_MAKE_CONS_ESCAPE_CAR],
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_MAKE_CONS_ESCAPE_CDR],
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_ENV_PROMOTE_FOR_TARGET]);
+    io::printfn("copy_to_parent by site: jit_single=%d jit_call_step1=%d jit_call_step2=%d",
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_SINGLE_SCOPE_RETURN],
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_CALL_SCOPE_STEP1],
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_CALL_SCOPE_STEP2]);
+    io::printfn("copy_to_parent by site: jit_tco_refresh=%d jit_tco_frame=%d jit_set=%d jit_define=%d",
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_TCO_ESCAPE_REFRESH],
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_TCO_FRAME_COPY],
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_EVAL_SET],
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_EVAL_DEFINE]);
+    io::printfn("copy_to_parent by site: jit_env_extend_root=%d",
+        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_ENV_EXTEND_ROOT]);
 }
 
 // =============================================================================
@@ -1297,6 +1338,11 @@ fn Value* copy_to_parent(Value* v, Interp* interp) {
     return result;
 }
 
+fn Value* copy_to_parent_site(Value* v, Interp* interp, uint site) {
+    if (site < 20) g_copy_to_parent_stats.site_calls[(usz)site]++;
+    return copy_to_parent(v, interp);
+}
+
 /**
  * Promote a value from current scope TEMP lane to current scope ESCAPE lane.
  * This is an intra-scope promotion primitive for dual-lane rollout.
@@ -1440,7 +1486,7 @@ fn Value* promote_to_root(Value* v, Interp* interp) {
     if (v == null || interp.current_scope == interp.root_scope) return v;
     main::ScopeRegion* saved_scope = interp.current_scope;
     interp.current_scope = interp.root_scope;
-    Value* result = copy_to_parent(v, interp);
+    Value* result = copy_to_parent_site(v, interp, COPY_SITE_PROMOTE_TO_ROOT);
     interp.current_scope = saved_scope;
     return result;
 }
@@ -1539,7 +1585,7 @@ fn Env* copy_env_to_scope(Env* env, Interp* interp, usz depth = 0) {
             iter_result.iterator_val = inner;
             val = iter_result;
         } else {
-            val = copy_to_parent(val, interp);
+            val = copy_to_parent_site(val, interp, COPY_SITE_COPY_ENV_TO_SCOPE);
         }
         new_env.bindings[i].value = val;
     }
@@ -2487,7 +2533,7 @@ fn EvalResult run(char[] source, Interp* interp) {
             interp.current_scope = saved_scope;
             main::ScopeRegion* saved_releasing = interp.releasing_scope;
             interp.releasing_scope = child_scope;
-            jit_result = copy_to_parent(jit_result, interp);
+            jit_result = copy_to_parent_site(jit_result, interp, COPY_SITE_RUN_JIT_RESULT);
             interp.releasing_scope = saved_releasing;
         }
         if (jit_result != null && jit_result.tag == ERROR) {
@@ -2924,7 +2970,7 @@ fn void repl(Interp* interp) {
         EvalResult r = run(input, interp);
 
         if (!r.error.has_error && r.value != null) {
-            r.value = copy_to_parent(r.value, interp);
+            r.value = copy_to_parent_site(r.value, interp, COPY_SITE_REPL_LINE_RESULT);
         }
 
         if (r.error.has_error) {

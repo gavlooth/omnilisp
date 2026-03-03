@@ -584,7 +584,7 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
     // The caller may still hold pointers to previously yielded values, so we must
     // copy each yield value into the caller's scope (current_scope, restored above).
     if (interp.yield_value != null) {
-        return copy_to_parent(interp.yield_value, interp);
+        return copy_to_parent_site(interp.yield_value, interp, COPY_SITE_PRIM_RESUME);
     }
     return make_nil(interp);
 }

@@ -812,8 +812,8 @@ fn Value* make_cons_escape(Interp* interp, Value* car, Value* cdr) {
     // Promote car/cdr: copy from call_scope to escape_scope if needed.
     main::ScopeRegion* saved_releasing = interp.releasing_scope;
     interp.releasing_scope = call_scope;
-    Value* safe_car = copy_to_parent(car, interp);
-    Value* safe_cdr = copy_to_parent(cdr, interp);
+    Value* safe_car = copy_to_parent_site(car, interp, COPY_SITE_MAKE_CONS_ESCAPE_CAR);
+    Value* safe_cdr = copy_to_parent_site(cdr, interp, COPY_SITE_MAKE_CONS_ESCAPE_CDR);
     interp.releasing_scope = saved_releasing;
 
     // Allocate cons in escape_scope
@@ -1453,7 +1453,7 @@ fn Value* promote_for_env_target(Env* target, Value* value, Interp* interp) {
         main::ScopeRegion* saved_releasing = interp.releasing_scope;
         interp.current_scope = interp.escape_scope;
         interp.releasing_scope = saved_scope;
-        Value* promoted = copy_to_parent(value, interp);
+        Value* promoted = copy_to_parent_site(value, interp, COPY_SITE_ENV_PROMOTE_FOR_TARGET);
         interp.releasing_scope = saved_releasing;
         interp.current_scope = saved_scope;
         return promoted;

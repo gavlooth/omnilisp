@@ -512,7 +512,7 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
         // Non-escape return: explicit promotion + scope release.
         interp.releasing_scope = active_scope;
         if (result != null) {
-            result = copy_to_parent(result, interp);
+            result = copy_to_parent_site(result, interp, COPY_SITE_JIT_SINGLE_SCOPE_RETURN);
         }
         interp.releasing_scope = null;
         main::scope_release(active_scope);
@@ -563,7 +563,7 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
             interp.current_scope = result_scope;
             interp.releasing_scope = active_scope;
             if (result != null) {
-                result = copy_to_parent(result, interp);
+                result = copy_to_parent_site(result, interp, COPY_SITE_JIT_CALL_SCOPE_STEP1);
             }
             interp.releasing_scope = null;
             main::scope_release(active_scope);
@@ -579,7 +579,7 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
     } else {
         interp.releasing_scope = result_scope;
         if (result != null) {
-            result = copy_to_parent(result, interp);
+            result = copy_to_parent_site(result, interp, COPY_SITE_JIT_CALL_SCOPE_STEP2);
         }
         interp.releasing_scope = null;
         main::scope_release(result_scope);
@@ -618,7 +618,7 @@ fn Env* copy_tco_env_chain(Env* src, Interp* interp) {
                 // Value is outside the dying call-scope; keep as-is.
                 src.bindings[i].value = sv;
             } else {
-                src.bindings[i].value = copy_to_parent(sv, interp);
+                src.bindings[i].value = copy_to_parent_site(sv, interp, COPY_SITE_JIT_TCO_ESCAPE_REFRESH);
             }
         }
         interp.current_scope = saved;
@@ -639,7 +639,7 @@ fn Env* copy_tco_env_chain(Env* src, Interp* interp) {
             // Value is outside the dying call-scope; keep as-is.
             v = sv;
         } else {
-            v = copy_to_parent(sv, interp);
+            v = copy_to_parent_site(sv, interp, COPY_SITE_JIT_TCO_FRAME_COPY);
         }
         env_define_with_barrier(dst, src.bindings[i].name, v, interp);
     }
@@ -914,7 +914,7 @@ fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
         main::ScopeRegion* saved_scope_ctp = interp.current_scope;
         interp.current_scope = interp.root_scope;
         interp.releasing_scope = saved_scope_ctp;
-        stored = copy_to_parent(value, interp);
+        stored = copy_to_parent_site(value, interp, COPY_SITE_JIT_EVAL_SET);
         interp.releasing_scope = null;
         interp.current_scope = saved_scope_ctp;
     }
@@ -1012,7 +1012,7 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
         main::ScopeRegion* saved_scope_ctp = interp.current_scope;
         interp.current_scope = interp.root_scope;
         interp.releasing_scope = saved_scope_ctp;
-        stored_val = copy_to_parent(value, interp);
+        stored_val = copy_to_parent_site(value, interp, COPY_SITE_JIT_EVAL_DEFINE);
         interp.releasing_scope = null;
         interp.current_scope = saved_scope_ctp;
     }
@@ -1130,7 +1130,7 @@ fn Env* jit_env_extend_root(Interp* interp, Env* env, SymbolId name, Value* valu
     interp.current_scope = interp.root_scope;
     interp.releasing_scope = saved_scope;
     // Promote the initial value to root_scope
-    Value* promoted = copy_to_parent(value, interp);
+    Value* promoted = copy_to_parent_site(value, interp, COPY_SITE_JIT_ENV_EXTEND_ROOT);
     interp.releasing_scope = null;
     Env* box = env.extend(interp, name, promoted);
     box.persistent = true;
