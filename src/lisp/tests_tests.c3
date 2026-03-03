@@ -1879,6 +1879,76 @@ fn void run_memory_lifetime_regression_tests(Interp* interp, int* pass, int* fai
             (*fail)++;
         }
     }
+
+    // Invariant: unified one-scope escape-env mode allocates env frames in ESCAPE lane.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* saved_escape = interp.escape_scope;
+        bool saved_escape_mode = interp.escape_env_mode;
+
+        main::ScopeRegion* s = main::scope_create(saved_scope);
+        interp.current_scope = s;
+        interp.escape_scope = null;
+        interp.escape_env_mode = true;
+
+        Env* e = make_env(interp, null);
+        bool ok = e != null &&
+                  e.scope_gen == s.escape_generation &&
+                  main::is_in_scope((void*)e, s);
+
+        interp.escape_env_mode = saved_escape_mode;
+        interp.escape_scope = saved_escape;
+        interp.current_scope = saved_scope;
+        main::scope_release(s);
+
+        if (ok) {
+            io::printn("[PASS] lifetime: unified escape-env uses current ESCAPE lane");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] lifetime: unified escape-env uses current ESCAPE lane");
+            (*fail)++;
+        }
+    }
+
+    // Invariant: jit_single and copy_env copy sites remain bounded on hot closure loop.
+    {
+        reset_memory_promotion_stats();
+
+        EvalResult r = run(
+            "(begin "
+            "  (define step (lambda (x) (+ x 1))) "
+            "  (define mk (lambda (n) (lambda (x) (+ x n)))) "
+            "  (let ^rec (loop (lambda (i acc) "
+            "    (if (= i 600) "
+            "        acc "
+            "        (let (f (mk i)) "
+            "          (loop (+ i 1) (step (+ acc (f 1)))))))) "
+            "    (loop 0 0)))",
+            interp);
+
+        usz jit_single_delta = copy_to_parent_site_calls(COPY_SITE_JIT_SINGLE_SCOPE_RETURN);
+        usz copy_env_delta = copy_to_parent_site_calls(COPY_SITE_COPY_ENV_TO_SCOPE);
+
+        bool ok_eval = !r.error.has_error &&
+                       r.value != null &&
+                       r.value.tag == INT &&
+                       r.value.int_val == 180900;
+        bool ok_budget = jit_single_delta <= 32 && copy_env_delta <= 32;
+        bool ok = ok_eval && ok_budget;
+
+        if (ok) {
+            io::printn("[PASS] lifetime: jit_single+copy_env budget gate");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: jit_single+copy_env budget gate (jit_single=%d copy_env=%d tag=%d int=%d err=%s)",
+                (long)jit_single_delta,
+                (long)copy_env_delta,
+                r.value != null ? (int)r.value.tag : -1,
+                (r.value != null && r.value.tag == INT) ? (int)r.value.int_val : -1,
+                r.error.has_error ? "yes" : "no");
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_basic_tests(Interp* interp, int* pass, int* fail) {

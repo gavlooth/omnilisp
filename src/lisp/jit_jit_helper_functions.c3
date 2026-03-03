@@ -396,12 +396,23 @@ fn bool env_chain_contains_scope_gen(Env* env, uint scope_gen, Env* stop_at) {
     return false;
 }
 
+fn bool is_in_temp_lane(void* ptr, main::ScopeRegion* scope) {
+    if (ptr == null || scope == null) return false;
+    main::ScopeChunk* chunk = scope.chunks;
+    while (chunk != null) {
+        char* data = (char*)chunk + main::ScopeChunk.sizeof;
+        if ((char*)ptr >= data && (char*)ptr < data + chunk.capacity) return true;
+        chunk = chunk.next;
+    }
+    return false;
+}
+
 fn bool env_chain_has_binding_in_scope(Env* env, main::ScopeRegion* scope, Env* stop_at) {
     Env* cur = env;
     while (cur != null && cur != stop_at) {
         for (usz i = 0; i < cur.binding_count; i++) {
             Value* v = cur.bindings[i].value;
-            if (v != null && main::is_in_scope((void*)v, scope)) return true;
+            if (v != null && is_in_temp_lane((void*)v, scope)) return true;
         }
         cur = cur.parent;
     }
@@ -453,19 +464,14 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
             // fresh scope is independent of any env_scope freed during scope_release.
             main::ScopeRegion* cs = interp.current_scope;
             if (cs == interp.tco_recycle_scope && cs.refcount == 1) {
-                bool env_in_escape_lane =
-                    interp.escape_scope != null &&
-                    env != null &&
-                    env.scope_gen == interp.escape_scope.generation;
                 bool chain_touches_releasing_scope =
                     env_chain_contains_scope_gen(env, cs.generation, interp.global_env);
                 bool bindings_touch_releasing_scope =
                     env_chain_has_binding_in_scope(env, cs, interp.global_env);
 
-                if (env_in_escape_lane &&
-                    !chain_touches_releasing_scope &&
+                if (!chain_touches_releasing_scope &&
                     !bindings_touch_releasing_scope) {
-                    // Fast path: loop env is fully detached from releasing call_scope.
+                    // Fast path: loop env graph is detached from recyclable TEMP lane.
                     // Recycle TEMP lane in-place and keep env as-is.
                     main::scope_reset_temp_lane(cs);
                     interp.current_scope = cs;
@@ -504,19 +510,32 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
     main::ScopeRegion* active_scope = interp.current_scope;
 
     interp.current_scope = saved_scope;
-    if (active_scope.refcount == 1 && result != null &&
-        result.scope_gen == active_scope.escape_generation) {
-        // Dual-lane fast path: splice ESCAPE chunks and drop TEMP chunks.
-        main::scope_splice_escapes(saved_scope, active_scope);
-    } else {
-        // Non-escape return: explicit promotion + scope release.
-        interp.releasing_scope = active_scope;
-        if (result != null) {
-            result = copy_to_parent_site(result, interp, COPY_SITE_JIT_SINGLE_SCOPE_RETURN);
+    if (active_scope.refcount == 1 && result != null) {
+        // Try to upgrade TEMP-rooted returns into ESCAPE lane and splice O(1).
+        if (result.scope_gen != active_scope.escape_generation) {
+            interp.current_scope = active_scope;
+            result = promote_to_escape(result, interp);
+            interp.current_scope = saved_scope;
         }
-        interp.releasing_scope = null;
-        main::scope_release(active_scope);
+        if (result.scope_gen == active_scope.escape_generation) {
+            main::scope_splice_escapes(saved_scope, active_scope);
+            return result;
+        }
     }
+
+    // Fast-path for non-owned values (already in surviving scope tree).
+    if (result != null && !main::is_in_scope((void*)result, active_scope)) {
+        main::scope_release(active_scope);
+        return result;
+    }
+
+    // Fallback: explicit copy + release.
+    interp.releasing_scope = active_scope;
+    if (result != null) {
+        result = copy_to_parent_site(result, interp, COPY_SITE_JIT_SINGLE_SCOPE_RETURN);
+    }
+    interp.releasing_scope = null;
+    main::scope_release(active_scope);
 
     return result;
 }
@@ -527,16 +546,17 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
 fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
     main::ScopeRegion* saved_scope = interp.current_scope;
 
-    // Two-scope hierarchy: result_scope persists, call_scope recycles
-    main::ScopeRegion* result_scope = main::scope_create(saved_scope);
-    main::ScopeRegion* call_scope = main::scope_create(result_scope);
+    // Unified one-scope lane model: TEMP recycles, ESCAPE splices.
+    main::ScopeRegion* call_scope = main::scope_create(saved_scope);
     interp.current_scope = call_scope;
 
-    // Set escape_scope so make_cons can redirect accumulator cells
+    // Keep legacy field saved/restored, but do not drive normal flow from it.
     main::ScopeRegion* saved_escape = interp.escape_scope;
-    interp.escape_scope = result_scope;
+    interp.escape_scope = null;
+    bool saved_escape_env = interp.escape_env_mode;
+    interp.escape_env_mode = true;
 
-    // Mark call_scope (not result_scope) as eligible for TCO recycling
+    // Mark call_scope as eligible for TCO recycling.
     main::ScopeRegion* saved_recycle = interp.tco_recycle_scope;
     interp.tco_recycle_scope = call_scope;
 
@@ -548,42 +568,31 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
     // Restore saved state
     interp.tco_recycle_scope = saved_recycle;
     interp.escape_scope = saved_escape;
-
-    // Step 1: Merge active_scope (call_scope) into result_scope.
-    // If result was built in ESCAPE lane and nothing escaped, splice O(1).
-    // Otherwise, copy promoted result to result_scope and release active_scope.
-    if (active_scope != result_scope) {
-        if (active_scope.refcount == 1 &&
-            result != null &&
-            result.scope_gen == active_scope.escape_generation) {
-            // Dual-lane fast path: splice only ESCAPE chunks into result_scope.
-            main::scope_splice_escapes(result_scope, active_scope);
-        } else {
-            // Non-escape return or captured scope: promote result, then release.
-            interp.current_scope = result_scope;
-            interp.releasing_scope = active_scope;
-            if (result != null) {
-                result = copy_to_parent_site(result, interp, COPY_SITE_JIT_CALL_SCOPE_STEP1);
-            }
-            interp.releasing_scope = null;
-            main::scope_release(active_scope);
-        }
-    }
-
-    // Step 2: Promote result from result_scope to caller's scope.
-    // Splice ESCAPE lane on the fast path; otherwise copy + release.
+    interp.escape_env_mode = saved_escape_env;
     interp.current_scope = saved_scope;
-    if (result_scope.refcount == 1 && result != null &&
-        result.scope_gen == result_scope.escape_generation) {
-        main::scope_splice_escapes(saved_scope, result_scope);
-    } else {
-        interp.releasing_scope = result_scope;
-        if (result != null) {
-            result = copy_to_parent_site(result, interp, COPY_SITE_JIT_CALL_SCOPE_STEP2);
+    if (active_scope.refcount == 1 && result != null) {
+        if (result.scope_gen != active_scope.escape_generation) {
+            interp.current_scope = active_scope;
+            result = promote_to_escape(result, interp);
+            interp.current_scope = saved_scope;
         }
-        interp.releasing_scope = null;
-        main::scope_release(result_scope);
+        if (result.scope_gen == active_scope.escape_generation) {
+            main::scope_splice_escapes(saved_scope, active_scope);
+            return result;
+        }
     }
+
+    if (result != null && !main::is_in_scope((void*)result, active_scope)) {
+        main::scope_release(active_scope);
+        return result;
+    }
+
+    interp.releasing_scope = active_scope;
+    if (result != null) {
+        result = copy_to_parent_site(result, interp, COPY_SITE_JIT_CALL_SCOPE_STEP2);
+    }
+    interp.releasing_scope = null;
+    main::scope_release(active_scope);
 
     return result;
 }

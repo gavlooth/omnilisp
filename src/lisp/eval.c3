@@ -1504,6 +1504,36 @@ fn Value* promote_to_root(Value* v, Interp* interp) {
     return result;
 }
 
+fn Value* copy_env_value_fast(Value* v, Interp* interp) {
+    if (v == null) return null;
+    switch (v.tag) {
+        case NIL:
+            return make_nil(interp);
+        case INT:
+            return make_int(interp, v.int_val);
+        case DOUBLE:
+            return make_double(interp, v.double_val);
+        case SYMBOL:
+            return make_symbol(interp, v.sym_val);
+        case STRING:
+            return make_string(interp, v.str_chars[:v.str_len]);
+        case ERROR:
+            return make_error(interp, v.str_chars[:v.str_len]);
+        case PRIMITIVE:
+        case HASHMAP:
+        case ARRAY:
+        case INSTANCE:
+        case METHOD_TABLE:
+        case FFI_HANDLE:
+        case TYPE_INFO:
+        case MODULE:
+            // Root-lifetime or external-lifetime objects can be shared.
+            return v;
+        default:
+            return copy_to_parent_site(v, interp, COPY_SITE_COPY_ENV_TO_SCOPE);
+    }
+}
+
 /**
  * Copy an env chain into interp.current_scope (caller must set this to the target scope,
  * typically a closure's env_scope). Uses copy_to_parent for each binding value.
@@ -1598,7 +1628,7 @@ fn Env* copy_env_to_scope(Env* env, Interp* interp, usz depth = 0) {
             iter_result.iterator_val = inner;
             val = iter_result;
         } else {
-            val = copy_to_parent_site(val, interp, COPY_SITE_COPY_ENV_TO_SCOPE);
+            val = copy_env_value_fast(val, interp);
         }
         new_env.bindings[i].value = val;
     }

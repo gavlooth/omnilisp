@@ -863,7 +863,11 @@ fn Value* make_cons_escape(Interp* interp, Value* car, Value* cdr) {
 fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
     // Dual-lane path: if cdr is already in current scope's ESCAPE lane,
     // allocate pair in ESCAPE lane and promote inputs before linking.
-    if (cdr != null && cdr.scope_gen == interp.current_scope.escape_generation) {
+    // In unified one-scope loop mode (escape_env_mode), treat NIL cdr as
+    // accumulator bootstrap and seed ESCAPE lane directly.
+    if (cdr != null &&
+        (cdr.scope_gen == interp.current_scope.escape_generation ||
+         (interp.escape_scope == null && cdr.tag == NIL))) {
         Value* v = interp.alloc_value_escape();
         v.tag = CONS;
         v.cons_val.car = promote_to_escape(car, interp);
@@ -1330,17 +1334,19 @@ struct Env {
 }
 
 fn Env* make_env(Interp* interp, Env* parent) {
-    // Escape-env optimization: allocate loop envs in escape_scope
-    // so they survive TCO bounces without copy_tco_env_chain frame copy.
-    bool use_escape = interp.escape_env_mode &&
-                      interp.escape_scope != null &&
-                      interp.current_scope != interp.escape_scope;
+    // Escape-env optimization:
+    // - legacy: allocate in escape_scope when present
+    // - unified lane mode: allocate in current scope's ESCAPE lane when escape_scope is null
+    bool use_escape_scope = interp.escape_env_mode &&
+                            interp.escape_scope != null &&
+                            interp.current_scope != interp.escape_scope;
+    bool use_escape_lane = interp.escape_env_mode && interp.escape_scope == null;
 
-    main::ScopeRegion* target = use_escape ? interp.escape_scope : interp.current_scope;
+    main::ScopeRegion* target = use_escape_scope ? interp.escape_scope : interp.current_scope;
     main::ScopeRegion* saved = interp.current_scope;
-    if (use_escape) interp.current_scope = target;
+    if (use_escape_scope) interp.current_scope = target;
 
-    Env* env = interp.alloc_env();
+    Env* env = use_escape_lane ? interp.alloc_env_escape() : interp.alloc_env();
     env.is_inline = true;
     env.bindings = &env.inline_bindings[0];
     env.binding_count = 0;
@@ -1349,10 +1355,14 @@ fn Env* make_env(Interp* interp, Env* parent) {
     env.hash_table = null;
     env.hash_capacity = 0;
     env.persistent = false;
-    env.scope_gen = target.generation;
-    main::scope_register_dtor(target, (void*)env, &scope_dtor_env);
+    env.scope_gen = use_escape_lane ? target.escape_generation : target.generation;
+    if (use_escape_lane) {
+        main::scope_register_dtor_escape(target, (void*)env, &scope_dtor_env);
+    } else {
+        main::scope_register_dtor(target, (void*)env, &scope_dtor_env);
+    }
 
-    if (use_escape) interp.current_scope = saved;
+    if (use_escape_scope) interp.current_scope = saved;
     return env;
 }
 
@@ -2597,6 +2607,19 @@ fn Env* Interp.alloc_env(Interp* self) @inline {
     e.hash_capacity = 0;
     e.persistent = false;
     e.scope_gen = self.current_scope.generation;
+    return e;
+}
+
+fn Env* Interp.alloc_env_escape(Interp* self) @inline {
+    Env* e = (Env*)self.current_scope.alloc_escape(Env.sizeof);
+    e.bindings = null;
+    e.binding_count = 0;
+    e.capacity = 0;
+    e.parent = null;
+    e.hash_table = null;
+    e.hash_capacity = 0;
+    e.persistent = false;
+    e.scope_gen = self.current_scope.escape_generation;
     return e;
 }
 
