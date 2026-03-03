@@ -558,7 +558,7 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
 
 // Scope-per-call wrapper: evaluates closure body in a child scope.
 // Unified lane model: one scope per call with TEMP+ESCAPE lanes.
-fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
+fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp, bool enable_escape_env) {
     main::ScopeRegion* saved_scope = interp.current_scope;
 
     // Unified one-scope lane model: TEMP recycles, ESCAPE splices.
@@ -566,7 +566,9 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
     interp.current_scope = call_scope;
 
     bool saved_escape_env = interp.escape_env_mode;
-    interp.escape_env_mode = true;
+    if (enable_escape_env) {
+        interp.escape_env_mode = true;
+    }
 
     // Mark call_scope as eligible for TCO recycling.
     main::ScopeRegion* saved_recycle = interp.tco_recycle_scope;
@@ -898,12 +900,7 @@ fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
             body_has_shift = expr_contains_shift(lambda_body.lambda.body);
         }
     }
-    bool saved_escape_env = interp.escape_env_mode;
-    if (!body_has_shift) {
-        interp.escape_env_mode = true;
-    }
-    Value* result = jit_eval_in_call_scope(expr.let_expr.body, rec_env, interp);
-    interp.escape_env_mode = saved_escape_env;
+    Value* result = jit_eval_in_call_scope(expr.let_expr.body, rec_env, interp, !body_has_shift);
     return result;
 }
 

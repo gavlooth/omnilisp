@@ -57,25 +57,6 @@ void* g_replxx = null;
 // Global interp for completion callback
 Interp* g_repl_interp = null;
 
-struct CopyToParentStats {
-    usz total_calls;
-    usz fast_reuse_hits;
-    usz defensive_copies;
-
-    usz nil_calls;
-    usz int_calls;
-    usz double_calls;
-    usz string_calls;
-    usz symbol_calls;
-    usz cons_calls;
-    usz closure_calls;
-    usz other_calls;
-
-    usz[20] site_calls;
-}
-
-CopyToParentStats g_copy_to_parent_stats;
-
 const uint COPY_SITE_GENERIC = 0;
 const uint COPY_SITE_PROMOTE_TO_ROOT = 1;
 const uint COPY_SITE_COPY_ENV_TO_SCOPE = 2;
@@ -94,6 +75,25 @@ const uint COPY_SITE_JIT_ENV_EXTEND_ROOT = 14;
 const uint COPY_SITE_COUNT = 15;
 const usz PROMOTION_CTX_BUDGET_RETURN = 4096;
 const usz PROMOTION_CTX_BUDGET_TCO = 2048;
+
+struct CopyToParentStats {
+    usz total_calls;
+    usz fast_reuse_hits;
+    usz defensive_copies;
+
+    usz nil_calls;
+    usz int_calls;
+    usz double_calls;
+    usz string_calls;
+    usz symbol_calls;
+    usz cons_calls;
+    usz closure_calls;
+    usz other_calls;
+
+    usz[COPY_SITE_COUNT] site_calls;
+}
+
+CopyToParentStats g_copy_to_parent_stats;
 
 fn void copy_to_parent_note_tag(ValueTag tag) @inline {
     switch (tag) {
@@ -1646,7 +1646,7 @@ fn Value* promote_to_root(Value* v, Interp* interp) {
     return promote_to_root_site(v, interp, COPY_SITE_PROMOTE_TO_ROOT);
 }
 
-fn Value* copy_env_value_fast(Value* v, Interp* interp) {
+fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = null) {
     if (v == null) return null;
     switch (v.tag) {
         case NIL:
@@ -1672,7 +1672,8 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp) {
             // Root-lifetime or external-lifetime objects can be shared.
             return v;
         default:
-            return copy_to_parent_site(v, interp, COPY_SITE_COPY_ENV_TO_SCOPE);
+            if (in_target_scope_chain((void*)v, interp)) return v;
+            return copy_to_parent_site_ctx(v, interp, COPY_SITE_COPY_ENV_TO_SCOPE, ctx);
     }
 }
 
@@ -1682,15 +1683,31 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp) {
  * Stops at global_env (already in root_region). Skips persistent env nodes (mutable boxes).
  * Replaces deep_copy_env — allocates into any scope, not just root_scope.
  */
-fn Env* copy_env_to_scope(Env* env, Interp* interp, usz depth = 0) {
-    if (env == null || env == interp.global_env) return env;
-    if (depth >= 256) return null;
+fn Env* copy_env_to_scope(Env* env, Interp* interp, usz depth = 0, PromotionContext* ctx = null) {
+    PromotionContext local_ctx = {};
+    PromotionContext* active_ctx = ctx;
+    bool owns_ctx = false;
+    if (active_ctx == null) active_ctx = interp.active_promotion_ctx;
+    if (depth == 0 && active_ctx == null) {
+        promotion_context_begin(interp, &local_ctx);
+        active_ctx = &local_ctx;
+        owns_ctx = true;
+    }
+    if (env == null || env == interp.global_env) {
+        if (owns_ctx) promotion_context_end(interp, active_ctx);
+        return env;
+    }
+    if (depth >= 256) {
+        if (owns_ctx) promotion_context_end(interp, active_ctx);
+        return null;
+    }
 
     // Persistent env nodes (mutable boxes allocated in root_region) are kept
     // as-is to preserve sharing between JIT stack slots and closure captures.
     // Their parent chain still needs fixing up since it may point to child-scope envs.
     if (env.persistent) {
-        env.parent = copy_env_to_scope(env.parent, interp, depth + 1);
+        env.parent = copy_env_to_scope(env.parent, interp, depth + 1, active_ctx);
+        if (owns_ctx) promotion_context_end(interp, active_ctx);
         return env;
     }
 
@@ -1712,7 +1729,8 @@ fn Env* copy_env_to_scope(Env* env, Interp* interp, usz depth = 0) {
         Value* val = env.bindings[i].value;
         // Deep copy closures and iterators to ensure they survive if they were in a dying scope
         if (val != null && val.tag == CLOSURE && val.closure_val.env_scope != null) {
-            if (val.closure_val.scope_gen != interp.current_scope.generation) {
+            if (!in_target_scope_chain((void*)val, interp) &&
+                val.closure_val.scope_gen != interp.current_scope.generation) {
                 Value* result = interp.alloc_value();
                 result.tag = CLOSURE;
                 result.closure_val = (Closure*)interp.current_scope.alloc(Closure.sizeof);
@@ -1737,51 +1755,55 @@ fn Env* copy_env_to_scope(Env* env, Interp* interp, usz depth = 0) {
                 val = result;
             }
         } else if (val != null && val.tag == ITERATOR) {
-            // ITERATOR contains a closure, deep copy it!
-            Value* inner = val.iterator_val;
-            if (inner != null && inner.tag == CLOSURE && inner.closure_val.env_scope != null) {
-                if (inner.closure_val.scope_gen != interp.current_scope.generation) {
-                    Value* inner_result = interp.alloc_value();
-                    inner_result.tag = CLOSURE;
-                    inner_result.closure_val = (Closure*)interp.current_scope.alloc(Closure.sizeof);
-                    *inner_result.closure_val = *inner.closure_val;
-                    inner_result.closure_val.scope_gen = interp.current_scope.generation;
-                    if (inner.closure_val.param_count > 0) {
-                        inner_result.closure_val.params = (SymbolId*)interp.current_scope.alloc(SymbolId.sizeof * inner.closure_val.param_count);
-                        for (usz p = 0; p < inner.closure_val.param_count; p++) {
-                            inner_result.closure_val.params[p] = inner.closure_val.params[p];
+            if (!in_target_scope_chain((void*)val, interp)) {
+                // ITERATOR contains a closure; copy only when it is outside the
+                // target chain so it survives source-scope release.
+                Value* inner = val.iterator_val;
+                if (inner != null && inner.tag == CLOSURE && inner.closure_val.env_scope != null) {
+                    if (!in_target_scope_chain((void*)inner, interp) &&
+                        inner.closure_val.scope_gen != interp.current_scope.generation) {
+                        Value* inner_result = interp.alloc_value();
+                        inner_result.tag = CLOSURE;
+                        inner_result.closure_val = (Closure*)interp.current_scope.alloc(Closure.sizeof);
+                        *inner_result.closure_val = *inner.closure_val;
+                        inner_result.closure_val.scope_gen = interp.current_scope.generation;
+                        if (inner.closure_val.param_count > 0) {
+                            inner_result.closure_val.params = (SymbolId*)interp.current_scope.alloc(SymbolId.sizeof * inner.closure_val.param_count);
+                            for (usz p = 0; p < inner.closure_val.param_count; p++) {
+                                inner_result.closure_val.params[p] = inner.closure_val.params[p];
+                            }
+                        } else {
+                            inner_result.closure_val.params = null;
                         }
-                    } else {
-                        inner_result.closure_val.params = null;
+                        if (inner.closure_val.type_sig != null) {
+                            inner_result.closure_val.type_sig = (MethodSignature*)interp.current_scope.alloc(MethodSignature.sizeof);
+                            *inner_result.closure_val.type_sig = *inner.closure_val.type_sig;
+                        }
+                        if (inner_result.closure_val.env_scope != null) {
+                            inner_result.closure_val.env_scope.refcount++;
+                        }
+                        main::scope_register_dtor(interp.current_scope, (void*)inner_result, &scope_dtor_closure);
+                        inner = inner_result;
                     }
-                    if (inner.closure_val.type_sig != null) {
-                        inner_result.closure_val.type_sig = (MethodSignature*)interp.current_scope.alloc(MethodSignature.sizeof);
-                        *inner_result.closure_val.type_sig = *inner.closure_val.type_sig;
-                    }
-                    if (inner_result.closure_val.env_scope != null) {
-                        inner_result.closure_val.env_scope.refcount++;
-                    }
-                    main::scope_register_dtor(interp.current_scope, (void*)inner_result, &scope_dtor_closure);
-                    inner = inner_result;
                 }
+                Value* iter_result = interp.alloc_value();
+                iter_result.tag = ITERATOR;
+                iter_result.iterator_val = inner;
+                val = iter_result;
             }
-            Value* iter_result = interp.alloc_value();
-            iter_result.tag = ITERATOR;
-            iter_result.iterator_val = inner;
-            val = iter_result;
         } else {
-            val = copy_env_value_fast(val, interp);
+            val = copy_env_value_fast(val, interp, active_ctx);
         }
         new_env.bindings[i].value = val;
     }
-    new_env.parent = copy_env_to_scope(env.parent, interp, depth + 1);
+    new_env.parent = copy_env_to_scope(env.parent, interp, depth + 1, active_ctx);
     // Rebuild hash table if source had one
     if (env.hash_table != null) {
         new_env.build_hash_table();
     }
     // Register destructor for the newly malloc'd bindings
     main::scope_register_dtor(interp.current_scope, (void*)new_env, &scope_dtor_env);
-
+    if (owns_ctx) promotion_context_end(interp, active_ctx);
     return new_env;
 }
 

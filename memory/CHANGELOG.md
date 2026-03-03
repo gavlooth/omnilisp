@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-03-03: Memory Polish Finalization (Dual-Lane + Promotion Context)
+
+### Summary
+Completed the remaining production-polish pass for the dual-lane scope model with promotion-context fallback. The runtime now has tighter copy telemetry, safer root-boundary promotion semantics, lower env-copy churn on shared captures, and less ambiguous escape-env control in named-let call scopes.
+
+### Changes
+- **Defensive root promotion restored** (`eval.c3`):
+  - `promote_to_root_site` now routes through `copy_to_parent_site` with `releasing_scope` set, preserving defensive-copy behavior for disjoint transient lifetimes.
+- **Disjoint-scope regression gate added** (`tests_tests.c3`):
+  - `lifetime: root-boundary promotion defends disjoint scope`
+- **Copy-site telemetry compacted** (`eval.c3`):
+  - Removed dead buckets: `COPY_SITE_JIT_CALL_SCOPE_STEP1`, `COPY_SITE_JIT_TCO_ESCAPE_REFRESH`
+  - Added `COPY_SITE_COUNT` bounds checks and compacted active indices.
+- **Telemetry storage tightened** (`eval.c3`):
+  - `site_calls` now uses `COPY_SITE_COUNT` capacity (no legacy slack slots).
+- **Env copy churn reduction** (`eval.c3`):
+  - `copy_env_to_scope` now uses a shared `PromotionContext` epoch for recursive copy.
+  - Shared values are memoized at boundary copy sites, reducing repeated deep copy.
+  - Added target-chain fast reuse for env value copies.
+  - Closure/iterator copy paths now skip deep copy when value is already in target scope chain.
+- **Env copy non-regression gate added** (`tests_tests.c3`):
+  - `lifetime: copy_env shared-value memo gate`
+- **Escape-env control cleanup** (`jit_jit_helper_functions.c3`):
+  - `jit_eval_in_call_scope` now takes explicit `enable_escape_env`.
+  - Named-let now passes `!body_has_shift` directly instead of outer toggle layering.
+
+### Verification
+- `c3c build` passed.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed:
+  - Unified tests: `1051 passed, 0 failed`
+  - Compiler tests: `73 passed, 0 failed`
+- `c3c build --sanitize=address` passed.
+- `ASAN_OPTIONS=detect_leaks=0 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed with the same totals.
+
+---
+
 ## 2026-03-02: M1.6b — Inline String Descriptor into Value Union
 
 ### Summary

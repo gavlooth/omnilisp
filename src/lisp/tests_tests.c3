@@ -1891,6 +1891,74 @@ fn void run_memory_lifetime_regression_tests(Interp* interp, int* pass, int* fai
         }
     }
 
+    // Invariant: env copy uses one boundary epoch and memoizes repeated values.
+    // This keeps copy_env_to_scope churn bounded for shared captured values.
+    {
+        reset_memory_promotion_stats();
+
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved);
+        main::ScopeRegion* source = main::scope_create(saved);
+
+        interp.current_scope = source;
+        Env* src_env = make_env(interp, null);
+        Value* shared = make_cons(interp, make_int(interp, 123), make_nil(interp));
+        for (usz i = 0; i < 24; i++) {
+            char[64] nbuf;
+            char[] name = io::bprintf(&nbuf, "__copy_env_shared_%d", (long)i)!!;
+            env_define_with_barrier(src_env, interp.symbols.intern(name), shared, interp);
+        }
+
+        interp.current_scope = target;
+        usz base_site = copy_to_parent_site_calls(COPY_SITE_COPY_ENV_TO_SCOPE);
+        Env* copied = copy_env_to_scope(src_env, interp);
+        usz site_delta = copy_to_parent_site_calls(COPY_SITE_COPY_ENV_TO_SCOPE) - base_site;
+
+        bool copied_ok = copied != null && copied.binding_count == src_env.binding_count;
+        bool alias_ok = copied_ok;
+        Value* first = null;
+        if (copied_ok) {
+            for (usz i = 0; i < copied.binding_count; i++) {
+                Value* cur = copied.bindings[i].value;
+                if (cur == null || cur.tag != CONS ||
+                    cur.cons_val.car == null || cur.cons_val.car.tag != INT ||
+                    cur.cons_val.car.int_val != 123) {
+                    alias_ok = false;
+                    break;
+                }
+                if (i == 0) first = cur;
+                if (i > 0 && cur != first) {
+                    alias_ok = false;
+                    break;
+                }
+            }
+        }
+
+        // Source release must not invalidate target copies.
+        main::scope_release(source);
+        bool post_ok = first != null &&
+                       first.tag == CONS &&
+                       first.cons_val.car != null &&
+                       first.cons_val.car.tag == INT &&
+                       first.cons_val.car.int_val == 123;
+
+        interp.current_scope = saved;
+        main::scope_release(target);
+
+        bool ok = copied_ok && alias_ok && post_ok && site_delta <= 4;
+        if (ok) {
+            io::printn("[PASS] lifetime: copy_env shared-value memo gate");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: copy_env shared-value memo gate (site_delta=%d copied_ok=%s alias_ok=%s post_ok=%s)",
+                (long)site_delta,
+                copied_ok ? "yes" : "no",
+                alias_ok ? "yes" : "no",
+                post_ok ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+
     // Invariant: unified one-scope escape-env mode allocates env frames in ESCAPE lane.
     {
         main::ScopeRegion* saved_scope = interp.current_scope;
