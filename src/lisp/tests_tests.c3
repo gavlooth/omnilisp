@@ -1954,6 +1954,51 @@ fn void run_memory_lifetime_regression_tests(Interp* interp, int* pass, int* fai
             (*fail)++;
         }
     }
+
+    // Invariant: promotion context memoizes fallback copy within one boundary epoch.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* parent = main::scope_create(saved_scope);
+        main::ScopeRegion* child = main::scope_create(parent);
+
+        interp.current_scope = child;
+        Value* src = make_cons(interp, make_int(interp, 7), make_nil(interp));
+
+        interp.current_scope = parent;
+        main::ScopeRegion* saved_releasing = interp.releasing_scope;
+        interp.releasing_scope = child;
+        usz base_site = copy_to_parent_site_calls(COPY_SITE_RUN_JIT_RESULT);
+
+        PromotionContext ctx = {};
+        promotion_context_begin(interp, &ctx, 8);
+        Value* a = copy_value_if_owned_by_scope(src, interp, child, COPY_SITE_RUN_JIT_RESULT);
+        Value* b = copy_value_if_owned_by_scope(src, interp, child, COPY_SITE_RUN_JIT_RESULT);
+        promotion_context_end(interp, &ctx);
+
+        usz site_delta = copy_to_parent_site_calls(COPY_SITE_RUN_JIT_RESULT) - base_site;
+        bool ok = a != null &&
+                  b == a &&
+                  site_delta == 1 &&
+                  ctx.epoch != 0 &&
+                  !ctx.aborted;
+
+        interp.releasing_scope = saved_releasing;
+        interp.current_scope = saved_scope;
+        main::scope_release(child);
+        main::scope_release(parent);
+
+        if (ok) {
+            io::printn("[PASS] lifetime: promotion context memo gate");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: promotion context memo gate (site_delta=%d epoch=%d aborted=%s same=%s)",
+                (long)site_delta,
+                (int)ctx.epoch,
+                ctx.aborted ? "yes" : "no",
+                (a != null && b == a) ? "yes" : "no");
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_basic_tests(Interp* interp, int* pass, int* fail) {

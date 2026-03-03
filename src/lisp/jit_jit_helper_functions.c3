@@ -482,7 +482,10 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
                     interp.current_scope = fresh;
                     interp.tco_recycle_scope = fresh;  // Update: fresh is now the recyclable scope
                     interp.releasing_scope = cs;       // Tell copy_to_parent what's being released
+                    PromotionContext bounce_ctx = {};
+                    promotion_context_begin(interp, &bounce_ctx);
                     env = copy_tco_env_chain(env, interp);
+                    promotion_context_end(interp, &bounce_ctx);
                     interp.releasing_scope = null;
                     main::scope_release(cs);
                 }
@@ -509,6 +512,8 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
     main::ScopeRegion* active_scope = interp.current_scope;
 
     interp.current_scope = saved_scope;
+    PromotionContext boundary_ctx = {};
+    promotion_context_begin(interp, &boundary_ctx);
     if (active_scope.refcount == 1 && result != null) {
         // Try to upgrade TEMP-rooted returns into ESCAPE lane and splice O(1).
         if (result.scope_gen != active_scope.escape_generation) {
@@ -518,6 +523,7 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
         }
         if (result.scope_gen == active_scope.escape_generation) {
             main::scope_splice_escapes(saved_scope, active_scope);
+            promotion_context_end(interp, &boundary_ctx);
             return result;
         }
     }
@@ -525,6 +531,7 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
     // Fast-path for non-owned values (already in surviving scope tree).
     if (result != null && !main::is_in_scope((void*)result, active_scope)) {
         main::scope_release(active_scope);
+        promotion_context_end(interp, &boundary_ctx);
         return result;
     }
 
@@ -535,6 +542,7 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
     }
     interp.releasing_scope = null;
     main::scope_release(active_scope);
+    promotion_context_end(interp, &boundary_ctx);
 
     return result;
 }
@@ -564,6 +572,8 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
     interp.tco_recycle_scope = saved_recycle;
     interp.escape_env_mode = saved_escape_env;
     interp.current_scope = saved_scope;
+    PromotionContext boundary_ctx = {};
+    promotion_context_begin(interp, &boundary_ctx);
     if (active_scope.refcount == 1 && result != null) {
         if (result.scope_gen != active_scope.escape_generation) {
             interp.current_scope = active_scope;
@@ -572,12 +582,14 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
         }
         if (result.scope_gen == active_scope.escape_generation) {
             main::scope_splice_escapes(saved_scope, active_scope);
+            promotion_context_end(interp, &boundary_ctx);
             return result;
         }
     }
 
     if (result != null && !main::is_in_scope((void*)result, active_scope)) {
         main::scope_release(active_scope);
+        promotion_context_end(interp, &boundary_ctx);
         return result;
     }
 
@@ -587,6 +599,7 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
     }
     interp.releasing_scope = null;
     main::scope_release(active_scope);
+    promotion_context_end(interp, &boundary_ctx);
 
     return result;
 }

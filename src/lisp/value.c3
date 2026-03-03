@@ -1245,6 +1245,23 @@ struct EnvHashEntry {
     usz      index;  // Index into bindings array
 }
 
+// Per-boundary memo table entry used by promotion/copy fallback.
+struct PromotionMemoEntry {
+    Value*              src;
+    Value*              dst;
+    PromotionMemoEntry* next;
+}
+
+// Shared context for one promotion/copy boundary.
+// Supports nested boundaries via `prev`.
+struct PromotionContext {
+    uint                epoch;
+    usz                 budget;
+    bool                aborted;
+    PromotionMemoEntry* memo_head;
+    PromotionContext*   prev;
+}
+
 /**
  * Env — Linked list of environment frames.
  * Bindings array is heap-allocated and grows dynamically.
@@ -2166,6 +2183,8 @@ struct Interp {
     main::ScopeRegion* tco_recycle_scope; // Scope eligible for TCO recycling (set by jit_eval_in_call_scope)
     main::ScopeRegion* releasing_scope;   // Set during copy_to_parent to skip values not in this scope
     bool escape_env_mode;                 // When true, make_env/make_cons use current scope ESCAPE lane
+    uint promotion_epoch_counter;         // Monotonic epoch counter for boundary promotion contexts
+    PromotionContext* active_promotion_ctx; // Current boundary promotion context (nullable)
 
     // Stack overflow protection
     usz eval_depth;
@@ -2340,6 +2359,8 @@ fn void Interp.init(Interp* self) {
     self.tco_recycle_scope = null;
     self.releasing_scope = null;
     self.escape_env_mode = false;
+    self.promotion_epoch_counter = 0;
+    self.active_promotion_ctx = null;
     self.flags.jit_tco_bounce = false;
 
     // Stack overflow protection
@@ -2436,6 +2457,7 @@ fn void Interp.destroy(Interp* self) {
         self.current_scope = self.root_scope;
         self.releasing_scope = null;
         self.tco_recycle_scope = null;
+        self.active_promotion_ctx = null;
         main::scope_release(self.root_scope);
         self.root_scope = null;
         self.current_scope = null;

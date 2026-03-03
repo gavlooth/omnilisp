@@ -1350,6 +1350,64 @@ fn Value* copy_to_parent_site(Value* v, Interp* interp, uint site) {
     return copy_to_parent(v, interp);
 }
 
+fn void promotion_context_begin(Interp* interp, PromotionContext* ctx, usz budget = usz.max) {
+    if (interp == null || ctx == null) return;
+    interp.promotion_epoch_counter++;
+    if (interp.promotion_epoch_counter == 0) interp.promotion_epoch_counter = 1;
+    ctx.epoch = interp.promotion_epoch_counter;
+    ctx.budget = budget;
+    ctx.aborted = false;
+    ctx.memo_head = null;
+    ctx.prev = interp.active_promotion_ctx;
+    interp.active_promotion_ctx = ctx;
+}
+
+fn void promotion_context_end(Interp* interp, PromotionContext* ctx) {
+    if (interp == null || ctx == null) return;
+    if (interp.active_promotion_ctx == ctx) {
+        interp.active_promotion_ctx = ctx.prev;
+    }
+}
+
+fn Value* promotion_context_lookup(PromotionContext* ctx, Value* src) @inline {
+    if (ctx == null || src == null) return null;
+    PromotionMemoEntry* e = ctx.memo_head;
+    while (e != null) {
+        if (e.src == src) return e.dst;
+        e = e.next;
+    }
+    return null;
+}
+
+fn void promotion_context_remember(PromotionContext* ctx, Value* src, Value* dst, Interp* interp) {
+    if (ctx == null || src == null || dst == null || interp == null || interp.current_scope == null) return;
+    PromotionMemoEntry* e = (PromotionMemoEntry*)interp.current_scope.alloc(PromotionMemoEntry.sizeof);
+    e.src = src;
+    e.dst = dst;
+    e.next = ctx.memo_head;
+    ctx.memo_head = e;
+    if (ctx.budget != usz.max) {
+        if (ctx.budget > 0) {
+            ctx.budget--;
+        } else {
+            ctx.aborted = true;
+        }
+    }
+}
+
+fn Value* copy_to_parent_site_ctx(Value* v, Interp* interp, uint site, PromotionContext* ctx) {
+    if (v == null) return null;
+    if (ctx != null) {
+        Value* cached = promotion_context_lookup(ctx, v);
+        if (cached != null) return cached;
+    }
+    Value* copied = copy_to_parent_site(v, interp, site);
+    if (ctx != null && copied != null) {
+        promotion_context_remember(ctx, v, copied, interp);
+    }
+    return copied;
+}
+
 // Boundary-aware copy helper:
 // only copy when value belongs to source_scope; otherwise reuse as-is.
 fn Value* copy_value_if_owned_by_scope(Value* v, Interp* interp, main::ScopeRegion* source_scope, uint site) {
@@ -1379,7 +1437,7 @@ fn Value* copy_value_if_owned_by_scope(Value* v, Interp* interp, main::ScopeRegi
         case MODULE:
             return v;
         default:
-            return copy_to_parent_site(v, interp, site);
+            return copy_to_parent_site_ctx(v, interp, site, interp.active_promotion_ctx);
     }
 }
 
@@ -1399,7 +1457,16 @@ fn Value* promote_to_escape(Value* v, Interp* interp) {
         if (in_target_scope_chain((void*)v, interp)) return v;
         // Defensive fallback: disjoint lifetime object (e.g. standalone env_scope).
         // Copy into current TEMP lane first, then continue promotion into ESCAPE.
-        Value* copied = copy_to_parent_site(v, interp, COPY_SITE_GENERIC);
+        PromotionContext local_ctx = {};
+        PromotionContext* ctx = interp.active_promotion_ctx;
+        bool owns_ctx = false;
+        if (ctx == null) {
+            promotion_context_begin(interp, &local_ctx);
+            ctx = &local_ctx;
+            owns_ctx = true;
+        }
+        Value* copied = copy_to_parent_site_ctx(v, interp, COPY_SITE_GENERIC, ctx);
+        if (owns_ctx) promotion_context_end(interp, ctx);
         if (copied == null || copied == v) return copied;
         return promote_to_escape(copied, interp);
     }
@@ -2610,6 +2677,8 @@ fn EvalResult run(char[] source, Interp* interp) {
         Value* jit_result = jit_exec(f, interp);
         bool child_spliced = false;
         if (jit_result != null) {
+            PromotionContext boundary_ctx = {};
+            promotion_context_begin(interp, &boundary_ctx);
             interp.current_scope = saved_scope;
 
             if (child_scope.refcount == 1) {
@@ -2634,6 +2703,7 @@ fn EvalResult run(char[] source, Interp* interp) {
                     interp.releasing_scope = saved_releasing;
                 }
             }
+            promotion_context_end(interp, &boundary_ctx);
         }
         if (jit_result != null && jit_result.tag == ERROR) {
             result = eval_error_expr(jit_result.str_chars[:jit_result.str_len], expr);
