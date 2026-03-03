@@ -1240,6 +1240,140 @@ fn Value* copy_to_parent(Value* v, Interp* interp) {
 }
 
 /**
+ * Promote a value from current scope TEMP lane to current scope ESCAPE lane.
+ * This is an intra-scope promotion primitive for dual-lane rollout.
+ * Values not owned by current TEMP lane are returned unchanged.
+ */
+fn Value* promote_to_escape(Value* v, Interp* interp) {
+    if (v == null || interp == null || interp.current_scope == null) return v;
+    // Only promote values that belong to the current TEMP lane.
+    if (v.scope_gen != interp.current_scope.generation) return v;
+
+    Value* result;
+    switch (v.tag) {
+        case NIL:
+            result = interp.alloc_value_escape();
+            result.tag = NIL;
+        case INT:
+            result = interp.alloc_value_escape();
+            result.tag = INT;
+            result.int_val = v.int_val;
+        case DOUBLE:
+            result = interp.alloc_value_escape();
+            result.tag = DOUBLE;
+            result.double_val = v.double_val;
+        case SYMBOL:
+            result = interp.alloc_value_escape();
+            result.tag = SYMBOL;
+            result.sym_val = v.sym_val;
+        case STRING:
+        case ERROR: {
+            result = interp.alloc_value_escape();
+            result.tag = v.tag;
+            main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+            usz len = v.str_len;
+            usz cap = len + 1;
+            if (cap < 32) cap = 32;
+            result.str_chars = (char*)mem::malloc(cap);
+            for (usz i = 0; i < len; i++) {
+                result.str_chars[i] = v.str_chars[i];
+            }
+            result.str_chars[len] = 0;
+            result.str_len = len;
+            break;
+        }
+        case CONS: {
+            // Iterative spine copy to avoid recursion blowups on long lists.
+            Value* head = interp.alloc_value_escape();
+            head.tag = CONS;
+            Value* current_new = head;
+            Value* current_old = v;
+
+            while (true) {
+                current_new.cons_val.car = promote_to_escape(current_old.cons_val.car, interp);
+                Value* old_cdr = current_old.cons_val.cdr;
+                if (old_cdr != null && old_cdr.tag == CONS &&
+                    old_cdr.scope_gen == interp.current_scope.generation) {
+                    Value* next_new = interp.alloc_value_escape();
+                    next_new.tag = CONS;
+                    current_new.cons_val.cdr = next_new;
+                    current_new = next_new;
+                    current_old = old_cdr;
+                } else {
+                    current_new.cons_val.cdr = promote_to_escape(old_cdr, interp);
+                    break;
+                }
+            }
+            result = head;
+            break;
+        }
+        case CLOSURE: {
+            result = interp.alloc_value_escape();
+            result.tag = CLOSURE;
+            main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_closure);
+            result.closure_val = (Closure*)interp.current_scope.alloc_escape(Closure.sizeof);
+            *result.closure_val = *v.closure_val;
+            result.closure_val.scope_gen = interp.current_scope.escape_generation;
+
+            if (v.closure_val.param_count > 0) {
+                result.closure_val.params = (SymbolId*)interp.current_scope.alloc_escape(SymbolId.sizeof * v.closure_val.param_count);
+                for (usz i = 0; i < v.closure_val.param_count; i++) {
+                    result.closure_val.params[i] = v.closure_val.params[i];
+                }
+            } else {
+                result.closure_val.params = null;
+            }
+
+            if (v.closure_val.type_sig != null) {
+                result.closure_val.type_sig = (MethodSignature*)interp.current_scope.alloc_escape(MethodSignature.sizeof);
+                *result.closure_val.type_sig = *v.closure_val.type_sig;
+            }
+
+            if (result.closure_val.env_scope != null) {
+                main::scope_retain(result.closure_val.env_scope);
+            }
+            break;
+        }
+        case PARTIAL_PRIM: {
+            result = interp.alloc_value_escape();
+            result.tag = PARTIAL_PRIM;
+            result.partial_val.func = v.partial_val.func;
+            result.partial_val.remaining = v.partial_val.remaining;
+            result.partial_val.first_arg = promote_to_escape(v.partial_val.first_arg, interp);
+            result.partial_val.second_arg = promote_to_escape(v.partial_val.second_arg, interp);
+            break;
+        }
+        case CONTINUATION:
+            result = interp.alloc_value_escape();
+            result.tag = CONTINUATION;
+            result.cont_val = v.cont_val;
+        case ITERATOR:
+            result = interp.alloc_value_escape();
+            result.tag = ITERATOR;
+            result.iterator_val = promote_to_escape(v.iterator_val, interp);
+        case COROUTINE:
+            result = interp.alloc_value_escape();
+            result.tag = COROUTINE;
+            result.coroutine_val = v.coroutine_val;
+        case PRIMITIVE:
+        case HASHMAP:
+        case ARRAY:
+        case INSTANCE:
+        case METHOD_TABLE:
+        case FFI_HANDLE:
+        case TYPE_INFO:
+        case MODULE:
+            // Wrapper promotion into ESCAPE lane; backing data/ownership remains unchanged.
+            result = interp.alloc_value_escape();
+            *result = *v;
+            result.scope_gen = interp.current_scope.escape_generation;
+        default:
+            result = v;
+    }
+    return result;
+}
+
+/**
  * Promote a value to root_scope so it survives child scope release.
  * No-op when already in root_scope (fast path for stdlib loading, etc.).
  * Used when storing values into root-scope data structures (hashmap, array).
