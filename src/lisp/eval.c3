@@ -1349,6 +1349,39 @@ fn Value* copy_to_parent_site(Value* v, Interp* interp, uint site) {
     return copy_to_parent(v, interp);
 }
 
+// Boundary-aware copy helper:
+// only copy when value belongs to source_scope; otherwise reuse as-is.
+fn Value* copy_value_if_owned_by_scope(Value* v, Interp* interp, main::ScopeRegion* source_scope, uint site) {
+    if (v == null) return null;
+    if (source_scope != null && !main::is_in_scope((void*)v, source_scope)) return v;
+
+    switch (v.tag) {
+        case NIL:
+            return make_nil(interp);
+        case INT:
+            return make_int(interp, v.int_val);
+        case DOUBLE:
+            return make_double(interp, v.double_val);
+        case SYMBOL:
+            return make_symbol(interp, v.sym_val);
+        case STRING:
+            return make_string(interp, v.str_chars[:v.str_len]);
+        case ERROR:
+            return make_error(interp, v.str_chars[:v.str_len]);
+        case PRIMITIVE:
+        case HASHMAP:
+        case ARRAY:
+        case INSTANCE:
+        case METHOD_TABLE:
+        case FFI_HANDLE:
+        case TYPE_INFO:
+        case MODULE:
+            return v;
+        default:
+            return copy_to_parent_site(v, interp, site);
+    }
+}
+
 /**
  * Promote a value from current scope TEMP lane to current scope ESCAPE lane.
  * This is an intra-scope promotion primitive for dual-lane rollout.
@@ -2596,7 +2629,7 @@ fn EvalResult run(char[] source, Interp* interp) {
                 if (main::is_in_scope((void*)jit_result, child_scope)) {
                     main::ScopeRegion* saved_releasing = interp.releasing_scope;
                     interp.releasing_scope = child_scope;
-                    jit_result = copy_to_parent_site(jit_result, interp, COPY_SITE_RUN_JIT_RESULT);
+                    jit_result = copy_value_if_owned_by_scope(jit_result, interp, child_scope, COPY_SITE_RUN_JIT_RESULT);
                     interp.releasing_scope = saved_releasing;
                 }
             }

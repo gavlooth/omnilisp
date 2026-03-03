@@ -531,7 +531,7 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
     // Fallback: explicit copy + release.
     interp.releasing_scope = active_scope;
     if (result != null) {
-        result = copy_to_parent_site(result, interp, COPY_SITE_JIT_SINGLE_SCOPE_RETURN);
+        result = copy_value_if_owned_by_scope(result, interp, active_scope, COPY_SITE_JIT_SINGLE_SCOPE_RETURN);
     }
     interp.releasing_scope = null;
     main::scope_release(active_scope);
@@ -583,7 +583,7 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp) {
 
     interp.releasing_scope = active_scope;
     if (result != null) {
-        result = copy_to_parent_site(result, interp, COPY_SITE_JIT_CALL_SCOPE_STEP2);
+        result = copy_value_if_owned_by_scope(result, interp, active_scope, COPY_SITE_JIT_CALL_SCOPE_STEP2);
     }
     interp.releasing_scope = null;
     main::scope_release(active_scope);
@@ -613,14 +613,7 @@ fn Env* copy_tco_env_chain(Env* src, Interp* interp) {
     Env* dst = make_env(interp, parent_copy);
     for (usz i = 0; i < src.binding_count; i++) {
         Value* sv = src.bindings[i].value;
-        Value* v;
-        if (sv != null && interp.releasing_scope != null &&
-            !main::is_in_scope((void*)sv, interp.releasing_scope)) {
-            // Value is outside the dying call-scope; keep as-is.
-            v = sv;
-        } else {
-            v = copy_to_parent_site(sv, interp, COPY_SITE_JIT_TCO_FRAME_COPY);
-        }
+        Value* v = copy_value_if_owned_by_scope(sv, interp, interp.releasing_scope, COPY_SITE_JIT_TCO_FRAME_COPY);
         env_define_with_barrier(dst, src.bindings[i].name, v, interp);
     }
     // Rebuild hash table if source had one
