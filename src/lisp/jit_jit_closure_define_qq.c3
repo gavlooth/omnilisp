@@ -42,8 +42,7 @@ fn Value* jit_make_false(Interp* interp) {
 fn void jit_copy_closure_env_if_needed(Interp* interp, Value* closure, Env* env, main::ScopeRegion* creation_scope, bool need_env_copy) {
     if (!need_env_copy) return;
     main::ScopeRegion* env_scope = main::scope_create(null);
-    interp.current_scope = env_scope;
-    closure.closure_val.env = boundary_copy_env_to_scope(env, interp);
+    closure.closure_val.env = boundary_copy_env_to_target_scope(env, interp, env_scope);
     closure.closure_val.env_scope = env_scope;
     interp.current_scope = creation_scope;
 }

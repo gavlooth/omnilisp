@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-03-04: Session 45 - Scoped Env-Copy Boundary Helper
+
+### Summary
+Added a dedicated boundary helper for env-chain copy into an explicit target scope and migrated JIT closure env-copy path to use it.
+
+### What changed
+- `src/lisp/eval_boundary_api.c3`:
+  - Added:
+    - `boundary_copy_env_to_target_scope(env, interp, target_scope, depth = 0, ctx = null)`
+  - Encapsulates target-scope save/switch/restore around env-copy.
+- `src/lisp/jit_jit_closure_define_qq.c3`:
+  - `jit_copy_closure_env_if_needed(...)` now uses:
+    - `boundary_copy_env_to_target_scope(...)`
+  - Removed direct env-copy scope switching in that path.
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 44 - Recursive Closure Patch Path Scope Cleanup
 
 ### Summary

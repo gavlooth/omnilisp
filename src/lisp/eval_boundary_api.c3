@@ -163,6 +163,24 @@ fn Env* boundary_copy_env_to_scope(Env* env, Interp* interp, usz depth = 0, Prom
     return copy_env_to_scope(env, interp, depth, ctx);
 }
 
+<*
+@require interp != null : "boundary_copy_env_to_target_scope: null interp"
+@require target_scope != null : "boundary_copy_env_to_target_scope: null target_scope"
+*>
+fn Env* boundary_copy_env_to_target_scope(
+    Env* env,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    usz depth = 0,
+    PromotionContext* ctx = null
+) @inline {
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = target_scope;
+    Env* copied = boundary_copy_env_to_scope(env, interp, depth, ctx);
+    interp.current_scope = saved_scope;
+    return copied;
+}
+
 fn bool boundary_try_scope_splice_escapes(main::ScopeRegion* parent, main::ScopeRegion* child) @inline {
     if (parent == null || child == null) return false;
     assert(parent != child, "boundary_try_scope_splice_escapes: parent and child must differ");
