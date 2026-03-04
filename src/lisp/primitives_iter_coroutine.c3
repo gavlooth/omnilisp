@@ -265,16 +265,16 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
     return prim_resume_post_switch(coroutine_val, ctx, interp);
 }
 
-fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {
+fn Value* prim_yield_require_context(main::StackCtx** current_out, Interp* interp) {
     main::StackCtx* current = main::g_current_stack_ctx;
     if (current == null) {
         return raise_error(interp, "yield: not inside a coroutine");
     }
+    *current_out = current;
+    return null;
+}
 
-    Value* yield_val = args.len > 0 ? args[0] : make_nil(interp);
-    interp.yield_value = yield_val;
-
-    // Save full interpreter state across suspend/resume.
+fn void prim_yield_suspend_and_restore(main::StackCtx* current, Interp* interp) {
     SavedInterpState saved;
     save_interp_state(interp, &saved);
 
@@ -285,6 +285,21 @@ fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {
     // Resumed — restore full interpreter state.
     restore_interp_state(interp, &saved);
     main::stack_ctx_unpin_scope(current);
+}
 
-    return interp.resume_value != null ? interp.resume_value : make_nil(interp);
+fn Value* prim_yield_resume_result(Interp* interp) {
+    if (interp.resume_value != null) return interp.resume_value;
+    return make_nil(interp);
+}
+
+fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {
+    main::StackCtx* current = null;
+    Value* parse_err = prim_yield_require_context(&current, interp);
+    if (parse_err != null) return parse_err;
+
+    Value* yield_val = args.len > 0 ? args[0] : make_nil(interp);
+    interp.yield_value = yield_val;
+
+    prim_yield_suspend_and_restore(current, interp);
+    return prim_yield_resume_result(interp);
 }

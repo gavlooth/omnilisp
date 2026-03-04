@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-03-04: Session 76 - Decompose Coroutine Yield Path
+
+### Summary
+Refactored `prim_yield(...)` into focused helpers for context validation, suspend/resume state transition, and resume-value return mapping, with no behavior changes.
+
+### What changed
+- `src/lisp/primitives_iter_coroutine.c3`:
+  - Added:
+    - `prim_yield_require_context(current_out, interp)`
+    - `prim_yield_suspend_and_restore(current, interp)`
+    - `prim_yield_resume_result(interp)`
+  - Refactored:
+    - `prim_yield(...)` now delegates to the helpers above
+  - Preserved:
+    - same `"yield: not inside a coroutine"` error behavior
+    - same save/suspend/restore/unpin sequence
+    - same returned value (`resume_value` or `nil`)
+
+### Verification
+- `c3c build` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 75 - Decompose Coroutine Creation Path
 
 ### Summary
