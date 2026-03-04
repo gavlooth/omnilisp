@@ -39,11 +39,18 @@ fn Value* jit_make_false(Interp* interp) {
     return make_symbol(interp, interp.sym_false);
 }
 
-fn void jit_copy_closure_env_if_needed(Interp* interp, Value* closure, Env* env, bool need_env_copy) {
-    if (!need_env_copy) return;
+fn bool jit_copy_closure_env_if_needed(Interp* interp, Value* closure, Env* env, bool need_env_copy) {
+    if (!need_env_copy) return true;
     main::ScopeRegion* env_scope = main::scope_create(null);
-    closure.closure_val.env = boundary_copy_env_to_target_scope(env, interp, env_scope);
+    if (env_scope == null) return false;
+    Env* copied_env = boundary_copy_env_to_target_scope(env, interp, env_scope);
+    if (copied_env == null) {
+        main::scope_release(env_scope);
+        return false;
+    }
+    closure.closure_val.env = copied_env;
     closure.closure_val.env_scope = env_scope;
+    return true;
 }
 
 fn void jit_copy_lambda_variadic_info(Interp* interp, Value* closure, Expr* expr) {
@@ -110,7 +117,9 @@ fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
     // Check for zero-arg lambda (sentinel param)
     if ((uint)expr.lambda.param == 0xFFFFFFFF && !expr.lambda.has_rest) {
         Value* closure = make_closure_no_param(interp, expr.lambda.body, env);
-        jit_copy_closure_env_if_needed(interp, closure, env, need_env_copy);
+        if (!jit_copy_closure_env_if_needed(interp, closure, env, need_env_copy)) {
+            return raise_error(interp, "jit: failed to allocate closure env scope");
+        }
         return closure;
     }
 
@@ -125,7 +134,9 @@ fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
         closure.closure_val.type_sig = jit_build_lambda_type_sig(interp, expr);
     }
 
-    jit_copy_closure_env_if_needed(interp, closure, env, need_env_copy);
+    if (!jit_copy_closure_env_if_needed(interp, closure, env, need_env_copy)) {
+        return raise_error(interp, "jit: failed to allocate closure env scope");
+    }
 
     return closure;
 }

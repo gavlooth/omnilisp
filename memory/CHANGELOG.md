@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-03-04: Session 52 - Root Promotion + JIT Closure Env-Scope Guards
+
+### Summary
+Removed another manual scope/releasing-scope swap in root-promotion and hardened JIT closure env-scope allocation with explicit failure handling.
+
+### What changed
+- `src/lisp/eval_promotion_escape.c3`:
+  - `promote_to_root_site(...)` now delegates to:
+    - `boundary_copy_to_scope_site(v, interp, interp.root_scope, releasing_scope, site)`
+  - removed direct manual mutation/restoration of:
+    - `interp.current_scope`
+    - `interp.releasing_scope`
+- `src/lisp/jit_jit_closure_define_qq.c3`:
+  - `jit_copy_closure_env_if_needed(...)` now returns `bool` and validates:
+    - detached env-scope allocation success
+    - copied env success
+    - releases detached env scope on copy failure
+  - `jit_make_closure_from_expr(...)` now raises explicit runtime error when env-scope copy setup fails (zero-arg and regular lambda paths)
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 51 - JIT Scoped-Eval Boundary Hardening
 
 ### Summary

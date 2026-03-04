@@ -271,14 +271,8 @@ fn Value* promote_to_escape(Value* v, Interp* interp) {
 // for disjoint transient lifetimes.
 fn Value* promote_to_root_site(Value* v, Interp* interp, uint site) {
     if (v == null || interp == null || interp.current_scope == interp.root_scope) return v;
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* saved_releasing = interp.releasing_scope;
-    interp.current_scope = interp.root_scope;
-    interp.releasing_scope = saved_scope;
-    Value* result = copy_to_parent_site(v, interp, site);
-    interp.releasing_scope = saved_releasing;
-    interp.current_scope = saved_scope;
-    return result;
+    main::ScopeRegion* releasing_scope = interp.current_scope;
+    return boundary_copy_to_scope_site(v, interp, interp.root_scope, releasing_scope, site);
 }
 
 /**
