@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-03-04: Session 59 - Decompose Scheduler Run-Loop Step Logic
+
+### Summary
+Extracted the shared scheduler progress step used by both `scheduler_run_until(...)` and `scheduler_run_all(...)` to reduce duplication while preserving scheduling behavior.
+
+### What changed
+- `src/lisp/scheduler_primitives.c3`:
+  - Added:
+    - `scheduler_advance_round(interp, target, stop_on_target, target_done_out = null)`
+  - `scheduler_run_until(...)` now delegates per-round wakeup/resume/block handling to the helper.
+  - `scheduler_run_all(...)` now delegates per-round wakeup/resume/block handling to the helper.
+  - Preserved:
+    - round limits
+    - target-done break behavior
+    - UV nowait drain at end of `run_until`
+    - reset semantics in `run_all`
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 58 - Decompose Scheduler `await` Path
 
 ### Summary

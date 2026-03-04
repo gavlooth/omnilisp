@@ -370,6 +370,25 @@ fn bool scheduler_wait_blocked_once() {
     return true;
 }
 
+fn bool scheduler_advance_round(
+    Interp* interp,
+    usz target,
+    bool stop_on_target,
+    bool* target_done_out = null
+) {
+    drain_wakeups();
+
+    bool target_done = false;
+    bool ran_ready = scheduler_resume_ready_round(interp, target, stop_on_target, &target_done);
+    if (target_done_out != null) {
+        *target_done_out = target_done;
+    }
+    if (target_done) return true;
+    if (ran_ready) return true;
+    if (scheduler_wait_blocked_once()) return true;
+    return false;
+}
+
 fn void scheduler_run_until(usz target, Interp* interp) {
     g_scheduler.running = true;
     defer {
@@ -381,23 +400,12 @@ fn void scheduler_run_until(usz target, Interp* interp) {
     usz round = 0;
 
     while (g_scheduler.fibers[target].state != FIBER_DONE && round < max_rounds) {
-        drain_wakeups();
         bool target_done = false;
-        bool ran_ready = scheduler_resume_ready_round(interp, target, true, &target_done);
+        bool progressed = scheduler_advance_round(interp, target, true, &target_done);
 
         if (target_done || g_scheduler.fibers[target].state == FIBER_DONE) break;
-
-        if (ran_ready) {
-            round++;
-            continue;
-        }
-
-        if (scheduler_wait_blocked_once()) {
-            round++;
-            continue;
-        }
-
-        break;
+        if (!progressed) break;
+        round++;
     }
 
     if (g_scheduler.uv_loop_ready && g_scheduler.uv_loop != null) {
@@ -437,22 +445,11 @@ fn void scheduler_run_all(Interp* interp) {
     usz round = 0;
 
     while (round < max_rounds) {
-        drain_wakeups();
-        bool ran_ready = scheduler_resume_ready_round(interp, 0, false, null);
+        bool progressed = scheduler_advance_round(interp, 0, false);
 
         if (scheduler_all_done()) break;
-
-        if (ran_ready) {
-            round++;
-            continue;
-        }
-
-        if (scheduler_wait_blocked_once()) {
-            round++;
-            continue;
-        }
-
-        break;
+        if (!progressed) break;
+        round++;
     }
 
     drain_wakeups();
