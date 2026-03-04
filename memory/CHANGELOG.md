@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-03-04: Session 91 - Split JIT Index Dispatch Helpers
+
+### Summary
+Refactored `jit_do_index(...)` into focused per-collection helpers (list/string/array/dict/instance) plus a shared type-error builder, preserving index behavior and error messages.
+
+### What changed
+- `src/lisp/jit_jit_module_import.c3`:
+  - Added:
+    - `jit_try_index_list(interp, collection, index, out)`
+    - `jit_try_index_string(interp, collection, index, out)`
+    - `jit_try_index_array(interp, collection, index, out)`
+    - `jit_try_index_dict(interp, collection, index, out)`
+    - `jit_try_index_instance(interp, collection, index, out)`
+    - `jit_index_type_error(interp, collection)`
+  - Refactored:
+    - `jit_do_index(...)` now performs ordered helper dispatch and returns shared fallback type errors
+  - Preserved:
+    - negative indexing behavior for lists/strings/arrays
+    - UTF-8 codepoint indexing behavior for strings
+    - dict missing-key behavior (`nil`)
+    - instance `ref` method-table dispatch behavior
+    - index/type error strings
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 90 - Split Mutable-Capture Prescan Helpers
 
 ### Summary
