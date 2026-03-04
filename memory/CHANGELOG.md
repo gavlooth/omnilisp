@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-03-04: Session 37 - Remove Local Scoped-Copy Shim + TCO Recycle Guard Helper
+
+### Summary
+Continued internal simplification by removing one remaining local scoped-copy shim and encapsulating TCO recycle fallback boundary state handling in a focused helper.
+
+### What changed
+- `src/lisp/jit_jit_closure_define_qq.c3`:
+  - Replaced local call through removed shim with direct audited boundary API call:
+    - `boundary_copy_to_scope_site(...)`
+  - Applies to instance field mutation path in `jit_eval_set(...)`.
+- `src/lisp/eval_env_copy.c3`:
+  - Removed now-unused local `copy_to_scope_site(...)` shim.
+  - Env-copy paths now rely on boundary APIs directly.
+- `src/lisp/jit_jit_eval_scopes.c3`:
+  - Added helper:
+    - `jit_copy_tco_env_chain_for_recycle(...)`
+  - Encapsulates:
+    - temporary `releasing_scope` installation
+    - promotion-context begin/end for TCO bounce copy
+    - restoration of prior `releasing_scope`
+  - `jit_eval(...)` TCO fallback now delegates to this helper.
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 36 - Scoped Copy Boundary Consolidation
 
 ### Summary

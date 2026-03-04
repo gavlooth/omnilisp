@@ -82,6 +82,21 @@ fn Value* jit_finalize_scoped_result(
     return result;
 }
 
+fn Env* jit_copy_tco_env_chain_for_recycle(
+    Env* env,
+    Interp* interp,
+    main::ScopeRegion* releasing_scope
+) {
+    main::ScopeRegion* saved_releasing = interp.releasing_scope;
+    interp.releasing_scope = releasing_scope;
+    PromotionContext bounce_ctx = {};
+    promotion_context_begin(interp, &bounce_ctx, PROMOTION_CTX_BUDGET_TCO);
+    Env* copied = copy_tco_env_chain(env, interp);
+    promotion_context_end(interp, &bounce_ctx);
+    interp.releasing_scope = saved_releasing;
+    return copied;
+}
+
 // JIT-aware eval replacement with trampoline TCO.
 // Compiles sub-expressions with cache, executes with env context.
 // When a tail-call helper sets jit_tco_bounce, loops instead of recursing.
@@ -144,12 +159,7 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
                     main::ScopeRegion* fresh = main::scope_create(cs.parent);
                     interp.current_scope = fresh;
                     interp.tco_recycle_scope = fresh;  // Update: fresh is now the recyclable scope
-                    interp.releasing_scope = cs;       // Tell copy_to_parent what's being released
-                    PromotionContext bounce_ctx = {};
-                    promotion_context_begin(interp, &bounce_ctx, PROMOTION_CTX_BUDGET_TCO);
-                    env = copy_tco_env_chain(env, interp);
-                    promotion_context_end(interp, &bounce_ctx);
-                    interp.releasing_scope = null;
+                    env = jit_copy_tco_env_chain_for_recycle(env, interp, cs);
                     main::scope_release(cs);
                 }
             }

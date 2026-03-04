@@ -312,7 +312,13 @@ fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) 
                     if (fi < current.instance_val.field_count) {
                         main::ScopeRegion* target = current.instance_val.owner_scope;
                         if (target == null) target = interp.root_scope;
-                        Value* stored = copy_to_scope_site(value, interp, target, COPY_SITE_ENV_PROMOTE_FOR_TARGET);
+                        Value* stored = boundary_copy_to_scope_site(
+                            value,
+                            interp,
+                            target,
+                            interp.current_scope,
+                            COPY_SITE_ENV_PROMOTE_FOR_TARGET
+                        );
                         if (stored != null) current.instance_val.fields[fi] = *stored;
                         return stored;
                     }

@@ -3,14 +3,6 @@ module lisp;
 import std::io;
 import main;
 
-// =============================================================================
-// SECTION 2.4: FRAME PUSH/POP (env copy)
-// =============================================================================
-fn Value* copy_to_scope_site(Value* v, Interp* interp, main::ScopeRegion* target_scope, uint site) {
-    if (v == null || interp == null || target_scope == null) return v;
-    return boundary_copy_to_scope_site(v, interp, target_scope, interp.current_scope, site);
-}
-
 fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = null) {
     if (v == null) return null;
     switch (v.tag) {
