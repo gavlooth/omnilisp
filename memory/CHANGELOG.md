@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-03-04: Session 100 - Split Parser Export-From Helpers
+
+### Summary
+Refactored `Parser.parse_export_from(...)` into focused helper functions for initialization, source-module parsing, specifier parsing, list growth, and list element append semantics.
+
+### What changed
+- `src/lisp/parser_import_export.c3`:
+  - Added:
+    - `Parser.init_export_from_expr(e)`
+    - `Parser.parse_export_from_source_module(e)`
+    - `Parser.ensure_export_from_name_capacity(e)`
+    - `Parser.parse_export_from_name_list(e)`
+    - `Parser.parse_export_from_specifiers(e)`
+  - Refactored:
+    - `Parser.parse_export_from(...)` now delegates to the helpers above
+  - Preserved:
+    - accepted forms: `(export-from mod :all)` and `(export-from mod (sym1 sym2 ...))`
+    - existing error strings and parse order
+    - dynamic growth behavior for export-from names
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1144 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 99 - Fix ASAN JIT Escape-Scope Stack Overflow + Re-enable Coverage
 
 ### Summary
