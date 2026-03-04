@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-03-04: Session 68 - Extract TCP-Read Result Mapping Helper
+
+### Summary
+Refactored `scheduler_consume_pending_tcp_read(...)` by extracting TCP-read completion-to-Value mapping into a dedicated helper, reducing local branching while preserving behavior.
+
+### What changed
+- `src/lisp/scheduler_wakeup_io.c3`:
+  - Added:
+    - `scheduler_value_from_pending_tcp_read(op, interp)`
+  - `scheduler_consume_pending_tcp_read(...)` now delegates result construction to helper.
+  - Preserved:
+    - timeout/error/empty/non-empty mapping semantics
+    - pending read cleanup and UV nowait drain behavior
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 67 - Decompose Wakeup Drain Event Handlers
 
 ### Summary

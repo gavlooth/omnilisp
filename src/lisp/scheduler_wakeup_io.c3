@@ -233,22 +233,26 @@ fn void drain_wakeups() {
     g_scheduler.wakeup_tail.store(tail);
 }
 
+fn Value* scheduler_value_from_pending_tcp_read(PendingTcpRead* op, Interp* interp) {
+    if (op.timed_out) {
+        return raise_error(interp, "tcp-read: timeout");
+    }
+    if (op.error_code != 0) {
+        return raise_error(interp, "tcp-read: async read failed");
+    }
+    if (op.nread <= 0) {
+        return make_string(interp, "");
+    }
+    return make_string(interp, op.buffer[:(usz)op.nread]);
+}
+
 fn Value* scheduler_consume_pending_tcp_read(usz fiber_id, Interp* interp) {
     PendingTcpRead* op = &g_scheduler.pending_reads[fiber_id];
     if (!op.active || !op.completed) {
         return raise_error(interp, "tcp-read: resumed before async read completed");
     }
 
-    Value* out;
-    if (op.timed_out) {
-        out = raise_error(interp, "tcp-read: timeout");
-    } else if (op.error_code != 0) {
-        out = raise_error(interp, "tcp-read: async read failed");
-    } else if (op.nread <= 0) {
-        out = make_string(interp, "");
-    } else {
-        out = make_string(interp, op.buffer[:(usz)op.nread]);
-    }
+    Value* out = scheduler_value_from_pending_tcp_read(op, interp);
 
     op.consumed = true;
     if (op.buffer != null) mem::free(op.buffer);
