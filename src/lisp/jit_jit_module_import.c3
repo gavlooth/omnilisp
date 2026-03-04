@@ -180,11 +180,8 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
         mod.exports[i] = expr.module_expr.exports[i];
     }
 
-    // Module env must live in root_scope (module persists beyond run() scope)
-    main::ScopeRegion* saved_mod_scope = interp.current_scope;
-    interp.current_scope = interp.root_scope;
-    Env* mod_env = make_env(interp, interp.global_env);
-    interp.current_scope = saved_mod_scope;
+    // Module env must live in root_scope (module persists beyond run() scope).
+    Env* mod_env = boundary_make_env_in_root(interp, interp.global_env);
     mod.env = mod_env;
     interp.module_count++;
 
@@ -295,10 +292,7 @@ fn Module* jit_create_file_module(SymbolId name, char[] path, Interp* interp) {
     mod.export_capacity = 32;
     mod.exports = (SymbolId*)mem::malloc(SymbolId.sizeof * 32);
 
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    interp.current_scope = interp.root_scope;
-    mod.env = make_env(interp, interp.global_env);
-    interp.current_scope = saved_scope;
+    mod.env = boundary_make_env_in_root(interp, interp.global_env);
 
     interp.module_count++;
     usz mod_idx = interp.module_count - 1;

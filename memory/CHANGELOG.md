@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-03-04: Session 42 - Module Env Root Allocation via Boundary Helper
+
+### Summary
+Migrated file/module-load env creation paths from manual root-scope switching to the audited boundary env allocator helper.
+
+### What changed
+- `src/lisp/eval_boundary_api.c3`:
+  - Added:
+    - `boundary_make_env_in_scope(interp, target_scope, parent)`
+    - `boundary_make_env_in_root(interp, parent)`
+- `src/lisp/jit_jit_module_import.c3`:
+  - Replaced two manual root-scope `make_env(...)` blocks with:
+    - `boundary_make_env_in_root(interp, interp.global_env)`
+  - Affects:
+    - declared module evaluation path
+    - file-module creation path
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 41 - JIT Method-Table Wrapper Allocation Cleanup
 
 ### Summary

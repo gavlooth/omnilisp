@@ -71,6 +71,25 @@ fn Value* boundary_alloc_value_in_root(Interp* interp, bool register_dtor = fals
 }
 
 <*
+@require interp != null : "boundary_make_env_in_scope: null interp"
+@require target_scope != null : "boundary_make_env_in_scope: null target_scope"
+*>
+fn Env* boundary_make_env_in_scope(Interp* interp, main::ScopeRegion* target_scope, Env* parent) @inline {
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = target_scope;
+    Env* env = make_env(interp, parent);
+    interp.current_scope = saved_scope;
+    return env;
+}
+
+<*
+@require interp != null : "boundary_make_env_in_root: null interp"
+*>
+fn Env* boundary_make_env_in_root(Interp* interp, Env* parent) @inline {
+    return boundary_make_env_in_scope(interp, interp.root_scope, parent);
+}
+
+<*
 @require interp != null : "boundary_promote_to_escape: null interp"
 *>
 fn Value* boundary_promote_to_escape(Value* v, Interp* interp) @inline {
