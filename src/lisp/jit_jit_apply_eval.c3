@@ -85,16 +85,50 @@ fn void jit_warm_pattern_cache(Pattern* pat, Interp* interp) {
     }
 }
 
+fn void jit_cache_expr(Expr* expr, Interp* interp) {
+    JitFn cached = jit_cache_lookup(expr);
+    if (cached != null) return;
+
+    JitFn compiled = jit_compile(expr, interp);
+    if (compiled != null) {
+        jit_cache_store(expr, compiled);
+    }
+}
+
+fn void jit_warm_handle_clauses(Expr* expr, Interp* interp) {
+    for (usz i = 0; i < expr.handle.clause_count; i++) {
+        jit_warm_expr_cache(expr.handle.clauses[i].handler_body, interp);
+    }
+}
+
+fn void jit_warm_match_clauses(Expr* expr, Interp* interp) {
+    for (usz i = 0; i < expr.match.clause_count; i++) {
+        jit_warm_pattern_cache(expr.match.clauses[i].pattern, interp);
+        jit_warm_expr_cache(expr.match.clauses[i].result, interp);
+    }
+}
+
+fn void jit_warm_call_args(Expr* expr, Interp* interp) {
+    for (usz i = 0; i < expr.call.arg_count; i++) {
+        jit_warm_expr_cache(expr.call.args[i], interp);
+    }
+}
+
+fn void jit_warm_begin_exprs(Expr* expr, Interp* interp) {
+    for (usz i = 0; i < expr.begin.expr_count; i++) {
+        jit_warm_expr_cache(expr.begin.exprs[i], interp);
+    }
+}
+
+fn void jit_warm_module_body(Expr* expr, Interp* interp) {
+    for (usz i = 0; i < expr.module_expr.body_count; i++) {
+        jit_warm_expr_cache(expr.module_expr.body[i], interp);
+    }
+}
+
 fn void jit_warm_expr_cache(Expr* expr, Interp* interp) {
     if (expr == null || interp == null) return;
-
-    JitFn cached = jit_cache_lookup(expr);
-    if (cached == null) {
-        JitFn compiled = jit_compile(expr, interp);
-        if (compiled != null) {
-            jit_cache_store(expr, compiled);
-        }
-    }
+    jit_cache_expr(expr, interp);
 
     switch (expr.tag) {
         case E_LAMBDA:
@@ -119,9 +153,7 @@ fn void jit_warm_expr_cache(Expr* expr, Interp* interp) {
             jit_warm_expr_cache(expr.perform.arg, interp);
         case E_HANDLE:
             jit_warm_expr_cache(expr.handle.body, interp);
-            for (usz i = 0; i < expr.handle.clause_count; i++) {
-                jit_warm_expr_cache(expr.handle.clauses[i].handler_body, interp);
-            }
+            jit_warm_handle_clauses(expr, interp);
         case E_RESOLVE:
             jit_warm_expr_cache(expr.resolve.value, interp);
         case E_INDEX:
@@ -129,10 +161,7 @@ fn void jit_warm_expr_cache(Expr* expr, Interp* interp) {
             jit_warm_expr_cache(expr.index.index, interp);
         case E_MATCH:
             jit_warm_expr_cache(expr.match.scrutinee, interp);
-            for (usz i = 0; i < expr.match.clause_count; i++) {
-                jit_warm_pattern_cache(expr.match.clauses[i].pattern, interp);
-                jit_warm_expr_cache(expr.match.clauses[i].result, interp);
-            }
+            jit_warm_match_clauses(expr, interp);
         case E_AND:
             jit_warm_expr_cache(expr.and_expr.left, interp);
             jit_warm_expr_cache(expr.and_expr.right, interp);
@@ -141,13 +170,9 @@ fn void jit_warm_expr_cache(Expr* expr, Interp* interp) {
             jit_warm_expr_cache(expr.or_expr.right, interp);
         case E_CALL:
             jit_warm_expr_cache(expr.call.func, interp);
-            for (usz i = 0; i < expr.call.arg_count; i++) {
-                jit_warm_expr_cache(expr.call.args[i], interp);
-            }
+            jit_warm_call_args(expr, interp);
         case E_BEGIN:
-            for (usz i = 0; i < expr.begin.expr_count; i++) {
-                jit_warm_expr_cache(expr.begin.exprs[i], interp);
-            }
+            jit_warm_begin_exprs(expr, interp);
         case E_SET:
             jit_warm_expr_cache(expr.set_expr.value, interp);
         case E_QUASIQUOTE:
@@ -157,9 +182,7 @@ fn void jit_warm_expr_cache(Expr* expr, Interp* interp) {
         case E_UNQUOTE_SPLICING:
             jit_warm_expr_cache(expr.unquote_splicing.body, interp);
         case E_MODULE:
-            for (usz i = 0; i < expr.module_expr.body_count; i++) {
-                jit_warm_expr_cache(expr.module_expr.body[i], interp);
-            }
+            jit_warm_module_body(expr, interp);
         case E_FFI_LIB:
             jit_warm_expr_cache(expr.ffi_lib.path_expr, interp);
         default:

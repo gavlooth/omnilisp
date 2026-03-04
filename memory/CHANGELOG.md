@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-03-04: Session 56 - Decompose JIT Cache-Warm Traversal
+
+### Summary
+Refactored `jit_warm_expr_cache(...)` into smaller focused helpers for cache insertion and per-node collection traversal, preserving traversal behavior and API.
+
+### What changed
+- `src/lisp/jit_jit_apply_eval.c3`:
+  - Added helper functions:
+    - `jit_cache_expr(...)`
+    - `jit_warm_handle_clauses(...)`
+    - `jit_warm_match_clauses(...)`
+    - `jit_warm_call_args(...)`
+    - `jit_warm_begin_exprs(...)`
+    - `jit_warm_module_body(...)`
+  - Simplified `jit_warm_expr_cache(...)` to:
+    - call `jit_cache_expr(...)` once
+    - delegate list/clause loops to helpers
+  - Public API and warmup traversal semantics unchanged.
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 55 - Decompose JIT Dot-Path `set!` Helper
 
 ### Summary
