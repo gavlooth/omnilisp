@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-03-04: Session 47 - Macro Hygiene Capture Scope Helper
+
+### Summary
+Refactored macro hygiene definition-time capture to a dedicated helper with scoped restoration via `defer`, reducing inline scope-switch boilerplate in `eval_define_macro`.
+
+### What changed
+- `src/lisp/macros_expansion.c3`:
+  - Added:
+    - `capture_template_bindings_in_root_scope(...)`
+  - `eval_define_macro(...)` now calls this helper per clause instead of open-coded:
+    - save current scope
+    - switch to root scope
+    - capture template bindings
+    - restore scope
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 46 - JIT Closure Env-Copy Simplification Follow-up
 
 ### Summary

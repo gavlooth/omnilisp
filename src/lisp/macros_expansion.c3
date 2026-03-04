@@ -111,6 +111,20 @@ fn void capture_template_bindings(Value* tmpl, SymbolId* pat_vars, usz pat_var_c
     }
 }
 
+fn void capture_template_bindings_in_root_scope(
+    Value* tmpl,
+    SymbolId* pat_vars,
+    usz pat_var_count,
+    CapturedBinding* bindings,
+    usz* binding_count,
+    Interp* interp
+) {
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
+    defer interp.current_scope = saved_scope;
+    capture_template_bindings(tmpl, pat_vars, pat_var_count, bindings, binding_count, interp);
+}
+
 /**
  * Evaluate a define-macro expression.
  * (define [macro] name (pattern1 template1) ...)
@@ -140,11 +154,14 @@ fn EvalResult eval_define_macro(Expr* expr, Env* env, Interp* interp) {
         collect_pattern_vars(mdef.clauses[i].pattern, &pat_vars_slice, &pat_var_count);
 
         // Walk template and capture bindings
-        main::ScopeRegion* saved_scope = interp.current_scope;
-        interp.current_scope = interp.root_scope;
-        capture_template_bindings(mdef.clauses[i].tmpl, &pat_vars, pat_var_count,
-                                  &mdef.captured_bindings, &mdef.captured_count, interp);
-        interp.current_scope = saved_scope;
+        capture_template_bindings_in_root_scope(
+            mdef.clauses[i].tmpl,
+            &pat_vars,
+            pat_var_count,
+            &mdef.captured_bindings,
+            &mdef.captured_count,
+            interp
+        );
     }
 
     interp.macro_count++;
