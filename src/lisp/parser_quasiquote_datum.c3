@@ -201,67 +201,78 @@ fn Expr* Parser.parse_qq_list_form(Parser* self) {
     return e;
 }
 
+fn Expr* Parser.parse_qq_backtick(Parser* self) {
+    Expr* e = self.alloc_expr_here();
+    self.lexer.advance();
+    e.tag = E_QUASIQUOTE;
+    e.quasiquote.body = self.parse_qq_template();
+    return e;
+}
+
+fn Expr* Parser.parse_qq_unquote(Parser* self) {
+    Expr* e = self.alloc_expr_here();
+    self.lexer.advance();
+    e.tag = E_UNQUOTE;
+    e.unquote.body = self.parse_expr();
+    return e;
+}
+
+fn Expr* Parser.parse_qq_unquote_splicing(Parser* self) {
+    Expr* e = self.alloc_expr_here();
+    self.lexer.advance();
+    e.tag = E_UNQUOTE_SPLICING;
+    e.unquote_splicing.body = self.parse_expr();
+    return e;
+}
+
+fn Expr* Parser.parse_qq_quote_datum(Parser* self) {
+    Expr* e = self.alloc_expr_here();
+    self.lexer.advance();
+    e.tag = E_QUOTE;
+    e.quote.datum = self.parse_datum();
+    return e;
+}
+
+fn Expr* Parser.parse_qq_int_literal(Parser* self) {
+    Expr* e = self.alloc_expr_here();
+    long val = self.lexer.current.int_value;
+    self.lexer.advance();
+    e.tag = E_LIT;
+    e.lit.value = self.interp.alloc_value_root();
+    e.lit.value.tag = INT;
+    e.lit.value.int_val = val;
+    return e;
+}
+
+fn Expr* Parser.parse_qq_var_symbol(Parser* self, SymbolId sym) {
+    Expr* e = self.alloc_expr_here();
+    self.lexer.advance();
+    e.tag = E_VAR;
+    e.var_expr.name = sym;
+    return e;
+}
+
 fn Expr* Parser.parse_qq_template(Parser* self) {
     if (self.has_error) return null;
     switch (self.lexer.current.type) {
-        case T_BACKTICK: {
-            Expr* e = self.alloc_expr_here();
-            self.lexer.advance();
-            e.tag = E_QUASIQUOTE;
-            e.quasiquote.body = self.parse_qq_template();
-            return e;
-        }
-        case T_COMMA: {
-            Expr* e = self.alloc_expr_here();
-            self.lexer.advance();
-            e.tag = E_UNQUOTE;
-            e.unquote.body = self.parse_expr();
-            return e;
-        }
-        case T_COMMA_AT: {
-            Expr* e = self.alloc_expr_here();
-            self.lexer.advance();
-            e.tag = E_UNQUOTE_SPLICING;
-            e.unquote_splicing.body = self.parse_expr();
-            return e;
-        }
-        case T_QUOTE: {
-            Expr* e = self.alloc_expr_here();
-            self.lexer.advance();
-            e.tag = E_QUOTE;
-            e.quote.datum = self.parse_datum();
-            return e;
-        }
-        case T_INT: {
-            Expr* e = self.alloc_expr_here();
-            long val = self.lexer.current.int_value;
-            self.lexer.advance();
-            e.tag = E_LIT;
-            e.lit.value = self.interp.alloc_value_root();
-            e.lit.value.tag = INT;
-            e.lit.value.int_val = val;
-            return e;
-        }
+        case T_BACKTICK:
+            return self.parse_qq_backtick();
+        case T_COMMA:
+            return self.parse_qq_unquote();
+        case T_COMMA_AT:
+            return self.parse_qq_unquote_splicing();
+        case T_QUOTE:
+            return self.parse_qq_quote_datum();
+        case T_INT:
+            return self.parse_qq_int_literal();
         case T_STRING:
             return self.parse_qq_string_literal();
-        case T_SYMBOL: {
-            Expr* e = self.alloc_expr_here();
-            SymbolId sym = self.get_current_symbol();
-            self.lexer.advance();
-            e.tag = E_VAR;
-            e.var_expr.name = sym;
-            return e;
-        }
+        case T_SYMBOL:
+            return self.parse_qq_var_symbol(self.get_current_symbol());
         case T_LPAREN:
             return self.parse_qq_list_form();
-        case T_UNDERSCORE: {
-            Expr* e = self.alloc_expr_here();
-            SymbolId sym = self.interp.symbols.intern("_");
-            self.lexer.advance();
-            e.tag = E_VAR;
-            e.var_expr.name = sym;
-            return e;
-        }
+        case T_UNDERSCORE:
+            return self.parse_qq_var_symbol(self.interp.symbols.intern("_"));
         default:
             self.set_error("unexpected token in quasiquote template");
             return null;

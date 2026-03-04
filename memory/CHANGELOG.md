@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-03-04: Session 85 - Split Quasiquote Template Token Handlers
+
+### Summary
+Refactored `Parser.parse_qq_template(...)` into per-token helper functions, preserving quasiquote parsing behavior while reducing branching and per-case boilerplate.
+
+### What changed
+- `src/lisp/parser_quasiquote_datum.c3`:
+  - Added:
+    - `Parser.parse_qq_backtick()`
+    - `Parser.parse_qq_unquote()`
+    - `Parser.parse_qq_unquote_splicing()`
+    - `Parser.parse_qq_quote_datum()`
+    - `Parser.parse_qq_int_literal()`
+    - `Parser.parse_qq_var_symbol(sym)`
+  - Refactored:
+    - `Parser.parse_qq_template(...)` now dispatches to those helpers by token type
+  - Preserved:
+    - error text for unexpected quasiquote tokens
+    - parse flow for nested quasiquote/unquote/unquote-splicing
+    - symbol/underscore variable behavior and literal/int handling
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 84 - Split JSON Emit Conversion Helpers
 
 ### Summary
