@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-03-04: Session 97 - Split Lexer Advance Literal/Symbol Helpers
+
+### Summary
+Refactored `Lexer.advance(...)` by extracting number-start detection and literal/symbol scan helpers, preserving tokenization behavior while reducing branching in the main advance path.
+
+### What changed
+- `src/lisp/parser_lexer.c3`:
+  - Added:
+    - `Lexer.is_number_start(c)`
+    - `Lexer.scan_literal_or_symbol(c)`
+    - `Lexer.set_error_token()`
+  - Refactored:
+    - `Lexer.advance(...)` now delegates literal/symbol handling and error token setup to the helpers above
+  - Preserved:
+    - hash-reader dispatch fallback behavior
+    - string, number (including leading `-`), dot token, underscore, and symbol/path scanning semantics
+    - unknown-character fallback to `T_ERROR`
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 96 - Split REPL Session/Loop Orchestration Helpers
 
 ### Summary

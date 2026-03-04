@@ -111,6 +111,43 @@ fn void Lexer.skip_whitespace(Lexer* self) {
     }
 }
 
+fn bool Lexer.is_number_start(Lexer* self, char c) @inline {
+    if (c >= '0' && c <= '9') return true;
+    if (c != '-' || self.pos + 1 >= self.len) return false;
+    char next = self.source[self.pos + 1];
+    return next >= '0' && next <= '9';
+}
+
+fn bool Lexer.scan_literal_or_symbol(Lexer* self, char c) {
+    // String literal: "..."
+    if (c == '"') {
+        self.scan_string();
+        return true;
+    }
+
+    // Integer or float (with optional leading minus)
+    if (self.is_number_start(c)) {
+        self.scan_number();
+        return true;
+    }
+
+    if (self.scan_dot_tokens(c)) return true;
+    if (self.scan_standalone_underscore(c)) return true;
+
+    // Symbol or Path (dot-separated like point.x or person.address.city)
+    // Stops when seeing .[ (index access) or .. (rest pattern)
+    if (is_symbol_char(c)) {
+        self.scan_symbol();
+        return true;
+    }
+    return false;
+}
+
+fn void Lexer.set_error_token(Lexer* self) @inline {
+    self.current.type = T_ERROR;
+    self.pos++;
+}
+
 fn void Lexer.advance(Lexer* self) {
     self.skip_whitespace();
 
@@ -134,33 +171,10 @@ fn void Lexer.advance(Lexer* self) {
         // Unrecognized # dispatch — fall through to symbol parsing
     }
 
-    // String literal: "..."
-    if (c == '"') {
-        self.scan_string();
-        return;
-    }
-
-    // Integer or float (with optional leading minus)
-    if ((c >= '0' && c <= '9') ||
-        (c == '-' && self.pos + 1 < self.len &&
-         self.source[self.pos + 1] >= '0' && self.source[self.pos + 1] <= '9')) {
-        self.scan_number();
-        return;
-    }
-
-    if (self.scan_dot_tokens(c)) return;
-    if (self.scan_standalone_underscore(c)) return;
-
-    // Symbol or Path (dot-separated like point.x or person.address.city)
-    // Stops when seeing .[ (index access) or .. (rest pattern)
-    if (is_symbol_char(c)) {
-        self.scan_symbol();
-        return;
-    }
+    if (self.scan_literal_or_symbol(c)) return;
 
     // Unknown character
-    self.current.type = T_ERROR;
-    self.pos++;
+    self.set_error_token();
 }
 
 fn bool Lexer.at_end(Lexer* self) {
