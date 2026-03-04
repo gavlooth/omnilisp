@@ -183,7 +183,12 @@ fn Value* prim_resume_yield_result(Interp* interp) {
     return make_nil(interp);
 }
 
-fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
+fn Value* prim_resume_require_ctx(
+    Value*[] args,
+    Value** coroutine_out,
+    main::StackCtx** ctx_out,
+    Interp* interp
+) {
     if (args.len < 1) return raise_error(interp, "resume: expected a coroutine argument");
     Value* coroutine_val = args[0];
     if (coroutine_val == null || coroutine_val.tag != COROUTINE) {
@@ -193,14 +198,12 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
     main::StackCtx* ctx = coroutine_val.coroutine_val;
     if (ctx == null) return raise_error(interp, "resume: null coroutine");
 
-    if (ctx.status == main::StackCtxStatus.CTX_COMPLETED || ctx.status == main::StackCtxStatus.CTX_DEAD) {
-        return prim_resume_error_and_cleanup(coroutine_val, ctx, interp, "resume: coroutine already completed");
-    }
+    *coroutine_out = coroutine_val;
+    *ctx_out = ctx;
+    return null;
+}
 
-    Value* resume_val = args.len > 1 ? args[1] : make_nil(interp);
-    interp.resume_value = resume_val;
-
-    // Save full interpreter state across coroutine switch.
+fn void prim_resume_switch_context(main::StackCtx* ctx, Interp* interp) {
     SavedInterpState saved;
     save_interp_state(interp, &saved);
 
@@ -211,24 +214,34 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
         main::stack_ctx_resume(ctx, &parent_ctx);
     }
 
-    // Restore full interpreter state.
     restore_interp_state(interp, &saved);
+}
 
-    // Stack overflow — coroutine hit guard page
+fn Value* prim_resume_post_switch(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
     if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
         return prim_resume_error_and_cleanup(coroutine_val, ctx, interp, "stack overflow in coroutine");
     }
-
     if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
         return prim_resume_complete(coroutine_val, ctx, interp);
     }
-
-    // Coroutine yielded — copy value to caller's scope.
-    // Yield values live in the coroutine's call_scope (created by jit_eval_in_call_scope).
-    // When the coroutine completes, that scope is released, invalidating all yield values.
-    // The caller may still hold pointers to previously yielded values, so we must
-    // copy each yield value into the caller's scope (current_scope, restored above).
     return prim_resume_yield_result(interp);
+}
+
+fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
+    Value* coroutine_val = null;
+    main::StackCtx* ctx = null;
+    Value* parse_err = prim_resume_require_ctx(args, &coroutine_val, &ctx, interp);
+    if (parse_err != null) return parse_err;
+
+    if (ctx.status == main::StackCtxStatus.CTX_COMPLETED || ctx.status == main::StackCtxStatus.CTX_DEAD) {
+        return prim_resume_error_and_cleanup(coroutine_val, ctx, interp, "resume: coroutine already completed");
+    }
+
+    Value* resume_val = args.len > 1 ? args[1] : make_nil(interp);
+    interp.resume_value = resume_val;
+
+    prim_resume_switch_context(ctx, interp);
+    return prim_resume_post_switch(coroutine_val, ctx, interp);
 }
 
 fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {

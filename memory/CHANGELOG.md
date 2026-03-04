@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-03-04: Session 74 - Split Coroutine Resume Validation/Switch/Post-Switch
+
+### Summary
+Further decomposed `prim_resume(...)` into focused helpers for argument/context validation, stack-context switch, and post-switch status dispatch, while preserving runtime behavior and error messages.
+
+### What changed
+- `src/lisp/primitives_iter_coroutine.c3`:
+  - Added:
+    - `prim_resume_require_ctx(args, coroutine_out, ctx_out, interp)`
+    - `prim_resume_switch_context(ctx, interp)`
+    - `prim_resume_post_switch(coroutine_val, ctx, interp)`
+  - Refactored:
+    - `prim_resume(...)` now delegates:
+      - coroutine argument + context extraction
+      - context switch/resume + interpreter state save/restore
+      - post-switch handling (dead/completed/yielded)
+  - Preserved:
+    - all existing `resume:` error strings
+    - pre-switch completed/dead cleanup behavior
+    - stack overflow cleanup path
+    - yielded-value boundary copy semantics via `prim_resume_yield_result(...)`
+
+### Verification
+- `c3c build` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 73 - Coroutine Thunk-State Allocation Helper
 
 ### Summary
