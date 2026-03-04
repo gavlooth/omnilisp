@@ -3,6 +3,8 @@ module lisp;
 import std::io;
 import main;
 
+const usz ITER_BUFFER_MAX = 4096;
+
 // Iterator and coroutine primitives.
 fn Value* prim_iterator_p(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return make_nil(interp);
@@ -25,26 +27,36 @@ fn Value* prim_next(Value*[] args, Env* env, Interp* interp) {
     return jit_apply_value(args[0].iterator_val, make_nil(interp), interp);
 }
 
+fn Value* iterator_consume_items(Value* iterator, Value** items, usz* count_out, Interp* interp) {
+    usz count = 0;
+    Value* it = iterator;
+
+    while (count < ITER_BUFFER_MAX) {
+        Value* pair = jit_apply_value(it.iterator_val, make_nil(interp), interp);
+        if (pair == null || pair.tag == NIL) break;
+        if (pair.tag == ERROR) return pair;
+        if (!is_cons(pair)) break;
+
+        items[count++] = car(pair);
+        Value* rest = cdr(pair);
+        if (rest == null || rest.tag != ITERATOR) break;
+        it = rest;
+    }
+
+    *count_out = count;
+    return null;
+}
+
 fn Value* prim_collect(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != ITERATOR) {
         return raise_error(interp, "collect: expected iterator");
     }
     // Consume iterator into a list
     // Collect into stack buffer first, then build list in reverse
-    Value*[4096] items;
+    Value*[ITER_BUFFER_MAX] items;
     usz count = 0;
-    Value* it = args[0];
-
-    while (count < 4096) {
-        Value* pair = jit_apply_value(it.iterator_val, make_nil(interp), interp);
-        if (pair == null || pair.tag == NIL) break;
-        if (pair.tag == ERROR) return pair;
-        if (!is_cons(pair)) break;
-        items[count++] = car(pair);
-        Value* rest = cdr(pair);
-        if (rest == null || rest.tag != ITERATOR) break;
-        it = rest;
-    }
+    Value* consume_err = iterator_consume_items(args[0], &items[0], &count, interp);
+    if (consume_err != null) return consume_err;
 
     // Build list in reverse
     Value* result = make_nil(interp);
@@ -59,20 +71,10 @@ fn Value* prim_to_array(Value*[] args, Env* env, Interp* interp) {
         return raise_error(interp, "to-array: expected iterator");
     }
     // Consume iterator into an array
-    Value*[4096] items;
+    Value*[ITER_BUFFER_MAX] items;
     usz count = 0;
-    Value* it = args[0];
-
-    while (count < 4096) {
-        Value* pair = jit_apply_value(it.iterator_val, make_nil(interp), interp);
-        if (pair == null || pair.tag == NIL) break;
-        if (pair.tag == ERROR) return pair;
-        if (!is_cons(pair)) break;
-        items[count++] = car(pair);
-        Value* rest = cdr(pair);
-        if (rest == null || rest.tag != ITERATOR) break;
-        it = rest;
-    }
+    Value* consume_err = iterator_consume_items(args[0], &items[0], &count, interp);
+    if (consume_err != null) return consume_err;
 
     Value* arr = make_array(interp, count);
     for (usz i = 0; i < count; i++) {

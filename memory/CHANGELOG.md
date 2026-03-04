@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-03-04: Session 71 - Consolidate Iterator Consumption Loop
+
+### Summary
+Refactored duplicated iterator-consumption logic shared by `prim_collect(...)` and `prim_to_array(...)` into one helper, preserving iteration/error semantics.
+
+### What changed
+- `src/lisp/primitives_iter_coroutine.c3`:
+  - Added:
+    - `ITER_BUFFER_MAX` constant (replaces duplicated `4096` literal)
+    - `iterator_consume_items(iterator, items, count_out, interp)`
+  - Refactored:
+    - `prim_collect(...)` now delegates item consumption to helper
+    - `prim_to_array(...)` now delegates item consumption to helper
+  - Preserved:
+    - early stop semantics on `nil` / non-cons / non-iterator rest
+    - error propagation when iterator thunk returns `ERROR`
+    - output construction behavior for list and array paths
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 70 - Decompose Coroutine `resume` Lifecycle Handling
 
 ### Summary
