@@ -130,52 +130,84 @@ fn Expr* Parser.parse_defabstract(Parser* self, Expr* e) {
  * Parse union type: (define [union] (Name T...) Variant1 (Variant2 fields...) ...)
  * or simple: (define [union] Name Variant1 (Variant2 T) ...)
  */
-fn Expr* Parser.parse_defunion(Parser* self, Expr* e) {
+fn void Parser.init_defunion_expr(Parser* self, Expr* e) {
     e.tag = E_DEFUNION;
     e.defunion = mem::malloc(ExprDefUnion.sizeof);
     e.defunion.type_param_count = 0;
     e.defunion.variant_count = 0;
+}
 
+fn bool Parser.parse_defunion_name_compound(Parser* self, Expr* e) {
+    self.lexer.advance();
+    if (self.lexer.current.type != T_SYMBOL) {
+        self.set_error("expected union name");
+        return false;
+    }
+    e.defunion.name = self.get_current_symbol();
+    self.lexer.advance();
+    while (self.lexer.current.type == T_SYMBOL && e.defunion.type_param_count < MAX_TYPE_PARAMS) {
+        e.defunion.type_params[e.defunion.type_param_count] = self.get_current_symbol();
+        e.defunion.type_param_count++;
+        self.lexer.advance();
+    }
+    self.expect(T_RPAREN, ")");
+    return !self.has_error;
+}
+
+fn bool Parser.parse_defunion_name(Parser* self, Expr* e) {
     if (self.lexer.current.type == T_LPAREN) {
-        self.lexer.advance();
-        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected union name"); return null; }
+        return self.parse_defunion_name_compound(e);
+    }
+    if (self.lexer.current.type == T_SYMBOL) {
         e.defunion.name = self.get_current_symbol();
         self.lexer.advance();
-        while (self.lexer.current.type == T_SYMBOL && e.defunion.type_param_count < MAX_TYPE_PARAMS) {
-            e.defunion.type_params[e.defunion.type_param_count] = self.get_current_symbol();
-            e.defunion.type_param_count++;
-            self.lexer.advance();
-        }
-        self.expect(T_RPAREN, ")");
-    } else if (self.lexer.current.type == T_SYMBOL) {
-        e.defunion.name = self.get_current_symbol();
+        return true;
+    }
+    self.set_error("expected union name after [union]");
+    return false;
+}
+
+fn bool Parser.parse_defunion_variant_compound(Parser* self, UnionVariant* v) {
+    self.lexer.advance();
+    if (self.lexer.current.type != T_SYMBOL) {
+        self.set_error("expected variant name");
+        return false;
+    }
+    v.name = self.get_current_symbol();
+    self.lexer.advance();
+    while (self.lexer.current.type == T_SYMBOL && v.field_count < MAX_TYPE_PARAMS) {
+        v.fields[v.field_count] = self.get_current_symbol();
+        v.field_count++;
         self.lexer.advance();
-    } else {
-        self.set_error("expected union name after [union]");
-        return null;
+    }
+    self.expect(T_RPAREN, ")");
+    return !self.has_error;
+}
+
+fn bool Parser.parse_defunion_variant(Parser* self, Expr* e) {
+    if (e.defunion.variant_count >= 16) {
+        self.set_error("too many union variants");
+        return false;
     }
 
-    while ((self.lexer.current.type == T_SYMBOL || self.lexer.current.type == T_LPAREN) && !self.has_error) {
-        if (e.defunion.variant_count >= 16) { self.set_error("too many union variants"); return null; }
-        UnionVariant* v = &e.defunion.variants[e.defunion.variant_count];
-        v.field_count = 0;
+    UnionVariant* v = &e.defunion.variants[e.defunion.variant_count];
+    v.field_count = 0;
+    if (self.lexer.current.type == T_LPAREN) {
+        if (!self.parse_defunion_variant_compound(v)) return false;
+    } else {
+        v.name = self.get_current_symbol();
+        self.lexer.advance();
+    }
+    e.defunion.variant_count++;
+    return true;
+}
 
-        if (self.lexer.current.type == T_LPAREN) {
-            self.lexer.advance();
-            if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected variant name"); return null; }
-            v.name = self.get_current_symbol();
-            self.lexer.advance();
-            while (self.lexer.current.type == T_SYMBOL && v.field_count < MAX_TYPE_PARAMS) {
-                v.fields[v.field_count] = self.get_current_symbol();
-                v.field_count++;
-                self.lexer.advance();
-            }
-            self.expect(T_RPAREN, ")");
-        } else {
-            v.name = self.get_current_symbol();
-            self.lexer.advance();
-        }
-        e.defunion.variant_count++;
+fn Expr* Parser.parse_defunion(Parser* self, Expr* e) {
+    self.init_defunion_expr(e);
+    if (!self.parse_defunion_name(e)) return null;
+
+    while ((self.lexer.current.type == T_SYMBOL || self.lexer.current.type == T_LPAREN) && !self.has_error) {
+        if (!self.parse_defunion_variant(e)) return null;
     }
 
     self.expect(T_RPAREN, ")");  // close define

@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-03-04: Session 102 - Split Parser Defunion Header/Variant Helpers
+
+### Summary
+Refactored `Parser.parse_defunion(...)` into focused helpers for union-header parsing and variant parsing, preserving accepted union syntax and existing error behavior.
+
+### What changed
+- `src/lisp/parser_type_defs.c3`:
+  - Added:
+    - `Parser.init_defunion_expr(e)`
+    - `Parser.parse_defunion_name_compound(e)`
+    - `Parser.parse_defunion_name(e)`
+    - `Parser.parse_defunion_variant_compound(v)`
+    - `Parser.parse_defunion_variant(e)`
+  - Refactored:
+    - `Parser.parse_defunion(...)` now delegates header and variant loops to helpers above
+  - Preserved:
+    - simple and parenthesized union-name forms
+    - variant forms (`Variant` and `(Variant fields...)`)
+    - variant/type-parameter limits
+    - error strings:
+      - `expected union name`
+      - `expected union name after [union]`
+      - `expected variant name`
+      - `too many union variants`
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1144 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 101 - Split Parser Deftype Header/Field Helpers
 
 ### Summary
