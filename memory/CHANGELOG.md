@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-03-04: Session 61 - Decompose Cancel Argument Parsing
+
+### Summary
+Extracted shared non-negative integer argument parsing and true-value lookup helpers for scheduler cancel primitives to reduce duplicate validation code.
+
+### What changed
+- `src/lisp/scheduler_primitives.c3`:
+  - Added:
+    - `scheduler_parse_nonnegative_int_arg(args, expected_msg, invalid_msg, raw_id_out, interp)`
+    - `scheduler_true_value(interp)`
+  - Refactored:
+    - `prim_thread_cancel(...)` now uses shared arg parser and true-value helper
+    - `prim_fiber_cancel(...)` now uses shared arg parser and true-value helper
+  - Preserved behavior and messages for:
+    - missing/wrong arg type
+    - negative id
+    - out-of-range id checks
+    - cancellation success/done semantics
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 60 - Decompose Thread-Join Validation Paths
 
 ### Summary

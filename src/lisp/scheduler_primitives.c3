@@ -143,6 +143,26 @@ fn Value* scheduler_parse_thread_join_timeout_pair(Value* pair, long* task_id_ou
     return null;
 }
 
+fn Value* scheduler_parse_nonnegative_int_arg(
+    Value*[] args,
+    char[] expected_msg,
+    char[] invalid_msg,
+    long* raw_id_out,
+    Interp* interp
+) {
+    if (args.len < 1 || !is_int(args[0])) {
+        return raise_error(interp, expected_msg);
+    }
+    long raw_id = args[0].int_val;
+    if (raw_id < 0) return raise_error(interp, invalid_msg);
+    *raw_id_out = raw_id;
+    return null;
+}
+
+fn Value* scheduler_true_value(Interp* interp) @inline {
+    return interp.global_env.lookup(interp.sym_true);
+}
+
 fn Value* prim_thread_join(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
@@ -175,12 +195,15 @@ fn Value* prim_thread_cancel(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
     if (!g_scheduler.thread_task_mu_ready) return raise_error(interp, "thread-cancel: task mutex unavailable");
-    if (args.len < 1 || !is_int(args[0])) {
-        return raise_error(interp, "thread-cancel: expected task-id integer");
-    }
-
-    long raw_id = args[0].int_val;
-    if (raw_id < 0) return raise_error(interp, "thread-cancel: invalid task id");
+    long raw_id = 0;
+    Value* parse_err = scheduler_parse_nonnegative_int_arg(
+        args,
+        "thread-cancel: expected task-id integer",
+        "thread-cancel: invalid task id",
+        &raw_id,
+        interp
+    );
+    if (parse_err != null) return parse_err;
     usz task_id = (usz)raw_id;
     if (task_id >= MAX_THREAD_TASKS) return raise_error(interp, "thread-cancel: invalid task id");
 
@@ -189,7 +212,7 @@ fn Value* prim_thread_cancel(Value*[] args, Env* env, Interp* interp) {
         return raise_error(interp, "thread-cancel: task already joined or invalid");
     }
     if (already_done) return make_nil(interp);
-    return interp.global_env.lookup(interp.symbols.intern("true"));
+    return scheduler_true_value(interp);
 }
 
 // ============================================================
@@ -224,12 +247,15 @@ fn bool scheduler_cancel_fiber(usz fiber_id, Interp* interp) {
 fn Value* prim_fiber_cancel(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
-    if (args.len < 1 || !is_int(args[0])) {
-        return raise_error(interp, "fiber-cancel: expected fiber-id integer");
-    }
-
-    long raw_id = args[0].int_val;
-    if (raw_id < 0) return raise_error(interp, "fiber-cancel: invalid fiber id");
+    long raw_id = 0;
+    Value* parse_err = scheduler_parse_nonnegative_int_arg(
+        args,
+        "fiber-cancel: expected fiber-id integer",
+        "fiber-cancel: invalid fiber id",
+        &raw_id,
+        interp
+    );
+    if (parse_err != null) return parse_err;
     usz fiber_id = (usz)raw_id;
     if (fiber_id >= g_scheduler.fiber_count) {
         return raise_error(interp, "fiber-cancel: invalid fiber id");
@@ -243,7 +269,7 @@ fn Value* prim_fiber_cancel(Value*[] args, Env* env, Interp* interp) {
     if (!scheduler_cancel_fiber(fiber_id, interp)) {
         return make_nil(interp);  // already done or running
     }
-    return interp.global_env.lookup(interp.symbols.intern("true"));
+    return scheduler_true_value(interp);
 }
 
 // ============================================================
