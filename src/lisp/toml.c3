@@ -59,32 +59,59 @@ fn bool toml_load(char[] path, TomlConfig* out) {
     return false;
 }
 
+fn bool toml_is_space(char ch) @inline {
+    return ch == ' ' || ch == '\t';
+}
+
+fn void toml_clear_buf(void* dest_ptr, usz len) {
+    char* dest = (char*)dest_ptr;
+    for (usz i = 0; i < len; i++) dest[i] = 0;
+}
+
+fn void toml_set_default(void* dest_ptr, usz len, char[] value) {
+    toml_clear_buf(dest_ptr, len);
+    char* dest = (char*)dest_ptr;
+    usz copy_len = value.len;
+    if (copy_len >= len) copy_len = len - 1;
+    for (usz i = 0; i < copy_len; i++) dest[i] = value[i];
+}
+
+fn void toml_init_config_defaults(TomlConfig* config) {
+    toml_clear_buf(&config.project.name, 128);
+    toml_clear_buf(&config.project.version, 32);
+    config.ffi_dep_count = 0;
+
+    toml_set_default(&config.build.output_dir, 128, "build");
+    toml_set_default(&config.build.safety, 16, "safe");
+    toml_set_default(&config.build.opt, 8, "O0");
+    toml_set_default(&config.build.debug_info, 16, "full");
+    config.build.single_module = false;
+    toml_set_default(&config.build.sanitize, 16, "none");
+}
+
+fn void toml_trim_line_bounds(char[] source, usz line_start, usz line_end, usz* out_ls, usz* out_le) {
+    usz ls = line_start;
+    while (ls < line_end && toml_is_space(source[ls])) ls++;
+
+    usz le = line_end;
+    while (le > ls && (toml_is_space(source[le - 1]) || source[le - 1] == '\r')) le--;
+
+    *out_ls = ls;
+    *out_le = le;
+}
+
+fn isz toml_find_eq_pos(char[] source, usz ls, usz le) {
+    for (usz i = ls; i < le; i++) {
+        if (source[i] == '=') return (isz)i;
+    }
+    return -1;
+}
+
 /**
  * Parse TOML source text into caller-provided TomlConfig.
  */
 fn void parse_toml(char[] source, TomlConfig* config) {
-    // Zero-init key fields
-    for (usz i = 0; i < 128; i++) config.project.name[i] = 0;
-    for (usz i = 0; i < 32; i++) config.project.version[i] = 0;
-    config.ffi_dep_count = 0;
-
-    // Build defaults
-    for (usz i = 0; i < 128; i++) config.build.output_dir[i] = 0;
-    char[] default_out = "build";
-    for (usz i = 0; i < default_out.len; i++) config.build.output_dir[i] = default_out[i];
-    for (usz i = 0; i < 16; i++) config.build.safety[i] = 0;
-    char[] default_safety = "safe";
-    for (usz i = 0; i < default_safety.len; i++) config.build.safety[i] = default_safety[i];
-    for (usz i = 0; i < 8; i++) config.build.opt[i] = 0;
-    char[] default_opt = "O0";
-    for (usz i = 0; i < default_opt.len; i++) config.build.opt[i] = default_opt[i];
-    for (usz i = 0; i < 16; i++) config.build.debug_info[i] = 0;
-    char[] default_dbg = "full";
-    for (usz i = 0; i < default_dbg.len; i++) config.build.debug_info[i] = default_dbg[i];
-    config.build.single_module = false;
-    for (usz i = 0; i < 16; i++) config.build.sanitize[i] = 0;
-    char[] default_san = "none";
-    for (usz i = 0; i < default_san.len; i++) config.build.sanitize[i] = default_san[i];
+    toml_init_config_defaults(config);
 
     // Track current section
     // 0 = none, 1 = [project], 2 = [dependencies.ffi.X], 3 = [build]
@@ -99,16 +126,10 @@ fn void parse_toml(char[] source, TomlConfig* config) {
         usz line_end = pos;
         if (pos < source.len) pos++; // skip \n
 
-        // Trim leading whitespace
-        usz ls = line_start;
-        while (ls < line_end && (source[ls] == ' ' || source[ls] == '\t')) ls++;
-
-        // Trim trailing whitespace + \r
-        usz le = line_end;
-        while (le > ls && (source[le - 1] == ' ' || source[le - 1] == '\t' || source[le - 1] == '\r')) le--;
-
-        usz line_len = le - ls;
-        if (line_len == 0) continue;        // blank line
+        usz ls = 0;
+        usz le = 0;
+        toml_trim_line_bounds(source, line_start, line_end, &ls, &le);
+        if (le == ls) continue;             // blank line
         if (source[ls] == '#') continue;    // comment
 
         // Section header: [...]
@@ -119,21 +140,18 @@ fn void parse_toml(char[] source, TomlConfig* config) {
         }
 
         // Key = value — find '='
-        isz eq_pos = -1;
-        for (usz i = ls; i < le; i++) {
-            if (source[i] == '=') { eq_pos = (isz)i; break; }
-        }
+        isz eq_pos = toml_find_eq_pos(source, ls, le);
         if (eq_pos < 0) continue;
 
         // Extract key (trimmed)
         usz ks = ls;
         usz ke = (usz)eq_pos;
-        while (ke > ks && (source[ke - 1] == ' ' || source[ke - 1] == '\t')) ke--;
+        while (ke > ks && toml_is_space(source[ke - 1])) ke--;
         char[] key = source[ks .. ke - 1]; // inclusive
 
         // Extract value (trimmed)
         usz vs = (usz)eq_pos + 1;
-        while (vs < le && (source[vs] == ' ' || source[vs] == '\t')) vs++;
+        while (vs < le && toml_is_space(source[vs])) vs++;
         char[] val = source[vs .. le - 1]; // inclusive
 
         toml_assign_value(key, val, section_kind, current_dep, config);

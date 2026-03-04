@@ -285,14 +285,10 @@ struct LispRuleIndices {
     int top;
 }
 
-fn LispRuleIndices build_lisp_grammar(RuleBuilder* rb) {
-    LispRuleIndices idx;
-
-    // Whitespace: MANY(ws_char) to make it epsilon-matchable
+fn void lisp_grammar_add_terminals(RuleBuilder* rb, LispRuleIndices* idx) {
     int ws_char = rb.add("ws_char", mk_scan(&scan_ws_char));
     idx.ws = rb.add("ws", mk_many(ws_char));
 
-    // Terminal tokens using SCAN
     idx.integer = rb.add("integer", mk_scan(&scan_int));
     idx.float_num = rb.add("float", mk_scan(&scan_float));
     idx.string = rb.add("string", mk_scan(&scan_string));
@@ -300,7 +296,6 @@ fn LispRuleIndices build_lisp_grammar(RuleBuilder* rb) {
     idx.path = rb.add("path", mk_scan(&scan_path));
     idx.dotdot = rb.add("dotdot", mk_scan(&scan_dotdot));
 
-    // Single character tokens
     idx.lparen = rb.add("lparen", mk_token('('));
     idx.rparen = rb.add("rparen", mk_token(')'));
     idx.lbracket = rb.add("lbracket", mk_token('['));
@@ -310,87 +305,75 @@ fn LispRuleIndices build_lisp_grammar(RuleBuilder* rb) {
     idx.quote = rb.add("quote_tok", mk_token('\''));
     idx.caret = rb.add("caret", mk_token('^'));
 
-    // atom: float | integer | string | path | symbol | dotdot
-    // Note: float before integer (longer match first)
     idx.atom = rb.add("atom", mk_first(make_children_6(
         idx.float_num, idx.integer, idx.string, idx.path, idx.symbol, idx.dotdot
     )));
+}
 
-    // Forward declarations for recursive rules
-    // We'll update these after adding all rules
-    int expr_placeholder = rb.add("expr", mk_fail());
-    int expr_list_placeholder = rb.add("expr_list", mk_fail());
-
-    // quote_expr: quote ws? expr
+fn int lisp_grammar_add_recursive_rules(RuleBuilder* rb, LispRuleIndices* idx,
+    int expr_placeholder, int expr_list_placeholder) {
     idx.quote_expr = rb.add("quote_expr", mk_seq(make_children_3(
         idx.quote, idx.ws, expr_placeholder
     )));
 
-    // type_annot: caret ws? symbol ws? expr
     idx.type_annot = rb.add("type_annot", mk_seq(make_children_5(
         idx.caret, idx.ws, idx.symbol, idx.ws, expr_placeholder
     )));
 
-    // array_lit: lbracket ws? expr_list ws? rbracket
     idx.array_lit = rb.add("array_lit", mk_seq(make_children_5(
         idx.lbracket, idx.ws, expr_list_placeholder, idx.ws, idx.rbracket
     )));
 
-    // dict_entry: ws? expr ws? expr
     idx.dict_entry = rb.add("dict_entry", mk_seq(make_children_4(
         idx.ws, expr_placeholder, idx.ws, expr_placeholder
     )));
-
-    // dict_entries: dict_entry*
     int dict_entries = rb.add("dict_entries", mk_many(idx.dict_entry));
-
-    // dict_lit: lbrace ws? dict_entries ws? rbrace
     idx.dict_lit = rb.add("dict_lit", mk_seq(make_children_5(
         idx.lbrace, idx.ws, dict_entries, idx.ws, idx.rbrace
     )));
 
-    // list_form: lparen ws? expr_list ws? rparen
     idx.list_form = rb.add("list_form", mk_seq(make_children_5(
         idx.lparen, idx.ws, expr_list_placeholder, idx.ws, idx.rparen
     )));
 
-    // postfix_index: lbracket ws? expr ws? rbracket
     idx.postfix_index = rb.add("postfix_index", mk_seq(make_children_5(
         idx.lbracket, idx.ws, expr_placeholder, idx.ws, idx.rbracket
     )));
-
-    // indexed_suffix: postfix_index*
     int indexed_suffix = rb.add("indexed_suffix", mk_many(idx.postfix_index));
 
-    // base_expr: quote_expr | type_annot | list_form | array_lit | dict_lit | atom
     int base_expr = rb.add("base_expr", mk_first(make_children_6(
         idx.quote_expr, idx.type_annot, idx.list_form,
         idx.array_lit, idx.dict_lit, idx.atom
     )));
 
-    // indexed_expr: base_expr indexed_suffix
     idx.indexed_expr = rb.add("indexed_expr", mk_seq(make_children_2(
         base_expr, indexed_suffix
     )));
-
-    // Now update the forward declarations
-    // expr: ws? indexed_expr
     idx.expr = rb.add("expr_full", mk_seq(make_children_2(idx.ws, idx.indexed_expr)));
 
-    // expr_elem: ws? indexed_expr
     int expr_elem = rb.add("expr_elem", mk_seq(make_children_2(idx.ws, idx.indexed_expr)));
-
-    // expr_list: expr_elem*
     idx.expr_list = rb.add("expr_list_full", mk_many(expr_elem));
 
-    // Update the placeholder rules to reference the real rules
     rb.rules[expr_placeholder].clause = mk_tie(idx.expr);
     rb.rules[expr_list_placeholder].clause = mk_tie(idx.expr_list);
+    return idx.indexed_expr;
+}
 
-    // top: ws? expr ws? END
+fn void lisp_grammar_add_top_rule(RuleBuilder* rb, LispRuleIndices* idx, int indexed_expr) {
     int end = rb.add("end", mk_end_of_input());
-    idx.top = rb.add("top", mk_seq(make_children_4(idx.ws, idx.indexed_expr, idx.ws, end)));
+    idx.top = rb.add("top", mk_seq(make_children_4(idx.ws, indexed_expr, idx.ws, end)));
+}
 
+fn LispRuleIndices build_lisp_grammar(RuleBuilder* rb) {
+    LispRuleIndices idx;
+    lisp_grammar_add_terminals(rb, &idx);
+
+    int expr_placeholder = rb.add("expr", mk_fail());
+    int expr_list_placeholder = rb.add("expr_list", mk_fail());
+    int indexed_expr = lisp_grammar_add_recursive_rules(
+        rb, &idx, expr_placeholder, expr_list_placeholder
+    );
+    lisp_grammar_add_top_rule(rb, &idx, indexed_expr);
     return idx;
 }
 

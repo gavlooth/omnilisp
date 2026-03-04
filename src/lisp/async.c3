@@ -110,6 +110,77 @@ fn TcpHandle* get_tcp_handle(Value* v) {
     return (TcpHandle*)v.ffi_val.lib_handle;
 }
 
+fn void copy_to_c_buffer(char* dst, usz cap, char[] src) {
+    if (cap == 0) return;
+    usz n = src.len < (cap - 1) ? src.len : (cap - 1);
+    for (usz i = 0; i < n; i++) dst[i] = src[i];
+    dst[n] = 0;
+}
+
+fn bool resolve_host_and_port(char[] host, int port, void** out_result) {
+    char[256] host_buf;  // buffer: C-interop (keep) — null-terminated for c_getaddrinfo
+    char[8] port_buf;    // buffer: C-interop (keep) — null-terminated for c_getaddrinfo
+    copy_to_c_buffer(&host_buf, host_buf.len, host);
+    int plen = io::bprintf(&port_buf, "%d", port)!!.len;
+    if (plen < 0) return false;
+    if ((usz)plen >= port_buf.len) {
+        port_buf[port_buf.len - 1] = 0;
+    } else {
+        port_buf[(usz)plen] = 0;
+    }
+    return c_getaddrinfo(&host_buf, &port_buf, null, out_result) == 0 && *out_result != null;
+}
+
+fn int connect_fd_from_addrinfo(void* result) {
+    // struct addrinfo offsets (x86_64 glibc): flags=0, family=4, socktype=8, protocol=12, addrlen=16, addr=24
+    int ai_family = *((int*)((char*)result + 4));
+    int ai_socktype = *((int*)((char*)result + 8));
+    int ai_protocol = *((int*)((char*)result + 12));
+    uint ai_addrlen = *((uint*)((char*)result + 16));
+    void* ai_addr = *((void**)((char*)result + 24));
+
+    int fd = c_socket(ai_family, ai_socktype, ai_protocol);
+    if (fd < 0) return -1;
+    if (c_connect(fd, ai_addr, ai_addrlen) < 0) {
+        c_close_fd(fd);
+        return -1;
+    }
+    return fd;
+}
+
+fn void parse_tcp_read_options(Value*[] args, usz* max_bytes, long* timeout_ms) {
+    *max_bytes = 4096;
+    if (args.len >= 2 && is_int(args[1])) {
+        *max_bytes = (usz)args[1].int_val;
+        if (*max_bytes > 65536) *max_bytes = 65536;
+    }
+    *timeout_ms = -1;
+    if (args.len >= 3 && is_int(args[2])) {
+        *timeout_ms = args[2].int_val;
+        if (*timeout_ms < 0) *timeout_ms = -1;
+    }
+}
+
+fn Value* dns_result_to_ipv4_string(Interp* interp, void* result) {
+    // struct addrinfo offsets (x86_64 glibc): flags=0, family=4, socktype=8, protocol=12, addrlen=16, addr=24
+    int ai_family = *((int*)((char*)result + 4));
+    void* ai_addr = *((void**)((char*)result + 24));
+
+    char[64] ip_buf;  // buffer: C-interop (keep) — output buffer for c_inet_ntop
+    if (ai_family != AF_INET) {
+        // fault: lisp::DNS_FAILED
+        return raise_error(interp, "dns-resolve: IPv6 not yet supported");
+    }
+
+    // sockaddr_in: sin_addr is at offset 4 (after sin_family + sin_port)
+    void* sin_addr = (char*)ai_addr + 4;
+    c_inet_ntop(AF_INET, sin_addr, &ip_buf, 64);
+
+    usz ip_len = 0;
+    while (ip_buf[ip_len] != 0 && ip_len < 63) ip_len++;
+    return make_string(interp, ip_buf[:ip_len]);
+}
+
 // ============================================================
 // (tcp-connect host port) — blocking connect, returns handle
 // ============================================================
@@ -125,46 +196,16 @@ fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
     char[] host = args[0].str_chars[:args[0].str_len];
     int port = (int)args[1].int_val;
 
-    // Null-terminate host for C
-    char[256] host_buf;  // buffer: C-interop (keep) — null-terminated for c_getaddrinfo
-    usz hlen = host.len < 255 ? host.len : 255;
-    for (usz i = 0; i < hlen; i++) host_buf[i] = host[i];
-    host_buf[hlen] = 0;
-
-    // Null-terminate port
-    char[8] port_buf;  // buffer: C-interop (keep) — null-terminated for c_getaddrinfo
-    int plen = io::bprintf(&port_buf, "%d", port)!!.len;
-    port_buf[plen] = 0;
-
     // Resolve hostname via getaddrinfo
     void* result = null;
-    int status = c_getaddrinfo(&host_buf, &port_buf, null, &result);
-    if (status != 0 || result == null) {
+    if (!resolve_host_and_port(host, port, &result)) {
         // fault: lisp::DNS_FAILED
         return raise_error(interp, "tcp-connect: DNS resolution failed");
     }
 
-    // struct addrinfo offsets (x86_64 glibc): flags=0, family=4, socktype=8, protocol=12, addrlen=16, addr=24
-    int ai_family = *((int*)((char*)result + 4));
-    int ai_socktype = *((int*)((char*)result + 8));
-    int ai_protocol = *((int*)((char*)result + 12));
-    uint ai_addrlen = *((uint*)((char*)result + 16));
-    void* ai_addr = *((void**)((char*)result + 24));
-
-    // Create socket
-    int fd = c_socket(ai_family, ai_socktype, ai_protocol);
-    if (fd < 0) {
-        c_freeaddrinfo(result);
-        // fault: lisp::CONNECTION_REFUSED
-        return raise_error(interp, "tcp-connect: socket creation failed");
-    }
-
-    // Connect (blocking)
-    int conn_status = c_connect(fd, ai_addr, ai_addrlen);
+    int fd = connect_fd_from_addrinfo(result);
     c_freeaddrinfo(result);
-
-    if (conn_status < 0) {
-        c_close_fd(fd);
+    if (fd < 0) {
         // fault: lisp::CONNECTION_REFUSED
         return raise_error(interp, "tcp-connect: connection failed");
     }
@@ -206,16 +247,9 @@ fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::TYPE_MISMATCH
     if (th == null || !th.connected) return raise_error(interp, "tcp-read: invalid or closed handle");
 
-    usz max_bytes = 4096;
-    if (args.len >= 2 && is_int(args[1])) {
-        max_bytes = (usz)args[1].int_val;
-        if (max_bytes > 65536) max_bytes = 65536;
-    }
+    usz max_bytes = 0;
     long timeout_ms = -1;
-    if (args.len >= 3 && is_int(args[2])) {
-        timeout_ms = args[2].int_val;
-        if (timeout_ms < 0) timeout_ms = -1;
-    }
+    parse_tcp_read_options(args, &max_bytes, &timeout_ms);
 
     // Async bridge: when called from a scheduler-managed fiber, register a non-blocking
     // read with libuv and suspend this fiber until data is ready.
@@ -287,11 +321,8 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
     if (!is_string(args[0])) return raise_error(interp, "dns-resolve: hostname must be a string");
 
     char[] host = args[0].str_chars[:args[0].str_len];
-
     char[256] host_buf;  // buffer: C-interop (keep) — null-terminated for c_getaddrinfo
-    usz hlen = host.len < 255 ? host.len : 255;
-    for (usz i = 0; i < hlen; i++) host_buf[i] = host[i];
-    host_buf[hlen] = 0;
+    copy_to_c_buffer(&host_buf, host_buf.len, host);
 
     void* result = null;
     int status = c_getaddrinfo(&host_buf, null, null, &result);
@@ -300,28 +331,9 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
         return raise_error(interp, "dns-resolve: resolution failed");
     }
 
-    // struct addrinfo offsets (x86_64 glibc): flags=0, family=4, socktype=8, protocol=12, addrlen=16, addr=24
-    int ai_family = *((int*)((char*)result + 4));
-    void* ai_addr = *((void**)((char*)result + 24));
-
-    char[64] ip_buf;  // buffer: C-interop (keep) — output buffer for c_inet_ntop
-    if (ai_family == AF_INET) {
-        // sockaddr_in: sin_addr is at offset 4 (after sin_family + sin_port)
-        void* sin_addr = (char*)ai_addr + 4;
-        c_inet_ntop(AF_INET, sin_addr, &ip_buf, 64);
-    } else {
-        c_freeaddrinfo(result);
-        // fault: lisp::DNS_FAILED
-        return raise_error(interp, "dns-resolve: IPv6 not yet supported");
-    }
-
+    Value* resolved = dns_result_to_ipv4_string(interp, result);
     c_freeaddrinfo(result);
-
-    // Find string length
-    usz ip_len = 0;
-    while (ip_buf[ip_len] != 0 && ip_len < 63) ip_len++;
-
-    return make_string(interp, ip_buf[:ip_len]);
+    return resolved;
 }
 
 // ============================================================

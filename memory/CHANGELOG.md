@@ -1,5 +1,279 @@
 # Changelog
 
+## 2026-03-04: JIT Import/Signal + AOT Temp/QQ Decomposition
+
+### Summary
+Reduced additional oversized runtime/compiler functions by extracting focused helpers while preserving language semantics and public APIs.
+
+### What changed
+- `src/lisp/jit_jit_helper_functions.c3`:
+  - Module import/load decomposition:
+    - `module_copy_path`
+    - `module_ensure_export_capacity`
+    - `module_append_export`
+    - `jit_create_file_module`
+    - `jit_eval_module_top_level`
+    - `jit_eval_declared_module_file`
+    - `jit_eval_implicit_module_file`
+    - `module_path_matches`
+    - `find_loaded_module_by_path`
+    - `resolve_loaded_module`
+    - `build_default_module_rel_path`
+    - `load_import_target_module`
+    - `module_exports_symbol`
+    - `bind_import_symbols`
+  - `jit_load_module_from_file` now uses `defer` for source-dir stack and expression-list cleanup.
+  - `jit_eval_import_impl` reduced to load+bind orchestration.
+  - Signal path decomposition:
+    - `jit_unhandled_effect_error`
+    - `effect_handler_has_tag`
+    - `jit_signal_type_check`
+    - `jit_signal_suspend`
+    - `jit_signal_try_fast_path`
+  - `jit_signal_impl` reduced to orchestration flow.
+- `src/lisp/compiler_statement_level_compilation_compile_to_temp.c3`:
+  - Added reusable temp/tail helpers:
+    - `emit_nil_temp`
+    - `compile_leaf_expr_to_temp`
+    - `compile_resolve_flat`
+    - `compile_index_flat`
+    - `compile_define_flat`
+    - `compile_tail_if_flat`
+    - `compile_tail_begin_flat`
+    - `compile_tail_and_flat`
+    - `compile_tail_or_flat`
+  - Added call helpers:
+    - `call_head_is`
+    - `compile_call_arg_temps`
+    - `build_arg_list_from_temps`
+    - `compile_list_or_dict_call_flat`
+  - Added quasiquote helpers:
+    - `compile_qq_marker_pair`
+    - `compile_qq_var_symbol`
+    - `compile_qq_app_list`
+  - Reduced orchestrator functions: `compile_to_temp`, `compile_to_temp_tail`, `compile_call_flat`, `compile_qq_flat`.
+
+### Function size outcomes
+- `jit_signal_impl`: 41 lines
+- `jit_load_module_from_file`: 30 lines
+- `jit_eval_import_impl`: 10 lines
+- `compile_to_temp`: 84 lines
+- `compile_to_temp_tail`: 35 lines
+- `compile_call_flat`: 34 lines
+- `compile_qq_flat`: 50 lines
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
+## 2026-03-04: Comprehensive Language Reference Documentation
+
+### Summary
+Created `docs/OMNI_REFERENCE.md` — a single comprehensive language reference consolidating content from 8 existing doc files, stdlib, and primitive catalogs into a user-facing document with working code examples.
+
+### What changed
+- `docs/OMNI_REFERENCE.md` (NEW, ~1800 lines):
+  - 38 sections covering all language features
+  - Sections: Overview, Data Types, Truthiness, Special Forms, Pattern Matching, Destructuring, Functions, Partial Application, Collections, Strings, Math, Type System, Multiple Dispatch, Macros, Modules, Algebraic Effects, Delimited Continuations, Coroutines, Iterators, Error Handling, I/O, Networking, JSON, Regex, PEG Grammar, Compression, Unicode, Deduce, Concurrency, FFI, Schema Validation, System & Misc, Reader Syntax, CLI & Tooling
+  - 4 Appendices: Complete Primitive Reference (~180 prims), Complete Stdlib Reference (~80 fns), Limits, EBNF Grammar
+  - Working code examples throughout all sections
+
+### Source files consulted
+- `docs/LANGUAGE_SPEC.md`, `docs/SYNTAX_SPEC.md`, `docs/FEATURES.md`
+- `docs/EFFECTS_GUIDE.md`, `docs/type-system-syntax.md`
+- `docs/COMPILER.md`, `docs/PROJECT_TOOLING.md`, `docs/CORE_LIBS_INSPECTION.md`
+- `stdlib/stdlib.lisp`, primitive registration code, test examples
+
+### Tests
+No code changes — documentation only.
+
+## 2026-03-04: Parser/Dispatch/Scheduler Async-Path Decomposition
+
+### Summary
+Continued large-function refactoring in parser, dispatch scoring, and async scheduler setup without changing public syntax or effect APIs.
+
+### What changed
+- `src/lisp/parser_parser.c3`:
+  - Extracted type-annotation parsing helpers:
+    - `parser_empty_type_annotation`
+    - `parse_compound_type_annotation`
+    - `parse_dict_type_annotation`
+  - `parse_type_annotation` now a slim form dispatcher.
+  - Extracted list-form/special-form dispatch helpers:
+    - `is_lambda_head_symbol`
+    - `parse_quasiquote_like_form`
+    - `parse_symbol_head_form`
+  - `parse_list_form` now delegates instead of inlining all special-form branches.
+  - Extracted let helpers:
+    - `consume_let_rec_annotation`
+    - `collect_let_bindings`
+    - `build_let_expr_chain`
+  - Extracted handle helpers:
+    - `consume_handle_strict_annotation`
+    - `parse_handle_old_clause`
+    - `parse_handle_new_clause`
+    - `parse_handle_clause`
+- `src/lisp/eval.c3`:
+  - Decomposed method-table scoring into:
+    - `method_constraints_satisfied`
+    - `method_match_score`
+  - Decomposed run-path helpers:
+    - `parser_error_to_eval_result`
+    - `run_execute_expr`
+    - `run_promote_result`
+  - `run_program`/`run` now reuse shared parser-error conversion and run orchestration helpers.
+- `src/lisp/scheduler.c3`:
+  - Split async tcp-read watcher setup/cleanup into:
+    - `scheduler_drain_loop_nowait`
+    - `scheduler_close_handles_and_drain`
+    - `scheduler_create_poll_handle`
+    - `scheduler_create_timer_handle`
+    - `scheduler_start_tcp_watchers`
+  - `scheduler_try_async_tcp_read` reduced to an orchestrator over probe/setup/block/resume flow.
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
+## 2026-03-04: Runtime Registration + Promotion/JIT Apply Decomposition
+
+### Summary
+Continued large-function decomposition in runtime hot paths without API changes:
+- Primitive registration pipeline split into grouped helpers and table-driven batches.
+- Escape-lane promotion split into tag-specific helpers plus explicit disjoint-lifetime fallback helper.
+- JIT multi-arg application split into focused handlers (null/variadic/primitive/method-table/iterative).
+
+### What changed
+- `src/lisp/eval.c3`:
+  - Added registration helpers:
+    - `register_language_constants`
+    - `register_dispatched_primitives`
+    - `register_regular_primitives_*` groups
+    - `register_effect_fast_paths`
+    - shared `register_prim_table` / `register_dispatched_prim_table`
+  - `register_primitives` now orchestrates helpers (small dispatcher).
+  - `promote_to_escape` refactored with extracted helpers:
+    - `promote_to_escape_disjoint`
+    - `promote_escape_string_or_error`
+    - `promote_escape_cons`
+    - `promote_escape_closure`
+    - `promote_escape_partial_prim`
+    - `promote_escape_shared_wrapper`
+    - `promote_escape_instance`
+    - `promote_escape_ffi_handle`
+- `src/lisp/jit_jit_helper_functions.c3`:
+  - `jit_apply_multi_args` refactored into focused helpers:
+    - `jit_null_callable_error`
+    - `jit_apply_multi_args_zeroarg_closure`
+    - `jit_apply_multi_args_variadic_closure`
+    - `jit_apply_multi_args_primitive`
+    - `jit_apply_multi_args_closure_multi`
+    - `jit_apply_multi_args_method_table`
+    - `jit_apply_multi_args_iterative`
+- `src/lisp/compiler_primitive_variable_hash_table.c3`:
+  - Split `init_prim_hash` by category into:
+    - `init_prim_hash_arithmetic_and_comparison`
+    - `init_prim_hash_core_and_strings`
+    - `init_prim_hash_files_and_misc`
+    - `init_prim_hash_collections_math_bitwise`
+  - `init_prim_hash` now clears and delegates.
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
+## 2026-03-04: Lexer/Serializer/CLI Main Decomposition
+
+### Summary
+Reduced remaining large orchestrator functions in parsing, serialization, and CLI entry flow by extracting focused helpers and preserving behavior.
+
+### What changed
+- `src/lisp/parser_lexer.c3`:
+  - `Lexer.advance` split using helper scans:
+    - `scan_punctuation_token`
+    - `scan_logic_variable`
+    - `scan_dot_tokens`
+    - `scan_standalone_underscore`
+  - `Lexer.advance` now acts as a short ordered dispatcher.
+- `src/lisp/compiler_expression_serializer.c3`:
+  - `serialize_expr_to_buf` split with reusable helpers:
+    - unary/binary/named/symbol+arg form emitters
+    - begin/index/path emitters
+    - `serialize_expr_specialized` dispatcher for simple expression forms
+- `src/entry.c3`:
+  - Extracted CLI/runtime handlers:
+    - `run_compile_mode`
+    - `run_gen_e2e_mode`
+    - `run_repl_mode`
+    - `run_script_mode`
+    - `run_test_mode`
+  - Added argv helpers:
+    - `cstr_len`
+    - `find_flag_index`
+  - `main` now delegates to handlers in precedence order.
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
+## 2026-03-04: High-Throughput Function Decomposition (Parser/Eval/Macros)
+
+### Summary
+Refactored multiple high-complexity runtime/parser functions into smaller helpers while keeping public APIs and language behavior unchanged. One defensive fix was included in path error formatting to avoid null type-info dereference in an error path.
+
+### What changed
+- `src/lisp/parser_parser.c3`:
+  - Unified quote/template datum parsing via shared `parse_datum_impl`.
+  - Added focused constructors for datum values (nil/int/symbol/string/quote).
+  - `parse_template_datum` and `parse_datum` reduced to thin wrappers.
+- `src/lisp/eval.c3`:
+  - `prim_ffi_bound_call` split into helper stages:
+    - lazy `dlsym` resolution
+    - per-arg FFI coercion
+    - return storage selection
+    - return-value conversion
+  - `eval_path` split into root lookup + module/instance/cons step helpers.
+  - `match_pattern` split by pattern kind (`var`, `cons`, `dict`, `constructor`, `guard`).
+  - Defensive fix: instance-path error formatting now handles missing `TypeInfo` without dereferencing null.
+- `src/lisp/macros.c3`:
+  - Extracted macro expansion sequence/call-site helpers for `expand_macros_in_expr`.
+  - Split `value_to_expr` special-form decoding into focused helpers.
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
+## 2026-03-04: Refactor value_to_expr in macros.c3
+
+### Summary
+Refactored the 307-line `value_to_expr` function (largest in the codebase) into 9 well-named helpers + an 85-line dispatcher. Public API unchanged.
+
+### What changed
+- `src/lisp/macros.c3`:
+  - Extracted `make_nil_expr`, `rest_car_expr`, `val_to_sym` (inline helpers for repeated patterns)
+  - Extracted `make_single_lambda_expr`, `make_nullary_lambda_expr` (deduplicate 3 copies of ExprLambda init)
+  - Extracted `vte_lambda` (82-line lambda handler with multi-param desugaring)
+  - Extracted `vte_let` (44-line let handler with flat-pair binding collection)
+  - Extracted `vte_begin` (16-line begin handler)
+  - Extracted `vte_call` (26-line generic call handler)
+  - Simplified `value_to_expr` to flat dispatcher (307 -> 85 lines)
+  - Removed redundant true/false symbol check (both branches were identical)
+  - Flattened CONS nesting (early return for non-symbol head)
+
+### Tests
+- 1143 unified + 73 compiler + 10 stack + 50 scope = 1276 PASS, 0 failures
+
+
 ## 2026-03-04: ASAN Scope-Recycling + Stack-Switch Hook Triage
 
 ### Summary

@@ -16,112 +16,116 @@ fn void Compiler.emit_prelude(Compiler* self) {
     self.emit("import lisp::aot;\n\n");
 }
 
-fn void Compiler.emit_lambda_definitions(Compiler* self) {
-    // Emit struct definitions for closures with captures
-    foreach (def : self.lambda_defs) {
-        if (def.capture_count > 0) {
-            self.emit("struct Lambda_");
-            self.emit_usz(def.id);
-            self.emit(" {\n");
+fn bool Compiler.is_zero_arg_lambda(Compiler* self, LambdaDef* def) @inline {
+    return (uint)def.param == 0xFFFFFFFF;
+}
 
-            for (usz i = 0; i < def.capture_count; i++) {
-                self.emit("    lisp::Value* captured_");
-                self.emit_symbol_name(def.captures[i]);
-                self.emit(";\n");
-            }
-
-            self.emit("}\n\n");
-        }
+fn void Compiler.emit_lambda_capture_struct(Compiler* self, LambdaDef* def) {
+    if (def.capture_count == 0) return;
+    self.emit("struct Lambda_");
+    self.emit_usz(def.id);
+    self.emit(" {\n");
+    for (usz i = 0; i < def.capture_count; i++) {
+        self.emit("    lisp::Value* captured_");
+        self.emit_symbol_name(def.captures[i]);
+        self.emit(";\n");
     }
+    self.emit("}\n\n");
+}
 
-    // Emit function definitions for lambdas
-    foreach (def : self.lambda_defs) {
-        // Check if this is a zero-arg lambda (sentinel param)
-        bool is_zero_arg = (uint)def.param == 0xFFFFFFFF;
+fn void Compiler.emit_lambda_signature(Compiler* self, LambdaDef* def, bool is_zero_arg) {
+    self.emit("fn lisp::Value* invoke_lambda_");
+    self.emit_usz(def.id);
+    if (def.has_rest || def.param_count > 1) {
+        self.emit("(void* _self, lisp::Value* _arg_list) {\n");
+        return;
+    }
+    if (is_zero_arg) {
+        self.emit("(void* _self, lisp::Value* _unused) {\n");
+        return;
+    }
+    self.emit("(void* _self, lisp::Value* ");
+    self.emit_symbol_name(def.param);
+    self.emit(") {\n");
+}
 
-        self.emit("fn lisp::Value* invoke_lambda_");
-        self.emit_usz(def.id);
+fn void Compiler.emit_lambda_param_unpack(Compiler* self, LambdaDef* def, bool is_zero_arg) {
+    if (def.has_rest || def.param_count > 1) return self.emit_lambda_param_unpack_list(def);
+    if (!is_zero_arg) {
+        self.mark_declared(def.param);
+    }
+}
 
-        if (def.has_rest || (def.param_count > 1)) {
-            // Variadic or multi-param lambda: receives all args as a cons list
-            self.emit("(void* _self, lisp::Value* _arg_list) {\n");
-        } else if (is_zero_arg) {
-            self.emit("(void* _self, lisp::Value* _unused) {\n");
-        } else {
-            self.emit("(void* _self, lisp::Value* ");
-            self.emit_symbol_name(def.param);
-            self.emit(") {\n");
-        }
+fn void Compiler.emit_lambda_param_unpack_list(Compiler* self, LambdaDef* def) {
+    self.emit_indent();
+    self.emit("lisp::Value* _curr = _arg_list;\n");
+    for (usz pi = 0; pi < def.param_count; pi++) {
+        self.mark_declared(def.params[pi]);
+        self.emit_indent();
+        self.emit("lisp::Value* ");
+        self.emit_symbol_name(def.params[pi]);
+        self.emit(" = aot::car(_curr);\n");
+        self.emit_indent();
+        self.emit("_curr = aot::cdr(_curr);\n");
+    }
+    if (!def.has_rest) return;
 
-        self.indent++;
+    self.mark_declared(def.rest_param);
+    self.emit_indent();
+    self.emit("lisp::Value* ");
+    self.emit_symbol_name(def.rest_param);
+    self.emit(" = _curr;\n");
+}
 
-        // Clear declared vars for this function scope
-        self.declared_vars.free();
+fn void Compiler.emit_lambda_capture_bindings(Compiler* self, LambdaDef* def) {
+    if (def.capture_count == 0) return;
+    self.emit_indent();
+    self.emit("Lambda_");
+    self.emit_usz(def.id);
+    self.emit("* self = (Lambda_");
+    self.emit_usz(def.id);
+    self.emit("*)_self;\n");
+    for (usz i = 0; i < def.capture_count; i++) {
+        self.mark_declared(def.captures[i]);
+        self.emit_indent();
+        self.emit("lisp::Value* ");
+        self.emit_symbol_name(def.captures[i]);
+        self.emit(" = self.captured_");
+        self.emit_symbol_name(def.captures[i]);
+        self.emit(";\n");
+    }
+}
 
-        if (def.has_rest || (def.param_count > 1 && !def.has_rest)) {
-            // Variadic or multi-param: unpack params from arg list
-            self.emit_indent();
-            self.emit("lisp::Value* _curr = _arg_list;\n");
-            for (usz pi = 0; pi < def.param_count; pi++) {
-                self.mark_declared(def.params[pi]);
-                self.emit_indent();
-                self.emit("lisp::Value* ");
-                self.emit_symbol_name(def.params[pi]);
-                self.emit(" = aot::car(_curr);\n");
-                self.emit_indent();
-                self.emit("_curr = aot::cdr(_curr);\n");
-            }
-            if (def.has_rest) {
-                // Rest param gets remaining list
-                self.mark_declared(def.rest_param);
-                self.emit_indent();
-                self.emit("lisp::Value* ");
-                self.emit_symbol_name(def.rest_param);
-                self.emit(" = _curr;\n");
-            }
-        } else {
-            // Mark parameter as declared
-            if (!is_zero_arg) {
-                self.mark_declared(def.param);
-            }
-        }
+fn void Compiler.emit_lambda_body_return(Compiler* self, LambdaDef* def) {
+    if (def.body.tag == E_LAMBDA) {
+        self.emit_lambda_return_with_frame(def.body, def.creates_closure);
+        return;
+    }
+    usz body_r = self.compile_to_temp_tail(def.body);
+    self.emit_indent();
+    self.emit("return ");
+    self.emit_temp_ref(body_r);
+    self.emit(";\n");
+}
 
-        // Frame region push removed: scope-region handles memory management
+fn void Compiler.emit_lambda_definition(Compiler* self, LambdaDef* def) {
+    bool is_zero_arg = self.is_zero_arg_lambda(def);
+    self.emit_lambda_signature(def, is_zero_arg);
+    self.indent++;
+    self.declared_vars.free();
+    self.emit_lambda_param_unpack(def, is_zero_arg);
+    self.emit_lambda_capture_bindings(def);
+    self.emit_lambda_body_return(def);
+    self.indent--;
+    self.emit("}\n\n");
+}
 
-        // Extract captures if any
-        if (def.capture_count > 0) {
-            self.emit_indent();
-            self.emit("Lambda_");
-            self.emit_usz(def.id);
-            self.emit("* self = (Lambda_");
-            self.emit_usz(def.id);
-            self.emit("*)_self;\n");
-
-            for (usz i = 0; i < def.capture_count; i++) {
-                self.mark_declared(def.captures[i]);
-                self.emit_indent();
-                self.emit("lisp::Value* ");
-                self.emit_symbol_name(def.captures[i]);
-                self.emit(" = self.captured_");
-                self.emit_symbol_name(def.captures[i]);
-                self.emit(";\n");
-            }
-        }
-
-        // Compile body and return using statement-level compilation
-        if (def.body.tag == E_LAMBDA) {
-            self.emit_lambda_return_with_frame(def.body, def.creates_closure);
-        } else {
-            usz body_r = self.compile_to_temp_tail(def.body);
-            // Frame region pop removed: scope-region handles memory management
-            self.emit_indent();
-            self.emit("return ");
-            self.emit_temp_ref(body_r);
-            self.emit(";\n");
-        }
-
-        self.indent--;
-        self.emit("}\n\n");
+fn void Compiler.emit_lambda_definitions(Compiler* self) {
+    foreach (&def : self.lambda_defs) {
+        self.emit_lambda_capture_struct(def);
+    }
+    foreach (&def : self.lambda_defs) {
+        self.emit_lambda_definition(def);
     }
 }
 
@@ -148,143 +152,108 @@ fn void Compiler.emit_make_closure_call(Compiler* self, usz lambda_id) {
     }
 }
 
-fn void Compiler.emit_lambda_return(Compiler* self, Expr* expr) {
-    // Find the lambda definition for this lambda
-    usz lambda_id = 0;
-    LambdaDef* found_def = null;
-
+fn LambdaDef* Compiler.find_lambda_def_by_expr(Compiler* self, Expr* expr, usz* lambda_id) {
     foreach (&def : self.lambda_defs) {
         if (def.body == expr.lambda.body && (uint)def.param == (uint)expr.lambda.param) {
-            lambda_id = def.id;
-            found_def = def;
-            break;
+            *lambda_id = def.id;
+            return def;
         }
     }
+    *lambda_id = 0;
+    return null;
+}
 
-    if (found_def != null && found_def.capture_count > 0) {
-        // Allocate closure struct on heap
+fn void Compiler.emit_closure_capture_data(Compiler* self, LambdaDef* def, usz lambda_id) {
+    self.emit_indent();
+    self.emit("Lambda_");
+    self.emit_usz(lambda_id);
+    self.emit("* _closure_data = (Lambda_");
+    self.emit_usz(lambda_id);
+    self.emit("*)mem::malloc(Lambda_");
+    self.emit_usz(lambda_id);
+    self.emit(".sizeof);\n");
+    for (usz i = 0; i < def.capture_count; i++) {
         self.emit_indent();
-        self.emit("Lambda_");
-        self.emit_usz(lambda_id);
-        self.emit("* _closure_data = (Lambda_");
-        self.emit_usz(lambda_id);
-        self.emit("*)mem::malloc(Lambda_");
-        self.emit_usz(lambda_id);
-        self.emit(".sizeof);\n");
-
-        // Set captured values
-        for (usz i = 0; i < found_def.capture_count; i++) {
-            self.emit_indent();
-            self.emit("_closure_data.captured_");
-            self.emit_symbol_name(found_def.captures[i]);
-            self.emit(" = ");
-            self.emit_symbol_name(found_def.captures[i]);
-            self.emit(";\n");
-        }
-
-        self.emit_indent();
-        self.emit("return aot::");
-        self.emit_make_closure_call(lambda_id);
-        self.emit("((void*)_closure_data, &invoke_lambda_");
-        self.emit_usz(lambda_id);
-        self.emit(");\n");
-    } else {
-        // Simple closure without captures
-        self.emit_indent();
-        self.emit("return aot::");
-        self.emit_make_closure_call(lambda_id);
-        self.emit("(null, &invoke_lambda_");
-        self.emit_usz(lambda_id);
-        self.emit(");\n");
+        self.emit("_closure_data.captured_");
+        self.emit_symbol_name(def.captures[i]);
+        self.emit(" = ");
+        self.emit_symbol_name(def.captures[i]);
+        self.emit(";\n");
     }
 }
 
-fn void Compiler.emit_lambda_return_with_frame(Compiler* self, Expr* expr, bool has_frame) {
-    // Find the lambda definition for this lambda
-    usz lambda_id = 0;
-    LambdaDef* found_def = null;
-
-    foreach (&def : self.lambda_defs) {
-        if (def.body == expr.lambda.body && (uint)def.param == (uint)expr.lambda.param) {
-            lambda_id = def.id;
-            found_def = def;
-            break;
-        }
-    }
-
-    if (found_def != null && found_def.capture_count > 0) {
-        // Allocate closure struct on heap
-        self.emit_indent();
-        self.emit("Lambda_");
-        self.emit_usz(lambda_id);
-        self.emit("* _closure_data = (Lambda_");
-        self.emit_usz(lambda_id);
-        self.emit("*)mem::malloc(Lambda_");
-        self.emit_usz(lambda_id);
-        self.emit(".sizeof);\n");
-
-        // Set captured values
-        for (usz i = 0; i < found_def.capture_count; i++) {
-            self.emit_indent();
-            self.emit("_closure_data.captured_");
-            self.emit_symbol_name(found_def.captures[i]);
-            self.emit(" = ");
-            self.emit_symbol_name(found_def.captures[i]);
-            self.emit(";\n");
-        }
-
-        // Make closure value
-        self.emit_indent();
-        self.emit("lisp::Value* _result = aot::");
-        self.emit_make_closure_call(lambda_id);
+fn void Compiler.emit_closure_expr(Compiler* self, usz lambda_id, bool with_capture_data) {
+    self.emit("aot::");
+    self.emit_make_closure_call(lambda_id);
+    if (with_capture_data) {
         self.emit("((void*)_closure_data, &invoke_lambda_");
-        self.emit_usz(lambda_id);
-        self.emit(");\n");
+    } else {
+        self.emit("(null, &invoke_lambda_");
+    }
+    self.emit_usz(lambda_id);
+    self.emit(")");
+}
 
-        // Frame pop removed: scope-region handles memory management
-        // (has_frame parameter retained for API compatibility but unused)
-
+fn void Compiler.emit_lambda_return_common(Compiler* self, Expr* expr, bool bind_result) {
+    usz lambda_id = 0;
+    LambdaDef* found_def = self.find_lambda_def_by_expr(expr, &lambda_id);
+    bool has_captures = found_def != null && found_def.capture_count > 0;
+    if (has_captures) {
+        self.emit_closure_capture_data(found_def, lambda_id);
+    }
+    self.emit_indent();
+    if (bind_result) {
+        self.emit("lisp::Value* _result = ");
+        self.emit_closure_expr(lambda_id, has_captures);
+        self.emit(";\n");
         self.emit_indent();
         self.emit("return _result;\n");
     } else {
-        // Simple closure without captures
-        self.emit_indent();
-        self.emit("lisp::Value* _result = aot::");
-        self.emit_make_closure_call(lambda_id);
-        self.emit("(null, &invoke_lambda_");
-        self.emit_usz(lambda_id);
-        self.emit(");\n");
-
-        // Frame pop removed: scope-region handles memory management
-
-        self.emit_indent();
-        self.emit("return _result;\n");
+        self.emit("return ");
+        self.emit_closure_expr(lambda_id, has_captures);
+        self.emit(";\n");
     }
+}
+
+fn void Compiler.emit_lambda_return(Compiler* self, Expr* expr) {
+    self.emit_lambda_return_common(expr, false);
+}
+
+fn void Compiler.emit_lambda_return_with_frame(Compiler* self, Expr* expr, bool has_frame) {
+    // has_frame retained for API compatibility; frame pop is scope-managed.
+    if (has_frame) {
+        // Intentionally ignored.
+    }
+    self.emit_lambda_return_common(expr, true);
 }
 
 fn void Compiler.emit_global_declarations(Compiler* self) {
     if (self.defined_globals.len() == 0 && self.referenced_prims.len() == 0) return;
+    self.emit_global_value_declarations();
+    self.emit_cached_primitive_declarations();
+}
 
-    if (self.defined_globals.len() > 0) {
-        self.emit("// Global variables\n");
-        foreach (name : self.defined_globals) {
-            self.emit("lisp::Value* ");
-            self.emit_symbol_name(name);
-            self.emit(";\n");
-        }
-        self.emit_newline();
+fn void Compiler.emit_global_value_declarations(Compiler* self) {
+    if (self.defined_globals.len() == 0) return;
+    self.emit("// Global variables\n");
+    foreach (name : self.defined_globals) {
+        self.emit("lisp::Value* ");
+        self.emit_symbol_name(name);
+        self.emit(";\n");
     }
+    self.emit_newline();
+}
 
+fn void Compiler.emit_cached_primitive_declarations(Compiler* self) {
+    if (self.referenced_prims.len() == 0) return;
     // D2: Cached primitive globals (initialized once in main after aot_init)
-    if (self.referenced_prims.len() > 0) {
-        self.emit("// Cached primitives\n");
-        foreach (sym : self.referenced_prims) {
-            self.emit("lisp::Value* ");
-            self.emit_prim_global_name(sym);
-            self.emit(";\n");
-        }
-        self.emit_newline();
+    self.emit("// Cached primitives\n");
+    foreach (sym : self.referenced_prims) {
+        self.emit("lisp::Value* ");
+        self.emit_prim_global_name(sym);
+        self.emit(";\n");
     }
+    self.emit_newline();
 }
 
 fn void Compiler.emit_main_start(Compiler* self) {
@@ -318,4 +287,3 @@ fn void Compiler.emit_main_end(Compiler* self) {
     self.indent--;
     self.emit("}\n");
 }
-

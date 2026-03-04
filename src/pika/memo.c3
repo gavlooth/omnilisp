@@ -117,104 +117,112 @@ fn void adjust_parent(ParserState* st, int mid, int new_parent) {
     st.matches[mid].parent = new_parent;
 }
 
+fn bool match_splay_left_step(ParserState* st, int mid, int pid) {
+    Match* p = &st.matches[pid];
+    if (p.parent == -1) {
+        // zig left
+        int m_right = st.matches[mid].right;
+        st.matches[mid].right = pid;
+        st.matches[mid].parent = -1;
+        st.matches[pid].left = m_right;
+        st.matches[pid].parent = mid;
+        adjust_parent(st, m_right, pid);
+        return true;
+    }
+
+    int ppid = p.parent;
+    Match* pp = &st.matches[ppid];
+    if (pid == pp.left) {
+        // left of left (zig-zig)
+        int m_right = st.matches[mid].right;
+        int p_right = st.matches[pid].right;
+        adjust_child(st, pp.parent, ppid, mid);
+        st.matches[mid].parent = pp.parent;
+        st.matches[mid].right = pid;
+        st.matches[pid].parent = mid;
+        st.matches[pid].left = m_right;
+        st.matches[pid].right = ppid;
+        st.matches[ppid].parent = pid;
+        st.matches[ppid].left = p_right;
+        adjust_parent(st, m_right, pid);
+        adjust_parent(st, p_right, ppid);
+    } else {
+        // left of right (zig-zag)
+        int m_left = st.matches[mid].left;
+        int m_right = st.matches[mid].right;
+        adjust_child(st, pp.parent, ppid, mid);
+        st.matches[mid].parent = pp.parent;
+        st.matches[mid].left = ppid;
+        st.matches[mid].right = pid;
+        st.matches[pid].parent = mid;
+        st.matches[pid].left = m_right;
+        st.matches[ppid].parent = mid;
+        st.matches[ppid].right = m_left;
+        adjust_parent(st, m_right, pid);
+        adjust_parent(st, m_left, ppid);
+    }
+    return false;
+}
+
+fn bool match_splay_right_step(ParserState* st, int mid, int pid) {
+    Match* p = &st.matches[pid];
+    if (p.parent == -1) {
+        // zig right
+        int m_left = st.matches[mid].left;
+        st.matches[mid].left = pid;
+        st.matches[mid].parent = -1;
+        st.matches[pid].right = m_left;
+        st.matches[pid].parent = mid;
+        adjust_parent(st, m_left, pid);
+        return true;
+    }
+
+    int ppid = p.parent;
+    Match* pp = &st.matches[ppid];
+    if (pid == pp.left) {
+        // right of left (zig-zag)
+        int m_left = st.matches[mid].left;
+        int m_right = st.matches[mid].right;
+        adjust_child(st, pp.parent, ppid, mid);
+        st.matches[mid].parent = pp.parent;
+        st.matches[mid].right = ppid;
+        st.matches[mid].left = pid;
+        st.matches[pid].parent = mid;
+        st.matches[pid].right = m_left;
+        st.matches[ppid].parent = mid;
+        st.matches[ppid].left = m_right;
+        adjust_parent(st, m_left, pid);
+        adjust_parent(st, m_right, ppid);
+    } else {
+        // right of right (zig-zig)
+        int m_left = st.matches[mid].left;
+        int p_left = st.matches[pid].left;
+        adjust_child(st, pp.parent, ppid, mid);
+        st.matches[mid].parent = pp.parent;
+        st.matches[mid].left = pid;
+        st.matches[pid].parent = mid;
+        st.matches[pid].right = m_left;
+        st.matches[pid].left = ppid;
+        st.matches[ppid].parent = pid;
+        st.matches[ppid].right = p_left;
+        adjust_parent(st, m_left, pid);
+        adjust_parent(st, p_left, ppid);
+    }
+    return false;
+}
+
 fn void match_splay(ParserState* st, int mid) {
     while (true) {
         Match* m = &st.matches[mid];
-
         if (m.parent == -1) break;
 
         int pid = m.parent;
         Match* p = &st.matches[pid];
-
-        if (mid == p.left) {
-            // left child
-            if (p.parent == -1) {
-                // zig left
-                int m_right = m.right;
-                st.matches[mid].right = pid;
-                st.matches[mid].parent = -1;
-                st.matches[pid].left = m_right;
-                st.matches[pid].parent = mid;
-                adjust_parent(st, m_right, pid);
-                break;
-            }
-            int ppid = p.parent;
-            Match* pp = &st.matches[ppid];
-            if (pid == pp.left) {
-                // left of left (zig-zig)
-                int m_right = st.matches[mid].right;
-                int p_right = st.matches[pid].right;
-                adjust_child(st, pp.parent, ppid, mid);
-                st.matches[mid].parent = pp.parent;
-                st.matches[mid].right = pid;
-                st.matches[pid].parent = mid;
-                st.matches[pid].left = m_right;
-                st.matches[pid].right = ppid;
-                st.matches[ppid].parent = pid;
-                st.matches[ppid].left = p_right;
-                adjust_parent(st, m_right, pid);
-                adjust_parent(st, p_right, ppid);
-            } else {
-                // left of right (zig-zag)
-                int m_left = st.matches[mid].left;
-                int m_right = st.matches[mid].right;
-                adjust_child(st, pp.parent, ppid, mid);
-                st.matches[mid].parent = pp.parent;
-                st.matches[mid].left = ppid;
-                st.matches[mid].right = pid;
-                st.matches[pid].parent = mid;
-                st.matches[pid].left = m_right;
-                st.matches[ppid].parent = mid;
-                st.matches[ppid].right = m_left;
-                adjust_parent(st, m_right, pid);
-                adjust_parent(st, m_left, ppid);
-            }
-        } else {
-            // right child
-            if (p.parent == -1) {
-                // zig right
-                int m_left = m.left;
-                st.matches[mid].left = pid;
-                st.matches[mid].parent = -1;
-                st.matches[pid].right = m_left;
-                st.matches[pid].parent = mid;
-                adjust_parent(st, m_left, pid);
-                break;
-            }
-            int ppid = p.parent;
-            Match* pp = &st.matches[ppid];
-            if (pid == pp.left) {
-                // right of left (zig-zag)
-                int m_left = st.matches[mid].left;
-                int m_right = st.matches[mid].right;
-                adjust_child(st, pp.parent, ppid, mid);
-                st.matches[mid].parent = pp.parent;
-                st.matches[mid].right = ppid;
-                st.matches[mid].left = pid;
-                st.matches[pid].parent = mid;
-                st.matches[pid].right = m_left;
-                st.matches[ppid].parent = mid;
-                st.matches[ppid].left = m_right;
-                adjust_parent(st, m_left, pid);
-                adjust_parent(st, m_right, ppid);
-            } else {
-                // right of right (zig-zig)
-                int m_left = st.matches[mid].left;
-                int p_left = st.matches[pid].left;
-                adjust_child(st, pp.parent, ppid, mid);
-                st.matches[mid].parent = pp.parent;
-                st.matches[mid].left = pid;
-                st.matches[pid].parent = mid;
-                st.matches[pid].right = m_left;
-                st.matches[pid].left = ppid;
-                st.matches[ppid].parent = pid;
-                st.matches[ppid].right = p_left;
-                adjust_parent(st, m_left, pid);
-                adjust_parent(st, p_left, ppid);
-            }
-        }
+        bool done = mid == p.left
+            ? match_splay_left_step(st, mid, pid)
+            : match_splay_right_step(st, mid, pid);
+        if (done) break;
     }
-
     st.memo_root = mid;
 }
 

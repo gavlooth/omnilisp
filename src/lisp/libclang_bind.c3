@@ -232,6 +232,56 @@ fn void map_c_type(LibclangHandle* h, CXType ty, char* ffi_out, char* omni_out, 
     }
 }
 
+fn bool visitor_matches_filter(VisitorState* state, char* name_cstr) {
+    if (!state.use_filter) return true;
+    for (usz i = 0; i < state.filter_count; i++) {
+        if (cstr_eq(name_cstr, &state.filter[i])) return true;
+    }
+    return false;
+}
+
+fn void visitor_set_param_name(ParsedParam* param, int index) {
+    // Generate param name (arg0, arg1, ...)
+    param.name[0] = 'a'; param.name[1] = 'r'; param.name[2] = 'g';
+    if (index < 10) {
+        param.name[3] = (char)('0' + index);
+        param.name[4] = 0;
+        return;
+    }
+    param.name[3] = (char)('0' + index / 10);
+    param.name[4] = (char)('0' + index % 10);
+    param.name[5] = 0;
+}
+
+fn void visitor_set_param_types(LibclangHandle* h, ParsedParam* param, CXType arg_type) {
+    map_c_type(h, arg_type, &param.ffi_type, &param.omni_type, 16);
+
+    // Get type spelling for c_type field
+    CXString type_str = h.get_type_spelling(arg_type);
+    char* type_cstr = h.get_cstring(type_str);
+    if (type_cstr != null) {
+        cstr_copy(type_cstr, &param.c_type, 63);
+    } else {
+        param.c_type[0] = 0;
+    }
+    h.dispose_string(type_str);
+}
+
+fn void visitor_set_params(LibclangHandle* h, CXType fn_type, ParsedFunc* func) {
+    // Parameters
+    int num_args = h.get_num_arg_types(fn_type);
+    if (num_args < 0) num_args = 0;
+    if (num_args > 16) num_args = 16;
+    func.param_count = (usz)num_args;
+
+    for (int i = 0; i < num_args; i++) {
+        ParsedParam* param = &func.params[i];
+        CXType arg_type = h.get_arg_type(fn_type, (uint)i);
+        visitor_set_param_types(h, param, arg_type);
+        visitor_set_param_name(param, i);
+    }
+}
+
 /**
  * Visitor callback for clang_visitChildren.
  * Collects top-level function declarations.
@@ -252,19 +302,9 @@ fn uint clang_visitor(CXCursor cursor, CXCursor parent, void* client_data) {
         return CXCHILDVISIT_CONTINUE;
     }
 
-    // Apply filter if specified
-    if (state.use_filter) {
-        bool found = false;
-        for (usz i = 0; i < state.filter_count; i++) {
-            if (cstr_eq(name_cstr, &state.filter[i])) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            h.dispose_string(name_str);
-            return CXCHILDVISIT_CONTINUE;
-        }
+    if (!visitor_matches_filter(state, name_cstr)) {
+        h.dispose_string(name_str);
+        return CXCHILDVISIT_CONTINUE;
     }
 
     ParsedFunc* func = &state.funcs[state.count];
@@ -283,40 +323,7 @@ fn uint clang_visitor(CXCursor cursor, CXCursor parent, void* client_data) {
     CXType ret_type = h.get_result_type(fn_type);
     map_c_type(h, ret_type, &func.return_ffi_type, &func.return_omni_type, 16);
 
-    // Parameters
-    int num_args = h.get_num_arg_types(fn_type);
-    if (num_args < 0) num_args = 0;
-    if (num_args > 16) num_args = 16;
-    func.param_count = (usz)num_args;
-
-    for (int i = 0; i < num_args; i++) {
-        ParsedParam* param = &func.params[i];
-
-        // Get arg type
-        CXType arg_type = h.get_arg_type(fn_type, (uint)i);
-        map_c_type(h, arg_type, &param.ffi_type, &param.omni_type, 16);
-
-        // Get type spelling for c_type field
-        CXString type_str = h.get_type_spelling(arg_type);
-        char* type_cstr = h.get_cstring(type_str);
-        if (type_cstr != null) {
-            cstr_copy(type_cstr, &param.c_type, 63);
-        } else {
-            param.c_type[0] = 0;
-        }
-        h.dispose_string(type_str);
-
-        // Generate param name (arg0, arg1, ...)
-        param.name[0] = 'a'; param.name[1] = 'r'; param.name[2] = 'g';
-        if (i < 10) {
-            param.name[3] = (char)('0' + i);
-            param.name[4] = 0;
-        } else {
-            param.name[3] = (char)('0' + i / 10);
-            param.name[4] = (char)('0' + i % 10);
-            param.name[5] = 0;
-        }
-    }
+    visitor_set_params(h, fn_type, func);
 
     state.count++;
     return CXCHILDVISIT_CONTINUE;

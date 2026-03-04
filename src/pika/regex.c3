@@ -119,6 +119,81 @@ fn void RegexTokenizer.set_error(RegexTokenizer* self, char[] msg) {
     self.error[len] = 0;
 }
 
+fn void cc_add_range(CharClassData* cc, char start, char end) @inline {
+    if (cc.num_ranges < 64) {
+        cc.ranges[cc.num_ranges].start = start;
+        cc.ranges[cc.num_ranges].end = end;
+        cc.num_ranges++;
+    }
+}
+
+fn void cc_add_char(CharClassData* cc, char c) @inline {
+    if (cc.num_chars < 64) cc.chars[cc.num_chars++] = c;
+}
+
+fn char regex_escape_char(char c) @inline {
+    switch (c) {
+        case 'n': return '\n';
+        case 't': return '\t';
+        case 'r': return '\r';
+        default: return c;
+    }
+}
+
+fn bool regex_handle_char_class_escape(CharClassData* cc, char esc, char* out_char) {
+    switch (esc) {
+        case 'n':
+        case 't':
+        case 'r':
+            *out_char = regex_escape_char(esc);
+            return false;
+        case 'd':
+            cc_add_range(cc, '0', '9');
+            return true;
+        case 'D':
+            if (cc.num_ranges < 62) {
+                cc_add_range(cc, 0, '/');
+                cc_add_range(cc, ':', 127);
+            }
+            return true;
+        case 'w':
+            if (cc.num_ranges < 61) {
+                cc_add_range(cc, 'a', 'z');
+                cc_add_range(cc, 'A', 'Z');
+                cc_add_range(cc, '0', '9');
+            }
+            cc_add_char(cc, '_');
+            return true;
+        case 'W':
+            return true;
+        case 's':
+            if (cc.num_chars < 60) {
+                cc_add_char(cc, ' ');
+                cc_add_char(cc, '\t');
+                cc_add_char(cc, '\n');
+                cc_add_char(cc, '\r');
+            }
+            return true;
+        case 'S':
+            return true;
+        default:
+            *out_char = esc;
+            return false;
+    }
+}
+
+fn bool RegexTokenizer.try_parse_char_class_range(RegexTokenizer* self, CharClassData* cc, char start) {
+    if (self.peek() != '-' || self.pos + 1 >= (int)self.pattern.len) return false;
+    char next_next = self.pattern[self.pos + 1];
+    if (next_next == ']') return false;
+
+    self.advance(); // Skip '-'
+    char end = self.advance();
+    if (end == '\\') end = regex_escape_char(self.advance());
+    cc_add_range(cc, start, end);
+    return true;
+}
+
 fn CharClassData* RegexTokenizer.parse_char_class(RegexTokenizer* self) {
     CharClassData* cc = mem::new(CharClassData);
     cc.num_ranges = 0;
@@ -139,89 +214,13 @@ fn CharClassData* RegexTokenizer.parse_char_class(RegexTokenizer* self) {
 
         // Handle escape in char class
         if (c == '\\') {
-            c = self.advance();
-            switch (c) {
-                case 'n': c = '\n';
-                case 't': c = '\t';
-                case 'r': c = '\r';
-                case 'd': // \d = 0-9
-                    if (cc.num_ranges < 64) {
-                        cc.ranges[cc.num_ranges].start = '0';
-                        cc.ranges[cc.num_ranges].end = '9';
-                        cc.num_ranges++;
-                    }
-                    continue;
-                case 'D': // \D = not 0-9 (add ranges for non-digits)
-                    // Simplified: just mark as special case later
-                    if (cc.num_ranges < 62) {
-                        cc.ranges[cc.num_ranges].start = 0;
-                        cc.ranges[cc.num_ranges].end = '/';
-                        cc.num_ranges++;
-                        cc.ranges[cc.num_ranges].start = ':';
-                        cc.ranges[cc.num_ranges].end = 127;
-                        cc.num_ranges++;
-                    }
-                    continue;
-                case 'w': // \w = a-zA-Z0-9_
-                    if (cc.num_ranges < 61) {
-                        cc.ranges[cc.num_ranges].start = 'a';
-                        cc.ranges[cc.num_ranges].end = 'z';
-                        cc.num_ranges++;
-                        cc.ranges[cc.num_ranges].start = 'A';
-                        cc.ranges[cc.num_ranges].end = 'Z';
-                        cc.num_ranges++;
-                        cc.ranges[cc.num_ranges].start = '0';
-                        cc.ranges[cc.num_ranges].end = '9';
-                        cc.num_ranges++;
-                    }
-                    if (cc.num_chars < 64) cc.chars[cc.num_chars++] = '_';
-                    continue;
-                case 'W': // \W = not word char
-                    // Simplified handling
-                    continue;
-                case 's': // \s = whitespace
-                    if (cc.num_chars < 60) {
-                        cc.chars[cc.num_chars++] = ' ';
-                        cc.chars[cc.num_chars++] = '\t';
-                        cc.chars[cc.num_chars++] = '\n';
-                        cc.chars[cc.num_chars++] = '\r';
-                    }
-                    continue;
-                case 'S': // \S = not whitespace
-                    continue;
-                default:
-                    // Literal escaped char
-                    ;
-            }
+            char esc = self.advance();
+            if (regex_handle_char_class_escape(cc, esc, &c)) continue;
         }
 
-        // Check for range
-        if (self.peek() == '-' && self.pos + 1 < (int)self.pattern.len) {
-            char next_next = self.pattern[self.pos + 1];
-            if (next_next != ']') {
-                self.advance(); // Skip -
-                char end = self.advance();
-                if (end == '\\') {
-                    end = self.advance();
-                    switch (end) {
-                        case 'n': end = '\n';
-                        case 't': end = '\t';
-                        case 'r': end = '\r';
-                        default: ;
-                    }
-                }
-                if (cc.num_ranges < 64) {
-                    cc.ranges[cc.num_ranges].start = c;
-                    cc.ranges[cc.num_ranges].end = end;
-                    cc.num_ranges++;
-                }
-                continue;
-            }
-        }
+        if (self.try_parse_char_class_range(cc, c)) continue;
 
-        if (cc.num_chars < 64) {
-            cc.chars[cc.num_chars++] = c;
-        }
+        cc_add_char(cc, c);
     }
 
     if (self.peek() == ']') {
@@ -288,193 +287,177 @@ fn RegexToken RegexTokenizer.parse_bounded_quantifier(RegexTokenizer* self) {
     return tok;
 }
 
-fn RegexToken RegexTokenizer.next_token(RegexTokenizer* self) {
+fn RegexToken regex_simple_token(RegexTokenType t) {
     RegexToken tok;
+    tok.type = t;
+    return tok;
+}
 
+fn RegexToken RegexTokenizer.tokenize_possessive(RegexTokenizer* self, RegexTokenType normal, RegexTokenType possessive) {
+    self.advance();
+    if (self.peek() == '+') {
+        self.advance();
+        return regex_simple_token(possessive);
+    }
+    return regex_simple_token(normal);
+}
+
+fn CharClassData* regex_digit_class(bool negated) {
+    CharClassData* cc = mem::new(CharClassData);
+    cc.num_ranges = 1;
+    cc.ranges[0].start = '0';
+    cc.ranges[0].end = '9';
+    cc.num_chars = 0;
+    cc.negated = negated;
+    return cc;
+}
+
+fn CharClassData* regex_word_class(bool negated) {
+    CharClassData* cc = mem::new(CharClassData);
+    cc.num_ranges = 3;
+    cc.ranges[0].start = 'a';
+    cc.ranges[0].end = 'z';
+    cc.ranges[1].start = 'A';
+    cc.ranges[1].end = 'Z';
+    cc.ranges[2].start = '0';
+    cc.ranges[2].end = '9';
+    cc.num_chars = 1;
+    cc.chars[0] = '_';
+    cc.negated = negated;
+    return cc;
+}
+
+fn CharClassData* regex_space_class(bool negated) {
+    CharClassData* cc = mem::new(CharClassData);
+    cc.num_ranges = 0;
+    cc.num_chars = 4;
+    cc.chars[0] = ' ';
+    cc.chars[1] = '\t';
+    cc.chars[2] = '\n';
+    cc.chars[3] = '\r';
+    cc.negated = negated;
+    return cc;
+}
+
+fn RegexToken regex_class_token(CharClassData* cc) {
+    RegexToken tok;
+    tok.type = RE_CHAR_CLASS;
+    tok.cclass = cc;
+    return tok;
+}
+
+fn RegexToken RegexTokenizer.tokenize_group(RegexTokenizer* self) {
+    self.advance(); // Skip (
+    if (self.peek() != '?') {
+        return regex_simple_token(RE_LPAREN);
+    }
+
+    self.advance(); // Skip ?
+    char next = self.peek();
+    switch (next) {
+        case ':':
+            self.advance();
+            return regex_simple_token(RE_NONCAP);
+        case '=':
+            self.advance();
+            return regex_simple_token(RE_LOOKAHEAD_POS);
+        case '!':
+            self.advance();
+            return regex_simple_token(RE_LOOKAHEAD_NEG);
+        default:
+            self.set_error("Unknown group type");
+            return regex_simple_token(RE_ERROR);
+    }
+}
+
+fn RegexToken RegexTokenizer.tokenize_escape(RegexTokenizer* self) {
+    self.advance(); // Skip '\'
+    char c = self.advance();
+
+    switch (c) {
+        case 'n':
+            RegexToken tok = regex_simple_token(RE_LITERAL);
+            tok.ch = '\n';
+            return tok;
+        case 't':
+            RegexToken tok = regex_simple_token(RE_LITERAL);
+            tok.ch = '\t';
+            return tok;
+        case 'r':
+            RegexToken tok = regex_simple_token(RE_LITERAL);
+            tok.ch = '\r';
+            return tok;
+        case 'd':
+            return regex_class_token(regex_digit_class(false));
+        case 'D':
+            return regex_class_token(regex_digit_class(true));
+        case 'w':
+            return regex_class_token(regex_word_class(false));
+        case 'W':
+            return regex_class_token(regex_word_class(true));
+        case 's':
+            return regex_class_token(regex_space_class(false));
+        case 'S':
+            return regex_class_token(regex_space_class(true));
+        default:
+            RegexToken tok = regex_simple_token(RE_LITERAL);
+            tok.ch = c;
+            return tok;
+    }
+}
+
+fn RegexToken RegexTokenizer.next_token(RegexTokenizer* self) {
     if (self.pos >= (int)self.pattern.len) {
-        tok.type = RE_END;
-        return tok;
+        return regex_simple_token(RE_END);
     }
 
     char c = self.peek();
 
     switch (c) {
         case '[':
-            tok.type = RE_CHAR_CLASS;
-            tok.cclass = self.parse_char_class();
-            return tok;
+            return regex_class_token(self.parse_char_class());
 
         case '.':
             self.advance();
-            tok.type = RE_DOT;
-            return tok;
+            return regex_simple_token(RE_DOT);
 
         case '*':
-            self.advance();
-            if (self.peek() == '+') {
-                self.advance();
-                tok.type = RE_STAR_POSS;
-            } else {
-                tok.type = RE_STAR;
-            }
-            return tok;
+            return self.tokenize_possessive(RE_STAR, RE_STAR_POSS);
 
         case '+':
-            self.advance();
-            if (self.peek() == '+') {
-                self.advance();
-                tok.type = RE_PLUS_POSS;
-            } else {
-                tok.type = RE_PLUS;
-            }
-            return tok;
+            return self.tokenize_possessive(RE_PLUS, RE_PLUS_POSS);
 
         case '?':
-            self.advance();
-            if (self.peek() == '+') {
-                self.advance();
-                tok.type = RE_QUEST_POSS;
-            } else {
-                tok.type = RE_QUESTION;
-            }
-            return tok;
+            return self.tokenize_possessive(RE_QUESTION, RE_QUEST_POSS);
 
         case '|':
             self.advance();
-            tok.type = RE_PIPE;
-            return tok;
+            return regex_simple_token(RE_PIPE);
 
         case '(':
-            self.advance();
-            if (self.peek() == '?') {
-                self.advance();
-                char next = self.peek();
-                if (next == ':') {
-                    self.advance();
-                    tok.type = RE_NONCAP;
-                } else if (next == '=') {
-                    self.advance();
-                    tok.type = RE_LOOKAHEAD_POS;
-                } else if (next == '!') {
-                    self.advance();
-                    tok.type = RE_LOOKAHEAD_NEG;
-                } else {
-                    self.set_error("Unknown group type");
-                    tok.type = RE_ERROR;
-                }
-            } else {
-                tok.type = RE_LPAREN;
-            }
-            return tok;
+            return self.tokenize_group();
 
         case ')':
             self.advance();
-            tok.type = RE_RPAREN;
-            return tok;
+            return regex_simple_token(RE_RPAREN);
 
         case '^':
             self.advance();
-            tok.type = RE_ANCHOR_START;
-            return tok;
+            return regex_simple_token(RE_ANCHOR_START);
 
         case '$':
             self.advance();
-            tok.type = RE_ANCHOR_END;
-            return tok;
+            return regex_simple_token(RE_ANCHOR_END);
 
         case '{':
             return self.parse_bounded_quantifier();
 
         case '\\':
-            self.advance();
-            c = self.advance();
-            switch (c) {
-                case 'n': tok.ch = '\n';
-                case 't': tok.ch = '\t';
-                case 'r': tok.ch = '\r';
-                case 'd':
-                    // \d -> [0-9]
-                    tok.type = RE_CHAR_CLASS;
-                    tok.cclass = mem::new(CharClassData);
-                    tok.cclass.num_ranges = 1;
-                    tok.cclass.ranges[0].start = '0';
-                    tok.cclass.ranges[0].end = '9';
-                    tok.cclass.num_chars = 0;
-                    tok.cclass.negated = false;
-                    return tok;
-                case 'D':
-                    // \D -> [^0-9]
-                    tok.type = RE_CHAR_CLASS;
-                    tok.cclass = mem::new(CharClassData);
-                    tok.cclass.num_ranges = 1;
-                    tok.cclass.ranges[0].start = '0';
-                    tok.cclass.ranges[0].end = '9';
-                    tok.cclass.num_chars = 0;
-                    tok.cclass.negated = true;
-                    return tok;
-                case 'w':
-                    // \w -> [a-zA-Z0-9_]
-                    tok.type = RE_CHAR_CLASS;
-                    tok.cclass = mem::new(CharClassData);
-                    tok.cclass.num_ranges = 3;
-                    tok.cclass.ranges[0].start = 'a';
-                    tok.cclass.ranges[0].end = 'z';
-                    tok.cclass.ranges[1].start = 'A';
-                    tok.cclass.ranges[1].end = 'Z';
-                    tok.cclass.ranges[2].start = '0';
-                    tok.cclass.ranges[2].end = '9';
-                    tok.cclass.num_chars = 1;
-                    tok.cclass.chars[0] = '_';
-                    tok.cclass.negated = false;
-                    return tok;
-                case 'W':
-                    // \W -> [^a-zA-Z0-9_]
-                    tok.type = RE_CHAR_CLASS;
-                    tok.cclass = mem::new(CharClassData);
-                    tok.cclass.num_ranges = 3;
-                    tok.cclass.ranges[0].start = 'a';
-                    tok.cclass.ranges[0].end = 'z';
-                    tok.cclass.ranges[1].start = 'A';
-                    tok.cclass.ranges[1].end = 'Z';
-                    tok.cclass.ranges[2].start = '0';
-                    tok.cclass.ranges[2].end = '9';
-                    tok.cclass.num_chars = 1;
-                    tok.cclass.chars[0] = '_';
-                    tok.cclass.negated = true;
-                    return tok;
-                case 's':
-                    // \s -> whitespace
-                    tok.type = RE_CHAR_CLASS;
-                    tok.cclass = mem::new(CharClassData);
-                    tok.cclass.num_ranges = 0;
-                    tok.cclass.num_chars = 4;
-                    tok.cclass.chars[0] = ' ';
-                    tok.cclass.chars[1] = '\t';
-                    tok.cclass.chars[2] = '\n';
-                    tok.cclass.chars[3] = '\r';
-                    tok.cclass.negated = false;
-                    return tok;
-                case 'S':
-                    // \S -> non-whitespace
-                    tok.type = RE_CHAR_CLASS;
-                    tok.cclass = mem::new(CharClassData);
-                    tok.cclass.num_ranges = 0;
-                    tok.cclass.num_chars = 4;
-                    tok.cclass.chars[0] = ' ';
-                    tok.cclass.chars[1] = '\t';
-                    tok.cclass.chars[2] = '\n';
-                    tok.cclass.chars[3] = '\r';
-                    tok.cclass.negated = true;
-                    return tok;
-                default:
-                    tok.ch = c; // Literal escaped char
-            }
-            tok.type = RE_LITERAL;
-            return tok;
+            return self.tokenize_escape();
 
         default:
             self.advance();
-            tok.type = RE_LITERAL;
+            RegexToken tok = regex_simple_token(RE_LITERAL);
             tok.ch = c;
             return tok;
     }

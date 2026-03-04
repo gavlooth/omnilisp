@@ -146,15 +146,58 @@ fn lisp::Value* prim_re_split(lisp::Value*[] args, lisp::Env* env, lisp::Interp*
 
 // (re-replace pattern replacement input) -> new string
 // (re-replace pattern replacement input 'global) -> replace all
-fn lisp::Value* prim_re_replace(lisp::Value*[] args, lisp::Env* env, lisp::Interp* interp) {
-    if (args.len < 3) {
-        return lisp::make_nil(interp);
+fn bool re_replace_has_global_flag(lisp::Value*[] args) @inline {
+    return args.len >= 4 && args[3].tag == lisp::ValueTag.SYMBOL;
+}
+
+fn void re_replace_append_range(char[1024]* result_buf, usz* result_len, char[] input, int begin, int end_exclusive) {
+    for (int j = begin; j < end_exclusive && *result_len < 1023; j++) {
+        (*result_buf)[*result_len] = input[j];
+        (*result_len)++;
     }
+}
+
+fn void re_replace_append_text(char[1024]* result_buf, usz* result_len, char[] text) {
+    for (usz j = 0; j < text.len && *result_len < 1023; j++) {
+        (*result_buf)[*result_len] = text[j];
+        (*result_len)++;
+    }
+}
+
+fn usz re_replace_global(char[1024]* result_buf, char[] pattern, char[] replacement, char[] input) {
+    usz result_len = 0;
+    int count = 0;
+    RegexMatch[64] matches = regex_find_all(pattern, input, &count);
+
+    int last_end = 0;
+    for (int i = 0; i < count; i++) {
+        re_replace_append_range(result_buf, &result_len, input, last_end, matches[i].start);
+        re_replace_append_text(result_buf, &result_len, replacement);
+        last_end = matches[i].end + 1;
+    }
+    re_replace_append_range(result_buf, &result_len, input, last_end, (int)input.len);
+    return result_len;
+}
+
+fn usz re_replace_first(char[1024]* result_buf, char[] pattern, char[] replacement, char[] input) {
+    usz result_len = 0;
+    RegexMatch m = regex_search(pattern, input);
+    if (m.matched) {
+        re_replace_append_range(result_buf, &result_len, input, 0, m.start);
+        re_replace_append_text(result_buf, &result_len, replacement);
+        re_replace_append_range(result_buf, &result_len, input, m.end + 1, (int)input.len);
+    } else {
+        re_replace_append_text(result_buf, &result_len, input);
+    }
+    return result_len;
+}
+
+fn lisp::Value* prim_re_replace(lisp::Value*[] args, lisp::Env* env, lisp::Interp* interp) {
+    if (args.len < 3) return lisp::make_nil(interp);
 
     lisp::Value* pattern_val = args[0];
     lisp::Value* replacement_val = args[1];
     lisp::Value* input_val = args[2];
-
     if (pattern_val.tag != lisp::ValueTag.STRING ||
         replacement_val.tag != lisp::ValueTag.STRING ||
         input_val.tag != lisp::ValueTag.STRING) {
@@ -165,61 +208,10 @@ fn lisp::Value* prim_re_replace(lisp::Value*[] args, lisp::Env* env, lisp::Inter
     char[] replacement = replacement_val.str_chars[:replacement_val.str_len];
     char[] input = input_val.str_chars[:input_val.str_len];
 
-    bool global = false;
-    if (args.len >= 4 && args[3].tag == lisp::ValueTag.SYMBOL) {
-        // Check for 'global flag
-        global = true;
-    }
-
-    // Build result string
     char[1024] result_buf;
-    usz result_len = 0;
-
-    if (global) {
-        // Replace all occurrences
-        int count = 0;
-        RegexMatch[64] matches = regex_find_all(pattern, input, &count);
-
-        int last_end = 0;
-        for (int i = 0; i < count; i++) {
-            // Copy text before match
-            for (int j = last_end; j < matches[i].start && result_len < 1023; j++) {
-                result_buf[result_len++] = input[j];
-            }
-            // Copy replacement
-            for (usz j = 0; j < replacement.len && result_len < 1023; j++) {
-                result_buf[result_len++] = replacement[j];
-            }
-            last_end = matches[i].end + 1;
-        }
-        // Copy remaining
-        for (int j = last_end; j < (int)input.len && result_len < 1023; j++) {
-            result_buf[result_len++] = input[j];
-        }
-    } else {
-        // Replace first occurrence only
-        RegexMatch m = regex_search(pattern, input);
-
-        if (m.matched) {
-            // Copy text before match
-            for (int j = 0; j < m.start && result_len < 1023; j++) {
-                result_buf[result_len++] = input[j];
-            }
-            // Copy replacement
-            for (usz j = 0; j < replacement.len && result_len < 1023; j++) {
-                result_buf[result_len++] = replacement[j];
-            }
-            // Copy text after match
-            for (int j = m.end + 1; j < (int)input.len && result_len < 1023; j++) {
-                result_buf[result_len++] = input[j];
-            }
-        } else {
-            // No match, return original
-            for (usz j = 0; j < input.len && result_len < 1023; j++) {
-                result_buf[result_len++] = input[j];
-            }
-        }
-    }
+    usz result_len = re_replace_has_global_flag(args)
+        ? re_replace_global(&result_buf, pattern, replacement, input)
+        : re_replace_first(&result_buf, pattern, replacement, input);
 
     result_buf[result_len] = 0;
     if (result_len == 0) return lisp::make_string(interp, "");
@@ -397,6 +389,216 @@ fn int store_char_class_scanner(GrammarCompiler* gc, CharClassData* cc, String n
     return gc.rb.add(name, mk_scan(g_scan_fns[idx]));
 }
 
+fn int collect_clause_elements(lisp::Value* rest, lisp::Value** elems, int max_elems) {
+    int elem_count = 0;
+    lisp::Value* curr = rest;
+    while (lisp::is_cons(curr) && elem_count < max_elems) {
+        elems[elem_count++] = curr.cons_val.car;
+        curr = curr.cons_val.cdr;
+    }
+    return elem_count;
+}
+
+fn int[] compile_clause_children(GrammarCompiler* gc, lisp::Value** elems, int elem_count) {
+    int[] children = mem::new_array(int, (usz)elem_count);
+    for (int i = 0; i < elem_count; i++) {
+        children[i] = compile_clause(gc, elems[i]);
+    }
+    return children;
+}
+
+fn int compile_clause_string(GrammarCompiler* gc, lisp::Value* clause) {
+    char[] str = clause.str_chars[:clause.str_len];
+    if (str.len == 1) {
+        char[16] name = "_tok_";
+        name[5] = str[0];
+        name[6] = 0;
+        return gc.rb.add((String)name[:6], mk_token(str[0]));
+    }
+    char[64] name;
+    usz nlen = 0;
+    char[] prefix = "_str_";
+    for (usz i = 0; i < prefix.len && nlen < 50; i++) name[nlen++] = prefix[i];
+    for (usz i = 0; i < str.len && nlen < 60; i++) {
+        char c = str[i];
+        if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+            name[nlen++] = c;
+        }
+    }
+    name[nlen] = 0;
+    return gc.rb.add((String)name[:nlen], mk_tokens(str));
+}
+
+fn int compile_clause_symbol_ref(GrammarCompiler* gc, lisp::Value* clause) {
+    lisp::SymbolId sym = clause.sym_val;
+    int existing = gc.find_rule(sym);
+    if (existing >= 0) return existing;
+
+    char[] sym_name = gc.interp.symbols.get_name(sym);
+    int placeholder = gc.rb.add((String)sym_name, mk_fail());
+    if (gc.rule_count < 64) {
+        gc.rule_names[gc.rule_count] = sym;
+        gc.rule_indices[gc.rule_count] = placeholder;
+        gc.rule_count++;
+    }
+    return placeholder;
+}
+
+fn int compile_clause_seq_op(GrammarCompiler* gc, lisp::Value* rest) {
+    lisp::Value*[32] elems;
+    int elem_count = collect_clause_elements(rest, &elems[0], 32);
+    if (elem_count == 0) return gc.rb.add("_eps", mk_epsilon());
+    int[] children = compile_clause_children(gc, &elems[0], elem_count);
+    char[32] name = "_seq_";
+    name[5] = (char)('0' + gc.rb.len % 10);
+    name[6] = 0;
+    return gc.rb.add((String)name[:6], mk_seq(children));
+}
+
+fn int compile_clause_first_op(GrammarCompiler* gc, lisp::Value* rest) {
+    lisp::Value*[32] elems;
+    int elem_count = collect_clause_elements(rest, &elems[0], 32);
+    if (elem_count == 0) return gc.rb.add("_fail", mk_fail());
+    int[] children = compile_clause_children(gc, &elems[0], elem_count);
+    char[32] name = "_first_";
+    name[7] = (char)('0' + gc.rb.len % 10);
+    name[8] = 0;
+    return gc.rb.add((String)name[:8], mk_first(children));
+}
+
+fn int compile_clause_named_many(GrammarCompiler* gc, int child) {
+    char[32] name = "_many_";
+    name[6] = (char)('0' + gc.rb.len % 10);
+    name[7] = 0;
+    return gc.rb.add((String)name[:7], mk_many(child));
+}
+
+fn int compile_clause_named_some(GrammarCompiler* gc, int child) {
+    char[32] name = "_some_";
+    name[6] = (char)('0' + gc.rb.len % 10);
+    name[7] = 0;
+    return gc.rb.add((String)name[:7], mk_some(child));
+}
+
+fn int compile_clause_named_opt(GrammarCompiler* gc, int child) {
+    int eps = gc.rb.add("_eps", mk_epsilon());
+    int[] children = make_children_2(child, eps);
+    char[32] name = "_opt_";
+    name[5] = (char)('0' + gc.rb.len % 10);
+    name[6] = 0;
+    return gc.rb.add((String)name[:6], mk_first(children));
+}
+
+fn int compile_clause_named_not(GrammarCompiler* gc, int child) {
+    char[32] name = "_not_";
+    name[5] = (char)('0' + gc.rb.len % 10);
+    name[6] = 0;
+    return gc.rb.add((String)name[:6], mk_not_followed_by(child));
+}
+
+fn int compile_clause_named_and(GrammarCompiler* gc, int child) {
+    char[32] name = "_and_";
+    name[5] = (char)('0' + gc.rb.len % 10);
+    name[6] = 0;
+    return gc.rb.add((String)name[:6], mk_followed_by(child));
+}
+
+fn bool compile_clause_many_op(GrammarCompiler* gc, char[] op_name, lisp::Value* rest, int* out_idx) {
+    if (!str_eq_c(op_name, "many") && !str_eq_c(op_name, "*")) return false;
+    if (!lisp::is_cons(rest)) {
+        *out_idx = gc.rb.add("_eps", mk_epsilon());
+        return true;
+    }
+    int child = compile_clause(gc, rest.cons_val.car);
+    *out_idx = compile_clause_named_many(gc, child);
+    return true;
+}
+
+fn bool compile_clause_some_op(GrammarCompiler* gc, char[] op_name, lisp::Value* rest, int* out_idx) {
+    if (!str_eq_c(op_name, "some") && !str_eq_c(op_name, "+")) return false;
+    if (!lisp::is_cons(rest)) {
+        *out_idx = gc.rb.add("_fail", mk_fail());
+        return true;
+    }
+    int child = compile_clause(gc, rest.cons_val.car);
+    *out_idx = compile_clause_named_some(gc, child);
+    return true;
+}
+
+fn bool compile_clause_opt_op(GrammarCompiler* gc, char[] op_name, lisp::Value* rest, int* out_idx) {
+    if (!str_eq_c(op_name, "opt") && !str_eq_c(op_name, "?")) return false;
+    if (!lisp::is_cons(rest)) {
+        *out_idx = gc.rb.add("_eps", mk_epsilon());
+        return true;
+    }
+    int child = compile_clause(gc, rest.cons_val.car);
+    *out_idx = compile_clause_named_opt(gc, child);
+    return true;
+}
+
+fn bool compile_clause_scan_op(GrammarCompiler* gc, char[] op_name, lisp::Value* rest, int* out_idx) {
+    if (!str_eq_c(op_name, "scan")) return false;
+    if (!lisp::is_cons(rest) || !lisp::is_string(rest.cons_val.car)) {
+        *out_idx = gc.rb.add("_fail", mk_fail());
+        return true;
+    }
+    lisp::Value* pattern_val = rest.cons_val.car;
+    char[] pattern = pattern_val.str_chars[:pattern_val.str_len];
+    *out_idx = make_char_class_scanner(gc, pattern);
+    return true;
+}
+
+fn bool compile_clause_not_op(GrammarCompiler* gc, char[] op_name, lisp::Value* rest, int* out_idx) {
+    if (!str_eq_c(op_name, "not") && !str_eq_c(op_name, "!")) return false;
+    if (!lisp::is_cons(rest)) {
+        *out_idx = gc.rb.add("_eps", mk_epsilon());
+        return true;
+    }
+    int child = compile_clause(gc, rest.cons_val.car);
+    *out_idx = compile_clause_named_not(gc, child);
+    return true;
+}
+
+fn bool compile_clause_and_op(GrammarCompiler* gc, char[] op_name, lisp::Value* rest, int* out_idx) {
+    if (!str_eq_c(op_name, "and") && !str_eq_c(op_name, "&")) return false;
+    if (!lisp::is_cons(rest)) {
+        *out_idx = gc.rb.add("_eps", mk_epsilon());
+        return true;
+    }
+    int child = compile_clause(gc, rest.cons_val.car);
+    *out_idx = compile_clause_named_and(gc, child);
+    return true;
+}
+
+fn bool compile_clause_end_op(GrammarCompiler* gc, char[] op_name, int* out_idx) {
+    if (!str_eq_c(op_name, "end") && !str_eq_c(op_name, "$")) return false;
+    *out_idx = gc.rb.add("_end", mk_end_of_input());
+    return true;
+}
+
+fn bool compile_clause_unary_op(GrammarCompiler* gc, char[] op_name, lisp::Value* rest, int* out_idx) {
+    if (compile_clause_many_op(gc, op_name, rest, out_idx)) return true;
+    if (compile_clause_some_op(gc, op_name, rest, out_idx)) return true;
+    if (compile_clause_opt_op(gc, op_name, rest, out_idx)) return true;
+    if (compile_clause_scan_op(gc, op_name, rest, out_idx)) return true;
+    if (compile_clause_not_op(gc, op_name, rest, out_idx)) return true;
+    if (compile_clause_and_op(gc, op_name, rest, out_idx)) return true;
+    return compile_clause_end_op(gc, op_name, out_idx);
+}
+
+fn int compile_clause_list_operator(GrammarCompiler* gc, char[] op_name, lisp::Value* rest) {
+    if (str_eq_c(op_name, "seq")) return compile_clause_seq_op(gc, rest);
+    if (str_eq_c(op_name, "first") || str_eq_c(op_name, "or") || str_eq_c(op_name, "|")) {
+        return compile_clause_first_op(gc, rest);
+    }
+
+    int unary_idx = 0;
+    if (compile_clause_unary_op(gc, op_name, rest, &unary_idx)) return unary_idx;
+
+    io::printfn("Error: unknown grammar operator: %s", op_name);
+    return gc.rb.add("_err", mk_fail());
+}
+
 // Compile a clause expression to a rule index
 fn int compile_clause(GrammarCompiler* gc, lisp::Value* clause) {
     if (clause == null || lisp::is_nil(clause)) {
@@ -404,45 +606,10 @@ fn int compile_clause(GrammarCompiler* gc, lisp::Value* clause) {
     }
 
     // String literal -> TOKENS
-    if (lisp::is_string(clause)) {
-        char[] str = clause.str_chars[:clause.str_len];
-        if (str.len == 1) {
-            char[16] name = "_tok_";
-            name[5] = str[0];
-            name[6] = 0;
-            return gc.rb.add((String)name[:6], mk_token(str[0]));
-        }
-        char[64] name;
-        usz nlen = 0;
-        char[] prefix = "_str_";
-        for (usz i = 0; i < prefix.len && nlen < 50; i++) name[nlen++] = prefix[i];
-        for (usz i = 0; i < str.len && nlen < 60; i++) {
-            char c = str[i];
-            if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
-                name[nlen++] = c;
-            }
-        }
-        name[nlen] = 0;
-        return gc.rb.add((String)name[:nlen], mk_tokens(str));
-    }
+    if (lisp::is_string(clause)) return compile_clause_string(gc, clause);
 
     // Symbol -> reference to another rule
-    if (lisp::is_symbol(clause)) {
-        lisp::SymbolId sym = clause.sym_val;
-        int existing = gc.find_rule(sym);
-        if (existing >= 0) {
-            return existing;
-        }
-        // Forward reference - add placeholder
-        char[] sym_name = gc.interp.symbols.get_name(sym);
-        int placeholder = gc.rb.add((String)sym_name, mk_fail());
-        if (gc.rule_count < 64) {
-            gc.rule_names[gc.rule_count] = sym;
-            gc.rule_indices[gc.rule_count] = placeholder;
-            gc.rule_count++;
-        }
-        return placeholder;
-    }
+    if (lisp::is_symbol(clause)) return compile_clause_symbol_ref(gc, clause);
 
     // List -> combinator (seq, first, many, some, etc.)
     if (lisp::is_cons(clause)) {
@@ -456,136 +623,7 @@ fn int compile_clause(GrammarCompiler* gc, lisp::Value* clause) {
 
         lisp::SymbolId op = head.sym_val;
         char[] op_name = gc.interp.symbols.get_name(op);
-
-        // (seq a b c ...) -> sequence
-        if (str_eq_c(op_name, "seq")) {
-            lisp::Value*[32] elems;
-            int elem_count = 0;
-            lisp::Value* curr = rest;
-            while (lisp::is_cons(curr) && elem_count < 32) {
-                elems[elem_count++] = curr.cons_val.car;
-                curr = curr.cons_val.cdr;
-            }
-
-            if (elem_count == 0) {
-                return gc.rb.add("_eps", mk_epsilon());
-            }
-
-            int[] children = mem::new_array(int, (usz)elem_count);
-            for (int i = 0; i < elem_count; i++) {
-                children[i] = compile_clause(gc, elems[i]);
-            }
-
-            char[32] name = "_seq_";
-            name[5] = (char)('0' + gc.rb.len % 10);
-            name[6] = 0;
-            return gc.rb.add((String)name[:6], mk_seq(children));
-        }
-
-        // (first a b c ...) -> ordered choice
-        if (str_eq_c(op_name, "first") || str_eq_c(op_name, "or") || str_eq_c(op_name, "|")) {
-            lisp::Value*[32] elems;
-            int elem_count = 0;
-            lisp::Value* curr = rest;
-            while (lisp::is_cons(curr) && elem_count < 32) {
-                elems[elem_count++] = curr.cons_val.car;
-                curr = curr.cons_val.cdr;
-            }
-
-            if (elem_count == 0) {
-                return gc.rb.add("_fail", mk_fail());
-            }
-
-            int[] children = mem::new_array(int, (usz)elem_count);
-            for (int i = 0; i < elem_count; i++) {
-                children[i] = compile_clause(gc, elems[i]);
-            }
-
-            char[32] name = "_first_";
-            name[7] = (char)('0' + gc.rb.len % 10);
-            name[8] = 0;
-            return gc.rb.add((String)name[:8], mk_first(children));
-        }
-
-        // (many x) -> zero or more (*)
-        if (str_eq_c(op_name, "many") || str_eq_c(op_name, "*")) {
-            if (!lisp::is_cons(rest)) {
-                return gc.rb.add("_eps", mk_epsilon());
-            }
-            int child = compile_clause(gc, rest.cons_val.car);
-            char[32] name = "_many_";
-            name[6] = (char)('0' + gc.rb.len % 10);
-            name[7] = 0;
-            return gc.rb.add((String)name[:7], mk_many(child));
-        }
-
-        // (some x) -> one or more (+)
-        if (str_eq_c(op_name, "some") || str_eq_c(op_name, "+")) {
-            if (!lisp::is_cons(rest)) {
-                return gc.rb.add("_fail", mk_fail());
-            }
-            int child = compile_clause(gc, rest.cons_val.car);
-            char[32] name = "_some_";
-            name[6] = (char)('0' + gc.rb.len % 10);
-            name[7] = 0;
-            return gc.rb.add((String)name[:7], mk_some(child));
-        }
-
-        // (opt x) -> optional (?)
-        if (str_eq_c(op_name, "opt") || str_eq_c(op_name, "?")) {
-            if (!lisp::is_cons(rest)) {
-                return gc.rb.add("_eps", mk_epsilon());
-            }
-            int child = compile_clause(gc, rest.cons_val.car);
-            int eps = gc.rb.add("_eps", mk_epsilon());
-            int[] children = make_children_2(child, eps);
-            char[32] name = "_opt_";
-            name[5] = (char)('0' + gc.rb.len % 10);
-            name[6] = 0;
-            return gc.rb.add((String)name[:6], mk_first(children));
-        }
-
-        // (scan "[a-z]+") -> character class scanner
-        if (str_eq_c(op_name, "scan")) {
-            if (!lisp::is_cons(rest) || !lisp::is_string(rest.cons_val.car)) {
-                return gc.rb.add("_fail", mk_fail());
-            }
-            lisp::Value* pattern_val = rest.cons_val.car;
-            char[] pattern = pattern_val.str_chars[:pattern_val.str_len];
-            return make_char_class_scanner(gc, pattern);
-        }
-
-        // (not x) -> negative lookahead
-        if (str_eq_c(op_name, "not") || str_eq_c(op_name, "!")) {
-            if (!lisp::is_cons(rest)) {
-                return gc.rb.add("_eps", mk_epsilon());
-            }
-            int child = compile_clause(gc, rest.cons_val.car);
-            char[32] name = "_not_";
-            name[5] = (char)('0' + gc.rb.len % 10);
-            name[6] = 0;
-            return gc.rb.add((String)name[:6], mk_not_followed_by(child));
-        }
-
-        // (and x) -> positive lookahead
-        if (str_eq_c(op_name, "and") || str_eq_c(op_name, "&")) {
-            if (!lisp::is_cons(rest)) {
-                return gc.rb.add("_eps", mk_epsilon());
-            }
-            int child = compile_clause(gc, rest.cons_val.car);
-            char[32] name = "_and_";
-            name[5] = (char)('0' + gc.rb.len % 10);
-            name[6] = 0;
-            return gc.rb.add((String)name[:6], mk_followed_by(child));
-        }
-
-        // (end) -> end of input
-        if (str_eq_c(op_name, "end") || str_eq_c(op_name, "$")) {
-            return gc.rb.add("_end", mk_end_of_input());
-        }
-
-        io::printfn("Error: unknown grammar operator: %s", op_name);
-        return gc.rb.add("_err", mk_fail());
+        return compile_clause_list_operator(gc, op_name, rest);
     }
 
     io::printn("Error: invalid clause type");
@@ -598,6 +636,84 @@ fn bool str_eq_c(char[] a, char[] b) {
         if (a[i] != b[i]) return false;
     }
     return true;
+}
+
+fn bool parse_rule_definition(lisp::Value* rule_def, lisp::Interp* interp,
+    lisp::SymbolId* rule_name, lisp::Value** clause_out) {
+    if (!lisp::is_cons(rule_def)) {
+        io::printn("Error: rule must be a list");
+        return false;
+    }
+
+    lisp::Value* head = rule_def.cons_val.car;
+    if (!lisp::is_symbol(head)) {
+        io::printn("Error: rule definition must start with 'rule'");
+        return false;
+    }
+
+    char[] head_name = interp.symbols.get_name(head.sym_val);
+    if (!str_eq_c(head_name, "rule")) {
+        io::printfn("Error: expected 'rule', got '%s'", head_name);
+        return false;
+    }
+
+    lisp::Value* rest = rule_def.cons_val.cdr;
+    if (!lisp::is_cons(rest)) {
+        io::printn("Error: rule requires name and clause");
+        return false;
+    }
+
+    lisp::Value* rule_name_val = rest.cons_val.car;
+    if (!lisp::is_symbol(rule_name_val)) {
+        io::printn("Error: rule name must be a symbol");
+        return false;
+    }
+    *rule_name = rule_name_val.sym_val;
+
+    lisp::Value* clause_rest = rest.cons_val.cdr;
+    if (!lisp::is_cons(clause_rest)) {
+        io::printn("Error: rule requires a clause");
+        return false;
+    }
+    *clause_out = clause_rest.cons_val.car;
+    return true;
+}
+
+fn void gc_register_rule(GrammarCompiler* gc, lisp::Interp* interp, lisp::SymbolId rule_name, int clause_idx) {
+    int existing = gc.find_rule(rule_name);
+    if (existing >= 0) {
+        gc.rb.rules[existing].clause = gc.rb.rules[clause_idx].clause;
+        return;
+    }
+    char[] name_str = interp.symbols.get_name(rule_name);
+    gc.rb.rules[clause_idx].name = (String)name_str;
+    if (gc.rule_count < 64) {
+        gc.rule_names[gc.rule_count] = rule_name;
+        gc.rule_indices[gc.rule_count] = clause_idx;
+        gc.rule_count++;
+    }
+}
+
+fn lisp::Value* finalize_named_grammar(lisp::Interp* interp, lisp::SymbolId grammar_name, GrammarCompiler* gc) {
+    if (gc.rb.len == 0) {
+        io::printn("Error: grammar has no rules");
+        return lisp::make_nil(interp);
+    }
+
+    String[] starts = mem::new_array(String, 1);
+    starts[0] = gc.rb.rules[0].name;
+    Grammar grammar = make_grammar(starts, gc.rb.to_array());
+
+    if (g_grammar_count >= 16) {
+        io::printn("Error: too many grammars");
+        return lisp::make_nil(interp);
+    }
+
+    g_named_grammars[g_grammar_count].name = grammar_name;
+    g_named_grammars[g_grammar_count].grammar = grammar;
+    g_named_grammars[g_grammar_count].valid = true;
+    g_grammar_count++;
+    return lisp::make_symbol(interp, grammar_name);
 }
 
 // (pika/grammar name rules...) -> grammar object
@@ -626,89 +742,15 @@ fn lisp::Value* prim_pika_grammar(lisp::Value*[] args, lisp::Env* env, lisp::Int
     // Process each (rule name clause) definition
     for (usz i = 1; i < args.len; i++) {
         lisp::Value* rule_def = args[i];
-
-        if (!lisp::is_cons(rule_def)) {
-            io::printn("Error: rule must be a list");
-            continue;
-        }
-
-        // Check for (rule name clause) form
-        lisp::Value* head = rule_def.cons_val.car;
-        if (!lisp::is_symbol(head)) {
-            io::printn("Error: rule definition must start with 'rule'");
-            continue;
-        }
-
-        char[] head_name = interp.symbols.get_name(head.sym_val);
-        if (!str_eq_c(head_name, "rule")) {
-            io::printfn("Error: expected 'rule', got '%s'", head_name);
-            continue;
-        }
-
-        lisp::Value* rest = rule_def.cons_val.cdr;
-        if (!lisp::is_cons(rest)) {
-            io::printn("Error: rule requires name and clause");
-            continue;
-        }
-
-        lisp::Value* rule_name_val = rest.cons_val.car;
-        if (!lisp::is_symbol(rule_name_val)) {
-            io::printn("Error: rule name must be a symbol");
-            continue;
-        }
-        lisp::SymbolId rule_name = rule_name_val.sym_val;
-
-        lisp::Value* clause_rest = rest.cons_val.cdr;
-        if (!lisp::is_cons(clause_rest)) {
-            io::printn("Error: rule requires a clause");
-            continue;
-        }
-        lisp::Value* clause = clause_rest.cons_val.car;
+        lisp::SymbolId rule_name = (lisp::SymbolId)0;
+        lisp::Value* clause = null;
+        if (!parse_rule_definition(rule_def, interp, &rule_name, &clause)) continue;
 
         // Compile the clause
         int clause_idx = compile_clause(&gc, clause);
-
-        // Update rule mapping
-        int existing = gc.find_rule(rule_name);
-        if (existing >= 0) {
-            // Update placeholder with actual clause
-            gc.rb.rules[existing].clause = gc.rb.rules[clause_idx].clause;
-        } else {
-            // Add new rule
-            char[] name_str = interp.symbols.get_name(rule_name);
-            gc.rb.rules[clause_idx].name = (String)name_str;
-            if (gc.rule_count < 64) {
-                gc.rule_names[gc.rule_count] = rule_name;
-                gc.rule_indices[gc.rule_count] = clause_idx;
-                gc.rule_count++;
-            }
-        }
+        gc_register_rule(&gc, interp, rule_name, clause_idx);
     }
-
-    // Build the grammar
-    if (gc.rb.len == 0) {
-        io::printn("Error: grammar has no rules");
-        return lisp::make_nil(interp);
-    }
-
-    // Use first rule as start
-    String[] starts = mem::new_array(String, 1);
-    starts[0] = gc.rb.rules[0].name;
-
-    Grammar grammar = make_grammar(starts, gc.rb.to_array());
-
-    // Store grammar
-    if (g_grammar_count >= 16) {
-        io::printn("Error: too many grammars");
-        return lisp::make_nil(interp);
-    }
-
-    g_named_grammars[g_grammar_count].name = grammar_name;
-    g_named_grammars[g_grammar_count].grammar = grammar;
-    g_named_grammars[g_grammar_count].valid = true;
-    g_grammar_count++;
-
-    return lisp::make_symbol(interp, grammar_name);
+    return finalize_named_grammar(interp, grammar_name, &gc);
 }
 
 // (pika/parse grammar-name input) -> parse result as nested list
@@ -1160,201 +1202,202 @@ fn void register_pika_primitives(lisp::Interp* interp) {
     lisp::register_prim(interp, "pika/eval-lisp", &prim_pika_eval_lisp, 1);
 }
 
+fn void regex_test_literal() {
+    char[] pattern = "hello";
+    char[] input = "say hello world";
+    RegexMatch m = regex_search(pattern, input);
+    if (m.matched && m.start == 4 && m.end == 8) {
+        io::printn("[PASS] re-match literal: 'hello' in 'say hello world'");
+    } else {
+        io::printfn("[FAIL] re-match literal: matched=%d start=%d end=%d", m.matched, m.start, m.end);
+    }
+}
+
+fn void regex_test_char_class() {
+    char[] pattern = "[0-9]+";
+    char[] input = "abc123def";
+    RegexMatch m = regex_search(pattern, input);
+    if (m.matched) {
+        io::printn("[PASS] re-match char class: '[0-9]+' in 'abc123def'");
+    } else {
+        io::printn("[FAIL] re-match char class");
+    }
+}
+
+fn void regex_test_dot() {
+    char[] pattern = "a.c";
+    char[] input = "abc";
+    RegexMatch m = regex_search(pattern, input);
+    if (m.matched) {
+        io::printn("[PASS] re-match dot: 'a.c' matches 'abc'");
+    } else {
+        io::printn("[FAIL] re-match dot");
+    }
+}
+
+fn void regex_test_fullmatch() {
+    char[] pattern = "hello";
+    char[] input = "hello";
+    RegexMatch m = regex_fullmatch(pattern, input);
+    if (m.matched) {
+        io::printn("[PASS] re-fullmatch: 'hello' == 'hello'");
+    } else {
+        io::printn("[FAIL] re-fullmatch");
+    }
+}
+
+fn void regex_test_fullmatch_partial() {
+    char[] pattern = "hello";
+    char[] input = "hello world";
+    RegexMatch m = regex_fullmatch(pattern, input);
+    if (!m.matched) {
+        io::printn("[PASS] re-fullmatch rejects partial: 'hello' != 'hello world'");
+    } else {
+        io::printn("[FAIL] re-fullmatch should reject partial");
+    }
+}
+
+fn void regex_test_find_all() {
+    char[] pattern = "a";
+    char[] input = "abracadabra";
+    int count = 0;
+    RegexMatch[64] matches = regex_find_all(pattern, input, &count);
+    if (count == 5) {
+        io::printn("[PASS] re-find-all: found 5 'a' in 'abracadabra'");
+    } else {
+        io::printfn("[FAIL] re-find-all: expected 5, got %d", count);
+    }
+}
+
+fn void regex_test_digit_escape() {
+    char[] pattern = "\\d";
+    char[] input = "abc1def";
+    RegexMatch m = regex_search(pattern, input);
+    if (m.matched && m.start == 3) {
+        io::printn("[PASS] re-match \\d: finds digit");
+    } else {
+        io::printfn("[FAIL] re-match \\d: matched=%d start=%d", m.matched, m.start);
+    }
+}
+
+fn void regex_test_word_escape() {
+    char[] pattern = "\\w+";
+    char[] input = "hello_world";
+    RegexMatch m = regex_search(pattern, input);
+    if (m.matched) {
+        io::printn("[PASS] re-match \\w+: matches word chars");
+    } else {
+        io::printn("[FAIL] re-match \\w+");
+    }
+}
+
 // ============================================================
 // Tests
 // ============================================================
 
 fn void test_pika_regex(lisp::Interp* interp) {
     io::printn("=== Pika Regex Tests ===");
-
-    // Test 1: Simple literal match
-    {
-        char[] pattern = "hello";
-        char[] input = "say hello world";
-        RegexMatch m = regex_search(pattern, input);
-        if (m.matched && m.start == 4 && m.end == 8) {
-            io::printn("[PASS] re-match literal: 'hello' in 'say hello world'");
-        } else {
-            io::printfn("[FAIL] re-match literal: matched=%d start=%d end=%d",
-                m.matched, m.start, m.end);
-        }
-    }
-
-    // Test 2: Character class match
-    {
-        char[] pattern = "[0-9]+";
-        char[] input = "abc123def";
-        RegexMatch m = regex_search(pattern, input);
-        if (m.matched) {
-            io::printn("[PASS] re-match char class: '[0-9]+' in 'abc123def'");
-        } else {
-            io::printn("[FAIL] re-match char class");
-        }
-    }
-
-    // Test 3: Dot matches any
-    {
-        char[] pattern = "a.c";
-        char[] input = "abc";
-        RegexMatch m = regex_search(pattern, input);
-        if (m.matched) {
-            io::printn("[PASS] re-match dot: 'a.c' matches 'abc'");
-        } else {
-            io::printn("[FAIL] re-match dot");
-        }
-    }
-
-    // Test 4: Fullmatch
-    {
-        char[] pattern = "hello";
-        char[] input = "hello";
-        RegexMatch m = regex_fullmatch(pattern, input);
-        if (m.matched) {
-            io::printn("[PASS] re-fullmatch: 'hello' == 'hello'");
-        } else {
-            io::printn("[FAIL] re-fullmatch");
-        }
-    }
-
-    // Test 5: Fullmatch fails on partial
-    {
-        char[] pattern = "hello";
-        char[] input = "hello world";
-        RegexMatch m = regex_fullmatch(pattern, input);
-        if (!m.matched) {
-            io::printn("[PASS] re-fullmatch rejects partial: 'hello' != 'hello world'");
-        } else {
-            io::printn("[FAIL] re-fullmatch should reject partial");
-        }
-    }
-
-    // Test 6: Find all
-    {
-        char[] pattern = "a";
-        char[] input = "abracadabra";
-        int count = 0;
-        RegexMatch[64] matches = regex_find_all(pattern, input, &count);
-        if (count == 5) {
-            io::printn("[PASS] re-find-all: found 5 'a' in 'abracadabra'");
-        } else {
-            io::printfn("[FAIL] re-find-all: expected 5, got %d", count);
-        }
-    }
-
-    // Test 7: Escaped characters
-    {
-        char[] pattern = "\\d";
-        char[] input = "abc1def";
-        RegexMatch m = regex_search(pattern, input);
-        if (m.matched && m.start == 3) {
-            io::printn("[PASS] re-match \\d: finds digit");
-        } else {
-            io::printfn("[FAIL] re-match \\d: matched=%d start=%d", m.matched, m.start);
-        }
-    }
-
-    // Test 8: Word characters
-    {
-        char[] pattern = "\\w+";
-        char[] input = "hello_world";
-        RegexMatch m = regex_search(pattern, input);
-        if (m.matched) {
-            io::printn("[PASS] re-match \\w+: matches word chars");
-        } else {
-            io::printn("[FAIL] re-match \\w+");
-        }
-    }
-
+    regex_test_literal();
+    regex_test_char_class();
+    regex_test_dot();
+    regex_test_fullmatch();
+    regex_test_fullmatch_partial();
+    regex_test_find_all();
+    regex_test_digit_escape();
+    regex_test_word_escape();
     io::printn("=== Pika Regex Tests Complete ===");
     io::printn("");
 }
 
+fn void test_pika_primitive_re_match_pos(lisp::Interp* interp) {
+    lisp::Value*[2] args;
+    args[0] = lisp::make_string(interp, "hello");
+    args[1] = lisp::make_string(interp, "say hello world");
+    lisp::Value* result = prim_re_match_pos(args[..], null, interp);
+
+    if (!lisp::is_cons(result)) {
+        io::printn("[FAIL] re-match-pos: expected cons");
+        return;
+    }
+
+    lisp::Value* start = result.cons_val.car;
+    lisp::Value* rest = result.cons_val.cdr;
+    if (start.tag != lisp::ValueTag.INT || start.int_val != 4) {
+        io::printn("[FAIL] re-match-pos: wrong start position");
+        return;
+    }
+    if (!lisp::is_cons(rest)) {
+        io::printn("[FAIL] re-match-pos: missing end");
+        return;
+    }
+
+    lisp::Value* end = rest.cons_val.car;
+    if (end.tag == lisp::ValueTag.INT && end.int_val == 8) {
+        io::printn("[PASS] re-match-pos: returns (4 8)");
+    } else {
+        io::printn("[FAIL] re-match-pos: wrong end position");
+    }
+}
+
+fn void test_pika_primitive_re_find_all_pos(lisp::Interp* interp) {
+    lisp::Value*[2] args;
+    args[0] = lisp::make_string(interp, "a");
+    args[1] = lisp::make_string(interp, "abaca");
+    lisp::Value* result = prim_re_find_all_pos(args[..], null, interp);
+
+    int count = 0;
+    lisp::Value* curr = result;
+    while (lisp::is_cons(curr)) {
+        count++;
+        curr = curr.cons_val.cdr;
+    }
+
+    if (count == 3) {
+        io::printn("[PASS] re-find-all-pos: found 3 matches");
+    } else {
+        io::printfn("[FAIL] re-find-all-pos: expected 3 matches, got %d", count);
+    }
+}
+
+fn void test_pika_primitive_parse_lisp(lisp::Interp* interp) {
+    lisp::Value*[1] args;
+    args[0] = lisp::make_string(interp, "(+ 1 2)");
+    lisp::Value* result = prim_pika_parse_lisp(args[..], null, interp);
+
+    if (!lisp::is_cons(result)) {
+        io::printn("[FAIL] pika/parse-lisp: expected cons");
+        return;
+    }
+
+    lisp::Value* name = result.cons_val.car;
+    if (name.tag == lisp::ValueTag.SYMBOL) {
+        io::printn("[PASS] pika/parse-lisp: returns parsed structure");
+    } else {
+        io::printn("[FAIL] pika/parse-lisp: first element should be symbol");
+    }
+}
+
+fn void test_pika_primitive_eval_lisp(lisp::Interp* interp) {
+    lisp::Value*[1] args;
+    // Simple literal works (variadic primitives do not with curried AST yet).
+    args[0] = lisp::make_string(interp, "42");
+    lisp::Value* result = prim_pika_eval_lisp(args[..], null, interp);
+
+    if (result.tag == lisp::ValueTag.INT && result.int_val == 42) {
+        io::printn("[PASS] pika/eval-lisp: 42 evaluates to 42");
+    } else if (result.tag == lisp::ValueTag.INT) {
+        io::printfn("[FAIL] pika/eval-lisp: expected 42, got %d", (int)result.int_val);
+    } else {
+        io::printfn("[FAIL] pika/eval-lisp: expected INT, got tag %d", (int)result.tag);
+    }
+}
+
 fn void test_pika_new_primitives(lisp::Interp* interp) {
     io::printn("=== Pika New Primitives Tests ===");
-
-    // Test re-match-pos
-    {
-        lisp::Value*[2] args;
-        args[0] = lisp::make_string(interp, "hello");
-        args[1] = lisp::make_string(interp, "say hello world");
-        lisp::Value* result = prim_re_match_pos(args[..], null, interp);
-
-        if (lisp::is_cons(result)) {
-            lisp::Value* start = result.cons_val.car;
-            lisp::Value* rest = result.cons_val.cdr;
-            if (start.tag == lisp::ValueTag.INT && start.int_val == 4) {
-                if (lisp::is_cons(rest)) {
-                    lisp::Value* end = rest.cons_val.car;
-                    if (end.tag == lisp::ValueTag.INT && end.int_val == 8) {
-                        io::printn("[PASS] re-match-pos: returns (4 8)");
-                    } else {
-                        io::printn("[FAIL] re-match-pos: wrong end position");
-                    }
-                } else {
-                    io::printn("[FAIL] re-match-pos: missing end");
-                }
-            } else {
-                io::printn("[FAIL] re-match-pos: wrong start position");
-            }
-        } else {
-            io::printn("[FAIL] re-match-pos: expected cons");
-        }
-    }
-
-    // Test re-find-all-pos
-    {
-        lisp::Value*[2] args;
-        args[0] = lisp::make_string(interp, "a");
-        args[1] = lisp::make_string(interp, "abaca");
-        lisp::Value* result = prim_re_find_all_pos(args[..], null, interp);
-
-        int count = 0;
-        lisp::Value* curr = result;
-        while (lisp::is_cons(curr)) {
-            count++;
-            curr = curr.cons_val.cdr;
-        }
-
-        if (count == 3) {
-            io::printn("[PASS] re-find-all-pos: found 3 matches");
-        } else {
-            io::printfn("[FAIL] re-find-all-pos: expected 3 matches, got %d", count);
-        }
-    }
-
-    // Test pika/parse-lisp
-    {
-        lisp::Value*[1] args;
-        args[0] = lisp::make_string(interp, "(+ 1 2)");
-        lisp::Value* result = prim_pika_parse_lisp(args[..], null, interp);
-
-        if (lisp::is_cons(result)) {
-            lisp::Value* name = result.cons_val.car;
-            if (name.tag == lisp::ValueTag.SYMBOL) {
-                io::printn("[PASS] pika/parse-lisp: returns parsed structure");
-            } else {
-                io::printn("[FAIL] pika/parse-lisp: first element should be symbol");
-            }
-        } else {
-            io::printn("[FAIL] pika/parse-lisp: expected cons");
-        }
-    }
-
-    // Test pika/eval-lisp - use simple expression (variadic primitives don't work with curried AST)
-    {
-        lisp::Value*[1] args;
-        args[0] = lisp::make_string(interp, "42");  // Simple literal works
-        lisp::Value* result = prim_pika_eval_lisp(args[..], null, interp);
-
-        if (result.tag == lisp::ValueTag.INT && result.int_val == 42) {
-            io::printn("[PASS] pika/eval-lisp: 42 evaluates to 42");
-        } else if (result.tag == lisp::ValueTag.INT) {
-            io::printfn("[FAIL] pika/eval-lisp: expected 42, got %d", (int)result.int_val);
-        } else {
-            io::printfn("[FAIL] pika/eval-lisp: expected INT, got tag %d", (int)result.tag);
-        }
-    }
-
+    test_pika_primitive_re_match_pos(interp);
+    test_pika_primitive_re_find_all_pos(interp);
+    test_pika_primitive_parse_lisp(interp);
+    test_pika_primitive_eval_lisp(interp);
     io::printn("=== Pika New Primitives Tests Complete ===");
     io::printn("");
 }

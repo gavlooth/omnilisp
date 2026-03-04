@@ -5,7 +5,18 @@
       "Bash(gh release view:*)",
       "Bash(echo:*)",
       "Bash(~/.local/bin/c3-lsp:*)",
-      "Bash(c3-lsp:*)"
+      "Bash(c3-lsp:*)",
+      "WebFetch(domain:www.researchgate.net)",
+      "WebFetch(domain:nuprl.github.io)",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.evidentlyai.com)",
+      "WebFetch(domain:devblogs.microsoft.com)",
+      "Bash(dotnet:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Bash(c3c build:*)",
+      "Bash(LD_LIBRARY_PATH=/usr/local/lib ./build/main:*)"
     ]
   }
 }

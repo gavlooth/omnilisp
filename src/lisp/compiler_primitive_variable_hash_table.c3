@@ -39,17 +39,7 @@ fn char[] prim_hash_lookup(SymbolId key) {
     return "";
 }
 
-fn void init_prim_hash(Interp* interp) {
-    if (g_prim_hash_initialized) return;
-    g_prim_hash_initialized = true;
-
-    // Clear
-    for (usz i = 0; i < PRIM_HASH_SIZE; i++) {
-        g_prim_hash[i].key = (SymbolId)0xFFFFFFFF;
-    }
-
-    SymbolTable* st = &interp.symbols;
-
+fn void init_prim_hash_arithmetic_and_comparison(SymbolTable* st) {
     // All primitives looked up by name at runtime via aot::lookup_prim
     // Arithmetic
     prim_hash_insert(st.intern("+"), "aot::lookup_prim(\"+\")");
@@ -64,7 +54,9 @@ fn void init_prim_hash(Interp* interp) {
     prim_hash_insert(st.intern(">"), "aot::lookup_prim(\">\")");
     prim_hash_insert(st.intern("<="), "aot::lookup_prim(\"<=\")");
     prim_hash_insert(st.intern(">="), "aot::lookup_prim(\">=\")");
+}
 
+fn void init_prim_hash_core_and_strings(SymbolTable* st) {
     // List ops
     prim_hash_insert(st.intern("cons"), "aot::lookup_prim(\"cons\")");
     prim_hash_insert(st.intern("car"), "aot::lookup_prim(\"car\")");
@@ -107,7 +99,9 @@ fn void init_prim_hash(Interp* interp) {
     prim_hash_insert(st.intern("number?"), "aot::lookup_prim(\"number?\")");
     prim_hash_insert(st.intern("equal?"), "aot::lookup_prim(\"equal?\")");
     prim_hash_insert(st.intern("type-of"), "aot::lookup_prim(\"type-of\")");
+}
 
+fn void init_prim_hash_files_and_misc(SymbolTable* st) {
     // File I/O
     prim_hash_insert(st.intern("read-file"), "aot::lookup_prim(\"read-file\")");
     prim_hash_insert(st.intern("write-file"), "aot::lookup_prim(\"write-file\")");
@@ -118,7 +112,9 @@ fn void init_prim_hash(Interp* interp) {
     prim_hash_insert(st.intern("gensym"), "aot::lookup_prim(\"gensym\")");
     prim_hash_insert(st.intern("load"), "aot::lookup_prim(\"load\")");
     prim_hash_insert(st.intern("apply"), "aot::lookup_prim(\"apply\")");
+}
 
+fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     // Dict/collection ops
     prim_hash_insert(st.intern("dict"), "aot::lookup_prim(\"dict\")");
     prim_hash_insert(st.intern("dict-set!"), "aot::lookup_prim(\"dict-set!\")");
@@ -160,3 +156,18 @@ fn void init_prim_hash(Interp* interp) {
     prim_hash_insert(st.intern("nil"), "aot::make_nil()");
 }
 
+fn void init_prim_hash(Interp* interp) {
+    if (g_prim_hash_initialized) return;
+    g_prim_hash_initialized = true;
+
+    // Clear
+    for (usz i = 0; i < PRIM_HASH_SIZE; i++) {
+        g_prim_hash[i].key = (SymbolId)0xFFFFFFFF;
+    }
+
+    SymbolTable* st = &interp.symbols;
+    init_prim_hash_arithmetic_and_comparison(st);
+    init_prim_hash_core_and_strings(st);
+    init_prim_hash_files_and_misc(st);
+    init_prim_hash_collections_math_bitwise(st);
+}

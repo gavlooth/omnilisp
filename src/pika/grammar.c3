@@ -21,42 +21,21 @@ struct RuleEntry {
     Clause clause;
 }
 
-fn Grammar make_grammar(String[] starts, RuleEntry[] rules) {
+fn void build_topo_order(String[] starts, RuleEntry[] rules, int[][] edges,
+    int[] opened, int[] stk, int[] topo_order, int[] topo_order_idx, int* last_order) {
     int n_rules = (int)rules.len;
-
-    // Build name -> index mapping
-    int[] rule_idx_map = mem::new_array(int, (usz)n_rules); // not really needed, index IS position
-
-    // edges[i] = child clause indices for rule i
-    int[][] edges = mem::new_array(int[], (usz)n_rules);
     for (int i = 0; i < n_rules; i++) {
-        edges[i] = child_clauses(&rules[i].clause);
+        opened[i] = 0;
+        topo_order_idx[i] = -1;
     }
 
-    // Find rule index by name (linear search - fine for grammar-sized data)
-    // We need a lookup function
-    // Build the topological order using DFS
-    int[] opened = mem::new_array(int, (usz)n_rules);
-    for (int i = 0; i < n_rules; i++) opened[i] = 0;
-
-    // Stack for DFS
-    int[] stk = mem::new_array(int, (usz)(n_rules + 1));
     int stk_len = 0;
-
-    // Push start rules
     for (int si = 0; si < (int)starts.len; si++) {
         int idx = find_rule_index(rules, starts[si]);
-        if (idx >= 0) {
-            stk[stk_len] = idx;
-            stk_len++;
-        }
+        if (idx >= 0) stk[stk_len++] = idx;
     }
 
-    int[] topo_order = mem::new_array(int, (usz)n_rules);
-    int[] topo_order_idx = mem::new_array(int, (usz)n_rules);
-    for (int i = 0; i < n_rules; i++) topo_order_idx[i] = -1;
-    int last_order = 0;
-
+    *last_order = 0;
     while (stk_len > 0) {
         int cur = stk[stk_len - 1];
         int[] cur_edges = edges[cur];
@@ -64,56 +43,53 @@ fn Grammar make_grammar(String[] starts, RuleEntry[] rules) {
             int child_idx = cur_edges[opened[cur]];
             opened[cur]++;
             if (opened[child_idx] == 0) {
-                stk[stk_len] = child_idx;
-                stk_len++;
+                stk[stk_len++] = child_idx;
             }
         } else if (opened[cur] == (int)cur_edges.len) {
             opened[cur]++;
             stk_len--;
-            topo_order[last_order] = cur;
-            topo_order_idx[cur] = last_order;
-            last_order++;
+            topo_order[*last_order] = cur;
+            topo_order_idx[cur] = *last_order;
+            (*last_order)++;
         } else {
             stk_len--;
         }
     }
 
-    // Check all rules are reachable
     for (int i = 0; i < n_rules; i++) {
         if (opened[i] == 0) {
             io::printfn("Warning: unreachable rule: %s", rules[i].name);
         }
     }
+}
 
-    // Build reordered clauses with reindexed children
-    Clause[] clauses = mem::new_array(Clause, (usz)n_rules);
-    String[] names = mem::new_array(String, (usz)n_rules);
-
+fn void build_reordered_rules(RuleEntry[] rules, int[] topo_order, int[] topo_order_idx,
+    Clause[] clauses, String[] names) {
+    int n_rules = (int)rules.len;
     for (int i = 0; i < n_rules; i++) {
         int orig_idx = topo_order[i];
         names[i] = rules[orig_idx].name;
         clauses[i] = reindex_clause(&rules[orig_idx].clause, topo_order_idx);
     }
+}
 
-    // Compute can_match_epsilon via fixed-point iteration
-    bool[] emptiable = mem::new_array(bool, (usz)n_rules);
-    for (int i = 0; i < n_rules; i++) emptiable[i] = false;
-
-    // Build parent_clauses (reverse edges)
-    int[][] parent_clauses_arr = mem::new_array(int[], (usz)n_rules);
-    // Count parents first
-    int[] parent_counts = mem::new_array(int, (usz)n_rules);
+fn int[][] build_parent_clauses(Clause[] clauses, int[] parent_counts) {
+    int n_rules = (int)clauses.len;
     for (int i = 0; i < n_rules; i++) parent_counts[i] = 0;
+
     for (int i = 0; i < n_rules; i++) {
         int[] cc = child_clauses(&clauses[i]);
         for (int j = 0; j < (int)cc.len; j++) {
             parent_counts[cc[j]]++;
         }
     }
+
+    int[][] parent_clauses_arr = mem::new_array(int[], (usz)n_rules);
     for (int i = 0; i < n_rules; i++) {
         parent_clauses_arr[i] = mem::new_array(int, (usz)parent_counts[i]);
         parent_counts[i] = 0;
     }
+
     for (int i = 0; i < n_rules; i++) {
         int[] cc = child_clauses(&clauses[i]);
         for (int j = 0; j < (int)cc.len; j++) {
@@ -122,14 +98,18 @@ fn Grammar make_grammar(String[] starts, RuleEntry[] rules) {
             parent_counts[ch]++;
         }
     }
+    return parent_clauses_arr;
+}
 
-    // Use a full queue for fixed-point iteration
+fn void compute_emptiable_clauses(Clause[] clauses, int[][] parent_clauses_arr,
+    int[] parent_counts, bool[] emptiable) {
+    int n_rules = (int)clauses.len;
+    for (int i = 0; i < n_rules; i++) emptiable[i] = false;
+
     PikaQueue q = pq_full(n_rules);
-
     while (!q.is_empty()) {
         int cur = q.pop();
         int[] cc = child_clauses(&clauses[cur]);
-        // Collect child emptiability
         bool[] child_eps = mem::new_array(bool, cc.len);
         for (int j = 0; j < (int)cc.len; j++) {
             child_eps[j] = emptiable[cc[j]];
@@ -144,11 +124,10 @@ fn Grammar make_grammar(String[] starts, RuleEntry[] rules) {
         mem::free(child_eps.ptr);
     }
     q.free();
+}
 
-    // Compute seed_clauses (inverse of seeded_by)
-    // First compute seeded_by for each clause, then invert
-    // Count seeds per clause
-    int[] seed_counts = mem::new_array(int, (usz)n_rules);
+fn int[][] build_seed_clauses(Clause[] clauses, bool[] emptiable, int[] seed_counts) {
+    int n_rules = (int)clauses.len;
     for (int i = 0; i < n_rules; i++) seed_counts[i] = 0;
 
     for (int i = 0; i < n_rules; i++) {
@@ -184,8 +163,11 @@ fn Grammar make_grammar(String[] starts, RuleEntry[] rules) {
         }
         mem::free(child_eps.ptr);
     }
+    return seed_cls;
+}
 
-    // Collect terminal indices
+fn int[] collect_terminal_indices(Clause[] clauses) {
+    int n_rules = (int)clauses.len;
     int term_count = 0;
     for (int i = 0; i < n_rules; i++) {
         if (is_terminal(&clauses[i])) term_count++;
@@ -193,11 +175,49 @@ fn Grammar make_grammar(String[] starts, RuleEntry[] rules) {
     int[] terminals = mem::new_array(int, (usz)term_count);
     int ti = 0;
     for (int i = 0; i < n_rules; i++) {
-        if (is_terminal(&clauses[i])) {
-            terminals[ti] = i;
-            ti++;
-        }
+        if (is_terminal(&clauses[i])) terminals[ti++] = i;
     }
+    return terminals;
+}
+
+fn Grammar make_grammar(String[] starts, RuleEntry[] rules) {
+    int n_rules = (int)rules.len;
+
+    // Build name -> index mapping
+    int[] rule_idx_map = mem::new_array(int, (usz)n_rules); // not really needed, index IS position
+
+    // edges[i] = child clause indices for rule i
+    int[][] edges = mem::new_array(int[], (usz)n_rules);
+    for (int i = 0; i < n_rules; i++) {
+        edges[i] = child_clauses(&rules[i].clause);
+    }
+
+    int[] opened = mem::new_array(int, (usz)n_rules);
+    int[] stk = mem::new_array(int, (usz)(n_rules + 1));
+    int[] topo_order = mem::new_array(int, (usz)n_rules);
+    int[] topo_order_idx = mem::new_array(int, (usz)n_rules);
+    int last_order = 0;
+    build_topo_order(
+        starts, rules, edges, opened, stk, topo_order, topo_order_idx, &last_order
+    );
+
+    // Build reordered clauses with reindexed children
+    Clause[] clauses = mem::new_array(Clause, (usz)n_rules);
+    String[] names = mem::new_array(String, (usz)n_rules);
+    build_reordered_rules(rules, topo_order, topo_order_idx, clauses, names);
+
+    // Compute can_match_epsilon via fixed-point iteration
+    bool[] emptiable = mem::new_array(bool, (usz)n_rules);
+
+    // Build parent_clauses (reverse edges)
+    int[] parent_counts = mem::new_array(int, (usz)n_rules);
+    int[][] parent_clauses_arr = build_parent_clauses(clauses, parent_counts);
+    compute_emptiable_clauses(clauses, parent_clauses_arr, parent_counts, emptiable);
+
+    // Compute seed_clauses (inverse of seeded_by)
+    int[] seed_counts = mem::new_array(int, (usz)n_rules);
+    int[][] seed_cls = build_seed_clauses(clauses, emptiable, seed_counts);
+    int[] terminals = collect_terminal_indices(clauses);
 
     // Clean up temporary arrays
     mem::free(opened.ptr);

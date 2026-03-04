@@ -28,65 +28,11 @@ fn bool generate_ffi_module(
     char[BINDGEN_BUF_SIZE] buf;
     usz pos = 0;
 
-    // Header comment
-    pos = buf_append(buf[..], pos, ";; Auto-generated FFI bindings for lib");
-    pos = buf_append(buf[..], pos, so_name);
-    pos = buf_append(buf[..], pos, "\n;; Regenerate with: omni --bind\n\n");
-
-    // Module declaration: (module ffi-{name} (export ...)
-    pos = buf_append(buf[..], pos, "(module ffi-");
-    pos = buf_append(buf[..], pos, module_name);
-    pos = buf_append(buf[..], pos, " (export");
-
-    // Export list — only non-variadic functions
-    for (usz i = 0; i < func_count; i++) {
-        if (funcs[i].is_variadic) continue;
-        pos = buf_append_char(buf[..], pos, ' ');
-        pos = buf_append_kebab(buf[..], pos, &funcs[i].name);
-    }
-    pos = buf_append(buf[..], pos, ")\n\n");
-
-    // Library handle: (define [ffi lib] _lib "lib{so_name}.so")
-    pos = buf_append(buf[..], pos, "  (define [ffi lib] _lib \"lib");
-    pos = buf_append(buf[..], pos, so_name);
-    pos = buf_append(buf[..], pos, ".so\")\n\n");
-
-    // Function definitions
-    for (usz i = 0; i < func_count; i++) {
-        ParsedFunc* f = &funcs[i];
-
-        if (f.is_variadic) {
-            // Skip variadic with comment
-            pos = buf_append(buf[..], pos, "  ;; skipped: ");
-            pos = buf_append_cstr(buf[..], pos, &f.name);
-            pos = buf_append(buf[..], pos, " (variadic)\n");
-            continue;
-        }
-
-        // (define [ffi λ _lib] (kebab-name (^Type arg0) ...) ^RetType)
-        pos = buf_append(buf[..], pos, "  (define [ffi lambda _lib] (");
-        pos = buf_append_kebab(buf[..], pos, &f.name);
-
-        for (usz j = 0; j < f.param_count; j++) {
-            ParsedParam* p = &f.params[j];
-            pos = buf_append(buf[..], pos, " (^");
-            pos = buf_append_cstr(buf[..], pos, &p.omni_type);
-            pos = buf_append_char(buf[..], pos, ' ');
-            pos = buf_append_cstr(buf[..], pos, &p.name);
-            pos = buf_append_char(buf[..], pos, ')');
-        }
-
-        pos = buf_append(buf[..], pos, ")");
-
-        // Return type annotation
-        pos = buf_append(buf[..], pos, " ^");
-        pos = buf_append_cstr(buf[..], pos, &f.return_omni_type);
-
-        pos = buf_append(buf[..], pos, ")\n\n");
-    }
-
-    // Close module
-    pos = buf_append(buf[..], pos, ")\n");
+    pos = bindgen_append_header(buf[..], pos, so_name);
+    pos = bindgen_append_module_open(buf[..], pos, module_name, funcs, func_count);
+    pos = bindgen_append_library_handle(buf[..], pos, so_name);
+    pos = bindgen_append_functions(buf[..], pos, funcs, func_count);
+    pos = buf_append(buf[..], pos, ")\n"); // close module
 
     // Write to file
     if (try file = io::file::open((String)output_path, "w")) {
@@ -95,6 +41,75 @@ fn bool generate_ffi_module(
         return true;
     }
     return false;
+}
+
+fn usz bindgen_append_header(char[] buf, usz pos, char[] so_name) {
+    pos = buf_append(buf, pos, ";; Auto-generated FFI bindings for lib");
+    pos = buf_append(buf, pos, so_name);
+    pos = buf_append(buf, pos, "\n;; Regenerate with: omni --bind\n\n");
+    return pos;
+}
+
+fn usz bindgen_append_module_open(char[] buf, usz pos, char[] module_name, ParsedFunc* funcs, usz func_count) {
+    pos = buf_append(buf, pos, "(module ffi-");
+    pos = buf_append(buf, pos, module_name);
+    pos = buf_append(buf, pos, " (export");
+
+    // Export list — only non-variadic functions.
+    for (usz i = 0; i < func_count; i++) {
+        if (funcs[i].is_variadic) continue;
+        pos = buf_append_char(buf, pos, ' ');
+        pos = buf_append_kebab(buf, pos, &funcs[i].name);
+    }
+    pos = buf_append(buf, pos, ")\n\n");
+    return pos;
+}
+
+fn usz bindgen_append_library_handle(char[] buf, usz pos, char[] so_name) {
+    pos = buf_append(buf, pos, "  (define [ffi lib] _lib \"lib");
+    pos = buf_append(buf, pos, so_name);
+    pos = buf_append(buf, pos, ".so\")\n\n");
+    return pos;
+}
+
+fn usz bindgen_append_variadic_skip(char[] buf, usz pos, ParsedFunc* f) {
+    pos = buf_append(buf, pos, "  ;; skipped: ");
+    pos = buf_append_cstr(buf, pos, &f.name);
+    pos = buf_append(buf, pos, " (variadic)\n");
+    return pos;
+}
+
+fn usz bindgen_append_function_decl(char[] buf, usz pos, ParsedFunc* f) {
+    // (define [ffi λ _lib] (kebab-name (^Type arg0) ...) ^RetType)
+    pos = buf_append(buf, pos, "  (define [ffi lambda _lib] (");
+    pos = buf_append_kebab(buf, pos, &f.name);
+
+    for (usz j = 0; j < f.param_count; j++) {
+        ParsedParam* p = &f.params[j];
+        pos = buf_append(buf, pos, " (^");
+        pos = buf_append_cstr(buf, pos, &p.omni_type);
+        pos = buf_append_char(buf, pos, ' ');
+        pos = buf_append_cstr(buf, pos, &p.name);
+        pos = buf_append_char(buf, pos, ')');
+    }
+
+    pos = buf_append(buf, pos, ")");
+    pos = buf_append(buf, pos, " ^");
+    pos = buf_append_cstr(buf, pos, &f.return_omni_type);
+    pos = buf_append(buf, pos, ")\n\n");
+    return pos;
+}
+
+fn usz bindgen_append_functions(char[] buf, usz pos, ParsedFunc* funcs, usz func_count) {
+    for (usz i = 0; i < func_count; i++) {
+        ParsedFunc* f = &funcs[i];
+        if (f.is_variadic) {
+            pos = bindgen_append_variadic_skip(buf, pos, f);
+            continue;
+        }
+        pos = bindgen_append_function_decl(buf, pos, f);
+    }
+    return pos;
 }
 
 // --- Buffer helpers ---
