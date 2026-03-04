@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-03-04: Session 89 - Split Deduce Relation Define Pipeline
+
+### Summary
+Refactored `prim_define_relation(...)` into focused helpers for spec extraction, relation allocation, column collection, and LMDB open flow, preserving behavior and error messages.
+
+### What changed
+- `src/lisp/deduce_schema_query.c3`:
+  - Added:
+    - `deduce_relation_extract_spec(pair, interp, db_out, rel_name_out, cols_out)`
+    - `deduce_relation_alloc(db, rel_name)`
+    - `deduce_relation_collect_columns(rel, cols)`
+    - `deduce_relation_open_dbi(rel, interp)`
+    - `DeduceRelationOpenStatus` enum for open failure classification
+  - Refactored:
+    - `prim_define_relation(...)` now composes the helpers above
+  - Preserved:
+    - argument/type validation semantics
+    - LMDB open behavior and relation handle wrapping
+    - distinct write-failure messages:
+      - `__define-relation: txn begin failed`
+      - `__define-relation: dbi open failed`
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 88 - Split Expr Serializer Specialized Dispatch
 
 ### Summary
