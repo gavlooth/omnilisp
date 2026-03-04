@@ -293,20 +293,28 @@ fn Value* prim_thread_cancel(Value*[] args, Env* env, Interp* interp) {
 // Cannot cancel RUNNING or already-DONE fibers.
 // ============================================================
 
-fn bool scheduler_cancel_fiber(usz fiber_id, Interp* interp) {
-    if (fiber_id >= g_scheduler.fiber_count) return false;
-    FiberEntry* f = &g_scheduler.fibers[fiber_id];
+fn bool scheduler_fiber_is_cancellable(FiberEntry* f) @inline {
+    return f.state == FIBER_READY || f.state == FIBER_BLOCKED;
+}
 
-    // Can only cancel READY or BLOCKED fibers
-    if (f.state != FIBER_READY && f.state != FIBER_BLOCKED) return false;
-
-    // Cancel all children first (recursive)
+fn void scheduler_cancel_fiber_children(usz fiber_id, Interp* interp) {
     for (usz i = 0; i < g_scheduler.fiber_count; i++) {
         if (g_scheduler.fibers[i].parent_id == fiber_id &&
             g_scheduler.fibers[i].state != FIBER_DONE) {
             scheduler_cancel_fiber(i, interp);
         }
     }
+}
+
+fn bool scheduler_cancel_fiber(usz fiber_id, Interp* interp) {
+    if (fiber_id >= g_scheduler.fiber_count) return false;
+    FiberEntry* f = &g_scheduler.fibers[fiber_id];
+
+    // Can only cancel READY or BLOCKED fibers
+    if (!scheduler_fiber_is_cancellable(f)) return false;
+
+    // Cancel all children first (recursive)
+    scheduler_cancel_fiber_children(fiber_id, interp);
 
     // Complete with cancellation error
     Value* cancel_err = raise_error(interp, "fiber cancelled");

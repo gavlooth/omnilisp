@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-03-04: Session 69 - Decompose Fiber Cancellation Internals
+
+### Summary
+Refactored `scheduler_cancel_fiber(...)` by extracting cancellability and child-cancellation helpers, reducing in-function branching while preserving recursive cancellation semantics.
+
+### What changed
+- `src/lisp/scheduler_primitives.c3`:
+  - Added:
+    - `scheduler_fiber_is_cancellable(f)`
+    - `scheduler_cancel_fiber_children(fiber_id, interp)`
+  - `scheduler_cancel_fiber(...)` now:
+    - delegates state check to `scheduler_fiber_is_cancellable(...)`
+    - delegates recursive child traversal to `scheduler_cancel_fiber_children(...)`
+  - Preserved:
+    - only READY/BLOCKED fibers cancelable
+    - recursive child cancellation before marking parent done
+    - same cancellation error payload and done transition
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 68 - Extract TCP-Read Result Mapping Helper
 
 ### Summary
