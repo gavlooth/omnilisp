@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-03-04: Session 46 - JIT Closure Env-Copy Simplification Follow-up
+
+### Summary
+Simplified JIT closure env-copy plumbing further by removing redundant scope parameter/state restoration after introducing target-scope env-copy boundary helper.
+
+### What changed
+- `src/lisp/jit_jit_closure_define_qq.c3`:
+  - `jit_copy_closure_env_if_needed(...)`:
+    - removed redundant `creation_scope` parameter
+    - now only takes `need_env_copy` toggle
+  - `jit_make_closure_from_expr(...)`:
+    - removed temporary `creation_scope` local
+    - computes `need_env_copy` directly from `interp.current_scope`
+  - Call sites updated accordingly.
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 45 - Scoped Env-Copy Boundary Helper
 
 ### Summary
