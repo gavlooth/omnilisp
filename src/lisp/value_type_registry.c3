@@ -1,5 +1,27 @@
 module lisp;
 
+fn bool type_registry_symbol_valid(SymbolTable* syms, SymbolId id) @inline {
+    if (syms == null || syms.entries == null) return false;
+    if (id == INVALID_SYMBOL_ID) return false;
+    return (usz)id < syms.count;
+}
+
+fn bool type_registry_symbol_hashable(SymbolTable* syms, SymbolId id) @inline {
+    if (!type_registry_symbol_valid(syms, id)) return false;
+    SymbolEntry* entry = &syms.entries[(usz)id];
+    return entry.name != null;
+}
+
+fn usz type_registry_symbol_hash(SymbolTable* syms, SymbolId id) @inline {
+    SymbolEntry* entry = &syms.entries[(usz)id];
+    usz h = 2166136261;  // FNV-1a offset basis (32-bit)
+    for (usz i = 0; i < (usz)entry.len; i++) {
+        h ^= (usz)entry.name[i];
+        h *= 16777619;   // FNV-1a prime (32-bit)
+    }
+    return h;
+}
+
 fn void TypeRegistry.init(TypeRegistry* self) {
     self.capacity = TYPE_INITIAL_CAPACITY;
     self.type_count = 0;
@@ -29,8 +51,8 @@ fn void TypeRegistry.grow(TypeRegistry* self, SymbolTable* syms) {
 
     usz mask = new_hash_cap - 1;
     for (usz i = 0; i < self.type_count; i++) {
-        char[] name_str = syms.get_name(self.types[i].name);
-        usz h = hash_symbol(name_str);
+        if (!type_registry_symbol_hashable(syms, self.types[i].name)) continue;
+        usz h = type_registry_symbol_hash(syms, self.types[i].name);
         for (usz probe = 0; probe < new_hash_cap; probe++) {
             usz slot = (h + probe) & mask;
             if (new_hash[slot] == INVALID_TYPE_ID) {
@@ -55,8 +77,8 @@ fn TypeId TypeRegistry.register_type(TypeRegistry* self, TypeInfo info, SymbolTa
     self.type_count++;
 
     // Insert into hash table
-    char[] name = syms.get_name(info.name);
-    usz h = hash_symbol(name);
+    if (!type_registry_symbol_hashable(syms, info.name)) return id;
+    usz h = type_registry_symbol_hash(syms, info.name);
     usz mask = self.hash_capacity - 1;
     for (usz probe = 0; probe < self.hash_capacity; probe++) {
         usz slot = (h + probe) & mask;
@@ -69,13 +91,18 @@ fn TypeId TypeRegistry.register_type(TypeRegistry* self, TypeInfo info, SymbolTa
 }
 
 fn TypeId TypeRegistry.lookup(TypeRegistry* self, SymbolId name, SymbolTable* syms) {
-    char[] name_str = syms.get_name(name);
-    usz h = hash_symbol(name_str);
+    if (self == null || syms == null) return INVALID_TYPE_ID;
+    if (self.hash_capacity == 0 || self.type_hash_index == null || self.types == null) {
+        return INVALID_TYPE_ID;
+    }
+    if (!type_registry_symbol_hashable(syms, name)) return INVALID_TYPE_ID;
+    usz h = type_registry_symbol_hash(syms, name);
     usz mask = self.hash_capacity - 1;
     for (usz probe = 0; probe < self.hash_capacity; probe++) {
         usz slot = (h + probe) & mask;
         TypeId tid = self.type_hash_index[slot];
         if (tid == INVALID_TYPE_ID) return INVALID_TYPE_ID;
+        if ((usz)tid >= self.type_count) continue;
         if (self.types[(usz)tid].name == name) return tid;
     }
     return INVALID_TYPE_ID;

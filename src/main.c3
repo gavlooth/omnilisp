@@ -325,6 +325,10 @@ fn void thread_registry_shutdown() {
     g_thread_registry.region_generations.free();
     mem::free(g_thread_registry);
     g_thread_registry = null;
+
+    // ScopeRegion structs are recycled in a global freelist.
+    // Flush it at shutdown so sanitizer runs report real leaks only.
+    scope_freelist_cleanup();
 }
 
 fn RegionRegistry* thread_registry() @inline {

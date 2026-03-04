@@ -132,8 +132,11 @@ fn SymbolId SymbolTable.intern(SymbolTable* self, char[] name) {
     return id;
 }
 
-<* @require (usz)id < self.count : "invalid symbol id" *>
 fn char[] SymbolTable.get_name(SymbolTable* self, SymbolId id) {
+    if (self == null || self.entries == null) return "<invalid-symbol>";
+    if (id == INVALID_SYMBOL_ID) return "<invalid-symbol>";
     usz idx = (usz)id;
+    if (idx >= self.count) return "<invalid-symbol>";
+    if (self.entries[idx].name == null) return "<invalid-symbol>";
     return self.entries[idx].name[:(usz)self.entries[idx].len];
 }
