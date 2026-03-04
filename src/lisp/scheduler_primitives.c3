@@ -17,6 +17,12 @@ fn Value* scheduler_run_offload_sync(OffloadWork work, Interp* interp) {
     return out;
 }
 
+fn Value* scheduler_parse_offload_job(Value*[] args, char[] expected_msg, OffloadWork* work, Interp* interp) {
+    if (args.len < 1) return raise_error(interp, expected_msg);
+    *work = {};
+    return scheduler_build_offload_work(args[0], work, interp);
+}
+
 fn Value* scheduler_begin_fiber_offload(OffloadWork* work, usz fiber_id, Interp* interp) {
     PendingOffload* pending = &g_scheduler.pending_offloads[fiber_id];
     if (pending.active) {
@@ -42,9 +48,8 @@ fn Value* prim_offload(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
 
-    if (args.len < 1) return raise_error(interp, "offload: expected job list");
-    OffloadWork work = {};
-    Value* parse_err = scheduler_build_offload_work(args[0], &work, interp);
+    OffloadWork work;
+    Value* parse_err = scheduler_parse_offload_job(args, "offload: expected job list", &work, interp);
     if (parse_err != null) return parse_err;
 
     if (!scheduler_is_running_fiber_context()) {
@@ -74,10 +79,8 @@ fn Value* prim_thread_spawn(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
     if (!g_scheduler.thread_task_mu_ready) return raise_error(interp, "thread-spawn: task mutex unavailable");
-    if (args.len < 1) return raise_error(interp, "thread-spawn: expected job list");
-
-    OffloadWork work = {};
-    Value* parse_err = scheduler_build_offload_work(args[0], &work, interp);
+    OffloadWork work;
+    Value* parse_err = scheduler_parse_offload_job(args, "thread-spawn: expected job list", &work, interp);
     if (parse_err != null) return parse_err;
 
     usz task_id = scheduler_alloc_thread_task();
