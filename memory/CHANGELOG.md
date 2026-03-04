@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-03-04: Session 84 - Split JSON Emit Conversion Helpers
+
+### Summary
+Refactored `omni_to_json_val(...)` by extracting symbol/list/array/hashmap conversion helpers, preserving JSON emission semantics while reducing branch complexity in the main conversion function.
+
+### What changed
+- `src/lisp/json.c3`:
+  - Added:
+    - `omni_symbol_to_json(sym, doc, interp)`
+    - `omni_cons_list_to_json(list, doc, interp)`
+    - `omni_array_to_json(arr_v, doc, interp)`
+    - `omni_hash_key_to_json(key_v, doc, interp)`
+    - `omni_hashmap_to_json(map_v, doc, interp)`
+  - Refactored:
+    - `omni_to_json_val(...)` now delegates `SYMBOL`, `CONS`, `ARRAY`, and `HASHMAP` cases to helpers above
+  - Preserved:
+    - `true`/`false` symbol special handling to JSON booleans
+    - list/array emission as JSON arrays
+    - hashmap key coercion behavior (`string`/`symbol` else `"?"`)
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 83 - Split JIT Handle Control-Flow Helpers
 
 ### Summary

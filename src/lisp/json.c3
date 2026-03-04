@@ -144,6 +144,64 @@ fn Value* prim_json_parse(Value*[] args, Env* env, Interp* interp) {
 // json-emit: Omni value → JSON string
 // ============================================================
 
+fn YyjsonMutVal* omni_symbol_to_json(SymbolId sym, YyjsonMutDoc* doc, Interp* interp) {
+    char[] name = interp.symbols.get_name(sym);
+    // "true" → JSON true, "false" → JSON false.
+    if (name.len == 4 && name[0] == 't' && name[1] == 'r' && name[2] == 'u' && name[3] == 'e') {
+        return omni_yyjson_mut_bool(doc, 1);
+    }
+    if (name.len == 5 && name[0] == 'f' && name[1] == 'a' && name[2] == 'l' && name[3] == 's' && name[4] == 'e') {
+        return omni_yyjson_mut_bool(doc, 0);
+    }
+    // Other symbols → string.
+    return omni_yyjson_mut_strn(doc, name.ptr, name.len);
+}
+
+fn YyjsonMutVal* omni_cons_list_to_json(Value* list, YyjsonMutDoc* doc, Interp* interp) {
+    YyjsonMutVal* arr = omni_yyjson_mut_arr(doc);
+    Value* curr = list;
+    while (is_cons(curr)) {
+        YyjsonMutVal* elem = omni_to_json_val(car(curr), doc, interp);
+        omni_yyjson_mut_arr_append(arr, elem);
+        curr = cdr(curr);
+    }
+    return arr;
+}
+
+fn YyjsonMutVal* omni_array_to_json(Value* arr_v, YyjsonMutDoc* doc, Interp* interp) {
+    YyjsonMutVal* arr = omni_yyjson_mut_arr(doc);
+    for (usz i = 0; i < arr_v.array_val.length; i++) {
+        YyjsonMutVal* elem = omni_to_json_val(arr_v.array_val.items[i], doc, interp);
+        omni_yyjson_mut_arr_append(arr, elem);
+    }
+    return arr;
+}
+
+fn YyjsonMutVal* omni_hash_key_to_json(Value* key_v, YyjsonMutDoc* doc, Interp* interp) {
+    if (is_string(key_v)) {
+        return omni_yyjson_mut_strn(doc, key_v.str_chars, key_v.str_len);
+    }
+    if (key_v.tag == SYMBOL) {
+        char[] name = interp.symbols.get_name(key_v.sym_val);
+        return omni_yyjson_mut_strn(doc, name.ptr, name.len);
+    }
+    return omni_yyjson_mut_strn(doc, "?", 1);
+}
+
+fn YyjsonMutVal* omni_hashmap_to_json(Value* map_v, YyjsonMutDoc* doc, Interp* interp) {
+    YyjsonMutVal* obj = omni_yyjson_mut_obj(doc);
+    HashMap* hm = map_v.hashmap_val;
+    for (usz i = 0; i < hm.capacity; i++) {
+        HashEntry* entry = &hm.entries[i];
+        if (entry.key == null) continue;
+
+        YyjsonMutVal* key = omni_hash_key_to_json(entry.key, doc, interp);
+        YyjsonMutVal* v = omni_to_json_val(entry.value, doc, interp);
+        omni_yyjson_mut_obj_add(obj, key, v);
+    }
+    return obj;
+}
+
 fn YyjsonMutVal* omni_to_json_val(Value* val, YyjsonMutDoc* doc, Interp* interp) {
     if (val == null || val.tag == NIL) {
         return omni_yyjson_mut_null(doc);
@@ -156,59 +214,15 @@ fn YyjsonMutVal* omni_to_json_val(Value* val, YyjsonMutDoc* doc, Interp* interp)
             return omni_yyjson_mut_real(doc, val.double_val);
         case STRING:
             return omni_yyjson_mut_strn(doc, val.str_chars, val.str_len);
-        case SYMBOL: {
-            char[] name = interp.symbols.get_name(val.sym_val);
-            // "true" → JSON true, "false" → JSON false
-            if (name.len == 4 && name[0] == 't' && name[1] == 'r' && name[2] == 'u' && name[3] == 'e') {
-                return omni_yyjson_mut_bool(doc, 1);
-            }
-            if (name.len == 5 && name[0] == 'f' && name[1] == 'a' && name[2] == 'l' && name[3] == 's' && name[4] == 'e') {
-                return omni_yyjson_mut_bool(doc, 0);
-            }
-            // Other symbols → string
-            return omni_yyjson_mut_strn(doc, name.ptr, name.len);
-        }
-        case CONS: {
-            // List → JSON array
-            YyjsonMutVal* arr = omni_yyjson_mut_arr(doc);
-            Value* curr = val;
-            while (is_cons(curr)) {
-                YyjsonMutVal* elem = omni_to_json_val(car(curr), doc, interp);
-                omni_yyjson_mut_arr_append(arr, elem);
-                curr = cdr(curr);
-            }
-            return arr;
-        }
-        case ARRAY: {
-            YyjsonMutVal* arr = omni_yyjson_mut_arr(doc);
-            for (usz i = 0; i < val.array_val.length; i++) {
-                YyjsonMutVal* elem = omni_to_json_val(val.array_val.items[i], doc, interp);
-                omni_yyjson_mut_arr_append(arr, elem);
-            }
-            return arr;
-        }
-        case HASHMAP: {
-            YyjsonMutVal* obj = omni_yyjson_mut_obj(doc);
-            HashMap* hm = val.hashmap_val;
-            for (usz i = 0; i < hm.capacity; i++) {
-                HashEntry* entry = &hm.entries[i];
-                if (entry.key != null) {
-                    // Key as string
-                    YyjsonMutVal* key;
-                    if (is_string(entry.key)) {
-                        key = omni_yyjson_mut_strn(doc, entry.key.str_chars, entry.key.str_len);
-                    } else if (entry.key.tag == SYMBOL) {
-                        char[] name = interp.symbols.get_name(entry.key.sym_val);
-                        key = omni_yyjson_mut_strn(doc, name.ptr, name.len);
-                    } else {
-                        key = omni_yyjson_mut_strn(doc, "?", 1);
-                    }
-                    YyjsonMutVal* v = omni_to_json_val(entry.value, doc, interp);
-                    omni_yyjson_mut_obj_add(obj, key, v);
-                }
-            }
-            return obj;
-        }
+        case SYMBOL:
+            return omni_symbol_to_json(val.sym_val, doc, interp);
+        case CONS:
+            // List → JSON array.
+            return omni_cons_list_to_json(val, doc, interp);
+        case ARRAY:
+            return omni_array_to_json(val, doc, interp);
+        case HASHMAP:
+            return omni_hashmap_to_json(val, doc, interp);
         default:
             return omni_yyjson_mut_null(doc);
     }
