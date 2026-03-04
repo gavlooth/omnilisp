@@ -309,11 +309,7 @@ fn EvalResult eval_defabstract(Expr* expr, Env* env, Interp* interp) {
     return eval_ok(result);
 }
 
-fn EvalResult eval_defunion(Expr* expr, Env* env, Interp* interp) {
-    ExprDefUnion* du = expr.defunion;
-
-    // Register the union type itself
-    TypeInfo union_info;
+fn void eval_defunion_init_union_info(TypeInfo* union_info, ExprDefUnion* du) {
     union_info.name = du.name;
     union_info.kind = TK_UNION;
     union_info.parent = INVALID_TYPE_ID;
@@ -328,46 +324,63 @@ fn EvalResult eval_defunion(Expr* expr, Env* env, Interp* interp) {
     for (usz i = 0; i < du.variant_count; i++) {
         union_info.variants[i] = du.variants[i];
     }
+}
+
+fn TypeId eval_defunion_register_variant_type(UnionVariant* variant, TypeId union_id, Interp* interp) {
+    TypeInfo var_info;
+    var_info.name = variant.name;
+    var_info.kind = TK_CONCRETE;
+    var_info.parent = union_id;  // variant is subtype of union
+    var_info.field_count = variant.field_count;
+    var_info.type_param_count = 0;
+    var_info.constraint_count = 0;
+    var_info.variant_count = 0;
+    var_info.alias_target = INVALID_TYPE_ID;
+    for (usz j = 0; j < variant.field_count; j++) {
+        var_info.fields[j].name = variant.fields[j];
+        var_info.fields[j].field_type = INVALID_TYPE_ID;
+    }
+    return interp.types.register_type(var_info, &interp.symbols);
+}
+
+fn EvalResult eval_defunion_bind_variant(UnionVariant* variant, TypeId var_id, Interp* interp) {
+    if (variant.field_count == 0) {
+        // Nullary variant: define as a constant instance in root_scope
+        Value* inst = make_instance_root(interp, var_id, null, 0);
+        if (inst == null) {
+            char[256] ebuf;
+            char[] msg = io::bprintf(&ebuf, "failed to allocate union variant '%s'",
+                (ZString)interp.symbols.get_name(variant.name))!!;
+            return eval_error(msg);
+        }
+        env_define_with_barrier(interp.global_env, variant.name, inst, interp);
+        return eval_ok(make_nil(interp));
+    }
+
+    // Variant with fields: define as constructor primitive (make_primitive uses root_scope)
+    char[] vname = interp.symbols.get_name(variant.name);
+    Value* ctor = make_primitive(interp, vname, &prim_type_constructor, (int)variant.field_count);
+    ctor.prim_val.tag = (int)var_id;
+    env_define_with_barrier(interp.global_env, variant.name, ctor, interp);
+    return eval_ok(make_nil(interp));
+}
+
+fn EvalResult eval_defunion(Expr* expr, Env* env, Interp* interp) {
+    ExprDefUnion* du = expr.defunion;
+
+    // Register the union type itself
+    TypeInfo union_info;
+    eval_defunion_init_union_info(&union_info, du);
 
     TypeId union_id = interp.types.register_type(union_info, &interp.symbols);
 
     // Register each variant as its own type (with union as parent)
     for (usz i = 0; i < du.variant_count; i++) {
         UnionVariant* variant = &du.variants[i];
-
-        TypeInfo var_info;
-        var_info.name = variant.name;
-        var_info.kind = TK_CONCRETE;
-        var_info.parent = union_id;  // variant is subtype of union
-        var_info.field_count = variant.field_count;
-        var_info.type_param_count = 0;
-        var_info.constraint_count = 0;
-        var_info.variant_count = 0;
-        var_info.alias_target = INVALID_TYPE_ID;
-        for (usz j = 0; j < variant.field_count; j++) {
-            var_info.fields[j].name = variant.fields[j];
-            var_info.fields[j].field_type = INVALID_TYPE_ID;
-        }
-
-        TypeId var_id = interp.types.register_type(var_info, &interp.symbols);
-
-        // Create constructor for this variant
-        if (variant.field_count == 0) {
-            // Nullary variant: define as a constant instance in root_scope
-            Value* inst = make_instance_root(interp, var_id, null, 0);
-            if (inst == null) {
-                char[256] ebuf;
-                char[] msg = io::bprintf(&ebuf, "failed to allocate union variant '%s'",
-                    (ZString)interp.symbols.get_name(variant.name))!!;
-                return eval_error(msg);
-            }
-            env_define_with_barrier(interp.global_env, variant.name, inst, interp);
-        } else {
-            // Variant with fields: define as constructor primitive (make_primitive uses root_scope)
-            char[] vname = interp.symbols.get_name(variant.name);
-            Value* ctor = make_primitive(interp, vname, &prim_type_constructor, (int)variant.field_count);
-            ctor.prim_val.tag = (int)var_id;
-            env_define_with_barrier(interp.global_env, variant.name, ctor, interp);
+        TypeId var_id = eval_defunion_register_variant_type(variant, union_id, interp);
+        EvalResult bind_result = eval_defunion_bind_variant(variant, var_id, interp);
+        if (bind_result.error.has_error) {
+            return bind_result;
         }
     }
 

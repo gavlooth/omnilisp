@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-03-04: Session 57 - Decompose `eval_defunion` Registration Path
+
+### Summary
+Split `eval_defunion(...)` into focused helpers for union type info initialization, variant type registration, and variant binding while preserving behavior and public API.
+
+### What changed
+- `src/lisp/eval_type_evaluators.c3`:
+  - Added:
+    - `eval_defunion_init_union_info(...)`
+    - `eval_defunion_register_variant_type(...)`
+    - `eval_defunion_bind_variant(...)`
+  - Simplified `eval_defunion(...)` by delegating:
+    - union `TypeInfo` construction
+    - per-variant type registration
+    - per-variant constructor/constant binding
+  - Existing error behavior for nullary variant allocation failure retained.
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 56 - Decompose JIT Cache-Warm Traversal
 
 ### Summary
