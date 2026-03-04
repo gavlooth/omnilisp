@@ -361,51 +361,70 @@ fn void lisp_completion(char* input, void* completions, CInt* context_len, void*
  */
 // Count net parenthesis depth in a string, skipping chars inside "..." strings
 // and ; line comments. Returns the net depth (opens - closes).
+struct ReplParenDepthState {
+    int depth;
+    bool in_string;
+    bool in_comment;
+    bool escape_next;
+}
+
+fn bool repl_paren_depth_step_string(char c, ReplParenDepthState* state) @inline {
+    if (!state.in_string) return false;
+    if (state.escape_next) {
+        state.escape_next = false;
+        return true;
+    }
+    if (c == '\\') {
+        state.escape_next = true;
+        return true;
+    }
+    if (c == '"') {
+        state.in_string = false;
+    }
+    return true;
+}
+
+fn bool repl_paren_depth_step_comment(char c, ReplParenDepthState* state) @inline {
+    if (!state.in_comment) return false;
+    if (c == '\n') {
+        state.in_comment = false;
+    }
+    return true;
+}
+
+fn void repl_paren_depth_step_normal(char c, ReplParenDepthState* state) @inline {
+    if (c == ';') {
+        state.in_comment = true;
+        return;
+    }
+    if (c == '"') {
+        state.in_string = true;
+        return;
+    }
+    if (c == '(') {
+        state.depth++;
+        return;
+    }
+    if (c == ')') {
+        state.depth--;
+    }
+}
+
 fn int count_paren_depth(char[] input) {
-    int depth = 0;
-    bool in_string = false;
-    bool in_comment = false;
-    bool escape_next = false;
+    ReplParenDepthState state = {
+        .depth = 0,
+        .in_string = false,
+        .in_comment = false,
+        .escape_next = false,
+    };
 
     for (usz i = 0; i < input.len; i++) {
         char c = input[i];
-
-        // Handle escape sequences inside strings
-        if (in_string) {
-            if (escape_next) {
-                escape_next = false;
-                continue;
-            }
-            if (c == '\\') {
-                escape_next = true;
-                continue;
-            }
-            if (c == '"') {
-                in_string = false;
-            }
-            continue;
-        }
-
-        // Comments run to end of line
-        if (in_comment) {
-            if (c == '\n') {
-                in_comment = false;
-            }
-            continue;
-        }
-
-        // Normal mode
-        if (c == ';') {
-            in_comment = true;
-        } else if (c == '"') {
-            in_string = true;
-        } else if (c == '(') {
-            depth++;
-        } else if (c == ')') {
-            depth--;
-        }
+        if (repl_paren_depth_step_string(c, &state)) continue;
+        if (repl_paren_depth_step_comment(c, &state)) continue;
+        repl_paren_depth_step_normal(c, &state);
     }
-    return depth;
+    return state.depth;
 }
 
 fn usz repl_cstr_len(char* line) @inline {

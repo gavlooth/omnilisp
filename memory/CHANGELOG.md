@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-03-04: Session 95 - Split REPL Parenthesis-Depth State Machine Helpers
+
+### Summary
+Refactored `count_paren_depth(...)` into an explicit state struct plus per-mode helper steps (string/comment/normal), preserving delimiter-depth behavior while reducing control-flow nesting.
+
+### What changed
+- `src/lisp/eval_repl.c3`:
+  - Added:
+    - `ReplParenDepthState` struct
+    - `repl_paren_depth_step_string(c, state)`
+    - `repl_paren_depth_step_comment(c, state)`
+    - `repl_paren_depth_step_normal(c, state)`
+  - Refactored:
+    - `count_paren_depth(...)` now loops over input and delegates mode transitions to helper steps
+  - Preserved:
+    - escaped-quote handling inside strings
+    - comment-to-newline behavior
+    - net `(`/`)` depth accounting
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 94 - Split REPL Completion Helpers
 
 ### Summary
