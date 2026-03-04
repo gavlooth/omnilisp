@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-03-04: Session 78 - Split Named-Let Parse/Build Phases
+
+### Summary
+Refactored `Parser.parse_named_let(...)` into helper phases for bindings parsing, lambda construction, and recursive call construction, preserving named-let desugaring behavior.
+
+### What changed
+- `src/lisp/parser_define_core.c3`:
+  - Added:
+    - `Parser.parse_named_let_bindings(params, inits)`
+    - `Parser.build_named_let_lambda(e, params, body)`
+    - `Parser.build_named_let_call(e, loop_name, inits)`
+  - Refactored:
+    - `Parser.parse_named_let(...)` now delegates to the helpers above
+  - Preserved:
+    - same flat binding-pair parse shape (`name init ...`)
+    - same error text for empty named-let binding list
+    - same desugared form `(let ^rec (name lambda) (name init...))`
+
+### Verification
+- `c3c build` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 77 - Split `parse_define` Annotation and Normal Paths
 
 ### Summary
