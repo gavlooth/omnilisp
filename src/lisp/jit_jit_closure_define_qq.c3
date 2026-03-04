@@ -256,39 +256,86 @@ fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
     return stored;
 }
 
-// set! dot-path helper — handles (set! obj.field value) mutations.
-// Mirrors the dot-path E_SET logic from eval.c3 lines 496-561.
-fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) {
-    // Resolve root object
+fn Value* jit_resolve_set_path_root(Interp* interp, Expr* expr, Env* env) {
     Value* current = env.lookup(expr.set_expr.path_segments[0]);
     if (current == null) current = interp.global_env.lookup(expr.set_expr.path_segments[0]);
     if (current == null) return raise_error(interp, "set!: unbound path root");
+    return current;
+}
+
+fn Value* jit_set_path_step_instance(Value* current, SymbolId seg, Interp* interp) {
+    TypeInfo* ti = interp.types.get(current.instance_val.type_id);
+    if (ti != null) {
+        for (usz fi = 0; fi < ti.field_count; fi++) {
+            if (ti.fields[fi].name == seg && fi < current.instance_val.field_count) {
+                return &current.instance_val.fields[fi];
+            }
+        }
+    }
+    return raise_error(interp, "set!: field not found in path");
+}
+
+fn Value* jit_set_path_step_cons(Value* current, SymbolId seg, Interp* interp) {
+    if ((uint)seg == (uint)interp.sym_car) return current.cons_val.car;
+    if ((uint)seg == (uint)interp.sym_cdr) return current.cons_val.cdr;
+    return raise_error(interp, "set!: cons only supports .car and .cdr");
+}
+
+fn Value* jit_set_path_step(Value* current, SymbolId seg, Interp* interp) {
+    if (current != null && current.tag == INSTANCE && current.instance_val != null) {
+        return jit_set_path_step_instance(current, seg, interp);
+    }
+    if (current != null && current.tag == CONS) {
+        return jit_set_path_step_cons(current, seg, interp);
+    }
+    return raise_error(interp, "set!: path segment is not an instance or cons");
+}
+
+fn Value* jit_set_path_mutate_cons(Value* current, SymbolId last_seg, Value* value, Interp* interp) {
+    Value* stored = boundary_promote_to_root(value, interp);
+    if ((uint)last_seg == (uint)interp.sym_car) {
+        current.cons_val.car = stored;
+        return stored;
+    }
+    if ((uint)last_seg == (uint)interp.sym_cdr) {
+        current.cons_val.cdr = stored;
+        return stored;
+    }
+    return raise_error(interp, "set!: cons only supports .car and .cdr");
+}
+
+fn Value* jit_set_path_mutate_instance(Value* current, SymbolId last_seg, Value* value, Interp* interp) {
+    TypeInfo* ti = interp.types.get(current.instance_val.type_id);
+    if (ti != null) {
+        for (usz fi = 0; fi < ti.field_count; fi++) {
+            if (ti.fields[fi].name == last_seg && fi < current.instance_val.field_count) {
+                main::ScopeRegion* target = current.instance_val.owner_scope;
+                if (target == null) target = interp.root_scope;
+                Value* stored = boundary_copy_to_scope_site(
+                    value,
+                    interp,
+                    target,
+                    interp.current_scope,
+                    COPY_SITE_ENV_PROMOTE_FOR_TARGET
+                );
+                if (stored != null) current.instance_val.fields[fi] = *stored;
+                return stored;
+            }
+        }
+    }
+    return raise_error(interp, "set!: field not found");
+}
+
+// set! dot-path helper — handles (set! obj.field value) mutations.
+// Mirrors the dot-path E_SET logic from eval.c3 lines 496-561.
+fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) {
+    Value* current = jit_resolve_set_path_root(interp, expr, env);
+    if (current != null && current.tag == ERROR) return current;
 
     // Traverse intermediate segments
     for (usz si = 1; si < expr.set_expr.path_segment_count - 1; si++) {
-        if (current != null && current.tag == INSTANCE && current.instance_val != null) {
-            TypeInfo* ti = interp.types.get(current.instance_val.type_id);
-            bool found = false;
-            if (ti != null) {
-                for (usz fi = 0; fi < ti.field_count; fi++) {
-                    if (ti.fields[fi].name == expr.set_expr.path_segments[si]) {
-                        if (fi < current.instance_val.field_count) {
-                            current = &current.instance_val.fields[fi];
-                            found = true;
-                            break;
-                        }
-                    }
-                }
-            }
-            if (!found) return raise_error(interp, "set!: field not found in path");
-        } else if (current != null && current.tag == CONS) {
-            SymbolId seg = expr.set_expr.path_segments[si];
-            if ((uint)seg == (uint)interp.sym_car) { current = current.cons_val.car; }
-            else if ((uint)seg == (uint)interp.sym_cdr) { current = current.cons_val.cdr; }
-            else { return raise_error(interp, "set!: cons only supports .car and .cdr"); }
-        } else {
-            return raise_error(interp, "set!: path segment is not an instance or cons");
-        }
+        current = jit_set_path_step(current, expr.set_expr.path_segments[si], interp);
+        if (current != null && current.tag == ERROR) return current;
     }
 
     // Mutate the last field
@@ -296,42 +343,12 @@ fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) 
 
     // Cons cell mutation
     if (current != null && current.tag == CONS) {
-        // Cons payloads are modeled as root/shared values.
-        Value* stored = boundary_promote_to_root(value, interp);
-        if ((uint)last_seg == (uint)interp.sym_car) {
-            current.cons_val.car = stored;
-            return stored;
-        }
-        if ((uint)last_seg == (uint)interp.sym_cdr) {
-            current.cons_val.cdr = stored;
-            return stored;
-        }
-        return raise_error(interp, "set!: cons only supports .car and .cdr");
+        return jit_set_path_mutate_cons(current, last_seg, value, interp);
     }
 
     // Instance field mutation
     if (current != null && current.tag == INSTANCE && current.instance_val != null) {
-        TypeInfo* ti = interp.types.get(current.instance_val.type_id);
-        if (ti != null) {
-            for (usz fi = 0; fi < ti.field_count; fi++) {
-                if (ti.fields[fi].name == last_seg) {
-                    if (fi < current.instance_val.field_count) {
-                        main::ScopeRegion* target = current.instance_val.owner_scope;
-                        if (target == null) target = interp.root_scope;
-                        Value* stored = boundary_copy_to_scope_site(
-                            value,
-                            interp,
-                            target,
-                            interp.current_scope,
-                            COPY_SITE_ENV_PROMOTE_FOR_TARGET
-                        );
-                        if (stored != null) current.instance_val.fields[fi] = *stored;
-                        return stored;
-                    }
-                }
-            }
-        }
-        return raise_error(interp, "set!: field not found");
+        return jit_set_path_mutate_instance(current, last_seg, value, interp);
     }
     return raise_error(interp, "set!: target is not an instance or cons");
 }

@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-03-04: Session 55 - Decompose JIT Dot-Path `set!` Helper
+
+### Summary
+Refactored `jit_eval_set_path(...)` into focused helpers for root lookup, segment traversal, and tail mutation while preserving behavior and error messages.
+
+### What changed
+- `src/lisp/jit_jit_closure_define_qq.c3`:
+  - Added helper functions:
+    - `jit_resolve_set_path_root(...)`
+    - `jit_set_path_step_instance(...)`
+    - `jit_set_path_step_cons(...)`
+    - `jit_set_path_step(...)`
+    - `jit_set_path_mutate_cons(...)`
+    - `jit_set_path_mutate_instance(...)`
+  - Simplified `jit_eval_set_path(...)` to:
+    - resolve root
+    - traverse intermediate path via `jit_set_path_step(...)`
+    - dispatch last-segment mutation to cons/instance helper
+  - Public API unchanged; behavior equivalent, including existing error text.
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 54 - Type Constructor Allocation Failure Hardening
 
 ### Summary
