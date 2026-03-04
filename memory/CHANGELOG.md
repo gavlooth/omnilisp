@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-03-04: Session 94 - Split REPL Completion Helpers
+
+### Summary
+Refactored `lisp_completion(...)` by extracting focused helpers for C-string length, word-break detection, prefix start scanning, prefix matching, and completion emission.
+
+### What changed
+- `src/lisp/eval_repl.c3`:
+  - Added:
+    - `repl_cstr_len_ptr(s)`
+    - `repl_is_completion_word_break(c)`
+    - `repl_completion_find_word_start(input, len)`
+    - `repl_completion_matches_prefix(name, prefix, prefix_len)`
+    - `repl_completion_emit(completions, name)`
+  - Refactored:
+    - `lisp_completion(...)` now delegates scanning/matching/emission to the helpers above
+  - Preserved:
+    - current-word boundary semantics
+    - context length calculation for replxx
+    - global-env symbol completion behavior
+    - 255-byte truncation behavior for completion strings
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 93 - Split REPL Highlighter State/Step Helpers
 
 ### Summary
