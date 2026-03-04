@@ -86,6 +86,69 @@ fn Value* copy_env_clone_iterator_if_needed(Value* val, Interp* interp) {
     return iter_result;
 }
 
+fn Value* copy_env_binding_value(Value* val, Interp* interp, PromotionContext* ctx) {
+    if (val != null && val.tag == CLOSURE) {
+        return copy_env_clone_closure_if_needed(val, interp);
+    }
+    if (val != null && val.tag == ITERATOR) {
+        return copy_env_clone_iterator_if_needed(val, interp);
+    }
+    return copy_env_value_fast(val, interp, ctx);
+}
+
+fn Env* copy_env_alloc_frame(Env* src, Interp* interp) {
+    Env* dst = interp.alloc_env();
+    dst.binding_count = src.binding_count;
+
+    if (src.binding_count <= 4) {
+        dst.is_inline = true;
+        dst.bindings = &dst.inline_bindings[0];
+        dst.capacity = 4;
+        return dst;
+    }
+
+    dst.is_inline = false;
+    dst.bindings = (Binding*)mem::malloc(Binding.sizeof * src.binding_count);
+    dst.capacity = src.binding_count;
+    return dst;
+}
+
+fn void copy_env_copy_bindings(
+    Env* src,
+    Env* dst,
+    Interp* interp,
+    PromotionContext* ctx
+) {
+    for (usz i = 0; i < src.binding_count; i++) {
+        dst.bindings[i].name = src.bindings[i].name;
+        dst.bindings[i].value = copy_env_binding_value(src.bindings[i].value, interp, ctx);
+    }
+}
+
+fn Env* copy_env_to_scope_inner(Env* env, Interp* interp, usz depth, PromotionContext* active_ctx) {
+    if (env == null || env == interp.global_env) return env;
+    if (depth >= 256) return null;
+
+    // Persistent env nodes (mutable boxes allocated in root_region) are kept
+    // as-is to preserve sharing between JIT stack slots and closure captures.
+    // Their parent chain still needs fixing up since it may point to child-scope envs.
+    if (env.persistent) {
+        env.parent = copy_env_to_scope_inner(env.parent, interp, depth + 1, active_ctx);
+        return env;
+    }
+
+    Env* new_env = copy_env_alloc_frame(env, interp);
+    copy_env_copy_bindings(env, new_env, interp, active_ctx);
+    new_env.parent = copy_env_to_scope_inner(env.parent, interp, depth + 1, active_ctx);
+
+    // Rebuild hash table if source had one.
+    if (env.hash_table != null) {
+        new_env.build_hash_table();
+    }
+    main::scope_register_dtor(interp.current_scope, (void*)new_env, &scope_dtor_env);
+    return new_env;
+}
+
 /**
  * Copy an env chain into interp.current_scope (caller must set this to the target scope,
  * typically a closure's env_scope). Uses copy_to_parent for each binding value.
@@ -102,58 +165,9 @@ fn Env* copy_env_to_scope(Env* env, Interp* interp, usz depth = 0, PromotionCont
         active_ctx = &local_ctx;
         owns_ctx = true;
     }
-    if (env == null || env == interp.global_env) {
-        if (owns_ctx) promotion_context_end(interp, active_ctx);
-        return env;
-    }
-    if (depth >= 256) {
-        if (owns_ctx) promotion_context_end(interp, active_ctx);
-        return null;
-    }
-
-    // Persistent env nodes (mutable boxes allocated in root_region) are kept
-    // as-is to preserve sharing between JIT stack slots and closure captures.
-    // Their parent chain still needs fixing up since it may point to child-scope envs.
-    if (env.persistent) {
-        env.parent = copy_env_to_scope(env.parent, interp, depth + 1, active_ctx);
-        if (owns_ctx) promotion_context_end(interp, active_ctx);
-        return env;
-    }
-
-    Env* new_env = interp.alloc_env();
-    new_env.binding_count = env.binding_count;
-    
-    if (env.binding_count <= 4) {
-        new_env.is_inline = true;
-        new_env.bindings = &new_env.inline_bindings[0];
-        new_env.capacity = 4;
-    } else {
-        new_env.is_inline = false;
-        new_env.bindings = (Binding*)mem::malloc(Binding.sizeof * env.binding_count);
-        new_env.capacity = env.binding_count;
-    }
-
-    for (usz i = 0; i < env.binding_count; i++) {
-        new_env.bindings[i].name = env.bindings[i].name;
-        Value* val = env.bindings[i].value;
-        if (val != null && val.tag == CLOSURE) {
-            val = copy_env_clone_closure_if_needed(val, interp);
-        } else if (val != null && val.tag == ITERATOR) {
-            val = copy_env_clone_iterator_if_needed(val, interp);
-        } else {
-            val = copy_env_value_fast(val, interp, active_ctx);
-        }
-        new_env.bindings[i].value = val;
-    }
-    new_env.parent = copy_env_to_scope(env.parent, interp, depth + 1, active_ctx);
-    // Rebuild hash table if source had one
-    if (env.hash_table != null) {
-        new_env.build_hash_table();
-    }
-    // Register destructor for the newly malloc'd bindings
-    main::scope_register_dtor(interp.current_scope, (void*)new_env, &scope_dtor_env);
+    Env* copied = copy_env_to_scope_inner(env, interp, depth, active_ctx);
     if (owns_ctx) promotion_context_end(interp, active_ctx);
-    return new_env;
+    return copied;
 }
 
 // Continuations, effects, index — all handled by JIT (jit.c3)

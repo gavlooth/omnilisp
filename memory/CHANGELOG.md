@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-03-04: Session 86 - Split Env-Copy Wrapper/Core Helpers
+
+### Summary
+Refactored `copy_env_to_scope(...)` into a thin context-owning wrapper and a recursive core helper, plus extracted frame-allocation and binding-copy helpers, preserving env-copy and promotion behavior.
+
+### What changed
+- `src/lisp/eval_env_copy.c3`:
+  - Added:
+    - `copy_env_binding_value(val, interp, ctx)`
+    - `copy_env_alloc_frame(src, interp)`
+    - `copy_env_copy_bindings(src, dst, interp, ctx)`
+    - `copy_env_to_scope_inner(env, interp, depth, active_ctx)`
+  - Refactored:
+    - `copy_env_to_scope(...)` now owns optional local promotion-context setup/teardown
+    - recursive env walking now runs through `copy_env_to_scope_inner(...)`
+  - Preserved:
+    - recursion depth cap (`>= 256 → null`)
+    - persistent-env parent fix-up behavior
+    - closure/iterator/value copy semantics and scope destructor registration
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 85 - Split Quasiquote Template Token Handlers
 
 ### Summary
