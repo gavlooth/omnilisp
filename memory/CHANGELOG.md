@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-03-04: Session 77 - Split `parse_define` Annotation and Normal Paths
+
+### Summary
+Refactored `Parser.parse_define(...)` into focused helpers for attribute parsing, annotation dispatch, and normal `(define name value)` handling. Parsing behavior and error messages remain unchanged.
+
+### What changed
+- `src/lisp/parser_define_core.c3`:
+  - Added:
+    - `Parser.parse_define_attrs(attrs, attr_count_out)`
+    - `Parser.parse_define_with_annotation(e, attrs, attr_count)`
+    - `Parser.parse_normal_define(e)`
+  - Refactored:
+    - `Parser.parse_define(...)` now delegates bracket-annotation and normal-define paths to helpers
+  - Preserved:
+    - same bracket-attribute parsing constraints (`max 8`)
+    - same error text for missing attributes and missing define name
+    - same type/ffi/special dispatch behavior
+
+### Verification
+- `c3c build` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 76 - Decompose Coroutine Yield Path
 
 ### Summary

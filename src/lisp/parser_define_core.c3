@@ -142,6 +142,62 @@ fn Expr* Parser.parse_shorthand_define(Parser* self, Expr* e) {
     return e;
 }
 
+fn bool Parser.parse_define_attrs(Parser* self, SymbolId[8]* attrs, usz* attr_count_out) {
+    usz attr_count = 0;
+    while (self.lexer.current.type == T_SYMBOL && attr_count < 8) {
+        (*attrs)[attr_count] = self.get_current_symbol();
+        attr_count++;
+        self.lexer.advance();
+    }
+    if (attr_count == 0) {
+        self.set_error("expected attribute after [");
+        return false;
+    }
+
+    self.expect(T_RBRACKET, "]");
+    if (self.has_error) return false;
+
+    *attr_count_out = attr_count;
+    return true;
+}
+
+fn Expr* Parser.parse_define_with_annotation(Parser* self, Expr* e, SymbolId[8]* attrs, usz attr_count) {
+    SymbolId annotation = (*attrs)[0];
+
+    // Type-related defines: [type], [abstract], [union], [alias]
+    if (annotation == self.interp.sym_type ||
+        annotation == self.interp.sym_abstract ||
+        annotation == self.interp.sym_union ||
+        annotation == self.interp.sym_alias) {
+        return self.parse_define_type(e, annotation);
+    }
+
+    // FFI defines: [ffi lib], [ffi λ]
+    if (annotation == self.interp.sym_ffi) {
+        return self.parse_define_ffi(e, attrs, attr_count);
+    }
+
+    // Special defines: [macro], [effect], [schema], [relation]
+    return self.parse_define_special(e, annotation, attrs, attr_count);
+}
+
+fn Expr* Parser.parse_normal_define(Parser* self, Expr* e) {
+    if (self.lexer.current.type != T_SYMBOL) {
+        self.set_error("expected name after define");
+        return null;
+    }
+
+    SymbolId name = self.get_current_symbol();
+    self.lexer.advance();
+    Expr* value = self.parse_expr();
+    self.expect(T_RPAREN, ")");
+
+    e.tag = E_DEFINE;
+    e.define.name = name;
+    e.define.value = value;
+    return e;
+}
+
 fn Expr* Parser.parse_define(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'define' location
@@ -150,34 +206,10 @@ fn Expr* Parser.parse_define(Parser* self) {
     // Check for bracket annotation: (define [attr...] ...)
     if (self.lexer.current.type == T_LBRACKET) {
         self.lexer.advance();  // consume '['
-        // Read all symbols until ']'
         SymbolId[8] attrs;
         usz attr_count = 0;
-        while (self.lexer.current.type == T_SYMBOL && attr_count < 8) {
-            attrs[attr_count] = self.get_current_symbol();
-            attr_count++;
-            self.lexer.advance();
-        }
-        if (attr_count == 0) { self.set_error("expected attribute after ["); return null; }
-        self.expect(T_RBRACKET, "]");
-
-        SymbolId annotation = attrs[0];
-
-        // Type-related defines: [type], [abstract], [union], [alias]
-        if (annotation == self.interp.sym_type ||
-            annotation == self.interp.sym_abstract ||
-            annotation == self.interp.sym_union ||
-            annotation == self.interp.sym_alias) {
-            return self.parse_define_type(e, annotation);
-        }
-
-        // FFI defines: [ffi lib], [ffi λ]
-        if (annotation == self.interp.sym_ffi) {
-            return self.parse_define_ffi(e, &attrs, attr_count);
-        }
-
-        // Special defines: [macro], [effect], [schema], [relation]
-        return self.parse_define_special(e, annotation, &attrs, attr_count);
+        if (!self.parse_define_attrs(&attrs, &attr_count)) return null;
+        return self.parse_define_with_annotation(e, &attrs, attr_count);
     }
 
     // Shorthand define: (define (name params...) body) => (define name (lambda (params...) body))
@@ -187,19 +219,7 @@ fn Expr* Parser.parse_define(Parser* self) {
         return self.parse_shorthand_define(e);
     }
 
-    // Normal define: (define name value)
-    if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected name after define"); return null; }
-    SymbolId name = self.get_current_symbol();
-    self.lexer.advance();
-
-    Expr* value = self.parse_expr();
-
-    self.expect(T_RPAREN, ")");
-
-    e.tag = E_DEFINE;
-    e.define.name = name;
-    e.define.value = value;
-    return e;
+    return self.parse_normal_define(e);
 }
 
 /**
