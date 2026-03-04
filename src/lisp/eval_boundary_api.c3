@@ -14,6 +14,23 @@ fn Value* boundary_copy_to_parent(Value* v, Interp* interp) @inline {
 }
 
 <*
+@require interp != null : "boundary_enter_scope: null interp"
+@require target_scope != null : "boundary_enter_scope: null target_scope"
+*>
+fn main::ScopeRegion* boundary_enter_scope(Interp* interp, main::ScopeRegion* target_scope) @inline {
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = target_scope;
+    return saved_scope;
+}
+
+<*
+@require interp != null : "boundary_leave_scope: null interp"
+*>
+fn void boundary_leave_scope(Interp* interp, main::ScopeRegion* saved_scope) @inline {
+    interp.current_scope = saved_scope;
+}
+
+<*
 @require interp != null : "boundary_copy_to_parent_site: null interp"
 *>
 fn Value* boundary_copy_to_parent_site(Value* v, Interp* interp, uint site) @inline {

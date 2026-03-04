@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-03-04: Session 49 - Scope Enter/Leave Boundary Helpers
+
+### Summary
+Standardized temporary scope switching with dedicated boundary helpers and adopted them in macro hygiene capture path.
+
+### What changed
+- `src/lisp/eval_boundary_api.c3`:
+  - Added:
+    - `boundary_enter_scope(interp, target_scope)` → returns prior scope
+    - `boundary_leave_scope(interp, saved_scope)`
+- `src/lisp/macros_expansion.c3`:
+  - `capture_template_bindings_in_root_scope(...)` now uses:
+    - `boundary_enter_scope(...)`
+    - `boundary_leave_scope(...)` with `defer`
+  - Replaces direct manual scope assignment/restoration.
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 48 - Instance Wrapper Allocation Cleanup
 
 ### Summary
