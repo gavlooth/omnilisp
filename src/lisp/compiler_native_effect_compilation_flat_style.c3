@@ -50,6 +50,45 @@ fn usz Compiler.compile_perform_flat(Compiler* self, Expr* expr) {
     return id;
 }
 
+fn usz Compiler.compile_handle_effect_tag(Compiler* self, SymbolId effect_tag) {
+    usz tag_r = self.next_result();
+    self.emit_temp_decl(tag_r);
+    self.emit(" = aot::make_symbol(\"");
+    char[] tag_name = self.interp.symbols.get_name(effect_tag);
+    self.emit_escaped(tag_name);
+    self.emit("\");\n");
+    return tag_r;
+}
+
+fn void Compiler.emit_handle_arrays(Compiler* self, usz clause_count, usz* tags_arr_out, usz* hdlrs_arr_out) {
+    *tags_arr_out = self.next_result();
+    self.emit_indent();
+    self.emit("lisp::Value*[");
+    self.emit_usz(clause_count > 0 ? clause_count : 1);
+    self.emit("] _eff_tags_");
+    self.emit_usz(*tags_arr_out);
+    self.emit(";\n");
+
+    *hdlrs_arr_out = self.next_result();
+    self.emit_indent();
+    self.emit("lisp::Value*[");
+    self.emit_usz(clause_count > 0 ? clause_count : 1);
+    self.emit("] _eff_hdlrs_");
+    self.emit_usz(*hdlrs_arr_out);
+    self.emit(";\n");
+}
+
+fn void Compiler.emit_handle_array_slot(Compiler* self, char[] name, usz arr_id, usz idx, usz value_r) {
+    self.emit_indent();
+    self.emit(name);
+    self.emit_usz(arr_id);
+    self.emit("[");
+    self.emit_usz(idx);
+    self.emit("] = ");
+    self.emit_temp_ref(value_r);
+    self.emit(";\n");
+}
+
 fn usz Compiler.compile_handle_flat(Compiler* self, Expr* expr) {
     usz clause_count = expr.handle.clause_count;
 
@@ -57,14 +96,7 @@ fn usz Compiler.compile_handle_flat(Compiler* self, Expr* expr) {
     usz[8] handler_rs;
     usz[8] tag_rs;
     for (usz i = 0; i < clause_count && i < 8; i++) {
-        // Tag symbol
-        tag_rs[i] = self.next_result();
-        self.emit_temp_decl(tag_rs[i]);
-        self.emit(" = aot::make_symbol(\"");
-        char[] tag_name = self.interp.symbols.get_name(expr.handle.clauses[i].effect_tag);
-        self.emit_escaped(tag_name);
-        self.emit("\");\n");
-
+        tag_rs[i] = self.compile_handle_effect_tag(expr.handle.clauses[i].effect_tag);
         // Handler closure (synthetic lambda from prescan)
         handler_rs[i] = self.compile_to_temp(expr.handle.clauses[i].handler_body);
     }
@@ -72,41 +104,14 @@ fn usz Compiler.compile_handle_flat(Compiler* self, Expr* expr) {
     // Compile body closure (synthetic lambda from prescan)
     usz body_r = self.compile_to_temp(expr.handle.body);
 
-    // Build tags and handlers arrays (C3 array syntax: Type[N] name)
-    usz tags_arr = self.next_result();
-    self.emit_indent();
-    self.emit("lisp::Value*[");
-    self.emit_usz(clause_count > 0 ? clause_count : 1);
-    self.emit("] _eff_tags_");
-    self.emit_usz(tags_arr);
-    self.emit(";\n");
-
-    usz hdlrs_arr = self.next_result();
-    self.emit_indent();
-    self.emit("lisp::Value*[");
-    self.emit_usz(clause_count > 0 ? clause_count : 1);
-    self.emit("] _eff_hdlrs_");
-    self.emit_usz(hdlrs_arr);
-    self.emit(";\n");
+    // Build tags and handlers arrays (C3 array syntax: Type[N] name).
+    usz tags_arr = 0;
+    usz hdlrs_arr = 0;
+    self.emit_handle_arrays(clause_count, &tags_arr, &hdlrs_arr);
 
     for (usz i = 0; i < clause_count && i < 8; i++) {
-        self.emit_indent();
-        self.emit("_eff_tags_");
-        self.emit_usz(tags_arr);
-        self.emit("[");
-        self.emit_usz(i);
-        self.emit("] = ");
-        self.emit_temp_ref(tag_rs[i]);
-        self.emit(";\n");
-
-        self.emit_indent();
-        self.emit("_eff_hdlrs_");
-        self.emit_usz(hdlrs_arr);
-        self.emit("[");
-        self.emit_usz(i);
-        self.emit("] = ");
-        self.emit_temp_ref(handler_rs[i]);
-        self.emit(";\n");
+        self.emit_handle_array_slot("_eff_tags_", tags_arr, i, tag_rs[i]);
+        self.emit_handle_array_slot("_eff_hdlrs_", hdlrs_arr, i, handler_rs[i]);
     }
 
     usz id = self.next_result();
@@ -382,52 +387,60 @@ fn void Compiler.emit_pattern_var_decl(Compiler* self, SymbolId name) {
     }
 }
 
+fn void Compiler.emit_pattern_var_assign(Compiler* self, SymbolId name, char[] rhs) {
+    self.emit_pattern_var_decl(name);
+    self.emit_symbol_name(name);
+    self.emit(" = ");
+    self.emit(rhs);
+    self.emit("; ");
+}
+
+fn void Compiler.emit_pattern_seq_elem_access(Compiler* self, Pattern* pat, char[] val_name, usz idx) {
+    self.emit("lisp::Value* _elem_");
+    self.emit_usz(idx);
+    if (pat.rest_pos == REST_START) {
+        // [.. a b] — elements are at end of list.
+        self.emit(" = aot::list_nth(");
+        self.emit(val_name);
+        self.emit(", aot::list_length(");
+        self.emit(val_name);
+        self.emit(") - ");
+        self.emit_usz(pat.elem_count - idx);
+        self.emit("); ");
+        return;
+    }
+    // REST_NONE, REST_END, REST_MIDDLE — elements at start.
+    self.emit(" = aot::list_nth(");
+    self.emit(val_name);
+    self.emit(", ");
+    self.emit_usz(idx);
+    self.emit("); ");
+}
+
+fn void Compiler.emit_pattern_seq_elem_binding(Compiler* self, Pattern* pat, usz idx) {
+    if (pat.elements[idx].tag != PAT_VAR) return;
+    self.emit_pattern_var_decl(pat.elements[idx].var_name);
+    self.emit_symbol_name(pat.elements[idx].var_name);
+    self.emit(" = _elem_");
+    self.emit_usz(idx);
+    self.emit("; ");
+}
+
 fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] val_name) {
     if (pat == null) return;
 
     switch (pat.tag) {
         case PAT_VAR:
-            self.emit_pattern_var_decl(pat.var_name);
-            self.emit_symbol_name(pat.var_name);
-            self.emit(" = ");
-            self.emit(val_name);
-            self.emit("; ");
+            self.emit_pattern_var_assign(pat.var_name, val_name);
 
         case PAT_SEQ:
-            // Bind sequence elements
+            // Bind sequence elements.
             for (usz i = 0; i < pat.elem_count; i++) {
-                // Generate element access — index depends on rest position
-                self.emit("lisp::Value* _elem_");
-                self.emit_usz(i);
-                if (pat.rest_pos == REST_START) {
-                    // [.. a b] — elements are at end of list
-                    self.emit(" = aot::list_nth(");
-                    self.emit(val_name);
-                    self.emit(", aot::list_length(");
-                    self.emit(val_name);
-                    self.emit(") - ");
-                    self.emit_usz(pat.elem_count - i);
-                    self.emit("); ");
-                } else {
-                    // REST_NONE, REST_END, REST_MIDDLE — elements at start
-                    self.emit(" = aot::list_nth(");
-                    self.emit(val_name);
-                    self.emit(", ");
-                    self.emit_usz(i);
-                    self.emit("); ");
-                }
-
-                // Recursively bind
-                if (pat.elements[i].tag == PAT_VAR) {
-                    self.emit_pattern_var_decl(pat.elements[i].var_name);
-                    self.emit_symbol_name(pat.elements[i].var_name);
-                    self.emit(" = _elem_");
-                    self.emit_usz(i);
-                    self.emit("; ");
-                }
+                self.emit_pattern_seq_elem_access(pat, val_name, i);
+                self.emit_pattern_seq_elem_binding(pat, i);
             }
 
-            // Bind rest if REST_MIDDLE
+            // Bind rest if REST_MIDDLE.
             if (pat.rest_pos == REST_MIDDLE) {
                 self.emit_pattern_var_decl(pat.rest_binding);
                 self.emit_symbol_name(pat.rest_binding);
@@ -475,4 +488,3 @@ fn void Compiler.compile_path(Compiler* self, Expr* expr) {
         self.emit("\"))");
     }
 }
-

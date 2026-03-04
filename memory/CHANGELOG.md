@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-03-04: Session 82 - Split Native Effect Emission Helpers
+
+### Summary
+Refactored native-effect flat compilation helpers by extracting focused emit utilities from `compile_handle_flat(...)` and `compile_pattern_bindings(...)`, keeping generated code shape and runtime behavior unchanged.
+
+### What changed
+- `src/lisp/compiler_native_effect_compilation_flat_style.c3`:
+  - Added:
+    - `Compiler.compile_handle_effect_tag(effect_tag)`
+    - `Compiler.emit_handle_arrays(clause_count, tags_arr_out, hdlrs_arr_out)`
+    - `Compiler.emit_handle_array_slot(name, arr_id, idx, value_r)`
+    - `Compiler.emit_pattern_var_assign(name, rhs)`
+    - `Compiler.emit_pattern_seq_elem_access(pat, val_name, idx)`
+    - `Compiler.emit_pattern_seq_elem_binding(pat, idx)`
+  - Refactored:
+    - `Compiler.compile_handle_flat(...)` now composes the new handle/tag/array helpers
+    - `Compiler.compile_pattern_bindings(...)` now delegates sequence element access and PAT_VAR assignment helpers
+  - Preserved:
+    - max compiled handle clause emission behavior (`i < 8`)
+    - clause/body compilation order and emitted `compiled_handle` call shape
+    - pattern binding semantics for `PAT_VAR`, `PAT_SEQ`, and `REST_MIDDLE`
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 81 - Split JIT Eval Cache/TCO Scope Helpers
 
 ### Summary
