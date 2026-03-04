@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-03-04: Session 48 - Instance Wrapper Allocation Cleanup
+
+### Summary
+Removed the remaining wrapper-scope `current_scope` mutation in instance construction by routing wrapper allocation through boundary alloc helpers.
+
+### What changed
+- `src/lisp/eval_type_evaluators.c3`:
+  - `make_instance_in_scope(...)` now allocates wrapper `Value` with:
+    - `boundary_alloc_value_in_scope(interp, wrapper_scope, true)`
+  - Removed explicit:
+    - `interp.current_scope = wrapper_scope`
+    - wrapper `alloc_value` + manual dtor registration
+    - `interp.current_scope = saved_scope`
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 47 - Macro Hygiene Capture Scope Helper
 
 ### Summary

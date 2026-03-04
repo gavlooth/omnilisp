@@ -42,13 +42,9 @@ fn Value* make_instance_in_scope(Interp* interp, main::ScopeRegion* wrapper_scop
             if (copied != null) inst.fields[i] = *copied;
         }
     }
-    interp.current_scope = wrapper_scope;
-
-    Value* v = interp.alloc_value();
-    main::scope_register_dtor(wrapper_scope, (void*)v, &scope_dtor_value);
+    Value* v = boundary_alloc_value_in_scope(interp, wrapper_scope, true);
     v.tag = INSTANCE;
     v.instance_val = inst;
-    interp.current_scope = saved_scope;
     return v;
 }
 
