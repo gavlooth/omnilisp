@@ -206,7 +206,7 @@ fn void Compiler.serialize_path_expr_to_buf(Compiler* self, Expr* expr, List{cha
     }
 }
 
-fn bool Compiler.serialize_expr_specialized(Compiler* self, Expr* expr, List{char}* buf) {
+fn bool Compiler.serialize_expr_specialized_core(Compiler* self, Expr* expr, List{char}* buf) {
     switch (expr.tag) {
         case E_APP:
             self.serialize_binary_expr_form("(", expr.app.func, expr.app.arg, buf);
@@ -245,6 +245,13 @@ fn bool Compiler.serialize_expr_specialized(Compiler* self, Expr* expr, List{cha
         case E_OR:
             self.serialize_binary_expr_form("(or ", expr.or_expr.left, expr.or_expr.right, buf);
             return true;
+        default:
+            return false;
+    }
+}
+
+fn bool Compiler.serialize_expr_specialized_reader(Compiler* self, Expr* expr, List{char}* buf) {
+    switch (expr.tag) {
         case E_BEGIN:
             self.serialize_begin_expr_to_buf(expr, buf);
             return true;
@@ -272,6 +279,11 @@ fn bool Compiler.serialize_expr_specialized(Compiler* self, Expr* expr, List{cha
         default:
             return false;
     }
+}
+
+fn bool Compiler.serialize_expr_specialized(Compiler* self, Expr* expr, List{char}* buf) {
+    if (self.serialize_expr_specialized_core(expr, buf)) return true;
+    return self.serialize_expr_specialized_reader(expr, buf);
 }
 
 fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
@@ -320,4 +332,3 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
             self.buf_append(buf, "nil");
     }
 }
-

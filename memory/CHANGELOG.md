@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-03-04: Session 88 - Split Expr Serializer Specialized Dispatch
+
+### Summary
+Refactored `serialize_expr_specialized(...)` into two focused helpers (`core forms` and `reader shorthand forms`) while preserving serialized output shape for all specialized expression tags.
+
+### What changed
+- `src/lisp/compiler_expr_serialize_exprs.c3`:
+  - Added:
+    - `Compiler.serialize_expr_specialized_core(expr, buf)`
+    - `Compiler.serialize_expr_specialized_reader(expr, buf)`
+  - Refactored:
+    - `Compiler.serialize_expr_specialized(expr, buf)` now delegates to the two helpers above
+  - Preserved:
+    - specialized handling for app/if/define/quote/reset/shift/perform/resolve/and/or
+    - begin/set/index/path/quasiquote/unquote/unquote-splicing serialization forms
+    - fallback behavior unchanged when a tag is not specialized
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 87 - Split Escape-Promotion Dispatch/Memo Helpers
 
 ### Summary
