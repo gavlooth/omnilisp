@@ -10,6 +10,30 @@ Execution policy:
 - Keep commits small and domain-local.
 - Prefer behavior-preserving refactors before semantic changes.
 
+## Current Status (2026-03-04)
+
+- Sessions 34-44 goals: completed in sequence (see `memory/CHANGELOG.md` and commit history).
+- Continued hardening/decomposition after Session 44: Sessions 45-68 completed.
+- Validation discipline held for each session:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
+### Post-44 Continuation Snapshot (Sessions 45-68)
+
+- Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.
+- Scoped allocation/switch helpers consolidated (`enter/leave`, `push/pop child scope`, scoped env helpers).
+- JIT/runtime lifetime hardening completed for:
+  - closure env-copy paths
+  - root promotion paths
+  - scoped eval/finalization paths
+  - constructor allocation failure paths
+- Hotspot decomposition continued in scheduler/runtime modules:
+  - scheduler await/cancel/join/spawn/offload paths
+  - wakeup drain event handlers
+  - JIT set-path and cache warm traversal helpers
+
 ## Global Gates (run after every commit)
 
 ```bash
@@ -139,14 +163,14 @@ rg -n "fn .*boundary_" src/lisp
 
 ## Progress Ledger
 
-- [ ] Session 34 complete
-- [ ] Session 35 complete
-- [ ] Session 36 complete
-- [ ] Session 37 complete
-- [ ] Session 38 complete
-- [ ] Session 39 complete
-- [ ] Session 40 complete
-- [ ] Session 41 complete
-- [ ] Session 42 complete
-- [ ] Session 43 complete
-- [ ] Session 44 complete
+- [x] Session 34 complete
+- [x] Session 35 complete
+- [x] Session 36 complete
+- [x] Session 37 complete
+- [x] Session 38 complete
+- [x] Session 39 complete
+- [x] Session 40 complete
+- [x] Session 41 complete
+- [x] Session 42 complete
+- [x] Session 43 complete
+- [x] Session 44 complete
