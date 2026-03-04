@@ -131,6 +131,38 @@ fn Value* prim_coroutine(Value*[] args, Env* env, Interp* interp) {
     return make_coroutine(interp, ctx);
 }
 
+fn void coroutine_ctx_cleanup(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
+    if (ctx.user_data != null) {
+        mem::free(ctx.user_data);
+        ctx.user_data = null;
+    }
+    coroutine_val.coroutine_val = null;
+    main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
+}
+
+fn Value* prim_resume_error_and_cleanup(
+    Value* coroutine_val,
+    main::StackCtx* ctx,
+    Interp* interp,
+    char[] msg
+) {
+    coroutine_ctx_cleanup(coroutine_val, ctx, interp);
+    return raise_error(interp, msg);
+}
+
+fn Value* prim_resume_complete(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
+    Value* result = (Value*)ctx.result;
+    coroutine_ctx_cleanup(coroutine_val, ctx, interp);
+    return result != null ? result : make_nil(interp);
+}
+
+fn Value* prim_resume_yield_result(Interp* interp) {
+    if (interp.yield_value != null) {
+        return boundary_copy_to_parent_site(interp.yield_value, interp, COPY_SITE_PRIM_RESUME);
+    }
+    return make_nil(interp);
+}
+
 fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "resume: expected a coroutine argument");
     Value* coroutine_val = args[0];
@@ -142,13 +174,7 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
     if (ctx == null) return raise_error(interp, "resume: null coroutine");
 
     if (ctx.status == main::StackCtxStatus.CTX_COMPLETED || ctx.status == main::StackCtxStatus.CTX_DEAD) {
-        if (ctx.user_data != null) {
-            mem::free(ctx.user_data);
-            ctx.user_data = null;
-        }
-        coroutine_val.coroutine_val = null;
-        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
-        return raise_error(interp, "resume: coroutine already completed");
+        return prim_resume_error_and_cleanup(coroutine_val, ctx, interp, "resume: coroutine already completed");
     }
 
     Value* resume_val = args.len > 1 ? args[1] : make_nil(interp);
@@ -170,25 +196,11 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
 
     // Stack overflow — coroutine hit guard page
     if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
-        if (ctx.user_data != null) {
-            mem::free(ctx.user_data);
-            ctx.user_data = null;
-        }
-        coroutine_val.coroutine_val = null;
-        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
-        return raise_error(interp, "stack overflow in coroutine");
+        return prim_resume_error_and_cleanup(coroutine_val, ctx, interp, "stack overflow in coroutine");
     }
 
     if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
-        Value* result = (Value*)ctx.result;
-        // Free thunk state
-        if (ctx.user_data != null) {
-            mem::free(ctx.user_data);
-            ctx.user_data = null;
-        }
-        coroutine_val.coroutine_val = null;
-        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
-        return result != null ? result : make_nil(interp);
+        return prim_resume_complete(coroutine_val, ctx, interp);
     }
 
     // Coroutine yielded — copy value to caller's scope.
@@ -196,10 +208,7 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
     // When the coroutine completes, that scope is released, invalidating all yield values.
     // The caller may still hold pointers to previously yielded values, so we must
     // copy each yield value into the caller's scope (current_scope, restored above).
-    if (interp.yield_value != null) {
-        return boundary_copy_to_parent_site(interp.yield_value, interp, COPY_SITE_PRIM_RESUME);
-    }
-    return make_nil(interp);
+    return prim_resume_yield_result(interp);
 }
 
 fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {

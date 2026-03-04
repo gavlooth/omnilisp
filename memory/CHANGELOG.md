@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-03-04: Session 70 - Decompose Coroutine `resume` Lifecycle Handling
+
+### Summary
+Refactored `prim_resume(...)` by extracting coroutine-context cleanup and terminal/yield result handling into focused helpers, reducing repeated cleanup branches while preserving behavior.
+
+### What changed
+- `src/lisp/primitives_iter_coroutine.c3`:
+  - Added:
+    - `coroutine_ctx_cleanup(coroutine_val, ctx, interp)`
+    - `prim_resume_error_and_cleanup(coroutine_val, ctx, interp, msg)`
+    - `prim_resume_complete(coroutine_val, ctx, interp)`
+    - `prim_resume_yield_result(interp)`
+  - `prim_resume(...)` now delegates:
+    - already-complete / dead pre-check cleanup
+    - stack-overflow path cleanup
+    - completed-result return
+    - yielded-value copy-to-parent path
+  - Preserved:
+    - all error strings
+    - stack context destroy semantics
+    - yielded value copy behavior via `boundary_copy_to_parent_site(...)`
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 69 - Decompose Fiber Cancellation Internals
 
 ### Summary
