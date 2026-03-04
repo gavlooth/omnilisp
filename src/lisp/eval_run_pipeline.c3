@@ -39,13 +39,14 @@ fn Value* run_promote_result(Value* jit_result, Interp* interp, main::ScopeRegio
     Value* original_result = jit_result;
     PromotionContext boundary_ctx = {};
     promotion_context_begin(interp, &boundary_ctx, PROMOTION_CTX_BUDGET_RETURN);
-    interp.current_scope = saved_scope;
+    main::ScopeRegion* promote_result_saved_scope = boundary_enter_scope(interp, saved_scope);
+    defer boundary_leave_scope(interp, promote_result_saved_scope);
 
     if (child_scope.refcount == 1) {
         if (jit_result.scope_gen != child_scope.escape_generation) {
-            interp.current_scope = child_scope;
+            main::ScopeRegion* promote_saved_scope = boundary_enter_scope(interp, child_scope);
             jit_result = boundary_promote_to_escape(jit_result, interp);
-            interp.current_scope = saved_scope;
+            boundary_leave_scope(interp, promote_saved_scope);
         }
         if (boundary_ctx.aborted) {
             jit_result = boundary_copy_from_releasing_scope(

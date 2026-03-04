@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-03-04: Session 53 - Run Result Promotion Boundary Scope Discipline
+
+### Summary
+Removed direct scope mutation in `run_promote_result(...)` and routed promotion-time scope transitions through boundary enter/leave helpers with `defer`.
+
+### What changed
+- `src/lisp/eval_run_pipeline.c3`:
+  - `run_promote_result(...)` now:
+    - enters `saved_scope` via `boundary_enter_scope(...)` and restores with `defer boundary_leave_scope(...)`
+    - enters `child_scope` during escape promotion via `boundary_enter_scope(...)` and restores via `boundary_leave_scope(...)`
+  - removed direct manual assignments:
+    - `interp.current_scope = saved_scope`
+    - `interp.current_scope = child_scope`
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1143 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Unified: 1105 passed, 0 failed (ASAN-mode skips active)
+  - Compiler: 73 passed, 0 failed
+
 ## 2026-03-04: Session 52 - Root Promotion + JIT Closure Env-Scope Guards
 
 ### Summary
