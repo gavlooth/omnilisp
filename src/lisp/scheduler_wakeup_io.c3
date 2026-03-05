@@ -100,7 +100,7 @@ fn bool wakeup_enqueue(WakeupEventType type, usz fiber_id, int status, void* pay
         usz tail = g_scheduler.wakeup_tail.load();
         usz head = g_scheduler.wakeup_head.load();
         if (head - tail >= WAKEUP_RING_SIZE) {
-            g_scheduler.wakeup_drops++;
+            g_scheduler.wakeup_drops.add(1);
             return false;
         }
 

@@ -163,8 +163,8 @@ struct Scheduler {
     bool thread_task_mu_ready;
     // Fairness: rotate resume start index so no fiber is permanently first
     usz resume_offset;
-    // Observability: wakeup drops (ring full)
-    usz wakeup_drops;
+    // Observability: wakeup drops (ring full), updated by producer contexts.
+    types::Atomic{usz} wakeup_drops;
 }
 
 // Global scheduler (single-threaded)
@@ -326,4 +326,3 @@ fn void scheduler_init() {
 
     g_scheduler_initialized = true;
 }
-

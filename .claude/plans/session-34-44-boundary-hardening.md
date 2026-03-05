@@ -398,6 +398,32 @@ Execution policy:
   - strict ASAN full suite: pass (`Unified 1204/0`, `Compiler 73/0`)
   - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1204/0`, `Compiler 73/0`)
 
+### Session 209 Follow-up (2026-03-05): Wakeup Drop-Counter Invariant
+
+- Added scheduler regression `run_scheduler_wakeup_drop_counter_boundary_tests(...)` in `src/lisp/tests_tests.c3`:
+  - fills wakeup ring, forces three overflow enqueues, verifies `wakeup_drops` delta,
+  - verifies queue drain convergence and boundary/runtime field stability.
+- Wired into `run_scheduler_tests(...)`.
+- Validation:
+  - normal full suite: pass (`Unified 1206/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1205/0`, `Compiler 73/0`)
+  - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1205/0`, `Compiler 73/0`)
+
+### Session 210 Follow-up (2026-03-05): Wakeup Drop Counter Thread-Safety
+
+- Hardened wakeup overflow telemetry in scheduler producer paths:
+  - `Scheduler.wakeup_drops` moved to `types::Atomic{usz}` in `src/lisp/scheduler_state_offload.c3`.
+  - ring-full path in `wakeup_enqueue(...)` now increments via atomic add (`src/lisp/scheduler_wakeup_io.c3`).
+- Updated drop-counter boundary regression reads to use atomic loads:
+  - `run_scheduler_wakeup_drop_counter_boundary_tests(...)` in `src/lisp/tests_tests.c3`.
+- Outcome:
+  - preserves existing queue semantics and test contracts,
+  - removes plain-integer producer-side race from multi-producer wakeup accounting.
+- Validation:
+  - normal full suite: pass (`Unified 1205/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1206/0`, `Compiler 73/0`)
+  - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1205/0`, `Compiler 73/0`)
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.

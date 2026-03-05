@@ -1,5 +1,70 @@
 # Changelog
 
+## 2026-03-05: Session 210 - Atomic Wakeup Drop Counter Hardening
+
+### Summary
+Hardened scheduler wakeup overflow accounting for multi-producer contexts by making `wakeup_drops` atomic and updating regression reads accordingly.
+
+### What changed
+- `src/lisp/scheduler_state_offload.c3`
+  - `Scheduler.wakeup_drops` changed from `usz` to `types::Atomic{usz}`.
+- `src/lisp/scheduler_wakeup_io.c3`
+  - In `wakeup_enqueue(...)`, ring-full path now uses atomic increment:
+    - `g_scheduler.wakeup_drops.add(1)`.
+- `src/lisp/tests_tests.c3`
+  - Updated `run_scheduler_wakeup_drop_counter_boundary_tests(...)` to read atomic counter via `.load()` for delta assertions.
+
+### Why this matters
+- `wakeup_enqueue(...)` can be called by producer contexts beyond the scheduler consumer loop (for example worker completion paths). A plain integer increment in that path is a race.
+- This keeps overflow telemetry deterministic under concurrency without changing queue behavior or public APIs.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1205 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1206 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `OMNI_FIBER_TEMP=1 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1205 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+
+## 2026-03-05: Session 209 - Wakeup Drop-Counter Boundary Regression
+
+### Summary
+Added scheduler regression coverage for wakeup-ring overflow accounting, asserting deterministic `wakeup_drops` increments under overflow and boundary/runtime state stability.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added:
+    - `run_scheduler_wakeup_drop_counter_boundary_tests(...)`
+  - New coverage loop:
+    - fills wakeup ring to capacity,
+    - attempts three additional enqueues (expected drops),
+    - asserts `(wakeup_drops delta) == 3`,
+    - drains queue and asserts `head == tail`,
+    - verifies interpreter boundary/runtime fields remain unchanged.
+  - Wired into `run_scheduler_tests(...)`.
+
+### Why this matters
+- Existing regressions covered overflow rejection and queue-drain behavior but did not validate drop-accounting observability.
+- This locks in deterministic overflow telemetry (`wakeup_drops`) while preserving boundary hardening guarantees.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1206 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1205 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `OMNI_FIBER_TEMP=1 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1205 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+
 ## 2026-03-05: Session 208 - No-Async Scheduler Cleanup Helper Roll-In
 
 ### Summary

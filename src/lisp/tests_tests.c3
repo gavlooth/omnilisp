@@ -2595,6 +2595,66 @@ fn void run_scheduler_invalid_offload_wakeup_boundary_tests(Interp* interp, int*
     }
 }
 
+fn void run_scheduler_wakeup_drop_counter_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: ring overflow increments wakeup_drops deterministically and
+    // does not mutate interpreter boundary/runtime fields.
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
+    bool ok = true;
+    usz failed_step = 0;
+    char[] failed_phase = "";
+
+    for (usz i = 0; i < 12; i++) {
+        void* saved_async = null;
+        scheduler_test_prepare_no_async(&saved_async);
+        usz drops_before = g_scheduler.wakeup_drops.load();
+
+        usz pushed = 0;
+        for (usz j = 0; j < WAKEUP_RING_SIZE; j++) {
+            if (wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + i * WAKEUP_RING_SIZE + j + 1, -1, null)) pushed++;
+        }
+        bool drop1 = !wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + 800000 + i, -1, null);
+        bool drop2 = !wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + 810000 + i, -2, null);
+        bool drop3 = !wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + 820000 + i, -3, null);
+
+        drain_wakeups();
+        usz drops_after = g_scheduler.wakeup_drops.load();
+        usz head = g_scheduler.wakeup_head.load();
+        usz tail = g_scheduler.wakeup_tail.load();
+
+        bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+        bool drop_ok = pushed == WAKEUP_RING_SIZE &&
+                       drop1 && drop2 && drop3 &&
+                       (drops_after - drops_before) == 3;
+        bool queue_ok = head == tail;
+        scheduler_test_cleanup_no_async(saved_async);
+
+        if (!drop_ok || !queue_ok || !state_ok) {
+            ok = false;
+            failed_step = i;
+            if (!drop_ok) {
+                failed_phase = "drop-counter";
+            } else if (!queue_ok) {
+                failed_phase = "queue";
+            } else {
+                failed_phase = "boundary";
+            }
+            break;
+        }
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler wakeup drop-counter boundary restore");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] scheduler wakeup drop-counter boundary restore at step %d (%s)",
+            (int)failed_step,
+            (ZString)failed_phase
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_scheduler_duplicate_offload_ready_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: duplicate/late WAKEUP_OFFLOAD_READY events for one active pending
     // offload retain the first completion payload, safely discard extras, and
@@ -3350,6 +3410,7 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
     run_scheduler_wakeup_wraparound_boundary_tests(interp, pass, fail);
     run_scheduler_wakeup_mixed_event_boundary_tests(interp, pass, fail);
     run_scheduler_invalid_offload_wakeup_boundary_tests(interp, pass, fail);
+    run_scheduler_wakeup_drop_counter_boundary_tests(interp, pass, fail);
     run_scheduler_duplicate_offload_ready_boundary_tests(interp, pass, fail);
     run_scheduler_consume_pending_offload_boundary_tests(interp, pass, fail);
     run_scheduler_consume_pending_tcp_read_boundary_tests(interp, pass, fail);
