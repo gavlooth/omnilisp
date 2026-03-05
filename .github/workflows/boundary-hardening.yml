@@ -76,6 +76,16 @@ jobs:
               core.setFailed(`Invalid pr_number input: '${{ github.event.inputs.pr_number }}'`);
               return;
             }
+            try {
+              await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: prNumber
+              });
+            } catch (err) {
+              core.notice(`Skipping boundary PR comment: #${prNumber} is not a PR in ${owner}/${repo}.`);
+              return;
+            }
             const marker = '<!-- omni-boundary-hardening-summary -->';
             const expectedBotLogin = '${{ github.event.inputs.pr_comment_bot_login }}' || 'github-actions[bot]';
             const summary = fs.readFileSync('build/boundary_hardening_job_summary.md', 'utf8');
