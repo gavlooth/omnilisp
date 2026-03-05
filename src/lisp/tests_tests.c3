@@ -1635,6 +1635,56 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+
+    // Load full Deduce CRUD server example and validate pipeline CRUD behavior.
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (load \"examples/deduce_crud_server.omni\") "
+            "  (pipeline/execute {'method \"POST\" 'path \"/items\" "
+            "                     'body {'id 101 'name \"paper\" 'qty 3}}) "
+            "  ('qty (repo/get-by-id 101)))",
+            interp);
+        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 3) {
+            emit_pass_literal("[PASS] deduce-crud pipeline create");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce-crud pipeline create");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (pipeline/execute {'method \"PUT\" 'path \"/items\" "
+            "                     'body {'id 101 'name \"paper\" 'qty 7}}) "
+            "  ('qty (repo/get-by-id 101)))",
+            interp);
+        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 7) {
+            emit_pass_literal("[PASS] deduce-crud pipeline update");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce-crud pipeline update");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (pipeline/execute {'method \"DELETE\" 'path \"/items\" "
+            "                     'body {'id 101}}) "
+            "  (if (repo/get-by-id 101) 0 1))",
+            interp);
+        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 1) {
+            emit_pass_literal("[PASS] deduce-crud pipeline delete");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce-crud pipeline delete");
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_http_tests_isolated(int* pass, int* fail) {

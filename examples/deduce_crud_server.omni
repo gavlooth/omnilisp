@@ -4,6 +4,11 @@
 ;;   (load "examples/deduce_crud_server.omni")
 ;;   (server/start "127.0.0.1" 8080)
 ;;
+;; Non-blocking lifecycle:
+;;   (define srv (server/start-async "127.0.0.1" 8080))
+;;   ;; ... send requests ...
+;;   (server/stop srv)
+;;
 ;; Example requests:
 ;;   curl -s http://127.0.0.1:8080/items
 ;;   curl -s -X POST http://127.0.0.1:8080/items -H 'content-type: application/json' \
@@ -162,8 +167,21 @@
     (spawn (lambda () (server/handle-client client)))
     (server/accept-loop listener)))
 
-(define (server/start host port)
-  (let (listener (tcp-listen host port 128))
+(define (server/start-async host port)
+  (let (listener (tcp-listen host port 128)
+        acceptor-id nil)
     (println (string-append "Deduce CRUD server listening on " host ":" (number->string port)))
-    (spawn (lambda () (server/accept-loop listener)))
+    (set! acceptor-id (spawn (lambda () (server/accept-loop listener))))
+    {'host host 'port port 'listener listener 'acceptor-id acceptor-id}))
+
+(define (server/stop server-state)
+  (if (null? server-state)
+      nil
+      (begin
+        (fiber-cancel ('acceptor-id server-state))
+        (tcp-close ('listener server-state))
+        nil)))
+
+(define (server/start host port)
+  (let (srv (server/start-async host port))
     (run-fibers)))
