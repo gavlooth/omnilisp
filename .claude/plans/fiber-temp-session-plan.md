@@ -309,6 +309,23 @@ Validation:
 Next:
 - Fold this harness summary into any CI profile that already sets `OMNI_TEST_SUMMARY=1` for boundary-hardening runs.
 
+## Fiber TEMP Phase 6h Progress (2026-03-05)
+
+Completed:
+- Added a one-command boundary-hardening runner:
+  - `scripts/run_boundary_hardening.sh`
+  - runs normal + ASAN matrix with Fiber TEMP and stack-affinity harness enabled by default.
+- Added profile docs in `docs/PROJECT_TOOLING.md` with toggle env vars.
+
+Validation:
+- `scripts/run_boundary_hardening.sh` passed end-to-end.
+- Normal stage: `stack_engine 21/0`, `scope_region 51/0`, `unified 1182/0`, `compiler 73/0`.
+- ASAN stage: `stack_engine 20/0`, `scope_region 51/0`, `unified 1181/0`, `compiler 73/0`.
+- Harness summary present and passing in both stages.
+
+Next:
+- Wire this script (or equivalent env profile) into external CI where available.
+
 ## Fiber TEMP Phase 5b Progress (2026-03-05)
 
 Completed:

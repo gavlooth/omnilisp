@@ -47,6 +47,31 @@ Reads `omni.toml`, parses C headers using libclang, and writes Omni FFI modules 
 
 ---
 
+## Developer Test Profiles
+
+### Boundary-Hardening Profile
+
+```bash
+scripts/run_boundary_hardening.sh
+```
+
+Runs a full hardening matrix:
+
+- normal build + test run,
+- ASAN build + test run,
+- `OMNI_FIBER_TEMP=1` enabled,
+- `OMNI_STACK_AFFINITY_HARNESS=1` enabled (subprocess misuse probe),
+- summary output via `OMNI_TEST_SUMMARY=1`.
+
+Toggles:
+
+- `OMNI_BOUNDARY_ENABLE_FIBER_TEMP=0` to disable Fiber TEMP exercise.
+- `OMNI_BOUNDARY_ENABLE_AFFINITY_HARNESS=0` to disable misuse probe.
+- `OMNI_BOUNDARY_QUIET=0` for verbose suite output.
+- `OMNI_BOUNDARY_SUMMARY=0` to disable summary lines.
+
+---
+
 ## omni.toml Format
 
 The project configuration uses a minimal TOML subset.

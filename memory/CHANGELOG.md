@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-03-05: Session 159 - Boundary-Hardening Runner Script
+
+### Summary
+Added a dedicated boundary-hardening runner script that executes the full safety matrix (normal + ASAN) with Fiber TEMP and stack-affinity harness enabled by default.
+
+### What changed
+- `scripts/run_boundary_hardening.sh` (new, executable)
+  - Stage 1: normal build (`c3c build`)
+  - Stage 2: normal run (`./build/main`) with boundary profile env defaults
+  - Stage 3: ASAN build (`c3c clean && c3c build --sanitize=address`)
+  - Stage 4: ASAN run with strict `ASAN_OPTIONS`
+  - Default profile env:
+    - `OMNI_FIBER_TEMP=1`
+    - `OMNI_STACK_AFFINITY_HARNESS=1`
+    - `OMNI_TEST_QUIET=1`
+    - `OMNI_TEST_SUMMARY=1`
+  - Optional toggles:
+    - `OMNI_BOUNDARY_ENABLE_FIBER_TEMP`
+    - `OMNI_BOUNDARY_ENABLE_AFFINITY_HARNESS`
+    - `OMNI_BOUNDARY_QUIET`
+    - `OMNI_BOUNDARY_SUMMARY`
+- `docs/PROJECT_TOOLING.md`
+  - Added “Developer Test Profiles” section documenting boundary-hardening runner usage and toggles.
+
+### Why this matters
+- Provides a single repeatable command for boundary-safety verification.
+- Keeps default local workflow unchanged while making hardening checks easy to run or wire into CI.
+- Ensures affinity fail-fast probe and Fiber TEMP paths are exercised together in one profile.
+
+### Validation
+- Ran `scripts/run_boundary_hardening.sh`.
+- Result: full profile passed:
+  - normal stack engine `21/0`, scope region `51/0`, unified `1182/0`, compiler `73/0`
+  - ASAN stack engine `20/0`, scope region `51/0`, unified `1181/0`, compiler `73/0`
+  - harness summary: `OMNI_TEST_SUMMARY suite=stack_affinity_harness pass=1 fail=0` in both normal and ASAN stages.
+
 ## 2026-03-05: Session 158 - Optional Affinity Harness Wrapper in Test Mode
 
 ### Summary

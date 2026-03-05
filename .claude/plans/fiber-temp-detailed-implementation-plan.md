@@ -100,6 +100,7 @@ Enablement substrate update:
   - closes API-level misuse gap for stack-owned teardown metadata.
 - Added an opt-in stack-affinity misuse probe (`--stack-affinity-probe`) to exercise fail-fast ownership violations in a controlled, non-default path.
 - Added optional harness wrapper (`OMNI_STACK_AFFINITY_HARNESS=1`) in default test mode to execute probe as a subprocess and emit machine-readable pass/fail summary.
+- Added reusable boundary-hardening runner script (`scripts/run_boundary_hardening.sh`) to execute normal + ASAN profile with Fiber TEMP and affinity harness defaults.
 
 ## 4. Phase Plan
 
