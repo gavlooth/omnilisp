@@ -57,6 +57,16 @@ struct DeduceDb {
     bool    open;
 }
 
+fn void deduce_db_finalizer(void* handle) {
+    if (handle == null) return;
+    DeduceDb* db = (DeduceDb*)handle;
+    if (db.env != null && db.open) {
+        mdb_env_close(db.env);
+        db.env = null;
+        db.open = false;
+    }
+}
+
 // ============================================================
 // Relation — named tuple schema + LMDB backing
 // ============================================================
@@ -132,7 +142,8 @@ fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
     db.open = true;
 
     // Wrap database pointer as scoped FFI handle
-    Value* v = make_ffi_handle_ex(interp, (void*)db, "deduce-db", null, true, false);
+    Value* v = make_ffi_handle_ex(interp, (void*)db, "deduce-db",
+        &deduce_db_finalizer, true, false);
     if (v == null) {
         mdb_env_close(db.env);
         mem::free(db);

@@ -146,6 +146,8 @@ struct Interp {
     Expr* jit_tco_expr;        // Next expression to evaluate (set by tail-call helpers)
     Env*  jit_tco_env;         // Environment for next expression
     main::ScopeRegion* tco_recycle_scope; // Scope eligible for TCO recycling (set by jit_eval_in_call_scope)
+    usz tco_scope_defer_slot;             // Defer slot index for call-scope cleanup retargeting
+    bool tco_scope_defer_active;          // True when call-scope defer slot is valid
     main::ScopeRegion* releasing_scope;   // Set during copy_to_parent to skip values not in this scope
     bool escape_env_mode;                 // When true, make_env/make_cons use current scope ESCAPE lane
     uint promotion_epoch_counter;         // Monotonic epoch counter for boundary promotion contexts
@@ -308,6 +310,8 @@ fn void interp_init_runtime_flags(Interp* self) {
     self.jit_tco_expr = null;
     self.jit_tco_env = null;
     self.tco_recycle_scope = null;
+    self.tco_scope_defer_slot = 0;
+    self.tco_scope_defer_active = false;
     self.releasing_scope = null;
     self.escape_env_mode = false;
     self.promotion_epoch_counter = 0;
@@ -417,6 +421,8 @@ fn void Interp.destroy(Interp* self) {
         self.current_scope = self.root_scope;
         self.releasing_scope = null;
         self.tco_recycle_scope = null;
+        self.tco_scope_defer_slot = 0;
+        self.tco_scope_defer_active = false;
         self.active_promotion_ctx = null;
         main::scope_release(self.root_scope);
         self.root_scope = null;

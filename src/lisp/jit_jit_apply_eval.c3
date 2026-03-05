@@ -90,6 +90,7 @@ fn void jit_warm_pattern_cache(Pattern* pat, Interp* interp) {
 }
 
 fn void jit_cache_expr(Expr* expr, Interp* interp) {
+    if (!run_jit_enabled(interp)) return;
     JitFn cached = jit_cache_lookup(expr);
     if (cached != null) return;
 

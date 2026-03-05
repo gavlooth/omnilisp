@@ -13,7 +13,9 @@ fn Value* jit_tco_sentinel() {
 // Execute a JitFn with trampoline TCO handling.
 // Must be used whenever calling a JitFn from outside jit_eval (e.g., run(), test harness).
 fn Value* jit_exec(JitFn f, Interp* interp) {
+    jit_exec_enter();
     Value* result = f(interp);
+    jit_exec_leave();
     while (interp.flags.jit_tco_bounce) {
         interp.flags.jit_tco_bounce = false;
         result = jit_eval(interp.jit_tco_expr, interp.jit_tco_env, interp);

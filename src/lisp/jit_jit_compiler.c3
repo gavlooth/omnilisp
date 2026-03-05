@@ -2,7 +2,6 @@ module lisp;
 
 import std::io;
 import std::collections::list;
-import main;
 // =============================================================================
 // SECTION 4: JIT COMPILER
 // =============================================================================
@@ -30,13 +29,16 @@ struct JitLocals {
 // Global JIT initialization flag
 bool g_jit_initialized = false;
 
-// JIT state cleanup tracking (C9: increased from 64 to 256, then to 4096)
-const usz JIT_STATE_POOL_SIZE = 4096;
-const usz JIT_STATE_GC_THRESHOLD = 3072;  // GC when pool reaches 75%
-void*[4096] g_jit_states;
+// JIT state cleanup tracking (C9: increased from 64 to 256, then to 4096).
+// Larger headroom avoids overflow warnings during long nested JIT chains where
+// safe-point GC cannot run until execution unwinds.
+const usz JIT_STATE_POOL_SIZE = 16384;
+const usz JIT_STATE_GC_THRESHOLD = JIT_STATE_POOL_SIZE * 3 / 4;  // GC when pool reaches 75%
+void*[JIT_STATE_POOL_SIZE] g_jit_states;
 usz g_jit_state_count = 0;
 bool g_jit_pool_warned = false;
 bool g_jit_gc_needed = false;  // signals that GC should run between evals
+usz g_jit_exec_depth = 0;      // active generated JIT frame depth
 
 // JIT compilation cache: Expr* → JitFn (open-addressing hash on pointer value)
 struct JitCacheEntry {
@@ -105,8 +107,12 @@ fn void jit_global_shutdown() {
         // Destroy all tracked JIT states
         for (usz i = 0; i < g_jit_state_count; i++) {
             _jit_destroy_state(g_jit_states[i]);
+            g_jit_states[i] = null;
         }
         g_jit_state_count = 0;
+        jit_cache_clear();
+        g_jit_gc_needed = false;
+        g_jit_pool_warned = false;
         finish_jit();
         g_jit_initialized = false;
     }
@@ -123,29 +129,40 @@ fn void jit_global_shutdown() {
 fn void jit_gc() {
     if (!g_jit_gc_needed) return;
 
-    // Instead of destroying states (which is slow/hangs in GNU Lightning),
-    // just reset the pool counter. The states are already cleared via
-    // _jit_clear_state() — only the code buffer remains. We leak the code
-    // buffers but they're small (~100 bytes each after clear_state).
-    // The cache is cleared so expressions get recompiled into new states.
+    // Full teardown between top-level evals: no JIT frames should be active.
+    for (usz i = 0; i < g_jit_state_count; i++) {
+        _jit_destroy_state(g_jit_states[i]);
+        g_jit_states[i] = null;
+    }
     g_jit_state_count = 0;
     jit_cache_clear();
     g_jit_gc_needed = false;
     g_jit_pool_warned = false;
 }
 
+fn void jit_exec_enter() @inline {
+    g_jit_exec_depth++;
+}
+
+fn void jit_exec_leave() @inline {
+    assert(g_jit_exec_depth > 0, "jit exec depth underflow");
+    g_jit_exec_depth--;
+}
+
 fn void jit_track_compiled_state(void* s) {
     if (g_jit_state_count < JIT_STATE_POOL_SIZE) {
         g_jit_states[g_jit_state_count] = s;
         g_jit_state_count++;
-        // Signal GC needed when approaching capacity
+        // Signal GC needed when approaching capacity.
         if (g_jit_state_count >= JIT_STATE_GC_THRESHOLD) {
-            g_jit_gc_needed = true;
-            $if DEBUG_BUILD:
-                io::eprintfn("[debug] JIT pool at %d/%d (%.0f%%), GC scheduled",
-                    g_jit_state_count, JIT_STATE_POOL_SIZE,
-                    (double)g_jit_state_count / (double)JIT_STATE_POOL_SIZE * 100.0);
-            $endif
+            if (!g_jit_gc_needed) {
+                g_jit_gc_needed = true;
+                $if DEBUG_BUILD:
+                    io::eprintfn("[debug] JIT pool at %d/%d (%.0f%%), GC scheduled",
+                        g_jit_state_count, JIT_STATE_POOL_SIZE,
+                        (double)g_jit_state_count / (double)JIT_STATE_POOL_SIZE * 100.0);
+                $endif
+            }
         }
         return;
     }
@@ -169,9 +186,7 @@ alias JitFn = fn Value*(Interp*);
  */
 fn JitFn jit_compile(Expr* expr, Interp* interp) {
     jit_global_init();
-
-    // GC old states when pool is near capacity
-    if (g_jit_gc_needed) {
+    if (g_jit_gc_needed && g_jit_exec_depth == 0) {
         jit_gc();
     }
 
@@ -211,4 +226,3 @@ fn JitFn jit_compile(Expr* expr, Interp* interp) {
 
     return (JitFn)code;
 }
-

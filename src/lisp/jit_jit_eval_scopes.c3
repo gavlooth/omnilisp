@@ -1,6 +1,7 @@
 module lisp;
 
 import main;
+
 fn bool env_chain_contains_scope_gen(Env* env, uint scope_gen, Env* stop_at) {
     Env* cur = env;
     while (cur != null && cur != stop_at) {
@@ -137,6 +138,28 @@ fn Value* jit_prepare_tco_recycle(
     }
     interp.current_scope = fresh;
     interp.tco_recycle_scope = fresh;  // Update: fresh is now the recyclable scope
+    if (interp.tco_scope_defer_active) {
+        main::StackCtx* defer_ctx = main::g_current_stack_ctx;
+        if (defer_ctx == null) {
+            interp.current_scope = cs;
+            interp.tco_recycle_scope = cs;
+            main::scope_release(fresh);
+            interp.jit_env = saved_env;
+            return raise_error(interp, "jit: missing active stack context for call-scope defer");
+        }
+        bool retargeted = main::stack_ctx_defer_update_arg(
+            defer_ctx,
+            interp.tco_scope_defer_slot,
+            (void*)fresh
+        );
+        if (!retargeted) {
+            interp.current_scope = cs;
+            interp.tco_recycle_scope = cs;
+            main::scope_release(fresh);
+            interp.jit_env = saved_env;
+            return raise_error(interp, "jit: failed to retarget call-scope defer");
+        }
+    }
     *env_io = jit_copy_tco_env_chain_for_recycle(*env_io, interp, cs);
     main::scope_release(cs);
     return null;
@@ -165,7 +188,9 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
         // Execute with env context.
         interp.jit_env = env;
         interp.flags.jit_tco_bounce = false;
+        jit_exec_enter();
         Value* result = cached(interp);
+        jit_exec_leave();
 
         // Check for TCO bounce.
         if (interp.flags.jit_tco_bounce) {
@@ -202,12 +227,25 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
         return raise_error(interp, "jit: failed to allocate call scope");
     }
 
+    main::StackCtx* current_ctx = main::g_current_stack_ctx;
+    bool registered_defer = false;
+    if (current_ctx != null) {
+        main::StackCtxDeferOps ops;
+        init_scope_guard_defer_ops(&ops);
+        registered_defer = main::stack_ctx_defer(current_ctx, &ops, (void*)call_scope);
+        if (!registered_defer) {
+            interp.current_scope = saved_scope;
+            main::scope_release(call_scope);
+            return raise_error(interp, "jit: failed to register call-scope cleanup");
+        }
+    }
+
     Value* result = jit_eval(body, call_env, interp);
 
     main::ScopeRegion* active_scope = interp.current_scope;
 
     interp.current_scope = saved_scope;
-    return jit_finalize_scoped_result(
+    Value* final = jit_finalize_scoped_result(
         result,
         result,
         interp,
@@ -215,6 +253,10 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
         active_scope,
         COPY_SITE_JIT_SINGLE_SCOPE_RETURN
     );
+    if (registered_defer) {
+        (void)pop_scope_guard_defer(current_ctx);
+    }
+    return final;
 }
 
 // Scope-per-call wrapper: evaluates closure body in a child scope.
@@ -233,9 +275,29 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp, bool
         interp.escape_env_mode = true;
     }
 
+    main::StackCtx* current_ctx = main::g_current_stack_ctx;
+    bool registered_defer = false;
+    usz defer_slot = 0;
+    if (current_ctx != null) {
+        main::StackCtxDeferOps ops;
+        init_scope_guard_defer_ops(&ops);
+        defer_slot = current_ctx.defer_count;
+        registered_defer = main::stack_ctx_defer(current_ctx, &ops, (void*)call_scope);
+        if (!registered_defer) {
+            interp.escape_env_mode = saved_escape_env;
+            interp.current_scope = saved_scope;
+            main::scope_release(call_scope);
+            return raise_error(interp, "jit: failed to register call-scope cleanup");
+        }
+    }
+
     // Mark call_scope as eligible for TCO recycling.
     main::ScopeRegion* saved_recycle = interp.tco_recycle_scope;
+    usz saved_defer_slot = interp.tco_scope_defer_slot;
+    bool saved_defer_active = interp.tco_scope_defer_active;
     interp.tco_recycle_scope = call_scope;
+    interp.tco_scope_defer_slot = defer_slot;
+    interp.tco_scope_defer_active = registered_defer;
 
     Value* result = jit_eval(body, call_env, interp);
 
@@ -244,9 +306,11 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp, bool
 
     // Restore saved state
     interp.tco_recycle_scope = saved_recycle;
+    interp.tco_scope_defer_slot = saved_defer_slot;
+    interp.tco_scope_defer_active = saved_defer_active;
     interp.escape_env_mode = saved_escape_env;
     interp.current_scope = saved_scope;
-    return jit_finalize_scoped_result(
+    Value* final = jit_finalize_scoped_result(
         result,
         result,
         interp,
@@ -254,6 +318,10 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp, bool
         active_scope,
         COPY_SITE_JIT_CALL_SCOPE_STEP2
     );
+    if (registered_defer) {
+        (void)pop_scope_guard_defer(current_ctx);
+    }
+    return final;
 }
 
 /// Copy env frames from `src` up to (but not including) `stop_at` into current_scope.

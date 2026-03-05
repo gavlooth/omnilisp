@@ -202,6 +202,7 @@ fn bool Parser.parse_export_from_name_list(Parser* self, Expr* e) {
 }
 
 fn bool Parser.parse_export_from_specifiers(Parser* self, Expr* e) {
+    char[] spec_err = "expected :all or (names...) after export-from module";
     if (self.lexer.current.type == T_SYMBOL) {
         SymbolId maybe_all = self.get_current_symbol();
         if ((uint)maybe_all == (uint)self.interp.sym_all) {
@@ -209,13 +210,13 @@ fn bool Parser.parse_export_from_specifiers(Parser* self, Expr* e) {
             self.lexer.advance();
             return true;
         }
-        self.set_error("expected :all or (names...) after export-from module");
+        self.set_error(spec_err);
         return false;
     }
     if (self.lexer.current.type == T_LPAREN) {
         return self.parse_export_from_name_list(e);
     }
-    self.set_error("expected :all or (names...) after export-from module");
+    self.set_error(spec_err);
     return false;
 }
 

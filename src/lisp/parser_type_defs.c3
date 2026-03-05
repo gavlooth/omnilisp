@@ -1,5 +1,31 @@
 module lisp;
 
+fn bool Parser.parse_compound_symbol_with_params(
+    Parser* self,
+    SymbolId* name_out,
+    SymbolId* params_out,
+    usz* param_count,
+    usz param_max,
+    char[] missing_name_error
+) {
+    self.lexer.advance();  // consume '('
+    if (self.lexer.current.type != T_SYMBOL) {
+        self.set_error(missing_name_error);
+        return false;
+    }
+    *name_out = self.get_current_symbol();
+    self.lexer.advance();
+
+    while (self.lexer.current.type == T_SYMBOL && *param_count < param_max) {
+        params_out[*param_count] = self.get_current_symbol();
+        (*param_count)++;
+        self.lexer.advance();
+    }
+
+    self.expect(T_RPAREN, ")");
+    return !self.has_error;
+}
+
 /**
  * Parse type definition: (define [type] Name (^Type field) ...)
  * or with parent: (define [type] (Name Parent) (^Type field) ...)
@@ -14,20 +40,13 @@ fn void Parser.init_deftype_expr(Parser* self, Expr* e) {
 }
 
 fn bool Parser.parse_deftype_name_compound(Parser* self, Expr* e) {
-    self.lexer.advance();  // consume (
-    if (self.lexer.current.type != T_SYMBOL) {
-        self.set_error("expected type name");
-        return false;
-    }
-    e.deftype.name = self.get_current_symbol();
-    self.lexer.advance();
-    while (self.lexer.current.type == T_SYMBOL && e.deftype.type_param_count < MAX_TYPE_PARAMS) {
-        e.deftype.type_params[e.deftype.type_param_count] = self.get_current_symbol();
-        e.deftype.type_param_count++;
-        self.lexer.advance();
-    }
-    self.expect(T_RPAREN, ")");
-    return !self.has_error;
+    return self.parse_compound_symbol_with_params(
+        &e.deftype.name,
+        &e.deftype.type_params[0],
+        &e.deftype.type_param_count,
+        MAX_TYPE_PARAMS,
+        "expected type name"
+    );
 }
 
 fn bool Parser.parse_deftype_name(Parser* self, Expr* e) {
@@ -138,20 +157,13 @@ fn void Parser.init_defunion_expr(Parser* self, Expr* e) {
 }
 
 fn bool Parser.parse_defunion_name_compound(Parser* self, Expr* e) {
-    self.lexer.advance();
-    if (self.lexer.current.type != T_SYMBOL) {
-        self.set_error("expected union name");
-        return false;
-    }
-    e.defunion.name = self.get_current_symbol();
-    self.lexer.advance();
-    while (self.lexer.current.type == T_SYMBOL && e.defunion.type_param_count < MAX_TYPE_PARAMS) {
-        e.defunion.type_params[e.defunion.type_param_count] = self.get_current_symbol();
-        e.defunion.type_param_count++;
-        self.lexer.advance();
-    }
-    self.expect(T_RPAREN, ")");
-    return !self.has_error;
+    return self.parse_compound_symbol_with_params(
+        &e.defunion.name,
+        &e.defunion.type_params[0],
+        &e.defunion.type_param_count,
+        MAX_TYPE_PARAMS,
+        "expected union name"
+    );
 }
 
 fn bool Parser.parse_defunion_name(Parser* self, Expr* e) {
@@ -168,20 +180,13 @@ fn bool Parser.parse_defunion_name(Parser* self, Expr* e) {
 }
 
 fn bool Parser.parse_defunion_variant_compound(Parser* self, UnionVariant* v) {
-    self.lexer.advance();
-    if (self.lexer.current.type != T_SYMBOL) {
-        self.set_error("expected variant name");
-        return false;
-    }
-    v.name = self.get_current_symbol();
-    self.lexer.advance();
-    while (self.lexer.current.type == T_SYMBOL && v.field_count < MAX_TYPE_PARAMS) {
-        v.fields[v.field_count] = self.get_current_symbol();
-        v.field_count++;
-        self.lexer.advance();
-    }
-    self.expect(T_RPAREN, ")");
-    return !self.has_error;
+    return self.parse_compound_symbol_with_params(
+        &v.name,
+        &v.fields[0],
+        &v.field_count,
+        MAX_TYPE_PARAMS,
+        "expected variant name"
+    );
 }
 
 fn bool Parser.parse_defunion_variant(Parser* self, Expr* e) {

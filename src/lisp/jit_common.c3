@@ -19,6 +19,8 @@ struct SavedInterpState {
     Expr*       tco_expr;
     Env*        tco_env;
     main::ScopeRegion* tco_recycle;
+    usz         tco_scope_defer_slot;
+    bool        tco_scope_defer_active;
     usz         reset_depth;
     usz         handler_count;
     main::ScopeRegion* scope;
@@ -33,6 +35,8 @@ fn void save_interp_state(Interp* interp, SavedInterpState* s) {
     s.tco_expr        = interp.jit_tco_expr;
     s.tco_env         = interp.jit_tco_env;
     s.tco_recycle     = interp.tco_recycle_scope;
+    s.tco_scope_defer_slot = interp.tco_scope_defer_slot;
+    s.tco_scope_defer_active = interp.tco_scope_defer_active;
     s.reset_depth     = interp.reset_depth;
     s.handler_count   = interp.handler_count;
     s.scope           = interp.current_scope;
@@ -47,8 +51,51 @@ fn void restore_interp_state(Interp* interp, SavedInterpState* s) {
     interp.jit_tco_expr      = s.tco_expr;
     interp.jit_tco_env       = s.tco_env;
     interp.tco_recycle_scope = s.tco_recycle;
+    interp.tco_scope_defer_slot = s.tco_scope_defer_slot;
+    interp.tco_scope_defer_active = s.tco_scope_defer_active;
     interp.reset_depth       = s.reset_depth;
     interp.handler_count     = s.handler_count;
     interp.current_scope     = s.scope;
     interp.escape_env_mode   = s.escape_env_mode;
+}
+
+fn void scope_guard_defer_destroy(void* arg) {
+    main::ScopeRegion* scope = (main::ScopeRegion*)arg;
+    if (scope != null) main::scope_release(scope);
+}
+
+fn void scope_guard_defer_clone(void* arg) {
+    main::ScopeRegion* scope = (main::ScopeRegion*)arg;
+    if (scope != null) main::scope_retain(scope);
+}
+
+fn void init_scope_guard_defer_ops(main::StackCtxDeferOps* ops) @inline {
+    ops.destroy_fn = &scope_guard_defer_destroy;
+    ops.clone_fn = &scope_guard_defer_clone;
+}
+
+fn bool pop_scope_guard_defer(main::StackCtx* fallback_ctx) {
+    main::StackCtx* current = main::g_current_stack_ctx;
+    if (current == null) current = fallback_ctx;
+    if (current == null) return false;
+    return main::stack_ctx_undefer(current);
+}
+
+fn bool suspend_with_scope_guard(main::StackCtx* current, main::ScopeRegion* scope) {
+    if (current == null || scope == null) return false;
+
+    // Keep scope alive for suspend lifetime and clone-safe destroy path.
+    main::scope_retain(scope);
+    main::StackCtxDeferOps ops;
+    init_scope_guard_defer_ops(&ops);
+    if (!main::stack_ctx_defer(current, &ops, (void*)scope)) {
+        main::scope_release(scope);
+        return false;
+    }
+
+    main::stack_ctx_suspend();
+
+    bool popped = pop_scope_guard_defer(current);
+    main::scope_release(scope);
+    return popped;
 }

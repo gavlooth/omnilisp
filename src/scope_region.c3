@@ -22,6 +22,8 @@ module main;
 import std::io;
 import std::thread;
 
+extern fn ZString scope_c_getenv(ZString name) @extern("getenv");
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -1106,4 +1108,7 @@ fn void run_scope_region_tests() {
     }
 
     io::printfn("%d passed, %d failed", (int)passed, (int)failed);
+    if (scope_c_getenv("OMNI_TEST_SUMMARY") != null) {
+        io::printfn("OMNI_TEST_SUMMARY suite=scope_region pass=%d fail=%d", (int)passed, (int)failed);
+    }
 }

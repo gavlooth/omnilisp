@@ -655,6 +655,11 @@ fn void run_advanced_module_reexport_shorthand_tests(Interp* interp, int* pass, 
     setup(interp, "(module outer-mod (export inner-val) (import inner-mod) (export-from inner-mod (inner-val)))");
     setup(interp, "(import outer-mod (inner-val))");
     test_eq(interp, "export-from re-export", "inner-val", 42, pass, fail);
+    setup(interp, "(module inner-all-mod (export all-a all-b) (define all-a 7) (define all-b 9))");
+    setup(interp, "(module outer-all-mod (export all-a all-b) (export-from inner-all-mod :all))");
+    setup(interp, "(import outer-all-mod (all-a all-b))");
+    test_eq(interp, "export-from :all all-a", "all-a", 7, pass, fail);
+    test_eq(interp, "export-from :all all-b", "all-b", 9, pass, fail);
 
     // Module as first-class value
     setup(interp, "(module val-mod (export x) (define x 77))");
@@ -670,12 +675,84 @@ fn void run_advanced_module_reexport_shorthand_tests(Interp* interp, int* pass, 
     test_eq(interp, "shorthand define zero-arg", "(sh-answer)", 42, pass, fail);
 }
 
+fn void run_advanced_parser_export_from_edge_tests(Interp* interp, int* pass, int* fail) {
+    test_error_contains(interp,
+        "parser export-from missing module",
+        "(module bad-exp-missing (export) (export-from))",
+        "expected module name after export-from",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser export-from missing specifier",
+        "(module bad-exp-nospec (export) (export-from inner-mod))",
+        "expected :all or (names...) after export-from module",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser export-from bad specifier",
+        "(module bad-exp-spec (export) (export-from inner-mod bogus))",
+        "expected :all or (names...) after export-from module",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser export-from list non-symbol",
+        "(module bad-exp-list (export) (export-from inner-mod (123)))",
+        "expected symbol in export-from list",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser export-from missing close paren",
+        "(module bad-exp-close (export) (export-from inner-mod (a b))",
+        ")",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser export-from nested list element",
+        "(module bad-exp-nested (export) (export-from inner-mod ((a))))",
+        "expected symbol in export-from list",
+        pass, fail);
+}
+
+fn void run_advanced_parser_import_edge_tests(Interp* interp, int* pass, int* fail) {
+    test_error_contains(interp,
+        "parser import paren missing :as",
+        "(import bad-mod ((x y)))",
+        "expected :as in import specifier",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser import paren missing alias",
+        "(import bad-mod ((x :as)))",
+        "expected alias after :as",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser import symbol missing alias",
+        "(import bad-mod (x :as))",
+        "expected alias after :as",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser import list non-symbol",
+        "(import bad-mod (123))",
+        "expected symbol in import list",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser import missing close paren",
+        "(import bad-mod (x y)",
+        ")",
+        pass, fail);
+}
+
 fn void run_advanced_module_system_tests(Interp* interp, int* pass, int* fail) {
     // === MODULE SYSTEM TESTS ===
     run_advanced_module_qualified_cached_tests(interp, pass, fail);
     run_advanced_module_selective_rename_tests(interp, pass, fail);
     run_advanced_module_all_dependency_tests(interp, pass, fail);
     run_advanced_module_reexport_shorthand_tests(interp, pass, fail);
+    run_advanced_parser_import_edge_tests(interp, pass, fail);
+    run_advanced_parser_export_from_edge_tests(interp, pass, fail);
 }
 
 fn void run_advanced_collections_module_tests(Interp* interp, int* pass, int* fail) {
@@ -1029,10 +1106,85 @@ fn void run_advanced_type_parametric_disambiguation_tests(Interp* interp, int* p
     test_truthy_interp(interp, "disambig parent still works", "(is? (Circle 5) 'Shape)", pass, fail);
 }
 
+fn void run_advanced_parser_type_def_edge_tests(Interp* interp, int* pass, int* fail) {
+    test_error_contains(interp,
+        "parser deftype missing name",
+        "(define [type])",
+        "expected type name after [type]",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser deftype compound missing name",
+        "(define [type] () (^Int x))",
+        "expected type name",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser deftype missing field name",
+        "(define [type] Broken (^Int))",
+        "expected field name",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser defunion missing name",
+        "(define [union])",
+        "expected union name after [union]",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser defunion compound missing name",
+        "(define [union] () (Some T))",
+        "expected union name",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser defunion variant missing name",
+        "(define [union] U ())",
+        "expected variant name",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser deftype compound missing close",
+        "(define [type] (Box T (^Int x))",
+        ")",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser defunion compound missing close",
+        "(define [union] (Maybe T (Some T) None)",
+        ")",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser defunion variant missing close",
+        "(define [union] Maybe (Some T)",
+        ")",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser deftype compound non-symbol type param",
+        "(define [type] (Box T 123) (^Int x))",
+        ")",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser defunion compound non-symbol type param",
+        "(define [union] (Maybe T 123) None (Some T))",
+        ")",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser defunion variant non-symbol name",
+        "(define [union] Maybe (123 T))",
+        "expected variant name",
+        pass, fail);
+}
+
 fn void run_advanced_type_parametric_tests(Interp* interp, int* pass, int* fail) {
     run_advanced_type_parametric_core_hierarchy_tests(interp, pass, fail);
     run_advanced_type_parametric_type_args_tests(interp, pass, fail);
     run_advanced_type_parametric_disambiguation_tests(interp, pass, fail);
+    run_advanced_parser_type_def_edge_tests(interp, pass, fail);
 }
 
 fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass, int* fail) {

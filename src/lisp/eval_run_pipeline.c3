@@ -18,8 +18,24 @@ fn EvalResult parser_error_to_eval_result(Parser* p) {
     return r;
 }
 
+fn bool run_jit_enabled(Interp* interp) @inline {
+    if (!interp.flags.jit_enabled) return false;
+    // Generated JIT code is not ASAN-instrumented; force interpreter path under ASAN runtime.
+    return !main::stack_runtime_asan_enabled();
+}
+
+fn void run_clear_stale_raise_state(Interp* interp) @inline {
+    // Pending raise is meaningful only while unwinding inside active handlers.
+    // At top-level run boundaries (no handlers), stale pending state must not
+    // leak into unrelated forms.
+    if (interp.handler_count != 0 || !interp.flags.raise_pending) return;
+    interp.flags.raise_pending = false;
+    interp.raise_msg_len = 0;
+    interp.raise_msg[0] = 0;
+}
+
 fn bool run_execute_expr(Expr* expr, Interp* interp, Value** result_value, EvalResult* result_error) {
-    if (interp.flags.jit_enabled) {
+    if (run_jit_enabled(interp)) {
         JitFn f = jit_compile(expr, interp);
         if (f == null) {
             *result_error = eval_error_expr("JIT compilation failed", expr);
@@ -79,6 +95,8 @@ fn Value* run_promote_result(Value* jit_result, Interp* interp, main::ScopeRegio
  * Run a complete program.
  */
 fn EvalResult run_program(char[] source, Interp* interp) {
+    run_clear_stale_raise_state(interp);
+
     Lexer lex;
     lex.init(source);
     Parser p;
@@ -97,12 +115,14 @@ fn EvalResult run_program(char[] source, Interp* interp) {
     EvalResult result = eval_ok(make_nil(interp));
 
     foreach (expr : exprs) {
+        run_clear_stale_raise_state(interp);
+
         // GC JIT states between top-level expressions (safe: no JIT code on stack)
         jit_gc();
 
         // Expand macros before JIT compilation
         expr = expand_macros_in_expr(expr, interp);
-        if (interp.flags.jit_enabled) {
+        if (run_jit_enabled(interp)) {
             JitFn f = jit_compile(expr, interp);
             if (f != null) {
                 Value* jit_result = jit_exec(f, interp);
@@ -133,6 +153,8 @@ fn EvalResult run_program(char[] source, Interp* interp) {
  * Run a single expression.
  */
 fn EvalResult run(char[] source, Interp* interp) {
+    run_clear_stale_raise_state(interp);
+
     // GC JIT states between top-level evaluations (safe: no JIT code on stack)
     jit_gc();
 
