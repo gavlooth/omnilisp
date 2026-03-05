@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-03-05: Session 195 - Scheduler Mixed Wakeup-Event Boundary Regression
+
+### Summary
+Added a scheduler regression that exercises mixed wakeup-event ordering (`WAKEUP_POLL_ERROR` + `WAKEUP_TIMER_EXPIRED`) for a single blocked fiber and asserts both completion-order semantics and boundary/runtime state restoration.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added:
+    - `run_scheduler_wakeup_mixed_event_boundary_tests(...)`
+  - New coverage alternates event ordering across iterations:
+    - poll-error then timer-expired,
+    - timer-expired then poll-error.
+  - For each cycle, the test verifies:
+    - both enqueues succeed,
+    - queue drains fully (`head == tail`),
+    - blocked fiber transitions to `FIBER_READY`,
+    - first-event-wins semantics on `PendingTcpRead`:
+      - poll-first => `error_code == -17`, `timed_out == false`
+      - timer-first => `timed_out == true`, `error_code == 0`
+    - interpreter boundary/runtime fields remain unchanged.
+  - Wired into `run_scheduler_tests(...)`.
+
+### Why this matters
+- Wraparound and simple wakeup behavior were covered, but mixed-event ordering for the same pending operation was not.
+- This closes a subtle callback/drain interleaving gap while preserving the core boundary-hardening goal: no interpreter lifetime-state drift.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1198 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1197 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `OMNI_FIBER_TEMP=1 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1197 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+
 ## 2026-03-05: Session 194 - Scheduler Wakeup Wraparound Boundary-State Regression
 
 ### Summary

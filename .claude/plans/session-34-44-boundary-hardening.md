@@ -223,6 +223,18 @@ Execution policy:
   - strict ASAN full suite: pass (`Unified 1196/0`, `Compiler 73/0`)
   - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1196/0`, `Compiler 73/0`)
 
+### Session 195 Follow-up (2026-03-05): Mixed Wakeup-Event Boundary Ordering
+
+- Added scheduler regression `run_scheduler_wakeup_mixed_event_boundary_tests(...)` in `src/lisp/tests_tests.c3`:
+  - alternates `WAKEUP_POLL_ERROR` and `WAKEUP_TIMER_EXPIRED` ordering for the same blocked pending-read fiber,
+  - verifies first-event-wins completion semantics (`error` vs `timed_out`) and `FIBER_BLOCKED -> FIBER_READY` transition,
+  - verifies wakeup ring drains cleanly and interpreter boundary/runtime fields remain unchanged.
+- Wired into `run_scheduler_tests(...)`.
+- Validation:
+  - normal full suite: pass (`Unified 1198/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1197/0`, `Compiler 73/0`)
+  - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1197/0`, `Compiler 73/0`)
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.

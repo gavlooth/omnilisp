@@ -2407,6 +2407,110 @@ fn void run_scheduler_wakeup_wraparound_boundary_tests(Interp* interp, int* pass
     }
 }
 
+fn void run_scheduler_wakeup_mixed_event_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: mixed wakeup event ordering for one blocked fiber must keep
+    // first-event-wins completion behavior and preserve interpreter boundary/runtime state.
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* saved_releasing = interp.releasing_scope;
+    Env* saved_jit_env = interp.jit_env;
+    Env* saved_match_env = interp.match_env;
+    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
+    Env* saved_jit_tco_env = interp.jit_tco_env;
+    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
+    usz saved_tco_slot = interp.tco_scope_defer_slot;
+    bool saved_tco_active = interp.tco_scope_defer_active;
+    bool saved_escape_mode = interp.escape_env_mode;
+    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+
+    bool ok = true;
+    usz failed_step = 0;
+    char[] failed_phase = "";
+
+    for (usz i = 0; i < 12; i++) {
+        void* saved_async = null;
+        scheduler_test_prepare_no_async(&saved_async);
+
+        g_scheduler.fiber_count = 1;
+        g_scheduler.current_fiber_id = NO_FIBER;
+        g_scheduler.fibers[0] = {};
+        g_scheduler.fibers[0].state = FIBER_BLOCKED;
+        g_scheduler.pending_reads[0] = {};
+        g_scheduler.pending_reads[0].active = true;
+
+        bool poll_first = (i & 1) == 0;
+        bool pushed_a = false;
+        bool pushed_b = false;
+        if (poll_first) {
+            pushed_a = wakeup_enqueue(WAKEUP_POLL_ERROR, 0, -17, null);
+            pushed_b = wakeup_enqueue(WAKEUP_TIMER_EXPIRED, 0, 0, null);
+        } else {
+            pushed_a = wakeup_enqueue(WAKEUP_TIMER_EXPIRED, 0, 0, null);
+            pushed_b = wakeup_enqueue(WAKEUP_POLL_ERROR, 0, -17, null);
+        }
+
+        drain_wakeups();
+        usz head = g_scheduler.wakeup_head.load();
+        usz tail = g_scheduler.wakeup_tail.load();
+
+        PendingTcpRead op = g_scheduler.pending_reads[0];
+        FiberState state = g_scheduler.fibers[0].state;
+        bool state_ok = scheduler_runtime_boundary_fields_match(
+            interp,
+            saved_scope,
+            saved_releasing,
+            saved_jit_env,
+            saved_match_env,
+            saved_jit_tco_expr,
+            saved_jit_tco_env,
+            saved_tco_recycle,
+            saved_tco_slot,
+            saved_tco_active,
+            saved_escape_mode,
+            saved_active_ctx
+        );
+
+        bool core_ok = pushed_a &&
+                       pushed_b &&
+                       head == tail &&
+                       op.completed &&
+                       state == FIBER_READY;
+        bool order_ok = poll_first
+                        ? (!op.timed_out && op.error_code == -17)
+                        : (op.timed_out && op.error_code == 0);
+        if (!core_ok || !order_ok || !state_ok) {
+            ok = false;
+            failed_step = i;
+            if (!core_ok) {
+                failed_phase = "core";
+            } else if (!order_ok) {
+                failed_phase = "order";
+            } else {
+                failed_phase = "boundary";
+            }
+        }
+
+        g_scheduler.pending_reads[0] = {};
+        g_scheduler.fibers[0] = {};
+        g_scheduler.fiber_count = 0;
+        scheduler_reset_wakeup_queue();
+        scheduler_test_restore_no_async(saved_async);
+
+        if (!ok) break;
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler wakeup mixed-event boundary restore");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] scheduler wakeup mixed-event boundary restore at step %d (%s)",
+            (int)failed_step,
+            (ZString)failed_phase
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_scheduler_mixed_boundary_state_restore_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: mixed scheduler thread/offload paths (success + expected error)
     // preserve interpreter boundary/runtime state across iterations.
@@ -2671,6 +2775,7 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
     run_scheduler_fairness_tests(interp, pass, fail);
     run_scheduler_boundary_stress_tests(interp, pass, fail);
     run_scheduler_wakeup_wraparound_boundary_tests(interp, pass, fail);
+    run_scheduler_wakeup_mixed_event_boundary_tests(interp, pass, fail);
     run_scheduler_mixed_boundary_state_restore_tests(interp, pass, fail);
     run_scheduler_wakeup_offload_error_boundary_tests(interp, pass, fail);
 }
