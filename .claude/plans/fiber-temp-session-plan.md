@@ -173,6 +173,22 @@ Validation:
 Next:
 - Add targeted scheduler wakeup/offload interleaving stress with Fiber TEMP enabled to widen boundary-race coverage.
 
+## Fiber TEMP Phase 5c Progress (2026-03-05)
+
+Completed:
+- Added deterministic scheduler wakeup/offload interleaving stress:
+  - async offload via spawn/await,
+  - wakeup enqueue/drain in-loop,
+  - thread offload spawn/join.
+- Added end-of-test wakeup queue drain invariant (`head == tail`).
+
+Validation:
+- Normal: `Stack engine 19/0`, `Scope region 51/0`, `Unified 1180/0`, `Compiler 73/0`.
+- ASAN strict: `Stack engine 18/0`, `Scope region 51/0`, `Unified 1179/0`, `Compiler 73/0`.
+
+Next:
+- Start focused audit of Fiber TEMP behavior at scheduler cancellation/timeouts boundaries (especially destroy-before-complete paths).
+
 ## Fiber TEMP Phase 5b Progress (2026-03-05)
 
 Completed:

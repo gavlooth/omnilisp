@@ -2009,6 +2009,63 @@ fn void run_scheduler_fiber_temp_thread_boundary_tests(Interp* interp, int* pass
     }
 }
 
+fn void run_scheduler_wakeup_offload_interleave_tests(Interp* interp, int* pass, int* fail) {
+    bool ok = true;
+    usz failed_step = 0;
+
+    for (usz i = 0; i < 12; i++) {
+        EvalResult async_r = run(
+            "(begin "
+            "  (define wf (spawn (lambda () (offload 'sleep-ms 1)))) "
+            "  (await wf) "
+            "  true)",
+            interp);
+        if (async_r.error.has_error ||
+            async_r.value == null ||
+            async_r.value.tag == ERROR ||
+            async_r.value.tag == NIL) {
+            ok = false;
+            failed_step = i;
+            break;
+        }
+
+        bool pushed = wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + i + 1, -1, null);
+        drain_wakeups();
+        if (!pushed) {
+            ok = false;
+            failed_step = i;
+            break;
+        }
+
+        EvalResult thread_r = run(
+            "(begin "
+            "  (define wt (thread-spawn 'sleep-ms 1)) "
+            "  (thread-join wt) "
+            "  true)",
+            interp);
+        if (thread_r.error.has_error ||
+            thread_r.value == null ||
+            thread_r.value.tag == ERROR ||
+            thread_r.value.tag == NIL) {
+            ok = false;
+            failed_step = i;
+            break;
+        }
+    }
+
+    usz head = g_scheduler.wakeup_head.load();
+    usz tail = g_scheduler.wakeup_tail.load();
+    ok = ok && head == tail;
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler wakeup/offload interleave stress");
+        (*pass)++;
+    } else {
+        io::printfn("[FAIL] scheduler wakeup/offload interleave stress at step %d", (int)failed_step);
+        (*fail)++;
+    }
+}
+
 fn void run_scheduler_cancel_tests(Interp* interp, int* pass, int* fail) {
     {
         setup(interp, "(define fc-fib1 (spawn (lambda () 42)))");
@@ -2171,6 +2228,7 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
     run_scheduler_wakeup_tests(interp, pass, fail);
     run_scheduler_offload_thread_tests(interp, pass, fail);
     run_scheduler_fiber_temp_thread_boundary_tests(interp, pass, fail);
+    run_scheduler_wakeup_offload_interleave_tests(interp, pass, fail);
     run_scheduler_cancel_tests(interp, pass, fail);
     run_scheduler_fairness_tests(interp, pass, fail);
     run_scheduler_boundary_stress_tests(interp, pass, fail);

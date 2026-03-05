@@ -87,6 +87,7 @@ Enablement substrate update:
 - Added stack-engine clone/discard stress coverage for Fiber TEMP-enabled contexts.
 - Added scheduler/offload boundary test coverage asserting Fiber TEMP context-cache counters remain unchanged for worker-thread operations without stack contexts.
 - Extended scheduler suite coverage to keep this boundary invariant explicit while avoiding false constraints on mixed stack-context stress paths.
+- Added deterministic wakeup/offload interleaving stress to widen scheduler boundary-race coverage.
 
 ## 4. Phase Plan
 
