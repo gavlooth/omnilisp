@@ -141,6 +141,25 @@ Validation:
 Next:
 - Stress clone/discard permutations with Fiber TEMP enabled to verify shared-context cache behavior under multi-shot continuation patterns.
 
+## Fiber TEMP Phase 4 Progress (2026-03-05)
+
+Completed:
+- Added clone/discard stress coverage in stack-engine tests for Fiber TEMP lifecycle paths.
+- New stress test validates repeated:
+  - suspend,
+  - clone + discard clone,
+  - resume original to completion,
+  with scope create/alloc/release around suspend boundaries.
+- Under `OMNI_FIBER_TEMP=1`, test asserts per-context cache return activity (`ctx_return_count` delta).
+
+Validation:
+- Normal: `Stack engine 19/0`, `Scope region 51/0`, `Unified 1178/0`, `Compiler 73/0`.
+- ASAN strict: `Stack engine 18/0`, `Scope region 51/0`, `Unified 1177/0`, `Compiler 73/0`.
+- Flagged metrics show substantial ctx-path exercise (`ctx_hits=33`, `ctx_returns=70`).
+
+Next:
+- Add cross-thread/offload guard tests to ensure Fiber TEMP remains confined to stack-context owner thread and global fallback remains safe under worker interactions.
+
 ## Session Rules
 
 Global rule for every session:

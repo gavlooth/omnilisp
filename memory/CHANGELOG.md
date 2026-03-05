@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-03-05: Session 148 - Fiber TEMP Clone/Discard Stress Coverage
+
+### Summary
+Added targeted stack-engine stress coverage for Fiber TEMP across suspended-context clone/discard cycles, validating lifecycle-backed per-context cache behavior under repeated multi-shot patterns.
+
+### What changed
+- `src/stack_engine.c3`
+  - Added `test_entry_scope_yield_once(...)` to exercise scope create/alloc/release on both sides of a suspend point.
+  - Added `test_stack_ctx_fiber_temp_clone_discard_stress()`:
+    - repeats clone/discard on suspended contexts,
+    - resumes original context to completion,
+    - asserts no corruption/regression in repeated cycles,
+    - under `OMNI_FIBER_TEMP=1`, asserts per-context return-path activity (`ctx_return_count` delta).
+  - Wired new test into `run_stack_engine_tests()`.
+
+### Why this matters
+- Raises confidence in Fiber TEMP suspend/clone lifecycle behavior before deeper rollout phases.
+- Specifically targets the risk surface that previously regressed when per-context state was attached to the wrong callback channel.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 19/0`, `Scope region 51/0`, `Unified 1178/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c clean && c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 18/0`, `Scope region 51/0`, `Unified 1177/0`, `Compiler 73/0`)
+- Flagged summary:
+  - `OMNI_FIBER_TEMP=1 OMNI_TEST_SUMMARY=1 ...`
+  - Result includes:
+    - `OMNI_TEST_SUMMARY suite=stack_engine pass=19 fail=0`
+    - `OMNI_TEST_SUMMARY suite=scope_region pass=51 fail=0`
+    - `OMNI_TEST_SUMMARY suite=fiber_temp_pool enabled=1 hits=66 misses=4 returns=109 drop_frees=0 pooled=6 peak=6 ctx_hits=33 ctx_returns=70 eligible_slow=2 bypass_large=0 bypass_escape=2`
+
 ## 2026-03-05: Session 147 - Fiber TEMP Per-Context Cache via Lifecycle Hooks
 
 ### Summary
