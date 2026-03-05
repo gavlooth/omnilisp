@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-03-05: Session 184 - Context-Switch Invariant Hooks in jit_common
+
+### Summary
+Added centralized boundary invariant checks at shared interpreter context-switch save/restore points in `jit_common`, increasing coverage at a critical cross-cutting runtime seam.
+
+### What changed
+- `src/lisp/jit_common.c3`
+  - `save_interp_state(...)` now asserts `boundary_assert_interp_scope_chain(interp)` before snapshotting.
+  - `restore_interp_state(...)` now asserts `boundary_assert_interp_scope_chain(interp)` after restoration.
+
+### Why this matters
+- `save_interp_state` / `restore_interp_state` are reused by stack/effect/JIT transitions.
+- Guarding these functions narrows failure localization for invalid scope-state transitions and complements earlier run/JIT/repl/macro boundary hook rollout.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1189 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1188 passed, 0 failed` (JIT checks disabled under ASAN)
+  - `Compiler: 73 passed, 0 failed`
+
 ## 2026-03-05: Session 183 - JIT TCO Call-State Helper Consolidation + Runtime-Field Regression
 
 ### Summary

@@ -28,6 +28,7 @@ struct SavedInterpState {
 }
 
 fn void save_interp_state(Interp* interp, SavedInterpState* s) {
+    boundary_assert_interp_scope_chain(interp);
     s.jit_env         = interp.jit_env;
     s.match_env       = interp.match_env;
     s.eval_depth      = interp.eval_depth;
@@ -57,6 +58,7 @@ fn void restore_interp_state(Interp* interp, SavedInterpState* s) {
     interp.handler_count     = s.handler_count;
     interp.current_scope     = s.scope;
     interp.escape_env_mode   = s.escape_env_mode;
+    boundary_assert_interp_scope_chain(interp);
 }
 
 fn void scope_guard_defer_destroy(void* arg) {

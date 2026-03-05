@@ -96,6 +96,17 @@ Execution policy:
   - normal full suite: pass (`Unified 1189/0`, `Compiler 73/0`)
   - strict ASAN full suite: pass (`Unified 1188/0`, `Compiler 73/0`)
 
+### Session 184 Follow-up (2026-03-05): Context-Switch Invariant Hooks in jit_common
+
+- Added boundary invariant assertions at shared context-switch helpers in `src/lisp/jit_common.c3`:
+  - `save_interp_state(...)` precondition check,
+  - `restore_interp_state(...)` post-restore check.
+- Rationale:
+  - these helpers sit on stack/effect/JIT transition seams and are high leverage for failure localization.
+- Validation:
+  - normal full suite: pass (`Unified 1189/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1188/0`, `Compiler 73/0`)
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.
