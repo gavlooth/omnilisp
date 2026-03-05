@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-03-05: Session 204 - Scheduler Boundary Snapshot Helper Consolidation
+
+### Summary
+Refactored scheduler boundary regression tests to centralize boundary-state capture/match boilerplate behind a shared snapshot helper, reducing duplication without changing behavior.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added:
+    - `struct SchedulerBoundarySnapshot`
+    - `scheduler_capture_runtime_boundary_snapshot(...)`
+    - `scheduler_runtime_boundary_matches_snapshot(...)`
+  - Migrated scheduler boundary-focused tests to use snapshot capture + helper matcher instead of repeated per-test locals and long matcher argument lists.
+  - Updated mixed scheduler boundary drift diagnostics to compare against snapshot fields.
+  - No runtime behavior changes; this is test-code simplification/maintenance hardening.
+
+### Why this matters
+- The scheduler boundary regression section had high duplication and a growing risk of inconsistent field capture/check wiring.
+- Centralizing the snapshot contract reduces future edit risk and keeps boundary hardening tests easier to evolve safely.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1205 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1204 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `OMNI_FIBER_TEMP=1 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1204 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+
 ## 2026-03-05: Session 203 - Thread-Task Cancel Transition Boundary Regression
 
 ### Summary

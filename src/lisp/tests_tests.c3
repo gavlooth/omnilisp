@@ -2343,20 +2343,57 @@ fn bool scheduler_runtime_boundary_fields_match(
            interp.active_promotion_ctx == active_promotion_ctx;
 }
 
+struct SchedulerBoundarySnapshot {
+    main::ScopeRegion* current_scope;
+    main::ScopeRegion* releasing_scope;
+    Env* jit_env;
+    Env* match_env;
+    Expr* jit_tco_expr;
+    Env* jit_tco_env;
+    main::ScopeRegion* tco_recycle_scope;
+    usz tco_scope_defer_slot;
+    bool tco_scope_defer_active;
+    bool escape_env_mode;
+    PromotionContext* active_promotion_ctx;
+}
+
+fn SchedulerBoundarySnapshot scheduler_capture_runtime_boundary_snapshot(Interp* interp) @inline {
+    SchedulerBoundarySnapshot snap = {};
+    snap.current_scope = interp.current_scope;
+    snap.releasing_scope = interp.releasing_scope;
+    snap.jit_env = interp.jit_env;
+    snap.match_env = interp.match_env;
+    snap.jit_tco_expr = interp.jit_tco_expr;
+    snap.jit_tco_env = interp.jit_tco_env;
+    snap.tco_recycle_scope = interp.tco_recycle_scope;
+    snap.tco_scope_defer_slot = interp.tco_scope_defer_slot;
+    snap.tco_scope_defer_active = interp.tco_scope_defer_active;
+    snap.escape_env_mode = interp.escape_env_mode;
+    snap.active_promotion_ctx = interp.active_promotion_ctx;
+    return snap;
+}
+
+fn bool scheduler_runtime_boundary_matches_snapshot(Interp* interp, SchedulerBoundarySnapshot* snap) @inline {
+    return scheduler_runtime_boundary_fields_match(
+        interp,
+        snap.current_scope,
+        snap.releasing_scope,
+        snap.jit_env,
+        snap.match_env,
+        snap.jit_tco_expr,
+        snap.jit_tco_env,
+        snap.tco_recycle_scope,
+        snap.tco_scope_defer_slot,
+        snap.tco_scope_defer_active,
+        snap.escape_env_mode,
+        snap.active_promotion_ctx
+    );
+}
+
 fn void run_scheduler_wakeup_wraparound_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: wakeup-ring saturation/drain paths must not mutate
     // interpreter boundary/runtime fields.
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* saved_releasing = interp.releasing_scope;
-    Env* saved_jit_env = interp.jit_env;
-    Env* saved_match_env = interp.match_env;
-    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
-    Env* saved_jit_tco_env = interp.jit_tco_env;
-    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
-    usz saved_tco_slot = interp.tco_scope_defer_slot;
-    bool saved_tco_active = interp.tco_scope_defer_active;
-    bool saved_escape_mode = interp.escape_env_mode;
-    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
     bool ok = true;
     usz failed_step = 0;
@@ -2376,20 +2413,7 @@ fn void run_scheduler_wakeup_wraparound_boundary_tests(Interp* interp, int* pass
         usz tail = g_scheduler.wakeup_tail.load();
         scheduler_test_restore_no_async(saved_async);
 
-        bool state_ok = scheduler_runtime_boundary_fields_match(
-            interp,
-            saved_scope,
-            saved_releasing,
-            saved_jit_env,
-            saved_match_env,
-            saved_jit_tco_expr,
-            saved_jit_tco_env,
-            saved_tco_recycle,
-            saved_tco_slot,
-            saved_tco_active,
-            saved_escape_mode,
-            saved_active_ctx
-        );
+        bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
         bool ring_ok = pushed == WAKEUP_RING_SIZE && overflow_rejected && head == tail;
         if (!state_ok || !ring_ok) {
             ok = false;
@@ -2410,17 +2434,7 @@ fn void run_scheduler_wakeup_wraparound_boundary_tests(Interp* interp, int* pass
 fn void run_scheduler_wakeup_mixed_event_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: mixed wakeup event ordering for one blocked fiber must keep
     // first-event-wins completion behavior and preserve interpreter boundary/runtime state.
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* saved_releasing = interp.releasing_scope;
-    Env* saved_jit_env = interp.jit_env;
-    Env* saved_match_env = interp.match_env;
-    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
-    Env* saved_jit_tco_env = interp.jit_tco_env;
-    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
-    usz saved_tco_slot = interp.tco_scope_defer_slot;
-    bool saved_tco_active = interp.tco_scope_defer_active;
-    bool saved_escape_mode = interp.escape_env_mode;
-    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
     bool ok = true;
     usz failed_step = 0;
@@ -2454,20 +2468,7 @@ fn void run_scheduler_wakeup_mixed_event_boundary_tests(Interp* interp, int* pas
 
         PendingTcpRead op = g_scheduler.pending_reads[0];
         FiberState state = g_scheduler.fibers[0].state;
-        bool state_ok = scheduler_runtime_boundary_fields_match(
-            interp,
-            saved_scope,
-            saved_releasing,
-            saved_jit_env,
-            saved_match_env,
-            saved_jit_tco_expr,
-            saved_jit_tco_env,
-            saved_tco_recycle,
-            saved_tco_slot,
-            saved_tco_active,
-            saved_escape_mode,
-            saved_active_ctx
-        );
+        bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
 
         bool core_ok = pushed_a &&
                        pushed_b &&
@@ -2514,17 +2515,7 @@ fn void run_scheduler_wakeup_mixed_event_boundary_tests(Interp* interp, int* pas
 fn void run_scheduler_invalid_offload_wakeup_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: invalid offload wakeups must be drained safely (payload cleanup path)
     // and must not mutate interpreter boundary/runtime state.
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* saved_releasing = interp.releasing_scope;
-    Env* saved_jit_env = interp.jit_env;
-    Env* saved_match_env = interp.match_env;
-    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
-    Env* saved_jit_tco_env = interp.jit_tco_env;
-    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
-    usz saved_tco_slot = interp.tco_scope_defer_slot;
-    bool saved_tco_active = interp.tco_scope_defer_active;
-    bool saved_escape_mode = interp.escape_env_mode;
-    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
     bool ok = true;
     usz failed_step = 0;
@@ -2557,20 +2548,7 @@ fn void run_scheduler_invalid_offload_wakeup_boundary_tests(Interp* interp, int*
         drain_wakeups();
         usz head = g_scheduler.wakeup_head.load();
         usz tail = g_scheduler.wakeup_tail.load();
-        bool state_ok = scheduler_runtime_boundary_fields_match(
-            interp,
-            saved_scope,
-            saved_releasing,
-            saved_jit_env,
-            saved_match_env,
-            saved_jit_tco_expr,
-            saved_jit_tco_env,
-            saved_tco_recycle,
-            saved_tco_slot,
-            saved_tco_active,
-            saved_escape_mode,
-            saved_active_ctx
-        );
+        bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
 
         bool drain_ok = pushed_err && head == tail;
         scheduler_test_restore_no_async(saved_async);
@@ -2603,17 +2581,7 @@ fn void run_scheduler_duplicate_offload_ready_boundary_tests(Interp* interp, int
     // Invariant: duplicate/late WAKEUP_OFFLOAD_READY events for one active pending
     // offload retain the first completion payload, safely discard extras, and
     // preserve interpreter boundary/runtime state.
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* saved_releasing = interp.releasing_scope;
-    Env* saved_jit_env = interp.jit_env;
-    Env* saved_match_env = interp.match_env;
-    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
-    Env* saved_jit_tco_env = interp.jit_tco_env;
-    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
-    usz saved_tco_slot = interp.tco_scope_defer_slot;
-    bool saved_tco_active = interp.tco_scope_defer_active;
-    bool saved_escape_mode = interp.escape_env_mode;
-    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
     bool ok = true;
     usz failed_step = 0;
@@ -2672,20 +2640,7 @@ fn void run_scheduler_duplicate_offload_ready_boundary_tests(Interp* interp, int
         usz head_after_dup = g_scheduler.wakeup_head.load();
         usz tail_after_dup = g_scheduler.wakeup_tail.load();
         PendingOffload off_after_dup = g_scheduler.pending_offloads[0];
-        bool state_ok_dup = scheduler_runtime_boundary_fields_match(
-            interp,
-            saved_scope,
-            saved_releasing,
-            saved_jit_env,
-            saved_match_env,
-            saved_jit_tco_expr,
-            saved_jit_tco_env,
-            saved_tco_recycle,
-            saved_tco_slot,
-            saved_tco_active,
-            saved_escape_mode,
-            saved_active_ctx
-        );
+        bool state_ok_dup = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
         bool dup_ok = head_after_dup == tail_after_dup &&
                       off_after_dup.active &&
                       off_after_dup.completed &&
@@ -2710,20 +2665,7 @@ fn void run_scheduler_duplicate_offload_ready_boundary_tests(Interp* interp, int
                 usz head_after_late = g_scheduler.wakeup_head.load();
                 usz tail_after_late = g_scheduler.wakeup_tail.load();
                 PendingOffload off_after_late = g_scheduler.pending_offloads[0];
-                bool state_ok_late = scheduler_runtime_boundary_fields_match(
-                    interp,
-                    saved_scope,
-                    saved_releasing,
-                    saved_jit_env,
-                    saved_match_env,
-                    saved_jit_tco_expr,
-                    saved_jit_tco_env,
-                    saved_tco_recycle,
-                    saved_tco_slot,
-                    saved_tco_active,
-                    saved_escape_mode,
-                    saved_active_ctx
-                );
+                bool state_ok_late = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
                 bool late_ok = head_after_late == tail_after_late &&
                                off_after_late.active &&
                                off_after_late.completed &&
@@ -2772,17 +2714,7 @@ fn void run_scheduler_duplicate_offload_ready_boundary_tests(Interp* interp, int
 fn void run_scheduler_consume_pending_offload_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: direct consume paths for pending offload (pre-completion error,
     // completed success/error, and post-consume repeat error) preserve boundary/runtime state.
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* saved_releasing = interp.releasing_scope;
-    Env* saved_jit_env = interp.jit_env;
-    Env* saved_match_env = interp.match_env;
-    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
-    Env* saved_jit_tco_env = interp.jit_tco_env;
-    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
-    usz saved_tco_slot = interp.tco_scope_defer_slot;
-    bool saved_tco_active = interp.tco_scope_defer_active;
-    bool saved_escape_mode = interp.escape_env_mode;
-    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
     bool ok = true;
     usz failed_step = 0;
@@ -2800,20 +2732,7 @@ fn void run_scheduler_consume_pending_offload_boundary_tests(Interp* interp, int
         // Phase A: consume before completion should fail.
         Value* pre = scheduler_consume_pending_offload(0, interp);
         bool pre_ok = pre != null && pre.tag == ERROR;
-        bool state_ok_pre = scheduler_runtime_boundary_fields_match(
-            interp,
-            saved_scope,
-            saved_releasing,
-            saved_jit_env,
-            saved_match_env,
-            saved_jit_tco_expr,
-            saved_jit_tco_env,
-            saved_tco_recycle,
-            saved_tco_slot,
-            saved_tco_active,
-            saved_escape_mode,
-            saved_active_ctx
-        );
+        bool state_ok_pre = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
         if (!pre_ok || !state_ok_pre) {
             ok = false;
             failed_step = i * 3;
@@ -2872,20 +2791,7 @@ fn void run_scheduler_consume_pending_offload_boundary_tests(Interp* interp, int
             bool slot_reset = !g_scheduler.pending_offloads[0].active &&
                               !g_scheduler.pending_offloads[0].completed &&
                               g_scheduler.pending_offloads[0].completion == null;
-            bool state_ok_consume = scheduler_runtime_boundary_fields_match(
-                interp,
-                saved_scope,
-                saved_releasing,
-                saved_jit_env,
-                saved_match_env,
-                saved_jit_tco_expr,
-                saved_jit_tco_env,
-                saved_tco_recycle,
-                saved_tco_slot,
-                saved_tco_active,
-                saved_escape_mode,
-                saved_active_ctx
-            );
+            bool state_ok_consume = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
             if (!consume_ok || !slot_reset || !state_ok_consume) {
                 ok = false;
                 failed_step = i * 3 + 1;
@@ -2903,20 +2809,7 @@ fn void run_scheduler_consume_pending_offload_boundary_tests(Interp* interp, int
         if (ok) {
             Value* post = scheduler_consume_pending_offload(0, interp);
             bool post_ok = post != null && post.tag == ERROR;
-            bool state_ok_post = scheduler_runtime_boundary_fields_match(
-                interp,
-                saved_scope,
-                saved_releasing,
-                saved_jit_env,
-                saved_match_env,
-                saved_jit_tco_expr,
-                saved_jit_tco_env,
-                saved_tco_recycle,
-                saved_tco_slot,
-                saved_tco_active,
-                saved_escape_mode,
-                saved_active_ctx
-            );
+            bool state_ok_post = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
             if (!post_ok || !state_ok_post) {
                 ok = false;
                 failed_step = i * 3 + 2;
@@ -3003,17 +2896,7 @@ fn bool scheduler_tcp_case_value_ok(usz case_id, Value* v) {
 fn void run_scheduler_consume_pending_tcp_read_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: direct consume paths for pending tcp-read preserve
     // boundary/runtime state and correctly reset slot ownership.
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* saved_releasing = interp.releasing_scope;
-    Env* saved_jit_env = interp.jit_env;
-    Env* saved_match_env = interp.match_env;
-    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
-    Env* saved_jit_tco_env = interp.jit_tco_env;
-    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
-    usz saved_tco_slot = interp.tco_scope_defer_slot;
-    bool saved_tco_active = interp.tco_scope_defer_active;
-    bool saved_escape_mode = interp.escape_env_mode;
-    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
     bool ok = true;
     usz failed_step = 0;
@@ -3031,20 +2914,7 @@ fn void run_scheduler_consume_pending_tcp_read_boundary_tests(Interp* interp, in
         // Phase A: consume before completion should fail.
         Value* pre = scheduler_consume_pending_tcp_read(0, interp);
         bool pre_ok = pre != null && pre.tag == ERROR;
-        bool state_ok_pre = scheduler_runtime_boundary_fields_match(
-            interp,
-            saved_scope,
-            saved_releasing,
-            saved_jit_env,
-            saved_match_env,
-            saved_jit_tco_expr,
-            saved_jit_tco_env,
-            saved_tco_recycle,
-            saved_tco_slot,
-            saved_tco_active,
-            saved_escape_mode,
-            saved_active_ctx
-        );
+        bool state_ok_pre = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
         if (!pre_ok || !state_ok_pre) {
             ok = false;
             failed_step = i * 3;
@@ -3060,20 +2930,7 @@ fn void run_scheduler_consume_pending_tcp_read_boundary_tests(Interp* interp, in
             bool slot_reset = !g_scheduler.pending_reads[0].active &&
                               !g_scheduler.pending_reads[0].completed &&
                               g_scheduler.pending_reads[0].buffer == null;
-            bool state_ok_consume = scheduler_runtime_boundary_fields_match(
-                interp,
-                saved_scope,
-                saved_releasing,
-                saved_jit_env,
-                saved_match_env,
-                saved_jit_tco_expr,
-                saved_jit_tco_env,
-                saved_tco_recycle,
-                saved_tco_slot,
-                saved_tco_active,
-                saved_escape_mode,
-                saved_active_ctx
-            );
+            bool state_ok_consume = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
             if (!consume_ok || !slot_reset || !state_ok_consume) {
                 ok = false;
                 failed_step = i * 3 + 1;
@@ -3091,20 +2948,7 @@ fn void run_scheduler_consume_pending_tcp_read_boundary_tests(Interp* interp, in
         if (ok) {
             Value* post = scheduler_consume_pending_tcp_read(0, interp);
             bool post_ok = post != null && post.tag == ERROR;
-            bool state_ok_post = scheduler_runtime_boundary_fields_match(
-                interp,
-                saved_scope,
-                saved_releasing,
-                saved_jit_env,
-                saved_match_env,
-                saved_jit_tco_expr,
-                saved_jit_tco_env,
-                saved_tco_recycle,
-                saved_tco_slot,
-                saved_tco_active,
-                saved_escape_mode,
-                saved_active_ctx
-            );
+            bool state_ok_post = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
             if (!post_ok || !state_ok_post) {
                 ok = false;
                 failed_step = i * 3 + 2;
@@ -3140,17 +2984,7 @@ fn void run_scheduler_consume_pending_tcp_read_boundary_tests(Interp* interp, in
 fn void run_scheduler_thread_task_completion_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: thread-task completion ownership paths (complete/take/drop and
     // invalid-id completion cleanup) preserve interpreter boundary/runtime state.
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* saved_releasing = interp.releasing_scope;
-    Env* saved_jit_env = interp.jit_env;
-    Env* saved_match_env = interp.match_env;
-    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
-    Env* saved_jit_tco_env = interp.jit_tco_env;
-    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
-    usz saved_tco_slot = interp.tco_scope_defer_slot;
-    bool saved_tco_active = interp.tco_scope_defer_active;
-    bool saved_escape_mode = interp.escape_env_mode;
-    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
     bool ok = true;
     usz failed_step = 0;
@@ -3192,20 +3026,7 @@ fn void run_scheduler_thread_task_completion_boundary_tests(Interp* interp, int*
         }
         scheduler_complete_thread_task(MAX_THREAD_TASKS + 7 + i, invalid_completion);
 
-        bool state_ok = scheduler_runtime_boundary_fields_match(
-            interp,
-            saved_scope,
-            saved_releasing,
-            saved_jit_env,
-            saved_match_env,
-            saved_jit_tco_expr,
-            saved_jit_tco_env,
-            saved_tco_recycle,
-            saved_tco_slot,
-            saved_tco_active,
-            saved_escape_mode,
-            saved_active_ctx
-        );
+        bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
         if (!take_ok || !state_ok) {
             ok = false;
             failed_step = i;
@@ -3235,17 +3056,7 @@ fn void run_scheduler_thread_task_completion_boundary_tests(Interp* interp, int*
 fn void run_scheduler_thread_task_cancel_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: thread-task cancel state transitions preserve deterministic
     // completion semantics and boundary/runtime state.
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* saved_releasing = interp.releasing_scope;
-    Env* saved_jit_env = interp.jit_env;
-    Env* saved_match_env = interp.match_env;
-    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
-    Env* saved_jit_tco_env = interp.jit_tco_env;
-    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
-    usz saved_tco_slot = interp.tco_scope_defer_slot;
-    bool saved_tco_active = interp.tco_scope_defer_active;
-    bool saved_escape_mode = interp.escape_env_mode;
-    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
     bool ok = true;
     usz failed_step = 0;
@@ -3289,20 +3100,7 @@ fn void run_scheduler_thread_task_cancel_boundary_tests(Interp* interp, int* pas
         }
 
         bool invalid_cancel_ok = !scheduler_cancel_thread_task(MAX_THREAD_TASKS + 17 + i, null);
-        bool state_ok = scheduler_runtime_boundary_fields_match(
-            interp,
-            saved_scope,
-            saved_releasing,
-            saved_jit_env,
-            saved_match_env,
-            saved_jit_tco_expr,
-            saved_jit_tco_env,
-            saved_tco_recycle,
-            saved_tco_slot,
-            saved_tco_active,
-            saved_escape_mode,
-            saved_active_ctx
-        );
+        bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
         bool cycle_ok = cancel_ok &&
                         !already_done &&
                         begin_ok &&
@@ -3344,17 +3142,7 @@ fn void run_scheduler_thread_task_cancel_boundary_tests(Interp* interp, int* pas
 fn void run_scheduler_wakeup_ready_barrier_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: drain_wakeups must stop at the first unready slot and preserve FIFO order.
     // Also verify interpreter boundary/runtime state remains unchanged.
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* saved_releasing = interp.releasing_scope;
-    Env* saved_jit_env = interp.jit_env;
-    Env* saved_match_env = interp.match_env;
-    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
-    Env* saved_jit_tco_env = interp.jit_tco_env;
-    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
-    usz saved_tco_slot = interp.tco_scope_defer_slot;
-    bool saved_tco_active = interp.tco_scope_defer_active;
-    bool saved_escape_mode = interp.escape_env_mode;
-    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
     void* saved_async = null;
     scheduler_test_prepare_no_async(&saved_async);
@@ -3388,20 +3176,7 @@ fn void run_scheduler_wakeup_ready_barrier_boundary_tests(Interp* interp, int* p
                          g_scheduler.pending_reads[0].error_code == 0 &&
                          g_scheduler.fibers[0].state == FIBER_BLOCKED &&
                          tail_after_block == 0;
-    bool state_ok_first = scheduler_runtime_boundary_fields_match(
-        interp,
-        saved_scope,
-        saved_releasing,
-        saved_jit_env,
-        saved_match_env,
-        saved_jit_tco_expr,
-        saved_jit_tco_env,
-        saved_tco_recycle,
-        saved_tco_slot,
-        saved_tco_active,
-        saved_escape_mode,
-        saved_active_ctx
-    );
+    bool state_ok_first = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
 
     g_scheduler.wakeup_ready[0].store(true);
     drain_wakeups();
@@ -3412,20 +3187,7 @@ fn void run_scheduler_wakeup_ready_barrier_boundary_tests(Interp* interp, int* p
                              g_scheduler.pending_reads[0].error_code == 0 &&
                              g_scheduler.fibers[0].state == FIBER_READY &&
                              head_after_release == tail_after_release;
-    bool state_ok_second = scheduler_runtime_boundary_fields_match(
-        interp,
-        saved_scope,
-        saved_releasing,
-        saved_jit_env,
-        saved_match_env,
-        saved_jit_tco_expr,
-        saved_jit_tco_env,
-        saved_tco_recycle,
-        saved_tco_slot,
-        saved_tco_active,
-        saved_escape_mode,
-        saved_active_ctx
-    );
+    bool state_ok_second = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
 
     bool ok = not_processed && processed_ordered && state_ok_first && state_ok_second;
 
@@ -3447,17 +3209,7 @@ fn void run_scheduler_wakeup_ready_barrier_boundary_tests(Interp* interp, int* p
 fn void run_scheduler_mixed_boundary_state_restore_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: mixed scheduler thread/offload paths (success + expected error)
     // preserve interpreter boundary/runtime state across iterations.
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* saved_releasing = interp.releasing_scope;
-    Env* saved_jit_env = interp.jit_env;
-    Env* saved_match_env = interp.match_env;
-    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
-    Env* saved_jit_tco_env = interp.jit_tco_env;
-    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
-    usz saved_tco_slot = interp.tco_scope_defer_slot;
-    bool saved_tco_active = interp.tco_scope_defer_active;
-    bool saved_escape_mode = interp.escape_env_mode;
-    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
     bool ok = true;
     usz failed_step = 0;
@@ -3486,35 +3238,22 @@ fn void run_scheduler_mixed_boundary_state_restore_tests(Interp* interp, int* pa
                           success_r.value != null &&
                           success_r.value.tag != ERROR &&
                           success_r.value.tag != NIL;
-        bool success_state_ok = scheduler_runtime_boundary_fields_match(
-            interp,
-            saved_scope,
-            saved_releasing,
-            saved_jit_env,
-            saved_match_env,
-            saved_jit_tco_expr,
-            saved_jit_tco_env,
-            saved_tco_recycle,
-            saved_tco_slot,
-            saved_tco_active,
-            saved_escape_mode,
-            saved_active_ctx
-        );
+        bool success_state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
         if (!success_ok || !success_state_ok) {
             ok = false;
             failed_step = i * 2;
             fail_phase = "success";
-            d_current_scope = interp.current_scope == saved_scope;
-            d_releasing_scope = interp.releasing_scope == saved_releasing;
-            d_jit_env = interp.jit_env == saved_jit_env;
-            d_match_env = interp.match_env == saved_match_env;
-            d_jit_tco_expr = interp.jit_tco_expr == saved_jit_tco_expr;
-            d_jit_tco_env = interp.jit_tco_env == saved_jit_tco_env;
-            d_tco_recycle = interp.tco_recycle_scope == saved_tco_recycle;
-            d_tco_slot = interp.tco_scope_defer_slot == saved_tco_slot;
-            d_tco_active = interp.tco_scope_defer_active == saved_tco_active;
-            d_escape_mode = interp.escape_env_mode == saved_escape_mode;
-            d_active_ctx = interp.active_promotion_ctx == saved_active_ctx;
+            d_current_scope = interp.current_scope == saved.current_scope;
+            d_releasing_scope = interp.releasing_scope == saved.releasing_scope;
+            d_jit_env = interp.jit_env == saved.jit_env;
+            d_match_env = interp.match_env == saved.match_env;
+            d_jit_tco_expr = interp.jit_tco_expr == saved.jit_tco_expr;
+            d_jit_tco_env = interp.jit_tco_env == saved.jit_tco_env;
+            d_tco_recycle = interp.tco_recycle_scope == saved.tco_recycle_scope;
+            d_tco_slot = interp.tco_scope_defer_slot == saved.tco_scope_defer_slot;
+            d_tco_active = interp.tco_scope_defer_active == saved.tco_scope_defer_active;
+            d_escape_mode = interp.escape_env_mode == saved.escape_env_mode;
+            d_active_ctx = interp.active_promotion_ctx == saved.active_promotion_ctx;
             break;
         }
 
@@ -3527,35 +3266,22 @@ fn void run_scheduler_mixed_boundary_state_restore_tests(Interp* interp, int* pa
             interp);
         bool error_ok = error_r.error.has_error ||
                         (error_r.value != null && error_r.value.tag == ERROR);
-        bool error_state_ok = scheduler_runtime_boundary_fields_match(
-            interp,
-            saved_scope,
-            saved_releasing,
-            saved_jit_env,
-            saved_match_env,
-            saved_jit_tco_expr,
-            saved_jit_tco_env,
-            saved_tco_recycle,
-            saved_tco_slot,
-            saved_tco_active,
-            saved_escape_mode,
-            saved_active_ctx
-        );
+        bool error_state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
         if (!error_ok || !error_state_ok) {
             ok = false;
             failed_step = i * 2 + 1;
             fail_phase = "error";
-            d_current_scope = interp.current_scope == saved_scope;
-            d_releasing_scope = interp.releasing_scope == saved_releasing;
-            d_jit_env = interp.jit_env == saved_jit_env;
-            d_match_env = interp.match_env == saved_match_env;
-            d_jit_tco_expr = interp.jit_tco_expr == saved_jit_tco_expr;
-            d_jit_tco_env = interp.jit_tco_env == saved_jit_tco_env;
-            d_tco_recycle = interp.tco_recycle_scope == saved_tco_recycle;
-            d_tco_slot = interp.tco_scope_defer_slot == saved_tco_slot;
-            d_tco_active = interp.tco_scope_defer_active == saved_tco_active;
-            d_escape_mode = interp.escape_env_mode == saved_escape_mode;
-            d_active_ctx = interp.active_promotion_ctx == saved_active_ctx;
+            d_current_scope = interp.current_scope == saved.current_scope;
+            d_releasing_scope = interp.releasing_scope == saved.releasing_scope;
+            d_jit_env = interp.jit_env == saved.jit_env;
+            d_match_env = interp.match_env == saved.match_env;
+            d_jit_tco_expr = interp.jit_tco_expr == saved.jit_tco_expr;
+            d_jit_tco_env = interp.jit_tco_env == saved.jit_tco_env;
+            d_tco_recycle = interp.tco_recycle_scope == saved.tco_recycle_scope;
+            d_tco_slot = interp.tco_scope_defer_slot == saved.tco_scope_defer_slot;
+            d_tco_active = interp.tco_scope_defer_active == saved.tco_scope_defer_active;
+            d_escape_mode = interp.escape_env_mode == saved.escape_env_mode;
+            d_active_ctx = interp.active_promotion_ctx == saved.active_promotion_ctx;
             break;
         }
     }
@@ -3587,17 +3313,7 @@ fn void run_scheduler_mixed_boundary_state_restore_tests(Interp* interp, int* pa
 fn void run_scheduler_wakeup_offload_error_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: wakeup queue drains + async offload expected-error paths
     // preserve interpreter boundary/runtime state.
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* saved_releasing = interp.releasing_scope;
-    Env* saved_jit_env = interp.jit_env;
-    Env* saved_match_env = interp.match_env;
-    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
-    Env* saved_jit_tco_env = interp.jit_tco_env;
-    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
-    usz saved_tco_slot = interp.tco_scope_defer_slot;
-    bool saved_tco_active = interp.tco_scope_defer_active;
-    bool saved_escape_mode = interp.escape_env_mode;
-    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
     bool ok = true;
     usz failed_step = 0;
@@ -3613,20 +3329,7 @@ fn void run_scheduler_wakeup_offload_error_boundary_tests(Interp* interp, int* p
                           success_r.value != null &&
                           success_r.value.tag != ERROR &&
                           success_r.value.tag != NIL;
-        bool success_state_ok = scheduler_runtime_boundary_fields_match(
-            interp,
-            saved_scope,
-            saved_releasing,
-            saved_jit_env,
-            saved_match_env,
-            saved_jit_tco_expr,
-            saved_jit_tco_env,
-            saved_tco_recycle,
-            saved_tco_slot,
-            saved_tco_active,
-            saved_escape_mode,
-            saved_active_ctx
-        );
+        bool success_state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
         if (!success_ok || !success_state_ok) {
             ok = false;
             failed_step = i * 3;
@@ -3636,20 +3339,7 @@ fn void run_scheduler_wakeup_offload_error_boundary_tests(Interp* interp, int* p
 
         bool pushed = wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + i + 101, -1, null);
         drain_wakeups();
-        bool wakeup_ok = pushed && scheduler_runtime_boundary_fields_match(
-            interp,
-            saved_scope,
-            saved_releasing,
-            saved_jit_env,
-            saved_match_env,
-            saved_jit_tco_expr,
-            saved_jit_tco_env,
-            saved_tco_recycle,
-            saved_tco_slot,
-            saved_tco_active,
-            saved_escape_mode,
-            saved_active_ctx
-        );
+        bool wakeup_ok = pushed && scheduler_runtime_boundary_matches_snapshot(interp, &saved);
         if (!wakeup_ok) {
             ok = false;
             failed_step = i * 3 + 1;
@@ -3664,20 +3354,7 @@ fn void run_scheduler_wakeup_offload_error_boundary_tests(Interp* interp, int* p
             interp);
         bool error_ok = error_r.error.has_error ||
                         (error_r.value != null && error_r.value.tag == ERROR);
-        bool error_state_ok = scheduler_runtime_boundary_fields_match(
-            interp,
-            saved_scope,
-            saved_releasing,
-            saved_jit_env,
-            saved_match_env,
-            saved_jit_tco_expr,
-            saved_jit_tco_env,
-            saved_tco_recycle,
-            saved_tco_slot,
-            saved_tco_active,
-            saved_escape_mode,
-            saved_active_ctx
-        );
+        bool error_state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
         if (!error_ok || !error_state_ok) {
             ok = false;
             failed_step = i * 3 + 2;

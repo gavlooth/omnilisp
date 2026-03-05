@@ -337,6 +337,19 @@ Execution policy:
   - strict ASAN full suite: pass (`Unified 1204/0`, `Compiler 73/0`)
   - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1204/0`, `Compiler 73/0`)
 
+### Session 204 Follow-up (2026-03-05): Scheduler Boundary Snapshot Consolidation
+
+- Added shared test helper surface in `src/lisp/tests_tests.c3`:
+  - `SchedulerBoundarySnapshot`
+  - `scheduler_capture_runtime_boundary_snapshot(...)`
+  - `scheduler_runtime_boundary_matches_snapshot(...)`
+- Migrated scheduler boundary regression tests to use snapshot helper matching instead of repeated local field capture + long matcher arg lists.
+- Kept drift diagnostics in mixed scheduler test, now keyed to snapshot fields.
+- Validation:
+  - normal full suite: pass (`Unified 1205/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1204/0`, `Compiler 73/0`)
+  - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1204/0`, `Compiler 73/0`)
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.
