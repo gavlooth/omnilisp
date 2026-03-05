@@ -2655,6 +2655,78 @@ fn void run_scheduler_wakeup_drop_counter_boundary_tests(Interp* interp, int* pa
     }
 }
 
+fn void run_scheduler_wakeup_full_payload_ownership_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: failed enqueue on full wakeup ring must not consume/free payload.
+    // Caller retains ownership and can free safely.
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
+    bool ok = true;
+    usz failed_step = 0;
+    char[] failed_phase = "";
+
+    for (usz i = 0; i < 12; i++) {
+        void* saved_async = null;
+        scheduler_test_prepare_no_async(&saved_async);
+        usz drops_before = g_scheduler.wakeup_drops.load();
+
+        usz pushed_fill = 0;
+        for (usz j = 0; j < WAKEUP_RING_SIZE; j++) {
+            if (wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + i * WAKEUP_RING_SIZE + j + 1, -1, null)) {
+                pushed_fill++;
+            }
+        }
+
+        OffloadCompletion* completion = scheduler_make_task_cancel_completion();
+        if (completion == null) {
+            ok = false;
+            failed_step = i;
+            failed_phase = "alloc";
+            scheduler_test_cleanup_no_async(saved_async);
+            break;
+        }
+
+        bool pushed_ready = wakeup_enqueue(WAKEUP_OFFLOAD_READY, 0, 0, completion);
+        if (!pushed_ready) {
+            // Ownership stays with caller on enqueue failure.
+            scheduler_free_offload_completion(completion);
+        }
+
+        drain_wakeups();
+        usz drops_after = g_scheduler.wakeup_drops.load();
+        usz head = g_scheduler.wakeup_head.load();
+        usz tail = g_scheduler.wakeup_tail.load();
+        bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+        bool queue_ok = pushed_fill == WAKEUP_RING_SIZE && !pushed_ready && head == tail;
+        bool drops_ok = (drops_after - drops_before) == 1;
+
+        scheduler_test_cleanup_no_async(saved_async);
+
+        if (!queue_ok || !drops_ok || !state_ok) {
+            ok = false;
+            failed_step = i;
+            if (!queue_ok) {
+                failed_phase = "queue";
+            } else if (!drops_ok) {
+                failed_phase = "drop-counter";
+            } else {
+                failed_phase = "boundary";
+            }
+            break;
+        }
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler wakeup full payload ownership boundary restore");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] scheduler wakeup full payload ownership boundary restore at step %d (%s)",
+            (int)failed_step,
+            (ZString)failed_phase
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_scheduler_duplicate_offload_ready_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: duplicate/late WAKEUP_OFFLOAD_READY events for one active pending
     // offload retain the first completion payload, safely discard extras, and
@@ -3411,6 +3483,7 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
     run_scheduler_wakeup_mixed_event_boundary_tests(interp, pass, fail);
     run_scheduler_invalid_offload_wakeup_boundary_tests(interp, pass, fail);
     run_scheduler_wakeup_drop_counter_boundary_tests(interp, pass, fail);
+    run_scheduler_wakeup_full_payload_ownership_boundary_tests(interp, pass, fail);
     run_scheduler_duplicate_offload_ready_boundary_tests(interp, pass, fail);
     run_scheduler_consume_pending_offload_boundary_tests(interp, pass, fail);
     run_scheduler_consume_pending_tcp_read_boundary_tests(interp, pass, fail);

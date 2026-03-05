@@ -424,6 +424,21 @@ Execution policy:
   - strict ASAN full suite: pass (`Unified 1206/0`, `Compiler 73/0`)
   - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1205/0`, `Compiler 73/0`)
 
+### Session 211 Follow-up (2026-03-05): Wakeup Full-Queue Payload Ownership
+
+- Added scheduler regression `run_scheduler_wakeup_full_payload_ownership_boundary_tests(...)` in `src/lisp/tests_tests.c3`:
+  - fills wakeup ring, attempts `WAKEUP_OFFLOAD_READY` enqueue with completion payload under forced full-queue failure,
+  - frees payload on failed enqueue to lock in caller-ownership contract for enqueue failure,
+  - verifies queue drain convergence, `wakeup_drops` delta, and boundary/runtime field stability.
+- Wired into `run_scheduler_tests(...)`.
+- Outcome:
+  - codifies retry-loop ownership expectations for worker enqueue failures,
+  - guards against leak/double-free regressions in full-queue producer paths.
+- Validation:
+  - normal full suite: pass (`Unified 1205/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1207/0`, `Compiler 73/0`)
+  - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1206/0`, `Compiler 73/0`)
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.

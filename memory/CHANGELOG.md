@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-03-05: Session 211 - Wakeup Full-Queue Payload Ownership Regression
+
+### Summary
+Added scheduler regression coverage to lock in payload ownership semantics when `WAKEUP_OFFLOAD_READY` enqueue fails on a full wakeup ring.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added:
+    - `run_scheduler_wakeup_full_payload_ownership_boundary_tests(...)`
+  - New coverage loop:
+    - fills wakeup ring to capacity,
+    - attempts `WAKEUP_OFFLOAD_READY` enqueue with `OffloadCompletion*` payload (expected failure),
+    - explicitly frees payload on failure to assert caller ownership on failed enqueue,
+    - drains queue and verifies convergence (`head == tail`),
+    - verifies `(wakeup_drops delta) == 1`,
+    - verifies interpreter boundary/runtime state snapshot remains unchanged.
+  - Wired into `run_scheduler_tests(...)`.
+
+### Why this matters
+- Worker retry paths rely on a strict contract: failed enqueue must not consume/free payload.
+- This regression prevents subtle ownership regressions (leak or double-free) in full-queue producer paths.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1205 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1207 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `OMNI_FIBER_TEMP=1 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1206 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+
 ## 2026-03-05: Session 210 - Atomic Wakeup Drop Counter Hardening
 
 ### Summary
