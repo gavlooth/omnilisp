@@ -17,6 +17,23 @@ fn usz cstr_len(char* s) @inline {
     return n;
 }
 
+fn bool cstr_contains(char[] haystack, char[] needle) {
+    if (needle.len == 0) return true;
+    if (haystack.len < needle.len) return false;
+    usz end = haystack.len - needle.len;
+    for (usz i = 0; i <= end; i++) {
+        bool match = true;
+        for (usz j = 0; j < needle.len; j++) {
+            if (haystack[i + j] != needle[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return true;
+    }
+    return false;
+}
+
 fn int find_flag_index(int argc, char** argv, char[] f1, char[] f2 = "", char[] f3 = "") {
     for (int i = 1; i < argc; i++) {
         if (str_eq(argv[i], f1)) return i;
@@ -618,6 +635,54 @@ fn int run_test_mode() {
     return 0;
 }
 
+fn bool run_stack_affinity_harness(char* self_exe) {
+    if (self_exe == null || self_exe[0] == 0) return false;
+
+    char[] log_path = "/tmp/omni_stack_affinity_probe.log";
+    char[2048] cmd;
+    usz n = 0;
+    char[] prefix = "LD_LIBRARY_PATH=/usr/local/lib ";
+    for (usz i = 0; i < prefix.len && n < cmd.len - 1; i++) cmd[n++] = prefix[i];
+    usz self_len = cstr_len(self_exe);
+    for (usz i = 0; i < self_len && n < cmd.len - 1; i++) cmd[n++] = self_exe[i];
+    char[] suffix = " --stack-affinity-probe > /tmp/omni_stack_affinity_probe.log 2>&1";
+    for (usz i = 0; i < suffix.len && n < cmd.len - 1; i++) cmd[n++] = suffix[i];
+    cmd[n] = 0;
+
+    int code = system(&cmd[0]);
+    bool nonzero = code != 0;
+    bool saw_marker = false;
+
+    if (try probe_out = io::file::load_temp((String)log_path)) {
+        saw_marker = cstr_contains(probe_out, "stack-engine thread-affinity violation");
+    }
+    return nonzero && saw_marker;
+}
+
+fn int run_test_mode_with_self(char* self_exe) {
+    int rc = run_test_mode();
+    if (rc != 0) return rc;
+
+    if (c_getenv("OMNI_STACK_AFFINITY_HARNESS") == null) return 0;
+
+    io::printn("");
+    io::printn("=== Stack Affinity Harness ===");
+    bool ok = run_stack_affinity_harness(self_exe);
+    if (ok) {
+        io::printn("PASS: stack affinity misuse probe failed fast as expected");
+        if (c_getenv("OMNI_TEST_SUMMARY") != null) {
+            io::printfn("OMNI_TEST_SUMMARY suite=stack_affinity_harness pass=1 fail=0");
+        }
+        return 0;
+    }
+
+    io::printn("FAIL: stack affinity misuse probe did not show expected fail-fast signal");
+    if (c_getenv("OMNI_TEST_SUMMARY") != null) {
+        io::printfn("OMNI_TEST_SUMMARY suite=stack_affinity_harness pass=0 fail=1");
+    }
+    return 1;
+}
+
 fn int run_stack_affinity_probe_mode() {
     io::printn("Running stack affinity violation probe...");
     return run_stack_engine_affinity_violation_probe();
@@ -660,5 +725,5 @@ fn int main(int argc, char** argv) {
     if (idx >= 0) return run_repl_mode();
 
     if (argc > 1) return run_script_mode(argv[1]);
-    return run_test_mode();
+    return run_test_mode_with_self(argv[0]);
 }

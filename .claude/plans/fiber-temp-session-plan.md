@@ -290,6 +290,25 @@ Validation:
 Next:
 - Decide whether to add an opt-in harness wrapper (`OMNI_STACK_AFFINITY_HARNESS=1`) that auto-runs the probe subprocess and summarizes pass/fail in test mode.
 
+## Fiber TEMP Phase 6g Progress (2026-03-05)
+
+Completed:
+- Added `OMNI_STACK_AFFINITY_HARNESS=1` wrapper in default test mode:
+  - runs full suite as before,
+  - then executes `--stack-affinity-probe` as a subprocess,
+  - validates non-zero exit + expected fail-fast marker in probe output,
+  - emits `OMNI_TEST_SUMMARY suite=stack_affinity_harness ...`.
+- Default path remains unchanged when the env flag is unset.
+
+Validation:
+- Normal default: pass (`Stack engine 21/0`, `Scope region 51/0`, `Unified 1182/0`, `Compiler 73/0`).
+- Normal + harness: pass + `stack_affinity_harness pass=1 fail=0`.
+- ASAN default: pass (`Stack engine 20/0`, `Scope region 51/0`, `Unified 1181/0`, `Compiler 73/0`).
+- ASAN + harness: pass + `stack_affinity_harness pass=1 fail=0`.
+
+Next:
+- Fold this harness summary into any CI profile that already sets `OMNI_TEST_SUMMARY=1` for boundary-hardening runs.
+
 ## Fiber TEMP Phase 5b Progress (2026-03-05)
 
 Completed:

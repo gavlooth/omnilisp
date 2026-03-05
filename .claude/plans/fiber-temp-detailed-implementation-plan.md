@@ -99,6 +99,7 @@ Enablement substrate update:
   - defer register/pop/update and lifecycle attach/find/clone/destroy/clear now assert owner-thread access,
   - closes API-level misuse gap for stack-owned teardown metadata.
 - Added an opt-in stack-affinity misuse probe (`--stack-affinity-probe`) to exercise fail-fast ownership violations in a controlled, non-default path.
+- Added optional harness wrapper (`OMNI_STACK_AFFINITY_HARNESS=1`) in default test mode to execute probe as a subprocess and emit machine-readable pass/fail summary.
 
 ## 4. Phase Plan
 

@@ -1,5 +1,46 @@
 # Changelog
 
+## 2026-03-05: Session 158 - Optional Affinity Harness Wrapper in Test Mode
+
+### Summary
+Added an opt-in harness wrapper (`OMNI_STACK_AFFINITY_HARNESS=1`) that runs the stack-affinity misuse probe as a subprocess after the normal test suite and reports deterministic pass/fail summary output.
+
+### What changed
+- `src/entry.c3`
+  - Added `run_stack_affinity_harness(self_exe)`:
+    - spawns `self_exe --stack-affinity-probe`,
+    - captures output to `/tmp/omni_stack_affinity_probe.log`,
+    - validates expected behavior via:
+      - non-zero subprocess exit,
+      - output marker `"stack-engine thread-affinity violation"`.
+  - Added `run_test_mode_with_self(self_exe)` wrapper:
+    - runs existing full test mode unchanged,
+    - when `OMNI_STACK_AFFINITY_HARNESS` is set, runs harness and emits summary.
+  - `main(...)` now invokes `run_test_mode_with_self(argv[0])` in default test mode.
+  - Added helper `cstr_contains(...)` for marker matching.
+- Default behavior unchanged when `OMNI_STACK_AFFINITY_HARNESS` is not set.
+
+### Why this matters
+- Verifies fail-fast ownership boundaries in an automated but isolated way.
+- Avoids adding crash-style tests inside the in-process default suite.
+- Provides machine-readable harness summary for CI or local diagnostics.
+
+### Validation
+- Normal default:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 21/0`, `Scope region 51/0`, `Unified 1182/0`, `Compiler 73/0`)
+- Normal with harness:
+  - `OMNI_STACK_AFFINITY_HARNESS=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 ...`
+  - Result: full suite pass + `OMNI_TEST_SUMMARY suite=stack_affinity_harness pass=1 fail=0`
+- ASAN default:
+  - `c3c clean && c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 ...`
+  - Result: pass (`Stack engine 20/0`, `Scope region 51/0`, `Unified 1181/0`, `Compiler 73/0`)
+- ASAN with harness:
+  - same ASAN options + `OMNI_STACK_AFFINITY_HARNESS=1 OMNI_TEST_SUMMARY=1`
+  - Result: pass + `OMNI_TEST_SUMMARY suite=stack_affinity_harness pass=1 fail=0`
+
 ## 2026-03-05: Session 157 - Opt-In Stack Affinity Misuse Probe
 
 ### Summary
