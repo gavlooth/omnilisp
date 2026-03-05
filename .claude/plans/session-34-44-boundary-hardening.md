@@ -559,6 +559,25 @@ Execution policy:
   - normal full suite green,
   - strict ASAN suite green.
 
+### Session 177 Follow-up (2026-03-05): Centralized Boundary Invariant Hooks
+
+- Added centralized boundary invariant helpers in `eval_boundary_api.c3`:
+  - `boundary_scope_chain_contains(...)`
+  - `boundary_assert_interp_scope_chain(...)`
+  - `boundary_assert_saved_state(...)`
+- Wired hooks into key boundary entry/restore paths:
+  - `boundary_save_interp_state(...)`
+  - `boundary_restore_interp_state(...)`
+  - `boundary_can_reuse_value(...)`
+  - `boundary_enter_scope(...)`
+  - `boundary_leave_scope(...)`
+  - `boundary_push_child_scope(...)`
+  - `boundary_pop_child_scope(...)`
+- Kept invariant policy conservative (non-null scope-state guarantees) to avoid false positives on valid disjoint-scope transitions.
+- Validation:
+  - normal full suite green,
+  - strict ASAN suite green.
+
 ## Global Gates (run after every commit)
 
 ```bash

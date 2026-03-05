@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-03-05: Session 177 - Central Boundary Invariant Hooks (Non-Null Scope State)
+
+### Summary
+Introduced centralized boundary invariant hooks in the facade layer and wired them into key boundary transitions, with conservative non-null scope-state guarantees to avoid false positives in valid disjoint-scope flows.
+
+### What changed
+- `src/lisp/eval_boundary_api.c3`
+  - Added shared invariant helpers:
+    - `boundary_scope_chain_contains(...)`
+    - `boundary_assert_interp_scope_chain(...)` (non-null `root_scope` + `current_scope`)
+    - `boundary_assert_saved_state(...)`
+  - Hooked invariant checks into key boundary paths:
+    - `boundary_save_interp_state(...)`
+    - `boundary_restore_interp_state(...)`
+    - `boundary_can_reuse_value(...)`
+    - `boundary_enter_scope(...)`
+    - `boundary_leave_scope(...)`
+    - `boundary_push_child_scope(...)`
+    - `boundary_pop_child_scope(...)`
+
+### Why this matters
+- Centralizes recurring boundary correctness assumptions in one audited place.
+- Moves toward invariant-hook coverage goals without introducing brittle constraints.
+- Keeps runtime behavior stable while improving failure locality for invalid boundary state.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
 ## 2026-03-05: Session 176 - Escape-Promotion Route Map + Disjoint Fallback Regression
 
 ### Summary

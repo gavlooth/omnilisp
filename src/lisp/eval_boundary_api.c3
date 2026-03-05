@@ -7,10 +7,31 @@ struct BoundaryInterpState {
     main::ScopeRegion* releasing_scope;
 }
 
+fn bool boundary_scope_chain_contains(main::ScopeRegion* scope, main::ScopeRegion* ancestor) @inline {
+    if (scope == null || ancestor == null) return false;
+    main::ScopeRegion* cur = scope;
+    while (cur != null) {
+        if (cur == ancestor) return true;
+        cur = cur.parent;
+    }
+    return false;
+}
+
+fn void boundary_assert_interp_scope_chain(Interp* interp) @inline {
+    if (interp == null) return;
+    assert(interp.root_scope != null, "boundary invariant: root_scope must not be null");
+    assert(interp.current_scope != null, "boundary invariant: current_scope must not be null");
+}
+
+fn void boundary_assert_saved_state(BoundaryInterpState saved) @inline {
+    assert(saved.current_scope != null, "boundary invariant: saved current_scope must not be null");
+}
+
 <*
 @require interp != null : "boundary_save_interp_state: null interp"
 *>
 fn BoundaryInterpState boundary_save_interp_state(Interp* interp) @inline {
+    boundary_assert_interp_scope_chain(interp);
     return {
         .current_scope = interp.current_scope,
         .releasing_scope = interp.releasing_scope,
@@ -21,8 +42,10 @@ fn BoundaryInterpState boundary_save_interp_state(Interp* interp) @inline {
 @require interp != null : "boundary_restore_interp_state: null interp"
 *>
 fn void boundary_restore_interp_state(Interp* interp, BoundaryInterpState saved) @inline {
+    boundary_assert_saved_state(saved);
     interp.current_scope = saved.current_scope;
     interp.releasing_scope = saved.releasing_scope;
+    boundary_assert_interp_scope_chain(interp);
 }
 
 <*
@@ -46,6 +69,7 @@ fn bool boundary_value_in_releasing_scope(Value* v, Interp* interp) @inline {
 *>
 fn bool boundary_can_reuse_value(Value* v, Interp* interp) @inline {
     if (v == null) return false;
+    boundary_assert_interp_scope_chain(interp);
     if (boundary_value_in_releasing_scope(v, interp)) return false;
     return boundary_ptr_in_target_scope_chain((void*)v, interp);
 }
@@ -66,8 +90,10 @@ fn Value* boundary_copy_to_parent(Value* v, Interp* interp) @inline {
 @require target_scope != null : "boundary_enter_scope: null target_scope"
 *>
 fn main::ScopeRegion* boundary_enter_scope(Interp* interp, main::ScopeRegion* target_scope) @inline {
+    boundary_assert_interp_scope_chain(interp);
     main::ScopeRegion* saved_scope = interp.current_scope;
     interp.current_scope = target_scope;
+    boundary_assert_interp_scope_chain(interp);
     return saved_scope;
 }
 
@@ -76,12 +102,14 @@ fn main::ScopeRegion* boundary_enter_scope(Interp* interp, main::ScopeRegion* ta
 *>
 fn void boundary_leave_scope(Interp* interp, main::ScopeRegion* saved_scope) @inline {
     interp.current_scope = saved_scope;
+    boundary_assert_interp_scope_chain(interp);
 }
 
 <*
 @require interp != null : "boundary_push_child_scope: null interp"
 *>
 fn main::ScopeRegion* boundary_push_child_scope(Interp* interp, main::ScopeRegion** saved_scope_out = null) @inline {
+    boundary_assert_interp_scope_chain(interp);
     main::ScopeRegion* saved_scope = interp.current_scope;
     if (saved_scope_out != null) {
         *saved_scope_out = saved_scope;
@@ -103,6 +131,7 @@ fn void boundary_pop_child_scope(
     main::ScopeRegion* child_scope
 ) @inline {
     interp.current_scope = saved_scope;
+    boundary_assert_interp_scope_chain(interp);
     if (child_scope != null) {
         main::scope_release(child_scope);
     }
