@@ -102,6 +102,26 @@ Validation:
 Next:
 - Begin per-fiber TEMP ownership plumbing behind the flag while preserving stack-layer genericity (no direct scope logic in stack engine).
 
+## Fiber TEMP Enablement Substrate Progress (2026-03-05)
+
+Completed:
+- Added a generic `StackCtx` lifecycle callback channel in `stack_engine` that is independent of LIFO defer push/pop.
+- Added coverage for:
+  - lifecycle destroy isolation from `stack_ctx_undefer(...)`,
+  - lifecycle clone hook behavior.
+
+Why this step:
+- A previous attempt to bind persistent resource state via dynamic defer registration exposed a real risk:
+  non-LIFO registrations can violate call-site assumptions around `stack_ctx_undefer(...)`.
+- Lifecycle channel provides the correct primitive for persistent context-owned resources.
+
+Validation:
+- Normal: `Stack engine 18/0`, `Scope region 51/0`, `Unified 1178/0`, `Compiler 73/0`.
+- ASAN strict: `Stack engine 17/0`, `Scope region 51/0`, `Unified 1177/0`, `Compiler 73/0`.
+
+Next:
+- Re-attempt Fiber TEMP per-context ownership using lifecycle callbacks (not defer stack), keeping default behavior unchanged when flag is off.
+
 ## Session Rules
 
 Global rule for every session:

@@ -81,6 +81,9 @@ Phase 2 initial gate status:
   - Eligible scopes now bypass pool routing after ESCAPE-lane activity appears (`escape_chunks`/`escape_dtors`), further constraining Fiber TEMP to ephemeral TEMP-heavy scope shapes.
   - Flagged summary confirms bypass path exercise (`bypass_escape=2`).
 
+Enablement substrate update:
+- Added a defer-independent `StackCtx` lifecycle callback channel (attach/find/clone/destroy) so persistent per-context resources can be owned safely without interfering with LIFO `stack_ctx_undefer(...)` behavior.
+
 ## 4. Phase Plan
 
 ### Phase 0: Baseline and Invariant Freeze

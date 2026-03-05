@@ -185,6 +185,7 @@ struct StackCtxDeferEntry {
 }
 
 const usz STACK_CTX_DEFER_INLINE_CAP = 8;
+const usz STACK_CTX_LIFECYCLE_INLINE_CAP = 4;
 
 /**
  * Bootstrap state — tells the trampoline what function to call.
@@ -375,6 +376,10 @@ struct StackCtx {
     StackCtxDeferEntry* defer_heap; // Overflow storage when inline slots are exceeded
     usz            defer_count; // Number of active defer entries
     usz            defer_capacity; // Capacity of defer_heap (or inline cap when heap is null)
+    StackCtxDeferEntry[STACK_CTX_LIFECYCLE_INLINE_CAP] lifecycle_inline; // Persistent lifecycle callbacks
+    StackCtxDeferEntry* lifecycle_heap; // Overflow storage for lifecycle callbacks
+    usz            lifecycle_count; // Number of active lifecycle entries
+    usz            lifecycle_capacity; // Capacity of lifecycle_heap (or inline cap when null)
 }
 
 // =============================================================================
@@ -409,6 +414,10 @@ fn void stack_pool_shutdown(StackPool* pool) {
             mem::free(c.defer_heap);
             c.defer_heap = null;
         }
+        if (c.lifecycle_heap != null) {
+            mem::free(c.lifecycle_heap);
+            c.lifecycle_heap = null;
+        }
         stack_guard_unregister(c.stack.base);
         stack_region_free(&c.stack);
         mem::free(c);
@@ -426,6 +435,11 @@ fn void stack_pool_shutdown(StackPool* pool) {
 fn StackCtxDeferEntry* stack_ctx_defer_entry_at(StackCtx* c, usz idx) @inline {
     if (c.defer_heap != null) return &c.defer_heap[idx];
     return &c.defer_inline[idx];
+}
+
+fn StackCtxDeferEntry* stack_ctx_lifecycle_entry_at(StackCtx* c, usz idx) @inline {
+    if (c.lifecycle_heap != null) return &c.lifecycle_heap[idx];
+    return &c.lifecycle_inline[idx];
 }
 
 fn bool stack_ctx_defer_reserve(StackCtx* c, usz needed) {
@@ -520,6 +534,109 @@ fn bool stack_ctx_defer_update_arg(StackCtx* c, usz idx, void* arg) {
     return true;
 }
 
+fn bool stack_ctx_lifecycle_reserve(StackCtx* c, usz needed) {
+    if (needed <= STACK_CTX_LIFECYCLE_INLINE_CAP && c.lifecycle_heap == null) {
+        c.lifecycle_capacity = STACK_CTX_LIFECYCLE_INLINE_CAP;
+        return true;
+    }
+
+    if (c.lifecycle_heap == null) {
+        usz new_cap = STACK_CTX_LIFECYCLE_INLINE_CAP * 2;
+        while (new_cap < needed) new_cap *= 2;
+        StackCtxDeferEntry* buf = (StackCtxDeferEntry*)mem::malloc(StackCtxDeferEntry.sizeof * new_cap);
+        if (buf == null) return false;
+        for (usz i = 0; i < c.lifecycle_count; i++) {
+            buf[i] = c.lifecycle_inline[i];
+        }
+        c.lifecycle_heap = buf;
+        c.lifecycle_capacity = new_cap;
+        return true;
+    }
+
+    if (needed <= c.lifecycle_capacity) return true;
+    usz new_cap = c.lifecycle_capacity * 2;
+    while (new_cap < needed) new_cap *= 2;
+    StackCtxDeferEntry* grown = (StackCtxDeferEntry*)mem::malloc(StackCtxDeferEntry.sizeof * new_cap);
+    if (grown == null) return false;
+    for (usz i = 0; i < c.lifecycle_count; i++) {
+        grown[i] = c.lifecycle_heap[i];
+    }
+    mem::free(c.lifecycle_heap);
+    c.lifecycle_heap = grown;
+    c.lifecycle_capacity = new_cap;
+    return true;
+}
+
+/**
+ * Attach a persistent lifecycle callback entry to a context.
+ *
+ * Unlike stack_ctx_defer(...), these entries are not affected by
+ * stack_ctx_undefer(...). They are cloned with the context and run when
+ * the context is destroyed.
+ */
+fn bool stack_ctx_lifecycle_attach(StackCtx* c, StackCtxDeferOps* ops, void* arg) {
+    if (c == null || ops == null) return false;
+    if (ops.destroy_fn == null && ops.clone_fn == null) return false;
+    usz next = c.lifecycle_count + 1;
+    if (!stack_ctx_lifecycle_reserve(c, next)) return false;
+    StackCtxDeferEntry* e = stack_ctx_lifecycle_entry_at(c, c.lifecycle_count);
+    e.destroy_fn = ops.destroy_fn;
+    e.clone_fn = ops.clone_fn;
+    e.arg = arg;
+    c.lifecycle_count = next;
+    return true;
+}
+
+fn void* stack_ctx_find_lifecycle_arg(StackCtx* c, StackCtxDeferFn destroy_fn, StackCtxDeferFn clone_fn) {
+    if (c == null) return null;
+    if (destroy_fn == null && clone_fn == null) return null;
+    for (usz i = 0; i < c.lifecycle_count; i++) {
+        StackCtxDeferEntry* e = stack_ctx_lifecycle_entry_at(c, i);
+        if (e.destroy_fn == destroy_fn && e.clone_fn == clone_fn) {
+            return e.arg;
+        }
+    }
+    return null;
+}
+
+fn void stack_ctx_run_lifecycle_destroy(StackCtx* c) {
+    while (c.lifecycle_count > 0) {
+        c.lifecycle_count--;
+        StackCtxDeferEntry* e = stack_ctx_lifecycle_entry_at(c, c.lifecycle_count);
+        if (e.destroy_fn != null) {
+            e.destroy_fn(e.arg);
+        }
+        e.destroy_fn = null;
+        e.clone_fn = null;
+        e.arg = null;
+    }
+}
+
+fn void stack_ctx_clear_lifecycle_storage(StackCtx* c) {
+    if (c.lifecycle_heap != null) {
+        mem::free(c.lifecycle_heap);
+        c.lifecycle_heap = null;
+    }
+    c.lifecycle_count = 0;
+    c.lifecycle_capacity = STACK_CTX_LIFECYCLE_INLINE_CAP;
+}
+
+fn bool stack_ctx_clone_lifecycle_entries(StackCtx* source, StackCtx* clone) {
+    if (!stack_ctx_lifecycle_reserve(clone, source.lifecycle_count)) return false;
+    for (usz i = 0; i < source.lifecycle_count; i++) {
+        StackCtxDeferEntry src_e = *stack_ctx_lifecycle_entry_at(source, i);
+        StackCtxDeferEntry* dst_e = stack_ctx_lifecycle_entry_at(clone, i);
+        dst_e.destroy_fn = src_e.destroy_fn;
+        dst_e.clone_fn = src_e.clone_fn;
+        dst_e.arg = src_e.arg;
+        if (dst_e.clone_fn != null) {
+            dst_e.clone_fn(dst_e.arg);
+        }
+    }
+    clone.lifecycle_count = source.lifecycle_count;
+    return true;
+}
+
 fn void stack_ctx_run_deferred_destroy(StackCtx* c) {
     while (c.defer_count > 0) {
         c.defer_count--;
@@ -582,6 +699,9 @@ fn StackCtx* stack_ctx_create(StackPool* pool) {
     c.defer_heap = null;
     c.defer_count = 0;
     c.defer_capacity = STACK_CTX_DEFER_INLINE_CAP;
+    c.lifecycle_heap = null;
+    c.lifecycle_count = 0;
+    c.lifecycle_capacity = STACK_CTX_LIFECYCLE_INLINE_CAP;
     c.id = pool.next_id;
     pool.next_id++;
 
@@ -590,7 +710,9 @@ fn StackCtx* stack_ctx_create(StackPool* pool) {
 
 fn void stack_ctx_destroy(StackCtx* c, StackPool* pool) {
     stack_ctx_run_deferred_destroy(c);
+    stack_ctx_run_lifecycle_destroy(c);
     stack_ctx_clear_defer_storage(c);
+    stack_ctx_clear_lifecycle_storage(c);
     if (pool.pool_size < pool.max_pool) {
         // Return to pool — keep the stack allocation
         c.status = CTX_DEAD;
@@ -905,6 +1027,11 @@ fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
             }
         }
         clone.defer_count = source.defer_count;
+    }
+
+    if (!stack_ctx_clone_lifecycle_entries(source, clone)) {
+        stack_ctx_destroy(clone, pool);
+        return null;
     }
 
     return clone;
@@ -1599,6 +1726,85 @@ fn bool test_stack_ctx_defer_update_arg_clone_isolation() {
     return ok;
 }
 
+fn bool test_stack_ctx_lifecycle_destroy_isolation() {
+    StackPool pool;
+    stack_pool_init(&pool);
+
+    StackCtx* c = stack_ctx_create(&pool);
+    if (c == null) { stack_pool_shutdown(&pool); return false; }
+
+    StackCtxDeferOps ops;
+    ops.destroy_fn = &test_defer_on_destroy;
+    ops.clone_fn = &test_defer_on_clone;
+
+    TestDeferLog life_log;
+    TestDeferLog defer_log;
+    life_log.count = 0;
+    defer_log.count = 0;
+
+    TestDeferArg life_arg;
+    TestDeferArg defer_arg;
+    life_arg.log = &life_log; life_arg.id = 31; life_arg.destroy_hits = 0; life_arg.clone_hits = 0;
+    defer_arg.log = &defer_log; defer_arg.id = 41; defer_arg.destroy_hits = 0; defer_arg.clone_hits = 0;
+
+    bool ok = stack_ctx_lifecycle_attach(c, &ops, &life_arg);
+    ok = ok && stack_ctx_defer(c, &ops, &defer_arg);
+    ok = ok && stack_ctx_undefer(c);
+
+    stack_ctx_destroy(c, &pool);
+    stack_pool_shutdown(&pool);
+
+    ok = ok && life_arg.destroy_hits == 1;
+    ok = ok && defer_arg.destroy_hits == 0;
+    ok = ok && life_log.count == 1 && life_log.order[0] == 31;
+    return ok;
+}
+
+fn bool test_stack_ctx_lifecycle_clone_hook() {
+    StackPool pool;
+    stack_pool_init(&pool);
+
+    StackCtx* source = stack_ctx_create(&pool);
+    if (source == null) { stack_pool_shutdown(&pool); return false; }
+
+    TestState state;
+    state.value = 0;
+    state.step = 0;
+    stack_ctx_init(source, &test_entry_generator, &state);
+
+    StackContext main_ctx;
+    stack_ctx_switch_to(source, &main_ctx);  // suspend once
+    if (source.status != CTX_SUSPENDED) {
+        stack_ctx_destroy(source, &pool);
+        stack_pool_shutdown(&pool);
+        return false;
+    }
+
+    StackCtxDeferOps ops;
+    ops.destroy_fn = &test_defer_on_destroy;
+    ops.clone_fn = &test_defer_on_clone;
+
+    TestDeferLog log;
+    log.count = 0;
+    TestDeferArg arg;
+    arg.log = &log;
+    arg.id = 51;
+    arg.destroy_hits = 0;
+    arg.clone_hits = 0;
+
+    bool ok = stack_ctx_lifecycle_attach(source, &ops, &arg);
+    StackCtx* clone = stack_ctx_clone(source, &pool);
+    ok = ok && clone != null;
+    ok = ok && arg.clone_hits == 1;
+
+    if (clone != null) stack_ctx_destroy(clone, &pool);
+    stack_ctx_destroy(source, &pool);
+    stack_pool_shutdown(&pool);
+
+    ok = ok && arg.destroy_hits == 2;
+    return ok;
+}
+
 /**
  * Run all stack engine tests.
  */
@@ -1664,6 +1870,12 @@ fn void run_stack_engine_tests() {
 
     if (test_stack_ctx_defer_update_arg_clone_isolation()) { stack_print_pass("defer update arg clone isolation"); pass++; }
     else { io::printfn("  FAIL: defer update arg clone isolation"); fail++; }
+
+    if (test_stack_ctx_lifecycle_destroy_isolation()) { stack_print_pass("lifecycle destroy isolation"); pass++; }
+    else { io::printfn("  FAIL: lifecycle destroy isolation"); fail++; }
+
+    if (test_stack_ctx_lifecycle_clone_hook()) { stack_print_pass("lifecycle clone hook"); pass++; }
+    else { io::printfn("  FAIL: lifecycle clone hook"); fail++; }
 
     io::printfn("\nStack engine: %d passed, %d failed", pass, fail);
     emit_stack_defer_summary();

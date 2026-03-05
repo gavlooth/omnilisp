@@ -1,5 +1,49 @@
 # Changelog
 
+## 2026-03-05: Session 146 - StackCtx Lifecycle Substrate (Defer-Independent)
+
+### Summary
+Added a new generic `StackCtx` lifecycle callback channel, separate from LIFO defer entries, to support persistent per-context resources without interfering with `stack_ctx_undefer(...)` semantics.
+
+This was introduced after identifying that dynamic defer registration from non-LIFO resource paths can conflict with call-site expectations that `stack_ctx_undefer(...)` pops the latest suspend guard.
+
+### What changed
+- `src/stack_engine.c3`
+  - Added lifecycle storage to `StackCtx`:
+    - `lifecycle_inline`, `lifecycle_heap`, `lifecycle_count`, `lifecycle_capacity`.
+  - Added lifecycle APIs:
+    - `stack_ctx_lifecycle_attach(...)`
+    - `stack_ctx_find_lifecycle_arg(...)`
+    - lifecycle reserve/clone/destroy/clear helpers.
+  - `stack_ctx_destroy(...)` now runs lifecycle callbacks after defer callbacks.
+  - `stack_ctx_clone(...)` now clones lifecycle entries and invokes lifecycle clone hooks.
+  - `stack_pool_shutdown(...)` now frees lifecycle overflow storage.
+  - Added tests:
+    - `test_stack_ctx_lifecycle_destroy_isolation()`
+    - `test_stack_ctx_lifecycle_clone_hook()`
+  - `run_stack_engine_tests()` now includes both lifecycle tests.
+
+### Why this matters
+- Preserves stack-engine genericity while adding the right primitive for persistent context-owned resources.
+- Prevents correctness regressions caused by mixing non-LIFO resources into the LIFO defer stack.
+- Unblocks safer Fiber TEMP per-context ownership work in subsequent sessions.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 18/0`, `Scope region 51/0`, `Unified 1178/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c clean && c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 17/0`, `Scope region 51/0`, `Unified 1177/0`, `Compiler 73/0`)
+- Flagged summary:
+  - `OMNI_FIBER_TEMP=1 OMNI_TEST_SUMMARY=1 ...`
+  - Result includes:
+    - `OMNI_TEST_SUMMARY suite=stack_engine pass=18 fail=0`
+    - `OMNI_TEST_SUMMARY suite=scope_region pass=51 fail=0`
+    - `OMNI_TEST_SUMMARY suite=fiber_temp_pool enabled=1 hits=2 misses=4 returns=8 drop_frees=0 pooled=6 peak=6 eligible_slow=2 bypass_large=0 bypass_escape=2`
+
 ## 2026-03-05: Session 145 - Fiber TEMP Pool Invariant Tests
 
 ### Summary
