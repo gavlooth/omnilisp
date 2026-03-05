@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-03-05: Session 193 - Scheduler Wakeup/Offload Expected-Error Boundary Regression
+
+### Summary
+Extended scheduler boundary-hardening coverage with a focused regression that combines wakeup-queue drain paths and offload expected-error flows, and verifies boundary/runtime state restoration across repeated cycles.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added scheduler regression:
+    - `run_scheduler_wakeup_offload_error_boundary_tests(...)`
+  - New coverage mixes three paths per iteration:
+    - success path: spawn + `offload 'sleep-ms` + `await`
+    - wakeup path: `wakeup_enqueue(...)` + `drain_wakeups()` with out-of-range fiber id
+    - expected-error path: spawn + `offload 'nope` + `await`
+  - Verifies boundary/runtime fields remain unchanged after each phase:
+    - `current_scope`, `releasing_scope`
+    - `jit_env`, `match_env`
+    - `jit_tco_expr`, `jit_tco_env`
+    - `tco_recycle_scope`, `tco_scope_defer_slot`, `tco_scope_defer_active`
+    - `escape_env_mode`, `active_promotion_ctx`
+  - Wired into `run_scheduler_tests(...)`.
+
+### Why this matters
+- Expands scheduler-specific regression depth beyond mixed join/cancel flows into wakeup-queue and expected-offload-error transitions.
+- Locks in boundary-state restoration guarantees on callback-driven and erroring async-adjacent paths.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1195 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c clean && c3c build --sanitize=address`
+- ASAN repeated full-run probe (`detect_leaks=1:halt_on_error=1:abort_on_error=1`, 3 runs):
+  - all passed (`Unified 1195/0`, `Compiler 73/0` each run).
+
 ## 2026-03-05: Session 192 - Scheduler Mixed Boundary-State Regression + Top-Level JIT-TCO Cleanup
 
 ### Summary

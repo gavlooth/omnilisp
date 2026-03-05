@@ -193,6 +193,23 @@ Execution policy:
   - normal full suite: pass (`Unified 1195/0`, `Compiler 73/0`)
   - strict ASAN repeated full-run probe (3 runs): all pass (`Unified 1194/0`, `Compiler 73/0` each).
 
+### Session 193 Follow-up (2026-03-05): Scheduler Wakeup/Offload Expected-Error Boundary Coverage
+
+- Added scheduler regression `run_scheduler_wakeup_offload_error_boundary_tests(...)` in `src/lisp/tests_tests.c3`:
+  - runs repeated triplets of:
+    - success spawn/await with `offload 'sleep-ms`,
+    - manual wakeup queue enqueue/drain (`WAKEUP_POLL_ERROR` with out-of-range fiber id),
+    - expected-error spawn/await with invalid `offload 'nope`.
+  - verifies boundary/runtime field stability after every phase:
+    - `current_scope`, `releasing_scope`
+    - `jit_env`, `match_env`
+    - `jit_tco_expr`, `jit_tco_env`
+    - `tco_recycle_scope`, `tco_scope_defer_slot`, `tco_scope_defer_active`
+    - `escape_env_mode`, `active_promotion_ctx`
+- Validation:
+  - normal full suite: pass (`Unified 1195/0`, `Compiler 73/0`)
+  - strict ASAN repeated full-run probe (3 runs): all pass (`Unified 1195/0`, `Compiler 73/0` each).
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.
