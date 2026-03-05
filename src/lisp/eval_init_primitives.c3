@@ -180,6 +180,8 @@ fn void register_regular_primitives_io_and_deduce(Interp* interp) {
     PrimReg[] io_deduce_prims = {
         // Networking / async I/O (raw primitives for effect fast path)
         { "__raw-tcp-connect", &prim_tcp_connect, 2 },
+        { "__raw-tcp-listen", &prim_tcp_listen, -1 },
+        { "__raw-tcp-accept", &prim_tcp_accept, 1 },
         { "__raw-tcp-read", &prim_tcp_read, -1 },
         { "__raw-tcp-write", &prim_tcp_write, 2 },
         { "__raw-tcp-close", &prim_tcp_close, 1 },
@@ -233,7 +235,7 @@ fn void register_regular_primitives(Interp* interp) {
 }
 
 fn void register_effect_fast_paths(Interp* interp) {
-    const FAST_PATH_COUNT = 25;
+    const FAST_PATH_COUNT = 27;
     FastPathReg[FAST_PATH_COUNT] fast_paths = {
         { "io/print",      "__raw-print" },
         { "io/println",     "__raw-println" },
@@ -244,6 +246,8 @@ fn void register_effect_fast_paths(Interp* interp) {
         { "io/file-exists?","__raw-file-exists?" },
         { "io/read-lines",  "__raw-read-lines" },
         { "io/tcp-connect", "__raw-tcp-connect" },
+        { "io/tcp-listen",  "__raw-tcp-listen" },
+        { "io/tcp-accept",  "__raw-tcp-accept" },
         { "io/tcp-read",    "__raw-tcp-read" },
         { "io/tcp-write",   "__raw-tcp-write" },
         { "io/tcp-close",   "__raw-tcp-close" },

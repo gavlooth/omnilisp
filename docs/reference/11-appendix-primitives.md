@@ -264,6 +264,8 @@ Preferred forcing style uses collection constructors:
 | Name | Arity | Description |
 |------|-------|-------------|
 | `__raw-tcp-connect` | 1 | Raw TCP connect |
+| `__raw-tcp-listen` | 1 | Raw TCP listen |
+| `__raw-tcp-accept` | 1 | Raw TCP accept |
 | `__raw-tcp-read` | 1 | Raw TCP read |
 | `__raw-tcp-write` | 1 | Raw TCP write |
 | `__raw-tcp-close` | 1 | Raw TCP close |

@@ -11,12 +11,17 @@ import main;
 // POSIX sockets (blocking fast-path for TCP)
 extern fn int c_socket(int domain, int type, int protocol) @extern("socket");
 extern fn int c_connect(int sockfd, void* addr, uint addrlen) @extern("connect");
+extern fn int c_bind(int sockfd, void* addr, uint addrlen) @extern("bind");
+extern fn int c_listen(int sockfd, int backlog) @extern("listen");
+extern fn int c_accept(int sockfd, void* addr, void* addrlen) @extern("accept");
 extern fn long c_send(int sockfd, void* buf, usz len, int flags) @extern("send");
 extern fn long c_recv(int sockfd, void* buf, usz len, int flags) @extern("recv");
 extern fn int c_close_fd(int fd) @extern("close");
+extern fn int c_setsockopt(int sockfd, int level, int optname, void* optval, uint optlen) @extern("setsockopt");
 extern fn int c_getaddrinfo(char* node, char* service, void* hints, void** res) @extern("getaddrinfo");
 extern fn void c_freeaddrinfo(void* res) @extern("freeaddrinfo");
 extern fn char* c_inet_ntop(int af, void* src, char* dst, uint size) @extern("inet_ntop");
+extern fn uint c_inet_addr(char* cp) @extern("inet_addr");
 
 // libuv — scheduler async I/O and wake signaling
 extern fn int uv_loop_init(void* loop) @extern("uv_loop_init");
@@ -65,6 +70,8 @@ struct SockaddrIn {
 const int AF_INET = 2;
 const int SOCK_STREAM = 1;
 const int IPPROTO_TCP = 6;
+const int SOL_SOCKET = 1;
+const int SO_REUSEADDR = 2;
 
 // htons
 fn ushort htons(ushort val) {
@@ -75,9 +82,15 @@ fn ushort htons(ushort val) {
 // TCP Handle — wraps a file descriptor
 // ============================================================
 
+enum TcpHandleMode : char {
+    TCP_STREAM,
+    TCP_LISTENER
+}
+
 struct TcpHandle {
     int fd;
     bool connected;
+    TcpHandleMode mode;
 }
 
 fn void tcp_handle_finalizer(void* handle) {
@@ -95,6 +108,7 @@ fn Value* make_tcp_handle(Interp* interp, int fd) {
     if (th == null) return raise_error(interp, "tcp-connect: out of memory");
     th.fd = fd;
     th.connected = true;
+    th.mode = TCP_STREAM;
     Value* v = make_ffi_handle_ex(interp, (void*)th, "tcp-handle",
         &tcp_handle_finalizer, true, false);
     if (v == null) {
@@ -108,6 +122,21 @@ fn TcpHandle* get_tcp_handle(Value* v) {
     if (v == null || v.tag != FFI_HANDLE) return null;
     if (v.ffi_val == null) return null;
     return (TcpHandle*)v.ffi_val.lib_handle;
+}
+
+fn Value* make_tcp_listener_handle(Interp* interp, int fd) {
+    TcpHandle* th = (TcpHandle*)mem::malloc(TcpHandle.sizeof);
+    if (th == null) return raise_error(interp, "tcp-listen: out of memory");
+    th.fd = fd;
+    th.connected = true;
+    th.mode = TCP_LISTENER;
+    Value* v = make_ffi_handle_ex(interp, (void*)th, "tcp-handle",
+        &tcp_handle_finalizer, true, false);
+    if (v == null) {
+        mem::free(th);
+        return raise_error(interp, "tcp-listen: out of memory");
+    }
+    return v;
 }
 
 fn void copy_to_c_buffer(char* dst, usz cap, char[] src) {
@@ -146,6 +175,44 @@ fn int connect_fd_from_addrinfo(void* result) {
         return -1;
     }
     return fd;
+}
+
+fn int listen_fd_from_host(char[] host, int port, int backlog) {
+    int fd = c_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (fd < 0) return -1;
+
+    int reuse = 1;
+    (void)c_setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, 4);
+
+    char[64] host_buf;
+    copy_to_c_buffer(&host_buf, host_buf.len, host);
+
+    SockaddrIn addr = {};
+    addr.sin_family = (ushort)AF_INET;
+    addr.sin_port = htons((ushort)port);
+    if (host.len == 9 && host[0] == 'l' && host[1] == 'o' && host[2] == 'c') {
+        addr.sin_addr = c_inet_addr("127.0.0.1");
+    } else {
+        addr.sin_addr = c_inet_addr(&host_buf);
+    }
+    if (addr.sin_addr == 0xFFFFFFFFu) {
+        c_close_fd(fd);
+        return -1;
+    }
+
+    if (c_bind(fd, &addr, SockaddrIn.sizeof) < 0) {
+        c_close_fd(fd);
+        return -1;
+    }
+    if (c_listen(fd, backlog) < 0) {
+        c_close_fd(fd);
+        return -1;
+    }
+    return fd;
+}
+
+fn int tcp_accept_fd(int listener_fd) {
+    return c_accept(listener_fd, null, null);
 }
 
 fn void parse_tcp_read_options(Value*[] args, usz* max_bytes, long* timeout_ms) {
@@ -214,6 +281,79 @@ fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
 }
 
 // ============================================================
+// (tcp-listen host port [backlog]) — open listener socket
+// ============================================================
+fn Value* prim_tcp_listen(Value*[] args, Env* env, Interp* interp) {
+    Value* host_v = null;
+    Value* port_v = null;
+    Value* backlog_v = null;
+    if (args.len == 1 && is_cons(args[0])) {
+        Value* packed = args[0];
+        host_v = car(packed);
+        packed = cdr(packed);
+        if (!is_cons(packed)) return raise_error(interp, "tcp-listen: expected (tcp-listen host port [backlog])");
+        port_v = car(packed);
+        packed = cdr(packed);
+        if (is_cons(packed)) backlog_v = car(packed);
+    } else {
+        if (args.len < 2) return raise_error(interp, "tcp-listen: expected (tcp-listen host port [backlog])");
+        host_v = args[0];
+        port_v = args[1];
+        if (args.len >= 3) backlog_v = args[2];
+    }
+
+    if (!is_string(host_v)) return raise_error(interp, "tcp-listen: host must be a string");
+    if (!is_int(port_v)) return raise_error(interp, "tcp-listen: port must be an integer");
+
+    int backlog = 128;
+    if (backlog_v != null) {
+        if (!is_int(backlog_v)) return raise_error(interp, "tcp-listen: backlog must be an integer");
+        backlog = (int)backlog_v.int_val;
+        if (backlog < 1) backlog = 1;
+        if (backlog > 1024) backlog = 1024;
+    }
+
+    char[] host = host_v.str_chars[:host_v.str_len];
+    int port = (int)port_v.int_val;
+    int fd = listen_fd_from_host(host, port, backlog);
+    if (fd < 0) return raise_error(interp, "tcp-listen: bind/listen failed");
+    return make_tcp_listener_handle(interp, fd);
+}
+
+fn Value* tcp_accept_with_offload(TcpHandle* listener, Interp* interp) {
+    Value* op = make_symbol(interp, interp.symbols.intern("accept-fd"));
+    Value* fd = make_int(interp, listener.fd);
+    Value* job = make_cons(interp, op, make_cons(interp, fd, make_nil(interp)));
+    Value*[1] off_args;
+    off_args[0] = job;
+    Value* accepted = prim_offload(off_args[..], null, interp);
+    if (accepted == null || accepted.tag == ERROR) return accepted;
+    if (!is_int(accepted) || accepted.int_val < 0) {
+        return raise_error(interp, "tcp-accept: offload returned invalid fd");
+    }
+    return make_tcp_handle(interp, (int)accepted.int_val);
+}
+
+// ============================================================
+// (tcp-accept listener-handle) — accept one connection
+// ============================================================
+fn Value* prim_tcp_accept(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return raise_error(interp, "tcp-accept: expected (tcp-accept listener-handle)");
+    TcpHandle* listener = get_tcp_handle(args[0]);
+    if (listener == null || !listener.connected || listener.mode != TCP_LISTENER) {
+        return raise_error(interp, "tcp-accept: invalid or closed listener handle");
+    }
+
+    if (scheduler_is_running_fiber_context()) {
+        return tcp_accept_with_offload(listener, interp);
+    }
+
+    int fd = tcp_accept_fd(listener.fd);
+    if (fd < 0) return raise_error(interp, "tcp-accept: accept failed");
+    return make_tcp_handle(interp, fd);
+}
+
+// ============================================================
 // (tcp-write handle data) — blocking write, returns bytes written
 // ============================================================
 
@@ -225,7 +365,7 @@ fn Value* prim_tcp_write(Value*[] args, Env* env, Interp* interp) {
 
     TcpHandle* th = get_tcp_handle(args[0]);
     // fault: lisp::TYPE_MISMATCH
-    if (th == null || !th.connected) return raise_error(interp, "tcp-write: invalid or closed handle");
+    if (th == null || !th.connected || th.mode != TCP_STREAM) return raise_error(interp, "tcp-write: invalid or closed stream handle");
 
     char[] data = args[1].str_chars[:args[1].str_len];
     // fault: lisp::WRITE_FAILED
@@ -245,7 +385,7 @@ fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
 
     TcpHandle* th = get_tcp_handle(args[0]);
     // fault: lisp::TYPE_MISMATCH
-    if (th == null || !th.connected) return raise_error(interp, "tcp-read: invalid or closed handle");
+    if (th == null || !th.connected || th.mode != TCP_STREAM) return raise_error(interp, "tcp-read: invalid or closed stream handle");
 
     usz max_bytes = 0;
     long timeout_ms = -1;

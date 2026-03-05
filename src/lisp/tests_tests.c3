@@ -1193,6 +1193,32 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
     // DNS resolve returns a string
     test_str(interp, "dns-resolve returns string",
         "(dns-resolve \"localhost\")", pass, fail);
+
+    // listener lifecycle
+    test_tag(interp, "tcp-listen open/close",
+        "(begin (define ls (tcp-listen \"127.0.0.1\" 0 8)) (tcp-close ls))", NIL, pass, fail);
+
+    // tcp-accept argument validation
+    test_error_contains(interp, "tcp-accept rejects non-listener",
+        "(tcp-accept nil)",
+        "invalid or closed listener handle", pass, fail);
+
+    // fiber-safe accept path: accept in fiber (offloaded), connect/write in main
+    test_truthy(interp, "tcp-accept in fiber via offload",
+        "(begin "
+        "  (define p (+ 30000 (% (time-ms) 20000))) "
+        "  (define listener (tcp-listen \"127.0.0.1\" p 8)) "
+        "  (define af (spawn (lambda () (tcp-accept listener)))) "
+        "  (async-sleep 5) "
+        "  (define client (tcp-connect \"127.0.0.1\" p)) "
+        "  (tcp-write client \"ping\") "
+        "  (define server-client (await af)) "
+        "  (define payload (tcp-read server-client)) "
+        "  (tcp-close client) "
+        "  (tcp-close server-client) "
+        "  (tcp-close listener) "
+        "  (= payload \"ping\"))",
+        pass, fail);
 }
 
 fn void run_async_tests_isolated(int* pass, int* fail) {

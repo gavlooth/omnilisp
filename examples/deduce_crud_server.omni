@@ -1,0 +1,169 @@
+;; Deduce CRUD Web Server (fiber/effects pipeline, no channels)
+;;
+;; Run:
+;;   (load "examples/deduce_crud_server.omni")
+;;   (server/start "127.0.0.1" 8080)
+;;
+;; Example requests:
+;;   curl -s http://127.0.0.1:8080/items
+;;   curl -s -X POST http://127.0.0.1:8080/items -H 'content-type: application/json' \
+;;     -d '{"id":1,"name":"paper","qty":3}'
+;;   curl -s http://127.0.0.1:8080/items/1
+;;   curl -s -X PUT http://127.0.0.1:8080/items -H 'content-type: application/json' \
+;;     -d '{"id":1,"name":"paper","qty":7}'
+;;   curl -s -X DELETE http://127.0.0.1:8080/items -H 'content-type: application/json' \
+;;     -d '{"id":1}'
+
+(define db (deduce 'open 'memory))
+(define [relation db] items (id) (name) (qty))
+
+(define [schema] item-write
+  (map
+    (id int)
+    (name string)
+    (qty (and int (> 0)))))
+
+(define [schema] item-delete
+  (map
+    (id int)))
+
+(define [schema] ok-response
+  (map
+    (status string)
+    (data any)))
+
+(define [schema] err-response
+  (map
+    (status string)
+    (error string)))
+
+(define (util/second xs)
+  (if (or (null? xs) (null? (cdr xs)))
+      nil
+      (car (cdr xs))))
+
+(define (util/third xs)
+  (if (or (null? xs) (null? (cdr xs)) (null? (cdr (cdr xs))))
+      nil
+      (car (cdr (cdr xs)))))
+
+(define (repo/list)
+  (deduce 'scan items))
+
+(define (repo/get-by-id id)
+  (car (deduce 'query items (lambda (row) (= ('id row) id)))))
+
+(define (repo/create payload)
+  (let (id ('id payload)
+        existing (repo/get-by-id ('id payload)))
+    (if existing
+        {'status "error" 'error "item already exists"}
+        (begin
+          (deduce 'fact! items id ('name payload) ('qty payload))
+          {'status "ok" 'data payload}))))
+
+(define (repo/update payload)
+  (let (id ('id payload)
+        existing (repo/get-by-id ('id payload)))
+    (if (null? existing)
+        {'status "error" 'error "item not found"}
+        (begin
+          (deduce 'retract! items ('id existing) ('name existing) ('qty existing))
+          (deduce 'fact! items id ('name payload) ('qty payload))
+          {'status "ok" 'data payload}))))
+
+(define (repo/delete payload)
+  (let (id ('id payload)
+        existing (repo/get-by-id ('id payload)))
+    (if (null? existing)
+        {'status "error" 'error "item not found"}
+        (begin
+          (deduce 'retract! items ('id existing) ('name existing) ('qty existing))
+          {'status "ok" 'data existing}))))
+
+(define (http/response status payload)
+  (let (body (json-emit payload))
+    (string-append
+      "HTTP/1.1 " status "\r\n"
+      "Content-Type: application/json\r\n"
+      "Connection: close\r\n"
+      "Content-Length: " (number->string (string-length body)) "\r\n"
+      "\r\n"
+      body)))
+
+(define (pipeline/decode-request raw)
+  (let (parts (string-split raw "\r\n\r\n")
+        header (if (null? parts) "" (car parts))
+        body-text (if (null? (cdr parts)) "" (car (cdr parts)))
+        request-line (if (= header "") "" (car (string-split header "\r\n")))
+        line-parts (string-split request-line " ")
+        method (if (null? line-parts) "" (car line-parts))
+        path (util/second line-parts)
+        body (if (= body-text "") nil (json-parse body-text)))
+    {'method method 'path path 'body body}))
+
+(define (pipeline/path-id path)
+  (let (segments (string-split path "/")
+        root (util/second segments)
+        sid (util/third segments))
+    (if (and (= root "items") sid)
+        (string->number sid)
+        nil)))
+
+(define (pipeline/require schema-name payload)
+  (if (validate schema-name payload)
+      payload
+      (raise (json-emit {'status "error" 'error "request schema validation failed" 'details (explain schema-name payload)}))))
+
+(define (pipeline/check-response payload)
+  (if (validate '(or (map (status string) (data any))
+                     (map (status string) (error string)))
+                payload)
+      payload
+      (raise "{\"status\":\"error\",\"error\":\"internal response schema failure\"}")))
+
+(define (pipeline/execute req)
+  (let (method ('method req)
+        path ('path req)
+        body ('body req)
+        path-id (pipeline/path-id ('path req)))
+    (if (and (= method "GET") (= path "/items"))
+        {'status "ok" 'data (repo/list)}
+        (if (and (= method "GET") path-id)
+            (let (row (repo/get-by-id path-id))
+              (if row
+                  {'status "ok" 'data row}
+                  {'status "error" 'error "item not found"}))
+            (if (and (= method "POST") (= path "/items"))
+                (repo/create (pipeline/require 'item-write body))
+                (if (and (= method "PUT") (= path "/items"))
+                    (repo/update (pipeline/require 'item-write body))
+                    (if (and (= method "DELETE") (= path "/items"))
+                        (repo/delete (pipeline/require 'item-delete body))
+                        {'status "error" 'error "route not found"})))))))
+
+(define (server/handle-client client)
+  (handle
+    (begin
+      (let (raw (tcp-read client)
+            req (pipeline/decode-request raw)
+            payload (pipeline/check-response (pipeline/execute req)))
+        (tcp-write client (http/response "200 OK" payload))
+        (tcp-close client)
+        nil))
+    (raise msg
+      (begin
+        (tcp-write client (http/response "400 Bad Request" {'status "error" 'error msg}))
+        (tcp-close client)
+        nil))))
+
+(define (server/accept-loop listener)
+  (let (client (tcp-accept listener))
+    (spawn (lambda () (server/handle-client client)))
+    (server/accept-loop listener)))
+
+(define (server/start host port)
+  (let (listener (tcp-listen host port 128))
+    (println (string-append "Deduce CRUD server listening on " host ":" (number->string port)))
+    (spawn (lambda () (server/accept-loop listener)))
+    (run-fibers)))

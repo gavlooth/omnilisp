@@ -88,7 +88,8 @@ const usz WAKEUP_RING_MASK = WAKEUP_RING_SIZE - 1;
 enum OffloadOp : char {
     OFFLOAD_SLEEP_MS,
     OFFLOAD_GZIP,
-    OFFLOAD_DEFLATE
+    OFFLOAD_DEFLATE,
+    OFFLOAD_ACCEPT_FD
 }
 
 enum OffloadResultKind : char {
@@ -280,6 +281,15 @@ fn Value* scheduler_build_offload_work(Value* job, OffloadWork* work, Interp* in
         work.op = scheduler_str_eq(op_name, "gzip") ? OFFLOAD_GZIP : OFFLOAD_DEFLATE;
         work.blob = shared_blob_new_copy(src.str_chars[:src.str_len]);
         if (work.blob == null) return raise_error(interp, "offload: out of memory");
+        return null;
+    }
+
+    if (scheduler_str_eq(op_name, "accept-fd")) {
+        if (!is_cons(arg_list) || !is_int(arg_list.cons_val.car)) {
+            return raise_error(interp, "offload accept-fd: expected integer fd");
+        }
+        work.op = OFFLOAD_ACCEPT_FD;
+        work.int_arg = arg_list.cons_val.car.int_val;
         return null;
     }
 

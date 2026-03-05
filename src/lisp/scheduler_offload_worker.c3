@@ -44,6 +44,21 @@ fn bool scheduler_offload_compress(bool gzip_mode, SharedBlob* input, OffloadCom
     return true;
 }
 
+fn bool scheduler_offload_accept_fd(long raw_fd, OffloadCompletion* completion) {
+    if (raw_fd < 0) {
+        scheduler_set_offload_error(completion, "offload accept-fd: invalid listener fd");
+        return false;
+    }
+    int accepted_fd = tcp_accept_fd((int)raw_fd);
+    if (accepted_fd < 0) {
+        scheduler_set_offload_error(completion, "offload accept-fd: accept failed");
+        return false;
+    }
+    completion.kind = OFFLOAD_RES_INT;
+    completion.int_result = accepted_fd;
+    return true;
+}
+
 fn OffloadCompletion* scheduler_execute_offload(OffloadWork work) {
     OffloadCompletion* completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
     if (completion == null) {
@@ -60,6 +75,8 @@ fn OffloadCompletion* scheduler_execute_offload(OffloadWork work) {
             scheduler_offload_compress(true, work.blob, completion);
         case OFFLOAD_DEFLATE:
             scheduler_offload_compress(false, work.blob, completion);
+        case OFFLOAD_ACCEPT_FD:
+            scheduler_offload_accept_fd(work.int_arg, completion);
     }
 
     shared_blob_release(work.blob);

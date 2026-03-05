@@ -60,6 +60,26 @@ path calls the raw primitives directly (zero overhead).
 (tcp-close conn)
 ```
 
+### TCP Server
+
+```lisp
+;; listener on localhost:8080 (optional backlog third arg)
+(define listener (tcp-listen "127.0.0.1" 8080 128))
+
+;; accept one client connection
+(define client (tcp-accept listener))
+
+;; handle request bytes
+(define req (tcp-read client))
+(tcp-write client "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK")
+(tcp-close client)
+(tcp-close listener)
+```
+
+`tcp-accept` is fiber-safe: when called inside a running fiber it offloads the
+blocking `accept()` syscall to the runtime worker and resumes the fiber on
+completion.
+
 ### DNS
 
 ```lisp

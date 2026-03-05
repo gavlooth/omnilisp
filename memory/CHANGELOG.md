@@ -1,5 +1,54 @@
 # Changelog
 
+## 2026-03-05: Session 225 - TCP Server Primitives + Fiber CRUD Server Example
+
+### Summary
+Added server-side TCP primitives and effect fast paths, then built a full Omni
+CRUD web server example using Deduce + `define [schema]` with fiber/effect
+pipeline composition (no channels).
+
+### What changed
+- Runtime networking:
+  - added `tcp-listen` and `tcp-accept` primitives in `src/lisp/async.c3`.
+  - introduced explicit TCP handle modes (`TCP_STREAM`, `TCP_LISTENER`) so
+    stream-only ops (`tcp-read`/`tcp-write`) reject listener handles.
+  - `tcp-accept` is fiber-safe: in fiber context it offloads `accept()` and
+    resumes on completion.
+- Offload worker:
+  - added offload operation `accept-fd` (`OFFLOAD_ACCEPT_FD`) to run blocking
+    `accept()` on worker thread and return accepted fd.
+  - files:
+    - `src/lisp/scheduler_state_offload.c3`
+    - `src/lisp/scheduler_offload_worker.c3`
+- Primitive/effect registration:
+  - added `__raw-tcp-listen`, `__raw-tcp-accept`.
+  - added fast paths `io/tcp-listen`, `io/tcp-accept`.
+  - file: `src/lisp/eval_init_primitives.c3`
+- Stdlib effect wrappers:
+  - added `io/tcp-listen`, `io/tcp-accept` declarations and wrappers
+    `tcp-listen`, `tcp-accept`.
+  - file: `stdlib/stdlib.lisp`
+- Tests:
+  - added async tests for listener lifecycle, invalid accept argument, and
+    fiber/offload accept path end-to-end with loopback connect/write/read.
+  - file: `src/lisp/tests_tests.c3`
+- Example app:
+  - added `examples/deduce_crud_server.omni`:
+    - Deduce relation-backed CRUD
+    - request/response schema validation via `define [schema]` + `validate`
+    - namespaced pipeline stages and fiber request handlers
+    - channel-free concurrency via `spawn` + `tcp-accept` + effects
+- Docs:
+  - added TCP server section to networking reference.
+  - documented raw listener/accept primitives in primitive appendix.
+  - files:
+    - `docs/reference/07-io-networking.md`
+    - `docs/reference/11-appendix-primitives.md`
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
 ## 2026-03-05: Session 224 - Remove Constructor/Type Aliases (`Array`/`Dict`/`List`/`Set`, `typeof`)
 
 ### Summary
