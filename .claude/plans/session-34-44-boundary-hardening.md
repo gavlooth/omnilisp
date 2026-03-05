@@ -350,6 +350,17 @@ Execution policy:
   - strict ASAN full suite: pass (`Unified 1204/0`, `Compiler 73/0`)
   - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1204/0`, `Compiler 73/0`)
 
+### Session 205 Follow-up (2026-03-05): Snapshot Matcher Rollout Completion
+
+- Completed migration of remaining scheduler boundary assertions to snapshot helper matching:
+  - `scheduler_runtime_boundary_matches_snapshot(interp, &saved)`.
+- Updated mixed scheduler drift diagnostics to use snapshot fields (`saved.*`) for consistency.
+- Outcome: scheduler boundary regression block now uses one capture+match contract, eliminating residual expanded-arg matcher callsites.
+- Validation:
+  - normal full suite: pass (`Unified 1205/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1204/0`, `Compiler 73/0`)
+  - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1204/0`, `Compiler 73/0`)
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.
