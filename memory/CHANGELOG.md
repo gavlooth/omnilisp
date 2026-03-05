@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-03-05: Session 203 - Thread-Task Cancel Transition Boundary Regression
+
+### Summary
+Added scheduler regression coverage for thread-task cancel transition semantics (`cancel -> try_begin -> take`) plus done-task cancel behavior, with boundary/runtime state assertions.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added:
+    - `run_scheduler_thread_task_cancel_boundary_tests(...)`
+  - New coverage (looped stress):
+    - allocates pending task, cancels it, verifies:
+      - cancel succeeds with `already_done=false`,
+      - `scheduler_try_begin_thread_task(...)` returns false,
+      - cancelled completion can be taken and slot clears.
+    - allocates done task, verifies cancelling reports `already_done=true` and completion remains retrievable.
+    - verifies invalid-id cancel returns false.
+  - Verifies interpreter boundary/runtime fields remain unchanged per cycle.
+  - Wired into `run_scheduler_tests(...)`.
+
+### Why this matters
+- Session 202 covered completion ownership transfer, but not explicit cancel transition semantics and done-task cancel reporting.
+- This closes that state-machine seam and strengthens deterministic cancellation behavior under boundary hardening.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1205 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1204 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `OMNI_FIBER_TEMP=1 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1204 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+
 ## 2026-03-05: Session 202 - Thread-Task Completion Boundary Regression
 
 ### Summary

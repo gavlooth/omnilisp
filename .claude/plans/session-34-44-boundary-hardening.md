@@ -324,6 +324,19 @@ Execution policy:
   - strict ASAN full suite: pass (`Unified 1203/0`, `Compiler 73/0`)
   - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1203/0`, `Compiler 73/0`)
 
+### Session 203 Follow-up (2026-03-05): Thread-Task Cancel State Machine
+
+- Added scheduler regression `run_scheduler_thread_task_cancel_boundary_tests(...)` in `src/lisp/tests_tests.c3`:
+  - verifies cancel path for pending tasks (`already_done=false`, begin denied, completion take succeeds),
+  - verifies cancel path for done tasks (`already_done=true`, completion remains retrievable),
+  - verifies invalid-id cancel returns false,
+  - verifies boundary/runtime field stability across iterations.
+- Wired into `run_scheduler_tests(...)`.
+- Validation:
+  - normal full suite: pass (`Unified 1205/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1204/0`, `Compiler 73/0`)
+  - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1204/0`, `Compiler 73/0`)
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.

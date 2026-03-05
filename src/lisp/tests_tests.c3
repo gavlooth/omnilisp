@@ -3232,6 +3232,115 @@ fn void run_scheduler_thread_task_completion_boundary_tests(Interp* interp, int*
     }
 }
 
+fn void run_scheduler_thread_task_cancel_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: thread-task cancel state transitions preserve deterministic
+    // completion semantics and boundary/runtime state.
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* saved_releasing = interp.releasing_scope;
+    Env* saved_jit_env = interp.jit_env;
+    Env* saved_match_env = interp.match_env;
+    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
+    Env* saved_jit_tco_env = interp.jit_tco_env;
+    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
+    usz saved_tco_slot = interp.tco_scope_defer_slot;
+    bool saved_tco_active = interp.tco_scope_defer_active;
+    bool saved_escape_mode = interp.escape_env_mode;
+    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+
+    bool ok = true;
+    usz failed_step = 0;
+    char[] failed_phase = "";
+
+    for (usz i = 0; i < 16; i++) {
+        usz task_id = scheduler_alloc_thread_task();
+        if (task_id == NO_TASK) {
+            ok = false;
+            failed_step = i;
+            failed_phase = "alloc";
+            break;
+        }
+
+        bool already_done = false;
+        bool cancel_ok = scheduler_cancel_thread_task(task_id, &already_done);
+        bool begin_ok = !scheduler_try_begin_thread_task(task_id);
+        OffloadCompletion* cancelled = scheduler_take_thread_task_completion(task_id);
+        bool take_ok = cancelled != null &&
+                       cancelled.kind == OFFLOAD_RES_ERROR &&
+                       !scheduler_thread_task_exists(task_id);
+        if (cancelled != null) scheduler_free_offload_completion(cancelled);
+
+        usz done_task = scheduler_alloc_thread_task();
+        bool done_path_ok = false;
+        if (done_task != NO_TASK) {
+            OffloadCompletion* done_completion = scheduler_make_task_cancel_completion();
+            if (done_completion != null) {
+                scheduler_complete_thread_task(done_task, done_completion);
+                bool done_already = false;
+                bool cancel_done_ok = scheduler_cancel_thread_task(done_task, &done_already);
+                OffloadCompletion* done_taken = scheduler_take_thread_task_completion(done_task);
+                done_path_ok = cancel_done_ok &&
+                               done_already &&
+                               done_taken != null &&
+                               done_taken.kind == OFFLOAD_RES_ERROR &&
+                               !scheduler_thread_task_exists(done_task);
+                if (done_taken != null) scheduler_free_offload_completion(done_taken);
+            }
+            if (!done_path_ok) scheduler_drop_thread_task(done_task);
+        }
+
+        bool invalid_cancel_ok = !scheduler_cancel_thread_task(MAX_THREAD_TASKS + 17 + i, null);
+        bool state_ok = scheduler_runtime_boundary_fields_match(
+            interp,
+            saved_scope,
+            saved_releasing,
+            saved_jit_env,
+            saved_match_env,
+            saved_jit_tco_expr,
+            saved_jit_tco_env,
+            saved_tco_recycle,
+            saved_tco_slot,
+            saved_tco_active,
+            saved_escape_mode,
+            saved_active_ctx
+        );
+        bool cycle_ok = cancel_ok &&
+                        !already_done &&
+                        begin_ok &&
+                        take_ok &&
+                        done_path_ok &&
+                        invalid_cancel_ok &&
+                        state_ok;
+        if (!cycle_ok) {
+            ok = false;
+            failed_step = i;
+            if (!cancel_ok || already_done || !begin_ok || !take_ok) {
+                failed_phase = "cancel-path";
+            } else if (!done_path_ok) {
+                failed_phase = "done-path";
+            } else if (!invalid_cancel_ok) {
+                failed_phase = "invalid-cancel";
+            } else {
+                failed_phase = "boundary";
+            }
+            scheduler_drop_thread_task(task_id);
+            if (done_task != NO_TASK) scheduler_drop_thread_task(done_task);
+            break;
+        }
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler thread-task cancel boundary restore");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] scheduler thread-task cancel boundary restore at step %d (%s)",
+            (int)failed_step,
+            (ZString)failed_phase
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_scheduler_wakeup_ready_barrier_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: drain_wakeups must stop at the first unready slot and preserve FIFO order.
     // Also verify interpreter boundary/runtime state remains unchanged.
@@ -3605,6 +3714,7 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
     run_scheduler_consume_pending_offload_boundary_tests(interp, pass, fail);
     run_scheduler_consume_pending_tcp_read_boundary_tests(interp, pass, fail);
     run_scheduler_thread_task_completion_boundary_tests(interp, pass, fail);
+    run_scheduler_thread_task_cancel_boundary_tests(interp, pass, fail);
     run_scheduler_wakeup_ready_barrier_boundary_tests(interp, pass, fail);
     run_scheduler_mixed_boundary_state_restore_tests(interp, pass, fail);
     run_scheduler_wakeup_offload_error_boundary_tests(interp, pass, fail);
