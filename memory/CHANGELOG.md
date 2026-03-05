@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-03-05: Session 179 - Boundary Invariant Hook Sweep (REPL/Macro Root-Scope Helpers)
+
+### Summary
+Completed the next low-risk boundary-hook sweep by adding explicit scope-chain invariant checks to remaining boundary transition helpers in REPL and macro expansion paths.
+
+### What changed
+- `src/lisp/eval_repl.c3`
+  - `repl_eval_line(...)` now asserts `boundary_assert_interp_scope_chain(...)`:
+    - at entry,
+    - after `boundary_push_child_scope(...)`,
+    - before return.
+- `src/lisp/macros_expansion.c3`
+  - `capture_template_bindings_in_root_scope(...)` now asserts `boundary_assert_interp_scope_chain(...)`:
+    - at entry,
+    - before return after `boundary_enter_scope(...)`/`boundary_leave_scope(...)`.
+
+### Why this matters
+- Extends invariant-coverage consistency to residual boundary transition sites outside the hot run/JIT path.
+- Tightens failure locality for boundary-state corruption without changing runtime semantics.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1186 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1185 passed, 0 failed` (JIT checks disabled under ASAN)
+  - `Compiler: 73 passed, 0 failed`
+
 ## 2026-03-05: Session 178 - Boundary Invariant Hook Rollout (Run/JIT) + Interleaving Regression
 
 ### Summary

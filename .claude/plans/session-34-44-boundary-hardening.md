@@ -33,6 +33,16 @@ Execution policy:
   - normal full suite: pass (`Unified 1186/0`, `Compiler 73/0`)
   - strict ASAN full suite: pass (`Unified 1185/0`, `Compiler 73/0`)
 
+### Session 179 Follow-up (2026-03-05): Boundary Hook Coverage for REPL/Macro Scope Helpers
+
+- Completed next low-risk residual-hook sweep:
+  - `repl_eval_line(...)` in `src/lisp/eval_repl.c3`
+  - `capture_template_bindings_in_root_scope(...)` in `src/lisp/macros_expansion.c3`
+- Added `boundary_assert_interp_scope_chain(...)` at helper entry/exit and immediately after child-scope push where applicable.
+- Validation:
+  - normal full suite: pass (`Unified 1186/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1185/0`, `Compiler 73/0`)
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.

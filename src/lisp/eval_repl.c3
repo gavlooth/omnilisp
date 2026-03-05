@@ -463,17 +463,20 @@ fn void repl_append_line(char[8192]* buf, usz* buf_len, char* line, usz len) {
 }
 
 fn EvalResult repl_eval_line(char[] input, Interp* interp) {
+    boundary_assert_interp_scope_chain(interp);
     main::ScopeRegion* saved_scope = null;
     main::ScopeRegion* repl_child_scope = boundary_push_child_scope(interp, &saved_scope);
     if (repl_child_scope == null) {
         return eval_error("repl: failed to create child scope");
     }
+    boundary_assert_interp_scope_chain(interp);
     defer boundary_pop_child_scope(interp, saved_scope, repl_child_scope);
 
     EvalResult r = run(input, interp);
     if (!r.error.has_error && r.value != null) {
         r.value = boundary_copy_to_parent_site(r.value, interp, COPY_SITE_REPL_LINE_RESULT);
     }
+    boundary_assert_interp_scope_chain(interp);
     return r;
 }
 

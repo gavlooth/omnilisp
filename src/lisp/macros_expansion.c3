@@ -119,9 +119,11 @@ fn void capture_template_bindings_in_root_scope(
     usz* binding_count,
     Interp* interp
 ) {
+    boundary_assert_interp_scope_chain(interp);
     main::ScopeRegion* saved_scope = boundary_enter_scope(interp, interp.root_scope);
     defer boundary_leave_scope(interp, saved_scope);
     capture_template_bindings(tmpl, pat_vars, pat_var_count, bindings, binding_count, interp);
+    boundary_assert_interp_scope_chain(interp);
 }
 
 /**
