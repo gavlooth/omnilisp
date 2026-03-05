@@ -471,7 +471,7 @@ Binary primitives partially apply when given one argument: `(+ 3)` returns a `PA
 | `cons` | 2 | Construct pair |
 | `car` | 1 | First element |
 | `cdr` | 1 | Rest element |
-| `list` | variadic | Create list; `(list [1 2 3])` converts array to list |
+| `list` | variadic | Create list; single collection arg dispatches conversion (`(list [1 2 3])`, `(list (iterator ...))`) |
 | `length` | 1 | Generic: list, array, dict, or string length |
 | `null?` | 1 | Check if nil |
 | `pair?` | 1 | Check if cons |
@@ -560,7 +560,7 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 
 | Prim | Arity | Description |
 |------|-------|-------------|
-| `array` | variadic | Create array; `[1 2 3]` desugars to this; `(array '(1 2 3))` converts list to array |
+| `array` | variadic | Create array; `[1 2 3]` desugars to this; single collection arg dispatches conversion (`(array '(1 2 3))`, `(array (iterator ...))`) |
 | `array-set!` | 3 | Set element at index |
 
 ### 7.12 Generic Collection Operations (6)
@@ -691,19 +691,22 @@ Higher-order functions and utilities defined in Omni:
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `map` | `(f lst)` | Apply f to each element |
-| `filter` | `(pred lst)` | Keep elements matching predicate |
-| `foldl` | `(f acc lst)` | Left fold |
-| `foldr` | `(f init lst)` | Right fold |
+| `map` | `(f coll)` | Apply f to each element (dispatched by collection type) |
+| `filter` | `(pred coll)` | Keep elements matching predicate (dispatched; lazy for iterators) |
+| `foldl` | `(f acc coll)` | Left fold (dispatched) |
+| `foldr` | `(f init coll)` | Right fold (finite collections) |
 | `append` | `(a b)` | Concatenate lists |
-| `reverse` | `(lst)` | Reverse list |
+| `reverse` | `(coll)` | Reverse finite collection (list or array) |
 | `compose` | `(f g)` | Function composition |
 | `id` | `(x)` | Identity function |
 | `nth` | `(n lst)` | Nth element |
-| `take` | `(n lst)` | First N elements |
-| `drop` | `(n lst)` | Drop first N elements |
-| `zip` | `(a b)` | Zip two lists |
+| `take` | `(n coll)` | First N elements (dispatched; lazy for iterators) |
+| `drop` | `(n coll)` | Drop first N elements (dispatched; lazy for iterators) |
+| `zip` | `(a b)` | Zip two collections (dispatched; lazy for iterators) |
 | `range` | `(n)` | List from 0 to n-1 |
+| `range-from` | `(n)` | Infinite iterator from n |
+| `repeat` | `(x)` | Infinite iterator repeating x |
+| `cycle` | `(coll)` | Infinite iterator cycling coll |
 | `for-each` | `(f lst)` | Apply f for side effects |
 | `any?` | `(pred lst)` | Any element matches? |
 | `every?` | `(pred lst)` | All elements match? |

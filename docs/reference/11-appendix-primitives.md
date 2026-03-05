@@ -179,7 +179,11 @@ These support user extension via method tables.
 |------|-------|-------------|
 | `make-iterator` | 1 | Create from thunk |
 | `next` | 1 | Get next (value . rest) pair |
-| `collect` | 1 | Collect into list |
+| `collect` | 1 | Compatibility helper: collect iterator into list |
+| `to-array` | 1 | Compatibility helper: collect iterator into array |
+
+Preferred forcing style uses collection constructors:
+`(list it)` and `(array it)`.
 
 **Misc:**
 

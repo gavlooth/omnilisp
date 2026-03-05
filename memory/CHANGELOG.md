@@ -1,5 +1,102 @@
 # Changelog
 
+## 2026-03-05: Session 222 - Constructor Dispatch for Iterators + Unified Infinite Sources
+
+### Summary
+Extended constructor and sequence dispatch so iterators can be forced through
+core collection constructors directly, and aligned infinite source naming with
+the unified collection API.
+
+### What changed
+- Runtime primitives:
+  - `list` now accepts a single `Iterator` and consumes it to a list.
+  - `array` now accepts a single `Iterator` and consumes it to an array.
+  - Files:
+    - `src/lisp/primitives_core.c3`
+    - `src/lisp/prim_collection_sort_array.c3`
+- Stdlib API unification follow-up:
+  - added/expanded collection-dispatched variants for `List`/`Array`:
+    - `reverse`, `take`, `drop`, `zip`, `foldl`, `foldr`
+  - renamed iterator sources:
+    - `irepeat` -> `repeat`
+    - `icycle` -> `cycle`
+  - file:
+    - `stdlib/stdlib.lisp`
+- Tests/docs:
+  - migrated iterator forcing examples/tests from `collect`/`to-array` toward
+    `(list it)` / `(array it)`,
+  - added array/list dispatch coverage and explicit `foldr` coverage.
+  - files:
+    - `src/lisp/tests_advanced_tests.c3`
+    - `docs/reference/06-effects.md`
+    - `docs/reference/11-appendix-primitives.md`
+    - `docs/reference/12-appendix-stdlib.md`
+    - `docs/LANGUAGE_SPEC.md`
+
+### Why this matters
+- Removes unnecessary API surface for "forcing" iterators.
+- Keeps one consistent mental model:
+  collection constructors and collection functions dispatch by input type.
+- Preserves laziness for iterator flows until explicitly materialized.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1224 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+
+## 2026-03-05: Session 221 - Unify Iterator Combinators Into Dispatched Collection API
+
+### Summary
+Removed iterator-specific `i*` combinator API surface for common transforms and
+standardized on dispatched collection functions:
+`map`, `filter`, `take`, `drop`, `zip`, `foldl`, `foldr`.
+
+### What changed
+- `stdlib/stdlib.lisp`
+  - removed `imap`, `ifilter`, `itake`, `idrop`, `izip`, `ifoldl` definitions,
+  - added `^Iterator` dispatch variants for:
+    - `map`,
+    - `filter`,
+    - `take`,
+    - `drop`,
+    - `zip`,
+    - `foldl`.
+  - added/expanded finite collection dispatch for `List`/`Array`:
+    - `reverse`,
+    - `take`,
+    - `drop`,
+    - `zip`,
+    - `foldl`,
+    - `foldr`.
+  - unified iterator source naming:
+    - renamed `irepeat` -> `repeat`,
+    - renamed `icycle` -> `cycle`.
+- `src/lisp/tests_advanced_tests.c3`
+  - migrated iterator/lazy tests to use unified APIs (`map/filter/take/foldl`).
+  - added explicit assertion that `(filter ... (iterator ...))` returns an iterator.
+  - added coverage for:
+    - `repeat` / `cycle`,
+    - array-dispatched `take/drop/zip/foldl`,
+    - `foldr` on list and array.
+- Documentation updates:
+  - `docs/reference/06-effects.md`
+  - `docs/reference/12-appendix-stdlib.md`
+  - `docs/LANGUAGE_SPEC.md`
+  - updated examples/signatures to the unified dispatched API.
+
+### Why this matters
+- Reduces cognitive load by removing duplicate iterator-specific names for
+  operations that are already collection-dispatched.
+- Preserves laziness semantics through dispatch:
+  iterator inputs still produce lazy iterator outputs.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1213 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+
 ## 2026-03-05: Session 220 - Documentation Closure Marker (Architecture + Fiber Temp)
 
 ### Summary

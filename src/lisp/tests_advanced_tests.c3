@@ -139,11 +139,11 @@ fn void run_advanced_unicode_iterator_primitives_tests(Interp* interp, int* pass
     test_eq(interp, "next returns pair car", "(car (next one-it))", 42, pass, fail);
     // Collect a hand-made 3-element iterator
     setup(interp, "(define it3 (make-iterator (lambda () (cons 3 (make-iterator (lambda () (cons 2 (make-iterator (lambda () (cons 1 (make-iterator (lambda () nil))))))))))))" );
-    test_eq(interp, "collect it3 car", "(car (collect it3))", 3, pass, fail);
-    test_eq(interp, "collect it3 len", "(length (collect it3))", 3, pass, fail);
-    // to-array
-    test_eq(interp, "to-array it3 len", "(length (to-array it3))", 3, pass, fail);
-    test_eq(interp, "to-array it3 ref 0", "(ref (to-array it3) 0)", 3, pass, fail);
+    test_eq(interp, "list it3 car", "(car (list it3))", 3, pass, fail);
+    test_eq(interp, "list it3 len", "(length (list it3))", 3, pass, fail);
+    // array constructor from iterator
+    test_eq(interp, "array it3 len", "(length (array it3))", 3, pass, fail);
+    test_eq(interp, "array it3 ref 0", "(ref (array it3) 0)", 3, pass, fail);
     // type-of iterator
     test_truthy(interp, "type-of iterator",
         "(is? (make-iterator (lambda () nil)) (quote Iterator))", pass, fail);
@@ -153,31 +153,47 @@ fn void run_advanced_unicode_iterator_lazy_pipeline_tests(Interp* interp, int* p
     // Phase 3B: iterator constructors + lazy combinators
     test_truthy(interp, "iterator dispatches list",
         "(iterator? (iterator (quote (1 2 3))))", pass, fail);
-    test_eq(interp, "iterator list collect car", "(car (collect (iterator (quote (1 2 3)))))", 1, pass, fail);
-    test_eq(interp, "iterator list collect len", "(length (collect (iterator (quote (1 2 3)))))", 3, pass, fail);
-    test_eq(interp, "iterator array collect car", "(car (collect (iterator [10 20 30])))", 10, pass, fail);
-    test_eq(interp, "iterator array collect len", "(length (collect (iterator [10 20 30])))", 3, pass, fail);
-    test_eq(interp, "iterator dict collect len", "(length (collect (iterator (begin (define iter-d {'a 1 'b 2}) iter-d))))", 2, pass, fail);
+    test_eq(interp, "iterator list list car", "(car (list (iterator (quote (1 2 3)))))", 1, pass, fail);
+    test_eq(interp, "iterator list list len", "(length (list (iterator (quote (1 2 3)))))", 3, pass, fail);
+    test_eq(interp, "iterator array list car", "(car (list (iterator [10 20 30])))", 10, pass, fail);
+    test_eq(interp, "iterator array list len", "(length (list (iterator [10 20 30])))", 3, pass, fail);
+    test_eq(interp, "iterator dict list len", "(length (list (iterator (begin (define iter-d {'a 1 'b 2}) iter-d))))", 2, pass, fail);
     test_truthy(interp, "iterator idempotent", "(iterator? (iterator (iterator [1 2 3])))", pass, fail);
-    // Lazy imap
-    test_eq(interp, "imap + collect car", "(car (collect (imap (lambda (x) (* x 2)) (iterator [1 2 3]))))", 2, pass, fail);
-    test_eq(interp, "imap + collect len", "(length (collect (imap (lambda (x) (* x 2)) (iterator [1 2 3]))))", 3, pass, fail);
-    // Lazy ifilter
-    test_eq(interp, "ifilter even car", "(car (collect (ifilter even? (iterator [1 2 3 4 5]))))", 2, pass, fail);
-    test_eq(interp, "ifilter even len", "(length (collect (ifilter even? (iterator [1 2 3 4 5]))))", 2, pass, fail);
-    // Lazy itake
-    test_eq(interp, "itake 2 len", "(length (collect (itake 2 (iterator [10 20 30]))))", 2, pass, fail);
-    test_eq(interp, "itake 2 car", "(car (collect (itake 2 (iterator [10 20 30]))))", 10, pass, fail);
-    // Infinite + itake
-    test_eq(interp, "range-from + itake", "(car (collect (itake 5 (range-from 0))))", 0, pass, fail);
-    test_eq(interp, "range-from + itake len", "(length (collect (itake 5 (range-from 0))))", 5, pass, fail);
-    // imap + ifilter pipeline
+    // Lazy map on iterator
+    test_eq(interp, "map + list car", "(car (list (map (lambda (x) (* x 2)) (iterator [1 2 3]))))", 2, pass, fail);
+    test_eq(interp, "map + list len", "(length (list (map (lambda (x) (* x 2)) (iterator [1 2 3]))))", 3, pass, fail);
+    // Lazy filter on iterator
+    test_truthy(interp, "filter iterator returns iterator",
+        "(iterator? (filter even? (iterator [1 2 3 4])))", pass, fail);
+    test_eq(interp, "filter even car", "(car (list (filter even? (iterator [1 2 3 4 5]))))", 2, pass, fail);
+    test_eq(interp, "filter even len", "(length (list (filter even? (iterator [1 2 3 4 5]))))", 2, pass, fail);
+    // Lazy take on iterator
+    test_eq(interp, "take 2 len", "(length (list (take 2 (iterator [10 20 30]))))", 2, pass, fail);
+    test_eq(interp, "take 2 car", "(car (list (take 2 (iterator [10 20 30]))))", 10, pass, fail);
+    // Infinite + take
+    test_eq(interp, "range-from + take", "(car (list (take 5 (range-from 0))))", 0, pass, fail);
+    test_eq(interp, "range-from + take len", "(length (list (take 5 (range-from 0))))", 5, pass, fail);
+    // map + filter pipeline
     test_eq(interp, "lazy pipeline len",
-        "(length (collect (itake 3 (ifilter even? (imap (lambda (x) (* x 2)) (range-from 1))))))", 3, pass, fail);
-    // to-array from iterator
-    test_eq(interp, "to-array from iter", "(ref (to-array (iterator [5 6 7])) 1)", 6, pass, fail);
-    // ifoldl
-    test_eq(interp, "ifoldl sum", "(ifoldl (lambda (a x) (+ a x)) 0 (iterator [1 2 3 4 5]))", 15, pass, fail);
+        "(length (list (take 3 (filter even? (map (lambda (x) (* x 2)) (range-from 1))))))", 3, pass, fail);
+    // array constructor from iterator
+    test_eq(interp, "array from iter", "(ref (array (iterator [5 6 7])) 1)", 6, pass, fail);
+    // foldl on iterator
+    test_eq(interp, "foldl iterator sum", "(foldl (lambda (a x) (+ a x)) 0 (iterator [1 2 3 4 5]))", 15, pass, fail);
+    // unified infinite sources
+    test_eq(interp, "repeat + take len", "(length (list (take 4 (repeat 7))))", 4, pass, fail);
+    test_eq(interp, "cycle + take first", "(car (list (take 4 (cycle [9 8]))))", 9, pass, fail);
+    // array-dispatched sequence ops
+    test_eq(interp, "take array len", "(length (take 2 [10 20 30]))", 2, pass, fail);
+    test_eq(interp, "take array ref 1", "(ref (take 2 [10 20 30]) 1)", 20, pass, fail);
+    test_eq(interp, "drop array len", "(length (drop 1 [10 20 30]))", 2, pass, fail);
+    test_eq(interp, "drop array ref 0", "(ref (drop 1 [10 20 30]) 0)", 20, pass, fail);
+    test_eq(interp, "zip array len", "(length (zip [1 2 3] [4 5]))", 2, pass, fail);
+    test_eq(interp, "zip array first-left", "(car (ref (zip [1 2] [4 5]) 0))", 1, pass, fail);
+    test_eq(interp, "foldl array sum", "(foldl (lambda (a x) (+ a x)) 0 [1 2 3 4])", 10, pass, fail);
+    // foldr should exist for finite collections
+    test_eq(interp, "foldr list minus", "(foldr - 0 (quote (1 2 3)))", 2, pass, fail);
+    test_eq(interp, "foldr array minus", "(foldr - 0 [1 2 3])", 2, pass, fail);
 }
 
 fn void run_advanced_unicode_iterator_tests(Interp* interp, int* pass, int* fail) {

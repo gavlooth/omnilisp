@@ -98,6 +98,12 @@ fn Value* prim_sort_by(Value*[] args, Env* env, Interp* interp) {
 // --- Phase 8: Array primitives ---
 
 fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
+    // Single iterator arg -> consume to array
+    if (args.len == 1 && args[0].tag == ITERATOR) {
+        Value*[1] one = { args[0] };
+        return prim_to_array(one[0:1], env, interp);
+    }
+
     // Single list/nil arg → convert to array
     if (args.len == 1 && (is_cons(args[0]) || is_nil(args[0]))) {
         usz count = 0;

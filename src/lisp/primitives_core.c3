@@ -79,6 +79,12 @@ fn Value* prim_not(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_list(Value*[] args, Env* env, Interp* interp) {
     if (args.len == 0) return make_nil(interp);
 
+    // Single iterator arg -> consume to list
+    if (args.len == 1 && args[0].tag == ITERATOR) {
+        Value*[1] one = { args[0] };
+        return prim_collect(one[0:1], env, interp);
+    }
+
     // Single array arg → convert to list
     if (args.len == 1 && is_array(args[0])) {
         Array* arr = args[0].array_val;
@@ -128,4 +134,3 @@ fn Value* prim_gensym(Value*[] args, Env* env, Interp* interp) {
     SymbolId id = interp.symbols.intern(buf[:len]);
     return make_symbol(interp, id);
 }
-

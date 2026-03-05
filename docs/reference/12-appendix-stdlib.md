@@ -41,23 +41,21 @@ Functions and macros defined in `stdlib/stdlib.lisp`.
 | `nth` | `(nth n lst)` | Nth element (0-indexed) |
 | `take` | `(take n lst)` | First N elements |
 | `drop` | `(drop n lst)` | Skip first N elements |
-| `zip` | `(zip a b)` | Zip two lists into pairs |
+| `zip` | `(zip a b)` | Zip two collections |
 | `range` | `(range n)` | List 0 to n-1 |
+| `foldr` | `(foldr f init coll)` | Right fold (finite collections) |
 
 ### Iterator Combinators
 
 | Name | Signature | Description |
 |------|-----------|-------------|
 | `iterator` | `(iterator coll)` | Convert to lazy iterator (dispatched) |
-| `imap` | `(imap f it)` | Lazy map |
-| `ifilter` | `(ifilter pred it)` | Lazy filter |
-| `itake` | `(itake n it)` | Lazy take |
-| `idrop` | `(idrop n it)` | Lazy drop |
-| `izip` | `(izip a b)` | Lazy zip |
-| `ifoldl` | `(ifoldl f acc it)` | Eager fold |
 | `range-from` | `(range-from n)` | Infinite: n, n+1, n+2... |
-| `irepeat` | `(irepeat x)` | Infinite repetition |
-| `icycle` | `(icycle coll)` | Infinite cycle |
+| `repeat` | `(repeat x)` | Infinite repetition |
+| `cycle` | `(cycle coll)` | Infinite cycle |
+
+Note: `map`, `filter`, `take`, `drop`, `zip`, and `foldl` are dispatched and
+operate lazily when passed an `Iterator`.
 
 ### Utilities
 

@@ -76,7 +76,8 @@
 ;; =========================================================================
 
 ;; reverse: (reverse lst) — must be defined before map/filter (they depend on it)
-(define (reverse lst) (let loop (xs lst acc nil) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
+(define (reverse (^List lst)) (let loop (xs lst acc nil) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
+(define (reverse (^Array arr)) (let (len (length arr) result []) (let loop (i len) (if (= i 0) result (let (j (- i 1)) (begin (push! result (ref arr j)) (loop j)))))))
 
 ;; map: (map f coll) — apply f to each element, return same collection type
 (define (map f (^List lst)) (let loop (xs lst acc nil) (if (null? xs) (reverse acc) (loop (cdr xs) (cons (f (car xs)) acc)))))
@@ -88,11 +89,13 @@
 (define (filter pred (^Array arr)) (let (len (length arr) result []) (let loop (i 0) (if (= i len) result (if (pred (ref arr i)) (begin (push! result (ref arr i)) (loop (+ i 1))) (loop (+ i 1)))))))
 (define (filter (^Closure pred)) (lambda (coll) (filter pred coll)))
 
-;; foldl: (foldl f acc lst) — left fold, f takes 2 args: (f acc x)
-(define (foldl f acc lst) (let loop (a acc xs lst) (if (null? xs) a (loop (f a (car xs)) (cdr xs)))))
+;; foldl: (foldl f acc coll) — left fold, f takes 2 args: (f acc x)
+(define (foldl f acc (^List lst)) (let loop (a acc xs lst) (if (null? xs) a (loop (f a (car xs)) (cdr xs)))))
+(define (foldl f acc (^Array arr)) (let (len (length arr)) (let loop (a acc i 0) (if (= i len) a (loop (f a (ref arr i)) (+ i 1))))))
 
-;; foldr: (foldr f init lst) — right fold, f takes 2 args: (f x acc)
-(define (foldr f init lst) (foldl (lambda (acc x) (f x acc)) init (reverse lst)))
+;; foldr: (foldr f init coll) — right fold, f takes 2 args: (f x acc)
+(define (foldr f init (^List lst)) (foldl (lambda (acc x) (f x acc)) init (reverse lst)))
+(define (foldr f init (^Array arr)) (let (len (length arr)) (let loop (a init i len) (if (= i 0) a (let (j (- i 1)) (loop (f (ref arr j) a) j))))))
 
 ;; append: (append a b) — concatenate two lists
 (define (append a b) (let loop (xs (reverse a) acc b) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
@@ -109,14 +112,17 @@
 ;; nth: (nth n lst) — get nth element (0-indexed)
 (define (nth n lst) (let loop (i n xs lst) (if (= i 0) (car xs) (loop (- i 1) (cdr xs)))))
 
-;; take: (take n lst) — first n elements (iterative)
-(define (take n lst) (let loop (i n xs lst acc nil) (if (= i 0) (reverse acc) (if (null? xs) (reverse acc) (loop (- i 1) (cdr xs) (cons (car xs) acc))))))
+;; take: (take n coll) — first n elements (shape-preserving)
+(define (take n (^List lst)) (let loop (i n xs lst acc nil) (if (= i 0) (reverse acc) (if (null? xs) (reverse acc) (loop (- i 1) (cdr xs) (cons (car xs) acc))))))
+(define (take n (^Array arr)) (let (len (length arr) result []) (let loop (i 0) (if (or (= i n) (= i len)) result (begin (push! result (ref arr i)) (loop (+ i 1)))))))
 
-;; drop: (drop n lst) — skip first n elements
-(define (drop n lst) (let loop (i n xs lst) (if (= i 0) xs (if (null? xs) nil (loop (- i 1) (cdr xs))))))
+;; drop: (drop n coll) — skip first n elements (shape-preserving)
+(define (drop n (^List lst)) (let loop (i n xs lst) (if (= i 0) xs (if (null? xs) nil (loop (- i 1) (cdr xs))))))
+(define (drop n (^Array arr)) (let (len (length arr) result []) (let loop (i n) (if (>= i len) result (begin (push! result (ref arr i)) (loop (+ i 1)))))))
 
-;; zip: (zip a b) — zip two lists into list of pairs (iterative)
-(define (zip a b) (let loop (xs a ys b acc nil) (if (or (null? xs) (null? ys)) (reverse acc) (loop (cdr xs) (cdr ys) (cons (cons (car xs) (car ys)) acc)))))
+;; zip: (zip a b) — zip two collections
+(define (zip (^List a) (^List b)) (let loop (xs a ys b acc nil) (if (or (null? xs) (null? ys)) (reverse acc) (loop (cdr xs) (cdr ys) (cons (cons (car xs) (car ys)) acc)))))
+(define (zip (^Array a) (^Array b)) (let (la (length a) lb (length b) result []) (let loop (i 0) (if (or (= i la) (= i lb)) result (begin (push! result (cons (ref a i) (ref b i))) (loop (+ i 1)))))))
 
 ;; range: (range n) — list from 0 to n-1 (iterative, builds in reverse)
 (define (range n) (let loop (i (- n 1) acc nil) (if (< i 0) acc (loop (- i 1) (cons i acc)))))
@@ -203,24 +209,18 @@
 (define (iterator (^Dict d)) (iterator (keys d)))
 (define (iterator (^Iterator it)) it)
 
-;; Lazy combinators — return new iterators, nothing allocated until consumed
-(define (imap f it) (make-iterator (lambda () (let (pair (next it)) (if (null? pair) nil (cons (f (car pair)) (imap f (cdr pair))))))))
-(define (ifilter pred it) (make-iterator (lambda () (let loop (pair (next it)) (if (null? pair) nil (if (pred (car pair)) (cons (car pair) (ifilter pred (cdr pair))) (loop (next (cdr pair)))))))))
-(define (itake n it) (if (= n 0) iterator-empty (make-iterator (lambda () (let (pair (next it)) (if (null? pair) nil (cons (car pair) (itake (- n 1) (cdr pair)))))))))
-(define (idrop n it) (if (= n 0) it (let (pair (next it)) (if (null? pair) iterator-empty (idrop (- n 1) (cdr pair))))))
-(define (izip a b) (make-iterator (lambda () (let (pa (next a) pb (next b)) (if (or (null? pa) (null? pb)) nil (cons (cons (car pa) (car pb)) (izip (cdr pa) (cdr pb))))))))
-
-;; Iterator-dispatched map/filter (lazy — delegates to imap/ifilter)
-(define (map f (^Iterator it)) (imap f it))
-(define (filter pred (^Iterator it)) (ifilter pred it))
+;; Iterator-dispatched map/filter (lazy)
+(define (map f (^Iterator it)) (make-iterator (lambda () (let (pair (next it)) (if (null? pair) nil (cons (f (car pair)) (map f (cdr pair))))))))
+(define (filter pred (^Iterator it)) (make-iterator (lambda () (let loop (pair (next it)) (if (null? pair) nil (if (pred (car pair)) (cons (car pair) (filter pred (cdr pair))) (loop (next (cdr pair)))))))))
+(define (take n (^Iterator it)) (if (= n 0) iterator-empty (make-iterator (lambda () (let (pair (next it)) (if (null? pair) nil (cons (car pair) (take (- n 1) (cdr pair)))))))))
+(define (drop n (^Iterator it)) (if (= n 0) it (let (pair (next it)) (if (null? pair) iterator-empty (drop (- n 1) (cdr pair))))))
+(define (zip (^Iterator a) (^Iterator b)) (make-iterator (lambda () (let (pa (next a) pb (next b)) (if (or (null? pa) (null? pb)) nil (cons (cons (car pa) (car pb)) (zip (cdr pa) (cdr pb))))))))
+(define (foldl f acc (^Iterator it)) (let loop (a acc cur it) (let (pair (next cur)) (if (null? pair) a (loop (f a (car pair)) (cdr pair))))))
 
 ;; Infinite sources
 (define (range-from n) (make-iterator (lambda () (cons n (range-from (+ n 1))))))
-(define (irepeat x) (make-iterator (lambda () (cons x (irepeat x)))))
-(define (icycle coll) (let (it (iterator coll)) (make-iterator (lambda () (let (pair (next it)) (if (null? pair) (next (icycle coll)) pair))))))
-
-;; ifoldl: eagerly fold an iterator
-(define (ifoldl f acc it) (let loop (a acc cur it) (let (pair (next cur)) (if (null? pair) a (loop (f a (car pair)) (cdr pair))))))
+(define (repeat x) (make-iterator (lambda () (cons x (repeat x)))))
+(define (cycle coll) (let (it (iterator coll)) (make-iterator (lambda () (let (pair (next it)) (if (null? pair) (next (cycle coll)) pair))))))
 
 ;; =========================================================================
 ;; I/O Effect Wrappers

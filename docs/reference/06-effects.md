@@ -198,45 +198,49 @@ Lazy sequences that compute values on demand.
 (iterator [1 2 3])           ;; from array
 (iterator {'a 1 'b 2})      ;; from dict (iterates keys)
 (range-from 0)                ;; infinite: 0, 1, 2, 3, ...
-(irepeat 42)                  ;; infinite: 42, 42, 42, ...
+(repeat 42)                   ;; infinite: 42, 42, 42, ...
+(cycle [1 2 3])               ;; infinite: 1,2,3,1,2,3,...
 ```
 
 ### Lazy Combinators
 
 ```lisp
-(imap (+ 1) (iterator '(1 2 3)))       ;; lazy +1 on each
-(ifilter even? (iterator '(1 2 3 4)))  ;; lazy keep evens
-(itake 5 (range-from 0))                ;; first 5 naturals
-(idrop 3 (iterator '(1 2 3 4 5)))      ;; skip first 3
-(izip (iterator '(1 2)) (iterator '(a b))) ;; zip two iterators
+(map (+ 1) (iterator '(1 2 3)))         ;; lazy +1 on each
+(filter even? (iterator '(1 2 3 4)))    ;; lazy keep evens
+(take 5 (range-from 0))                  ;; first 5 naturals
+(drop 3 (iterator '(1 2 3 4 5)))        ;; skip first 3
+(zip (iterator '(1 2)) (iterator '(a b))) ;; zip two iterators
 ```
 
 ### Consuming Iterators
 
 ```lisp
-(collect (itake 5 (range-from 0)))      ;; => (0 1 2 3 4)
-(ifoldl + 0 (iterator '(1 2 3 4 5)))   ;; => 15
+(list (take 5 (range-from 0)))          ;; => (0 1 2 3 4)
+(array (take 5 (range-from 0)))         ;; => [0 1 2 3 4]
+(foldl + 0 (iterator '(1 2 3 4 5)))     ;; => 15
 ```
 
 ### Pipeline Example
 
 ```lisp
 ;; First 3 even squares starting from 1
-(collect
-  (itake 3
-    (ifilter even?
-      (imap (lambda (x) (* x x))
+(list
+  (take 3
+    (filter even?
+      (map (lambda (x) (* x x))
         (range-from 1)))))
 ;; => (4 16 36)
 ```
 
-### Dispatched map/filter on Iterators
+### Dispatched Collection Ops on Iterators
 
-`map` and `filter` are dispatched — passing an iterator returns a lazy result:
+`map`, `filter`, `take`, `drop`, `zip`, and `foldl` are dispatched.
+Passing an iterator keeps lazy semantics:
 
 ```lisp
 (map (+ 1) (iterator '(1 2 3)))     ;; lazy iterator, not a list
 (filter even? (iterator '(1 2 3 4))) ;; lazy iterator
+(take 3 (range-from 0))              ;; lazy iterator
 ```
 
 ---
