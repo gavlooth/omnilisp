@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-03-05: Session 170 - Boundary Change Policy Gate (ASAN Evidence)
+
+### Summary
+Added a boundary-change policy gate that requires normal+ASAN boundary profile evidence when boundary-sensitive files are touched.
+
+### What changed
+- `scripts/check_boundary_change_policy.sh`
+  - New policy gate script.
+  - Detects boundary-sensitive file changes (default `HEAD~1..HEAD`, or `OMNI_BOUNDARY_POLICY_RANGE` override).
+  - When boundary files are changed, requires both normal and ASAN logs to contain passing suite summaries:
+    - `stack_engine`, `scope_region`, `unified`, `compiler`
+    - plus `fiber_temp_pool enabled=1` in both stages.
+  - When no boundary-sensitive files are changed, emits a skip notice and exits success.
+- `scripts/run_boundary_hardening.sh`
+  - Added Stage 7 to execute policy gate after summary artifact generation.
+- `.github/workflows/boundary-hardening.yml`
+  - Added optional `workflow_dispatch` input:
+    - `policy_range`
+  - Exposes `OMNI_BOUNDARY_POLICY_RANGE` to the boundary-hardening runner.
+- `docs/PROJECT_TOOLING.md`
+  - Documented the new boundary policy gate and optional range controls.
+
+### Why this matters
+- Converts boundary sanitizer discipline from convention to explicit CI policy.
+- Makes boundary-sensitive changes self-auditing in automation.
+- Preserves current main-plan direction: hardening ownership/boundary paths before broader Fiber TEMP rollout.
+
+### Validation
+- `scripts/check_boundary_change_policy.sh build/boundary_hardening_normal.log build/boundary_hardening_asan.log`
+- `scripts/run_boundary_hardening.sh`
+
 ## 2026-03-05: Session 169 - Boundary Facade CI Guard
 
 ### Summary

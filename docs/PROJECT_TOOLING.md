@@ -64,6 +64,7 @@ Runs a full hardening matrix:
 - `OMNI_STACK_AFFINITY_HARNESS=1` enabled (subprocess misuse probe),
 - summary output via `OMNI_TEST_SUMMARY=1`.
 - summary assertions (required suites must report `fail=0`).
+- boundary-change policy gate (`scripts/check_boundary_change_policy.sh`) requiring normal+ASAN evidence when boundary-sensitive files change.
 
 Toggles:
 
@@ -74,6 +75,7 @@ Toggles:
 - `OMNI_BOUNDARY_ASSERT_SUMMARY=0` to skip summary verification.
 - `OMNI_BOUNDARY_EMIT_JSON=0` to skip JSON artifact emission.
 - `OMNI_BOUNDARY_SUMMARY_JSON=/path/to/file.json` to customize JSON artifact path.
+- `OMNI_BOUNDARY_POLICY_RANGE=origin/main...HEAD` to control diff range used by boundary-change policy detection.
 
 Artifacts:
 
@@ -104,6 +106,8 @@ Optional workflow input:
   If the number is not a PR in the repository, the comment step is skipped.
 - `pr_comment_bot_login` — bot login used for upsert matching (default: `github-actions[bot]`).
   Upsert still requires the boundary marker and paginated lookup.
+- `policy_range` — optional git diff range used by boundary policy checks (for example `origin/main...HEAD`).
+  If omitted, the runner uses a local fallback (`HEAD~1..HEAD` when available).
 
 ---
 

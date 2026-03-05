@@ -454,6 +454,20 @@ Execution policy:
 - Validation:
   - `scripts/check_boundary_facade_usage.sh`: pass.
 
+### Session 170 Follow-up (2026-03-05): Boundary Change Policy (ASAN Requirement)
+
+- Added `scripts/check_boundary_change_policy.sh`:
+  - detects boundary-sensitive file changes (`HEAD~1..HEAD` by default, `OMNI_BOUNDARY_POLICY_RANGE` override),
+  - when boundary-sensitive changes exist, requires both normal and ASAN profile evidence:
+    - `stack_engine/scope_region/unified/compiler fail=0`,
+    - `fiber_temp_pool enabled=1` in both logs.
+- Wired into boundary profile:
+  - `scripts/run_boundary_hardening.sh` now runs Stage 7 policy check.
+- Workflow support:
+  - `.github/workflows/boundary-hardening.yml` adds optional `policy_range` input and forwards it as `OMNI_BOUNDARY_POLICY_RANGE`.
+- Validation:
+  - boundary profile run remains green with policy stage enabled.
+
 ## Global Gates (run after every commit)
 
 ```bash

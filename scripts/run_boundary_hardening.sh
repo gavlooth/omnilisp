@@ -148,6 +148,10 @@ if [[ "$OMNI_BOUNDARY_EMIT_JSON" == "1" && "$OMNI_BOUNDARY_SUMMARY" == "1" ]]; t
 fi
 
 echo ""
+echo "=== Boundary Hardening: Stage 7 (boundary change policy) ==="
+scripts/check_boundary_change_policy.sh "$normal_log" "$asan_log"
+
+echo ""
 echo "Boundary hardening profile passed."
 echo "  normal log: $normal_log"
 echo "  asan log:   $asan_log"
