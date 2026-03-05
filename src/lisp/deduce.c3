@@ -57,6 +57,31 @@ struct DeduceDb {
     bool    open;
 }
 
+const char[] DEDUCE_HEX_DIGITS = "0123456789abcdef";
+
+fn usz deduce_format_usz_hex(char[] out, usz value) {
+    if (out.len == 0) return 0;
+    if (value == 0) {
+        out[0] = '0';
+        return 1;
+    }
+
+    char[2 * usz.sizeof] rev;
+    usz count = 0;
+    usz cur = value;
+    while (cur != 0 && count < rev.len) {
+        usz nibble = cur & 0xF;
+        rev[count] = DEDUCE_HEX_DIGITS[nibble];
+        count++;
+        cur >>= 4;
+    }
+
+    for (usz i = 0; i < count; i++) {
+        out[i] = rev[count - 1 - i];
+    }
+    return count;
+}
+
 fn void deduce_db_finalizer(void* handle) {
     if (handle == null) return;
     DeduceDb* db = (DeduceDb*)handle;
@@ -111,9 +136,10 @@ fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
 
     if (args[0].tag == SYMBOL) {
         // 'memory → use unique temp path with NOSUBDIR
-        // Generate unique name using address of db pointer
-        char[32] suffix;  // buffer: C-interop (keep) — hex-formatted, copied into path_buf
-        usz slen = io::bprintf(&suffix, "%x", (uint)(usz)db)!!.len;
+        // Generate unique name from full-width pointer bits (no 32-bit truncation).
+        // This avoids rare ASAN-address collisions from low-word-only formatting.
+        char[2 * usz.sizeof] suffix;
+        usz slen = deduce_format_usz_hex(&suffix, (usz)db);
         char[] base = "/tmp/deduce-";
         for (usz i = 0; i < base.len; i++) path_buf[i] = base[i];
         for (usz i = 0; i < slen; i++) path_buf[base.len + i] = suffix[i];

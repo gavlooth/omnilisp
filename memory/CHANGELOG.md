@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-03-05: Session 189 - Deduce ASAN Flake Hardening (Full-Width Memory DB Path Suffix)
+
+### Summary
+Fixed a likely root cause for transient ASAN order-sensitive deduce reopen failures by removing 32-bit truncation in in-memory DB path generation for `deduce 'open 'memory`.
+
+### What changed
+- `src/lisp/deduce.c3`
+  - Added helper:
+    - `deduce_format_usz_hex(char[] out, usz value)`
+  - Updated `prim_deduce_open(...)` `'memory` branch to build `/tmp/deduce-<suffix>` from full-width `usz` pointer bits.
+  - Removed low-word-only formatting path (`%x` on `(uint)(usz)db`) that could collide under ASAN address layouts.
+
+### Why this matters
+- Previous suffix generation used only the low 32 bits of pointer addresses, which can collide in sanitizer-heavy allocator layouts and manifest as rare `deduce repeated open/rebind` failures.
+- Full-width suffix generation materially reduces collision risk without changing user-facing API.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1193 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1192 passed, 0 failed` (JIT checks disabled under ASAN)
+  - `Compiler: 73 passed, 0 failed`
+- Additional ASAN stability probe (3 repeated full runs):
+  - all passed (`Unified 1192/0`, `Compiler 73/0` each run).
+
 ## 2026-03-05: Session 188 - Nested Promotion-Context Stack Regression
 
 ### Summary

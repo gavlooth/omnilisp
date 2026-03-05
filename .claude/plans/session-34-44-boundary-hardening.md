@@ -148,6 +148,17 @@ Execution policy:
   - strict ASAN full suite: pass after immediate rerun (`Unified 1192/0`, `Compiler 73/0`)
   - note: observed one transient order-sensitive deduce fail on first ASAN run (`deduce repeated open/rebind`), not reproduced on rerun.
 
+### Session 189 Follow-up (2026-03-05): Deduce Reopen Flake Hardening (ASAN)
+
+- Root-cause hardening in `src/lisp/deduce.c3`:
+  - replaced truncated `%x` `(uint)(usz)db` memory-db suffix with full-width `usz` hex formatting helper (`deduce_format_usz_hex`).
+- Goal:
+  - reduce rare ASAN allocator-layout collisions in `deduce 'open 'memory` temp paths (`/tmp/deduce-*`), which could surface as order-sensitive `deduce repeated open/rebind` failures.
+- Validation:
+  - normal full suite: pass (`Unified 1193/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1192/0`, `Compiler 73/0`)
+  - repeated ASAN probe (3 full reruns): all pass (`Unified 1192/0`, `Compiler 73/0` each).
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.
