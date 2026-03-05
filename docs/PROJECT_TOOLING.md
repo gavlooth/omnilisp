@@ -80,6 +80,20 @@ Artifacts:
 - `build/boundary_hardening_asan.log`
 - `build/boundary_hardening_summary.json`
 
+### CI Integration
+
+Repository workflow:
+
+- `.github/workflows/boundary-hardening.yml`
+
+The workflow is `workflow_dispatch` only and expects a self-hosted Linux runner with `c3c` and runtime dependencies preinstalled. It:
+
+1. runs `scripts/run_boundary_hardening.sh`,
+2. uploads:
+   - `build/boundary_hardening_normal.log`
+   - `build/boundary_hardening_asan.log`
+   - `build/boundary_hardening_summary.json`
+
 ---
 
 ## omni.toml Format

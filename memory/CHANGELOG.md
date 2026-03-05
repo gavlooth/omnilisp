@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-03-05: Session 162 - External CI Wiring for Boundary Profile
+
+### Summary
+Added a repository CI entrypoint for boundary hardening so the existing boundary profile can run in automation and publish artifacts.
+
+### What changed
+- Added GitHub Actions workflow:
+  - `.github/workflows/boundary-hardening.yml`
+  - trigger: `workflow_dispatch` (manual, non-disruptive)
+  - runner: `self-hosted` Linux x64 (expects `c3c` + deps preinstalled)
+  - runs `scripts/run_boundary_hardening.sh` with summary/assert/JSON enabled
+  - uploads artifacts:
+    - `build/boundary_hardening_normal.log`
+    - `build/boundary_hardening_asan.log`
+    - `build/boundary_hardening_summary.json`
+- Updated `docs/PROJECT_TOOLING.md` with CI integration notes for boundary hardening profile.
+
+### Why this matters
+- Closes the remaining “external CI wiring” gap in the Fiber TEMP boundary-hardening plan.
+- Makes boundary logs and machine-readable summary available as CI artifacts.
+- Keeps default push/PR behavior stable by using manual dispatch only.
+
+### Validation
+- Local boundary profile remains green:
+  - `scripts/run_boundary_hardening.sh`
+  - normal and ASAN stages pass, summary assertions pass, JSON artifact emitted.
+- Workflow file is declarative and does not alter runtime behavior.
+
 ## 2026-03-05: Session 161 - Boundary JSON Summary Artifact
 
 ### Summary

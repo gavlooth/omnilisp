@@ -1,0 +1,36 @@
+name: Boundary Hardening
+
+on:
+  workflow_dispatch:
+
+jobs:
+  boundary-hardening:
+    # Requires a runner image with c3c + runtime deps installed.
+    # Keep this on self-hosted to avoid fragile per-run toolchain bootstrapping.
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run boundary-hardening profile
+        env:
+          OMNI_BOUNDARY_ENABLE_FIBER_TEMP: "1"
+          OMNI_BOUNDARY_ENABLE_AFFINITY_HARNESS: "1"
+          OMNI_BOUNDARY_SUMMARY: "1"
+          OMNI_BOUNDARY_ASSERT_SUMMARY: "1"
+          OMNI_BOUNDARY_EMIT_JSON: "1"
+          OMNI_BOUNDARY_QUIET: "1"
+        run: scripts/run_boundary_hardening.sh
+
+      - name: Upload boundary-hardening artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boundary-hardening-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            build/boundary_hardening_normal.log
+            build/boundary_hardening_asan.log
+            build/boundary_hardening_summary.json

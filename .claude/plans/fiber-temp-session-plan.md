@@ -364,6 +364,22 @@ Validation:
 Next:
 - Hook `build/boundary_hardening_summary.json` as a CI artifact in external workflow.
 
+## Fiber TEMP Phase 6k Progress (2026-03-05)
+
+Completed:
+- Added external CI wiring for boundary profile:
+  - `.github/workflows/boundary-hardening.yml`
+  - manual trigger (`workflow_dispatch`)
+  - runs `scripts/run_boundary_hardening.sh`
+  - uploads normal/ASAN logs + JSON summary artifact
+
+Validation:
+- Local boundary profile remains green and emits expected artifacts.
+- Workflow is non-disruptive (manual trigger only).
+
+Next:
+- Optionally add a PR/comment bot step to surface key summary fields from `boundary_hardening_summary.json`.
+
 ## Fiber TEMP Phase 5b Progress (2026-03-05)
 
 Completed:
