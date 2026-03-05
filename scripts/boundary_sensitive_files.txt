@@ -1,0 +1,10 @@
+# Boundary-sensitive files (one path per line)
+# Used by boundary policy checks to require normal + ASAN evidence when touched.
+
+src/stack_engine.c3
+src/lisp/eval_boundary_api.c3
+src/lisp/eval_promotion_copy.c3
+src/lisp/eval_promotion_escape.c3
+src/lisp/eval_env_copy.c3
+src/lisp/jit_jit_eval_scopes.c3
+src/lisp/eval_run_pipeline.c3

@@ -1,0 +1,22 @@
+# Boundary facade policy
+# Format:
+#   ignore_glob <glob>
+#   allow <symbol> <file>
+#
+# Keep this file narrow. Add entries only for core boundary implementation files
+# or focused tests intentionally exercising low-level primitives.
+
+ignore_glob src/lisp/tests_*.c3
+
+allow copy_to_parent src/lisp/eval_promotion_copy.c3
+allow copy_to_parent src/lisp/eval_boundary_api.c3
+
+allow promote_to_escape src/lisp/eval_promotion_escape.c3
+allow promote_to_escape src/lisp/eval_boundary_api.c3
+
+allow promote_to_root src/lisp/eval_promotion_escape.c3
+allow promote_to_root src/lisp/eval_boundary_api.c3
+
+allow copy_env_to_scope_inner src/lisp/eval_env_copy.c3
+
+allow scope_splice_escapes src/lisp/eval_boundary_api.c3

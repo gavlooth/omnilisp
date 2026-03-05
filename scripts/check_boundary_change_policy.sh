@@ -6,19 +6,29 @@ cd "$(dirname "$0")/.."
 normal_log="${1:-build/boundary_hardening_normal.log}"
 asan_log="${2:-build/boundary_hardening_asan.log}"
 diff_range="${OMNI_BOUNDARY_POLICY_RANGE:-}"
+sensitive_file_list="${OMNI_BOUNDARY_SENSITIVE_FILE_LIST:-scripts/boundary_sensitive_files.txt}"
+
+declare -A boundary_sensitive_files=()
+
+load_sensitive_files() {
+  if [[ ! -f "$sensitive_file_list" ]]; then
+    echo "FAIL: boundary-sensitive file list missing: $sensitive_file_list"
+    exit 1
+  fi
+
+  while IFS= read -r raw || [[ -n "$raw" ]]; do
+    local line="$raw"
+    line="${line%%#*}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ -z "$line" ]] && continue
+    boundary_sensitive_files["$line"]=1
+  done < "$sensitive_file_list"
+}
 
 is_boundary_sensitive_file() {
   local file="$1"
-  case "$file" in
-    src/stack_engine.c3) return 0 ;;
-    src/lisp/eval_boundary_api.c3) return 0 ;;
-    src/lisp/eval_promotion_copy.c3) return 0 ;;
-    src/lisp/eval_promotion_escape.c3) return 0 ;;
-    src/lisp/eval_env_copy.c3) return 0 ;;
-    src/lisp/jit_jit_eval_scopes.c3) return 0 ;;
-    src/lisp/eval_run_pipeline.c3) return 0 ;;
-  esac
-  return 1
+  [[ -n "${boundary_sensitive_files["$file"]:-}" ]]
 }
 
 collect_changed_files() {
@@ -87,6 +97,8 @@ require_fiber_temp_enabled() {
 }
 
 main() {
+  load_sensitive_files
+
   local -a changed_files=()
   while IFS= read -r file; do
     [[ -z "$file" ]] && continue
@@ -104,6 +116,7 @@ main() {
 
   if ((boundary_touched == 0)); then
     echo "OK: boundary change policy skipped (no boundary-sensitive file changes)."
+    echo "Sensitive file list: $sensitive_file_list"
     return 0
   fi
 
@@ -120,6 +133,7 @@ main() {
   for file in "${boundary_files[@]}"; do
     echo "  - $file"
   done
+  echo "Sensitive file list: $sensitive_file_list"
 
   require_suite_fail_zero "$normal_log" "stack_engine" "normal"
   require_suite_fail_zero "$normal_log" "scope_region" "normal"

@@ -1,0 +1,41 @@
+name: Boundary Policy Guard
+
+on:
+  pull_request:
+    paths:
+      - "src/stack_engine.c3"
+      - "src/lisp/eval_boundary_api.c3"
+      - "src/lisp/eval_promotion_copy.c3"
+      - "src/lisp/eval_promotion_escape.c3"
+      - "src/lisp/eval_env_copy.c3"
+      - "src/lisp/jit_jit_eval_scopes.c3"
+      - "src/lisp/eval_run_pipeline.c3"
+      - "scripts/check_boundary_facade_usage.sh"
+      - "scripts/check_boundary_change_policy.sh"
+      - "scripts/boundary_facade_policy.txt"
+      - "scripts/boundary_sensitive_files.txt"
+      - ".github/workflows/boundary-policy-guard.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  facade-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate boundary facade policy
+        run: bash scripts/check_boundary_facade_usage.sh
+
+      - name: Validate boundary-sensitive list format
+        run: |
+          awk '
+            /^[[:space:]]*$/ { next }
+            /^[[:space:]]*#/ { next }
+            /[[:space:]]/ { bad=1; print "invalid whitespace in:", $0 }
+            END { exit bad }
+          ' scripts/boundary_sensitive_files.txt
