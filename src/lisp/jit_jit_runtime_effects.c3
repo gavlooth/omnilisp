@@ -76,9 +76,9 @@ fn Value* jit_shift_value(Interp* interp, Value* body) {
     rstate.shift_body = body;
     rstate.shift_k = k_val;
 
-    main::stack_ctx_pin_scope(current, interp.current_scope);
-    main::stack_ctx_suspend();
-    main::stack_ctx_unpin_scope(current);
+    if (!suspend_with_scope_guard(current, interp.current_scope)) {
+        return raise_error(interp, "stack engine: failed to register suspend scope guard");
+    }
     return interp.resume_value;
 }
 
@@ -118,9 +118,10 @@ fn bool jit_signal_try_resume_handler(Interp* interp, main::StackCtx* current, S
             hstate.signaled = true;
             hstate.signal_tag = tag_sym;
             hstate.signal_arg = arg;
-            main::stack_ctx_pin_scope(current, interp.current_scope);
-            main::stack_ctx_suspend();
-            main::stack_ctx_unpin_scope(current);
+            if (!suspend_with_scope_guard(current, interp.current_scope)) {
+                *out_result = raise_error(interp, "stack engine: failed to register suspend scope guard");
+                return true;
+            }
             *out_result = interp.resume_value;
             return true;
         }

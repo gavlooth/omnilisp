@@ -137,12 +137,12 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     save_interp_state(interp, &saved);
 
     // Suspend the context — control returns to jit_reset_impl
-    main::stack_ctx_pin_scope(current, interp.current_scope);
-    main::stack_ctx_suspend();
+    if (!suspend_with_scope_guard(current, interp.current_scope)) {
+        return make_error(interp, "stack engine: failed to register suspend scope guard");
+    }
 
     // === RESUMED HERE by (k val) via jit_apply_continuation_impl ===
     restore_interp_state(interp, &saved);
-    main::stack_ctx_unpin_scope(current);
 
     return interp.resume_value;
 }

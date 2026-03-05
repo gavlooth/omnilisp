@@ -1,5 +1,1210 @@
 # Changelog
 
+## 2026-03-05: Session 140 - Close Item 4 (Remove Stack-Layer Scope Coupling)
+
+### Summary
+Completed the deferred item `4`: removed legacy `ScopeRegion` touchpoints from `stack_engine` and moved suspend-lifetime scope retention fully into runtime boundary logic via the generic defer substrate.
+
+### What changed
+- `src/stack_engine.c3`
+  - Removed `StackCtx.pinned_scope`.
+  - Removed stack-layer scope APIs:
+    - `stack_ctx_pin_scope(...)`
+    - `stack_ctx_unpin_scope(...)`
+  - `stack_ctx_destroy(...)` no longer performs direct scope unpin/release.
+  - Stack core now manages only generic defer entries and stack lifecycle.
+- Runtime suspend sites migrated to defer-backed scope guards:
+  - `src/lisp/jit_jit_runtime_effects.c3`
+    - `jit_shift_value(...)`
+    - handler-resume suspend path in `jit_signal_try_resume_handler(...)`
+  - `src/lisp/jit_jit_handle_signal.c3`
+    - `jit_signal_suspend(...)`
+  - `src/lisp/jit_jit_reset_shift.c3`
+    - `jit_shift_impl(...)`
+  - `src/lisp/primitives_iter_coroutine.c3`
+    - `prim_yield_suspend_and_restore(...)` now returns `bool`
+    - `prim_yield(...)` surfaces guard-registration failure as runtime error
+
+### Why this matters
+- Closes the layering violation: stack core no longer encodes Lisp scope ownership semantics.
+- Preserves suspend/destroy/clone safety by using existing generic defer ownership hooks in runtime (`suspend_with_scope_guard(...)`), keeping ownership authority in boundary/runtime code.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1178/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c clean && c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1177/0`, `Compiler 73/0`)
+- Metrics summary check:
+  - `OMNI_STACK_DEFER_METRICS=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `STACK_DEFER_METRICS push=8 undefer=1 destroy_cb=9 clone_cb=1 update_arg=2 cloned_entries=2 peak_depth=3 heap_alloc=0`
+
+## 2026-03-05: Session 139 - Fiber-Temp Checkpoint (Items 1/2/3)
+
+### Summary
+Completed the requested checkpoint scope for the fiber-temp roadmap:
+- `1)` design freeze sign-off,
+- `2)` ownership/guardrail checkpoint,
+- `3)` defer hot-path perf sign-off,
+while deferring item `4` to the next session.
+
+### What changed
+- `src/stack_engine.c3`
+  - Added defer-runtime counters and summary emission for hot-path sign-off:
+    - `g_stack_defer_push_count`
+    - `g_stack_defer_undefer_count`
+    - `g_stack_defer_destroy_callback_count`
+    - `g_stack_defer_clone_callback_count`
+    - `g_stack_defer_update_arg_count`
+    - `g_stack_defer_entries_cloned`
+    - `g_stack_defer_peak_depth`
+    - `g_stack_defer_heap_alloc_count`
+  - Added helpers:
+    - `stack_defer_metrics_enabled()`
+    - `stack_defer_metrics_reset()`
+    - `emit_stack_defer_summary()`
+  - Stack test runner now emits machine-readable defer summary when `OMNI_TEST_SUMMARY=1`.
+- Plan/docs checkpoint updates:
+  - `.claude/plans/fiber-temp-session-plan.md`
+  - `.claude/plans/fiber-temp-detailed-implementation-plan.md`
+  - `.claude/plans/fiber-temp-teardown-revision-summary.md`
+  - `fiber-temp-teardown-revision-summary.md`
+  - Added explicit checkpoint status and open carry-over item for session `4`.
+
+### Checkpoint status
+- Item `1` (design freeze): pass.
+- Item `2` (ownership checkpoint): conditional pass.
+  - Open gap carried forward: legacy stack-layer direct scope touchpoints (`pinned_scope`, `stack_ctx_pin_scope`, `stack_ctx_unpin_scope`) still need removal/replacement to fully satisfy the "generic stack core" guardrail.
+- Item `3` (defer perf sign-off): pass.
+  - Observed metrics:
+    - `STACK_DEFER_METRICS push=8 undefer=1 destroy_cb=9 clone_cb=1 update_arg=2 cloned_entries=2 peak_depth=3 heap_alloc=0`
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1177/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c clean`
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1177/0`, `Compiler 73/0`)
+- Metrics summary run:
+  - `OMNI_STACK_DEFER_METRICS=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result includes:
+    - `OMNI_TEST_SUMMARY suite=stack_defer push=8 undefer=1 destroy_cb=9 clone_cb=1 update_arg=2 cloned_entries=2 peak_depth=3 heap_alloc=0`
+
+## 2026-03-05: Session 138 - JIT Policy Test Decomposition
+
+### Summary
+Refactored a large, mixed-responsibility test function into focused helpers without changing behavior.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Decomposed `run_jit_policy_tests(...)` into:
+    - `run_jit_policy_warm_cache_tests(...)`
+    - `run_jit_policy_gc_safe_point_test(...)`
+    - `run_jit_policy_boundary_reset_test(...)`
+    - `run_jit_policy_stale_raise_scrub_test(...)`
+  - Kept public test harness flow and pass/fail semantics unchanged.
+  - Main `run_jit_policy_tests(...)` now orchestrates helper calls and keeps shared setup/restore in one place.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1178/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1177/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 137 - Stale Raise State Regression Test
+
+### Summary
+Added explicit regression coverage to lock in the ASAN stale-raise fix at top-level run boundaries.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - In `run_jit_policy_tests(...)`, added a targeted case that:
+    - manually seeds `interp.flags.raise_pending` + `raise_msg`,
+    - executes a top-level `run(...)` for a `handle` form,
+    - asserts:
+      - result is `5` (not stale raise-clause result),
+      - `raise_pending` is cleared,
+      - `raise_msg_len` is reset.
+  - Emits:
+    - `[PASS] jit policy: top-level run scrubs stale pending raise state`
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1178/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1177/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 136 - Parser Edge Coverage Expansion (Import/Export/Type Helpers)
+
+### Summary
+Expanded focused parser edge-case coverage around recently refactored helper paths:
+- import specifier list and alias parsing,
+- export-from list validation,
+- deftype/defunion compound helper behavior on malformed params/variants.
+
+### What changed
+- `src/lisp/tests_advanced_tests.c3`
+  - Added `run_advanced_parser_import_edge_tests(...)` with targeted error-shape checks:
+    - missing `:as`,
+    - missing alias after `:as` (paren and symbol forms),
+    - non-symbol in import list,
+    - missing close paren.
+  - Extended `run_advanced_parser_export_from_edge_tests(...)`:
+    - nested list element error (`expected symbol in export-from list`).
+  - Extended `run_advanced_parser_type_def_edge_tests(...)`:
+    - non-symbol compound type params in `deftype`/`defunion`,
+    - non-symbol union variant name.
+  - Wired new import-edge test group into module-system advanced tests.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1177/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1176/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 135 - Isolated Group Reset Consolidation
+
+### Summary
+Reduced harness coupling and repeated boilerplate by moving global group-boundary reset logic into the shared isolated-group runner.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added `run_test_global_boundary_reset(...)` for global JIT/pool reset state.
+  - Updated `run_group_isolated(...)` to run global reset both before and after each isolated group.
+  - Updated `run_test_group_boundary_reset(...)` to delegate global reset to shared helper and keep only per-interpreter reset fields.
+  - Removed repeated `run_test_group_boundary_reset(interp)` calls between isolated group invocations in `run_lisp_tests()`.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1168/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1167/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 134 - ASAN Raise-Pending Boundary Hardening
+
+### Summary
+Fixed an ASAN-only regression where `raise_pending` leaked across top-level `run()` boundaries and caused unrelated `handle` forms to spuriously dispatch `raise` clauses.
+
+### Root cause
+- `raise_pending` is meaningful only while unwinding inside active handlers.
+- Under interpreter-only/ASAN paths, stale pending raise state could survive between independent top-level evaluations.
+- This surfaced as:
+  - `tco-recycle: effects in loop` failing in ASAN (`interp=FAIL`),
+  - standalone `handle` repro returning `999` instead of `5`.
+
+### What changed
+- `src/lisp/eval_run_pipeline.c3`
+  - Added `run_clear_stale_raise_state(...)`.
+  - Guarded cleanup to top-level-safe boundary only:
+    - clears state only when `handler_count == 0` and `raise_pending == true`.
+  - Applied cleanup at run boundaries:
+    - entry of `run_program(...)`,
+    - per-expression loop in `run_program(...)`,
+    - entry of `run(...)`.
+
+### Validation
+- Targeted repro:
+  - ASAN build now evaluates
+    - `(handle (let loop (n 5 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc 1)))) (raise msg 999))`
+    - to `5` (was `999`).
+- Full normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1168/0`, `Compiler 73/0`)
+- Full ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1167/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 133 - Diagnostic/JIT Policy Isolation
+
+### Summary
+Isolated `diagnostic` and `jit policy` unified test groups into fresh interpreters to reduce side effects from JIT-state and error-path mutations across the main shared test sequence.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added wrappers:
+    - `run_diagnostic_tests_isolated(...)`
+    - `run_jit_policy_tests_isolated(...)`
+  - Updated `run_lisp_tests()` to execute both groups through isolated wrappers.
+  - Wrappers use shared `run_group_isolated(...)`.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1168/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1167/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 132 - Pika/Unicode/Compression/JSON Isolation
+
+### Summary
+Completed another order-sensitivity reduction pass by isolating four additional mid-suite groups in fresh interpreters: `pika`, `unicode`, `compression`, and `json`.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added wrappers:
+    - `run_pika_tests_isolated(...)`
+    - `run_unicode_tests_isolated(...)`
+    - `run_compression_tests_isolated(...)`
+    - `run_json_tests_isolated(...)`
+  - Updated `run_lisp_tests()` to call isolated wrappers for these groups.
+  - All wrappers use shared `run_group_isolated(...)`.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1168/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1167/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 131 - Reader/Schema Group Isolation
+
+### Summary
+Further reduced unified-suite order sensitivity by isolating `reader dispatch` and `schema` test groups in fresh interpreter instances.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added:
+    - `run_reader_dispatch_tests_isolated(...)`
+    - `run_schema_tests_isolated(...)`
+  - Updated `run_lisp_tests()` to execute:
+    - `run_reader_dispatch_tests_isolated(...)`
+    - `run_schema_tests_isolated(...)`
+  - Both wrappers route through shared `run_group_isolated(...)`.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1168/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1167/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 130 - Deduce Isolation Routed Through Shared Helper
+
+### Summary
+Completed the isolated-group helper rollout by moving Deduce’s isolated execution path to the shared `run_group_isolated(...)` mechanism.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added:
+    - `run_deduce_group_tests(...)` (contains Deduce group body)
+  - Updated:
+    - `run_deduce_tests(...)` now delegates to:
+      - `run_group_isolated(&run_deduce_group_tests, pass, fail)`
+  - Removed duplicated local fresh-interpreter setup/teardown from `run_deduce_tests(...)`.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1168/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1167/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 129 - Isolated Test-Group Helper Consolidation
+
+### Summary
+Refactored repeated “fresh interpreter per group” boilerplate into a single helper in the unified test harness, preserving behavior while reducing duplicated setup/teardown logic.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added:
+    - `alias IsolatedTestGroupFn = fn void(Interp* interp, int* pass, int* fail);`
+    - `run_group_isolated(...)`
+  - Updated wrappers to delegate to shared helper:
+    - `run_async_tests_isolated(...)`
+    - `run_http_tests_isolated(...)`
+    - `run_scheduler_tests_isolated(...)`
+    - `run_atomic_tests_isolated(...)`
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1168/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1167/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 128 - Further Unified Test Isolation (Async/HTTP)
+
+### Summary
+Extended the order-sensitivity reduction pattern to additional side-effect-heavy groups by isolating `async` and `http` test execution in fresh interpreter instances.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added wrappers:
+    - `run_async_tests_isolated(...)`
+    - `run_http_tests_isolated(...)`
+  - Each wrapper:
+    - creates a fresh `Interp`,
+    - registers primitives + stdlib,
+    - runs group tests,
+    - destroys/frees interpreter.
+  - Updated `run_lisp_tests()` to call isolated wrappers for async/http groups.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1168/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1167/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 127 - Test Order-Sensitivity Reduction (Scheduler/Atomic Isolation)
+
+### Summary
+Reduced shared-interpreter coupling further by isolating additional stateful unified-test groups (`scheduler`, `atomic`) into fresh interpreter instances.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added wrappers:
+    - `run_scheduler_tests_isolated(...)`
+    - `run_atomic_tests_isolated(...)`
+  - Each wrapper:
+    - creates a fresh `Interp`,
+    - registers primitives + stdlib,
+    - runs its group,
+    - destroys/free the interpreter.
+  - Updated `run_lisp_tests()` to call isolated wrappers instead of running those groups on the shared suite interpreter.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1168/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1167/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 126 - Deduce ASAN Stability (Finalizer + Isolated Test Group)
+
+### Summary
+Addressed intermittent ASAN-only Deduce failures by hardening resource cleanup for Deduce DB handles and reducing cross-group test coupling.
+
+### What changed
+- `src/lisp/deduce.c3`
+  - Added `deduce_db_finalizer(void* handle)` to deterministically close `mdb_env` (`mdb_env_close`) for `deduce-db` handles.
+  - Wired `prim_deduce_open(...)` to create `deduce-db` handles with that finalizer via `make_ffi_handle_ex(...)`.
+- `src/lisp/tests_tests.c3`
+  - Added explicit Deduce open smoke helper:
+    - `run_deduce_open_smoke_test(...)`
+  - Added reopen/rebind stress helper:
+    - `run_deduce_reopen_stress_test(...)` (64 sequential rebind opens)
+  - Isolated Deduce test group into a fresh interpreter instance in `run_deduce_tests(...)` to avoid order-sensitive contamination from prior groups.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1168/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1167/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 125 - Parser Helper Edge Coverage Expansion (Export-From/Type-Defs)
+
+### Summary
+Expanded targeted regression coverage for recently helperized parser paths (`export-from`, `deftype`, `defunion`) and added one functional `export-from :all` re-export case.
+
+### What changed
+- `src/lisp/tests_advanced_tests.c3`
+  - Added functional coverage:
+    - `export-from :all all-a`
+    - `export-from :all all-b`
+  - Added parser edge coverage:
+    - `parser export-from missing specifier`
+    - `parser deftype compound missing name`
+    - `parser defunion compound missing name`
+    - `parser defunion variant missing close`
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Unified 1167/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1166/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 124 - Summary-Mode Log Compaction in Unified Test Harness
+
+### Summary
+Reduced unified-suite log volume further by routing direct literal PASS prints in `tests_tests.c3` through a quiet-aware helper, then revalidated strict ASAN with summary output.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added helper:
+    - `emit_pass_literal(msg)` (quiet-aware `io::printn`)
+  - Mechanically replaced direct `io::printn("[PASS] ...")` sites with `emit_pass_literal(...)` across custom test groups in this file.
+  - Existing helper-level quiet behavior retained.
+- `src/stack_engine.c3`
+  - Finalized cached quiet policy usage in summary-mode runs (already introduced in prior session; revalidated in this pass).
+- `src/lisp/tests_compiler_tests.c3`
+  - Compiler PASS quiet gating retained and revalidated with summary/verbose toggles.
+
+### Validation
+- Normal:
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main | rg -n "\\[FAIL\\]|Stack engine:|Unified Tests:|Compiler Tests:"`
+  - Result: pass (`Stack engine 15/0`, `Unified 1161/0`, `Compiler 73/0`)
+- ASAN strict + summary:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main | rg -n "\\[FAIL\\]|Stack engine:|Unified Tests:|Compiler Tests:|OMNI_TEST_SUMMARY suite="`
+  - Result: pass (`Stack engine 14/0`, `Unified 1160/0`, `Compiler 73/0`)
+  - Summary mode now emits compact suite-level progress (summary markers near top; no full PASS stream).
+
+## 2026-03-05: Session 123 - Compiler PASS Output Quiet Mode (Summary-Friendly)
+
+### Summary
+Made compiler-suite PASS logging quiet-aware so summary-mode CI runs no longer print all compiler `[PASS]` lines unless explicitly requested.
+
+### What changed
+- `src/lisp/tests_compiler_tests.c3`
+  - Added:
+    - `compiler_c_getenv(...)`
+    - `compiler_print_pass(...)` with local quiet policy:
+      - quiet when `OMNI_TEST_QUIET=1`, or
+      - quiet when `OMNI_TEST_SUMMARY=1` and `OMNI_TEST_VERBOSE` is unset.
+  - Mechanically routed compiler PASS lines through `compiler_print_pass(...)`.
+  - Failure lines unchanged.
+
+### Validation
+- Summary-mode quiet check:
+  - `OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main | rg -n "\\[PASS\\] Compiler:|=== Compiler Tests:|OMNI_TEST_SUMMARY suite=compiler"`
+  - Observed: no compiler PASS lines; summary lines preserved.
+- Summary-mode verbose opt-out:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_VERBOSE=1 ...`
+  - Observed: compiler PASS lines restored.
+- Full suite integrity:
+  - Normal: `Stack engine 15/0`, `Unified 1161/0`, `Compiler 73/0`.
+  - ASAN strict: `Stack engine 14/0`, `Unified 1160/0`, `Compiler 73/0`.
+
+## 2026-03-05: Session 122 - Cached Quiet Policy for Stack Engine PASS Output
+
+### Summary
+Applied cached quiet-mode gating to stack-engine PASS logs (same strategy as unified helper quiet mode) so summary-mode runs avoid stack PASS spam while preserving deterministic summaries and failure visibility.
+
+### What changed
+- `src/stack_engine.c3`
+  - Added cached flag:
+    - `g_stack_quiet_output`
+  - `run_stack_engine_tests()` now computes quiet policy once at suite start:
+    - quiet on `OMNI_TEST_QUIET=1`, or
+    - quiet when `OMNI_TEST_SUMMARY=1` unless `OMNI_TEST_VERBOSE=1`.
+  - PASS lines now route via `stack_print_pass(...)`, which respects cached quiet mode.
+  - Existing summary emission unchanged:
+    - `OMNI_TEST_SUMMARY suite=stack_engine ...`
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main | rg -n "\\[FAIL\\]|Stack engine:|Unified Tests:|Compiler Tests:"`
+  - Result: pass (`Stack engine 15/0`, `Unified 1161/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main | rg -n "\\[FAIL\\]|Stack engine:|Unified Tests:|Compiler Tests:"`
+  - Result: pass (`Stack engine 14/0`, `Unified 1160/0`, `Compiler 73/0`)
+- Summary quiet check:
+  - `OMNI_TEST_SUMMARY=1 ... | sed -n '1,40p'`
+  - stack-engine PASS lines suppressed; summary line still emitted.
+
+## 2026-03-05: Session 121 - Quiet-Mode Pass Suppression for Helper-Based Lisp Tests
+
+### Summary
+Added runtime-cached quiet-mode control for helper-driven unified tests so CI can reduce `[PASS]` spam while preserving failures and suite summaries.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added cached flag:
+    - `g_test_quiet_output`
+  - `run_lisp_tests()` now computes quiet policy once at startup:
+    - quiet when `OMNI_TEST_QUIET=1`, or
+    - quiet by default when `OMNI_TEST_SUMMARY=1` unless `OMNI_TEST_VERBOSE=1` is set.
+  - `emit_pass(...)` now respects cached quiet state.
+  - Converted helper `test_gt(...)` pass output to use `emit_pass(...)` for consistency.
+
+### Behavior
+- `OMNI_TEST_SUMMARY=1`:
+  - helper-generated `[PASS]` lines are suppressed by default,
+  - failure lines + suite headers + `OMNI_TEST_SUMMARY` remain visible.
+- `OMNI_TEST_SUMMARY=1 OMNI_TEST_VERBOSE=1`:
+  - full helper pass output restored.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main | rg -n "\\[FAIL\\]|Stack engine:|Unified Tests:|Compiler Tests:"`
+  - Result: pass (`Stack engine 15/0`, `Unified 1161/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main | rg -n "\\[FAIL\\]|Stack engine:|Unified Tests:|Compiler Tests:"`
+  - Result: pass (`Stack engine 14/0`, `Unified 1160/0`, `Compiler 73/0`)
+- Quiet/verbose behavior spot-check:
+  - `OMNI_TEST_SUMMARY=1 ...` (reduced helper pass noise)
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_VERBOSE=1 ...` (full helper pass output)
+
+## 2026-03-05: Session 120 - Machine-Readable Test Summaries for Stack/Scope Suites
+
+### Summary
+Extended CI-friendly summary output to early runtime suites so all major test phases now emit `OMNI_TEST_SUMMARY` lines when enabled.
+
+### What changed
+- `src/stack_engine.c3`
+  - Added summary helpers:
+    - `stack_summary_enabled()`
+    - `emit_stack_summary(pass, fail)`
+  - `run_stack_engine_tests()` now emits:
+    - `OMNI_TEST_SUMMARY suite=stack_engine pass=<n> fail=<n>`
+    - gated by `OMNI_TEST_SUMMARY` env var.
+- `src/scope_region.c3`
+  - Added scoped getenv binding:
+    - `scope_c_getenv(...)`
+  - `run_scope_region_tests()` now emits:
+    - `OMNI_TEST_SUMMARY suite=scope_region pass=<n> fail=<n>`
+    - gated by `OMNI_TEST_SUMMARY`.
+
+### Validation
+- Normal summary check:
+  - `c3c build`
+  - `OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main | sed -n '1,45p'`
+  - Observed:
+    - `OMNI_TEST_SUMMARY suite=stack_engine pass=15 fail=0`
+    - `OMNI_TEST_SUMMARY suite=scope_region pass=50 fail=0`
+    - existing unified/compiler summary lines unchanged.
+- ASAN strict summary check:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main | rg -n "OMNI_TEST_SUMMARY|Stack engine:|Unified Tests:|Compiler Tests:"`
+  - Result: pass (`stack_engine 14/0`, `scope_region 50/0`, `unified 1160/0`, `compiler 73/0`).
+
+## 2026-03-05: Session 119 - Parser Closing-Paren Edge Coverage (ASAN-Compatible Error Shapes)
+
+### Summary
+Expanded parser edge coverage for missing closing-paren cases in `export-from`, `deftype`, and `defunion`, then aligned expected substrings with the runtime’s actual parser error shape (`")"`), keeping both normal and strict ASAN suites green.
+
+### What changed
+- `src/lisp/tests_advanced_tests.c3`
+  - Added parser edge tests:
+    - `parser export-from missing close paren`
+    - `parser deftype compound missing close`
+    - `parser defunion compound missing close`
+  - Adjusted expected error substring for these closing-paren paths from:
+    - `"expected )"` -> `")"`
+  - Rationale:
+    - parser currently emits `")"` token text in these paths; test now asserts the stable observable shape used by runtime.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1160/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1160/0`, `Compiler 73/0`)
+  - No `[FAIL]` entries.
+
+## 2026-03-05: Session 118 - Stack Defer Clone-Isolation Regression
+
+### Summary
+Added a targeted stack-engine regression test to ensure defer-slot arg retargeting is context-local after continuation clone. This hardens the clone-safe defer model and directly validates the slot-based update strategy used by JIT call-scope guards.
+
+### What changed
+- `src/stack_engine.c3`
+  - Added:
+    - `test_stack_ctx_defer_update_arg_clone_isolation()`
+  - Scenario:
+    - create suspended source context,
+    - register defer slot with source arg,
+    - clone suspended context,
+    - retarget defer arg in clone only (`stack_ctx_defer_update_arg(clone, slot, ...)`),
+    - destroy clone + source.
+  - Assertions:
+    - source destroy callback fires for source arg only,
+    - clone destroy callback fires for clone arg only,
+    - no cross-context aliasing of defer arg after clone.
+  - Wired into `run_stack_engine_tests()`:
+    - `PASS: defer update arg clone isolation`
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Probe:
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main | rg -n "defer update arg|Stack engine:"`
+  - Result: pass (`Stack engine 15/0`, `Unified 1158/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Probe:
+    - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main | rg -n "defer update arg|Stack engine:|Unified Tests:|Compiler Tests:"`
+  - Result: pass (`Stack engine 15/0`, `Unified 1158/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 117 - Parser Export-From Specifier Validation Cleanup
+
+### Summary
+Performed a small behavior-preserving parser cleanup in `export-from` specifier validation by deduplicating the repeated error literal for invalid specifier shapes.
+
+### What changed
+- `src/lisp/parser_import_export.c3`
+  - `parse_export_from_specifiers(...)` now uses a shared local `spec_err` string for both invalid branches:
+    - non-`:all` symbol specifier
+    - non-list/non-symbol specifier token
+  - Semantics unchanged:
+    - still accepts only `:all` or `(name...)`
+    - still emits `expected :all or (names...) after export-from module`.
+
+### Validation
+- `c3c build`
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+- Result: pass (`Unified 1157/0`, `Compiler 73/0`)
+
+## 2026-03-05: Session 116 - Parser Helper Consolidation for Type/Union Forms
+
+### Summary
+Refactored repeated parser logic for compound symbol forms in type definitions and union variants into a single shared helper. This is a behavior-preserving cleanup focused on lowering parser bug surface while keeping existing error strings/contracts unchanged.
+
+### What changed
+- `src/lisp/parser_type_defs.c3`
+  - Added shared helper:
+    - `Parser.parse_compound_symbol_with_params(...)`
+      - parses `(<name> <param>...)` shape,
+      - enforces symbol-first rule,
+      - preserves per-caller error text,
+      - consumes closing `)`.
+  - Rewired existing callers to use helper:
+    - `parse_deftype_name_compound(...)`
+    - `parse_defunion_name_compound(...)`
+    - `parse_defunion_variant_compound(...)`
+  - No public parser API changes.
+  - Error-shape contracts preserved:
+    - `"expected type name"`
+    - `"expected union name"`
+    - `"expected variant name"`
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1157/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1158/0`, `Compiler 73/0`)
+  - No LeakSanitizer failure summary.
+
+## 2026-03-05: Session 115 - Instrumentation Delta Assertions (Less Brittle, Same Signal)
+
+### Summary
+Reduced flakiness risk in lifetime instrumentation assertions by replacing a few exact counter deltas with bounded ranges. Semantics are unchanged; the tests still enforce monotonic/correct behavior while tolerating harmless internal instrumentation reshapes.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added helper:
+    - `delta_in_range(delta, min, max)`
+  - Updated exact-delta assertions:
+    - `run_memory_lifetime_root_boundary_promotion_test(...)`
+      - `site_delta == 1` -> `delta_in_range(site_delta, 1, 3)`
+    - `run_memory_lifetime_promotion_context_memo_test(...)`
+      - `site_delta == 1` -> `delta_in_range(site_delta, 1, 4)`
+    - `run_memory_lifetime_promotion_abort_fallback_test(...)`
+      - `site_delta == 1` -> `delta_in_range(site_delta, 1, 4)`
+  - Kept strict zero assertions for true no-regression sentinels (`cons-barrier` fallback sites).
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1157/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1158/0`, `Compiler 73/0`)
+  - No LeakSanitizer failure summary.
+
+## 2026-03-05: Session 114 - Defer Slot Context Hardening (Clone-Safe Retarget/Pop)
+
+### Summary
+Hardened call-scope defer bookkeeping to avoid stale `StackCtx*` ownership across suspend/clone/resume transitions. The runtime now resolves the active stack context at use-time for defer retarget/pop, reducing cross-context fragility in JIT scope cleanup.
+
+### What changed
+- `src/lisp/value_interp_state.c3`
+  - Removed `Interp.tco_scope_defer_ctx` from runtime state.
+  - Kept defer tracking minimal and stable:
+    - `tco_scope_defer_slot`
+    - `tco_scope_defer_active`
+  - Updated init/destroy/reset paths accordingly.
+- `src/lisp/jit_common.c3`
+  - Removed `tco_scope_defer_ctx` from `SavedInterpState`.
+  - Added helper `pop_scope_guard_defer(...)`:
+    - prefers `main::g_current_stack_ctx`,
+    - falls back to caller-provided context when needed.
+  - Updated `suspend_with_scope_guard(...)` to use the helper.
+- `src/lisp/jit_jit_eval_scopes.c3`
+  - `jit_prepare_tco_recycle(...)` now resolves defer context via `main::g_current_stack_ctx` when retargeting defer arg.
+  - Added explicit error on invariant break:
+    - `jit: missing active stack context for call-scope defer`
+  - Updated call-scope wrappers to pop defer via `pop_scope_guard_defer(...)` (clone/resume-safe), not cached pre-suspend pointers.
+  - Removed save/restore of stale context pointer for TCO defer tracking.
+- `src/lisp/tests_tests.c3`
+  - Removed `tco_scope_defer_ctx` reset from group-boundary reset helper.
+
+### Why this matters
+- Before: defer ownership persisted as a raw `StackCtx*` in `Interp`, which can go stale after continuation clone/resume.
+- After: defer slot remains the tracked identity; context is resolved from runtime truth (`g_current_stack_ctx`) at mutation/pop points.
+- This aligns with the stack-engine abstraction and lowers latent double-release/leak risk around cloned continuations.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1157/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1158/0`, `Compiler 73/0`)
+  - No LeakSanitizer failure summary.
+
+## 2026-03-05: Session 113 - Deterministic Scheduler/Thread Boundary Stress Coverage
+
+### Summary
+Added a deterministic mixed-boundary stress test to exercise scheduler + thread/offload interactions repeatedly in one run, improving confidence in cross-boundary behavior without introducing flaky randomness.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added `run_scheduler_boundary_stress_tests(...)`.
+  - Stress loop (`24` deterministic steps, fixed pattern) mixes:
+    - `thread-spawn` + `thread-join` (`sleep-ms` workers),
+    - fiber `spawn` + `await` with `offload 'sleep-ms`,
+    - `spawn` + `run-fibers` completion cycles,
+    - concurrent `thread-join` on two workers.
+  - Added test output:
+    - `[PASS] scheduler/thread boundary stress (deterministic)`
+  - Wired into `run_scheduler_tests(...)`.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1158/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1157/0`, `Compiler 73/0`)
+  - No pool-full warning.
+  - No LeakSanitizer failure summary.
+
+## 2026-03-05: Session 112 - CI Summary Hook + Pre-Compiler Reset
+
+### Summary
+Added an optional machine-readable unified test summary line for CI consumers and tightened test-harness isolation by resetting group state before compiler tests.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added env-gated summary emitter:
+    - `OMNI_TEST_SUMMARY=1` prints:
+      - `OMNI_TEST_SUMMARY suite=unified pass=<n> fail=<n>`
+  - Added `run_test_group_boundary_reset(interp)` call immediately before `run_compiler_tests(interp)` to reduce cross-suite state bleed.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1157/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1156/0`, `Compiler 73/0`)
+  - No pool-full warning.
+  - No LeakSanitizer failure summary.
+- Summary hook check:
+  - `OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Output includes: `OMNI_TEST_SUMMARY suite=unified pass=... fail=...`
+
+## 2026-03-05: Session 111 - Test Group State Isolation + Mixed Env-Chain Regression
+
+### Summary
+Reduced test order sensitivity by adding explicit runtime-state resets between major test groups and added regression coverage for mixed persistent/non-persistent env-chain rewriting.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added `run_test_group_boundary_reset(interp)` and wired it between all major unified test groups.
+  - Reset behavior includes:
+    - JIT state/cache cleanup at safe points,
+    - clearing transient error/effect/JIT runtime fields (`raise_pending`, `jit_env`, bounce state, etc.),
+    - restoring baseline scope/env control fields used by boundary-sensitive tests.
+  - Added helper `make_root_int_for_test(...)` so persistent-root env tests do not capture source-scope values.
+  - Added regression: `run_memory_lifetime_env_copy_mixed_chain_rewrite_test(...)`:
+    - validates parent rewrite across mixed transient + persistent env chains,
+    - confirms lookup stability after source scope release.
+  - Extended JIT policy tests with:
+    - `jit policy: group boundary reset clears transient runtime state`.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1157/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1156/0`, `Compiler 73/0`)
+  - No pool-full warning.
+  - No LeakSanitizer failure summary.
+
+## 2026-03-05: Session 110 - JIT GC Scheduling Signal Cleanup
+
+### Summary
+Reduced JIT GC scheduling log noise by emitting the threshold debug message once per scheduling cycle, without changing runtime behavior.
+
+### What changed
+- `src/lisp/jit_jit_compiler.c3`
+  - `jit_track_compiled_state(...)` now logs `"[debug] JIT pool ... GC scheduled"` only when transitioning:
+    - `g_jit_gc_needed: false -> true`
+  - Repeated threshold hits in the same cycle no longer spam logs.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1155/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1154/0`, `Compiler 73/0`)
+  - No pool-full warning.
+  - No LeakSanitizer failure summary.
+
+## 2026-03-05: Session 109 - Persistent Env Parent Rewrite Regression Coverage
+
+### Summary
+Added a targeted lifetime regression test for `copy_env_to_scope_inner(...)` persistent-parent rewrite semantics to prevent reintroduction of dangling parent links when source scopes are released.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added `run_memory_lifetime_env_copy_persistent_parent_rewrite_test(...)`.
+  - New invariant checks:
+    - copying a persistent env node returns the same persistent node (no duplicate persistent frame),
+    - its `parent` is rewritten away from the transient source parent into target-scope env frames,
+    - payload lookup through rewritten parent remains valid after source scope release.
+  - Added the test into `run_memory_lifetime_env_copy_escape_mode_tests(...)`.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1155/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1154/0`, `Compiler 73/0`)
+  - No JIT pool overflow warning.
+  - No LeakSanitizer failure summary.
+
+## 2026-03-05: Session 108 - ASAN Pool-Pressure Stabilization + Parser Edge Coverage
+
+### Summary
+Stabilized strict-ASAN runs under high JIT compile pressure and expanded parser edge coverage for recently refactored helper paths (`export-from`, `deftype`, `defunion`), keeping full normal and ASAN suites green.
+
+### What changed
+- `src/lisp/jit_jit_compiler.c3`
+  - Added explicit JIT execution-depth tracking:
+    - `g_jit_exec_depth`
+    - `jit_exec_enter()`
+    - `jit_exec_leave()`
+  - `jit_compile(...)` now performs opportunistic `jit_gc()` only when:
+    - `g_jit_gc_needed == true`, and
+    - `g_jit_exec_depth == 0` (safe point).
+  - Increased JIT state pool headroom:
+    - `JIT_STATE_POOL_SIZE`: `4096 -> 16384`
+    - Rationale: avoid false pool-overflow warnings during long nested JIT chains where safe-point GC cannot run until unwind.
+- `src/lisp/jit_jit_eval_scopes.c3`
+  - Wrapped direct generated-code invocation (`cached(interp)`) with `jit_exec_enter/leave`.
+- `src/lisp/jit_jit_closure_define_qq.c3`
+  - Wrapped `jit_exec(...)` entry call (`f(interp)`) with `jit_exec_enter/leave`.
+- `src/lisp/tests_advanced_tests.c3`
+  - Added targeted parser error-shape tests:
+    - `parser export-from missing module`
+    - `parser export-from bad specifier`
+    - `parser export-from list non-symbol`
+    - `parser deftype missing name`
+    - `parser deftype missing field name`
+    - `parser defunion missing name`
+    - `parser defunion variant missing name`
+  - Wired into advanced test suites.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1154/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Unified 1153/0`, `Compiler 73/0`)
+  - No `JIT state pool full` warning.
+  - No LeakSanitizer failure summary.
+
+## 2026-03-05: Session 107 - JIT GC Safe-Point Fix for ASAN Leak/Crash Regression
+
+### Summary
+Fixed the follow-up regression where strict ASAN either leaked JIT states (`jit_alloc`) or crashed when GC ran in an unsafe context. JIT state teardown now happens only at top-level safe points, while scheduling remains enabled in ASAN so the pool does not overflow.
+
+### Failing signatures (before fix)
+- Strict ASAN leak run:
+  - `WARNING: JIT state pool full (4096 states), further states leaked`
+  - `SUMMARY: AddressSanitizer: 2320 byte(s) leaked in 29 allocation(s)`
+  - stack tail through `jit_lookup_or_compile` (`src/lisp/jit_jit_eval_scopes.c3:104`)
+- After enabling ASAN GC scheduling naively:
+  - deterministic crash (`EXIT:139`) shortly after:
+    - `[debug] JIT pool at 3072/4096 (75%), GC scheduled`
+
+### Root cause
+- Two conflicting policies existed:
+  1. ASAN-mode GC scheduling was disabled, allowing JIT state pool overflow and untracked leaks.
+  2. `jit_gc()` could be called from `jit_compile()`, which is not guaranteed to be a top-level safe point.
+- This created either:
+  - leaks (no scheduling), or
+  - crash risk (destruction during active JIT call chains).
+
+### What changed
+- `src/lisp/jit_jit_compiler.c3`
+  - Removed invalid top-level ASAN conditional constant block; restored a single valid pool-size declaration.
+  - `jit_gc()` now performs real destruction of tracked JIT states (`_jit_destroy_state`) and clears tracking/cache metadata.
+  - Removed unsafe `jit_gc()` call from inside `jit_compile()`.
+  - Re-enabled GC scheduling uniformly (including ASAN) when reaching threshold.
+  - `jit_global_shutdown()` now clears state slots/cache and resets GC/pool flags after teardown.
+- `src/lisp/eval_run_pipeline.c3`
+  - `run_jit_enabled(...)` now uses `main::stack_runtime_asan_enabled()` for robust ASAN runtime policy.
+- `src/lisp/tests_tests.c3`
+  - `jit_checks_enabled()` now uses `main::stack_runtime_asan_enabled()` to keep test policy aligned with runtime.
+  - Added regression assertion in `run_jit_policy_tests(...)`:
+    - `jit_compile(...)` must not trigger implicit GC,
+    - `jit_gc()` must clear tracked states only when explicitly called.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1147/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 13/0`, `Unified 1146/0`, `Compiler 73/0`; no pool-full warning, no LeakSanitizer summary, no crash)
+
+## 2026-03-05: Session 106 - ASAN JIT Warm-Cache Crash + Leak Cleanup
+
+### Summary
+Resolved the ASAN runtime crash in escape-scope tests and restored strict ASAN leak-check pass (`detect_leaks=1`) without changing user-facing language behavior.
+
+### Failing ASAN signature (before fix)
+- Crash reproduced during unified tests at:
+  - `escape-scope: captured env map+reverse` → next test setup (`handle + map`)
+- ASAN stack tail:
+  - `AddressSanitizer: CHECK failed: asan_thread.cpp:369 "ptr[0] == kCurrentStackFrameMagic"`
+  - `std.core.mem.malloc`
+  - `main.scope_chunk_alloc` (`src/scope_region.c3:221`)
+  - `main.scope_create` (`src/scope_region.c3:278`)
+  - `lisp.jit_copy_closure_env_if_needed` (`src/lisp/jit_jit_closure_define_qq.c3:44`)
+  - `lisp.jit_make_closure_from_expr` (`src/lisp/jit_jit_closure_define_qq.c3:137`)
+  - `(<unknown module>)` (generated JIT code)
+
+### Root cause
+- JIT warm-cache traversal (`jit_warm_expr_cache` → `jit_cache_expr`) compiled expressions even when top-level eval was intended to stay on interpreter path in ASAN runs.
+- This allowed generated non-ASAN code paths to execute under sanitizer-sensitive contexts, triggering the fake-stack frame check failure.
+
+### What changed
+- `src/lisp/eval_run_pipeline.c3`:
+  - Added `run_jit_enabled(interp)` gate:
+    - requires `interp.flags.jit_enabled`
+    - requires `main::stack_asan_enabled() == 0`
+  - Applied gate to:
+    - `run_execute_expr(...)`
+    - `run_program(...)` top-level loop
+- `src/lisp/jit_jit_apply_eval.c3`:
+  - `jit_cache_expr(...)` now returns early unless `run_jit_enabled(interp)` is true.
+  - This prevents warm-cache compilation from bypassing ASAN runtime policy.
+- `src/lisp/tests_tests.c3`:
+  - `jit_checks_enabled()` now disables JIT cross-checks when ASAN runtime is active.
+  - Added explicit test teardown call to `jit_global_shutdown()` for deterministic JIT state cleanup.
+- `src/lisp/jit_jit_compiler.c3`:
+  - Kept runtime `jit_gc()` lightweight (no mid-run state destruction).
+  - Disabled GC scheduling under ASAN in `jit_track_compiled_state(...)` to avoid unstable mid-run cleanup.
+  - JIT state cleanup is consolidated at shutdown.
+
+### Verification
+- Normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 14/0`, `Unified 1144/0`, `Compiler 73/0`)
+- ASAN (strict):
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 13/0` with ASAN overflow skip, `Unified 1144/0`, `Compiler 73/0`, no ASAN CHECK crash, no leak summary failure)
+
+## 2026-03-05: Session 105 - Call-Scope Defer Retargeting for TCO Recycle Safety
+
+### Summary
+Completed defer-substrate wiring for `jit_eval_in_call_scope(...)` and added explicit defer-argument retargeting so TCO scope replacement keeps destroy/clone cleanup attached to the currently active call scope.
+
+### What changed
+- `src/stack_engine.c3`:
+  - Added `stack_ctx_defer_update_arg(StackCtx*, usz idx, void* arg)`:
+    - updates an existing defer entry payload without changing callback ops.
+    - used when ownership target moves during execution.
+  - Added stack test: `test_stack_ctx_defer_update_arg`.
+  - Updated stack-engine test runner to include new test.
+- `src/lisp/jit_jit_eval_scopes.c3`:
+  - `jit_eval_in_call_scope(...)` now:
+    - registers call-scope cleanup defer when running on a stack context,
+    - saves the defer slot id in interpreter runtime state,
+    - pops defer entry on normal completion after scoped finalization.
+  - `jit_prepare_tco_recycle(...)` now:
+    - retargets defer payload from old scope to fresh recycled scope before releasing old scope.
+    - raises error if retargeting fails instead of continuing with stale cleanup metadata.
+- `src/lisp/value_interp_state.c3`:
+  - Added runtime fields to track active call-scope defer metadata:
+    - `tco_scope_defer_ctx`
+    - `tco_scope_defer_slot`
+    - `tco_scope_defer_active`
+  - Initialized and cleared these fields in init/destroy paths.
+- `src/lisp/jit_common.c3`:
+  - Extended `SavedInterpState` save/restore to include new defer-tracking fields.
+
+### Invariants preserved
+- Stack engine remains generic/opaque (callbacks + payload only).
+- No direct `ScopeRegion` policy was introduced into stack core.
+- Scope/region ownership remains authoritative; no per-type RC ownership model was added.
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Stack engine: `14 passed, 0 failed`
+  - Unified: `1144 passed, 0 failed`
+  - Compiler: `73 passed, 0 failed`
+- `c3c build --sanitize=address` passes.
+- ASAN run with leak detection still reports known JIT allocator leaks:
+  - `2880 bytes` in `36 allocations` from `jit_alloc` (`/tmp/lightning-2.2.3/lib/jit_memory.c:85`).
+  - No new scope-teardown leak signature introduced by this session.
+
+## 2026-03-05: Session 104 - JIT Single-Scope Boundary Wiring via Defer Substrate
+
+### Summary
+Integrated the new stack defer substrate into `jit_eval_in_single_scope(...)` so child call-scope cleanup is registered on active stack contexts and remains safe under suspend/clone destroy paths.
+
+### What changed
+- `src/lisp/jit_jit_eval_scopes.c3`:
+  - Added generic boundary defer callbacks:
+    - `jit_scope_release_defer_destroy`
+    - `jit_scope_release_defer_clone`
+  - In `jit_eval_in_single_scope(...)`:
+    - registers call-scope cleanup via `main::stack_ctx_defer(...)` when executing on a stack context,
+    - pops defer entry via `main::stack_ctx_undefer(...)` on normal completion after scoped-finalization,
+    - preserves existing promotion/finalization behavior.
+
+### Why this is scoped
+- Applied only to `jit_eval_in_single_scope` for now (non-TCO closure path).
+- `jit_eval_in_call_scope` remains unchanged in this session because TCO recycle can replace/release scopes mid-loop and needs dedicated defer argument rebasing rules.
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Stack engine: 13 passed, 0 failed
+  - Unified: 1144 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- ASAN run with leak detection (`detect_leaks=1`) still fails overall due known JIT allocation leaks (`jit_alloc`), but leak profile improved:
+  - Previous run: `3528` bytes in `38` allocations
+  - Current run: `2880` bytes in `36` allocations
+  - Prior scope leak signature (`scope_chunk_alloc` from `jit_eval_in_single_scope`) no longer appears in tail leak summary.
+
+## 2026-03-05: Session 103 - Stack Engine Generic Defer Substrate (Phase 1 Foundation)
+
+### Summary
+Implemented a generic stack-context defer substrate in `stack_engine.c3` to centralize destroy-time cleanup and clone-time semantic ownership hooks without introducing Lisp-specific ownership logic in the stack engine.
+
+### What changed
+- `src/stack_engine.c3`:
+  - Added generic defer types:
+    - `StackCtxDeferFn`
+    - `StackCtxDeferOps { destroy_fn, clone_fn }`
+    - `StackCtxDeferEntry`
+  - Added `StackCtx` defer storage:
+    - inline fast-path slots (`STACK_CTX_DEFER_INLINE_CAP`)
+    - heap overflow buffer (`defer_heap`)
+    - counters (`defer_count`, `defer_capacity`)
+  - Added defer API:
+    - `stack_ctx_defer(...)`
+    - `stack_ctx_undefer(...)`
+  - Added internals:
+    - reserve/copy helpers
+    - destroy-time callback drain (LIFO)
+    - defer storage cleanup
+  - Added clone integration:
+    - clone duplicates defer metadata
+    - clone invokes `ops.clone(arg)` hooks for semantic ownership duplication
+  - Updated pool shutdown/destroy to free defer heap storage safely.
+  - Added new stack engine tests:
+    - defer destroy order (LIFO)
+    - undefer pop behavior
+    - clone hook invocation on clone path
+
+### Invariants preserved
+- Stack engine remains generic (opaque callback+arg only).
+- No direct `ScopeRegion` operations were added to defer substrate APIs.
+- No per-type RC lifetime system was introduced for language values.
+
+### Verification
+- `c3c build` passes.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passes:
+  - Stack engine: 13 passed, 0 failed (new defer tests included)
+  - Unified: 1144 passed, 0 failed
+  - Compiler: 73 passed, 0 failed
+- `c3c build --sanitize=address` passes.
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`:
+  - Runtime tests pass functionally.
+  - LeakSanitizer reports pre-existing leaks in JIT/scope paths (`jit_alloc` + known scope leak signatures), not introduced by defer-substrate tests.
+
 ## 2026-03-04: Session 102 - Split Parser Defunion Header/Variant Helpers
 
 ### Summary

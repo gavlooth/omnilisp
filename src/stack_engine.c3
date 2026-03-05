@@ -166,6 +166,27 @@ enum StackCtxStatus : char {
 alias StackCtxEntryFn = fn void(void*);
 
 /**
+ * Generic cleanup callbacks for suspended/destroyed stack contexts.
+ *
+ * The stack engine treats these as opaque callbacks. Runtime layers provide
+ * the semantic ownership actions (for example retain/release behaviors).
+ */
+alias StackCtxDeferFn = fn void(void*);
+
+struct StackCtxDeferOps {
+    StackCtxDeferFn destroy_fn; // Called on stack_ctx_destroy for active entries
+    StackCtxDeferFn clone_fn;   // Called on stack_ctx_clone when entry is duplicated
+}
+
+struct StackCtxDeferEntry {
+    StackCtxDeferFn destroy_fn;
+    StackCtxDeferFn clone_fn;
+    void* arg;
+}
+
+const usz STACK_CTX_DEFER_INLINE_CAP = 8;
+
+/**
  * Bootstrap state — tells the trampoline what function to call.
  */
 struct StackCtxBootstrap {
@@ -189,12 +210,88 @@ const usz DEFAULT_STACK_SIZE = 65536;        // 64KB usable stack (normal builds
 const usz ASAN_STACK_SIZE = 262144;          // 256KB usable stack (ASAN-instrumented builds)
 const usz GUARD_SIZE = PAGE_SIZE;      // 4KB guard page
 
+bool g_stack_quiet_output = false;
+
 fn bool stack_runtime_asan_enabled() @inline {
     $if env::ADDRESS_SANITIZER:
         return true;
     $else
         return stack_asan_enabled() != 0;
     $endif
+}
+
+fn bool stack_summary_enabled() @inline {
+    return getenv("OMNI_TEST_SUMMARY") != null;
+}
+
+fn bool stack_quiet_enabled() @inline {
+    return g_stack_quiet_output;
+}
+
+fn bool stack_defer_metrics_enabled() @inline {
+    return getenv("OMNI_STACK_DEFER_METRICS") != null;
+}
+
+usz g_stack_defer_push_count = 0;
+usz g_stack_defer_undefer_count = 0;
+usz g_stack_defer_destroy_callback_count = 0;
+usz g_stack_defer_clone_callback_count = 0;
+usz g_stack_defer_update_arg_count = 0;
+usz g_stack_defer_entries_cloned = 0;
+usz g_stack_defer_peak_depth = 0;
+usz g_stack_defer_heap_alloc_count = 0;
+
+fn void stack_defer_metrics_reset() {
+    g_stack_defer_push_count = 0;
+    g_stack_defer_undefer_count = 0;
+    g_stack_defer_destroy_callback_count = 0;
+    g_stack_defer_clone_callback_count = 0;
+    g_stack_defer_update_arg_count = 0;
+    g_stack_defer_entries_cloned = 0;
+    g_stack_defer_peak_depth = 0;
+    g_stack_defer_heap_alloc_count = 0;
+}
+
+fn void emit_stack_defer_summary() {
+    bool summary = stack_summary_enabled();
+    bool verbose = stack_defer_metrics_enabled();
+    if (!summary && !verbose) return;
+    if (verbose) {
+        io::printfn(
+            "STACK_DEFER_METRICS push=%d undefer=%d destroy_cb=%d clone_cb=%d update_arg=%d cloned_entries=%d peak_depth=%d heap_alloc=%d",
+            (uint)g_stack_defer_push_count,
+            (uint)g_stack_defer_undefer_count,
+            (uint)g_stack_defer_destroy_callback_count,
+            (uint)g_stack_defer_clone_callback_count,
+            (uint)g_stack_defer_update_arg_count,
+            (uint)g_stack_defer_entries_cloned,
+            (uint)g_stack_defer_peak_depth,
+            (uint)g_stack_defer_heap_alloc_count
+        );
+    }
+    if (summary) {
+        io::printfn(
+            "OMNI_TEST_SUMMARY suite=stack_defer push=%d undefer=%d destroy_cb=%d clone_cb=%d update_arg=%d cloned_entries=%d peak_depth=%d heap_alloc=%d",
+            (uint)g_stack_defer_push_count,
+            (uint)g_stack_defer_undefer_count,
+            (uint)g_stack_defer_destroy_callback_count,
+            (uint)g_stack_defer_clone_callback_count,
+            (uint)g_stack_defer_update_arg_count,
+            (uint)g_stack_defer_entries_cloned,
+            (uint)g_stack_defer_peak_depth,
+            (uint)g_stack_defer_heap_alloc_count
+        );
+    }
+}
+
+fn void emit_stack_summary(int pass, int fail) {
+    if (!stack_summary_enabled()) return;
+    io::printfn("OMNI_TEST_SUMMARY suite=stack_engine pass=%d fail=%d", pass, fail);
+}
+
+fn void stack_print_pass(char[] msg) @inline {
+    if (stack_quiet_enabled()) return;
+    io::printfn("  PASS: %s", (ZString)msg);
 }
 
 /**
@@ -269,12 +366,15 @@ struct StackCtx {
     void*          result;      // Return value when COMPLETED
     StackContext*   parent_ctx;  // Where to switch back to on yield/complete
     StackCtx*       parent_stack_ctx; // Parent stack context (null = main stack)
-    ScopeRegion*    pinned_scope; // Scope retained across suspend points (prevents UAF)
     void*           asan_fake_stack;  // ASAN fiber-switch token for this stack
     uint           id;          // Unique identifier
     StackCtx*          pool_next;   // Free-list link for StackPool
     StackCtxBootstrap  boot;        // Bootstrap info for first switch
     void*          user_data;   // Application-level data (e.g. CoroutineThunkState*)
+    StackCtxDeferEntry[STACK_CTX_DEFER_INLINE_CAP] defer_inline; // Inline fast-path storage
+    StackCtxDeferEntry* defer_heap; // Overflow storage when inline slots are exceeded
+    usz            defer_count; // Number of active defer entries
+    usz            defer_capacity; // Capacity of defer_heap (or inline cap when heap is null)
 }
 
 // =============================================================================
@@ -305,6 +405,10 @@ fn void stack_pool_shutdown(StackPool* pool) {
     StackCtx* c = pool.free_list;
     while (c != null) {
         StackCtx* next = c.pool_next;
+        if (c.defer_heap != null) {
+            mem::free(c.defer_heap);
+            c.defer_heap = null;
+        }
         stack_guard_unregister(c.stack.base);
         stack_region_free(&c.stack);
         mem::free(c);
@@ -318,6 +422,126 @@ fn void stack_pool_shutdown(StackPool* pool) {
 // =============================================================================
 // SECTION 8: COROUTINE LIFECYCLE
 // =============================================================================
+
+fn StackCtxDeferEntry* stack_ctx_defer_entry_at(StackCtx* c, usz idx) @inline {
+    if (c.defer_heap != null) return &c.defer_heap[idx];
+    return &c.defer_inline[idx];
+}
+
+fn bool stack_ctx_defer_reserve(StackCtx* c, usz needed) {
+    if (needed <= STACK_CTX_DEFER_INLINE_CAP && c.defer_heap == null) {
+        c.defer_capacity = STACK_CTX_DEFER_INLINE_CAP;
+        return true;
+    }
+
+    if (c.defer_heap == null) {
+        usz new_cap = STACK_CTX_DEFER_INLINE_CAP * 2;
+        while (new_cap < needed) new_cap *= 2;
+
+        StackCtxDeferEntry* buf = (StackCtxDeferEntry*)mem::malloc(StackCtxDeferEntry.sizeof * new_cap);
+        if (buf == null) return false;
+        g_stack_defer_heap_alloc_count++;
+        for (usz i = 0; i < c.defer_count; i++) {
+            buf[i] = c.defer_inline[i];
+        }
+        c.defer_heap = buf;
+        c.defer_capacity = new_cap;
+        return true;
+    }
+
+    if (needed <= c.defer_capacity) return true;
+
+    usz new_cap = c.defer_capacity * 2;
+    while (new_cap < needed) new_cap *= 2;
+    StackCtxDeferEntry* grown = (StackCtxDeferEntry*)mem::malloc(StackCtxDeferEntry.sizeof * new_cap);
+    if (grown == null) return false;
+    g_stack_defer_heap_alloc_count++;
+    for (usz i = 0; i < c.defer_count; i++) {
+        grown[i] = c.defer_heap[i];
+    }
+    mem::free(c.defer_heap);
+    c.defer_heap = grown;
+    c.defer_capacity = new_cap;
+    return true;
+}
+
+/**
+ * Register a cleanup callback for the active stack context.
+ *
+ * Entries are executed in LIFO order during stack_ctx_destroy().
+ */
+fn bool stack_ctx_defer(StackCtx* c, StackCtxDeferOps* ops, void* arg) {
+    if (c == null || ops == null) return false;
+    if (ops.destroy_fn == null && ops.clone_fn == null) return false;
+
+    usz next = c.defer_count + 1;
+    if (!stack_ctx_defer_reserve(c, next)) return false;
+
+    StackCtxDeferEntry* e = stack_ctx_defer_entry_at(c, c.defer_count);
+    e.destroy_fn = ops.destroy_fn;
+    e.clone_fn = ops.clone_fn;
+    e.arg = arg;
+    c.defer_count = next;
+    g_stack_defer_push_count++;
+    if (c.defer_count > g_stack_defer_peak_depth) {
+        g_stack_defer_peak_depth = c.defer_count;
+    }
+    return true;
+}
+
+/**
+ * Pop one defer entry without running its destroy callback.
+ *
+ * Returns false when no defer entries are active.
+ */
+fn bool stack_ctx_undefer(StackCtx* c) {
+    if (c == null || c.defer_count == 0) return false;
+    c.defer_count--;
+    StackCtxDeferEntry* e = stack_ctx_defer_entry_at(c, c.defer_count);
+    e.destroy_fn = null;
+    e.clone_fn = null;
+    e.arg = null;
+    g_stack_defer_undefer_count++;
+    return true;
+}
+
+/**
+ * Update the argument payload for an existing defer entry.
+ *
+ * This is used by runtime layers when ownership of the protected resource
+ * moves (for example TCO scope recycling replacing the active scope).
+ */
+fn bool stack_ctx_defer_update_arg(StackCtx* c, usz idx, void* arg) {
+    if (c == null) return false;
+    if (idx >= c.defer_count) return false;
+    StackCtxDeferEntry* e = stack_ctx_defer_entry_at(c, idx);
+    e.arg = arg;
+    g_stack_defer_update_arg_count++;
+    return true;
+}
+
+fn void stack_ctx_run_deferred_destroy(StackCtx* c) {
+    while (c.defer_count > 0) {
+        c.defer_count--;
+        StackCtxDeferEntry* e = stack_ctx_defer_entry_at(c, c.defer_count);
+        if (e.destroy_fn != null) {
+            e.destroy_fn(e.arg);
+            g_stack_defer_destroy_callback_count++;
+        }
+        e.destroy_fn = null;
+        e.clone_fn = null;
+        e.arg = null;
+    }
+}
+
+fn void stack_ctx_clear_defer_storage(StackCtx* c) {
+    if (c.defer_heap != null) {
+        mem::free(c.defer_heap);
+        c.defer_heap = null;
+    }
+    c.defer_count = 0;
+    c.defer_capacity = STACK_CTX_DEFER_INLINE_CAP;
+}
 
 /**
  * Create a coroutine. Pops from pool if available, else allocates fresh.
@@ -352,42 +576,27 @@ fn StackCtx* stack_ctx_create(StackPool* pool) {
     c.result = null;
     c.parent_ctx = null;
     c.parent_stack_ctx = null;
-    c.pinned_scope = null;
     c.asan_fake_stack = null;
     c.pool_next = null;
     c.user_data = null;
+    c.defer_heap = null;
+    c.defer_count = 0;
+    c.defer_capacity = STACK_CTX_DEFER_INLINE_CAP;
     c.id = pool.next_id;
     pool.next_id++;
 
     return c;
 }
 
-fn void stack_ctx_pin_scope(StackCtx* c, ScopeRegion* scope) {
-    if (c == null || scope == null) return;
-    if (c.pinned_scope == scope) return;
-    if (c.pinned_scope != null) scope_release(c.pinned_scope);
-    c.pinned_scope = scope;
-    scope_retain(scope);
-}
-
-fn void stack_ctx_unpin_scope(StackCtx* c) {
-    if (c == null || c.pinned_scope == null) return;
-    scope_release(c.pinned_scope);
-    c.pinned_scope = null;
-}
-
-/**
- * Return a coroutine to the pool, or free it if pool is full.
- */
 fn void stack_ctx_destroy(StackCtx* c, StackPool* pool) {
-    stack_ctx_unpin_scope(c);
+    stack_ctx_run_deferred_destroy(c);
+    stack_ctx_clear_defer_storage(c);
     if (pool.pool_size < pool.max_pool) {
         // Return to pool — keep the stack allocation
         c.status = CTX_DEAD;
         c.result = null;
         c.parent_ctx = null;
         c.parent_stack_ctx = null;
-        c.pinned_scope = null;
         c.asan_fake_stack = null;
         c.user_data = null;
         c.pool_next = pool.free_list;
@@ -650,6 +859,7 @@ fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
     clone.parent_ctx = null;
     clone.parent_stack_ctx = null;
     clone.asan_fake_stack = null;
+    clone.defer_count = 0;
 
     long delta = (long)(dst_rsp - src_rsp);
     clone.ctx.rsp = (ulong)((long)source.ctx.rsp + delta);
@@ -676,6 +886,27 @@ fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
         bp = (ulong*)*bp;
     }
 
+    // Duplicate defer metadata and apply semantic clone hooks.
+    if (source.defer_count > 0) {
+        if (!stack_ctx_defer_reserve(clone, source.defer_count)) {
+            stack_ctx_destroy(clone, pool);
+            return null;
+        }
+        for (usz i = 0; i < source.defer_count; i++) {
+            StackCtxDeferEntry* src_e = stack_ctx_defer_entry_at(source, i);
+            StackCtxDeferEntry* dst_e = stack_ctx_defer_entry_at(clone, i);
+            dst_e.destroy_fn = src_e.destroy_fn;
+            dst_e.clone_fn = src_e.clone_fn;
+            dst_e.arg = src_e.arg;
+            g_stack_defer_entries_cloned++;
+            if (dst_e.clone_fn != null) {
+                dst_e.clone_fn(dst_e.arg);
+                g_stack_defer_clone_callback_count++;
+            }
+        }
+        clone.defer_count = source.defer_count;
+    }
+
     return clone;
 }
 
@@ -688,6 +919,32 @@ fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
 struct TestState {
     int value;
     int step;
+}
+
+struct TestDeferLog {
+    int[8] order;
+    int count;
+}
+
+struct TestDeferArg {
+    TestDeferLog* log;
+    int id;
+    int destroy_hits;
+    int clone_hits;
+}
+
+fn void test_defer_on_destroy(void* ptr) {
+    TestDeferArg* arg = (TestDeferArg*)ptr;
+    arg.destroy_hits++;
+    if (arg.log != null && arg.log.count < 8) {
+        arg.log.order[(usz)arg.log.count] = arg.id;
+        arg.log.count++;
+    }
+}
+
+fn void test_defer_on_clone(void* ptr) {
+    TestDeferArg* arg = (TestDeferArg*)ptr;
+    arg.clone_hits++;
 }
 
 fn void test_entry_simple(void* arg) {
@@ -1061,49 +1318,277 @@ fn bool test_stack_ctx_clone_multishot() {
     return ok;
 }
 
+fn bool test_stack_ctx_defer_destroy_lifo() {
+    StackPool pool;
+    stack_pool_init(&pool);
+
+    StackCtx* c = stack_ctx_create(&pool);
+    if (c == null) { stack_pool_shutdown(&pool); return false; }
+
+    StackCtxDeferOps ops;
+    ops.destroy_fn = &test_defer_on_destroy;
+    ops.clone_fn = null;
+
+    TestDeferLog log;
+    log.count = 0;
+
+    TestDeferArg a;
+    TestDeferArg b;
+    TestDeferArg d;
+    a.log = &log; a.id = 1; a.destroy_hits = 0; a.clone_hits = 0;
+    b.log = &log; b.id = 2; b.destroy_hits = 0; b.clone_hits = 0;
+    d.log = &log; d.id = 3; d.destroy_hits = 0; d.clone_hits = 0;
+
+    bool ok = stack_ctx_defer(c, &ops, &a);
+    ok = ok && stack_ctx_defer(c, &ops, &b);
+    ok = ok && stack_ctx_defer(c, &ops, &d);
+
+    stack_ctx_destroy(c, &pool);
+    stack_pool_shutdown(&pool);
+
+    ok = ok && a.destroy_hits == 1 && b.destroy_hits == 1 && d.destroy_hits == 1;
+    ok = ok && log.count == 3;
+    ok = ok && log.order[0] == 3 && log.order[1] == 2 && log.order[2] == 1;
+    return ok;
+}
+
+fn bool test_stack_ctx_defer_undefer_pop() {
+    StackPool pool;
+    stack_pool_init(&pool);
+
+    StackCtx* c = stack_ctx_create(&pool);
+    if (c == null) { stack_pool_shutdown(&pool); return false; }
+
+    StackCtxDeferOps ops;
+    ops.destroy_fn = &test_defer_on_destroy;
+    ops.clone_fn = null;
+
+    TestDeferLog log;
+    log.count = 0;
+
+    TestDeferArg keep;
+    TestDeferArg popd;
+    keep.log = &log; keep.id = 1; keep.destroy_hits = 0; keep.clone_hits = 0;
+    popd.log = &log; popd.id = 2; popd.destroy_hits = 0; popd.clone_hits = 0;
+
+    bool ok = stack_ctx_defer(c, &ops, &keep);
+    ok = ok && stack_ctx_defer(c, &ops, &popd);
+    ok = ok && stack_ctx_undefer(c);
+    ok = ok && !stack_ctx_undefer(null);
+
+    stack_ctx_destroy(c, &pool);
+    stack_pool_shutdown(&pool);
+
+    ok = ok && keep.destroy_hits == 1;
+    ok = ok && popd.destroy_hits == 0;
+    ok = ok && log.count == 1 && log.order[0] == 1;
+    return ok;
+}
+
+fn bool test_stack_ctx_defer_clone_hook() {
+    StackPool pool;
+    stack_pool_init(&pool);
+
+    StackCtx* source = stack_ctx_create(&pool);
+    if (source == null) { stack_pool_shutdown(&pool); return false; }
+
+    TestState state;
+    state.value = 0;
+    state.step = 0;
+    stack_ctx_init(source, &test_entry_generator, &state);
+
+    StackContext main_ctx;
+    stack_ctx_switch_to(source, &main_ctx);  // suspend once
+    if (source.status != CTX_SUSPENDED) {
+        stack_ctx_destroy(source, &pool);
+        stack_pool_shutdown(&pool);
+        return false;
+    }
+
+    StackCtxDeferOps ops;
+    ops.destroy_fn = &test_defer_on_destroy;
+    ops.clone_fn = &test_defer_on_clone;
+
+    TestDeferLog log;
+    log.count = 0;
+    TestDeferArg arg;
+    arg.log = &log;
+    arg.id = 7;
+    arg.destroy_hits = 0;
+    arg.clone_hits = 0;
+
+    bool ok = stack_ctx_defer(source, &ops, &arg);
+    StackCtx* clone = stack_ctx_clone(source, &pool);
+    ok = ok && clone != null;
+    ok = ok && arg.clone_hits == 1;
+
+    if (clone != null) {
+        stack_ctx_destroy(clone, &pool);
+    }
+    stack_ctx_destroy(source, &pool);
+    stack_pool_shutdown(&pool);
+
+    // One destroy from clone + one destroy from source.
+    ok = ok && arg.destroy_hits == 2;
+    return ok;
+}
+
+fn bool test_stack_ctx_defer_update_arg() {
+    StackPool pool;
+    stack_pool_init(&pool);
+
+    StackCtx* c = stack_ctx_create(&pool);
+    if (c == null) { stack_pool_shutdown(&pool); return false; }
+
+    StackCtxDeferOps ops;
+    ops.destroy_fn = &test_defer_on_destroy;
+    ops.clone_fn = null;
+
+    TestDeferLog log;
+    log.count = 0;
+
+    TestDeferArg first;
+    TestDeferArg second;
+    first.log = &log; first.id = 1; first.destroy_hits = 0; first.clone_hits = 0;
+    second.log = &log; second.id = 2; second.destroy_hits = 0; second.clone_hits = 0;
+
+    usz slot = c.defer_count;
+    bool ok = stack_ctx_defer(c, &ops, &first);
+    ok = ok && stack_ctx_defer_update_arg(c, slot, &second);
+    ok = ok && !stack_ctx_defer_update_arg(c, 42, &second);
+
+    stack_ctx_destroy(c, &pool);
+    stack_pool_shutdown(&pool);
+
+    ok = ok && first.destroy_hits == 0;
+    ok = ok && second.destroy_hits == 1;
+    ok = ok && log.count == 1 && log.order[0] == 2;
+    return ok;
+}
+
+fn bool test_stack_ctx_defer_update_arg_clone_isolation() {
+    StackPool pool;
+    stack_pool_init(&pool);
+
+    StackCtx* source = stack_ctx_create(&pool);
+    if (source == null) { stack_pool_shutdown(&pool); return false; }
+
+    TestState state;
+    state.value = 0;
+    state.step = 0;
+    stack_ctx_init(source, &test_entry_generator, &state);
+
+    StackContext main_ctx;
+    stack_ctx_switch_to(source, &main_ctx);  // suspend once
+    if (source.status != CTX_SUSPENDED) {
+        stack_ctx_destroy(source, &pool);
+        stack_pool_shutdown(&pool);
+        return false;
+    }
+
+    StackCtxDeferOps ops;
+    ops.destroy_fn = &test_defer_on_destroy;
+    ops.clone_fn = null;
+
+    TestDeferLog source_log;
+    TestDeferLog clone_log;
+    source_log.count = 0;
+    clone_log.count = 0;
+
+    TestDeferArg source_arg;
+    TestDeferArg clone_arg;
+    source_arg.log = &source_log; source_arg.id = 11; source_arg.destroy_hits = 0; source_arg.clone_hits = 0;
+    clone_arg.log = &clone_log; clone_arg.id = 22; clone_arg.destroy_hits = 0; clone_arg.clone_hits = 0;
+
+    usz slot = source.defer_count;
+    bool ok = stack_ctx_defer(source, &ops, &source_arg);
+
+    StackCtx* clone = stack_ctx_clone(source, &pool);
+    ok = ok && clone != null;
+    if (clone == null) {
+        stack_ctx_destroy(source, &pool);
+        stack_pool_shutdown(&pool);
+        return false;
+    }
+
+    ok = ok && stack_ctx_defer_update_arg(clone, slot, &clone_arg);
+
+    stack_ctx_destroy(clone, &pool);
+    stack_ctx_destroy(source, &pool);
+    stack_pool_shutdown(&pool);
+
+    ok = ok && source_arg.destroy_hits == 1;
+    ok = ok && clone_arg.destroy_hits == 1;
+    ok = ok && source_log.count == 1 && source_log.order[0] == 11;
+    ok = ok && clone_log.count == 1 && clone_log.order[0] == 22;
+    return ok;
+}
+
 /**
  * Run all stack engine tests.
  */
 fn void run_stack_engine_tests() {
+    g_stack_quiet_output =
+        getenv("OMNI_TEST_QUIET") != null ||
+        (stack_summary_enabled() && getenv("OMNI_TEST_VERBOSE") == null);
+
     io::printfn("\n========================================");
     io::printfn("STACK ENGINE TESTS");
     io::printfn("========================================\n");
 
     int pass = 0;
     int fail = 0;
+    stack_defer_metrics_reset();
 
-    if (test_stack_region()) { io::printfn("  PASS: stack region alloc/free"); pass++; }
+    if (test_stack_region()) { stack_print_pass("stack region alloc/free"); pass++; }
     else { io::printfn("  FAIL: stack region alloc/free"); fail++; }
 
-    if (test_pool_lifecycle()) { io::printfn("  PASS: pool create/recycle"); pass++; }
+    if (test_pool_lifecycle()) { stack_print_pass("pool create/recycle"); pass++; }
     else { io::printfn("  FAIL: pool create/recycle"); fail++; }
 
-    if (test_basic_coro()) { io::printfn("  PASS: basic context run + complete"); pass++; }
+    if (test_basic_coro()) { stack_print_pass("basic context run + complete"); pass++; }
     else { io::printfn("  FAIL: basic context run + complete"); fail++; }
 
-    if (test_stack_ctx_second()) { io::printfn("  PASS: second context entry"); pass++; }
+    if (test_stack_ctx_second()) { stack_print_pass("second context entry"); pass++; }
     else { io::printfn("  FAIL: second context entry"); fail++; }
 
-    if (test_suspend_resume()) { io::printfn("  PASS: suspend/resume (generator)"); pass++; }
+    if (test_suspend_resume()) { stack_print_pass("suspend/resume (generator)"); pass++; }
     else { io::printfn("  FAIL: suspend/resume (generator)"); fail++; }
 
-    if (test_stack_ctx_recursion()) { io::printfn("  PASS: recursion on separate stack"); pass++; }
+    if (test_stack_ctx_recursion()) { stack_print_pass("recursion on separate stack"); pass++; }
     else { io::printfn("  FAIL: recursion on separate stack"); fail++; }
 
-    if (test_two_coros_interleaved()) { io::printfn("  PASS: two contexts interleaved"); pass++; }
+    if (test_two_coros_interleaved()) { stack_print_pass("two contexts interleaved"); pass++; }
     else { io::printfn("  FAIL: two contexts interleaved"); fail++; }
 
-    if (test_fpu_preservation()) { io::printfn("  PASS: FPU state preserved across switch"); pass++; }
+    if (test_fpu_preservation()) { stack_print_pass("FPU state preserved across switch"); pass++; }
     else { io::printfn("  FAIL: FPU state preserved across switch"); fail++; }
 
     if (stack_runtime_asan_enabled()) {
         io::printfn("  SKIP: stack overflow recovery (ASAN runtime)");
-    } else if (test_stack_overflow_recovery()) { io::printfn("  PASS: stack overflow recovery"); pass++; }
+    } else if (test_stack_overflow_recovery()) { stack_print_pass("stack overflow recovery"); pass++; }
     else { io::printfn("  FAIL: stack overflow recovery"); fail++; }
 
-    if (test_stack_ctx_clone_multishot()) { io::printfn("  PASS: clone/resume multi-shot"); pass++; }
+    if (test_stack_ctx_clone_multishot()) { stack_print_pass("clone/resume multi-shot"); pass++; }
     else { io::printfn("  FAIL: clone/resume multi-shot"); fail++; }
 
+    if (test_stack_ctx_defer_destroy_lifo()) { stack_print_pass("defer destroy order (LIFO)"); pass++; }
+    else { io::printfn("  FAIL: defer destroy order (LIFO)"); fail++; }
+
+    if (test_stack_ctx_defer_undefer_pop()) { stack_print_pass("defer undefer pop"); pass++; }
+    else { io::printfn("  FAIL: defer undefer pop"); fail++; }
+
+    if (test_stack_ctx_defer_clone_hook()) { stack_print_pass("defer clone hook"); pass++; }
+    else { io::printfn("  FAIL: defer clone hook"); fail++; }
+
+    if (test_stack_ctx_defer_update_arg()) { stack_print_pass("defer update arg"); pass++; }
+    else { io::printfn("  FAIL: defer update arg"); fail++; }
+
+    if (test_stack_ctx_defer_update_arg_clone_isolation()) { stack_print_pass("defer update arg clone isolation"); pass++; }
+    else { io::printfn("  FAIL: defer update arg clone isolation"); fail++; }
+
     io::printfn("\nStack engine: %d passed, %d failed", pass, fail);
+    emit_stack_defer_summary();
+    emit_stack_summary(pass, fail);
     io::printfn("========================================\n");
 }

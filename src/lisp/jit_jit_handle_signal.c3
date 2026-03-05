@@ -81,10 +81,11 @@ fn Value* jit_signal_suspend(EffectHandler* h, SymbolId tag, Value* arg_v, Inter
 
     SavedInterpState* saved_sig = (SavedInterpState*)interp.current_scope.alloc(SavedInterpState.sizeof);
     save_interp_state(interp, saved_sig);
-    main::stack_ctx_pin_scope(current, interp.current_scope);
-    main::stack_ctx_suspend();
+    if (!suspend_with_scope_guard(current, interp.current_scope)) {
+        restore_interp_state(interp, saved_sig);
+        return make_error(interp, "stack engine: failed to register suspend scope guard");
+    }
     restore_interp_state(interp, saved_sig);
-    main::stack_ctx_unpin_scope(current);
     return interp.resume_value;
 }
 

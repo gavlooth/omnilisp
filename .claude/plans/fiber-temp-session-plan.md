@@ -1,0 +1,434 @@
+# Fiber Temp Session Plan (Execution Cadence)
+
+Date: 2026-03-05  
+Source roadmap: `.claude/plans/fiber-temp-detailed-implementation-plan.md`  
+Target cadence: 16 sessions (small, auditable commits)
+
+## Current Checkpoint (2026-03-05)
+
+Completed this session:
+- `1)` Design freeze sign-off: **pass** (proposal/guardrail docs aligned and frozen for execution).
+- `2)` Ownership/guardrail checkpoint: **conditional pass**.
+  - Region-centric ownership and no per-type RC drift remain enforced.
+  - Open exception to resolve in next session (`4`): `src/stack_engine.c3` still has legacy direct scope touchpoints (`stack_ctx_pin_scope`, `stack_ctx_unpin_scope`, `pinned_scope` field).
+- `3)` Defer hot-path perf sign-off: **pass** with runtime counters and zero heap-overflow allocations in current suite run.
+  - `STACK_DEFER_METRICS push=8 undefer=1 destroy_cb=9 clone_cb=1 update_arg=2 cloned_entries=2 peak_depth=3 heap_alloc=0`
+- `4)` Deferred by request to next session.
+
+Validation evidence:
+- Normal: `c3c build` + `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`  
+  Result: `Stack engine 14/0`, `Unified 1177/0`, `Compiler 73/0`.
+- ASAN strict: `c3c clean` + `c3c build --sanitize=address` + `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`  
+  Result: `Stack engine 14/0`, `Unified 1177/0`, `Compiler 73/0`.
+
+## Item 4 Follow-up (2026-03-05)
+
+Completed in subsequent session:
+- Removed legacy stack-layer direct scope touchpoints from `src/stack_engine.c3`:
+  - `pinned_scope` field removed
+  - `stack_ctx_pin_scope(...)` removed
+  - `stack_ctx_unpin_scope(...)` removed
+- Migrated suspend sites to defer-backed boundary guard usage (`suspend_with_scope_guard(...)`) in:
+  - `src/lisp/jit_jit_runtime_effects.c3`
+  - `src/lisp/jit_jit_handle_signal.c3`
+  - `src/lisp/jit_jit_reset_shift.c3`
+  - `src/lisp/primitives_iter_coroutine.c3`
+
+Validation for follow-up:
+- `c3c build` + `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`: pass (`Stack engine 15/0`, `Unified 1178/0`, `Compiler 73/0`)
+- `c3c clean && c3c build --sanitize=address` + strict ASAN run: pass (`Stack engine 14/0`, `Unified 1177/0`, `Compiler 73/0`)
+
+## Session Rules
+
+Global rule for every session:
+
+```bash
+c3c build
+LD_LIBRARY_PATH=/usr/local/lib ./build/main
+```
+
+Memory/lifetime touching sessions additionally require:
+
+```bash
+c3c build --sanitize=address
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main
+```
+
+Commit discipline:
+- One session can produce 1-3 commits.
+- Keep commits phase-local and revertable.
+- Update `memory/CHANGELOG.md` for behavior-impacting lifetime changes.
+
+Hard stop conditions:
+1. Stack engine needs direct `ScopeRegion` operations to proceed.
+2. Any per-type RC lifetime appears for language graph values.
+3. New ASAN UAF/double-free/leak appears after integration.
+4. Clone/discard behavior becomes non-deterministic.
+
+---
+
+## Wave A: Baseline + Defer Substrate (Sessions 1-6)
+
+### Session 1: Baseline Freeze + Acceptance Contract
+
+Goal:
+- Lock baseline behavior and invariant contract.
+
+Work:
+- Record current teardown/clone failure surfaces and expected invariants.
+- Update:
+  - `.claude/plans/fiber-temp-teardown-revision-summary.md`
+  - `.claude/plans/session-34-44-boundary-hardening.md`
+  - `memory/CHANGELOG.md` (baseline snapshot)
+
+Commits:
+1. `docs: freeze teardown+clone invariants and baseline gates`
+
+Validation:
+- Global rule only.
+
+### Session 2: Stack Engine API Skeleton
+
+Goal:
+- Introduce generic defer API surface without runtime wiring.
+
+Likely files:
+- `src/stack_engine.c3`
+
+Work:
+- Add `stack_ctx_defer` and `stack_ctx_undefer` API.
+- Add generic `DeferOps` callback contract (`destroy`, `clone`).
+- Add basic stack-engine unit tests for API shape.
+
+Commits:
+1. `stack: add generic defer API and DeferOps contract`
+
+Validation:
+- Global rule + ASAN.
+
+### Session 3: Destroy-Path Defer Execution
+
+Goal:
+- Ensure stack destroy path runs remaining defers deterministically.
+
+Likely files:
+- `src/stack_engine.c3`
+
+Work:
+- Implement LIFO defer execution on destroy.
+- Add tests for:
+  - normal return (no destroy callback)
+  - destroy with multiple defers (ordering)
+
+Commits:
+1. `stack: execute defer callbacks on destroy in deterministic order`
+
+Validation:
+- Global rule + ASAN.
+
+### Session 4: Clone-Path Defer Replay
+
+Goal:
+- Ensure clone path re-establishes semantic ownership via `clone` callbacks.
+
+Likely files:
+- `src/stack_engine.c3`
+
+Work:
+- Implement clone-time defer metadata replay.
+- Invoke `ops.clone(arg)` during stack clone flow.
+- Add clone-specific tests:
+  - clone without destroy
+  - clone then destroy both original and clone
+
+Commits:
+1. `stack: add defer clone replay hooks for semantic ownership duplication`
+
+Validation:
+- Global rule + ASAN.
+
+### Session 5: Runtime Boundary Wiring (JIT/Boundary Core)
+
+Goal:
+- Use defer substrate for scope teardown safety in core boundary paths.
+
+Likely files:
+- `src/lisp/jit_jit_eval_scopes.c3`
+- `src/lisp/eval_boundary_api.c3`
+
+Work:
+- Register cleanup at boundary entry.
+- Remove assumptions that epilogue always executes naturally.
+
+Commits:
+1. `jit/boundary: register scope cleanup via generic defer substrate`
+
+Validation:
+- Global rule + ASAN + targeted:
+  - `--filter continuation`
+
+### Session 6: Runtime Boundary Wiring (Env/Promotion Context)
+
+Goal:
+- Extend defer-backed cleanup to env/promotion-sensitive paths.
+
+Likely files:
+- `src/lisp/eval_env_copy.c3`
+- `src/lisp/eval_promotion_context.c3`
+
+Work:
+- Wire boundary cleanup for env/promotion transitions that can cross suspend/clone paths.
+
+Commits:
+1. `lifetime: harden env/promotion boundaries with defer-backed cleanup`
+
+Validation:
+- Global rule + ASAN + targeted:
+  - `--filter continuation`
+  - `--filter scheduler`
+
+---
+
+## Wave B: Regression Lock + Performance Stabilization (Sessions 7-9)
+
+### Session 7: Teardown Regression Pack
+
+Goal:
+- Lock bug class with deterministic regression cases.
+
+Likely files:
+- `src/lisp/tests_tests.c3`
+- `src/lisp/tests_escape_scope_tests.c3`
+- `src/stack_engine.c3` tests
+
+Work:
+- Add tests for:
+  - suspend then destroy before natural return
+  - clone/discard ordering permutations
+  - mixed JIT/eval transitions
+
+Commits:
+1. `tests: add teardown and clone boundary regression pack`
+
+Validation:
+- Global rule + ASAN.
+
+### Session 8: Stress + Flake Check
+
+Goal:
+- Ensure tests are stable across repetition and order variation.
+
+Likely files:
+- test files only (plus minor harness hooks if needed)
+
+Work:
+- Run repeated targeted tests and tighten nondeterministic assertions.
+
+Commits:
+1. `tests: stabilize continuation/scheduler stress assertions`
+
+Validation:
+- Global rule + ASAN + repeated targeted runs.
+
+### Session 9: Defer Overhead Stabilization
+
+Goal:
+- Reduce hot-path cost without changing API/semantics.
+
+Likely files:
+- `src/stack_engine.c3`
+- `src/lisp/jit_jit_compiler.c3`
+- `src/lisp/jit_jit_eval_scopes.c3`
+
+Work:
+- Add counters/bench hooks.
+- Optimize internal defer storage strategy (implementation detail only).
+
+Commits:
+1. `perf: optimize defer substrate internals with no API change`
+2. `perf/tests: add lightweight no-regression checks`
+
+Validation:
+- Global rule + ASAN.
+
+---
+
+## Wave C: Fiber-Temp Design + Flagged Plumbing (Sessions 10-13)
+
+### Session 10: Fiber-Temp Design Freeze
+
+Goal:
+- Convert RnD concept into implementation-spec with explicit guardrails.
+
+Likely files:
+- `memory/DESTINATION_ARENA_PLAN.md`
+- `.claude/plans/fiber-temp-teardown-revision-summary.md`
+- `memory/CHANGELOG.md`
+
+Work:
+- Define:
+  - eligibility for TEMP routing
+  - non-eligible classes
+  - clone/suspend constraints
+  - rollback strategy
+
+Commits:
+1. `docs: freeze fiber-temp design constraints and proof obligations`
+
+Validation:
+- Global rule only.
+
+### Session 11: Chunk Pool + Feature Flag Skeleton
+
+Goal:
+- Introduce fiber-temp plumbing behind flag, default OFF.
+
+Likely files:
+- `src/stack_engine.c3`
+- `src/scope_region.c3`
+- `src/lisp/value_interp_state.c3`
+
+Work:
+- Add chunk metadata/lifecycle primitives.
+- Add feature flag path with no behavior change when OFF.
+
+Commits:
+1. `runtime: add fiber-temp chunk pool skeleton behind feature flag`
+
+Validation:
+- Global rule + ASAN.
+
+### Session 12: TEMP Backing Integration (Flag OFF/ON parity basics)
+
+Goal:
+- Connect temp backing context to stack/fiber lifecycle with safe default behavior.
+
+Likely files:
+- `src/stack_engine.c3`
+- `src/scope_region.c3`
+- `src/lisp/value_interp_state.c3`
+
+Work:
+- Wire plumbing paths and ensure OFF mode parity.
+- Add basic ON-mode sanity tests.
+
+Commits:
+1. `runtime: wire fiber-temp backing lifecycle under guarded mode`
+
+Validation:
+- Global rule + ASAN.
+
+### Session 13: Eligibility-Based Routing
+
+Goal:
+- Route only safe TEMP allocations to fiber-temp-backed path.
+
+Likely files:
+- `src/scope_region.c3`
+- `src/lisp/value_constructors.c3`
+- `src/lisp/eval_promotion_copy.c3`
+- `src/lisp/eval_promotion_escape.c3`
+
+Work:
+- Add routing eligibility checks.
+- Keep non-eligible allocations on deterministic ESCAPE path.
+
+Commits:
+1. `runtime: add eligibility-based TEMP routing for fiber-temp mode`
+
+Validation:
+- Global rule + ASAN + targeted continuation tests.
+
+---
+
+## Wave D: Clone/Scheduler Safety + Rollout Decision (Sessions 14-16)
+
+### Session 14: Suspend/Clone Safety for Fiber-Temp
+
+Goal:
+- Ensure clone/suspend correctness in fiber-temp mode.
+
+Likely files:
+- `src/stack_engine.c3`
+- `src/scope_region.c3`
+- `src/lisp/scheduler_io_fiber_core.c3`
+- `src/lisp/scheduler_wakeup_io.c3`
+
+Work:
+- Implement safe freeze/share (or equivalent) semantics for temp backing during clone/suspend.
+- Ensure destroy reclaims correctly.
+
+Commits:
+1. `runtime: harden fiber-temp clone/suspend semantics`
+
+Validation:
+- Global rule + ASAN + targeted continuation/scheduler stress.
+
+### Session 15: Scheduler/Thread Boundary Audit
+
+Goal:
+- Verify thread-boundary correctness with fiber-temp and defer substrate.
+
+Likely files:
+- `src/lisp/scheduler_thread_tasks.c3`
+- `src/lisp/scheduler_offload_worker.c3`
+- `src/lisp/scheduler_tcp_async_bridge.c3`
+- `src/lisp/scheduler_primitives.c3`
+- test files
+
+Work:
+- Audit callback mutation boundaries.
+- Add/expand stress tests for offload wakeups and teardown races.
+
+Commits:
+1. `scheduler: enforce boundary-safe teardown and wakeup invariants`
+2. `tests: add scheduler-thread teardown stress coverage`
+
+Validation:
+- Global rule + ASAN + repeated scheduler stress runs.
+
+### Session 16: Rollout Decision + Cleanup
+
+Goal:
+- Decide production posture and clean dead paths only if gates are satisfied.
+
+Likely files:
+- `memory/CHANGELOG.md`
+- `memory/DESTINATION_ARENA_PLAN.md`
+- runtime files touched in prior sessions
+
+Work:
+- Decide default flag policy (likely keep OFF initially).
+- Remove dead fallback code only where parity is proven.
+- Publish final operations/invariant note.
+
+Commits:
+1. `docs/runtime: publish fiber-temp readiness decision and invariant status`
+2. `cleanup: remove proven-dead fallback paths (if any)`
+
+Validation:
+- Full global + ASAN + targeted stress matrix.
+
+---
+
+## Deliverable Checkpoints
+
+Checkpoint A (after Session 6):
+- Defer substrate integrated into boundary paths; no known teardown leak path unresolved.
+
+Checkpoint B (after Session 9):
+- Regressions locked; defer overhead acceptable.
+
+Checkpoint C (after Session 13):
+- Fiber-temp plumbing and eligibility routing functional behind feature flag.
+
+Checkpoint D (after Session 16):
+- Production rollout decision with evidence and rollback plan.
+
+## Notes on Throughput
+
+- If sessions are run in parallel branches, merge order must still follow dependency chain:
+  - Sessions 1-6 serial required.
+  - Sessions 7-9 can partially overlap.
+  - Sessions 10-16 should be mostly serial due to shared core files.
+- Prefer one active high-risk runtime session at a time to minimize conflict and hidden regressions.

@@ -274,17 +274,18 @@ fn Value* prim_yield_require_context(main::StackCtx** current_out, Interp* inter
     return null;
 }
 
-fn void prim_yield_suspend_and_restore(main::StackCtx* current, Interp* interp) {
+fn bool prim_yield_suspend_and_restore(main::StackCtx* current, Interp* interp) {
     SavedInterpState saved;
     save_interp_state(interp, &saved);
 
-    // Keep the active scope alive while this context is suspended.
-    main::stack_ctx_pin_scope(current, interp.current_scope);
-    main::stack_ctx_suspend();
+    if (!suspend_with_scope_guard(current, interp.current_scope)) {
+        restore_interp_state(interp, &saved);
+        return false;
+    }
 
     // Resumed — restore full interpreter state.
     restore_interp_state(interp, &saved);
-    main::stack_ctx_unpin_scope(current);
+    return true;
 }
 
 fn Value* prim_yield_resume_result(Interp* interp) {
@@ -300,6 +301,8 @@ fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {
     Value* yield_val = args.len > 0 ? args[0] : make_nil(interp);
     interp.yield_value = yield_val;
 
-    prim_yield_suspend_and_restore(current, interp);
+    if (!prim_yield_suspend_and_restore(current, interp)) {
+        return raise_error(interp, "stack engine: failed to register suspend scope guard");
+    }
     return prim_yield_resume_result(interp);
 }
