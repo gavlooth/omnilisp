@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-03-05: Session 202 - Thread-Task Completion Boundary Regression
+
+### Summary
+Added scheduler regression coverage for thread-task completion ownership paths (`alloc -> complete -> take`) plus invalid-id completion cleanup, with boundary/runtime state assertions.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added:
+    - `run_scheduler_thread_task_completion_boundary_tests(...)`
+  - New coverage (looped stress):
+    - allocates thread task slots via `scheduler_alloc_thread_task()`,
+    - completes each task with a cancel/error completion payload,
+    - takes completion via `scheduler_take_thread_task_completion(...)`,
+    - verifies completion ownership transfer and task-slot reset (`exists` false after take),
+    - exercises invalid-id completion path via `scheduler_complete_thread_task(MAX_THREAD_TASKS + k, completion)` (should self-clean completion safely).
+  - Verifies interpreter boundary/runtime fields remain unchanged.
+  - Wired into `run_scheduler_tests(...)`.
+
+### Why this matters
+- Scheduler boundary hardening had strong wakeup/consume coverage but limited direct coverage over thread-task ownership transitions.
+- This closes that seam and reinforces deterministic completion cleanup and slot lifecycle behavior under sanitizer checks.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1204 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1203 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `OMNI_FIBER_TEMP=1 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1203 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+
 ## 2026-03-05: Session 201 - Offload Consume Bytes-Branch Boundary Coverage
 
 ### Summary

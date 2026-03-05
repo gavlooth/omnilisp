@@ -312,6 +312,18 @@ Execution policy:
   - strict ASAN full suite: pass (`Unified 1202/0`, `Compiler 73/0`)
   - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1202/0`, `Compiler 73/0`)
 
+### Session 202 Follow-up (2026-03-05): Thread-Task Completion Ownership Paths
+
+- Added scheduler regression `run_scheduler_thread_task_completion_boundary_tests(...)` in `src/lisp/tests_tests.c3`:
+  - exercises thread-task completion lifecycle (`alloc -> complete -> take`) and verifies slot teardown,
+  - exercises invalid-id completion submission path for cleanup safety,
+  - verifies boundary/runtime field stability across iterations.
+- Wired into `run_scheduler_tests(...)`.
+- Validation:
+  - normal full suite: pass (`Unified 1204/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1203/0`, `Compiler 73/0`)
+  - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1203/0`, `Compiler 73/0`)
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.

@@ -3137,6 +3137,101 @@ fn void run_scheduler_consume_pending_tcp_read_boundary_tests(Interp* interp, in
     }
 }
 
+fn void run_scheduler_thread_task_completion_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: thread-task completion ownership paths (complete/take/drop and
+    // invalid-id completion cleanup) preserve interpreter boundary/runtime state.
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* saved_releasing = interp.releasing_scope;
+    Env* saved_jit_env = interp.jit_env;
+    Env* saved_match_env = interp.match_env;
+    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
+    Env* saved_jit_tco_env = interp.jit_tco_env;
+    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
+    usz saved_tco_slot = interp.tco_scope_defer_slot;
+    bool saved_tco_active = interp.tco_scope_defer_active;
+    bool saved_escape_mode = interp.escape_env_mode;
+    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+
+    bool ok = true;
+    usz failed_step = 0;
+    char[] failed_phase = "";
+
+    for (usz i = 0; i < 16; i++) {
+        usz task_id = scheduler_alloc_thread_task();
+        if (task_id == NO_TASK) {
+            ok = false;
+            failed_step = i;
+            failed_phase = "alloc-task";
+            break;
+        }
+
+        OffloadCompletion* completion = scheduler_make_task_cancel_completion();
+        if (completion == null) {
+            scheduler_drop_thread_task(task_id);
+            ok = false;
+            failed_step = i;
+            failed_phase = "alloc-completion";
+            break;
+        }
+
+        scheduler_complete_thread_task(task_id, completion);
+        bool exists_before_take = scheduler_thread_task_exists(task_id);
+        OffloadCompletion* taken = scheduler_take_thread_task_completion(task_id);
+        bool take_ok = exists_before_take &&
+                       taken != null &&
+                       !scheduler_thread_task_exists(task_id);
+        if (taken != null) scheduler_free_offload_completion(taken);
+
+        OffloadCompletion* invalid_completion = scheduler_make_task_cancel_completion();
+        if (invalid_completion == null) {
+            scheduler_drop_thread_task(task_id);
+            ok = false;
+            failed_step = i;
+            failed_phase = "alloc-invalid-completion";
+            break;
+        }
+        scheduler_complete_thread_task(MAX_THREAD_TASKS + 7 + i, invalid_completion);
+
+        bool state_ok = scheduler_runtime_boundary_fields_match(
+            interp,
+            saved_scope,
+            saved_releasing,
+            saved_jit_env,
+            saved_match_env,
+            saved_jit_tco_expr,
+            saved_jit_tco_env,
+            saved_tco_recycle,
+            saved_tco_slot,
+            saved_tco_active,
+            saved_escape_mode,
+            saved_active_ctx
+        );
+        if (!take_ok || !state_ok) {
+            ok = false;
+            failed_step = i;
+            if (!take_ok) {
+                failed_phase = "take";
+            } else {
+                failed_phase = "boundary";
+            }
+            scheduler_drop_thread_task(task_id);
+            break;
+        }
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler thread-task completion boundary restore");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] scheduler thread-task completion boundary restore at step %d (%s)",
+            (int)failed_step,
+            (ZString)failed_phase
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_scheduler_wakeup_ready_barrier_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: drain_wakeups must stop at the first unready slot and preserve FIFO order.
     // Also verify interpreter boundary/runtime state remains unchanged.
@@ -3509,6 +3604,7 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
     run_scheduler_duplicate_offload_ready_boundary_tests(interp, pass, fail);
     run_scheduler_consume_pending_offload_boundary_tests(interp, pass, fail);
     run_scheduler_consume_pending_tcp_read_boundary_tests(interp, pass, fail);
+    run_scheduler_thread_task_completion_boundary_tests(interp, pass, fail);
     run_scheduler_wakeup_ready_barrier_boundary_tests(interp, pass, fail);
     run_scheduler_mixed_boundary_state_restore_tests(interp, pass, fail);
     run_scheduler_wakeup_offload_error_boundary_tests(interp, pass, fail);
