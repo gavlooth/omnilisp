@@ -72,6 +72,16 @@ Execution policy:
   - normal full suite: pass (`Unified 1187/0`, `Compiler 73/0`)
   - strict ASAN full suite: pass (`Unified 1186/0`, `Compiler 73/0`)
 
+### Session 182 Follow-up (2026-03-05): run_program Boundary-State Coverage
+
+- Added focused regression `run_memory_lifetime_run_program_boundary_state_test(...)` in `src/lisp/tests_tests.c3`.
+- Coverage intent:
+  - lock in boundary-state restoration for top-level multi-form execution (`run_program`),
+  - confirm `current_scope` + `releasing_scope` stability across parse+eval orchestration.
+- Validation:
+  - normal full suite: pass (`Unified 1188/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1187/0`, `Compiler 73/0`)
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.

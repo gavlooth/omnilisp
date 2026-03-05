@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-03-05: Session 182 - run_program Boundary-State Regression Coverage
+
+### Summary
+Added focused coverage to ensure top-level multi-form execution (`run_program`) preserves interpreter boundary state (`current_scope`/`releasing_scope`) across full parse+eval flow.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added `run_memory_lifetime_run_program_boundary_state_test(...)`.
+  - Validates:
+    - multi-expression program evaluates to expected result,
+    - `interp.current_scope` and `interp.releasing_scope` are unchanged after `run_program(...)`.
+  - Wired into `run_memory_lifetime_regression_tests(...)`.
+
+### Why this matters
+- Extends boundary hardening coverage beyond `run(...)` and JIT internals into top-level program execution.
+- Prevents regressions where parse/eval orchestration leaks transient scope state across calls.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1188 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1187 passed, 0 failed` (JIT checks disabled under ASAN)
+  - `Compiler: 73 passed, 0 failed`
+
 ## 2026-03-05: Session 181 - TCO Recycle Error-Path Boundary Rollback Consolidation
 
 ### Summary

@@ -3175,6 +3175,40 @@ fn void run_memory_lifetime_boundary_scope_interleaving_test(Interp* interp, int
     }
 }
 
+fn void run_memory_lifetime_run_program_boundary_state_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: run_program preserves boundary scope state across multi-form execution.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* saved_releasing = interp.releasing_scope;
+
+        EvalResult r = run_program(
+            "(define __boundary_prog_x 10)\n"
+            "(define __boundary_prog_y 32)\n"
+            "(+ __boundary_prog_x __boundary_prog_y)",
+            interp);
+
+        bool ok_eval = !r.error.has_error &&
+                       r.value != null &&
+                       r.value.tag == INT &&
+                       r.value.int_val == 42;
+        bool ok_state = interp.current_scope == saved_scope &&
+                        interp.releasing_scope == saved_releasing;
+        bool ok = ok_eval && ok_state;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: run_program boundary state restore");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: run_program boundary state restore (ok_eval=%s ok_state=%s scope_match=%s releasing_match=%s)",
+                ok_eval ? "yes" : "no",
+                ok_state ? "yes" : "no",
+                interp.current_scope == saved_scope ? "yes" : "no",
+                interp.releasing_scope == saved_releasing ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test(Interp* interp, int* pass, int* fail) {
     // Invariant: wrapper values in target chain are reused, while disjoint wrappers are defensively copied.
     {
@@ -3749,6 +3783,7 @@ fn void run_memory_lifetime_regression_tests(Interp* interp, int* pass, int* fai
     run_memory_lifetime_root_fallback_tests(interp, pass, fail);
     run_memory_lifetime_boundary_scope_restore_tests(interp, pass, fail);
     run_memory_lifetime_boundary_scope_interleaving_test(interp, pass, fail);
+    run_memory_lifetime_run_program_boundary_state_test(interp, pass, fail);
     run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test(interp, pass, fail);
     run_memory_lifetime_env_copy_escape_mode_tests(interp, pass, fail);
     run_memory_lifetime_hot_budget_tests(interp, pass, fail);
