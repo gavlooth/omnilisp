@@ -1,5 +1,67 @@
 # Changelog
 
+## 2026-03-05: Session 172 - Boundary State Save/Restore Centralization
+
+### Summary
+Centralized boundary interpreter state transitions (`current_scope`/`releasing_scope`) behind shared save/restore helpers, and added regression coverage for boundary state restoration invariants.
+
+### What changed
+- `src/lisp/eval_boundary_api.c3`
+  - Added shared helper struct + functions:
+    - `BoundaryInterpState`
+    - `boundary_save_interp_state(...)`
+    - `boundary_restore_interp_state(...)`
+  - Migrated boundary mutators to use helper with `defer` restore:
+    - `boundary_copy_to_scope_site(...)`
+    - `boundary_alloc_value_in_scope(...)`
+    - `boundary_make_env_in_scope(...)`
+    - `boundary_env_extend_in_scope(...)`
+    - `boundary_copy_from_releasing_scope(...)`
+    - `boundary_copy_env_to_target_scope(...)`
+- `src/lisp/tests_tests.c3`
+  - Added regression:
+    - `run_memory_lifetime_boundary_scope_restore_tests(...)`
+  - Verifies boundary helpers restore interpreter scope/releasing state after temporary overrides.
+  - Wired into `run_memory_lifetime_regression_tests(...)`.
+
+### Why this matters
+- Reduces boundary bug surface by removing repeated ad-hoc state save/restore logic.
+- Makes ownership/lifetime context transitions explicit and reusable in one boundary-local place.
+- Strengthens invariant coverage around interpreter boundary-state hygiene.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
+## 2026-03-05: Session 171 - Auto-Run Boundary Hardening on Boundary PRs
+
+### Summary
+Extended boundary hardening CI to run automatically on boundary-sensitive pull requests, so boundary policy enforcement is not limited to manual workflow runs.
+
+### What changed
+- `.github/workflows/boundary-hardening.yml`
+  - Added `pull_request` trigger with focused `paths` filter for boundary-sensitive runtime/policy files.
+  - Added `Resolve policy diff range` step:
+    - auto-sets `OMNI_BOUNDARY_POLICY_RANGE=base_sha...head_sha` for PR events,
+    - keeps `workflow_dispatch` override behavior via `policy_range` input.
+  - Tightened PR-comment step condition to dispatch-only:
+    - runs only on `workflow_dispatch` with non-empty `pr_number`.
+- `docs/PROJECT_TOOLING.md`
+  - Updated CI integration docs:
+    - workflow now documents both `pull_request` and `workflow_dispatch` modes,
+    - clarifies auto range behavior on PR runs.
+
+### Why this matters
+- Enforces boundary hardening policy automatically for boundary-touching PRs.
+- Reduces reliance on manual dispatch for critical ownership/lifetime safety checks.
+- Keeps main-plan focus: centralized, auditable boundary correctness gates.
+
+### Validation
+- `scripts/check_boundary_facade_usage.sh`
+- `scripts/check_boundary_change_policy.sh build/boundary_hardening_normal.log build/boundary_hardening_asan.log`
+
 ## 2026-03-05: Session 170 - Boundary Change Policy Gate (ASAN Evidence)
 
 ### Summary

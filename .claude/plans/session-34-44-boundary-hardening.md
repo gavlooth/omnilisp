@@ -468,6 +468,25 @@ Execution policy:
 - Validation:
   - boundary profile run remains green with policy stage enabled.
 
+### Session 172 Follow-up (2026-03-05): Boundary State Restore Helper Consolidation
+
+- Centralized boundary state transitions in `eval_boundary_api.c3`:
+  - added `BoundaryInterpState` save/restore helpers,
+  - routed temporary boundary context overrides through shared helper + `defer`.
+- Migrated helper-backed restore paths:
+  - `boundary_copy_to_scope_site(...)`
+  - `boundary_alloc_value_in_scope(...)`
+  - `boundary_make_env_in_scope(...)`
+  - `boundary_env_extend_in_scope(...)`
+  - `boundary_copy_from_releasing_scope(...)`
+  - `boundary_copy_env_to_target_scope(...)`
+- Added regression coverage in `tests_tests.c3`:
+  - `run_memory_lifetime_boundary_scope_restore_tests(...)`,
+  - asserts `current_scope` and `releasing_scope` restoration after boundary helper calls.
+- Validation:
+  - normal full suite green,
+  - strict ASAN suite green.
+
 ## Global Gates (run after every commit)
 
 ```bash

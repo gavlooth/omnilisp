@@ -2990,6 +2990,62 @@ fn void run_memory_lifetime_root_fallback_tests(Interp* interp, int* pass, int* 
     run_memory_lifetime_cons_barrier_fallback_gate_test(interp, pass, fail);
 }
 
+fn void run_memory_lifetime_boundary_scope_restore_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: boundary API helpers restore current/releasing scope state after temporary overrides.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* scope_a = main::scope_create(saved);
+        main::ScopeRegion* scope_b = main::scope_create(saved);
+        main::ScopeRegion* scope_c = main::scope_create(saved);
+        main::ScopeRegion* scope_d = main::scope_create(saved);
+        if (scope_a == null || scope_b == null || scope_c == null || scope_d == null) {
+            if (scope_d != null) main::scope_release(scope_d);
+            if (scope_c != null) main::scope_release(scope_c);
+            if (scope_b != null) main::scope_release(scope_b);
+            if (scope_a != null) main::scope_release(scope_a);
+            io::printn("[FAIL] lifetime: boundary state restore helpers");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = scope_a;
+        interp.releasing_scope = scope_b;
+
+        Value* noop = boundary_copy_to_scope_site(
+            null, interp, scope_c, scope_d, COPY_SITE_COPY_ENV_TO_SCOPE);
+        bool copy_scope_ok = noop == null &&
+                             interp.current_scope == scope_a &&
+                             interp.releasing_scope == scope_b;
+
+        Value* local_val = make_int(interp, 42);
+        Value* copied = boundary_copy_from_releasing_scope(
+            local_val, interp, scope_d, COPY_SITE_RUN_JIT_RESULT);
+        bool copy_release_ok = copied != null &&
+                               copied.tag == INT &&
+                               copied.int_val == 42 &&
+                               interp.current_scope == scope_a &&
+                               interp.releasing_scope == scope_b;
+
+        interp.current_scope = saved;
+        interp.releasing_scope = null;
+        main::scope_release(scope_d);
+        main::scope_release(scope_c);
+        main::scope_release(scope_b);
+        main::scope_release(scope_a);
+
+        bool ok = copy_scope_ok && copy_release_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: boundary state restore helpers");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: boundary state restore helpers (copy_scope_ok=%s copy_release_ok=%s)",
+                copy_scope_ok ? "yes" : "no",
+                copy_release_ok ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_env_copy_memo_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: env copy uses one boundary epoch and memoizes repeated values.
     // This keeps copy_env_to_scope churn bounded for shared captured values.
@@ -3459,6 +3515,7 @@ fn void run_memory_lifetime_regression_tests(Interp* interp, int* pass, int* fai
     if (!run_memory_lifetime_result_and_coroutine_tests(interp, pass, fail)) return;
     run_memory_lifetime_lane_barrier_tests(interp, pass, fail);
     run_memory_lifetime_root_fallback_tests(interp, pass, fail);
+    run_memory_lifetime_boundary_scope_restore_tests(interp, pass, fail);
     run_memory_lifetime_env_copy_escape_mode_tests(interp, pass, fail);
     run_memory_lifetime_hot_budget_tests(interp, pass, fail);
     run_memory_lifetime_promotion_context_tests(interp, pass, fail);

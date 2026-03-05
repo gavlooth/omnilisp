@@ -2,6 +2,29 @@ module lisp;
 
 import main;
 
+struct BoundaryInterpState {
+    main::ScopeRegion* current_scope;
+    main::ScopeRegion* releasing_scope;
+}
+
+<*
+@require interp != null : "boundary_save_interp_state: null interp"
+*>
+fn BoundaryInterpState boundary_save_interp_state(Interp* interp) @inline {
+    return {
+        .current_scope = interp.current_scope,
+        .releasing_scope = interp.releasing_scope,
+    };
+}
+
+<*
+@require interp != null : "boundary_restore_interp_state: null interp"
+*>
+fn void boundary_restore_interp_state(Interp* interp, BoundaryInterpState saved) @inline {
+    interp.current_scope = saved.current_scope;
+    interp.releasing_scope = saved.releasing_scope;
+}
+
 // =============================================================================
 // SECTION 2.4: FRAME PUSH/POP (audited boundary facade)
 // =============================================================================
@@ -85,14 +108,11 @@ fn Value* boundary_copy_to_scope_site(
     uint site
 ) @inline {
     if (v == null || target_scope == null) return v;
-    main::ScopeRegion* saved_scope = interp.current_scope;
-    main::ScopeRegion* saved_releasing = interp.releasing_scope;
+    BoundaryInterpState saved = boundary_save_interp_state(interp);
+    defer boundary_restore_interp_state(interp, saved);
     interp.current_scope = target_scope;
     interp.releasing_scope = releasing_scope;
-    Value* copied = boundary_copy_to_parent_site(v, interp, site);
-    interp.releasing_scope = saved_releasing;
-    interp.current_scope = saved_scope;
-    return copied;
+    return boundary_copy_to_parent_site(v, interp, site);
 }
 
 <*
@@ -100,13 +120,13 @@ fn Value* boundary_copy_to_scope_site(
 @require target_scope != null : "boundary_alloc_value_in_scope: null target_scope"
 *>
 fn Value* boundary_alloc_value_in_scope(Interp* interp, main::ScopeRegion* target_scope, bool register_dtor = false) @inline {
-    main::ScopeRegion* saved_scope = interp.current_scope;
+    BoundaryInterpState saved = boundary_save_interp_state(interp);
+    defer boundary_restore_interp_state(interp, saved);
     interp.current_scope = target_scope;
     Value* v = interp.alloc_value();
     if (register_dtor) {
         main::scope_register_dtor(target_scope, (void*)v, &scope_dtor_value);
     }
-    interp.current_scope = saved_scope;
     return v;
 }
 
@@ -122,11 +142,10 @@ fn Value* boundary_alloc_value_in_root(Interp* interp, bool register_dtor = fals
 @require target_scope != null : "boundary_make_env_in_scope: null target_scope"
 *>
 fn Env* boundary_make_env_in_scope(Interp* interp, main::ScopeRegion* target_scope, Env* parent) @inline {
-    main::ScopeRegion* saved_scope = interp.current_scope;
+    BoundaryInterpState saved = boundary_save_interp_state(interp);
+    defer boundary_restore_interp_state(interp, saved);
     interp.current_scope = target_scope;
-    Env* env = make_env(interp, parent);
-    interp.current_scope = saved_scope;
-    return env;
+    return make_env(interp, parent);
 }
 
 <*
@@ -148,11 +167,10 @@ fn Env* boundary_env_extend_in_scope(
     SymbolId name,
     Value* value
 ) @inline {
-    main::ScopeRegion* saved_scope = interp.current_scope;
+    BoundaryInterpState saved = boundary_save_interp_state(interp);
+    defer boundary_restore_interp_state(interp, saved);
     interp.current_scope = target_scope;
-    Env* out = env.extend(interp, name, value);
-    interp.current_scope = saved_scope;
-    return out;
+    return env.extend(interp, name, value);
 }
 
 <*
@@ -196,11 +214,10 @@ fn Value* boundary_copy_value_if_owned_by_scope(Value* v, Interp* interp, main::
 *>
 fn Value* boundary_copy_from_releasing_scope(Value* v, Interp* interp, main::ScopeRegion* releasing_scope, uint site) @inline {
     if (releasing_scope == null) return v;
-    main::ScopeRegion* saved_releasing = interp.releasing_scope;
+    BoundaryInterpState saved = boundary_save_interp_state(interp);
+    defer boundary_restore_interp_state(interp, saved);
     interp.releasing_scope = releasing_scope;
-    Value* copied = boundary_copy_value_if_owned_by_scope(v, interp, releasing_scope, site);
-    interp.releasing_scope = saved_releasing;
-    return copied;
+    return boundary_copy_value_if_owned_by_scope(v, interp, releasing_scope, site);
 }
 
 <*
@@ -221,11 +238,10 @@ fn Env* boundary_copy_env_to_target_scope(
     usz depth = 0,
     PromotionContext* ctx = null
 ) @inline {
-    main::ScopeRegion* saved_scope = interp.current_scope;
+    BoundaryInterpState saved = boundary_save_interp_state(interp);
+    defer boundary_restore_interp_state(interp, saved);
     interp.current_scope = target_scope;
-    Env* copied = boundary_copy_env_to_scope(env, interp, depth, ctx);
-    interp.current_scope = saved_scope;
-    return copied;
+    return boundary_copy_env_to_scope(env, interp, depth, ctx);
 }
 
 fn bool boundary_try_scope_splice_escapes(main::ScopeRegion* parent, main::ScopeRegion* child) @inline {
