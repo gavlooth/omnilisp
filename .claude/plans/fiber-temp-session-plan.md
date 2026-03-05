@@ -224,6 +224,23 @@ Validation:
 Next:
 - Add a focused leakage/retention guard test around repeated create/destroy cycles to verify lifecycle flush counters and pooled-count stability over long runs.
 
+## Fiber TEMP Phase 6c Progress (2026-03-05)
+
+Completed:
+- Added long-run retention guard for clone/discard lifecycle:
+  - 128 repeated create/suspend/clone-discard/resume/destroy cycles,
+  - verifies lifecycle creation/flush activity,
+  - asserts bounded pooled-chunk growth.
+- Integrated into stack engine suite.
+
+Validation:
+- Normal: `Stack engine 20/0`, `Scope region 51/0`, `Unified 1182/0`, `Compiler 73/0`.
+- ASAN strict: `Stack engine 19/0`, `Scope region 51/0`, `Unified 1181/0`, `Compiler 73/0`.
+- Flagged telemetry confirms heavy exercised lifecycle paths with stable pooled count.
+
+Next:
+- Begin a small rollout hygiene pass: tighten docs around Fiber TEMP enablement policy (explicitly experimental/flagged) and enumerate remaining production gates.
+
 ## Fiber TEMP Phase 5b Progress (2026-03-05)
 
 Completed:

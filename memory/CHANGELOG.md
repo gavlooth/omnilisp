@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-03-05: Session 154 - Fiber TEMP Long-Run Retention Guard
+
+### Summary
+Added a long-run retention guard test for Fiber TEMP clone/discard lifecycle paths to detect runaway pool growth or missing destroy-flush behavior across repeated cycles.
+
+### What changed
+- `src/stack_engine.c3`
+  - Added `test_stack_ctx_fiber_temp_retention_guard()`.
+  - Under `OMNI_FIBER_TEMP=1`, runs 128 repeated cycles of:
+    - create context,
+    - suspend at scope boundary,
+    - clone + immediate clone destroy,
+    - resume source to completion,
+    - source destroy.
+  - Asserts:
+    - context-pool creation increases,
+    - lifecycle flush count increases,
+    - global pooled chunk count remains bounded (`pooled_after <= pooled_before + 64`).
+  - Wired into `run_stack_engine_tests()`.
+
+### Why this matters
+- Adds a deterministic long-run retention guard for exactly the lifecycle mode most prone to subtle leaks (clone/discard loops).
+- Complements earlier telemetry counters with a direct bounded-growth invariant.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 20/0`, `Scope region 51/0`, `Unified 1182/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c clean && c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 19/0`, `Scope region 51/0`, `Unified 1181/0`, `Compiler 73/0`)
+- Flagged summary:
+  - `OMNI_FIBER_TEMP=1 OMNI_TEST_SUMMARY=1 ...`
+  - Result includes:
+    - `OMNI_TEST_SUMMARY suite=stack_engine pass=20 fail=0`
+    - `OMNI_TEST_SUMMARY suite=scope_region pass=51 fail=0`
+    - `OMNI_TEST_SUMMARY suite=fiber_temp_pool enabled=1 hits=322 misses=4 returns=493 drop_frees=0 pooled=6 peak=6 ctx_hits=161 ctx_returns=326 ctx_pools=161 lc_clone=160 lc_destroy=321 lc_defer=160 lc_flush=165 eligible_slow=2 bypass_large=0 bypass_escape=2`
+
 ## 2026-03-05: Session 153 - Fiber TEMP Lifecycle Telemetry Hardening
 
 ### Summary
