@@ -117,6 +117,16 @@ Execution policy:
   - normal full suite: pass (`Unified 1190/0`, `Compiler 73/0`)
   - strict ASAN full suite: pass (`Unified 1189/0`, `Compiler 73/0`)
 
+### Session 186 Follow-up (2026-03-05): run_program Error-Path Boundary Coverage
+
+- Added `run_memory_lifetime_run_program_error_boundary_state_test(...)` in `src/lisp/tests_tests.c3`.
+- Verifies top-level multi-form execution preserves boundary state on:
+  - parse-error exit,
+  - runtime-error exit.
+- Validation:
+  - normal full suite: pass (`Unified 1191/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1190/0`, `Compiler 73/0`)
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.

@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-03-05: Session 186 - run_program Error-Path Boundary-State Regression
+
+### Summary
+Expanded top-level boundary coverage by adding explicit regressions that `run_program(...)` preserves scope state on parse and runtime error exits, not only success paths.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added `run_memory_lifetime_run_program_error_boundary_state_test(...)`.
+  - Verifies `run_program(...)` preserves:
+    - `interp.current_scope`
+    - `interp.releasing_scope`
+  across both:
+    - parse-error exit (missing closing paren),
+    - runtime-error exit (`(car 1)`).
+  - Wired into `run_memory_lifetime_regression_tests(...)`.
+
+### Why this matters
+- Closes a boundary-coverage gap at a high-level entry point.
+- Ensures orchestration-level failures do not leak transient scope state into subsequent evaluations.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1191 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1190 passed, 0 failed` (JIT checks disabled under ASAN)
+  - `Compiler: 73 passed, 0 failed`
+
 ## 2026-03-05: Session 185 - TCO Recycle Error-Path Regression + Single-Scope Boundary Leave
 
 ### Summary
