@@ -301,6 +301,17 @@ Execution policy:
   - strict ASAN full suite: pass (`Unified 1202/0`, `Compiler 73/0`)
   - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1202/0`, `Compiler 73/0`)
 
+### Session 201 Follow-up (2026-03-05): Offload Consume Bytes Branch
+
+- Extended `run_scheduler_consume_pending_offload_boundary_tests(...)` in `src/lisp/tests_tests.c3`:
+  - added `OFFLOAD_RES_BYTES` completion mode (`shared_blob_new_copy("blob-ok")`),
+  - verifies consumed bytes path returns expected `STRING` payload,
+  - retains boundary/runtime-state and slot-reset assertions across all consume phases.
+- Validation:
+  - normal full suite: pass (`Unified 1203/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1202/0`, `Compiler 73/0`)
+  - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1202/0`, `Compiler 73/0`)
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.

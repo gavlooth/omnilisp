@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-03-05: Session 201 - Offload Consume Bytes-Branch Boundary Coverage
+
+### Summary
+Extended the pending-offload consume boundary regression to cover the `OFFLOAD_RES_BYTES` branch (shared-blob transfer path), while preserving existing boundary/runtime-state guarantees.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Updated `run_scheduler_consume_pending_offload_boundary_tests(...)`:
+    - expanded completion mode rotation from 2 modes to 3 modes:
+      - `OFFLOAD_RES_INT`,
+      - cancel/error completion,
+      - `OFFLOAD_RES_BYTES` completion using `shared_blob_new_copy("blob-ok")`.
+    - for bytes mode, verifies consumed value is `STRING` with expected payload.
+  - Existing assertions retained:
+    - pre-completion consume returns error,
+    - completed consume returns correct value shape,
+    - pending slot resets after consume,
+    - post-reset consume returns error,
+    - boundary/runtime fields remain unchanged per phase.
+
+### Why this matters
+- Session 199 covered consume-side control flow but did not exercise blob ownership transfer in `scheduler_value_from_offload_bytes(...)`.
+- This closes that gap and strengthens consume-path hardening around shared-blob to Value ownership handoff.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1203 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1202 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `OMNI_FIBER_TEMP=1 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1202 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+
 ## 2026-03-05: Session 200 - Pending-TCP-Read Consume Boundary Regression
 
 ### Summary

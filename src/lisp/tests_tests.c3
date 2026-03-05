@@ -2822,9 +2822,23 @@ fn void run_scheduler_consume_pending_offload_boundary_tests(Interp* interp, int
 
         OffloadCompletion* completion = null;
         long expected_int = 0;
-        bool expect_error = (i & 1) == 1;
+        char[] expected_bytes = "blob-ok";
+        usz mode = i % 3; // 0=int, 1=error, 2=bytes
+        bool expect_error = mode == 1;
+        bool expect_bytes = mode == 2;
         if (ok && expect_error) {
             completion = scheduler_make_task_cancel_completion();
+        } else if (ok && expect_bytes) {
+            completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
+            if (completion != null) {
+                *completion = {};
+                completion.kind = OFFLOAD_RES_BYTES;
+                completion.blob = shared_blob_new_copy(expected_bytes);
+                if (completion.blob == null) {
+                    mem::free(completion);
+                    completion = null;
+                }
+            }
         } else if (ok) {
             completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
             if (completion != null) {
@@ -2849,7 +2863,12 @@ fn void run_scheduler_consume_pending_offload_boundary_tests(Interp* interp, int
 
             bool consume_ok = expect_error
                               ? (consumed != null && consumed.tag == ERROR)
-                              : (consumed != null && consumed.tag == INT && consumed.int_val == expected_int);
+                              : (expect_bytes
+                                 ? (consumed != null &&
+                                    consumed.tag == STRING &&
+                                    consumed.str_len == expected_bytes.len &&
+                                    str_starts_with(consumed.str_chars[:consumed.str_len], expected_bytes))
+                                 : (consumed != null && consumed.tag == INT && consumed.int_val == expected_int));
             bool slot_reset = !g_scheduler.pending_offloads[0].active &&
                               !g_scheduler.pending_offloads[0].completed &&
                               g_scheduler.pending_offloads[0].completion == null;
