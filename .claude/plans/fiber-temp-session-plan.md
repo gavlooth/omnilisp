@@ -84,6 +84,24 @@ Validation:
 Next:
 - Add focused assertions around Fiber TEMP pool invariants (take/reclaim behavior and bypass counters) without coupling tests to suite order.
 
+## Fiber TEMP Phase 2c Progress (2026-03-05)
+
+Completed:
+- Added focused Fiber TEMP pool invariant checks in `scope_region`:
+  - reclaim path (return vs drop behavior),
+  - take-hit path,
+  - take-miss path,
+  using local before/after deltas to avoid suite-order coupling.
+
+Validation:
+- Normal: `Stack engine 16/0`, `Scope region 51/0`, `Unified 1178/0`, `Compiler 73/0`.
+- ASAN strict: `Stack engine 15/0`, `Scope region 51/0`, `Unified 1177/0`, `Compiler 73/0`.
+- Flagged metrics include exercised pool counters:
+  - `hits=2`, `misses=4`, `returns=8`, `eligible_slow=2`, `bypass_escape=2`.
+
+Next:
+- Begin per-fiber TEMP ownership plumbing behind the flag while preserving stack-layer genericity (no direct scope logic in stack engine).
+
 ## Session Rules
 
 Global rule for every session:

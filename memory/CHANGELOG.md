@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-03-05: Session 145 - Fiber TEMP Pool Invariant Tests
+
+### Summary
+Added focused Fiber TEMP pool invariant tests in `scope_region` to lock take/reclaim behavior with order-insensitive local deltas.
+
+### What changed
+- `src/scope_region.c3`
+  - Added test block `Test 16: Fiber TEMP pool invariants (flagged only)` covering:
+    - reclaim behavior (`return_count` vs `drop_frees`),
+    - take-hit behavior (`take_hits`),
+    - take-miss behavior (`take_misses`).
+  - Assertions use local before/after deltas to avoid brittle dependence on prior suite activity.
+
+### Why this matters
+- Increases confidence in Fiber TEMP pool mechanics without requiring global counter resets.
+- Keeps default (flag-off) suite stable while adding meaningful coverage for flag-on runs.
+
+### Validation
+- Normal:
+  - `c3c build`
+  - `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 16/0`, `Scope region 51/0`, `Unified 1178/0`, `Compiler 73/0`)
+- ASAN strict:
+  - `c3c clean && c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: pass (`Stack engine 15/0`, `Scope region 51/0`, `Unified 1177/0`, `Compiler 73/0`)
+- Flagged metrics run:
+  - `c3c build`
+  - `OMNI_FIBER_TEMP=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result includes:
+    - `OMNI_TEST_SUMMARY suite=scope_region pass=51 fail=0`
+    - `OMNI_TEST_SUMMARY suite=fiber_temp_pool enabled=1 hits=2 misses=4 returns=8 drop_frees=0 pooled=6 peak=6 eligible_slow=2 bypass_large=0 bypass_escape=2`
+
 ## 2026-03-05: Session 144 - Fiber TEMP Test Hardening (Per-Test Metric Deltas)
 
 ### Summary

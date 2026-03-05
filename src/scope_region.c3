@@ -1247,6 +1247,59 @@ fn void run_scope_region_tests() {
         mem::free(escape_counter);
     }
 
+    // Test 16: Fiber TEMP pool invariants (flagged only)
+    {
+        if (!scope_fiber_temp_flag_enabled()) {
+            // Feature-gated: keep default suite behavior stable when flag is off.
+            passed++;
+        } else {
+            usz returns_before = g_fiber_temp_pool_stats.return_count;
+            usz drops_before = g_fiber_temp_pool_stats.drop_frees;
+            usz hits_before = g_fiber_temp_pool_stats.take_hits;
+            usz misses_before = g_fiber_temp_pool_stats.take_misses;
+            usz pooled_before = g_fiber_temp_chunk_pool_count;
+
+            ScopeChunk* offered = scope_chunk_alloc_raw(SCOPE_CHUNK_INITIAL);
+            scope_chunk_reclaim_temp(offered);
+
+            bool returned = g_fiber_temp_pool_stats.return_count == returns_before + 1;
+            bool dropped = g_fiber_temp_pool_stats.drop_frees == drops_before + 1;
+            bool ok = returned != dropped;
+
+            usz pooled_after_reclaim = g_fiber_temp_chunk_pool_count;
+            if (returned) {
+                ok = ok && pooled_after_reclaim == pooled_before + 1;
+            } else {
+                ok = ok && pooled_after_reclaim == pooled_before;
+            }
+
+            ScopeChunk* taken = fiber_temp_chunk_try_take(SCOPE_CHUNK_INITIAL);
+            if (returned) {
+                ok = ok && taken != null;
+                ok = ok && g_fiber_temp_pool_stats.take_hits == hits_before + 1;
+                ok = ok && g_fiber_temp_chunk_pool_count == pooled_before;
+            } else {
+                ok = ok && taken == null;
+                ok = ok && g_fiber_temp_pool_stats.take_hits == hits_before;
+            }
+
+            ScopeChunk* miss = fiber_temp_chunk_try_take(SCOPE_CHUNK_MAX + 1);
+            ok = ok && miss == null;
+            ok = ok && g_fiber_temp_pool_stats.take_misses == misses_before + 1;
+
+            if (taken != null) {
+                scope_chunk_reclaim_temp(taken);
+            }
+
+            if (ok) {
+                passed++;
+            } else {
+                io::printn("FAIL: fiber-temp pool invariants");
+                failed++;
+            }
+        }
+    }
+
     io::printfn("%d passed, %d failed", (int)passed, (int)failed);
     if (scope_c_getenv("OMNI_TEST_SUMMARY") != null) {
         io::printfn("OMNI_TEST_SUMMARY suite=scope_region pass=%d fail=%d", (int)passed, (int)failed);
