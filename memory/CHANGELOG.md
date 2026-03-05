@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-03-05: Session 198 - Duplicate/Late Offload-Ready Boundary Regression
+
+### Summary
+Added scheduler regression coverage for duplicate and late `WAKEUP_OFFLOAD_READY` delivery to the same active pending offload, asserting first-completion retention semantics, safe extra-payload discard, and boundary/runtime state restoration.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Added:
+    - `run_scheduler_duplicate_offload_ready_boundary_tests(...)`
+  - Test behavior:
+    - prepares one blocked active pending offload fiber (`fid=0`),
+    - enqueues two `WAKEUP_OFFLOAD_READY` events with distinct `OffloadCompletion*` payloads,
+    - verifies only first payload is retained in `pending_offloads[0].completion`,
+    - verifies queue convergence (`head == tail`) and `FIBER_BLOCKED -> FIBER_READY`,
+    - enqueues a third late `WAKEUP_OFFLOAD_READY` payload after completion and verifies retained payload is unchanged,
+    - checks interpreter boundary/runtime fields after duplicate and late phases.
+  - Includes explicit cleanup of retained completion payload in the test harness.
+  - Wired into `run_scheduler_tests(...)`.
+
+### Why this matters
+- Existing wakeup regressions covered invalid offload wakeups and queue ordering, but not idempotent behavior for duplicate/late completion delivery on a valid pending offload.
+- This closes a practical race/resend safety gap and, with ASAN, helps guard against leak/double-free regressions in offload wakeup handling.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1201 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1200 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `OMNI_FIBER_TEMP=1 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1200 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+
 ## 2026-03-05: Session 197 - Wakeup Ready-Barrier Boundary Regression
 
 ### Summary

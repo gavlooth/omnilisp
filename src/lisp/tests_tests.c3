@@ -2599,6 +2599,176 @@ fn void run_scheduler_invalid_offload_wakeup_boundary_tests(Interp* interp, int*
     }
 }
 
+fn void run_scheduler_duplicate_offload_ready_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: duplicate/late WAKEUP_OFFLOAD_READY events for one active pending
+    // offload retain the first completion payload, safely discard extras, and
+    // preserve interpreter boundary/runtime state.
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* saved_releasing = interp.releasing_scope;
+    Env* saved_jit_env = interp.jit_env;
+    Env* saved_match_env = interp.match_env;
+    Expr* saved_jit_tco_expr = interp.jit_tco_expr;
+    Env* saved_jit_tco_env = interp.jit_tco_env;
+    main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
+    usz saved_tco_slot = interp.tco_scope_defer_slot;
+    bool saved_tco_active = interp.tco_scope_defer_active;
+    bool saved_escape_mode = interp.escape_env_mode;
+    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+
+    bool ok = true;
+    usz failed_step = 0;
+    char[] failed_phase = "";
+
+    for (usz i = 0; i < 16; i++) {
+        void* saved_async = null;
+        scheduler_test_prepare_no_async(&saved_async);
+
+        g_scheduler.fiber_count = 1;
+        g_scheduler.current_fiber_id = NO_FIBER;
+        g_scheduler.fibers[0] = {};
+        g_scheduler.fibers[0].state = FIBER_BLOCKED;
+        g_scheduler.pending_offloads[0] = {};
+        g_scheduler.pending_offloads[0].active = true;
+
+        OffloadCompletion* c1 = scheduler_make_task_cancel_completion();
+        OffloadCompletion* c2 = scheduler_make_task_cancel_completion();
+        if (c1 == null || c2 == null) {
+            if (c1 != null) scheduler_free_offload_completion(c1);
+            if (c2 != null) scheduler_free_offload_completion(c2);
+            ok = false;
+            failed_step = i;
+            failed_phase = "alloc";
+            g_scheduler.pending_offloads[0] = {};
+            g_scheduler.fibers[0] = {};
+            g_scheduler.fiber_count = 0;
+            scheduler_reset_wakeup_queue();
+            scheduler_test_restore_no_async(saved_async);
+            break;
+        }
+
+        bool pushed_first = wakeup_enqueue(WAKEUP_OFFLOAD_READY, 0, 0, c1);
+        bool pushed_second = wakeup_enqueue(WAKEUP_OFFLOAD_READY, 0, 0, c2);
+        if (!pushed_first || !pushed_second) {
+            if (!pushed_first) scheduler_free_offload_completion(c1);
+            if (!pushed_second) scheduler_free_offload_completion(c2);
+            if (pushed_first) {
+                drain_wakeups();
+                if (g_scheduler.pending_offloads[0].completion != null) {
+                    scheduler_free_offload_completion(g_scheduler.pending_offloads[0].completion);
+                }
+            }
+            ok = false;
+            failed_step = i;
+            failed_phase = "enqueue";
+            g_scheduler.pending_offloads[0] = {};
+            g_scheduler.fibers[0] = {};
+            g_scheduler.fiber_count = 0;
+            scheduler_reset_wakeup_queue();
+            scheduler_test_restore_no_async(saved_async);
+            break;
+        }
+
+        drain_wakeups();
+        usz head_after_dup = g_scheduler.wakeup_head.load();
+        usz tail_after_dup = g_scheduler.wakeup_tail.load();
+        PendingOffload off_after_dup = g_scheduler.pending_offloads[0];
+        bool state_ok_dup = scheduler_runtime_boundary_fields_match(
+            interp,
+            saved_scope,
+            saved_releasing,
+            saved_jit_env,
+            saved_match_env,
+            saved_jit_tco_expr,
+            saved_jit_tco_env,
+            saved_tco_recycle,
+            saved_tco_slot,
+            saved_tco_active,
+            saved_escape_mode,
+            saved_active_ctx
+        );
+        bool dup_ok = head_after_dup == tail_after_dup &&
+                      off_after_dup.active &&
+                      off_after_dup.completed &&
+                      off_after_dup.completion == c1 &&
+                      off_after_dup.completion != c2 &&
+                      g_scheduler.fibers[0].state == FIBER_READY;
+
+        OffloadCompletion* c3 = scheduler_make_task_cancel_completion();
+        if (c3 == null) {
+            ok = false;
+            failed_step = i;
+            failed_phase = "alloc-late";
+        } else {
+            bool pushed_late = wakeup_enqueue(WAKEUP_OFFLOAD_READY, 0, 0, c3);
+            if (!pushed_late) {
+                scheduler_free_offload_completion(c3);
+                ok = false;
+                failed_step = i;
+                failed_phase = "enqueue-late";
+            } else {
+                drain_wakeups();
+                usz head_after_late = g_scheduler.wakeup_head.load();
+                usz tail_after_late = g_scheduler.wakeup_tail.load();
+                PendingOffload off_after_late = g_scheduler.pending_offloads[0];
+                bool state_ok_late = scheduler_runtime_boundary_fields_match(
+                    interp,
+                    saved_scope,
+                    saved_releasing,
+                    saved_jit_env,
+                    saved_match_env,
+                    saved_jit_tco_expr,
+                    saved_jit_tco_env,
+                    saved_tco_recycle,
+                    saved_tco_slot,
+                    saved_tco_active,
+                    saved_escape_mode,
+                    saved_active_ctx
+                );
+                bool late_ok = head_after_late == tail_after_late &&
+                               off_after_late.active &&
+                               off_after_late.completed &&
+                               off_after_late.completion == c1;
+                if (!dup_ok || !late_ok || !state_ok_dup || !state_ok_late) {
+                    ok = false;
+                    failed_step = i;
+                    if (!dup_ok) {
+                        failed_phase = "dup";
+                    } else if (!late_ok) {
+                        failed_phase = "late";
+                    } else if (!state_ok_dup) {
+                        failed_phase = "boundary-dup";
+                    } else {
+                        failed_phase = "boundary-late";
+                    }
+                }
+            }
+        }
+
+        if (g_scheduler.pending_offloads[0].completion != null) {
+            scheduler_free_offload_completion(g_scheduler.pending_offloads[0].completion);
+        }
+        g_scheduler.pending_offloads[0] = {};
+        g_scheduler.fibers[0] = {};
+        g_scheduler.fiber_count = 0;
+        scheduler_reset_wakeup_queue();
+        scheduler_test_restore_no_async(saved_async);
+
+        if (!ok) break;
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler duplicate offload-ready boundary restore");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] scheduler duplicate offload-ready boundary restore at step %d (%s)",
+            (int)failed_step,
+            (ZString)failed_phase
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_scheduler_wakeup_ready_barrier_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: drain_wakeups must stop at the first unready slot and preserve FIFO order.
     // Also verify interpreter boundary/runtime state remains unchanged.
@@ -2968,6 +3138,7 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
     run_scheduler_wakeup_wraparound_boundary_tests(interp, pass, fail);
     run_scheduler_wakeup_mixed_event_boundary_tests(interp, pass, fail);
     run_scheduler_invalid_offload_wakeup_boundary_tests(interp, pass, fail);
+    run_scheduler_duplicate_offload_ready_boundary_tests(interp, pass, fail);
     run_scheduler_wakeup_ready_barrier_boundary_tests(interp, pass, fail);
     run_scheduler_mixed_boundary_state_restore_tests(interp, pass, fail);
     run_scheduler_wakeup_offload_error_boundary_tests(interp, pass, fail);

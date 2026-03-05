@@ -260,6 +260,18 @@ Execution policy:
   - strict ASAN full suite: pass (`Unified 1199/0`, `Compiler 73/0`)
   - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1199/0`, `Compiler 73/0`)
 
+### Session 198 Follow-up (2026-03-05): Duplicate/Late Offload-Ready Semantics
+
+- Added scheduler regression `run_scheduler_duplicate_offload_ready_boundary_tests(...)` in `src/lisp/tests_tests.c3`:
+  - drives duplicate and late `WAKEUP_OFFLOAD_READY` events for one active blocked pending offload,
+  - verifies first completion payload retention and extra payload discard semantics,
+  - verifies queue convergence, blocked->ready transition, and boundary/runtime state stability after both phases.
+- Wired into `run_scheduler_tests(...)`.
+- Validation:
+  - normal full suite: pass (`Unified 1201/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1200/0`, `Compiler 73/0`)
+  - strict ASAN full suite with `OMNI_FIBER_TEMP=1`: pass (`Unified 1200/0`, `Compiler 73/0`)
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.
