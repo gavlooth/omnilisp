@@ -1,5 +1,43 @@
 # Changelog
 
+## 2026-03-05: Session 178 - Boundary Invariant Hook Rollout (Run/JIT) + Interleaving Regression
+
+### Summary
+Extended centralized boundary invariant hooks into high-risk run/JIT scope transition paths and added a focused regression for nested boundary interleavings (`enter/leave` + `push/pop`) to keep scope-state restoration auditable.
+
+### What changed
+- `src/lisp/eval_run_pipeline.c3`
+  - Added `boundary_assert_interp_scope_chain(...)` checks at:
+    - `run_promote_result(...)` entry/exit,
+    - `run(...)` entry, post-`boundary_push_child_scope(...)`, and pre-return.
+- `src/lisp/jit_jit_eval_scopes.c3`
+  - Added `boundary_assert_interp_scope_chain(...)` checks at:
+    - `jit_finalize_scoped_result(...)` entry and all return exits,
+    - `jit_eval_in_single_scope(...)` entry, post-`boundary_push_child_scope(...)`, and pre-return,
+    - `jit_eval_in_call_scope(...)` entry, post-`boundary_push_child_scope(...)`, and pre-return.
+- `src/lisp/tests_tests.c3`
+  - Added `run_memory_lifetime_boundary_scope_interleaving_test(...)`.
+  - Verifies:
+    - nested boundary interleavings preserve `current_scope`/`releasing_scope`,
+    - copy-from-releasing path still works after interleaving,
+    - explicit save/restore round-trip remains exact.
+  - Wired into `run_memory_lifetime_regression_tests(...)`.
+
+### Why this matters
+- Continues the "centralized invariants, distributed call-site coverage" hardening strategy without changing behavior.
+- Narrows bug surface in the most failure-prone scope handoff paths (`run` and JIT scoped eval/finalize).
+- Adds coverage for mixed boundary operation ordering, where regressions are typically subtle.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1186 passed, 0 failed`
+  - `Compiler: 73 passed, 0 failed`
+- `c3c clean && c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - `Unified: 1185 passed, 0 failed` (JIT checks disabled under ASAN)
+  - `Compiler: 73 passed, 0 failed`
+
 ## 2026-03-05: Session 177 - Central Boundary Invariant Hooks (Non-Null Scope State)
 
 ### Summary

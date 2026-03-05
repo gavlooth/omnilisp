@@ -20,6 +20,19 @@ Execution policy:
   - `c3c build --sanitize=address`
   - `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
 
+### Session 178 Follow-up (2026-03-05): Boundary Invariant Coverage in Run/JIT + Interleaving Regression
+
+- Extended invariant-hook call-site coverage into top-level run/JIT high-risk transitions:
+  - `run_promote_result(...)` and `run(...)` in `src/lisp/eval_run_pipeline.c3`
+  - `jit_finalize_scoped_result(...)`, `jit_eval_in_single_scope(...)`, `jit_eval_in_call_scope(...)` in `src/lisp/jit_jit_eval_scopes.c3`
+- Added focused regression `run_memory_lifetime_boundary_scope_interleaving_test(...)` in `src/lisp/tests_tests.c3`:
+  - exercises nested `boundary_enter_scope`/`boundary_leave_scope` interleaved with `boundary_push_child_scope`/`boundary_pop_child_scope`,
+  - validates exact restoration of `current_scope` + `releasing_scope`,
+  - validates release-copy path remains correct post-interleaving.
+- Validation:
+  - normal full suite: pass (`Unified 1186/0`, `Compiler 73/0`)
+  - strict ASAN full suite: pass (`Unified 1185/0`, `Compiler 73/0`)
+
 ### Post-44 Continuation Snapshot (Sessions 45-68)
 
 - Boundary API expansion and caller migration completed across eval/jit/env/value/module paths.

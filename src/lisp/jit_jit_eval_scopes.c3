@@ -42,6 +42,7 @@ fn Value* jit_finalize_scoped_result(
     main::ScopeRegion* active_scope,
     uint copy_site
 ) {
+    boundary_assert_interp_scope_chain(interp);
     PromotionContext boundary_ctx = {};
     promotion_context_begin(interp, &boundary_ctx, PROMOTION_CTX_BUDGET_RETURN);
 
@@ -60,11 +61,13 @@ fn Value* jit_finalize_scoped_result(
             );
             main::scope_release(active_scope);
             promotion_context_end(interp, &boundary_ctx);
+            boundary_assert_interp_scope_chain(interp);
             return result;
         }
         if (result.scope_gen == active_scope.escape_generation) {
             boundary_try_scope_splice_escapes(saved_scope, active_scope);
             promotion_context_end(interp, &boundary_ctx);
+            boundary_assert_interp_scope_chain(interp);
             return result;
         }
     }
@@ -72,6 +75,7 @@ fn Value* jit_finalize_scoped_result(
     if (result != null && !main::is_in_scope((void*)result, active_scope)) {
         main::scope_release(active_scope);
         promotion_context_end(interp, &boundary_ctx);
+        boundary_assert_interp_scope_chain(interp);
         return result;
     }
 
@@ -80,6 +84,7 @@ fn Value* jit_finalize_scoped_result(
     }
     main::scope_release(active_scope);
     promotion_context_end(interp, &boundary_ctx);
+    boundary_assert_interp_scope_chain(interp);
     return result;
 }
 
@@ -221,11 +226,13 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
 // Used for non-loop function calls. No TCO recycle scope is set.
 // Avoids the overhead of two scopes (result_scope + call_scope).
 fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
+    boundary_assert_interp_scope_chain(interp);
     main::ScopeRegion* saved_scope = null;
     main::ScopeRegion* call_scope = boundary_push_child_scope(interp, &saved_scope);
     if (call_scope == null) {
         return raise_error(interp, "jit: failed to allocate call scope");
     }
+    boundary_assert_interp_scope_chain(interp);
 
     main::StackCtx* current_ctx = main::g_current_stack_ctx;
     bool registered_defer = false;
@@ -256,12 +263,14 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
     if (registered_defer) {
         (void)pop_scope_guard_defer(current_ctx);
     }
+    boundary_assert_interp_scope_chain(interp);
     return final;
 }
 
 // Scope-per-call wrapper: evaluates closure body in a child scope.
 // Unified lane model: one scope per call with TEMP+ESCAPE lanes.
 fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp, bool enable_escape_env) {
+    boundary_assert_interp_scope_chain(interp);
     main::ScopeRegion* saved_scope = null;
 
     // Unified one-scope lane model: TEMP recycles, ESCAPE splices.
@@ -269,6 +278,7 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp, bool
     if (call_scope == null) {
         return raise_error(interp, "jit: failed to allocate call scope");
     }
+    boundary_assert_interp_scope_chain(interp);
 
     bool saved_escape_env = interp.escape_env_mode;
     if (enable_escape_env) {
@@ -321,6 +331,7 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp, bool
     if (registered_defer) {
         (void)pop_scope_guard_defer(current_ctx);
     }
+    boundary_assert_interp_scope_chain(interp);
     return final;
 }
 

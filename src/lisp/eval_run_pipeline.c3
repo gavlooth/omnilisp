@@ -49,6 +49,7 @@ fn bool run_execute_expr(Expr* expr, Interp* interp, Value** result_value, EvalR
 }
 
 fn Value* run_promote_result(Value* jit_result, Interp* interp, main::ScopeRegion* child_scope, main::ScopeRegion* saved_scope, bool* child_spliced) {
+    boundary_assert_interp_scope_chain(interp);
     *child_spliced = false;
     if (jit_result == null) return null;
 
@@ -88,6 +89,7 @@ fn Value* run_promote_result(Value* jit_result, Interp* interp, main::ScopeRegio
         );
     }
     promotion_context_end(interp, &boundary_ctx);
+    boundary_assert_interp_scope_chain(interp);
     return jit_result;
 }
 
@@ -154,6 +156,7 @@ fn EvalResult run_program(char[] source, Interp* interp) {
  */
 fn EvalResult run(char[] source, Interp* interp) {
     run_clear_stale_raise_state(interp);
+    boundary_assert_interp_scope_chain(interp);
 
     // GC JIT states between top-level evaluations (safe: no JIT code on stack)
     jit_gc();
@@ -178,6 +181,7 @@ fn EvalResult run(char[] source, Interp* interp) {
     if (child_scope == null) {
         return eval_error("run: failed to create child scope");
     }
+    boundary_assert_interp_scope_chain(interp);
     defer boundary_pop_child_scope(interp, saved_scope, child_scope);
 
     EvalResult result;
@@ -196,5 +200,6 @@ fn EvalResult run(char[] source, Interp* interp) {
         result = eval_ok(jit_result);
     }
 
+    boundary_assert_interp_scope_chain(interp);
     return result;
 }
