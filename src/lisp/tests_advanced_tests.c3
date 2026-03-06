@@ -88,6 +88,12 @@ fn void run_advanced_core_semantics_try_raise_tests(Interp* interp, int* pass, i
     test_str_val(interp, "try catch user raise",
         "(try (lambda (xx) (signal raise \"custom error\")) (lambda (msg) msg))",
         "custom error", pass, fail);
+    test_str_val(interp, "try-message catches legacy string raise",
+        "(try-message (lambda (xx) (signal raise \"custom error\")) (lambda (msg) msg))",
+        "custom error", pass, fail);
+    test_str_val(interp, "try-message canonical payload compatibility",
+        "(try-message (lambda (xx) (resolve 42)) (lambda (msg) msg))",
+        "resolve: not inside a handler clause", pass, fail);
     test_eq(interp, "nested try inner catches",
         "(try (lambda (xx) (try (lambda (yy) (/ 1 0)) (lambda (msg) 99))) (lambda (msg) 0))",
         99, pass, fail);
@@ -249,6 +255,83 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
     test_eq(interp, "signal no trigger", "(handle (+ 10 20) (unused x 999))", 30, pass, fail);
     test_eq(interp, "signal multi-resume", "(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x (resolve x)))", 30, pass, fail);
     test_error_contains(interp, "resolve outside handler", "(resolve 42)", "resolve", pass, fail);
+    test_tag(interp, "resolve outside handler payload tag", "(handle (resolve 42) (raise msg msg))", HASHMAP, pass, fail);
+    test_str_val(interp,
+        "resolve outside handler payload domain",
+        "(handle (resolve 42) (raise msg (symbol->string (ref msg 'domain))))",
+        "runtime", pass, fail);
+    test_str_val(interp,
+        "resolve outside handler payload code",
+        "(handle (resolve 42) (raise msg (symbol->string (ref msg 'code))))",
+        "runtime/invalid-continuation", pass, fail);
+    test_str_val(interp,
+        "unhandled effect payload code",
+        "(handle (signal no-handler 1) (raise msg (symbol->string (ref msg 'code))))",
+        "runtime/unhandled-effect", pass, fail);
+    test_str_val(interp,
+        "scheduler offload payload domain",
+        "(handle (offload 'nope 1) (raise msg (symbol->string (ref msg 'domain))))",
+        "scheduler", pass, fail);
+    test_str_val(interp,
+        "scheduler offload payload code",
+        "(handle (offload 'nope 1) (raise msg (symbol->string (ref msg 'code))))",
+        "scheduler/offload-unsupported-op", pass, fail);
+    test_str_val(interp,
+        "scheduler join-timeout payload code",
+        "(handle (begin (define t-sched-timeout (thread-spawn 'sleep-ms 20)) (thread-join-timeout t-sched-timeout 0)) (raise msg (symbol->string (ref msg 'code))))",
+        "scheduler/thread-join-timeout", pass, fail);
+    test_str_val(interp,
+        "io tcp-connect payload domain",
+        "(handle (tcp-connect 42 80) (raise msg (symbol->string (ref msg 'domain))))",
+        "io", pass, fail);
+    test_str_val(interp,
+        "io tcp-connect payload code",
+        "(handle (tcp-connect 42 80) (raise msg (symbol->string (ref msg 'code))))",
+        "io/tcp-connect-host-not-string", pass, fail);
+    test_str_val(interp,
+        "io tcp-listen payload code",
+        "(handle (tcp-listen \"bad-host\" 0) (raise msg (symbol->string (ref msg 'code))))",
+        "io/tcp-listen-bind-listen-failed", pass, fail);
+    test_str_val(interp,
+        "io dns-resolve payload code",
+        "(handle (dns-resolve \"bad host\") (raise msg (symbol->string (ref msg 'code))))",
+        "io/dns-resolve-resolution-failed", pass, fail);
+    test_str_val(interp,
+        "deduce dispatch payload domain",
+        "(handle (deduce 123) (raise msg (symbol->string (ref msg 'domain))))",
+        "deduce", pass, fail);
+    test_str_val(interp,
+        "deduce dispatch payload code",
+        "(handle (deduce 123) (raise msg (symbol->string (ref msg 'code))))",
+        "deduce/dispatch-command-not-symbol", pass, fail);
+    test_str_val(interp,
+        "deduce open payload code",
+        "(handle (deduce 'open 42) (raise msg (symbol->string (ref msg 'code))))",
+        "deduce/open-path-not-string-or-memory", pass, fail);
+    test_str_val(interp,
+        "deduce query payload code",
+        "(handle (deduce 'query) (raise msg (symbol->string (ref msg 'code))))",
+        "deduce/query-expected-relation-filter", pass, fail);
+    test_str_val(interp,
+        "regex re-match payload domain",
+        "(handle (re-match 42 \"x\") (raise msg (symbol->string (ref msg 'domain))))",
+        "regex", pass, fail);
+    test_str_val(interp,
+        "regex re-match payload code",
+        "(handle (re-match 42 \"x\") (raise msg (symbol->string (ref msg 'code))))",
+        "regex/re-match-pattern-not-string", pass, fail);
+    test_str_val(interp,
+        "parser pika-parse payload domain",
+        "(handle (pika/parse 42 \"x\") (raise msg (symbol->string (ref msg 'domain))))",
+        "parser", pass, fail);
+    test_str_val(interp,
+        "parser pika-parse payload code",
+        "(handle (pika/parse 42 \"x\") (raise msg (symbol->string (ref msg 'code))))",
+        "parser/parse-grammar-not-symbol", pass, fail);
+    test_str_val(interp,
+        "parser pika-grammar payload code",
+        "(handle (pika/grammar 'g-parser-bad '(rule start (nope \"a\"))) (raise msg (symbol->string (ref msg 'code))))",
+        "parser/grammar-unknown-operator", pass, fail);
 
     test_eq(interp, "multi-shift sum", "(reset (+ (shift k1 (k1 10)) (shift k2 (k2 20))))", 30, pass, fail);
 
@@ -628,17 +711,17 @@ fn void run_advanced_module_selective_rename_tests(Interp* interp, int* pass, in
     // Qualified still works alongside selective
     test_eq(interp, "selective + qualified", "(sel-mod.sub-one 5)", 4, pass, fail);
 
-    // Rename import: (import mod (sym :as alias))
+    // Rename import: (import mod (sym 'as alias))
     setup(interp, "(module rename-mod (export compute) (define compute (lambda (x) (* x 10))))");
-    setup(interp, "(import rename-mod (compute :as calc))");
+    setup(interp, "(import rename-mod (compute 'as calc))");
     test_eq(interp, "renamed import", "(calc 3)", 30, pass, fail);
     test_error(interp, "original name hidden after rename", "(compute 3)", pass, fail);
 }
 
 fn void run_advanced_module_all_dependency_tests(Interp* interp, int* pass, int* fail) {
-    // Import :all (explicit opt-in, old behavior)
+    // Import 'all (explicit opt-in)
     setup(interp, "(module all-mod (export foo bar) (define foo (lambda () 42)) (define bar (lambda () 99)))");
-    setup(interp, "(import all-mod :all)");
+    setup(interp, "(import all-mod 'all)");
     test_eq(interp, "import all foo", "(foo)", 42, pass, fail);
     test_eq(interp, "import all bar", "(bar)", 99, pass, fail);
 
@@ -647,7 +730,7 @@ fn void run_advanced_module_all_dependency_tests(Interp* interp, int* pass, int*
     setup(interp, "(import list-utils (sum-list))");
     test_eq(interp, "module stdlib access", "(sum-list (quote (1 2 3 4 5)))", 15, pass, fail);
     setup(interp, "(module base-mod (export base-fn) (define base-fn (lambda (x) (+ x 100))))");
-    setup(interp, "(import base-mod :all)");
+    setup(interp, "(import base-mod 'all)");
     setup(interp, "(module derived-mod (export derived-fn) (define derived-fn (lambda (x) (base-fn (* x 2)))))");
     setup(interp, "(import derived-mod (derived-fn))");
     test_eq(interp, "module depends on another", "(derived-fn 5)", 110, pass, fail);
@@ -672,10 +755,10 @@ fn void run_advanced_module_reexport_shorthand_tests(Interp* interp, int* pass, 
     setup(interp, "(import outer-mod (inner-val))");
     test_eq(interp, "export-from re-export", "inner-val", 42, pass, fail);
     setup(interp, "(module inner-all-mod (export all-a all-b) (define all-a 7) (define all-b 9))");
-    setup(interp, "(module outer-all-mod (export all-a all-b) (export-from inner-all-mod :all))");
+    setup(interp, "(module outer-all-mod (export all-a all-b) (export-from inner-all-mod 'all))");
     setup(interp, "(import outer-all-mod (all-a all-b))");
-    test_eq(interp, "export-from :all all-a", "all-a", 7, pass, fail);
-    test_eq(interp, "export-from :all all-b", "all-b", 9, pass, fail);
+    test_eq(interp, "export-from 'all all-a", "all-a", 7, pass, fail);
+    test_eq(interp, "export-from 'all all-b", "all-b", 9, pass, fail);
 
     // Module as first-class value
     setup(interp, "(module val-mod (export x) (define x 77))");
@@ -701,13 +784,19 @@ fn void run_advanced_parser_export_from_edge_tests(Interp* interp, int* pass, in
     test_error_contains(interp,
         "parser export-from missing specifier",
         "(module bad-exp-nospec (export) (export-from inner-mod))",
-        "expected :all or (names...) after export-from module",
+        "expected 'all or (names...) after export-from module",
         pass, fail);
 
     test_error_contains(interp,
         "parser export-from bad specifier",
         "(module bad-exp-spec (export) (export-from inner-mod bogus))",
-        "expected :all or (names...) after export-from module",
+        "expected 'all or (names...) after export-from module",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser export-from legacy :all rejected",
+        "(module bad-exp-legacy (export) (export-from inner-mod :all))",
+        "expected 'all or (names...) after export-from module",
         pass, fail);
 
     test_error_contains(interp,
@@ -731,21 +820,33 @@ fn void run_advanced_parser_export_from_edge_tests(Interp* interp, int* pass, in
 
 fn void run_advanced_parser_import_edge_tests(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp,
-        "parser import paren missing :as",
+        "parser import legacy :all rejected",
+        "(import bad-mod :all)",
+        "expected 'all or (specifiers...) after import module",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser import legacy :as rejected",
+        "(import bad-mod (x :as y))",
+        "expected 'as in import specifier",
+        pass, fail);
+
+    test_error_contains(interp,
+        "parser import paren missing 'as",
         "(import bad-mod ((x y)))",
-        "expected :as in import specifier",
+        "expected 'as in import specifier",
         pass, fail);
 
     test_error_contains(interp,
         "parser import paren missing alias",
-        "(import bad-mod ((x :as)))",
-        "expected alias after :as",
+        "(import bad-mod ((x 'as)))",
+        "expected alias after 'as",
         pass, fail);
 
     test_error_contains(interp,
         "parser import symbol missing alias",
-        "(import bad-mod (x :as))",
-        "expected alias after :as",
+        "(import bad-mod (x 'as))",
+        "expected alias after 'as",
         pass, fail);
 
     test_error_contains(interp,
@@ -1272,10 +1373,10 @@ fn void run_advanced_dispatch_constructor_validation_tests(Interp* interp, int* 
 fn void run_advanced_dispatch_constructor_ambiguity_parametric_tests(Interp* interp, int* pass, int* fail) {
     // === DISPATCH AMBIGUITY DETECTION TESTS ===
 
-    // Two methods with identical signatures — should error
+    // Two methods with identical signatures — second replaces first (idempotent re-define)
     setup(interp, "(define (ambig-test (^Int x) (^Int y)) (+ x y))");
     setup(interp, "(define (ambig-test (^Int x) (^Int y)) (* x y))");
-    test_error(interp, "dispatch ambiguity", "(ambig-test 3 4)", pass, fail);
+    test_eq_interp(interp, "dispatch redefine replaces", "(ambig-test 3 4)", 12, pass, fail);
     // Different specificity — should succeed (picks more specific)
     setup(interp, "(define (specific-test (^Int x)) (* x 2))");
     setup(interp, "(define (specific-test x) 0)");

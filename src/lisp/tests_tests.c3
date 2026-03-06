@@ -1409,6 +1409,7 @@ fn void run_jit_policy_boundary_reset_test(Interp* interp, int* pass, int* fail)
                   !g_jit_gc_needed &&
                   !interp.flags.raise_pending &&
                   interp.raise_msg_len == 0 &&
+                  interp.raise_payload == null &&
                   (uint)interp.last_call_name == 0;
     }
 
@@ -1440,7 +1441,8 @@ fn void run_jit_policy_stale_raise_scrub_test(Interp* interp, int* pass, int* fa
                          r.value.tag == INT &&
                          r.value.int_val == 5 &&
                          !interp.flags.raise_pending &&
-                         interp.raise_msg_len == 0;
+                         interp.raise_msg_len == 0 &&
+                         interp.raise_payload == null;
     if (raise_scrub_ok) {
         emit_pass_literal("[PASS] jit policy: top-level run scrubs stale pending raise state");
         (*pass)++;
@@ -1844,7 +1846,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
             "(begin "
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (define req (pipeline/decode-request \"BROKENLINE\\r\\n\\r\\n\")) "
-            "  (define out (pipeline/execute req)) "
+            "  (define out (pipeline/result->response (pipeline/execute req))) "
             "  (and (= ('status out) \"error\") (= ('error out) \"route not found\")))",
             interp
         );
@@ -1867,7 +1869,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
             "(begin "
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (define req (pipeline/decode-request \"GET\\r\\n\\r\\n\")) "
-            "  (define out (pipeline/execute req)) "
+            "  (define out (pipeline/result->response (pipeline/execute req))) "
             "  (and (= ('status out) \"error\") (= ('error out) \"route not found\")))",
             interp
         );
@@ -1887,8 +1889,8 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
     {
         setup(interp, "(load \"examples/deduce_crud_server.omni\")");
         setup(interp, "(define post-req {'method \"POST\" 'path \"/items\" 'body {'id 11 'name \"paper\" 'qty 3}})");
-        setup(interp, "(define post-res (pipeline/execute post-req))");
-        setup(interp, "(define get-res (pipeline/execute {'method \"GET\" 'path \"/items/11\" 'body nil}))");
+        setup(interp, "(define post-res (pipeline/result->response (pipeline/execute post-req)))");
+        setup(interp, "(define get-res (pipeline/result->response (pipeline/execute {'method \"GET\" 'path \"/items/11\" 'body nil})))");
         EvalResult r = run(
             "(and (= ('status post-res) \"ok\") "
             "     (and (= ('status get-res) \"ok\") "
@@ -1912,13 +1914,13 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
     {
         setup(interp, "(load \"examples/deduce_crud_server.omni\")");
         setup(interp, "(pipeline/execute {'method \"POST\" 'path \"/items\" 'body {'id 12 'name \"pen\" 'qty 1}})");
-        setup(interp, "(define put-res (pipeline/execute {'method \"PUT\" 'path \"/items\" 'body {'id 12 'name \"pen\" 'qty 9}}))");
+        setup(interp, "(define put-res (pipeline/result->response (pipeline/execute {'method \"PUT\" 'path \"/items\" 'body {'id 12 'name \"pen\" 'qty 9}})))");
         setup(interp, "(define row-after-put (repo/get-by-id 12))");
-        setup(interp, "(define del-res (pipeline/execute {'method \"DELETE\" 'path \"/items\" 'body {'id 12}}))");
+        setup(interp, "(define del-res (pipeline/result->response (pipeline/execute {'method \"DELETE\" 'path \"/items\" 'body {'id 12}})))");
         setup(interp, "(define row-after-del (repo/get-by-id 12))");
         EvalResult r = run(
             "(and (= ('status put-res) \"ok\") "
-            "     (and (= ('qty row-after-put) 9) "
+            "     (and (= row-after-put.qty 9) "
             "          (and (= ('status del-res) \"ok\") "
             "               (null? row-after-del))))",
             interp
@@ -1941,7 +1943,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         EvalResult r = run(
             "(begin "
             "  (load \"examples/deduce_crud_server.omni\") "
-            "  (define bad (pipeline/execute {'method \"GET\" 'path \"/items/not-int\" 'body nil})) "
+            "  (define bad (pipeline/result->response (pipeline/execute {'method \"GET\" 'path \"/items/not-int\" 'body nil}))) "
             "  (and (= ('status bad) \"error\") (= ('error bad) \"route not found\")))",
             interp
         );
@@ -1963,7 +1965,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         EvalResult r = run(
             "(begin "
             "  (load \"examples/deduce_crud_server.omni\") "
-            "  (define miss (pipeline/execute {'method \"GET\" 'path \"/unknown\" 'body nil})) "
+            "  (define miss (pipeline/result->response (pipeline/execute {'method \"GET\" 'path \"/unknown\" 'body nil}))) "
             "  (and (= ('status miss) \"error\") (= ('error miss) \"route not found\")))",
             interp
         );
@@ -1984,7 +1986,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         EvalResult r = run(
             "(begin "
             "  (load \"examples/deduce_crud_server.omni\") "
-            "  (define payload (pipeline/execute {'method \"GET\" 'path \"/items\" 'body nil})) "
+            "  (define payload (pipeline/result->response (pipeline/execute {'method \"GET\" 'path \"/items\" 'body nil}))) "
             "  (define raw (http/response \"200 OK\" payload)) "
             "  (and (string-contains? raw \"HTTP/1.1 200 OK\") "
             "       (string-contains? raw \"\\\"status\\\":\\\"ok\\\"\")))",
@@ -2035,8 +2037,8 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
             "  (define c2 "
             "    (spawn (lambda () "
             "      (pipeline/execute {'method \"POST\" 'path \"/items\" 'body {'id 31 'name \"race\" 'qty 1}})))) "
-            "  (define r1 (await c1)) "
-            "  (define r2 (await c2)) "
+            "  (define r1 (pipeline/result->response (await c1))) "
+            "  (define r2 (pipeline/result->response (await c2))) "
             "  (define r1-ok (= ('status r1) \"ok\")) "
             "  (define r1-dup (= ('error r1) \"item already exists\")) "
             "  (define r2-ok (= ('status r2) \"ok\")) "
@@ -4271,14 +4273,14 @@ fn void run_deduce_crud_example_flow_test(Interp* interp, int* pass, int* fail) 
     EvalResult r = run(
         "(begin "
         "  (load \"examples/deduce_crud_server.omni\") "
-        "  (let (create1 (repo/create {'id 101 'name \"paper\" 'qty 3}) "
-        "        create2 (repo/create {'id 101 'name \"paper\" 'qty 3}) "
+        "  (let (create1 (pipeline/result->response (repo/create {'id 101 'name \"paper\" 'qty 3})) "
+        "        create2 (pipeline/result->response (repo/create {'id 101 'name \"paper\" 'qty 3})) "
         "        existing (repo/get-by-id 101) "
         "        missing (repo/get-by-id 9999)) "
         "    (and (= ('status create1) \"ok\") "
         "         (and (= ('status create2) \"error\") "
         "              (and (= ('error create2) \"item already exists\") "
-        "                   (and (= ('name existing) \"paper\") "
+        "                   (and (= existing.name \"paper\") "
         "                        (null? missing)))))))",
         interp
     );
@@ -4437,6 +4439,7 @@ fn void run_test_group_boundary_reset(Interp* interp) {
 
     interp.flags.raise_pending = false;
     interp.raise_msg_len = 0;
+    interp.raise_payload = null;
     interp.last_call_name = 0;
     interp.jit_env = null;
     interp.match_env = null;

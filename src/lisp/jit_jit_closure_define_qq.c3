@@ -364,7 +364,26 @@ fn Value* jit_make_method_table_value(Interp* interp, MethodTable* mt) {
     return mt_val;
 }
 
+fn bool jit_method_sigs_equal(MethodSignature* a, MethodSignature* b) @inline {
+    if (a.param_count != b.param_count) return false;
+    if (a.constraint_count != b.constraint_count) return false;
+    for (usz i = 0; i < a.param_count; i++) {
+        if (a.param_types[i] != b.param_types[i]) return false;
+        if (a.has_val_literal[i] != b.has_val_literal[i]) return false;
+        if (a.has_val_literal[i] && a.val_literals[i] != b.val_literals[i]) return false;
+    }
+    return true;
+}
+
 fn void jit_method_table_append_entry(MethodTable* mt, Value* impl) {
+    MethodSignature* new_sig = impl.closure_val.type_sig;
+    // Replace existing entry with same signature (idempotent re-define).
+    for (usz i = 0; i < mt.entry_count; i++) {
+        if (jit_method_sigs_equal(&mt.entries[i].sig, new_sig)) {
+            mt.entries[i].implementation = impl;
+            return;
+        }
+    }
     if (mt.entry_count >= mt.capacity) {
         usz new_cap = mt.capacity * 2;
         MethodEntry* new_entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * new_cap);
@@ -373,7 +392,7 @@ fn void jit_method_table_append_entry(MethodTable* mt, Value* impl) {
         mt.entries = new_entries;
         mt.capacity = new_cap;
     }
-    mt.entries[mt.entry_count].sig = *impl.closure_val.type_sig;
+    mt.entries[mt.entry_count].sig = *new_sig;
     mt.entries[mt.entry_count].implementation = impl;
     mt.entry_count++;
 }
