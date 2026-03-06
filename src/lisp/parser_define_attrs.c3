@@ -44,34 +44,36 @@ fn void Parser.parse_relation_attr_options(Parser* self, SymbolId[8]* attrs, usz
 
 fn Expr* Parser.build_define_relation_call(Parser* self, SymbolId db_name, SymbolId rel_name, SymbolId* col_names, usz col_count) {
     usz total_args = 2 + col_count;
-    Expr** call_args = (Expr**)mem::malloc(Expr*.sizeof * (total_args + 1));
+    Expr* func = self.interp.alloc_expr();
+    func.tag = E_VAR;
+    func.var_expr.name = self.interp.symbols.intern("__define-relation");
+
+    Expr** call_args = (Expr**)mem::malloc(Expr*.sizeof * total_args);
 
     call_args[0] = self.interp.alloc_expr();
     call_args[0].tag = E_VAR;
-    call_args[0].var_expr.name = self.interp.symbols.intern("__define-relation");
+    call_args[0].var_expr.name = db_name;
 
     call_args[1] = self.interp.alloc_expr();
-    call_args[1].tag = E_VAR;
-    call_args[1].var_expr.name = db_name;
-
-    call_args[2] = self.interp.alloc_expr();
-    call_args[2].tag = E_LIT;
-    call_args[2].lit.value = self.interp.alloc_value_root();
-    call_args[2].lit.value.tag = SYMBOL;
-    call_args[2].lit.value.sym_val = rel_name;
+    call_args[1].tag = E_LIT;
+    call_args[1].lit.value = self.interp.alloc_value_root();
+    call_args[1].lit.value.tag = SYMBOL;
+    call_args[1].lit.value.sym_val = rel_name;
 
     for (usz i = 0; i < col_count; i++) {
-        call_args[3 + i] = self.interp.alloc_expr();
-        call_args[3 + i].tag = E_LIT;
-        call_args[3 + i].lit.value = self.interp.alloc_value_root();
-        call_args[3 + i].lit.value.tag = SYMBOL;
-        call_args[3 + i].lit.value.sym_val = col_names[i];
+        call_args[2 + i] = self.interp.alloc_expr();
+        call_args[2 + i].tag = E_LIT;
+        call_args[2 + i].lit.value = self.interp.alloc_value_root();
+        call_args[2 + i].lit.value.tag = SYMBOL;
+        call_args[2 + i].lit.value.sym_val = col_names[i];
     }
 
     Expr* call = self.interp.alloc_expr();
     call.tag = E_CALL;
+    call.call = mem::malloc(ExprCall.sizeof);
+    call.call.func = func;
     call.call.args = call_args;
-    call.call.arg_count = total_args + 1;
+    call.call.arg_count = total_args;
     return call;
 }
 

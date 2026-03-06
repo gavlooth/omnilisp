@@ -24,6 +24,8 @@ struct RuleEntry {
 fn void build_topo_order(String[] starts, RuleEntry[] rules, int[][] edges,
     int[] opened, int[] stk, int[] topo_order, int[] topo_order_idx, int* last_order) {
     int n_rules = (int)rules.len;
+    assert(starts.len > 0, "make_grammar: starts must not be empty");
+    assert(n_rules > 0, "make_grammar: rules must not be empty");
     for (int i = 0; i < n_rules; i++) {
         opened[i] = 0;
         topo_order_idx[i] = -1;
@@ -32,7 +34,8 @@ fn void build_topo_order(String[] starts, RuleEntry[] rules, int[][] edges,
     int stk_len = 0;
     for (int si = 0; si < (int)starts.len; si++) {
         int idx = find_rule_index(rules, starts[si]);
-        if (idx >= 0) stk[stk_len++] = idx;
+        assert(idx >= 0, "make_grammar: missing start rule");
+        stk[stk_len++] = idx;
     }
 
     *last_order = 0;
@@ -56,17 +59,12 @@ fn void build_topo_order(String[] starts, RuleEntry[] rules, int[][] edges,
         }
     }
 
-    for (int i = 0; i < n_rules; i++) {
-        if (opened[i] == 0) {
-            io::printfn("Warning: unreachable rule: %s", rules[i].name);
-        }
-    }
+    // Any rule with opened[i] == 0 is unreachable from starts and is pruned.
 }
 
 fn void build_reordered_rules(RuleEntry[] rules, int[] topo_order, int[] topo_order_idx,
-    Clause[] clauses, String[] names) {
-    int n_rules = (int)rules.len;
-    for (int i = 0; i < n_rules; i++) {
+    Clause[] clauses, String[] names, int reachable_count) {
+    for (int i = 0; i < reachable_count; i++) {
         int orig_idx = topo_order[i];
         names[i] = rules[orig_idx].name;
         clauses[i] = reindex_clause(&rules[orig_idx].clause, topo_order_idx);
@@ -183,9 +181,6 @@ fn int[] collect_terminal_indices(Clause[] clauses) {
 fn Grammar make_grammar(String[] starts, RuleEntry[] rules) {
     int n_rules = (int)rules.len;
 
-    // Build name -> index mapping
-    int[] rule_idx_map = mem::new_array(int, (usz)n_rules); // not really needed, index IS position
-
     // edges[i] = child clause indices for rule i
     int[][] edges = mem::new_array(int[], (usz)n_rules);
     for (int i = 0; i < n_rules; i++) {
@@ -200,11 +195,13 @@ fn Grammar make_grammar(String[] starts, RuleEntry[] rules) {
     build_topo_order(
         starts, rules, edges, opened, stk, topo_order, topo_order_idx, &last_order
     );
+    int reachable_count = last_order;
+    assert(reachable_count > 0, "make_grammar: no reachable rules from starts");
 
     // Build reordered clauses with reindexed children
-    Clause[] clauses = mem::new_array(Clause, (usz)n_rules);
-    String[] names = mem::new_array(String, (usz)n_rules);
-    build_reordered_rules(rules, topo_order, topo_order_idx, clauses, names);
+    Clause[] clauses = mem::new_array(Clause, (usz)reachable_count);
+    String[] names = mem::new_array(String, (usz)reachable_count);
+    build_reordered_rules(rules, topo_order, topo_order_idx, clauses, names, reachable_count);
 
     // Compute can_match_epsilon via fixed-point iteration
     bool[] emptiable = mem::new_array(bool, (usz)n_rules);
@@ -227,7 +224,6 @@ fn Grammar make_grammar(String[] starts, RuleEntry[] rules) {
     mem::free(edges.ptr);
     mem::free(parent_counts.ptr);
     mem::free(seed_counts.ptr);
-    mem::free(rule_idx_map.ptr);
 
     // Don't free parent_clauses_arr entries - they may still be useful
     mem::free(parent_clauses_arr.ptr);
@@ -238,7 +234,7 @@ fn Grammar make_grammar(String[] starts, RuleEntry[] rules) {
     grammar.can_match_epsilon = emptiable;
     grammar.seed_clauses = seed_cls;
     grammar.terminals = terminals;
-    grammar.num_clauses = n_rules;
+    grammar.num_clauses = reachable_count;
     return grammar;
 }
 

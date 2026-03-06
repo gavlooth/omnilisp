@@ -24,6 +24,14 @@ fn Clause mk_scan(ScanFn f) {
     return c;
 }
 
+fn Clause mk_scan_ctx(ScanCtxFn f, void* ctx) {
+    Clause c;
+    c.tag = ClauseTag.SCAN_CTX;
+    c.scan_ctx_fn = f;
+    c.scan_ctx = ctx;
+    return c;
+}
+
 fn Clause mk_token(char ch) {
     Clause c;
     c.tag = ClauseTag.TOKEN;

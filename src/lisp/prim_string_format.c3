@@ -8,10 +8,13 @@ import main;
 // =============================================================================
 fn StringVal* strval_new(usz initial_cap) {
     if (initial_cap < 32) initial_cap = 32;
+    // Reserve one extra byte for trailing NUL; many callers materialize
+    // exact-length content and then write chars[len] = 0.
+    usz alloc_cap = initial_cap + 1;
     StringVal* sv = (StringVal*)mem::malloc(StringVal.sizeof);
-    sv.chars = (char*)mem::malloc(initial_cap);
+    sv.chars = (char*)mem::malloc(alloc_cap);
     sv.len = 0;
-    sv.capacity = initial_cap;
+    sv.capacity = alloc_cap;
     sv.chars[0] = 0;
     return sv;
 }

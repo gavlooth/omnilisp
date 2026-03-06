@@ -20,7 +20,7 @@ fn Pattern* Parser.parse_string_pattern_literal(Parser* self) {
     p.lit_value = self.interp.alloc_value_root();
     p.lit_value.tag = STRING;
     usz len = self.lexer.current.text_len;
-    StringVal* builder = strval_new(len);
+    StringVal* builder = strval_new(len + 1);
     for (usz i = 0; i < len; i++) {
         builder.chars[i] = self.lexer.current.text[i];
     }

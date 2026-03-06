@@ -89,7 +89,11 @@ Repository workflow:
 
 - `.github/workflows/boundary-hardening.yml`
 
-The workflow is `workflow_dispatch` only and expects a self-hosted Linux runner with `c3c` and runtime dependencies preinstalled. It:
+The workflow supports:
+- `pull_request` runs when boundary-sensitive runtime/policy files change,
+- `workflow_dispatch` for manual runs and optional PR comment publication.
+
+It expects a self-hosted Linux runner with `c3c` and runtime dependencies preinstalled. It:
 
 1. runs `scripts/run_boundary_hardening.sh`,
 2. publishes a compact Markdown summary to the GitHub job summary via `scripts/emit_boundary_job_summary.sh`,
@@ -108,6 +112,7 @@ Optional workflow input:
   Upsert still requires the boundary marker and paginated lookup.
 - `policy_range` — optional git diff range used by boundary policy checks (for example `origin/main...HEAD`).
   If omitted, the runner uses a local fallback (`HEAD~1..HEAD` when available).
+  On `pull_request` runs, the workflow auto-sets this to `base_sha...head_sha`.
 
 ---
 

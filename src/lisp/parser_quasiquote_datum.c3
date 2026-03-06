@@ -29,7 +29,7 @@ fn Value* parser_make_string_datum(Interp* interp, Lexer* lex) {
     Value* v = interp.alloc_value_root();
     v.tag = STRING;
     usz len = lex.current.text_len;
-    StringVal* builder = strval_new(len);
+    StringVal* builder = strval_new(len + 1);
     for (usz i = 0; i < len; i++) {
         builder.chars[i] = lex.current.text[i];
     }
@@ -159,7 +159,7 @@ fn Expr* Parser.parse_qq_string_literal(Parser* self) {
     e.lit.value = self.interp.alloc_value_root();
     e.lit.value.tag = STRING;
     usz len = self.lexer.current.text_len;
-    StringVal* builder = strval_new(len);
+    StringVal* builder = strval_new(len + 1);
     for (usz i = 0; i < len; i++) {
         builder.chars[i] = self.lexer.current.text[i];
     }

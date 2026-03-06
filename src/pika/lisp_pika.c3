@@ -360,33 +360,12 @@ fn int make_char_class_scanner(GrammarCompiler* gc, char[] pattern) {
     return gc.rb.add((String)name[:nlen], mk_tokens(pattern));
 }
 
-// Global storage for character class scan functions
-CharClassData*[64] g_char_classes;
-int g_char_class_count = 0;
-
-fn int scan_char_class_0(char[] view) { return scan_char_in_class(g_char_classes[0], view); }
-fn int scan_char_class_1(char[] view) { return scan_char_in_class(g_char_classes[1], view); }
-fn int scan_char_class_2(char[] view) { return scan_char_in_class(g_char_classes[2], view); }
-fn int scan_char_class_3(char[] view) { return scan_char_in_class(g_char_classes[3], view); }
-fn int scan_char_class_4(char[] view) { return scan_char_in_class(g_char_classes[4], view); }
-fn int scan_char_class_5(char[] view) { return scan_char_in_class(g_char_classes[5], view); }
-fn int scan_char_class_6(char[] view) { return scan_char_in_class(g_char_classes[6], view); }
-fn int scan_char_class_7(char[] view) { return scan_char_in_class(g_char_classes[7], view); }
-
-ScanFn[8] g_scan_fns = {
-    &scan_char_class_0, &scan_char_class_1, &scan_char_class_2, &scan_char_class_3,
-    &scan_char_class_4, &scan_char_class_5, &scan_char_class_6, &scan_char_class_7
-};
+fn int scan_char_class_ctx(void* ctx, char[] view) {
+    return scan_char_in_class((CharClassData*)ctx, view);
+}
 
 fn int store_char_class_scanner(GrammarCompiler* gc, CharClassData* cc, String name) {
-    if (g_char_class_count >= 8) {
-        io::printn("Error: too many character class scanners");
-        return gc.rb.add(name, mk_fail());
-    }
-    int idx = g_char_class_count;
-    g_char_classes[idx] = cc;
-    g_char_class_count++;
-    return gc.rb.add(name, mk_scan(g_scan_fns[idx]));
+    return gc.rb.add(name, mk_scan_ctx(&scan_char_class_ctx, (void*)cc));
 }
 
 fn int collect_clause_elements(lisp::Value* rest, lisp::Value** elems, int max_elems) {

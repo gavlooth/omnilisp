@@ -3,6 +3,7 @@ module lisp;
 
 import std::io;
 import main;
+import pika;
 // =============================================================================
 // SECTION 10: TESTS
 // =============================================================================
@@ -46,6 +47,7 @@ fn void run_test_global_boundary_reset() {
     }
     jit_cache_clear();
     g_jit_pool_warned = false;
+    pika::regex_cache_reset();
 }
 
 fn void run_group_isolated(IsolatedTestGroupFn group_fn, int* pass, int* fail) {
@@ -1479,12 +1481,88 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "(re-match \"[0-9]+\" \"abc123def\")", pass, fail);
     test_str_val(interp, "re-match dot",
         "(re-match \"a.c\" \"abc\")", "abc", pass, fail);
+    test_str_val(interp, "re-match star quantifier",
+        "(re-match \"ab*c\" \"zzabbbczz\")", "abbbc", pass, fail);
+    test_str_val(interp, "re-match plus quantifier",
+        "(re-match \"ab+c\" \"zzabbbczz\")", "abbbc", pass, fail);
+    test_str_val(interp, "re-match question quantifier",
+        "(re-match \"ab?c\" \"zzaczz\")", "ac", pass, fail);
+    test_str_val(interp, "re-match alternation",
+        "(re-match \"ab|cd\" \"zzcdyy\")", "cd", pass, fail);
 
     // Regex: re-fullmatch
     test_str_val(interp, "re-fullmatch exact",
         "(re-fullmatch \"hello\" \"hello\")", "hello", pass, fail);
+    test_str_val(interp, "re-fullmatch start+end anchors",
+        "(re-fullmatch \"^hello$\" \"hello\")", "hello", pass, fail);
     test_tag(interp, "re-fullmatch rejects partial",
         "(re-fullmatch \"hello\" \"hello world\")", NIL, pass, fail);
+    test_tag(interp, "re-match start anchor rejects non-zero start",
+        "(re-match \"^abc\" \"xabc\")", NIL, pass, fail);
+    test_str_val(interp, "re-match end anchor matches suffix at end",
+        "(re-match \"abc$\" \"xabc\")", "abc", pass, fail);
+    test_str_val(interp, "re-fullmatch bounded exact {n}",
+        "(re-fullmatch \"ab{3}\" \"abbb\")", "abbb", pass, fail);
+    test_str_val(interp, "re-fullmatch bounded range {n,m}",
+        "(re-fullmatch \"ab{2,4}\" \"abbb\")", "abbb", pass, fail);
+    test_str_val(interp, "re-fullmatch bounded unbounded {n,}",
+        "(re-fullmatch \"ab{2,}\" \"abbbbb\")", "abbbbb", pass, fail);
+    test_tag(interp, "re-fullmatch bounded range rejects overflow",
+        "(re-fullmatch \"ab{2,4}\" \"abbbbb\")", NIL, pass, fail);
+    test_str_val(interp, "re-fullmatch group plus",
+        "(re-fullmatch \"(ab)+\" \"abab\")", "abab", pass, fail);
+    test_str_val(interp, "re-fullmatch char-class chain >8",
+        "(re-fullmatch \"[a][b][c][d][e][f][g][h][i]\" \"abcdefghi\")", "abcdefghi", pass, fail);
+    test_tag(interp, "re-fullmatch char-class chain >32",
+        "(let loop (i 0 p \"\" s \"\") (if (= i 40) (re-fullmatch p s) (loop (+ i 1) (string-append p \"[a]\") (string-append s \"a\"))))",
+        STRING, pass, fail);
+    test_str_val(interp, "re-fullmatch long compiled pattern",
+        "(re-fullmatch \"(aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|z)\" \"z\")", "z", pass, fail);
+    test_tag(interp, "re-fullmatch long concatenation dynamic pattern",
+        "(let loop (i 0 p \"\") (if (= i 180) (re-fullmatch p p) (loop (+ i 1) (string-append p \"a\"))))",
+        STRING, pass, fail);
+    test_tag(interp, "re-fullmatch long alternation dynamic pattern",
+        "(let loop (i 0 p \"x\") (if (= i 80) (re-fullmatch p \"x\") (loop (+ i 1) (string-append p \"|x\"))))",
+        STRING, pass, fail);
+    test_tag(interp, "re-fullmatch large bounded quantifier shape",
+        "(let loop (i 0 s \"\") (if (= i 200) (re-fullmatch \"a{128,256}\" s) (loop (+ i 1) (string-append s \"a\"))))",
+        STRING, pass, fail);
+
+    {
+        EvalResult r = run(
+            "(let loop (i 0 ok true) "
+            "  (if (= i 40) ok "
+            "      (let (p (string-append \"(\" (number->string i) \"|x)\") "
+            "            m (re-fullmatch p \"x\")) "
+            "        (loop (+ i 1) (and ok (and m (= m \"x\")))))))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] re-fullmatch cache grows beyond 32 compiled patterns");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] re-fullmatch cache grows beyond 32 compiled patterns");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(let loop (i 0 ok true) "
+            "  (if (= i 180) ok "
+            "      (let (p (string-append \"(\" (number->string i) \"|x)\") "
+            "            m (re-fullmatch p \"x\")) "
+            "        (loop (+ i 1) (and ok (and m (= m \"x\")))))))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] re-fullmatch cache bounded eviction stays usable");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] re-fullmatch cache bounded eviction stays usable");
+            (*fail)++;
+        }
+    }
 
     // Regex: re-find-all
     test_eq(interp, "re-find-all count",
@@ -1517,6 +1595,113 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "(re-match \"\\\\d+\" \"abc123\")", pass, fail);
     test_str(interp, "re-match \\w+",
         "(re-match \"\\\\w+\" \"hello_world\")", pass, fail);
+
+    // Regex: strict grammar validation
+    test_tag(interp, "re-fullmatch rejects unmatched close paren",
+        "(re-fullmatch \"a)\" \"a\")", NIL, pass, fail);
+    test_tag(interp, "re-fullmatch rejects unmatched open paren",
+        "(re-fullmatch \"(ab\" \"ab\")", NIL, pass, fail);
+    test_tag(interp, "re-fullmatch rejects leading quantifier",
+        "(re-fullmatch \"*a\" \"a\")", NIL, pass, fail);
+    test_tag(interp, "re-fullmatch rejects trailing quantifier without atom",
+        "(re-fullmatch \"a**\" \"a\")", NIL, pass, fail);
+    test_tag(interp, "re-fullmatch rejects unknown group type",
+        "(re-fullmatch \"(?q)a\" \"a\")", NIL, pass, fail);
+    test_tag(interp, "re-fullmatch rejects invalid bounded quantifier missing min",
+        "(re-fullmatch \"a{,2}\" \"aa\")", NIL, pass, fail);
+    test_tag(interp, "re-fullmatch rejects invalid bounded quantifier malformed upper",
+        "(re-fullmatch \"a{2,x}\" \"aa\")", NIL, pass, fail);
+    test_tag(interp, "re-fullmatch rejects too-large bounded quantifier",
+        "(re-fullmatch \"a{1,5000}\" \"a\")", NIL, pass, fail);
+    test_tag(interp, "re-fullmatch rejects invalid bounded quantifier descending",
+        "(re-fullmatch \"a{3,2}\" \"aaa\")", NIL, pass, fail);
+    test_tag(interp, "re-fullmatch rejects empty char class",
+        "(re-fullmatch \"[]\" \"a\")", NIL, pass, fail);
+    test_tag(interp, "re-fullmatch rejects invalid class range",
+        "(re-fullmatch \"[z-a]\" \"z\")", NIL, pass, fail);
+    test_tag(interp, "re-fullmatch rejects trailing escape",
+        "(re-fullmatch \"\\\\\" \"a\")", NIL, pass, fail);
+    test_tag(interp, "re-fullmatch rejects trailing token after end anchor",
+        "(re-fullmatch \"a$)\" \"a\")", NIL, pass, fail);
+
+    // Pika grammar: seed/epsilon edge + unreachable-rule pruning
+    test_eq(interp, "pika/grammar prunes unreachable rules",
+        "(begin (pika/grammar 'g-prune '(rule start \"a\") '(rule dead \"z\")) (length (pika/grammar-rules 'g-prune)))",
+        1, pass, fail);
+    test_tag(interp, "pika/parse epsilon seq matches empty input",
+        "(begin (pika/grammar 'g-eps '(rule start (seq)) '(rule dead \"x\")) (pika/parse 'g-eps \"\"))",
+        CONS, pass, fail);
+    test_tag(interp, "pika/parse reachable start still matches",
+        "(begin (pika/grammar 'g-start '(rule start \"a\") '(rule dead \"b\")) (pika/parse 'g-start \"a\"))",
+        CONS, pass, fail);
+    test_tag(interp, "pika/parse scan clause basic",
+        "(begin (pika/grammar 'g-scan '(rule start (scan \"[a-z]+\"))) (pika/parse 'g-scan \"abc\"))",
+        CONS, pass, fail);
+    test_tag(interp, "pika/parse scan clauses beyond legacy cap",
+        "(begin "
+        "  (pika/grammar 'g-scan-many "
+        "    '(rule start (seq r1 r2 r3 r4 r5 r6 r7 r8 r9)) "
+        "    '(rule r1 (scan \"[a]\")) '(rule r2 (scan \"[b]\")) '(rule r3 (scan \"[c]\")) "
+        "    '(rule r4 (scan \"[d]\")) '(rule r5 (scan \"[e]\")) '(rule r6 (scan \"[f]\")) "
+        "    '(rule r7 (scan \"[g]\")) '(rule r8 (scan \"[h]\")) '(rule r9 (scan \"[i]\"))) "
+        "  (pika/parse 'g-scan-many \"abcdefghi\"))",
+        CONS, pass, fail);
+
+    // Compiled/fallback parity checks (direct C3 API).
+    {
+        char[] pattern = "ab+c";
+        char[] input = "zzabbbczz";
+        bool usable = false;
+        pika::RegexMatch compiled = pika::regex_search_compiled(pattern, input, &usable);
+        pika::RegexMatch fallback = pika::regex_search_simple_fallback(pattern, input);
+        bool ok = usable
+            && compiled.matched == fallback.matched
+            && compiled.start == fallback.start
+            && compiled.end == fallback.end;
+        if (ok) {
+            emit_pass_literal("[PASS] regex compiled/fallback parity basic");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] regex compiled/fallback parity basic");
+            (*fail)++;
+        }
+    }
+    {
+        char[] pattern = "^abc$";
+        char[] input = "abc";
+        bool usable = false;
+        pika::RegexMatch compiled = pika::regex_fullmatch_compiled(pattern, input, &usable);
+        pika::RegexMatch fallback = pika::regex_fullmatch_simple_fallback(pattern, input);
+        bool ok = usable
+            && compiled.matched == fallback.matched
+            && compiled.start == fallback.start
+            && compiled.end == fallback.end;
+        if (ok) {
+            emit_pass_literal("[PASS] regex compiled/fallback parity anchors");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] regex compiled/fallback parity anchors");
+            (*fail)++;
+        }
+    }
+    {
+        char[] pattern = "a{2,4}";
+        char[] input = "aaab";
+        bool usable = false;
+        pika::RegexMatch compiled = pika::regex_search_compiled(pattern, input, &usable);
+        pika::RegexMatch fallback = pika::regex_search_simple_fallback(pattern, input);
+        bool ok = usable
+            && compiled.matched == fallback.matched
+            && compiled.start == fallback.start
+            && compiled.end == fallback.end;
+        if (ok) {
+            emit_pass_literal("[PASS] regex compiled/fallback parity bounded quantifier");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] regex compiled/fallback parity bounded quantifier");
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_pika_tests_isolated(int* pass, int* fail) {
@@ -1636,52 +1821,240 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         }
     }
 
-    // Load full Deduce CRUD server example and validate pipeline CRUD behavior.
+    // Example CRUD server pipeline: tolerate LF-only header/body split.
     {
         EvalResult r = run(
             "(begin "
             "  (load \"examples/deduce_crud_server.omni\") "
-            "  (pipeline/execute {'method \"POST\" 'path \"/items\" "
-            "                     'body {'id 101 'name \"paper\" 'qty 3}}) "
-            "  ('qty (repo/get-by-id 101)))",
+            "  (let (req (pipeline/decode-request \"GET /items HTTP/1.1\\nHost: x\\n\\n\")) "
+            "    (and (= ('method req) \"GET\") (= ('path req) \"/items\"))))",
             interp);
-        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 3) {
-            emit_pass_literal("[PASS] deduce-crud pipeline create");
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] crud pipeline decode LF fallback");
             (*pass)++;
         } else {
-            io::printn("[FAIL] deduce-crud pipeline create");
+            io::printn("[FAIL] crud pipeline decode LF fallback");
             (*fail)++;
         }
     }
 
+    // Malformed request line should degrade to route-not-found.
     {
         EvalResult r = run(
             "(begin "
-            "  (pipeline/execute {'method \"PUT\" 'path \"/items\" "
-            "                     'body {'id 101 'name \"paper\" 'qty 7}}) "
-            "  ('qty (repo/get-by-id 101)))",
-            interp);
-        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 7) {
-            emit_pass_literal("[PASS] deduce-crud pipeline update");
+            "  (load \"examples/deduce_crud_server.omni\") "
+            "  (define req (pipeline/decode-request \"BROKENLINE\\r\\n\\r\\n\")) "
+            "  (define out (pipeline/execute req)) "
+            "  (and (= ('status out) \"error\") (= ('error out) \"route not found\")))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] crud pipeline malformed request line");
             (*pass)++;
         } else {
-            io::printn("[FAIL] deduce-crud pipeline update");
+            if (r.error.has_error) {
+                io::printfn("[FAIL] crud pipeline malformed request line (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printfn("[FAIL] crud pipeline malformed request line (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            }
             (*fail)++;
         }
     }
 
+    // Missing path token should also degrade to route-not-found.
     {
         EvalResult r = run(
             "(begin "
-            "  (pipeline/execute {'method \"DELETE\" 'path \"/items\" "
-            "                     'body {'id 101}}) "
-            "  (if (repo/get-by-id 101) 0 1))",
-            interp);
-        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 1) {
-            emit_pass_literal("[PASS] deduce-crud pipeline delete");
+            "  (load \"examples/deduce_crud_server.omni\") "
+            "  (define req (pipeline/decode-request \"GET\\r\\n\\r\\n\")) "
+            "  (define out (pipeline/execute req)) "
+            "  (and (= ('status out) \"error\") (= ('error out) \"route not found\")))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] crud pipeline missing path token");
             (*pass)++;
         } else {
-            io::printn("[FAIL] deduce-crud pipeline delete");
+            if (r.error.has_error) {
+                io::printfn("[FAIL] crud pipeline missing path token (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printfn("[FAIL] crud pipeline missing path token (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            }
+            (*fail)++;
+        }
+    }
+    // Example CRUD server pipeline: POST create then GET by id.
+    {
+        setup(interp, "(load \"examples/deduce_crud_server.omni\")");
+        setup(interp, "(define post-req {'method \"POST\" 'path \"/items\" 'body {'id 11 'name \"paper\" 'qty 3}})");
+        setup(interp, "(define post-res (pipeline/execute post-req))");
+        setup(interp, "(define get-res (pipeline/execute {'method \"GET\" 'path \"/items/11\" 'body nil}))");
+        EvalResult r = run(
+            "(and (= ('status post-res) \"ok\") "
+            "     (and (= ('status get-res) \"ok\") "
+            "          (= ('name ('data get-res)) \"paper\")))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] crud pipeline post/get");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] crud pipeline post/get (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printfn("[FAIL] crud pipeline post/get (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            }
+            (*fail)++;
+        }
+    }
+
+    // Example CRUD server pipeline: PUT update then DELETE.
+    {
+        setup(interp, "(load \"examples/deduce_crud_server.omni\")");
+        setup(interp, "(pipeline/execute {'method \"POST\" 'path \"/items\" 'body {'id 12 'name \"pen\" 'qty 1}})");
+        setup(interp, "(define put-res (pipeline/execute {'method \"PUT\" 'path \"/items\" 'body {'id 12 'name \"pen\" 'qty 9}}))");
+        setup(interp, "(define row-after-put (repo/get-by-id 12))");
+        setup(interp, "(define del-res (pipeline/execute {'method \"DELETE\" 'path \"/items\" 'body {'id 12}}))");
+        setup(interp, "(define row-after-del (repo/get-by-id 12))");
+        EvalResult r = run(
+            "(and (= ('status put-res) \"ok\") "
+            "     (and (= ('qty row-after-put) 9) "
+            "          (and (= ('status del-res) \"ok\") "
+            "               (null? row-after-del))))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] crud pipeline put/delete");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] crud pipeline put/delete (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printfn("[FAIL] crud pipeline put/delete (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            }
+            (*fail)++;
+        }
+    }
+
+    // Example CRUD pipeline routing: non-numeric item id should not match item route.
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (load \"examples/deduce_crud_server.omni\") "
+            "  (define bad (pipeline/execute {'method \"GET\" 'path \"/items/not-int\" 'body nil})) "
+            "  (and (= ('status bad) \"error\") (= ('error bad) \"route not found\")))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] crud pipeline invalid path id");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] crud pipeline invalid path id (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printfn("[FAIL] crud pipeline invalid path id (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            }
+            (*fail)++;
+        }
+    }
+
+    // Example CRUD pipeline routing: unknown route returns route-not-found.
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (load \"examples/deduce_crud_server.omni\") "
+            "  (define miss (pipeline/execute {'method \"GET\" 'path \"/unknown\" 'body nil})) "
+            "  (and (= ('status miss) \"error\") (= ('error miss) \"route not found\")))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] crud pipeline unknown route");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] crud pipeline unknown route (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printfn("[FAIL] crud pipeline unknown route (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            }
+            (*fail)++;
+        }
+    }
+    // Example CRUD server response formatting (deterministic, no live listener).
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (load \"examples/deduce_crud_server.omni\") "
+            "  (define payload (pipeline/execute {'method \"GET\" 'path \"/items\" 'body nil})) "
+            "  (define raw (http/response \"200 OK\" payload)) "
+            "  (and (string-contains? raw \"HTTP/1.1 200 OK\") "
+            "       (string-contains? raw \"\\\"status\\\":\\\"ok\\\"\")))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] crud response formatting");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] crud response formatting (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printfn("[FAIL] crud response formatting (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            }
+            (*fail)++;
+        }
+    }
+
+    // Example CRUD pipeline schema gate: invalid POST payload fails validation.
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (load \"examples/deduce_crud_server.omni\") "
+            "  (null? (validate 'item-write {'id 21 'name \"bad\"})))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] crud pipeline schema gate");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] crud pipeline schema gate (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printfn("[FAIL] crud pipeline schema gate (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            }
+            (*fail)++;
+        }
+    }
+
+    // Example CRUD pipeline concurrency: duplicate POST race on same id.
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (load \"examples/deduce_crud_server.omni\") "
+            "  (define c1 "
+            "    (spawn (lambda () "
+            "      (pipeline/execute {'method \"POST\" 'path \"/items\" 'body {'id 31 'name \"race\" 'qty 1}})))) "
+            "  (define c2 "
+            "    (spawn (lambda () "
+            "      (pipeline/execute {'method \"POST\" 'path \"/items\" 'body {'id 31 'name \"race\" 'qty 1}})))) "
+            "  (define r1 (await c1)) "
+            "  (define r2 (await c2)) "
+            "  (define r1-ok (= ('status r1) \"ok\")) "
+            "  (define r1-dup (= ('error r1) \"item already exists\")) "
+            "  (define r2-ok (= ('status r2) \"ok\")) "
+            "  (define r2-dup (= ('error r2) \"item already exists\")) "
+            "  (define cnt (deduce 'count items)) "
+            "  (and (= cnt 1) "
+            "       (or (and r1-ok r2-dup) (and r2-ok r1-dup)))) )",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] crud pipeline duplicate-post race");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] crud pipeline duplicate-post race (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printfn("[FAIL] crud pipeline duplicate-post race (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            }
             (*fail)++;
         }
     }
@@ -3805,6 +4178,17 @@ fn void run_deduce_query_filter_tests(Interp* interp, int* pass, int* fail) {
     }
 
     {
+        EvalResult r = run("(length (deduce 'query person (lambda (row) false)))", interp);
+        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 0) {
+            emit_pass_literal("[PASS] deduce 'query false predicate");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce 'query false predicate");
+            (*fail)++;
+        }
+    }
+
+    {
         EvalResult r = run("('name (car (deduce 'query person (lambda (row) (> ('age row) 28)))))", interp);
         if (!r.error.has_error && is_string(r.value)) {
             emit_pass_literal("[PASS] deduce 'query dict result");
@@ -3866,6 +4250,51 @@ fn void run_deduce_open_smoke_test(Interp* interp, int* pass, int* fail) {
     }
 }
 
+fn void run_deduce_relation_attr_define_test(Interp* interp, int* pass, int* fail) {
+    EvalResult r = run(
+        "(begin "
+        "  (define ddb-rel-attr (deduce 'open 'memory)) "
+        "  (define [relation ddb-rel-attr] rel-attr-test (id) (name) (qty)) "
+        "  (deduce 'count rel-attr-test))",
+        interp
+    );
+    if (!r.error.has_error && is_int(r.value) && r.value.int_val == 0) {
+        emit_pass_literal("[PASS] deduce [relation] define attr");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce [relation] define attr");
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_crud_example_flow_test(Interp* interp, int* pass, int* fail) {
+    EvalResult r = run(
+        "(begin "
+        "  (load \"examples/deduce_crud_server.omni\") "
+        "  (let (create1 (repo/create {'id 101 'name \"paper\" 'qty 3}) "
+        "        create2 (repo/create {'id 101 'name \"paper\" 'qty 3}) "
+        "        existing (repo/get-by-id 101) "
+        "        missing (repo/get-by-id 9999)) "
+        "    (and (= ('status create1) \"ok\") "
+        "         (and (= ('status create2) \"error\") "
+        "              (and (= ('error create2) \"item already exists\") "
+        "                   (and (= ('name existing) \"paper\") "
+        "                        (null? missing)))))))",
+        interp
+    );
+    if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+        emit_pass_literal("[PASS] deduce CRUD example flow");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce CRUD example flow (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printfn("[FAIL] deduce CRUD example flow (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+        }
+        (*fail)++;
+    }
+}
+
 fn void run_deduce_reopen_stress_test(Interp* interp, int* pass, int* fail) {
     bool ok = true;
     isz failed_iter = -1;
@@ -3896,6 +4325,8 @@ fn void run_deduce_reopen_stress_test(Interp* interp, int* pass, int* fail) {
 
 fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_open_smoke_test(interp, pass, fail);
+    run_deduce_relation_attr_define_test(interp, pass, fail);
+    run_deduce_crud_example_flow_test(interp, pass, fail);
     run_deduce_memory_open_isolation_test(interp, pass, fail);
     run_deduce_reopen_stress_test(interp, pass, fail);
     setup_deduce_person_relation(interp);

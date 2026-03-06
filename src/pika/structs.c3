@@ -6,6 +6,7 @@ module pika;
 enum ClauseTag : char {
     SATISFY,
     SCAN,
+    SCAN_CTX,
     TOKEN,
     TOKENS,
     EPSILON,
@@ -23,6 +24,7 @@ enum ClauseTag : char {
 // Function pointer types for Satisfy and Scan clauses
 alias SatisfyFn = fn bool(char token);
 alias ScanFn = fn int(char[] view); // returns 0 if no match, else last index+1 (length matched)
+alias ScanCtxFn = fn int(void* ctx, char[] view); // context-aware scan
 
 // ============================================================
 // Clause - tagged union for grammar rules
@@ -35,6 +37,11 @@ struct Clause {
         SatisfyFn satisfy_fn;
         // SCAN
         ScanFn scan_fn;
+        // SCAN_CTX
+        struct {
+            ScanCtxFn scan_ctx_fn;
+            void* scan_ctx;
+        }
         // TOKEN
         char token_val;
         // TOKENS
@@ -74,9 +81,9 @@ fn Match make_match(int clause, int first, int last, int option_idx, int submatc
     m.last = last;
     m.option_idx = option_idx;
     m.submatches = submatches;
-    m.left = 0;
-    m.right = 0;
-    m.parent = 0;
+    m.left = -1;
+    m.right = -1;
+    m.parent = -1;
     return m;
 }
 
@@ -125,7 +132,7 @@ struct ParserState {
     Match[] matches;          // all recorded matches (dynamic)
     int matches_len;          // actual number of matches
     int matches_cap;          // capacity
-    int memo_root;            // root of splay tree (0 = empty, 1-based indexing)
+    int memo_root;            // root of splay tree (-1 = empty, 0-based indexing)
     int[] submatches;         // children pointers
     int submatches_len;
     int submatches_cap;

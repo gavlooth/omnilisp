@@ -114,7 +114,7 @@ fn Expr* Parser.parse_string_literal_expr(Parser* self) {
     e.lit.value.tag = STRING;
 
     usz len = self.lexer.current.text_len;
-    StringVal* builder = strval_new(len);
+    StringVal* builder = strval_new(len + 1);
     for (usz i = 0; i < len; i++) {
         builder.chars[i] = self.lexer.current.text[i];
     }

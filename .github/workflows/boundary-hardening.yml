@@ -1,6 +1,19 @@
 name: Boundary Hardening
 
 on:
+  pull_request:
+    paths:
+      - "src/stack_engine.c3"
+      - "src/lisp/eval_boundary_api.c3"
+      - "src/lisp/eval_promotion_copy.c3"
+      - "src/lisp/eval_promotion_escape.c3"
+      - "src/lisp/eval_env_copy.c3"
+      - "src/lisp/jit_jit_eval_scopes.c3"
+      - "src/lisp/eval_run_pipeline.c3"
+      - "scripts/run_boundary_hardening.sh"
+      - "scripts/check_boundary_facade_usage.sh"
+      - "scripts/check_boundary_change_policy.sh"
+      - ".github/workflows/boundary-hardening.yml"
   workflow_dispatch:
     inputs:
       pr_number:
@@ -34,6 +47,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve policy diff range
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "OMNI_BOUNDARY_POLICY_RANGE=${{ github.event.pull_request.base.sha }}...${{ github.sha }}" >> "$GITHUB_ENV"
+          else
+            echo "OMNI_BOUNDARY_POLICY_RANGE=${{ github.event.inputs.policy_range }}" >> "$GITHUB_ENV"
+          fi
+
       - name: Run boundary-hardening profile
         env:
           OMNI_BOUNDARY_ENABLE_FIBER_TEMP: "1"
@@ -42,7 +63,6 @@ jobs:
           OMNI_BOUNDARY_ASSERT_SUMMARY: "1"
           OMNI_BOUNDARY_EMIT_JSON: "1"
           OMNI_BOUNDARY_QUIET: "1"
-          OMNI_BOUNDARY_POLICY_RANGE: ${{ github.event.inputs.policy_range }}
         run: scripts/run_boundary_hardening.sh
 
       - name: Build boundary summary markdown
@@ -69,7 +89,7 @@ jobs:
         run: cat build/boundary_hardening_job_summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment boundary summary on PR
-        if: ${{ always() && github.event.inputs.pr_number != '' }}
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && github.event.inputs.pr_number != '' }}
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

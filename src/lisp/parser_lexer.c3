@@ -32,9 +32,11 @@ enum TokenType : char {
     T_ERROR,
 }
 
+const usz LEXER_TEXT_CAP = 1024;
+
 struct Token {
     TokenType type;
-    char[64]  text;
+    char[LEXER_TEXT_CAP]  text;
     usz       text_len;
     long      int_value;    // For T_INT
     double    double_value; // For T_FLOAT

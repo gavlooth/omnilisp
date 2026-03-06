@@ -60,8 +60,9 @@ fn bool Lexer.scan_logic_variable(Lexer* self, char c) {
     // Read ?varname as a symbol with ? prefix
     self.next_char();  // consume ?
     usz out_idx = 0;
+    usz max_idx = LEXER_TEXT_CAP - 1;
     self.current.text[out_idx++] = '?';
-    while (self.pos < self.len && is_symbol_char(self.source[self.pos]) && out_idx < 63) {
+    while (self.pos < self.len && is_symbol_char(self.source[self.pos]) && out_idx < max_idx) {
         self.current.text[out_idx++] = self.source[self.pos];
         self.next_char();
     }

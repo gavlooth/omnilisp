@@ -20,9 +20,9 @@ fn void Lexer.scan_symbol(Lexer* self) {
         self.next_char();
     }
     usz len = self.pos - start;
-    if (len > 63) {
+    if (len >= LEXER_TEXT_CAP) {
         self.current.type = T_ERROR;
-        char[] err = "symbol name too long (max 63 bytes)";
+        char[] err = "symbol name too long";
         for (usz i = 0; i < err.len; i++) self.current.text[i] = err[i];
         self.current.text[err.len] = 0;
         self.current.text_len = err.len;

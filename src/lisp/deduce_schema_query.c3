@@ -56,6 +56,17 @@ fn void deduce_relation_collect_columns(Relation* rel, Value* cols) {
     }
 }
 
+fn Value* deduce_relation_collect_columns_from_args(Relation* rel, Value*[] args, usz start, Interp* interp) {
+    for (usz i = start; i < args.len && rel.col_count < MAX_RELATION_COLS; i++) {
+        Value* col = args[i];
+        if (col == null || col.tag != SYMBOL) {
+            return raise_error(interp, "__define-relation: column arguments must be symbols");
+        }
+        rel.columns[rel.col_count++] = col.sym_val;
+    }
+    return null;
+}
+
 enum DeduceRelationOpenStatus {
     REL_OPEN_OK,
     REL_OPEN_TXN_BEGIN_FAILED,
@@ -91,11 +102,28 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
     DeduceDb* db = null;
     SymbolId rel_name = 0;
     Value* cols = null;
-    Value* parse_err = deduce_relation_extract_spec(args[0], interp, &db, &rel_name, &cols);
-    if (parse_err != null) return parse_err;
+    bool direct_form = args.len >= 2 &&
+                       args[0] != null && args[0].tag == FFI_HANDLE &&
+                       args[1] != null && args[1].tag == SYMBOL;
+    if (direct_form) {
+        if (args[0].ffi_val == null) return raise_error(interp, "__define-relation: database handle is closed");
+        db = (DeduceDb*)args[0].ffi_val.lib_handle;
+        rel_name = args[1].sym_val;
+    } else {
+        Value* parse_err = deduce_relation_extract_spec(args[0], interp, &db, &rel_name, &cols);
+        if (parse_err != null) return parse_err;
+    }
 
     Relation* rel = deduce_relation_alloc(db, rel_name);
-    deduce_relation_collect_columns(rel, cols);
+    if (direct_form) {
+        Value* col_err = deduce_relation_collect_columns_from_args(rel, args, 2, interp);
+        if (col_err != null) {
+            mem::free(rel);
+            return col_err;
+        }
+    } else {
+        deduce_relation_collect_columns(rel, cols);
+    }
     DeduceRelationOpenStatus open_status = deduce_relation_open_dbi(rel, interp);
     if (open_status != REL_OPEN_OK) {
         mem::free(rel);
@@ -145,7 +173,7 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
         Value* row = car(curr);
         // Apply filter function to row
         Value* keep = jit_apply_value(filter_fn, row, interp);
-        if (keep != null && keep.tag != NIL) {
+        if (keep != null && !is_falsy(keep, interp)) {
             matches[match_count++] = row;
         }
         curr = cdr(curr);

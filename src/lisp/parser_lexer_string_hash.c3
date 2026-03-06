@@ -18,6 +18,7 @@ fn bool is_symbol_char(char c) {
 fn void Lexer.scan_string(Lexer* self) {
     self.next_char();  // consume opening quote
     usz out_idx = 0;
+    usz max_idx = LEXER_TEXT_CAP - 1;
     bool truncated = false;
 
     while (self.pos < self.len && self.source[self.pos] != '"') {
@@ -29,20 +30,20 @@ fn void Lexer.scan_string(Lexer* self) {
             char escaped = self.source[self.pos];
             switch (escaped) {
                 case 'n':
-                    if (out_idx < 63) { self.current.text[out_idx++] = '\n'; } else { truncated = true; }
+                    if (out_idx < max_idx) { self.current.text[out_idx++] = '\n'; } else { truncated = true; }
                 case 't':
-                    if (out_idx < 63) { self.current.text[out_idx++] = '\t'; } else { truncated = true; }
+                    if (out_idx < max_idx) { self.current.text[out_idx++] = '\t'; } else { truncated = true; }
                 case '\\':
-                    if (out_idx < 63) { self.current.text[out_idx++] = '\\'; } else { truncated = true; }
+                    if (out_idx < max_idx) { self.current.text[out_idx++] = '\\'; } else { truncated = true; }
                 case '"':
-                    if (out_idx < 63) { self.current.text[out_idx++] = '"'; } else { truncated = true; }
+                    if (out_idx < max_idx) { self.current.text[out_idx++] = '"'; } else { truncated = true; }
                 default:
                     // Unknown escape, just include the character
-                    if (out_idx < 63) { self.current.text[out_idx++] = escaped; } else { truncated = true; }
+                    if (out_idx < max_idx) { self.current.text[out_idx++] = escaped; } else { truncated = true; }
             }
             self.next_char();
         } else {
-            if (out_idx < 63) { self.current.text[out_idx++] = ch; } else { truncated = true; }
+            if (out_idx < max_idx) { self.current.text[out_idx++] = ch; } else { truncated = true; }
             self.next_char();
         }
     }
@@ -61,7 +62,7 @@ fn void Lexer.scan_string(Lexer* self) {
 
     if (truncated) {
         self.current.type = T_ERROR;
-        char[] err = "string literal too long (max 63 bytes)";
+        char[] err = "string literal too long";
         for (usz i = 0; i < err.len; i++) self.current.text[i] = err[i];
         self.current.text[err.len] = 0;
         self.current.text_len = err.len;
@@ -108,18 +109,28 @@ fn bool Lexer.scan_hash_regex_literal(Lexer* self, char next) {
     self.next_char();  // consume r
     self.next_char();  // consume opening "
     usz out_idx = 0;
+    usz max_idx = LEXER_TEXT_CAP - 1;
+    bool truncated = false;
     while (self.pos < self.len && self.source[self.pos] != '"') {
         char ch = self.source[self.pos];
         if (ch == '\\' && self.pos + 1 < self.len) {
             self.next_char();
             char escaped = self.source[self.pos];
-            if (out_idx < 63) { self.current.text[out_idx++] = '\\'; }
-            if (out_idx < 63) { self.current.text[out_idx++] = escaped; }
+            if (out_idx < max_idx) { self.current.text[out_idx++] = '\\'; } else { truncated = true; }
+            if (out_idx < max_idx) { self.current.text[out_idx++] = escaped; } else { truncated = true; }
             self.next_char();
         } else {
-            if (out_idx < 63) { self.current.text[out_idx++] = ch; }
+            if (out_idx < max_idx) { self.current.text[out_idx++] = ch; } else { truncated = true; }
             self.next_char();
         }
+    }
+    if (truncated) {
+        self.current.type = T_ERROR;
+        char[] err = "regex literal too long";
+        for (usz i = 0; i < err.len; i++) self.current.text[i] = err[i];
+        self.current.text[err.len] = 0;
+        self.current.text_len = err.len;
+        return true;
     }
     if (self.pos < self.len) self.next_char();  // consume closing "
     self.current.text[out_idx] = 0;

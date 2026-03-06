@@ -682,6 +682,49 @@ Note: `length` (Section 7.3) is also generic — works on lists, arrays, dicts, 
 |-----------|------|-------------|
 | `unsafe-free!` | 1 | Free heap backing of array/dict/instance/string. Value becomes an error — accessing it after free raises "use after unsafe-free!". No-op on int/nil/other non-heap types. |
 
+### 7.23 Regex and Pika Parsing
+
+#### Regex primitives
+
+| Primitive | Args | Description |
+|-----------|------|-------------|
+| `re-match` | 2 | First match anywhere in input (or `nil`) |
+| `re-fullmatch` | 2 | Match entire input (or `nil`) |
+| `re-find-all` | 2 | Non-overlapping match list |
+| `re-split` | 2 | Split input on regex matches |
+| `re-replace` | 3-4 | Replace first match, or all with `'global` |
+| `re-match-pos` | 2 | Match positions as `(start end)` or `nil` |
+| `re-find-all-pos` | 2 | List of `(start end)` pairs |
+
+Supported regex constructs:
+- literals, char classes (`[a-z]`, `[^x]`), shorthand classes (`\d`, `\w`, `\s`)
+- quantifiers (`*`, `+`, `?`, `{n}`, `{n,m}`, `{n,}`)
+- alternation (`|`), grouping (`(...)`, `(?:...)`)
+- lookahead (`(?=...)`, `(?!...)`)
+- anchors (`^`, `$`)
+
+Regex semantics notes:
+- Deterministic Pika-style matching (no catastrophic backtracking engine behavior).
+- Possessive quantifiers (`*+`, `++`, `?+`) are accepted with deterministic semantics.
+- Invalid patterns are rejected strictly (unclosed groups, malformed bounds, bad ranges, trailing junk).
+- Bounded quantifier upper/lower bounds are validated (`{n,m}` with large bounds is rejected).
+
+#### Pika grammar primitives
+
+| Primitive | Args | Description |
+|-----------|------|-------------|
+| `pika/grammar` | variadic | Define a named grammar from quoted `(rule ...)` forms |
+| `pika/parse` | 2 | Parse input with named grammar |
+| `pika/fold` | 3 | Fold parse tree with user function |
+| `pika/grammar-rules` | 1 | List rule names for a named grammar |
+| `pika/parse-lisp` | 1 | Parse Omni/Lisp source with built-in grammar |
+
+Pika grammar notes:
+- Use quoted rule forms with `pika/grammar`, for example:
+  `(pika/grammar 'g '(rule start (seq "a" "b")))`
+- Unreachable rules are pruned from compiled grammar graphs.
+- Scanner clauses are context-aware; there is no fixed small scanner-slot cap.
+
 **Total: 130+ primitives**
 
 ---

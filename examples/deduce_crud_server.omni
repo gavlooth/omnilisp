@@ -48,7 +48,9 @@
       (car (cdr xs))))
 
 (define (util/third xs)
-  (if (or (null? xs) (null? (cdr xs)) (null? (cdr (cdr xs))))
+  (if (or (null? xs)
+          (or (null? (cdr xs))
+              (null? (cdr (cdr xs)))))
       nil
       (car (cdr (cdr xs)))))
 
@@ -56,7 +58,10 @@
   (deduce 'scan items))
 
 (define (repo/get-by-id id)
-  (car (deduce 'query items (lambda (row) (= ('id row) id)))))
+  (let (rows (deduce 'query items (lambda (row) (= ('id row) id))))
+    (if (null? rows)
+        nil
+        (car rows))))
 
 (define (repo/create payload)
   (let (id ('id payload)
@@ -97,7 +102,10 @@
       body)))
 
 (define (pipeline/decode-request raw)
-  (let (parts (string-split raw "\r\n\r\n")
+  (let (parts-crlf (string-split raw "\r\n\r\n")
+        parts (if (> (length parts-crlf) 1)
+                  parts-crlf
+                  (string-split raw "\n\n"))
         header (if (null? parts) "" (car parts))
         body-text (if (null? (cdr parts)) "" (car (cdr parts)))
         request-line (if (= header "") "" (car (string-split header "\r\n")))

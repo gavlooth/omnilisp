@@ -1,5 +1,205 @@
 # Changelog
 
+## 2026-03-06: Session 229 - Pika Regex Parity Sessions 1-5 (Parser, Scanner Context, Cache)
+
+### Summary
+Completed Sessions 1-5 of the Pika regex parity plan:
+- parser parity fixes
+- regex compiler safety hardening
+- large-pattern cap removal/clarification
+- scanner context refactor (no fixed slot tables)
+- bounded cache eviction with counters
+
+### What changed
+- `src/pika/clauses.c3`
+  - added `SCAN_CTX` terminal handling path.
+- `src/pika/structs.c3`
+  - introduced `ClauseTag.SCAN_CTX` and `ScanCtxFn` support in `Clause`.
+- `src/pika/frontend.c3`
+  - added `mk_scan_ctx(...)` constructor.
+- `src/pika/regex.c3`
+  - tokenizer/compiler hardening:
+    - strict malformed token handling and clearer trailing-token diagnostics
+    - bounded quantifier validation and safer expansion logic
+    - unbounded `{n,}` lowered via `many` instead of finite silent cap
+    - trailing escape in char class now errors deterministically
+  - removed fixed scan-slot table and switched char classes to `mk_scan_ctx(...)`.
+  - added bounded cache policy (LRU-style eviction at `REGEX_CACHE_MAX_ENTRIES`)
+    with counters (`hit/miss/eviction/fallback`).
+  - added `regex_cache_reset()` to free all cached compiled regex entries and
+    copied pattern buffers deterministically.
+- `src/pika/lisp_pika.c3`
+  - removed legacy fixed 8-slot scan-function table in grammar compiler;
+    scanner clauses now use `mk_scan_ctx(...)`.
+- `src/pika/grammar.c3`, `src/pika/structs.c3`, `src/pika/clauses.c3`
+  - parser parity cleanup from session 1:
+    - `seeded_by` empty-seq guard
+    - `memo_root` docs aligned with `-1` sentinel
+    - unreachable-rule pruning contract enforced.
+- `src/lisp/tests_tests.c3`
+  - added regressions for:
+    - strict invalid regex forms
+    - long concatenation/alternation patterns
+    - large bounded quantifier shapes
+    - `>32` char classes in one regex
+    - `pika/grammar` scan clause coverage, including beyond legacy scanner cap
+    - cache usability under growth/eviction stress
+  - `run_test_global_boundary_reset()` now calls `pika::regex_cache_reset()`
+    to keep test groups isolated from prior regex cache state.
+- `.claude/plans/pika-regex-parity-plan.md`
+  - updated checklist status through session 5 completion.
+- `docs/LANGUAGE_SPEC.md`
+  - added explicit Regex + Pika grammar section and semantics notes.
+
+### Validation
+- normal:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: `Unified Tests: 1274 passed, 0 failed`; `Compiler Tests: 73 passed, 0 failed`.
+- ASAN:
+  - `c3c build --sanitize=address`
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Result: `Unified Tests: 1275 passed, 0 failed`; `Compiler Tests: 73 passed, 0 failed`.
+
+## 2026-03-06: Session 228 - Pika Regex Strict Grammar Validation Hardening
+
+### Summary
+Hardened `src/pika/regex.c3` to reject malformed patterns deterministically
+instead of accepting partial parses or relying on token-position heuristics.
+Added focused regressions for invalid regex grammar shapes.
+
+### What changed
+- `src/pika/regex.c3`
+  - char-class range validation:
+    - rejects descending ranges (e.g. `[z-a]`) with tokenizer error.
+    - rejects empty char classes (e.g. `[]`).
+  - bounded quantifier validation:
+    - requires numeric lower bound after `{`.
+    - requires numeric upper bound in `{n,m}` form.
+    - rejects `{n,m}` when `m < n`.
+    - malformed quantifiers now tokenize as `RE_ERROR` (not literal fallback).
+  - escape validation:
+    - trailing escape at end-of-pattern now sets tokenizer error.
+  - compiler atom pushback fix:
+    - replaced `tok.pos -= 1` with full-position restore (`saved_pos`) to avoid
+      desync on multi-char tokens.
+  - group validation:
+    - missing `)` now marks `"Unclosed group"` tokenizer error in compile path.
+  - full-consumption validation:
+    - `regex_compile` now enforces end-of-pattern after optional `$`.
+    - unexpected trailing tokens (for example unmatched `)`) invalidate the
+      compiled regex with explicit error.
+
+- `src/lisp/tests_tests.c3`
+  - added strict-grammar regressions in `run_pika_tests`:
+    - unmatched close paren: `a)`
+    - unmatched open paren: `(ab`
+    - leading quantifier: `*a`
+    - bounded quantifier missing min: `a{,2}`
+    - bounded quantifier descending: `a{3,2}`
+    - empty char class: `[]`
+    - invalid class range: `[z-a]`
+
+### Validation
+- `c3c build`
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+- `c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+- Result: all tests green in normal and ASAN runs.
+
+## 2026-03-05: Session 227 - Deduce CRUD False Duplicate Fix
+
+### Summary
+Fixed a functional regression in `examples/deduce_crud_server.omni` where
+`repo/create` could incorrectly return `"item already exists"` on an empty
+relation, and tightened Deduce query predicate truthiness to match language
+semantics.
+
+### Root cause
+- `repo/get-by-id` used `(car (deduce 'query ...))` directly, which produced an
+  `ERROR` value when the query returned an empty list.
+- In `(if existing ...)`, that `ERROR` value is truthy, so create-path logic
+  incorrectly took the duplicate branch.
+- `prim_deduce_query` accepted any non-`nil` predicate result as true, but Omni
+  truthiness treats both `nil` and `false` as falsy.
+
+### What changed
+- `examples/deduce_crud_server.omni`
+  - `repo/get-by-id` is now nil-safe:
+    - returns `nil` for empty query result
+    - returns `(car rows)` only when rows are present
+- `src/lisp/deduce_schema_query.c3`
+  - query filter now uses `!is_falsy(keep, interp)` instead of `keep.tag != NIL`
+    so explicit `false` predicates are handled correctly.
+- `src/lisp/tests_tests.c3`
+  - added regression: `deduce 'query` with `(lambda (row) false)` returns zero.
+  - added regression: load CRUD example and verify create/duplicate/get-by-id
+    flow:
+    - first create is `"ok"`
+    - second create is duplicate error
+    - missing id lookup returns `nil`
+  - added HTTP pipeline regressions for CRUD example:
+    - LF-only request decode fallback (`\n\n`)
+    - POST/GET pipeline execute roundtrip via request maps
+    - PUT/DELETE pipeline roundtrip with repo-state assertions
+    - HTTP response formatting check from `http/response` + pipeline payload
+    - schema gate check for invalid `item-write` payload
+    - duplicate-id POST race via concurrent `spawn` + `pipeline/execute`
+    - `/items/not-int` route degradation to route-not-found
+    - `/unknown` route degradation to route-not-found
+    - malformed request-line decode degradation to route-not-found
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+- Result: `Unified 1240 passed, 0 failed`; `Compiler 73 passed, 0 failed`.
+
+## 2026-03-05: Session 226 - `load` Crash Fixes (Parser + Relation Define Attr)
+
+### Summary
+Fixed a real script-mode crash (`EXIT:139`) when loading
+`examples/deduce_crud_server.omni`, and added regression coverage for
+`define [relation ...]` parser/lowering.
+
+### Root cause
+- `Parser.build_define_relation_call` in `src/lisp/parser_define_attrs.c3`
+  emitted `E_CALL` using stale layout assumptions and wrote into
+  `call.call.*` without first allocating `ExprCall`.
+- Secondary parser hardening: multiple literal-string builder paths allocated
+  exact-size buffers and then wrote a trailing NUL at `chars[len]`.
+
+### What changed
+- `src/lisp/parser_define_attrs.c3`
+  - fixed relation-attr lowering to current call representation:
+    - allocates `ExprCall`
+    - sets `call.call.func` to `__define-relation`
+    - passes args as `db`, relation symbol, column symbols
+- `src/lisp/deduce_schema_query.c3`
+  - `prim_define_relation` now accepts both shapes:
+    - legacy `(cons db '(name col...))`
+    - direct `(__define-relation db 'name 'col...)`
+  - added direct-arg column extraction with explicit symbol validation.
+- String-literal builder safety hardening:
+  - `src/lisp/prim_string_format.c3`: `strval_new` now reserves one extra byte
+    for trailing NUL.
+  - call sites switched to `strval_new(len + 1)` in:
+    - `src/lisp/parser_expr_atoms.c3`
+    - `src/lisp/parser_quasiquote_datum.c3`
+    - `src/lisp/parser_pattern_match.c3`
+    - `src/lisp/primitives_meta_types.c3`
+- Example fix:
+  - `examples/deduce_crud_server.omni`
+    - normalized `or` to binary form in `util/third`
+    - kept LF fallback in HTTP body split.
+- Tests:
+  - added `deduce [relation] define attr` regression in
+    `src/lisp/tests_tests.c3`.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+- Result: `Unified 1228 passed, 0 failed`; `Compiler 73 passed, 0 failed`.
+
 ## 2026-03-05: Session 225 - TCP Server Primitives + Fiber CRUD Server Example
 
 ### Summary

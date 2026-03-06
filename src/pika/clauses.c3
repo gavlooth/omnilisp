@@ -8,6 +8,7 @@ fn bool is_terminal(Clause* c) {
     switch (c.tag) {
         case SATISFY: return true;
         case SCAN: return true;
+        case SCAN_CTX: return true;
         case TOKEN: return true;
         case TOKENS: return true;
         default: return false;
@@ -33,6 +34,7 @@ fn bool clause_can_match_epsilon(Clause* c, bool[] child_eps) {
     switch (c.tag) {
         case SATISFY: return false;
         case SCAN: return false;
+        case SCAN_CTX: return false;
         case TOKEN: return false;
         case TOKENS: return false;
         case FAIL: return false;
@@ -71,8 +73,12 @@ fn bool clause_can_match_epsilon(Clause* c, bool[] child_eps) {
 fn int[] seeded_by(Clause* c, bool[] child_eps) {
     switch (c.tag) {
         case SEQ:
+            if (c.children.len == 0) {
+                int[] empty;
+                return empty;
+            }
             // seed children up to first non-epsilon-matchable
-            int first_nonempty;
+            int first_nonempty = -1;
             bool all_eps = true;
             for (int i = 0; i < (int)child_eps.len; i++) {
                 if (!child_eps[i]) {
@@ -84,10 +90,10 @@ fn int[] seeded_by(Clause* c, bool[] child_eps) {
             if (all_eps) first_nonempty = (int)child_eps.len - 1;
             return c.children[0..first_nonempty];
         case FIRST: return c.children;
-        case FOLLOWED_BY: return (&c.child)[0..1];
-        case SOME_CLAUSE: return (&c.child)[0..1];
-        case MANY_CLAUSE: return (&c.child)[0..1];
-        case TIE: return (&c.child)[0..1];
+        case FOLLOWED_BY: return (&c.child)[0..0];
+        case SOME_CLAUSE: return (&c.child)[0..0];
+        case MANY_CLAUSE: return (&c.child)[0..0];
+        case TIE: return (&c.child)[0..0];
         default:
             int[] empty;
             return empty;
@@ -125,6 +131,13 @@ fn int match_terminal_scan(Clause* c, char[] input, int pos) {
     return pos + result - 1;
 }
 
+fn int match_terminal_scan_ctx(Clause* c, char[] input, int pos) {
+    char[] v = input[pos..];
+    int result = c.scan_ctx_fn(c.scan_ctx, v);
+    if (result <= 0) return pos - 1;
+    return pos + result - 1;
+}
+
 fn int match_terminal_token(Clause* c, char[] input, int pos) {
     if (pos < (int)input.len && input[pos] == c.token_val) {
         return pos;
@@ -153,6 +166,7 @@ fn int do_match_terminal(Clause* c, char[] input, int pos) {
     switch (c.tag) {
         case SATISFY: return match_terminal_satisfy(c, input, pos);
         case SCAN: return match_terminal_scan(c, input, pos);
+        case SCAN_CTX: return match_terminal_scan_ctx(c, input, pos);
         case TOKEN: return match_terminal_token(c, input, pos);
         case TOKENS: return match_terminal_tokens(c, input, pos);
         default: return pos - 1;
@@ -268,6 +282,7 @@ fn int do_match_clause(Clause* c, int id, int pos, ParserState* st) {
     switch (c.tag) {
         case SATISFY: return match_clause_terminal(c, id, pos, st);
         case SCAN: return match_clause_terminal(c, id, pos, st);
+        case SCAN_CTX: return match_clause_terminal(c, id, pos, st);
         case TOKEN: return match_clause_terminal(c, id, pos, st);
         case TOKENS: return match_clause_terminal(c, id, pos, st);
         case SEQ: return match_clause_seq(c, id, pos, st);

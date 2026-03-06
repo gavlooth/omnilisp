@@ -95,6 +95,19 @@ Follow `docs/C3_STYLE.md`. Especially:
 - Do not silently defer known work; record it in `.claude/plans/` with concrete next steps
 - If behavior changes, update relevant docs and `memory/CHANGELOG.md`
 
+## Owner Workflow Preference (Required)
+
+- Apply safe, non-behavioral, non-hacky patches automatically without asking for
+  confirmation.
+- Only pause for explicit confirmation when:
+  - the owner explicitly asks for review-before-apply,
+  - the action is destructive/high-risk (for example history rewrite or broad
+    deletion),
+  - requirements are ambiguous enough that applying a patch would likely violate
+    intent.
+- Default posture: continue execution autonomously and keep momentum unless one
+  of the above conditions is true.
+
 ## Audit Mode (Important)
 
 If asked to audit:
