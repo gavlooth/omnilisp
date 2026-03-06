@@ -65,6 +65,28 @@ fn void run_limit_busting_generated_form_tests(Interp* interp, int* pass, int* f
         for (usz i = 0; i < suffix.len; i++) buf[pos++] = suffix[i];
         test_eq(interp, "match >128 clauses", buf[:pos], 2000, pass, fail);
     }
+
+    // Test 4: quoted literal match deeper than old depth guard (256)
+    {
+        const int DEPTH = 300;
+        char[16384] buf;
+        usz pos = 0;
+        char[] prefix = "(match '";
+        for (usz i = 0; i < prefix.len; i++) buf[pos++] = prefix[i];
+        for (int i = 0; i < DEPTH; i++) buf[pos++] = '(';
+        buf[pos++] = '0';
+        for (int i = 0; i < DEPTH; i++) buf[pos++] = ')';
+
+        char[] mid = " ('";
+        for (usz i = 0; i < mid.len; i++) buf[pos++] = mid[i];
+        for (int i = 0; i < DEPTH; i++) buf[pos++] = '(';
+        buf[pos++] = '0';
+        for (int i = 0; i < DEPTH; i++) buf[pos++] = ')';
+
+        char[] suffix = " 1) (_ 0))";
+        for (usz i = 0; i < suffix.len; i++) buf[pos++] = suffix[i];
+        test_eq(interp, "match quoted literal >256 depth", buf[:pos], 1, pass, fail);
+    }
 }
 
 fn void run_limit_busting_string_tests(Interp* interp, int* pass, int* fail) {

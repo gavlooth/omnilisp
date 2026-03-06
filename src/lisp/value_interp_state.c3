@@ -137,6 +137,7 @@ struct Interp {
     // Pending raise error message (for raise_error → jit_handle_impl dispatch)
     char[256] raise_msg;
     usz raise_msg_len;
+    Value* raise_payload;  // Optional canonical payload for pending raise dispatch
 
     // JIT execution mode
     Env* jit_env;      // Current local env for JIT sub-expression evaluation
@@ -153,9 +154,8 @@ struct Interp {
     uint promotion_epoch_counter;         // Monotonic epoch counter for boundary promotion contexts
     PromotionContext* active_promotion_ctx; // Current boundary promotion context (nullable)
 
-    // Stack overflow protection
+    // Stack overflow diagnostics
     usz eval_depth;
-    usz max_eval_depth;
 
     // Macro table (dynamic)
     MacroDef* macro_table;
@@ -174,8 +174,8 @@ struct Interp {
     SymbolId sym_module;
     SymbolId sym_import;
     SymbolId sym_export;
-    SymbolId sym_as;           // ":as" for (import mod (name :as alias))
-    SymbolId sym_all;          // ":all" for (import mod :all)
+    SymbolId sym_as;           // "as" for quoted marker (import mod (name 'as alias))
+    SymbolId sym_all;          // "all" for quoted marker (import mod 'all)
     SymbolId sym_export_from;  // "export-from" for (export-from mod (sym...))
 
     // Continuation/reset depth (saved/restored across context boundaries)
@@ -190,8 +190,9 @@ struct Interp {
     SymbolId last_call_name;
 
     // Source file directory stack (for relative import resolution)
-    char[256][16] source_dirs;  // stack of directory paths (null-terminated)
+    char** source_dirs;         // stack of directory paths (heap-allocated strings)
     usz source_dir_count;
+    usz source_dir_capacity;
 
     // StackCtx-based continuation system (stack engine)
     main::StackPool stack_ctx_pool;
@@ -214,6 +215,12 @@ fn void interp_init_runtime_state(Interp* self) {
     self.handler_stack = (EffectHandler*)mem::malloc(EffectHandler.sizeof * self.handler_capacity);
     self.reset_depth = 0;
     self.source_dir_count = 0;
+    self.source_dir_capacity = 8;
+    self.source_dirs = (char**)mem::malloc(uptr.sizeof * self.source_dir_capacity);
+    if (self.source_dirs == null) self.source_dir_capacity = 0;
+    self.raise_msg_len = 0;
+    self.raise_msg[0] = 0;
+    self.raise_payload = null;
 
     main::stack_pool_init(&self.stack_ctx_pool);
     g_stack_ctx_pool = &self.stack_ctx_pool;
@@ -293,8 +300,8 @@ fn void interp_init_module_state(Interp* self) {
     self.sym_module = self.symbols.intern("module");
     self.sym_import = self.symbols.intern("import");
     self.sym_export = self.symbols.intern("export");
-    self.sym_as = self.symbols.intern(":as");
-    self.sym_all = self.symbols.intern(":all");
+    self.sym_as = self.symbols.intern("as");
+    self.sym_all = self.symbols.intern("all");
     self.sym_export_from = self.symbols.intern("export-from");
     self.module_count = 0;
     self.module_capacity = MODULE_INITIAL_CAPACITY;
@@ -319,7 +326,24 @@ fn void interp_init_runtime_flags(Interp* self) {
     self.flags.jit_tco_bounce = false;
 
     self.eval_depth = 0;
-    self.max_eval_depth = 1024;
+}
+
+fn Value* interp_apply_stack_overflow_error(Interp* interp) {
+    return make_error(interp, "stack overflow: insufficient stack headroom");
+}
+
+fn Value* interp_apply_frame_enter(Interp* interp) @inline {
+    interp.eval_depth++;
+    if (!main::stack_has_apply_headroom(main::STACK_APPLY_MIN_HEADROOM)) {
+        interp.eval_depth--;
+        return interp_apply_stack_overflow_error(interp);
+    }
+    return null;
+}
+
+fn void interp_apply_frame_leave(Interp* interp) @inline {
+    assert(interp.eval_depth > 0, "interp eval depth underflow");
+    interp.eval_depth--;
 }
 
 fn void interp_init_macro_state(Interp* self) {
@@ -431,16 +455,31 @@ fn void Interp.destroy(Interp* self) {
 
     self.symbols.destroy();
     self.types.destroy();
-    if (self.macro_table != null) { mem::free(self.macro_table); self.macro_table = null; }
+    if (self.macro_table != null) {
+        for (usz i = 0; i < self.macro_count; i++) macro_def_destroy(&self.macro_table[i]);
+        mem::free(self.macro_table);
+        self.macro_table = null;
+    }
     if (self.macro_hash_index != null) { mem::free(self.macro_hash_index); self.macro_hash_index = null; }
     if (self.modules != null) {
         for (usz i = 0; i < self.module_count; i++) {
             if (self.modules[i].exports != null) {
                 mem::free(self.modules[i].exports);
             }
+            if (self.modules[i].path != null) {
+                mem::free(self.modules[i].path);
+                self.modules[i].path = null;
+            }
         }
         mem::free(self.modules);
         self.modules = null;
+    }
+    if (self.source_dirs != null) {
+        for (usz i = 0; i < self.source_dir_count; i++) {
+            if (self.source_dirs[i] != null) mem::free(self.source_dirs[i]);
+        }
+        mem::free(self.source_dirs);
+        self.source_dirs = null;
     }
     if (self.module_hash_index != null) { mem::free(self.module_hash_index); self.module_hash_index = null; }
     if (self.handler_stack != null) { mem::free(self.handler_stack); self.handler_stack = null; }

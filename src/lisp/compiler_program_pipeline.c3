@@ -13,6 +13,7 @@ import main;
 fn bool Compiler.parse_program_exprs(Compiler* self, char[] full, List{Expr*}* exprs) {
     Lexer lex;
     lex.init(full);
+    defer lex.destroy();
     Parser p;
     p.init(&lex, self.interp);
 

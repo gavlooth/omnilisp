@@ -32,6 +32,7 @@ fn void run_clear_stale_raise_state(Interp* interp) @inline {
     interp.flags.raise_pending = false;
     interp.raise_msg_len = 0;
     interp.raise_msg[0] = 0;
+    interp.raise_payload = null;
 }
 
 fn void run_clear_stale_jit_tco_state(Interp* interp) @inline {
@@ -111,6 +112,7 @@ fn EvalResult run_program(char[] source, Interp* interp) {
 
     Lexer lex;
     lex.init(source);
+    defer lex.destroy();
     Parser p;
     p.init(&lex, interp);
 
@@ -176,6 +178,7 @@ fn EvalResult run(char[] source, Interp* interp) {
 
     Lexer lex;
     lex.init(source);
+    defer lex.destroy();
     Parser p;
     p.init(&lex, interp);
 

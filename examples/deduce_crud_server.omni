@@ -1,26 +1,51 @@
-;; Deduce CRUD Web Server (fiber/effects pipeline, no channels)
+;; Deduce CRUD Web Server
+;;
+;; Language idioms demonstrated:
+;;   [type]        — Item struct, dot field access (item.id, item.name)
+;;   [union]       — ApiResult (Ok V) / (Err E), matched at pipeline boundary
+;;   dispatch      — to-json dispatches on ^Item vs fallback
+;;   _  placeholder — (compose (= _ id) 'id)  ←  no explicit lambda needed
+;;   |>  pipe       — raw |> decode |> execute |> result->response
+;;   partial        — (partial tcp-write client) binds the socket once
+;;   [schema]       — validate + explain on incoming requests
+;;   handle/raise   — algebraic effect for error boundary
+;;   spawn/fibers   — per-connection fiber, accept loop
 ;;
 ;; Run:
 ;;   (load "examples/deduce_crud_server.omni")
 ;;   (server/start "127.0.0.1" 8080)
 ;;
-;; Non-blocking lifecycle:
+;; Non-blocking:
 ;;   (define srv (server/start-async "127.0.0.1" 8080))
-;;   ;; ... send requests ...
 ;;   (server/stop srv)
 ;;
-;; Example requests:
-;;   curl -s http://127.0.0.1:8080/items
-;;   curl -s -X POST http://127.0.0.1:8080/items -H 'content-type: application/json' \
-;;     -d '{"id":1,"name":"paper","qty":3}'
-;;   curl -s http://127.0.0.1:8080/items/1
-;;   curl -s -X PUT http://127.0.0.1:8080/items -H 'content-type: application/json' \
-;;     -d '{"id":1,"name":"paper","qty":7}'
-;;   curl -s -X DELETE http://127.0.0.1:8080/items -H 'content-type: application/json' \
-;;     -d '{"id":1}'
+;; curl -s http://127.0.0.1:8080/items
+;; curl -s -X POST http://127.0.0.1:8080/items \
+;;        -H 'content-type: application/json' \
+;;        -d '{"id":1,"name":"paper","qty":3}'
+;; curl -s http://127.0.0.1:8080/items/1
+;; curl -s -X PUT http://127.0.0.1:8080/items \
+;;        -H 'content-type: application/json' \
+;;        -d '{"id":1,"name":"paper","qty":7}'
+;; curl -s -X DELETE http://127.0.0.1:8080/items \
+;;        -H 'content-type: application/json' \
+;;        -d '{"id":1}'
+
+;; ── Database ──────────────────────────────────────────────────────────────────
 
 (define db (deduce 'open 'memory))
 (define [relation db] items (id) (name) (qty))
+
+;; ── Domain model ──────────────────────────────────────────────────────────────
+
+;; Struct type — fields accessed via dot notation: item.id  item.name  item.qty
+(define [type] Item (^Int id) (^String name) (^Int qty))
+
+;; Sum type — repo functions return (Ok item) or (Err "reason").
+;; The pipeline collapses these into HTTP response dicts in ONE place.
+(define [union] (ApiResult V E) (Ok V) (Err E))
+
+;; ── Request schemas ───────────────────────────────────────────────────────────
 
 (define [schema] item-write
   (map
@@ -32,64 +57,61 @@
   (map
     (id int)))
 
-(define [schema] ok-response
-  (map
-    (status string)
-    (data any)))
+;; ── Serialisation — multiple dispatch on type ─────────────────────────────────
 
-(define [schema] err-response
-  (map
-    (status string)
-    (error string)))
+;; Item instance → plain dict safe for json-emit
+(define (to-json (^Item i))
+  {'id i.id 'name i.name 'qty i.qty})
 
-(define (util/second xs)
-  (if (or (null? xs) (null? (cdr xs)))
-      nil
-      (car (cdr xs))))
+;; List of items → recurse; anything else (string, int, dict) passes through
+(define (to-json x)
+  (if (list? x) (map to-json x) x))
 
-(define (util/third xs)
-  (if (or (null? xs)
-          (or (null? (cdr xs))
-              (null? (cdr (cdr xs)))))
-      nil
-      (car (cdr (cdr xs)))))
+;; ── Repository ────────────────────────────────────────────────────────────────
 
+(define (row->item row)
+  (Item ('id row) ('name row) ('qty row)))
+
+;; _ placeholder:  (= _ id)  desugars to  (lambda (x) (= x id))
+;; compose wires:  row -> ('id row) -> (= ('id row) id)
+(define (repo/get-by-id (^Int id))
+  (let (rows (deduce 'query items (compose (= _ id) 'id)))
+    (if rows (row->item (car rows)) nil)))
+
+;; |> pipe + _ placeholder:  (map row->item _)  =  (lambda (xs) (map row->item xs))
 (define (repo/list)
-  (deduce 'scan items))
-
-(define (repo/get-by-id id)
-  (let (rows (deduce 'query items (lambda (row) (= ('id row) id))))
-    (if (null? rows)
-        nil
-        (car rows))))
+  (let (rows (deduce 'scan items))
+    (|> rows (map row->item _))))
 
 (define (repo/create payload)
-  (let (id ('id payload)
-        existing (repo/get-by-id ('id payload)))
-    (if existing
-        {'status "error" 'error "item already exists"}
+  (let ({id name qty} payload)
+    (if (repo/get-by-id id)
+        (Err "item already exists")
         (begin
-          (deduce 'fact! items id ('name payload) ('qty payload))
-          {'status "ok" 'data payload}))))
+          (deduce 'fact! items id name qty)
+          (Ok (Item id name qty))))))
 
 (define (repo/update payload)
-  (let (id ('id payload)
-        existing (repo/get-by-id ('id payload)))
-    (if (null? existing)
-        {'status "error" 'error "item not found"}
+  (let ({id name qty} payload
+        existing (repo/get-by-id id))
+    (if (not existing)
+        (Err "item not found")
         (begin
-          (deduce 'retract! items ('id existing) ('name existing) ('qty existing))
-          (deduce 'fact! items id ('name payload) ('qty payload))
-          {'status "ok" 'data payload}))))
+          ;; dot access on Item instance — no ('field dict) lookups needed
+          (deduce 'retract! items existing.id existing.name existing.qty)
+          (deduce 'fact! items id name qty)
+          (Ok (Item id name qty))))))
 
 (define (repo/delete payload)
-  (let (id ('id payload)
-        existing (repo/get-by-id ('id payload)))
-    (if (null? existing)
-        {'status "error" 'error "item not found"}
+  (let ({id} payload
+        existing (repo/get-by-id id))
+    (if (not existing)
+        (Err "item not found")
         (begin
-          (deduce 'retract! items ('id existing) ('name existing) ('qty existing))
-          {'status "ok" 'data existing}))))
+          (deduce 'retract! items existing.id existing.name existing.qty)
+          (Ok existing)))))
+
+;; ── HTTP ──────────────────────────────────────────────────────────────────────
 
 (define (http/response status payload)
   (let (body (json-emit payload))
@@ -101,74 +123,88 @@
       "\r\n"
       body)))
 
+;; ── Pipeline ──────────────────────────────────────────────────────────────────
+
+;; _ fixes the SECOND argument (separator), leaving the string slot open.
+;; partial can't express this — it only fills args left-to-right.
+(define split-headers (string-split _ "\r\n"))        ; _ = slot 1 (the string)
+(define split-body    (string-split _ "\r\n\r\n"))     ; separator fixed, string free
+(define split-body-lf (string-split _ "\n\n"))         ; LF fallback
+
 (define (pipeline/decode-request raw)
-  (let (parts-crlf (string-split raw "\r\n\r\n")
-        parts (if (> (length parts-crlf) 1)
-                  parts-crlf
-                  (string-split raw "\n\n"))
-        header (if (null? parts) "" (car parts))
-        body-text (if (null? (cdr parts)) "" (car (cdr parts)))
-        request-line (if (= header "") "" (car (string-split header "\r\n")))
-        line-parts (string-split request-line " ")
-        method (if (null? line-parts) "" (car line-parts))
-        path (util/second line-parts)
-        body (if (= body-text "") nil (json-parse body-text)))
+  (let (parts (let (p (split-body raw))
+                (if (> (length p) 1) p (split-body-lf raw)))
+        [header .. rest] parts
+        body-text (if rest (car rest) "")
+        [request-line ..] (split-headers header)
+        tokens    (string-split request-line " ")
+        method    (if tokens (car tokens) "")
+        path      (if (cdr tokens) (car (cdr tokens)) "/")
+        body      (if (= body-text "") nil (json-parse body-text)))
     {'method method 'path path 'body body}))
 
+;; (= "items" _) — _ in slot 2, "items" fixed in slot 1.
+;; Reads: "is _ equal to items?" — the string is the hole, "items" is frozen.
+(define items-route? (= "items" _))
+
 (define (pipeline/path-id path)
-  (let (segments (string-split path "/")
-        root (util/second segments)
-        sid (util/third segments))
-    (if (and (= root "items") sid)
-        (string->number sid)
+  (let ([_ root .. rest] (string-split path "/"))
+    (if (and (items-route? root) rest)
+        (string->number (car rest))
         nil)))
 
+;; Raises on validation failure — caught by handle/raise in server/handle-client
 (define (pipeline/require schema-name payload)
   (if (validate schema-name payload)
       payload
-      (raise (json-emit {'status "error" 'error "request schema validation failed" 'details (explain schema-name payload)}))))
+      (raise (format "schema validation failed: %s"
+                     (explain schema-name payload)))))
 
-(define (pipeline/check-response payload)
-  (if (validate '(or (map (status string) (data any))
-                     (map (status string) (error string)))
-                payload)
-      payload
-      (raise "{\"status\":\"error\",\"error\":\"internal response schema failure\"}")))
+;; Single place that converts ApiResult to an HTTP response dict.
+;; All Ok/Err paths flow here — no {'status "error"...} scattered in repo code.
+(define (pipeline/result->response result)
+  (match result
+    ((Ok data) {'status "ok"    'data  (to-json data)})
+    ((Err msg) {'status "error" 'error msg})))
 
 (define (pipeline/execute req)
-  (let (method ('method req)
-        path ('path req)
-        body ('body req)
-        path-id (pipeline/path-id ('path req)))
-    (if (and (= method "GET") (= path "/items"))
-        {'status "ok" 'data (repo/list)}
-        (if (and (= method "GET") path-id)
-            (let (row (repo/get-by-id path-id))
-              (if row
-                  {'status "ok" 'data row}
-                  {'status "error" 'error "item not found"}))
-            (if (and (= method "POST") (= path "/items"))
-                (repo/create (pipeline/require 'item-write body))
-                (if (and (= method "PUT") (= path "/items"))
+  (let ({method path body} req
+        path-id (pipeline/path-id path))
+    (match method
+      ("GET"    (if path-id
+                    (let (item (repo/get-by-id path-id))
+                      (if item (Ok item) (Err "item not found")))
+                    (if (= path "/items")
+                        (Ok (repo/list))
+                        (Err "route not found"))))
+      ("POST"   (if (= path "/items")
+                    (repo/create (pipeline/require 'item-write body))
+                    (Err "route not found")))
+      ("PUT"    (if (= path "/items")
                     (repo/update (pipeline/require 'item-write body))
-                    (if (and (= method "DELETE") (= path "/items"))
-                        (repo/delete (pipeline/require 'item-delete body))
-                        {'status "error" 'error "route not found"})))))))
+                    (Err "route not found")))
+      ("DELETE" (if (= path "/items")
+                    (repo/delete (pipeline/require 'item-delete body))
+                    (Err "route not found")))
+      (_        (Err "route not found")))))
 
+;; ── Server ────────────────────────────────────────────────────────────────────
+
+;; partial binds the socket once — respond is (lambda (msg) (tcp-write client msg))
+;; |> pipes the raw bytes through the full request processing chain
 (define (server/handle-client client)
-  (handle
-    (begin
-      (let (raw (tcp-read client)
-            req (pipeline/decode-request raw)
-            payload (pipeline/check-response (pipeline/execute req)))
-        (tcp-write client (http/response "200 OK" payload))
-        (tcp-close client)
-        nil))
-    (raise msg
-      (begin
-        (tcp-write client (http/response "400 Bad Request" {'status "error" 'error msg}))
-        (tcp-close client)
-        nil))))
+  (let (respond (partial tcp-write client))
+    (handle
+      (let (payload (|> (tcp-read client)
+                        pipeline/decode-request
+                        pipeline/execute
+                        pipeline/result->response))
+        (respond (http/response "200 OK" payload))
+        (tcp-close client))
+      (raise msg
+        (respond (http/response "400 Bad Request"
+                                {'status "error" 'error msg}))
+        (tcp-close client)))))
 
 (define (server/accept-loop listener)
   (let (client (tcp-accept listener))
@@ -176,19 +212,17 @@
     (server/accept-loop listener)))
 
 (define (server/start-async host port)
-  (let (listener (tcp-listen host port 128)
+  (let (listener    (tcp-listen host port 128)
         acceptor-id nil)
-    (println (string-append "Deduce CRUD server listening on " host ":" (number->string port)))
+    (println (format "Deduce CRUD server listening on %s:%d" host port))
     (set! acceptor-id (spawn (lambda () (server/accept-loop listener))))
     {'host host 'port port 'listener listener 'acceptor-id acceptor-id}))
 
+;; when — cleaner than (if x (begin ...) nil)
 (define (server/stop server-state)
-  (if (null? server-state)
-      nil
-      (begin
-        (fiber-cancel ('acceptor-id server-state))
-        (tcp-close ('listener server-state))
-        nil)))
+  (when server-state
+    (fiber-cancel ('acceptor-id server-state))
+    (tcp-close ('listener server-state))))
 
 (define (server/start host port)
   (let (srv (server/start-async host port))

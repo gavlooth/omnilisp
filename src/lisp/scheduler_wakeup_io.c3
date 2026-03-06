@@ -95,30 +95,139 @@ fn void scheduler_complete_pending_offload(usz fiber_id) {
     if (f.state == FIBER_BLOCKED) f.state = FIBER_READY;
 }
 
-fn bool wakeup_enqueue(WakeupEventType type, usz fiber_id, int status, void* payload) {
-    while (true) {
-        usz tail = g_scheduler.wakeup_tail.load();
-        usz head = g_scheduler.wakeup_head.load();
-        if (head - tail >= WAKEUP_RING_SIZE) {
-            g_scheduler.wakeup_drops.add(1);
-            return false;
-        }
+fn void scheduler_signal_async() @inline {
+    if (g_scheduler.async_handle != null) (void)uv_async_send(g_scheduler.async_handle);
+}
 
-        usz prev = mem::compare_exchange(&g_scheduler.wakeup_head.data, head, head + 1);
-        if (prev != head) continue;
-
-        usz slot = head & WAKEUP_RING_MASK;
-        WakeupEvent ev = {};
-        ev.fiber_id = fiber_id;
-        ev.type = type;
-        ev.status = status;
-        ev.payload = payload;
-        g_scheduler.wakeup_ring[slot] = ev;
-        g_scheduler.wakeup_ready[slot].store(true);
-
-        if (g_scheduler.async_handle != null) (void)uv_async_send(g_scheduler.async_handle);
-        return true;
+fn void scheduler_handle_invalid_wakeup(WakeupEvent ev) {
+    if (ev.type == WAKEUP_OFFLOAD_READY && ev.payload != null) {
+        scheduler_free_offload_completion(ev.payload);
     }
+}
+
+fn void scheduler_dispatch_wakeup_event(WakeupEvent ev) {
+    usz fid = ev.fiber_id;
+    if (fid >= g_scheduler.fiber_count) {
+        scheduler_handle_invalid_wakeup(ev);
+        return;
+    }
+
+    switch (ev.type) {
+        case WAKEUP_TIMER_EXPIRED:
+            scheduler_handle_wakeup_timer_expired(fid);
+        case WAKEUP_POLL_ERROR:
+            scheduler_handle_wakeup_poll_error(fid, ev.status);
+        case WAKEUP_POLL_READABLE:
+            scheduler_handle_wakeup_poll_readable(fid);
+        case WAKEUP_OFFLOAD_READY:
+            scheduler_handle_wakeup_offload_ready(fid, ev.payload);
+    }
+}
+
+fn ReliableWakeupNode* reliable_wakeup_alloc_node(WakeupEvent ev) {
+    ReliableWakeupNode* node = (ReliableWakeupNode*)mem::malloc(ReliableWakeupNode.sizeof);
+    if (node == null) return null;
+    node.event = ev;
+    node.next = null;
+    return node;
+}
+
+fn bool scheduler_publish_reliable_wakeup(WakeupEvent ev) {
+    ReliableWakeupQueue* q = &g_scheduler.reliable_wakeups;
+    if (!q.initialized) {
+        g_scheduler.wakeup_enqueue_failures.add(1);
+        return false;
+    }
+
+    ReliableWakeupNode* node = reliable_wakeup_alloc_node(ev);
+    if (node == null) {
+        g_scheduler.wakeup_enqueue_failures.add(1);
+        return false;
+    }
+
+    q.mu.lock();
+    if (q.tail == null) {
+        q.head = node;
+        q.tail = node;
+    } else {
+        q.tail.next = node;
+        q.tail = node;
+    }
+    q.count++;
+    q.mu.unlock();
+
+    g_scheduler.reliable_wakeup_enqueues.add(1);
+    scheduler_signal_async();
+    return true;
+}
+
+fn ReliableWakeupNode* scheduler_take_reliable_wakeup_batch() {
+    ReliableWakeupQueue* q = &g_scheduler.reliable_wakeups;
+    if (!q.initialized) return null;
+
+    q.mu.lock();
+    ReliableWakeupNode* head = q.head;
+    q.head = null;
+    q.tail = null;
+    q.count = 0;
+    q.mu.unlock();
+    return head;
+}
+
+fn void scheduler_clear_reliable_wakeup_queue() {
+    ReliableWakeupNode* node = scheduler_take_reliable_wakeup_batch();
+    while (node != null) {
+        ReliableWakeupNode* next = node.next;
+        scheduler_handle_invalid_wakeup(node.event);
+        mem::free(node);
+        node = next;
+    }
+}
+
+fn usz reliable_wakeup_pending_count() {
+    ReliableWakeupQueue* q = &g_scheduler.reliable_wakeups;
+    if (!q.initialized) return 0;
+
+    q.mu.lock();
+    usz count = q.count;
+    q.mu.unlock();
+    return count;
+}
+
+fn bool scheduler_publish_timer_expired(usz fiber_id) @inline {
+    WakeupEvent ev = {};
+    ev.fiber_id = fiber_id;
+    ev.type = WAKEUP_TIMER_EXPIRED;
+    return scheduler_publish_reliable_wakeup(ev);
+}
+
+fn bool scheduler_publish_poll_error(usz fiber_id, int status) @inline {
+    WakeupEvent ev = {};
+    ev.fiber_id = fiber_id;
+    ev.type = WAKEUP_POLL_ERROR;
+    ev.status = status;
+    return scheduler_publish_reliable_wakeup(ev);
+}
+
+fn bool scheduler_publish_offload_ready(usz fiber_id, OffloadCompletion* completion) @inline {
+    WakeupEvent ev = {};
+    ev.fiber_id = fiber_id;
+    ev.type = WAKEUP_OFFLOAD_READY;
+    ev.payload = completion;
+    return scheduler_publish_reliable_wakeup(ev);
+}
+
+fn void scheduler_signal_poll_readable(usz fiber_id) {
+    if (fiber_id >= g_scheduler.fiber_count) return;
+    PendingTcpRead* op = &g_scheduler.pending_reads[fiber_id];
+    if (!op.active || op.completed) return;
+    if (op.readable_pending) {
+        g_scheduler.readable_signal_coalesces.add(1);
+        return;
+    }
+
+    op.readable_pending = true;
+    scheduler_signal_async();
 }
 
 fn void scheduler_uv_timer_cb(void* handle) {
@@ -128,7 +237,7 @@ fn void scheduler_uv_timer_cb(void* handle) {
     PendingTcpRead* op = &g_scheduler.pending_reads[(usz)idx];
     if (!op.active || op.completed) return;
 
-    (void)wakeup_enqueue(WAKEUP_TIMER_EXPIRED, (usz)idx, 0, null);
+    (void)scheduler_publish_timer_expired((usz)idx);
 }
 
 fn void scheduler_uv_poll_cb(void* handle, int status, int events) {
@@ -139,15 +248,9 @@ fn void scheduler_uv_poll_cb(void* handle, int status, int events) {
     if (!op.active || op.completed) return;
 
     if (status < 0) {
-        (void)wakeup_enqueue(WAKEUP_POLL_ERROR, (usz)idx, status, null);
+        (void)scheduler_publish_poll_error((usz)idx, status);
     } else if ((events & UV_READABLE) != 0) {
-        (void)wakeup_enqueue(WAKEUP_POLL_READABLE, (usz)idx, 0, null);
-    }
-}
-
-fn void scheduler_handle_invalid_wakeup(WakeupEvent ev) {
-    if (ev.type == WAKEUP_OFFLOAD_READY && ev.payload != null) {
-        scheduler_free_offload_completion(ev.payload);
+        scheduler_signal_poll_readable((usz)idx);
     }
 }
 
@@ -170,6 +273,7 @@ fn void scheduler_handle_wakeup_poll_error(usz fid, int status) {
 fn void scheduler_handle_wakeup_poll_readable(usz fid) {
     PendingTcpRead* op = &g_scheduler.pending_reads[fid];
     if (!op.active || op.completed) return;
+    op.readable_pending = false;
 
     long n = c_recv(op.fd, op.buffer, op.max_bytes, MSG_DONTWAIT);
     if (n >= 0) {
@@ -200,45 +304,36 @@ fn void scheduler_handle_wakeup_offload_ready(usz fid, void* payload) {
     scheduler_complete_pending_offload(fid);
 }
 
+fn void scheduler_drain_coalesced_readable_signals() {
+    for (usz fid = 0; fid < g_scheduler.fiber_count; fid++) {
+        PendingTcpRead* op = &g_scheduler.pending_reads[fid];
+        if (!op.active || op.completed || !op.readable_pending) continue;
+        scheduler_handle_wakeup_poll_readable(fid);
+    }
+}
+
 fn void drain_wakeups() {
-    usz tail = g_scheduler.wakeup_tail.load();
     while (true) {
-        usz head = g_scheduler.wakeup_head.load();
-        if (tail == head) break;
+        ReliableWakeupNode* node = scheduler_take_reliable_wakeup_batch();
+        if (node == null) break;
 
-        usz slot = tail & WAKEUP_RING_MASK;
-        if (!g_scheduler.wakeup_ready[slot].load()) break;
-
-        WakeupEvent ev = g_scheduler.wakeup_ring[slot];
-        g_scheduler.wakeup_ready[slot].store(false);
-        tail++;
-
-        usz fid = ev.fiber_id;
-        if (fid >= g_scheduler.fiber_count) {
-            scheduler_handle_invalid_wakeup(ev);
-            continue;
-        }
-
-        switch (ev.type) {
-            case WAKEUP_TIMER_EXPIRED:
-                scheduler_handle_wakeup_timer_expired(fid);
-            case WAKEUP_POLL_ERROR:
-                scheduler_handle_wakeup_poll_error(fid, ev.status);
-            case WAKEUP_POLL_READABLE:
-                scheduler_handle_wakeup_poll_readable(fid);
-            case WAKEUP_OFFLOAD_READY:
-                scheduler_handle_wakeup_offload_ready(fid, ev.payload);
+        while (node != null) {
+            ReliableWakeupNode* next = node.next;
+            scheduler_dispatch_wakeup_event(node.event);
+            mem::free(node);
+            node = next;
         }
     }
-    g_scheduler.wakeup_tail.store(tail);
+
+    scheduler_drain_coalesced_readable_signals();
 }
 
 fn Value* scheduler_value_from_pending_tcp_read(PendingTcpRead* op, Interp* interp) {
     if (op.timed_out) {
-        return raise_error(interp, "tcp-read: timeout");
+        return scheduler_raise(interp, "scheduler/tcp-read-timeout", "tcp-read: timeout");
     }
     if (op.error_code != 0) {
-        return raise_error(interp, "tcp-read: async read failed");
+        return scheduler_raise(interp, "scheduler/tcp-read-async-read-failed", "tcp-read: async read failed");
     }
     if (op.nread <= 0) {
         return make_string(interp, "");
@@ -249,7 +344,11 @@ fn Value* scheduler_value_from_pending_tcp_read(PendingTcpRead* op, Interp* inte
 fn Value* scheduler_consume_pending_tcp_read(usz fiber_id, Interp* interp) {
     PendingTcpRead* op = &g_scheduler.pending_reads[fiber_id];
     if (!op.active || !op.completed) {
-        return raise_error(interp, "tcp-read: resumed before async read completed");
+        return scheduler_raise(
+            interp,
+            "scheduler/tcp-read-resumed-before-async-read-completed",
+            "tcp-read: resumed before async read completed"
+        );
     }
 
     Value* out = scheduler_value_from_pending_tcp_read(op, interp);
@@ -281,13 +380,17 @@ fn Value* scheduler_value_from_offload_bytes(OffloadCompletion* completion, Inte
 
 fn Value* scheduler_value_from_offload_error(OffloadCompletion* completion, Interp* interp) {
     if (completion.error_msg != null && completion.error_len > 0) {
-        return raise_error(interp, completion.error_msg[:completion.error_len]);
+        return scheduler_raise(
+            interp,
+            "scheduler/offload-worker-error",
+            completion.error_msg[:completion.error_len]
+        );
     }
-    return raise_error(interp, "offload: worker failed");
+    return scheduler_raise(interp, "scheduler/offload-worker-failed", "offload: worker failed");
 }
 
 fn Value* scheduler_value_from_offload_completion(OffloadCompletion* completion, Interp* interp) {
-    if (completion == null) return raise_error(interp, "offload: missing completion");
+    if (completion == null) return scheduler_raise(interp, "scheduler/offload-missing-completion", "offload: missing completion");
 
     Value* out;
     switch (completion.kind) {
@@ -306,7 +409,11 @@ fn Value* scheduler_value_from_offload_completion(OffloadCompletion* completion,
 fn Value* scheduler_consume_pending_offload(usz fiber_id, Interp* interp) {
     PendingOffload* off = &g_scheduler.pending_offloads[fiber_id];
     if (!off.active || !off.completed || off.completion == null) {
-        return raise_error(interp, "offload: resumed before completion");
+        return scheduler_raise(
+            interp,
+            "scheduler/offload-resumed-before-completion",
+            "offload: resumed before completion"
+        );
     }
 
     OffloadCompletion* completion = (OffloadCompletion*)off.completion;

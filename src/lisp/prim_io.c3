@@ -152,7 +152,9 @@ fn Value* prim_load(Value*[] args, Env* env, Interp* interp) {
         char[] source = content;
 
         // Push source directory for nested loads/imports
-        push_source_dir(path, interp);
+        if (!push_source_dir(path, interp)) {
+            return raise_error(interp, "load: failed to allocate source directory context");
+        }
 
         // Run all expressions in the file
         EvalResult r = run_program(source, interp);

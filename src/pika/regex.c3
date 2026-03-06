@@ -58,10 +58,12 @@ struct CharRange {
 
 // Character class data
 struct CharClassData {
-    CharRange[64] ranges;   // Start-end pairs for ranges
+    CharRange[] ranges;     // Start-end pairs for ranges
     int num_ranges;
-    char[64] chars;         // Individual characters
+    int ranges_cap;
+    char[] chars;           // Individual characters
     int num_chars;
+    int chars_cap;
     bool negated;           // [^...] negation
 }
 
@@ -91,7 +93,8 @@ struct RegexTokenizer {
     bool has_error;
 }
 
-const int REGEX_QUANTIFIER_BOUND_MAX = 4096;
+const int REGEX_CHAR_CLASS_INIT_CAP = 8;
+const int REGEX_QUANTIFIER_COMPILE_PARTS_MAX = 131072;
 
 fn RegexTokenizer regex_tokenizer_new(char[] pattern) {
     RegexTokenizer t;
@@ -121,16 +124,60 @@ fn void RegexTokenizer.set_error(RegexTokenizer* self, char[] msg) {
     self.error[len] = 0;
 }
 
-fn void cc_add_range(CharClassData* cc, char start, char end) @inline {
-    if (cc.num_ranges < 64) {
-        cc.ranges[cc.num_ranges].start = start;
-        cc.ranges[cc.num_ranges].end = end;
-        cc.num_ranges++;
+fn CharClassData* cc_new() @inline {
+    CharClassData* cc = mem::new(CharClassData);
+    cc.num_ranges = 0;
+    cc.ranges_cap = 0;
+    cc.num_chars = 0;
+    cc.chars_cap = 0;
+    cc.negated = false;
+    return cc;
+}
+
+fn void cc_ensure_ranges_cap(CharClassData* cc, int needed) @inline {
+    if (needed <= cc.ranges_cap) return;
+
+    int new_cap = cc.ranges_cap < REGEX_CHAR_CLASS_INIT_CAP
+        ? REGEX_CHAR_CLASS_INIT_CAP
+        : cc.ranges_cap;
+    while (new_cap < needed) new_cap *= 2;
+
+    CharRange[] next = mem::new_array(CharRange, (usz)new_cap);
+    for (int i = 0; i < cc.num_ranges; i++) {
+        next[i] = cc.ranges[i];
     }
+    if (cc.ranges_cap > 0) mem::free(cc.ranges.ptr);
+    cc.ranges = next;
+    cc.ranges_cap = new_cap;
+}
+
+fn void cc_ensure_chars_cap(CharClassData* cc, int needed) @inline {
+    if (needed <= cc.chars_cap) return;
+
+    int new_cap = cc.chars_cap < REGEX_CHAR_CLASS_INIT_CAP
+        ? REGEX_CHAR_CLASS_INIT_CAP
+        : cc.chars_cap;
+    while (new_cap < needed) new_cap *= 2;
+
+    char[] next = mem::new_array(char, (usz)new_cap);
+    for (int i = 0; i < cc.num_chars; i++) {
+        next[i] = cc.chars[i];
+    }
+    if (cc.chars_cap > 0) mem::free(cc.chars.ptr);
+    cc.chars = next;
+    cc.chars_cap = new_cap;
+}
+
+fn void cc_add_range(CharClassData* cc, char start, char end) @inline {
+    cc_ensure_ranges_cap(cc, cc.num_ranges + 1);
+    cc.ranges[cc.num_ranges].start = start;
+    cc.ranges[cc.num_ranges].end = end;
+    cc.num_ranges++;
 }
 
 fn void cc_add_char(CharClassData* cc, char c) @inline {
-    if (cc.num_chars < 64) cc.chars[cc.num_chars++] = c;
+    cc_ensure_chars_cap(cc, cc.num_chars + 1);
+    cc.chars[cc.num_chars++] = c;
 }
 
 fn char regex_escape_char(char c) @inline {
@@ -140,6 +187,22 @@ fn char regex_escape_char(char c) @inline {
         case 'r': return '\r';
         default: return c;
     }
+}
+
+fn bool regex_parse_decimal_i32(RegexTokenizer* self, int* out, bool* has_digits, char[] too_large_error) {
+    long value = 0;
+    *has_digits = false;
+    while (self.peek() >= '0' && self.peek() <= '9') {
+        *has_digits = true;
+        int digit = (int)(self.advance() - '0');
+        if (value > ((long)int.max - (long)digit) / 10) {
+            self.set_error(too_large_error);
+            return false;
+        }
+        value = value * 10 + (long)digit;
+    }
+    *out = (int)value;
+    return true;
 }
 
 fn bool regex_handle_char_class_escape(CharClassData* cc, char esc, char* out_char) {
@@ -153,28 +216,22 @@ fn bool regex_handle_char_class_escape(CharClassData* cc, char esc, char* out_ch
             cc_add_range(cc, '0', '9');
             return true;
         case 'D':
-            if (cc.num_ranges < 62) {
-                cc_add_range(cc, 0, '/');
-                cc_add_range(cc, ':', 127);
-            }
+            cc_add_range(cc, 0, '/');
+            cc_add_range(cc, ':', 127);
             return true;
         case 'w':
-            if (cc.num_ranges < 61) {
-                cc_add_range(cc, 'a', 'z');
-                cc_add_range(cc, 'A', 'Z');
-                cc_add_range(cc, '0', '9');
-            }
+            cc_add_range(cc, 'a', 'z');
+            cc_add_range(cc, 'A', 'Z');
+            cc_add_range(cc, '0', '9');
             cc_add_char(cc, '_');
             return true;
         case 'W':
             return true;
         case 's':
-            if (cc.num_chars < 60) {
-                cc_add_char(cc, ' ');
-                cc_add_char(cc, '\t');
-                cc_add_char(cc, '\n');
-                cc_add_char(cc, '\r');
-            }
+            cc_add_char(cc, ' ');
+            cc_add_char(cc, '\t');
+            cc_add_char(cc, '\n');
+            cc_add_char(cc, '\r');
             return true;
         case 'S':
             return true;
@@ -201,10 +258,7 @@ fn bool RegexTokenizer.try_parse_char_class_range(RegexTokenizer* self, CharClas
 }
 
 fn CharClassData* RegexTokenizer.parse_char_class(RegexTokenizer* self) {
-    CharClassData* cc = mem::new(CharClassData);
-    cc.num_ranges = 0;
-    cc.num_chars = 0;
-    cc.negated = false;
+    CharClassData* cc = cc_new();
 
     // Skip opening [
     self.advance();
@@ -258,9 +312,9 @@ fn RegexToken RegexTokenizer.parse_bounded_quantifier(RegexTokenizer* self) {
     // Parse min
     int min = 0;
     bool has_min = false;
-    while (self.peek() >= '0' && self.peek() <= '9') {
-        has_min = true;
-        min = min * 10 + (int)(self.advance() - '0');
+    if (!regex_parse_decimal_i32(self, &min, &has_min, "Bounded quantifier lower bound too large")) {
+        tok.type = RE_ERROR;
+        return tok;
     }
     if (!has_min) {
         self.set_error("Expected number after {");
@@ -268,11 +322,6 @@ fn RegexToken RegexTokenizer.parse_bounded_quantifier(RegexTokenizer* self) {
         return tok;
     }
     tok.bounds.min = min;
-    if (tok.bounds.min > REGEX_QUANTIFIER_BOUND_MAX) {
-        self.set_error("Bounded quantifier lower bound too large");
-        tok.type = RE_ERROR;
-        return tok;
-    }
 
     if (self.peek() == '}') {
         // {n} - exact count
@@ -288,9 +337,9 @@ fn RegexToken RegexTokenizer.parse_bounded_quantifier(RegexTokenizer* self) {
             // {n,m} - between n and m
             int max = 0;
             bool has_max = false;
-            while (self.peek() >= '0' && self.peek() <= '9') {
-                has_max = true;
-                max = max * 10 + (int)(self.advance() - '0');
+            if (!regex_parse_decimal_i32(self, &max, &has_max, "Bounded quantifier upper bound too large")) {
+                tok.type = RE_ERROR;
+                return tok;
             }
             if (!has_max) {
                 self.set_error("Expected upper bound in quantifier");
@@ -298,11 +347,6 @@ fn RegexToken RegexTokenizer.parse_bounded_quantifier(RegexTokenizer* self) {
                 return tok;
             }
             tok.bounds.max = max;
-            if (tok.bounds.max > REGEX_QUANTIFIER_BOUND_MAX) {
-                self.set_error("Bounded quantifier upper bound too large");
-                tok.type = RE_ERROR;
-                return tok;
-            }
             if (tok.bounds.max < tok.bounds.min) {
                 self.set_error("Quantifier upper bound < lower bound");
                 tok.type = RE_ERROR;
@@ -347,38 +391,28 @@ fn RegexToken RegexTokenizer.tokenize_possessive(RegexTokenizer* self, RegexToke
 }
 
 fn CharClassData* regex_digit_class(bool negated) {
-    CharClassData* cc = mem::new(CharClassData);
-    cc.num_ranges = 1;
-    cc.ranges[0].start = '0';
-    cc.ranges[0].end = '9';
-    cc.num_chars = 0;
+    CharClassData* cc = cc_new();
+    cc_add_range(cc, '0', '9');
     cc.negated = negated;
     return cc;
 }
 
 fn CharClassData* regex_word_class(bool negated) {
-    CharClassData* cc = mem::new(CharClassData);
-    cc.num_ranges = 3;
-    cc.ranges[0].start = 'a';
-    cc.ranges[0].end = 'z';
-    cc.ranges[1].start = 'A';
-    cc.ranges[1].end = 'Z';
-    cc.ranges[2].start = '0';
-    cc.ranges[2].end = '9';
-    cc.num_chars = 1;
-    cc.chars[0] = '_';
+    CharClassData* cc = cc_new();
+    cc_add_range(cc, 'a', 'z');
+    cc_add_range(cc, 'A', 'Z');
+    cc_add_range(cc, '0', '9');
+    cc_add_char(cc, '_');
     cc.negated = negated;
     return cc;
 }
 
 fn CharClassData* regex_space_class(bool negated) {
-    CharClassData* cc = mem::new(CharClassData);
-    cc.num_ranges = 0;
-    cc.num_chars = 4;
-    cc.chars[0] = ' ';
-    cc.chars[1] = '\t';
-    cc.chars[2] = '\n';
-    cc.chars[3] = '\r';
+    CharClassData* cc = cc_new();
+    cc_add_char(cc, ' ');
+    cc_add_char(cc, '\t');
+    cc_add_char(cc, '\n');
+    cc_add_char(cc, '\r');
     cc.negated = negated;
     return cc;
 }
@@ -916,12 +950,16 @@ fn int compile_regex_quantified(RegexCompiler* rc) {
             // Bounded quantifier {n} or {n,} or {n,m}
             int min = qtok.bounds.min;
             int max = qtok.bounds.max;
-            if (min > REGEX_QUANTIFIER_BOUND_MAX) {
-                rc.tok.set_error("Bounded quantifier lower bound too large");
-                return rc.rb.add(regex_gen_name(rc, "err"), mk_fail());
+            int required_parts = max < 0 ? min : max;
+            if (max < 0) {
+                if (min == int.max) {
+                    rc.tok.set_error("Bounded quantifier too large for compiled regex");
+                    return rc.rb.add(regex_gen_name(rc, "err"), mk_fail());
+                }
+                required_parts = min + 1; // extra mk_many(atom) tail
             }
-            if (max > REGEX_QUANTIFIER_BOUND_MAX) {
-                rc.tok.set_error("Bounded quantifier upper bound too large");
+            if (required_parts > REGEX_QUANTIFIER_COMPILE_PARTS_MAX) {
+                rc.tok.set_error("Bounded quantifier too large for compiled regex");
                 return rc.rb.add(regex_gen_name(rc, "err"), mk_fail());
             }
 
@@ -940,9 +978,9 @@ fn int compile_regex_quantified(RegexCompiler* rc) {
             } else if (max > min) {
                 // Optional part (min to max)
                 int eps = rc.rb.add("_eps", mk_epsilon());
+                int[] opt_alts = make_children_2(atom, eps);
+                int opt = rc.rb.add(regex_gen_name(rc, "bnd"), mk_first(opt_alts));
                 for (int i = min; i < max; i++) {
-                    int[] opt_alts = make_children_2(atom, eps);
-                    int opt = rc.rb.add(regex_gen_name(rc, "bnd"), mk_first(opt_alts));
                     regex_parts_push(&parts, &part_count, &part_cap, opt);
                 }
             }
@@ -1364,24 +1402,40 @@ fn RegexMatch regex_fullmatch_simple_fallback(char[] pattern, char[] input) {
     return no_match();
 }
 
-fn RegexMatch[64] regex_find_all_simple_fallback(char[] pattern, char[] input, int* count) {
-    RegexMatch[64] matches;
+fn void regex_matches_push(RegexMatch[]* matches, int* count, int* cap, RegexMatch match) {
+    if (*count >= *cap) {
+        int new_cap = *cap < 8 ? 8 : *cap * 2;
+        RegexMatch[] next = mem::new_array(RegexMatch, (usz)new_cap);
+        for (int i = 0; i < *count; i++) {
+            next[i] = (*matches)[i];
+        }
+        if (*cap > 0) mem::free((*matches).ptr);
+        *matches = next;
+        *cap = new_cap;
+    }
+    (*matches)[*count] = match;
+    (*count)++;
+}
+
+fn RegexMatch[] regex_find_all_simple_fallback(char[] pattern, char[] input, int* count) {
+    RegexMatch[] matches;
+    int cap = 0;
+    int match_count = 0;
     *count = 0;
 
     int pos = 0;
-    while (pos < (int)input.len && *count < 64) {
+    while (pos < (int)input.len) {
         RegexMatch m = regex_match_simple(pattern, input, pos);
         if (m.matched) {
-            matches[*count] = m;
-            (*count)++;
+            regex_matches_push(&matches, &match_count, &cap, m);
             pos = m.end + 1;
             if (pos <= m.start) pos = m.start + 1; // Avoid infinite loop on empty match
         } else {
             pos++;
         }
     }
-
-    return matches;
+    *count = match_count;
+    return match_count > 0 ? matches[:(usz)match_count] : matches;
 }
 
 fn RegexMatch regex_search_compiled(char[] pattern, char[] input, bool* usable) {
@@ -1427,8 +1481,10 @@ fn RegexMatch regex_fullmatch_compiled(char[] pattern, char[] input, bool* usabl
     return no_match();
 }
 
-fn RegexMatch[64] regex_find_all_compiled(char[] pattern, char[] input, int* count, bool* usable) {
-    RegexMatch[64] matches;
+fn RegexMatch[] regex_find_all_compiled(char[] pattern, char[] input, int* count, bool* usable) {
+    RegexMatch[] matches;
+    int cap = 0;
+    int match_count = 0;
     *count = 0;
     *usable = false;
 
@@ -1442,7 +1498,7 @@ fn RegexMatch[64] regex_find_all_compiled(char[] pattern, char[] input, int* cou
     defer regex_release_parser_state(&st);
 
     int pos = 0;
-    while (pos < (int)input.len && *count < 64) {
+    while (pos < (int)input.len) {
         bool found = false;
         int start = rx.anchored_start ? 0 : pos;
         int end = rx.anchored_start ? 0 : (int)input.len - 1;
@@ -1457,8 +1513,7 @@ fn RegexMatch[64] regex_find_all_compiled(char[] pattern, char[] input, int* cou
 
             Match* mm = &st.matches[mid];
             RegexMatch m = regex_mk_match(mm.first, mm.last, input);
-            matches[*count] = m;
-            (*count)++;
+            regex_matches_push(&matches, &match_count, &cap, m);
             pos = m.end + 1;
             if (pos <= m.start) pos = m.start + 1; // Avoid infinite loop on empty match
             found = true;
@@ -1468,8 +1523,8 @@ fn RegexMatch[64] regex_find_all_compiled(char[] pattern, char[] input, int* cou
         if (!found) break;
         if (rx.anchored_start && pos > 0) break;
     }
-
-    return matches;
+    *count = match_count;
+    return match_count > 0 ? matches[:(usz)match_count] : matches;
 }
 
 // Search for pattern anywhere in input
@@ -1491,9 +1546,9 @@ fn RegexMatch regex_fullmatch(char[] pattern, char[] input) {
 }
 
 // Find all non-overlapping matches
-fn RegexMatch[64] regex_find_all(char[] pattern, char[] input, int* count) {
+fn RegexMatch[] regex_find_all(char[] pattern, char[] input, int* count) {
     bool usable = false;
-    RegexMatch[64] matches = regex_find_all_compiled(pattern, input, count, &usable);
+    RegexMatch[] matches = regex_find_all_compiled(pattern, input, count, &usable);
     if (usable) return matches;
     g_regex_fallback_uses++;
     return regex_find_all_simple_fallback(pattern, input, count);

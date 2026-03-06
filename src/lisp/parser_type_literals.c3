@@ -1,5 +1,6 @@
 module lisp;
 
+import std::core::mem;
 import std::collections::list;
 
 fn TypeAnnotation parser_empty_type_annotation() @inline {
@@ -7,10 +8,38 @@ fn TypeAnnotation parser_empty_type_annotation() @inline {
     ann.has_annotation = false;
     ann.is_compound = false;
     ann.is_dict = false;
+    ann.base_type = 0;
+    ann.params = null;
     ann.param_count = 0;
+    ann.meta = null;
     ann.meta_count = 0;
+    ann.val_literal = 0;
     ann.has_val_literal = false;
     return ann;
+}
+
+fn bool Parser.type_annotation_copy_params(Parser* self, TypeAnnotation* ann, List{SymbolId}* params) {
+    if (params.len() == 0) return true;
+    ann.params = (SymbolId*)mem::malloc(SymbolId.sizeof * params.len());
+    if (ann.params == null) {
+        self.set_error("out of memory while parsing type annotation");
+        return false;
+    }
+    ann.param_count = params.len();
+    for (usz i = 0; i < params.len(); i++) ann.params[i] = (*params)[i];
+    return true;
+}
+
+fn bool Parser.type_annotation_copy_meta(Parser* self, TypeAnnotation* ann, List{MetaEntry}* meta) {
+    if (meta.len() == 0) return true;
+    ann.meta = (MetaEntry*)mem::malloc(MetaEntry.sizeof * meta.len());
+    if (ann.meta == null) {
+        self.set_error("out of memory while parsing metadata dict");
+        return false;
+    }
+    ann.meta_count = meta.len();
+    for (usz i = 0; i < meta.len(); i++) ann.meta[i] = (*meta)[i];
+    return true;
 }
 
 fn void Parser.parse_compound_type_annotation(Parser* self, TypeAnnotation* ann) {
@@ -30,11 +59,13 @@ fn void Parser.parse_compound_type_annotation(Parser* self, TypeAnnotation* ann)
         ann.val_literal = self.lexer.current.int_value;
         self.lexer.advance();
     } else {
-        while (self.lexer.current.type == T_SYMBOL && ann.param_count < MAX_TYPE_PARAMS) {
-            ann.params[ann.param_count] = self.get_current_symbol();
-            ann.param_count++;
+        List{SymbolId} params;
+        defer params.free();
+        while (self.lexer.current.type == T_SYMBOL) {
+            params.push(self.get_current_symbol());
             self.lexer.advance();
         }
+        if (!self.type_annotation_copy_params(ann, &params)) return;
     }
     self.expect(T_RPAREN, ")");
 }
@@ -44,35 +75,38 @@ fn void Parser.parse_dict_type_annotation(Parser* self, TypeAnnotation* ann) {
     ann.is_dict = true;
     self.lexer.advance();  // consume {
 
+    List{MetaEntry} meta_entries;
+    defer meta_entries.free();
     while (self.lexer.current.type != T_RBRACE && !self.has_error) {
-        if (ann.meta_count >= MAX_META_ENTRIES) break;
+        MetaEntry entry = {};
         if (self.lexer.current.type == T_QUOTE) {
             self.lexer.advance();
             if (self.lexer.current.type != T_SYMBOL) {
                 self.set_error("expected symbol after ' in metadata dict");
                 return;
             }
-            ann.meta[ann.meta_count].key = self.get_current_symbol();
+            entry.key = self.get_current_symbol();
             self.lexer.advance();
         } else {
             self.set_error("expected 'key in metadata dict");
             return;
         }
         if (self.lexer.current.type == T_INT) {
-            ann.meta[ann.meta_count].is_int = true;
-            ann.meta[ann.meta_count].int_value = self.lexer.current.int_value;
+            entry.is_int = true;
+            entry.int_value = self.lexer.current.int_value;
             self.lexer.advance();
         } else if (self.lexer.current.type == T_SYMBOL) {
-            ann.meta[ann.meta_count].sym_value = self.get_current_symbol();
+            entry.sym_value = self.get_current_symbol();
             self.lexer.advance();
         } else {
             self.set_error("expected value in metadata dict");
             return;
         }
-        ann.meta_count++;
+        meta_entries.push(entry);
     }
 
     if (self.lexer.current.type == T_RBRACE) {
+        if (!self.type_annotation_copy_meta(ann, &meta_entries)) return;
         self.lexer.advance();  // consume }
         return;
     }
@@ -216,4 +250,3 @@ fn Expr* Parser.parse_array_literal(Parser* self) {
     self.expect(T_RBRACKET, "]");
     return self.parse_postfix_index(e);
 }
-

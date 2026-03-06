@@ -6,6 +6,7 @@ module lisp;
  * Bindings are heap-allocated and grow dynamically.
  */
 const usz MATCH_INITIAL_CAPACITY = 32;
+const usz GENSYM_INITIAL_CAPACITY = 16;
 
 struct MatchResult {
     bool matched;
@@ -25,8 +26,36 @@ struct GensymMapping {
 }
 
 struct GensymTable {
-    GensymMapping[64] mappings;
+    GensymMapping* mappings;
     usz count;
+    usz capacity;
+}
+
+fn void gensym_table_init(GensymTable* self) {
+    self.count = 0;
+    self.capacity = GENSYM_INITIAL_CAPACITY;
+    self.mappings = (GensymMapping*)mem::malloc(GensymMapping.sizeof * self.capacity);
+    if (self.mappings == null) self.capacity = 0;
+}
+
+fn void gensym_table_destroy(GensymTable* self) {
+    if (self.mappings != null) mem::free(self.mappings);
+    self.mappings = null;
+    self.count = 0;
+    self.capacity = 0;
+}
+
+fn bool gensym_table_ensure_capacity(GensymTable* self, usz needed) {
+    if (needed <= self.capacity) return true;
+    usz new_cap = self.capacity < GENSYM_INITIAL_CAPACITY ? GENSYM_INITIAL_CAPACITY : self.capacity;
+    while (new_cap < needed) new_cap *= 2;
+    GensymMapping* next = (GensymMapping*)mem::malloc(GensymMapping.sizeof * new_cap);
+    if (next == null) return false;
+    for (usz i = 0; i < self.count; i++) next[i] = self.mappings[i];
+    if (self.mappings != null) mem::free(self.mappings);
+    self.mappings = next;
+    self.capacity = new_cap;
+    return true;
 }
 
 fn MatchResult match_fail() @inline {
@@ -70,11 +99,19 @@ fn void MatchResult.cleanup(MatchResult* self) {
 /**
  * Check if two values are equal (for literal pattern matching).
  */
-fn bool values_equal(Value* a, Value* b, usz depth = 0) {
+const usz EQUAL_STACK_INITIAL_CAPACITY = 256;
+const usz EQUAL_SEEN_INITIAL_CAPACITY = 256;
+
+struct EqualPair {
+    Value* left;
+    Value* right;
+}
+
+fn bool values_equal(Value* a, Value* b) {
     if (a == null && b == null) return true;
     if (a == null || b == null) return false;
-    if (depth >= 256) return false;
-    // Allow cross-type numeric comparison: (= 1 1.0) => true
+
+    // Fast path for non-recursive values.
     if (is_number(a) && is_number(b)) {
         return to_double(a) == to_double(b);
     }
@@ -95,20 +132,169 @@ fn bool values_equal(Value* a, Value* b, usz depth = 0) {
             return true;
         case SYMBOL:
             return a.sym_val == b.sym_val;
-        case CONS:
-            return values_equal(a.cons_val.car, b.cons_val.car, depth + 1) &&
-                   values_equal(a.cons_val.cdr, b.cons_val.cdr, depth + 1);
         case HASHMAP:
             return a == b;  // Pointer equality for mutable containers
+        case CONS:
         case ARRAY:
-            if (a.array_val.length != b.array_val.length) return false;
-            for (usz i = 0; i < a.array_val.length; i++) {
-                if (!values_equal(a.array_val.items[i], b.array_val.items[i], depth + 1)) return false;
-            }
-            return true;
+            break;
         default:
             return a == b;  // Pointer equality for closures, etc.
     }
+
+    usz stack_cap = EQUAL_STACK_INITIAL_CAPACITY;
+    usz stack_count = 0;
+    EqualPair* stack = (EqualPair*)mem::malloc(EqualPair.sizeof * stack_cap);
+
+    usz seen_cap = EQUAL_SEEN_INITIAL_CAPACITY;
+    usz seen_count = 0;
+    EqualPair* seen = (EqualPair*)mem::malloc(EqualPair.sizeof * seen_cap);
+
+    stack[stack_count++] = { .left = a, .right = b };
+    bool ok = true;
+
+    while (stack_count > 0 && ok) {
+        EqualPair pair = stack[stack_count - 1];
+        stack_count--;
+        Value* left = pair.left;
+        Value* right = pair.right;
+
+        if (left == null && right == null) continue;
+        if (left == null || right == null) {
+            ok = false;
+            break;
+        }
+
+        // Allow cross-type numeric comparison: (= 1 1.0) => true
+        if (is_number(left) && is_number(right)) {
+            if (to_double(left) != to_double(right)) {
+                ok = false;
+                break;
+            }
+            continue;
+        }
+        if (left.tag != right.tag) {
+            ok = false;
+            break;
+        }
+
+        switch (left.tag) {
+            case NIL:
+                break;
+            case INT:
+                if (left.int_val != right.int_val) ok = false;
+                break;
+            case DOUBLE:
+                if (left.double_val != right.double_val) ok = false;
+                break;
+            case STRING:
+                if (left.str_len != right.str_len) {
+                    ok = false;
+                    break;
+                }
+                for (usz i = 0; i < left.str_len; i++) {
+                    if (left.str_chars[i] != right.str_chars[i]) {
+                        ok = false;
+                        break;
+                    }
+                }
+                break;
+            case SYMBOL:
+                if (left.sym_val != right.sym_val) ok = false;
+                break;
+            case CONS:
+            {
+                bool already_seen = false;
+                for (usz i = 0; i < seen_count; i++) {
+                    if (seen[i].left == left && seen[i].right == right) {
+                        already_seen = true;
+                        break;
+                    }
+                }
+                if (already_seen) break;
+
+                if (seen_count >= seen_cap) {
+                    usz new_cap = seen_cap * 2;
+                    EqualPair* new_seen = (EqualPair*)mem::malloc(EqualPair.sizeof * new_cap);
+                    for (usz i = 0; i < seen_count; i++) new_seen[i] = seen[i];
+                    mem::free(seen);
+                    seen = new_seen;
+                    seen_cap = new_cap;
+                }
+                seen[seen_count++] = { .left = left, .right = right };
+
+                usz needed = stack_count + 2;
+                if (needed > stack_cap) {
+                    usz new_cap = stack_cap;
+                    while (new_cap < needed) new_cap *= 2;
+                    EqualPair* new_stack = (EqualPair*)mem::malloc(EqualPair.sizeof * new_cap);
+                    for (usz i = 0; i < stack_count; i++) new_stack[i] = stack[i];
+                    mem::free(stack);
+                    stack = new_stack;
+                    stack_cap = new_cap;
+                }
+                // Push cdr first so car is processed next (matches recursive order).
+                stack[stack_count++] = { .left = left.cons_val.cdr, .right = right.cons_val.cdr };
+                stack[stack_count++] = { .left = left.cons_val.car, .right = right.cons_val.car };
+                break;
+            }
+            case HASHMAP:
+                if (left != right) ok = false;  // Pointer equality for mutable containers
+                break;
+            case ARRAY:
+            {
+                if (left.array_val.length != right.array_val.length) {
+                    ok = false;
+                    break;
+                }
+
+                bool already_seen = false;
+                for (usz i = 0; i < seen_count; i++) {
+                    if (seen[i].left == left && seen[i].right == right) {
+                        already_seen = true;
+                        break;
+                    }
+                }
+                if (already_seen) break;
+
+                if (seen_count >= seen_cap) {
+                    usz new_cap = seen_cap * 2;
+                    EqualPair* new_seen = (EqualPair*)mem::malloc(EqualPair.sizeof * new_cap);
+                    for (usz i = 0; i < seen_count; i++) new_seen[i] = seen[i];
+                    mem::free(seen);
+                    seen = new_seen;
+                    seen_cap = new_cap;
+                }
+                seen[seen_count++] = { .left = left, .right = right };
+
+                usz len = left.array_val.length;
+                usz needed = stack_count + len;
+                if (needed > stack_cap) {
+                    usz new_cap = stack_cap;
+                    while (new_cap < needed) new_cap *= 2;
+                    EqualPair* new_stack = (EqualPair*)mem::malloc(EqualPair.sizeof * new_cap);
+                    for (usz i = 0; i < stack_count; i++) new_stack[i] = stack[i];
+                    mem::free(stack);
+                    stack = new_stack;
+                    stack_cap = new_cap;
+                }
+                for (usz i = len; i > 0; i--) {
+                    usz idx = i - 1;
+                    stack[stack_count++] = {
+                        .left = left.array_val.items[idx],
+                        .right = right.array_val.items[idx]
+                    };
+                }
+                break;
+            }
+            default:
+                if (left != right) ok = false;  // Pointer equality for closures, etc.
+                break;
+        }
+    }
+
+    mem::free(seen);
+    mem::free(stack);
+    return ok;
 }
 
 /**
@@ -268,6 +454,13 @@ fn MatchResult match_pattern_guard(Pattern* pat, Value* val, Interp* interp) {
     return match_ok();
 }
 
+fn MatchResult match_pattern_as(Pattern* pat, Value* val, Interp* interp) {
+    MatchResult result = match_pattern(pat.as_sub, val, interp);
+    if (!result.matched) return result;
+    result.add_binding(pat.as_name, val);
+    return result;
+}
+
 /**
  * Match a pattern against a value.
  */
@@ -299,6 +492,8 @@ fn MatchResult match_pattern(Pattern* pat, Value* val, Interp* interp) {
         case PAT_SEQ:
             // Sequence pattern matches lists and arrays
             return match_seq_pattern(pat, val, interp);
+        case PAT_AS:
+            return match_pattern_as(pat, val, interp);
         case PAT_DICT:
             return match_pattern_dict(pat, val, interp);
         case PAT_CONSTRUCTOR:
@@ -353,47 +548,73 @@ fn MatchResult match_seq_pattern(Pattern* pat, Value* val, Interp* interp) {
     usz elem_count = pat.elem_count;
     RestPosition rest_pos = pat.rest_pos;
 
-    // Collect elements into flat array — supports both CONS lists and ARRAY values
-    Value*[64] elems;
-    usz list_len = collect_seq_elements(val, elems[0:64]);
+    // Collect elements into a flat array sized to the full sequence length.
+    usz list_len = 0;
+    if (val != null && val.tag == ARRAY && val.array_val != null) {
+        list_len = val.array_val.length;
+    } else {
+        list_len = get_list_length(val);
+    }
+
+    Value** elems = null;
+    if (list_len > 0) {
+        elems = (Value**)mem::malloc(Value*.sizeof * list_len);
+        collect_seq_elements(val, elems[0:list_len]);
+    }
+
+    MatchResult seq_result = match_fail();
 
     switch (rest_pos) {
         case REST_NONE:
             if (list_len != elem_count) {
-                return match_fail();
+                break;
             }
-            MatchResult result = match_ok();
-            if (!match_seq_elements(pat, elems[0:64], 0, elem_count, interp, &result)) return match_fail();
-            return result;
+            seq_result = match_ok();
+            if (!match_seq_elements(pat, elems[0:list_len], 0, elem_count, interp, &seq_result)) {
+                seq_result = match_fail();
+            }
+            break;
 
         case REST_START:
             if (list_len < elem_count) {
-                return match_fail();
+                break;
             }
             usz skip = list_len - elem_count;
-            MatchResult start_result = match_ok();
-            if (!match_seq_elements(pat, elems[0:64], skip, elem_count, interp, &start_result)) return match_fail();
-            return start_result;
+            seq_result = match_ok();
+            if (!match_seq_elements(pat, elems[0:list_len], skip, elem_count, interp, &seq_result)) {
+                seq_result = match_fail();
+            }
+            break;
 
         case REST_MIDDLE:
             if (list_len < elem_count) {
-                return match_fail();
+                break;
             }
-            MatchResult mid_result = match_ok();
-            if (!match_seq_elements(pat, elems[0:64], 0, elem_count, interp, &mid_result)) return match_fail();
+            seq_result = match_ok();
+            if (!match_seq_elements(pat, elems[0:list_len], 0, elem_count, interp, &seq_result)) {
+                seq_result = match_fail();
+                break;
+            }
             Value* rest = get_list_rest(val, elem_count, interp);
-            mid_result.add_binding(pat.rest_binding, rest);
-            return mid_result;
+            seq_result.add_binding(pat.rest_binding, rest);
+            break;
 
         case REST_END:
             if (list_len < elem_count) {
-                return match_fail();
+                break;
             }
-            MatchResult end_result = match_ok();
-            if (!match_seq_elements(pat, elems[0:64], 0, elem_count, interp, &end_result)) return match_fail();
-            return end_result;
+            seq_result = match_ok();
+            if (!match_seq_elements(pat, elems[0:list_len], 0, elem_count, interp, &seq_result)) {
+                seq_result = match_fail();
+            }
+            break;
 
         default:
-            return match_fail();
+            break;
     }
+
+    if (elems != null) {
+        mem::free(elems);
+    }
+    return seq_result;
 }

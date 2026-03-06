@@ -310,6 +310,9 @@ fn Expr* vte_define_or_set_form(Value* rest, Interp* interp, bool is_set) {
     Expr* e = interp.alloc_expr();
     if (is_set) {
         e.tag = E_SET;
+        e.set_expr.is_path = false;
+        e.set_expr.path_segments = null;
+        e.set_expr.path_segment_count = 0;
         e.set_expr.name = val_to_sym(rest.cons_val.car);
         rest = rest.cons_val.cdr;
         e.set_expr.value = rest_car_expr(rest, interp);

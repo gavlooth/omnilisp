@@ -47,7 +47,12 @@ fn void scope_dtor_value(void* ptr) {
             }
         case METHOD_TABLE:
             if (v.method_table_val != null) {
-                if (v.method_table_val.entries != null) mem::free(v.method_table_val.entries);
+                if (v.method_table_val.entries != null) {
+                    for (usz i = 0; i < v.method_table_val.entry_count; i++) {
+                        method_signature_destroy_heap(&v.method_table_val.entries[i].sig);
+                    }
+                    mem::free(v.method_table_val.entries);
+                }
                 mem::free(v.method_table_val);
                 v.method_table_val = null;
             }
@@ -349,16 +354,60 @@ fn Value* make_error(Interp* interp, char[] msg) {
     return v;
 }
 
-/**
- * raise_error — Recoverable error via algebraic effect system.
- *
- * If a `raise` handler is on the handler stack, sets raise_pending flag and
- * returns V_ERROR for stack unwinding. If no handler, falls back to V_ERROR
- * (same as make_error).
- *
- * Use make_error() for fatal/internal errors only (stack overflow, invariants).
- */
-fn Value* raise_error(Interp* interp, char[] msg) {
+fn void copy_pending_raise_message(Interp* interp, char[] msg) @inline {
+    usz copy_len = msg.len;
+    if (copy_len > 255) copy_len = 255;
+    for (usz ci = 0; ci < copy_len; ci++) interp.raise_msg[ci] = msg[ci];
+    interp.raise_msg[copy_len] = 0;
+    interp.raise_msg_len = copy_len;
+}
+
+fn Value* make_raise_payload(
+    Interp* interp,
+    SymbolId domain_sym,
+    SymbolId code_sym,
+    char[] message,
+    Value* data = null
+) {
+    Value* payload = make_hashmap(interp, 8);
+    if (payload == null || payload.tag != HASHMAP) return null;
+
+    SymbolId key_code = interp.symbols.intern("code");
+    SymbolId key_message = interp.symbols.intern("message");
+    SymbolId key_domain = interp.symbols.intern("domain");
+    SymbolId key_data = interp.symbols.intern("data");
+
+    Value* code_key = make_symbol(interp, key_code);
+    Value* message_key = make_symbol(interp, key_message);
+    Value* domain_key = make_symbol(interp, key_domain);
+    Value* data_key = make_symbol(interp, key_data);
+
+    Value* code_val = make_symbol(interp, code_sym);
+    Value* message_val = make_string(interp, message);
+    Value* domain_val = make_symbol(interp, domain_sym);
+    Value* data_val = data == null ? make_nil(interp) : data;
+
+    hashmap_set(payload.hashmap_val, code_key, code_val, interp);
+    hashmap_set(payload.hashmap_val, message_key, message_val, interp);
+    hashmap_set(payload.hashmap_val, domain_key, domain_val, interp);
+    hashmap_set(payload.hashmap_val, data_key, data_val, interp);
+
+    return payload;
+}
+
+fn Value* make_raise_payload_names(
+    Interp* interp,
+    char[] domain_name,
+    char[] code_name,
+    char[] message,
+    Value* data = null
+) @inline {
+    SymbolId domain_sym = interp.symbols.intern(domain_name);
+    SymbolId code_sym = interp.symbols.intern(code_name);
+    return make_raise_payload(interp, domain_sym, code_sym, message, data);
+}
+
+fn Value* raise_error_pending_impl(Interp* interp, char[] msg, Value* payload = null) {
     // Fast path: no handlers at all → just return error
     if (interp.handler_count == 0) {
         return make_error(interp, msg);
@@ -380,13 +429,10 @@ fn Value* raise_error(Interp* interp, char[] msg) {
             if (ctag == raise_sym) {
                 // Found a raise handler — set pending flag for jit_handle_impl to dispatch.
                 // We can't safely call jit_eval from within a primitive call chain,
-                // so we store the message and let the handle block dispatch.
+                // so we store payload/message and let the handle block dispatch.
                 interp.flags.raise_pending = true;
-                usz copy_len = msg.len;
-                if (copy_len > 255) copy_len = 255;
-                for (usz ci = 0; ci < copy_len; ci++) interp.raise_msg[ci] = msg[ci];
-                interp.raise_msg[copy_len] = 0;
-                interp.raise_msg_len = copy_len;
+                interp.raise_payload = payload == null ? null : boundary_promote_to_root(payload, interp);
+                copy_pending_raise_message(interp, msg);
                 return make_error(interp, msg);
             }
         }
@@ -396,5 +442,41 @@ fn Value* raise_error(Interp* interp, char[] msg) {
 
     // No raise handler found — fall back to V_ERROR
     return make_error(interp, msg);
+}
+
+fn Value* raise_error_with_payload(
+    Interp* interp,
+    SymbolId domain_sym,
+    SymbolId code_sym,
+    char[] message,
+    Value* data = null
+) {
+    Value* payload = make_raise_payload(interp, domain_sym, code_sym, message, data);
+    return raise_error_pending_impl(interp, message, payload);
+}
+
+fn Value* raise_error_with_payload_names(
+    Interp* interp,
+    char[] domain_name,
+    char[] code_name,
+    char[] message,
+    Value* data = null
+) @inline {
+    SymbolId domain_sym = interp.symbols.intern(domain_name);
+    SymbolId code_sym = interp.symbols.intern(code_name);
+    return raise_error_with_payload(interp, domain_sym, code_sym, message, data);
+}
+
+/**
+ * raise_error — Recoverable error via algebraic effect system.
+ *
+ * If a `raise` handler is on the handler stack, sets raise_pending flag and
+ * returns V_ERROR for stack unwinding. If no handler, falls back to V_ERROR
+ * (same as make_error).
+ *
+ * Use make_error() for fatal/internal errors only (stack overflow, invariants).
+ */
+fn Value* raise_error(Interp* interp, char[] msg) {
+    return raise_error_pending_impl(interp, msg, null);
 }
 

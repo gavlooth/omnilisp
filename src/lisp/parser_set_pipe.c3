@@ -1,5 +1,7 @@
 module lisp;
 
+import std::collections::list;
+
 /**
  * Parse a set! expression (variable mutation).
  * (set! name value)
@@ -13,27 +15,42 @@ fn Expr* Parser.parse_set(Parser* self) {
         // (set! obj.field value) — path mutation
         e.set_expr.is_path = true;
         e.set_expr.path_segment_count = 0;
+        e.set_expr.path_segments = null;
+        List{SymbolId} segments;
         usz text_len = self.lexer.current.text_len;
         usz start = 0;
         for (usz i = 0; i <= text_len; i++) {
             if (i == text_len || self.lexer.current.text[i] == '.') {
                 if (i > start) {
-                    if (e.set_expr.path_segment_count >= MAX_PATH_SEGMENTS) {
-                        self.set_error("too many path segments in set!");
-                        return null;
-                    }
                     usz seg_len = i - start;
                     SymbolId seg_sym = self.interp.symbols.intern(self.lexer.current.text[start:seg_len]);
-                    e.set_expr.path_segments[e.set_expr.path_segment_count] = seg_sym;
-                    e.set_expr.path_segment_count++;
+                    segments.push(seg_sym);
                 }
                 start = i + 1;
             }
         }
+        if (segments.len() == 0) {
+            segments.free();
+            self.set_error("empty path in set!");
+            return null;
+        }
+        e.set_expr.path_segment_count = segments.len();
+        e.set_expr.path_segments = (SymbolId*)mem::malloc(SymbolId.sizeof * segments.len());
+        if (e.set_expr.path_segments == null) {
+            segments.free();
+            self.set_error("out of memory while parsing set! path");
+            return null;
+        }
+        for (usz i = 0; i < segments.len(); i++) {
+            e.set_expr.path_segments[i] = segments[i];
+        }
+        segments.free();
         e.set_expr.name = e.set_expr.path_segments[0];
         self.lexer.advance();
     } else if (self.lexer.current.type == T_SYMBOL) {
         e.set_expr.is_path = false;
+        e.set_expr.path_segment_count = 0;
+        e.set_expr.path_segments = null;
         e.set_expr.name = self.get_current_symbol();
         self.lexer.advance();
     } else {
@@ -65,20 +82,23 @@ fn Expr* Parser.parse_pipe(Parser* self) {
     if (acc == null || self.has_error) return null;
 
     // Parse steps
-    Expr*[64] steps;
-    usz step_count = 0;
+    List{Expr*} steps;
     while (self.lexer.current.type != T_RPAREN && !self.has_error) {
-        if (step_count >= 64) { self.set_error("too many pipe steps"); return null; }
-        steps[step_count] = self.parse_expr();
-        step_count++;
+        steps.push(self.parse_expr());
     }
-    if (self.has_error) return null;
+    if (self.has_error) {
+        steps.free();
+        return null;
+    }
     self.expect(T_RPAREN, ")");
 
-    if (step_count == 0) return acc;
+    if (steps.len() == 0) {
+        steps.free();
+        return acc;
+    }
 
     // Build nested calls left-to-right: (step1 acc), then (step2 result), etc.
-    for (usz i = 0; i < step_count; i++) {
+    for (usz i = 0; i < steps.len(); i++) {
         Expr* step = steps[i];
         if (step.tag == E_CALL) {
             usz new_count = step.call.arg_count + 1;
@@ -102,5 +122,6 @@ fn Expr* Parser.parse_pipe(Parser* self) {
             acc = call;
         }
     }
+    steps.free();
     return acc;
 }

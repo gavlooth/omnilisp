@@ -41,7 +41,15 @@ fn Value* jit_unhandled_effect_error(SymbolId tag, Value* arg_v, Interp* interp)
     char[] utag = interp.symbols.get_name(tag);
     char[] uarg = interp.symbols.get_name(value_type_name(arg_v, interp));
     char[] umsg = io::bprintf(&ubuf, "unhandled effect '%s' with arg type %s", (ZString)utag, (ZString)uarg)!!;
-    return make_error(interp, umsg);
+
+    Value* data = make_hashmap(interp, 8);
+    if (data != null && data.tag == HASHMAP) {
+        SymbolId key_tag = interp.symbols.intern("tag");
+        SymbolId key_arg_type = interp.symbols.intern("arg-type");
+        hashmap_set(data.hashmap_val, make_symbol(interp, key_tag), make_symbol(interp, tag), interp);
+        hashmap_set(data.hashmap_val, make_symbol(interp, key_arg_type), make_symbol(interp, value_type_name(arg_v, interp)), interp);
+    }
+    return raise_error_with_payload_names(interp, "runtime", "runtime/unhandled-effect", umsg, data);
 }
 
 fn bool effect_handler_has_tag(EffectHandler* h, SymbolId tag) {
@@ -66,7 +74,12 @@ fn Value* jit_signal_type_check(SymbolId tag, Value* arg_v, Interp* interp) {
 
     TypeId actual_tid = infer_value_type(arg_v, interp);
     if (actual_tid != INVALID_TYPE_ID && !interp.types.is_subtype(actual_tid, expected_tid)) {
-        return make_error(interp, "perform: argument type mismatch");
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/effect-arg-mismatch",
+            "perform: argument type mismatch"
+        );
     }
     return null;
 }
@@ -83,7 +96,12 @@ fn Value* jit_signal_suspend(EffectHandler* h, SymbolId tag, Value* arg_v, Inter
     save_interp_state(interp, saved_sig);
     if (!suspend_with_scope_guard(current, interp.current_scope)) {
         restore_interp_state(interp, saved_sig);
-        return make_error(interp, "stack engine: failed to register suspend scope guard");
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/suspend-scope-guard",
+            "stack engine: failed to register suspend scope guard"
+        );
     }
     restore_interp_state(interp, saved_sig);
     return interp.resume_value;
@@ -147,7 +165,12 @@ fn Value* jit_signal_impl(Expr* expr, Env* env, Interp* interp) {
         }
 
         if (hit_strict) {
-            return make_error(interp, "strict handler: unhandled effect");
+            return raise_error_with_payload_names(
+                interp,
+                "runtime",
+                "runtime/strict-unhandled-effect",
+                "strict handler: unhandled effect"
+            );
         }
     }
 
@@ -185,7 +208,7 @@ fn Value* jit_handle_dispatch_signal(HandleEffectState* hstate, Expr* expr, Env*
         char[] utag = interp.symbols.get_name(hstate.signal_tag);
         char[] uarg = interp.symbols.get_name(value_type_name(hstate.signal_arg, interp));
         char[] umsg = io::bprintf(&ubuf, "unhandled effect '%s' with arg type %s", (ZString)utag, (ZString)uarg)!!;
-        return make_error(interp, umsg);
+        return raise_error_with_payload_names(interp, "runtime", "runtime/unhandled-effect", umsg);
     }
 
     // Create continuation wrapping the suspended context
@@ -215,6 +238,7 @@ fn EvalResult value_to_eval_result(Value* v) @inline {
 fn void preserve_raise_across_restore(Interp* interp, SavedInterpState* saved) {
     bool raise_pending = interp.flags.raise_pending;
     usz raise_len = interp.raise_msg_len;
+    Value* raise_payload = interp.raise_payload;
     if (raise_len > 255) raise_len = 255;
     char[256] raise_buf;
     if (raise_pending && raise_len > 0) {
@@ -224,9 +248,12 @@ fn void preserve_raise_across_restore(Interp* interp, SavedInterpState* saved) {
     if (raise_pending) {
         interp.flags.raise_pending = true;
         interp.raise_msg_len = raise_len;
+        interp.raise_payload = raise_payload;
         if (raise_len > 0) {
             mem::copy(&interp.raise_msg[0], &raise_buf[0], raise_len);
         }
+    } else {
+        interp.raise_payload = null;
     }
 }
 
@@ -237,7 +264,13 @@ fn Value* dispatch_pending_raise(Expr* expr, Env* env, Interp* interp) {
         if ((uint)expr.handle.clauses[ci].effect_tag == (uint)raise_sym) {
             EffectClause* clause = &expr.handle.clauses[ci];
             interp.flags.raise_pending = false;
-            Value* msg_val = make_string(interp, interp.raise_msg[:interp.raise_msg_len]);
+            Value* msg_val = interp.raise_payload;
+            if (msg_val == null) {
+                msg_val = make_string(interp, interp.raise_msg[:interp.raise_msg_len]);
+            }
+            interp.raise_payload = null;
+            interp.raise_msg_len = 0;
+            interp.raise_msg[0] = 0;
             Value* k_val = make_nil(interp);
             Env* clause_env = env.extend(interp, clause.k_name, k_val);
             clause_env = clause_env.extend(interp, clause.arg_name, msg_val);

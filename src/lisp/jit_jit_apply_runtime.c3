@@ -158,16 +158,10 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
 
 <* @require func != null : "jit_apply_value called with null func" *>
 fn Value* jit_apply_value(Value* func, Value* arg, Interp* interp) {
-    interp.eval_depth++;
-    if (interp.eval_depth > interp.max_eval_depth) {
-        $if DEBUG_BUILD:
-            io::eprintfn("[debug] Stack overflow at depth %d (max %d)", interp.eval_depth, interp.max_eval_depth);
-        $endif
-        interp.eval_depth--;
-        return make_error(interp, "stack overflow: maximum eval depth exceeded");
-    }
+    Value* frame_error = interp_apply_frame_enter(interp);
+    if (frame_error != null) return frame_error;
     Value* result = jit_apply_value_impl(func, arg, interp);
-    interp.eval_depth--;
+    interp_apply_frame_leave(interp);
     return result;
 }
 
@@ -255,4 +249,3 @@ fn Value* jit_lookup_var(Interp* interp, uint sym_id) {
 
 // TCO sentinel — returned by helpers to signal "bounce, don't recurse"
 Value g_jit_tco_sentinel;
-

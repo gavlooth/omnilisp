@@ -234,13 +234,14 @@ Patterns: literals, variables, wildcards `_`, sequences `[a b .. rest]`, quoted 
 
 (import name)                   ; qualified-only: access via name.sym
 (import name (sym1 sym2))       ; selective import
-(import name (sym1 :as alias))  ; rename on import
-(import name :all)              ; import all exports unqualified
+(import name (sym1 'as alias))  ; rename on import
+(import name 'all)              ; import all exports unqualified
 (export-from name (sym1))       ; re-export specific symbols
-(export-from name :all)         ; re-export all
+(export-from name 'all)         ; re-export all
 ```
 
 Default import is qualified-only. Modules are cached; circular imports are detected.
+Omni has no dedicated keyword type; `'as` and `'all` are quoted symbols in module forms.
 
 ### 3.12 Collection Literals
 

@@ -16,6 +16,7 @@ Omni is a **Lisp with modern semantics** — not Scheme, not Clojure, not Common
 - **Multiple dispatch as the extension mechanism** — no traits, no interfaces, dispatch table IS the protocol
 - **Algebraic effects for I/O** — `print`/`println` go through `perform` with fast path when unhandled
 - **Strict arity lambdas** — `(lambda (x y) body)` requires exactly 2 args; use `_` placeholder `(+ 1 _)`, `|>` pipe, or `partial` for partial application
+- **No keyword type** — Omni has symbols and quoted symbols; module markers are quoted symbols (`'as`, `'all`), not Clojure-style keywords
 - **Region-based memory** — no GC, deterministic cleanup
 - **Truthiness**: only `nil` and `false` are falsy — `0`, `""`, `'()` are truthy
 

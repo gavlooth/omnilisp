@@ -359,6 +359,34 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
         else    { fail++; io::printn("[FAIL] Compiler: 3-arg apply_multi"); }
     }
 
+    // 43b. >32 arg call still compiles all args and uses apply_multi
+    {
+        char[] code = compile_to_c3(
+            "(f 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 "
+            "21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40)",
+            interp
+        );
+        bool ok = str_contains(code, "apply_multi") &&
+                  str_contains(code, "make_int(40)") &&
+                  !str_contains(code, "unsupported");
+        if (ok) { pass++; compiler_print_pass("Compiler: >32 arg call emits all temps"); }
+        else    { fail++; io::printn("[FAIL] Compiler: >32 arg call emits all temps"); }
+    }
+
+    // 43c. >32 arg list build still compiles all args
+    {
+        char[] code = compile_to_c3(
+            "(list 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 "
+            "21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40)",
+            interp
+        );
+        bool ok = str_contains(code, "make_int(40)") &&
+                  str_contains(code, "aot::cons") &&
+                  !str_contains(code, "unsupported");
+        if (ok) { pass++; compiler_print_pass("Compiler: >32 arg list emits all temps"); }
+        else    { fail++; io::printn("[FAIL] Compiler: >32 arg list emits all temps"); }
+    }
+
     // 44. Zero-arg call via invoke
     {
         char[] code = compile_to_c3("((lambda () 42))", interp);
@@ -377,6 +405,20 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
         bool ok = str_contains(code, "apply_multi_tail");
         if (ok) { pass++; compiler_print_pass("Compiler: tail call emits apply_multi_tail"); }
         else    { fail++; io::printn("[FAIL] Compiler: tail call emits apply_multi_tail"); }
+    }
+
+    // 45b. >32 arg tail call still compiles all args
+    {
+        char[] code = compile_to_c3(
+            "(define (f) (g 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 "
+            "21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40))",
+            interp
+        );
+        bool ok = str_contains(code, "apply_multi_tail") &&
+                  str_contains(code, "make_int(40)") &&
+                  !str_contains(code, "unsupported");
+        if (ok) { pass++; compiler_print_pass("Compiler: >32 arg tail call emits all temps"); }
+        else    { fail++; io::printn("[FAIL] Compiler: >32 arg tail call emits all temps"); }
     }
 
     // 46. Non-tail calls use apply_multi (not tail variant)

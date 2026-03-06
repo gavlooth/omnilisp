@@ -120,8 +120,8 @@ fn int scheduler_offload_worker_main(void* arg) {
             continue;
         }
 
-        while (!wakeup_enqueue(WAKEUP_OFFLOAD_READY, work.fiber_id, 0, completion)) {
-            c_usleep(1000);
+        if (!scheduler_publish_offload_ready(work.fiber_id, completion)) {
+            scheduler_free_offload_completion(completion);
         }
     }
 }

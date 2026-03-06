@@ -35,7 +35,7 @@ struct ExprSet {
     SymbolId name;
     Expr*    value;
     bool     is_path;
-    SymbolId[MAX_PATH_SEGMENTS] path_segments;
+    SymbolId* path_segments;
     usz      path_segment_count;
 }
 
@@ -66,7 +66,7 @@ struct ExprUnquoteSplicing {
  */
 struct ExprDefineMacro {
     SymbolId name;
-    MacroClause[32] clauses;
+    MacroClause* clauses;
     usz clause_count;
 }
 
@@ -89,25 +89,25 @@ struct ExprModule {
 struct ExprImport {
     SymbolId name;        // module name (symbol)
     bool     has_path;    // true if importing by file path
-    char[256] path;       // file path (if has_path)
+    char*    path;        // heap-allocated file path (if has_path), NUL-terminated
     usz      path_len;
-    // Selective imports: (import mod (sym1 (sym2 :as alias2)))
+    // Selective imports: (import mod (sym1 (sym2 'as alias2)))
     SymbolId*    imports;       // Names to import into scope (heap-allocated)
     SymbolId*    aliases;       // Rename targets (0 = no rename) (heap-allocated)
     usz          import_count;  // 0 = qualified-only, >0 = selective
     usz          import_capacity;
-    bool         import_all;    // true for :all
+    bool         import_all;    // true for quoted marker 'all
 }
 
 /**
- * ExprExportFrom — Re-export symbols from another module: (export-from mod (sym1 sym2)) or (export-from mod :all)
+ * ExprExportFrom — Re-export symbols from another module: (export-from mod (sym1 sym2)) or (export-from mod 'all)
  */
 struct ExprExportFrom {
     SymbolId     source_module;  // Module to re-export from
-    SymbolId*    names;          // Specific names (heap-allocated, empty if :all)
+    SymbolId*    names;          // Specific names (heap-allocated, empty if 'all)
     usz          name_count;
     usz          name_capacity;
-    bool         all;            // true for :all
+    bool         all;            // true for quoted marker 'all
 }
 
 // =============================================================================
@@ -132,11 +132,12 @@ struct ExprFfiLib {
 struct ExprFfiFn {
     SymbolId lib_name;       // which library (e.g. "libc")
     SymbolId fn_name;        // Omni name (auto kebab-cased)
-    char[128] c_name;        // original C name for dlsym
+    char* c_name;            // heap-allocated C symbol name for dlsym, NUL-terminated
     usz c_name_len;
     usz param_count;
-    SymbolId[16] param_names;
-    TypeAnnotation[16] param_types;
+    usz param_capacity;
+    SymbolId* param_names;
+    TypeAnnotation* param_types;
     TypeAnnotation return_type;
     bool has_return_type;
     bool is_variadic;
@@ -146,9 +147,10 @@ struct ExprFfiFn {
 struct FfiBoundFn {
     void* fn_ptr;           // null until first call (lazy dlsym)
     void* lib_handle;       // dlopen handle for lazy resolution
-    char[128] c_name;       // C symbol name for lazy dlsym
+    char* c_name;           // heap-allocated C symbol name for lazy dlsym, NUL-terminated
+    usz c_name_len;
     usz param_count;
-    FfiTypeTag[16] param_types;
+    FfiTypeTag* param_types;
     FfiTypeTag return_type;
     bool has_return;
     bool is_variadic;
@@ -173,9 +175,9 @@ struct ExprDefType {
     SymbolId name;
     SymbolId parent;
     bool has_parent;
-    TypeField[MAX_TYPE_FIELDS] fields;
+    TypeField* fields;
     usz field_count;
-    SymbolId[MAX_TYPE_PARAMS] type_params;
+    SymbolId* type_params;
     usz type_param_count;
 }
 
@@ -193,9 +195,9 @@ struct ExprDefAbstract {
  */
 struct ExprDefUnion {
     SymbolId name;
-    SymbolId[MAX_TYPE_PARAMS] type_params;
+    SymbolId* type_params;
     usz type_param_count;
-    UnionVariant[64] variants;
+    UnionVariant* variants;
     usz variant_count;
 }
 
@@ -226,7 +228,7 @@ struct Module {
     usz          export_count;
     usz          export_capacity;
     bool         loaded;           // false during loading (circular import detection)
-    char[256]    path;             // Source file path
+    char*        path;             // Source file path (heap-allocated)
     usz          path_len;
 }
 

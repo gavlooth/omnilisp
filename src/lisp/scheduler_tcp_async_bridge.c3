@@ -8,7 +8,7 @@ import main;
 
 fn Value* scheduler_probe_tcp_read_nonblocking(int fd, usz max_bytes, Interp* interp) {
     char* probe_buf = (char*)mem::malloc(max_bytes);
-    if (probe_buf == null) return raise_error(interp, "tcp-read: out of memory");
+    if (probe_buf == null) return scheduler_raise(interp, "scheduler/tcp-read-out-of-memory", "tcp-read: out of memory");
 
     long probe_n = c_recv(fd, probe_buf, max_bytes, MSG_DONTWAIT);
     if (probe_n >= 0) {
@@ -23,7 +23,7 @@ fn Value* scheduler_probe_tcp_read_nonblocking(int fd, usz max_bytes, Interp* in
     mem::free(probe_buf);
 
     if (probe_err != ERRNO_EAGAIN && probe_err != ERRNO_EWOULDBLOCK) {
-        return raise_error(interp, "tcp-read: recv failed");
+        return scheduler_raise(interp, "scheduler/tcp-read-recv-failed", "tcp-read: recv failed");
     }
     return null;
 }
@@ -33,6 +33,7 @@ fn void scheduler_init_pending_tcp_read(PendingTcpRead* op, int fd, usz max_byte
     op.completed = false;
     op.consumed = false;
     op.timed_out = false;
+    op.readable_pending = false;
     op.fd = fd;
     op.max_bytes = max_bytes;
     op.buffer = read_buf;
@@ -60,18 +61,18 @@ fn void scheduler_close_handles_and_drain(void* poll_handle, void* timer_handle)
 
 fn Value* scheduler_create_poll_handle(int fd, usz max_bytes, void** poll_handle_out, char** read_buf_out, Interp* interp) {
     void* poll_handle = mem::malloc(uv_handle_size(UV_HANDLE_POLL));
-    if (poll_handle == null) return raise_error(interp, "tcp-read: out of memory");
+    if (poll_handle == null) return scheduler_raise(interp, "scheduler/tcp-read-out-of-memory", "tcp-read: out of memory");
 
     char* read_buf = (char*)mem::malloc(max_bytes);
     if (read_buf == null) {
         mem::free(poll_handle);
-        return raise_error(interp, "tcp-read: out of memory");
+        return scheduler_raise(interp, "scheduler/tcp-read-out-of-memory", "tcp-read: out of memory");
     }
 
     if (uv_poll_init(g_scheduler.uv_loop, poll_handle, fd) != 0) {
         mem::free(read_buf);
         mem::free(poll_handle);
-        return raise_error(interp, "tcp-read: uv_poll_init failed");
+        return scheduler_raise(interp, "scheduler/tcp-read-uv-poll-init-failed", "tcp-read: uv_poll_init failed");
     }
 
     *poll_handle_out = poll_handle;
@@ -87,21 +88,25 @@ fn Value* scheduler_create_timer_handle(long timeout_ms, void* poll_handle, char
     if (timer_size == 0) {
         scheduler_close_handles_and_drain(poll_handle, null);
         mem::free(read_buf);
-        return raise_error(interp, "tcp-read: uv timer handle unavailable");
+        return scheduler_raise(
+            interp,
+            "scheduler/tcp-read-uv-timer-handle-unavailable",
+            "tcp-read: uv timer handle unavailable"
+        );
     }
 
     void* timer_handle = mem::malloc(timer_size);
     if (timer_handle == null) {
         scheduler_close_handles_and_drain(poll_handle, null);
         mem::free(read_buf);
-        return raise_error(interp, "tcp-read: out of memory");
+        return scheduler_raise(interp, "scheduler/tcp-read-out-of-memory", "tcp-read: out of memory");
     }
 
     if (uv_timer_init(g_scheduler.uv_loop, timer_handle) != 0) {
         mem::free(timer_handle);
         scheduler_close_handles_and_drain(poll_handle, null);
         mem::free(read_buf);
-        return raise_error(interp, "tcp-read: uv_timer_init failed");
+        return scheduler_raise(interp, "scheduler/tcp-read-uv-timer-init-failed", "tcp-read: uv_timer_init failed");
     }
 
     *timer_handle_out = timer_handle;
@@ -112,14 +117,14 @@ fn Value* scheduler_start_tcp_watchers(void* poll_handle, void* timer_handle, lo
     if (uv_poll_start(poll_handle, UV_READABLE, &scheduler_uv_poll_cb) != 0) {
         scheduler_close_handles_and_drain(poll_handle, timer_handle);
         mem::free(read_buf);
-        return raise_error(interp, "tcp-read: uv_poll_start failed");
+        return scheduler_raise(interp, "scheduler/tcp-read-uv-poll-start-failed", "tcp-read: uv_poll_start failed");
     }
 
     if (timer_handle != null && uv_timer_start(timer_handle, &scheduler_uv_timer_cb, (ulong)timeout_ms, 0) != 0) {
         (void)uv_poll_stop(poll_handle);
         scheduler_close_handles_and_drain(poll_handle, timer_handle);
         mem::free(read_buf);
-        return raise_error(interp, "tcp-read: uv_timer_start failed");
+        return scheduler_raise(interp, "scheduler/tcp-read-uv-timer-start-failed", "tcp-read: uv_timer_start failed");
     }
 
     return null;
@@ -136,7 +141,13 @@ fn Value* scheduler_try_async_tcp_read(int fd, usz max_bytes, long timeout_ms, I
     FiberEntry* f = &g_scheduler.fibers[fiber_id];
 
     PendingTcpRead* op = &g_scheduler.pending_reads[fiber_id];
-    if (op.active) return raise_error(interp, "tcp-read: pending async read already exists for this fiber");
+    if (op.active) {
+        return scheduler_raise(
+            interp,
+            "scheduler/tcp-read-pending-async-read-exists",
+            "tcp-read: pending async read already exists for this fiber"
+        );
+    }
 
     // Fast non-blocking attempt before registering a watcher.
     Value* probe_result = scheduler_probe_tcp_read_nonblocking(fd, max_bytes, interp);

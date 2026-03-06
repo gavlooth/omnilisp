@@ -1,9 +1,11 @@
 # Omni Lisp Language Specification
 
-**Version:** 0.4.5
-**Date:** 2026-02-28
+**Version:** 0.4.6
+**Date:** 2026-03-06
 
 Omni Lisp is a Lisp dialect with first-class delimited continuations, algebraic effects, strict-arity multi-param lambdas, multiple dispatch, and a structural type system. It runs on a scope-region memory system (arena-per-call with reference-counted closures) implemented in C3 with a GNU Lightning JIT engine and a Lisp-to-C3 AOT transpiler.
+
+Normative architecture contracts are recorded in `docs/ARCHITECTURE.md`.
 
 ---
 
@@ -192,6 +194,41 @@ null?
 ```
 
 Note: `(define [...] ...)` with brackets is reserved for attribute syntax (`[type]`, `[ffi lib]`, `[relation db]`, etc.). Array destructuring is only available in `let` and `match`.
+
+### 3.2.1 ADR: `define` Unification Is Canonical Syntax
+
+Status: Accepted (2026-03-06)
+
+`define` is the canonical declaration entrypoint in Omni. New declaration
+surfaces MUST either:
+
+- use `(define ...)` directly, or
+- desugar to canonical `(define ...)` forms before evaluation.
+
+Normative rules:
+
+- `(define name value)` is canonical for value binding.
+- `(define (f args...) body)` is canonical shorthand for function declaration.
+- `(define [attr] ...)` is canonical for declaration families (type, union,
+  alias, macro, FFI, relation, rule, schema, effect).
+- Alternative declaration keywords (`def`, `defn`, `deftype`, etc.) are not
+  canonical language forms and MUST NOT be introduced as parallel syntax.
+- `lambda` and `define` remain distinct: `lambda` is expression-level function
+  construction; `define` is global declaration.
+
+Examples:
+
+```lisp
+(define (add x y) (+ x y))
+(define [type] Point (^Int x) (^Int y))
+(define [effect] (io/read-file (^String path)))
+```
+
+Counterexample (non-canonical syntax; do not add):
+
+```lisp
+(defn add [x y] (+ x y))
+```
 
 ### 3.3 `let` -- Local Binding
 
@@ -776,6 +813,8 @@ Stdlib functions take multiple parameters with strict arity. For partial applica
 | Name | Description |
 |------|-------------|
 | `try` | `(try thunk handler)` -- catch `raise` effects |
+| `raise->message` | `(raise->message err)` -- extract message from canonical raise payloads (compat) |
+| `try-message` | `(try-message thunk handler)` -- compatibility wrapper that always passes message strings |
 | `assert!` | `(assert! cond msg)` -- raise if condition fails |
 | `yield` | Macro for generator-style values |
 | `stream-take` | Take N values from a generator stream |
@@ -820,6 +859,19 @@ Captures the continuation up to the enclosing `reset` and binds it to `k`.
 ---
 
 ## 10. Effect Handlers
+
+Normative semantics for this section are defined in `docs/EFFECTS_SEMANTICS.md`.
+
+### 10.0 Glossary
+
+| Term | Meaning |
+|------|---------|
+| `signal` | Emit an effect request with tag+payload from the current evaluation context. |
+| `raise` | Conventional effect tag for failure signaling (`signal raise payload`). |
+| `resolve` | Resume a captured effect continuation with a value from inside a handler clause. |
+| `abort` | Handler path where `resolve` is not called; handler return becomes `handle` result. |
+| `resumable` | Effect interaction where control returns to the suspended signal site after `resolve`. |
+| `effect boundary` | Runtime boundary where effect semantics are interpreted (handler stack, scheduler callback handoff, or unhandled-effect escalation path). |
 
 ### 10.1 `signal` -- Signal Effect
 
@@ -947,22 +999,23 @@ Effect handlers match on tag name only. For type-specific behavior, use dispatch
 (add 3 4)  ; => 7
 
 ;; Rename on import
-(import math-utils (add :as plus))
+(import math-utils (add 'as plus))
 (plus 3 4)  ; => 7
 
 ;; Import all exports unqualified
-(import math-utils :all)
+(import math-utils 'all)
 (add 3 4)  ; => 7
 
 ;; Re-export
 (export-from math-utils (add))
-(export-from math-utils :all)
+(export-from math-utils 'all)
 ```
 
 - Default import is **qualified-only**: `(import mod)` binds module as value, access via `mod.sym`
 - Selective import: `(import mod (sym1 sym2))` for specific symbols
-- Rename: `(import mod (sym1 :as alias))` for renaming on import
-- `:all` imports all exports unqualified (opt-in)
+- Rename: `(import mod (sym1 'as alias))` for renaming on import
+- `'all` imports all exports unqualified (opt-in)
+- Omni has no dedicated keyword type; `'as`/`'all` are quoted symbols used as explicit module markers
 - `export-from` re-exports symbols from another module
 - File-based import: `(import "path/to/file.omni")`
 - Cached: modules loaded only once

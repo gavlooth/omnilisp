@@ -131,6 +131,14 @@ fn void Compiler.serialize_pattern_to_buf(Compiler* self, Pattern* pat, List{cha
             }
             buf.push(']');
 
+        case PAT_AS:
+            buf.push('(');
+            self.serialize_pattern_to_buf(pat.as_sub, buf);
+            self.buf_append(buf, " 'as ");
+            char[] as_name = self.interp.symbols.get_name(pat.as_name);
+            self.buf_append(buf, as_name);
+            buf.push(')');
+
         case PAT_CONS:
             buf.push('(');
             self.serialize_pattern_to_buf(pat.car_pat, buf);

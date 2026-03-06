@@ -13,6 +13,7 @@ import std::collections::list;
 fn Expr* parse(char[] source, Interp* interp) {
     Lexer lex;
     lex.init(source);
+    defer lex.destroy();
 
     Parser p;
     p.init(&lex, interp);
@@ -26,6 +27,7 @@ fn Expr* parse(char[] source, Interp* interp) {
 fn List{Expr*} parse_program(char[] source, Interp* interp) {
     Lexer lex;
     lex.init(source);
+    defer lex.destroy();
 
     Parser p;
     p.init(&lex, interp);

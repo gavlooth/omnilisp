@@ -1,5 +1,7 @@
 module lisp;
 
+import std::collections::list;
+
 /**
  * Parse a complete expression.
  */
@@ -41,28 +43,33 @@ fn Expr* Parser.parse_set_literal_expr(Parser* self) {
     Expr* e = self.alloc_expr_here();
     self.lexer.advance();  // consume #{
 
-    Expr*[64] elems;
-    usz elem_count = 0;
+    List{Expr*} elems;
     while (self.lexer.current.type != T_RBRACE && self.lexer.current.type != T_EOF && !self.has_error) {
-        if (elem_count >= 64) {
-            self.set_error("set literal too large (max 64 elements)");
-            return null;
-        }
-        elems[elem_count++] = self.parse_expr();
+        elems.push(self.parse_expr());
+    }
+    if (self.has_error) {
+        elems.free();
+        return null;
     }
     self.expect(T_RBRACE, "}");
 
     e.tag = E_CALL;
-    usz total = elem_count + 1;
+    usz total = elems.len() + 1;
     Expr** args = (Expr**)mem::malloc(Expr*.sizeof * total);
+    if (args == null) {
+        elems.free();
+        self.set_error("out of memory while parsing set literal");
+        return null;
+    }
     args[0] = self.interp.alloc_expr();
     args[0].tag = E_VAR;
     args[0].var_expr.name = self.interp.symbols.intern("set");
-    for (usz i = 0; i < elem_count; i++) {
+    for (usz i = 0; i < elems.len(); i++) {
         args[i + 1] = elems[i];
     }
     e.call.args = args;
     e.call.arg_count = total;
+    elems.free();
     return e;
 }
 
@@ -138,23 +145,37 @@ fn Expr* Parser.parse_path_expr(Parser* self) {
     Expr* e = self.alloc_expr_here();
     e.tag = E_PATH;
     e.path.segment_count = 0;
+    e.path.segments = null;
 
+    List{SymbolId} segments;
     usz text_len = self.lexer.current.text_len;
     usz start = 0;
     for (usz i = 0; i <= text_len; i++) {
         if (i == text_len || self.lexer.current.text[i] == '.') {
             if (i > start) {
-                if (e.path.segment_count >= MAX_PATH_SEGMENTS) {
-                    self.set_error("too many path segments");
-                    return null;
-                }
                 usz seg_len = i - start;
                 SymbolId seg_sym = self.interp.symbols.intern(self.lexer.current.text[start:seg_len]);
-                e.path.segments[e.path.segment_count++] = seg_sym;
+                segments.push(seg_sym);
             }
             start = i + 1;
         }
     }
+    if (segments.len() == 0) {
+        segments.free();
+        self.set_error("empty path expression");
+        return null;
+    }
+    e.path.segment_count = segments.len();
+    e.path.segments = (SymbolId*)mem::malloc(SymbolId.sizeof * segments.len());
+    if (e.path.segments == null) {
+        segments.free();
+        self.set_error("out of memory while parsing path expression");
+        return null;
+    }
+    for (usz i = 0; i < segments.len(); i++) {
+        e.path.segments[i] = segments[i];
+    }
+    segments.free();
     self.lexer.advance();
     return self.parse_postfix_index(e);
 }
@@ -171,7 +192,7 @@ fn Expr* Parser.parse_expr(Parser* self) {
     if (self.has_error) return null;
     self.depth++;
     defer self.depth--;
-    if (self.depth > 256) { self.set_error("expression nesting too deep (max 256)"); return null; }
+    if (self.depth > self.max_depth) { self.set_error("expression nesting too deep"); return null; }
     switch (self.lexer.current.type) {
         case T_BACKTICK: return self.parse_backtick_shorthand();
         case T_COMMA: return self.parse_unquote_shorthand();

@@ -21,16 +21,18 @@ fn Value* make_instance_in_scope(Interp* interp, main::ScopeRegion* wrapper_scop
     inst.owner_scope = owner_scope;
     inst.type_id = type_id;
     inst.field_count = field_count;
+    inst.fields = field_count > 0 ? (Value*)owner_scope.alloc(Value.sizeof * field_count) : null;
     inst.type_arg_count = 0;
+    inst.type_args = null;
 
-    for (usz i = 0; i < MAX_TYPE_FIELDS; i++) {
+    for (usz i = 0; i < field_count; i++) {
         inst.fields[i] = {};
         inst.fields[i].tag = NIL;
     }
 
     // Copy field payloads into owner_scope so Instance never points into caller scope.
     main::ScopeRegion* saved_scope = interp.current_scope;
-    for (usz i = 0; i < field_count && i < MAX_TYPE_FIELDS; i++) {
+    for (usz i = 0; i < field_count; i++) {
         if (fields != null && fields[i] != null) {
             Value* copied = boundary_copy_to_scope_site(
                 fields[i],
@@ -61,20 +63,80 @@ fn Value* make_instance_root(Interp* interp, TypeId type_id, Value** fields, usz
     return make_instance_in_scope(interp, interp.root_scope, type_id, fields, field_count);
 }
 
+fn bool eval_type_info_copy_symbol_array(SymbolId** out, SymbolId* src, usz count) {
+    if (count == 0) {
+        *out = null;
+        return true;
+    }
+    SymbolId* buf = (SymbolId*)mem::malloc(SymbolId.sizeof * count);
+    if (buf == null) return false;
+    for (usz i = 0; i < count; i++) buf[i] = src[i];
+    *out = buf;
+    return true;
+}
+
+fn bool eval_type_info_alloc_fields(TypeInfo* info, usz count) {
+    if (count == 0) {
+        info.fields = null;
+        return true;
+    }
+    info.fields = (TypeFieldInfo*)mem::malloc(TypeFieldInfo.sizeof * count);
+    return info.fields != null;
+}
+
+fn bool eval_type_info_alloc_constraints(TypeInfo* info, usz count) {
+    if (count == 0) {
+        info.constraints = null;
+        return true;
+    }
+    info.constraints = (MethodConstraint*)mem::malloc(MethodConstraint.sizeof * count);
+    return info.constraints != null;
+}
+
+fn usz eval_deftype_constraint_capacity(ExprDefType* dt) {
+    usz count = 0;
+    for (usz i = 0; i < dt.field_count; i++) count += dt.fields[i].type_ann.meta_count;
+    return count;
+}
+
+fn bool eval_type_info_copy_union_variants(TypeInfo* info, UnionVariant* src, usz count) {
+    if (count == 0) {
+        info.variants = null;
+        return true;
+    }
+    info.variants = (UnionVariant*)mem::malloc(UnionVariant.sizeof * count);
+    if (info.variants == null) return false;
+    for (usz i = 0; i < count; i++) {
+        info.variants[i].name = src[i].name;
+        info.variants[i].field_count = src[i].field_count;
+        if (!eval_type_info_copy_symbol_array(&info.variants[i].fields, src[i].fields, src[i].field_count)) {
+            for (usz j = 0; j < i; j++) if (info.variants[j].fields != null) mem::free(info.variants[j].fields);
+            mem::free(info.variants);
+            info.variants = null;
+            return false;
+        }
+    }
+    return true;
+}
+
 fn void eval_deftype_init_type_info(TypeInfo* info, ExprDefType* dt) {
     info.name = dt.name;
     info.kind = TK_CONCRETE;
+    info.fields = null;
     info.field_count = dt.field_count;
+    info.type_params = null;
     info.type_param_count = dt.type_param_count;
+    info.constraints = null;
+    info.variants = null;
     info.variant_count = 0;
     info.alias_target = INVALID_TYPE_ID;
     info.parent = INVALID_TYPE_ID;
     info.constraint_count = 0;
 }
 
-fn void eval_deftype_resolve_parent_and_params(TypeInfo* info, ExprDefType* dt, Interp* interp) {
+fn bool eval_deftype_resolve_parent_and_params(TypeInfo* info, ExprDefType* dt, Interp* interp) {
     info.type_param_count = 0;
-    if (dt.type_param_count == 0) return;
+    if (dt.type_param_count == 0) return true;
 
     TypeId maybe_parent = interp.types.lookup(dt.type_params[0], &interp.symbols);
     if (maybe_parent != INVALID_TYPE_ID) {
@@ -82,24 +144,19 @@ fn void eval_deftype_resolve_parent_and_params(TypeInfo* info, ExprDefType* dt, 
         info.parent = maybe_parent;
         // Remaining symbols are actual type params.
         info.type_param_count = dt.type_param_count - 1;
-        for (usz i = 0; i < info.type_param_count; i++) {
-            info.type_params[i] = dt.type_params[i + 1];
-        }
-        return;
+        return eval_type_info_copy_symbol_array(&info.type_params, &dt.type_params[1], info.type_param_count);
     }
 
     // Not a known type — all are type params, no parent.
     info.type_param_count = dt.type_param_count;
-    for (usz i = 0; i < info.type_param_count; i++) {
-        info.type_params[i] = dt.type_params[i];
-    }
+    return eval_type_info_copy_symbol_array(&info.type_params, dt.type_params, info.type_param_count);
 }
 
 fn void eval_deftype_apply_dict_annotation(TypeInfo* info, TypeField* field, TypeFieldInfo* out_field, Interp* interp) {
     // Dict annotation like ^{'T Number} — extract constraints.
     out_field.field_type = INVALID_TYPE_ID;
     out_field.annotation_sym = 0;
-    for (usz m = 0; m < field.type_ann.meta_count && info.constraint_count < MAX_TYPE_PARAMS; m++) {
+    for (usz m = 0; m < field.type_ann.meta_count; m++) {
         if (field.type_ann.meta[m].is_int) continue;
         info.constraints[info.constraint_count].param_sym = field.type_ann.meta[m].key;
         info.constraints[info.constraint_count].bound_type =
@@ -142,7 +199,20 @@ fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
     // Disambiguate parent vs type-params from collected symbols.
     // If the first symbol is a registered type, it's the parent; rest are type params.
     // Otherwise, all symbols are type params and there is no parent.
-    eval_deftype_resolve_parent_and_params(&info, dt, interp);
+    if (!eval_deftype_resolve_parent_and_params(&info, dt, interp)) {
+        return eval_error("out of memory while registering type");
+    }
+
+    if (!eval_type_info_alloc_fields(&info, dt.field_count)) {
+        if (info.type_params != null) mem::free(info.type_params);
+        return eval_error("out of memory while registering type");
+    }
+    usz constraint_capacity = eval_deftype_constraint_capacity(dt);
+    if (!eval_type_info_alloc_constraints(&info, constraint_capacity)) {
+        if (info.fields != null) mem::free(info.fields);
+        if (info.type_params != null) mem::free(info.type_params);
+        return eval_error("out of memory while registering type");
+    }
 
     // Copy fields and store original annotation symbol for type-param mapping
     eval_deftype_copy_fields(&info, dt, interp);
@@ -209,7 +279,10 @@ fn Value* validate_constructor_fields(Value*[] args, TypeInfo* ti, Interp* inter
 
 fn void infer_instance_type_args(Instance* inst, TypeInfo* ti, Value*[] args, Interp* interp) {
     inst.type_arg_count = ti.type_param_count;
-    for (usz p = 0; p < ti.type_param_count && p < MAX_TYPE_PARAMS; p++) {
+    inst.type_args = ti.type_param_count > 0
+        ? (TypeId*)inst.owner_scope.alloc(TypeId.sizeof * ti.type_param_count)
+        : null;
+    for (usz p = 0; p < ti.type_param_count; p++) {
         SymbolId param_sym = ti.type_params[p];
         inst.type_args[p] = INVALID_TYPE_ID;
         for (usz f = 0; f < ti.field_count; f++) {
@@ -259,11 +332,15 @@ fn Value* prim_type_constructor(Value*[] args, Env* env, Interp* interp) {
     Value* field_error = validate_constructor_fields(args, ti, interp);
     if (field_error != null) return field_error;
 
-    Value*[MAX_TYPE_FIELDS] fields;
-    for (usz i = 0; i < args.len && i < MAX_TYPE_FIELDS; i++) {
+    Value*[] fields = args.len > 0 ? mem::new_array(Value*, args.len) : {};
+    if (args.len > 0 && fields.ptr == null) {
+        return make_error(interp, "type constructor: failed to allocate field buffer");
+    }
+    defer if (fields.ptr != null) mem::free(fields.ptr);
+    for (usz i = 0; i < args.len; i++) {
         fields[i] = args[i];
     }
-    Value* result = make_instance(interp, type_id, &fields, args.len);
+    Value* result = make_instance(interp, type_id, fields, args.len);
     if (result == null) {
         return make_error(interp, "type constructor: failed to allocate instance");
     }
@@ -284,9 +361,13 @@ fn EvalResult eval_defabstract(Expr* expr, Env* env, Interp* interp) {
     TypeInfo info;
     info.name = da.name;
     info.kind = TK_ABSTRACT;
+    info.fields = null;
     info.field_count = 0;
+    info.type_params = null;
     info.type_param_count = 0;
+    info.constraints = null;
     info.constraint_count = 0;
+    info.variants = null;
     info.variant_count = 0;
     info.alias_target = INVALID_TYPE_ID;
 
@@ -313,17 +394,15 @@ fn void eval_defunion_init_union_info(TypeInfo* union_info, ExprDefUnion* du) {
     union_info.name = du.name;
     union_info.kind = TK_UNION;
     union_info.parent = INVALID_TYPE_ID;
+    union_info.fields = null;
     union_info.field_count = 0;
+    union_info.type_params = null;
     union_info.type_param_count = du.type_param_count;
+    union_info.constraints = null;
     union_info.constraint_count = 0;
+    union_info.variants = null;
     union_info.variant_count = du.variant_count;
     union_info.alias_target = INVALID_TYPE_ID;
-    for (usz i = 0; i < du.type_param_count; i++) {
-        union_info.type_params[i] = du.type_params[i];
-    }
-    for (usz i = 0; i < du.variant_count; i++) {
-        union_info.variants[i] = du.variants[i];
-    }
 }
 
 fn TypeId eval_defunion_register_variant_type(UnionVariant* variant, TypeId union_id, Interp* interp) {
@@ -331,14 +410,22 @@ fn TypeId eval_defunion_register_variant_type(UnionVariant* variant, TypeId unio
     var_info.name = variant.name;
     var_info.kind = TK_CONCRETE;
     var_info.parent = union_id;  // variant is subtype of union
+    var_info.fields = null;
     var_info.field_count = variant.field_count;
+    var_info.type_params = null;
     var_info.type_param_count = 0;
+    var_info.constraints = null;
     var_info.constraint_count = 0;
+    var_info.variants = null;
     var_info.variant_count = 0;
     var_info.alias_target = INVALID_TYPE_ID;
+    if (!eval_type_info_alloc_fields(&var_info, variant.field_count)) {
+        return INVALID_TYPE_ID;
+    }
     for (usz j = 0; j < variant.field_count; j++) {
         var_info.fields[j].name = variant.fields[j];
         var_info.fields[j].field_type = INVALID_TYPE_ID;
+        var_info.fields[j].annotation_sym = 0;
     }
     return interp.types.register_type(var_info, &interp.symbols);
 }
@@ -371,6 +458,11 @@ fn EvalResult eval_defunion(Expr* expr, Env* env, Interp* interp) {
     // Register the union type itself
     TypeInfo union_info;
     eval_defunion_init_union_info(&union_info, du);
+    if (!eval_type_info_copy_symbol_array(&union_info.type_params, du.type_params, du.type_param_count) ||
+        !eval_type_info_copy_union_variants(&union_info, du.variants, du.variant_count)) {
+        if (union_info.type_params != null) mem::free(union_info.type_params);
+        return eval_error("out of memory while registering union type");
+    }
 
     TypeId union_id = interp.types.register_type(union_info, &interp.symbols);
 
@@ -378,6 +470,9 @@ fn EvalResult eval_defunion(Expr* expr, Env* env, Interp* interp) {
     for (usz i = 0; i < du.variant_count; i++) {
         UnionVariant* variant = &du.variants[i];
         TypeId var_id = eval_defunion_register_variant_type(variant, union_id, interp);
+        if (var_id == INVALID_TYPE_ID) {
+            return eval_error("out of memory while registering union variant");
+        }
         EvalResult bind_result = eval_defunion_bind_variant(variant, var_id, interp);
         if (bind_result.error.has_error) {
             return bind_result;
@@ -395,9 +490,13 @@ fn EvalResult eval_defalias(Expr* expr, Env* env, Interp* interp) {
     info.name = da.name;
     info.kind = TK_ALIAS;
     info.parent = INVALID_TYPE_ID;
+    info.fields = null;
     info.field_count = 0;
+    info.type_params = null;
     info.type_param_count = 0;
+    info.constraints = null;
     info.constraint_count = 0;
+    info.variants = null;
     info.variant_count = 0;
 
     // Resolve target
@@ -420,12 +519,19 @@ fn EvalResult eval_defeffect(Expr* expr, Env* env, Interp* interp) {
     info.name = de.name;
     info.kind = TK_EFFECT;
     info.parent = INVALID_TYPE_ID;
+    info.fields = null;
+    info.type_params = null;
+    info.constraints = null;
+    info.variants = null;
     info.type_param_count = 0;
     info.constraint_count = 0;
     info.variant_count = 0;
     info.alias_target = INVALID_TYPE_ID;
 
     if (de.has_arg_type) {
+        if (!eval_type_info_alloc_fields(&info, 1)) {
+            return eval_error("out of memory while registering effect type");
+        }
         info.field_count = 1;
         info.fields[0].name = interp.symbols.intern("arg");
         if (de.arg_type.has_annotation) {
@@ -437,6 +543,7 @@ fn EvalResult eval_defeffect(Expr* expr, Env* env, Interp* interp) {
             info.fields[0].annotation_sym = (SymbolId)0;
         }
     } else {
+        info.fields = null;
         info.field_count = 0;
     }
 

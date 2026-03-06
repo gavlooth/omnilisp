@@ -115,7 +115,7 @@ fn void Compiler.serialize_import_to_buf(Compiler* self, Expr* expr, List{char}*
     char[] imp_name = self.interp.symbols.get_name(expr.import_expr.name);
     self.buf_append(buf, imp_name);
     if (expr.import_expr.import_all) {
-        self.buf_append(buf, " :all");
+        self.buf_append(buf, " 'all");
     } else if (expr.import_expr.import_count > 0) {
         self.buf_append(buf, " (");
         for (usz i = 0; i < expr.import_expr.import_count; i++) {
@@ -123,7 +123,7 @@ fn void Compiler.serialize_import_to_buf(Compiler* self, Expr* expr, List{char}*
             char[] sel_name = self.interp.symbols.get_name(expr.import_expr.imports[i]);
             self.buf_append(buf, sel_name);
             if ((uint)expr.import_expr.aliases[i] != 0) {
-                self.buf_append(buf, " :as ");
+                self.buf_append(buf, " 'as ");
                 char[] alias_name = self.interp.symbols.get_name(expr.import_expr.aliases[i]);
                 self.buf_append(buf, alias_name);
             }
@@ -138,7 +138,7 @@ fn void Compiler.serialize_export_from_to_buf(Compiler* self, Expr* expr, List{c
     char[] efmod = self.interp.symbols.get_name(expr.export_from.source_module);
     self.buf_append(buf, efmod);
     if (expr.export_from.all) {
-        self.buf_append(buf, " :all)");
+        self.buf_append(buf, " 'all)");
     } else {
         self.buf_append(buf, " (");
         for (usz i = 0; i < expr.export_from.name_count; i++) {

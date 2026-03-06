@@ -118,15 +118,14 @@ fn bool Parser.parse_shorthand_rest_param(Parser* self, bool* has_rest_out, Symb
 fn Expr* Parser.parse_shorthand_define_body(
     Parser* self,
     Expr* e,
-    Pattern** destr_patterns,
-    SymbolId* destr_param_names,
-    usz destr_count
+    List{Pattern*} destr_patterns,
+    List{SymbolId} destr_param_names
 ) {
     self.expect(T_RPAREN, ")");  // close param list
     Expr* body = self.parse_implicit_begin();
     self.expect(T_RPAREN, ")");
     if (self.has_error) return null;
-    return self.wrap_body_with_destructuring(e, body, destr_patterns, destr_param_names, destr_count);
+    return self.wrap_body_with_destructuring(e, body, destr_patterns, destr_param_names);
 }
 
 fn Expr* Parser.build_shorthand_define_lambda(
@@ -167,26 +166,31 @@ fn Expr* Parser.parse_shorthand_define(Parser* self, Expr* e) {
     bool define_has_typed = false;
     bool define_has_rest = false;
     SymbolId define_rest_param = 0;
-    Pattern*[8] destr_patterns;
-    SymbolId[8] destr_param_names;
-    usz destr_count = 0;
+    List{Pattern*} destr_patterns;
+    List{SymbolId} destr_param_names;
 
-    if (!self.collect_callable_params(&params, &define_param_anns, &define_has_typed, &destr_patterns[0], &destr_param_names[0], &destr_count)) {
+    if (!self.collect_callable_params(&params, &define_param_anns, &define_has_typed, &destr_patterns, &destr_param_names)) {
         params.free();
         define_param_anns.free();
+        destr_patterns.free();
+        destr_param_names.free();
         return null;
     }
 
     if (!self.parse_shorthand_rest_param(&define_has_rest, &define_rest_param)) {
         params.free();
         define_param_anns.free();
+        destr_patterns.free();
+        destr_param_names.free();
         return null;
     }
 
-    Expr* body = self.parse_shorthand_define_body(e, &destr_patterns[0], &destr_param_names[0], destr_count);
+    Expr* body = self.parse_shorthand_define_body(e, destr_patterns, destr_param_names);
     if (body == null) {
         params.free();
         define_param_anns.free();
+        destr_patterns.free();
+        destr_param_names.free();
         return null;
     }
 
@@ -201,6 +205,8 @@ fn Expr* Parser.parse_shorthand_define(Parser* self, Expr* e) {
     );
     params.free();
     define_param_anns.free();
+    destr_patterns.free();
+    destr_param_names.free();
 
     e.tag = E_DEFINE;
     e.define.name = name;
@@ -208,26 +214,22 @@ fn Expr* Parser.parse_shorthand_define(Parser* self, Expr* e) {
     return e;
 }
 
-fn bool Parser.parse_define_attrs(Parser* self, SymbolId[8]* attrs, usz* attr_count_out) {
-    usz attr_count = 0;
-    while (self.lexer.current.type == T_SYMBOL && attr_count < 8) {
-        (*attrs)[attr_count] = self.get_current_symbol();
-        attr_count++;
+fn bool Parser.parse_define_attrs(Parser* self, List{SymbolId}* attrs) {
+    while (self.lexer.current.type == T_SYMBOL) {
+        attrs.push(self.get_current_symbol());
         self.lexer.advance();
     }
-    if (attr_count == 0) {
+    if (attrs.len() == 0) {
         self.set_error("expected attribute after [");
         return false;
     }
 
     self.expect(T_RBRACKET, "]");
     if (self.has_error) return false;
-
-    *attr_count_out = attr_count;
     return true;
 }
 
-fn Expr* Parser.parse_define_with_annotation(Parser* self, Expr* e, SymbolId[8]* attrs, usz attr_count) {
+fn Expr* Parser.parse_define_with_annotation(Parser* self, Expr* e, List{SymbolId}* attrs) {
     SymbolId annotation = (*attrs)[0];
 
     // Type-related defines: [type], [abstract], [union], [alias]
@@ -240,11 +242,11 @@ fn Expr* Parser.parse_define_with_annotation(Parser* self, Expr* e, SymbolId[8]*
 
     // FFI defines: [ffi lib], [ffi λ]
     if (annotation == self.interp.sym_ffi) {
-        return self.parse_define_ffi(e, attrs, attr_count);
+        return self.parse_define_ffi(e, attrs);
     }
 
     // Special defines: [macro], [effect], [schema], [relation]
-    return self.parse_define_special(e, annotation, attrs, attr_count);
+    return self.parse_define_special(e, annotation, attrs);
 }
 
 fn Expr* Parser.parse_normal_define(Parser* self, Expr* e) {
@@ -272,10 +274,10 @@ fn Expr* Parser.parse_define(Parser* self) {
     // Check for bracket annotation: (define [attr...] ...)
     if (self.lexer.current.type == T_LBRACKET) {
         self.lexer.advance();  // consume '['
-        SymbolId[8] attrs;
-        usz attr_count = 0;
-        if (!self.parse_define_attrs(&attrs, &attr_count)) return null;
-        return self.parse_define_with_annotation(e, &attrs, attr_count);
+        List{SymbolId} attrs;
+        defer attrs.free();
+        if (!self.parse_define_attrs(&attrs)) return null;
+        return self.parse_define_with_annotation(e, &attrs);
     }
 
     // Shorthand define: (define (name params...) body) => (define name (lambda (params...) body))
@@ -313,18 +315,18 @@ fn Expr* Parser.parse_define_type(Parser* self, Expr* e, SymbolId annotation) {
  * Handle FFI bracket defines: [ffi lib], [ffi λ]
  * Dispatches to parse_ffi_lib or parse_ffi_fn.
  */
-fn Expr* Parser.parse_define_ffi(Parser* self, Expr* e, SymbolId[8]* attrs, usz attr_count) {
-    if (attr_count < 2) { self.set_error("expected 'lib' or 'λ'/'lambda' after [ffi"); return null; }
+fn Expr* Parser.parse_define_ffi(Parser* self, Expr* e, List{SymbolId}* attrs) {
+    if (attrs.len() < 2) { self.set_error("expected 'lib' or 'λ'/'lambda' after [ffi"); return null; }
     if ((*attrs)[1] == self.interp.sym_lib) {
         return self.parse_ffi_lib(e);
     }
     if ((*attrs)[1] == self.interp.sym_lambda) {
-        return self.parse_ffi_fn(e, attrs, attr_count);
+        return self.parse_ffi_fn(e, attrs);
     }
     // Check for λ (U+03BB, UTF-8: CE BB)
     char[] attr1_text = self.interp.symbols.get_name((*attrs)[1]);
     if (attr1_text.len == 2 && attr1_text[0] == (char)0xCE && attr1_text[1] == (char)0xBB) {
-        return self.parse_ffi_fn(e, attrs, attr_count);
+        return self.parse_ffi_fn(e, attrs);
     }
     self.set_error("unknown [ffi ...] form: expected 'lib' or 'λ'");
     return null;

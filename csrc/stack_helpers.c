@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <setjmp.h>
 #include <stdint.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -49,6 +50,50 @@ extern void __sanitizer_finish_switch_fiber(void *fake_stack_save,
 
 int stack_asan_enabled(void) {
     return __asan_init != NULL ? 1 : 0;
+}
+
+void* stack_current_sp(void) {
+    void* sp = NULL;
+#if defined(__x86_64__)
+    __asm__ volatile("mov %%rsp, %0" : "=r" (sp));
+#else
+    volatile unsigned char marker = 0;
+    sp = (void*)&marker;
+#endif
+    return sp;
+}
+
+static __thread uintptr_t g_cached_thread_stack_lo = 0;
+static __thread int g_cached_thread_stack_ready = 0;
+
+static int stack_cache_current_thread_bounds(void) {
+    pthread_attr_t attr;
+    if (pthread_getattr_np(pthread_self(), &attr) != 0) return -1;
+
+    void* base = NULL;
+    size_t size = 0;
+    size_t guard = 0;
+    int rc = pthread_attr_getstack(&attr, &base, &size);
+    if (rc == 0) rc = pthread_attr_getguardsize(&attr, &guard);
+    pthread_attr_destroy(&attr);
+    if (rc != 0 || base == NULL || size <= guard) return -1;
+
+    g_cached_thread_stack_lo = (uintptr_t)base + guard;
+    g_cached_thread_stack_ready = 1;
+    return 0;
+}
+
+size_t stack_current_thread_available_bytes_from_sp(void* sp) {
+    if (!g_cached_thread_stack_ready && stack_cache_current_thread_bounds() != 0) {
+        return 0;
+    }
+
+    uintptr_t cur = (uintptr_t)sp;
+    return cur > g_cached_thread_stack_lo ? cur - g_cached_thread_stack_lo : 0;
+}
+
+size_t stack_current_thread_available_bytes(void) {
+    return stack_current_thread_available_bytes_from_sp(stack_current_sp());
 }
 
 /* ============================================================

@@ -61,6 +61,10 @@ struct DeduceDb {
 const char[] DEDUCE_HEX_DIGITS = "0123456789abcdef";
 usz g_deduce_memory_open_seq = 0;
 
+fn Value* deduce_raise(Interp* interp, char[] code, char[] message, Value* data = null) @inline {
+    return raise_error_with_payload_names(interp, "deduce", code, message, data);
+}
+
 fn usz deduce_format_usz_hex(char[] out, usz value) {
     if (out.len == 0) return 0;
     if (value == 0) {
@@ -121,6 +125,14 @@ fn bool deduce_build_memory_path(char[256]* out, DeduceDb* db) {
     return true;
 }
 
+fn char* deduce_copy_c_string(char[] src) {
+    char* out = (char*)mem::malloc(src.len + 1);
+    if (out == null) return null;
+    for (usz i = 0; i < src.len; i++) out[i] = src[i];
+    out[src.len] = 0;
+    return out;
+}
+
 fn void deduce_db_finalizer(void* handle) {
     if (handle == null) return;
     DeduceDb* db = (DeduceDb*)handle;
@@ -135,16 +147,35 @@ fn void deduce_db_finalizer(void* handle) {
 // Relation — named tuple schema + LMDB backing
 // ============================================================
 
-const usz MAX_RELATION_COLS = 16;
-
 struct Relation {
     SymbolId     name;
-    SymbolId[MAX_RELATION_COLS] columns;
+    SymbolId*    columns;
     usz          col_count;
+    usz          col_capacity;
     MdbDbi       dbi;           // LMDB database handle for this relation
     DeduceDb*    db;            // parent database
     SymbolId     key_col;       // primary key column (0 = none)
     SymbolId     index_col;     // indexed column (0 = none)
+}
+
+fn void deduce_relation_free(Relation* rel) @inline {
+    if (rel == null) return;
+    if (rel.columns != null) {
+        mem::free(rel.columns);
+        rel.columns = null;
+    }
+    mem::free(rel);
+}
+
+fn void deduce_relation_finalizer(void* handle) {
+    if (handle == null) return;
+    Relation* rel = (Relation*)handle;
+    if (rel.columns != null) {
+        mem::free(rel.columns);
+        rel.columns = null;
+    }
+    rel.col_count = 0;
+    rel.col_capacity = 0;
 }
 
 // ============================================================
@@ -153,52 +184,64 @@ struct Relation {
 // ============================================================
 fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
-    if (args.len < 1) return raise_error(interp, "deduce-open: expected path or 'memory");
+    if (args.len < 1) return deduce_raise(interp, "deduce/open-expected-path-or-memory", "deduce-open: expected path or 'memory");
 
     DeduceDb* db = (DeduceDb*)mem::malloc(DeduceDb.sizeof);
     // fault: lisp::WRITE_FAILED
-    if (db == null) return raise_error(interp, "deduce-open: out of memory");
+    if (db == null) return deduce_raise(interp, "deduce/open-out-of-memory", "deduce-open: out of memory");
 
     int rc = mdb_env_create(&db.env);
     if (rc != MDB_SUCCESS) {
         mem::free(db);
         // fault: lisp::WRITE_FAILED
-        return raise_error(interp, "deduce-open: failed to create LMDB env");
+        return deduce_raise(interp, "deduce/open-env-create-failed", "deduce-open: failed to create LMDB env");
     }
 
     mdb_env_set_mapsize(db.env, 1073741824);  // 1GB default
     mdb_env_set_maxdbs(db.env, 64);
 
     // Determine path
-    char[256] path_buf;  // buffer: C-interop (keep) — null-terminated for mdb_env_open
+    char* path_buf = null;
     uint flags = 0;
 
     if (args[0].tag == SYMBOL) {
         // 'memory → use unique temp path with NOSUBDIR
-        if (!deduce_build_memory_path(&path_buf, db)) {
+        char[256] memory_path;
+        if (!deduce_build_memory_path(&memory_path, db)) {
             mdb_env_close(db.env);
             mem::free(db);
-            return raise_error(interp, "deduce-open: failed to build memory path");
+            return deduce_raise(interp, "deduce/open-memory-path-failed", "deduce-open: failed to build memory path");
+        }
+        path_buf = deduce_copy_c_string(memory_path[..]);
+        if (path_buf == null) {
+            mdb_env_close(db.env);
+            mem::free(db);
+            return deduce_raise(interp, "deduce/open-out-of-memory", "deduce-open: out of memory");
         }
         flags = MDB_NOSUBDIR;
     } else if (is_string(args[0])) {
         char[] path = args[0].str_chars[:args[0].str_len];
-        usz plen = path.len < 255 ? path.len : 255;
-        for (usz i = 0; i < plen; i++) path_buf[i] = path[i];
-        path_buf[plen] = 0;
+        path_buf = deduce_copy_c_string(path);
+        if (path_buf == null) {
+            mdb_env_close(db.env);
+            mem::free(db);
+            return deduce_raise(interp, "deduce/open-out-of-memory", "deduce-open: out of memory");
+        }
         flags = MDB_NOSUBDIR;
     } else {
+        mdb_env_close(db.env);
         mem::free(db);
         // fault: lisp::TYPE_MISMATCH
-        return raise_error(interp, "deduce-open: expected path string or 'memory");
+        return deduce_raise(interp, "deduce/open-path-not-string-or-memory", "deduce-open: expected path string or 'memory");
     }
+    defer if (path_buf != null) mem::free(path_buf);
 
-    rc = mdb_env_open(db.env, &path_buf, flags, 0664);
+    rc = mdb_env_open(db.env, path_buf, flags, 0664);
     if (rc != MDB_SUCCESS) {
         mdb_env_close(db.env);
         mem::free(db);
         // fault: lisp::WRITE_FAILED
-        return raise_error(interp, "deduce-open: failed to open database");
+        return deduce_raise(interp, "deduce/open-env-open-failed", "deduce-open: failed to open database");
     }
 
     db.open = true;
@@ -209,7 +252,7 @@ fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
     if (v == null) {
         mdb_env_close(db.env);
         mem::free(db);
-        return raise_error(interp, "deduce-open: out of memory");
+        return deduce_raise(interp, "deduce/open-out-of-memory", "deduce-open: out of memory");
     }
     return v;
 }
@@ -250,11 +293,11 @@ fn Value* prim_deduce_dispatch(char[] name, Value*[] rest, Env* env, Interp* int
 // ============================================================
 
 fn Value* prim_deduce(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "deduce: expected (deduce 'command args...)");
+    if (args.len < 1) return deduce_raise(interp, "deduce/dispatch-expected-command", "deduce: expected (deduce 'command args...)");
 
     Value* cmd = args[0];
     if (cmd == null || cmd.tag != SYMBOL) {
-        return raise_error(interp, "deduce: first argument must be a quoted symbol");
+        return deduce_raise(interp, "deduce/dispatch-command-not-symbol", "deduce: first argument must be a quoted symbol");
     }
 
     char[] name = interp.symbols.get_name(cmd.sym_val);
@@ -262,5 +305,5 @@ fn Value* prim_deduce(Value*[] args, Env* env, Interp* interp) {
     Value* out = prim_deduce_dispatch(name, args[1..], env, interp);
     if (out != null) return out;
 
-    return raise_error(interp, "deduce: unknown command (expected 'open 'scan 'query 'count 'match 'fact! 'retract!)");
+    return deduce_raise(interp, "deduce/dispatch-unknown-command", "deduce: unknown command (expected 'open 'scan 'query 'count 'match 'fact! 'retract!)");
 }

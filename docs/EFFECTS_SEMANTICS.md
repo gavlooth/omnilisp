@@ -1,0 +1,201 @@
+# Omni Effects Semantics (Normative)
+
+Status: Normative
+Last updated: 2026-03-06
+
+This document is the normative reference for effect behavior in Omni.
+`docs/EFFECTS_GUIDE.md` is tutorial-oriented. If there is a conflict, this
+document wins.
+
+For failure-class contracts and error payload policy, see
+`docs/ARCHITECTURE.md` (ADR-2026-03-06-A).
+
+## 1. Scope and Terms
+
+Terms used here follow `docs/LANGUAGE_SPEC.md` Section 10.0 glossary:
+`signal`, `raise`, `resolve`, `abort`, `resumable`, `effect boundary`.
+
+## 2. Normative Rules
+
+Each rule includes test anchors in Section 6.
+
+### EFX-1: Handler Lookup and Matching
+
+- The runtime MUST search handlers from nearest enclosing to outermost.
+- A handler clause MUST match by exact effect tag symbol.
+- If no clause matches in the nearest handler, search MUST continue outward
+  unless blocked by `^strict`.
+- `handle ^strict` MUST convert an otherwise-unhandled effect in its body into
+  an immediate error at that boundary.
+
+### EFX-2: `signal` Evaluation Order
+
+- `signal` MUST evaluate its argument expression before handler dispatch.
+- Type checking for declared effects MUST occur before dispatch.
+- If no matching handler exists, runtime MAY use a registered fast-path
+  primitive for known I/O-style effects.
+
+### EFX-3: `resolve` Semantics
+
+- `resolve` is valid only during active handler-clause execution.
+- `resolve` MUST resume the suspended continuation at the signal site.
+- A continuation resumed by `resolve` MUST be one-shot in normal handler flow:
+  re-resuming the same continuation is an error.
+- Multi-shot behavior MUST be explicit via `with-continuation`, not implicit
+  repeated `resolve`.
+
+### EFX-4: Abort Semantics
+
+- If a handler clause returns without `resolve`, the enclosing `handle`
+  expression MUST return that clause result.
+- Remaining body work after the signal site MUST NOT execute on abort.
+
+### EFX-5: Unhandled Effect Semantics
+
+- Unhandled effects MUST fail deterministically.
+- Diagnostic text MUST include the effect tag and argument type in the current
+  runtime implementation path.
+- Under `^strict`, error MUST be raised at strict boundary instead of falling
+  through to fast path or outer unhandled diagnostics.
+
+Note: error payload normalization to canonical
+`{'code ... 'message ... 'domain ... 'data ...}`
+is tracked in `docs/ERROR_MODEL.md` and is not fully complete yet.
+
+### EFX-6: `reset` / `shift` Interaction
+
+- `shift` outside `reset` MUST error.
+- Continuation capture/resume ordering MUST remain deterministic.
+- Effects emitted inside `reset`/`shift` flows MUST obey the same handler lookup
+  and resolve/abort rules as non-continuation contexts.
+
+### EFX-7: Async and Runtime Boundary Rules
+
+- Worker/callback paths MUST enqueue wakeup/offload events; they MUST NOT run
+  evaluator-level effect handlers directly from callback threads.
+- Wakeup-drain and offload-completion paths MUST preserve interpreter boundary
+  fields and deterministic ownership handoff invariants.
+- Effect resumption MUST occur on the evaluator runtime path after queue drain,
+  not inline in callback enqueue path.
+
+### EFX-8: I/O and Scheduler Do/Don't
+
+Do:
+- Use effect tags (`io/*`) for I/O surface APIs.
+- Keep callback-thread work enqueue-only and side-effect minimal.
+- Keep ownership cleanup explicit on wakeup enqueue failure paths.
+
+Don't:
+- Don’t bypass handler lookup in user-visible I/O APIs.
+- Don’t call handler code directly from worker/callback threads.
+- Don’t mutate runtime boundary fields in wakeup/offload bookkeeping paths.
+
+## 3. Executable Examples (Mirrored by Tests)
+
+These examples are intended to remain executable and linked to regression tests.
+
+1. Basic resume:
+
+```lisp
+(handle (+ 1 (signal read nil))
+  (read x (resolve 41)))
+; => 42
+```
+
+2. Abort without resolve:
+
+```lisp
+(handle (+ 1 (signal bail 5))
+  (bail x x))
+; => 5
+```
+
+3. Multiple signals in one body:
+
+```lisp
+(handle (+ (signal bounce 10) (signal bounce 20))
+  (bounce x (resolve x)))
+; => 30
+```
+
+4. Resolve outside handler is invalid:
+
+```lisp
+(resolve 42)
+; => error
+```
+
+5. `^strict` catches unhandled effects:
+
+```lisp
+(handle ^strict (signal my-eff 42)
+  (other-eff v v))
+; => error
+```
+
+6. Unhandled diagnostics include tag:
+
+```lisp
+(signal unknown-eff 42)
+; => error contains "unknown-eff"
+```
+
+7. Unhandled diagnostics include arg type:
+
+```lisp
+(signal unknown-eff "hello")
+; => error contains "String"
+```
+
+8. I/O handler suppression:
+
+```lisp
+(handle (begin (println "suppressed") 42)
+  (io/println x (resolve nil)))
+; => 42
+```
+
+9. I/O handler capture:
+
+```lisp
+(handle (begin (println "captured") nil)
+  (io/println x x))
+; => "captured"
+```
+
+10. Explicit multi-shot with continuation:
+
+```lisp
+(handle (+ 1 (signal choose 0))
+  (choose x
+    (with-continuation k (+ (k 10) (k 20)))))
+; => 32
+```
+
+## 4. Runtime Notes
+
+- `with-continuation` desugars to binding the hidden continuation (`__k`) in
+  handler scope and is the explicit multi-shot escape hatch.
+- Fast-path dispatch is an optimization for selected effect tags and does not
+  change observable handler precedence semantics.
+
+## 5. Relationship to Error Model
+
+- `raise` is the conventional effect for recoverable/programmer-facing failures.
+- `nil` remains reserved for intentional absence semantics.
+- Internal runtime invariant failures remain hard runtime errors.
+
+See `docs/ARCHITECTURE.md` and `docs/ERROR_MODEL.md` for migration status.
+
+## 6. Rule-to-Test Anchors
+
+| Rule | Regression anchors |
+|------|--------------------|
+| EFX-1 | `src/lisp/tests_advanced_tests.c3` `signal/resolve basic` (`run_advanced_effect_continuation_tests`), `src/lisp/tests_tests.c3` `handle ^strict: catches unhandled` |
+| EFX-2 | `src/lisp/tests_advanced_tests.c3` `effect wrong type int`, `effect wrong type str`, `io/read-file wrong type` (`run_advanced_io_typed_effect_tests`) |
+| EFX-3 | `src/lisp/tests_advanced_tests.c3` `resolve outside handler`; `with-continuation basic`; `with-continuation single` |
+| EFX-4 | `src/lisp/tests_advanced_tests.c3` `signal abort`; `multi-perform abort` |
+| EFX-5 | `src/lisp/tests_tests.c3` `unhandled effect: shows tag name`; `unhandled effect: shows arg type`; `handle ^strict: catches unhandled` |
+| EFX-6 | `src/lisp/tests_tests.c3` `shift aborts`; `shift k resumes`; `reset passthrough`; `src/lisp/tests_advanced_tests.c3` `multi-shift sum` |
+| EFX-7 | `src/lisp/tests_tests.c3` `run_scheduler_wakeup_wraparound_boundary_tests`, `run_scheduler_wakeup_mixed_event_boundary_tests`, `run_scheduler_invalid_offload_wakeup_boundary_tests`, `run_scheduler_wakeup_full_payload_ownership_boundary_tests` |
+| EFX-8 | `src/lisp/tests_advanced_tests.c3` `io handle suppress`, `io handle capture`; `src/lisp/tests_tests.c3` scheduler boundary test group (`run_scheduler_tests`) |

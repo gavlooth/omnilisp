@@ -91,8 +91,9 @@ struct ParsedFunc {
     char[128] name;
     char[16] return_ffi_type;
     char[16] return_omni_type;
-    ParsedParam[16] params;
+    ParsedParam* params;
     usz param_count;
+    usz param_capacity;
     bool is_variadic;
 }
 
@@ -267,11 +268,31 @@ fn void visitor_set_param_types(LibclangHandle* h, ParsedParam* param, CXType ar
     h.dispose_string(type_str);
 }
 
+fn bool parsed_func_ensure_param_capacity(ParsedFunc* func, usz needed) {
+    if (needed <= func.param_capacity) return true;
+    usz new_cap = func.param_capacity > 0 ? func.param_capacity : 8;
+    while (new_cap < needed) {
+        if (new_cap > usz.max / 2) {
+            new_cap = needed;
+            break;
+        }
+        new_cap *= 2;
+    }
+    ParsedParam* new_params = (ParsedParam*)mem::realloc(func.params, ParsedParam.sizeof * new_cap);
+    if (new_params == null) return false;
+    func.params = new_params;
+    func.param_capacity = new_cap;
+    return true;
+}
+
 fn void visitor_set_params(LibclangHandle* h, CXType fn_type, ParsedFunc* func) {
     // Parameters
     int num_args = h.get_num_arg_types(fn_type);
     if (num_args < 0) num_args = 0;
-    if (num_args > 16) num_args = 16;
+    if (!parsed_func_ensure_param_capacity(func, (usz)num_args)) {
+        func.param_count = 0;
+        return;
+    }
     func.param_count = (usz)num_args;
 
     for (int i = 0; i < num_args; i++) {
@@ -308,6 +329,12 @@ fn uint clang_visitor(CXCursor cursor, CXCursor parent, void* client_data) {
     }
 
     ParsedFunc* func = &state.funcs[state.count];
+    if (func.params != null) {
+        mem::free(func.params);
+        func.params = null;
+    }
+    func.param_count = 0;
+    func.param_capacity = 0;
 
     // Copy name
     cstr_copy(name_cstr, &func.name, 127);

@@ -2,6 +2,7 @@ module lisp;
 
 import std::core::mem;
 import std::io;
+import std::collections::list;
 
 // ============================================================
 // Deduce Unification Engine
@@ -10,21 +11,26 @@ import std::io;
 // A binding environment maps ?var SymbolIds to Values.
 // ============================================================
 
-const usz MAX_BINDINGS = 32;
+struct BindingEntry {
+    SymbolId name;
+    Value* value;
+}
 
 struct Bindings {
-    SymbolId[MAX_BINDINGS] vars;
-    Value*[MAX_BINDINGS]   vals;
-    usz count;
+    List{BindingEntry} entries;
 }
 
 fn void bindings_init(Bindings* b) {
-    b.count = 0;
+    *b = {};
+}
+
+fn void bindings_deinit(Bindings* b) {
+    b.entries.free();
 }
 
 fn Value* bindings_lookup(Bindings* b, SymbolId vname) {
-    for (usz i = 0; i < b.count; i++) {
-        if ((uint)b.vars[i] == (uint)vname) return b.vals[i];
+    for (usz i = 0; i < b.entries.len(); i++) {
+        if ((uint)b.entries[i].name == (uint)vname) return b.entries[i].value;
     }
     return null;
 }
@@ -37,10 +43,7 @@ fn void? bindings_bind(Bindings* b, SymbolId vname, Value* val) {
         if (!deduce_val_eq(existing, val)) return TYPE_MISMATCH~;
         return;
     }
-    if (b.count >= MAX_BINDINGS) return TYPE_MISMATCH~;
-    b.vars[b.count] = vname;
-    b.vals[b.count] = val;
-    b.count++;
+    b.entries.push({ .name = vname, .value = val });
 }
 
 fn bool deduce_val_eq(Value* a, Value* b) {
@@ -73,6 +76,16 @@ fn bool is_wildcard(Value* v, Interp* interp) {
     if (v == null || v.tag != SYMBOL) return false;
     char[] name = interp.symbols.get_name(v.sym_val);
     return name.len == 1 && name[0] == '_';
+}
+
+fn uint bindings_result_dict_capacity(usz binding_count) {
+    uint cap = 8;
+    usz target = binding_count * 2;
+    if (target < binding_count) target = binding_count;
+    while ((usz)cap < target && cap <= uint.max / 2) {
+        cap *= 2;
+    }
+    return cap;
 }
 
 // ============================================================
@@ -129,23 +142,25 @@ fn void? match_clause_against_row(
 // ============================================================
 
 fn Value* build_result_dict(Bindings* bindings, Value* projection, Interp* interp) {
-    Value* dict = make_hashmap(interp, 8);
+    usz binding_count = bindings.entries.len();
+    uint dict_capacity = bindings_result_dict_capacity(binding_count);
+    Value* dict = make_hashmap(interp, dict_capacity);
 
     if (projection == null || projection.tag == NIL) {
         // Return all bindings
-        for (usz i = 0; i < bindings.count; i++) {
+        for (usz i = 0; i < binding_count; i++) {
             // Strip ? from variable name
-            char[] name = interp.symbols.get_name(bindings.vars[i]);
+            char[] name = interp.symbols.get_name(bindings.entries[i].name);
             SymbolId stripped;
             if (name.len > 1 && name[0] == '?') {
                 stripped = interp.symbols.intern(name[1..]);
             } else {
-                stripped = bindings.vars[i];
+                stripped = bindings.entries[i].name;
             }
             Value* key = interp.alloc_value();
             key.tag = SYMBOL;
             key.sym_val = stripped;
-            hashmap_set(dict.hashmap_val, key, bindings.vals[i], interp);
+            hashmap_set(dict.hashmap_val, key, bindings.entries[i].value, interp);
         }
     } else {
         // Return only projected variables
@@ -183,27 +198,27 @@ fn Value* build_result_dict(Bindings* bindings, Value* projection, Interp* inter
 // ============================================================
 
 fn Value* prim_deduce_match(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "deduce-match: expected (deduce-match relation '(pattern))");
+    if (args.len < 2) return deduce_raise(interp, "deduce/match-expected-relation-pattern", "deduce-match: expected (deduce-match relation '(pattern))");
 
     Value* rel_val = args[0];
     if (rel_val == null || rel_val.tag != FFI_HANDLE) {
-        return raise_error(interp, "deduce-match: first argument must be a relation");
+        return deduce_raise(interp, "deduce/match-relation-not-handle", "deduce-match: first argument must be a relation");
     }
-    if (rel_val.ffi_val == null) return raise_error(interp, "deduce-match: relation handle is closed");
+    if (rel_val.ffi_val == null) return deduce_raise(interp, "deduce/match-relation-handle-closed", "deduce-match: relation handle is closed");
     Relation* rel = (Relation*)rel_val.ffi_val.lib_handle;
 
     Value* pattern = args[1];
-    if (!is_cons(pattern)) return raise_error(interp, "deduce-match: pattern must be a list");
+    if (!is_cons(pattern)) return deduce_raise(interp, "deduce/match-pattern-not-list", "deduce-match: pattern must be a list");
 
     // Scan all rows and match against pattern
     Value* all_rows = relation_scan_all(rel, interp);
 
     Value* result = make_nil(interp);
-    Value*[512] matches;
-    usz match_count = 0;
+    List{Value*} matches;
+    defer matches.free();
 
     Value* curr = all_rows;
-    while (is_cons(curr) && match_count < 512) {
+    while (is_cons(curr)) {
         Value* row = car(curr);
         Bindings bindings;
         bindings_init(&bindings);
@@ -212,13 +227,14 @@ fn Value* prim_deduce_match(Value*[] args, Env* env, Interp* interp) {
             // Pattern didn't match this row — skip
         } else {
             Value* result_dict = build_result_dict(&bindings, null, interp);
-            matches[match_count++] = result_dict;
+            matches.push(result_dict);
         }
+        bindings_deinit(&bindings);
         curr = cdr(curr);
     }
 
     // Build list in order
-    for (isz i = (isz)match_count - 1; i >= 0; i--) {
+    for (isz i = (isz)matches.len() - 1; i >= 0; i--) {
         result = make_cons(interp, matches[(usz)i], result);
     }
     return result;

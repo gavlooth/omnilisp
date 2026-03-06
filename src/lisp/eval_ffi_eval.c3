@@ -46,12 +46,13 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
 
 fn Value* ffi_resolve_bound_fn(FfiBoundFn* bound, Interp* interp) {
     if (bound.fn_ptr != null) return null;
-    bound.fn_ptr = dlsym(bound.lib_handle, (ZString)&bound.c_name);
+    if (bound.c_name == null) return raise_error(interp, "ffi: internal error — missing symbol name");
+    bound.fn_ptr = dlsym(bound.lib_handle, (ZString)bound.c_name);
     if (bound.fn_ptr != null) return null;
 
     char[256] ebuf;
     char[] msg = io::bprintf(&ebuf, "ffi: dlsym failed for '%s'",
-        (ZString)&bound.c_name)!!;
+        (ZString)bound.c_name)!!;
     return raise_error(interp, msg);
 }
 
@@ -161,11 +162,22 @@ fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
     }
 
     // Prepare C argument storage
-    long[16] int_store;
-    double[16] dbl_store;
-    void*[16] ptr_store;
-    int[16] arg_types;
-    void*[16] arg_values;
+    long* int_store = null;
+    double* dbl_store = null;
+    void** ptr_store = null;
+    int* arg_types = null;
+    void** arg_values = null;
+
+    if (bound.param_count > 0) {
+        int_store = (long*)interp.current_scope.alloc(long.sizeof * bound.param_count);
+        dbl_store = (double*)interp.current_scope.alloc(double.sizeof * bound.param_count);
+        ptr_store = (void**)interp.current_scope.alloc(uptr.sizeof * bound.param_count);
+        arg_types = (int*)interp.current_scope.alloc(int.sizeof * bound.param_count);
+        arg_values = (void**)interp.current_scope.alloc(uptr.sizeof * bound.param_count);
+        if (int_store == null || dbl_store == null || ptr_store == null || arg_types == null || arg_values == null) {
+            return raise_error(interp, "ffi: out of memory while preparing call arguments");
+        }
+    }
 
     for (usz i = 0; i < bound.param_count; i++) {
         ffi_pack_call_arg(args[i], bound.param_types[i],
@@ -181,7 +193,7 @@ fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
     void* ret_storage = ffi_return_storage_for(bound.return_type, &ret_int, &ret_dbl, &ret_ptr);
 
     int rc = omni_ffi_call(bound.fn_ptr, (int)bound.param_count,
-                           &arg_types, &arg_values, ret_type, ret_storage);
+                           arg_types, arg_values, ret_type, ret_storage);
     if (rc != 0) return raise_error(interp, "ffi: libffi call failed");
 
     return ffi_return_value_for(bound.return_type, ret_int, ret_dbl, ret_ptr, interp);
@@ -206,18 +218,43 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
 
     // Build FfiBoundFn — dlsym is deferred to first call (lazy resolution)
     FfiBoundFn* bound = (FfiBoundFn*)mem::malloc(FfiBoundFn.sizeof);
+    if (bound == null) {
+        return raise_error(interp, "ffi λ: out of memory for bound function");
+    }
     bound.fn_ptr = null;  // resolved lazily on first call
     bound.lib_handle = lib_val.ffi_val.lib_handle;
-    // Copy C symbol name for lazy dlsym
-    for (usz i = 0; i < ff.c_name.len && i < 127; i++) {
+    if (ff.c_name == null) {
+        mem::free(bound);
+        return raise_error(interp, "ffi λ: missing C symbol name");
+    }
+    if (ff.c_name_len == usz.max) {
+        mem::free(bound);
+        return raise_error(interp, "ffi λ: C symbol name is too long");
+    }
+    bound.c_name = (char*)mem::malloc(ff.c_name_len + 1);
+    if (bound.c_name == null) {
+        mem::free(bound);
+        return raise_error(interp, "ffi λ: out of memory for symbol name");
+    }
+    for (usz i = 0; i < ff.c_name_len; i++) {
         bound.c_name[i] = ff.c_name[i];
     }
-    bound.c_name[ff.c_name.len < 127 ? ff.c_name.len : 127] = 0;
+    bound.c_name[ff.c_name_len] = 0;
+    bound.c_name_len = ff.c_name_len;
     bound.param_count = ff.param_count;
+    bound.param_types = null;
     bound.is_variadic = ff.is_variadic;
 
-    for (usz i = 0; i < ff.param_count; i++) {
-        bound.param_types[i] = type_ann_to_ffi_tag(ff.param_types[i].base_type, interp);
+    if (ff.param_count > 0) {
+        bound.param_types = (FfiTypeTag*)mem::malloc(FfiTypeTag.sizeof * ff.param_count);
+        if (bound.param_types == null) {
+            mem::free(bound.c_name);
+            mem::free(bound);
+            return raise_error(interp, "ffi λ: out of memory for parameter metadata");
+        }
+        for (usz i = 0; i < ff.param_count; i++) {
+            bound.param_types[i] = type_ann_to_ffi_tag(ff.param_types[i].base_type, interp);
+        }
     }
 
     if (ff.has_return_type) {

@@ -1,6 +1,7 @@
 module lisp;
 
 import std::core::mem;
+import std::collections::list;
 
 // ============================================================
 // Relation definition + query
@@ -14,21 +15,21 @@ fn Value* deduce_relation_extract_spec(
 ) {
     // arg 0: (cons db (name col1 col2 ...))
     // fault: lisp::TYPE_MISMATCH
-    if (!is_cons(pair)) return raise_error(interp, "__define-relation: expected cons pair");
+    if (!is_cons(pair)) return deduce_raise(interp, "deduce/define-relation-expected-cons-pair", "__define-relation: expected cons pair");
 
     Value* db_val = car(pair);
     if (db_val == null || db_val.tag != FFI_HANDLE) {
         // fault: lisp::TYPE_MISMATCH
-        return raise_error(interp, "__define-relation: car must be a deduce-open handle");
+        return deduce_raise(interp, "deduce/define-relation-db-not-handle", "__define-relation: car must be a deduce-open handle");
     }
-    if (db_val.ffi_val == null) return raise_error(interp, "__define-relation: database handle is closed");
+    if (db_val.ffi_val == null) return deduce_raise(interp, "deduce/define-relation-db-handle-closed", "__define-relation: database handle is closed");
     *db_out = (DeduceDb*)db_val.ffi_val.lib_handle;
 
     Value* spec = cdr(pair);
     // fault: lisp::TYPE_MISMATCH
-    if (!is_cons(spec)) return raise_error(interp, "__define-relation: expected (name col...) in cdr");
+    if (!is_cons(spec)) return deduce_raise(interp, "deduce/define-relation-expected-name-columns-list", "__define-relation: expected (name col...) in cdr");
     // fault: lisp::EXPECTED_SYMBOL
-    if (car(spec).tag != SYMBOL) return raise_error(interp, "__define-relation: first element must be relation name");
+    if (car(spec).tag != SYMBOL) return deduce_raise(interp, "deduce/define-relation-name-not-symbol", "__define-relation: first element must be relation name");
 
     *rel_name_out = car(spec).sym_val;
     *cols_out = cdr(spec);
@@ -37,30 +38,60 @@ fn Value* deduce_relation_extract_spec(
 
 fn Relation* deduce_relation_alloc(DeduceDb* db, SymbolId rel_name) {
     Relation* rel = (Relation*)mem::malloc(Relation.sizeof);
+    if (rel == null) return null;
     rel.name = rel_name;
+    rel.columns = null;
     rel.db = db;
     rel.col_count = 0;
+    rel.col_capacity = 0;
+    rel.dbi = 0;
     rel.key_col = 0;
     rel.index_col = 0;
     return rel;
 }
 
-fn void deduce_relation_collect_columns(Relation* rel, Value* cols) {
+fn bool deduce_relation_ensure_column_capacity(Relation* rel, usz needed) {
+    if (needed <= rel.col_capacity) return true;
+
+    usz new_cap = rel.col_capacity > 0 ? rel.col_capacity : 4;
+    while (new_cap < needed) {
+        if (new_cap > usz.max / 2) {
+            new_cap = needed;
+            break;
+        }
+        new_cap *= 2;
+    }
+
+    SymbolId* new_columns = (SymbolId*)mem::realloc(rel.columns, SymbolId.sizeof * new_cap);
+    if (new_columns == null) return false;
+    rel.columns = new_columns;
+    rel.col_capacity = new_cap;
+    return true;
+}
+
+fn Value* deduce_relation_collect_columns(Relation* rel, Value* cols, Interp* interp) {
     Value* curr = cols;
-    while (is_cons(curr) && rel.col_count < MAX_RELATION_COLS) {
+    while (is_cons(curr)) {
         Value* col = car(curr);
         if (col.tag == SYMBOL) {
+            if (!deduce_relation_ensure_column_capacity(rel, rel.col_count + 1)) {
+                return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
+            }
             rel.columns[rel.col_count++] = col.sym_val;
         }
         curr = cdr(curr);
     }
+    return null;
 }
 
 fn Value* deduce_relation_collect_columns_from_args(Relation* rel, Value*[] args, usz start, Interp* interp) {
-    for (usz i = start; i < args.len && rel.col_count < MAX_RELATION_COLS; i++) {
+    for (usz i = start; i < args.len; i++) {
         Value* col = args[i];
         if (col == null || col.tag != SYMBOL) {
-            return raise_error(interp, "__define-relation: column arguments must be symbols");
+            return deduce_raise(interp, "deduce/define-relation-column-not-symbol", "__define-relation: column arguments must be symbols");
+        }
+        if (!deduce_relation_ensure_column_capacity(rel, rel.col_count + 1)) {
+            return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
         }
         rel.columns[rel.col_count++] = col.sym_val;
     }
@@ -69,6 +100,7 @@ fn Value* deduce_relation_collect_columns_from_args(Relation* rel, Value*[] args
 
 enum DeduceRelationOpenStatus {
     REL_OPEN_OK,
+    REL_OPEN_OUT_OF_MEMORY,
     REL_OPEN_TXN_BEGIN_FAILED,
     REL_OPEN_DBI_FAILED,
 }
@@ -76,16 +108,15 @@ enum DeduceRelationOpenStatus {
 fn DeduceRelationOpenStatus deduce_relation_open_dbi(Relation* rel, Interp* interp) {
     // Open LMDB named database for this relation.
     char[] name_str = interp.symbols.get_name(rel.name);
-    char[64] dbi_name;  // buffer: C-interop (keep) — null-terminated for mdb_dbi_open
-    usz nlen = name_str.len < 63 ? name_str.len : 63;
-    for (usz i = 0; i < nlen; i++) dbi_name[i] = name_str[i];
-    dbi_name[nlen] = 0;
+    char* dbi_name = deduce_copy_c_string(name_str);
+    if (dbi_name == null) return REL_OPEN_OUT_OF_MEMORY;
+    defer mem::free(dbi_name);
 
     MdbTxn* txn = null;
     int rc = mdb_txn_begin(rel.db.env, null, 0, &txn);
     if (rc != MDB_SUCCESS) return REL_OPEN_TXN_BEGIN_FAILED;
 
-    rc = mdb_dbi_open(txn, &dbi_name, MDB_CREATE, &rel.dbi);
+    rc = mdb_dbi_open(txn, dbi_name, MDB_CREATE, &rel.dbi);
     if (rc != MDB_SUCCESS) {
         mdb_txn_abort(txn);
         return REL_OPEN_DBI_FAILED;
@@ -97,7 +128,7 @@ fn DeduceRelationOpenStatus deduce_relation_open_dbi(Relation* rel, Interp* inte
 
 fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
-    if (args.len < 1) return raise_error(interp, "__define-relation: expected (cons db '(name col...))");
+    if (args.len < 1) return deduce_raise(interp, "deduce/define-relation-expected-spec", "__define-relation: expected (cons db '(name col...))");
 
     DeduceDb* db = null;
     SymbolId rel_name = 0;
@@ -106,7 +137,7 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
                        args[0] != null && args[0].tag == FFI_HANDLE &&
                        args[1] != null && args[1].tag == SYMBOL;
     if (direct_form) {
-        if (args[0].ffi_val == null) return raise_error(interp, "__define-relation: database handle is closed");
+        if (args[0].ffi_val == null) return deduce_raise(interp, "deduce/define-relation-db-handle-closed", "__define-relation: database handle is closed");
         db = (DeduceDb*)args[0].ffi_val.lib_handle;
         rel_name = args[1].sym_val;
     } else {
@@ -115,30 +146,38 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
     }
 
     Relation* rel = deduce_relation_alloc(db, rel_name);
+    if (rel == null) return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
     if (direct_form) {
         Value* col_err = deduce_relation_collect_columns_from_args(rel, args, 2, interp);
         if (col_err != null) {
-            mem::free(rel);
+            deduce_relation_free(rel);
             return col_err;
         }
     } else {
-        deduce_relation_collect_columns(rel, cols);
+        Value* col_err = deduce_relation_collect_columns(rel, cols, interp);
+        if (col_err != null) {
+            deduce_relation_free(rel);
+            return col_err;
+        }
     }
     DeduceRelationOpenStatus open_status = deduce_relation_open_dbi(rel, interp);
     if (open_status != REL_OPEN_OK) {
-        mem::free(rel);
+        deduce_relation_free(rel);
+        if (open_status == REL_OPEN_OUT_OF_MEMORY) {
+            return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
+        }
         if (open_status == REL_OPEN_TXN_BEGIN_FAILED) {
             // fault: lisp::WRITE_FAILED
-            return raise_error(interp, "__define-relation: txn begin failed");
+            return deduce_raise(interp, "deduce/define-relation-txn-begin-failed", "__define-relation: txn begin failed");
         }
         // fault: lisp::WRITE_FAILED
-        return raise_error(interp, "__define-relation: dbi open failed");
+        return deduce_raise(interp, "deduce/define-relation-dbi-open-failed", "__define-relation: dbi open failed");
     }
 
-    Value* v = make_ffi_handle_ex(interp, (void*)rel, "deduce-relation", null, true, false);
+    Value* v = make_ffi_handle_ex(interp, (void*)rel, "deduce-relation", &deduce_relation_finalizer, true, false);
     if (v == null) {
-        mem::free(rel);
-        return raise_error(interp, "__define-relation: out of memory");
+        deduce_relation_free(rel);
+        return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
     }
     return v;
 }
@@ -150,14 +189,14 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
-    if (args.len < 2) return raise_error(interp, "deduce-query: expected (deduce-query relation filter-fn)");
+    if (args.len < 2) return deduce_raise(interp, "deduce/query-expected-relation-filter", "deduce-query: expected (deduce-query relation filter-fn)");
 
     Value* rel_val = args[0];
     if (rel_val == null || rel_val.tag != FFI_HANDLE) {
         // fault: lisp::TYPE_MISMATCH
-        return raise_error(interp, "deduce-query: first argument must be a relation");
+        return deduce_raise(interp, "deduce/query-relation-not-handle", "deduce-query: first argument must be a relation");
     }
-    if (rel_val.ffi_val == null) return raise_error(interp, "deduce-query: relation handle is closed");
+    if (rel_val.ffi_val == null) return deduce_raise(interp, "deduce/query-relation-handle-closed", "deduce-query: relation handle is closed");
     Relation* rel = (Relation*)rel_val.ffi_val.lib_handle;
 
     Value* filter_fn = args[1];
@@ -165,22 +204,22 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
     // Scan all tuples and filter
     Value* all = relation_scan_all(rel, interp);
     Value* result = make_nil(interp);
-    Value*[256] matches;
-    usz match_count = 0;
+    List{Value*} matches;
+    defer matches.free();
 
     Value* curr = all;
-    while (is_cons(curr) && match_count < 256) {
+    while (is_cons(curr)) {
         Value* row = car(curr);
         // Apply filter function to row
         Value* keep = jit_apply_value(filter_fn, row, interp);
         if (keep != null && !is_falsy(keep, interp)) {
-            matches[match_count++] = row;
+            matches.push(row);
         }
         curr = cdr(curr);
     }
 
     // Build result list in order
-    for (isz i = (isz)match_count - 1; i >= 0; i--) {
+    for (isz i = (isz)matches.len() - 1; i >= 0; i--) {
         result = make_cons(interp, matches[(usz)i], result);
     }
     return result;

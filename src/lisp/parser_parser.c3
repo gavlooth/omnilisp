@@ -3,6 +3,8 @@ module lisp;
 // SECTION 2: PARSER
 // =============================================================================
 
+const int PARSER_MAX_NESTING = 1024;
+
 struct Parser {
     Lexer*    lexer;
     Interp*   interp;
@@ -12,6 +14,7 @@ struct Parser {
     usz       error_line;
     usz       error_col;
     int       depth;
+    int       max_depth;
 }
 
 fn void Parser.init(Parser* self, Lexer* lexer, Interp* interp) {
@@ -22,6 +25,7 @@ fn void Parser.init(Parser* self, Lexer* lexer, Interp* interp) {
     self.error_line = 0;
     self.error_col = 0;
     self.depth = 0;
+    self.max_depth = PARSER_MAX_NESTING;
 }
 
 /**

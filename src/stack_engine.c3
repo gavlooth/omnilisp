@@ -63,6 +63,9 @@ extern fn void stack_asan_start_switch(void** fake_stack_save, void* stack_botto
 extern fn void stack_asan_finish_switch(void* fake_stack_save) @extern("stack_asan_finish_switch");
 extern fn void stack_raw_copy(void* dst, void* src, usz size) @extern("stack_raw_copy");
 extern fn int stack_asan_enabled() @extern("stack_asan_enabled");
+extern fn void* stack_current_sp() @extern("stack_current_sp");
+extern fn usz stack_current_thread_available_bytes() @extern("stack_current_thread_available_bytes");
+extern fn usz stack_current_thread_available_bytes_from_sp(void* sp) @extern("stack_current_thread_available_bytes_from_sp");
 
 // =============================================================================
 // SECTION 2: STACK CONTEXT (72 bytes — one cache line on most CPUs)
@@ -212,6 +215,7 @@ const usz ASAN_STACK_SIZE = 262144;          // 256KB usable stack (ASAN-instrum
 const usz GUARD_SIZE = PAGE_SIZE;      // 4KB guard page
 
 bool g_stack_quiet_output = false;
+const usz STACK_APPLY_MIN_HEADROOM = 24 * 1024;
 
 fn bool stack_runtime_asan_enabled() @inline {
     $if env::ADDRESS_SANITIZER:
@@ -219,6 +223,23 @@ fn bool stack_runtime_asan_enabled() @inline {
     $else
         return stack_asan_enabled() != 0;
     $endif
+}
+
+fn usz stack_current_available_bytes() {
+    void* sp = stack_current_sp();
+    if (sp == null) return 0;
+
+    if (g_current_stack_ctx != null && stack_region_contains(&g_current_stack_ctx.stack, sp)) {
+        usz lo = (usz)g_current_stack_ctx.stack.base + GUARD_SIZE;
+        usz cur = (usz)sp;
+        return cur > lo ? cur - lo : 0;
+    }
+
+    return stack_current_thread_available_bytes_from_sp(sp);
+}
+
+fn bool stack_has_apply_headroom(usz required) @inline {
+    return stack_current_available_bytes() > required;
 }
 
 fn bool stack_summary_enabled() @inline {

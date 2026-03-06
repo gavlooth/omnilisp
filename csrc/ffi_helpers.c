@@ -2,6 +2,7 @@
 // Reason: libffi uses C structs (ffi_type, ffi_cif) that are hard to declare in C3.
 
 #include <ffi.h>
+#include <stdlib.h>
 
 // Type codes matching Omni's FFI type enum (must stay in sync with value.c3 FfiTypeTag)
 enum {
@@ -33,19 +34,27 @@ static ffi_type* omni_to_ffi_type(int t) {
 // Returns: 0 on success, -1 on error
 int omni_ffi_call(void* fn_ptr, int nargs, int* arg_types, void** arg_values,
                   int ret_type, void* ret_value) {
-    if (nargs > 16) return -1;
+    if (nargs < 0) return -1;
 
     ffi_cif cif;
-    ffi_type* atypes[16];
+    ffi_type** atypes = NULL;
+    if (nargs > 0) {
+        atypes = (ffi_type**)malloc((size_t)nargs * sizeof(ffi_type*));
+        if (atypes == NULL) return -1;
+    }
     for (int i = 0; i < nargs; i++) {
         atypes[i] = omni_to_ffi_type(arg_types[i]);
     }
     ffi_type* rtype = omni_to_ffi_type(ret_type);
 
     ffi_status status = ffi_prep_cif(&cif, FFI_DEFAULT_ABI, (unsigned int)nargs, rtype, atypes);
-    if (status != FFI_OK) return -1;
+    if (status != FFI_OK) {
+        free(atypes);
+        return -1;
+    }
 
     ffi_call(&cif, (void (*)(void))fn_ptr, ret_value, arg_values);
+    free(atypes);
     return 0;
 }
 
@@ -54,10 +63,14 @@ int omni_ffi_call(void* fn_ptr, int nargs, int* arg_types, void** arg_values,
 int omni_ffi_call_var(void* fn_ptr, int nargs, int fixed_count,
                       int* arg_types, void** arg_values,
                       int ret_type, void* ret_value) {
-    if (nargs > 16) return -1;
+    if (nargs < 0 || fixed_count < 0 || fixed_count > nargs) return -1;
 
     ffi_cif cif;
-    ffi_type* atypes[16];
+    ffi_type** atypes = NULL;
+    if (nargs > 0) {
+        atypes = (ffi_type**)malloc((size_t)nargs * sizeof(ffi_type*));
+        if (atypes == NULL) return -1;
+    }
     for (int i = 0; i < nargs; i++) {
         atypes[i] = omni_to_ffi_type(arg_types[i]);
     }
@@ -67,8 +80,12 @@ int omni_ffi_call_var(void* fn_ptr, int nargs, int fixed_count,
                                           (unsigned int)fixed_count,
                                           (unsigned int)nargs,
                                           rtype, atypes);
-    if (status != FFI_OK) return -1;
+    if (status != FFI_OK) {
+        free(atypes);
+        return -1;
+    }
 
     ffi_call(&cif, (void (*)(void))fn_ptr, ret_value, arg_values);
+    free(atypes);
     return 0;
 }

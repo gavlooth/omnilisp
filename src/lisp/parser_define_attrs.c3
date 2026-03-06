@@ -1,5 +1,7 @@
 module lisp;
 
+import std::collections::list;
+
 /**
  * Handle special bracket defines: [macro], [effect], [relation], [schema]
  */
@@ -13,36 +15,44 @@ fn Expr* Parser.parse_define_macro_attr(Parser* self, Expr* e) {
 
     e.tag = E_DEFMACRO;
     e.define_macro.name = name;
+    e.define_macro.clauses = null;
     e.define_macro.clause_count = 0;
 
+    List{MacroClause} clauses;
+    defer clauses.free();
+
     while (self.lexer.current.type == T_LPAREN && !self.has_error) {
-        if (e.define_macro.clause_count >= 8) {
-            self.set_error("too many macro clauses");
-            return null;
-        }
         self.lexer.advance();
         Pattern* pat = self.parse_pattern();
         Value* tmpl = self.parse_template_datum();
         self.expect(T_RPAREN, ")");
-        e.define_macro.clauses[e.define_macro.clause_count].pattern = pat;
-        e.define_macro.clauses[e.define_macro.clause_count].tmpl = tmpl;
-        e.define_macro.clause_count++;
+        clauses.push({ .pattern = pat, .tmpl = tmpl });
+    }
+    if (clauses.len() > 0) {
+        e.define_macro.clauses = (MacroClause*)mem::malloc(MacroClause.sizeof * clauses.len());
+        if (e.define_macro.clauses == null) {
+            self.set_error("out of memory while parsing macro clauses");
+            return null;
+        }
+        for (usz i = 0; i < clauses.len(); i++) e.define_macro.clauses[i] = clauses[i];
+        e.define_macro.clause_count = clauses.len();
     }
     self.expect(T_RPAREN, ")");
     return e;
 }
 
-fn void Parser.parse_relation_attr_options(Parser* self, SymbolId[8]* attrs, usz attr_count, SymbolId sym_key, SymbolId sym_index, SymbolId* key_col, SymbolId* index_col) {
-    for (usz i = 2; i < attr_count; i++) {
-        if ((uint)(*attrs)[i] == (uint)sym_key && i + 1 < attr_count) {
+fn void Parser.parse_relation_attr_options(Parser* self, List{SymbolId}* attrs, SymbolId sym_key, SymbolId sym_index, SymbolId* key_col, SymbolId* index_col) {
+    for (usz i = 2; i < attrs.len(); i++) {
+        if ((uint)(*attrs)[i] == (uint)sym_key && i + 1 < attrs.len()) {
             *key_col = (*attrs)[++i];
-        } else if ((uint)(*attrs)[i] == (uint)sym_index && i + 1 < attr_count) {
+        } else if ((uint)(*attrs)[i] == (uint)sym_index && i + 1 < attrs.len()) {
             *index_col = (*attrs)[++i];
         }
     }
 }
 
-fn Expr* Parser.build_define_relation_call(Parser* self, SymbolId db_name, SymbolId rel_name, SymbolId* col_names, usz col_count) {
+fn Expr* Parser.build_define_relation_call(Parser* self, SymbolId db_name, SymbolId rel_name, List{SymbolId}* col_names) {
+    usz col_count = col_names.len();
     usz total_args = 2 + col_count;
     Expr* func = self.interp.alloc_expr();
     func.tag = E_VAR;
@@ -65,7 +75,7 @@ fn Expr* Parser.build_define_relation_call(Parser* self, SymbolId db_name, Symbo
         call_args[2 + i].tag = E_LIT;
         call_args[2 + i].lit.value = self.interp.alloc_value_root();
         call_args[2 + i].lit.value.tag = SYMBOL;
-        call_args[2 + i].lit.value.sym_val = col_names[i];
+        call_args[2 + i].lit.value.sym_val = (*col_names)[i];
     }
 
     Expr* call = self.interp.alloc_expr();
@@ -77,8 +87,8 @@ fn Expr* Parser.build_define_relation_call(Parser* self, SymbolId db_name, Symbo
     return call;
 }
 
-fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, SymbolId[8]* attrs, usz attr_count) {
-    if (attr_count < 2) {
+fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, List{SymbolId}* attrs) {
+    if (attrs.len() < 2) {
         self.set_error("expected db after [relation");
         return null;
     }
@@ -88,7 +98,7 @@ fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, SymbolId[8]* a
     SymbolId index_col = 0;
     SymbolId sym_key = self.interp.symbols.intern("key");
     SymbolId sym_index = self.interp.symbols.intern("index");
-    self.parse_relation_attr_options(attrs, attr_count, sym_key, sym_index, &key_col, &index_col);
+    self.parse_relation_attr_options(attrs, sym_key, sym_index, &key_col, &index_col);
 
     if (self.lexer.current.type != T_SYMBOL) {
         self.set_error("expected relation name");
@@ -97,9 +107,9 @@ fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, SymbolId[8]* a
     SymbolId rel_name = self.get_current_symbol();
     self.lexer.advance();
 
-    SymbolId[16] col_names;
-    usz col_count = 0;
-    while (self.lexer.current.type == T_LPAREN && !self.has_error && col_count < 16) {
+    List{SymbolId} col_names;
+    defer col_names.free();
+    while (self.lexer.current.type == T_LPAREN && !self.has_error) {
         self.lexer.advance();  // consume (
         if (self.lexer.current.type == T_SYMBOL) {
             SymbolId first = self.get_current_symbol();
@@ -116,14 +126,14 @@ fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, SymbolId[8]* a
             self.set_error("expected column name");
             return null;
         }
-        col_names[col_count++] = self.get_current_symbol();
+        col_names.push(self.get_current_symbol());
         self.lexer.advance();
         self.expect(T_RPAREN, ")");
     }
 
     self.expect(T_RPAREN, ")");  // close define
 
-    Expr* call = self.build_define_relation_call(db_name, rel_name, &col_names[0], col_count);
+    Expr* call = self.build_define_relation_call(db_name, rel_name, &col_names);
 
     e.tag = E_DEFINE;
     e.define.name = rel_name;
@@ -150,7 +160,7 @@ fn Expr* Parser.parse_define_schema_attr(Parser* self, Expr* e) {
     return e;
 }
 
-fn Expr* Parser.parse_define_special(Parser* self, Expr* e, SymbolId annotation, SymbolId[8]* attrs, usz attr_count) {
+fn Expr* Parser.parse_define_special(Parser* self, Expr* e, SymbolId annotation, List{SymbolId}* attrs) {
     if (annotation == self.interp.sym_macro) {
         return self.parse_define_macro_attr(e);
     }
@@ -161,7 +171,7 @@ fn Expr* Parser.parse_define_special(Parser* self, Expr* e, SymbolId annotation,
 
     SymbolId sym_relation = self.interp.symbols.intern("relation");
     if (annotation == sym_relation) {
-        return self.parse_define_relation_attr(e, attrs, attr_count);
+        return self.parse_define_relation_attr(e, attrs);
     }
 
     SymbolId sym_schema = self.interp.symbols.intern("schema");

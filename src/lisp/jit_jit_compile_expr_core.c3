@@ -399,9 +399,10 @@ fn void? jit_compile_multi_arg_one(void* s, Expr* expr, Interp* interp, JitLocal
 
 fn void? jit_compile_multi_arg_many(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     usz argc = expr.call.arg_count;
-    if (argc > 16) return JIT_COMPILE_FAILED~;
-
-    int[16] arg_slots;
+    int* arg_slots = argc > 0
+        ? (int*)mem::malloc(int.sizeof * argc)
+        : null;
+    defer if (arg_slots != null) mem::free(arg_slots);
     for (usz i = 0; i < argc; i++) {
         arg_slots[i] = _jit_allocai(s, 8);
     }

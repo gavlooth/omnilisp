@@ -108,16 +108,55 @@ fn Pattern* Parser.parse_dict_pattern(Parser* self) {
     return p;
 }
 
-fn Pattern* Parser.parse_ctor_or_guard_pattern(Parser* self) {
-    self.lexer.advance();  // consume '('
+fn bool Parser.parse_as_pattern_marker(Parser* self) {
+    if (self.lexer.current.type != T_QUOTE) return false;
+    self.lexer.advance();  // consume '
     if (self.lexer.current.type != T_SYMBOL) {
-        self.set_error("expected constructor name or ? in pattern");
+        self.set_error("expected 'as in as-pattern");
+        return false;
+    }
+    SymbolId maybe_as = self.get_current_symbol();
+    if ((uint)maybe_as != (uint)self.interp.sym_as) {
+        self.set_error("expected 'as in as-pattern");
+        return false;
+    }
+    self.lexer.advance();
+    return true;
+}
+
+fn Pattern* Parser.parse_paren_pattern(Parser* self) {
+    self.lexer.advance();  // consume '('
+    Pattern* first = self.parse_pattern();
+    if (self.has_error) return null;
+
+    if (self.lexer.current.type == T_QUOTE) {
+        Pattern* p = self.interp.alloc_pattern();
+        p.tag = PAT_AS;
+        p.as_sub = first;
+        if (!self.parse_as_pattern_marker()) return null;
+        if (self.lexer.current.type != T_SYMBOL) {
+            self.set_error("expected binding name after 'as");
+            return null;
+        }
+        p.as_name = self.get_current_symbol();
+        self.lexer.advance();
+        self.expect(T_RPAREN, ")");
+        return p;
+    }
+
+    if (self.lexer.current.type == T_SYMBOL &&
+        (uint)self.get_current_symbol() == (uint)self.interp.sym_as) {
+        self.set_error("expected 'as in as-pattern");
         return null;
     }
 
-    SymbolId sym = self.get_current_symbol();
+    if (first.tag != PAT_VAR) {
+        self.set_error("expected constructor, guard, or (pattern 'as name)");
+        return null;
+    }
+
+    SymbolId sym = first.var_name;
     if ((uint)sym == (uint)self.interp.sym_question) {
-        self.lexer.advance();  // consume '?'
         Pattern* p = self.interp.alloc_pattern();
         p.tag = PAT_GUARD;
         p.guard_pred = self.parse_expr();
@@ -133,8 +172,6 @@ fn Pattern* Parser.parse_ctor_or_guard_pattern(Parser* self) {
     Pattern* p = self.interp.alloc_pattern();
     p.tag = PAT_CONSTRUCTOR;
     p.constructor_name = sym;
-    self.lexer.advance();  // consume constructor name
-
     List{Pattern*} subs;
     while (self.lexer.current.type != T_RPAREN && !self.has_error) {
         subs.push(self.parse_pattern());
@@ -179,7 +216,7 @@ fn Pattern* Parser.parse_pattern(Parser* self) {
         case T_LBRACE:
             return self.parse_dict_pattern();
         case T_LPAREN:
-            return self.parse_ctor_or_guard_pattern();
+            return self.parse_paren_pattern();
         case T_SYMBOL: {
             Pattern* p = self.interp.alloc_pattern();
             p.tag = PAT_VAR;

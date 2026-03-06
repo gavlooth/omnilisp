@@ -1518,6 +1518,9 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
     test_tag(interp, "re-fullmatch char-class chain >32",
         "(let loop (i 0 p \"\" s \"\") (if (= i 40) (re-fullmatch p s) (loop (+ i 1) (string-append p \"[a]\") (string-append s \"a\"))))",
         STRING, pass, fail);
+    test_tag(interp, "re-fullmatch char-class preserves entries past 64",
+        "(let loop (i 0 cls \"[\") (if (= i 64) (re-fullmatch (string-append cls \"z]\") \"z\") (loop (+ i 1) (string-append cls \"a\"))))",
+        STRING, pass, fail);
     test_str_val(interp, "re-fullmatch long compiled pattern",
         "(re-fullmatch \"(aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|z)\" \"z\")", "z", pass, fail);
     test_tag(interp, "re-fullmatch long concatenation dynamic pattern",
@@ -1583,6 +1586,10 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "(re-replace \"[0-9]+\" \"X\" \"a1b2c3\")", "aXb2c3", pass, fail);
     test_str(interp, "re-replace global returns string",
         "(re-replace \"a\" \"X\" \"abaca\" 'global)", pass, fail);
+    test_eq(interp, "re-replace first preserves >1024 output",
+        "(string-byte-length (re-replace \"a\" (string-repeat \"b\" 1500) \"a\"))", 1500, pass, fail);
+    test_eq(interp, "re-replace global preserves >1024 output",
+        "(string-byte-length (re-replace \"a\" \"abcdef\" (string-repeat \"a\" 300) 'global))", 1800, pass, fail);
 
     // Regex: re-match-pos
     test_eq(interp, "re-match-pos start",
@@ -1613,8 +1620,12 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "(re-fullmatch \"a{,2}\" \"aa\")", NIL, pass, fail);
     test_tag(interp, "re-fullmatch rejects invalid bounded quantifier malformed upper",
         "(re-fullmatch \"a{2,x}\" \"aa\")", NIL, pass, fail);
-    test_tag(interp, "re-fullmatch rejects too-large bounded quantifier",
-        "(re-fullmatch \"a{1,5000}\" \"a\")", NIL, pass, fail);
+    test_tag(interp, "re-fullmatch supports bounded quantifier >4096",
+        "(re-fullmatch \"a{1,5000}\" \"a\")", STRING, pass, fail);
+    test_tag(interp, "re-fullmatch rejects bounded quantifier i32 overflow upper",
+        "(re-fullmatch \"a{1,2147483648}\" \"a\")", NIL, pass, fail);
+    test_tag(interp, "re-fullmatch rejects bounded quantifier i32 overflow lower",
+        "(re-fullmatch \"a{2147483648}\" \"a\")", NIL, pass, fail);
     test_tag(interp, "re-fullmatch rejects invalid bounded quantifier descending",
         "(re-fullmatch \"a{3,2}\" \"aaa\")", NIL, pass, fail);
     test_tag(interp, "re-fullmatch rejects empty char class",
@@ -1639,6 +1650,18 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
     test_tag(interp, "pika/parse scan clause basic",
         "(begin (pika/grammar 'g-scan '(rule start (scan \"[a-z]+\"))) (pika/parse 'g-scan \"abc\"))",
         CONS, pass, fail);
+    test_str_val(interp, "pika/parse scan clause quantifier consumes run",
+        "(begin (pika/grammar 'g-scan-plus '(rule start (scan \"[a-z]+\"))) (car (cdr (pika/parse 'g-scan-plus \"abc123\"))))",
+        "abc", pass, fail);
+    test_str_val(interp, "pika/parse scan clause negated class",
+        "(begin (pika/grammar 'g-scan-neg '(rule start (scan \"[^0-9]+\"))) (car (cdr (pika/parse 'g-scan-neg \"abc123\"))))",
+        "abc", pass, fail);
+    test_str_val(interp, "pika/parse scan clause shorthand class",
+        "(begin (pika/grammar 'g-scan-d '(rule start (scan \"[\\\\d]+\"))) (car (cdr (pika/parse 'g-scan-d \"123abc\"))))",
+        "123", pass, fail);
+    test_error_contains(interp, "pika/grammar scan rejects invalid class",
+        "(pika/grammar 'g-scan-bad '(rule start (scan \"[]\")))",
+        "invalid scan pattern", pass, fail);
     test_tag(interp, "pika/parse scan clauses beyond legacy cap",
         "(begin "
         "  (pika/grammar 'g-scan-many "
@@ -1648,6 +1671,76 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "    '(rule r7 (scan \"[g]\")) '(rule r8 (scan \"[h]\")) '(rule r9 (scan \"[i]\"))) "
         "  (pika/parse 'g-scan-many \"abcdefghi\"))",
         CONS, pass, fail);
+    {
+        pika::RuleBuilder rb = pika::rb_new();
+        int[] seq_children = mem::new_array(int, 40);
+        for (int i = 0; i < 40; i++) {
+            seq_children[i] = rb.add("tok", pika::mk_token('a'));
+        }
+        rb.add("start", pika::mk_seq(seq_children));
+
+        String[] starts = mem::new_array(String, 1);
+        starts[0] = "start";
+        pika::RuleEntry[] rules = rb.to_array();
+        pika::Grammar grammar = pika::make_grammar(starts, rules);
+
+        char[64] input_buf;
+        for (int i = 0; i < 40; i++) input_buf[i] = 'a';
+        char[] input = input_buf[:40];
+        pika::ParserState st = pika::parse_simple(&grammar, input);
+        int top_match = pika::find_match_at(&st, "start", 0);
+
+        bool parse_tree_ok = top_match >= 0;
+        if (parse_tree_ok) {
+            Value* tree = pika::parse_tree_to_lisp(&st, &grammar, top_match, input, interp);
+            int child_count = -1;
+            if (tree != null &&
+                tree.tag == CONS &&
+                tree.cons_val.cdr != null &&
+                tree.cons_val.cdr.tag == CONS &&
+                tree.cons_val.cdr.cons_val.cdr != null &&
+                tree.cons_val.cdr.cons_val.cdr.tag == CONS) {
+                Value* children_list = tree.cons_val.cdr.cons_val.cdr.cons_val.car;
+                child_count = 0;
+                Value* cur = children_list;
+                while (is_cons(cur)) {
+                    child_count++;
+                    cur = cur.cons_val.cdr;
+                }
+            }
+            parse_tree_ok = child_count == 40;
+        }
+
+        if (parse_tree_ok) {
+            emit_pass_literal("[PASS] pika/parse-tree direct start match preserves >32 children");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] pika/parse-tree direct start match preserves >32 children");
+            (*fail)++;
+        }
+
+        bool fold_ok = top_match >= 0;
+        if (fold_ok) {
+            EvalResult fold_fn_result = run(
+                "(lambda (name) (lambda (text) (lambda (children) (length children))))",
+                interp
+            );
+            if (fold_fn_result.error.has_error || fold_fn_result.value == null) {
+                fold_ok = false;
+            } else {
+                Value* folded = pika::fold_parse_tree(&st, &grammar, top_match, input, fold_fn_result.value, interp);
+                fold_ok = folded != null && folded.tag == INT && folded.int_val == 40;
+            }
+        }
+
+        if (fold_ok) {
+            emit_pass_literal("[PASS] pika/fold direct start match preserves >32 children");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] pika/fold direct start match preserves >32 children");
+            (*fail)++;
+        }
+    }
 
     // Compiled/fallback parity checks (direct C3 API).
     {
@@ -2069,6 +2162,7 @@ fn void run_http_tests_isolated(int* pass, int* fail) {
 fn void run_scheduler_spawn_and_await_tests(Interp* interp, int* pass, int* fail) {
     run_scheduler_spawn_basic_tests(interp, pass, fail);
     run_scheduler_await_structure_tests(interp, pass, fail);
+    run_scheduler_run_loop_failure_tests(interp, pass, fail);
 }
 
 fn void run_scheduler_spawn_basic_tests(Interp* interp, int* pass, int* fail) {
@@ -2158,6 +2252,50 @@ fn void run_scheduler_await_structure_tests(Interp* interp, int* pass, int* fail
     }
 }
 
+fn void run_scheduler_run_loop_failure_tests(Interp* interp, int* pass, int* fail) {
+    test_error_contains(
+        interp,
+        "await surfaces round-limit failure",
+        "(begin "
+        "  (define p (spawn (lambda () (let loop (i 0) (begin (yield nil) (loop i)))))) "
+        "  (await p))",
+        "max rounds",
+        pass,
+        fail
+    );
+
+    test_error_contains(
+        interp,
+        "run-fibers surfaces round-limit failure",
+        "(begin "
+        "  (spawn (lambda () (let loop (i 0) (begin (yield nil) (loop i))))) "
+        "  (run-fibers))",
+        "max rounds",
+        pass,
+        fail
+    );
+
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (spawn (lambda () 7)) "
+            "  (run-fibers) "
+            "  true)",
+            interp
+        );
+        if (!r.error.has_error &&
+            r.value != null &&
+            r.value.tag != ERROR &&
+            r.value.tag != NIL) {
+            emit_pass_literal("[PASS] scheduler recovers after run-loop failure");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] scheduler recovers after run-loop failure");
+            (*fail)++;
+        }
+    }
+}
+
 fn void scheduler_test_prepare_no_async(void** saved_async) {
     scheduler_init();
     *saved_async = g_scheduler.async_handle;
@@ -2213,18 +2351,19 @@ fn void run_scheduler_wakeup_smoke_test(int* pass, int* fail) {
     void* saved_async = null;
     scheduler_test_prepare_no_async(&saved_async);
 
-    bool pushed = wakeup_enqueue(WAKEUP_TIMER_EXPIRED, MAX_FIBERS + 1, 0, null);
+    usz enqueues_before = g_scheduler.reliable_wakeup_enqueues.load();
+    bool pushed = scheduler_publish_timer_expired(MAX_FIBERS + 1);
     drain_wakeups();
-    usz head = g_scheduler.wakeup_head.load();
-    usz tail = g_scheduler.wakeup_tail.load();
+    usz pending = reliable_wakeup_pending_count();
+    usz enqueues_after = g_scheduler.reliable_wakeup_enqueues.load();
     scheduler_test_cleanup_no_async(saved_async);
 
-    if (pushed && head == tail) {
-        emit_pass_literal("[PASS] wakeup ring smoke");
+    if (pushed && pending == 0 && (enqueues_after - enqueues_before) == 1) {
+        emit_pass_literal("[PASS] reliable wakeup smoke");
         (*pass)++;
     } else {
-        io::printfn("[FAIL] wakeup ring smoke (pushed=%s head=%d tail=%d)",
-            pushed ? "yes" : "no", (long)head, (long)tail);
+        io::printfn("[FAIL] reliable wakeup smoke (pushed=%s pending=%d enqueues=%d)",
+            pushed ? "yes" : "no", (long)pending, (long)(enqueues_after - enqueues_before));
         (*fail)++;
     }
 }
@@ -2232,32 +2371,42 @@ fn void run_scheduler_wakeup_smoke_test(int* pass, int* fail) {
 fn void run_scheduler_wakeup_wraparound_test(int* pass, int* fail) {
     void* saved_async = null;
     scheduler_test_prepare_no_async(&saved_async);
+    usz enqueues_before = g_scheduler.reliable_wakeup_enqueues.load();
+    usz failures_before = g_scheduler.wakeup_enqueue_failures.load();
 
+    usz target = 1024;
     usz pushed = 0;
-    for (usz i = 0; i < WAKEUP_RING_SIZE; i++) {
-        if (wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + i + 1, -1, null)) pushed++;
+    for (usz i = 0; i < target; i++) {
+        if (scheduler_publish_poll_error(MAX_FIBERS + i + 1, -1)) pushed++;
     }
-    bool overflow_rejected = !wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + 999, -2, null);
     drain_wakeups();
-    usz head = g_scheduler.wakeup_head.load();
-    usz tail = g_scheduler.wakeup_tail.load();
+    usz pending = reliable_wakeup_pending_count();
+    usz enqueues_after = g_scheduler.reliable_wakeup_enqueues.load();
+    usz failures_after = g_scheduler.wakeup_enqueue_failures.load();
     scheduler_test_cleanup_no_async(saved_async);
 
-    if (pushed == WAKEUP_RING_SIZE && overflow_rejected && head == tail) {
-        emit_pass_literal("[PASS] wakeup ring wraparound");
+    if (pushed == target &&
+        pending == 0 &&
+        (enqueues_after - enqueues_before) == target &&
+        (failures_after - failures_before) == 0) {
+        emit_pass_literal("[PASS] reliable wakeup flood");
         (*pass)++;
     } else {
-        io::printfn("[FAIL] wakeup ring wraparound (pushed=%d overflow_rejected=%s head=%d tail=%d)",
-            (long)pushed, overflow_rejected ? "yes" : "no", (long)head, (long)tail);
+        io::printfn(
+            "[FAIL] reliable wakeup flood (pushed=%d pending=%d enqueues=%d failures=%d)",
+            (long)pushed,
+            (long)pending,
+            (long)(enqueues_after - enqueues_before),
+            (long)(failures_after - failures_before)
+        );
         (*fail)++;
     }
 }
-
 fn void run_scheduler_timer_wakeup_test(int* pass, int* fail) {
     void* saved_async = null;
     scheduler_test_prepare_blocked_pending_read(&saved_async);
 
-    bool pushed = wakeup_enqueue(WAKEUP_TIMER_EXPIRED, 0, 0, null);
+    bool pushed = scheduler_publish_timer_expired(0);
     drain_wakeups();
 
     bool ok = pushed &&
@@ -2509,7 +2658,7 @@ fn void run_scheduler_wakeup_offload_interleave_tests(Interp* interp, int* pass,
             break;
         }
 
-        bool pushed = wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + i + 1, -1, null);
+        bool pushed = scheduler_publish_poll_error(MAX_FIBERS + i + 1, -1);
         drain_wakeups();
         if (!pushed) {
             ok = false;
@@ -2533,9 +2682,7 @@ fn void run_scheduler_wakeup_offload_interleave_tests(Interp* interp, int* pass,
         }
     }
 
-    usz head = g_scheduler.wakeup_head.load();
-    usz tail = g_scheduler.wakeup_tail.load();
-    ok = ok && head == tail;
+    ok = ok && reliable_wakeup_pending_count() == 0;
 
     if (ok) {
         emit_pass_literal("[PASS] scheduler wakeup/offload interleave stress");
@@ -2871,7 +3018,7 @@ fn bool scheduler_runtime_boundary_matches_snapshot(Interp* interp, SchedulerBou
 }
 
 fn void run_scheduler_wakeup_wraparound_boundary_tests(Interp* interp, int* pass, int* fail) {
-    // Invariant: wakeup-ring saturation/drain paths must not mutate
+    // Invariant: reliable wakeup flooding drains fully and must not mutate
     // interpreter boundary/runtime fields.
     SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
@@ -2881,21 +3028,26 @@ fn void run_scheduler_wakeup_wraparound_boundary_tests(Interp* interp, int* pass
     for (usz i = 0; i < 12; i++) {
         void* saved_async = null;
         scheduler_test_prepare_no_async(&saved_async);
+        usz enqueues_before = g_scheduler.reliable_wakeup_enqueues.load();
+        usz failures_before = g_scheduler.wakeup_enqueue_failures.load();
 
         usz pushed = 0;
-        for (usz j = 0; j < WAKEUP_RING_SIZE; j++) {
-            usz fid = MAX_FIBERS + i * WAKEUP_RING_SIZE + j + 1;
-            if (wakeup_enqueue(WAKEUP_POLL_ERROR, fid, -1, null)) pushed++;
+        for (usz j = 0; j < 1024; j++) {
+            usz fid = MAX_FIBERS + i * 1024 + j + 1;
+            if (scheduler_publish_poll_error(fid, -1)) pushed++;
         }
-        bool overflow_rejected = !wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + 999999 + i, -2, null);
         drain_wakeups();
-        usz head = g_scheduler.wakeup_head.load();
-        usz tail = g_scheduler.wakeup_tail.load();
+        usz pending = reliable_wakeup_pending_count();
+        usz enqueues_after = g_scheduler.reliable_wakeup_enqueues.load();
+        usz failures_after = g_scheduler.wakeup_enqueue_failures.load();
         scheduler_test_cleanup_no_async(saved_async);
 
         bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
-        bool ring_ok = pushed == WAKEUP_RING_SIZE && overflow_rejected && head == tail;
-        if (!state_ok || !ring_ok) {
+        bool queue_ok = pushed == 1024 &&
+                        pending == 0 &&
+                        (enqueues_after - enqueues_before) == 1024 &&
+                        (failures_after - failures_before) == 0;
+        if (!state_ok || !queue_ok) {
             ok = false;
             failed_step = i;
             break;
@@ -2912,7 +3064,7 @@ fn void run_scheduler_wakeup_wraparound_boundary_tests(Interp* interp, int* pass
 }
 
 fn void run_scheduler_wakeup_mixed_event_boundary_tests(Interp* interp, int* pass, int* fail) {
-    // Invariant: mixed wakeup event ordering for one blocked fiber must keep
+    // Invariant: mixed reliable event ordering for one blocked fiber must keep
     // first-event-wins completion behavior and preserve interpreter boundary/runtime state.
     SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
@@ -2928,16 +3080,14 @@ fn void run_scheduler_wakeup_mixed_event_boundary_tests(Interp* interp, int* pas
         bool pushed_a = false;
         bool pushed_b = false;
         if (poll_first) {
-            pushed_a = wakeup_enqueue(WAKEUP_POLL_ERROR, 0, -17, null);
-            pushed_b = wakeup_enqueue(WAKEUP_TIMER_EXPIRED, 0, 0, null);
+            pushed_a = scheduler_publish_poll_error(0, -17);
+            pushed_b = scheduler_publish_timer_expired(0);
         } else {
-            pushed_a = wakeup_enqueue(WAKEUP_TIMER_EXPIRED, 0, 0, null);
-            pushed_b = wakeup_enqueue(WAKEUP_POLL_ERROR, 0, -17, null);
+            pushed_a = scheduler_publish_timer_expired(0);
+            pushed_b = scheduler_publish_poll_error(0, -17);
         }
 
         drain_wakeups();
-        usz head = g_scheduler.wakeup_head.load();
-        usz tail = g_scheduler.wakeup_tail.load();
 
         PendingTcpRead op = g_scheduler.pending_reads[0];
         FiberState state = g_scheduler.fibers[0].state;
@@ -2945,7 +3095,7 @@ fn void run_scheduler_wakeup_mixed_event_boundary_tests(Interp* interp, int* pas
 
         bool core_ok = pushed_a &&
                        pushed_b &&
-                       head == tail &&
+                       reliable_wakeup_pending_count() == 0 &&
                        op.completed &&
                        state == FIBER_READY;
         bool order_ok = poll_first
@@ -2982,7 +3132,7 @@ fn void run_scheduler_wakeup_mixed_event_boundary_tests(Interp* interp, int* pas
 }
 
 fn void run_scheduler_invalid_offload_wakeup_boundary_tests(Interp* interp, int* pass, int* fail) {
-    // Invariant: invalid offload wakeups must be drained safely (payload cleanup path)
+    // Invariant: invalid reliable offload completions must be drained safely (payload cleanup path)
     // and must not mutate interpreter boundary/runtime state.
     SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
@@ -3003,8 +3153,8 @@ fn void run_scheduler_invalid_offload_wakeup_boundary_tests(Interp* interp, int*
             break;
         }
 
-        bool pushed_ready = wakeup_enqueue(WAKEUP_OFFLOAD_READY, MAX_FIBERS + 4000 + i, 0, completion);
-        bool pushed_err = wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + 5000 + i, -1, null);
+        bool pushed_ready = scheduler_publish_offload_ready(MAX_FIBERS + 4000 + i, completion);
+        bool pushed_err = scheduler_publish_poll_error(MAX_FIBERS + 5000 + i, -1);
         if (!pushed_ready) {
             scheduler_free_offload_completion(completion);
             ok = false;
@@ -3015,11 +3165,9 @@ fn void run_scheduler_invalid_offload_wakeup_boundary_tests(Interp* interp, int*
         }
 
         drain_wakeups();
-        usz head = g_scheduler.wakeup_head.load();
-        usz tail = g_scheduler.wakeup_tail.load();
         bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
 
-        bool drain_ok = pushed_err && head == tail;
+        bool drain_ok = pushed_err && reliable_wakeup_pending_count() == 0;
         scheduler_test_cleanup_no_async(saved_async);
         if (!drain_ok || !state_ok) {
             ok = false;
@@ -3047,8 +3195,8 @@ fn void run_scheduler_invalid_offload_wakeup_boundary_tests(Interp* interp, int*
 }
 
 fn void run_scheduler_wakeup_drop_counter_boundary_tests(Interp* interp, int* pass, int* fail) {
-    // Invariant: ring overflow increments wakeup_drops deterministically and
-    // does not mutate interpreter boundary/runtime fields.
+    // Invariant: reliable wakeup observability increments deterministically
+    // and does not mutate interpreter boundary/runtime fields.
     SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
     bool ok = true;
     usz failed_step = 0;
@@ -3057,33 +3205,30 @@ fn void run_scheduler_wakeup_drop_counter_boundary_tests(Interp* interp, int* pa
     for (usz i = 0; i < 12; i++) {
         void* saved_async = null;
         scheduler_test_prepare_no_async(&saved_async);
-        usz drops_before = g_scheduler.wakeup_drops.load();
+        usz failures_before = g_scheduler.wakeup_enqueue_failures.load();
+        usz enqueues_before = g_scheduler.reliable_wakeup_enqueues.load();
 
         usz pushed = 0;
-        for (usz j = 0; j < WAKEUP_RING_SIZE; j++) {
-            if (wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + i * WAKEUP_RING_SIZE + j + 1, -1, null)) pushed++;
+        for (usz j = 0; j < 3; j++) {
+            if (scheduler_publish_poll_error(MAX_FIBERS + i * 10 + j + 1, -(int)(j + 1))) pushed++;
         }
-        bool drop1 = !wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + 800000 + i, -1, null);
-        bool drop2 = !wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + 810000 + i, -2, null);
-        bool drop3 = !wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + 820000 + i, -3, null);
 
         drain_wakeups();
-        usz drops_after = g_scheduler.wakeup_drops.load();
-        usz head = g_scheduler.wakeup_head.load();
-        usz tail = g_scheduler.wakeup_tail.load();
+        usz failures_after = g_scheduler.wakeup_enqueue_failures.load();
+        usz enqueues_after = g_scheduler.reliable_wakeup_enqueues.load();
 
         bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
-        bool drop_ok = pushed == WAKEUP_RING_SIZE &&
-                       drop1 && drop2 && drop3 &&
-                       (drops_after - drops_before) == 3;
-        bool queue_ok = head == tail;
+        bool drop_ok = pushed == 3 &&
+                       (failures_after - failures_before) == 0 &&
+                       (enqueues_after - enqueues_before) == 3;
+        bool queue_ok = reliable_wakeup_pending_count() == 0;
         scheduler_test_cleanup_no_async(saved_async);
 
         if (!drop_ok || !queue_ok || !state_ok) {
             ok = false;
             failed_step = i;
             if (!drop_ok) {
-                failed_phase = "drop-counter";
+                failed_phase = "observability";
             } else if (!queue_ok) {
                 failed_phase = "queue";
             } else {
@@ -3094,11 +3239,11 @@ fn void run_scheduler_wakeup_drop_counter_boundary_tests(Interp* interp, int* pa
     }
 
     if (ok) {
-        emit_pass_literal("[PASS] scheduler wakeup drop-counter boundary restore");
+        emit_pass_literal("[PASS] scheduler reliable wakeup observability boundary restore");
         (*pass)++;
     } else {
         io::printfn(
-            "[FAIL] scheduler wakeup drop-counter boundary restore at step %d (%s)",
+            "[FAIL] scheduler reliable wakeup observability boundary restore at step %d (%s)",
             (int)failed_step,
             (ZString)failed_phase
         );
@@ -3107,8 +3252,8 @@ fn void run_scheduler_wakeup_drop_counter_boundary_tests(Interp* interp, int* pa
 }
 
 fn void run_scheduler_wakeup_full_payload_ownership_boundary_tests(Interp* interp, int* pass, int* fail) {
-    // Invariant: failed enqueue on full wakeup ring must not consume/free payload.
-    // Caller retains ownership and can free safely.
+    // Invariant: WAKEUP_OFFLOAD_READY payload enqueued through the reliable queue
+    // must still deliver exactly once and preserve boundary/runtime state.
     SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
     bool ok = true;
     usz failed_step = 0;
@@ -3116,48 +3261,50 @@ fn void run_scheduler_wakeup_full_payload_ownership_boundary_tests(Interp* inter
 
     for (usz i = 0; i < 12; i++) {
         void* saved_async = null;
-        scheduler_test_prepare_no_async(&saved_async);
-        usz drops_before = g_scheduler.wakeup_drops.load();
+        scheduler_test_prepare_blocked_pending_offload(&saved_async);
+        usz failures_before = g_scheduler.wakeup_enqueue_failures.load();
+        usz enqueues_before = g_scheduler.reliable_wakeup_enqueues.load();
 
-        usz pushed_fill = 0;
-        for (usz j = 0; j < WAKEUP_RING_SIZE; j++) {
-            if (wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + i * WAKEUP_RING_SIZE + j + 1, -1, null)) {
-                pushed_fill++;
-            }
-        }
-
-        OffloadCompletion* completion = scheduler_make_task_cancel_completion();
+        OffloadCompletion* completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
         if (completion == null) {
             ok = false;
             failed_step = i;
             failed_phase = "alloc";
-            scheduler_test_cleanup_no_async(saved_async);
+            scheduler_test_cleanup_single_fiber_no_async(saved_async);
             break;
         }
+        *completion = {};
+        completion.kind = OFFLOAD_RES_NIL;
 
-        bool pushed_ready = wakeup_enqueue(WAKEUP_OFFLOAD_READY, 0, 0, completion);
-        if (!pushed_ready) {
-            // Ownership stays with caller on enqueue failure.
-            scheduler_free_offload_completion(completion);
-        }
-
+        bool pushed_ready = scheduler_publish_offload_ready(0, completion);
         drain_wakeups();
-        usz drops_after = g_scheduler.wakeup_drops.load();
-        usz head = g_scheduler.wakeup_head.load();
-        usz tail = g_scheduler.wakeup_tail.load();
+        usz failures_after = g_scheduler.wakeup_enqueue_failures.load();
+        usz enqueues_after = g_scheduler.reliable_wakeup_enqueues.load();
+        bool slot_ready = g_scheduler.pending_offloads[0].active &&
+                          g_scheduler.pending_offloads[0].completed &&
+                          g_scheduler.pending_offloads[0].completion == completion &&
+                          g_scheduler.fibers[0].state == FIBER_READY;
+        Value* consumed = slot_ready ? scheduler_consume_pending_offload(0, interp) : null;
+        bool consume_ok = consumed != null && consumed.tag == NIL &&
+                          !g_scheduler.pending_offloads[0].active &&
+                          !g_scheduler.pending_offloads[0].completed &&
+                          g_scheduler.pending_offloads[0].completion == null;
         bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
-        bool queue_ok = pushed_fill == WAKEUP_RING_SIZE && !pushed_ready && head == tail;
-        bool drops_ok = (drops_after - drops_before) == 1;
+        bool queue_ok = pushed_ready && reliable_wakeup_pending_count() == 0;
+        bool drops_ok = (failures_after - failures_before) == 0 &&
+                        (enqueues_after - enqueues_before) == 1;
 
-        scheduler_test_cleanup_no_async(saved_async);
+        scheduler_test_cleanup_single_fiber_no_async(saved_async);
 
-        if (!queue_ok || !drops_ok || !state_ok) {
+        if (!queue_ok || !drops_ok || !slot_ready || !consume_ok || !state_ok) {
             ok = false;
             failed_step = i;
             if (!queue_ok) {
                 failed_phase = "queue";
             } else if (!drops_ok) {
-                failed_phase = "drop-counter";
+                failed_phase = "observability";
+            } else if (!slot_ready || !consume_ok) {
+                failed_phase = "delivery";
             } else {
                 failed_phase = "boundary";
             }
@@ -3200,23 +3347,21 @@ fn void run_scheduler_inactive_offload_ready_payload_cleanup_boundary_tests(Inte
             break;
         }
 
-        bool pushed = wakeup_enqueue(WAKEUP_OFFLOAD_READY, 0, 0, completion);
+        bool pushed = scheduler_publish_offload_ready(0, completion);
         drain_wakeups();
-        usz head = g_scheduler.wakeup_head.load();
-        usz tail = g_scheduler.wakeup_tail.load();
         bool slot_ok = !g_scheduler.pending_offloads[0].active &&
                        !g_scheduler.pending_offloads[0].completed &&
                        g_scheduler.pending_offloads[0].completion == null &&
                        g_scheduler.fibers[0].state == FIBER_READY;
         bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
-        bool cycle_ok = pushed && head == tail && slot_ok && state_ok;
+        bool cycle_ok = pushed && reliable_wakeup_pending_count() == 0 && slot_ok && state_ok;
 
         scheduler_test_cleanup_single_fiber_no_async(saved_async);
 
         if (!cycle_ok) {
             ok = false;
             failed_step = i;
-            if (!pushed || head != tail || !slot_ok) {
+            if (!pushed || reliable_wakeup_pending_count() != 0 || !slot_ok) {
                 failed_phase = "drain";
             } else {
                 failed_phase = "boundary";
@@ -3264,8 +3409,8 @@ fn void run_scheduler_duplicate_offload_ready_boundary_tests(Interp* interp, int
             break;
         }
 
-        bool pushed_first = wakeup_enqueue(WAKEUP_OFFLOAD_READY, 0, 0, c1);
-        bool pushed_second = wakeup_enqueue(WAKEUP_OFFLOAD_READY, 0, 0, c2);
+        bool pushed_first = scheduler_publish_offload_ready(0, c1);
+        bool pushed_second = scheduler_publish_offload_ready(0, c2);
         if (!pushed_first || !pushed_second) {
             if (!pushed_first) scheduler_free_offload_completion(c1);
             if (!pushed_second) scheduler_free_offload_completion(c2);
@@ -3283,11 +3428,9 @@ fn void run_scheduler_duplicate_offload_ready_boundary_tests(Interp* interp, int
         }
 
         drain_wakeups();
-        usz head_after_dup = g_scheduler.wakeup_head.load();
-        usz tail_after_dup = g_scheduler.wakeup_tail.load();
         PendingOffload off_after_dup = g_scheduler.pending_offloads[0];
         bool state_ok_dup = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
-        bool dup_ok = head_after_dup == tail_after_dup &&
+        bool dup_ok = reliable_wakeup_pending_count() == 0 &&
                       off_after_dup.active &&
                       off_after_dup.completed &&
                       off_after_dup.completion == c1 &&
@@ -3300,7 +3443,7 @@ fn void run_scheduler_duplicate_offload_ready_boundary_tests(Interp* interp, int
             failed_step = i;
             failed_phase = "alloc-late";
         } else {
-            bool pushed_late = wakeup_enqueue(WAKEUP_OFFLOAD_READY, 0, 0, c3);
+            bool pushed_late = scheduler_publish_offload_ready(0, c3);
             if (!pushed_late) {
                 scheduler_free_offload_completion(c3);
                 ok = false;
@@ -3308,11 +3451,9 @@ fn void run_scheduler_duplicate_offload_ready_boundary_tests(Interp* interp, int
                 failed_phase = "enqueue-late";
             } else {
                 drain_wakeups();
-                usz head_after_late = g_scheduler.wakeup_head.load();
-                usz tail_after_late = g_scheduler.wakeup_tail.load();
                 PendingOffload off_after_late = g_scheduler.pending_offloads[0];
                 bool state_ok_late = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
-                bool late_ok = head_after_late == tail_after_late &&
+                bool late_ok = reliable_wakeup_pending_count() == 0 &&
                                off_after_late.active &&
                                off_after_late.completed &&
                                off_after_late.completion == c1;
@@ -3757,57 +3898,45 @@ fn void run_scheduler_thread_task_cancel_boundary_tests(Interp* interp, int* pas
 }
 
 fn void run_scheduler_wakeup_ready_barrier_boundary_tests(Interp* interp, int* pass, int* fail) {
-    // Invariant: drain_wakeups must stop at the first unready slot and preserve FIFO order.
-    // Also verify interpreter boundary/runtime state remains unchanged.
+    // Invariant: repeated readable notifications for one blocked read coalesce
+    // into one pending signal and preserve interpreter boundary/runtime state.
     SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
     void* saved_async = null;
     scheduler_test_prepare_blocked_pending_read(&saved_async);
+    g_scheduler.pending_reads[0].fd = -1;
+    g_scheduler.pending_reads[0].max_bytes = 8;
+    g_scheduler.pending_reads[0].buffer = (char*)mem::malloc(8);
+    if (g_scheduler.pending_reads[0].buffer == null) {
+        scheduler_test_cleanup_single_fiber_no_async(saved_async);
+        io::printn("[FAIL] scheduler readable coalescing boundary restore (alloc)");
+        (*fail)++;
+        return;
+    }
 
-    WakeupEvent ev0 = {};
-    ev0.fiber_id = 0;
-    ev0.type = WAKEUP_TIMER_EXPIRED;
-    ev0.status = 0;
-    WakeupEvent ev1 = {};
-    ev1.fiber_id = 0;
-    ev1.type = WAKEUP_POLL_ERROR;
-    ev1.status = -29;
-    g_scheduler.wakeup_ring[0] = ev0;
-    g_scheduler.wakeup_ring[1] = ev1;
-    g_scheduler.wakeup_ready[0].store(false);
-    g_scheduler.wakeup_ready[1].store(true);
-    g_scheduler.wakeup_tail.store(0);
-    g_scheduler.wakeup_head.store(2);
+    usz coalesces_before = g_scheduler.readable_signal_coalesces.load();
+    scheduler_signal_poll_readable(0);
+    scheduler_signal_poll_readable(0);
 
     drain_wakeups();
-    usz tail_after_block = g_scheduler.wakeup_tail.load();
-    bool not_processed = !g_scheduler.pending_reads[0].completed &&
-                         !g_scheduler.pending_reads[0].timed_out &&
-                         g_scheduler.pending_reads[0].error_code == 0 &&
-                         g_scheduler.fibers[0].state == FIBER_BLOCKED &&
-                         tail_after_block == 0;
-    bool state_ok_first = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+    bool processed = g_scheduler.pending_reads[0].completed &&
+                     !g_scheduler.pending_reads[0].timed_out &&
+                     g_scheduler.pending_reads[0].error_code != 0 &&
+                     !g_scheduler.pending_reads[0].readable_pending &&
+                     g_scheduler.fibers[0].state == FIBER_READY &&
+                     reliable_wakeup_pending_count() == 0;
+    bool coalesce_ok = (g_scheduler.readable_signal_coalesces.load() - coalesces_before) == 1;
+    bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
 
-    g_scheduler.wakeup_ready[0].store(true);
-    drain_wakeups();
-    usz head_after_release = g_scheduler.wakeup_head.load();
-    usz tail_after_release = g_scheduler.wakeup_tail.load();
-    bool processed_ordered = g_scheduler.pending_reads[0].completed &&
-                             g_scheduler.pending_reads[0].timed_out &&
-                             g_scheduler.pending_reads[0].error_code == 0 &&
-                             g_scheduler.fibers[0].state == FIBER_READY &&
-                             head_after_release == tail_after_release;
-    bool state_ok_second = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
-
-    bool ok = not_processed && processed_ordered && state_ok_first && state_ok_second;
+    bool ok = processed && coalesce_ok && state_ok;
 
     scheduler_test_cleanup_single_fiber_no_async(saved_async);
 
     if (ok) {
-        emit_pass_literal("[PASS] scheduler wakeup ready-barrier boundary restore");
+        emit_pass_literal("[PASS] scheduler readable coalescing boundary restore");
         (*pass)++;
     } else {
-        io::printn("[FAIL] scheduler wakeup ready-barrier boundary restore");
+        io::printn("[FAIL] scheduler readable coalescing boundary restore");
         (*fail)++;
     }
 }
@@ -3943,7 +4072,7 @@ fn void run_scheduler_wakeup_offload_error_boundary_tests(Interp* interp, int* p
             break;
         }
 
-        bool pushed = wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + i + 101, -1, null);
+        bool pushed = scheduler_publish_poll_error(MAX_FIBERS + i + 101, -1);
         drain_wakeups();
         bool wakeup_ok = pushed && scheduler_runtime_boundary_matches_snapshot(interp, &saved);
         if (!wakeup_ok) {
@@ -4060,6 +4189,62 @@ fn Value* setup_deduce_relation_for_db(
     Value*[1] fargs;
     fargs[0] = make_cons(interp, db_val, spec);
     return prim_define_relation(fargs[..], null, interp);
+}
+
+extern fn int deduce_test_mkdir(char* path, uint mode) @extern("mkdir");
+extern fn int deduce_test_getpid() @extern("getpid");
+
+usz g_deduce_test_long_path_seq = 0;
+
+fn SymbolId deduce_test_make_long_relation_name(Interp* interp, char variant) {
+    char[80] name_buf;
+    for (usz i = 0; i < name_buf.len; i++) name_buf[i] = 'r';
+    name_buf[name_buf.len - 1] = variant;
+    return interp.symbols.intern(name_buf[..]);
+}
+
+fn Value* deduce_test_make_long_open_path(Interp* interp, char variant) {
+    char[512] path_buf;
+    usz len = 0;
+    path_buf[len++] = '/';
+    path_buf[len++] = 't';
+    path_buf[len++] = 'm';
+    path_buf[len++] = 'p';
+
+    usz seq = g_deduce_test_long_path_seq++;
+    uint pid = (uint)deduce_test_getpid();
+    path_buf[len++] = '/';
+    path_buf[len++] = 'o';
+    path_buf[len++] = 'd';
+    path_buf[len++] = 'l';
+    path_buf[len++] = 'p';
+    path_buf[len++] = '-';
+    for (usz i = 0; i < 8; i++) {
+        usz shift = (7 - i) * 4;
+        path_buf[len++] = DEDUCE_HEX_DIGITS[(pid >> shift) & 0xF];
+    }
+    path_buf[len++] = '-';
+    for (usz i = 0; i < 4; i++) {
+        usz shift = (3 - i) * 4;
+        path_buf[len++] = DEDUCE_HEX_DIGITS[(seq >> shift) & 0xF];
+    }
+    path_buf[len] = 0;
+    deduce_test_mkdir(&path_buf[0], 0o755);
+
+    for (usz seg = 0; seg < 6; seg++) {
+        path_buf[len++] = '/';
+        char fill = (char)('a' + (int)seg);
+        for (usz i = 0; i < 37; i++) path_buf[len++] = fill;
+        path_buf[len] = 0;
+        deduce_test_mkdir(&path_buf[0], 0o755);
+    }
+
+    path_buf[len++] = '/';
+    path_buf[len++] = 'd';
+    path_buf[len++] = 'b';
+    path_buf[len++] = '-';
+    path_buf[len++] = variant;
+    return make_string(interp, path_buf[..len]);
 }
 
 fn void run_deduce_memory_open_isolation_test(Interp* interp, int* pass, int* fail) {
@@ -4224,6 +4409,180 @@ fn void run_deduce_match_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+
+    {
+        EvalResult open = run("(deduce 'open 'memory)", interp);
+        if (open.error.has_error || open.value == null || open.value.tag != FFI_HANDLE || open.value.ffi_val == null) {
+            io::printn("[FAIL] deduce 'match preserves >512 results (open)");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId rel_name = interp.symbols.intern("crowd");
+        SymbolId id_sym = interp.symbols.intern("id");
+        SymbolId age_sym = interp.symbols.intern("age");
+        Value* rel = setup_deduce_relation_for_db(interp, open.value, rel_name, id_sym, age_sym);
+        if (rel == null || rel.tag != FFI_HANDLE || rel.ffi_val == null) {
+            io::printn("[FAIL] deduce 'match preserves >512 results (define)");
+            (*fail)++;
+            return;
+        }
+
+        const usz ROW_COUNT = 600;
+        for (usz i = 0; i < ROW_COUNT; i++) {
+            Value*[3] fact_args;
+            fact_args[0] = rel;
+            fact_args[1] = make_int(interp, (long)i);
+            fact_args[2] = make_int(interp, (long)(20 + (int)(i % 50)));
+            Value* insert = prim_assert_fact(fact_args[..], null, interp);
+            if (insert == null || insert.tag != NIL) {
+                io::printfn("[FAIL] deduce 'match preserves >512 results (insert %d)", (int)i);
+                (*fail)++;
+                return;
+            }
+        }
+
+        Value* clause =
+            make_cons(interp,
+                make_symbol(interp, rel_name),
+                make_cons(interp,
+                    make_symbol(interp, interp.symbols.intern("?id")),
+                    make_cons(interp,
+                        make_symbol(interp, interp.symbols.intern("?age")),
+                        make_nil(interp))));
+        Value*[2] match_args;
+        match_args[0] = rel;
+        match_args[1] = clause;
+        Value* matches = prim_deduce_match(match_args[..], null, interp);
+
+        usz match_count = 0;
+        bool found_tail = false;
+        Value* cur = matches;
+        while (is_cons(cur)) {
+            Value* row = car(cur);
+            if (row != null && row.tag == HASHMAP && row.hashmap_val != null) {
+                Value* id_val = hashmap_get(row.hashmap_val, make_symbol(interp, id_sym));
+                if (id_val != null && id_val.tag == INT && id_val.int_val == 599) found_tail = true;
+            }
+            match_count++;
+            cur = cdr(cur);
+        }
+
+        if (match_count == ROW_COUNT && found_tail) {
+            emit_pass_literal("[PASS] deduce 'match preserves >512 results");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] deduce 'match preserves >512 results (count=%d tail=%s)",
+                (int)match_count,
+                found_tail ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult open = run("(deduce 'open 'memory)", interp);
+        if (open.error.has_error || open.value == null || open.value.tag != FFI_HANDLE || open.value.ffi_val == null) {
+            io::printn("[FAIL] deduce 'match preserves >32 bindings (open)");
+            (*fail)++;
+            return;
+        }
+
+        const usz COL_COUNT = 40;
+        SymbolId[] col_syms = mem::new_array(SymbolId, COL_COUNT);
+        SymbolId[] var_syms = mem::new_array(SymbolId, COL_COUNT);
+        SymbolId[] key_syms = mem::new_array(SymbolId, COL_COUNT);
+        Value*[] define_args = mem::new_array(Value*, COL_COUNT + 2);
+        Value*[] fact_args = mem::new_array(Value*, COL_COUNT + 1);
+        if (col_syms.ptr == null || var_syms.ptr == null || key_syms.ptr == null ||
+            define_args.ptr == null || fact_args.ptr == null) {
+            if (col_syms.ptr != null) mem::free(col_syms.ptr);
+            if (var_syms.ptr != null) mem::free(var_syms.ptr);
+            if (key_syms.ptr != null) mem::free(key_syms.ptr);
+            if (define_args.ptr != null) mem::free(define_args.ptr);
+            if (fact_args.ptr != null) mem::free(fact_args.ptr);
+            io::printn("[FAIL] deduce 'match preserves >32 bindings (alloc)");
+            (*fail)++;
+            return;
+        }
+        defer mem::free(col_syms.ptr);
+        defer mem::free(var_syms.ptr);
+        defer mem::free(key_syms.ptr);
+        defer mem::free(define_args.ptr);
+        defer mem::free(fact_args.ptr);
+
+        SymbolId rel_name = interp.symbols.intern("binding_wide");
+        define_args[0] = open.value;
+        define_args[1] = make_symbol(interp, rel_name);
+        fact_args[0] = null;
+
+        for (usz i = 0; i < COL_COUNT; i++) {
+            char[16] col_buf;
+            char[] col_name = io::bprintf(&col_buf, "c%d", (int)i)!!;
+            col_syms[i] = interp.symbols.intern(col_name);
+            define_args[i + 2] = make_symbol(interp, col_syms[i]);
+
+            char[16] var_buf;
+            char[] var_name = io::bprintf(&var_buf, "?v%d", (int)i)!!;
+            var_syms[i] = interp.symbols.intern(var_name);
+            key_syms[i] = interp.symbols.intern(var_name[1..]);
+
+            fact_args[i + 1] = make_int(interp, (long)i);
+        }
+
+        Value* rel = prim_define_relation(define_args, null, interp);
+        if (rel == null || rel.tag != FFI_HANDLE || rel.ffi_val == null) {
+            io::printn("[FAIL] deduce 'match preserves >32 bindings (define)");
+            (*fail)++;
+            return;
+        }
+        fact_args[0] = rel;
+
+        Value* insert = prim_assert_fact(fact_args, null, interp);
+        if (insert == null || insert.tag != NIL) {
+            io::printn("[FAIL] deduce 'match preserves >32 bindings (insert)");
+            (*fail)++;
+            return;
+        }
+
+        Value* clause = make_nil(interp);
+        for (usz i = COL_COUNT; i > 0; i--) {
+            clause = make_cons(interp, make_symbol(interp, var_syms[i - 1]), clause);
+        }
+        clause = make_cons(interp, make_symbol(interp, rel_name), clause);
+
+        Value*[2] match_args;
+        match_args[0] = rel;
+        match_args[1] = clause;
+        Value* matches = prim_deduce_match(match_args[..], null, interp);
+
+        Value* row = is_cons(matches) ? car(matches) : null;
+        Value* last = row != null && row.tag == HASHMAP
+            ? hashmap_get(row.hashmap_val, make_symbol(interp, key_syms[COL_COUNT - 1]))
+            : null;
+
+        bool ok = is_cons(matches) &&
+                  row != null &&
+                  row.tag == HASHMAP &&
+                  row.hashmap_val != null &&
+                  row.hashmap_val.count == COL_COUNT &&
+                  last != null &&
+                  last.tag == INT &&
+                  last.int_val == (long)(COL_COUNT - 1);
+
+        if (ok) {
+            emit_pass_literal("[PASS] deduce 'match preserves >32 bindings");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] deduce 'match preserves >32 bindings (count=%d last=%d)",
+                row != null && row.tag == HASHMAP && row.hashmap_val != null ? (int)row.hashmap_val.count : -1,
+                last != null && last.tag == INT ? (int)last.int_val : -1
+            );
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_deduce_query_tests(Interp* interp, int* pass, int* fail) {
@@ -4325,12 +4684,253 @@ fn void run_deduce_reopen_stress_test(Interp* interp, int* pass, int* fail) {
     }
 }
 
+fn void run_deduce_large_relation_schema_test(Interp* interp, int* pass, int* fail) {
+    EvalResult open = run("(deduce 'open 'memory)", interp);
+    if (open.error.has_error || open.value == null || open.value.tag != FFI_HANDLE || open.value.ffi_val == null) {
+        io::printn("[FAIL] deduce relation schema >16 columns (open)");
+        (*fail)++;
+        return;
+    }
+
+    const usz COL_COUNT = 20;
+    SymbolId[] col_syms = mem::new_array(SymbolId, COL_COUNT);
+    Value*[] define_args = mem::new_array(Value*, COL_COUNT + 2);
+    Value*[] fact_args = mem::new_array(Value*, COL_COUNT + 1);
+    if (col_syms.ptr == null || define_args.ptr == null || fact_args.ptr == null) {
+        if (col_syms.ptr != null) mem::free(col_syms.ptr);
+        if (define_args.ptr != null) mem::free(define_args.ptr);
+        if (fact_args.ptr != null) mem::free(fact_args.ptr);
+        io::printn("[FAIL] deduce relation schema >16 columns (alloc)");
+        (*fail)++;
+        return;
+    }
+    defer mem::free(col_syms.ptr);
+    defer mem::free(define_args.ptr);
+    defer mem::free(fact_args.ptr);
+
+    col_syms[0] = interp.symbols.intern("c0");
+    col_syms[1] = interp.symbols.intern("c1");
+    col_syms[2] = interp.symbols.intern("c2");
+    col_syms[3] = interp.symbols.intern("c3");
+    col_syms[4] = interp.symbols.intern("c4");
+    col_syms[5] = interp.symbols.intern("c5");
+    col_syms[6] = interp.symbols.intern("c6");
+    col_syms[7] = interp.symbols.intern("c7");
+    col_syms[8] = interp.symbols.intern("c8");
+    col_syms[9] = interp.symbols.intern("c9");
+    col_syms[10] = interp.symbols.intern("c10");
+    col_syms[11] = interp.symbols.intern("c11");
+    col_syms[12] = interp.symbols.intern("c12");
+    col_syms[13] = interp.symbols.intern("c13");
+    col_syms[14] = interp.symbols.intern("c14");
+    col_syms[15] = interp.symbols.intern("c15");
+    col_syms[16] = interp.symbols.intern("c16");
+    col_syms[17] = interp.symbols.intern("c17");
+    col_syms[18] = interp.symbols.intern("c18");
+    col_syms[19] = interp.symbols.intern("c19");
+
+    define_args[0] = open.value;
+    define_args[1] = make_symbol(interp, interp.symbols.intern("wide_person"));
+    for (usz i = 0; i < COL_COUNT; i++) {
+        define_args[i + 2] = make_symbol(interp, col_syms[i]);
+    }
+
+    Value* rel_val = prim_define_relation(define_args, null, interp);
+    if (rel_val == null || rel_val.tag != FFI_HANDLE || rel_val.ffi_val == null) {
+        io::printn("[FAIL] deduce relation schema >16 columns (define)");
+        (*fail)++;
+        return;
+    }
+
+    Relation* rel = (Relation*)rel_val.ffi_val.lib_handle;
+    fact_args[0] = rel_val;
+    for (usz i = 0; i < COL_COUNT; i++) {
+        fact_args[i + 1] = make_int(interp, (long)i);
+    }
+
+    Value* insert = prim_assert_fact(fact_args, null, interp);
+    Value* rows = relation_scan_all(rel, interp);
+    Value* row = is_cons(rows) ? car(rows) : null;
+    Value* last = row != null && row.tag == HASHMAP
+        ? hashmap_get(row.hashmap_val, make_symbol(interp, col_syms[COL_COUNT - 1]))
+        : null;
+
+    bool ok = rel != null &&
+              rel.col_count == COL_COUNT &&
+              rel.columns != null &&
+              rel.columns[COL_COUNT - 1] == col_syms[COL_COUNT - 1] &&
+              insert != null &&
+              insert.tag == NIL &&
+              row != null &&
+              row.tag == HASHMAP &&
+              row.hashmap_val != null &&
+              row.hashmap_val.count == COL_COUNT &&
+              last != null &&
+              last.tag == INT &&
+              last.int_val == (long)(COL_COUNT - 1);
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce relation schema preserves >16 columns");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] deduce relation schema preserves >16 columns (cols=%d last=%d count=%d)",
+            rel != null ? (int)rel.col_count : -1,
+            last != null && last.tag == INT ? (int)last.int_val : -1,
+            row != null && row.tag == HASHMAP && row.hashmap_val != null ? (int)row.hashmap_val.count : -1
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_long_relation_name_isolation_test(Interp* interp, int* pass, int* fail) {
+    EvalResult open = run("(deduce 'open 'memory)", interp);
+    if (open.error.has_error || open.value == null || open.value.tag != FFI_HANDLE || open.value.ffi_val == null) {
+        io::printn("[FAIL] deduce long relation name isolation (open)");
+        (*fail)++;
+        return;
+    }
+
+    SymbolId rel_a_name = deduce_test_make_long_relation_name(interp, 'a');
+    SymbolId rel_b_name = deduce_test_make_long_relation_name(interp, 'b');
+    SymbolId name_sym = interp.symbols.intern("name");
+    SymbolId age_sym = interp.symbols.intern("age");
+
+    Value* rel_a = setup_deduce_relation_for_db(interp, open.value, rel_a_name, name_sym, age_sym);
+    Value* rel_b = setup_deduce_relation_for_db(interp, open.value, rel_b_name, name_sym, age_sym);
+    if (rel_a == null || rel_b == null || rel_a.tag != FFI_HANDLE || rel_b.tag != FFI_HANDLE ||
+        rel_a.ffi_val == null || rel_b.ffi_val == null) {
+        io::printn("[FAIL] deduce long relation name isolation (define)");
+        (*fail)++;
+        return;
+    }
+
+    Value*[3] fact_a;
+    fact_a[0] = rel_a;
+    fact_a[1] = make_string(interp, "Alice");
+    fact_a[2] = make_int(interp, 30);
+    Value* insert_a = prim_assert_fact(fact_a[..], null, interp);
+
+    Value*[1] count_args_a;
+    count_args_a[0] = rel_a;
+    Value*[1] count_args_b;
+    count_args_b[0] = rel_b;
+    Value* count_a_after_a = prim_deduce_count(count_args_a[..], null, interp);
+    Value* count_b_after_a = prim_deduce_count(count_args_b[..], null, interp);
+
+    Value*[3] fact_b;
+    fact_b[0] = rel_b;
+    fact_b[1] = make_string(interp, "Bob");
+    fact_b[2] = make_int(interp, 25);
+    Value* insert_b = prim_assert_fact(fact_b[..], null, interp);
+
+    Value* count_a_final = prim_deduce_count(count_args_a[..], null, interp);
+    Value* count_b_final = prim_deduce_count(count_args_b[..], null, interp);
+
+    bool ok = insert_a != null && insert_a.tag == NIL &&
+              insert_b != null && insert_b.tag == NIL &&
+              count_a_after_a != null && count_a_after_a.tag == INT && count_a_after_a.int_val == 1 &&
+              count_b_after_a != null && count_b_after_a.tag == INT && count_b_after_a.int_val == 0 &&
+              count_a_final != null && count_a_final.tag == INT && count_a_final.int_val == 1 &&
+              count_b_final != null && count_b_final.tag == INT && count_b_final.int_val == 1;
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce long relation name isolation");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] deduce long relation name isolation (a1=%d b1=%d af=%d bf=%d)",
+            count_a_after_a != null && count_a_after_a.tag == INT ? (int)count_a_after_a.int_val : -1,
+            count_b_after_a != null && count_b_after_a.tag == INT ? (int)count_b_after_a.int_val : -1,
+            count_a_final != null && count_a_final.tag == INT ? (int)count_a_final.int_val : -1,
+            count_b_final != null && count_b_final.tag == INT ? (int)count_b_final.int_val : -1
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_long_open_path_isolation_test(Interp* interp, int* pass, int* fail) {
+    Value* path_a = deduce_test_make_long_open_path(interp, 'a');
+    Value* path_b = deduce_test_make_long_open_path(interp, 'b');
+    Value*[1] open_args_a;
+    Value*[1] open_args_b;
+    open_args_a[0] = path_a;
+    open_args_b[0] = path_b;
+
+    Value* db_a = prim_deduce_open(open_args_a[..], null, interp);
+    Value* db_b = prim_deduce_open(open_args_b[..], null, interp);
+    if (db_a == null || db_b == null || db_a.tag != FFI_HANDLE || db_b.tag != FFI_HANDLE ||
+        db_a.ffi_val == null || db_b.ffi_val == null) {
+        io::printn("[FAIL] deduce long open path isolation (open)");
+        (*fail)++;
+        return;
+    }
+
+    SymbolId rel_name = interp.symbols.intern("path_iso_rel");
+    SymbolId name_sym = interp.symbols.intern("name");
+    SymbolId age_sym = interp.symbols.intern("age");
+    Value* rel_a = setup_deduce_relation_for_db(interp, db_a, rel_name, name_sym, age_sym);
+    Value* rel_b = setup_deduce_relation_for_db(interp, db_b, rel_name, name_sym, age_sym);
+    if (rel_a == null || rel_b == null || rel_a.tag != FFI_HANDLE || rel_b.tag != FFI_HANDLE ||
+        rel_a.ffi_val == null || rel_b.ffi_val == null) {
+        io::printn("[FAIL] deduce long open path isolation (define)");
+        (*fail)++;
+        return;
+    }
+
+    Value*[3] fact_a;
+    fact_a[0] = rel_a;
+    fact_a[1] = make_string(interp, "Alice");
+    fact_a[2] = make_int(interp, 31);
+    Value* insert_a = prim_assert_fact(fact_a[..], null, interp);
+
+    Value*[1] count_args_a;
+    count_args_a[0] = rel_a;
+    Value*[1] count_args_b;
+    count_args_b[0] = rel_b;
+    Value* count_a_after_a = prim_deduce_count(count_args_a[..], null, interp);
+    Value* count_b_after_a = prim_deduce_count(count_args_b[..], null, interp);
+
+    Value*[3] fact_b;
+    fact_b[0] = rel_b;
+    fact_b[1] = make_string(interp, "Bob");
+    fact_b[2] = make_int(interp, 22);
+    Value* insert_b = prim_assert_fact(fact_b[..], null, interp);
+
+    Value* count_a_final = prim_deduce_count(count_args_a[..], null, interp);
+    Value* count_b_final = prim_deduce_count(count_args_b[..], null, interp);
+
+    bool ok = insert_a != null && insert_a.tag == NIL &&
+              insert_b != null && insert_b.tag == NIL &&
+              count_a_after_a != null && count_a_after_a.tag == INT && count_a_after_a.int_val == 1 &&
+              count_b_after_a != null && count_b_after_a.tag == INT && count_b_after_a.int_val == 0 &&
+              count_a_final != null && count_a_final.tag == INT && count_a_final.int_val == 1 &&
+              count_b_final != null && count_b_final.tag == INT && count_b_final.int_val == 1;
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce long open path isolation");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] deduce long open path isolation (a1=%d b1=%d af=%d bf=%d)",
+            count_a_after_a != null && count_a_after_a.tag == INT ? (int)count_a_after_a.int_val : -1,
+            count_b_after_a != null && count_b_after_a.tag == INT ? (int)count_b_after_a.int_val : -1,
+            count_a_final != null && count_a_final.tag == INT ? (int)count_a_final.int_val : -1,
+            count_b_final != null && count_b_final.tag == INT ? (int)count_b_final.int_val : -1
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_open_smoke_test(interp, pass, fail);
     run_deduce_relation_attr_define_test(interp, pass, fail);
     run_deduce_crud_example_flow_test(interp, pass, fail);
     run_deduce_memory_open_isolation_test(interp, pass, fail);
     run_deduce_reopen_stress_test(interp, pass, fail);
+    run_deduce_large_relation_schema_test(interp, pass, fail);
+    run_deduce_long_relation_name_isolation_test(interp, pass, fail);
+    run_deduce_long_open_path_isolation_test(interp, pass, fail);
     setup_deduce_person_relation(interp);
     run_deduce_query_tests(interp, pass, fail);
 }

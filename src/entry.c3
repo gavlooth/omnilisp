@@ -253,6 +253,17 @@ fn usz parse_ffi_dep_headers(lisp::LibclangHandle* clang, lisp::TomlFfiDep* dep,
     return func_count;
 }
 
+fn void free_parsed_funcs(lisp::ParsedFunc* funcs, usz count) {
+    for (usz i = 0; i < count; i++) {
+        if (funcs[i].params != null) {
+            mem::free(funcs[i].params);
+            funcs[i].params = null;
+        }
+        funcs[i].param_count = 0;
+        funcs[i].param_capacity = 0;
+    }
+}
+
 fn usz build_bind_output_path(char[] out_path, char[] proj_dir, char* dep_name) {
     usz olen = 0;
     for (usz i = 0; i < proj_dir.len && olen < out_path.len - 1; i++) out_path[olen++] = proj_dir[i];
@@ -387,6 +398,11 @@ fn int run_bind(int argc, char** argv, int bind_idx) {
     const usz MAX_FUNCS = 256;
     lisp::ParsedFunc* funcs = (lisp::ParsedFunc*)mem::malloc(lisp::ParsedFunc.sizeof * MAX_FUNCS);
     defer mem::free(funcs);
+    for (usz i = 0; i < MAX_FUNCS; i++) {
+        funcs[i].params = null;
+        funcs[i].param_count = 0;
+        funcs[i].param_capacity = 0;
+    }
 
     usz total_bindings = 0;
     usz total_libs = 0;
@@ -424,6 +440,7 @@ fn int run_bind(int argc, char** argv, int bind_idx) {
         } else {
             io::printfn("  Error: failed to write %s", (ZString)&out_path[0]);
         }
+        free_parsed_funcs(funcs, func_count);
     }
 
     io::printfn("\nGenerated %d bindings from %d libraries.", (int)total_bindings, (int)total_libs);
@@ -562,12 +579,16 @@ fn int run_script_mode(char* script_file) {
         interp.flags.jit_enabled = true;
 
         // Push script directory for relative import resolution
-        lisp::push_source_dir(script_path, interp);
+        if (!lisp::push_source_dir(script_path, interp)) {
+            io::printn("Error: failed to allocate source directory context");
+            interp.destroy();
+            mem::free(interp);
+            thread_registry_shutdown();
+            return 1;
+        }
 
         // Run the script (multiple expressions)
-        usz len = source.len;
-        if (len > 65535) len = 65535;
-        char[] src = source[:len];
+        char[] src = source;
         lisp::EvalResult r = lisp::run_program(src, interp);
 
         if (r.error.has_error) {

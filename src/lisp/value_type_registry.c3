@@ -1,5 +1,29 @@
 module lisp;
 
+fn void type_registry_destroy_union_variants(UnionVariant* variants, usz count) {
+    if (variants == null) return;
+    for (usz i = 0; i < count; i++) {
+        if (variants[i].fields != null) mem::free(variants[i].fields);
+    }
+    mem::free(variants);
+}
+
+fn void type_registry_destroy_type_info(TypeInfo* info) {
+    if (info == null) return;
+    if (info.fields != null) mem::free(info.fields);
+    if (info.type_params != null) mem::free(info.type_params);
+    if (info.constraints != null) mem::free(info.constraints);
+    type_registry_destroy_union_variants(info.variants, info.variant_count);
+    info.fields = null;
+    info.type_params = null;
+    info.constraints = null;
+    info.variants = null;
+    info.field_count = 0;
+    info.type_param_count = 0;
+    info.constraint_count = 0;
+    info.variant_count = 0;
+}
+
 fn bool type_registry_symbol_valid(SymbolTable* syms, SymbolId id) @inline {
     if (syms == null || syms.entries == null) return false;
     if (id == INVALID_SYMBOL_ID) return false;
@@ -64,11 +88,25 @@ fn void TypeRegistry.grow(TypeRegistry* self, SymbolTable* syms) {
 }
 
 fn void TypeRegistry.destroy(TypeRegistry* self) {
+    if (self.types != null) {
+        for (usz i = 0; i < self.type_count; i++) type_registry_destroy_type_info(&self.types[i]);
+    }
     if (self.types != null) { mem::free(self.types); self.types = null; }
     if (self.type_hash_index != null) { mem::free(self.type_hash_index); self.type_hash_index = null; }
 }
 
 fn TypeId TypeRegistry.register_type(TypeRegistry* self, TypeInfo info, SymbolTable* syms) {
+    // If a type with this name already exists, update it in-place and return the existing TypeId.
+    // This ensures idempotent re-registration (e.g., from (load ...) re-evaluating define forms).
+    if (type_registry_symbol_hashable(syms, info.name)) {
+        TypeId existing = self.lookup(info.name, syms);
+        if (existing != INVALID_TYPE_ID) {
+            type_registry_destroy_type_info(&self.types[(usz)existing]);
+            self.types[(usz)existing] = info;
+            return existing;
+        }
+    }
+
     if (self.type_count >= self.capacity) {
         self.grow(syms);
     }

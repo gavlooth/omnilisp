@@ -18,6 +18,18 @@ fn void run_advanced_core_semantics_match_tests(Interp* interp, int* pass, int* 
     test_eq(interp, "match string hello", "(match \"hello\" (\"hello\" 1) (\"world\" 2) (x 0))", 1, pass, fail);
     test_eq(interp, "match string world", "(match \"world\" (\"hello\" 1) (\"world\" 2) (x 0))", 2, pass, fail);
     test_eq(interp, "match string default", "(match \"other\" (\"hello\" 1) (\"world\" 2) (x 0))", 0, pass, fail);
+    test_eq(interp, "match [.. last] long list >64",
+        "(match (let loop (i 79 acc (quote ())) (if (< i 0) acc (loop (- i 1) (cons i acc)))) ([.. last] last))",
+        79, pass, fail);
+    test_eq(interp, "match as pattern binds whole list",
+        "(match (quote (10 20)) (([a b] 'as pair) (length pair)))",
+        2, pass, fail);
+    test_eq(interp, "match as pattern binds inner and whole",
+        "(match (quote (1 2)) (([_ y] 'as pair) (+ y (length pair))))",
+        4, pass, fail);
+    test_error_contains(interp, "match bare as marker rejected",
+        "(match (quote (1 2)) (([x y] as pair) pair))",
+        "expected 'as in as-pattern", pass, fail);
 }
 
 fn void run_advanced_core_semantics_continuation_tests(Interp* interp, int* pass, int* fail) {
@@ -227,7 +239,7 @@ fn void run_advanced_logic_tco_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "ptest.x => 10", "ptest.x", 10, pass, fail);
     test_eq(interp, "ptest.y => 20", "ptest.y", 20, pass, fail);
 
-    // TCO (JIT-only mode: no interpreter TCO, limited by eval depth)
+    // TCO (JIT-only mode: no interpreter TCO, bounded by real stack headroom)
     setup(interp, "(define tco-loop (lambda (n) (if (= n 0) (quote done) (tco-loop (- n 1)))))");
     test_truthy(interp, "TCO loop 4000", "(tco-loop 4000)", pass, fail);
     setup(interp, "(define sum-acc (lambda (n) (lambda (acc) (if (= n 0) acc ((sum-acc (- n 1)) (+ acc n))))))");
@@ -491,7 +503,10 @@ fn void run_advanced_macro_hygiene_string_number_tests(Interp* interp, int* pass
     test_eq(interp, "number->string round-trip 0", "(string->number (number->string 0))", 0, pass, fail);
     test_eq(interp, "number->string round-trip -99", "(string->number (number->string -99))", -99, pass, fail);
 
-    // Stack overflow
+    // Stack overflow / non-tail recursion headroom
+    test_eq(interp, "non-tail recursion exceeds former 1024 eval cap",
+        "(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 1500))",
+        1500, pass, fail);
     test_error(interp, "stack overflow caught", "(let ^rec (f (lambda (n) (+ 1 (f (+ n 1))))) (f 0))", pass, fail);
 }
 
@@ -522,6 +537,25 @@ fn void run_advanced_macro_hygiene_quasi_pattern_tests(Interp* interp, int* pass
     test_eq(interp, "my-and true", "(my-and true 42)", 42, pass, fail);
     setup(interp, "(define [macro] let1 ([name val body] (let (name val) body)))");
     test_eq(interp, "let1 macro", "(let1 x 10 (+ x 5))", 15, pass, fail);
+
+    {
+        const usz CLAUSE_COUNT = 40;
+        const usz VAR_COUNT = 70;
+        char[8192] define_clauses_buf;
+        char[8192] define_vars_buf;
+        char[8192] call_vars_buf;
+        if (!advanced_build_many_clause_macro_define(&define_clauses_buf, define_clauses_buf.len, CLAUSE_COUNT) ||
+            !advanced_build_many_pattern_vars_macro_define(&define_vars_buf, define_vars_buf.len, VAR_COUNT) ||
+            !advanced_build_many_arg_macro_call(&call_vars_buf, call_vars_buf.len, "pick-last", VAR_COUNT)) {
+            io::printn("[FAIL] wide macro regression builder");
+            (*fail)++;
+        } else {
+            setup(interp, define_clauses_buf[..advanced_test_cstr_len(&define_clauses_buf)]);
+            test_eq(interp, "macro preserves >32 clauses", "(choose-wide 39)", 39, pass, fail);
+            setup(interp, define_vars_buf[..advanced_test_cstr_len(&define_vars_buf)]);
+            test_eq(interp, "macro preserves >64 pattern vars", call_vars_buf[..advanced_test_cstr_len(&call_vars_buf)], (long)(VAR_COUNT - 1), pass, fail);
+        }
+    }
 }
 
 fn void run_advanced_macro_hygiene_gensym_tests(Interp* interp, int* pass, int* fail) {
@@ -537,6 +571,18 @@ fn void run_advanced_macro_hygiene_gensym_tests(Interp* interp, int* pass, int* 
     setup(interp, "(define hy 2)");
     setup(interp, "(swap! hx hy)");
     test_eq(interp, "gensym hygiene", "tmp", 999, pass, fail);
+
+    {
+        const usz GENSYM_COUNT = 80;
+        char[16384] define_buf;
+        if (!advanced_build_many_gensym_macro_define(&define_buf, define_buf.len, GENSYM_COUNT)) {
+            io::printn("[FAIL] wide auto-gensym regression builder");
+            (*fail)++;
+        } else {
+            setup(interp, define_buf[..advanced_test_cstr_len(&define_buf)]);
+            test_eq(interp, "macro preserves >64 auto-gensyms", "(gensym-wide)", (long)(GENSYM_COUNT - 1), pass, fail);
+        }
+    }
 
     // gensym
     test_tag(interp, "gensym returns symbol", "(gensym)", SYMBOL, pass, fail);
@@ -574,6 +620,28 @@ fn void run_advanced_macro_hygiene_capture_tests(Interp* interp, int* pass, int*
     setup(interp, "(define [macro] hyg-late-macro ([x] (hyg-late-fn x)))");
     setup(interp, "(define hyg-late-fn (lambda (x) (- x 50)))");
     test_eq(interp, "hygiene late redef", "(hyg-late-macro 100)", 150, pass, fail);
+
+    {
+        const usz CAPTURE_COUNT = 70;
+        char[12288] setup_buf;
+        char[12288] define_buf;
+        if (!advanced_build_many_capture_bindings_setup(&setup_buf, setup_buf.len, CAPTURE_COUNT) ||
+            !advanced_build_many_capture_macro_define(&define_buf, define_buf.len, CAPTURE_COUNT)) {
+            io::printn("[FAIL] wide captured bindings regression builder");
+            (*fail)++;
+        } else {
+            setup(interp, setup_buf[..advanced_test_cstr_len(&setup_buf)]);
+            setup(interp, define_buf[..advanced_test_cstr_len(&define_buf)]);
+            setup(interp, "(define cap69 9999)");
+            test_eq(interp, "macro preserves >64 captured bindings", "(capture-wide)", 69, pass, fail);
+        }
+    }
+
+    bool saved_jit_enabled = interp.flags.jit_enabled;
+    interp.flags.jit_enabled = false;
+    setup(interp, "(define [macro] whole-pair (([x y] 'as pair) (length (quote pair))))");
+    test_eq_interp(interp, "macro as pattern binds whole arg expr", "(whole-pair 1 2)", 2, pass, fail);
+    interp.flags.jit_enabled = saved_jit_enabled;
 }
 
 fn void run_advanced_macro_hygiene_tests(Interp* interp, int* pass, int* fail) {
@@ -860,6 +928,35 @@ fn void run_advanced_parser_import_edge_tests(Interp* interp, int* pass, int* fa
         "(import bad-mod (x y)",
         ")",
         pass, fail);
+
+    {
+        // Regression: import path parsing must not truncate at 255 bytes.
+        char[384] long_path;
+        usz long_path_len = 320;
+        for (usz i = 0; i < long_path_len - 1; i++) long_path[i] = 'a';
+        long_path[long_path_len - 1] = 'z';
+        long_path[long_path_len] = 0;
+
+        char[512] expr_buf;
+        char[] expr_src = io::bprintf(&expr_buf, "(import \"%s\")", (ZString)&long_path)!!;
+        Expr* ast = parse_for_jit(expr_src, interp);
+
+        bool ok = ast != null &&
+                  ast.tag == E_IMPORT &&
+                  ast.import_expr.has_path &&
+                  ast.import_expr.path != null &&
+                  ast.import_expr.path_len == long_path_len &&
+                  ast.import_expr.path[long_path_len - 1] == 'z';
+        if (ok) {
+            emit_pass_literal("[PASS] parser import long path >255");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] parser import long path >255 (parsed_len=%d expected=%d)",
+                ast != null && ast.tag == E_IMPORT ? (long)ast.import_expr.path_len : -1,
+                (long)long_path_len);
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_advanced_module_system_tests(Interp* interp, int* pass, int* fail) {
@@ -1130,6 +1227,254 @@ fn void run_advanced_stdlib_numeric_tests(Interp* interp, int* pass, int* fail) 
     run_advanced_stdlib_numeric_array_set_tests(interp, pass, fail);
 }
 
+fn bool advanced_test_append(char* buf, usz cap, usz* len, char[] piece) {
+    if (*len + piece.len + 1 > cap) return false;
+    for (usz i = 0; i < piece.len; i++) {
+        buf[*len + i] = piece[i];
+    }
+    *len += piece.len;
+    buf[*len] = 0;
+    return true;
+}
+
+fn bool advanced_test_append_int(char* buf, usz cap, usz* len, usz value) {
+    char[32] num_buf;
+    char[] num_text = io::bprintf(&num_buf, "%d", (int)value)!!;
+    return advanced_test_append(buf, cap, len, num_text);
+}
+
+fn usz advanced_test_cstr_len(char* buf) {
+    usz len = 0;
+    while (buf[len] != 0) len++;
+    return len;
+}
+
+fn bool advanced_build_wide_type_define(char* buf, usz cap, usz field_count) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(define [type] WideRecord")) return false;
+    for (usz i = 0; i < field_count; i++) {
+        if (!advanced_test_append(buf, cap, &len, " (^Int f")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+        if (!advanced_test_append(buf, cap, &len, ")")) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, ")")) return false;
+    return true;
+}
+
+fn bool advanced_build_wide_type_access(char* buf, usz cap, usz field_count) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(let (p (WideRecord")) return false;
+    for (usz i = 0; i < field_count; i++) {
+        if (!advanced_test_append(buf, cap, &len, " ")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, ")) p.f")) return false;
+    if (!advanced_test_append_int(buf, cap, &len, field_count - 1)) return false;
+    if (!advanced_test_append(buf, cap, &len, ")")) return false;
+    return true;
+}
+
+fn bool advanced_build_wide_union_define(char* buf, usz cap, usz variant_count) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(define [union] WideChoice")) return false;
+    for (usz i = 0; i + 1 < variant_count; i++) {
+        if (!advanced_test_append(buf, cap, &len, " V")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, " (V")) return false;
+    if (!advanced_test_append_int(buf, cap, &len, variant_count - 1)) return false;
+    if (!advanced_test_append(buf, cap, &len, " Int))")) return false;
+    return true;
+}
+
+fn bool advanced_build_wide_union_match(char* buf, usz cap, usz variant_count) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(match (V")) return false;
+    if (!advanced_test_append_int(buf, cap, &len, variant_count - 1)) return false;
+    if (!advanced_test_append(buf, cap, &len, " ")) return false;
+    if (!advanced_test_append_int(buf, cap, &len, variant_count - 1)) return false;
+    if (!advanced_test_append(buf, cap, &len, ")")) return false;
+    for (usz i = 0; i + 1 < variant_count; i++) {
+        if (!advanced_test_append(buf, cap, &len, " (V")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+        if (!advanced_test_append(buf, cap, &len, " 0)")) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, " ((V")) return false;
+    if (!advanced_test_append_int(buf, cap, &len, variant_count - 1)) return false;
+    if (!advanced_test_append(buf, cap, &len, " x) x))")) return false;
+    return true;
+}
+
+fn bool advanced_build_many_type_params_define(char* buf, usz cap, usz param_count) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(define [type] (ParamTower")) return false;
+    for (usz i = 0; i < param_count; i++) {
+        if (!advanced_test_append(buf, cap, &len, " T")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, ") (^T")) return false;
+    if (!advanced_test_append_int(buf, cap, &len, param_count - 1)) return false;
+    if (!advanced_test_append(buf, cap, &len, " tail))")) return false;
+    return true;
+}
+
+fn bool advanced_build_many_meta_entries_define(char* buf, usz cap, usz meta_count) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(define [type] (MetaTower")) return false;
+    for (usz i = 0; i < meta_count; i++) {
+        if (!advanced_test_append(buf, cap, &len, " T")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, ") (^{")) return false;
+    for (usz i = 0; i < meta_count; i++) {
+        if (!advanced_test_append(buf, cap, &len, "'T")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+        if (!advanced_test_append(buf, cap, &len, " Number")) return false;
+        if (i + 1 < meta_count) {
+            if (!advanced_test_append(buf, cap, &len, " ")) return false;
+        }
+    }
+    if (!advanced_test_append(buf, cap, &len, "} value))")) return false;
+    return true;
+}
+
+fn bool advanced_build_many_clause_macro_define(char* buf, usz cap, usz clause_count) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(define [macro] choose-wide")) return false;
+    for (usz i = 0; i < clause_count; i++) {
+        if (!advanced_test_append(buf, cap, &len, " ([")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+        if (!advanced_test_append(buf, cap, &len, "] ")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+        if (!advanced_test_append(buf, cap, &len, ")")) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, ")")) return false;
+    return true;
+}
+
+fn bool advanced_build_many_pattern_vars_macro_define(char* buf, usz cap, usz var_count) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(define [macro] pick-last ([")) return false;
+    for (usz i = 0; i < var_count; i++) {
+        if (i > 0 && !advanced_test_append(buf, cap, &len, " ")) return false;
+        if (!advanced_test_append(buf, cap, &len, "v")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, "] v")) return false;
+    if (!advanced_test_append_int(buf, cap, &len, var_count - 1)) return false;
+    if (!advanced_test_append(buf, cap, &len, "))")) return false;
+    return true;
+}
+
+fn bool advanced_build_many_arg_macro_call(char* buf, usz cap, char[] macro_name, usz arg_count) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(")) return false;
+    if (!advanced_test_append(buf, cap, &len, macro_name)) return false;
+    for (usz i = 0; i < arg_count; i++) {
+        if (!advanced_test_append(buf, cap, &len, " ")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, ")")) return false;
+    return true;
+}
+
+fn bool advanced_build_many_capture_bindings_setup(char* buf, usz cap, usz binding_count) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(begin")) return false;
+    for (usz i = 0; i < binding_count; i++) {
+        if (!advanced_test_append(buf, cap, &len, " (define cap")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+        if (!advanced_test_append(buf, cap, &len, " ")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+        if (!advanced_test_append(buf, cap, &len, ")")) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, ")")) return false;
+    return true;
+}
+
+fn bool advanced_build_many_capture_macro_define(char* buf, usz cap, usz binding_count) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(define [macro] capture-wide ([] (begin")) return false;
+    for (usz i = 0; i < binding_count; i++) {
+        if (!advanced_test_append(buf, cap, &len, " cap")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, ")))")) return false;
+    return true;
+}
+
+fn bool advanced_build_many_gensym_macro_define(char* buf, usz cap, usz gensym_count) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(define [macro] gensym-wide ([] (let (")) return false;
+    for (usz i = 0; i < gensym_count; i++) {
+        if (i > 0 && !advanced_test_append(buf, cap, &len, " ")) return false;
+        if (!advanced_test_append(buf, cap, &len, "g")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+        if (!advanced_test_append(buf, cap, &len, "# ")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, ") g")) return false;
+    if (!advanced_test_append_int(buf, cap, &len, gensym_count - 1)) return false;
+    if (!advanced_test_append(buf, cap, &len, "#)))")) return false;
+    return true;
+}
+
+fn bool advanced_build_dispatch_define(char* buf, usz cap, char[] name, usz arg_count, char[] last_type, long result) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(define (")) return false;
+    if (!advanced_test_append(buf, cap, &len, name)) return false;
+    for (usz i = 0; i + 1 < arg_count; i++) {
+        if (!advanced_test_append(buf, cap, &len, " a")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, " (^")) return false;
+    if (!advanced_test_append(buf, cap, &len, last_type)) return false;
+    if (!advanced_test_append(buf, cap, &len, " a")) return false;
+    if (!advanced_test_append_int(buf, cap, &len, arg_count - 1)) return false;
+    if (!advanced_test_append(buf, cap, &len, ")) ")) return false;
+    if (!advanced_test_append_int(buf, cap, &len, (usz)result)) return false;
+    if (!advanced_test_append(buf, cap, &len, ")")) return false;
+    return true;
+}
+
+fn bool advanced_build_dispatch_call(char* buf, usz cap, char[] name, usz arg_count, bool string_last) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(")) return false;
+    if (!advanced_test_append(buf, cap, &len, name)) return false;
+    for (usz i = 0; i + 1 < arg_count; i++) {
+        if (!advanced_test_append(buf, cap, &len, " ")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, " ")) return false;
+    if (string_last) {
+        if (!advanced_test_append(buf, cap, &len, "\"forty\"")) return false;
+    } else {
+        if (!advanced_test_append_int(buf, cap, &len, arg_count - 1)) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, ")")) return false;
+    return true;
+}
+
+fn bool advanced_build_constraint_define(char* buf, usz cap, usz constraint_count, char[] final_bound, long result) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(define (constraint-wide (^{")) return false;
+    for (usz i = 0; i < constraint_count; i++) {
+        if (i > 0 && !advanced_test_append(buf, cap, &len, " ")) return false;
+        if (!advanced_test_append(buf, cap, &len, "'T")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+        if (!advanced_test_append(buf, cap, &len, " ")) return false;
+        if (i + 1 == constraint_count) {
+            if (!advanced_test_append(buf, cap, &len, final_bound)) return false;
+        } else {
+            if (!advanced_test_append(buf, cap, &len, "Number")) return false;
+        }
+    }
+    if (!advanced_test_append(buf, cap, &len, "} x)) ")) return false;
+    if (!advanced_test_append_int(buf, cap, &len, (usz)result)) return false;
+    if (!advanced_test_append(buf, cap, &len, ")")) return false;
+    return true;
+}
+
 fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* pass, int* fail) {
     // === TYPE SYSTEM TESTS (Phase 1) ===
 
@@ -1183,6 +1528,34 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
     test_truthy_interp(interp, "is? union Some", "(is? (Some 42) 'Option)", pass, fail);
     test_truthy_interp(interp, "is? union Some exact", "(is? (Some 42) 'Some)", pass, fail);
 
+    {
+        const usz FIELD_COUNT = 80;
+        char[8192] define_buf;
+        char[8192] access_buf;
+        if (!advanced_build_wide_type_define(&define_buf, define_buf.len, FIELD_COUNT) ||
+            !advanced_build_wide_type_access(&access_buf, access_buf.len, FIELD_COUNT)) {
+            io::printn("[FAIL] wide type field regression builder");
+            (*fail)++;
+        } else {
+            setup(interp, define_buf[..advanced_test_cstr_len(&define_buf)]);
+            test_eq_interp(interp, "wide type preserves >64 fields", access_buf[..advanced_test_cstr_len(&access_buf)], (long)(FIELD_COUNT - 1), pass, fail);
+        }
+    }
+
+    {
+        const usz VARIANT_COUNT = 24;
+        char[8192] define_buf;
+        char[8192] match_buf;
+        if (!advanced_build_wide_union_define(&define_buf, define_buf.len, VARIANT_COUNT) ||
+            !advanced_build_wide_union_match(&match_buf, match_buf.len, VARIANT_COUNT)) {
+            io::printn("[FAIL] wide union regression builder");
+            (*fail)++;
+        } else {
+            setup(interp, define_buf[..advanced_test_cstr_len(&define_buf)]);
+            test_eq_interp(interp, "wide union preserves >16 variants", match_buf[..advanced_test_cstr_len(&match_buf)], (long)(VARIANT_COUNT - 1), pass, fail);
+        }
+    }
+
     // define [alias]
     setup(interp, "(define [alias] Num Int)");
     test_truthy(interp, "alias defined", "(= 'Num 'Num)", pass, fail);
@@ -1210,6 +1583,30 @@ fn void run_advanced_type_parametric_type_args_tests(Interp* interp, int* pass, 
     test_truthy_interp(interp, "Pair field second", "(= (let (p (Pair 1 \"two\")) p.second) \"two\")", pass, fail);
     test_truthy_interp(interp, "type-args Pair A", "(= (car (type-args (Pair 1 \"two\"))) 'Int)", pass, fail);
     test_truthy_interp(interp, "type-args Pair B", "(= (car (cdr (type-args (Pair 1 \"two\")))) 'String)", pass, fail);
+
+    {
+        const usz PARAM_COUNT = 40;
+        char[8192] define_buf;
+        if (!advanced_build_many_type_params_define(&define_buf, define_buf.len, PARAM_COUNT)) {
+            io::printn("[FAIL] wide type param regression builder");
+            (*fail)++;
+        } else {
+            setup(interp, define_buf[..advanced_test_cstr_len(&define_buf)]);
+            test_eq_interp(interp, "deftype preserves >32 type params", "(let (p (ParamTower 42)) p.tail)", 42, pass, fail);
+        }
+    }
+
+    {
+        const usz META_COUNT = 20;
+        char[8192] define_buf;
+        if (!advanced_build_many_meta_entries_define(&define_buf, define_buf.len, META_COUNT)) {
+            io::printn("[FAIL] wide metadata regression builder");
+            (*fail)++;
+        } else {
+            setup(interp, define_buf[..advanced_test_cstr_len(&define_buf)]);
+            test_eq_interp(interp, "type annotation preserves >16 metadata entries", "(let (m (MetaTower 42)) m.value)", 42, pass, fail);
+        }
+    }
 
     // type-args on non-parametric type returns nil
     test_nil_interp(interp, "type-args non-param", "(type-args (Point 1 2))", pass, fail);
@@ -1328,6 +1725,32 @@ fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass,
     setup(interp, "(define (add2 (^String a) (^String b)) (string-append a b))");
     test_eq_interp(interp, "dispatch multi-arg int", "(add2 3 4)", 7, pass, fail);
     test_truthy_interp(interp, "dispatch multi-arg str", "(= (add2 \"hello\" \" world\") \"hello world\")", pass, fail);
+
+    // Last-arg dispatch past legacy 8-arg scoring cap
+    setup(interp, "(define (dispatch9 a b c d e f g h (^Int i)) 111)");
+    setup(interp, "(define (dispatch9 a b c d e f g h (^String i)) 222)");
+    test_eq_interp(interp, "dispatch 9th arg int", "(dispatch9 1 2 3 4 5 6 7 8 9)", 111, pass, fail);
+    test_eq_interp(interp, "dispatch 9th arg string", "(dispatch9 1 2 3 4 5 6 7 8 \"nine\")", 222, pass, fail);
+
+    {
+        const usz ARG_COUNT = 40;
+        char[12288] define_int_buf;
+        char[12288] define_string_buf;
+        char[8192] call_int_buf;
+        char[8192] call_string_buf;
+        if (!advanced_build_dispatch_define(&define_int_buf, define_int_buf.len, "dispatch40", ARG_COUNT, "Int", 111) ||
+            !advanced_build_dispatch_define(&define_string_buf, define_string_buf.len, "dispatch40", ARG_COUNT, "String", 222) ||
+            !advanced_build_dispatch_call(&call_int_buf, call_int_buf.len, "dispatch40", ARG_COUNT, false) ||
+            !advanced_build_dispatch_call(&call_string_buf, call_string_buf.len, "dispatch40", ARG_COUNT, true)) {
+            io::printn("[FAIL] wide dispatch signature regression builder");
+            (*fail)++;
+        } else {
+            setup(interp, define_int_buf[..advanced_test_cstr_len(&define_int_buf)]);
+            setup(interp, define_string_buf[..advanced_test_cstr_len(&define_string_buf)]);
+            test_eq_interp(interp, "dispatch 40th arg int", call_int_buf[..advanced_test_cstr_len(&call_int_buf)], 111, pass, fail);
+            test_eq_interp(interp, "dispatch 40th arg string", call_string_buf[..advanced_test_cstr_len(&call_string_buf)], 222, pass, fail);
+        }
+    }
 }
 
 fn void run_advanced_dispatch_constructor_constraint_tests(Interp* interp, int* pass, int* fail) {
@@ -1351,6 +1774,19 @@ fn void run_advanced_dispatch_constructor_constraint_tests(Interp* interp, int* 
     // Add a fallback method that accepts anything
     setup(interp, "(define (get-val x) (- 0 1))");
     test_eq_interp(interp, "constraint fallback", "(get-val (NotAddable 99))", -1, pass, fail);
+
+    {
+        const usz CONSTRAINT_COUNT = 40;
+        char[12288] define_constraint_buf;
+        if (!advanced_build_constraint_define(&define_constraint_buf, define_constraint_buf.len, CONSTRAINT_COUNT, "String", 111)) {
+            io::printn("[FAIL] wide dispatch constraint regression builder");
+            (*fail)++;
+        } else {
+            setup(interp, define_constraint_buf[..advanced_test_cstr_len(&define_constraint_buf)]);
+            setup(interp, "(define (constraint-wide x) 222)");
+            test_eq_interp(interp, "dispatch preserves >32 constraints", "(constraint-wide 1)", 222, pass, fail);
+        }
+    }
 }
 
 fn void run_advanced_dispatch_constructor_validation_tests(Interp* interp, int* pass, int* fail) {
@@ -1691,6 +2127,12 @@ fn void run_advanced_ffi_system_tests(Interp* interp, int* pass, int* fail) {
 
     // Error cases
     test_error(interp, "ffi lib bad", "(define [ffi lib] bad-lib \"nonexistent_xyz.so\")", pass, fail);
+    setup(interp, "(define [ffi λ libc] (ffi_superlong_symbol_name_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_tailmarkerzz (^Int n)) ^Int)");
+    test_error_contains(interp,
+        "ffi λ long symbol name preserves tail",
+        "(ffi_superlong_symbol_name_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_tailmarkerzz 7)",
+        "tailmarkerzz",
+        pass, fail);
 
     // === SYSTEM PRIMITIVES TESTS ===
     // random — returns double in [0,1)

@@ -1,5 +1,8 @@
 # Omni Lisp Effects Guide
 
+This guide is tutorial-oriented. For normative MUST/SHOULD semantics and
+rule-to-test anchors, see `docs/EFFECTS_SEMANTICS.md`.
+
 Effects are Omni's way of handling side effects — I/O, errors, state — as
 **values you can intercept, redirect, or suppress**. Instead of calling
 `println` and having output go directly to the terminal, `println` *signals*

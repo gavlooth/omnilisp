@@ -17,9 +17,8 @@ fn bool is_symbol_char(char c) {
 
 fn void Lexer.scan_string(Lexer* self) {
     self.next_char();  // consume opening quote
-    usz out_idx = 0;
-    usz max_idx = LEXER_TEXT_CAP - 1;
-    bool truncated = false;
+    self.current.text_len = 0;
+    if (self.current.text != null && self.current.text_cap > 0) self.current.text[0] = 0;
 
     while (self.pos < self.len && self.source[self.pos] != '"') {
         char ch = self.source[self.pos];
@@ -30,20 +29,38 @@ fn void Lexer.scan_string(Lexer* self) {
             char escaped = self.source[self.pos];
             switch (escaped) {
                 case 'n':
-                    if (out_idx < max_idx) { self.current.text[out_idx++] = '\n'; } else { truncated = true; }
+                    if (!self.push_current_text_char('\n')) {
+                        self.set_error_text("out of memory while lexing string literal");
+                        return;
+                    }
                 case 't':
-                    if (out_idx < max_idx) { self.current.text[out_idx++] = '\t'; } else { truncated = true; }
+                    if (!self.push_current_text_char('\t')) {
+                        self.set_error_text("out of memory while lexing string literal");
+                        return;
+                    }
                 case '\\':
-                    if (out_idx < max_idx) { self.current.text[out_idx++] = '\\'; } else { truncated = true; }
+                    if (!self.push_current_text_char('\\')) {
+                        self.set_error_text("out of memory while lexing string literal");
+                        return;
+                    }
                 case '"':
-                    if (out_idx < max_idx) { self.current.text[out_idx++] = '"'; } else { truncated = true; }
+                    if (!self.push_current_text_char('"')) {
+                        self.set_error_text("out of memory while lexing string literal");
+                        return;
+                    }
                 default:
                     // Unknown escape, just include the character
-                    if (out_idx < max_idx) { self.current.text[out_idx++] = escaped; } else { truncated = true; }
+                    if (!self.push_current_text_char(escaped)) {
+                        self.set_error_text("out of memory while lexing string literal");
+                        return;
+                    }
             }
             self.next_char();
         } else {
-            if (out_idx < max_idx) { self.current.text[out_idx++] = ch; } else { truncated = true; }
+            if (!self.push_current_text_char(ch)) {
+                self.set_error_text("out of memory while lexing string literal");
+                return;
+            }
             self.next_char();
         }
     }
@@ -52,25 +69,10 @@ fn void Lexer.scan_string(Lexer* self) {
         self.next_char();  // consume closing quote
     } else {
         // EOF without closing quote
-        self.current.type = T_ERROR;
-        char[] err = "unterminated string literal";
-        for (usz i = 0; i < err.len; i++) self.current.text[i] = err[i];
-        self.current.text[err.len] = 0;
-        self.current.text_len = err.len;
+        self.set_error_text("unterminated string literal");
         return;
     }
 
-    if (truncated) {
-        self.current.type = T_ERROR;
-        char[] err = "string literal too long";
-        for (usz i = 0; i < err.len; i++) self.current.text[i] = err[i];
-        self.current.text[err.len] = 0;
-        self.current.text_len = err.len;
-        return;
-    }
-
-    self.current.text[out_idx] = 0;
-    self.current.text_len = out_idx;
     self.current.type = T_STRING;
 }
 
@@ -108,33 +110,36 @@ fn bool Lexer.scan_hash_regex_literal(Lexer* self, char next) {
     self.next_char();  // consume #
     self.next_char();  // consume r
     self.next_char();  // consume opening "
-    usz out_idx = 0;
-    usz max_idx = LEXER_TEXT_CAP - 1;
-    bool truncated = false;
+    self.current.text_len = 0;
+    if (self.current.text != null && self.current.text_cap > 0) self.current.text[0] = 0;
     while (self.pos < self.len && self.source[self.pos] != '"') {
         char ch = self.source[self.pos];
         if (ch == '\\' && self.pos + 1 < self.len) {
             self.next_char();
             char escaped = self.source[self.pos];
-            if (out_idx < max_idx) { self.current.text[out_idx++] = '\\'; } else { truncated = true; }
-            if (out_idx < max_idx) { self.current.text[out_idx++] = escaped; } else { truncated = true; }
+            if (!self.push_current_text_char('\\')) {
+                self.set_error_text("out of memory while lexing regex literal");
+                return true;
+            }
+            if (!self.push_current_text_char(escaped)) {
+                self.set_error_text("out of memory while lexing regex literal");
+                return true;
+            }
             self.next_char();
         } else {
-            if (out_idx < max_idx) { self.current.text[out_idx++] = ch; } else { truncated = true; }
+            if (!self.push_current_text_char(ch)) {
+                self.set_error_text("out of memory while lexing regex literal");
+                return true;
+            }
             self.next_char();
         }
     }
-    if (truncated) {
-        self.current.type = T_ERROR;
-        char[] err = "regex literal too long";
-        for (usz i = 0; i < err.len; i++) self.current.text[i] = err[i];
-        self.current.text[err.len] = 0;
-        self.current.text_len = err.len;
+    if (self.pos < self.len && self.source[self.pos] == '"') {
+        self.next_char();  // consume closing "
+    } else {
+        self.set_error_text("unterminated regex literal");
         return true;
     }
-    if (self.pos < self.len) self.next_char();  // consume closing "
-    self.current.text[out_idx] = 0;
-    self.current.text_len = out_idx;
     self.current.type = T_REGEX;
     return true;
 }

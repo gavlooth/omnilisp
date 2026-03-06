@@ -44,18 +44,17 @@ fn Value* jit_apply_multi_args_primitive(Interp* interp, Value* func, Value* arg
     // Set constructor type_id and user_data (needed for type constructor / FFI primitives)
     interp.constructor_type_id = func.prim_val.tag;
     interp.prim_user_data = func.prim_val.user_data;
-    usz safe_count = arg_count > 16 ? 16 : arg_count;
-    Value** args = safe_count > 0
-        ? (Value**)interp.current_scope.alloc(Value*.sizeof * safe_count)
+    Value** args = arg_count > 0
+        ? (Value**)interp.current_scope.alloc(Value*.sizeof * arg_count)
         : null;
     Value* curr = arg_list;
     usz actual_count = 0;
-    for (usz i = 0; i < safe_count; i++) {
+    for (usz i = 0; i < arg_count; i++) {
         if (curr == null || curr.tag != CONS) break;
         args[actual_count++] = curr.cons_val.car;
         curr = curr.cons_val.cdr;
     }
-    if (actual_count < safe_count) {
+    if (actual_count < arg_count) {
         return raise_error(interp, "arg list too short");
     }
     Value* result = func.prim_val.func(args[:actual_count], null, interp);
@@ -85,17 +84,17 @@ fn Value* jit_apply_multi_args_closure_multi(Interp* interp, Value* func, Value*
 }
 
 fn Value* jit_apply_multi_args_method_table(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
-    usz safe_count = arg_count > 16 ? 16 : arg_count;
-    Value** args = safe_count > 0
-        ? (Value**)interp.current_scope.alloc(Value*.sizeof * safe_count)
+    Value** args = arg_count > 0
+        ? (Value**)interp.current_scope.alloc(Value*.sizeof * arg_count)
         : null;
     Value* curr = arg_list;
     usz actual_count = 0;
-    for (usz i = 0; i < safe_count; i++) {
+    for (usz i = 0; i < arg_count; i++) {
         if (curr == null || curr.tag != CONS) break;
         args[actual_count++] = curr.cons_val.car;
         curr = curr.cons_val.cdr;
     }
+    if (actual_count < arg_count) return raise_error(interp, "arg list too short");
     MethodTable* mt = func.method_table_val;
     Value* resolved = find_best_method(mt, args[:actual_count], interp);
     if (resolved != null && resolved.tag == ERROR) return resolved;
@@ -128,12 +127,9 @@ fn Value* jit_apply_multi_args_iterative(Value* func, Value* arg_list, usz arg_c
 // For primitives: dispatches directly with all args.
 // Detects variadic closures appearing mid-curry chain.
 fn Value* jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
-    interp.eval_depth++;
-    if (interp.eval_depth > interp.max_eval_depth) {
-        interp.eval_depth--;
-        return make_error(interp, "stack overflow: maximum eval depth exceeded");
-    }
-    defer interp.eval_depth--;
+    Value* frame_error = interp_apply_frame_enter(interp);
+    if (frame_error != null) return frame_error;
+    defer interp_apply_frame_leave(interp);
 
     if (func == null) return jit_null_callable_error(interp);
 
@@ -226,17 +222,17 @@ fn Value* jit_apply_multi_args_tail_closure_multi(Interp* interp, Value* func, V
 }
 
 fn Value* jit_apply_multi_args_tail_method_table(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
-    usz safe_count = arg_count > 16 ? 16 : arg_count;
-    Value** args = safe_count > 0
-        ? (Value**)interp.current_scope.alloc(Value*.sizeof * safe_count)
+    Value** args = arg_count > 0
+        ? (Value**)interp.current_scope.alloc(Value*.sizeof * arg_count)
         : null;
     Value* curr = arg_list;
     usz actual_count = 0;
-    for (usz i = 0; i < safe_count; i++) {
+    for (usz i = 0; i < arg_count; i++) {
         if (curr == null || curr.tag != CONS) break;
         args[actual_count++] = curr.cons_val.car;
         curr = curr.cons_val.cdr;
     }
+    if (actual_count < arg_count) return raise_error(interp, "arg list too short");
     MethodTable* mt = func.method_table_val;
     Value* resolved = find_best_method(mt, args[:actual_count], interp);
     if (resolved != null && resolved.tag == ERROR) return resolved;
@@ -248,12 +244,9 @@ fn Value* jit_apply_multi_args_tail_method_table(Interp* interp, Value* func, Va
 // Tail-call variant: sets TCO bounce fields for CLOSURE instead of recursing.
 // ONLY called when the result goes directly to R0 as the function return value.
 fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
-    interp.eval_depth++;
-    if (interp.eval_depth > interp.max_eval_depth) {
-        interp.eval_depth--;
-        return make_error(interp, "stack overflow: maximum eval depth exceeded");
-    }
-    defer interp.eval_depth--;
+    Value* frame_error = interp_apply_frame_enter(interp);
+    if (frame_error != null) return frame_error;
+    defer interp_apply_frame_leave(interp);
 
     if (func == null) return jit_null_callable_error(interp);
 

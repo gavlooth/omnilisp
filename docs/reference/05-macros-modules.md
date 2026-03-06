@@ -72,18 +72,18 @@
 (add 3 4)                    ;; => 7
 
 ;; Rename on import
-(import math-utils (add :as plus))
+(import math-utils (add 'as plus))
 (plus 3 4)                   ;; => 7
 
 ;; Import all exports unqualified
-(import math-utils :all)
+(import math-utils 'all)
 (add 3 4)                    ;; => 7
 
 ;; File-based import
 (import "path/to/file.omni")
 
 ;; Re-export
-(export-from math-utils :all)
+(export-from math-utils 'all)
 (export-from math-utils (add))
 ```
 

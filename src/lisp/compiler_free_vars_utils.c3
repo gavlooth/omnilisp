@@ -25,6 +25,10 @@ fn void Compiler.collect_pattern_bindings(Compiler* self, Pattern* pat, List{Sym
                 bindings.push(pat.rest_binding);
             }
 
+        case PAT_AS:
+            self.collect_pattern_bindings(pat.as_sub, bindings);
+            bindings.push(pat.as_name);
+
         case PAT_GUARD:
             if (pat.guard_sub != null) {
                 self.collect_pattern_bindings(pat.guard_sub, bindings);

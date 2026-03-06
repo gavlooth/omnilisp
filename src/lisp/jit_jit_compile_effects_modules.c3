@@ -10,7 +10,9 @@ fn Value* jit_resolve_lookup_continuation(Interp* interp, Env* env) {
         k_val = interp.global_env.lookup(interp.sym__k);
     }
     if (k_val == null || k_val.tag != CONTINUATION) {
-        return make_error(interp, "resolve: not inside a handler clause");
+        return raise_error_with_payload_names(
+            interp, "runtime", "runtime/invalid-continuation", "resolve: not inside a handler clause"
+        );
     }
     return k_val;
 }
@@ -22,7 +24,9 @@ fn bool jit_resolve_is_effect_continuation(Value* k_val) @inline {
 fn Value* jit_resolve_resume_effect_continuation(Interp* interp, Value* k_val, Value* val) {
     main::StackCtx* ctx = k_val.cont_val.ctx;
     if (ctx == null || ctx.status != main::StackCtxStatus.CTX_SUSPENDED) {
-        return make_error(interp, "resolve: continuation not suspended");
+        return raise_error_with_payload_names(
+            interp, "runtime", "runtime/continuation-not-suspended", "resolve: continuation not suspended"
+        );
     }
 
     HandleEffectState* hstate = (HandleEffectState*)k_val.cont_val.handle_state;
@@ -48,7 +52,7 @@ fn Value* jit_resolve_resume_effect_continuation(Interp* interp, Value* k_val, V
 
     // Stack overflow — context hit guard page after resolve
     if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
-        return make_error(interp, "stack overflow after resolve");
+        return raise_error_with_payload_names(interp, "runtime", "runtime/stack-overflow", "stack overflow after resolve");
     }
 
     // Return value: body result if completed, or val as placeholder
@@ -76,7 +80,9 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
 
     // All continuations are context-based — apply directly
     EvalResult r = jit_apply_continuation(k_val, val, interp);
-    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+    if (r.error.has_error) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/resolve-apply-failed", r.error.message[:256]);
+    }
     return r.value;
 }
 

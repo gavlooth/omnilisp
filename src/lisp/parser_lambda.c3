@@ -30,8 +30,8 @@ fn Expr* Parser.parse_implicit_begin(Parser* self) {
     return begin_e;
 }
 
-fn Expr* Parser.wrap_body_with_destructuring(Parser* self, Expr* lambda_expr, Expr* body, Pattern** patterns, SymbolId* names, usz pattern_count) {
-    for (usz di = pattern_count; di > 0; di--) {
+fn Expr* Parser.wrap_body_with_destructuring(Parser* self, Expr* lambda_expr, Expr* body, List{Pattern*} patterns, List{SymbolId} names) {
+    for (usz di = patterns.len(); di > 0; di--) {
         Expr* let_wrap = self.interp.alloc_expr();
         let_wrap.tag = E_LET;
         let_wrap.loc_line = lambda_expr.loc_line;
@@ -77,22 +77,19 @@ fn void Parser.finalize_lambda_expr(Parser* self, Expr* e, List{SymbolId} params
     e.lambda.body = body;
 }
 
-fn bool Parser.collect_callable_params(Parser* self, List{SymbolId}* params, List{TypeAnnotation}* param_anns, bool* has_any_typed, Pattern** destr_patterns, SymbolId* destr_param_names, usz* destr_count) {
+fn bool Parser.collect_callable_params(Parser* self, List{SymbolId}* params, List{TypeAnnotation}* param_anns, bool* has_any_typed, List{Pattern*}* destr_patterns, List{SymbolId}* destr_param_names) {
     while (self.lexer.current.type == T_SYMBOL || self.lexer.current.type == T_LPAREN || self.lexer.current.type == T_LBRACE || self.lexer.current.type == T_LBRACKET) {
         if (self.lexer.current.type == T_LBRACE || self.lexer.current.type == T_LBRACKET) {
             Pattern* dp = self.parse_pattern();
             char[8] gensym_buf;
-            usz glen = io::bprintf(&gensym_buf, "__d%d", (int)*destr_count)!!.len;
+            usz glen = io::bprintf(&gensym_buf, "__d%d", (int)(*destr_patterns).len())!!.len;
             SymbolId gensym = self.interp.symbols.intern(gensym_buf[:glen]);
             params.push(gensym);
             TypeAnnotation empty_ann;
             empty_ann.has_annotation = false;
             param_anns.push(empty_ann);
-            if (*destr_count < 8) {
-                destr_patterns[*destr_count] = dp;
-                destr_param_names[*destr_count] = gensym;
-                (*destr_count)++;
-            }
+            destr_patterns.push(dp);
+            destr_param_names.push(gensym);
         } else if (self.lexer.current.type == T_LPAREN) {
             self.lexer.advance();  // consume '('
             TypeAnnotation ann = self.parse_type_annotation();
@@ -145,7 +142,7 @@ fn Expr* Parser.finalize_lambda_no_fixed_params(Parser* self, Expr* e, bool has_
     return e;
 }
 
-fn Expr* Parser.finalize_lambda_with_params(Parser* self, Expr* e, List{SymbolId} params, List{TypeAnnotation} param_anns, bool has_any_typed, bool has_rest, SymbolId rest_param, Pattern** destr_patterns, SymbolId* destr_param_names, usz destr_count, bool require_fixed_param) {
+fn Expr* Parser.finalize_lambda_with_params(Parser* self, Expr* e, List{SymbolId} params, List{TypeAnnotation} param_anns, bool has_any_typed, bool has_rest, SymbolId rest_param, List{Pattern*} destr_patterns, List{SymbolId} destr_param_names, bool require_fixed_param) {
     Expr* body = self.parse_implicit_begin();
     self.expect(T_RPAREN, ")");
     if (self.has_error) return null;
@@ -153,7 +150,7 @@ fn Expr* Parser.finalize_lambda_with_params(Parser* self, Expr* e, List{SymbolId
         self.set_error("expected at least one parameter");
         return null;
     }
-    body = self.wrap_body_with_destructuring(e, body, destr_patterns, destr_param_names, destr_count);
+    body = self.wrap_body_with_destructuring(e, body, destr_patterns, destr_param_names);
     self.finalize_lambda_expr(e, params, param_anns, has_any_typed, has_rest, rest_param, body);
     return e;
 }
@@ -183,11 +180,12 @@ fn Expr* Parser.parse_lambda(Parser* self) {
     List{TypeAnnotation} param_anns;
     defer param_anns.free();
     bool has_any_typed = false;
-    Pattern*[8] lam_destr_patterns;
-    SymbolId[8] lam_destr_param_names;
-    usz lam_destr_count = 0;
+    List{Pattern*} lam_destr_patterns;
+    defer lam_destr_patterns.free();
+    List{SymbolId} lam_destr_param_names;
+    defer lam_destr_param_names.free();
 
-    if (!self.collect_callable_params(&params, &param_anns, &has_any_typed, &lam_destr_patterns[0], &lam_destr_param_names[0], &lam_destr_count)) {
+    if (!self.collect_callable_params(&params, &param_anns, &has_any_typed, &lam_destr_patterns, &lam_destr_param_names)) {
         return null;
     }
 
@@ -196,11 +194,11 @@ fn Expr* Parser.parse_lambda(Parser* self) {
         SymbolId rest_param;
         if (!self.parse_rest_param(&rest_param)) return null;
         self.expect(T_RPAREN, ")");
-        return self.finalize_lambda_with_params(e, params, param_anns, has_any_typed, true, rest_param, &lam_destr_patterns[0], &lam_destr_param_names[0], lam_destr_count, false);
+        return self.finalize_lambda_with_params(e, params, param_anns, has_any_typed, true, rest_param, lam_destr_patterns, lam_destr_param_names, false);
     }
 
     self.expect(T_RPAREN, ")");
-    return self.finalize_lambda_with_params(e, params, param_anns, has_any_typed, false, 0, &lam_destr_patterns[0], &lam_destr_param_names[0], lam_destr_count, true);
+    return self.finalize_lambda_with_params(e, params, param_anns, has_any_typed, false, 0, lam_destr_patterns, lam_destr_param_names, true);
 }
 
 fn Expr* Parser.parse_if(Parser* self) {

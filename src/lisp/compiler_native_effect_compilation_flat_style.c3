@@ -371,6 +371,9 @@ fn void Compiler.compile_pattern_check(Compiler* self, Pattern* pat, char[] val_
                 self.emit_usz(pat.elem_count);
             }
 
+        case PAT_AS:
+            self.compile_pattern_check(pat.as_sub, val_name);
+
         case PAT_GUARD:
             // Guard patterns: delegate to true for now (guard check at runtime)
             self.emit("true");
@@ -450,6 +453,10 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
                 self.emit_usz(pat.elem_count);
                 self.emit("); ");
             }
+
+        case PAT_AS:
+            self.compile_pattern_bindings(pat.as_sub, val_name);
+            self.emit_pattern_var_assign(pat.as_name, val_name);
 
         case PAT_GUARD:
             // Guard pattern: bind sub-pattern if present

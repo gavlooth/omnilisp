@@ -20,9 +20,6 @@ import main;
 /**
  * ExprTag — Type of expression.
  */
-// Maximum path segments (e.g., person.address.city has 3)
-const usz MAX_PATH_SEGMENTS = 32;
-
 enum ExprTag : char {
     E_LIT,        // Literal value
     E_VAR,        // Variable reference
@@ -56,7 +53,7 @@ enum ExprTag : char {
     E_DEFUNION,   // (define [union] Name variants...)
     E_DEFALIAS,   // (define [alias] Name Target)
     E_DEFEFFECT,  // (define [effect] (tag (^Type arg)))
-    E_EXPORT_FROM, // (export-from mod (sym1 sym2)) or (export-from mod :all)
+    E_EXPORT_FROM, // (export-from mod (sym1 sym2)) or (export-from mod 'all)
     E_FFI_LIB,    // (define [ffi lib] name "path.so")
     E_FFI_FN,     // (define [ffi λ libname] (fname (^T arg)...) ^RetT)
 }
@@ -153,7 +150,7 @@ struct ExprIndex {
  * ExprPath — Field access path: point.x, person.address.city
  */
 struct ExprPath {
-    SymbolId[MAX_PATH_SEGMENTS] segments;
+    SymbolId* segments;
     usz segment_count;
 }
 
@@ -170,6 +167,7 @@ enum PatternTag : char {
     PAT_LIT,        // 42, "hello", 'sym - matches literal value
     PAT_CONS,       // (head . tail) - matches cons cell
     PAT_SEQ,        // [a b c], [head .. tail], [x y ..] - sequence pattern
+    PAT_AS,         // (pattern 'as name) - bind whole matched value too
     PAT_QUOTE,      // 'symbol or 'literal - matches quoted datum
     PAT_CONSTRUCTOR, // (TypeName sub-patterns...) - matches type instance
     PAT_GUARD,      // (? pred) or (? pred sub-pattern) - guarded pattern
@@ -210,6 +208,12 @@ struct Pattern {
             usz elem_count;
             RestPosition rest_pos;
             SymbolId rest_binding;  // Name to bind rest to (if REST_MIDDLE)
+        }
+
+        // PAT_AS: (pattern 'as name)
+        struct {
+            Pattern* as_sub;
+            SymbolId as_name;
         }
 
         // PAT_CONSTRUCTOR: (TypeName sub-patterns...)

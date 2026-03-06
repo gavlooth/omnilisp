@@ -22,7 +22,11 @@ fn void reset_value_entry(void* arg) {
 
 fn Value* jit_reset_value(Interp* interp, Value* body) {
     main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
-    if (ctx == null) return raise_error(interp, "stack engine: failed to create context");
+    if (ctx == null) {
+        return raise_error_with_payload_names(
+            interp, "runtime", "runtime/stack-context-create", "stack engine: failed to create context"
+        );
+    }
 
     ResetValueState state;
     state.body = body;
@@ -49,7 +53,7 @@ fn Value* jit_reset_value(Interp* interp, Value* body) {
 
     if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
         main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
-        return raise_error(interp, "stack overflow in reset");
+        return raise_error_with_payload_names(interp, "runtime", "runtime/stack-overflow", "stack overflow in reset");
     }
 
     if (state.shifted) {
@@ -62,10 +66,14 @@ fn Value* jit_reset_value(Interp* interp, Value* body) {
 }
 fn Value* jit_shift_value(Interp* interp, Value* body) {
     main::StackCtx* current = main::g_current_stack_ctx;
-    if (current == null) return raise_error(interp, "shift outside of reset");
+    if (current == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/shift-outside-reset", "shift outside of reset");
+    }
 
     ResetValueState* rstate = (ResetValueState*)interp.current_reset_state;
-    if (rstate == null) return raise_error(interp, "shift outside of reset");
+    if (rstate == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/shift-outside-reset", "shift outside of reset");
+    }
 
     Continuation* k = interp.alloc_lisp_continuation();
     k.ctx = current;
@@ -77,7 +85,9 @@ fn Value* jit_shift_value(Interp* interp, Value* body) {
     rstate.shift_k = k_val;
 
     if (!suspend_with_scope_guard(current, interp.current_scope)) {
-        return raise_error(interp, "stack engine: failed to register suspend scope guard");
+        return raise_error_with_payload_names(
+            interp, "runtime", "runtime/suspend-scope-guard", "stack engine: failed to register suspend scope guard"
+        );
     }
     return interp.resume_value;
 }
@@ -119,7 +129,12 @@ fn bool jit_signal_try_resume_handler(Interp* interp, main::StackCtx* current, S
             hstate.signal_tag = tag_sym;
             hstate.signal_arg = arg;
             if (!suspend_with_scope_guard(current, interp.current_scope)) {
-                *out_result = raise_error(interp, "stack engine: failed to register suspend scope guard");
+                *out_result = raise_error_with_payload_names(
+                    interp,
+                    "runtime",
+                    "runtime/suspend-scope-guard",
+                    "stack engine: failed to register suspend scope guard"
+                );
                 return true;
             }
             *out_result = interp.resume_value;
@@ -147,27 +162,35 @@ fn Value* jit_signal_value(Interp* interp, Value* tag, Value* arg) {
     bool handled = false;
     Value* fast_result = jit_signal_try_fast_path_dispatch(interp, (SymbolId)tag.sym_val, arg, &handled);
     if (handled) return fast_result;
-    return raise_error(interp, "unhandled effect");
+    return raise_error_with_payload_names(interp, "runtime", "runtime/unhandled-effect", "unhandled effect");
 }
 
 fn Value* jit_resolve_validate_input(Interp* interp, Value* k_val, Continuation** out_k) {
     if (k_val == null || k_val.tag != CONTINUATION) {
-        return raise_error(interp, "resolve: __k is not a valid continuation");
+        return raise_error_with_payload_names(
+            interp, "runtime", "runtime/invalid-continuation", "resolve: __k is not a valid continuation"
+        );
     }
 
     Continuation* k = k_val.cont_val;
 
     // Single-shot check
     if (k.ctx == null) {
-        return raise_error(interp, "resolve: continuation already resumed (one-shot only)");
+        return raise_error_with_payload_names(
+            interp, "runtime", "runtime/continuation-resumed", "resolve: continuation already resumed (one-shot only)"
+        );
     }
 
     if (!k.is_coroutine_based) {
-        return raise_error(interp, "resolve: expected coroutine-based continuation");
+        return raise_error_with_payload_names(
+            interp, "runtime", "runtime/invalid-continuation-kind", "resolve: expected coroutine-based continuation"
+        );
     }
 
     if (k.ctx.status == main::StackCtxStatus.CTX_COMPLETED || k.ctx.status == main::StackCtxStatus.CTX_DEAD) {
-        return raise_error(interp, "resolve: continuation context is dead");
+        return raise_error_with_payload_names(
+            interp, "runtime", "runtime/dead-continuation", "resolve: continuation context is dead"
+        );
     }
 
     *out_k = k;
@@ -267,7 +290,7 @@ fn Value* jit_handle_run_signals(Interp* interp, main::StackCtx* ctx, HandleEffe
 
         Value* handler_closure = jit_handle_find_closure(state);
         if (handler_closure == null) {
-            return raise_error(interp, "unhandled effect");
+            return raise_error_with_payload_names(interp, "runtime", "runtime/unhandled-effect", "unhandled effect");
         }
 
         Continuation* k = interp.alloc_lisp_continuation();
@@ -311,12 +334,16 @@ fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz c
     jit_handle_warm_closures(interp, closures, count, body_closure);
 
     main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
-    if (ctx == null) return raise_error(interp, "stack engine: failed to create context for handle");
+    if (ctx == null) {
+        return raise_error_with_payload_names(
+            interp, "runtime", "runtime/stack-context-create", "stack engine: failed to create context for handle"
+        );
+    }
     defer main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
 
     HandleEffectState* state = null;
     if (!jit_handle_alloc_state(interp, body_closure, &state)) {
-        return raise_error(interp, "handle: failed to allocate state");
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "handle: failed to allocate state");
     }
     defer mem::free(state);
 
@@ -328,7 +355,7 @@ fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz c
     jit_handle_fill_handler(h, count, state);
 
     if (!jit_handle_init_clauses(h, tags, closures, count)) {
-        return raise_error(interp, "handle: failed to allocate clauses");
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "handle: failed to allocate clauses");
     }
     defer mem::free(h.tags);
     defer mem::free(h.closures);
@@ -343,7 +370,7 @@ fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz c
     main::stack_ctx_switch_to(ctx, &parent_ctx);
 
     if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
-        return raise_error(interp, "stack overflow in handle body");
+        return raise_error_with_payload_names(interp, "runtime", "runtime/stack-overflow", "stack overflow in handle body");
     }
 
     Value* last_handler_v = jit_handle_run_signals(interp, ctx, state, my_idx);

@@ -59,15 +59,19 @@ fn bool Lexer.scan_logic_variable(Lexer* self, char c) {
 
     // Read ?varname as a symbol with ? prefix
     self.next_char();  // consume ?
-    usz out_idx = 0;
-    usz max_idx = LEXER_TEXT_CAP - 1;
-    self.current.text[out_idx++] = '?';
-    while (self.pos < self.len && is_symbol_char(self.source[self.pos]) && out_idx < max_idx) {
-        self.current.text[out_idx++] = self.source[self.pos];
+    self.current.text_len = 0;
+    if (self.current.text != null && self.current.text_cap > 0) self.current.text[0] = 0;
+    if (!self.push_current_text_char('?')) {
+        self.set_error_text("out of memory while lexing logic variable");
+        return true;
+    }
+    while (self.pos < self.len && is_symbol_char(self.source[self.pos])) {
+        if (!self.push_current_text_char(self.source[self.pos])) {
+            self.set_error_text("out of memory while lexing logic variable");
+            return true;
+        }
         self.next_char();
     }
-    self.current.text[out_idx] = 0;
-    self.current.text_len = out_idx;
     self.current.type = T_SYMBOL;  // ?var is a symbol starting with ?
     return true;
 }
@@ -79,6 +83,10 @@ fn bool Lexer.scan_dot_tokens(Lexer* self, char c) {
     if (self.pos + 1 < self.len && self.source[self.pos + 1] == '.') {
         // Make sure it's not ... or longer
         if (self.pos + 2 >= self.len || self.source[self.pos + 2] != '.') {
+            if (!self.ensure_text_capacity(3)) {
+                self.set_error_text("out of memory while lexing token");
+                return true;
+            }
             self.current.type = T_DOTDOT;
             self.current.text[0] = '.';
             self.current.text[1] = '.';
@@ -93,6 +101,10 @@ fn bool Lexer.scan_dot_tokens(Lexer* self, char c) {
     // Index access: .[ (dot-bracket notation)
     // Must check before symbol parsing since . is a symbol char
     if (self.pos + 1 < self.len && self.source[self.pos + 1] == '[') {
+        if (!self.ensure_text_capacity(3)) {
+            self.set_error_text("out of memory while lexing token");
+            return true;
+        }
         self.current.type = T_DOT_BRACKET;
         self.current.text[0] = '.';
         self.current.text[1] = '[';
@@ -110,6 +122,10 @@ fn bool Lexer.scan_standalone_underscore(Lexer* self, char c) {
     // Check if it's a standalone _ (not part of a symbol like _foo)
     if (self.pos + 1 < self.len && is_symbol_char(self.source[self.pos + 1])) return false;
 
+    if (!self.ensure_text_capacity(2)) {
+        self.set_error_text("out of memory while lexing token");
+        return true;
+    }
     self.current.type = T_UNDERSCORE;
     self.current.text[0] = '_';
     self.current.text[1] = 0;

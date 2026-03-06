@@ -148,6 +148,12 @@
 ;; try: run a thunk, catch errors via 'raise' effect
 (define (try thunk handler) (handle (thunk nil) (raise msg (handler msg))))
 
+;; raise->message: compatibility extractor for canonical raise payloads
+(define (raise->message err) (if (and (dict? err) (has? err 'message)) (ref err 'message) err))
+
+;; try-message: compatibility wrapper that always forwards a message string
+(define (try-message thunk handler) (try thunk (lambda (err) (handler (raise->message err)))))
+
 ;; assert!: check condition, raise if false
 (define (assert! condition msg) (if condition true (signal raise msg)))
 

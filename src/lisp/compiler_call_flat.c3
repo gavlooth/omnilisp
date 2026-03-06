@@ -15,13 +15,15 @@ fn bool Compiler.call_head_is(Compiler* self, Expr* expr, char[] name) {
     return self.str_eq(fname, name);
 }
 
-fn void Compiler.compile_call_arg_temps(Compiler* self, Expr** args, usz arg_count, usz* arg_temps) {
-    for (usz i = 0; i < arg_count && i < 32; i++) {
+fn usz[] Compiler.compile_call_arg_temps(Compiler* self, Expr** args, usz arg_count) {
+    usz[] arg_temps = mem::new_array(usz, arg_count);
+    for (usz i = 0; i < arg_count; i++) {
         arg_temps[i] = self.compile_to_temp(args[i]);
     }
+    return arg_temps;
 }
 
-fn usz Compiler.build_arg_list_from_temps(Compiler* self, usz* arg_temps, usz arg_count) {
+fn usz Compiler.build_arg_list_from_temps(Compiler* self, usz[] arg_temps, usz arg_count) {
     usz args_list = self.next_result();
     self.emit_temp_decl(args_list);
     self.emit(" = aot::make_nil();\n");
@@ -49,9 +51,9 @@ fn usz Compiler.compile_list_or_dict_call_flat(Compiler* self, Expr* expr, bool 
         return self.emit_nil_temp();
     }
 
-    usz[32] arg_temps;
-    self.compile_call_arg_temps(expr.call.args, arg_count, &arg_temps[0]);
-    usz args_list = self.build_arg_list_from_temps(&arg_temps[0], arg_count);
+    usz[] arg_temps = self.compile_call_arg_temps(expr.call.args, arg_count);
+    defer mem::free(arg_temps.ptr);
+    usz args_list = self.build_arg_list_from_temps(arg_temps, arg_count);
 
     if (as_dict) {
         usz id = self.next_result();
@@ -80,11 +82,11 @@ fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
         return id;
     }
 
-    usz[32] arg_temps;
-    self.compile_call_arg_temps(expr.call.args, arg_count, &arg_temps[0]);
+    usz[] arg_temps = self.compile_call_arg_temps(expr.call.args, arg_count);
+    defer mem::free(arg_temps.ptr);
 
     usz func_r = self.compile_to_temp(expr.call.func);
-    usz args_list = self.build_arg_list_from_temps(&arg_temps[0], arg_count);
+    usz args_list = self.build_arg_list_from_temps(arg_temps, arg_count);
 
     usz id = self.next_result();
     self.emit_temp_decl(id);
@@ -120,11 +122,11 @@ fn usz Compiler.compile_call_tail_flat(Compiler* self, Expr* expr) {
 
     if (arg_count == 0) return self.compile_zero_arg_tail_call(expr);
 
-    usz[32] arg_temps;
-    self.compile_call_arg_temps(expr.call.args, arg_count, &arg_temps[0]);
+    usz[] arg_temps = self.compile_call_arg_temps(expr.call.args, arg_count);
+    defer mem::free(arg_temps.ptr);
 
     usz func_r = self.compile_to_temp(expr.call.func);
-    usz args_list = self.build_arg_list_from_temps(&arg_temps[0], arg_count);
+    usz args_list = self.build_arg_list_from_temps(arg_temps, arg_count);
 
     usz id = self.next_result();
     self.emit_temp_decl(id);

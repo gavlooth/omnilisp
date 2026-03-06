@@ -72,14 +72,100 @@ fn void jit_copy_lambda_variadic_info(Interp* interp, Value* closure, Expr* expr
     }
 }
 
+fn void method_signature_init_empty(MethodSignature* sig) {
+    sig.param_types = null;
+    sig.val_literals = null;
+    sig.has_val_literal = null;
+    sig.param_count = 0;
+    sig.constraints = null;
+    sig.constraint_count = 0;
+}
+
+fn bool method_signature_alloc_arrays_in_scope(MethodSignature* sig, main::ScopeRegion* scope, usz param_count, usz constraint_count) {
+    method_signature_init_empty(sig);
+    sig.param_count = param_count;
+    sig.constraint_count = constraint_count;
+    if (param_count > 0) {
+        sig.param_types = (TypeId*)scope.alloc(TypeId.sizeof * param_count);
+        sig.val_literals = (long*)scope.alloc(long.sizeof * param_count);
+        sig.has_val_literal = (bool*)scope.alloc(bool.sizeof * param_count);
+        if (sig.param_types == null || sig.val_literals == null || sig.has_val_literal == null) return false;
+    }
+    if (constraint_count > 0) {
+        sig.constraints = (MethodConstraint*)scope.alloc(MethodConstraint.sizeof * constraint_count);
+        if (sig.constraints == null) return false;
+    }
+    return true;
+}
+
+fn bool method_signature_copy_to_scope(MethodSignature* dst, MethodSignature* src, main::ScopeRegion* scope) {
+    if (!method_signature_alloc_arrays_in_scope(dst, scope, src.param_count, src.constraint_count)) return false;
+    for (usz i = 0; i < src.param_count; i++) {
+        dst.param_types[i] = src.param_types[i];
+        dst.val_literals[i] = src.val_literals[i];
+        dst.has_val_literal[i] = src.has_val_literal[i];
+    }
+    for (usz i = 0; i < src.constraint_count; i++) dst.constraints[i] = src.constraints[i];
+    return true;
+}
+
+fn void method_signature_destroy_heap(MethodSignature* sig) {
+    if (sig == null) return;
+    if (sig.param_types != null) mem::free(sig.param_types);
+    if (sig.val_literals != null) mem::free(sig.val_literals);
+    if (sig.has_val_literal != null) mem::free(sig.has_val_literal);
+    if (sig.constraints != null) mem::free(sig.constraints);
+    method_signature_init_empty(sig);
+}
+
+fn bool method_signature_copy_to_heap(MethodSignature* dst, MethodSignature* src) {
+    method_signature_init_empty(dst);
+    dst.param_count = src.param_count;
+    dst.constraint_count = src.constraint_count;
+    if (src.param_count > 0) {
+        dst.param_types = (TypeId*)mem::malloc(TypeId.sizeof * src.param_count);
+        dst.val_literals = (long*)mem::malloc(long.sizeof * src.param_count);
+        dst.has_val_literal = (bool*)mem::malloc(bool.sizeof * src.param_count);
+        if (dst.param_types == null || dst.val_literals == null || dst.has_val_literal == null) {
+            method_signature_destroy_heap(dst);
+            return false;
+        }
+        for (usz i = 0; i < src.param_count; i++) {
+            dst.param_types[i] = src.param_types[i];
+            dst.val_literals[i] = src.val_literals[i];
+            dst.has_val_literal[i] = src.has_val_literal[i];
+        }
+    }
+    if (src.constraint_count > 0) {
+        dst.constraints = (MethodConstraint*)mem::malloc(MethodConstraint.sizeof * src.constraint_count);
+        if (dst.constraints == null) {
+            method_signature_destroy_heap(dst);
+            return false;
+        }
+        for (usz i = 0; i < src.constraint_count; i++) dst.constraints[i] = src.constraints[i];
+    }
+    return true;
+}
+
 fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
     MethodSignature* sig = (MethodSignature*)interp.current_scope.alloc(MethodSignature.sizeof);
-    sig.param_count = expr.lambda.param_count;
+    if (sig == null) return null;
+
+    usz constraint_count = 0;
+    for (usz i = 0; i < expr.lambda.param_count; i++) {
+        TypeAnnotation* ann = &expr.lambda.param_annotations[i];
+        if (ann.has_annotation && ann.is_dict) {
+            for (usz m = 0; m < ann.meta_count; m++) {
+                if (!ann.meta[m].is_int) constraint_count++;
+            }
+        }
+    }
+    if (!method_signature_alloc_arrays_in_scope(sig, interp.current_scope, expr.lambda.param_count, constraint_count)) {
+        return null;
+    }
     sig.constraint_count = 0;
 
-    usz ann_count = expr.lambda.param_count;
-    if (ann_count > 8) ann_count = 8;
-    for (usz i = 0; i < ann_count; i++) {
+    for (usz i = 0; i < sig.param_count; i++) {
         TypeAnnotation* ann = &expr.lambda.param_annotations[i];
         if (ann.has_annotation) {
             if (ann.has_val_literal) {
@@ -88,8 +174,9 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
                 sig.has_val_literal[i] = true;
             } else if (ann.is_dict) {
                 sig.param_types[i] = INVALID_TYPE_ID;
+                sig.val_literals[i] = 0;
                 sig.has_val_literal[i] = false;
-                for (usz m = 0; m < ann.meta_count && sig.constraint_count < MAX_TYPE_PARAMS; m++) {
+                for (usz m = 0; m < ann.meta_count; m++) {
                     if (!ann.meta[m].is_int) {
                         sig.constraints[sig.constraint_count].param_sym = ann.meta[m].key;
                         sig.constraints[sig.constraint_count].bound_type =
@@ -99,10 +186,12 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
                 }
             } else {
                 sig.param_types[i] = interp.types.lookup(ann.base_type, &interp.symbols);
+                sig.val_literals[i] = 0;
                 sig.has_val_literal[i] = false;
             }
         } else {
             sig.param_types[i] = INVALID_TYPE_ID;
+            sig.val_literals[i] = 0;
             sig.has_val_literal[i] = false;
         }
     }
@@ -134,6 +223,9 @@ fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
     closure.closure_val.type_sig = null;
     if (expr.lambda.has_typed_params) {
         closure.closure_val.type_sig = jit_build_lambda_type_sig(interp, expr);
+        if (closure.closure_val.type_sig == null) {
+            return raise_error(interp, "jit: failed to allocate method signature");
+        }
     }
 
     if (!jit_copy_closure_env_if_needed(interp, closure, env, need_env_copy)) {
@@ -189,7 +281,10 @@ fn void jit_patch_rec_closure_in_env_scope(Interp* interp, Value* actual_value, 
 
     if (copied_closure.type_sig != null) {
         copied_closure.type_sig = (MethodSignature*)env_scope.alloc(MethodSignature.sizeof);
-        *copied_closure.type_sig = *actual_value.closure_val.type_sig;
+        if (copied_closure.type_sig == null ||
+            !method_signature_copy_to_scope(copied_closure.type_sig, actual_value.closure_val.type_sig, env_scope)) {
+            copied_closure.type_sig = null;
+        }
     }
 
     self_ref.closure_val = copied_closure;
@@ -372,6 +467,10 @@ fn bool jit_method_sigs_equal(MethodSignature* a, MethodSignature* b) @inline {
         if (a.has_val_literal[i] != b.has_val_literal[i]) return false;
         if (a.has_val_literal[i] && a.val_literals[i] != b.val_literals[i]) return false;
     }
+    for (usz i = 0; i < a.constraint_count; i++) {
+        if (a.constraints[i].param_sym != b.constraints[i].param_sym) return false;
+        if (a.constraints[i].bound_type != b.constraints[i].bound_type) return false;
+    }
     return true;
 }
 
@@ -392,7 +491,7 @@ fn void jit_method_table_append_entry(MethodTable* mt, Value* impl) {
         mt.entries = new_entries;
         mt.capacity = new_cap;
     }
-    mt.entries[mt.entry_count].sig = *new_sig;
+    if (!method_signature_copy_to_heap(&mt.entries[mt.entry_count].sig, new_sig)) return;
     mt.entries[mt.entry_count].implementation = impl;
     mt.entry_count++;
 }
@@ -404,7 +503,11 @@ fn MethodTable* jit_new_method_table(SymbolId name, Value* impl, Value* fallback
     mt.capacity = METHOD_INITIAL_CAPACITY;
     mt.entry_count = 1;
     mt.fallback = fallback;
-    mt.entries[0].sig = *impl.closure_val.type_sig;
+    if (!method_signature_copy_to_heap(&mt.entries[0].sig, impl.closure_val.type_sig)) {
+        mem::free(mt.entries);
+        mem::free(mt);
+        return null;
+    }
     mt.entries[0].implementation = impl;
     return mt;
 }
@@ -420,6 +523,7 @@ fn Value* jit_eval_define_typed_closure(Interp* interp, SymbolId name, Value* st
         fallback = existing;
     }
     MethodTable* mt = jit_new_method_table(name, stored_val, fallback);
+    if (mt == null) return raise_error(interp, "jit: failed to allocate method table");
     Value* mt_val = jit_make_method_table_value(interp, mt);
     env_define_with_barrier(interp.global_env, name, mt_val, interp);
     return mt_val;

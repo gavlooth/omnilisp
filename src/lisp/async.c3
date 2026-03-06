@@ -78,6 +78,10 @@ fn ushort htons(ushort val) {
     return (ushort)(((val & 0xFF) << 8) | ((val >> 8) & 0xFF));
 }
 
+fn Value* io_raise(Interp* interp, char[] code, char[] message, Value* data = null) @inline {
+    return raise_error_with_payload_names(interp, "io", code, message, data);
+}
+
 // ============================================================
 // TCP Handle — wraps a file descriptor
 // ============================================================
@@ -105,7 +109,7 @@ fn void tcp_handle_finalizer(void* handle) {
 
 fn Value* make_tcp_handle(Interp* interp, int fd) {
     TcpHandle* th = (TcpHandle*)mem::malloc(TcpHandle.sizeof);
-    if (th == null) return raise_error(interp, "tcp-connect: out of memory");
+    if (th == null) return io_raise(interp, "io/tcp-connect-out-of-memory", "tcp-connect: out of memory");
     th.fd = fd;
     th.connected = true;
     th.mode = TCP_STREAM;
@@ -113,7 +117,7 @@ fn Value* make_tcp_handle(Interp* interp, int fd) {
         &tcp_handle_finalizer, true, false);
     if (v == null) {
         mem::free(th);
-        return raise_error(interp, "tcp-connect: out of memory");
+        return io_raise(interp, "io/tcp-connect-out-of-memory", "tcp-connect: out of memory");
     }
     return v;
 }
@@ -126,7 +130,7 @@ fn TcpHandle* get_tcp_handle(Value* v) {
 
 fn Value* make_tcp_listener_handle(Interp* interp, int fd) {
     TcpHandle* th = (TcpHandle*)mem::malloc(TcpHandle.sizeof);
-    if (th == null) return raise_error(interp, "tcp-listen: out of memory");
+    if (th == null) return io_raise(interp, "io/tcp-listen-out-of-memory", "tcp-listen: out of memory");
     th.fd = fd;
     th.connected = true;
     th.mode = TCP_LISTENER;
@@ -134,7 +138,7 @@ fn Value* make_tcp_listener_handle(Interp* interp, int fd) {
         &tcp_handle_finalizer, true, false);
     if (v == null) {
         mem::free(th);
-        return raise_error(interp, "tcp-listen: out of memory");
+        return io_raise(interp, "io/tcp-listen-out-of-memory", "tcp-listen: out of memory");
     }
     return v;
 }
@@ -236,7 +240,7 @@ fn Value* dns_result_to_ipv4_string(Interp* interp, void* result) {
     char[64] ip_buf;  // buffer: C-interop (keep) — output buffer for c_inet_ntop
     if (ai_family != AF_INET) {
         // fault: lisp::DNS_FAILED
-        return raise_error(interp, "dns-resolve: IPv6 not yet supported");
+        return io_raise(interp, "io/dns-resolve-ipv6-not-supported", "dns-resolve: IPv6 not yet supported");
     }
 
     // sockaddr_in: sin_addr is at offset 4 (after sin_family + sin_port)
@@ -254,11 +258,11 @@ fn Value* dns_result_to_ipv4_string(Interp* interp, void* result) {
 
 fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
-    if (args.len < 2) return raise_error(interp, "tcp-connect: expected (tcp-connect host port)");
+    if (args.len < 2) return io_raise(interp, "io/tcp-connect-expected-host-port", "tcp-connect: expected (tcp-connect host port)");
     // fault: lisp::EXPECTED_STRING
-    if (!is_string(args[0])) return raise_error(interp, "tcp-connect: host must be a string");
+    if (!is_string(args[0])) return io_raise(interp, "io/tcp-connect-host-not-string", "tcp-connect: host must be a string");
     // fault: lisp::EXPECTED_INT
-    if (!is_int(args[1])) return raise_error(interp, "tcp-connect: port must be an integer");
+    if (!is_int(args[1])) return io_raise(interp, "io/tcp-connect-port-not-integer", "tcp-connect: port must be an integer");
 
     char[] host = args[0].str_chars[:args[0].str_len];
     int port = (int)args[1].int_val;
@@ -267,14 +271,14 @@ fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
     void* result = null;
     if (!resolve_host_and_port(host, port, &result)) {
         // fault: lisp::DNS_FAILED
-        return raise_error(interp, "tcp-connect: DNS resolution failed");
+        return io_raise(interp, "io/tcp-connect-dns-resolution-failed", "tcp-connect: DNS resolution failed");
     }
 
     int fd = connect_fd_from_addrinfo(result);
     c_freeaddrinfo(result);
     if (fd < 0) {
         // fault: lisp::CONNECTION_REFUSED
-        return raise_error(interp, "tcp-connect: connection failed");
+        return io_raise(interp, "io/tcp-connect-connection-failed", "tcp-connect: connection failed");
     }
 
     return make_tcp_handle(interp, fd);
@@ -291,23 +295,23 @@ fn Value* prim_tcp_listen(Value*[] args, Env* env, Interp* interp) {
         Value* packed = args[0];
         host_v = car(packed);
         packed = cdr(packed);
-        if (!is_cons(packed)) return raise_error(interp, "tcp-listen: expected (tcp-listen host port [backlog])");
+        if (!is_cons(packed)) return io_raise(interp, "io/tcp-listen-expected-host-port-backlog", "tcp-listen: expected (tcp-listen host port [backlog])");
         port_v = car(packed);
         packed = cdr(packed);
         if (is_cons(packed)) backlog_v = car(packed);
     } else {
-        if (args.len < 2) return raise_error(interp, "tcp-listen: expected (tcp-listen host port [backlog])");
+        if (args.len < 2) return io_raise(interp, "io/tcp-listen-expected-host-port-backlog", "tcp-listen: expected (tcp-listen host port [backlog])");
         host_v = args[0];
         port_v = args[1];
         if (args.len >= 3) backlog_v = args[2];
     }
 
-    if (!is_string(host_v)) return raise_error(interp, "tcp-listen: host must be a string");
-    if (!is_int(port_v)) return raise_error(interp, "tcp-listen: port must be an integer");
+    if (!is_string(host_v)) return io_raise(interp, "io/tcp-listen-host-not-string", "tcp-listen: host must be a string");
+    if (!is_int(port_v)) return io_raise(interp, "io/tcp-listen-port-not-integer", "tcp-listen: port must be an integer");
 
     int backlog = 128;
     if (backlog_v != null) {
-        if (!is_int(backlog_v)) return raise_error(interp, "tcp-listen: backlog must be an integer");
+        if (!is_int(backlog_v)) return io_raise(interp, "io/tcp-listen-backlog-not-integer", "tcp-listen: backlog must be an integer");
         backlog = (int)backlog_v.int_val;
         if (backlog < 1) backlog = 1;
         if (backlog > 1024) backlog = 1024;
@@ -316,7 +320,7 @@ fn Value* prim_tcp_listen(Value*[] args, Env* env, Interp* interp) {
     char[] host = host_v.str_chars[:host_v.str_len];
     int port = (int)port_v.int_val;
     int fd = listen_fd_from_host(host, port, backlog);
-    if (fd < 0) return raise_error(interp, "tcp-listen: bind/listen failed");
+    if (fd < 0) return io_raise(interp, "io/tcp-listen-bind-listen-failed", "tcp-listen: bind/listen failed");
     return make_tcp_listener_handle(interp, fd);
 }
 
@@ -329,7 +333,7 @@ fn Value* tcp_accept_with_offload(TcpHandle* listener, Interp* interp) {
     Value* accepted = prim_offload(off_args[..], null, interp);
     if (accepted == null || accepted.tag == ERROR) return accepted;
     if (!is_int(accepted) || accepted.int_val < 0) {
-        return raise_error(interp, "tcp-accept: offload returned invalid fd");
+        return io_raise(interp, "io/tcp-accept-offload-invalid-fd", "tcp-accept: offload returned invalid fd");
     }
     return make_tcp_handle(interp, (int)accepted.int_val);
 }
@@ -338,10 +342,10 @@ fn Value* tcp_accept_with_offload(TcpHandle* listener, Interp* interp) {
 // (tcp-accept listener-handle) — accept one connection
 // ============================================================
 fn Value* prim_tcp_accept(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "tcp-accept: expected (tcp-accept listener-handle)");
+    if (args.len < 1) return io_raise(interp, "io/tcp-accept-expected-listener-handle", "tcp-accept: expected (tcp-accept listener-handle)");
     TcpHandle* listener = get_tcp_handle(args[0]);
     if (listener == null || !listener.connected || listener.mode != TCP_LISTENER) {
-        return raise_error(interp, "tcp-accept: invalid or closed listener handle");
+        return io_raise(interp, "io/tcp-accept-invalid-listener-handle", "tcp-accept: invalid or closed listener handle");
     }
 
     if (scheduler_is_running_fiber_context()) {
@@ -349,7 +353,7 @@ fn Value* prim_tcp_accept(Value*[] args, Env* env, Interp* interp) {
     }
 
     int fd = tcp_accept_fd(listener.fd);
-    if (fd < 0) return raise_error(interp, "tcp-accept: accept failed");
+    if (fd < 0) return io_raise(interp, "io/tcp-accept-failed", "tcp-accept: accept failed");
     return make_tcp_handle(interp, fd);
 }
 
@@ -359,18 +363,20 @@ fn Value* prim_tcp_accept(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_tcp_write(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
-    if (args.len < 2) return raise_error(interp, "tcp-write: expected (tcp-write handle data)");
+    if (args.len < 2) return io_raise(interp, "io/tcp-write-expected-handle-data", "tcp-write: expected (tcp-write handle data)");
     // fault: lisp::EXPECTED_STRING
-    if (!is_string(args[1])) return raise_error(interp, "tcp-write: data must be a string");
+    if (!is_string(args[1])) return io_raise(interp, "io/tcp-write-data-not-string", "tcp-write: data must be a string");
 
     TcpHandle* th = get_tcp_handle(args[0]);
     // fault: lisp::TYPE_MISMATCH
-    if (th == null || !th.connected || th.mode != TCP_STREAM) return raise_error(interp, "tcp-write: invalid or closed stream handle");
+    if (th == null || !th.connected || th.mode != TCP_STREAM) {
+        return io_raise(interp, "io/tcp-write-invalid-stream-handle", "tcp-write: invalid or closed stream handle");
+    }
 
     char[] data = args[1].str_chars[:args[1].str_len];
     // fault: lisp::WRITE_FAILED
     long sent = c_send(th.fd, data.ptr, data.len, 0);
-    if (sent < 0) return raise_error(interp, "tcp-write: send failed");
+    if (sent < 0) return io_raise(interp, "io/tcp-write-send-failed", "tcp-write: send failed");
 
     return make_int(interp, sent);
 }
@@ -381,11 +387,13 @@ fn Value* prim_tcp_write(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
-    if (args.len < 1) return raise_error(interp, "tcp-read: expected (tcp-read handle [max-bytes])");
+    if (args.len < 1) return io_raise(interp, "io/tcp-read-expected-handle-max-bytes", "tcp-read: expected (tcp-read handle [max-bytes])");
 
     TcpHandle* th = get_tcp_handle(args[0]);
     // fault: lisp::TYPE_MISMATCH
-    if (th == null || !th.connected || th.mode != TCP_STREAM) return raise_error(interp, "tcp-read: invalid or closed stream handle");
+    if (th == null || !th.connected || th.mode != TCP_STREAM) {
+        return io_raise(interp, "io/tcp-read-invalid-stream-handle", "tcp-read: invalid or closed stream handle");
+    }
 
     usz max_bytes = 0;
     long timeout_ms = -1;
@@ -398,13 +406,13 @@ fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
 
     char* buf = (char*)mem::malloc(max_bytes);
     // fault: lisp::READ_FAILED
-    if (buf == null) return raise_error(interp, "tcp-read: out of memory");
+    if (buf == null) return io_raise(interp, "io/tcp-read-out-of-memory", "tcp-read: out of memory");
     defer mem::free(buf);
 
     long received = c_recv(th.fd, buf, max_bytes, 0);
     if (received < 0) {
         // fault: lisp::READ_FAILED
-        return raise_error(interp, "tcp-read: recv failed");
+        return io_raise(interp, "io/tcp-read-recv-failed", "tcp-read: recv failed");
     }
     if (received == 0) {
         return make_string(interp, "");  // EOF
@@ -419,8 +427,12 @@ fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_tcp_read_timeout(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "tcp-read-timeout: expected (tcp-read-timeout handle timeout-ms)");
-    if (!is_int(args[1])) return raise_error(interp, "tcp-read-timeout: timeout-ms must be an integer");
+    if (args.len < 2) {
+        return io_raise(interp, "io/tcp-read-timeout-expected-handle-timeout", "tcp-read-timeout: expected (tcp-read-timeout handle timeout-ms)");
+    }
+    if (!is_int(args[1])) {
+        return io_raise(interp, "io/tcp-read-timeout-timeout-not-integer", "tcp-read-timeout: timeout-ms must be an integer");
+    }
 
     Value*[3] read_args;
     read_args[0] = args[0];             // handle
@@ -435,11 +447,11 @@ fn Value* prim_tcp_read_timeout(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_tcp_close(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
-    if (args.len < 1) return raise_error(interp, "tcp-close: expected (tcp-close handle)");
+    if (args.len < 1) return io_raise(interp, "io/tcp-close-expected-handle", "tcp-close: expected (tcp-close handle)");
 
     TcpHandle* th = get_tcp_handle(args[0]);
     // fault: lisp::TYPE_MISMATCH
-    if (th == null) return raise_error(interp, "tcp-close: invalid handle");
+    if (th == null) return io_raise(interp, "io/tcp-close-invalid-handle", "tcp-close: invalid handle");
 
     if (th.connected) {
         c_close_fd(th.fd);
@@ -456,9 +468,9 @@ fn Value* prim_tcp_close(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
-    if (args.len < 1) return raise_error(interp, "dns-resolve: expected (dns-resolve hostname)");
+    if (args.len < 1) return io_raise(interp, "io/dns-resolve-expected-hostname", "dns-resolve: expected (dns-resolve hostname)");
     // fault: lisp::EXPECTED_STRING
-    if (!is_string(args[0])) return raise_error(interp, "dns-resolve: hostname must be a string");
+    if (!is_string(args[0])) return io_raise(interp, "io/dns-resolve-hostname-not-string", "dns-resolve: hostname must be a string");
 
     char[] host = args[0].str_chars[:args[0].str_len];
     char[256] host_buf;  // buffer: C-interop (keep) — null-terminated for c_getaddrinfo
@@ -468,7 +480,7 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
     int status = c_getaddrinfo(&host_buf, null, null, &result);
     if (status != 0 || result == null) {
         // fault: lisp::DNS_FAILED
-        return raise_error(interp, "dns-resolve: resolution failed");
+        return io_raise(interp, "io/dns-resolve-resolution-failed", "dns-resolve: resolution failed");
     }
 
     Value* resolved = dns_result_to_ipv4_string(interp, result);
@@ -482,9 +494,9 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_async_sleep(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
-    if (args.len < 1) return raise_error(interp, "async-sleep: expected (async-sleep ms)");
+    if (args.len < 1) return io_raise(interp, "io/async-sleep-expected-ms", "async-sleep: expected (async-sleep ms)");
     // fault: lisp::EXPECTED_INT
-    if (!is_int(args[0])) return raise_error(interp, "async-sleep: ms must be an integer");
+    if (!is_int(args[0])) return io_raise(interp, "io/async-sleep-ms-not-integer", "async-sleep: ms must be an integer");
 
     long ms = args[0].int_val;
     if (ms > 0) {

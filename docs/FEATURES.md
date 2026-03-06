@@ -234,21 +234,22 @@ name.sym1                  ; qualified access
 
 ;; Selective import
 (import name (sym1 sym2))  ; imports specific symbols unqualified
-(import name (sym1 :as alias))  ; rename on import
+(import name (sym1 'as alias))  ; rename on import
 
 ;; Full namespace import
-(import name :all)         ; imports ALL exports unqualified
+(import name 'all)         ; imports ALL exports unqualified
 
 ;; File-based import
 (import "path/to/file.omni")
 
 ;; Re-export
 (export-from name (sym1 sym2))  ; re-export specific symbols
-(export-from name :all)         ; re-export everything
+(export-from name 'all)         ; re-export everything
 ```
 - Default import is **qualified-only**: `(import mod)` binds module as value, access via `mod.sym`
 - Selective import brings specific symbols into scope unqualified
-- `:all` opt-in for importing all exports unqualified
+- `'all` opt-in for importing all exports unqualified
+- Omni has no dedicated keyword type; `'as`/`'all` are quoted-symbol markers
 - File-based import with caching and circular import detection
 - Auto-export: file imports without explicit module form export all defines
 - Method extensions are always global (dispatch is cross-cutting)

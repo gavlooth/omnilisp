@@ -77,6 +77,8 @@ fn void jit_warm_pattern_cache(Pattern* pat, Interp* interp) {
             for (usz i = 0; i < pat.elem_count; i++) {
                 jit_warm_pattern_cache(pat.elements[i], interp);
             }
+        case PAT_AS:
+            jit_warm_pattern_cache(pat.as_sub, interp);
         case PAT_CONSTRUCTOR:
             for (usz i = 0; i < pat.ctor_sub_count; i++) {
                 jit_warm_pattern_cache(pat.ctor_sub_patterns[i], interp);

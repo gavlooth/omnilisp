@@ -1,0 +1,97 @@
+  ---
+  Idioms the language has that the example doesn't use:
+
+  ┌────────────┬───────────────────────────────────┬─────────────────────────────────────────────────────────────────────┐
+  │  Category  │              Feature              │                                Notes                                │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │ Types      │ [type] struct                     │ Items are raw dicts — no typed model                                │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │            │ [union] ADT                       │ Repo returns {'status "error"...} dicts instead of (Ok x)/(Err msg) │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │            │ [abstract] + hierarchy            │ Not applicable here                                                 │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │            │ Val dispatch ^(Val 42)            │ Not applicable here                                                 │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │            │ Type annotations ^Item            │ All params untyped                                                  │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │ Dispatch   │ Multiple dispatch on typed params │ No (define (f (^Item x)) ...) anywhere                              │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │            │ Dot field access item.id          │ All field access is ('field dict)                                   │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │ Flow       │ |> pipe                           │ Request pipeline is a textbook pipe use case                        │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │            │ when/unless                       │ server/stop has a needless begin-wrapped if                         │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │            │ cond                              │ Could clean up the GET sub-routing                                  │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │ HOFs       │ map, filter, find                 │ repo/list returns raw deduce scan without transformation            │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │            │ _ placeholder                     │ No partial application anywhere                                     │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │ Formatting │ format                            │ http/response uses a verbose string-append chain                    │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │ Parsing    │ re-match                          │ HTTP request line is split with string ops, could use regex         │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │ Modules    │ module / import                   │ Everything in one flat file                                         │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │ Misc       │ quasiquote                        │ Not used                                                            │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │            │ assert!                           │ No precondition checks                                              │
+  ├────────────┼───────────────────────────────────┼─────────────────────────────────────────────────────────────────────┤
+  │            │ delay/force                       │ Not applicable here                                                 │
+  └────────────┴───────────────────────────────────┴─────────────────────────────────────────────────────────────────────┘
+
+  ---
+  Enrichment plan — 4 phases, each independently mergeable:
+
+  Phase 1 — Typed model (highest value — unlocks types, dispatch, dot access)
+
+  Define Item struct and ApiResult union. This is the biggest gap — the current code is essentially "Lisp as scripting glue" when the language has a full type system.
+
+  (define [type] Item (^Int id) (^String name) (^Int qty))
+  (define [union] (ApiResult T) (Err string) (Ok T))
+
+  - Repo functions repo/create, repo/update, repo/delete return (Ok item) or (Err "message") — not raw dicts
+  - repo/get-by-id wraps the deduce row into (Item ...) via a row->item converter
+  - repo/list does (map row->item (deduce 'scan items))
+  - Add dispatched to-json for type-safe serialization:
+  (define (to-json (^Item i)) {'id i.id 'name i.name 'qty i.qty})
+  (define (to-json (^Array xs)) (map to-json xs))
+  (define (to-json x) x)  ; fallback
+  - Add a single result->response that converts ApiResult → HTTP dict using match:
+  (match result
+    ((Ok data) {'status "ok" 'data (to-json data)})
+    ((Err msg) {'status "error" 'error msg}))
+  - This eliminates the duplicated {'status "error" ...} dicts scattered across 5 repo functions
+
+  Phase 2 — |> pipe + format (medium value — idiomatic data flow)
+
+  - server/handle-client request body becomes:
+  (let (payload (raw |> pipeline/decode-request |> pipeline/execute |> pipeline/result->response))
+    ...)
+  - http/response uses format instead of string-append chain:
+  (format "HTTP/1.1 %s\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: %d\r\n\r\n%s"
+    status (string-length body) body)
+
+  Phase 3 — when, cond, type-annotated params (low effort, completeness)
+
+  - server/stop → (when server-state (fiber-cancel ...) (tcp-close ...))
+  - GET routing → (cond (path-id (let (row ...) ...)) (else {'status "ok" 'data (repo/list)}))
+  - Annotate key function signatures: (define (repo/get-by-id (^Int id)) ...)
+
+  Phase 4 — re-match for HTTP parsing (optional, shows regex)
+
+  - Replace the string-split chain in pipeline/decode-request with:
+  (let (m (re-match "(\\w+) (\\S+)" request-line)
+        [method path ..] m)
+    ...)
+
+  ---
+  What to skip (would be forced):
+  - reset/shift — no natural use case in a fiber-based server
+  - delay/force — no lazy computation here
+  - module — could wrap as (module crud-server ...) but doesn't add anything illustrative
+  - quasiquote — no metaprogramming here
+  - assert! — (pipeline/require ...) already does validation with raise
+
+  Suggested execution order: Phase 1 alone would already transform this into a much more representative example. Phases 2–3 are small follow-ons. Want me to start with Phase 1?

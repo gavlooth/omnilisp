@@ -210,6 +210,7 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
     Module* mod = &interp.modules[interp.module_count];
     mod.name = name;
     mod.loaded = false;
+    mod.path = null;
     mod.path_len = 0;
     usz exp_cap = expr.module_expr.export_count < 16 ? 16 : expr.module_expr.export_count;
     mod.exports = (SymbolId*)mem::malloc(SymbolId.sizeof * exp_cap);
@@ -265,9 +266,9 @@ fn usz resolve_import_path(char[] rel_path, Interp* interp, char* buf, usz buf_c
     usz pos = 0;
     if (interp.source_dir_count > 0) {
         // Copy current source directory
-        char* dir = &interp.source_dirs[interp.source_dir_count - 1];
+        char* dir = interp.source_dirs[interp.source_dir_count - 1];
         usz di = 0;
-        while (di < 255 && dir[di] != 0 && pos < buf_cap - 1) {
+        while (dir[di] != 0 && pos < buf_cap - 1) {
             buf[pos] = dir[di];
             pos++;
             di++;
@@ -282,27 +283,67 @@ fn usz resolve_import_path(char[] rel_path, Interp* interp, char* buf, usz buf_c
     return pos;
 }
 
-// Push a source directory derived from a file path.
-fn void push_source_dir(char[] file_path, Interp* interp) {
-    if (interp.source_dir_count >= 16) return;
-    usz dlen = path_dir_len(file_path);
-    usz slot = interp.source_dir_count;
-    for (usz i = 0; i < dlen && i < 255; i++) {
-        interp.source_dirs[slot][i] = file_path[i];
+fn bool ensure_source_dir_capacity(Interp* interp, usz needed) {
+    if (needed <= interp.source_dir_capacity) return true;
+    usz new_cap = interp.source_dir_capacity > 0 ? interp.source_dir_capacity : 8;
+    while (new_cap < needed) {
+        if (new_cap > usz.max / 2) {
+            new_cap = needed;
+            break;
+        }
+        new_cap *= 2;
     }
-    interp.source_dirs[slot][dlen] = 0;
+    char** new_dirs = (char**)mem::realloc(interp.source_dirs, uptr.sizeof * new_cap);
+    if (new_dirs == null) return false;
+    interp.source_dirs = new_dirs;
+    interp.source_dir_capacity = new_cap;
+    return true;
+}
+
+// Push a source directory derived from a file path.
+fn bool push_source_dir(char[] file_path, Interp* interp) {
+    usz dlen = path_dir_len(file_path);
+    if (dlen == 0) return true;
+    if (!ensure_source_dir_capacity(interp, interp.source_dir_count + 1)) return false;
+    char* dir = (char*)mem::malloc(dlen + 1);
+    if (dir == null) return false;
+    usz slot = interp.source_dir_count;
+    for (usz i = 0; i < dlen; i++) {
+        dir[i] = file_path[i];
+    }
+    dir[dlen] = 0;
+    interp.source_dirs[slot] = dir;
     interp.source_dir_count++;
+    return true;
 }
 
 fn void pop_source_dir(Interp* interp) {
-    if (interp.source_dir_count > 0) interp.source_dir_count--;
+    if (interp.source_dir_count == 0) return;
+    usz top = interp.source_dir_count - 1;
+    if (interp.source_dirs[top] != null) {
+        mem::free(interp.source_dirs[top]);
+        interp.source_dirs[top] = null;
+    }
+    interp.source_dir_count--;
 }
 
-fn void module_copy_path(Module* mod, char[] path) {
-    for (usz i = 0; i < path.len && i < 255; i++) {
-        mod.path[i] = path[i];
+fn bool module_copy_path(Module* mod, char[] path) {
+    if (mod.path != null) {
+        mem::free(mod.path);
+        mod.path = null;
     }
+    char* stored = (char*)mem::malloc(path.len + 1);
+    if (stored == null) {
+        mod.path_len = 0;
+        return false;
+    }
+    for (usz i = 0; i < path.len; i++) {
+        stored[i] = path[i];
+    }
+    stored[path.len] = 0;
+    mod.path = stored;
     mod.path_len = path.len;
+    return true;
 }
 
 fn void module_ensure_export_capacity(Module* mod) {
@@ -326,7 +367,9 @@ fn Module* jit_create_file_module(SymbolId name, char[] path, Interp* interp) {
     Module* mod = &interp.modules[interp.module_count];
     mod.name = name;
     mod.loaded = false;
-    module_copy_path(mod, path);
+    mod.path = null;
+    mod.path_len = 0;
+    if (!module_copy_path(mod, path)) return null;
     mod.export_count = 0;
     mod.export_capacity = 32;
     mod.exports = (SymbolId*)mem::malloc(SymbolId.sizeof * 32);
@@ -363,7 +406,7 @@ fn EvalResult jit_eval_declared_module_file(List{Expr*}* expr_list, usz expr_cou
 
     Module* mod = find_module(declared_name, interp);
     if (mod != null && mod.path_len == 0) {
-        module_copy_path(mod, path);
+        if (!module_copy_path(mod, path)) return eval_error("module path allocation failed");
     }
 
     EvalResult top_level = jit_eval_module_top_level(expr_list, 1, expr_count, interp.global_env, interp);
@@ -373,6 +416,7 @@ fn EvalResult jit_eval_declared_module_file(List{Expr*}* expr_list, usz expr_cou
 
 fn EvalResult jit_eval_implicit_module_file(SymbolId name, char[] path, List{Expr*}* expr_list, usz expr_count, Interp* interp) {
     Module* mod = jit_create_file_module(name, path, interp);
+    if (mod == null) return eval_error("module path allocation failed");
 
     Env* saved_global = interp.global_env;
     interp.global_env = mod.env;
@@ -391,6 +435,7 @@ fn EvalResult jit_eval_implicit_module_file(SymbolId name, char[] path, List{Exp
 
 fn bool module_path_matches(Module* mod, char[] path) {
     if (mod.path_len != path.len || !mod.loaded) return false;
+    if (mod.path == null) return false;
     for (usz i = 0; i < path.len; i++) {
         if (mod.path[i] != path[i]) return false;
     }
@@ -511,11 +556,12 @@ fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* inte
     }
     if (try content = io::file::load_temp((String)path)) {
         char[] source = content;
-        push_source_dir(path, interp);
+        if (!push_source_dir(path, interp)) return eval_error("module import source-dir allocation failed");
         defer pop_source_dir(interp);
 
         Lexer lex;
         lex.init(source);
+        defer lex.destroy();
         Parser p;
         p.init(&lex, interp);
 

@@ -4,8 +4,9 @@ import std::core::mem;
 import std::io;
 
 fn void run_scheduler_offload_worker_retry_full_wakeup_boundary_tests(Interp* interp, int* pass, int* fail) {
-    // Invariant: offload worker retries WAKEUP_OFFLOAD_READY enqueue while ring is full,
-    // then succeeds after drain without mutating interpreter boundary/runtime fields.
+    // Invariant: offload worker completion remains lossless while the reliable
+    // wakeup queue already has heavy backlog, then succeeds after drain without
+    // mutating interpreter boundary/runtime fields.
     SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
     bool ok = true;
     usz failed_step = 0;
@@ -15,21 +16,22 @@ fn void run_scheduler_offload_worker_retry_full_wakeup_boundary_tests(Interp* in
         void* saved_async = null;
         scheduler_test_prepare_blocked_pending_offload(&saved_async);
 
+        usz enqueues_before = g_scheduler.reliable_wakeup_enqueues.load();
+        usz failures_before = g_scheduler.wakeup_enqueue_failures.load();
         usz pushed_fill = 0;
-        for (usz j = 0; j < WAKEUP_RING_SIZE; j++) {
-            if (wakeup_enqueue(WAKEUP_POLL_ERROR, MAX_FIBERS + i * WAKEUP_RING_SIZE + j + 1, -1, null)) {
+        for (usz j = 0; j < 512; j++) {
+            if (scheduler_publish_poll_error(MAX_FIBERS + i * 512 + j + 1, -1)) {
                 pushed_fill++;
             }
         }
-        if (pushed_fill != WAKEUP_RING_SIZE) {
+        if (pushed_fill != 512) {
             ok = false;
             failed_step = i;
             failed_phase = "prefill";
-            scheduler_test_cleanup_no_async(saved_async);
+            scheduler_test_cleanup_single_fiber_no_async(saved_async);
             break;
         }
 
-        usz drops_before = g_scheduler.wakeup_drops.load();
         OffloadWork work = {};
         work.fiber_id = 0;
         work.task_id = NO_TASK;
@@ -45,17 +47,17 @@ fn void run_scheduler_offload_worker_retry_full_wakeup_boundary_tests(Interp* in
             break;
         }
 
-        bool observed_retry = false;
-        for (usz spin = 0; spin < 40; spin++) {
+        bool observed_completion_enqueue = false;
+        for (usz spin = 0; spin < 80; spin++) {
             c_usleep(1000);
-            if (g_scheduler.wakeup_drops.load() > drops_before) {
-                observed_retry = true;
+            if ((g_scheduler.reliable_wakeup_enqueues.load() - enqueues_before) > pushed_fill) {
+                observed_completion_enqueue = true;
                 break;
             }
         }
 
-        // Release the full ring and wait until worker completion is delivered
-        // to the active pending-offload slot, then consume it to avoid leaks.
+        // Release the backlog and wait until worker completion is delivered to
+        // the active pending-offload slot, then consume it to avoid leaks.
         drain_wakeups();
         bool completion_ready = false;
         for (usz spin = 0; spin < 160; spin++) {
@@ -82,17 +84,19 @@ fn void run_scheduler_offload_worker_retry_full_wakeup_boundary_tests(Interp* in
         drain_wakeups();
 
         bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
-        bool queue_empty = g_scheduler.wakeup_head.load() == g_scheduler.wakeup_tail.load();
+        bool queue_empty = reliable_wakeup_pending_count() == 0;
         bool slot_cleared = !g_scheduler.pending_offloads[0].active &&
                             !g_scheduler.pending_offloads[0].completed &&
                             g_scheduler.pending_offloads[0].completion == null;
-        bool cycle_ok = observed_retry && completion_ready && consume_ok && queue_empty && slot_cleared && state_ok;
+        bool enqueue_ok = (g_scheduler.wakeup_enqueue_failures.load() - failures_before) == 0 &&
+                          (g_scheduler.reliable_wakeup_enqueues.load() - enqueues_before) == pushed_fill + 1;
+        bool cycle_ok = observed_completion_enqueue && completion_ready && consume_ok && queue_empty && slot_cleared && enqueue_ok && state_ok;
         scheduler_test_cleanup_single_fiber_no_async(saved_async);
         if (!cycle_ok) {
             ok = false;
             failed_step = i;
-            if (!observed_retry) {
-                failed_phase = "retry";
+            if (!observed_completion_enqueue || !enqueue_ok) {
+                failed_phase = "enqueue";
             } else if (!completion_ready || !consume_ok || !slot_cleared) {
                 failed_phase = "completion";
             } else if (!queue_empty) {
@@ -105,11 +109,11 @@ fn void run_scheduler_offload_worker_retry_full_wakeup_boundary_tests(Interp* in
     }
 
     if (ok) {
-        emit_pass_literal("[PASS] scheduler offload worker retry on full wakeup boundary restore");
+        emit_pass_literal("[PASS] scheduler offload worker reliable queue backlog boundary restore");
         (*pass)++;
     } else {
         io::printfn(
-            "[FAIL] scheduler offload worker retry on full wakeup boundary restore at step %d (%s)",
+            "[FAIL] scheduler offload worker reliable queue backlog boundary restore at step %d (%s)",
             (int)failed_step,
             (ZString)failed_phase
         );
@@ -118,9 +122,8 @@ fn void run_scheduler_offload_worker_retry_full_wakeup_boundary_tests(Interp* in
 }
 
 fn void run_scheduler_wakeup_offload_ready_barrier_boundary_tests(Interp* interp, int* pass, int* fail) {
-    // Invariant: drain_wakeups must respect wakeup_ready barrier for
-    // WAKEUP_OFFLOAD_READY payload events; once unblocked, completion delivery
-    // and consume path must preserve boundary/runtime state.
+    // Invariant: direct reliable offload delivery plus unrelated invalid events
+    // still preserve boundary/runtime state and consume cleanly.
     SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
     void* saved_async = null;
@@ -136,38 +139,12 @@ fn void run_scheduler_wakeup_offload_ready_barrier_boundary_tests(Interp* interp
     *completion = {};
     completion.kind = OFFLOAD_RES_NIL;
 
-    WakeupEvent ev0 = {};
-    ev0.fiber_id = 0;
-    ev0.type = WAKEUP_OFFLOAD_READY;
-    ev0.status = 0;
-    ev0.payload = completion;
-    WakeupEvent ev1 = {};
-    ev1.fiber_id = MAX_FIBERS + 222;
-    ev1.type = WAKEUP_POLL_ERROR;
-    ev1.status = -13;
-    ev1.payload = null;
-
-    g_scheduler.wakeup_ring[0] = ev0;
-    g_scheduler.wakeup_ring[1] = ev1;
-    g_scheduler.wakeup_ready[0].store(false);
-    g_scheduler.wakeup_ready[1].store(true);
-    g_scheduler.wakeup_tail.store(0);
-    g_scheduler.wakeup_head.store(2);
-
+    bool pushed_invalid = scheduler_publish_poll_error(MAX_FIBERS + 222, -13);
+    bool pushed_ready = scheduler_publish_offload_ready(0, completion);
     drain_wakeups();
-    usz tail_after_block = g_scheduler.wakeup_tail.load();
-    bool blocked_ok = tail_after_block == 0 &&
-                      g_scheduler.pending_offloads[0].active &&
-                      !g_scheduler.pending_offloads[0].completed &&
-                      g_scheduler.pending_offloads[0].completion == null &&
-                      g_scheduler.fibers[0].state == FIBER_BLOCKED;
-    bool state_ok_first = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
-
-    g_scheduler.wakeup_ready[0].store(true);
-    drain_wakeups();
-    usz head_after_release = g_scheduler.wakeup_head.load();
-    usz tail_after_release = g_scheduler.wakeup_tail.load();
-    bool delivered_ok = head_after_release == tail_after_release &&
+    bool delivered_ok = pushed_invalid &&
+                        pushed_ready &&
+                        reliable_wakeup_pending_count() == 0 &&
                         g_scheduler.pending_offloads[0].active &&
                         g_scheduler.pending_offloads[0].completed &&
                         g_scheduler.pending_offloads[0].completion == completion &&
@@ -182,16 +159,15 @@ fn void run_scheduler_wakeup_offload_ready_barrier_boundary_tests(Interp* interp
                       g_scheduler.pending_offloads[0].completion == null;
     bool state_ok_third = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
 
-    bool ok = blocked_ok && delivered_ok && consume_ok &&
-              state_ok_first && state_ok_second && state_ok_third;
+    bool ok = delivered_ok && consume_ok && state_ok_second && state_ok_third;
 
     scheduler_test_cleanup_single_fiber_no_async(saved_async);
 
     if (ok) {
-        emit_pass_literal("[PASS] scheduler wakeup offload-ready barrier boundary restore");
+        emit_pass_literal("[PASS] scheduler reliable offload-ready boundary restore");
         (*pass)++;
     } else {
-        io::printn("[FAIL] scheduler wakeup offload-ready barrier boundary restore");
+        io::printn("[FAIL] scheduler reliable offload-ready boundary restore");
         (*fail)++;
     }
 }

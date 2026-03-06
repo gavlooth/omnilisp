@@ -47,6 +47,7 @@ struct PendingTcpRead {
     bool completed;
     bool consumed;
     bool timed_out;
+    bool readable_pending;
     int fd;
     usz max_bytes;
     char* buffer;
@@ -82,8 +83,18 @@ struct WakeupEvent {
     void* payload;
 }
 
-const usz WAKEUP_RING_SIZE = 256;
-const usz WAKEUP_RING_MASK = WAKEUP_RING_SIZE - 1;
+struct ReliableWakeupNode {
+    WakeupEvent event;
+    ReliableWakeupNode* next;
+}
+
+struct ReliableWakeupQueue {
+    ReliableWakeupNode* head;
+    ReliableWakeupNode* tail;
+    usz count;
+    thread::Mutex mu;
+    bool initialized;
+}
 
 enum OffloadOp : char {
     OFFLOAD_SLEEP_MS,
@@ -148,10 +159,7 @@ struct Scheduler {
     FiberEntry[MAX_FIBERS] fibers;
     PendingTcpRead[MAX_FIBERS] pending_reads;
     PendingOffload[MAX_FIBERS] pending_offloads;
-    WakeupEvent[WAKEUP_RING_SIZE] wakeup_ring;
-    types::Atomic{bool}[WAKEUP_RING_SIZE] wakeup_ready;
-    types::Atomic{usz} wakeup_head;    // producers reserve slots
-    types::Atomic{usz} wakeup_tail;    // consumer drains slots
+    ReliableWakeupQueue reliable_wakeups;
     usz fiber_count;
     usz current_fiber_id;
     bool running;
@@ -164,8 +172,11 @@ struct Scheduler {
     bool thread_task_mu_ready;
     // Fairness: rotate resume start index so no fiber is permanently first
     usz resume_offset;
-    // Observability: wakeup drops (ring full), updated by producer contexts.
-    types::Atomic{usz} wakeup_drops;
+    // Observability: reliable wakeup enqueue failures should be exceptional
+    // (for example allocation failure).
+    types::Atomic{usz} wakeup_enqueue_failures;
+    types::Atomic{usz} reliable_wakeup_enqueues;
+    types::Atomic{usz} readable_signal_coalesces;
 }
 
 // Global scheduler (single-threaded)
@@ -178,10 +189,9 @@ fn void scheduler_async_noop_cb(void* handle) {
 }
 
 fn void scheduler_reset_wakeup_queue() {
-    g_scheduler.wakeup_head.store(0);
-    g_scheduler.wakeup_tail.store(0);
-    for (usz i = 0; i < WAKEUP_RING_SIZE; i++) {
-        g_scheduler.wakeup_ready[i].store(false);
+    scheduler_clear_reliable_wakeup_queue();
+    for (usz i = 0; i < MAX_FIBERS; i++) {
+        g_scheduler.pending_reads[i].readable_pending = false;
     }
 }
 
@@ -189,6 +199,10 @@ fn bool scheduler_str_eq(char[] a, char[] b) @inline {
     if (a.len != b.len) return false;
     for (usz i = 0; i < a.len; i++) if (a[i] != b[i]) return false;
     return true;
+}
+
+fn Value* scheduler_raise(Interp* interp, char[] code, char[] message, Value* data = null) @inline {
+    return raise_error_with_payload_names(interp, "scheduler", code, message, data);
 }
 
 fn SharedBlob* shared_blob_new_owned(char* owned_bytes, usz len) {
@@ -252,9 +266,13 @@ fn void scheduler_set_offload_error(OffloadCompletion* completion, char[] messag
 }
 
 fn Value* scheduler_build_offload_work(Value* job, OffloadWork* work, Interp* interp) {
-    if (!is_cons(job)) return raise_error(interp, "offload: expected (op args...)");
+    if (!is_cons(job)) {
+        return scheduler_raise(interp, "scheduler/offload-invalid-job", "offload: expected (op args...)");
+    }
     Value* op_val = job.cons_val.car;
-    if (!is_symbol(op_val)) return raise_error(interp, "offload: op must be a symbol");
+    if (!is_symbol(op_val)) {
+        return scheduler_raise(interp, "scheduler/offload-op-not-symbol", "offload: op must be a symbol");
+    }
     char[] op_name = interp.symbols.get_name(op_val.sym_val);
     Value* arg_list = job.cons_val.cdr;
 
@@ -266,7 +284,11 @@ fn Value* scheduler_build_offload_work(Value* job, OffloadWork* work, Interp* in
 
     if (scheduler_str_eq(op_name, "sleep-ms")) {
         if (!is_cons(arg_list) || !is_int(arg_list.cons_val.car)) {
-            return raise_error(interp, "offload sleep-ms: expected integer milliseconds");
+            return scheduler_raise(
+                interp,
+                "scheduler/offload-invalid-sleep-ms",
+                "offload sleep-ms: expected integer milliseconds"
+            );
         }
         work.op = OFFLOAD_SLEEP_MS;
         work.int_arg = arg_list.cons_val.car.int_val;
@@ -275,25 +297,33 @@ fn Value* scheduler_build_offload_work(Value* job, OffloadWork* work, Interp* in
 
     if (scheduler_str_eq(op_name, "gzip") || scheduler_str_eq(op_name, "deflate")) {
         if (!is_cons(arg_list) || !is_string(arg_list.cons_val.car)) {
-            return raise_error(interp, "offload compress: expected string payload");
+            return scheduler_raise(
+                interp,
+                "scheduler/offload-invalid-compress-payload",
+                "offload compress: expected string payload"
+            );
         }
         Value* src = arg_list.cons_val.car;
         work.op = scheduler_str_eq(op_name, "gzip") ? OFFLOAD_GZIP : OFFLOAD_DEFLATE;
         work.blob = shared_blob_new_copy(src.str_chars[:src.str_len]);
-        if (work.blob == null) return raise_error(interp, "offload: out of memory");
+        if (work.blob == null) return scheduler_raise(interp, "scheduler/offload-out-of-memory", "offload: out of memory");
         return null;
     }
 
     if (scheduler_str_eq(op_name, "accept-fd")) {
         if (!is_cons(arg_list) || !is_int(arg_list.cons_val.car)) {
-            return raise_error(interp, "offload accept-fd: expected integer fd");
+            return scheduler_raise(
+                interp,
+                "scheduler/offload-invalid-accept-fd",
+                "offload accept-fd: expected integer fd"
+            );
         }
         work.op = OFFLOAD_ACCEPT_FD;
         work.int_arg = arg_list.cons_val.car.int_val;
         return null;
     }
 
-    return raise_error(interp, "offload: unsupported op");
+    return scheduler_raise(interp, "scheduler/offload-unsupported-op", "offload: unsupported op");
 }
 
 fn void scheduler_init() {
@@ -307,6 +337,11 @@ fn void scheduler_init() {
         g_scheduler.thread_task_mu_ready = false;
     } else {
         g_scheduler.thread_task_mu_ready = true;
+    }
+    if (catch err = g_scheduler.reliable_wakeups.mu.init()) {
+        g_scheduler.reliable_wakeups.initialized = false;
+    } else {
+        g_scheduler.reliable_wakeups.initialized = true;
     }
     scheduler_reset_wakeup_queue();
     scheduler_init_offload_queue();

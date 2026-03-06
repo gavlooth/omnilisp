@@ -230,9 +230,9 @@ struct CapturedBinding {
  */
 struct MacroDef {
     SymbolId name;
-    MacroClause[32] clauses;
+    MacroClause* clauses;  // heap-allocated
     usz clause_count;
-    CapturedBinding[64] captured_bindings;  // Snapshot of def-time bindings for hygiene
+    CapturedBinding* captured_bindings;  // heap-allocated snapshot of definition-time values
     usz captured_count;
 }
 
@@ -292,9 +292,9 @@ struct TypeAnnotation {
     bool is_compound;          // ^(List Int) form
     bool is_dict;              // ^{...} form
     SymbolId base_type;        // Int, List, Lambda, Val, etc.
-    SymbolId[MAX_TYPE_PARAMS] params;  // compound type params
+    SymbolId* params;          // compound type params (heap-allocated)
     usz param_count;
-    MetaEntry[MAX_META_ENTRIES] meta;  // dict entries
+    MetaEntry* meta;           // dict entries (heap-allocated)
     usz meta_count;
     long val_literal;          // For ^(Val 42) — the literal value
     bool has_val_literal;      // true if this is a Val type with literal
@@ -315,7 +315,7 @@ struct TypeFieldInfo { SymbolId name; TypeId field_type; SymbolId annotation_sym
  */
 struct UnionVariant {
     SymbolId name;
-    SymbolId[MAX_TYPE_PARAMS] fields;
+    SymbolId* fields;          // heap-allocated
     usz field_count;
 }
 
@@ -326,13 +326,13 @@ struct TypeInfo {
     SymbolId name;
     TypeKind kind;
     TypeId parent;           // INVALID_TYPE_ID if no parent
-    TypeFieldInfo[MAX_TYPE_FIELDS] fields;
+    TypeFieldInfo* fields;   // heap-allocated
     usz field_count;
-    SymbolId[MAX_TYPE_PARAMS] type_params;
+    SymbolId* type_params;   // heap-allocated
     usz type_param_count;
-    MethodConstraint[MAX_TYPE_PARAMS] constraints;  // Parametric type constraints (e.g., T <: Number)
+    MethodConstraint* constraints;  // heap-allocated
     usz constraint_count;
-    UnionVariant[64] variants;  // for TK_UNION
+    UnionVariant* variants;  // heap-allocated, for TK_UNION
     usz variant_count;
     TypeId alias_target;     // for TK_ALIAS
 }
@@ -361,9 +361,9 @@ struct TypeRegistry {
 struct Instance {
     main::ScopeRegion* owner_scope;
     TypeId type_id;
-    Value[MAX_TYPE_FIELDS] fields;     // Value structs BY VALUE — not pointers
+    Value* fields;          // Value structs BY VALUE in owner_scope storage
     usz field_count;
-    TypeId[MAX_TYPE_PARAMS] type_args;
+    TypeId* type_args;      // owner-scope storage
     usz type_arg_count;
 }
 
@@ -379,11 +379,11 @@ struct MethodConstraint {
  * MethodSignature — Type signature for dispatch matching.
  */
 struct MethodSignature {
-    TypeId[32] param_types;     // INVALID_TYPE_ID = Any
-    long[32] val_literals;      // For Val types
-    bool[32] has_val_literal;
+    TypeId* param_types;     // length = param_count, INVALID_TYPE_ID = Any
+    long* val_literals;      // length = param_count, for Val types
+    bool* has_val_literal;   // length = param_count
     usz param_count;
-    MethodConstraint[MAX_TYPE_PARAMS] constraints;  // Type param constraints
+    MethodConstraint* constraints;  // heap/scope-allocated, length = constraint_count
     usz constraint_count;
 }
 

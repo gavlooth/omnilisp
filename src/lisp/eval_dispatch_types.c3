@@ -71,17 +71,16 @@ fn Value* find_best_method(MethodTable* mt, Value*[] args, Interp* interp) {
     Value* best_method = null;
     usz best_count = 0;
 
-    TypeId[8] arg_types;
-    usz arg_count = args.len;
-    if (arg_count > 8) { arg_count = 8; }
-    for (usz a = 0; a < arg_count; a++) {
+    TypeId[] arg_types = mem::new_array(TypeId, args.len);
+    defer if (arg_types.len > 0) mem::free(arg_types.ptr);
+    for (usz a = 0; a < args.len; a++) {
         arg_types[a] = infer_value_type(args[a], interp);
     }
 
     for (usz i = 0; i < mt.entry_count; i++) {
         MethodEntry* entry = &mt.entries[i];
         long score = 0;
-        if (!method_match_score(entry, args, arg_types[0:arg_count], interp, &score)) continue;
+        if (!method_match_score(entry, args, arg_types, interp, &score)) continue;
 
         if (score > best_score) {
             best_score = score;
@@ -116,9 +115,13 @@ fn void register_builtin_types(Interp* interp) {
         info.name = builtin_names[i];
         info.kind = TK_BUILTIN;
         info.parent = INVALID_TYPE_ID;
+        info.fields = null;
         info.field_count = 0;
+        info.type_params = null;
         info.type_param_count = 0;
+        info.constraints = null;
         info.constraint_count = 0;
+        info.variants = null;
         info.variant_count = 0;
         info.alias_target = INVALID_TYPE_ID;
         interp.types.register_type(info, &interp.symbols);
@@ -128,9 +131,13 @@ fn void register_builtin_types(Interp* interp) {
     TypeInfo abs_info;
     abs_info.kind = TK_ABSTRACT;
     abs_info.parent = INVALID_TYPE_ID;
+    abs_info.fields = null;
     abs_info.field_count = 0;
+    abs_info.type_params = null;
     abs_info.type_param_count = 0;
+    abs_info.constraints = null;
     abs_info.constraint_count = 0;
+    abs_info.variants = null;
     abs_info.variant_count = 0;
     abs_info.alias_target = INVALID_TYPE_ID;
 
