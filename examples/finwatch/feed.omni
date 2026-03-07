@@ -1,0 +1,100 @@
+;; feed.omni — fetch and parse data from each external source
+;;
+;; Idioms demonstrated:
+;;   match (Ok/Err) — unwrap http/get results, never null?
+;;   foldr + match  — collect successful HN items, drop failures in one pass
+;;   try            — catch raise effects with stdlib function (replaces hand-rolled handle/raise)
+;;   or             — default values: (or ts 0) instead of (if ts ts 0)
+;;   map            — transform response dicts to typed structs
+
+(module feed
+  (export feed/fetch-fx feed/fetch-crypto feed/fetch-news))
+
+(import "models.omni" 'all)
+(import "http.omni"   'all)
+
+;; ── Helpers ─────────────────────────────────────────────────────────────────
+
+;; Wrap any fetch+parse block so raise signals become (Err msg).
+;; try is the stdlib convenience for (handle (thunk) (raise msg (handler msg))).
+(define (feed/safe fetch-fn)
+  (try fetch-fn (lambda (msg) (Err msg))))
+
+;; Ensure a JSON number is a Double (json-parse returns Int for whole numbers).
+(define (feed/->double x)
+  (* 1.0 x))
+
+;; ── FX rates — api.frankfurter.app ─────────────────────────────────────────
+;;
+;; GET /latest?from=USD&to=EUR,GBP,JPY
+;; Response: {"base":"USD","date":"2024-01-15","rates":{"EUR":0.92,"GBP":0.79,"JPY":145.3}}
+;;
+;; JSON object keys are strings — use (ref dict "key"), not ('key dict).
+
+(define (feed/fetch-fx)
+  (feed/safe (lambda (x)
+    (match (http/get "api.frankfurter.app"
+                     "/latest?from=USD&to=EUR,GBP,JPY")
+      ((Ok body)
+       (let (data  (json-parse body)
+             rates (ref data "rates")
+             ts    (time))
+         (Ok (map (lambda (sym)
+                    (Quote sym (feed/->double (ref rates sym)) ts))
+                  '("EUR" "GBP" "JPY")))))
+      ((Err msg) (Err msg))))))
+
+;; ── Crypto prices — api.coingecko.com ──────────────────────────────────────
+;;
+;; GET /api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd
+;; Response: {"bitcoin":{"usd":62000},"ethereum":{"usd":3400}}
+
+(define (feed/fetch-crypto)
+  (feed/safe (lambda (x)
+    (match (http/get "api.coingecko.com"
+                     "/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd")
+      ((Ok body)
+       (let (data (json-parse body)
+             ts   (time))
+         (Ok (list
+               (Quote "BTC" (feed/->double (ref (ref data "bitcoin")  "usd")) ts)
+               (Quote "ETH" (feed/->double (ref (ref data "ethereum") "usd")) ts)))))
+      ((Err msg) (Err msg))))))
+
+;; ── News — hacker-news.firebaseio.com ──────────────────────────────────────
+;;
+;; GET /v0/topstories.json → [12345, 67890, ...]   (up to 500 ids)
+;; GET /v0/item/{id}.json  → {"id":12345,"title":"...","score":123,"time":...}
+;;
+;; We take the first N ids, fetch each item, return NewsItem list.
+
+(define hn-top-n 10)
+
+;; Fetch a single HN item. Returns (Ok NewsItem) or (Err reason).
+(define (feed/fetch-hn-item id)
+  (match (http/get "hacker-news.firebaseio.com"
+                   (format "/v0/item/%d.json" id))
+    ((Ok body)
+     (let (data  (json-parse body)
+           title (ref data "title")
+           score (ref data "score")
+           ts    (ref data "time"))
+       (if (and title score)
+           (Ok (NewsItem id title score (or ts 0)))
+           (Err "missing fields"))))
+    ((Err e) (Err e))))
+
+;; foldr + match: fetch each item, collect only successes, drop failures.
+(define (feed/fetch-news)
+  (feed/safe (lambda (x)
+    (match (http/get "hacker-news.firebaseio.com" "/v0/topstories.json")
+      ((Ok body)
+       (let (ids   (json-parse body)
+             top   (take hn-top-n ids)
+             items (foldr (lambda (id acc)
+                            (match (feed/fetch-hn-item id)
+                              ((Ok item) (cons item acc))
+                              ((Err _)   acc)))
+                          nil top))
+         (Ok items)))
+      ((Err msg) (Err msg))))))

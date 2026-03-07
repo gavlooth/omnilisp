@@ -158,6 +158,135 @@ fn Value* copy_coroutine_to_parent(Value* v, Interp* interp) {
     return result;
 }
 
+fn Value* copy_time_point_to_parent(Value* v, Interp* interp) {
+    Value* result = interp.alloc_value();
+    result.tag = TIME_POINT;
+    result.time_point_val = v.time_point_val;
+    return result;
+}
+
+enum CopyParentRoute : char {
+    CP_ROUTE_NIL,
+    CP_ROUTE_INT,
+    CP_ROUTE_DOUBLE,
+    CP_ROUTE_STRING,
+    CP_ROUTE_SYMBOL,
+    CP_ROUTE_CONS,
+    CP_ROUTE_CLOSURE,
+    CP_ROUTE_PRIMITIVE,
+    CP_ROUTE_PARTIAL_PRIM,
+    CP_ROUTE_CONTINUATION,
+    CP_ROUTE_SHARED_WRAPPER,
+    CP_ROUTE_INSTANCE,
+    CP_ROUTE_FFI_HANDLE,
+    CP_ROUTE_TYPE_INFO,
+    CP_ROUTE_ITERATOR,
+    CP_ROUTE_COROUTINE,
+    CP_ROUTE_MODULE,
+    CP_ROUTE_ERROR,
+    CP_ROUTE_TIME_POINT,
+    CP_ROUTE_PASSTHROUGH,
+}
+
+fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) @inline {
+    switch (tag) {
+        case NIL:
+            return CP_ROUTE_NIL;
+        case INT:
+            return CP_ROUTE_INT;
+        case DOUBLE:
+            return CP_ROUTE_DOUBLE;
+        case STRING:
+            return CP_ROUTE_STRING;
+        case SYMBOL:
+            return CP_ROUTE_SYMBOL;
+        case CONS:
+            return CP_ROUTE_CONS;
+        case CLOSURE:
+            return CP_ROUTE_CLOSURE;
+        case PRIMITIVE:
+            return CP_ROUTE_PRIMITIVE;
+        case PARTIAL_PRIM:
+            return CP_ROUTE_PARTIAL_PRIM;
+        case CONTINUATION:
+            return CP_ROUTE_CONTINUATION;
+        case HASHMAP:
+        case ARRAY:
+        case METHOD_TABLE:
+            return CP_ROUTE_SHARED_WRAPPER;
+        case INSTANCE:
+            return CP_ROUTE_INSTANCE;
+        case FFI_HANDLE:
+            return CP_ROUTE_FFI_HANDLE;
+        case TYPE_INFO:
+            return CP_ROUTE_TYPE_INFO;
+        case ITERATOR:
+            return CP_ROUTE_ITERATOR;
+        case COROUTINE:
+            return CP_ROUTE_COROUTINE;
+        case MODULE:
+            return CP_ROUTE_MODULE;
+        case ERROR:
+            return CP_ROUTE_ERROR;
+        case TIME_POINT:
+            return CP_ROUTE_TIME_POINT;
+        default:
+            return CP_ROUTE_PASSTHROUGH;
+    }
+}
+
+fn Value* copy_to_parent_by_route(Value* v, Interp* interp, CopyParentRoute route) {
+    switch (route) {
+        case CP_ROUTE_NIL:
+            return make_nil(interp);
+        case CP_ROUTE_INT:
+            return make_int(interp, v.int_val);
+        case CP_ROUTE_DOUBLE:
+            return make_double(interp, v.double_val);
+        case CP_ROUTE_STRING:
+            return make_string(interp, v.str_chars[:v.str_len]);
+        case CP_ROUTE_SYMBOL:
+            return make_symbol(interp, v.sym_val);
+        case CP_ROUTE_CONS:
+            return copy_cons_to_parent(v, interp);
+        case CP_ROUTE_CLOSURE:
+            return copy_closure_to_parent(v, interp);
+        case CP_ROUTE_PRIMITIVE:
+            return v;
+        case CP_ROUTE_PARTIAL_PRIM:
+            // Deep copy: Value wrapper may be in child scope, and first_arg/second_arg may too.
+            return copy_partial_prim_to_parent(v, interp);
+        case CP_ROUTE_CONTINUATION:
+            // Shallow copy: Value wrapper may be in child scope, cont_val itself is in root_region.
+            return copy_continuation_to_parent(v, interp);
+        case CP_ROUTE_SHARED_WRAPPER:
+            // Value allocated in root_scope; backing data is malloc'd with registered destructors.
+            return v;
+        case CP_ROUTE_INSTANCE:
+            return copy_instance_to_parent(v, interp);
+        case CP_ROUTE_FFI_HANDLE:
+            return copy_ffi_handle_to_parent(v, interp);
+        case CP_ROUTE_TYPE_INFO:
+            // Type-info entries live in type registry lifetime.
+            return v;
+        case CP_ROUTE_ITERATOR:
+            // Promote underlying closure thunk so iterator outlives child scope.
+            return copy_iterator_to_parent(v, interp);
+        case CP_ROUTE_COROUTINE:
+            // Shallow copy: wrapper may be in child scope, Coro* is stack-pool managed.
+            return copy_coroutine_to_parent(v, interp);
+        case CP_ROUTE_MODULE:
+            // Module lives in interpreter module table.
+            return v;
+        case CP_ROUTE_ERROR:
+            return make_error(interp, v.str_chars[:v.str_len]);
+        case CP_ROUTE_TIME_POINT:
+            return copy_time_point_to_parent(v, interp);
+        default:
+            return v;
+    }
+}
+
 fn Value* copy_to_parent(Value* v, Interp* interp) {
     if (v == null) return null;
     g_copy_to_parent_stats.total_calls++;
@@ -171,54 +300,8 @@ fn Value* copy_to_parent(Value* v, Interp* interp) {
     Value* fast_reuse = null;
     if (copy_to_parent_try_fast_reuse(v, interp, &fast_reuse)) return fast_reuse;
 
-    Value* result;
-    switch (v.tag) {
-        case NIL:
-            result = make_nil(interp);
-        case INT:
-            result = make_int(interp, v.int_val);
-        case DOUBLE:
-            result = make_double(interp, v.double_val);
-        case STRING:
-            result = make_string(interp, v.str_chars[:v.str_len]);
-        case SYMBOL:
-            result = make_symbol(interp, v.sym_val);
-        case CONS:
-            result = copy_cons_to_parent(v, interp);
-        case CLOSURE:
-            result = copy_closure_to_parent(v, interp);
-        case PRIMITIVE:
-            result = v;
-        case PARTIAL_PRIM:
-            // Deep copy: Value wrapper may be in child scope, and first_arg/second_arg may too.
-            result = copy_partial_prim_to_parent(v, interp);
-        case CONTINUATION:
-            // Shallow copy: Value wrapper may be in child scope, cont_val itself is in root_region.
-            result = copy_continuation_to_parent(v, interp);
-        case HASHMAP:
-        case ARRAY:
-        case METHOD_TABLE:
-            result = v;  // Value allocated in root_scope; backing data is malloc'd with registered destructors
-        case INSTANCE:
-            result = copy_instance_to_parent(v, interp);
-        case FFI_HANDLE:
-            result = copy_ffi_handle_to_parent(v, interp);
-        case TYPE_INFO:
-            result = v;  // type info lives in registry
-        case ITERATOR:
-            // Phase 4b: promote underlying closure thunk so iterator outlives child scope.
-            result = copy_iterator_to_parent(v, interp);
-        case COROUTINE:
-            // Shallow copy: wrapper may be in child scope, Coro* is stack-pool managed.
-            result = copy_coroutine_to_parent(v, interp);
-        case MODULE:
-            result = v;  // Module lives in interp.modules array
-        case ERROR:
-            result = make_error(interp, v.str_chars[:v.str_len]);
-        default:
-            result = v;
-    }
-    return result;
+    CopyParentRoute route = copy_parent_route_for_tag(v.tag);
+    return copy_to_parent_by_route(v, interp, route);
 }
 
 fn Value* copy_to_parent_site(Value* v, Interp* interp, uint site) {

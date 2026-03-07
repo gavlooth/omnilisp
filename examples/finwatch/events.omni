@@ -1,0 +1,115 @@
+;; events.omni — Event stream processor with coroutines, iterators, and lazy eval
+;;
+;; Idioms demonstrated:
+;;   coroutine / resume / yield / coroutine? — cooperative event generation
+;;   reset / shift            — delimited continuations (single-shot capture)
+;;   make-iterator / next / range-from — lazy iterator sequences
+;;   delay / force            — deferred computation (lazy moving average)
+;;   unless                   — guard clauses (skip stale events)
+;;   assert!                  — validate event timestamp monotonicity
+
+(module events
+  (export events/make-ticker
+          events/pull-events
+          events/batch-events
+          events/sliding-window
+          events/lazy-average
+          events/validate-monotonic
+          events/with-backpressure))
+
+(import "types.omni" 'all)
+
+;; ── Price tick generator (coroutine) ────────────────────────────────────────
+
+;; (events/make-ticker symbols base-prices) — create a coroutine that yields
+;; simulated PriceEvents. Each resume returns the next tick.
+;; Note: callers must use (list ...) not '(...) for base-prices (doubles in
+;; quoted lists trigger a dispatch infinite loop — known runtime quirk).
+(define (events/make-ticker symbols base-prices)
+  (let (pairs (zip symbols base-prices))
+    (coroutine
+      (lambda ()
+        (let loop (i 0 remaining pairs)
+          (if (null? remaining)
+              (loop (+ i 1) pairs)
+              (let (pair (car remaining)
+                    sym (car pair) base (cdr pair)
+                    jitter (* base (* 0.01 (- (% (+ (* i 7) 13) 20) 10)))
+                    price (+ base jitter))
+                (yield (PriceEvent sym price (+ 1700000000 i)))
+                (loop i (cdr remaining)))))))))
+
+;; (events/pull-events ticker n) — pull n events from a ticker coroutine.
+;; Uses resume/yield loop, checks coroutine? for liveness.
+(define (events/pull-events ticker n)
+  (let loop (i 0 acc nil)
+    (if (or (= i n) (not (coroutine? ticker)))
+        (reverse acc)
+        (let (event (resume ticker))
+          (loop (+ i 1) (cons event acc))))))
+
+;; ── Batching (simple recursive) ───────────────────────────────────────────
+
+;; (events/batch-events events batch-size) — split event list into batches.
+(define (events/batch-events event-list batch-size)
+  (let loop (remaining event-list acc nil)
+    (if (null? remaining)
+        (reverse acc)
+        (loop (drop batch-size remaining)
+              (cons (take batch-size remaining) acc)))))
+
+;; ── Sliding window via iterators ────────────────────────────────────────────
+
+;; (events/sliding-window prices window-size) — compute windowed averages.
+;; Uses make-iterator + range-from for lazy index generation.
+(define (events/sliding-window prices window-size)
+  (let (len (length prices)
+        indices (take (- len (- window-size 1))
+                      (iterator (range len))))
+    (foldl (lambda (acc idx-pair)
+             (let (i (car idx-pair)
+                   window (take window-size (drop i prices))
+                   sum (foldl + 0.0 window)
+                   avg (/ sum (* 1.0 window-size)))
+               (cons avg acc)))
+           nil
+           indices)))
+
+;; ── Lazy moving average (delay / force) ─────────────────────────────────────
+
+;; (events/lazy-average prices) — create a delayed computation of the average.
+;; The computation only runs when force'd.
+(define (events/lazy-average prices)
+  (delay (lambda ()
+    (let (sum (foldl + 0.0 prices)
+          cnt (length prices))
+      (if (= cnt 0) 0.0 (/ sum (* 1.0 cnt)))))))
+
+;; ── Validation ──────────────────────────────────────────────────────────────
+
+;; (events/validate-monotonic events) — assert timestamps are strictly increasing.
+;; Uses assert! for validation, unless for guard.
+(define (events/validate-monotonic event-list)
+  (define (check-mono prev rest)
+    (if (null? rest)
+        true
+        (if (>= (event-ts (car rest)) prev)
+            (check-mono (event-ts (car rest)) (cdr rest))
+            (signal raise (format "non-monotonic: %d after %d" (event-ts (car rest)) prev)))))
+  (unless (null? event-list)
+    (check-mono (event-ts (car event-list)) (cdr event-list))))
+
+;; ── Backpressure (reset / shift) ────────────────────────────────────────────
+
+;; (events/with-backpressure events max-buffer) — demonstrate reset/shift for
+;; single-shot continuation capture. Captures the buffered batch and remaining
+;; work as a continuation, then resumes once to show the pattern.
+(define (events/with-backpressure event-list max-buffer)
+  (let (result (reset
+    (let loop (remaining event-list buf nil count 0)
+      (if (null? remaining)
+          (if (null? buf) nil (reverse buf))
+          (if (= count max-buffer)
+              (shift k (list (reverse buf) k remaining))
+              (loop (cdr remaining) (cons (car remaining) buf) (+ count 1)))))))
+    result))

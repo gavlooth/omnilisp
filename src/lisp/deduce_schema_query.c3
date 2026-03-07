@@ -22,7 +22,12 @@ fn Value* deduce_relation_extract_spec(
         // fault: lisp::TYPE_MISMATCH
         return deduce_raise(interp, "deduce/define-relation-db-not-handle", "__define-relation: car must be a deduce-open handle");
     }
-    if (db_val.ffi_val == null) return deduce_raise(interp, "deduce/define-relation-db-handle-closed", "__define-relation: database handle is closed");
+    if (db_val.ffi_val == null || db_val.ffi_val.lib_handle == null) {
+        return deduce_raise(interp, "deduce/define-relation-db-handle-closed", "__define-relation: database handle is closed");
+    }
+    if (!deduce_ffi_handle_name_equals(db_val, "deduce-db")) {
+        return deduce_raise(interp, "deduce/define-relation-db-not-deduce-db", "__define-relation: car must be a deduce database handle");
+    }
     *db_out = (DeduceDb*)db_val.ffi_val.lib_handle;
 
     Value* spec = cdr(pair);
@@ -47,6 +52,7 @@ fn Relation* deduce_relation_alloc(DeduceDb* db, SymbolId rel_name) {
     rel.dbi = 0;
     rel.key_col = 0;
     rel.index_col = 0;
+    rel.dropped = false;
     return rel;
 }
 
@@ -108,6 +114,10 @@ enum DeduceRelationOpenStatus {
 fn DeduceRelationOpenStatus deduce_relation_open_dbi(Relation* rel, Interp* interp) {
     // Open LMDB named database for this relation.
     char[] name_str = interp.symbols.get_name(rel.name);
+    return deduce_relation_open_dbi_with_name(rel, name_str);
+}
+
+fn DeduceRelationOpenStatus deduce_relation_open_dbi_with_name(Relation* rel, char[] name_str) {
     char* dbi_name = deduce_copy_c_string(name_str);
     if (dbi_name == null) return REL_OPEN_OUT_OF_MEMORY;
     defer mem::free(dbi_name);
@@ -137,7 +147,12 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
                        args[0] != null && args[0].tag == FFI_HANDLE &&
                        args[1] != null && args[1].tag == SYMBOL;
     if (direct_form) {
-        if (args[0].ffi_val == null) return deduce_raise(interp, "deduce/define-relation-db-handle-closed", "__define-relation: database handle is closed");
+        if (args[0].ffi_val == null || args[0].ffi_val.lib_handle == null) {
+            return deduce_raise(interp, "deduce/define-relation-db-handle-closed", "__define-relation: database handle is closed");
+        }
+        if (!deduce_ffi_handle_name_equals(args[0], "deduce-db")) {
+            return deduce_raise(interp, "deduce/define-relation-db-not-deduce-db", "__define-relation: database handle must be a deduce database handle");
+        }
         db = (DeduceDb*)args[0].ffi_val.lib_handle;
         rel_name = args[1].sym_val;
     } else {
@@ -182,6 +197,76 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
     return v;
 }
 
+// (deduce 'open-named db relation-name db-name col...) -> relation handle
+fn Value* prim_deduce_open_named(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 4) {
+        return deduce_raise(interp, "deduce/open-named-expected-db-relation-dbname-columns", "deduce-open-named: expected (deduce 'open-named db relation-name db-name col...)");
+    }
+
+    Value* db_val = args[0];
+    if (!deduce_ffi_handle_name_equals(db_val, "deduce-db")) {
+        return deduce_raise(interp, "deduce/open-named-db-not-handle", "deduce-open-named: first argument must be a deduce database handle");
+    }
+    if (db_val.ffi_val == null || db_val.ffi_val.lib_handle == null) {
+        return deduce_raise(interp, "deduce/open-named-db-handle-closed", "deduce-open-named: database handle is closed");
+    }
+    DeduceDb* db = (DeduceDb*)db_val.ffi_val.lib_handle;
+    if (!db.open || db.env == null) {
+        return deduce_raise(interp, "deduce/open-named-db-not-open", "deduce-open-named: database is not open");
+    }
+
+    Value* rel_name_v = args[1];
+    if (rel_name_v == null || rel_name_v.tag != SYMBOL) {
+        return deduce_raise(interp, "deduce/open-named-relation-name-not-symbol", "deduce-open-named: relation-name must be a symbol");
+    }
+
+    char[] db_name = {};
+    Value* db_name_v = args[2];
+    if (db_name_v == null) {
+        return deduce_raise(interp, "deduce/open-named-db-name-invalid", "deduce-open-named: db-name must be a string or symbol");
+    }
+    if (db_name_v.tag == STRING) {
+        db_name = db_name_v.str_chars[:db_name_v.str_len];
+    } else if (db_name_v.tag == SYMBOL) {
+        db_name = interp.symbols.get_name(db_name_v.sym_val);
+    } else {
+        return deduce_raise(interp, "deduce/open-named-db-name-invalid", "deduce-open-named: db-name must be a string or symbol");
+    }
+    if (db_name.len == 0) {
+        return deduce_raise(interp, "deduce/open-named-db-name-empty", "deduce-open-named: db-name cannot be empty");
+    }
+
+    Relation* rel = deduce_relation_alloc(db, rel_name_v.sym_val);
+    if (rel == null) {
+        return deduce_raise(interp, "deduce/open-named-out-of-memory", "deduce-open-named: out of memory");
+    }
+
+    Value* col_err = deduce_relation_collect_columns_from_args(rel, args, 3, interp);
+    if (col_err != null) {
+        deduce_relation_free(rel);
+        return col_err;
+    }
+
+    DeduceRelationOpenStatus open_status = deduce_relation_open_dbi_with_name(rel, db_name);
+    if (open_status != REL_OPEN_OK) {
+        deduce_relation_free(rel);
+        if (open_status == REL_OPEN_OUT_OF_MEMORY) {
+            return deduce_raise(interp, "deduce/open-named-out-of-memory", "deduce-open-named: out of memory");
+        }
+        if (open_status == REL_OPEN_TXN_BEGIN_FAILED) {
+            return deduce_raise(interp, "deduce/open-named-txn-begin-failed", "deduce-open-named: txn begin failed");
+        }
+        return deduce_raise(interp, "deduce/open-named-dbi-open-failed", "deduce-open-named: dbi open failed");
+    }
+
+    Value* rel_v = make_ffi_handle_ex(interp, (void*)rel, "deduce-relation", &deduce_relation_finalizer, true, false);
+    if (rel_v == null) {
+        deduce_relation_free(rel);
+        return deduce_raise(interp, "deduce/open-named-out-of-memory", "deduce-open-named: out of memory");
+    }
+    return rel_v;
+}
+
 // ============================================================
 // (deduce-query relation filter-fn) → filtered list of dicts
 // filter-fn takes a dict, returns truthy/nil
@@ -196,8 +281,15 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
         // fault: lisp::TYPE_MISMATCH
         return deduce_raise(interp, "deduce/query-relation-not-handle", "deduce-query: first argument must be a relation");
     }
-    if (rel_val.ffi_val == null) return deduce_raise(interp, "deduce/query-relation-handle-closed", "deduce-query: relation handle is closed");
+    if (rel_val.ffi_val == null || rel_val.ffi_val.lib_handle == null) {
+        return deduce_raise(interp, "deduce/query-relation-handle-closed", "deduce-query: relation handle is closed");
+    }
+    if (!deduce_ffi_handle_name_equals(rel_val, "deduce-relation")) {
+        return deduce_raise(interp, "deduce/query-relation-not-deduce-relation", "deduce-query: first argument must be a deduce relation handle");
+    }
     Relation* rel = (Relation*)rel_val.ffi_val.lib_handle;
+    if (rel.db == null || !rel.db.open) return deduce_raise(interp, "deduce/query-database-not-open", "deduce-query: database not open");
+    if (rel.dropped) return deduce_raise(interp, "deduce/query-relation-dropped", "deduce-query: relation is dropped");
 
     Value* filter_fn = args[1];
 

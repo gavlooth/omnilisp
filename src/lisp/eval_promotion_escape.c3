@@ -11,18 +11,29 @@ fn Value* promote_to_escape_disjoint(Value* v, Interp* interp) {
     PromotionContext* local_ptr = interp.active_promotion_ctx;
     bool owns_ctx = false;
     if (local_ptr == null) {
-        promotion_context_begin(interp, &local_ctx);
+        boundary_promotion_context_begin(interp, &local_ctx);
         local_ptr = &local_ctx;
         owns_ctx = true;
     }
     Value* copied = copy_to_parent_site_ctx(v, interp, COPY_SITE_GENERIC, local_ptr);
-    if (owns_ctx) promotion_context_end(interp, local_ptr);
+    if (owns_ctx) boundary_promotion_context_end(interp, local_ptr);
     if (copied == null || copied == v) return copied;
     return promote_to_escape(copied, interp);
 }
 
+fn bool promote_escape_can_mutate(Value* v, PromotionContext* ctx) @inline {
+    (void)v;
+    return promotion_context_consume(ctx, 1);
+}
+
+fn bool promote_escape_should_iterate_cons_tail(Value* old_cdr, Interp* interp) @inline {
+    return old_cdr != null &&
+           old_cdr.tag == CONS &&
+           old_cdr.scope_gen == interp.current_scope.generation;
+}
+
 fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promotion_context_consume(ctx, 1)) return v;
+    if (!promote_escape_can_mutate(v, ctx)) return v;
     Value* result = interp.alloc_value_escape();
     result.tag = v.tag;
     main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
@@ -39,7 +50,7 @@ fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionCont
 }
 
 fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promotion_context_consume(ctx, 1)) return v;
+    if (!promote_escape_can_mutate(v, ctx)) return v;
     // Iterative spine copy to avoid recursion blowups on long lists.
     Value* head = interp.alloc_value_escape();
     head.tag = CONS;
@@ -50,9 +61,8 @@ fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
         current_new.cons_val.car = promote_to_escape(current_old.cons_val.car, interp);
         if (ctx != null && ctx.aborted) return v;
         Value* old_cdr = current_old.cons_val.cdr;
-        if (old_cdr != null && old_cdr.tag == CONS &&
-            old_cdr.scope_gen == interp.current_scope.generation) {
-            if (!promotion_context_consume(ctx, 1)) return v;
+        if (promote_escape_should_iterate_cons_tail(old_cdr, interp)) {
+            if (!promote_escape_can_mutate(v, ctx)) return v;
             Value* next_new = interp.alloc_value_escape();
             next_new.tag = CONS;
             current_new.cons_val.cdr = next_new;
@@ -68,7 +78,7 @@ fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
 }
 
 fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promotion_context_consume(ctx, 1)) return v;
+    if (!promote_escape_can_mutate(v, ctx)) return v;
     Value* result = interp.alloc_value_escape();
     result.tag = CLOSURE;
     main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_closure);
@@ -97,7 +107,7 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
 }
 
 fn Value* promote_escape_partial_prim(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promotion_context_consume(ctx, 1)) return v;
+    if (!promote_escape_can_mutate(v, ctx)) return v;
     Value* result = interp.alloc_value_escape();
     result.tag = PARTIAL_PRIM;
     result.partial_val.func = v.partial_val.func;
@@ -108,7 +118,7 @@ fn Value* promote_escape_partial_prim(Value* v, Interp* interp, PromotionContext
 }
 
 fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promotion_context_consume(ctx, 1)) return v;
+    if (!promote_escape_can_mutate(v, ctx)) return v;
     Value* result = interp.alloc_value_escape();
     *result = *v;
     result.scope_gen = interp.current_scope.escape_generation;
@@ -116,7 +126,7 @@ fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionConte
 }
 
 fn Value* promote_escape_instance(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promotion_context_consume(ctx, 1)) return v;
+    if (!promote_escape_can_mutate(v, ctx)) return v;
     Value* result = interp.alloc_value_escape();
     result.tag = INSTANCE;
     result.scope_gen = interp.current_scope.escape_generation;
@@ -127,7 +137,7 @@ fn Value* promote_escape_instance(Value* v, Interp* interp, PromotionContext* ct
 }
 
 fn Value* promote_escape_ffi_handle(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promotion_context_consume(ctx, 1)) return v;
+    if (!promote_escape_can_mutate(v, ctx)) return v;
     Value* result = interp.alloc_value_escape();
     result.tag = FFI_HANDLE;
     result.ffi_val = v.ffi_val;
@@ -155,7 +165,7 @@ fn bool promote_to_escape_fast_path(Value* v, Interp* interp, Value** out) {
 }
 
 fn Value* promote_escape_scalar(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promotion_context_consume(ctx, 1)) return v;
+    if (!promote_escape_can_mutate(v, ctx)) return v;
     Value* result = interp.alloc_value_escape();
     switch (v.tag) {
         case NIL:
@@ -176,7 +186,7 @@ fn Value* promote_escape_scalar(Value* v, Interp* interp, PromotionContext* ctx)
 }
 
 fn Value* promote_escape_continuation(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promotion_context_consume(ctx, 1)) return v;
+    if (!promote_escape_can_mutate(v, ctx)) return v;
     Value* result = interp.alloc_value_escape();
     result.tag = CONTINUATION;
     result.cont_val = v.cont_val;
@@ -184,7 +194,7 @@ fn Value* promote_escape_continuation(Value* v, Interp* interp, PromotionContext
 }
 
 fn Value* promote_escape_iterator(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promotion_context_consume(ctx, 1)) return v;
+    if (!promote_escape_can_mutate(v, ctx)) return v;
     Value* result = interp.alloc_value_escape();
     result.tag = ITERATOR;
     result.iterator_val = promote_to_escape(v.iterator_val, interp);
@@ -192,10 +202,18 @@ fn Value* promote_escape_iterator(Value* v, Interp* interp, PromotionContext* ct
 }
 
 fn Value* promote_escape_coroutine(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promotion_context_consume(ctx, 1)) return v;
+    if (!promote_escape_can_mutate(v, ctx)) return v;
     Value* result = interp.alloc_value_escape();
     result.tag = COROUTINE;
     result.coroutine_val = v.coroutine_val;
+    return result;
+}
+
+fn Value* promote_escape_time_point(Value* v, Interp* interp, PromotionContext* ctx) {
+    if (!promote_escape_can_mutate(v, ctx)) return v;
+    Value* result = interp.alloc_value_escape();
+    result.tag = TIME_POINT;
+    result.time_point_val = v.time_point_val;
     return result;
 }
 
@@ -211,6 +229,7 @@ enum PromoteEscapeRoute : char {
     PE_ROUTE_SHARED_WRAPPER,
     PE_ROUTE_INSTANCE,
     PE_ROUTE_FFI_HANDLE,
+    PE_ROUTE_TIME_POINT,
     PE_ROUTE_PASSTHROUGH,
 }
 
@@ -236,6 +255,8 @@ fn PromoteEscapeRoute promote_escape_route_for_tag(ValueTag tag) @inline {
             return PE_ROUTE_ITERATOR;
         case COROUTINE:
             return PE_ROUTE_COROUTINE;
+        case TIME_POINT:
+            return PE_ROUTE_TIME_POINT;
         case PRIMITIVE:
         case HASHMAP:
         case ARRAY:
@@ -275,6 +296,8 @@ fn Value* promote_to_escape_by_route(
             return promote_escape_iterator(v, interp, ctx);
         case PE_ROUTE_COROUTINE:
             return promote_escape_coroutine(v, interp, ctx);
+        case PE_ROUTE_TIME_POINT:
+            return promote_escape_time_point(v, interp, ctx);
         case PE_ROUTE_SHARED_WRAPPER:
             // Wrapper promotion into ESCAPE lane; backing data/ownership remains unchanged.
             return promote_escape_shared_wrapper(v, interp, ctx);

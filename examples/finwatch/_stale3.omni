@@ -1,0 +1,13 @@
+(import "models.omni" 'all)
+(import "cache.omni"  'all)
+
+(cache/set-last-refresh! 9999)
+(println "last-refresh result:")
+(println (cache/last-refresh))
+
+;; Step through manually
+(define rows (deduce 'query meta (compose (= _ "last-refresh") 'meta-key)))
+(println "rows:")
+(println rows)
+(println "meta-value:")
+(println ('meta-value (car rows)))

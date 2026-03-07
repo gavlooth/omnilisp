@@ -1,0 +1,68 @@
+flowchart TB
+    START["1) Call Entry (eval/jit)"] --> PUSH["2) boundary_push_child_scope"]
+    PUSH --> CREATE["3) scope_create(parent)"]
+    CREATE --> RC_PARENT_PLUS["4) scope_retain(parent) RC +1"]
+    CREATE --> CHILD["child scope active"]
+
+    CHILD --> TEMP_ALLOC["5) TEMP lane alloc(...)"]
+    CHILD --> ESCAPE_ALLOC["6) ESCAPE lane alloc_escape(...)"]
+    TEMP_ALLOC --> EVAL_DONE["7) body evaluation result"]
+    ESCAPE_ALLOC --> EVAL_DONE
+    EVAL_DONE --> FINALIZE{"8) jit_finalize_scoped_result path"}
+
+    FINALIZE -->|result in TEMP, child RC==1| PROMOTE_ESC["9a) boundary_promote_to_escape"]
+    PROMOTE_ESC --> ESCAPE_ALLOC2["alloc_escape + register_dtor_escape"]
+    ESCAPE_ALLOC2 --> CLOSURE_RETAIN{"closure/env_scope captured?"}
+    CLOSURE_RETAIN -->|yes| RC_ENV_PLUS["scope_retain(env_scope) RC +1"]
+    CLOSURE_RETAIN -->|no| POST_PROMOTE{"result in child ESCAPE lane?"}
+    RC_ENV_PLUS --> POST_PROMOTE
+
+    POST_PROMOTE -->|yes| SPLICE["9b) scope_splice_escapes(parent, child)"]
+    SPLICE --> TRANSFER_ESC["transfer ESCAPE chunks + escape dtors to parent"]
+    SPLICE --> DROP_TEMP["run TEMP dtors + free TEMP chunks"]
+    TRANSFER_ESC --> CHILD_RECYCLED["child detached/recycled"]
+    DROP_TEMP --> CHILD_RECYCLED
+    CHILD_RECYCLED --> RETURN_ESC["return escaped result (now parent-owned lane)"]
+
+    FINALIZE -->|result already outside releasing scope| RELEASE_CHILD["9c) scope_release(child)"]
+    FINALIZE -->|budget abort or fallback| COPY_REL["9d) boundary_copy_from_releasing_scope"]
+    COPY_REL --> RELEASE_CHILD
+
+    RELEASE_CHILD --> CHILD_RC{"child RC after release"}
+    CHILD_RC -->|RC == 0| DESTROY["scope_destroy(child)"]
+    CHILD_RC -->|RC > 0| CHILD_ISLAND["child survives as independent heap island"]
+    CHILD_ISLAND --> LATER_RELEASE["later scope_release(child/env_scope)"]
+    LATER_RELEASE --> DESTROY
+
+    DESTROY --> RUN_DTORS["run TEMP+ESCAPE dtors; free chunks"]
+    DESTROY --> RC_PARENT_MINUS["scope_release(parent) RC -1"]
+    RUN_DTORS --> RETURN_COPY["return copied/reused result"]
+    RC_PARENT_MINUS --> RETURN_COPY
+
+    RETURN_ESC --> END["10) Caller continues with parent/root ownership"]
+    RETURN_COPY --> END
+
+    subgraph ROOTS["Ownership Roots and Lanes"]
+        ROOT_REGION["root_region (AST only)"]
+        ROOT_SCOPE["root_scope (runtime values/envs)"]
+        PARENT_SCOPE["parent scope (caller)"]
+        ESCAPE_PARENT["parent ESCAPE lane"]
+    end
+
+    RC_PARENT_PLUS --> PARENT_SCOPE
+    RC_PARENT_MINUS --> PARENT_SCOPE
+    TRANSFER_ESC --> ESCAPE_PARENT
+    PARENT_SCOPE --> ROOT_SCOPE
+    ROOT_REGION -. separate ownership domain .- ROOT_SCOPE
+
+    subgraph INVARIANTS["Hard Invariants"]
+        INV1["RC scope ownership is primary authority"]
+        INV2["No per-type RC lifetime for language values"]
+        INV3["No general root pinning workaround"]
+        INV4["Boundary paths define crossing semantics"]
+    end
+
+    END --> INV1
+    END --> INV2
+    END --> INV3
+    END --> INV4

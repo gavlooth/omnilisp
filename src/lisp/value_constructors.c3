@@ -241,6 +241,33 @@ fn Value* make_continuation(Interp* interp, Continuation* k) @inline {
     return v;
 }
 
+<* @ensure return != null *>
+fn Value* make_time_point(
+    Interp* interp,
+    TimePointKind kind,
+    int year,
+    int month,
+    int day,
+    int hour,
+    int minute,
+    int second,
+    int microsecond,
+    int tz_offset
+) {
+    Value* v = interp.alloc_value();
+    v.tag = TIME_POINT;
+    v.time_point_val.year = year;
+    v.time_point_val.month = month;
+    v.time_point_val.day = day;
+    v.time_point_val.hour = hour;
+    v.time_point_val.minute = minute;
+    v.time_point_val.second = second;
+    v.time_point_val.microsecond = microsecond;
+    v.time_point_val.tz_offset = tz_offset;
+    v.time_point_val.kind = kind;
+    return v;
+}
+
 fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arity) {
     // Allocate in root_scope — primitives are permanent (defined in global env).
     Value* v = boundary_alloc_value_in_root(interp, true);

@@ -1,5 +1,2377 @@
 # Changelog
 
+## 2026-03-07: Session 38 Slice - Explicit Splice-Failure Fallback in JIT Return Boundary
+
+### Summary
+Hardened one high-risk boundary failure path by replacing a silent splice
+assumption in JIT return finalization with an explicit ownership-safe fallback.
+
+### What changed
+- `src/lisp/jit_jit_eval_scopes.c3`
+  - In `jit_finalize_scoped_result(...)`, the splice branch now:
+    - returns early only when `boundary_try_scope_splice_escapes(...)` succeeds,
+    - otherwise explicitly falls back to
+      `boundary_copy_from_releasing_scope(...)` + `scope_release(...)`.
+  - This removes the previous silent assumption that a splice attempt always
+    succeeds once promote eligibility is true.
+
+### Validation
+- `c3c build`
+- `timeout -t 240 env LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - full suite completed: `1492 passed, 0 failed` and `Compiler Tests: 79 passed, 0 failed`
+- `c3c build --sanitize=address`
+- `timeout -t 300 env ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - ASAN suite completed: `1491 passed, 0 failed` and `Compiler Tests: 79 passed, 0 failed`
+
+## 2026-03-07: Session 37 Closure - High-Risk Caller Migration Audit
+
+### Summary
+Closed Session 37 by auditing high-risk return/env/splice caller paths and
+confirming runtime callers now route through boundary facade APIs.
+
+### Migrated caller summary (runtime paths)
+- Return-boundary transitions:
+  - `src/lisp/eval_run_pipeline.c3`
+  - `src/lisp/jit_jit_eval_scopes.c3`
+  - both use boundary helpers for promotion/copy/splice decisions.
+- Env-copy/splice callsites:
+  - runtime calls route through `boundary_copy_env_to_scope(...)` in
+    `src/lisp/eval_boundary_api.c3`.
+  - scope splice path is centralized in:
+    - `boundary_try_scope_splice_escapes(...)`
+  - no direct runtime `scope_splice_escapes(...)` callsites remain outside the
+    boundary facade.
+
+### Audit evidence (grep checks)
+- direct high-risk runtime calls outside boundary modules:
+  - `copy_env_to_scope(...)`: no runtime callers outside
+    `eval_env_copy.c3` + boundary facade
+  - `scope_splice_escapes(...)`: no runtime callers outside boundary facade
+  - direct promote/copy primitives in non-boundary runtime modules: not found
+    (remaining direct usages are in tests/metrics).
+
+### Validation
+- Reused latest green gate run for this migration state:
+  - `c3c build`
+  - `timeout -t 240 env LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+    - `1492 passed, 0 failed`
+  - `c3c build --sanitize=address`
+  - `timeout -t 300 env ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+    - `1491 passed, 0 failed`
+
+## 2026-03-07: Session 36 Slice - Shared Boundary Policy Helpers and Caller Migration
+
+### Summary
+Completed a business-logic unification slice by introducing shared policy
+helpers for promote/copy/splice decisions and routing key return/env/splice
+paths through those helpers.
+
+### What changed
+- `src/lisp/eval_boundary_api.c3`
+  - Added shared boundary policy helpers:
+    - `boundary_should_promote(...)`
+    - `boundary_should_copy_env(...)`
+    - `boundary_is_scope_transfer_legal(...)`
+  - Updated `boundary_try_scope_splice_escapes(...)` to gate through
+    `boundary_is_scope_transfer_legal(...)`.
+- `src/lisp/eval_run_pipeline.c3`
+  - Replaced inline promote/splice gate:
+    - from direct `!ctx.aborted && scope_gen == ...` check
+    - to `boundary_should_promote(...)`.
+- `src/lisp/jit_jit_eval_scopes.c3`
+  - Replaced inline splice eligibility branch with `boundary_should_promote(...)`.
+- `src/lisp/eval_env_copy.c3`
+  - Routed env-copy reuse policy through shared helper:
+    - `copy_env_should_reuse_value(...)` now derives from
+      `boundary_should_copy_env(...)`.
+- `docs/plans/session-34-44-boundary-hardening.md`
+  - Marked Session 36 checklist complete (Commit A/B, gates, changelog).
+
+### Edge-case decision matrix (current helper semantics)
+- `boundary_should_promote(v, ctx, source_scope)` -> false when any of:
+  - `v == null`,
+  - `ctx == null`,
+  - `source_scope == null`,
+  - `ctx.aborted == true`,
+  - `v.scope_gen != source_scope.escape_generation`.
+- `boundary_should_copy_env(v, interp)` -> false when `v == null`; otherwise
+  true only when value is not reusable in the current target scope chain.
+- `boundary_is_scope_transfer_legal(parent, child)` -> true only when both
+  scopes are non-null and distinct.
+
+### Validation
+- `c3c build`
+- `timeout -t 240 env LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - full suite completed: `1492 passed, 0 failed` and `Compiler Tests: 79 passed, 0 failed`
+- `c3c build --sanitize=address`
+- `timeout -t 300 env ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - ASAN suite completed: `1491 passed, 0 failed` and `Compiler Tests: 79 passed, 0 failed`
+
+## 2026-03-07: Session 35 Slice B - Boundary Naming Normalization and Duplicate Condition Cleanup
+
+### Summary
+Completed Session 35 Commit B by normalizing repeated promotion-escape decision
+checks into shared helpers and removing duplicated inline condition trees in the
+escape promotion path.
+
+### What changed
+- `src/lisp/eval_promotion_escape.c3`
+  - Added shared decision helpers:
+    - `promote_escape_can_mutate(...)`
+    - `promote_escape_should_iterate_cons_tail(...)`
+  - Replaced repeated `promotion_context_consume(...)` guard branches across
+    escape mutation helpers with the normalized guard helper.
+  - Replaced duplicated inline cons-tail condition tree with
+    `promote_escape_should_iterate_cons_tail(...)`.
+- `docs/plans/session-34-44-boundary-hardening.md`
+  - Marked Session 35 Commit B items complete and recorded gate/changelog
+    closure.
+
+### Validation
+- `c3c build`
+- `timeout -t 240 env LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - full suite completed: `1492 passed, 0 failed` and `Compiler Tests: 79 passed, 0 failed`
+- `c3c build --sanitize=address`
+- `timeout -t 300 env ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - ASAN suite completed: `1491 passed, 0 failed` and `Compiler Tests: 79 passed, 0 failed`
+
+## 2026-03-07: Phase 7 Validation Refresh (Deferred Shared Reclamation)
+
+### Summary
+Re-ran the required Phase 7 validation gates after deferred shared-object
+reclamation and retire-queue boundary updates; all required gates passed.
+
+### Validation
+- `c3c build`
+  - linked successfully (`build/main`).
+- `c3c build --sanitize=address`
+  - linked successfully (`build/main`).
+- `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - unified suite: `1491 passed, 0 failed`
+  - compiler suite: `79 passed, 0 failed`
+
+## 2026-03-07: Session 34 Slice - Boundary Facade Promotion-Context Routing
+
+### Summary
+Completed a low-risk boundary-facade hardening slice by exposing promotion
+context entry/exit through audited boundary API wrappers and routing core
+runtime callsites through those wrappers.
+
+### What changed
+- `src/lisp/eval_boundary_api.c3`
+  - Added explicit facade entry points with contracts:
+    - `boundary_promotion_context_begin(...)`
+    - `boundary_promotion_context_end(...)`
+  - Both wrappers enforce `interp`/`ctx` preconditions via `@require`.
+- Runtime callsites migrated from direct promotion-context calls to boundary facade:
+  - `src/lisp/eval_run_pipeline.c3`
+  - `src/lisp/eval_env_copy.c3`
+  - `src/lisp/jit_jit_eval_scopes.c3`
+  - `src/lisp/eval_promotion_escape.c3`
+- Planning/docs sync:
+  - `docs/plans/session-34-44-boundary-hardening.md`
+    - marked Session 34 items complete (`Commit A/B`, low-risk migration,
+      gates, changelog record).
+
+### Validation
+- `c3c build`
+- `timeout -t 240 env LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - full suite completed: `1492 passed, 0 failed` and `Compiler Tests: 79 passed, 0 failed`
+- `c3c build --sanitize=address`
+- `timeout -t 300 env ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - ASAN suite completed: `1491 passed, 0 failed` and `Compiler Tests: 79 passed, 0 failed`
+
+## 2026-03-07: Session 35 Slice A - Copy Boundary Decision/Mutation Decomposition
+
+### Summary
+Completed Session 35 Commit A by splitting `copy_to_parent` boundary internals
+into explicit decision routing and mutation execution helpers, reducing large
+branch coupling in the hot boundary path.
+
+### What changed
+- `src/lisp/eval_promotion_copy.c3`
+  - Added route enum + selector:
+    - `CopyParentRoute`
+    - `copy_parent_route_for_tag(...)`
+  - Added mutation executor:
+    - `copy_to_parent_by_route(...)`
+  - Refactored `copy_to_parent(...)` to:
+    - keep existing fast-reuse/defensive-copy guardrails,
+    - dispatch through route selection + executor instead of one monolithic
+      tag switch.
+- `src/lisp/eval_env_copy.c3`
+  - Normalized one direct chain check to boundary facade naming:
+    - `in_target_scope_chain(...)` -> `boundary_ptr_in_target_scope_chain(...)`
+    - in `copy_env_clone_iterator_if_needed(...)`.
+- `docs/plans/session-34-44-boundary-hardening.md`
+  - Marked Session 35 Commit A items complete.
+
+### Validation
+- `c3c build`
+- `timeout -t 240 env LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - full suite completed: `1492 passed, 0 failed` and `Compiler Tests: 79 passed, 0 failed`
+- `c3c build --sanitize=address`
+- `timeout -t 300 env ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - ASAN suite completed: `1491 passed, 0 failed` and `Compiler Tests: 79 passed, 0 failed`
+
+## 2026-03-07: Pipe Blocking-Parity Restore + Shared-Retire Test Consolidation
+
+### Summary
+Resolved the `pipe loopback roundtrip` regression introduced by the new libuv
+pipe setup path by restoring blocking-socket parity as the default runtime
+behavior, while keeping libuv wrappers as fallback integration hooks. Also
+removed a duplicate shared-retire boundary test definition so the suite builds
+cleanly with a single canonical implementation.
+
+### What changed
+- `csrc/uv_helpers.c`
+  - Added fd-mode normalization helper for duplicated pipe descriptors:
+    - clears `O_NONBLOCK` on returned fds from:
+      - `omni_uv_pipe_connect_fd(...)`
+      - `omni_uv_pipe_listen_fd(...)`
+  - Keeps wrapper-returned descriptors compatible with blocking runtime call
+    sites when fallback activates.
+- `src/lisp/async.c3`
+  - Updated pipe primitives to preserve language/runtime blocking semantics:
+    - `prim_pipe_connect` now uses POSIX `pipe_connect_fd(...)` first, then
+      falls back to `omni_uv_pipe_connect_fd(...)`.
+    - `prim_pipe_listen` now uses POSIX `pipe_listen_fd(...)` first, then
+      falls back to `omni_uv_pipe_listen_fd(...)`.
+- `src/lisp/tests_tests.c3`
+  - Removed duplicate `run_scheduler_shared_retire_queue_boundary_tests(...)`
+    definition (canonical implementation remains in
+    `src/lisp/tests_scheduler_boundary_worker.c3`).
+- `docs/plans/library-gaps-todo.md`
+  - Updated `io/pipe-connect` / `io/pipe-listen` backend notes to
+    `mixed (POSIX primary + uv_pipe fallback)` so parity documentation matches
+    codebase behavior.
+  - Marked libuv DoD ownership gate complete:
+    - `Boundary and memory ownership invariants remain RC/scope-region primary`.
+  - Marked Execution Policy checklist complete for the current libuv track
+    closure snapshot.
+- `docs/reference/07-io-networking.md`
+  - Documented pipe runtime semantics explicitly:
+    - POSIX blocking path is primary,
+    - libuv pipe setup is retained as fallback integration wiring.
+- `docs/plans/concurrency-hybrid-memory-checklist.md`
+  - Marked Immediate Snapshot `Phase 7` complete and updated current position to
+    `Phase 7 complete`.
+  - Added explicit full-run and ASAN validation snapshot under Validation Plan.
+
+### Validation
+- `c3c build`
+- `env LD_LIBRARY_PATH=/usr/local/lib ./build/main /tmp/pipe_test.omni`
+  - output: `"pipe-ok"`
+- `timeout -t 240 env LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - full suite completed: `1492 passed, 0 failed` and `Compiler Tests: 79 passed, 0 failed`
+- `c3c build --sanitize=address`
+- `timeout -t 300 env ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - ASAN suite completed: `1491 passed, 0 failed` and `Compiler Tests: 79 passed, 0 failed`
+
+## 2026-03-07: libuv Unix Pipe Setup Integration + Parity Map Expansion
+
+### Summary
+Advanced the next libuv DoD gate by routing Unix pipe setup primitives through
+libuv-backed wrappers and expanding the parity map to include previously omitted
+`pipe-*`, `process-*`, and `signal-*` effects.
+
+### What changed
+- `csrc/uv_helpers.c`
+  - Added libuv pipe setup helpers:
+    - `omni_uv_pipe_connect_fd(...)`
+    - `omni_uv_pipe_listen_fd(...)`
+  - Implementation details:
+    - uses `uv_pipe_init`/`uv_pipe_connect` and `uv_pipe_init`/`uv_pipe_bind`/`uv_listen`,
+    - duplicates underlying `uv_fileno` descriptor for runtime use,
+    - drains/closes temporary loop/handles deterministically.
+- `src/lisp/async.c3`
+  - Added extern bindings for new helpers.
+  - Updated primitives:
+    - `prim_pipe_connect` now prefers `omni_uv_pipe_connect_fd`,
+    - `prim_pipe_listen` now prefers `omni_uv_pipe_listen_fd`.
+  - Preserved direct POSIX fallback (`pipe_connect_fd` / `pipe_listen_fd`) for
+    compatibility when libuv setup fails.
+- `docs/plans/library-gaps-todo.md`
+  - Marked DoD gate complete:
+    - `Unix pipes, process, and signal paths have libuv-backed APIs`.
+  - Expanded backend map with:
+    - `io/pipe-connect`, `io/pipe-listen`,
+    - `io/process-spawn`, `io/process-wait`, `io/process-kill`,
+    - `io/signal-handle`, `io/signal-unhandle`.
+  - Updated snapshot counts:
+    - `done-libuv`: `4/34`,
+    - `partial-libuv`: `16/34`,
+    - `non-libuv`: `14/34`.
+
+### Validation
+- `c3c build`
+- `timeout -t 240 env LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - full suite completed: `1491 passed, 0 failed` and `Compiler Tests: 79 passed, 0 failed`
+
+## 2026-03-07: libuv TCP Write Wakeup Parity + Async Test Deadlock Fix
+
+### Summary
+Closed the stream/socket wakeup parity gap by aligning documentation with the
+landed libuv writable wakeup bridge for `tcp-write`, and fixed a scheduler test
+deadlock that blocked full-suite completion.
+
+### What changed
+- `src/lisp/tests_tests.c3`
+  - Fixed `tcp-write in fiber via async bridge` test orchestration:
+    - moved server-side read into a spawned fiber,
+    - awaited read/write fibers instead of blocking main thread on `tcp-read`
+      before writer fiber scheduling.
+  - Result: removes false deadlock from test ordering while preserving
+    scheduler-driven async coverage.
+- `docs/plans/library-gaps-todo.md`
+  - Marked DoD gate complete:
+    - `Stream/socket async wakeups are libuv-driven and fiber-safe`.
+  - Updated parity map for `io/tcp-write`:
+    - backend now documented as `mixed (libuv-bridge in fiber, blocking fallback)`,
+      status `partial-libuv`.
+  - Updated A0 summary counts:
+    - `partial-libuv` from `10/27` to `11/27`,
+    - `non-libuv` from `15/27` to `14/27`.
+
+### Validation
+- `c3c build`
+- `timeout -t 30 env LD_LIBRARY_PATH=/usr/local/lib ./build/main /tmp/omni_tcp_write_fiber_test.omni`
+  - output: `"ping"`, `4`, `true`
+- `timeout -t 240 env LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - full suite completed: `1491 passed, 0 failed` and `Compiler Tests: 79 passed, 0 failed`
+
+## 2026-03-07: Phase 6 Domain Abstraction + Phase 7 Deferred Shared Reclamation Queue
+
+### Summary
+Advanced the concurrency/shared-memory checklist by completing the domain
+abstraction layer (Phase 6) and introducing a first deferred-reclamation path
+for shared-handle payloads through an explicit retire queue drained at domain
+safe points (Phase 7 implementation step).
+
+### What changed
+- `src/lisp/scheduler_state_offload.c3`
+  - Added domain abstraction primitives:
+    - `SchedulerDomain`
+    - primary/current domain helpers
+    - domain affinity checks for fiber ownership
+    - domain-layer publish/consume/projection wrappers over the shared bridge.
+  - Added deferred shared-object reclamation plumbing for registry payloads:
+    - `SHARED_RETIRED_QUEUE_CAPACITY`
+    - `SharedRetiredPayload` queue state in `SharedRegistry`
+    - queued retire helper under registry lock:
+      - `scheduler_shared_registry_enqueue_retired_payload_locked`
+    - deferred drain helper:
+      - `scheduler_shared_registry_drain_retired`
+    - payload free helper:
+      - `scheduler_shared_registry_free_payload`
+    - domain safe point hook:
+      - `scheduler_domain_safe_point`
+  - Updated shared destroy/retire paths to enqueue payload reclamation when a
+    shared slot is retired, with immediate free fallback on queue overflow.
+  - Added safe-point draining on domain bridge operations so reclaim is deferred
+    to explicit boundary crossings rather than mixed into local runtime value
+    ownership.
+- `src/lisp/scheduler_io_fiber_core.c3`
+  - Added per-fiber domain id initialization at fiber creation.
+  - Added domain-fiber mismatch fail-fast guard on fiber resume.
+- `src/lisp/scheduler_wakeup_io.c3`
+  - Routed shared projection and sendable-int consume through domain wrappers.
+- `src/lisp/scheduler_offload_worker.c3`
+  - Routed sendable-int publication through domain wrapper helpers.
+- `src/lisp/tests_tests.c3`
+  - Added `run_scheduler_shared_retire_queue_boundary_tests(...)` coverage:
+    - deferred retire-queue enqueue/drain behavior,
+    - stale generation handle resolution rejection,
+    - scheduler boundary/runtime snapshot preservation through retire cycles.
+
+### Validation
+- Build/test validation not re-run in this continuation checkpoint.
+- Prior checkpoint builds (`c3c build` and `c3c build --sanitize=address`) were
+  green before the deferred-reclamation queue patch in this entry.
+
+## 2026-03-07: Effect File I/O Routed Through `uv_fs_*`
+
+### Summary
+Moved core effect-level file operations from `io::file::*` calls to libuv
+filesystem helpers so Omni effect paths use `uv_fs_*` entry points.
+
+### What changed
+- `src/lisp/prim_io.c3`
+  - Added `io_uv_read_all_file(...)` helper built on:
+    - `uv_fs_open`,
+    - `uv_fs_stat`,
+    - `uv_fs_read`,
+    - `uv_fs_close`.
+  - Updated primitives to use libuv FS helpers:
+    - `prim_read_file`
+    - `prim_write_file`
+    - `prim_file_exists`
+    - `prim_read_lines`
+  - Behavior remains return-compatible (`nil` on error for these primitives),
+    while backend plumbing now routes through `uv_fs_*`.
+- `docs/plans/library-gaps-todo.md`
+  - Marked DoD gate complete for file operations using `uv_fs_*` paths.
+  - Updated backend/status map rows for:
+    - `io/read-file`
+    - `io/write-file`
+    - `io/file-exists?`
+    - `io/read-lines`
+  - Updated A0 summary counts to reflect new `partial-libuv` coverage.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+- `c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
+## 2026-03-07: Deduce Named DB Exposure + Restart Durability Coverage
+
+### Summary
+Completed remaining Track F parity items by adding named LMDB database exposure
+at the deduce language surface and adding restart durability regression
+coverage. Fixed a file-mode bug that prevented persistent DB reopen across
+processes.
+
+### What changed
+- `src/lisp/deduce.c3`
+  - Added unified deduce dispatcher route for `'open-named`:
+    - `(deduce 'open-named db relation-name db-name col...)`
+  - Updated command guidance/unknown-command text to include `'open-named`.
+  - Fixed persistent LMDB file mode for `mdb_env_open`:
+    - changed `0664` (decimal) to `0o664` (octal).
+  - Impact:
+    - persistent DB/lock files now open with expected permissions
+      (`rw-r--r--` under default umask), allowing reopen in subsequent
+      processes.
+- `src/lisp/deduce_schema_query.c3`
+  - Added `prim_deduce_open_named(...)` implementation:
+    - explicit DB-handle validation,
+    - `db-name` accepts string or symbol,
+    - explicit relation allocation/column collection/open flow.
+  - Added helper `deduce_relation_open_dbi_with_name(...)` and reused it from
+    existing relation open path.
+- `src/lisp/tests_tests.c3`
+  - Added `run_deduce_open_named_test(...)` coverage:
+    - isolation by explicit `db-name`,
+    - symbol-form `db-name` support,
+    - invalid `db-name` type rejection.
+  - Added `run_deduce_durability_restart_test(...)`:
+    - writes a persistent relation in one Omni process,
+    - reopens and verifies persisted rows in a second Omni process.
+  - Added subprocess helpers for script generation/launch and cleanup.
+  - Wired both tests into deduce group execution.
+- `docs/reference/08-libraries.md`
+  - Added `open-named` usage example.
+- `docs/plans/library-gaps-todo.md`
+  - Marked Track F items complete:
+    - named database exposure,
+    - durability/recovery tests across restart.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+- `c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
+## 2026-03-07: Phase 5 One-Way Projection Gate for Shared Handles
+
+### Summary
+Implemented an explicit one-way projection helper so shared-handle payloads are
+materialized into local `Value*` only at scheduler boundary consumption points.
+
+### What changed
+- `src/lisp/scheduler_state_offload.c3`
+  - Added `scheduler_project_shared_to_local_value(SharedHandle** handle_ref, Interp* interp)`.
+  - Projection now enforces a one-way conversion flow:
+    - take shared bytes ownership,
+    - release shared handle,
+    - return local `Value*` (`make_string_owned`).
+  - Handle reference is nulled after projection to prevent downstream handle reuse.
+- `src/lisp/scheduler_wakeup_io.c3`
+  - Routed `OFFLOAD_RES_BYTES` conversion through
+    `scheduler_project_shared_to_local_value` in
+    `scheduler_value_from_offload_bytes`.
+
+### Validation
+- `c3c build`
+- `c3c build --sanitize=address`
+- `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - current baseline has one unrelated existing failure:
+    - `[FAIL] deduce durability across restart (writer=ok reader=FAIL)`
+  - scheduler/offload suites in the same run remained green.
+
+## 2026-03-07: SharedHandle Registry (Phase 4) With Generation Validation
+
+### Summary
+Implemented a runtime-owned `SharedHandle` registry for shared byte objects,
+including generation-validated resolution and explicit shared destroy/retire
+entry points.
+
+### What changed
+- `src/lisp/scheduler_state_offload.c3`
+  - Added runtime-owned shared registry state:
+    - `SHARED_REGISTRY_CAPACITY`
+    - `SharedRegistryEntry`
+    - `SharedRegistry`
+    - scheduler-owned `shared_registry` field
+  - Extended `SharedHandle` with registry identity metadata:
+    - `slot`
+    - `generation`
+    - `payload` (legacy safety fallback)
+  - Added registry lifecycle/validation helpers:
+    - `scheduler_shared_registry_ensure_ready`
+    - `scheduler_shared_registry_alloc`
+    - `scheduler_shared_registry_resolve_blob`
+    - `scheduler_shared_registry_destroy_slot`
+    - `scheduler_shared_registry_retire_entry`
+    - `scheduler_shared_registry_next_generation`
+  - Added explicit shared object entry points:
+    - `scheduler_shared_destroy`
+    - `scheduler_shared_retire`
+  - Routed blob handle creation through registry allocation and generation
+    stamping.
+  - Routed `shared_handle_as_blob` through generation-validated registry
+    resolution.
+  - Routed shared release through explicit shared destroy path.
+- `src/lisp/scheduler_state_offload.c3`
+  - `scheduler_init` now ensures shared registry readiness as part of scheduler
+    initialization.
+
+### Validation
+- `c3c build`
+- `c3c build --sanitize=address`
+- `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
+## 2026-03-07: Deduce Relation Maintenance API (`clear!` / `drop!`)
+
+### Summary
+Added explicit relation maintenance commands to deduce for bulk cleanup and
+schema-level removal, with dropped-handle safety checks across query/write
+paths.
+
+### What changed
+- `src/lisp/deduce.c3`
+  - Added LMDB `mdb_drop` extern binding.
+  - Added unified dispatch support for:
+    - `(deduce 'clear! relation)`
+    - `(deduce 'drop! relation)`
+  - Extended unknown-command guidance to include `'clear!` and `'drop!`.
+  - Added `Relation.dropped` state marker to prevent use-after-drop behavior.
+- `src/lisp/deduce_relation_ops.c3`
+  - Added `prim_deduce_clear(...)`:
+    - bulk row clear via `mdb_drop(txn, dbi, 0)` with commit/error handling.
+  - Added `prim_deduce_drop(...)`:
+    - relation drop via `mdb_drop(txn, dbi, 1)`, and marks relation dropped on commit success.
+  - Added dropped-relation guard checks in `fact!`, `retract!`, `count`, `scan`, and `scan-range`.
+- `src/lisp/deduce_schema_query.c3`
+  - Relation allocation now initializes `rel.dropped = false`.
+  - Hardened `__define-relation` database-handle validation to require `deduce-db` handles.
+  - Added dropped/db-open checks in `deduce-query`.
+- `src/lisp/unify.c3`
+  - Added stricter relation-handle validation and dropped/db-open checks in `deduce-match`.
+- `src/lisp/tests_tests.c3`
+  - Added regressions:
+    - `clear!` empties rows but relation remains writable/queryable.
+    - `drop!` invalidates relation operations (`count` errors after drop).
+- `docs/reference/08-libraries.md`
+  - Added `clear!` / `drop!` usage examples.
+- `docs/plans/library-gaps-todo.md`
+  - Marked Track F bulk relation drop/clear item complete.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+- `c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
+## 2026-03-07: Scheduler Boundary Shared-Bytes Bridge Wiring
+
+### Summary
+Completed a targeted runtime hardening step for scheduler/offload boundaries by
+routing shared-byte transport through explicit bridge helpers instead of
+scattered direct handle operations.
+
+### What changed
+- `src/lisp/scheduler_state_offload.c3`
+  - Added explicit shared-bytes boundary helpers:
+    - `scheduler_publish_shared_bytes_owned`
+    - `scheduler_publish_shared_bytes_copy`
+    - `scheduler_publish_shared` (bridge-shape alias)
+    - `scheduler_project_shared_bytes_view`
+    - `scheduler_project_shared` (bridge-shape alias)
+    - `scheduler_take_shared_bytes_owned`
+    - `scheduler_release_shared`
+    - `scheduler_publish_sendable_int`
+    - `scheduler_consume_sendable_int`
+  - Added `scheduler_set_offload_bytes_owned` to centralize bytes-result
+    publication into `OffloadCompletion`.
+- `src/lisp/scheduler_offload_worker.c3`
+  - Routed worker byte input reads through `scheduler_project_shared`.
+  - Routed worker bytes result publication through
+    `scheduler_set_offload_bytes_owned`.
+  - Routed integer sendable publication through `scheduler_publish_sendable_int`.
+  - Preserved specific offload error reasons by avoiding generic request-failed
+    overwrite when an earlier error is already set.
+- `src/lisp/scheduler_wakeup_io.c3`
+  - Routed scheduler-side bytes ownership transfer through
+    `scheduler_take_shared_bytes_owned` and `scheduler_release_shared`.
+  - Routed integer sendable consumption through `scheduler_consume_sendable_int`.
+- `src/lisp/scheduler_primitives.c3`
+  - Replaced direct shared release calls with `scheduler_release_shared` on
+    boundary enqueue/rejection paths.
+- `src/lisp/tests_tests.c3`
+  - Updated boundary completion setup to publish bytes via
+    `scheduler_publish_shared`.
+
+### Validation
+- `c3c build`
+- `c3c build --sanitize=address`
+- `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
+## 2026-03-07: Deduce Explicit Transaction API (`begin`/`commit`/`abort`)
+
+### Summary
+Added explicit user-visible deduce transaction handles and wired transactional write usage
+through unified `(deduce '...)` commands.
+
+### What changed
+- `src/lisp/deduce.c3`
+  - Added `deduce-txn` handle type with deterministic finalizer-backed abort.
+  - Added new dispatcher commands:
+    - `(deduce 'begin db ['read|'write])`
+    - `(deduce 'commit txn)`
+    - `(deduce 'abort txn)`
+  - Added strict deduce-local FFI handle name checking helper to avoid unsafe
+    cross-handle casts.
+- `src/lisp/deduce_relation_ops.c3`
+  - Extended `(deduce 'fact! ...)` and `(deduce 'retract! ...)` to accept optional
+    leading transaction handles:
+    - `(deduce 'fact! relation ...)` (existing path, unchanged)
+    - `(deduce 'fact! txn relation ...)` (new explicit transaction path)
+    - `(deduce 'retract! relation ...)` (existing path, unchanged)
+    - `(deduce 'retract! txn relation ...)` (new explicit transaction path)
+  - Added transaction/relation database mismatch validation.
+  - Added stricter relation handle-type validation on `count`/`scan`/`scan-range`.
+- `src/lisp/tests_tests.c3`
+  - Added regression coverage:
+    - transaction commit visibility,
+    - transaction abort rollback behavior,
+    - transaction vs relation cross-database mismatch failure.
+- `docs/reference/08-libraries.md`
+  - Added deduce transaction usage examples.
+- `docs/plans/library-gaps-todo.md`
+  - Marked Track F explicit transaction API item complete.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
+## 2026-03-07: LMDB Range-Scan API for Deduce
+
+### Summary
+Added explicit bounded range scanning for deduce relations through LMDB cursor semantics.
+
+### What changed
+- `src/lisp/deduce_relation_ops.c3`
+  - Added shared bounded scan helper that performs cursor range-seek and stop-at-upper-bound checks.
+  - Added tuple bound parsing and encoding for `deduce 'scan-range relation lower upper`.
+  - Added strict validation for bound-list arity and tuple/list shape.
+  - Kept `deduce 'scan` behavior unchanged and now routes through the shared scan helper.
+- `src/lisp/deduce.c3`
+  - Added unified dispatch support for `'scan-range`.
+  - Updated command help text and unknown-command error surface to include `'scan-range`.
+- `src/lisp/tests_tests.c3`
+  - Added coverage for bounded scan count behavior, empty-range behavior, and basic invalid bound validation.
+- `docs/reference/08-libraries.md`
+  - Documented the new `deduce 'scan-range` usage example.
+- `docs/plans/library-gaps-todo.md`
+  - Marked Track F LMDB range-scan item as complete.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
+## 2026-03-07: JSON Emit Writer Controls and Parse Matrix
+
+### Summary
+Expanded yyjson emit surface with writer/format controls and completed the parse-option
+behavior matrix for permissive versus strict JSON parsing.
+
+### What changed
+- `csrc/json_helpers.c`
+  - Added `omni_yyjson_mut_write_with_flags` for all writer paths.
+  - Added `omni_yyjson_fp_to_fixed_flag` helper for fixed-point precision selection.
+- `src/lisp/json.c3`
+  - Added `json-emit`/`json-emit-pretty` optional option list parsing (arity `1-2`).
+  - Implemented optional controls for:
+    - `precision`/`fp-precision` (1..15 fixed-point),
+    - `pretty`, `pretty-two-spaces`,
+    - `escape-unicode`, `escape-slashes`, `allow-invalid-unicode`,
+    - `allow-inf-and-nan`, `inf-and-nan-as-null`,
+    - `newline-at-end`,
+    - `fp-to-float`.
+  - Added validation for unknown option keys and invalid value types.
+- `src/lisp/eval_init_primitives.c3`
+  - Updated primitive arities: `json-emit` and `json-emit-pretty` now accept optional options.
+- `src/lisp/tests_tests.c3`
+  - Added parse-option matrix tests for strict defaults and permissive combinations.
+  - Added writer control tests for `json-emit` precision and flag behavior, including negative cases.
+- `docs/reference/07-io-networking.md`
+  - Documented emit options and permissive parse-matrix usage.
+- `docs/reference/11-appendix-primitives.md`
+  - Updated JSON emit arities to `1-2` and notes about writer options.
+- `docs/plans/library-gaps-todo.md`
+  - Marked remaining Track E advanced parity checklist items complete.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
+## 2026-03-07: TOML Parse Option Surface
+
+### Summary
+Added a documented parser-control surface for `toml-parse` so callers can control
+UTF-8 validation behavior and get clearer validation errors for unsupported option
+usage.
+
+### What changed
+- `csrc/toml_helpers.c`
+  - Added `omni_toml_parse_with_options` wrapper that applies TOML parser options per-call
+    (currently `check_utf8`) and restores the previous global parser state after parse.
+- `src/lisp/primitives_data_formats.c3`
+  - Added `TomlParseOptions` with `check-utf8` default `false`.
+  - Added option-list parsing and validation for `toml-parse` (`1-2` arity).
+  - Added error messages for unknown option keys and invalid boolean option values.
+- `src/lisp/tests_tests.c3`
+  - Added coverage for:
+    - supported options list path,
+    - unknown option key rejection,
+    - invalid option value rejection.
+- `docs/reference/11-appendix-primitives.md`
+  - Updated `toml-parse` arity to `1-2` and documented the options list.
+- `docs/plans/library-gaps-todo.md`
+  - Marked TOML advanced control-surface item complete and updated the TOML status row.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+- Targeted runtime smoke check: `LD_LIBRARY_PATH=/usr/local/lib ./build/main /tmp/omni_check_toml_opts.omni`
+
+## 2026-03-07: CSV Emit Quote-Style/Line-Ending Adjustments
+
+### Summary
+Aligned CSV emission behavior and test expectations with the RFC-style output contract:
+line endings are validated and emitted as actual control bytes, and quote-style handling
+does not force quoting of fields that do not require it.
+
+### What changed
+- `src/lisp/primitives_data_formats.c3`
+  - Updated `csv_emit_escaped_cell` so `quote-style 'always` now follows the same
+    quoting trigger condition as minimal output (`delimiter`, `quote-char`, `\n`, `\r`),
+    while still escaping embedded quote characters when quoting occurs.
+- `src/lisp/tests_tests.c3`
+  - Corrected CSV custom line-ending expected string to use actual `\r\n` bytes.
+
+### Validation
+- `c3c build`
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main /tmp/check_exprs.omni` (targeted CSV regressions: line ending, quote style, custom quote char)
+
+## 2026-03-07: Track G CSV Emit/Parse Option Parity
+
+### Summary
+Expanded CSV primitives to support option-driven formatting/parsing controls, including
+RFC-style row end handling toggles and direct emit controls for delimiter, line ending,
+quote behavior, nil rendering, and strict parsing mode.
+
+### What changed
+- `src/lisp/primitives_data_formats.c3`
+  - `csv-parse` now accepts:
+    - delimiter override as string (existing format) or option list
+    - `(strict true|false)` option (`true` default)
+  - `csv-parse` lenient mode (`strict false`) tolerates otherwise strict RFC edge cases:
+    - standalone `\r` line terminators
+    - non-standard quote placement in unquoted fields
+    - trailing characters after a closing quote
+  - added helper support for CSV emit options:
+    - `line-ending` (`"\n"`, `"\r"`, `"\r\n"`),
+    - `quote-char` (single-character string),
+    - `quote-style` (`'minimal`, `'always`, `'none`),
+    - `nil-as` (string or symbol for nil values),
+    - `strict` (default `true`).
+  - `csv-emit` now uses options for delimiter/line endings and emits according to
+    quote style and custom quote character.
+  - strict mode now rejects equal delimiter/quote-char to prevent ambiguous output.
+- `src/lisp/tests_tests.c3`
+  - added CSV test coverage for strict-mode parsing, strict/lenient parity cases,
+    and CSV emit option matrix (`line-ending`, `quote-style`, `nil-as`, `quote-char`).
+- `docs/reference/11-appendix-primitives.md`
+  - updated `csv-parse`/`csv-emit` documentation to include supported options.
+- `docs/plans/library-gaps-todo.md`
+  - marked CSV writer/strict-mode track item complete.
+
+### Validation
+- `c3c build`
+- `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 ./build/main`
+
+## 2026-03-07: Track E JSON Pointer Query
+
+### Summary
+Added JSON Pointer-style traversal for parsed JSON values, including escape
+decoding and direct path indexing into objects/arrays.
+
+### What changed
+- `src/lisp/json.c3`
+  - added `json-get` primitive: `(json-get value pointer)` with 2-argument arity.
+  - added RFC 6901 pointer token parsing with `~0` (`~`) and `~1` (`/`) unescaping.
+  - added traversal behavior:
+    - path `""` returns the input value (root).
+    - `"/foo/bar"` and array index steps traverse dict/array values.
+    - missing path elements return `nil`.
+    - invalid pointer escapes or non-root malformed path return errors.
+- `src/lisp/eval_init_primitives.c3`
+  - registered `json-get` in regular primitive table.
+- `src/lisp/compiler_primitive_variable_hash_table.c3`
+  - added `json-get` (and `json-parse/json-emit/json-emit-pretty`) lookup entries for compiler path generation.
+- `src/lisp/compiler_free_vars_utils.c3`, `src/lisp/compiler_let_set_flat.c3`
+  - marked `json-get` as builtin primitive for inline compiler handling.
+- `src/lisp/tests_tests.c3`
+  - added unit coverage for object/array traversal, escaped keys, root path,
+    missing-path `nil`, invalid pointer syntax.
+- `src/lisp/tests_compiler_tests.c3`
+  - added compile-path coverage for `json-get`.
+- `docs/reference/07-io-networking.md`
+  - added `json-get` usage example.
+- `docs/reference/11-appendix-primitives.md`
+  - added `json-get` to primitive table.
+- `docs/CORE_LIBS_INSPECTION.md`
+  - documented JSON pointer parity completion.
+- `docs/plans/library-gaps-todo.md`
+  - marked Track E JSON pointer item complete.
+
+### Validation
+- Build + full tests
+  - `c3c build`
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
+## 2026-03-07: Track E JSON Parse-Option Parity
+
+### Summary
+Added permissive `json-parse` controls so callers can opt into yyjson non-standard
+syntax modes without relaxing strict mode by default.
+
+### What changed
+- `src/lisp/json.c3`
+  - added optional second argument to `(json-parse json-text [options])` with strict
+    arity validation and option-list parsing.
+  - added supported option symbols: `allow-comments`, `allow-trailing-commas`,
+    `allow-nan-inf` (with backward-compatible aliases `comments`, `trailing-commas`,
+    `nan-inf`, and `naninf`).
+  - mapped parsed options into wrapper flags and passed through to `omni_yyjson_read`.
+  - changed primitive arity registration expectation from fixed `1` to variadic (`-1`) with
+    explicit argument validation in the primitive.
+- `csrc/json_helpers.c`
+  - extended `omni_yyjson_read` to accept explicit read flags and forward them to
+    `yyjson_read`.
+- `src/lisp/eval_init_primitives.c3`
+  - updated `json-parse` registration from arity `1` to variadic (`-1`) to permit options.
+- `src/lisp/tests_tests.c3`
+  - added strict-mode regression coverage for comments/trailing comma/NaN defaults.
+  - added success coverage for each permissive option mode.
+- `docs/reference/07-io-networking.md`
+  - documented permissive `json-parse` examples.
+- `docs/reference/11-appendix-primitives.md`
+  - updated `json-parse` arity metadata to `1-2`.
+- `docs/CORE_LIBS_INSPECTION.md`
+  - documented `json-parse` permissive mode support.
+- `docs/plans/library-gaps-todo.md`
+  - marked Track E parse-option subitems complete.
+
+### Validation
+- Planned: run after current patch batch:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
+## 2026-03-07: TimePoint constructor and predicate primitives
+
+### Summary
+Added explicit `time-point` and `time-point?` primitives to create and inspect
+`TIME_POINT` values directly in Lisp without going through TOML parsing.
+
+### What changed
+- `src/lisp/primitives_data_formats.c3`
+  - added `prim_time_point` with kind-driven constructors:
+    - `(time-point 'date year month day)`
+    - `(time-point 'time hour minute second microsecond)`
+    - `(time-point 'datetime year month day hour minute second microsecond)`
+    - `(time-point 'datetime-tz year month day hour minute second microsecond tz-offset)`
+  - added `symbol_matches` helper for kind dispatch.
+- `src/lisp/primitives_meta_types.c3`
+  - added `prim_time_point_p` (`time-point?`).
+- `src/lisp/eval_init_primitives.c3`
+  - registered `time-point` and `time-point?`.
+- `src/lisp/compiler_primitive_variable_hash_table.c3`
+  - added AOT hash entries for `time-point` and `time-point?`.
+- `src/lisp/compiler_free_vars_utils.c3`
+  - added to compiler primitive allowlists.
+- `src/lisp/compiler_let_set_flat.c3`
+  - added to built-in primitive detection list.
+- `src/lisp/tests_tests.c3`
+  - added end-to-end constructor/predicate coverage and error-path coverage.
+- `src/lisp/tests_compiler_tests.c3`
+  - added compile-path coverage for `(time-point 'date ...)`.
+- `docs/reference/11-appendix-primitives.md`
+  - added TimePoint primitive rows.
+- `src/lisp/tests_tests.c3`
+  - added regression coverage for `time-point` arity mismatch and `datetimetz` alias.
+- `src/lisp/tests_compiler_tests.c3`
+  - added compile-path coverage for `time-point` with `datetimetz` alias.
+
+### Corrections
+- Fixed `time-point` constructor for `'datetime-tz` to require the full 8 value arguments
+  after kind and map `microsecond` and `tz-offset` correctly.
+
+### Validation
+- Added tests in runtime and compiler suites.
+
+## 2026-03-07: TOML Datetime Formatting Adjustment
+
+### Summary
+Normalized `toml-parse` output for datetimes with explicit `+00:00` or `Z` offsets
+so they round-trip as local-date-time strings when offset is zero:
+`1979-05-27T07:32:00` instead of `1979-05-27T07:32:00+00:00`.
+
+### What changed
+- `src/lisp/primitives_data_formats.c3`
+  - updated `toml_timestamp_to_string` to omit offset rendering when `tz == 0`
+    in `TOML_DATETIMETZ` conversion path.
+
+### Validation
+- `c3c build`
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+- Result: `Unified Tests: 1433 passed, 0 failed`
+
+## 2026-03-07: Finwatch idiom expansion — 5 new modules, ~33 idioms showcased
+
+### Summary
+Extended finwatch example with 5 new modules demonstrating ~33 additional Omni Lisp idioms.
+Fixed `procedure?` to include continuations. Discovered and documented several runtime bugs.
+
+### New files
+- `examples/finwatch/types.omni` — [abstract], [alias], type-of, is?, instance?, import 'as, conversions
+- `examples/finwatch/analytics.omni` — sets, zip, flatten, find, remove, any?, every?, string-join, string-contains?
+- `examples/finwatch/events.omni` — coroutine/resume/yield, reset/shift, iterators, delay/force, unless, assert!
+- `examples/finwatch/rules.omni` — define [macro], gensym, eval/read-string, apply, macroexpand, quasiquote
+- `examples/finwatch/alerts.omni` — define [effect], with-handlers, custom effect dispatch
+
+### Modified files
+- `src/lisp/primitives_meta_types.c3` — `procedure?` now returns true for CONTINUATION values
+- `examples/finwatch/smoke_test.omni` — comprehensive tests for all new modules
+- `examples/finwatch/TODO.md` — full idiom coverage checklist (75+ items checked)
+
+### Runtime bugs discovered
+- stream-yield macro: shift is parser-level, macros can't expand to it
+- Nil/false corruption across module scope boundaries in recursive functions
+- let-inside-define-inside-unless scoping failure
+- Continuations are single-shot (multi-shot generator pattern doesn't work)
+
+### Tests
+- Before: 1306 unified, 0 failures
+- After: 1407 unified + 76 compiler, 0 failures
+- Smoke test: all 6 sections pass (original, types, analytics, events, rules, alerts)
+
+## 2026-03-07: Session 263 - Track D5 `char-property`
+
+### Summary
+Completed Track D item 5 by adding `char-property` with symbol-keyed Unicode
+metadata queries, plus regression coverage and doc parity.
+
+### What changed
+- runtime primitive
+  - `src/lisp/unicode.c3`
+    - added `(char-property codepoint property-symbol)` with supported keys:
+      - `category`
+      - `width`
+      - `upper?`
+      - `lower?`
+      - `letter?`
+      - `digit?`
+      - `whitespace?`
+      - `word?`
+    - returns appropriate string/int/boolean values and explicit unknown-key
+      error messaging.
+- primitive registration
+  - `src/lisp/eval_init_primitives.c3`
+    - registered `char-property` with arity `2`.
+- regression tests
+  - `src/lisp/tests_tests.c3`
+    - added coverage for:
+      - category lookup
+      - width lookup
+      - boolean property truthy/nil behavior
+      - unknown property error path
+- docs + plan parity
+  - `docs/reference/11-appendix-primitives.md`
+    - added `char-property`.
+  - `docs/reference/08-libraries.md`
+    - added usage examples.
+  - `docs/CORE_LIBS_INSPECTION.md`
+    - updated utf8proc capability summary.
+  - `docs/plans/library-gaps-todo.md`
+    - marked `Track D / char-property` complete.
+
+### Validation
+- Build + full tests:
+  - `c3c build`
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1407/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 262 - Track D4 `char-width`
+
+### Summary
+Completed Track D item 4 by adding `char-width` (utf8proc display-width hint)
+with regression coverage and reference parity updates.
+
+### What changed
+- runtime primitive
+  - `src/lisp/unicode.c3`
+    - added extern binding `utf8proc_charwidth`.
+    - added primitive `(char-width codepoint)` returning utf8proc width hint
+      (`-1`, `0`, `1`, or `2`).
+- primitive registration
+  - `src/lisp/eval_init_primitives.c3`
+    - registered `char-width` in the Unicode primitives section.
+- regression tests
+  - `src/lisp/tests_tests.c3`
+    - added:
+      - `char-width 65 -> 1`
+      - non-int argument validation test.
+- docs + plan parity
+  - `docs/reference/11-appendix-primitives.md`
+    - added `char-width`.
+  - `docs/reference/08-libraries.md`
+    - added `char-width` example.
+  - `docs/CORE_LIBS_INSPECTION.md`
+    - updated utf8proc capability list.
+  - `docs/plans/library-gaps-todo.md`
+    - marked `Track D / char-width` complete.
+
+### Validation
+- Build + full tests:
+  - `c3c build`
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1401/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 261 - Track D3 `string-titlecase`
+
+### Summary
+Completed Track D item 3 by adding `string-titlecase` as a Unicode-aware
+dispatched primitive with compiler/runtime parity and regression tests.
+
+### What changed
+- runtime primitive
+  - `src/lisp/unicode.c3`
+    - added `prim_string_titlecase_unicode`:
+      - titlecases word starts (`utf8proc_totitle`) and lowercases interior
+        letters (`utf8proc_tolower`) using Unicode category boundaries.
+    - added small internal helpers for dynamic UTF-8 output buffer growth and
+      word-codepoint classification.
+- dispatch + compiler parity
+  - `src/lisp/eval_init_primitives.c3`
+    - increased dispatched primitive count `32 -> 33`.
+    - registered `string-titlecase`.
+  - `src/lisp/compiler_let_set_flat.c3`
+  - `src/lisp/compiler_free_vars_utils.c3`
+  - `src/lisp/compiler_primitive_variable_hash_table.c3`
+    - added `string-titlecase` to builtin primitive detection/hash maps.
+- regression tests
+  - `src/lisp/tests_tests.c3`
+    - added titlecase tests:
+      - `"hello world" -> "Hello World"`
+      - `"hELLO wORLD" -> "Hello World"`
+- docs + plan parity
+  - `docs/reference/11-appendix-primitives.md`
+    - updated dispatched primitive count and added `string-titlecase`.
+  - `docs/reference/08-libraries.md`
+    - added titlecase example in Unicode section.
+  - `docs/CORE_LIBS_INSPECTION.md`
+    - updated utf8proc capability summary.
+  - `docs/plans/library-gaps-todo.md`
+    - marked `Track D / string-titlecase` complete.
+
+### Validation
+- Build + full tests:
+  - `c3c build`
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1399/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 260 - Track D2 `string-casefold`
+
+### Summary
+Completed Track D item 2 by adding a Unicode-aware `string-casefold` primitive
+using utf8proc casefold mapping and wiring compiler/runtime/doc parity.
+
+### What changed
+- runtime primitive
+  - `src/lisp/unicode.c3`
+    - added `prim_string_casefold_unicode`:
+      - `(string-casefold s)` using `utf8proc_map` with
+        `UTF8PROC_STABLE | UTF8PROC_CASEFOLD`.
+- primitive dispatch registration
+  - `src/lisp/eval_init_primitives.c3`
+    - increased dispatched primitive count `31 -> 32`.
+    - registered `string-casefold` as a dispatched string primitive.
+- compiler primitive awareness
+  - `src/lisp/compiler_let_set_flat.c3`
+  - `src/lisp/compiler_free_vars_utils.c3`
+  - `src/lisp/compiler_primitive_variable_hash_table.c3`
+    - added `string-casefold` to builtin primitive detection/hash maps.
+- regression tests
+  - `src/lisp/tests_tests.c3`
+    - added:
+      - ASCII casefold test.
+      - Unicode sharp-s casefold test (`"Straße" -> "strasse"`).
+- docs + plan parity
+  - `docs/reference/11-appendix-primitives.md`
+    - updated dispatched primitive count and added `string-casefold`.
+  - `docs/reference/08-libraries.md`
+    - added Unicode casefold example.
+  - `docs/CORE_LIBS_INSPECTION.md`
+    - updated utf8proc capability summary.
+  - `docs/plans/library-gaps-todo.md`
+    - marked `Track D / string-casefold` complete.
+
+### Validation
+- Build + full tests:
+  - `c3c build`
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1397/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 259 - Track D1 Unicode Buffer Truncation Fix
+
+### Summary
+Completed Track D item 1 by removing the fixed 1024-byte cap in
+`string-upcase`/`string-downcase` and switching to dynamically grown buffers.
+Added long-string and multi-byte regression coverage (Track D test item).
+
+### What changed
+- unicode runtime implementation
+  - `src/lisp/unicode.c3`
+    - replaced fixed stack buffers (`char[1024]`) in:
+      - `prim_string_upcase_unicode`
+      - `prim_string_downcase_unicode`
+    - added dynamic heap buffer growth with `mem::realloc` so conversion does
+      not truncate long inputs.
+    - preserved invalid UTF-8 fallback semantics (copy raw byte and continue).
+- regression tests
+  - `src/lisp/tests_tests.c3`
+    - added long ASCII coverage:
+      - upcase/downcase of 1500-character strings with full length checks.
+    - added long multi-byte coverage:
+      - upcase/downcase of repeated `é`/`É` inputs with codepoint-count checks.
+- docs + plan parity
+  - `docs/plans/library-gaps-todo.md`
+    - marked complete:
+      - `Track D / fixed 1024-byte truncation`
+      - `Track D / long-string and multi-byte Unicode regression tests`
+  - `docs/CORE_LIBS_INSPECTION.md`
+    - updated utf8proc section to note dynamic-buffer behavior and regression
+      coverage.
+
+### Validation
+- Build + full tests:
+  - `c3c build`
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1395/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 258 - Track C3 Checksum Primitives (`adler32`, `crc32`)
+
+### Summary
+Completed the remaining checksum primitive gap in Track C by adding `adler32`
+and `crc32` on top of libdeflate, with known-value regression tests and
+documentation/plan parity updates.
+
+### What changed
+- libdeflate checksum bindings + primitives
+  - `src/lisp/compress.c3`
+    - added extern bindings:
+      - `libdeflate_adler32`
+      - `libdeflate_crc32`
+    - added primitives:
+      - `(adler32 s)` (Adler-32, seed `1`)
+      - `(crc32 s)` (CRC-32, seed `0`)
+- primitive registration
+  - `src/lisp/eval_init_primitives.c3`
+    - registered:
+      - `adler32` (`1`)
+      - `crc32` (`1`)
+- regression coverage
+  - `src/lisp/tests_tests.c3`
+    - added checksum known-value tests:
+      - `adler32 ""` -> `1`
+      - `crc32 ""` -> `0`
+      - `adler32 "hello"` -> `103547413`
+      - `crc32 "hello"` -> `907060870`
+    - added argument validation tests for non-string inputs.
+- docs + parity
+  - `docs/reference/11-appendix-primitives.md`
+    - added `adler32` and `crc32`.
+  - `docs/reference/08-libraries.md`
+    - added checksum examples.
+  - `docs/CORE_LIBS_INSPECTION.md`
+    - updated libdeflate section to include checksum primitives.
+  - `docs/plans/library-gaps-todo.md`
+    - marked `Track C / Add checksum primitives` complete.
+
+### Validation
+- Build + full tests:
+  - `c3c build`
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1391/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 257 - Track C1/C2/C4 libdeflate Expansion + A5 Closure
+
+### Summary
+Closed the remaining Track A5 compatibility item and implemented the next two
+Track C libdeflate gaps: optional compression levels for `gzip`/`deflate` and
+new zlib format primitives (`zlib-compress`, `zlib-decompress`), with
+regression coverage and reference parity updates.
+
+### What changed
+- libdeflate runtime primitives
+  - `src/lisp/compress.c3`
+    - added shared optional-level parser (`1-2` args, level range `0..12`).
+    - updated `gzip` / `deflate` to accept optional level argument.
+    - added zlib extern bindings:
+      - `libdeflate_zlib_compress`
+      - `libdeflate_zlib_compress_bound`
+      - `libdeflate_zlib_decompress`
+    - added language primitives:
+      - `(zlib-compress s [level])`
+      - `(zlib-decompress s [original-size])`
+- primitive registration and arity
+  - `src/lisp/eval_init_primitives.c3`
+    - changed:
+      - `gzip` arity `1 -> -1`
+      - `deflate` arity `1 -> -1`
+    - registered:
+      - `zlib-compress` (`-1`)
+      - `zlib-decompress` (`-1`)
+- regression tests
+  - `src/lisp/tests_tests.c3`
+    - added round-trip tests for:
+      - `gzip` level override
+      - `deflate` level override
+      - `zlib-compress`/`zlib-decompress` (default + explicit level)
+    - added error-path tests for:
+      - non-int compression level
+      - out-of-range level
+      - gzip too-many-args
+      - corrupt zlib payload
+      - corrupt gzip payload
+      - corrupt deflate payload
+- docs and plan parity
+  - `docs/plans/library-gaps-todo.md`
+    - marked A5 compatibility line complete (no backend swap + existing
+      compatibility coverage retained).
+    - marked Track C items complete:
+      - compression levels for `gzip` / `deflate`
+      - zlib format support
+      - round-trip + corrupt payload regression coverage
+  - `docs/reference/11-appendix-primitives.md`
+    - updated compression signatures and added zlib primitives.
+  - `docs/reference/08-libraries.md`
+    - added examples for optional compression levels and zlib round-trip.
+
+### Validation
+- Build:
+  - `c3c build` succeeded.
+- Full test run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1385/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 256 - B6 TLS Integration Matrix Stabilization
+
+### Summary
+Completed the remaining Track B TLS integration test matrix item by fixing
+runtime/wrapper parity bugs and test expression parse issues that caused the new
+integration tests to fail under the unified test harness.
+
+### What changed
+- Fast-path primitive arity parity
+  - `src/lisp/eval_init_primitives.c3`
+    - changed `__raw-tls-server-wrap` registration arity from `3` to `-1`.
+    - rationale: effect fast-path dispatch for wrapper payloads passes packed
+      cons args; fixed-arity registration produced partial application instead
+      of invoking `prim_tls_server_wrap` with packed args.
+- TLS test server script correctness
+  - `tests/lib/tls/server_once.omni`
+    - replaced invalid `lambda (_) ...` parameter names with `lambda (ignored) ...`.
+    - avoids parser errors in spawned child Omni process.
+- TLS integration test expression hardening
+  - `src/lisp/tests_tests.c3`
+    - replaced invalid `lambda (_) ...` with `lambda (ignored) ...` in all new
+      TLS process-based tests.
+    - wrapped multi-step `try-message` lambda bodies in explicit `(begin ...)`.
+    - corrected process wait assertions to read process dict exit status via:
+      `(ref status 'exit-code)`.
+    - increased child server startup wait from `20` ms to `60` ms for stability.
+    - fixed parser-incompatible boolean forms by rewriting n-ary forms into
+      binary nested forms:
+      - `and` -> nested binary `and`
+      - `or` -> nested binary `or`
+
+### Validation
+- Build:
+  - `c3c build` succeeded.
+- Non-ASAN full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1375/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 255 - B5 Optional TLS Session Resumption Policy
+
+### Summary
+Completed Track B item 5 by adding an optional `resume-session?` policy input
+to `tls-connect` and wiring a real in-process BearSSL client session cache
+keyed by hostname.
+
+### What changed
+- BearSSL client session cache helpers (C helper)
+  - `csrc/tls_helpers.c`
+    - added process-local hostname cache for `br_ssl_session_parameters`.
+    - added exported cache APIs:
+      - `omni_tls_client_session_cache_load(client_ctx, hostname)`
+      - `omni_tls_client_session_cache_store(client_ctx, hostname)`
+    - cache access is mutex-protected for safety across runtime threads.
+- TLS runtime surface
+  - `src/lisp/tls.c3`
+    - `tls-connect` now accepts optional final `resume-session?` boolean:
+      - `true` => attempt hostname session resumption.
+      - `false` => disable resumption (default behavior).
+    - expanded argument forms so `tls-connect` supports packed/direct calls:
+      - `(tls-connect tcp host [ca] [client-cert client-key] [resume?])`
+      - direct mTLS without CA is now accepted (`tcp host cert key`).
+    - added strict policy validation:
+      - `resume-session?` must be symbol `true` or `false`.
+    - `TlsHandle` now stores copied session hostname + resume policy bit.
+    - close/finalizer paths now store session parameters back to cache when
+      resumption is enabled.
+    - reset path loads cached session parameters before `br_ssl_client_reset`.
+- Regression coverage
+  - `src/lisp/tests_tests.c3`
+    - added async-suite validation tests:
+      - `tls-connect rejects non-bool resume policy`
+      - `tls-connect accepts bool-only resume policy form`
+      - `tls-connect accepts direct mTLS form without CA`
+      - `tls-connect accepts ca+resume policy form`
+- Documentation / plan parity
+  - `docs/reference/07-io-networking.md`
+    - documented optional `resume-session?` argument and session cache behavior.
+  - `docs/CORE_LIBS_INSPECTION.md`
+    - BearSSL section now notes optional session resumption policy support.
+  - `docs/plans/library-gaps-todo.md`
+    - marked `Track B / Add optional session resumption policy` complete.
+
+### Validation
+- Build:
+  - `c3c build` succeeded.
+- Non-ASAN full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `20/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1365/0`
+    - `compiler`: `76/0`
+- ASAN build:
+  - `c3c build --sanitize=address` succeeded.
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1370/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 254 - B4 Optional mTLS Inputs on `tls-connect`
+
+### Summary
+Completed Track B item 4 by adding optional client certificate/key inputs for
+`tls-connect` so Omni can present a local client identity for mTLS endpoints.
+
+### What changed
+- TLS runtime/client auth wiring
+  - `src/lisp/tls.c3`
+    - `tls-connect` argument handling supports optional client credential paths.
+    - loads PEM client cert chain + PEM RSA private key using existing helper.
+    - configures BearSSL client auth via:
+      - `omni_tls_client_set_single_rsa(...)`
+  - `csrc/tls_helpers.c`
+    - added helper:
+      - `omni_tls_client_set_single_rsa(client_ctx, creds_handle)`
+- Primitive/stdlib compatibility
+  - existing variadic `__raw-tls-connect` path preserves old call sites while
+    enabling optional mTLS arguments.
+- Regression coverage
+  - `src/lisp/tests_tests.c3`
+    - added validation tests:
+      - `tls-connect rejects non-string client cert path`
+      - `tls-connect rejects non-string client key path`
+- Documentation / plan parity
+  - `docs/plans/library-gaps-todo.md`
+    - marked `Track B / Add optional mutual TLS inputs (client cert/key)` complete.
+
+## 2026-03-07: Session 253 - B3 Server-Side TLS API (`tls-server-wrap`)
+
+### Summary
+Completed Track B item 3 by adding a server-side TLS wrapping primitive and
+stdlib surface that can wrap accepted TCP stream handles using a PEM cert chain
+and PEM RSA private key.
+
+### What changed
+- Server credential loading (C helper)
+  - `csrc/tls_helpers.c`
+    - added server credential loader utilities:
+      - `omni_tls_server_context_size()`
+      - `omni_tls_server_creds_load(cert_pem_path, key_pem_path)`
+      - `omni_tls_server_creds_chain(...)`
+      - `omni_tls_server_creds_chain_len(...)`
+      - `omni_tls_server_creds_rsa_key(...)`
+      - `omni_tls_server_creds_free(...)`
+    - implemented PEM parsing for certificate chain and RSA private key decode
+      via BearSSL PEM/X509 key decoders.
+    - added deterministic cleanup for loaded chain/key allocations.
+- Runtime TLS primitive
+  - `src/lisp/tls.c3`
+    - added `prim_tls_server_wrap(...)`:
+      - `(tls-server-wrap tcp-handle cert-pem-path key-pem-path)`
+    - server path now:
+      - loads server creds from helper,
+      - initializes `br_ssl_server_context` with `br_ssl_server_init_full_rsa`,
+      - configures BearSSL I/O buffer and resets server handshake state,
+      - binds to existing `TlsHandle` lifecycle/close behavior.
+    - `TlsHandle` now tracks `server_creds` and frees them in teardown.
+    - `tls-connect` and `tls-server-wrap` now both accept packed or direct arg
+      shape from effect dispatch.
+- Primitive/effect/stdlib wiring
+  - `src/lisp/eval_init_primitives.c3`
+    - registered `__raw-tls-server-wrap` (arity 3).
+    - added fast-path mapping:
+      - `io/tls-server-wrap -> __raw-tls-server-wrap`
+    - fast-path count updated: `47 -> 48`.
+  - `stdlib/stdlib.lisp`
+    - added effect declaration:
+      - `io/tls-server-wrap`
+    - added stdlib wrapper:
+      - `tls-server-wrap`.
+- Regression coverage
+  - `src/lisp/tests_tests.c3`
+    - added async-suite validation tests:
+      - `tls-connect rejects non-string ca bundle path`
+      - `tls-server-wrap rejects non-string cert path`
+      - `tls-server-wrap rejects non-stream handle`
+- Documentation / plan parity
+  - `docs/reference/07-io-networking.md`
+    - added `tls-server-wrap` usage snippet and current RSA-key note.
+  - `docs/reference/11-appendix-primitives.md`
+    - added `__raw-tls-server-wrap` row.
+  - `docs/reference/12-appendix-stdlib.md`
+    - added `tls-server-wrap` wrapper listing.
+  - `docs/plans/library-gaps-todo.md`
+    - marked `Track B / Add server-side TLS` complete.
+
+### Validation
+- Build:
+  - `c3c build` succeeded.
+- Non-ASAN full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1364/0`
+    - `compiler`: `76/0`
+- ASAN build:
+  - `c3c build --sanitize=address` succeeded.
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1364/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 252 - B2 Explicit CA Bundle Option for `tls-connect`
+
+### Summary
+Completed Track B item 2 by adding an explicit CA bundle/PEM path option on
+`tls-connect` while preserving default trust-store behavior.
+
+### What changed
+- TLS primitive API extension
+  - `src/lisp/tls.c3`
+    - `prim_tls_connect` now accepts:
+      - `(tls-connect tcp-handle hostname)`
+      - `(tls-connect tcp-handle hostname ca-bundle-path)`
+    - added type/arity validation for optional `ca-bundle-path` string.
+    - when provided, runtime loads trust anchors explicitly from the provided
+      PEM bundle via `omni_tls_trust_store_load_file(...)`.
+    - default path behavior remains unchanged (`OMNI_TLS_CA_FILE`,
+      `SSL_CERT_FILE`, system bundle fallback).
+- Primitive registration update
+  - `src/lisp/eval_init_primitives.c3`
+    - `__raw-tls-connect` arity updated from fixed `2` to `variadic` (`-1`)
+      for optional CA bundle argument.
+- Stdlib wrapper update
+  - `stdlib/stdlib.lisp`
+    - `tls-connect` wrapper now forwards optional trailing arguments so callers
+      can provide explicit CA bundle path from language surface.
+- Documentation / plan parity
+  - `docs/reference/07-io-networking.md`
+    - TLS section now documents optional third argument for CA bundle path.
+  - `docs/reference/11-appendix-primitives.md`
+    - corrected TLS primitive arities (`__raw-tls-connect` variadic,
+      `__raw-tls-read` variadic, `__raw-tls-write` arity 2).
+  - `docs/plans/library-gaps-todo.md`
+    - marked `Track B / Add explicit CA bundle/PEM options` complete.
+
+### Validation
+- Build:
+  - `c3c build` succeeded.
+- Non-ASAN full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1361/0`
+    - `compiler`: `76/0`
+- ASAN build:
+  - `c3c build --sanitize=address` succeeded.
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1361/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 251 - B1 TLS Trust Store + Certificate Verification (`tls-connect`)
+
+### Summary
+Completed Track B item 1 by wiring BearSSL client initialization to real CA
+trust anchors and enabling certificate verification for runtime TLS client
+paths.
+
+### What changed
+- Runtime trust-store loader (BearSSL trust anchors from PEM bundle)
+  - `csrc/tls_helpers.c`
+    - expanded TLS helper surface from socket callbacks to include:
+      - `omni_tls_trust_store_load_file(path)`
+      - `omni_tls_trust_store_load_default()`
+      - `omni_tls_trust_store_get_anchors(store)`
+      - `omni_tls_trust_store_get_anchor_count(store)`
+      - `omni_tls_trust_store_free(store)`
+    - implemented PEM CA bundle parsing with BearSSL decoders and conversion
+      into `br_x509_trust_anchor` arrays.
+    - default CA resolution order:
+      - `OMNI_TLS_CA_FILE`
+      - `SSL_CERT_FILE`
+      - common system bundle paths (`/etc/ssl/certs/ca-certificates.crt`, etc.).
+- `tls-connect` trust-anchor enforcement
+  - `src/lisp/tls.c3`
+    - `TlsHandle` now owns a trust-store handle for connection lifetime.
+    - `prim_tls_connect` now:
+      - loads default trust store,
+      - requires non-empty anchor set,
+      - passes anchors to `br_ssl_client_init_full(...)`,
+      - validates `br_ssl_client_reset(...)` success before returning handle.
+    - teardown now frees trust-store allocations alongside BearSSL buffers.
+- HTTPS offload parity
+  - `src/lisp/scheduler_offload_worker.c3`
+    - internal HTTPS (`offload 'http-get`) now initializes BearSSL with loaded
+      trust anchors (instead of `null,0`).
+    - added trust-store cleanup in worker path.
+- Documentation / plan parity
+  - `docs/plans/library-gaps-todo.md`
+    - marked `Track B / Add certificate verification and trust store support in tls-connect` complete.
+  - `docs/reference/07-io-networking.md`
+    - documented TLS trust-store resolution order for `tls-connect`.
+  - `docs/CORE_LIBS_INSPECTION.md`
+    - updated BearSSL status note from “skips cert verification” to verified
+      trust-store-backed behavior.
+
+### Validation
+- Build:
+  - `c3c build` succeeded.
+- Non-ASAN full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1361/0`
+    - `compiler`: `76/0`
+- ASAN build:
+  - `c3c build --sanitize=address` succeeded.
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1361/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 250 - A6 Hardening Verification + Boundary Script Pass
+
+### Summary
+Completed A6 hardening verification by confirming existing scheduler stress
+coverage, running the required build/test matrix, and passing the boundary
+hardening profile.
+
+### What changed
+- Plan/status normalization
+  - `docs/plans/library-gaps-todo.md`
+    - marked `A6` checklist complete:
+      - stress coverage,
+      - repeated-run stability verification,
+      - required command matrix execution.
+    - marked completion gate:
+      - `ASAN + full test suite + boundary hardening script pass`.
+- Stress coverage parity audit (existing tests already present)
+  - `src/lisp/tests_tests.c3`
+    - wakeup ordering/interleave stress:
+      - `run_scheduler_wakeup_offload_interleave_tests`
+    - duplicate ready-event handling stress:
+      - `run_scheduler_duplicate_offload_ready_boundary_tests`
+    - cancellation/offload teardown stress:
+      - `run_scheduler_offload_cancel_boundary_tests`
+    - additional wakeup/offload error + boundary restore stress:
+      - `run_scheduler_wakeup_offload_error_boundary_tests`
+
+### Validation
+- Build:
+  - `c3c build` succeeded.
+- Non-ASAN full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1361/0`
+    - `compiler`: `76/0`
+- ASAN build:
+  - `c3c build --sanitize=address` succeeded.
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `20/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1360/0`
+    - `compiler`: `76/0`
+- Boundary hardening profile:
+  - `scripts/run_boundary_hardening.sh` succeeded (`RC=0`).
+  - Summary artifacts:
+    - `build/boundary_hardening_summary.json`
+    - `build/boundary_hardening_normal.log`
+    - `build/boundary_hardening_asan.log`
+  - Additional harness summary:
+    - `OMNI_TEST_SUMMARY suite=stack_affinity_harness pass=1 fail=0`
+
+## 2026-03-07: Session 249 - A5 Backend Policy Decision (Retain Worker Queue)
+
+### Summary
+Completed A5 backend-policy decision by selecting the existing offload worker
+queue as the current runtime backend for CPU workloads.
+
+### Decision
+- Keep existing worker queue backend for `offload` / `thread-spawn` in this
+  cycle.
+- Defer potential `uv_queue_work` migration until after A6 hardening/stress
+  data confirms scheduler/wakeup stability goals.
+
+### What changed
+- Plan policy finalized
+  - `docs/plans/library-gaps-todo.md`
+    - marked `A5 / Decide backend policy` complete.
+    - documented explicit decision + rationale in-line.
+- Reference documentation updated
+  - `docs/reference/09-concurrency-ffi.md`
+    - added backend-policy note clarifying current worker-queue backend and
+      no `uv_queue_work` switch yet.
+
+### Validation
+- Documentation-only change (no runtime/code-path modification).
+
+## 2026-03-07: Session 248 - A5 CPU-Bound Offload Policy Enforcement (Public Surface)
+
+### Summary
+Completed the first A5 item by enforcing CPU-bound policy on public
+`offload`/`thread-spawn` surfaces while preserving internal runtime I/O offload
+paths needed by current fiber fallback behavior.
+
+### What changed
+- Public offload policy gate
+  - `src/lisp/scheduler_state_offload.c3`
+    - extended `scheduler_build_offload_work(..., allow_internal_io_ops)` with
+      policy-aware parsing.
+    - public policy now rejects internal runtime I/O ops:
+      - `accept-fd`
+      - `tcp-connect`
+      - `http-get`
+    - added explicit error code:
+      - `scheduler/offload-op-cpu-only`
+- Primitive routing split (public vs internal)
+  - `src/lisp/scheduler_primitives.c3`
+    - added shared execution helper:
+      - `scheduler_execute_offload_job(job, allow_internal_io_ops, interp)`
+    - added internal runtime entrypoint:
+      - `scheduler_run_internal_io_offload_job(job, interp)`
+    - `prim_offload` now enforces public CPU-bound policy (`allow_internal_io_ops=false`).
+    - `prim_thread_spawn` parsing now enforces public CPU-bound policy.
+- Internal runtime call-site migration
+  - `src/lisp/async.c3`
+    - fiber fallback in `tcp-connect` and `tcp-accept` now calls
+      `scheduler_run_internal_io_offload_job(...)` instead of public `prim_offload`.
+  - `src/lisp/http.c3`
+    - fiber path in `http-get` now calls
+      `scheduler_run_internal_io_offload_job(...)` instead of public `prim_offload`.
+- Regression coverage
+  - `src/lisp/tests_tests.c3`
+    - added:
+      - `offload rejects internal io op`
+      - `thread-spawn rejects internal io op`
+  - `src/lisp/tests_advanced_tests.c3`
+    - added payload code assertion:
+      - `scheduler offload cpu-only payload code` -> `scheduler/offload-op-cpu-only`
+- Documentation and plan parity
+  - `docs/reference/09-concurrency-ffi.md`
+    - corrected offload/thread-spawn examples to actual CPU-bound usage (`gzip`/`deflate`/`sleep-ms`).
+    - documented internal-only runtime I/O offload ops.
+  - `docs/reference/07-io-networking.md`
+    - clarified `tcp-accept` fiber offload uses internal runtime offload path.
+  - `docs/plans/library-gaps-todo.md`
+    - marked `A5 / Keep offload for CPU-bound work` complete.
+
+### Validation
+- Build:
+  - `c3c build` succeeded.
+- Non-ASAN full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1361/0`
+    - `compiler`: `76/0`
+- ASAN build:
+  - `c3c build --sanitize=address` succeeded.
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `20/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1360/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 247 - A4 Signal Primitive Surface (`signal-handle` / `signal-unhandle`)
+
+### Summary
+Completed A4 signal integration by adding libuv-backed signal watcher
+primitives and callback delivery wiring in runtime evaluation/scheduler loops.
+
+### What changed
+- libuv signal wrapper substrate
+  - `csrc/uv_helpers.c`
+    - added signal wrapper API:
+      - `omni_uv_signal_start(signum, out_watch)`
+      - `omni_uv_signal_poll_pending(signal_watch)`
+      - `omni_uv_signal_stop(signal_watch)`
+    - each watcher owns an internal libuv loop + `uv_signal_t` and tracks
+      pending deliveries.
+- Runtime signal primitives + callback dispatch
+  - `src/lisp/async.c3`
+    - added `SignalHandle` FFI wrapper type with deterministic close/finalizer.
+    - added primitives:
+      - `(signal-handle sig callback)`
+      - `(signal-unhandle handle)`
+    - callback value is promoted to root ownership for cross-boundary safety.
+    - added pending-signal dispatch path:
+      - `dispatch_pending_signal_callbacks(interp)`
+      - callback invocation via `jit_apply_value(callback, signum)`.
+    - `signal-unhandle` drains pending deliveries before teardown.
+- Runtime loop integration
+  - `src/lisp/eval_run_pipeline.c3`
+    - dispatches pending signal callbacks at run/program boundaries.
+  - `src/lisp/scheduler_primitives.c3`
+    - dispatches pending signal callbacks during scheduler rounds.
+- Primitive/effect registration
+  - `src/lisp/eval_init_primitives.c3`
+    - registered:
+      - `__raw-signal-handle`
+      - `__raw-signal-unhandle`
+    - added effect fast-path mappings:
+      - `io/signal-handle -> __raw-signal-handle`
+      - `io/signal-unhandle -> __raw-signal-unhandle`
+    - fast-path count updated: `45 -> 47`.
+- Stdlib wiring
+  - `stdlib/stdlib.lisp`
+    - added effect declarations:
+      - `io/signal-handle`, `io/signal-unhandle`
+    - added wrappers:
+      - `signal-handle`, `signal-unhandle`
+- Regression coverage
+  - `src/lisp/tests_advanced_tests.c3`
+    - added:
+      - `signal handle/unhandle callback`
+    - test sends `SIGUSR1` to parent process via shell, validates callback side
+      effect, and confirms clean unhandle.
+- Documentation parity
+  - `docs/reference/07-io-networking.md`
+    - added Signals section with usage snippet and semantics.
+  - `docs/reference/11-appendix-primitives.md`
+    - added `__raw-signal-handle` / `__raw-signal-unhandle`.
+  - `docs/reference/12-appendix-stdlib.md`
+    - added `signal-handle` / `signal-unhandle` to wrapper list.
+  - `docs/plans/library-gaps-todo.md`
+    - marked `A4 / Add signal primitives` complete.
+
+### Validation
+- Build:
+  - `c3c build` succeeded.
+- Non-ASAN full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1358/0`
+    - `compiler`: `76/0`
+- ASAN build:
+  - `c3c build --sanitize=address` succeeded.
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `20/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1357/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 246 - A4 Process `env` Override Support
+
+### Summary
+Completed the remaining A4 process primitive gap by wiring `process-spawn` env
+override through runtime argument parsing into libuv process spawn options.
+
+### What changed
+- Runtime process env plumbing
+  - `src/lisp/async.c3`
+    - updated `prim_process_spawn` to accept:
+      - `env = nil` (inherit parent process environment), or
+      - `env` as list/array of strings/symbols (`KEY=VALUE` entries).
+    - added env sequence validation and conversion:
+      - `io/process-spawn-env-must-be-string-sequence`
+      - message: `process-spawn: env must be nil, list, or array of strings/symbols`
+    - builds and passes a null-terminated `char** envp` to:
+      - `omni_uv_process_spawn(file, argv, envp, ...)`.
+- Regression coverage update
+  - `src/lisp/tests_advanced_tests.c3`
+    - replaced prior rejection test with positive behavior test:
+      - `process spawn env override`
+    - verifies env entry (`OMNI_PROC_TEST=ok`) is visible in child process and
+      exit code is successful.
+- Documentation/plan parity
+  - `docs/reference/07-io-networking.md`
+    - removed old env limitation note.
+    - documented `env` semantics for `process-spawn` (`nil` inherit vs explicit override).
+  - `docs/plans/library-gaps-todo.md`
+    - marked `A4 / Add process primitives` complete.
+
+### Validation
+- Build:
+  - `c3c build` succeeded.
+- Non-ASAN full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1357/0`
+    - `compiler`: `76/0`
+- ASAN build:
+  - `c3c build --sanitize=address` succeeded.
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `20/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1356/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 245 - A4 Process Primitive Surface (libuv-backed spawn/wait/kill + stdio handles)
+
+### Summary
+Implemented the next Track A slice by adding process primitives wired through a
+libuv-backed native wrapper and exposing process stdio as existing `fs-handle`
+values.
+
+### What changed
+- libuv process wrapper substrate
+  - `csrc/uv_helpers.c`
+    - added process wrapper API:
+      - `omni_uv_process_spawn(file, argv, envp, out_process, stdin_fd, stdout_fd, stderr_fd)`
+      - `omni_uv_process_wait(process, exit_status, term_signal)`
+      - `omni_uv_process_kill(process, sig)`
+      - `omni_uv_process_pid(process)`
+      - `omni_uv_process_close(process)`
+    - implementation uses `uv_spawn` + `uv_process_t` lifecycle with explicit close/wait cleanup.
+- Runtime primitives
+  - `src/lisp/async.c3`
+    - added process-handle lifecycle (`ProcessHandle`) with deterministic finalizer close.
+    - added primitives:
+      - `(process-spawn cmd args env)`
+      - `(process-wait handle-or-process-dict)`
+      - `(process-kill handle-or-process-dict sig)`
+    - `process-spawn` returns dict:
+      - `'handle` process handle
+      - `'pid` child pid
+      - `'stdin`/`'stdout`/`'stderr` as `fs-handle` values (compatible with `fs-read`/`fs-write`/`fs-close`)
+    - compatibility: `process-wait`/`process-kill` accept either direct process handle or the returned process dict.
+    - current limitation made explicit:
+      - `env` override must be `nil` for now (`io/process-spawn-env-not-supported`).
+- Primitive/effect registration
+  - `src/lisp/eval_init_primitives.c3`
+    - registered:
+      - `__raw-process-spawn`
+      - `__raw-process-wait`
+      - `__raw-process-kill`
+    - added effect fast-path mappings:
+      - `io/process-spawn -> __raw-process-spawn`
+      - `io/process-wait -> __raw-process-wait`
+      - `io/process-kill -> __raw-process-kill`
+    - fast-path count updated: `42 -> 45`.
+- Stdlib wiring
+  - `stdlib/stdlib.lisp`
+    - added effect declarations:
+      - `io/process-spawn`, `io/process-wait`, `io/process-kill`
+    - added wrappers:
+      - `process-spawn`, `process-wait`, `process-kill`
+    - fixed `process-kill` wrapper payload shape to packed list form.
+- Regression coverage
+  - `src/lisp/tests_advanced_tests.c3`
+    - added:
+      - `process spawn stdio + wait`
+      - `process spawn env currently rejected`
+      - `process kill terminates child`
+- Documentation parity
+  - `docs/reference/07-io-networking.md`
+    - added UDP, Unix socket, and process control sections.
+  - `docs/reference/11-appendix-primitives.md`
+    - added `__raw-udp-*`, `__raw-pipe-*`, `__raw-process-*` entries and corrected arities.
+  - `docs/reference/12-appendix-stdlib.md`
+    - added `udp-*`, `pipe-*`, and `process-*` wrappers.
+  - `docs/plans/library-gaps-todo.md`
+    - marked `A4 / expose process stdio handles` complete.
+    - left `A4 / process primitives` open due pending env override support.
+
+### Validation
+- Build:
+  - `c3c build` succeeded.
+- Non-ASAN full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1357/0`
+    - `compiler`: `76/0`
+- ASAN build:
+  - `c3c build --sanitize=address` succeeded.
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `20/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1356/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 244 - A3 Readiness/Wakeup Unification (`udp-recv` Fiber Path)
+
+### Summary
+Completed the remaining A3 socket-readiness unification item by routing
+`udp-recv` fiber execution through the same libuv poll + reliable wakeup bridge
+used by `tcp-read`.
+
+### What changed
+- Scheduler async bridge reuse
+  - `src/lisp/scheduler_tcp_async_bridge.c3`
+    - added `scheduler_try_async_udp_recv(fd, max_bytes, interp)` as a direct
+      bridge reuse over the existing async fd-read path (`scheduler_try_async_tcp_read`).
+- Runtime UDP receive path
+  - `src/lisp/async.c3`
+    - `prim_udp_recv` now attempts scheduler async bridge first in fiber context:
+      - when bridge handles the call, returns resumed async result;
+      - otherwise falls back to existing blocking recv path (non-fiber / no-loop cases).
+- Regression coverage
+  - `src/lisp/tests_tests.c3`
+    - added async regression:
+      - `udp-recv in fiber via async bridge`
+    - scenario:
+      - bind receiver UDP socket,
+      - spawn fiber blocked on `udp-recv`,
+      - send datagram from sibling socket,
+      - await fiber result and assert payload parity.
+- Plan status
+  - `docs/plans/library-gaps-todo.md`
+    - marked `A3 / Unify socket readiness and wakeup handling with scheduler barrier paths` complete.
+
+### Validation
+- Build: `c3c build` succeeded.
+- ASAN build: `c3c build --sanitize=address` succeeded.
+- Non-ASAN full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1354/0`
+    - `compiler`: `76/0`
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `20/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1353/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 243 - A3 Unix Pipe Surface (`pipe-connect` / `pipe-listen`)
+
+### Summary
+Completed the next A3 networking item by adding Unix domain socket primitives
+and stdlib/effect wiring, reusing existing TCP accept/read/write/close flow for
+stream semantics.
+
+### What changed
+- Runtime primitives
+  - `src/lisp/async.c3`
+    - added Unix-domain socket interop:
+      - `SockaddrUn` layout
+      - `pipe_connect_fd`
+      - `pipe_listen_fd`
+    - added primitives:
+      - `(pipe-connect path)`
+      - `(pipe-listen path)`
+    - `pipe-connect` returns a stream `tcp-handle` (compatible with
+      `tcp-read`/`tcp-write`/`tcp-close`).
+    - `pipe-listen` returns a listener `tcp-handle` (compatible with
+      `tcp-accept`).
+    - listener setup performs best-effort stale socket-path cleanup via
+      `unlink` before `bind`.
+- Primitive/effect registration
+  - `src/lisp/eval_init_primitives.c3`
+    - registered `__raw-pipe-connect`, `__raw-pipe-listen`.
+    - mapped effect fast paths:
+      - `io/pipe-connect -> __raw-pipe-connect`
+      - `io/pipe-listen -> __raw-pipe-listen`
+    - updated fast-path registry count `40 -> 42`.
+- Stdlib surface
+  - `stdlib/stdlib.lisp`
+    - added effect declarations:
+      - `io/pipe-connect`, `io/pipe-listen`
+    - added wrappers:
+      - `pipe-connect`, `pipe-listen`
+- Tests
+  - `src/lisp/tests_advanced_tests.c3`
+    - added `pipe loopback roundtrip` regression using:
+      - `pipe-listen` + `pipe-connect` + `tcp-accept` + `tcp-write` + `tcp-read`.
+- Plan status
+  - `docs/plans/library-gaps-todo.md`
+    - marked `A3 / Add Unix domain socket/pipe support` complete.
+
+### Validation
+- Build: `c3c build` succeeded.
+- ASAN build: `c3c build --sanitize=address` succeeded.
+- Non-ASAN full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1353/0`
+    - `compiler`: `76/0`
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `20/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1352/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 242 - A2 Effect-Wrapper Closure + A3 UDP Primitive Surface
+
+### Summary
+Completed the next integration slice by closing A2 typed effect/wrapper parity
+for filesystem operations and implementing the A3 UDP primitive surface at the
+runtime + stdlib effect boundary.
+
+### What changed
+- Runtime networking primitives
+  - `src/lisp/async.c3`
+    - added UDP primitives:
+      - `(udp-socket)`
+      - `(udp-bind handle host port)`
+      - `(udp-send handle host port data)`
+      - `(udp-recv handle [max-bytes])`
+      - `(udp-close handle)`
+    - added deterministic `UdpHandle` finalizer close path.
+    - added shared IPv4 sockaddr helper (`fill_sockaddr_ipv4`) and reused it
+      in TCP listen setup.
+    - accepted both unpacked and packed effect payload call-shapes for
+      `udp-bind`/`udp-send` (variadic fast-path compatibility).
+- Primitive registration and effect fast-path wiring
+  - `src/lisp/eval_init_primitives.c3`
+    - registered `__raw-udp-*` primitives.
+    - added `io/udp-* -> __raw-udp-*` fast-path mapping.
+    - increased fast-path table count from `35` to `40`.
+- Stdlib typed effects and wrappers
+  - `stdlib/stdlib.lisp`
+    - added effect declarations:
+      - `io/udp-socket`, `io/udp-bind`, `io/udp-send`, `io/udp-recv`,
+        `io/udp-close`
+    - added wrappers:
+      - `udp-socket`, `udp-bind`, `udp-send`, `udp-recv`, `udp-close`
+- FS wrapper compatibility hardening
+  - `src/lisp/prim_io.c3`
+    - updated `prim_fs_open` to accept packed effect-payload shape
+      (`(signal io/fs-open (cons ...))`) in addition to unpacked direct args.
+    - this closes the runtime mismatch introduced by A2 wrapper routing and
+      keeps `fs-open` stable through the effect fast path.
+- Tests
+  - `src/lisp/tests_advanced_tests.c3`
+    - added UDP regressions:
+      - `udp socket create/close`
+      - `udp loopback roundtrip`
+- Plan status
+  - `docs/plans/library-gaps-todo.md`
+    - marked `A2 / Wire stdlib wrappers and typed effects` complete.
+    - marked `A3 / Add UDP support` complete.
+
+### Validation
+- Build: `c3c build` succeeded.
+- ASAN build: `c3c build --sanitize=address` succeeded.
+- Non-ASAN full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1352/0`
+    - `compiler`: `76/0`
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `20/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1351/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 241 - A2 Filesystem Primitive Surface (`uv_fs_*`) Baseline
+
+### Summary
+Continued to the next roadmap item after A1 by adding the raw filesystem
+primitive surface on top of libuv FS APIs and validating deterministic file
+handle close/finalizer behavior.
+
+### What changed
+- C shim additions
+  - `csrc/uv_helpers.c`
+    - added synchronous libuv FS wrappers:
+      - `omni_uv_fs_open`, `omni_uv_fs_close`, `omni_uv_fs_read`,
+        `omni_uv_fs_write`, `omni_uv_fs_stat_basic`, `omni_uv_fs_scandir_join`,
+        `omni_uv_fs_rename`, `omni_uv_fs_unlink`.
+- Runtime primitive wiring
+  - `src/lisp/prim_io.c3`
+    - added raw primitives:
+      - `(fs-open path flags [mode])`
+      - `(fs-read handle n)`
+      - `(fs-write handle data)`
+      - `(fs-close handle)`
+      - `(fs-stat path)`
+      - `(fs-readdir path)`
+      - `(fs-rename src dst)`
+      - `(fs-unlink path)`
+    - added `FsHandle` FFI wrapper with finalizer-based close path to keep file
+      descriptor lifecycle deterministic.
+  - `src/lisp/eval_init_primitives.c3`
+    - registered `fs-*` primitives.
+  - `src/lisp/compiler_primitive_variable_hash_table.c3`
+    - added AOT primitive hash entries for `fs-*` names.
+- Validation tests
+  - `src/lisp/tests_advanced_tests.c3`
+    - added fs round-trip, `fs-readdir` array-shape, and `fs-stat` dict-shape
+      regressions.
+
+### Plan status updates
+- `docs/plans/library-gaps-todo.md`
+  - A2:
+    - `Add raw primitives`: complete.
+    - `Ensure file handles have deterministic close/finalizer behavior`: complete.
+    - `Wire stdlib wrappers and typed effects`: still pending.
+
+### Validation
+- Build: `c3c build` succeeded.
+- Non-ASAN full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1350/0`
+    - `compiler`: `76/0`
+- ASAN build: `c3c build --sanitize=address` succeeded.
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `20/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1349/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 240 - A1 libuv Timers + DNS Async Path Completion
+
+### Summary
+Completed Track A1 of the library integration roadmap by wiring `io/async-sleep`
+and `io/dns-resolve` fiber paths through libuv (`uv_timer` / `uv_getaddrinfo`)
+with scheduler-aware pending-op cleanup.
+
+### What changed
+- Runtime integration
+  - `src/lisp/async.c3`
+    - added libuv DNS async request bindings via C shim hooks.
+    - routed fiber `dns-resolve` through async `uv_getaddrinfo` + fiber yield/resume.
+    - preserved explicit non-fiber blocking fallback (`getaddrinfo`).
+  - `src/lisp/scheduler_state_offload.c3`
+    - added `PendingDnsResolve`, scheduler `pending_dns` table, and `WAKEUP_DNS_DONE`.
+  - `src/lisp/scheduler_wakeup_io.c3`
+    - added DNS callback (`scheduler_uv_getaddrinfo_cb`) and wakeup dispatch.
+    - added pending DNS close/cancel lifecycle (`scheduler_close_pending_dns`).
+    - added deterministic blocked-fiber resume on DNS completion.
+  - `src/lisp/scheduler_io_fiber_core.c3`
+    - initialized/reset `pending_sleeps` + `pending_dns` per fiber.
+    - fiber completion now closes pending sleep + DNS state.
+  - `src/lisp/scheduler_primitives.c3`
+    - abort/reset paths now close pending DNS operations in addition to read/offload/sleep.
+- C interop support
+  - `csrc/uv_helpers.c` (new)
+    - added `uv_getaddrinfo` request allocation/start/cancel helpers.
+    - added req `data` accessors for callback-time host-buffer cleanup.
+    - added `uv_freeaddrinfo` shim.
+  - `project.json`
+    - added `csrc/uv_helpers.c` to target `c-sources`.
+
+### Plan status updates
+- `docs/plans/library-gaps-todo.md`
+  - A0 map mirror task marked complete.
+  - `io/dns-resolve` and `io/async-sleep` reclassified to `done-libuv`.
+  - A1 checklist marked complete.
+  - Snapshot updated:
+    - `done-libuv`: `2/27`
+    - `partial-libuv`: `6/27`
+    - `non-libuv`: `19/27`
+
+### Validation
+- Build: `c3c build` succeeded.
+- ASAN build: `c3c build --sanitize=address` succeeded.
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `20/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1346/0`
+    - `compiler`: `76/0`
+
+## 2026-03-07: Session 239 - Library Integration Plan Baseline (A0 `io/*` Backend Map)
+
+### Summary
+Recorded the Track A0 baseline for the libuv-first integration plan by mapping
+all `io/*` effects to current runtime backends and status tags.
+
+### What changed
+- `docs/plans/library-gaps-todo.md`
+  - Reframed plan as a libuv-first integration roadmap plus other library
+    tracks (BearSSL/libdeflate/utf8proc/yyjson/LMDB).
+  - Added explicit A0 inventory table for all 27 `io/*` effects.
+  - Added status classification snapshot:
+    - `done-libuv`: `0/27`
+    - `partial-libuv`: `6/27`
+    - `non-libuv`: `21/27`
+
+### Notes
+- This is planning/inventory work only; no runtime behavior change in this
+  session segment.
+- Next implementation target is A1 (timers + DNS).
+
+## 2026-03-07: Session 238 - ASAN Stack-Buffer-Overflow Guardrail in Symbol Interning
+
+### Summary
+Fixed a deterministic ASAN crash on the signal/type-check error path that
+terminated inside `SymbolTable.intern` during payload-code interning.
+
+Observed crash chain:
+- `src/lisp/jit_jit_handle_signal.c3:77` (`runtime/effect-arg-mismatch`)
+- `src/lisp/value_constructors.c3:466` (`raise_error_with_payload_names`)
+- `src/lisp/value_symbol_table.c3:114` (`mem::malloc(len + 1)`)
+
+ASAN reported stack-buffer-overflow at allocation time from an unsafe/corrupted
+symbol slice reaching `intern`.
+
+### What changed
+- `src/lisp/value_symbol_table.c3`
+  - Added defensive null-state checks in `SymbolTable.intern`:
+    - reject null table pointers (`self`, `entries`, `hash_index`)
+    - reject null `name.ptr`
+  - Added explicit symbol-length guard (`name.len > 8192` => reject with
+    `INVALID_SYMBOL_ID`) to block invalid ABI/corrupted slices from entering
+    allocator/copy paths.
+  - Normalized lookup/compare loop to reuse validated local `len`.
+
+### Validation
+- ASAN build: `c3c build --sanitize=address` succeeded.
+- ASAN full run:
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `21/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1347/0`
+    - `compiler`: `76/0`
+  - No ASAN crash.
+- Normal build: `c3c build` succeeded.
+- Normal full run:
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+  - Results:
+    - `stack_engine`: `20/0`
+    - `scope_region`: `51/0`
+    - `unified`: `1346/0`
+    - `compiler`: `76/0`
+
 ## 2026-03-06: Session 237 - Fix Method Table Idempotent Re-define (Ambiguity Bug)
 
 ### Summary

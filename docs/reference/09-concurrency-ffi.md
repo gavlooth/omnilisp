@@ -9,8 +9,8 @@
 ### Spawn & Await
 
 ```lisp
-;; Spawn work on a background thread
-(define task-id (thread-spawn 'compute-fib 40))
+;; Spawn CPU-bound work on the worker queue
+(define task-id (thread-spawn 'gzip "payload"))
 
 ;; Wait for result
 (define result (thread-join task-id))
@@ -43,9 +43,34 @@
 ### Offload
 
 ```lisp
-;; Run a named function on a worker thread
-(offload 'expensive-computation arg1 arg2)
+;; Run CPU-bound work on the worker queue
+(offload 'gzip "payload")
+(offload 'deflate "payload")
+
+;; Test/scheduler utility
+(offload 'sleep-ms 5)
 ```
+
+### Concurrency Boundary Model
+
+Concurrency crossings are intentionally narrow:
+
+- Scheduler and local evaluation state stay thread-affine (`Value*`, `ScopeRegion*`,
+  `StackCtx*`, closures, continuations).
+- worker-thread payloads should be sendable copies/scalars or explicit foreign
+  handles that do not own Omni value graphs.
+- completion returns should pass through scheduler boundary helpers before becoming
+  local `Value*` again.
+
+`SharedBlob` is a legacy byte transport object retained only for migration
+history. Production concurrency boundaries use `SharedHandle(kind=BLOB)` for
+byte-sharing payload transport.
+
+`offload` and `thread-spawn` are CPU-bound surfaces. Internal runtime I/O jobs
+(`accept-fd`, `tcp-connect`, `http-get`) are not part of the public API.
+
+Current backend policy: CPU offload jobs run on Omni's existing worker queue.
+The runtime has not switched this surface to `uv_queue_work` yet.
 
 All concurrency primitives go through effects and can be intercepted.
 

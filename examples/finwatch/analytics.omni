@@ -1,0 +1,96 @@
+;; analytics.omni — Portfolio analytics with sets, zips, and collection HOFs
+;;
+;; Idioms demonstrated:
+;;   set-add / set-contains? / set-remove / set-size / set->list — set operations
+;;   zip              — pair historical vs current prices
+;;   flatten          — flatten nested sector groupings
+;;   find             — first matching element
+;;   remove           — filter inverse
+;;   any?             — check if any element satisfies predicate
+;;   every?           — check if all elements satisfy predicate
+;;   string-join      — join string list with separator
+;;   string-contains? — substring search
+
+(module analytics
+  (export analytics/unique-symbols
+          analytics/add-symbol
+          analytics/remove-symbol
+          analytics/price-deltas
+          analytics/flatten-sectors
+          analytics/find-holding
+          analytics/exclude-symbols
+          analytics/any-above-threshold?
+          analytics/all-have-prices?
+          analytics/format-symbols
+          analytics/search-news))
+
+(import "models.omni" 'all)
+(import "cache.omni"  'all)
+
+;; ── Symbol tracking via sets ────────────────────────────────────────────────
+
+;; Unique symbol watchlist — sets are dicts with true values.
+(define watchlist {})
+
+;; (analytics/add-symbol sym) — add a symbol to the watchlist set.
+(define (analytics/add-symbol sym)
+  (set-add watchlist sym))
+
+;; (analytics/remove-symbol sym) — remove a symbol from the watchlist.
+(define (analytics/remove-symbol sym)
+  (set-remove watchlist sym))
+
+;; (analytics/unique-symbols) — return the current watchlist as a list.
+(define (analytics/unique-symbols)
+  (set->list watchlist))
+
+;; ── Price comparison via zip ────────────────────────────────────────────────
+
+;; (analytics/price-deltas historical current) — zip two price lists, compute deltas.
+;; Each list element is (cons symbol price). Returns list of (symbol . delta) pairs.
+(define (analytics/price-deltas historical current)
+  (map (lambda (pair)
+         (let (h (car pair) c (cdr pair))
+           (cons (car h) (- (cdr c) (cdr h)))))
+       (zip historical current)))
+
+;; ── Sector groupings via flatten ────────────────────────────────────────────
+
+;; (analytics/flatten-sectors sectors) — flatten nested sector lists into one flat list.
+;; Input: (("BTC" "ETH") ("EUR" "GBP" "JPY")) → ("BTC" "ETH" "EUR" "GBP" "JPY")
+(define (analytics/flatten-sectors sectors)
+  (flatten sectors))
+
+;; ── Search via find / remove ────────────────────────────────────────────────
+
+;; (analytics/find-holding sym holdings) — find a specific holding by symbol.
+(define (analytics/find-holding sym holdings)
+  (find (lambda (h) (= h.symbol sym)) holdings))
+
+;; (analytics/exclude-symbols exclusions holdings) — remove excluded symbols.
+(define (analytics/exclude-symbols exclusions holdings)
+  (remove (lambda (h) (set-contains? exclusions h.symbol)) holdings))
+
+;; ── Risk checks via any? / every? ──────────────────────────────────────────
+
+;; (analytics/any-above-threshold? holdings threshold) — true if any gain exceeds threshold.
+(define (analytics/any-above-threshold? pnls threshold)
+  (any? (lambda (p) (> p.gain threshold)) pnls))
+
+;; (analytics/all-have-prices? holdings) — true if every holding has a cached price.
+(define (analytics/all-have-prices? holdings)
+  (every? (lambda (h)
+            (match (cache/quote-for h.symbol)
+              ((Ok _) true)
+              ((Err _) nil)))
+          holdings))
+
+;; ── Display formatting ──────────────────────────────────────────────────────
+
+;; (analytics/format-symbols syms) — format symbol list for display: "BTC, ETH, JPY"
+(define (analytics/format-symbols syms)
+  (string-join ", " syms))
+
+;; (analytics/search-news keyword items) — filter news items by title keyword.
+(define (analytics/search-news keyword items)
+  (filter (lambda (n) (string-contains? n.title keyword)) items))

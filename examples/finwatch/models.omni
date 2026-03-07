@@ -1,0 +1,74 @@
+;; models.omni — domain types, union, and to-json dispatch
+;;
+;; Idioms demonstrated:
+;;   [type]        — structs with typed fields, dot field access
+;;   [union]       — FetchResult sum type matched at call sites
+;;   typed dispatch — separate to-json clause per struct type
+
+(module models
+  (export Quote NewsItem Holding PnL FetchResult Ok Err to-json))
+
+;; ── Types ─────────────────────────────────────────────────────────────────────
+
+;; A single price quote: symbol + current price + unix timestamp of fetch.
+;; Dot access: q.symbol  q.price  q.ts
+(define [type] Quote
+  (^String symbol)
+  (^Double price)
+  (^Int    ts))
+
+;; A Hacker News story used as a financial news item.
+;; Dot access: n.id  n.title  n.score  n.ts
+(define [type] NewsItem
+  (^Int    id)
+  (^String title)
+  (^Int    score)
+  (^Int    ts))
+
+;; A user-supplied portfolio position: how many units at what average cost.
+;; Dot access: h.symbol  h.qty  h.cost
+(define [type] Holding
+  (^String symbol)
+  (^Double qty)
+  (^Double cost))
+
+;; Per-holding P&L: cost basis, current value, and absolute gain.
+;; Dot access: p.symbol  p.qty  p.cost  p.current  p.gain
+(define [type] PnL
+  (^String symbol)
+  (^Double qty)
+  (^Double cost)
+  (^Double current)
+  (^Double gain))
+
+;; ── Sum type ──────────────────────────────────────────────────────────────────
+
+;; Every fallible operation (HTTP fetch, cache lookup) returns a FetchResult.
+;; Callers use (match result ((Ok v) ...) ((Err msg) ...)).
+(define [union] (FetchResult V E) (Ok V) (Err E))
+
+;; ── Serialisation — multiple dispatch on type ─────────────────────────────────
+
+;; Each struct type gets its own to-json clause.
+;; Multiple dispatch picks the right one based on the runtime type tag.
+
+(define (to-json (^Quote q))
+  {'symbol q.symbol 'price q.price 'ts q.ts})
+
+(define (to-json (^NewsItem n))
+  {'id n.id 'title n.title 'score n.score 'ts n.ts})
+
+(define (to-json (^Holding h))
+  {'symbol h.symbol 'qty h.qty 'cost h.cost})
+
+(define (to-json (^PnL p))
+  {'symbol  p.symbol
+   'qty     p.qty
+   'cost    p.cost
+   'current p.current
+   'gain    p.gain
+   'gain%   (* (/ p.gain (* p.qty p.cost)) 100.0)})
+
+;; Fallback: list → recurse, anything else passes through as-is.
+(define (to-json x)
+  (if (list? x) (map to-json x) x))

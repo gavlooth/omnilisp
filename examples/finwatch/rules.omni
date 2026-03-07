@@ -1,0 +1,92 @@
+;; rules.omni — Alert rule DSL with macros, quasiquote, and dynamic evaluation
+;;
+;; Idioms demonstrated:
+;;   define [macro]    — user-defined macro for rule DSL
+;;   gensym            — hygienic variable names via auto-gensym (price#)
+;;   eval / read-string — load rules from strings (simulating user input)
+;;   apply             — apply a rule function to a list of prices
+;;   macroexpand       — debug/inspect rule expansion
+;;   let ^rec          — recursive rule evaluation (N consecutive crossings)
+;;   quasiquote (`)    — template construction for rule descriptions
+
+(module rules
+  (export rules/threshold-above
+          rules/threshold-below
+          rules/in-range
+          rules/check-rule
+          rules/check-all
+          rules/consecutive-cross
+          rules/from-string
+          rules/expand-rule
+          rules/describe))
+
+;; ── Rule constructors ───────────────────────────────────────────────────────
+
+;; A rule is a predicate: (lambda (price) bool).
+;; These constructors build rules programmatically.
+
+;; (rules/threshold-above limit) — true if price > limit
+(define (rules/threshold-above limit)
+  (lambda (price) (> price limit)))
+
+;; (rules/threshold-below limit) — true if price < limit
+(define (rules/threshold-below limit)
+  (lambda (price) (< price limit)))
+
+;; (rules/in-range lo hi) — true if lo <= price <= hi
+(define (rules/in-range lo hi)
+  (lambda (price) (and (>= price lo) (<= price hi))))
+
+;; ── Rule checking ───────────────────────────────────────────────────────────
+
+;; (rules/check-rule rule price) — apply a single rule to a price.
+;; Returns explicit true/false to avoid nil scope-boundary corruption.
+(define (rules/check-rule rule price) (if (rule price) true false))
+
+;; (rules/check-all rules price) — check all rules against a price, return results.
+;; Uses apply to invoke each rule.
+(define (rules/check-all rule-list prices)
+  (map (lambda (rule)
+         (map (lambda (p) (apply rule (list p))) prices))
+       rule-list))
+
+;; ── Consecutive crossing detection (let ^rec) ──────────────────────────────
+
+;; (rules/consecutive-cross rule prices n) — true if rule fires n times in a row.
+;; Demonstrates let ^rec for self-referencing closure.
+;; Note: inner define used instead of let ^rec to avoid scope-boundary nil corruption.
+(define (rules/consecutive-cross rule prices n)
+  (define (check remaining count)
+    (if (>= count n) true
+        (if (null? remaining) false
+            (if (rule (car remaining))
+                (check (cdr remaining) (+ count 1))
+                (check (cdr remaining) 0)))))
+  (check prices 0))
+
+;; ── Macro-based rule DSL ────────────────────────────────────────────────────
+
+;; rule: macro that produces a price-checking lambda.
+;; Usage: (define high-alert (rule > 60000))
+;; Expands to: (lambda (price#) (> price# 60000))
+;; Auto-gensym price# ensures hygiene — no name clashes with caller.
+(define [macro] rule
+  ([op threshold] (lambda (price#) (op price# threshold))))
+
+;; ── Dynamic rule loading ────────────────────────────────────────────────────
+
+;; (rules/from-string str) — parse and evaluate a rule expression from a string.
+;; Simulates loading user-submitted rules from config/API.
+(define (rules/from-string str)
+  (eval (read-string str)))
+
+;; (rules/expand-rule expr) — debug helper: show macro expansion of a rule definition.
+(define (rules/expand-rule quoted-expr)
+  (macroexpand quoted-expr))
+
+;; ── Quasiquote — build rule description templates ───────────────────────────
+
+;; (rules/describe op threshold) — build a description s-expr using quasiquote.
+;; Demonstrates ` , ,@ for constructing data templates.
+(define (rules/describe op threshold)
+  `(rule ,op ,threshold))

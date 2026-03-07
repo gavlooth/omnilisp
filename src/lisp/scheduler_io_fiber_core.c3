@@ -17,6 +17,7 @@ fn usz scheduler_add_fiber(Value* coroutine, usz parent_id, Interp* interp) {
     f.coroutine = coroutine;
     f.result = null;
     f.pending_result = null;
+    f.domain_id = scheduler_domain_id(scheduler_current_domain());
     f.parent_id = parent_id;
     f.live_children = 0;
     f.await_target = NO_FIBER;
@@ -25,6 +26,8 @@ fn usz scheduler_add_fiber(Value* coroutine, usz parent_id, Interp* interp) {
     f.state = FIBER_READY;
     g_scheduler.pending_reads[id] = {};
     g_scheduler.pending_offloads[id] = {};
+    g_scheduler.pending_sleeps[id] = {};
+    g_scheduler.pending_dns[id] = {};
     g_scheduler.fiber_count++;
     return id;
 }
@@ -35,7 +38,8 @@ fn bool scheduler_is_running_fiber_context() @inline {
     FiberEntry* f = &g_scheduler.fibers[g_scheduler.current_fiber_id];
     if (f.state != FIBER_RUNNING) return false;
     if (f.coroutine == null || f.coroutine.tag != COROUTINE || f.coroutine.coroutine_val == null) return false;
-    return main::g_current_stack_ctx == f.coroutine.coroutine_val;
+    // Allow nested StackCtxes (handle bodies, reset blocks, etc. running inside a fiber)
+    return main::g_current_stack_ctx != null;
 }
 
 fn bool scheduler_has_blocked_fibers() @inline {
@@ -62,6 +66,8 @@ fn void scheduler_mark_done(usz fiber_id, Value* result, Interp* interp) {
     f.waiting_children = false;
     scheduler_close_pending_tcp_read(fiber_id);
     scheduler_close_pending_offload(fiber_id);
+    scheduler_close_pending_sleep(fiber_id);
+    scheduler_close_pending_dns(fiber_id);
 
     if (f.parent_id < g_scheduler.fiber_count) {
         FiberEntry* parent = &g_scheduler.fibers[f.parent_id];
@@ -99,6 +105,18 @@ fn void scheduler_complete_fiber(usz fiber_id, Value* result, Interp* interp) {
 fn void scheduler_resume_fiber(usz fiber_id, Interp* interp) {
     FiberEntry* f = &g_scheduler.fibers[fiber_id];
     if (f.state != FIBER_READY) return;
+    if (!scheduler_fiber_belongs_to_domain(fiber_id, scheduler_current_domain())) {
+        scheduler_complete_fiber(
+            fiber_id,
+            scheduler_raise(
+                interp,
+                "scheduler/domain-fiber-mismatch",
+                "scheduler: fiber does not belong to the current domain"
+            ),
+            interp
+        );
+        return;
+    }
 
     f.state = FIBER_RUNNING;
     g_scheduler.current_fiber_id = fiber_id;

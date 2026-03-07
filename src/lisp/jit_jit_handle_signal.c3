@@ -143,7 +143,9 @@ fn Value* jit_signal_try_fast_path(SymbolId tag, Value* arg_v, Interp* interp) {
  */
 fn Value* jit_signal_impl(Expr* expr, Env* env, Interp* interp) {
     Value* arg_v = jit_eval(expr.perform.arg, env, interp);
-    if (arg_v != null && arg_v.tag == ERROR) return arg_v;
+    if (arg_v != null && arg_v.tag == ERROR) {
+        return arg_v;
+    }
 
     SymbolId tag = expr.perform.tag;
     Value* type_err = jit_signal_type_check(tag, arg_v, interp);
@@ -331,6 +333,13 @@ fn bool jit_handle_copy_clauses(EffectHandler* h, Expr* expr) {
     return true;
 }
 
+fn bool jit_handle_body_needs_fiber_yield() @inline {
+    if (!g_scheduler.running) return false;
+    usz fid = g_scheduler.current_fiber_id;
+    if (fid >= g_scheduler.fiber_count) return false;
+    return g_scheduler.fibers[fid].state == FIBER_BLOCKED;
+}
+
 fn EvalResult jit_handle_switch_to_body(main::StackCtx* ctx, Interp* interp) {
     SavedInterpState saved;
     save_interp_state(interp, &saved);
@@ -342,6 +351,26 @@ fn EvalResult jit_handle_switch_to_body(main::StackCtx* ctx, Interp* interp) {
     if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
         return eval_error("stack overflow in handle body");
     }
+
+    // Async I/O yield propagation: handle body suspended due to async I/O inside a fiber.
+    // Yield the outer context (fiber or enclosing handle) until I/O completes.
+    while (ctx.status == main::StackCtxStatus.CTX_SUSPENDED &&
+           jit_handle_body_needs_fiber_yield()) {
+        main::StackCtx* outer_ctx = main::g_current_stack_ctx;
+        if (outer_ctx == null) break;
+        if (!prim_yield_suspend_and_restore(outer_ctx, interp)) {
+            return eval_error("handle: async yield propagation failed");
+        }
+        // Outer context resumed (I/O complete) — resume handle body.
+        SavedInterpState saved2;
+        save_interp_state(interp, &saved2);
+        main::stack_ctx_resume(ctx, &parent_ctx);
+        preserve_raise_across_restore(interp, &saved2);
+        if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
+            return eval_error("stack overflow in handle body");
+        }
+    }
+
     return eval_ok(null);
 }
 

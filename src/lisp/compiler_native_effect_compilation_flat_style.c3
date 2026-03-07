@@ -268,6 +268,27 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
                 }
             }
             self.emit("\")");
+        case TIME_POINT:
+            self.emit("aot::make_time_point(");
+            self.emit_int((long)(int)v.time_point_val.kind);
+            self.emit(", ");
+            self.emit_int(v.time_point_val.year);
+            self.emit(", ");
+            self.emit_int(v.time_point_val.month);
+            self.emit(", ");
+            self.emit_int(v.time_point_val.day);
+            self.emit(", ");
+            self.emit_int(v.time_point_val.hour);
+            self.emit(", ");
+            self.emit_int(v.time_point_val.minute);
+            self.emit(", ");
+            self.emit_int(v.time_point_val.second);
+            self.emit(", ");
+            self.emit_int(v.time_point_val.microsecond);
+            self.emit(", ");
+            self.emit_int(v.time_point_val.tz_offset);
+            self.emit(")");
+
 
         case SYMBOL:
             self.emit("aot::make_symbol(\"");

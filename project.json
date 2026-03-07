@@ -8,7 +8,7 @@
     "targets": {
         "main": {
             "type": "executable",
-            "c-sources": ["csrc/stack_helpers.c", "csrc/ffi_helpers.c", "csrc/json_helpers.c", "csrc/tls_helpers.c"],
+            "c-sources": ["csrc/stack_helpers.c", "csrc/ffi_helpers.c", "csrc/json_helpers.c", "csrc/tls_helpers.c", "csrc/uv_helpers.c", "csrc/toml_helpers.c", "third_party/tomlc17/tomlc17.c"],
             "linked-libraries": ["mathutils", "m", "lightning", "replxx", "stdc++", "dl", "ffi"],
             "linker-search-paths": ["build", "/usr/local/lib", "deps/lib"],
             "link-args": ["-Wl,-Bstatic", "-lutf8proc", "-ldeflate", "-lyyjson", "-luv", "-lbearssl", "-llmdb", "-Wl,-Bdynamic"]

@@ -27,6 +27,10 @@ fn bool is_symbol(Value* v) @inline {
     return v != null && v.tag == SYMBOL;
 }
 
+fn bool is_time_point(Value* v) @inline {
+    return v != null && v.tag == TIME_POINT;
+}
+
 fn bool is_cons(Value* v) @inline {
     return v != null && v.tag == CONS;
 }
@@ -186,6 +190,69 @@ fn char[] int_to_string(long val, char[] buffer) {
         buffer[len - 1 - j] = tmp;
     }
     return buffer[:len];
+}
+
+/**
+ * Format a TimePoint into caller-provided buffer. Returns slice of written chars.
+ */
+fn char[] time_point_to_string(TimePoint tp, char[] buffer) {
+    if (buffer.len == 0) return buffer[:0];
+
+    if (tp.kind == TIME_POINT_DATE) {
+        if (tp.microsecond != 0) {
+            return io::bprintf(buffer, "%04d-%02d-%02d", tp.year, tp.month, tp.day)!!;
+        }
+        return io::bprintf(buffer, "%04d-%02d-%02d", tp.year, tp.month, tp.day)!!;
+    }
+
+    if (tp.kind == TIME_POINT_TIME) {
+        if (tp.microsecond > 0) {
+            return io::bprintf(
+                buffer,
+                "%02d:%02d:%02d.%06d",
+                tp.hour,
+                tp.minute,
+                tp.second,
+                tp.microsecond
+            )!!;
+        }
+        return io::bprintf(buffer, "%02d:%02d:%02d", tp.hour, tp.minute, tp.second)!!;
+    }
+
+    if (tp.kind == TIME_POINT_DATETIMETZ && tp.tz_offset != 0) {
+        int tza = tp.tz_offset < 0 ? -tp.tz_offset : tp.tz_offset;
+        int tzh = tza / 60;
+        int tzm = tza % 60;
+        char sign = tp.tz_offset < 0 ? '-' : '+';
+        if (tp.microsecond > 0) {
+            return io::bprintf(
+                buffer,
+                "%04d-%02d-%02dT%02d:%02d:%02d.%06d%c%02d:%02d",
+                tp.year, tp.month, tp.day,
+                tp.hour, tp.minute, tp.second,
+                tp.microsecond,
+                sign, tzh, tzm
+            )!!;
+        }
+        return io::bprintf(
+            buffer,
+            "%04d-%02d-%02dT%02d:%02d:%02d%c%02d:%02d",
+            tp.year, tp.month, tp.day,
+            tp.hour, tp.minute, tp.second,
+            sign, tzh, tzm
+        )!!;
+    }
+
+    if (tp.microsecond > 0) {
+        return io::bprintf(
+            buffer,
+            "%04d-%02d-%02dT%02d:%02d:%02d.%06d",
+            tp.year, tp.month, tp.day,
+            tp.hour, tp.minute, tp.second,
+            tp.microsecond
+        )!!;
+    }
+    return io::bprintf(buffer, "%04d-%02d-%02dT%02d:%02d:%02d", tp.year, tp.month, tp.day, tp.hour, tp.minute, tp.second)!!;
 }
 
 /**

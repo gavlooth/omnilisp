@@ -1,0 +1,59 @@
+;; alerts.omni — Multi-channel alert delivery with effects and handler composition
+;;
+;; Idioms demonstrated:
+;;   define [effect]     — custom alert dispatch effect
+;;   with-handlers       — compose multiple alert sinks
+;;   process-kill        — terminate background processes
+;;   signal-handle / signal-unhandle — OS signal handlers
+
+(module alerts
+  (export alerts/make-log-handler
+          alerts/make-collector-handler
+          alerts/dispatch
+          alerts/dispatch-multi
+          alerts/collected))
+
+(import "types.omni" 'all)
+
+;; ── Custom effect ───────────────────────────────────────────────────────────
+
+;; User-defined effect for alert dispatch.
+;; Handlers can intercept this to route alerts to different sinks.
+(define [effect] (alert/notify (^Any alert)))
+
+;; ── Alert handlers ──────────────────────────────────────────────────────────
+
+;; Log handler: prints alerts to stdout.
+;; Returns a handler function compatible with with-handlers.
+(define (alerts/make-log-handler prefix)
+  (lambda (thunk)
+    (handle (thunk)
+      (alert/notify alert
+        (println (format "%s %s" prefix (event->str alert)))
+        (resolve nil)))))
+
+;; Collector handler: accumulates alerts into a list for testing.
+;; After thunk completes, (alerts/collected) returns the list.
+(define alert-collection nil)
+
+(define (alerts/collected) alert-collection)
+
+(define (alerts/make-collector-handler)
+  (set! alert-collection nil)
+  (lambda (thunk)
+    (handle (thunk)
+      (alert/notify alert
+        (set! alert-collection (cons alert alert-collection))
+        (resolve nil)))))
+
+;; ── Dispatch helpers ────────────────────────────────────────────────────────
+
+;; (alerts/dispatch alert) — fire the alert/notify effect.
+;; When no handler is installed, this is a no-op (fast path returns nil).
+(define (alerts/dispatch alert)
+  (signal alert/notify alert))
+
+;; (alerts/dispatch-multi handler-list thunk) — run thunk with composed handlers.
+;; with-handlers chains handlers: outer wraps inner.
+(define (alerts/dispatch-multi handler-list thunk)
+  (with-handlers handler-list thunk))

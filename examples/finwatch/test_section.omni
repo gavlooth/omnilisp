@@ -1,0 +1,2 @@
+(println (zip (list 1 2) (list 1.0 2.0)))
+(println "done")

@@ -78,7 +78,82 @@ path calls the raw primitives directly (zero overhead).
 
 `tcp-accept` is fiber-safe: when called inside a running fiber it offloads the
 blocking `accept()` syscall to the runtime worker and resumes the fiber on
-completion.
+completion. This uses an internal runtime offload job, not the public
+`offload` API surface.
+
+### UDP
+
+```lisp
+(define recv (udp-socket))
+(udp-bind recv "127.0.0.1" 45001)
+
+(define snd (udp-socket))
+(udp-send snd "127.0.0.1" 45001 "ping")
+(define payload (udp-recv recv))
+
+(udp-close snd)
+(udp-close recv)
+```
+
+`udp-recv` is fiber-safe and uses the scheduler async readiness bridge in fiber
+context.
+
+### Unix Domain Sockets
+
+```lisp
+(define path "/tmp/omni_example.sock")
+(define listener (pipe-listen path))
+(define client (pipe-connect path))
+(define server (tcp-accept listener))
+
+(tcp-write client "pipe-ok")
+(define msg (tcp-read server))
+
+(tcp-close client)
+(tcp-close server)
+(tcp-close listener)
+(fs-unlink path)
+```
+
+`pipe-connect`/`pipe-listen` return `tcp-handle`-compatible stream/listener
+handles, so existing `tcp-accept`/`tcp-read`/`tcp-write`/`tcp-close` APIs apply.
+Runtime default for these primitives is blocking POSIX Unix sockets, with the
+libuv pipe setup path retained as fallback integration wiring.
+
+### Process Control
+
+```lisp
+(define proc (process-spawn "/bin/sh" ["-c" "printf omni"] nil))
+(define out (fs-read (ref proc 'stdout) 32))
+(define status (process-wait (ref proc 'handle)))
+
+(fs-close (ref proc 'stdin))
+(fs-close (ref proc 'stdout))
+(fs-close (ref proc 'stderr))
+```
+
+`process-spawn` returns a dict with:
+- `'handle` (process handle for `process-wait`/`process-kill`)
+- `'pid` (child pid)
+- `'stdin`/`'stdout`/`'stderr` (`fs-handle` values compatible with `fs-read`/`fs-write`/`fs-close`)
+- `env` may be `nil` (inherit parent environment) or a list/array of
+  `KEY=VALUE` strings/symbols for explicit environment override.
+
+### Signals
+
+```lisp
+(define hits {'n 0})
+(define h (signal-handle 10 (lambda (sig) (dict-set! hits 'n (+ (ref hits 'n) 1)))))
+
+(shell "kill -USR1 $PPID")
+(async-sleep 20)
+
+(signal-unhandle h)
+(ref hits 'n)
+```
+
+`signal-handle` installs a libuv-backed watcher and invokes `callback` with the
+signal number argument when delivery is observed by the runtime event loop.
 
 ### DNS
 
@@ -91,10 +166,39 @@ completion.
 ```lisp
 (define tcp (tcp-connect "example.com" 443))
 (define tls (tls-connect tcp "example.com"))
+;; explicit CA bundle path (optional third argument)
+;; (define tls (tls-connect tcp "example.com" "/etc/ssl/certs/ca-certificates.crt"))
+;; client auth mTLS (optional client cert/key PEM pair)
+;; (define tls (tls-connect tcp "example.com" "client-cert.pem" "client-key.pem"))
+;; CA + mTLS + session resumption policy
+;; (define tls (tls-connect tcp "example.com"
+;;                         "/etc/ssl/certs/ca-certificates.crt"
+;;                         "client-cert.pem"
+;;                         "client-key.pem"
+;;                         true))
 (tls-write tls "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
 (define response (tls-read tls))
 (tls-close tls)
 ```
+
+`tls-connect` performs certificate validation against a CA trust store. Trust
+bundle resolution order is: `OMNI_TLS_CA_FILE`, `SSL_CERT_FILE`, then common
+system CA bundle paths (`/etc/ssl/certs/ca-certificates.crt`, etc.).
+Optional `resume-session?` accepts `true` or `false` as the final argument.
+When `true`, Omni caches a BearSSL client session per hostname in-process and
+tries session resumption on future `tls-connect` calls for that host.
+
+Server-side wrap (RSA key + PEM cert chain):
+
+```lisp
+(define listener (tcp-listen "127.0.0.1" 8443 8))
+(define tcp-client (tcp-accept listener))
+(define tls-client
+  (tls-server-wrap tcp-client "server-cert.pem" "server-key.pem"))
+```
+
+Current `tls-server-wrap` support expects a PEM certificate chain and PEM RSA
+private key path.
 
 ### HTTP
 
@@ -122,6 +226,11 @@ All network operations go through effects and can be intercepted for testing.
 (json-parse "[1, 2, 3]")
 ;; => array: [1 2 3]
 
+;; Pointer lookup
+(define payload (json-parse "{\"users\":[{\"id\":1,\"name\":\"Alice\"}, {\"id\":2,\"name\":\"Bob\"}]}"))
+(json-get payload "/users/1/name")
+;; => "Bob"
+
 ;; Emit Omni values as JSON
 (json-emit {'name "Alice" 'age 30})
 ;; => "{\"name\":\"Alice\",\"age\":30}"
@@ -129,6 +238,24 @@ All network operations go through effects and can be intercepted for testing.
 ;; Pretty-printed JSON
 (json-emit-pretty {'name "Alice" 'age 30})
 ;; => "{\n  \"name\": \"Alice\",\n  \"age\": 30\n}"
+
+;; Emit with explicit writer flags
+(json-emit [1.5 2.0] '((precision 2) (escape-slashes true) (newline-at-end true)))
+;; => "[1.50,2.00]\n"
+
+;; Parse with permissive options
+(json-parse "{\"a\": 1 /*comment*/ , \"b\": 2}" '(allow-comments))
+;; => {'a 1 'b 2}
+
+(json-parse "[1,2,3,]" '(allow-trailing-commas))
+;; => [1 2 3]
+
+(json-parse "[NaN, Infinity, -Infinity]" '(allow-nan-inf))
+;; => [NaN Infinity -Infinity]
+
+;; Parse permissive matrix in one call
+(json-parse "{\"a\": 1 /*comment*/ , \"b\": 2}" '(allow-comments allow-trailing-commas))
+;; => {'a 1 'b 2}
 ```
 
 JSON types map to Omni types: object -> dict, array -> array, string -> string,

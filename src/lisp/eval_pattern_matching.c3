@@ -132,6 +132,16 @@ fn bool values_equal(Value* a, Value* b) {
             return true;
         case SYMBOL:
             return a.sym_val == b.sym_val;
+        case TIME_POINT:
+            if (a.time_point_val.year != b.time_point_val.year) return false;
+            if (a.time_point_val.month != b.time_point_val.month) return false;
+            if (a.time_point_val.day != b.time_point_val.day) return false;
+            if (a.time_point_val.hour != b.time_point_val.hour) return false;
+            if (a.time_point_val.minute != b.time_point_val.minute) return false;
+            if (a.time_point_val.second != b.time_point_val.second) return false;
+            if (a.time_point_val.microsecond != b.time_point_val.microsecond) return false;
+            if (a.time_point_val.tz_offset != b.time_point_val.tz_offset) return false;
+            return a.time_point_val.kind == b.time_point_val.kind;
         case HASHMAP:
             return a == b;  // Pointer equality for mutable containers
         case CONS:
@@ -201,6 +211,20 @@ fn bool values_equal(Value* a, Value* b) {
             case SYMBOL:
                 if (left.sym_val != right.sym_val) ok = false;
                 break;
+            case TIME_POINT: {
+                if (left.time_point_val.year != right.time_point_val.year ||
+                    left.time_point_val.month != right.time_point_val.month ||
+                    left.time_point_val.day != right.time_point_val.day ||
+                    left.time_point_val.hour != right.time_point_val.hour ||
+                    left.time_point_val.minute != right.time_point_val.minute ||
+                    left.time_point_val.second != right.time_point_val.second ||
+                    left.time_point_val.microsecond != right.time_point_val.microsecond ||
+                    left.time_point_val.tz_offset != right.time_point_val.tz_offset ||
+                    left.time_point_val.kind != right.time_point_val.kind) {
+                    ok = false;
+                }
+                break;
+            }
             case CONS:
             {
                 bool already_seen = false;

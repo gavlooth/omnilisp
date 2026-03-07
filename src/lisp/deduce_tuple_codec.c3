@@ -4,7 +4,22 @@ module lisp;
 // Tuple encoding: Values → bytes for LMDB storage
 // ============================================================
 // Encode a tuple of Values into a byte buffer. Format: [tag byte][data]...
-// Tags: 0=nil, 1=int(8 bytes LE), 2=double(8 bytes), 3=string(2 byte len + data), 4=symbol(2 byte id)
+// Tags: 0=nil, 1=int(8 bytes LE), 2=double(8 bytes), 3=string(2 byte len + data), 4=symbol(2 byte id), 5=time-point(1 kind byte + 8 ints LE)
+fn usz write_i32_le(char* buf, usz pos, int value) {
+    buf[pos++] = (char)(value & 0xFF);
+    buf[pos++] = (char)((value >> 8) & 0xFF);
+    buf[pos++] = (char)((value >> 16) & 0xFF);
+    buf[pos++] = (char)((value >> 24) & 0xFF);
+    return pos;
+}
+
+fn int read_i32_le(char* buf, usz pos) {
+    return ((int)(uint)(char)buf[pos]) |
+        (((int)(uint)(char)buf[pos + 1]) << 8) |
+        (((int)(uint)(char)buf[pos + 2]) << 16) |
+        (((int)(uint)(char)buf[pos + 3]) << 24);
+}
+
 fn usz? encode_tuple(Value*[] vals, char* buf, usz buf_size) {
     usz pos = 0;
     for (usz i = 0; i < vals.len; i++) {
@@ -40,6 +55,18 @@ fn usz? encode_tuple(Value*[] vals, char* buf, usz buf_size) {
             uint sid = (uint)v.sym_val;
             buf[pos++] = (char)(sid & 0xFF);
             buf[pos++] = (char)((sid >> 8) & 0xFF);
+        } else if (v.tag == TIME_POINT) {
+            if (pos + 34 > buf_size) return WRITE_FAILED~;
+            buf[pos++] = 5;
+            buf[pos++] = (char)v.time_point_val.kind;
+            pos = write_i32_le(buf, pos, v.time_point_val.year);
+            pos = write_i32_le(buf, pos, v.time_point_val.month);
+            pos = write_i32_le(buf, pos, v.time_point_val.day);
+            pos = write_i32_le(buf, pos, v.time_point_val.hour);
+            pos = write_i32_le(buf, pos, v.time_point_val.minute);
+            pos = write_i32_le(buf, pos, v.time_point_val.second);
+            pos = write_i32_le(buf, pos, v.time_point_val.microsecond);
+            pos = write_i32_le(buf, pos, v.time_point_val.tz_offset);
         } else {
             if (pos >= buf_size) return WRITE_FAILED~;
             buf[pos++] = 0;  // unsupported → nil
@@ -84,6 +111,18 @@ fn usz? decode_tuple(char* buf, usz buf_size, Value*[] out, Interp* interp) {
             v.tag = SYMBOL;
             v.sym_val = (SymbolId)sid;
             out[count++] = v;
+        } else if (tag == 5) {
+            if (pos + 32 > buf_size) return READ_FAILED~;
+            TimePointKind kind = (TimePointKind)buf[pos++];
+            int year = read_i32_le(buf, pos); pos += 4;
+            int month = read_i32_le(buf, pos); pos += 4;
+            int day = read_i32_le(buf, pos); pos += 4;
+            int hour = read_i32_le(buf, pos); pos += 4;
+            int minute = read_i32_le(buf, pos); pos += 4;
+            int second = read_i32_le(buf, pos); pos += 4;
+            int microsecond = read_i32_le(buf, pos); pos += 4;
+            int tz_offset = read_i32_le(buf, pos); pos += 4;
+            out[count++] = make_time_point(interp, kind, year, month, day, hour, minute, second, microsecond, tz_offset);
         } else {
             return READ_FAILED~;  // unknown tag = malformed data
         }

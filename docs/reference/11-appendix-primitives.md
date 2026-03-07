@@ -4,7 +4,7 @@
 
 ---
 
-### Dispatched Primitives (31)
+### Dispatched Primitives (33)
 
 These support user extension via method tables.
 
@@ -33,6 +33,8 @@ These support user extension via method tables.
 | `string-contains?` | 2 | String |
 | `string-upcase` | 1 | String |
 | `string-downcase` | 1 | String |
+| `string-casefold` | 1 | String |
+| `string-titlecase` | 1 | String |
 | `abs` | 1 | Math |
 | `floor` | 1 | Math |
 | `ceiling` | 1 | Math |
@@ -241,39 +243,69 @@ Preferred forcing style uses collection constructors:
 | `string-graphemes` | 1 | Split into graphemes |
 | `string-codepoints` | 1 | List of codepoints |
 | `char-category` | 1 | Unicode category |
+| `char-width` | 1 | Display width hint (-1/0/1/2) |
+| `char-property` | 2 | Unicode property lookup by symbol |
 
 **JSON:**
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `json-parse` | 1 | Parse JSON string |
-| `json-emit` | 1 | Emit compact JSON |
-| `json-emit-pretty` | 1 | Emit pretty JSON |
+| `json-parse` | 1-2 | Parse JSON string |
+| `json-emit` | 1-2 | Emit compact JSON (optional options list for writer flags) |
+| `json-emit-pretty` | 1-2 | Emit pretty JSON (optional options list for writer flags) |
+| `json-get` | 2 | JSON Pointer-style lookup on Omni JSON values |
+
+**TOML / CSV:**
+
+| Name | Arity | Description |
+|------|-------|-------------|
+| `time-point` | variadic | Construct TimePoint values (`date`, `time`, `datetime`, `datetime-tz` / `datetimetz`) |
+| `time-point?` | 1 | TimePoint predicate |
+| `toml-parse` | 1-2 | Parse TOML string (optional options list: `((check-utf8 false))`)
+| `csv-parse` | 1-2 | Parse CSV text into rows (`delimiter` string or option list including `strict`) |
+| `csv-emit` | 1-2 | Emit rows as CSV text (`delimiter`, `line-ending`, `quote-char`, `quote-style`, `nil-as`, `strict`) |
 
 **Compression:**
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `gzip` | 1 | Gzip compress |
+| `gzip` | 1-2 | Gzip compress (optional level 0..12) |
 | `gunzip` | 1 | Gzip decompress |
-| `deflate` | 1 | Deflate compress |
-| `inflate` | 1 | Deflate decompress |
+| `deflate` | 1-2 | Deflate compress (optional level 0..12) |
+| `inflate` | 1-2 | Deflate decompress |
+| `zlib-compress` | 1-2 | Zlib compress (optional level 0..12) |
+| `zlib-decompress` | 1-2 | Zlib decompress |
+| `adler32` | 1 | Adler-32 checksum |
+| `crc32` | 1 | CRC-32 checksum |
 
 **Networking:**
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `__raw-tcp-connect` | 1 | Raw TCP connect |
-| `__raw-tcp-listen` | 1 | Raw TCP listen |
+| `__raw-tcp-connect` | 2 | Raw TCP connect |
+| `__raw-tcp-listen` | variadic | Raw TCP listen |
 | `__raw-tcp-accept` | 1 | Raw TCP accept |
-| `__raw-tcp-read` | 1 | Raw TCP read |
-| `__raw-tcp-write` | 1 | Raw TCP write |
+| `__raw-tcp-read` | variadic | Raw TCP read |
+| `__raw-tcp-write` | 2 | Raw TCP write |
 | `__raw-tcp-close` | 1 | Raw TCP close |
+| `__raw-udp-socket` | 0 | Raw UDP socket create |
+| `__raw-udp-bind` | variadic | Raw UDP bind |
+| `__raw-udp-send` | variadic | Raw UDP send |
+| `__raw-udp-recv` | variadic | Raw UDP receive |
+| `__raw-udp-close` | 1 | Raw UDP close |
+| `__raw-pipe-connect` | 1 | Raw Unix socket connect |
+| `__raw-pipe-listen` | 1 | Raw Unix socket listen |
+| `__raw-process-spawn` | variadic | Raw process spawn |
+| `__raw-process-wait` | 1 | Raw process wait |
+| `__raw-process-kill` | variadic | Raw process kill |
+| `__raw-signal-handle` | variadic | Raw signal watcher install |
+| `__raw-signal-unhandle` | 1 | Raw signal watcher remove |
 | `__raw-dns-resolve` | 1 | Raw DNS resolve |
 | `__raw-async-sleep` | 1 | Raw sleep |
-| `__raw-tls-connect` | 1 | Raw TLS connect |
-| `__raw-tls-read` | 1 | Raw TLS read |
-| `__raw-tls-write` | 1 | Raw TLS write |
+| `__raw-tls-connect` | variadic | Raw TLS connect |
+| `__raw-tls-server-wrap` | 3 | Raw TLS server wrap |
+| `__raw-tls-read` | variadic | Raw TLS read |
+| `__raw-tls-write` | 2 | Raw TLS write |
 | `__raw-tls-close` | 1 | Raw TLS close |
 
 **Deduce (Database):**

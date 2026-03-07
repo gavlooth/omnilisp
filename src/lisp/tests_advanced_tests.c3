@@ -289,6 +289,10 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
         "(handle (offload 'nope 1) (raise msg (symbol->string (ref msg 'code))))",
         "scheduler/offload-unsupported-op", pass, fail);
     test_str_val(interp,
+        "scheduler offload cpu-only payload code",
+        "(handle (offload 'http-get \"https://example.com\") (raise msg (symbol->string (ref msg 'code))))",
+        "scheduler/offload-op-cpu-only", pass, fail);
+    test_str_val(interp,
         "scheduler join-timeout payload code",
         "(handle (begin (define t-sched-timeout (thread-spawn 'sleep-ms 20)) (thread-join-timeout t-sched-timeout 0)) (raise msg (symbol->string (ref msg 'code))))",
         "scheduler/thread-join-timeout", pass, fail);
@@ -352,6 +356,11 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
     test_eq(interp, "multi-shot k thrice", "(reset (* 2 (shift k (+ (k 3) (+ (k 5) (k 7))))))", 30, pass, fail);
     test_eq(interp, "multi-shot let bindings", "(reset (+ 10 (shift k (let (a (k 1) b (k 2)) (+ a b)))))", 23, pass, fail);
     test_eq(interp, "multi-shot conditional", "(reset (+ 5 (shift k (if true (k 10) (k 20)))))", 15, pass, fail);
+    test_eq(interp, "stream-yield continuation resumes beyond two yields",
+        "(begin "
+        "  (define (gen-s3) (reset (begin (stream-yield 1) (stream-yield 2) (stream-yield 3) nil))) "
+        "  (car (drop 2 (stream-take 3 (gen-s3)))))",
+        3, pass, fail);
     test_eq(interp, "multi-shot effect", "(handle (+ 1 (signal dup 0)) ((dup k x) (+ (k 10) (k 20))))", 32, pass, fail);
 
     // with-continuation (multi-shot escape hatch in handler clauses)
@@ -530,6 +539,9 @@ fn void run_advanced_macro_hygiene_quasi_pattern_tests(Interp* interp, int* pass
     test_nil(interp, "unless true", "(unless true 99)", pass, fail);
     setup(interp, "(define [macro] with-val ([name val body] (let (name val) body)))");
     test_eq(interp, "macro with-val", "(with-val z 100 (+ z 1))", 101, pass, fail);
+    test_eq(interp, "unless macro preserves let inside define",
+        "(begin (unless false (define (ufoo3 x) (let (y 1) (+ x y)))) (ufoo3 2))",
+        3, pass, fail);
     setup(interp, "(define [macro] cond ([] nil) ([test body .. rest] (if test body (cond .. rest))))");
     test_eq(interp, "cond macro", "(cond false 1 true 2 true 3)", 2, pass, fail);
     test_nil(interp, "cond all false", "(cond false 1 false 2)", pass, fail);
@@ -537,6 +549,9 @@ fn void run_advanced_macro_hygiene_quasi_pattern_tests(Interp* interp, int* pass
     test_eq(interp, "my-and true", "(my-and true 42)", 42, pass, fail);
     setup(interp, "(define [macro] let1 ([name val body] (let (name val) body)))");
     test_eq(interp, "let1 macro", "(let1 x 10 (+ x 5))", 15, pass, fail);
+    test_eq(interp, "stream-yield macro expands shift special form",
+        "(car (reset (stream-yield 7)))",
+        7, pass, fail);
 
     {
         const usz CLAUSE_COUNT = 40;
@@ -2021,6 +2036,111 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
     // io/read-file with correct type works
     test_str_interp(interp, "io/read-file correct type",
         "(handle (signal io/read-file \"test.txt\") (io/read-file x x))", pass, fail);
+
+    // libuv fs primitives round-trip and metadata path
+    test_str_interp(interp, "fs roundtrip read/write",
+        "(begin "
+        "(define p \"/tmp/omni_fs_roundtrip.txt\") "
+        "(define h (fs-open p 577 420)) "
+        "(fs-write h \"abc\") "
+        "(fs-close h) "
+        "(define r (fs-open p 0)) "
+        "(define s (fs-read r 16)) "
+        "(fs-close r) "
+        "(fs-unlink p) "
+        "s)",
+        pass, fail);
+
+    test_truthy_interp(interp, "fs readdir returns array",
+        "(array? (fs-readdir \"/tmp\"))", pass, fail);
+
+    test_truthy_interp(interp, "fs stat returns dict",
+        "(begin "
+        "(define p \"/tmp/omni_fs_stat.txt\") "
+        "(define h (fs-open p 577 420)) "
+        "(fs-write h \"x\") "
+        "(fs-close h) "
+        "(define st (fs-stat p)) "
+        "(fs-unlink p) "
+        "(dict? st))",
+        pass, fail);
+
+    test_nil_interp(interp, "udp socket create/close",
+        "(begin "
+        "(define u (udp-socket)) "
+        "(udp-close u))",
+        pass, fail);
+
+    test_str_interp(interp, "udp loopback roundtrip",
+        "(begin "
+        "(define p (+ 45000 (% (time-ms) 10000))) "
+        "(define recv (udp-socket)) "
+        "(udp-bind recv \"127.0.0.1\" p) "
+        "(define snd (udp-socket)) "
+        "(udp-send snd \"127.0.0.1\" p \"ping\") "
+        "(define got (udp-recv recv)) "
+        "(udp-close snd) "
+        "(udp-close recv) "
+        "got)",
+        pass, fail);
+
+    test_str_interp(interp, "pipe loopback roundtrip",
+        "(begin "
+        "(define p (string-append \"/tmp/omni_pipe_\" (number->string (% (time-ms) 1000000)) \".sock\")) "
+        "(define listener (pipe-listen p)) "
+        "(define client (pipe-connect p)) "
+        "(define server (tcp-accept listener)) "
+        "(tcp-write client \"pipe-ok\") "
+        "(define got (tcp-read server)) "
+        "(tcp-close client) "
+        "(tcp-close server) "
+        "(tcp-close listener) "
+        "(fs-unlink p) "
+        "got)",
+        pass, fail);
+
+    test_truthy_interp(interp, "process spawn stdio + wait",
+        "(begin "
+        "(define p (process-spawn \"/bin/sh\" [\"-c\" \"printf omni\"] nil)) "
+        "(define out (fs-read (ref p 'stdout) 32)) "
+        "(define st (process-wait (ref p 'handle))) "
+        "(fs-close (ref p 'stdin)) "
+        "(fs-close (ref p 'stdout)) "
+        "(fs-close (ref p 'stderr)) "
+        "(and (= out \"omni\") (= (ref st 'exit-code) 0)))",
+        pass, fail);
+
+    test_truthy_interp(interp, "process spawn env override",
+        "(begin "
+        "(define p (process-spawn \"/bin/sh\" [\"-c\" \"printf $OMNI_PROC_TEST\"] [\"OMNI_PROC_TEST=ok\"])) "
+        "(define out (fs-read (ref p 'stdout) 32)) "
+        "(define st (process-wait (ref p 'handle))) "
+        "(fs-close (ref p 'stdin)) "
+        "(fs-close (ref p 'stdout)) "
+        "(fs-close (ref p 'stderr)) "
+        "(and (= out \"ok\") (= (ref st 'exit-code) 0)))",
+        pass, fail);
+
+    test_truthy_interp(interp, "process kill terminates child",
+        "(begin "
+        "(define p (process-spawn \"/bin/sh\" [\"-c\" \"sleep 2\"] nil)) "
+        "(process-kill (ref p 'handle) 15) "
+        "(define st (process-wait (ref p 'handle))) "
+        "(fs-close (ref p 'stdin)) "
+        "(fs-close (ref p 'stdout)) "
+        "(fs-close (ref p 'stderr)) "
+        "(> (ref st 'term-signal) 0))",
+        pass, fail);
+
+    test_truthy_interp(interp, "signal handle/unhandle callback",
+        "(begin "
+        "(define hits {'n 0}) "
+        "(define h (signal-handle 10 (lambda (sig) (dict-set! hits 'n (+ (ref hits 'n) 1))))) "
+        "(shell \"kill -USR1 $PPID\") "
+        "(async-sleep 20) "
+        "(signal-unhandle h) "
+        "(= (ref hits 'n) 1))",
+        pass, fail);
 
     // Subtype check: Number accepts Int and Double
     test_nil_interp(interp, "defeffect number arg", "(define [effect] (test/num (^Number n)))", pass, fail);

@@ -33,6 +33,11 @@ fn void Lexer.scan_string(Lexer* self) {
                         self.set_error_text("out of memory while lexing string literal");
                         return;
                     }
+                case 'r':
+                    if (!self.push_current_text_char('\r')) {
+                        self.set_error_text("out of memory while lexing string literal");
+                        return;
+                    }
                 case 't':
                     if (!self.push_current_text_char('\t')) {
                         self.set_error_text("out of memory while lexing string literal");

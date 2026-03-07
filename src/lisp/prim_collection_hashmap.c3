@@ -81,6 +81,27 @@ fn uint hash_value(Value* key) {
         case INT: return murmur_finalizer((uint)key.int_val);
         case STRING: return fnv1a(key.str_chars[:key.str_len]);
         case SYMBOL: return murmur_finalizer((uint)key.sym_val);
+        case TIME_POINT: {
+            uint h = 2166136261;
+            h ^= murmur_finalizer((uint)key.time_point_val.year);
+            h *= 16777619;
+            h ^= murmur_finalizer((uint)key.time_point_val.month);
+            h *= 16777619;
+            h ^= murmur_finalizer((uint)key.time_point_val.day);
+            h *= 16777619;
+            h ^= murmur_finalizer((uint)key.time_point_val.hour);
+            h *= 16777619;
+            h ^= murmur_finalizer((uint)key.time_point_val.minute);
+            h *= 16777619;
+            h ^= murmur_finalizer((uint)key.time_point_val.second);
+            h *= 16777619;
+            h ^= murmur_finalizer((uint)key.time_point_val.microsecond);
+            h *= 16777619;
+            h ^= murmur_finalizer((uint)(uint)(key.time_point_val.tz_offset + 0x8000));
+            h *= 16777619;
+            h ^= murmur_finalizer((uint)key.time_point_val.kind);
+            return murmur_finalizer(h);
+        }
         default: return 0;
     }
 }

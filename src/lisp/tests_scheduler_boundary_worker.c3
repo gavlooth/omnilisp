@@ -37,7 +37,7 @@ fn void run_scheduler_offload_worker_retry_full_wakeup_boundary_tests(Interp* in
         work.task_id = NO_TASK;
         work.op = OFFLOAD_SLEEP_MS;
         work.int_arg = 0;
-        work.blob = null;
+        work.shared = null;
         bool queued = scheduler_enqueue_offload(work);
         if (!queued) {
             ok = false;
@@ -195,7 +195,7 @@ fn void run_scheduler_thread_task_worker_cancel_interleave_boundary_tests(Interp
         work.task_id = task_id;
         work.op = OFFLOAD_SLEEP_MS;
         work.int_arg = 10;
-        work.blob = null;
+        work.shared = null;
         bool enqueued = scheduler_enqueue_offload(work);
         if (!enqueued) {
             scheduler_drop_thread_task(task_id);
@@ -282,7 +282,7 @@ fn void run_scheduler_thread_join_timeout_then_join_boundary_tests(Interp* inter
         work.task_id = task_id;
         work.op = OFFLOAD_SLEEP_MS;
         work.int_arg = 20;
-        work.blob = null;
+        work.shared = null;
         bool enqueued = scheduler_enqueue_offload(work);
         if (!enqueued) {
             scheduler_drop_thread_task(task_id);
@@ -328,6 +328,95 @@ fn void run_scheduler_thread_join_timeout_then_join_boundary_tests(Interp* inter
         io::printfn(
             "[FAIL] scheduler timeout-then-join boundary restore at step %d (%s)",
             (int)failed_step,
+            (ZString)failed_phase
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_scheduler_shared_retire_queue_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: shared-handle retire queue enqueues/releases deterministically,
+    // overflow path falls back to immediate free, and domain safe points drain retired payloads.
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
+    bool ok = true;
+    char[] failed_phase = "";
+
+    if (!scheduler_shared_registry_ensure_ready()) {
+        ok = false;
+        failed_phase = "registry-init";
+    }
+
+    SharedRegistry* registry = &g_scheduler.shared_registry;
+    usz overflow_before = 0;
+    if (ok) {
+        scheduler_shared_registry_drain_retired(SHARED_RETIRED_QUEUE_CAPACITY);
+        overflow_before = registry.retire_overflow_count;
+    }
+
+    if (ok) {
+        SharedHandle* first = scheduler_publish_shared("phase7");
+        if (first == null) {
+            ok = false;
+            failed_phase = "publish-initial";
+        } else {
+            scheduler_release_shared(first);
+            if (registry.retire_count == 0) {
+                ok = false;
+                failed_phase = "enqueue-initial";
+            }
+        }
+    }
+
+    if (ok) {
+        scheduler_domain_safe_point(scheduler_primary_domain());
+        if (registry.retire_count != 0) {
+            ok = false;
+            failed_phase = "drain-initial";
+        }
+    }
+
+    if (ok) {
+        usz stress_total = SHARED_RETIRED_QUEUE_CAPACITY + 8;
+        for (usz i = 0; i < stress_total; i++) {
+            SharedHandle* h = scheduler_publish_shared("q");
+            if (h == null) {
+                ok = false;
+                failed_phase = "publish-stress";
+                break;
+            }
+            scheduler_release_shared(h);
+        }
+    }
+
+    if (ok) {
+        bool queue_full = registry.retire_count == SHARED_RETIRED_QUEUE_CAPACITY;
+        bool overflow_recorded = registry.retire_overflow_count >= overflow_before + 8;
+        if (!queue_full || !overflow_recorded) {
+            ok = false;
+            failed_phase = "overflow-accounting";
+        }
+    }
+
+    if (ok) {
+        scheduler_shared_registry_drain_retired(SHARED_RETIRED_QUEUE_CAPACITY);
+        if (registry.retire_count != 0) {
+            ok = false;
+            failed_phase = "drain-final";
+        }
+    }
+
+    bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+    if (!state_ok && ok) {
+        ok = false;
+        failed_phase = "boundary";
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler shared retire queue boundary restore");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] scheduler shared retire queue boundary restore (%s)",
             (ZString)failed_phase
         );
         (*fail)++;

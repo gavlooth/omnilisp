@@ -64,7 +64,7 @@ fn Value* run_promote_result(Value* jit_result, Interp* interp, main::ScopeRegio
 
     Value* original_result = jit_result;
     PromotionContext boundary_ctx = {};
-    promotion_context_begin(interp, &boundary_ctx, PROMOTION_CTX_BUDGET_RETURN);
+    boundary_promotion_context_begin(interp, &boundary_ctx, PROMOTION_CTX_BUDGET_RETURN);
     main::ScopeRegion* promote_result_saved_scope = boundary_enter_scope(interp, saved_scope);
     defer boundary_leave_scope(interp, promote_result_saved_scope);
 
@@ -82,7 +82,7 @@ fn Value* run_promote_result(Value* jit_result, Interp* interp, main::ScopeRegio
                 COPY_SITE_RUN_JIT_RESULT
             );
         }
-        if (!boundary_ctx.aborted && jit_result.scope_gen == child_scope.escape_generation) {
+        if (boundary_should_promote(jit_result, &boundary_ctx, child_scope)) {
             if (boundary_try_scope_splice_escapes(saved_scope, child_scope)) {
                 *child_spliced = true;
             }
@@ -97,7 +97,7 @@ fn Value* run_promote_result(Value* jit_result, Interp* interp, main::ScopeRegio
             COPY_SITE_RUN_JIT_RESULT
         );
     }
-    promotion_context_end(interp, &boundary_ctx);
+    boundary_promotion_context_end(interp, &boundary_ctx);
     boundary_assert_interp_scope_chain(interp);
     return jit_result;
 }
@@ -109,6 +109,7 @@ fn EvalResult run_program(char[] source, Interp* interp) {
     run_clear_stale_raise_state(interp);
     run_clear_stale_jit_tco_state(interp);
     defer run_clear_stale_jit_tco_state(interp);
+    dispatch_pending_signal_callbacks(interp);
 
     Lexer lex;
     lex.init(source);
@@ -131,6 +132,7 @@ fn EvalResult run_program(char[] source, Interp* interp) {
     foreach (expr : exprs) {
         run_clear_stale_raise_state(interp);
         run_clear_stale_jit_tco_state(interp);
+        dispatch_pending_signal_callbacks(interp);
 
         // GC JIT states between top-level expressions (safe: no JIT code on stack)
         jit_gc();
@@ -161,6 +163,7 @@ fn EvalResult run_program(char[] source, Interp* interp) {
     }
 
     exprs.free();
+    dispatch_pending_signal_callbacks(interp);
     return result;
 }
 
@@ -171,6 +174,7 @@ fn EvalResult run(char[] source, Interp* interp) {
     run_clear_stale_raise_state(interp);
     run_clear_stale_jit_tco_state(interp);
     defer run_clear_stale_jit_tco_state(interp);
+    dispatch_pending_signal_callbacks(interp);
     boundary_assert_interp_scope_chain(interp);
 
     // GC JIT states between top-level evaluations (safe: no JIT code on stack)
@@ -217,5 +221,6 @@ fn EvalResult run(char[] source, Interp* interp) {
     }
 
     boundary_assert_interp_scope_chain(interp);
+    dispatch_pending_signal_callbacks(interp);
     return result;
 }

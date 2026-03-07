@@ -299,8 +299,42 @@ fn Env* boundary_copy_env_to_target_scope(
 }
 
 fn bool boundary_try_scope_splice_escapes(main::ScopeRegion* parent, main::ScopeRegion* child) @inline {
-    if (parent == null || child == null) return false;
-    assert(parent != child, "boundary_try_scope_splice_escapes: parent and child must differ");
+    if (!boundary_is_scope_transfer_legal(parent, child)) return false;
     main::scope_splice_escapes(parent, child);
     return true;
+}
+
+fn bool boundary_is_scope_transfer_legal(main::ScopeRegion* parent, main::ScopeRegion* child) @inline {
+    if (parent == null || child == null) return false;
+    return parent != child;
+}
+
+<*
+@require interp != null : "boundary_should_copy_env: null interp"
+*>
+fn bool boundary_should_copy_env(Value* v, Interp* interp) @inline {
+    if (v == null) return false;
+    return !boundary_can_reuse_value(v, interp);
+}
+
+fn bool boundary_should_promote(Value* v, PromotionContext* ctx, main::ScopeRegion* source_scope) @inline {
+    if (v == null || ctx == null || source_scope == null) return false;
+    if (ctx.aborted) return false;
+    return v.scope_gen == source_scope.escape_generation;
+}
+
+<*
+@require interp != null : "boundary_promotion_context_begin: null interp"
+@require ctx != null : "boundary_promotion_context_begin: null ctx"
+*>
+fn void boundary_promotion_context_begin(Interp* interp, PromotionContext* ctx, usz budget = usz.max) @inline {
+    promotion_context_begin(interp, ctx, budget);
+}
+
+<*
+@require interp != null : "boundary_promotion_context_end: null interp"
+@require ctx != null : "boundary_promotion_context_end: null ctx"
+*>
+fn void boundary_promotion_context_end(Interp* interp, PromotionContext* ctx) @inline {
+    promotion_context_end(interp, ctx);
 }

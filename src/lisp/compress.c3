@@ -16,27 +16,55 @@ extern fn usz libdeflate_deflate_compress(DeflateCompressor* c, void* in_data, u
 extern fn usz libdeflate_deflate_compress_bound(DeflateCompressor* c, usz in_nbytes) @extern("libdeflate_deflate_compress_bound");
 extern fn usz libdeflate_gzip_compress(DeflateCompressor* c, void* in_data, usz in_nbytes, void* out_buf, usz out_nbytes_avail) @extern("libdeflate_gzip_compress");
 extern fn usz libdeflate_gzip_compress_bound(DeflateCompressor* c, usz in_nbytes) @extern("libdeflate_gzip_compress_bound");
+extern fn usz libdeflate_zlib_compress(DeflateCompressor* c, void* in_data, usz in_nbytes, void* out_buf, usz out_nbytes_avail) @extern("libdeflate_zlib_compress");
+extern fn usz libdeflate_zlib_compress_bound(DeflateCompressor* c, usz in_nbytes) @extern("libdeflate_zlib_compress_bound");
+extern fn uint libdeflate_adler32(uint adler, void* buffer, usz len) @extern("libdeflate_adler32");
+extern fn uint libdeflate_crc32(uint crc, void* buffer, usz len) @extern("libdeflate_crc32");
 
 extern fn DeflateDecompressor* libdeflate_alloc_decompressor() @extern("libdeflate_alloc_decompressor");
 extern fn void libdeflate_free_decompressor(DeflateDecompressor* d) @extern("libdeflate_free_decompressor");
 extern fn int libdeflate_deflate_decompress(DeflateDecompressor* d, void* in_data, usz in_nbytes, void* out_buf, usz out_nbytes_avail, usz* actual_out_nbytes) @extern("libdeflate_deflate_decompress");
 extern fn int libdeflate_gzip_decompress(DeflateDecompressor* d, void* in_data, usz in_nbytes, void* out_buf, usz out_nbytes_avail, usz* actual_out_nbytes) @extern("libdeflate_gzip_decompress");
+extern fn int libdeflate_zlib_decompress(DeflateDecompressor* d, void* in_data, usz in_nbytes, void* out_buf, usz out_nbytes_avail, usz* actual_out_nbytes) @extern("libdeflate_zlib_decompress");
 
 const int LIBDEFLATE_SUCCESS = 0;
+const int LIBDEFLATE_DEFAULT_LEVEL = 6;
+const int LIBDEFLATE_MIN_LEVEL = 0;
+const int LIBDEFLATE_MAX_LEVEL = 12;
+
+fn Value* parse_optional_compression_level(Value*[] args, int* level_out, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
+    if (args.len < 1 || args.len > 2) return raise_error(interp, "compression: expected 1-2 arguments");
+    // fault: lisp::EXPECTED_STRING
+    if (!is_string(args[0])) return raise_error(interp, "compression: expected string argument");
+
+    int level = LIBDEFLATE_DEFAULT_LEVEL;
+    if (args.len == 2) {
+        // fault: lisp::EXPECTED_INT
+        if (!is_int(args[1])) return raise_error(interp, "compression: level must be an integer");
+        long candidate = args[1].int_val;
+        // fault: lisp::INVALID_ARGUMENT
+        if (candidate < LIBDEFLATE_MIN_LEVEL || candidate > LIBDEFLATE_MAX_LEVEL) {
+            return raise_error(interp, "compression: level must be in range 0..12");
+        }
+        level = (int)candidate;
+    }
+
+    *level_out = level;
+    return null;
+}
 
 // ============================================================
 // (gzip s) -> compressed string
 // ============================================================
 
 fn Value* prim_gzip(Value*[] args, Env* env, Interp* interp) {
-    // fault: lisp::ARITY_MISMATCH
-    if (args.len < 1) return raise_error(interp, "gzip: expected 1 argument");
-    // fault: lisp::EXPECTED_STRING
-    if (!is_string(args[0])) return raise_error(interp, "gzip: expected string argument");
+    int level = LIBDEFLATE_DEFAULT_LEVEL;
+    if (Value* err = parse_optional_compression_level(args, &level, interp)) return err;
 
     char[] src = args[0].str_chars[:args[0].str_len];
 
-    DeflateCompressor* c = libdeflate_alloc_compressor(6);  // default compression level
+    DeflateCompressor* c = libdeflate_alloc_compressor(level);
     // fault: lisp::WRITE_FAILED
     if (c == null) return raise_error(interp, "gzip: failed to allocate compressor");
     defer libdeflate_free_compressor(c);
@@ -117,14 +145,12 @@ fn Value* prim_gunzip(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_deflate(Value*[] args, Env* env, Interp* interp) {
-    // fault: lisp::ARITY_MISMATCH
-    if (args.len < 1) return raise_error(interp, "deflate: expected 1 argument");
-    // fault: lisp::EXPECTED_STRING
-    if (!is_string(args[0])) return raise_error(interp, "deflate: expected string argument");
+    int level = LIBDEFLATE_DEFAULT_LEVEL;
+    if (Value* err = parse_optional_compression_level(args, &level, interp)) return err;
 
     char[] src = args[0].str_chars[:args[0].str_len];
 
-    DeflateCompressor* c = libdeflate_alloc_compressor(6);
+    DeflateCompressor* c = libdeflate_alloc_compressor(level);
     // fault: lisp::WRITE_FAILED
     if (c == null) return raise_error(interp, "deflate: failed to allocate compressor");
     defer libdeflate_free_compressor(c);
@@ -201,4 +227,124 @@ fn Value* prim_inflate(Value*[] args, Env* env, Interp* interp) {
 
     // fault: lisp::READ_FAILED
     return raise_error(interp, "inflate: decompressed data too large");
+}
+
+// ============================================================
+// (zlib-compress s [level]) -> zlib compressed string
+// ============================================================
+
+fn Value* prim_zlib_compress(Value*[] args, Env* env, Interp* interp) {
+    int level = LIBDEFLATE_DEFAULT_LEVEL;
+    if (Value* err = parse_optional_compression_level(args, &level, interp)) return err;
+
+    char[] src = args[0].str_chars[:args[0].str_len];
+
+    DeflateCompressor* c = libdeflate_alloc_compressor(level);
+    // fault: lisp::WRITE_FAILED
+    if (c == null) return raise_error(interp, "zlib-compress: failed to allocate compressor");
+    defer libdeflate_free_compressor(c);
+
+    usz bound = libdeflate_zlib_compress_bound(c, src.len);
+    char* out_buf = (char*)mem::malloc(bound);
+    // fault: lisp::WRITE_FAILED
+    if (out_buf == null) return raise_error(interp, "zlib-compress: out of memory");
+    defer mem::free(out_buf);
+
+    usz actual = libdeflate_zlib_compress(c, src.ptr, src.len, out_buf, bound);
+    if (actual == 0) {
+        // fault: lisp::WRITE_FAILED
+        return raise_error(interp, "zlib-compress: compression failed");
+    }
+
+    return make_string(interp, out_buf[:actual]);
+}
+
+// ============================================================
+// (zlib-decompress s [original-size]) -> decompressed string
+// ============================================================
+
+fn Value* prim_zlib_decompress(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
+    if (args.len < 1 || args.len > 2) return raise_error(interp, "zlib-decompress: expected 1-2 arguments");
+    // fault: lisp::EXPECTED_STRING
+    if (!is_string(args[0])) return raise_error(interp, "zlib-decompress: expected string argument");
+
+    char[] src = args[0].str_chars[:args[0].str_len];
+    if (src.len == 0) return make_string(interp, "");
+
+    DeflateDecompressor* d = libdeflate_alloc_decompressor();
+    // fault: lisp::READ_FAILED
+    if (d == null) return raise_error(interp, "zlib-decompress: failed to allocate decompressor");
+    defer libdeflate_free_decompressor(d);
+
+    usz try_size;
+    if (args.len == 2) {
+        // fault: lisp::EXPECTED_INT
+        if (!is_int(args[1])) return raise_error(interp, "zlib-decompress: expected integer original-size");
+        if (args[1].int_val <= 0) return raise_error(interp, "zlib-decompress: original-size must be > 0");
+        try_size = (usz)args[1].int_val;
+    } else {
+        try_size = src.len * 4;
+        if (try_size < 256) try_size = 256;
+    }
+
+    for (int attempt = 0; attempt < 8; attempt++) {
+        char* out_buf = (char*)mem::malloc(try_size);
+        if (out_buf == null) {
+            // fault: lisp::READ_FAILED
+            return raise_error(interp, "zlib-decompress: out of memory");
+        }
+
+        usz actual = 0;
+        int status = libdeflate_zlib_decompress(d, src.ptr, src.len, out_buf, try_size, &actual);
+
+        if (status == LIBDEFLATE_SUCCESS) {
+            Value* result = make_string(interp, out_buf[:actual]);
+            mem::free(out_buf);
+            return result;
+        }
+
+        mem::free(out_buf);
+
+        if (status == 3) {  // INSUFFICIENT_SPACE
+            try_size *= 4;
+            continue;
+        }
+
+        // fault: lisp::READ_FAILED
+        return raise_error(interp, "zlib-decompress: decompression failed (bad data)");
+    }
+
+    // fault: lisp::READ_FAILED
+    return raise_error(interp, "zlib-decompress: decompressed data too large");
+}
+
+// ============================================================
+// (adler32 s) -> checksum int
+// ============================================================
+
+fn Value* prim_adler32(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
+    if (args.len != 1) return raise_error(interp, "adler32: expected 1 argument");
+    // fault: lisp::EXPECTED_STRING
+    if (!is_string(args[0])) return raise_error(interp, "adler32: expected string argument");
+
+    char[] src = args[0].str_chars[:args[0].str_len];
+    uint checksum = libdeflate_adler32(1u, src.ptr, src.len);
+    return make_int(interp, (long)checksum);
+}
+
+// ============================================================
+// (crc32 s) -> checksum int
+// ============================================================
+
+fn Value* prim_crc32(Value*[] args, Env* env, Interp* interp) {
+    // fault: lisp::ARITY_MISMATCH
+    if (args.len != 1) return raise_error(interp, "crc32: expected 1 argument");
+    // fault: lisp::EXPECTED_STRING
+    if (!is_string(args[0])) return raise_error(interp, "crc32: expected string argument");
+
+    char[] src = args[0].str_chars[:args[0].str_len];
+    uint checksum = libdeflate_crc32(0u, src.ptr, src.len);
+    return make_int(interp, (long)checksum);
 }

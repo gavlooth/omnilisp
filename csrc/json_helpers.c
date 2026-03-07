@@ -4,8 +4,8 @@
 
 /* Wrapper functions for yyjson inline accessors (C3 can't call inline fns) */
 
-yyjson_doc* omni_yyjson_read(const char* dat, size_t len) {
-    return yyjson_read(dat, len, 0);
+yyjson_doc* omni_yyjson_read(const char* dat, size_t len, size_t flags) {
+    return yyjson_read(dat, len, flags);
 }
 
 void omni_yyjson_doc_free(yyjson_doc* doc) {
@@ -92,4 +92,13 @@ char* omni_yyjson_mut_write(yyjson_mut_doc* doc, size_t* len) {
 
 char* omni_yyjson_mut_write_pretty(yyjson_mut_doc* doc, size_t* len) {
     return yyjson_mut_write(doc, YYJSON_WRITE_PRETTY, len);
+}
+
+char* omni_yyjson_mut_write_with_flags(yyjson_mut_doc* doc, yyjson_write_flag flags, size_t* len) {
+    return yyjson_mut_write(doc, flags, len);
+}
+
+yyjson_write_flag omni_yyjson_fp_to_fixed_flag(int precision) {
+    if (precision < 1 || precision > 15) return YYJSON_WRITE_NOFLAG;
+    return YYJSON_WRITE_FP_TO_FIXED((uint32_t)precision);
 }

@@ -1,0 +1,76 @@
+;; portfolio.omni — P&L calculation over user-supplied holdings
+;;
+;; Idioms demonstrated:
+;;   match (Ok/Err)  — unwrap cache lookup result, never null?
+;;   foldr + match   — collect successes, drop failures in one pass
+;;   foldl           — accumulate total cost basis and current value
+;;   partition       — split gainers/losers in one pass (replaces two filter calls)
+;;   sort-by         — built-in sort with curried comparator (replaces insertion sort)
+;;   _ placeholder   — (> _.gain 0) creates a lambda for partition predicate
+;;   let [a b]       — array destructuring for multi-value returns
+
+(module portfolio
+  (export portfolio/pnl))
+
+(import "models.omni" 'all)
+(import "cache.omni"  'all)
+
+;; ── Per-holding P&L ──────────────────────────────────────────────────────────
+
+;; Build a PnL for one holding using the current cached price.
+;; Returns (Ok pnl) or (Err msg) — never returns nil.
+(define (portfolio/holding->pnl (^Holding h))
+  (match (cache/quote-for h.symbol)
+    ((Ok quote)
+     (let (current-val (* h.qty quote.price)
+           cost-val    (* h.qty h.cost)
+           gain        (- current-val cost-val))
+       (Ok (PnL h.symbol h.qty h.cost current-val gain))))
+    ((Err e) (Err e))))
+
+;; ── Aggregates ──────────────────────────────────────────────────────────────
+
+;; foldl over PnL list: sum total cost basis and total current value.
+;; Accumulator is a pair [total-cost total-value].
+(define (portfolio/totals pnls)
+  (foldl
+    (lambda (acc p)
+      (let ([tc tv] acc)
+        [(+ tc (* p.qty p.cost))
+         (+ tv p.current)]))
+    [0.0 0.0]
+    pnls))
+
+;; ── Public API ──────────────────────────────────────────────────────────────
+
+;; (portfolio/pnl holdings) → summary dict
+;;
+;; holdings — list of Holding structs
+;; Returns:
+;;   {'holdings [...PnL...]
+;;    'gainers  [...PnL with gain > 0...]
+;;    'losers   [...PnL with gain <= 0...]
+;;    'total-cost    number
+;;    'total-value   number
+;;    'total-gain    number}
+(define (portfolio/pnl holdings)
+  (let (;; foldr + match: attempt P&L for each holding, keep only successes
+        pnls    (foldr (lambda (h acc)
+                         (match (portfolio/holding->pnl h)
+                           ((Ok p)  (cons p acc))
+                           ((Err _) acc)))
+                       nil holdings)
+        ;; sort-by with curried comparator: descending by gain
+        sorted  (sort-by (lambda (a) (lambda (b) (- b.gain a.gain))) pnls)
+        ;; partition splits in one pass: (gainers . losers)
+        ;; _ placeholder: (> _.gain 0) → (lambda (x) (> x.gain 0))
+        split   (partition (lambda (p) (> p.gain 0)) sorted)
+        gainers (car split)
+        losers  (cdr split)
+        [tc tv] (portfolio/totals pnls))
+    {'holdings    (map to-json sorted)
+     'gainers     (map to-json gainers)
+     'losers      (map to-json losers)
+     'total-cost  tc
+     'total-value tv
+     'total-gain  (- tv tc)}))

@@ -1,0 +1,93 @@
+;; cache.omni — Deduce-backed store for quotes and news, with TTL
+;;
+;; Idioms demonstrated:
+;;   deduce        — three relations; fact!/retract! for upsert semantics
+;;   match [h..t]  — list destructuring replaces null? checks
+;;   sort-by       — built-in sort with curried comparator
+;;   [type] params — typed function signatures with dot field access
+;;   Ok / Err      — cache/quote-for returns FetchResult, not nullable
+
+(module cache
+  (export cache/store-quote!
+          cache/store-news!
+          cache/latest-quotes
+          cache/latest-news
+          cache/quote-for
+          cache/stale?
+          cache/last-refresh
+          cache/set-last-refresh!))
+
+(import "models.omni" 'all)
+
+;; ── Database ──────────────────────────────────────────────────────────────────
+
+(define cache-db (deduce 'open 'memory))
+
+;; quotes(symbol, price, ts) — one row per symbol, upserted on each poll
+(define [relation cache-db] quotes   (symbol) (price) (ts))
+
+;; news(id, title, score, ts) — one row per story id, replaced each poll
+(define [relation cache-db] news     (id) (title) (score) (ts))
+
+;; meta(meta-key, meta-value) — single-row metadata (last-refresh timestamp)
+;; Note: 'key' is a reserved modifier in [relation] column specs — prefix required.
+(define [relation cache-db] meta     (meta-key) (meta-value))
+
+;; ── Write ───────────────────────────────────────────────────────────────────
+
+;; Upsert a quote: retract any existing row for the symbol, assert the new one.
+(define (cache/store-quote! (^Quote q))
+  (match (deduce 'query quotes (compose (= _ q.symbol) 'symbol))
+    ([row ..] (deduce 'retract! quotes ('symbol row) ('price row) ('ts row)))
+    (_ nil))
+  (deduce 'fact! quotes q.symbol q.price q.ts))
+
+;; Upsert a news item by id.
+(define (cache/store-news! (^NewsItem n))
+  (match (deduce 'query news (compose (= _ n.id) 'id))
+    ([row ..] (deduce 'retract! news ('id row) ('title row) ('score row) ('ts row)))
+    (_ nil))
+  (deduce 'fact! news n.id n.title n.score n.ts))
+
+;; ── Read ────────────────────────────────────────────────────────────────────
+
+;; All quotes as a list of Quote structs.
+(define (cache/latest-quotes)
+  (map (lambda (row)
+         (Quote ('symbol row) (* 1.0 ('price row)) ('ts row)))
+       (deduce 'scan quotes)))
+
+;; Top-n news items sorted by score descending.
+;; sort-by with curried comparator replaces hand-rolled insertion sort.
+(define (cache/latest-news n)
+  (let (items (map (lambda (row)
+                     (NewsItem ('id row) ('title row) ('score row) ('ts row)))
+                   (deduce 'scan news)))
+    (take n (sort-by (lambda (a) (lambda (b) (- b.score a.score))) items))))
+
+;; Look up a single quote by symbol string.
+;; Returns (Ok quote) or (Err msg) — callers use match, never null?.
+(define (cache/quote-for sym)
+  (match (deduce 'query quotes (compose (= _ sym) 'symbol))
+    ([row ..] (Ok (Quote ('symbol row) (* 1.0 ('price row)) ('ts row))))
+    (_        (Err (format "no price for %s" sym)))))
+
+;; ── TTL ─────────────────────────────────────────────────────────────────────
+
+;; Returns true if last-ts is older than ttl-seconds ago (or ts is 0 = never set).
+(define (cache/stale? last-ts ttl-seconds)
+  (or (= last-ts 0)
+      (> (- (time) last-ts) ttl-seconds)))
+
+;; ── Metadata ────────────────────────────────────────────────────────────────
+
+(define (cache/last-refresh)
+  (match (deduce 'query meta (compose (= _ "last-refresh") 'meta-key))
+    ([row ..] ('meta-value row))
+    (_        0)))
+
+(define (cache/set-last-refresh! ts)
+  (match (deduce 'query meta (compose (= _ "last-refresh") 'meta-key))
+    ([row ..] (deduce 'retract! meta ('meta-key row) ('meta-value row)))
+    (_ nil))
+  (deduce 'fact! meta "last-refresh" ts))

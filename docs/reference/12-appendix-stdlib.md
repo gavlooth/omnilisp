@@ -107,7 +107,9 @@ These redefine I/O to go through effects (fast path when no handler):
 
 `print`, `println`, `display`, `newline`, `read-file`, `write-file`,
 `file-exists?`, `read-lines`, `tcp-connect`, `tcp-read`, `tcp-write`,
-`tcp-close`, `dns-resolve`, `async-sleep`, `tls-connect`, `tls-read`,
+`tcp-close`, `udp-socket`, `udp-bind`, `udp-send`, `udp-recv`, `udp-close`,
+`pipe-connect`, `pipe-listen`, `process-spawn`, `process-wait`,
+`process-kill`, `signal-handle`, `signal-unhandle`, `dns-resolve`, `async-sleep`, `tls-connect`, `tls-server-wrap`, `tls-read`,
 `tls-write`, `tls-close`, `http-get`, `offload`, `thread-spawn`,
 `thread-join`, `thread-join-timeout`, `thread-cancel`
 

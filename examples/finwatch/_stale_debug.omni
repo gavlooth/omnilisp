@@ -1,0 +1,15 @@
+(import "models.omni" 'all)
+(import "cache.omni"  'all)
+
+;; store a refresh timestamp
+(define ts (time))
+(println ts)
+(cache/set-last-refresh! ts)
+
+;; verify it's there
+(println (cache/last-refresh))
+(println (cache/stale? (cache/last-refresh) 60))
+
+;; also scan meta relation directly
+(define db-val cache-db)
+(println (deduce 'scan meta))

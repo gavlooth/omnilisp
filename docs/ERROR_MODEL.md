@@ -85,7 +85,7 @@ Status legend: `done`, `partial`, `missing`.
 | Async/network primitives | `runtime-io` | `partial` | canonical payloaded `raise` for `tcp-*`/`dns`/`async-sleep` core primitives; residual wrappers still mixed | canonical payloaded `raise` | `async.c3` now emits `io/*`; remaining network wrappers (for example TLS path) still pending normalization |
 | Scheduler runtime primitives | `runtime-io` | `done` | canonical payloaded `raise` in scheduler runtime paths | canonical payloaded `raise` | `offload`, `thread-*`, `spawn`/`await`, wakeup/tcp-read bridge migrated to `scheduler/*` |
 | Effect dispatcher internals | `runtime-core` | `partial` | mixed message-string + payloaded `raise` paths | payloaded `raise` for programmer/recoverable paths | runtime effect/handle paths now emit canonical payloads; remaining non-migrated callsites pending |
-| Deduce APIs | `deduce` | `done` | canonical payloaded `raise` with stable `deduce/*` codes for open/dispatch/relation/query/fact/retract/count/scan/match | canonical payloaded `raise` | deduce-family string raises removed from `deduce.c3`, `deduce_relation_ops.c3`, `deduce_schema_query.c3`, and `unify.c3` |
+| Deduce APIs | `deduce` | `done` | canonical payloaded `raise` with stable `deduce/*` codes for open/dispatch/relation/query/fact/retract/count/scan/scan-range/match/txn/clear/drop | canonical payloaded `raise` | deduce-family string raises removed from `deduce.c3`, `deduce_relation_ops.c3`, `deduce_schema_query.c3`, and `unify.c3` |
 | Conversion/compression primitives | `runtime-core` | `missing` | string `raise_error` paths | canonical payloaded `raise` | many shallow argument checks |
 | Absence APIs (`find`, `assoc-ref`) | `stdlib` | `done` | `nil` for no result | keep as-is | contract-aligned already |
 

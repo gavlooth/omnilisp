@@ -1,0 +1,18 @@
+(import "models.omni" 'all)
+(import "cache.omni"  'all)
+
+(cache/set-last-refresh! 9999)
+
+;; Override cache/last-refresh with debug version
+(define (cache/last-refresh-debug)
+  (println "meta binding:")
+  (println meta)
+  (define rows (deduce 'query meta (compose (= _ "last-refresh") 'meta-key)))
+  (println "rows inside fn:")
+  (println rows)
+  (if rows ('meta-value (car rows)) 0))
+
+(println "via debug fn:")
+(println (cache/last-refresh-debug))
+(println "via original:")
+(println (cache/last-refresh))

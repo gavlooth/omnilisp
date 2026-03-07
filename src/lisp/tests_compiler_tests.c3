@@ -549,6 +549,28 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
         else    { (*fail)++; io::printn("[FAIL] Compiler: ref"); }
     }
 
+    // 58b. time-point constructor compiles
+    {
+        char[] code = compile_to_c3("(time-point 'date 2026 3 7)", interp);
+        bool ok = str_contains(code, "lookup_prim(\"time-point\")") && !str_contains(code, "unsupported");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: time-point"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: time-point"); }
+    }
+    // 58c. time-point tz alias compiles
+    {
+        char[] code = compile_to_c3("(time-point 'datetimetz 2026 3 7 8 15 30 123456 -420)", interp);
+        bool ok = str_contains(code, "lookup_prim(\"time-point\")") && !str_contains(code, "unsupported");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: time-point alias"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: time-point alias"); }
+    }
+    // 58d. json-get compiles
+    {
+        char[] code = compile_to_c3("(json-get (json-parse \"{\\\"a\\\":1}\") \"/a\")", interp);
+        bool ok = str_contains(code, "lookup_prim(\"json-get\")") && !str_contains(code, "unsupported");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: json-get"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: json-get"); }
+    }
+
     // 59. load compiles
     {
         char[] code = compile_to_c3("(load \"test.omni\")", interp);

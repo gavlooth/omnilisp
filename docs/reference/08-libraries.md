@@ -100,10 +100,21 @@ structural transformations — anything beyond what regex can do.
 ;; Gzip
 (define compressed (gzip "hello world"))
 (gunzip compressed)   ;; => "hello world"
+;; Optional level: 0..12 (default 6)
+(gunzip (gzip "hello world" 1))
 
 ;; Raw deflate
 (define deflated (deflate "hello world"))
 (inflate deflated)     ;; => "hello world"
+(inflate (deflate "hello world" 12))
+
+;; Zlib wrapper format
+(define z (zlib-compress "hello world"))
+(zlib-decompress z)    ;; => "hello world"
+
+;; Checksums
+(adler32 "hello world") ;; => 436929629
+(crc32 "hello world")   ;; => 222957957
 ```
 
 ---
@@ -114,6 +125,8 @@ structural transformations — anything beyond what regex can do.
 ;; Case conversion (Unicode-aware via utf8proc)
 (string-upcase "hello")           ;; => "HELLO"
 (string-downcase "HELLO")         ;; => "hello"
+(string-casefold "Straße")        ;; => "strasse"
+(string-titlecase "hELLO wORLD")  ;; => "Hello World"
 
 ;; Normalization
 (string-normalize "cafe\u0301" 'NFC)   ;; => "cafe" (composed)
@@ -130,6 +143,13 @@ structural transformations — anything beyond what regex can do.
 (char-category "A")    ;; => "Lu" (uppercase letter)
 (char-category "a")    ;; => "Ll" (lowercase letter)
 (char-category "1")    ;; => "Nd" (decimal digit)
+
+;; Display width hint
+(char-width 65)        ;; => 1
+
+;; Property lookup
+(char-property 65 'category)  ;; => "Lu"
+(char-property 48 'digit?)    ;; => true
 ```
 
 ---
@@ -143,6 +163,10 @@ Deduce is an embedded relational database backed by LMDB.
 ```lisp
 (define db (deduce 'open "app.db"))       ;; persistent
 (define tmp (deduce 'open 'memory))        ;; ephemeral
+
+;; explicit LMDB named DB exposure for relation storage
+;; (relation symbol remains language-facing; db-name selects LMDB dbi name)
+(define events (deduce 'open-named db 'event-log "events_v1" 'ts 'kind 'payload))
 ```
 
 ### Define Relations
@@ -162,7 +186,30 @@ Deduce is an embedded relational database backed by LMDB.
 (deduce 'fact! edge "A" "B")
 
 (deduce 'retract! person "Alice" 30 "alice@b.com")
-(deduce 'retract! person "Alice" _ _)    ;; wildcard retract
+```
+
+### Transactions
+
+```lisp
+;; explicit write transaction
+(define tx (deduce 'begin db))
+(deduce 'fact! tx person "Carol" 44 "carol@b.com")
+(deduce 'retract! tx edge "A" "B")
+(deduce 'commit tx)
+
+;; explicit read transaction (for future read APIs that accept txn handles)
+(define ro (deduce 'begin db 'read))
+(deduce 'abort ro)
+```
+
+### Relation Maintenance
+
+```lisp
+;; remove all rows, keep relation schema/handle valid
+(deduce 'clear! person)
+
+;; drop relation backing store; existing relation handle becomes invalid for scans/writes
+(deduce 'drop! person)
 ```
 
 ### Query
@@ -173,4 +220,5 @@ Deduce is an embedded relational database backed by LMDB.
 (deduce 'query person
   (lambda (row) (> (ref row 'age) 28)))   ;; filtered
 (deduce 'match person '("Alice" _ _))     ;; pattern match
+(deduce 'scan-range person '("Alice" 0 "a@x") '("Charles" 999 "zzz")) ;; bounded scan
 ```

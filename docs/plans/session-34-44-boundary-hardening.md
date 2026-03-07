@@ -1135,41 +1135,41 @@ rg -n "TODO|FIXME|HACK" src/lisp src | head
 
 ## Session 34: Boundary Facade + Baseline Contracts
 
-- [ ] Commit A: `lifetime: introduce boundary facade with explicit contracts`
-- [ ] Implement audited boundary module entry points only.
-- [ ] Add `@require/@ensure` contracts to public boundary functions.
-- [ ] Commit B: `lifetime: route low-risk callsites through boundary facade`
-- [ ] Migrate only low-risk callsites.
-- [ ] Run Global Gates.
-- [ ] Record results in `memory/CHANGELOG.md`.
+- [x] Commit A: `lifetime: introduce boundary facade with explicit contracts`
+- [x] Implement audited boundary module entry points only.
+- [x] Add `@require/@ensure` contracts to public boundary functions.
+- [x] Commit B: `lifetime: route low-risk callsites through boundary facade`
+- [x] Migrate only low-risk callsites.
+- [x] Run Global Gates.
+- [x] Record results in `memory/CHANGELOG.md`.
 
 ## Session 35: Internal Decomposition (Quality Pass A)
 
-- [ ] Commit A: `lifetime: split boundary helpers into decision and mutation units`
-- [ ] Break large boundary internals into small helper functions.
-- [ ] Separate decision logic from mutation logic.
-- [ ] Commit B: `lifetime: normalize naming and remove duplicated boundary branches`
-- [ ] Remove duplicate condition trees and normalize helper naming.
-- [ ] Run Global Gates.
-- [ ] Update changelog.
+- [x] Commit A: `lifetime: split boundary helpers into decision and mutation units`
+- [x] Break large boundary internals into small helper functions.
+- [x] Separate decision logic from mutation logic.
+- [x] Commit B: `lifetime: normalize naming and remove duplicated boundary branches`
+- [x] Remove duplicate condition trees and normalize helper naming.
+- [x] Run Global Gates.
+- [x] Update changelog.
 
 ## Session 36: Business Logic Unification
 
-- [ ] Commit A: `lifetime: add shared ownership policy helpers for promote/copy/splice`
-- [ ] Add shared policy helpers (`should_promote`, `should_copy_env`, `is_scope_transfer_legal`).
-- [ ] Commit B: `lifetime: migrate boundary paths to shared policy decisions`
-- [ ] Replace ad-hoc branching in return/env/splice paths.
-- [ ] Run Global Gates.
-- [ ] Update changelog with edge-case decision matrix.
+- [x] Commit A: `lifetime: add shared ownership policy helpers for promote/copy/splice`
+- [x] Add shared policy helpers (`should_promote`, `should_copy_env`, `is_scope_transfer_legal`).
+- [x] Commit B: `lifetime: migrate boundary paths to shared policy decisions`
+- [x] Replace ad-hoc branching in return/env/splice paths.
+- [x] Run Global Gates.
+- [x] Update changelog with edge-case decision matrix.
 
 ## Session 37: High-Risk Caller Migration
 
-- [ ] Commit A: `jit/eval: route return-boundary transitions via boundary API`
-- [ ] Move JIT/eval return and resume boundaries through facade.
-- [ ] Commit B: `lifetime: route env-copy and splice callers via boundary API`
-- [ ] Migrate closure/env copy/splice callsites.
-- [ ] Run Global Gates.
-- [ ] Update changelog with migrated callsite summary.
+- [x] Commit A: `jit/eval: route return-boundary transitions via boundary API`
+- [x] Move JIT/eval return and resume boundaries through facade.
+- [x] Commit B: `lifetime: route env-copy and splice callers via boundary API`
+- [x] Migrate closure/env copy/splice callsites.
+- [x] Run Global Gates.
+- [x] Update changelog with migrated callsite summary.
 
 ## Session 38: Error Model Cleanup
 

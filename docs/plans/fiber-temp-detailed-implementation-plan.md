@@ -120,8 +120,8 @@ Goal:
 
 Likely files:
 - `memory/CHANGELOG.md`
-- `.claude/plans/fiber-temp-teardown-revision-summary.md`
-- `.claude/plans/session-34-44-boundary-hardening.md`
+- `docs/plans/fiber-temp-teardown-revision-summary.md`
+- `docs/plans/session-34-44-boundary-hardening.md`
 
 Changes:
 - Document current failing scenarios and ownership invariants as explicit acceptance gates.
@@ -235,7 +235,7 @@ Goal:
 
 Likely files:
 - `memory/DESTINATION_ARENA_PLAN.md`
-- `.claude/plans/fiber-temp-teardown-revision-summary.md`
+- `docs/plans/fiber-temp-teardown-revision-summary.md`
 - New design appendix (if needed)
 
 Changes:

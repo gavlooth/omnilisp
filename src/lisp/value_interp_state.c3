@@ -91,6 +91,7 @@ struct Interp {
     SymbolId sym_Number;
     SymbolId sym_Collection;
     SymbolId sym_Iterator;
+    SymbolId sym_TimePoint;
 
     // Error-as-effect
     SymbolId sym_raise;
@@ -106,7 +107,7 @@ struct Interp {
 
     // Effect fast-path dispatch table: maps effect tag → raw primitive
     // When a signal has no handler, the fast path looks up this table.
-    FastPathEntry[32] fast_path_table;
+    FastPathEntry[48] fast_path_table;
     usz fast_path_count;
     bool jit_debug_trace;  // trace JIT compile/exec steps
 
@@ -125,6 +126,7 @@ struct Interp {
     TypeId tid_Number;
     TypeId tid_Collection;
     TypeId tid_Iterator;
+    TypeId tid_TimePoint;
 
     // Type registry
     TypeRegistry types;
@@ -285,6 +287,7 @@ fn void interp_init_type_symbols(Interp* self) {
     self.sym_Number = self.symbols.intern("Number");
     self.sym_Collection = self.symbols.intern("Collection");
     self.sym_Iterator = self.symbols.intern("Iterator");
+    self.sym_TimePoint = self.symbols.intern("TimePoint");
 }
 
 fn void interp_init_misc_symbols(Interp* self) {

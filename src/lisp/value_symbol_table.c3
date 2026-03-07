@@ -1,5 +1,7 @@
 module lisp;
 
+const SYMBOL_MAX_NAME_LEN = 8192;
+
 fn void SymbolTable.init(SymbolTable* self) {
     self.count = 0;
     self.capacity = SYMBOL_INITIAL_CAPACITY;
@@ -73,6 +75,20 @@ fn usz hash_symbol(char[] name) {
 }
 
 fn SymbolId SymbolTable.intern(SymbolTable* self, char[] name) {
+    if (self == null || self.entries == null || self.hash_index == null) {
+        return INVALID_SYMBOL_ID;
+    }
+    if (name.ptr == null) {
+        return INVALID_SYMBOL_ID;
+    }
+
+    // Defensive guardrail: symbol names beyond documented limits indicate a
+    // corrupted slice/ABI boundary and must not flow into allocator paths.
+    usz len = name.len;
+    if (len > SYMBOL_MAX_NAME_LEN) {
+        return INVALID_SYMBOL_ID;
+    }
+
     usz h = hash_symbol(name);
     usz mask = self.hash_capacity - 1;
 
@@ -86,9 +102,9 @@ fn SymbolId SymbolTable.intern(SymbolTable* self, char[] name) {
         }
         // Check if this slot's entry matches
         usz idx = (usz)sid;
-        if (self.entries[idx].len == name.len) {
+        if (self.entries[idx].len == len) {
             bool match = true;
-            for (usz j = 0; j < name.len; j++) {
+            for (usz j = 0; j < len; j++) {
                 if (self.entries[idx].name[j] != name[j]) {
                     match = false;
                     break;
@@ -109,7 +125,6 @@ fn SymbolId SymbolTable.intern(SymbolTable* self, char[] name) {
 
     // Insert new symbol
     SymbolId id = (SymbolId)self.count;
-    usz len = name.len;
     // Heap-allocate symbol name
     char* heap_name = (char*)mem::malloc(len + 1);
     for (usz i = 0; i < len; i++) {

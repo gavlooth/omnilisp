@@ -115,13 +115,12 @@ fn void print_value(Value* v, SymbolTable* syms) {
         case DOUBLE:
             char[64] dbuf;
             char[] dstr = double_to_string(v.double_val, &dbuf);
-            io::printf("%s", dstr);
+            dbuf[dstr.len] = 0;
+            io::printf("%s", (ZString)&dbuf);
         case STRING:
-            io::print("\"");
-            io::print(v.str_chars[:v.str_len]);
-            io::print("\"");
+            io::printf("\"%s\"", (ZString)v.str_chars);
         case SYMBOL:
-            io::print(syms.get_name(v.sym_val));
+            io::printf("%s", (ZString)syms.get_name(v.sym_val));
         case CONS:
             print_cons_value(v, syms);
         case CLOSURE:
@@ -152,6 +151,13 @@ fn void print_value(Value* v, SymbolTable* syms) {
             io::print("#<iterator>");
         case COROUTINE:
             io::print("#<coroutine>");
+        case TIME_POINT: {
+            char[96] tpb;
+            char[] ts = time_point_to_string(v.time_point_val, tpb[..]);
+            io::print("#<time-point ");
+            io::print(ts);
+            io::print(">");
+        }
         default:
             io::print("#<unknown>");
     }
@@ -296,6 +302,13 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             pb.append_str("#<iterator>");
         case COROUTINE:
             pb.append_str("#<coroutine>");
+        case TIME_POINT: {
+            char[96] tpb;
+            char[] ts = time_point_to_string(v.time_point_val, tpb[..]);
+            pb.append_str("#<time-point ");
+            pb.append_str(ts);
+            pb.append_char('>');
+        }
         default:
             pb.append_str("#<unknown>");
     }

@@ -1,0 +1,214 @@
+;; server.omni — background price poller + HTTP API server
+;;
+;; Idioms demonstrated:
+;;   |>               — pipe: raw request bytes → decode → dispatch → respond
+;;   _ placeholder    — (+ 1 _) creates lambdas inline
+;;   match [h .. t]   — list destructuring in decode-request
+;;   match (Ok/Err)   — unwrap feed results and cache lookups
+;;   cond             — routing table and request validation
+;;   {..} dict params — destructure POST body dicts directly
+;;   for-each         — side-effect iteration (store results, not map)
+;;   try              — catch raise effects with stdlib function
+;;   spawn / async-sleep — background refresh fiber
+;;   partial          — bind socket once: (partial tcp-write client)
+;;   handle / raise   — per-connection error boundary
+;;   [schema] / validate — POST /portfolio body validation
+;;   re-match         — path param extraction for /prices/:symbol
+;;   fs-open/write/close — append-only request log (via logging.omni)
+;;   fs-stat          — log file size in /health response
+;;   process-spawn    — shell out for system uptime in /health
+;;   run-fibers       — hand control to fiber scheduler
+
+;; ── Load dependencies ─────────────────────────────────────────────────────────
+
+(import "models.omni"     'all)
+(import "http.omni"       'all)
+(import "feed.omni"       'all)
+(import "cache.omni"      'all)
+(import "portfolio.omni"  'all)
+(import "logging.omni"    'all)
+
+;; ── Startup timestamp ─────────────────────────────────────────────────────────
+
+(define server-start-ts (time))
+
+;; ── Schema ────────────────────────────────────────────────────────────────────
+
+;; Validate a single portfolio holding dict from the POST body.
+(define [schema] holding-schema
+  (map
+    (symbol string)
+    (qty    (and number (> 0)))
+    (cost   (and number (> 0)))))
+
+;; ── HTTP response helpers ─────────────────────────────────────────────────────
+
+(define (http-response status payload)
+  (let (body (json-emit payload))
+    (format "HTTP/1.1 %s\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: %d\r\n\r\n%s"
+            status (string-length body) body)))
+
+(define (ok-response payload)
+  (http-response "200 OK" {'status "ok" 'data payload}))
+
+(define (err-response code msg)
+  (http-response (format "%d Error" code) {'status "error" 'error msg}))
+
+;; ── Request decoder ───────────────────────────────────────────────────────────
+
+;; match [h .. t] replaces cascaded (if (null? ...) (car ...) default) checks.
+;; Each destructuring step is a clear pattern match on the split result.
+(define (decode-request raw)
+  (let ([head .. body-parts] (string-split raw "\r\n\r\n")
+        body-text (match body-parts ([b ..] b) (_ ""))
+        body      (match body-text ("" nil) (text (json-parse text)))
+        [req-line ..] (string-split head "\r\n")
+        tokens (string-split req-line " "))
+    (match tokens
+      ([method path ..] {'method method 'path path 'body body})
+      ([method ..]      {'method method 'path "/" 'body body})
+      (_                {'method "" 'path "/" 'body body}))))
+
+;; ── Validation helper ────────────────────────────────────────────────────────
+
+;; Validate value against a named schema; raise with explanation on failure.
+;; Callers are inside handle/raise so the raise is caught at the connection boundary.
+(define (require! schema-name value)
+  (if (validate schema-name value)
+      value
+      (raise (format "validation failed: %s" (explain schema-name value)))))
+
+;; ── Route handlers ────────────────────────────────────────────────────────────
+
+;; GET /prices — return all cached quotes
+(define (route/prices)
+  (ok-response (map to-json (cache/latest-quotes))))
+
+;; GET /news — return top 10 cached news items by score
+(define (route/news)
+  (ok-response (map to-json (cache/latest-news 10))))
+
+;; POST /portfolio — validate holdings array, compute P&L
+;; Body: [{"symbol":"BTC","qty":0.5,"cost":30000}, ...]
+;; {symbol qty cost} dict destructuring extracts fields from each JSON object.
+(define (route/portfolio body)
+  (cond
+    [(not body) (err-response 400 "missing request body")]
+    [else
+     (let (holdings (map (lambda ({symbol qty cost})
+                           (begin
+                             (require! 'holding-schema {'symbol symbol 'qty qty 'cost cost})
+                             (Holding symbol (* 1.0 qty) (* 1.0 cost))))
+                         body))
+       (ok-response (portfolio/pnl holdings)))]))
+
+;; GET /health — uptime, last-refresh, log size, system uptime.
+;; process-spawn shells out to `uptime -p` for system info.
+;; fs-stat checks log file size.
+(define (route/health)
+  (ok-response {'uptime        (- (time) server-start-ts)
+                'last-refresh  (cache/last-refresh)
+                'prices        (length (cache/latest-quotes))
+                'news          (length (cache/latest-news 100))
+                'log-bytes     (log/size)
+                'system-uptime (log/system-uptime)}))
+
+;; GET /logs — return raw log file contents
+;; log/read-all uses read-file (high-level), log/size uses fs-stat (low-level).
+(define (route/logs)
+  (ok-response {'log  (log/read-all)
+                'size (log/size)}))
+
+;; GET /prices/:symbol — return a single cached quote by symbol
+;; re-match extracts the symbol via capture group; match on Ok/Err from cache.
+(define (route/price-by-symbol path)
+  (let (m (re-match "/prices/(.+)" path))
+    (cond
+      [(not m) (err-response 404 "not found")]
+      [else
+       (match (cache/quote-for (ref m 1))
+         ((Ok q)  (ok-response (to-json q)))
+         ((Err e) (err-response 404 e)))])))
+
+;; ── Router ────────────────────────────────────────────────────────────────────
+
+;; Dispatch on method + path, return an HTTP response string.
+(define (dispatch method path body)
+  (cond
+    [(and (= method "GET")  (= path "/prices"))              (route/prices)]
+    [(and (= method "GET")  (= path "/news"))                (route/news)]
+    [(and (= method "GET")  (= path "/health"))              (route/health)]
+    [(and (= method "GET")  (= path "/logs"))                (route/logs)]
+    [(and (= method "POST") (= path "/portfolio"))           (route/portfolio body)]
+    [(and (= method "GET")  (re-match "^/prices/.+" path))  (route/price-by-symbol path)]
+    [else                                                    (err-response 404 "not found")]))
+
+;; ── Connection handler ────────────────────────────────────────────────────────
+
+;; |> pipe: raw bytes → decode → dispatch → respond.
+;; partial binds the socket once — respond = (lambda (msg) (tcp-write client msg)).
+;; handle/raise catches any raise signal from route handlers.
+(define (server/handle-client client)
+  (let (respond (partial tcp-write client))
+    (handle
+      (let (req (|> (tcp-read client) decode-request))
+        (log/write! (format "%s %s" ('method req) ('path req)))
+        (|> (dispatch ('method req) ('path req) ('body req))
+            respond)
+        (tcp-close client))
+      (raise msg
+        (log/write! (format "ERROR %s" msg))
+        (respond (err-response 400 msg))
+        (tcp-close client)))))
+
+;; ── Accept loop ───────────────────────────────────────────────────────────────
+
+(define (server/accept-loop listener)
+  (let (client (tcp-accept listener))
+    (spawn (lambda () (server/handle-client client)))
+    (server/accept-loop listener)))
+
+;; ── Background poller ─────────────────────────────────────────────────────────
+
+;; Fetch all three sources and store results in cache.
+;; Each source is fire-and-forget — failures are logged but don't abort the poll.
+;; for-each: side-effect only (storing into cache), not building a list.
+;; match (Ok/Err) replaces null? checks on feed results.
+(define (server/poll-once!)
+  (define (store-quotes! result)
+    (match result
+      ((Ok quotes) (for-each cache/store-quote! quotes))
+      ((Err msg)   (println (format "[poll] fetch error: %s" msg)))))
+  (define (store-news! result)
+    (match result
+      ((Ok items) (for-each cache/store-news! items))
+      ((Err msg)  (println (format "[poll] news error: %s" msg)))))
+  (spawn (lambda () (store-quotes! (feed/fetch-fx))))
+  (spawn (lambda () (store-quotes! (feed/fetch-crypto))))
+  (spawn (lambda () (store-news!   (feed/fetch-news))))
+  (cache/set-last-refresh! (time))
+  (println (format "[poll] refresh at %d" (time))))
+
+;; Polling loop: run immediately on start, then every poll-interval-ms.
+(define poll-interval-ms (* 60 1000))
+
+(define (server/poll-loop)
+  (server/poll-once!)
+  (async-sleep poll-interval-ms)
+  (server/poll-loop))
+
+;; ── Entry points ──────────────────────────────────────────────────────────────
+
+(define (server/start-async host port)
+  (log/open! "/tmp/finwatch.log")
+  (let (listener (tcp-listen host port 128))
+    (println (format "finwatch listening on %s:%d" host port))
+    (log/write! (format "server started on %s:%d" host port))
+    (spawn (lambda () (server/poll-loop)))
+    (spawn (lambda () (server/accept-loop listener)))
+    {'host host 'port port 'listener listener}))
+
+;; (server/start "127.0.0.1" 8080) — blocks, handing control to the scheduler.
+(define (server/start host port)
+  (server/start-async host port)
+  (run-fibers))

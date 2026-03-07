@@ -34,13 +34,47 @@ fn void scheduler_init_pending_tcp_read(PendingTcpRead* op, int fd, usz max_byte
     op.consumed = false;
     op.timed_out = false;
     op.readable_pending = false;
+    op.writable_pending = false;
+    op.write_mode = false;
     op.fd = fd;
     op.max_bytes = max_bytes;
     op.buffer = read_buf;
+    op.write_buffer = null;
+    op.write_len = 0;
+    op.write_offset = 0;
     op.nread = -1;
+    op.nwritten = 0;
     op.error_code = 0;
     op.poll_handle = poll_handle;
     op.timer_handle = timer_handle;
+}
+
+fn void scheduler_init_pending_tcp_write(
+    PendingTcpRead* op,
+    int fd,
+    char* write_buf,
+    usz write_len,
+    usz write_offset,
+    void* poll_handle
+) {
+    op.active = true;
+    op.completed = false;
+    op.consumed = false;
+    op.timed_out = false;
+    op.readable_pending = false;
+    op.writable_pending = false;
+    op.write_mode = true;
+    op.fd = fd;
+    op.max_bytes = 0;
+    op.buffer = null;
+    op.write_buffer = write_buf;
+    op.write_len = write_len;
+    op.write_offset = write_offset;
+    op.nread = -1;
+    op.nwritten = (long)write_offset;
+    op.error_code = 0;
+    op.poll_handle = poll_handle;
+    op.timer_handle = null;
 }
 
 fn void scheduler_drain_loop_nowait() @inline {
@@ -77,6 +111,19 @@ fn Value* scheduler_create_poll_handle(int fd, usz max_bytes, void** poll_handle
 
     *poll_handle_out = poll_handle;
     *read_buf_out = read_buf;
+    return null;
+}
+
+fn Value* scheduler_create_poll_handle_only(int fd, void** poll_handle_out, Interp* interp) {
+    void* poll_handle = mem::malloc(uv_handle_size(UV_HANDLE_POLL));
+    if (poll_handle == null) {
+        return scheduler_raise(interp, "scheduler/tcp-write-out-of-memory", "tcp-write: out of memory");
+    }
+    if (uv_poll_init(g_scheduler.uv_loop, poll_handle, fd) != 0) {
+        mem::free(poll_handle);
+        return scheduler_raise(interp, "scheduler/tcp-write-uv-poll-init-failed", "tcp-write: uv_poll_init failed");
+    }
+    *poll_handle_out = poll_handle;
     return null;
 }
 
@@ -127,6 +174,15 @@ fn Value* scheduler_start_tcp_watchers(void* poll_handle, void* timer_handle, lo
         return scheduler_raise(interp, "scheduler/tcp-read-uv-timer-start-failed", "tcp-read: uv_timer_start failed");
     }
 
+    return null;
+}
+
+fn Value* scheduler_start_tcp_write_watcher(void* poll_handle, char* write_buf, Interp* interp) {
+    if (uv_poll_start(poll_handle, UV_WRITABLE, &scheduler_uv_poll_cb) != 0) {
+        scheduler_close_handles_and_drain(poll_handle, null);
+        if (write_buf != null) mem::free(write_buf);
+        return scheduler_raise(interp, "scheduler/tcp-write-uv-poll-start-failed", "tcp-write: uv_poll_start failed");
+    }
     return null;
 }
 
@@ -181,4 +237,93 @@ fn Value* scheduler_try_async_tcp_read(int fd, usz max_bytes, long timeout_ms, I
     if (y != null && y.tag == ERROR) return y;
 
     return scheduler_consume_pending_tcp_read(fiber_id, interp);
+}
+
+fn Value* scheduler_finish_tcp_write_sync(int fd, char[] data, usz written, Interp* interp) {
+    usz offset = written;
+    while (offset < data.len) {
+        long n = c_send(fd, data.ptr + offset, data.len - offset, 0);
+        if (n <= 0) {
+            return scheduler_raise(interp, "scheduler/tcp-write-send-failed", "tcp-write: send failed");
+        }
+        offset += (usz)n;
+    }
+    return make_int(interp, (long)offset);
+}
+
+// Async bridge used by tcp-write fast-path:
+// returns non-null when it handled the call (including errors);
+// null means "fall back to blocking path".
+fn Value* scheduler_try_async_tcp_write(int fd, char[] data, Interp* interp) {
+    scheduler_init();
+    if (!scheduler_is_running_fiber_context()) return null;
+
+    if (data.len == 0) return make_int(interp, 0);
+
+    usz fiber_id = g_scheduler.current_fiber_id;
+    FiberEntry* f = &g_scheduler.fibers[fiber_id];
+    PendingTcpRead* op = &g_scheduler.pending_reads[fiber_id];
+    if (op.active) {
+        return scheduler_raise(
+            interp,
+            "scheduler/tcp-write-pending-async-io-exists",
+            "tcp-write: pending async I/O already exists for this fiber"
+        );
+    }
+
+    long probe_n = c_send(fd, data.ptr, data.len, MSG_DONTWAIT);
+    usz written = 0;
+    if (probe_n >= 0) {
+        written = (usz)probe_n;
+        if (written >= data.len) return make_int(interp, probe_n);
+    } else {
+        int probe_err = 0;
+        int* err_ptr = c_errno_location();
+        if (err_ptr != null) probe_err = *err_ptr;
+        if (probe_err != ERRNO_EAGAIN && probe_err != ERRNO_EWOULDBLOCK) {
+            return scheduler_raise(interp, "scheduler/tcp-write-send-failed", "tcp-write: send failed");
+        }
+    }
+
+    // If libuv loop is unavailable, finish remaining bytes synchronously.
+    if (!g_scheduler.uv_loop_ready || g_scheduler.uv_loop == null) {
+        return scheduler_finish_tcp_write_sync(fd, data, written, interp);
+    }
+
+    usz handle_size = uv_handle_size(UV_HANDLE_POLL);
+    if (handle_size == 0) {
+        return scheduler_finish_tcp_write_sync(fd, data, written, interp);
+    }
+
+    char* write_buf = (char*)mem::malloc(data.len);
+    if (write_buf == null) {
+        return scheduler_raise(interp, "scheduler/tcp-write-out-of-memory", "tcp-write: out of memory");
+    }
+    for (usz i = 0; i < data.len; i++) write_buf[i] = data[i];
+
+    void* poll_handle = null;
+    Value* setup_err = scheduler_create_poll_handle_only(fd, &poll_handle, interp);
+    if (setup_err != null) {
+        mem::free(write_buf);
+        return setup_err;
+    }
+
+    Value* start_err = scheduler_start_tcp_write_watcher(poll_handle, write_buf, interp);
+    if (start_err != null) return start_err;
+
+    scheduler_init_pending_tcp_write(op, fd, write_buf, data.len, written, poll_handle);
+    f.state = FIBER_BLOCKED;
+
+    Value*[1] yargs;
+    yargs[0] = make_nil(interp);
+    Value* y = prim_yield(yargs[..], null, interp);
+    if (y != null && y.tag == ERROR) return y;
+
+    return scheduler_consume_pending_tcp_read(fiber_id, interp);
+}
+
+// Async bridge reuse for UDP receive in fiber context:
+// same fd readiness and wakeup path as tcp-read, but without timeout.
+fn Value* scheduler_try_async_udp_recv(int fd, usz max_bytes, Interp* interp) {
+    return scheduler_try_async_tcp_read(fd, max_bytes, -1, interp);
 }

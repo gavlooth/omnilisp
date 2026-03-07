@@ -83,6 +83,8 @@ fn void init_prim_hash_core_and_strings(SymbolTable* st) {
     prim_hash_insert(st.intern("list->string"), "aot::lookup_prim(\"list->string\")");
     prim_hash_insert(st.intern("string-upcase"), "aot::lookup_prim(\"string-upcase\")");
     prim_hash_insert(st.intern("string-downcase"), "aot::lookup_prim(\"string-downcase\")");
+    prim_hash_insert(st.intern("string-casefold"), "aot::lookup_prim(\"string-casefold\")");
+    prim_hash_insert(st.intern("string-titlecase"), "aot::lookup_prim(\"string-titlecase\")");
     prim_hash_insert(st.intern("string-trim"), "aot::lookup_prim(\"string-trim\")");
     prim_hash_insert(st.intern("string->number"), "aot::lookup_prim(\"string->number\")");
     prim_hash_insert(st.intern("number->string"), "aot::lookup_prim(\"number->string\")");
@@ -107,6 +109,14 @@ fn void init_prim_hash_files_and_misc(SymbolTable* st) {
     prim_hash_insert(st.intern("write-file"), "aot::lookup_prim(\"write-file\")");
     prim_hash_insert(st.intern("file-exists?"), "aot::lookup_prim(\"file-exists?\")");
     prim_hash_insert(st.intern("read-lines"), "aot::lookup_prim(\"read-lines\")");
+    prim_hash_insert(st.intern("fs-open"), "aot::lookup_prim(\"fs-open\")");
+    prim_hash_insert(st.intern("fs-read"), "aot::lookup_prim(\"fs-read\")");
+    prim_hash_insert(st.intern("fs-write"), "aot::lookup_prim(\"fs-write\")");
+    prim_hash_insert(st.intern("fs-close"), "aot::lookup_prim(\"fs-close\")");
+    prim_hash_insert(st.intern("fs-stat"), "aot::lookup_prim(\"fs-stat\")");
+    prim_hash_insert(st.intern("fs-readdir"), "aot::lookup_prim(\"fs-readdir\")");
+    prim_hash_insert(st.intern("fs-rename"), "aot::lookup_prim(\"fs-rename\")");
+    prim_hash_insert(st.intern("fs-unlink"), "aot::lookup_prim(\"fs-unlink\")");
 
     // Misc
     prim_hash_insert(st.intern("gensym"), "aot::lookup_prim(\"gensym\")");
@@ -125,6 +135,15 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("has?"), "aot::lookup_prim(\"has?\")");
     prim_hash_insert(st.intern("remove!"), "aot::lookup_prim(\"remove!\")");
     prim_hash_insert(st.intern("push!"), "aot::lookup_prim(\"push!\")");
+    prim_hash_insert(st.intern("json-get"), "aot::lookup_prim(\"json-get\")");
+    prim_hash_insert(st.intern("json-parse"), "aot::lookup_prim(\"json-parse\")");
+    prim_hash_insert(st.intern("json-emit"), "aot::lookup_prim(\"json-emit\")");
+    prim_hash_insert(st.intern("json-emit-pretty"), "aot::lookup_prim(\"json-emit-pretty\")");
+    prim_hash_insert(st.intern("toml-parse"), "aot::lookup_prim(\"toml-parse\")");
+    prim_hash_insert(st.intern("csv-parse"), "aot::lookup_prim(\"csv-parse\")");
+    prim_hash_insert(st.intern("csv-emit"), "aot::lookup_prim(\"csv-emit\")");
+    prim_hash_insert(st.intern("time-point"), "aot::lookup_prim(\"time-point\")");
+    prim_hash_insert(st.intern("time-point?"), "aot::lookup_prim(\"time-point?\")");
 
     // Math
     prim_hash_insert(st.intern("abs"), "aot::lookup_prim(\"abs\")");

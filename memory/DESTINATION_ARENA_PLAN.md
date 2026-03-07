@@ -1,5 +1,9 @@
 # Architectural Plan: Destination-Passing Style (Scratch vs. Destination Arenas)
 
+> Status note (2026-03-07): this document is architecture intent and deep
+> rationale. For current validated runtime status, `memory/CHANGELOG.md` is the
+> source of truth.
+
 **Date**: March 3, 2026
 **Target**: Omni Lisp Runtime
 **Goal**: Eliminate $O(N)$ deep copies (`copy_to_parent`) and $O(1)$ memory leaks (`scope_adopt`) when returning values from functions, while strictly preserving Region-Based Reference Counting (RC) and forbidding Garbage Collection.

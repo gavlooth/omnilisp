@@ -1,0 +1,16 @@
+(import "models.omni" 'all)
+(import "cache.omni"  'all)
+
+(cache/set-last-refresh! (time))
+
+;; Test the query directly
+(define pred (compose (= _ "last-refresh") 'meta-key))
+(println "pred on match:")
+(println (pred (car (deduce 'scan meta))))
+
+(println "deduce query:")
+(println (deduce 'query meta pred))
+
+;; Try manual filter
+(println "manual filter:")
+(println (filter pred (deduce 'scan meta)))

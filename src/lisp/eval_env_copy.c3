@@ -4,12 +4,19 @@ import std::io;
 import main;
 
 fn bool copy_env_should_reuse_value(Value* v, Interp* interp) @inline {
-    return boundary_can_reuse_value(v, interp);
+    return !boundary_should_copy_env(v, interp);
 }
 
 fn Value* copy_env_copy_by_boundary_policy(Value* v, Interp* interp, PromotionContext* ctx) @inline {
     if (copy_env_should_reuse_value(v, interp)) return v;
     return boundary_copy_to_parent_site_ctx(v, interp, COPY_SITE_COPY_ENV_TO_SCOPE, ctx);
+}
+
+fn Value* copy_env_copy_time_point(Value* v, Interp* interp) {
+    Value* result = interp.alloc_value();
+    result.tag = TIME_POINT;
+    result.time_point_val = v.time_point_val;
+    return result;
 }
 
 fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = null) {
@@ -35,6 +42,8 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = 
         case MODULE:
             // Root-lifetime or external-lifetime objects can be shared.
             return v;
+        case TIME_POINT:
+            return copy_env_copy_time_point(v, interp);
         case INSTANCE:
         case FFI_HANDLE:
             return copy_env_copy_by_boundary_policy(v, interp, ctx);
@@ -84,7 +93,7 @@ fn Value* copy_env_clone_closure_if_needed(Value* val, Interp* interp) {
 
 fn Value* copy_env_clone_iterator_if_needed(Value* val, Interp* interp) {
     if (val == null || val.tag != ITERATOR) return val;
-    if (in_target_scope_chain((void*)val, interp)) return val;
+    if (boundary_ptr_in_target_scope_chain((void*)val, interp)) return val;
 
     Value* inner = val.iterator_val;
     if (inner != null && inner.tag == CLOSURE && inner.closure_val.env_scope != null) {
@@ -187,12 +196,12 @@ fn Env* copy_env_to_scope(Env* env, Interp* interp, usz depth = 0, PromotionCont
         // env-copy paths use the same deterministic region lifetime model.
         PromotionContext* local_ctx = (PromotionContext*)interp.current_scope.alloc(PromotionContext.sizeof);
         if (local_ctx == null) return null;
-        promotion_context_begin(interp, local_ctx);
+        boundary_promotion_context_begin(interp, local_ctx);
         active_ctx = local_ctx;
         owns_ctx = true;
     }
     Env* copied = copy_env_to_scope_inner(env, interp, depth, active_ctx);
-    if (owns_ctx) promotion_context_end(interp, active_ctx);
+    if (owns_ctx) boundary_promotion_context_end(interp, active_ctx);
     return copied;
 }
 

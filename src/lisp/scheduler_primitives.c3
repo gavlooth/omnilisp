@@ -27,54 +27,34 @@ fn Value* scheduler_parse_offload_job(
     Value*[] args,
     char[] expected_code,
     char[] expected_msg,
+    bool allow_internal_io_ops,
     OffloadWork* work,
     Interp* interp
 ) {
     if (args.len < 1) return scheduler_raise(interp, expected_code, expected_msg);
     *work = {};
-    return scheduler_build_offload_work(args[0], work, interp);
+    return scheduler_build_offload_work(args[0], work, interp, allow_internal_io_ops);
 }
 
-fn Value* scheduler_begin_fiber_offload(OffloadWork* work, usz fiber_id, Interp* interp) {
-    PendingOffload* pending = &g_scheduler.pending_offloads[fiber_id];
-    if (pending.active) {
-        shared_blob_release(work.blob);
-        return scheduler_raise(
-            interp,
-            "scheduler/offload-pending-work-exists",
-            "offload: pending work already exists for this fiber"
-        );
-    }
-
-    work.fiber_id = fiber_id;
-    work.task_id = NO_TASK;
-    if (!scheduler_enqueue_offload(*work)) {
-        shared_blob_release(work.blob);
-        return scheduler_raise(interp, "scheduler/offload-queue-full", "offload: queue is full");
-    }
-
-    pending.active = true;
-    pending.completed = false;
-    pending.completion = null;
-    g_scheduler.fibers[fiber_id].state = FIBER_BLOCKED;
-    return null;
-}
-
-fn Value* prim_offload(Value*[] args, Env* env, Interp* interp) {
-    (void)env;
+fn Value* scheduler_execute_offload_job(Value* job, bool allow_internal_io_ops, Interp* interp) {
     scheduler_init();
+
+    Value*[1] wrapped;
+    wrapped[0] = job;
 
     OffloadWork work;
     Value* parse_err = scheduler_parse_offload_job(
-        args,
+        wrapped[..],
         "scheduler/offload-expected-job-list",
         "offload: expected job list",
+        allow_internal_io_ops,
         &work,
         interp
     );
     if (parse_err != null) return parse_err;
 
-    if (!scheduler_is_running_fiber_context()) {
+    bool in_fiber = scheduler_is_running_fiber_context();
+    if (!in_fiber) {
         return scheduler_run_offload_sync(work, interp);
     }
 
@@ -90,6 +70,43 @@ fn Value* prim_offload(Value*[] args, Env* env, Interp* interp) {
     return scheduler_consume_pending_offload(fiber_id, interp);
 }
 
+fn Value* scheduler_run_internal_io_offload_job(Value* job, Interp* interp) {
+    return scheduler_execute_offload_job(job, true, interp);
+}
+
+fn Value* scheduler_begin_fiber_offload(OffloadWork* work, usz fiber_id, Interp* interp) {
+    PendingOffload* pending = &g_scheduler.pending_offloads[fiber_id];
+    if (pending.active) {
+        scheduler_release_shared(work.shared);
+        return scheduler_raise(
+            interp,
+            "scheduler/offload-pending-work-exists",
+            "offload: pending work already exists for this fiber"
+        );
+    }
+
+    work.fiber_id = fiber_id;
+    work.task_id = NO_TASK;
+    if (!scheduler_enqueue_offload(*work)) {
+        scheduler_release_shared(work.shared);
+        return scheduler_raise(interp, "scheduler/offload-queue-full", "offload: queue is full");
+    }
+
+    pending.active = true;
+    pending.completed = false;
+    pending.completion = null;
+    g_scheduler.fibers[fiber_id].state = FIBER_BLOCKED;
+    return null;
+}
+
+fn Value* prim_offload(Value*[] args, Env* env, Interp* interp) {
+    (void)env;
+    if (args.len < 1) {
+        return scheduler_raise(interp, "scheduler/offload-expected-job-list", "offload: expected job list");
+    }
+    return scheduler_execute_offload_job(args[0], false, interp);
+}
+
 // ============================================================
 // (__raw-thread-spawn (op arg...)) -> task-id
 // (__raw-thread-join task-id) -> value
@@ -100,14 +117,14 @@ fn Value* prim_offload(Value*[] args, Env* env, Interp* interp) {
 fn Value* scheduler_prepare_thread_spawn(OffloadWork* work, usz* task_id_out, Interp* interp) {
     usz task_id = scheduler_alloc_thread_task();
     if (task_id == NO_TASK) {
-        shared_blob_release(work.blob);
+        scheduler_release_shared(work.shared);
         return scheduler_raise(interp, "scheduler/thread-spawn-task-table-full", "thread-spawn: task table full");
     }
 
     work.fiber_id = NO_FIBER;
     work.task_id = task_id;
     if (!scheduler_enqueue_offload(*work)) {
-        shared_blob_release(work.blob);
+        scheduler_release_shared(work.shared);
         scheduler_drop_thread_task(task_id);
         return scheduler_raise(
             interp,
@@ -135,6 +152,7 @@ fn Value* prim_thread_spawn(Value*[] args, Env* env, Interp* interp) {
         args,
         "scheduler/thread-spawn-expected-job-list",
         "thread-spawn: expected job list",
+        false,
         &work,
         interp
     );
@@ -599,6 +617,7 @@ fn bool scheduler_advance_round(
     bool stop_on_target,
     bool* target_done_out = null
 ) {
+    dispatch_pending_signal_callbacks(interp);
     drain_wakeups();
 
     bool target_done = false;
@@ -609,6 +628,7 @@ fn bool scheduler_advance_round(
     if (target_done) return true;
     if (ran_ready) return true;
     if (scheduler_wait_blocked_once()) return true;
+    dispatch_pending_signal_callbacks(interp);
     return false;
 }
 
@@ -616,6 +636,8 @@ fn void scheduler_abort_all_work() {
     for (usz i = 0; i < g_scheduler.fiber_count; i++) {
         scheduler_close_pending_tcp_read(i);
         scheduler_close_pending_offload(i);
+        scheduler_close_pending_sleep(i);
+        scheduler_close_pending_dns(i);
         g_scheduler.fibers[i] = {};
     }
 
@@ -687,16 +709,22 @@ fn void scheduler_reset_if_idle() {
         (void)uv_run(g_scheduler.uv_loop, UV_RUN_NOWAIT);
     }
 
+    for (usz i = 0; i < g_scheduler.fiber_count; i++) {
+        scheduler_close_pending_tcp_read(i);
+        scheduler_close_pending_offload(i);
+        scheduler_close_pending_sleep(i);
+        scheduler_close_pending_dns(i);
+    }
+
     g_scheduler.fiber_count = 0;
     g_scheduler.current_fiber_id = NO_FIBER;
     scheduler_reset_wakeup_queue();
     for (usz i = 0; i < MAX_FIBERS; i++) {
-        if (g_scheduler.pending_offloads[i].completion != null) {
-            scheduler_free_offload_completion(g_scheduler.pending_offloads[i].completion);
-        }
         g_scheduler.fibers[i] = {};
         g_scheduler.pending_reads[i] = {};
         g_scheduler.pending_offloads[i] = {};
+        g_scheduler.pending_sleeps[i] = {};
+        g_scheduler.pending_dns[i] = {};
     }
 }
 
@@ -707,6 +735,8 @@ fn Value* scheduler_run_all(Interp* interp) {
         g_scheduler.current_fiber_id = NO_FIBER;
     }
 
+    // max_rounds guards against infinite-yield loops (fibers that never block or complete).
+    // I/O servers only consume rounds when actual work arrives, so 100K is ample for tests.
     usz max_rounds = 100000;
     usz round = 0;
 
@@ -721,7 +751,7 @@ fn Value* scheduler_run_all(Interp* interp) {
         if (!progressed) {
             return scheduler_fail_run_loop(
                 "scheduler/run-fibers-stalled",
-                "run-fibers: scheduler made no progress before all fibers completed",
+                "run-fibers: scheduler made no progress and not all fibers completed",
                 interp
             );
         }

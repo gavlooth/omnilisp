@@ -175,8 +175,9 @@ fn void jit_continuation_init_resume_state(ResetState* resume_state, Interp* int
 fn EvalResult jit_continuation_finish(main::StackCtx* target, ResetState* resume_state, Interp* interp) {
     if (resume_state.shifted) {
         // The resumed body hit another shift — evaluate that shift's body.
+        // Keep `target` alive here: the newly captured continuation points at
+        // this suspended context as its multi-shot template.
         Value* shift_result = jit_eval(resume_state.shift_body, resume_state.shift_env, interp);
-        main::stack_ctx_destroy(target, &interp.stack_ctx_pool);
         if (shift_result != null && shift_result.tag == ERROR) {
             return eval_error(shift_result.str_chars[:shift_result.str_len]);
         }

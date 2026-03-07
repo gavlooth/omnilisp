@@ -23,7 +23,7 @@ fn Value* prim_is_list(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_is_procedure(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "procedure?: expected 1 argument");
     ValueTag t = args[0].tag;
-    return (t == CLOSURE || t == PRIMITIVE || t == PARTIAL_PRIM || t == METHOD_TABLE) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    return (t == CLOSURE || t == PRIMITIVE || t == PARTIAL_PRIM || t == METHOD_TABLE || t == CONTINUATION) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_is_zero(Value*[] args, Env* env, Interp* interp) {
@@ -49,6 +49,11 @@ fn Value* prim_is_even(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_is_odd(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_int(args[0])) return raise_error(interp, "odd?: expected integer");
     return (args[0].int_val % 2 != 0) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+}
+
+fn Value* prim_time_point_p(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return raise_error(interp, "time-point?: expected 1 argument");
+    return is_time_point(args[0]) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 // --- Phase 7: Macroexpand, eval, apply, bound? ---

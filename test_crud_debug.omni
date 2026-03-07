@@ -1,0 +1,6 @@
+(load "examples/deduce_crud_server.omni")
+(define req (pipeline/decode-request "BROKENLINE\r\n\r\n"))
+(println req)
+(define exec-result (pipeline/execute req))
+(println exec-result)
+(println (pipeline/result->response exec-result))

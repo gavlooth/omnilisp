@@ -47,6 +47,9 @@ fn lisp::Value* make_symbol(char[] s) @inline {
     lisp::SymbolId sid = g_aot_interp.symbols.intern(s);
     return lisp::make_symbol(g_aot_interp, sid);
 }
+fn lisp::Value* make_time_point(int kind, int year, int month, int day, int hour, int minute, int second, int microsecond, int tz_offset) @inline {
+    return lisp::make_time_point(g_aot_interp, (lisp::TimePointKind)kind, year, month, day, hour, minute, second, microsecond, tz_offset);
+}
 fn lisp::Value* make_true() @inline { return lisp::make_symbol(g_aot_interp, g_aot_interp.sym_true); }
 fn lisp::Value* make_false() @inline { return lisp::make_symbol(g_aot_interp, g_aot_interp.sym_false); }
 

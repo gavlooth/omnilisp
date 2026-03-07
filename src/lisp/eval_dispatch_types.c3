@@ -104,13 +104,14 @@ fn Value* find_best_method(MethodTable* mt, Value*[] args, Interp* interp) {
  */
 fn void register_builtin_types(Interp* interp) {
     // Register built-in types with TK_BUILTIN kind
-    SymbolId[12] builtin_names = {
+    SymbolId[13] builtin_names = {
         interp.sym_Int, interp.sym_Double, interp.sym_String,
         interp.sym_Symbol, interp.sym_List, interp.sym_Bool,
         interp.sym_Nil, interp.sym_Closure, interp.sym_Array,
-        interp.sym_Dict, interp.sym_Any, interp.sym_Iterator
+        interp.sym_Dict, interp.sym_Any, interp.sym_Iterator,
+        interp.sym_TimePoint
     };
-    for (usz i = 0; i < 12; i++) {
+    for (usz i = 0; i < 13; i++) {
         TypeInfo info;
         info.name = builtin_names[i];
         info.kind = TK_BUILTIN;
@@ -162,6 +163,7 @@ fn void register_builtin_types(Interp* interp) {
     interp.tid_Number = interp.types.lookup(interp.sym_Number, &interp.symbols);
     interp.tid_Collection = interp.types.lookup(interp.sym_Collection, &interp.symbols);
     interp.tid_Iterator = interp.types.lookup(interp.sym_Iterator, &interp.symbols);
+    interp.tid_TimePoint = interp.types.lookup(interp.sym_TimePoint, &interp.symbols);
 
     // Set parent chains: Int/Double → Number, List/Array/Dict → Collection, Nil → List
     interp.types.types[(usz)interp.tid_Int].parent = interp.tid_Number;
@@ -170,6 +172,7 @@ fn void register_builtin_types(Interp* interp) {
     interp.types.types[(usz)interp.tid_Array].parent = interp.tid_Collection;
     interp.types.types[(usz)interp.tid_Dict].parent = interp.tid_Collection;
     interp.types.types[(usz)interp.tid_Nil].parent = interp.tid_List;  // nil IS the empty list
+    interp.types.types[(usz)interp.tid_TimePoint].parent = interp.tid_Any;
 }
 
 /**
@@ -187,6 +190,7 @@ fn TypeId infer_value_type(Value* v, Interp* interp) {
         case ARRAY:     return interp.tid_Array;
         case HASHMAP:   return interp.tid_Dict;
         case ITERATOR:  return interp.tid_Iterator;
+        case TIME_POINT:return interp.tid_TimePoint;
         case INSTANCE:
             if (v.instance_val != null) return v.instance_val.type_id;
             return INVALID_TYPE_ID;
@@ -213,6 +217,7 @@ fn SymbolId value_type_name(Value* v, Interp* interp) {
         case ARRAY:     return interp.sym_Array;
         case HASHMAP:   return interp.sym_Dict;
         case ITERATOR:  return interp.sym_Iterator;
+        case TIME_POINT:return interp.sym_TimePoint;
         case COROUTINE:     return interp.symbols.intern("Coroutine");
         case INSTANCE:
             if (v.instance_val != null) {

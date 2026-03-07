@@ -70,6 +70,7 @@ enum ValueTag : char {
     MODULE,         // First-class module reference
     ITERATOR,       // Lazy iterator (backed by closure thunk)
     COROUTINE,          // User-facing coroutine (wraps StackCtx*)
+    TIME_POINT,         // Temporal value (date/time/datetime/timestamp)
 }
 
 /**
@@ -338,6 +339,31 @@ struct TypeInfo {
 }
 
 /**
+ * TimePointKind — Kind of temporal value represented by TimePoint.
+ */
+enum TimePointKind : char {
+    TIME_POINT_DATE,
+    TIME_POINT_TIME,
+    TIME_POINT_DATETIME,
+    TIME_POINT_DATETIMETZ
+}
+
+/**
+ * TimePoint — normalized timestamp components with kind.
+ */
+struct TimePoint {
+    int year;
+    int month;
+    int day;
+    int hour;
+    int minute;
+    int second;
+    int microsecond;
+    int tz_offset;     // minutes east of UTC, only valid for TIME_POINT_DATETIMETZ
+    TimePointKind kind;
+}
+
+/**
  * TypeRegistry — Registry of all types (builtin + user-defined).
  */
 struct TypeRegistry {
@@ -437,6 +463,7 @@ struct Value {
         Module*       module_val;       // First-class module
         Value*        iterator_val;     // Iterator thunk closure (V_CLOSURE Value*)
         main::StackCtx*   coroutine_val;        // User-facing coroutine (StackCtx*)
+        TimePoint     time_point_val;   // Parsed temporal value
     }
 }
 

@@ -1,0 +1,87 @@
+;; logging.omni — append-only request log using fs primitives
+;;
+;; Idioms demonstrated:
+;;   fs-open / fs-write / fs-close — low-level file I/O via effects
+;;   fs-stat            — check file existence and size
+;;   process-spawn / process-wait — shell out for system info
+;;   try                — graceful fallback when ops fail
+;;   format             — structured log line building
+;;   let                — POSIX flag constants as local bindings
+
+(module logging
+  (export log/open!
+          log/write!
+          log/close!
+          log/read-all
+          log/size
+          log/system-uptime))
+
+;; ── POSIX flags ─────────────────────────────────────────────────────────────
+
+(define O_RDONLY 0)
+(define O_WRONLY 1)
+(define O_CREAT  64)
+(define O_APPEND 1024)
+
+;; ── State ───────────────────────────────────────────────────────────────────
+
+;; Mutable log file handle — set by log/open!, cleared by log/close!.
+(define log-handle nil)
+(define log-path nil)
+
+;; ── Open / Close ────────────────────────────────────────────────────────────
+
+;; (log/open! path) — open or create log file in append mode.
+(define (log/open! path)
+  (set! log-path path)
+  (set! log-handle (fs-open path (+ O_WRONLY (+ O_CREAT O_APPEND)))))
+
+;; (log/close!) — flush and close the log file handle.
+(define (log/close!)
+  (when log-handle
+    (fs-close log-handle)
+    (set! log-handle nil)))
+
+;; ── Write ───────────────────────────────────────────────────────────────────
+
+;; (log/write! line) — append a timestamped line to the log.
+;; try: if fs-write fails (e.g. disk full), log the error to stdout instead.
+(define (log/write! line)
+  (when log-handle
+    (try (lambda (x)
+           (fs-write log-handle (format "%d %s\n" (time) line)))
+         (lambda (e)
+           (println (format "[log] write failed: %s" e))))))
+
+;; ── Read ────────────────────────────────────────────────────────────────────
+
+;; (log/read-all) — read the entire log file as a string.
+;; Uses read-file (high-level) since we want the full contents.
+(define (log/read-all)
+  (if log-path
+      (try (lambda (x) (read-file log-path))
+           (lambda (e) ""))
+      ""))
+
+;; (log/size) — current log file size in bytes via fs-stat.
+(define (log/size)
+  (if log-path
+      (try (lambda (x) ('size (fs-stat log-path)))
+           (lambda (e) 0))
+      0))
+
+;; ── System info ─────────────────────────────────────────────────────────────
+
+;; (log/system-uptime) — shell out to `uptime -p` via process-spawn.
+;; Returns the output string, or "unknown" on failure.
+;; process-spawn returns {'handle H 'pid N 'stdin H 'stdout H 'stderr H}.
+;; process-wait returns {'exit-code N 'signal N}.
+(define (log/system-uptime)
+  (try (lambda (x)
+         (let (proc   (process-spawn "/usr/bin/uptime" '("-p") nil)
+               output (fs-read ('stdout proc) 4096)
+               result (process-wait ('handle proc)))
+           (if (= ('exit-code result) 0)
+               (string-trim output)
+               "unknown")))
+       (lambda (e) "unknown")))

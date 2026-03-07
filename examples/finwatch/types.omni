@@ -1,0 +1,68 @@
+;; types.omni — Extended type hierarchy with abstract types, aliases, and reflection
+;;
+;; Idioms demonstrated:
+;;   [abstract]       — abstract event base type
+;;   [alias]          — semantic type aliases (Timestamp, Price)
+;;   type-of          — runtime type tag inspection
+;;   is?              — type predicate (checks type hierarchy)
+;;   instance?        — check if value is a struct instance
+;;   string->number / number->string / symbol->string — conversion functions
+;;   import (sym 'as alias) — selective import with renaming
+
+(module types
+  (export Event PriceEvent AlertEvent SystemEvent
+          Timestamp Price
+          event->str event-tag event-ts))
+
+(import "models.omni" (Quote 'as MQuote to-json))
+
+;; ── Abstract base type ──────────────────────────────────────────────────────
+
+;; All events share a common abstract ancestor for is? checks.
+(define [abstract] Event)
+
+;; ── Concrete event types ────────────────────────────────────────────────────
+
+;; PriceEvent: a price tick for a symbol at a given timestamp.
+(define [type] (PriceEvent Event)
+  (^String symbol)
+  (^Double price)
+  (^Int    ts))
+
+;; AlertEvent: a triggered alert with severity and message.
+(define [type] (AlertEvent Event)
+  (^String severity)
+  (^String message)
+  (^Int    ts))
+
+;; SystemEvent: a system lifecycle event (startup, shutdown, error).
+(define [type] (SystemEvent Event)
+  (^String kind)
+  (^String detail)
+  (^Int    ts))
+
+;; ── Type aliases ────────────────────────────────────────────────────────────
+
+;; Semantic aliases — makes signatures self-documenting.
+(define [alias] Timestamp Int)
+(define [alias] Price Double)
+
+;; ── Event dispatch ──────────────────────────────────────────────────────────
+
+;; event->str: format an event as a human-readable string.
+;; Uses is? to dispatch on concrete type within the abstract Event hierarchy.
+(define (event->str e)
+  (if (is? e 'PriceEvent)
+      (format "[PRICE] %s @ %f (ts=%d)" e.symbol e.price e.ts)
+      (if (is? e 'AlertEvent)
+          (format "[ALERT/%s] %s (ts=%d)" e.severity e.message e.ts)
+          (if (is? e 'SystemEvent)
+              (format "[SYS/%s] %s (ts=%d)" e.kind e.detail e.ts)
+              (format "[EVENT] %s" (type-of e))))))
+
+;; event-tag: extract the event kind as a string via type-of.
+(define (event-tag e) (symbol->string (type-of e)))
+
+;; event-ts: extract timestamp from any event via dot access on the ts field.
+;; All three event types have ts as their last field.
+(define (event-ts e) e.ts)

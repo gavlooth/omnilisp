@@ -38,7 +38,7 @@ fn void register_language_constants(Interp* interp) {
 }
 
 fn void register_dispatched_primitives(Interp* interp) {
-    const DISPATCHED_PRIM_COUNT = 31;
+    const DISPATCHED_PRIM_COUNT = 33;
     PrimReg[DISPATCHED_PRIM_COUNT] dispatched_prims = {
         // Arithmetic
         { "+", &prim_add, 2 }, { "-", &prim_sub, 2 }, { "*", &prim_mul, 2 },
@@ -58,6 +58,8 @@ fn void register_dispatched_primitives(Interp* interp) {
         { "string-contains?", &prim_string_contains, 2 },
         { "string-upcase", &prim_string_upcase_unicode, 1 },
         { "string-downcase", &prim_string_downcase_unicode, 1 },
+        { "string-casefold", &prim_string_casefold_unicode, 1 },
+        { "string-titlecase", &prim_string_titlecase_unicode, 1 },
         // Math (extensible for user-defined numeric types)
         { "abs", &prim_abs, 1 }, { "floor", &prim_floor, 1 },
         { "ceiling", &prim_ceiling, 1 }, { "round", &prim_round, 1 },
@@ -90,6 +92,14 @@ fn void register_regular_primitives_core(Interp* interp) {
         // File I/O
         { "__raw-read-file", &prim_read_file, 1 }, { "__raw-write-file", &prim_write_file, 2 },
         { "__raw-file-exists?", &prim_file_exists, 1 }, { "__raw-read-lines", &prim_read_lines, 1 },
+        { "__raw-fs-open", &prim_fs_open, -1 }, { "__raw-fs-read", &prim_fs_read, 2 },
+        { "__raw-fs-write", &prim_fs_write, 2 }, { "__raw-fs-close", &prim_fs_close, 1 },
+        { "__raw-fs-stat", &prim_fs_stat, 1 }, { "__raw-fs-readdir", &prim_fs_readdir, 1 },
+        { "__raw-fs-rename", &prim_fs_rename, 2 }, { "__raw-fs-unlink", &prim_fs_unlink, 1 },
+        { "fs-open", &prim_fs_open, -1 }, { "fs-read", &prim_fs_read, 2 },
+        { "fs-write", &prim_fs_write, 2 }, { "fs-close", &prim_fs_close, 1 },
+        { "fs-stat", &prim_fs_stat, 1 }, { "fs-readdir", &prim_fs_readdir, 1 },
+        { "fs-rename", &prim_fs_rename, 2 }, { "fs-unlink", &prim_fs_unlink, 1 },
         { "load", &prim_load, 1 },
         // Conversion
         { "string->number", &prim_string_to_number, 1 }, { "number->string", &prim_number_to_string, 1 },
@@ -163,15 +173,28 @@ fn void register_regular_primitives_collections(Interp* interp) {
         { "string-graphemes", &prim_string_graphemes, 1 },
         { "string-codepoints", &prim_string_codepoints, 1 },
         { "char-category", &prim_char_category, 1 },
+        { "char-width", &prim_char_width, 1 },
+        { "char-property", &prim_char_property, 2 },
         // Compression
-        { "gzip", &prim_gzip, 1 },
+        { "gzip", &prim_gzip, -1 },
         { "gunzip", &prim_gunzip, 1 },
-        { "deflate", &prim_deflate, 1 },
+        { "deflate", &prim_deflate, -1 },
         { "inflate", &prim_inflate, -1 },
+        { "zlib-compress", &prim_zlib_compress, -1 },
+        { "zlib-decompress", &prim_zlib_decompress, -1 },
+        { "adler32", &prim_adler32, 1 },
+        { "crc32", &prim_crc32, 1 },
         // JSON
-        { "json-parse", &prim_json_parse, 1 },
-        { "json-emit", &prim_json_emit, 1 },
-        { "json-emit-pretty", &prim_json_emit_pretty, 1 },
+        { "json-parse", &prim_json_parse, -1 },
+        { "json-emit", &prim_json_emit, -1 },
+        { "json-emit-pretty", &prim_json_emit_pretty, -1 },
+        { "json-get", &prim_json_get, 2 },
+        { "time-point?", &prim_time_point_p, 1 },
+        { "time-point", &prim_time_point, -1 },
+        // TOML / CSV
+        { "toml-parse", &prim_toml_parse, 1 },
+        { "csv-parse", &prim_csv_parse, -1 },
+        { "csv-emit", &prim_csv_emit, -1 },
     };
     register_prim_table(interp, collection_prims[0:collection_prims.len]);
 }
@@ -185,6 +208,18 @@ fn void register_regular_primitives_io_and_deduce(Interp* interp) {
         { "__raw-tcp-read", &prim_tcp_read, -1 },
         { "__raw-tcp-write", &prim_tcp_write, 2 },
         { "__raw-tcp-close", &prim_tcp_close, 1 },
+        { "__raw-udp-socket", &prim_udp_socket, 0 },
+        { "__raw-udp-bind", &prim_udp_bind, -1 },
+        { "__raw-udp-send", &prim_udp_send, -1 },
+        { "__raw-udp-recv", &prim_udp_recv, -1 },
+        { "__raw-udp-close", &prim_udp_close, 1 },
+        { "__raw-pipe-connect", &prim_pipe_connect, 1 },
+        { "__raw-pipe-listen", &prim_pipe_listen, 1 },
+        { "__raw-process-spawn", &prim_process_spawn, -1 },
+        { "__raw-process-wait", &prim_process_wait, 1 },
+        { "__raw-process-kill", &prim_process_kill, -1 },
+        { "__raw-signal-handle", &prim_signal_handle, -1 },
+        { "__raw-signal-unhandle", &prim_signal_unhandle, 1 },
         { "__raw-dns-resolve", &prim_dns_resolve, 1 },
         { "__raw-async-sleep", &prim_async_sleep, 1 },
         { "__raw-offload", &prim_offload, 1 },
@@ -194,7 +229,8 @@ fn void register_regular_primitives_io_and_deduce(Interp* interp) {
         { "__raw-thread-cancel", &prim_thread_cancel, 1 },
         { "fiber-cancel", &prim_fiber_cancel, 1 },
         // TLS
-        { "__raw-tls-connect", &prim_tls_connect, 2 },
+        { "__raw-tls-connect", &prim_tls_connect, -1 },
+        { "__raw-tls-server-wrap", &prim_tls_server_wrap, -1 },
         { "__raw-tls-read", &prim_tls_read, -1 },
         { "__raw-tls-write", &prim_tls_write, 2 },
         { "__raw-tls-close", &prim_tls_close, 1 },
@@ -235,7 +271,7 @@ fn void register_regular_primitives(Interp* interp) {
 }
 
 fn void register_effect_fast_paths(Interp* interp) {
-    const FAST_PATH_COUNT = 27;
+    const FAST_PATH_COUNT = 48;
     FastPathReg[FAST_PATH_COUNT] fast_paths = {
         { "io/print",      "__raw-print" },
         { "io/println",     "__raw-println" },
@@ -245,12 +281,32 @@ fn void register_effect_fast_paths(Interp* interp) {
         { "io/write-file",  "__raw-write-file" },
         { "io/file-exists?","__raw-file-exists?" },
         { "io/read-lines",  "__raw-read-lines" },
+        { "io/fs-open",     "__raw-fs-open" },
+        { "io/fs-read",     "__raw-fs-read" },
+        { "io/fs-write",    "__raw-fs-write" },
+        { "io/fs-close",    "__raw-fs-close" },
+        { "io/fs-stat",     "__raw-fs-stat" },
+        { "io/fs-readdir",  "__raw-fs-readdir" },
+        { "io/fs-rename",   "__raw-fs-rename" },
+        { "io/fs-unlink",   "__raw-fs-unlink" },
         { "io/tcp-connect", "__raw-tcp-connect" },
         { "io/tcp-listen",  "__raw-tcp-listen" },
         { "io/tcp-accept",  "__raw-tcp-accept" },
         { "io/tcp-read",    "__raw-tcp-read" },
         { "io/tcp-write",   "__raw-tcp-write" },
         { "io/tcp-close",   "__raw-tcp-close" },
+        { "io/udp-socket",  "__raw-udp-socket" },
+        { "io/udp-bind",    "__raw-udp-bind" },
+        { "io/udp-send",    "__raw-udp-send" },
+        { "io/udp-recv",    "__raw-udp-recv" },
+        { "io/udp-close",   "__raw-udp-close" },
+        { "io/pipe-connect","__raw-pipe-connect" },
+        { "io/pipe-listen", "__raw-pipe-listen" },
+        { "io/process-spawn","__raw-process-spawn" },
+        { "io/process-wait", "__raw-process-wait" },
+        { "io/process-kill", "__raw-process-kill" },
+        { "io/signal-handle", "__raw-signal-handle" },
+        { "io/signal-unhandle", "__raw-signal-unhandle" },
         { "io/dns-resolve", "__raw-dns-resolve" },
         { "io/async-sleep", "__raw-async-sleep" },
         { "io/offload",     "__raw-offload" },
@@ -259,6 +315,7 @@ fn void register_effect_fast_paths(Interp* interp) {
         { "io/thread-join-timeout", "__raw-thread-join-timeout" },
         { "io/thread-cancel", "__raw-thread-cancel" },
         { "io/tls-connect", "__raw-tls-connect" },
+        { "io/tls-server-wrap", "__raw-tls-server-wrap" },
         { "io/tls-read",    "__raw-tls-read" },
         { "io/tls-write",   "__raw-tls-write" },
         { "io/tls-close",   "__raw-tls-close" },
@@ -289,7 +346,7 @@ fn void register_primitives(Interp* interp) {
 
 fn void register_fast_path(Interp* interp, char[] effect_name, char[] raw_prim_name) {
     Value* prim = interp.global_env.lookup(interp.symbols.intern(raw_prim_name));
-    if (prim != null && interp.fast_path_count < 32) {
+    if (prim != null && interp.fast_path_count < 48) {
         interp.fast_path_table[interp.fast_path_count].tag = interp.symbols.intern(effect_name);
         interp.fast_path_table[interp.fast_path_count].prim = prim;
         interp.fast_path_count++;

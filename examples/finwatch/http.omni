@@ -1,0 +1,19 @@
+;; http.omni — HTTPS GET client using built-in http-get primitive
+;;
+;; Uses the scheduler-aware http-get effect which offloads DNS + TLS + read
+;; to a worker thread when called from a fiber, keeping the scheduler responsive.
+
+(module http (export http/get))
+
+;; (http/get host path) → (Ok json-string) | (Err reason)
+;;
+;; Delegates to the http-get primitive with a full URL. Network errors raised
+;; by http-get are caught and converted to (Err msg).
+(define (http/get host path)
+  (handle
+    (let (resp (http-get (format "https://%s%s" host path))
+          code ('status resp))
+      (if (= code 200)
+          (Ok ('body resp))
+          (Err (format "HTTP %d" code))))
+    (raise msg (Err msg))))

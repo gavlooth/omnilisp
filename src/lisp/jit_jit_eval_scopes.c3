@@ -44,7 +44,7 @@ fn Value* jit_finalize_scoped_result(
 ) {
     boundary_assert_interp_scope_chain(interp);
     PromotionContext boundary_ctx = {};
-    promotion_context_begin(interp, &boundary_ctx, PROMOTION_CTX_BUDGET_RETURN);
+    boundary_promotion_context_begin(interp, &boundary_ctx, PROMOTION_CTX_BUDGET_RETURN);
 
     if (active_scope.refcount == 1 && result != null) {
         if (result.scope_gen != active_scope.escape_generation) {
@@ -60,13 +60,22 @@ fn Value* jit_finalize_scoped_result(
                 copy_site
             );
             main::scope_release(active_scope);
-            promotion_context_end(interp, &boundary_ctx);
+            boundary_promotion_context_end(interp, &boundary_ctx);
             boundary_assert_interp_scope_chain(interp);
             return result;
         }
-        if (result.scope_gen == active_scope.escape_generation) {
-            boundary_try_scope_splice_escapes(saved_scope, active_scope);
-            promotion_context_end(interp, &boundary_ctx);
+        if (boundary_should_promote(result, &boundary_ctx, active_scope)) {
+            if (boundary_try_scope_splice_escapes(saved_scope, active_scope)) {
+                boundary_promotion_context_end(interp, &boundary_ctx);
+                boundary_assert_interp_scope_chain(interp);
+                return result;
+            }
+            // Explicit fallback when splice preconditions are not met.
+            // Keep return-boundary ownership deterministic instead of silently
+            // assuming transfer succeeded.
+            result = boundary_copy_from_releasing_scope(result, interp, active_scope, copy_site);
+            main::scope_release(active_scope);
+            boundary_promotion_context_end(interp, &boundary_ctx);
             boundary_assert_interp_scope_chain(interp);
             return result;
         }
@@ -74,7 +83,7 @@ fn Value* jit_finalize_scoped_result(
 
     if (result != null && !main::is_in_scope((void*)result, active_scope)) {
         main::scope_release(active_scope);
-        promotion_context_end(interp, &boundary_ctx);
+        boundary_promotion_context_end(interp, &boundary_ctx);
         boundary_assert_interp_scope_chain(interp);
         return result;
     }
@@ -83,7 +92,7 @@ fn Value* jit_finalize_scoped_result(
         result = boundary_copy_from_releasing_scope(result, interp, active_scope, copy_site);
     }
     main::scope_release(active_scope);
-    promotion_context_end(interp, &boundary_ctx);
+    boundary_promotion_context_end(interp, &boundary_ctx);
     boundary_assert_interp_scope_chain(interp);
     return result;
 }
@@ -98,9 +107,9 @@ fn Env* jit_copy_tco_env_chain_for_recycle(
     defer boundary_restore_interp_state(interp, saved);
     interp.releasing_scope = releasing_scope;
     PromotionContext bounce_ctx = {};
-    promotion_context_begin(interp, &bounce_ctx, PROMOTION_CTX_BUDGET_TCO);
+    boundary_promotion_context_begin(interp, &bounce_ctx, PROMOTION_CTX_BUDGET_TCO);
     Env* copied = copy_tco_env_chain(env, interp);
-    promotion_context_end(interp, &bounce_ctx);
+    boundary_promotion_context_end(interp, &bounce_ctx);
     boundary_assert_interp_scope_chain(interp);
     return copied;
 }

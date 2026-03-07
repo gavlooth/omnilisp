@@ -82,8 +82,9 @@ fn Value* expr_to_value(Expr* expr, Interp* interp) {
         case E_LET: {
             Value* name_sym = make_symbol(interp, expr.let_expr.name);
             Value* init_val = expr_to_value(expr.let_expr.init, interp);
-            Value* binding = make_list2(interp, name_sym, init_val);
-            Value* bindings = make_list1(interp, binding);
+            // Preserve parser flat-pair let binding form: (let (name init) body).
+            // Using nested pair form here loses bindings on value_to_expr round-trip.
+            Value* bindings = make_list2(interp, name_sym, init_val);
             Value* body = expr_to_value(expr.let_expr.body, interp);
             return make_tagged_form2(interp, interp.sym_let, bindings, body);
         }
@@ -357,6 +358,23 @@ fn Expr* vte_special_form(SymbolId sym, Value* rest, Interp* interp) {
     if ((uint)sym == (uint)interp.sym_set)              return vte_define_or_set_form(rest, interp, true);
     if ((uint)sym == (uint)interp.sym_and)              return vte_and_or_form(rest, interp, true);
     if ((uint)sym == (uint)interp.sym_or)               return vte_and_or_form(rest, interp, false);
+    if ((uint)sym == (uint)interp.sym_reset) {
+        Expr* e = interp.alloc_expr();
+        e.tag = E_RESET;
+        e.reset.body = rest_car_expr(rest, interp);
+        return e;
+    }
+    if ((uint)sym == (uint)interp.sym_shift) {
+        if (!is_cons(rest)) return make_nil_expr(interp);
+        Value* k_name = rest.cons_val.car;
+        rest = rest.cons_val.cdr;
+        if (k_name == null || k_name.tag != SYMBOL) return make_nil_expr(interp);
+        Expr* e = interp.alloc_expr();
+        e.tag = E_SHIFT;
+        e.shift.k_name = k_name.sym_val;
+        e.shift.body = rest_car_expr(rest, interp);
+        return e;
+    }
     if ((uint)sym == (uint)interp.sym_quasiquote) {
         Expr* e = interp.alloc_expr();
         e.tag = E_QUASIQUOTE;

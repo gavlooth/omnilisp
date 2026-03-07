@@ -204,8 +204,15 @@ fn Value* prim_deduce_match(Value*[] args, Env* env, Interp* interp) {
     if (rel_val == null || rel_val.tag != FFI_HANDLE) {
         return deduce_raise(interp, "deduce/match-relation-not-handle", "deduce-match: first argument must be a relation");
     }
-    if (rel_val.ffi_val == null) return deduce_raise(interp, "deduce/match-relation-handle-closed", "deduce-match: relation handle is closed");
+    if (rel_val.ffi_val == null || rel_val.ffi_val.lib_handle == null) {
+        return deduce_raise(interp, "deduce/match-relation-handle-closed", "deduce-match: relation handle is closed");
+    }
+    if (!deduce_ffi_handle_name_equals(rel_val, "deduce-relation")) {
+        return deduce_raise(interp, "deduce/match-relation-not-deduce-relation", "deduce-match: first argument must be a deduce relation handle");
+    }
     Relation* rel = (Relation*)rel_val.ffi_val.lib_handle;
+    if (rel.db == null || !rel.db.open) return deduce_raise(interp, "deduce/match-database-not-open", "deduce-match: database not open");
+    if (rel.dropped) return deduce_raise(interp, "deduce/match-relation-dropped", "deduce-match: relation is dropped");
 
     Value* pattern = args[1];
     if (!is_cons(pattern)) return deduce_raise(interp, "deduce/match-pattern-not-list", "deduce-match: pattern must be a list");

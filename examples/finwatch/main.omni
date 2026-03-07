@@ -1,0 +1,7 @@
+;; main.omni — finwatch entry point
+;; Run: LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/finwatch/main.omni
+;; Canonical product example: financial-service webserver
+
+(import "server.omni" 'all)
+
+(server/start "127.0.0.1" 8181)

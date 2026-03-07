@@ -1,7 +1,7 @@
 # Fiber Temp Session Plan (Execution Cadence)
 
 Date: 2026-03-05  
-Source roadmap: `.claude/plans/fiber-temp-detailed-implementation-plan.md`  
+Source roadmap: `docs/plans/fiber-temp-detailed-implementation-plan.md`  
 Target cadence: 16 sessions (small, auditable commits)
 Execution status: Complete for current target (all planned phases landed behind guardrails; ownership model unchanged)
 
@@ -517,8 +517,8 @@ Goal:
 Work:
 - Record current teardown/clone failure surfaces and expected invariants.
 - Update:
-  - `.claude/plans/fiber-temp-teardown-revision-summary.md`
-  - `.claude/plans/session-34-44-boundary-hardening.md`
+  - `docs/plans/fiber-temp-teardown-revision-summary.md`
+  - `docs/plans/session-34-44-boundary-hardening.md`
   - `memory/CHANGELOG.md` (baseline snapshot)
 
 Commits:
@@ -702,7 +702,7 @@ Goal:
 
 Likely files:
 - `memory/DESTINATION_ARENA_PLAN.md`
-- `.claude/plans/fiber-temp-teardown-revision-summary.md`
+- `docs/plans/fiber-temp-teardown-revision-summary.md`
 - `memory/CHANGELOG.md`
 
 Work:

@@ -26,6 +26,26 @@ fn void Compiler.serialize_value_to_buf(Compiler* self, Value* v, List{char}* bu
             char[] sym_name = self.interp.symbols.get_name(v.sym_val);
             self.buf_append(buf, sym_name);
 
+        case TIME_POINT:
+            char[96] time_buf;
+            char[] time_text = time_point_to_string(v.time_point_val, time_buf[..]);
+            self.buf_append(buf, "\"");
+            for (usz i = 0; i < time_text.len; i++) {
+                char c = time_text[i];
+                if (c == '\"') {
+                    self.buf_append(buf, "\\\"");
+                } else if (c == '\\') {
+                    self.buf_append(buf, "\\\\");
+                } else if (c == '\n') {
+                    self.buf_append(buf, "\\n");
+                } else if (c == '\t') {
+                    self.buf_append(buf, "\\t");
+                } else {
+                    buf.push(c);
+                }
+            }
+            self.buf_append(buf, "\"");
+
         case CONS:
             self.serialize_cons_value_to_buf(v, buf);
 

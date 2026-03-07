@@ -81,9 +81,9 @@ When a migration or refactoring step feels "too big" or "too risky":
 
 ## Deferred Work Policy
 When deferring work (skipping something now with intent to do it later):
-- **NEVER** just mention it in a comment or conversation — always add it to the active plan file (`.claude/plans/`)
+- **NEVER** just mention it in a comment or conversation — always add it to the active plan file (`docs/plans/`)
 - Each deferred item must have: **What**, **Why deferred**, **Risk if not done**, **When** (which phase/milestone), and **How** (concrete approach)
-- Reference the plan item from inline code comments (e.g., `// See plan item D1 in .claude/plans/...`)
+- Reference the plan item from inline code comments (e.g., `// See plan item D1 in docs/plans/...`)
 - If no plan file exists yet, create one
 
 ## Audit Mode

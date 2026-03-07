@@ -1,5 +1,8 @@
 ;; Deduce CRUD Web Server
 ;;
+;; Legacy compatibility example.
+;; Canonical product webserver example is `examples/finwatch/main.omni`.
+;;
 ;; Language idioms demonstrated:
 ;;   [type]        — Item struct, dot field access (item.id, item.name)
 ;;   [union]       — ApiResult (Ok V) / (Err E), matched at pipeline boundary

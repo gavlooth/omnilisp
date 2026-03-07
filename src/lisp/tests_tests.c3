@@ -1196,6 +1196,181 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
     test_str(interp, "dns-resolve returns string",
         "(dns-resolve \"localhost\")", pass, fail);
 
+    // tls-connect optional CA path validation
+    test_error_contains(interp, "tls-connect rejects non-string ca bundle path",
+        "(tls-connect nil \"localhost\" 1)",
+        "ca-bundle-path must be a string", pass, fail);
+    test_error_contains(interp, "tls-connect rejects non-string client cert path",
+        "(tls-connect nil \"localhost\" \"ca.pem\" 1 \"client-key.pem\")",
+        "client-cert-pem-path must be a string", pass, fail);
+    test_error_contains(interp, "tls-connect rejects non-string client key path",
+        "(tls-connect nil \"localhost\" \"ca.pem\" \"client-cert.pem\" 1)",
+        "client-key-pem-path must be a string", pass, fail);
+    test_error_contains(interp, "tls-connect rejects non-bool resume policy",
+        "(tls-connect nil \"localhost\" \"ca.pem\" \"client-cert.pem\" \"client-key.pem\" 1)",
+        "resume-session? must be true or false", pass, fail);
+    test_error_contains(interp, "tls-connect accepts bool-only resume policy form",
+        "(tls-connect nil \"localhost\" true)",
+        "invalid TCP handle", pass, fail);
+    test_error_contains(interp, "tls-connect accepts direct mTLS form without CA",
+        "(tls-connect nil \"localhost\" \"client-cert.pem\" \"client-key.pem\")",
+        "invalid TCP handle", pass, fail);
+    test_error_contains(interp, "tls-connect accepts ca+resume policy form",
+        "(tls-connect nil \"localhost\" \"ca.pem\" true)",
+        "invalid TCP handle", pass, fail);
+
+    // TLS integration: run server in a separate Omni process to avoid
+    // scheduler deadlocks from blocking TLS read/write in same runtime thread.
+    test_truthy(interp, "tls valid cert handshake",
+        "(begin "
+        "  (define proc "
+        "    (process-spawn \"/bin/sh\" "
+        "      [\"-c\" \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=45101 LD_LIBRARY_PATH=/usr/local/lib ./build/main tests/lib/tls/server_once.omni\"] "
+        "      nil)) "
+        "  (async-sleep 60) "
+        "  (define c nil) "
+        "  (define resp nil) "
+        "  (define client-msg "
+        "    (try-message "
+        "      (lambda (ignored) "
+        "        (begin "
+        "          (set! c (tcp-connect \"127.0.0.1\" 45101)) "
+        "          (define ctls (tls-connect c \"localhost\" \"tests/lib/tls/ca.cert.pem\")) "
+        "          (tls-write ctls \"ping\") "
+        "          (set! resp (tls-read ctls)) "
+        "          (tls-close ctls) "
+        "          \"ok\")) "
+        "      (lambda (e) e))) "
+        "  (if c (tcp-close c) nil) "
+        "  (define status (process-wait (ref proc 'handle))) "
+        "  (fs-close (ref proc 'stdin)) "
+        "  (fs-close (ref proc 'stdout)) "
+        "  (fs-close (ref proc 'stderr)) "
+        "  (and (= client-msg \"ok\") (and (= resp \"pong\") (= (ref status 'exit-code) 0))))",
+        pass, fail);
+
+    test_truthy(interp, "tls rejects untrusted cert",
+        "(begin "
+        "  (define proc "
+        "    (process-spawn \"/bin/sh\" "
+        "      [\"-c\" \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=45102 OMNI_TLS_TEST_CERT=tests/lib/tls/bad-server.cert.pem OMNI_TLS_TEST_KEY=tests/lib/tls/bad-server.key.pem LD_LIBRARY_PATH=/usr/local/lib ./build/main tests/lib/tls/server_once.omni\"] "
+        "      nil)) "
+        "  (async-sleep 60) "
+        "  (define c nil) "
+        "  (define client-msg "
+        "    (try-message "
+        "      (lambda (ignored) "
+        "        (begin "
+        "          (set! c (tcp-connect \"127.0.0.1\" 45102)) "
+        "          (define ctls (tls-connect c \"localhost\" \"tests/lib/tls/ca.cert.pem\")) "
+        "          (tls-write ctls \"ping\") "
+        "          (tls-close ctls) "
+        "          \"ok\")) "
+        "      (lambda (e) e))) "
+        "  (if c (tcp-close c) nil) "
+        "  (define status (process-wait (ref proc 'handle))) "
+        "  (fs-close (ref proc 'stdin)) "
+        "  (fs-close (ref proc 'stdout)) "
+        "  (fs-close (ref proc 'stderr)) "
+        "  (and (= (ref status 'exit-code) 0) "
+        "       (and (string? client-msg) "
+        "            (or (string-contains? client-msg \"write failed\") "
+        "                (or (string-contains? client-msg \"read failed\") "
+        "                    (string-contains? client-msg \"reset failed\"))))))",
+        pass, fail);
+
+    test_truthy(interp, "tls rejects hostname mismatch",
+        "(begin "
+        "  (define proc "
+        "    (process-spawn \"/bin/sh\" "
+        "      [\"-c\" \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=45103 LD_LIBRARY_PATH=/usr/local/lib ./build/main tests/lib/tls/server_once.omni\"] "
+        "      nil)) "
+        "  (async-sleep 60) "
+        "  (define c nil) "
+        "  (define client-msg "
+        "    (try-message "
+        "      (lambda (ignored) "
+        "        (begin "
+        "          (set! c (tcp-connect \"127.0.0.1\" 45103)) "
+        "          (define ctls (tls-connect c \"not-localhost\" \"tests/lib/tls/ca.cert.pem\")) "
+        "          (tls-write ctls \"ping\") "
+        "          (tls-close ctls) "
+        "          \"ok\")) "
+        "      (lambda (e) e))) "
+        "  (if c (tcp-close c) nil) "
+        "  (define status (process-wait (ref proc 'handle))) "
+        "  (fs-close (ref proc 'stdin)) "
+        "  (fs-close (ref proc 'stdout)) "
+        "  (fs-close (ref proc 'stderr)) "
+        "  (and (= (ref status 'exit-code) 0) "
+        "       (and (string? client-msg) "
+        "            (or (string-contains? client-msg \"write failed\") "
+        "                (or (string-contains? client-msg \"read failed\") "
+        "                    (string-contains? client-msg \"reset failed\"))))))",
+        pass, fail);
+
+    test_truthy(interp, "tls mTLS optional cert/key pass",
+        "(begin "
+        "  (define proc "
+        "    (process-spawn \"/bin/sh\" "
+        "      [\"-c\" \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=45104 LD_LIBRARY_PATH=/usr/local/lib ./build/main tests/lib/tls/server_once.omni\"] "
+        "      nil)) "
+        "  (async-sleep 60) "
+        "  (define c nil) "
+        "  (define resp nil) "
+        "  (define client-msg "
+        "    (try-message "
+        "      (lambda (ignored) "
+        "        (begin "
+        "          (set! c (tcp-connect \"127.0.0.1\" 45104)) "
+        "          (define ctls (tls-connect c \"localhost\" \"tests/lib/tls/ca.cert.pem\" \"tests/lib/tls/client.cert.pem\" \"tests/lib/tls/client.key.pem\" true)) "
+        "          (tls-write ctls \"ping\") "
+        "          (set! resp (tls-read ctls)) "
+        "          (tls-close ctls) "
+        "          \"ok\")) "
+        "      (lambda (e) e))) "
+        "  (if c (tcp-close c) nil) "
+        "  (define status (process-wait (ref proc 'handle))) "
+        "  (fs-close (ref proc 'stdin)) "
+        "  (fs-close (ref proc 'stdout)) "
+        "  (fs-close (ref proc 'stderr)) "
+        "  (and (= client-msg \"ok\") (and (= resp \"pong\") (= (ref status 'exit-code) 0))))",
+        pass, fail);
+
+    test_truthy(interp, "tls mTLS invalid key fails",
+        "(begin "
+        "  (define proc "
+        "    (process-spawn \"/bin/sh\" "
+        "      [\"-c\" \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=45105 LD_LIBRARY_PATH=/usr/local/lib ./build/main tests/lib/tls/server_once.omni\"] "
+        "      nil)) "
+        "  (async-sleep 60) "
+        "  (define c nil) "
+        "  (define client-msg "
+        "    (try-message "
+        "      (lambda (ignored) "
+        "        (begin "
+        "          (set! c (tcp-connect \"127.0.0.1\" 45105)) "
+        "          (tls-connect c \"localhost\" \"tests/lib/tls/ca.cert.pem\" \"tests/lib/tls/client.cert.pem\" \"tests/lib/tls/missing-client.key.pem\") "
+        "          \"ok\")) "
+        "      (lambda (e) e))) "
+        "  (if c (tcp-close c) nil) "
+        "  (define status (process-wait (ref proc 'handle))) "
+        "  (fs-close (ref proc 'stdin)) "
+        "  (fs-close (ref proc 'stdout)) "
+        "  (fs-close (ref proc 'stderr)) "
+        "  (and (= (ref status 'exit-code) 0) "
+        "       (and (string? client-msg) "
+        "            (string-contains? client-msg \"failed to configure client cert/key\"))))",
+        pass, fail);
+
+    // tls-server-wrap argument validation
+    test_error_contains(interp, "tls-server-wrap rejects non-string cert path",
+        "(__raw-tls-server-wrap nil 1 \"key.pem\")",
+        "cert-pem-path must be a string", pass, fail);
+    test_error_contains(interp, "tls-server-wrap rejects non-stream handle",
+        "(__raw-tls-server-wrap nil \"cert.pem\" \"key.pem\")",
+        "invalid TCP stream handle", pass, fail);
+
     // listener lifecycle
     test_tag(interp, "tcp-listen open/close",
         "(begin (define ls (tcp-listen \"127.0.0.1\" 0 8)) (tcp-close ls))", NIL, pass, fail);
@@ -1221,6 +1396,41 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "  (tcp-close listener) "
         "  (= payload \"ping\"))",
         pass, fail);
+
+    // fiber-safe write path: write in fiber uses async writable wakeup bridge
+    test_truthy(interp, "tcp-write in fiber via async bridge",
+        "(begin "
+        "  (define p (+ 30500 (% (time-ms) 20000))) "
+        "  (define listener (tcp-listen \"127.0.0.1\" p 8)) "
+        "  (define af (spawn (lambda () (tcp-accept listener)))) "
+        "  (async-sleep 5) "
+        "  (define client (tcp-connect \"127.0.0.1\" p)) "
+        "  (define server-client (await af)) "
+        "  (define rf (spawn (lambda () (tcp-read server-client)))) "
+        "  (define wf (spawn (lambda () (tcp-write client \"ping\")))) "
+        "  (define payload (await rf)) "
+        "  (define wrote (await wf)) "
+        "  (tcp-close client) "
+        "  (tcp-close server-client) "
+        "  (tcp-close listener) "
+        "  (and (= payload \"ping\") (= wrote 4)))",
+        pass, fail);
+
+    // fiber-safe UDP receive path: recv in fiber uses async wakeup bridge
+    test_truthy(interp, "udp-recv in fiber via async bridge",
+        "(begin "
+        "  (define p (+ 35000 (% (time-ms) 20000))) "
+        "  (define recv (udp-socket)) "
+        "  (udp-bind recv \"127.0.0.1\" p) "
+        "  (define rf (spawn (lambda () (udp-recv recv)))) "
+        "  (async-sleep 5) "
+        "  (define snd (udp-socket)) "
+        "  (udp-send snd \"127.0.0.1\" p \"pong\") "
+        "  (define got (await rf)) "
+        "  (udp-close snd) "
+        "  (udp-close recv) "
+        "  (= got \"pong\"))",
+        pass, fail);
 }
 
 fn void run_async_tests_isolated(int* pass, int* fail) {
@@ -1229,6 +1439,30 @@ fn void run_async_tests_isolated(int* pass, int* fail) {
 
 fn void run_json_tests(Interp* interp, int* pass, int* fail) {
     io::printn("\n--- JSON Tests ---");
+
+    // Parse strict-by-default
+    test_error(interp, "json-parse rejects comments by default",
+        "(json-parse \"{\\\"a\\\": 1 /* comment */ \\\"b\\\": 2}\")", pass, fail);
+    test_error(interp, "json-parse rejects trailing comma by default",
+        "(json-parse \"[1,2,3,]\")", pass, fail);
+    test_error(interp, "json-parse rejects NaN/Inf by default",
+        "(json-parse \"[NaN, Infinity]\")", pass, fail);
+
+    // Parse options
+    test_eq(interp, "json-parse allows comments",
+        "(ref (json-parse \"{\\\"a\\\": 1 /* comment */ , \\\"b\\\": 2}\" '(allow-comments)) \"b\")", 2, pass, fail);
+    test_eq(interp, "json-parse allows trailing commas",
+        "(ref (json-parse \"[1,2,3,]\" '(allow-trailing-commas)) 2)", 3, pass, fail);
+    test_tag(interp, "json-parse allows NaN/Inf",
+        "(ref (json-parse \"[NaN, Infinity, -Infinity]\" '(allow-nan-inf)) 0)", DOUBLE, pass, fail);
+    test_eq(interp, "json-parse allows comments and trailing commas together",
+        "(ref (json-parse \"{\\\"a\\\": 1 /*comment*/ ,\\\"b\\\": 2,}\" '(allow-comments allow-trailing-commas)) \"b\")", 2, pass, fail);
+    test_error(interp, "json-parse trailing commas still strict without allow-trailing-commas",
+        "(json-parse \"[1,2,3,]\" '(allow-comments))", pass, fail);
+    test_error(interp, "json-parse comments still strict without allow-comments",
+        "(json-parse \"{\\\"a\\\": 1 /* comment */ , \\\"b\\\": 2}\" '(allow-trailing-commas))", pass, fail);
+    test_error(interp, "json-parse unknown option symbol",
+        "(json-parse \"42\" '(allow-foo))", pass, fail);
 
     // Parse basic types
     test_eq(interp, "json-parse integer",
@@ -1244,6 +1478,23 @@ fn void run_json_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "json-parse array length",
         "(length (json-parse \"[1,2,3]\"))", 3, pass, fail);
 
+    // json-get pointer lookup
+    test_eq(interp, "json-get object key",
+        "(json-get (json-parse \"{\\\"a\\\": {\\\"b\\\": 42}}\") \"/a/b\")", 42, pass, fail);
+    test_str_val(interp, "json-get array index",
+        "(json-get (json-parse \"{\\\"users\\\": [\\\"alice\\\",\\\"bob\\\"]}\") \"/users/1\")", "bob", pass, fail);
+    test_eq(interp, "json-get escaped object key",
+        "(json-get (json-parse \"{\\\"a/b\\\": 7, \\\"a~0b\\\": 9}\") \"/a~1b\")", 7, pass, fail);
+    test_tag(interp, "json-get root path",
+        "(json-get (json-parse \"{\\\"a\\\": 1}\") \"\")", HASHMAP, pass, fail);
+
+    test_nil(interp, "json-get missing path returns nil",
+        "(json-get (json-parse \"{\\\"a\\\": 1}\") \"/b\")", pass, fail);
+    test_error(interp, "json-get invalid escape",
+        "(json-get (json-parse \"{\\\"a\\\": 1}\") \"/a~\")", pass, fail);
+    test_error(interp, "json-get invalid path start",
+        "(json-get (json-parse \"{\\\"a\\\": 1}\") \"a/b\")", pass, fail);
+
     // Parse object
     test_tag(interp, "json-parse object is dict",
         "(json-parse \"{\\\"a\\\": 1}\")", HASHMAP, pass, fail);
@@ -1253,6 +1504,14 @@ fn void run_json_tests(Interp* interp, int* pass, int* fail) {
         "(json-emit 42)", "42", pass, fail);
     test_str_val(interp, "json-emit string",
         "(json-emit \"hello\")", "\"hello\"", pass, fail);
+    test_str_val(interp, "json-emit supports precision",
+        "(json-emit 1.23456 '((precision 2)))", "1.23", pass, fail);
+    test_str_val(interp, "json-emit supports writer flag escape-slashes",
+        "(json-emit \"a/b\" '((escape-slashes true)))", "\"a\\/b\"", pass, fail);
+    test_str_val(interp, "json-emit supports writer flag newline-at-end",
+        "(json-emit [1 2 3] '((newline-at-end true)))", "[1,2,3]\n", pass, fail);
+    test_str_val(interp, "json-emit-pretty accepts option precision override",
+        "(json-emit-pretty 1.2 '((precision 1)))", "1.2", pass, fail);
     test_str_val(interp, "json-emit nil",
         "(json-emit nil)", "null", pass, fail);
 
@@ -1260,13 +1519,121 @@ fn void run_json_tests(Interp* interp, int* pass, int* fail) {
     test_str_val(interp, "json-emit array",
         "(json-emit [1 2 3])", "[1,2,3]", pass, fail);
 
+    test_error_contains(interp, "json-emit validates unknown option",
+        "(json-emit 1 '((bogus true)))", "json-emit: unknown option key", pass, fail);
+    test_error_contains(interp, "json-emit validates precision range",
+        "(json-emit 1 '((precision 99)))", "precision must be an integer between 0 and 15", pass, fail);
+    test_error_contains(interp, "json-emit validates pretty-two-spaces option type",
+        "(json-emit 1 '((pretty-two-spaces 1)))", "must be a boolean", pass, fail);
+
     // Round-trip: emit then parse
     test_eq(interp, "json round-trip integer",
         "(json-parse (json-emit 99))", 99, pass, fail);
 }
 
+fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
+    io::printn("\n--- Data Format Tests ---");
+
+    // TOML
+    test_tag(interp, "toml-parse object is dict",
+        "(toml-parse \"title = \\\"Toml\\\"\\n[owner]\\nname = \\\"Alice\\\"\\n\")", HASHMAP, pass, fail);
+    test_str_val(interp, "toml-parse simple scalar",
+        "(ref (toml-parse \"title = \\\"Toml\\\"\\n\") \"title\")", "Toml", pass, fail);
+    test_str_val(interp, "toml-parse nested scalar",
+        "(ref (ref (toml-parse \"[owner]\\nname = \\\"Alice\\\"\\n\\nage = 42\\n\") \"owner\") \"name\")", "Alice", pass, fail);
+    test_eq(interp, "toml-parse numeric field",
+        "(ref (toml-parse \"age = 42\\n\") \"age\")", 42, pass, fail);
+    test_tag(interp, "toml-parse date",
+        "(ref (toml-parse \"d = 1979-05-27\\n\") \"d\")", TIME_POINT, pass, fail);
+    test_tag(interp, "toml-parse time",
+        "(ref (toml-parse \"t = 07:32:00\\n\") \"t\")", TIME_POINT, pass, fail);
+    test_tag(interp, "toml-parse datetime",
+        "(ref (toml-parse \"dt = 1979-05-27T07:32:00Z\") \"dt\")", TIME_POINT, pass, fail);
+    test_tag(interp, "toml-parse datetime with offset",
+        "(ref (toml-parse \"dtz = 1979-05-27T07:32:00-07:00\\n\") \"dtz\")", TIME_POINT, pass, fail);
+    test_truthy(interp, "toml-parse date equality",
+        "(let (d1 (ref (toml-parse \"d = 1979-05-27\\n\") \"d\") d2 (ref (toml-parse \"d = 1979-05-27\\n\") \"d\")) (= d1 d2))",
+        pass, fail);
+    test_tag(interp, "time-point constructor date",
+        "(time-point 'date 2026 3 7)", TIME_POINT, pass, fail);
+    test_truthy(interp, "time-point predicate for date",
+        "(time-point? (time-point 'date 2026 3 7))", pass, fail);
+    test_tag(interp, "time-point constructor time",
+        "(time-point 'time 8 15 30 123456)", TIME_POINT, pass, fail);
+    test_tag(interp, "time-point constructor datetime",
+        "(time-point 'datetime 2026 3 7 8 15 30 123456)", TIME_POINT, pass, fail);
+    test_tag(interp, "time-point constructor datetime with tz",
+        "(time-point 'datetime-tz 2026 3 7 8 15 30 123456 -420)", TIME_POINT, pass, fail);
+    test_tag(interp, "time-point constructor datetime with tz alias",
+        "(time-point 'datetimetz 2026 3 7 8 15 30 123456 -420)", TIME_POINT, pass, fail);
+    test_error_contains(interp, "time-point rejects unknown kind",
+        "(time-point 'unknown 1 2 3)", "time-point:", pass, fail);
+    test_error_contains(interp, "time-point rejects bad datetime-tz arity",
+        "(time-point 'datetime-tz 2026 3 7 8 15 30)", "time-point: datetime-tz expects", pass, fail);
+    test_tag(interp, "toml-parse supports options list",
+        "(toml-parse \"title = \\\"Toml\\\"\n\" '((check-utf8 false)))", HASHMAP, pass, fail);
+    test_error_contains(interp, "toml-parse validates unknown option key",
+        "(toml-parse \"title = \\\"Toml\\\"\n\" '((bogus true)))", "toml-parse: unknown option key", pass, fail);
+    test_error_contains(interp, "toml-parse validates option value",
+        "(toml-parse \"title = \\\"Toml\\\"\n\" '((check-utf8 1)))", "toml-parse: check-utf8 must be a boolean", pass, fail);
+    test_error_contains(interp, "toml-parse rejects invalid input",
+        "(toml-parse \"[broken = 1\")", "toml-parse", pass, fail);
+
+    // CSV parse
+    test_tag(interp, "csv-parse returns array",
+        "(csv-parse \"a,b\\n1,2\")", ARRAY, pass, fail);
+    test_str_val(interp, "csv-parse basic values",
+        "(ref (ref (csv-parse \"a,b\\n1,2\") 0) 1)", "b", pass, fail);
+    test_str_val(interp, "csv-parse quoted delimiter",
+        "(ref (ref (csv-parse \"\\\"a,b\\\",2\") 0) 0)", "a,b", pass, fail);
+    test_str_val(interp, "csv-parse preserves trailing empty field",
+        "(ref (ref (csv-parse \"a,b,\") 0) 2)", "", pass, fail);
+    test_str_val(interp, "csv-parse supports strict mode toggle",
+        "(ref (ref (csv-parse \"a,b\\rc,d\" '((strict false))) 1) 0)", "c", pass, fail);
+    test_str_val(interp, "csv-parse strict allows quote inside unquoted field",
+        "(ref (ref (csv-parse \"a\\\"b,c\" '((strict false))) 0) 0)", "a\"b", pass, fail);
+    test_eq(interp, "csv-parse omits trailing empty row",
+        "(length (csv-parse \"a,b\\n\"))", 1, pass, fail);
+    test_str_val(interp, "csv-parse quoted multiline field",
+        "(ref (ref (csv-parse \"\\\"a\\nb\\\",c\\nd,e\") 0) 0)", "a\nb", pass, fail);
+    test_error_contains(interp, "csv-parse rejects unterminated quote",
+        "(csv-parse \"\\\"a,b\")", "csv-parse: unterminated quoted field", pass, fail);
+    test_error_contains(interp, "csv-parse rejects invalid CR line terminator",
+        "(csv-parse \"a,b\\r;c\")", "csv-parse: invalid CR line terminator", pass, fail);
+
+    // CSV emit
+    test_str_val(interp, "csv-emit basic",
+        "(csv-emit [[\"a\" \"b,2\" \"x\" ]])", "a,\"b,2\",x", pass, fail);
+    test_str_val(interp, "csv-emit with list rows",
+        "(csv-emit '((\"a\" \"b\") (\"c\" \"d\")))", "a,b\nc,d", pass, fail);
+    test_str_val(interp, "csv-emit with custom delimiter",
+        "(csv-emit [[\"a\" \"b|c\"]] \"|\")", "a|\"b|c\"", pass, fail);
+    test_str_val(interp, "csv-emit supports custom line ending",
+        "(csv-emit [[\"a\" \"b\"] [\"c\" \"d\"]] '((line-ending \"\\r\\n\")))", "a,b\r\nc,d", pass, fail);
+    test_str_val(interp, "csv-emit supports quote-style always",
+        "(csv-emit [[\"a,b\" \"x\"]] '((quote-style 'always)))", "\"a,b\",x", pass, fail);
+    test_str_val(interp, "csv-emit supports quote-style none",
+        "(csv-emit [[\"a,b\" \"x\"]] '((quote-style 'none)))", "a,b,x", pass, fail);
+    test_str_val(interp, "csv-emit supports nil-as",
+        "(csv-emit [[nil \"x\"]] '((nil-as \"NULL\")))", "NULL,x", pass, fail);
+    test_str_val(interp, "csv-emit supports custom quote-char",
+        "(csv-emit [[\"a|b\" \"x\"]] '((quote-char \"|\") (quote-style 'always)))", "|a||b|,x", pass, fail);
+    test_error_contains(interp, "csv-emit validates quote-char != delimiter in strict mode",
+        "(csv-emit [[\"a\"]] '((quote-char \",\") (strict true)))", "quote-char", pass, fail);
+    test_error_contains(interp, "csv-emit validates row type",
+        "(csv-emit [\"bad\"])", "csv-emit: expected each row", pass, fail);
+    test_error_contains(interp, "csv-emit validates row cell types",
+        "(csv-emit [[[]]])", "csv-emit: row cells must be", pass, fail);
+    test_error_contains(interp, "csv-parse validates delimiter length",
+        "(csv-parse \"a,b\" \";;\")", "delimiter must be a one-character string", pass, fail);
+}
+
 fn void run_json_tests_isolated(int* pass, int* fail) {
     run_group_isolated(&run_json_tests, pass, fail);
+}
+
+fn void run_data_format_tests_isolated(int* pass, int* fail) {
+    run_group_isolated(&run_data_format_tests, pass, fail);
 }
 
 fn void run_compression_tests(Interp* interp, int* pass, int* fail) {
@@ -1279,6 +1646,40 @@ fn void run_compression_tests(Interp* interp, int* pass, int* fail) {
     // deflate round-trip
     test_str_val(interp, "deflate/inflate round-trip",
         "(inflate (deflate \"test data\"))", "test data", pass, fail);
+
+    // explicit compression levels
+    test_str_val(interp, "gzip/gunzip round-trip level 1",
+        "(gunzip (gzip \"hello world\" 1))", "hello world", pass, fail);
+    test_str_val(interp, "deflate/inflate round-trip level 12",
+        "(inflate (deflate \"test data\" 12))", "test data", pass, fail);
+    test_str_val(interp, "zlib round-trip",
+        "(zlib-decompress (zlib-compress \"zlib payload\"))", "zlib payload", pass, fail);
+    test_str_val(interp, "zlib round-trip level 9",
+        "(zlib-decompress (zlib-compress \"zlib payload\" 9))", "zlib payload", pass, fail);
+
+    // invalid compression level validation
+    test_error_contains(interp, "gzip level rejects non-int",
+        "(gzip \"hello\" 'bad)", "level must be an integer", pass, fail);
+    test_error_contains(interp, "deflate level rejects out-of-range",
+        "(deflate \"hello\" 99)", "level must be in range 0..12", pass, fail);
+    test_error_contains(interp, "gzip rejects too many args",
+        "(gzip \"hello\" 1 2)", "expected 1-2 arguments", pass, fail);
+    test_error_contains(interp, "zlib-decompress rejects corrupt payload",
+        "(zlib-decompress \"not-a-zlib-stream\")", "decompression failed", pass, fail);
+    test_error_contains(interp, "gunzip rejects corrupt payload",
+        "(gunzip \"not-a-gzip-stream\")", "decompression failed", pass, fail);
+    test_error_contains(interp, "inflate rejects corrupt payload",
+        "(inflate \"not-a-deflate-stream\")", "decompression failed", pass, fail);
+
+    // checksums
+    test_eq(interp, "adler32 empty", "(adler32 \"\")", 1, pass, fail);
+    test_eq(interp, "crc32 empty", "(crc32 \"\")", 0, pass, fail);
+    test_eq(interp, "adler32 hello", "(adler32 \"hello\")", 103547413, pass, fail);
+    test_eq(interp, "crc32 hello", "(crc32 \"hello\")", 907060870, pass, fail);
+    test_error_contains(interp, "adler32 rejects non-string",
+        "(adler32 42)", "expected string", pass, fail);
+    test_error_contains(interp, "crc32 rejects non-string",
+        "(crc32 42)", "expected string", pass, fail);
 
     // Empty string round-trip
     test_str_val(interp, "gzip/gunzip empty",
@@ -1299,6 +1700,22 @@ fn void run_unicode_tests(Interp* interp, int* pass, int* fail) {
     // Downcase: ASCII
     test_str_val(interp, "string-downcase ASCII",
         "(string-downcase \"HELLO\")", "hello", pass, fail);
+    test_str_val(interp, "string-casefold ASCII",
+        "(string-casefold \"HELLO\")", "hello", pass, fail);
+    test_str_val(interp, "string-casefold unicode sharp s",
+        "(string-casefold \"Straße\")", "strasse", pass, fail);
+    test_str_val(interp, "string-titlecase ASCII",
+        "(string-titlecase \"hello world\")", "Hello World", pass, fail);
+    test_str_val(interp, "string-titlecase mixed",
+        "(string-titlecase \"hELLO wORLD\")", "Hello World", pass, fail);
+    test_eq(interp, "string-upcase long no truncation",
+        "(string-length (string-upcase (string-repeat \"a\" 1500)))", 1500, pass, fail);
+    test_eq(interp, "string-downcase long no truncation",
+        "(string-length (string-downcase (string-repeat \"A\" 1500)))", 1500, pass, fail);
+    test_eq(interp, "string-upcase long unicode no truncation",
+        "(length (string-codepoints (string-upcase (string-repeat \"é\" 600))))", 600, pass, fail);
+    test_eq(interp, "string-downcase long unicode no truncation",
+        "(length (string-codepoints (string-downcase (string-repeat \"É\" 600))))", 600, pass, fail);
 
     // Codepoints: ASCII
     test_eq(interp, "string-codepoints ASCII count",
@@ -1313,6 +1730,22 @@ fn void run_unicode_tests(Interp* interp, int* pass, int* fail) {
         "(char-category 97)", "Ll", pass, fail);
     test_str_val(interp, "char-category digit 0",
         "(char-category 48)", "Nd", pass, fail);
+    test_eq(interp, "char-width ASCII A",
+        "(char-width 65)", 1, pass, fail);
+    test_error_contains(interp, "char-width rejects non-int",
+        "(char-width \"A\")", "expected integer", pass, fail);
+    test_str_val(interp, "char-property category",
+        "(char-property 65 'category)", "Lu", pass, fail);
+    test_eq(interp, "char-property width",
+        "(char-property 65 'width)", 1, pass, fail);
+    test_truthy(interp, "char-property letter? true",
+        "(char-property 65 'letter?)", pass, fail);
+    test_truthy(interp, "char-property digit? true",
+        "(char-property 48 'digit?)", pass, fail);
+    test_nil(interp, "char-property lower? false",
+        "(char-property 65 'lower?)", pass, fail);
+    test_error_contains(interp, "char-property unknown key",
+        "(char-property 65 'unknown)", "unknown property", pass, fail);
 
     // Normalization: NFC (identity for ASCII)
     test_str_val(interp, "string-normalize NFC ASCII",
@@ -2488,6 +2921,17 @@ fn void run_scheduler_offload_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+
+    {
+        EvalResult r = run("(offload 'http-get \"https://example.com\")", interp);
+        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
+            emit_pass_literal("[PASS] offload rejects internal io op");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] offload rejects internal io op");
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
@@ -2504,6 +2948,17 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
             (*pass)++;
         } else {
             io::printn("[FAIL] thread-spawn/thread-join gzip");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run("(thread-spawn 'tcp-connect \"127.0.0.1\" 1)", interp);
+        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
+            emit_pass_literal("[PASS] thread-spawn rejects internal io op");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] thread-spawn rejects internal io op");
             (*fail)++;
         }
     }
@@ -3528,8 +3983,8 @@ fn void run_scheduler_consume_pending_offload_boundary_tests(Interp* interp, int
             if (completion != null) {
                 *completion = {};
                 completion.kind = OFFLOAD_RES_BYTES;
-                completion.blob = shared_blob_new_copy(expected_bytes);
-                if (completion.blob == null) {
+                completion.shared = scheduler_publish_shared(expected_bytes);
+                if (completion.shared == null) {
                     mem::free(completion);
                     completion = null;
                 }
@@ -4134,6 +4589,7 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
     run_scheduler_thread_task_cancel_boundary_tests(interp, pass, fail);
     run_scheduler_thread_task_worker_cancel_interleave_boundary_tests(interp, pass, fail);
     run_scheduler_thread_join_timeout_then_join_boundary_tests(interp, pass, fail);
+    run_scheduler_shared_retire_queue_boundary_tests(interp, pass, fail);
     run_scheduler_wakeup_ready_barrier_boundary_tests(interp, pass, fail);
     run_scheduler_mixed_boundary_state_restore_tests(interp, pass, fail);
     run_scheduler_wakeup_offload_error_boundary_tests(interp, pass, fail);
@@ -4193,6 +4649,8 @@ fn Value* setup_deduce_relation_for_db(
 
 extern fn int deduce_test_mkdir(char* path, uint mode) @extern("mkdir");
 extern fn int deduce_test_getpid() @extern("getpid");
+extern fn int deduce_test_system(char* command) @extern("system");
+extern fn int deduce_test_unlink(char* path) @extern("unlink");
 
 usz g_deduce_test_long_path_seq = 0;
 
@@ -4245,6 +4703,97 @@ fn Value* deduce_test_make_long_open_path(Interp* interp, char variant) {
     path_buf[len++] = '-';
     path_buf[len++] = variant;
     return make_string(interp, path_buf[..len]);
+}
+
+fn bool deduce_test_write_restart_script(char[] script_path, char[] db_path, bool writer_phase) {
+    char[2048] script_buf;
+    char[] script = writer_phase
+        ? io::bprintf(
+            &script_buf,
+            "(begin "
+            "  (let (db (deduce 'open \"%s\") "
+            "        rel (deduce 'open-named db 'person \"person_v1\" 'name 'age)) "
+            "    (deduce 'fact! rel \"Alice\" 30) "
+            "    (if (= (deduce 'count rel) 1) true (deduce 'count 42))))",
+            (ZString)db_path
+        )!!
+        : io::bprintf(
+            &script_buf,
+            "(begin "
+            "  (let (db (deduce 'open \"%s\") "
+            "        rel (deduce 'open-named db 'person \"person_v1\" 'name 'age)) "
+            "    (if (= (deduce 'count rel) 1) true (deduce 'count 42))))",
+            (ZString)db_path
+        )!!;
+    return write_text_file(script_path, script);
+}
+
+fn bool deduce_test_run_main_script(char[] script_path) {
+    char[1024] cmd_buf;
+    char[] cmd = io::bprintf(
+        &cmd_buf,
+        "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:abort_on_error=1 "
+        "LD_LIBRARY_PATH=/usr/local/lib ./build/main %s",
+        (ZString)script_path
+    )!!;
+    cmd_buf[cmd.len] = 0;
+    return deduce_test_system(&cmd_buf[0]) == 0;
+}
+
+fn void run_deduce_durability_restart_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+
+    uint pid = (uint)deduce_test_getpid();
+    usz seq = g_deduce_test_long_path_seq++;
+
+    char[512] db_path_buf;
+    char[] db_path = io::bprintf(
+        &db_path_buf,
+        "/tmp/omni-deduce-restart-%d-%d",
+        (int)pid,
+        (int)seq
+    )!!;
+
+    char[512] writer_script_buf;
+    char[] writer_script = io::bprintf(
+        &writer_script_buf,
+        "/tmp/omni-deduce-restart-write-%d-%d.omni",
+        (int)pid,
+        (int)seq
+    )!!;
+    writer_script_buf[writer_script.len] = 0;
+    defer deduce_test_unlink(&writer_script_buf[0]);
+
+    char[512] reader_script_buf;
+    char[] reader_script = io::bprintf(
+        &reader_script_buf,
+        "/tmp/omni-deduce-restart-read-%d-%d.omni",
+        (int)pid,
+        (int)seq
+    )!!;
+    reader_script_buf[reader_script.len] = 0;
+    defer deduce_test_unlink(&reader_script_buf[0]);
+
+    if (!deduce_test_write_restart_script(writer_script, db_path, true) ||
+        !deduce_test_write_restart_script(reader_script, db_path, false)) {
+        io::printn("[FAIL] deduce durability across restart (script write)");
+        (*fail)++;
+        return;
+    }
+
+    bool writer_ok = deduce_test_run_main_script(writer_script);
+    bool reader_ok = writer_ok && deduce_test_run_main_script(reader_script);
+    if (writer_ok && reader_ok) {
+        emit_pass_literal("[PASS] deduce durability across restart");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] deduce durability across restart (writer=%s reader=%s)",
+            writer_ok ? "ok" : "FAIL",
+            reader_ok ? "ok" : "FAIL"
+        );
+        (*fail)++;
+    }
 }
 
 fn void run_deduce_memory_open_isolation_test(Interp* interp, int* pass, int* fail) {
@@ -4336,6 +4885,68 @@ fn void run_deduce_scan_tests(Interp* interp, int* pass, int* fail) {
             (*pass)++;
         } else {
             io::printn("[FAIL] deduce 'scan dict result");
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_deduce_scan_range_tests(Interp* interp, int* pass, int* fail) {
+    setup(interp,
+        "(begin "
+        "  (define scan-range-db (deduce 'open 'memory)) "
+        "  (define [relation scan-range-db] scan_range_person (name) (age) (email)) "
+        "  (deduce 'fact! scan_range_person \"Alice\" 20 \"a@x\") "
+        "  (deduce 'fact! scan_range_person \"Bob\" 30 \"b@x\") "
+        "  (deduce 'fact! scan_range_person \"Carol\" 40 \"c@x\") "
+        "  (deduce 'fact! scan_range_person \"Dora\" 50 \"d@x\") "
+        ")");
+
+    {
+        EvalResult r = run("(length (deduce 'scan-range scan_range_person '(\"Bob\" 30 \"b@x\") '(\"Carol\" 40 \"c@x\")))", interp);
+        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 2) {
+            emit_pass_literal("[PASS] deduce 'scan-range bounded count");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] deduce 'scan-range bounded count (got %d)",
+                is_int(r.value) ? (int)r.value.int_val : -1
+            );
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run("(length (deduce 'scan-range scan_range_person '(\"Zed\" 99 \"z@x\") '(\"Zoe\" 100 \"z@x\")))", interp);
+        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 0) {
+            emit_pass_literal("[PASS] deduce 'scan-range empty");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] deduce 'scan-range empty (got %d)",
+                is_int(r.value) ? (int)r.value.int_val : -1
+            );
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run("(deduce 'scan-range scan_range_person \"bad\" '(\"Carol\" 40 \"c@x\"))", interp);
+        if (r.error.has_error) {
+            emit_pass_literal("[PASS] deduce 'scan-range lower bound not list");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce 'scan-range lower bound not list");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run("(deduce 'scan-range scan_range_person '(\"Bob\" 30) '(\"Carol\" 40 \"c@x\"))", interp);
+        if (r.error.has_error) {
+            emit_pass_literal("[PASS] deduce 'scan-range lower bound arity");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce 'scan-range lower bound arity");
             (*fail)++;
         }
     }
@@ -4587,6 +5198,7 @@ fn void run_deduce_match_tests(Interp* interp, int* pass, int* fail) {
 
 fn void run_deduce_query_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_scan_tests(interp, pass, fail);
+    run_deduce_scan_range_tests(interp, pass, fail);
     run_deduce_query_filter_tests(interp, pass, fail);
     run_deduce_match_tests(interp, pass, fail);
 }
@@ -4608,6 +5220,58 @@ fn void run_deduce_open_smoke_test(Interp* interp, int* pass, int* fail) {
             io::printfn("[FAIL] deduce 'open returns handle (tag=%d)", r.value != null ? (int)r.value.tag : -1);
         }
         (*fail)++;
+    }
+}
+
+fn void run_deduce_open_named_test(Interp* interp, int* pass, int* fail) {
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (define ndb (deduce 'open 'memory)) "
+            "  (define rel-a (deduce 'open-named ndb 'nrel_a \"named_a\" 'name 'age)) "
+            "  (define rel-b (deduce 'open-named ndb 'nrel_b \"named_b\" 'name 'age)) "
+            "  (deduce 'fact! rel-a \"Alice\" 30) "
+            "  (and (= (deduce 'count rel-a) 1) (= (deduce 'count rel-b) 0)))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] deduce open-named isolates db names");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce open-named isolates db names");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (define ndb2 (deduce 'open 'memory)) "
+            "  (define rel-c (deduce 'open-named ndb2 'nrel_c 'named_c 'name 'age)) "
+            "  (= (deduce 'count rel-c) 0))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] deduce open-named accepts symbol db-name");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce open-named accepts symbol db-name");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(deduce 'open-named (deduce 'open 'memory) 'bad 42 'name)",
+            interp
+        );
+        if (r.error.has_error) {
+            emit_pass_literal("[PASS] deduce open-named validates db-name type");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce open-named validates db-name type");
+            (*fail)++;
+        }
     }
 }
 
@@ -4922,8 +5586,117 @@ fn void run_deduce_long_open_path_isolation_test(Interp* interp, int* pass, int*
     }
 }
 
+fn void run_deduce_transaction_tests(Interp* interp, int* pass, int* fail) {
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (define txn-db-commit (deduce 'open 'memory)) "
+            "  (define [relation txn-db-commit] txn_person_commit (name) (age)) "
+            "  (define txc (deduce 'begin txn-db-commit)) "
+            "  (deduce 'fact! txc txn_person_commit \"Alice\" 33) "
+            "  (define before (deduce 'count txn_person_commit)) "
+            "  (deduce 'commit txc) "
+            "  (define after (deduce 'count txn_person_commit)) "
+            "  (and (= before 0) (= after 1)))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] deduce txn commit");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce txn commit");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (define txn-db-abort (deduce 'open 'memory)) "
+            "  (define [relation txn-db-abort] txn_person_abort (name) (age)) "
+            "  (define txa (deduce 'begin txn-db-abort)) "
+            "  (deduce 'fact! txa txn_person_abort \"Bob\" 21) "
+            "  (deduce 'abort txa) "
+            "  (= (deduce 'count txn_person_abort) 0))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] deduce txn abort");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce txn abort");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (define txn-db-a (deduce 'open 'memory)) "
+            "  (define txn-db-b (deduce 'open 'memory)) "
+            "  (define [relation txn-db-b] txn_person_mismatch (name) (age)) "
+            "  (define txm (deduce 'begin txn-db-a)) "
+            "  (deduce 'fact! txm txn_person_mismatch \"Eve\" 44))",
+            interp
+        );
+        if (r.error.has_error) {
+            emit_pass_literal("[PASS] deduce txn db mismatch");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce txn db mismatch");
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_deduce_clear_drop_tests(Interp* interp, int* pass, int* fail) {
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (define clr-db (deduce 'open 'memory)) "
+            "  (define [relation clr-db] clr-person (name) (age)) "
+            "  (deduce 'fact! clr-person \"Alice\" 30) "
+            "  (deduce 'fact! clr-person \"Bob\" 31) "
+            "  (deduce 'clear! clr-person) "
+            "  (define c0 (deduce 'count clr-person)) "
+            "  (deduce 'fact! clr-person \"Carol\" 40) "
+            "  (define c1 (deduce 'count clr-person)) "
+            "  (and (= c0 0) (= c1 1)))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] deduce clear! preserves relation");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce clear! preserves relation");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(begin "
+            "  (define drp-db (deduce 'open 'memory)) "
+            "  (define [relation drp-db] drp-person (name) (age)) "
+            "  (deduce 'fact! drp-person \"Alice\" 30) "
+            "  (deduce 'drop! drp-person) "
+            "  (deduce 'count drp-person))",
+            interp
+        );
+        if (r.error.has_error) {
+            emit_pass_literal("[PASS] deduce drop! invalidates relation");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce drop! invalidates relation");
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_open_smoke_test(interp, pass, fail);
+    run_deduce_open_named_test(interp, pass, fail);
+    run_deduce_durability_restart_test(interp, pass, fail);
     run_deduce_relation_attr_define_test(interp, pass, fail);
     run_deduce_crud_example_flow_test(interp, pass, fail);
     run_deduce_memory_open_isolation_test(interp, pass, fail);
@@ -4931,6 +5704,8 @@ fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_large_relation_schema_test(interp, pass, fail);
     run_deduce_long_relation_name_isolation_test(interp, pass, fail);
     run_deduce_long_open_path_isolation_test(interp, pass, fail);
+    run_deduce_transaction_tests(interp, pass, fail);
+    run_deduce_clear_drop_tests(interp, pass, fail);
     setup_deduce_person_relation(interp);
     run_deduce_query_tests(interp, pass, fail);
 }
@@ -5097,6 +5872,7 @@ fn void run_lisp_tests() {
     run_pika_tests_isolated(&pass, &fail);
     run_unicode_tests_isolated(&pass, &fail);
     run_compression_tests_isolated(&pass, &fail);
+    run_data_format_tests_isolated(&pass, &fail);
     run_json_tests_isolated(&pass, &fail);
     run_async_tests_isolated(&pass, &fail);
     run_reader_dispatch_tests_isolated(&pass, &fail);

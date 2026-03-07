@@ -17,12 +17,16 @@ as the source of truth for feature usage and coding conventions.
 
 For specialized work, also read:
 
+- Docs map (normalized entrypoint): `docs/README.md`
+- Plan index and active work queue: `docs/plans/README.md`
+- Area status hub + next steps: `docs/areas/README.md`
 - Type and dispatch work: `docs/type-system-syntax.md`
 - Effects and handlers: `docs/EFFECTS_GUIDE.md`
-- Major refactors in progress: `docs/C3_MIGRATION.md`, `docs/REFACTOR_PLAN.md`
+- Compiler/parser refactor status: `docs/areas/compiler-parser-refactor.md`
+- Canonical product example (financial-service webserver): `examples/finwatch/main.omni`
 - Memory architecture and status:
-  - `memory/DESTINATION_ARENA_PLAN.md` (authoritative architecture + current implementation status)
-  - `memory/CHANGELOG.md` (chronological implementation log)
+  - `memory/CHANGELOG.md` (**primary implementation truth**; if docs disagree, changelog wins for current state)
+  - `memory/DESTINATION_ARENA_PLAN.md` (target architecture and design rationale; closure markers must match changelog-backed validation)
 
 ## Core Language/Runtime Invariants
 
@@ -92,8 +96,8 @@ Follow `docs/C3_STYLE.md`. Especially:
 ## Change Discipline
 
 - Keep edits small and locally coherent
-- Do not silently defer known work; record it in `.claude/plans/` with concrete next steps
-- If behavior changes, update relevant docs and `memory/CHANGELOG.md`
+- Do not silently defer known work; record it in `docs/plans/` with concrete next steps
+- If behavior changes, update `memory/CHANGELOG.md` first, then update relevant area/spec docs
 
 ## Owner Workflow Preference (Required)
 

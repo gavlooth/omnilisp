@@ -17,9 +17,9 @@ I/O operations without touching the JIT.
 | Pika engine   | Regex + PEG grammar (built-in C3) | —   | `src/pika/` (11 files)         |
 | utf8proc      | Unicode string ops           | MIT      | `src/lisp/unicode.c3`          |
 | yyjson        | JSON parse/emit              | MIT      | `src/lisp/json.c3` + `csrc/json_helpers.c` |
-| libdeflate    | gzip/deflate compression     | MIT      | `src/lisp/compress.c3`         |
+| libdeflate    | gzip/deflate/zlib compression | MIT      | `src/lisp/compress.c3`         |
 | libuv         | TCP/DNS/timers (linked, POSIX fast-path) | MIT | `src/lisp/async.c3`       |
-| BearSSL       | TLS client connections       | MIT      | `src/lisp/tls.c3` + `csrc/tls_helpers.c` (33 lines) |
+| BearSSL       | TLS client + server wrap     | MIT      | `src/lisp/tls.c3` + `csrc/tls_helpers.c` |
 
 Static archives built from source via `deps/build_static.sh` → `deps/lib/*.a`.
 
@@ -38,22 +38,34 @@ TCP connect/read/write/close, DNS resolve, async-sleep. All through effects.
 POSIX blocking fast-path for v1. libuv linked for future async scheduler.
 
 ### 2. utf8proc — Unicode ✓
-Unicode-aware string-upcase/downcase, string-normalize (NFC/NFD/NFKC/NFKD),
-string-graphemes, string-codepoints, char-category.
+Unicode-aware string-upcase/downcase/titlecase, string-normalize (NFC/NFD/NFKC/NFKD),
+string-casefold, string-graphemes, string-codepoints, char-category, char-width,
+char-property.
+Case conversion no longer uses a fixed-size 1024-byte buffer; long and
+multi-byte inputs are covered by regression tests.
 
 ### 3. Pika regex/grammar — INTEGRATED ✓
 re-match, re-find-all, re-split, re-replace, re-fullmatch, re-match-pos, re-find-all-pos.
 pika/grammar, pika/parse, pika/fold. `lisp_semantics.c3` disabled (AST mismatch).
 
 ### 4. yyjson — JSON ✓
-json-parse (JSON → dict/array/string/int/double/nil), json-emit, json-emit-pretty.
+json-parse (JSON → dict/array/string/int/double/nil), json-emit, json-emit-pretty,
+and `json-get` (RFC-6901 pointer traversal with `~0`/`~1` unescape).
+`json-parse` also supports explicit permissive mode flags for comments, trailing
+commas, and `NaN`/`Inf` via an optional option list.
 
 ### 5. BearSSL — TLS ✓
-tls-connect (wraps TCP handle), tls-read, tls-write, tls-close.
-Direct extern fn to BearSSL, 33-line C callback helper. v1 skips cert verification.
+tls-connect, tls-server-wrap (server-side wrap), tls-read, tls-write, tls-close.
+Direct extern fn to BearSSL + C helper for socket callbacks and CA bundle parsing.
+Current runtime verifies server certificates against trust anchors loaded from
+`OMNI_TLS_CA_FILE` / `SSL_CERT_FILE` / system CA bundle paths, supports
+optional client certificate auth (PEM cert/key), and exposes optional
+in-process hostname session resumption policy on `tls-connect`.
 
 ### 6. libdeflate — Compression ✓
-gzip, gunzip, deflate, inflate.
+gzip, gunzip, deflate, inflate, zlib-compress, zlib-decompress.
+`gzip`/`deflate`/`zlib-compress` support optional compression level `0..12`.
+`adler32` and `crc32` expose checksum primitives.
 
 ---
 

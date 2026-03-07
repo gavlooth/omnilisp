@@ -482,21 +482,21 @@ fn EvalResult repl_eval_line(char[] input, Interp* interp) {
 
 fn void repl_print_eval_outcome(EvalResult r, Interp* interp, char[] ansi_red, char[] ansi_green, char[] ansi_reset) {
     if (r.error.has_error) {
-        io::print(ansi_red);
+        io::printf("%s", (ZString)ansi_red);
         if (r.error.line > 0) {
             io::printf("Error at line %d, column %d: ", (int)r.error.line, (int)r.error.column);
         } else {
             io::print("Error: ");
         }
         io::printf("%s", (ZString)&r.error.message);
-        io::print(ansi_reset);
+        io::printf("%s", (ZString)ansi_reset);
         io::printn("");
         return;
     }
 
-    io::print(ansi_green);
+    io::printf("%s", (ZString)ansi_green);
     print_value(r.value, &interp.symbols);
-    io::print(ansi_reset);
+    io::printf("%s", (ZString)ansi_reset);
     io::printn("");
 }
 
