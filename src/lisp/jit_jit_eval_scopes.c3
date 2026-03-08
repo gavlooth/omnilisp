@@ -2,6 +2,11 @@ module lisp;
 
 import main;
 
+struct ScopedFinalizeResult {
+    Value* value;
+    bool releasing_scope_spliced;
+}
+
 fn bool env_chain_contains_scope_gen(Env* env, uint scope_gen, Env* stop_at) {
     Env* cur = env;
     while (cur != null && cur != stop_at) {
@@ -34,7 +39,12 @@ fn bool env_chain_has_binding_in_scope(Env* env, main::ScopeRegion* scope, Env* 
     return false;
 }
 
-fn Value* jit_finalize_scoped_result(
+<*
+@require interp != null : "boundary_finalize_scoped_result: null interp"
+@require saved_scope != null : "boundary_finalize_scoped_result: null saved_scope"
+@require active_scope != null : "boundary_finalize_scoped_result: null active_scope"
+*>
+fn ScopedFinalizeResult boundary_finalize_scoped_result(
     Value* result,
     Value* original_result,
     Interp* interp,
@@ -43,58 +53,57 @@ fn Value* jit_finalize_scoped_result(
     uint copy_site
 ) {
     boundary_assert_interp_scope_chain(interp);
+    ScopedFinalizeResult finalized = {
+        .value = result,
+        .releasing_scope_spliced = false,
+    };
     PromotionContext boundary_ctx = {};
-    boundary_promotion_context_begin(interp, &boundary_ctx, PROMOTION_CTX_BUDGET_RETURN);
-
-    if (active_scope.refcount == 1 && result != null) {
-        if (result.scope_gen != active_scope.escape_generation) {
-            main::ScopeRegion* promote_saved_scope = boundary_enter_scope(interp, active_scope);
-            result = boundary_promote_to_escape(result, interp);
-            boundary_leave_scope(interp, promote_saved_scope);
-        }
-        if (boundary_ctx.aborted) {
-            result = boundary_copy_from_releasing_scope(
-                original_result,
-                interp,
-                active_scope,
-                copy_site
-            );
-            main::scope_release(active_scope);
-            boundary_promotion_context_end(interp, &boundary_ctx);
-            boundary_assert_interp_scope_chain(interp);
-            return result;
-        }
-        if (boundary_should_promote(result, &boundary_ctx, active_scope)) {
-            if (boundary_try_scope_splice_escapes(saved_scope, active_scope)) {
-                boundary_promotion_context_end(interp, &boundary_ctx);
-                boundary_assert_interp_scope_chain(interp);
-                return result;
-            }
-            // Explicit fallback when splice preconditions are not met.
-            // Keep return-boundary ownership deterministic instead of silently
-            // assuming transfer succeeded.
-            result = boundary_copy_from_releasing_scope(result, interp, active_scope, copy_site);
-            main::scope_release(active_scope);
-            boundary_promotion_context_end(interp, &boundary_ctx);
-            boundary_assert_interp_scope_chain(interp);
-            return result;
-        }
-    }
-
-    if (result != null && !main::is_in_scope((void*)result, active_scope)) {
-        main::scope_release(active_scope);
+    // Return-boundary finalize must not inherit traversal-budget fallback behavior.
+    // Use an unbounded boundary context so commit routing can terminate on
+    // destination-aware promotion/splice/copy policy rather than budget abort.
+    boundary_promotion_context_begin(interp, &boundary_ctx);
+    defer {
         boundary_promotion_context_end(interp, &boundary_ctx);
         boundary_assert_interp_scope_chain(interp);
-        return result;
     }
+    BoundaryCommitEscapeResult committed = boundary_commit_escape(
+        result,
+        original_result,
+        interp,
+        saved_scope,
+        active_scope,
+        copy_site,
+        &boundary_ctx
+    );
+    finalized.value = committed.value;
+    finalized.releasing_scope_spliced = committed.releasing_scope_spliced;
+    return finalized;
+}
 
-    if (result != null) {
-        result = boundary_copy_from_releasing_scope(result, interp, active_scope, copy_site);
+fn Value* jit_finalize_scoped_result(
+    Value* result,
+    Value* original_result,
+    Interp* interp,
+    main::ScopeRegion* saved_scope,
+    main::ScopeRegion* active_scope,
+    uint copy_site,
+    bool* scope_spliced_out = null
+) {
+    ScopedFinalizeResult finalized = boundary_finalize_scoped_result(
+        result,
+        original_result,
+        interp,
+        saved_scope,
+        active_scope,
+        copy_site
+    );
+    if (scope_spliced_out != null) {
+        *scope_spliced_out = finalized.releasing_scope_spliced;
     }
-    main::scope_release(active_scope);
-    boundary_promotion_context_end(interp, &boundary_ctx);
-    boundary_assert_interp_scope_chain(interp);
-    return result;
+    if (!finalized.releasing_scope_spliced) {
+        main::scope_release(active_scope);
+    }
+    return finalized.value;
 }
 
 fn Env* jit_copy_tco_env_chain_for_recycle(
@@ -105,11 +114,13 @@ fn Env* jit_copy_tco_env_chain_for_recycle(
     boundary_assert_interp_scope_chain(interp);
     BoundaryInterpState saved = boundary_save_interp_state(interp);
     defer boundary_restore_interp_state(interp, saved);
-    interp.releasing_scope = releasing_scope;
+    BoundaryReleasingScopeSwap releasing_swap =
+        boundary_releasing_scope_swap_begin(interp, releasing_scope);
+    defer boundary_releasing_scope_swap_end(interp, &releasing_swap);
     PromotionContext bounce_ctx = {};
     boundary_promotion_context_begin(interp, &bounce_ctx, PROMOTION_CTX_BUDGET_TCO);
+    defer boundary_promotion_context_end(interp, &bounce_ctx);
     Env* copied = copy_tco_env_chain(env, interp);
-    boundary_promotion_context_end(interp, &bounce_ctx);
     boundary_assert_interp_scope_chain(interp);
     return copied;
 }
