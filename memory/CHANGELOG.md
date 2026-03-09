@@ -5,6 +5,18 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 
 ## 2026-03-09
 
+- Boundary transition regression pack landed for return/env/splice deterministic behavior:
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3`:
+    - added `run_memory_lifetime_boundary_transition_regression_tests(...)` with explicit assertions for:
+      - return transition: budget-0 commit path hard-fails with `BOUNDARY_COMMIT_FAULT_PROMOTION_ABORTED`,
+      - env transition: depth-limit copy path reports `BOUNDARY_ENV_COPY_FAULT_DEPTH_LIMIT`,
+      - splice transition: non-unique child refcount is rejected with `BOUNDARY_SCOPE_TRANSFER_CHILD_REFCOUNT_NOT_ONE`.
+  - `src/lisp/tests_memory_lifetime_groups.c3`:
+    - wired transition regression pack into the memory lifetime suite.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1708/0`, `compiler: 85/0`).
+
 - Boundary invariant hooks were centralized for ownership-transition assertions:
   - `src/lisp/eval_boundary_diagnostics.c3`:
     - added shared invariant hook surface:

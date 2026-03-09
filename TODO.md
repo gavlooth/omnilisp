@@ -1314,8 +1314,8 @@ Source: `docs/plans/session-34-44-boundary-hardening.md`
 - [x] Session 39: enable boundary invariant checks by default in test/ASAN runs.
 - [ ] Session 39: run global gates.
 - [x] Session 39: update changelog with enabled invariant set.
-- [ ] Session 40, Commit A: `tests: add boundary regression cases for return/env/splice transitions`.
-- [ ] Session 40: add deterministic regression tests for boundary transitions.
+- [x] Session 40, Commit A: `tests: add boundary regression cases for return/env/splice transitions`.
+- [x] Session 40: add deterministic regression tests for boundary transitions.
 - [ ] Session 40, Commit B: `tests: add stress cases for nested scopes and mixed jit/interp transitions`.
 - [ ] Session 40: add stress tests for nested scope/mode boundary behavior.
 - [ ] Session 40: run global gates.

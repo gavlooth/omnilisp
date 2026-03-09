@@ -1266,6 +1266,7 @@ fn void run_memory_lifetime_regression_tests(Interp* interp, int* pass, int* fai
     run_memory_lifetime_boundary_copy_fault_tests(interp, pass, fail);
     run_memory_lifetime_boundary_invariant_policy_tests(interp, pass, fail);
     run_memory_lifetime_boundary_scope_interleaving_test(interp, pass, fail);
+    run_memory_lifetime_boundary_transition_regression_tests(interp, pass, fail);
     run_memory_lifetime_boundary_return_classification_tests(interp, pass, fail);
     run_memory_lifetime_boundary_commit_escape_tests(interp, pass, fail);
     run_memory_lifetime_boundary_policy_parse_tests(interp, pass, fail);
