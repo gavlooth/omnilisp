@@ -1308,8 +1308,8 @@ Source: `docs/plans/session-34-44-boundary-hardening.md`
 - [x] Session 38: make failure modes explicit and deterministic.
 - [x] Session 38: run global gates.
 - [x] Session 38: update changelog with failure model notes.
-- [ ] Session 39, Commit A: `lifetime: add centralized invariant hooks for ownership transitions`.
-- [ ] Session 39: add centralized invariant macros/helpers in boundary layer.
+- [x] Session 39, Commit A: `lifetime: add centralized invariant hooks for ownership transitions`.
+- [x] Session 39: add centralized invariant macros/helpers in boundary layer.
 - [ ] Session 39, Commit B: `tests: enforce invariant checks in sanitizer and test modes`.
 - [ ] Session 39: enable boundary invariant checks by default in test/ASAN runs.
 - [ ] Session 39: run global gates.

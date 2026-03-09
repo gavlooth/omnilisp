@@ -1,11 +1,9 @@
 module lisp;
 
-import std::io;
 import main;
 
 fn void copy_env_invariant_fail(char[] msg) @noinline {
-    io::eprintfn("[copy-env] invariant failure: %s", (ZString)msg);
-    unreachable("copy_env invariant failure");
+    boundary_invariant_fail("copy-env", msg);
 }
 
 fn bool copy_env_value_copy_failure(Value* src, Value* copied) @inline {

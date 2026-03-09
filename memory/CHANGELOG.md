@@ -5,6 +5,20 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 
 ## 2026-03-09
 
+- Boundary invariant hooks were centralized for ownership-transition assertions:
+  - `src/lisp/eval_boundary_diagnostics.c3`:
+    - added shared invariant hook surface:
+      - `boundary_invariant_fail(domain, msg)`,
+      - `boundary_invariant_require(cond, domain, msg)` macro.
+    - migrated boundary state assertion helpers (`boundary_assert_interp_scope_chain`, `boundary_assert_saved_state`, `boundary_assert_session_state`, `boundary_assert_scope_swap_state`) onto the shared hook surface.
+  - `src/lisp/eval_env_copy.c3`:
+    - `copy_env_invariant_fail(...)` now delegates to shared `boundary_invariant_fail(...)` instead of maintaining a local invariant reporter.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1706/0`, `compiler: 85/0`).
+    - `c3c build --sanitize=address` passed.
+    - ASAN runtime run currently reproduces existing stack-switch runtime abort (`AddressSanitizer: CHECK failed ... asan_thread.cpp:369`) in advanced effect/JIT path; not marking Session 39 test/ASAN-enforcement item complete in this slice.
+
 - Boundary commit fallback diagnostics are now typed and explicit:
   - `src/lisp/eval_boundary_api.c3`:
     - added `BoundaryCommitFault` and `boundary_commit_fault_name(...)`.
