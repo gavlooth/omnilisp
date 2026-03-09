@@ -13,6 +13,9 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - migrated boundary state assertion helpers (`boundary_assert_interp_scope_chain`, `boundary_assert_saved_state`, `boundary_assert_session_state`, `boundary_assert_scope_swap_state`) onto the shared hook surface.
   - `src/lisp/eval_env_copy.c3`:
     - `copy_env_invariant_fail(...)` now delegates to shared `boundary_invariant_fail(...)` instead of maintaining a local invariant reporter.
+  - invariant policy enablement + regression coverage:
+    - `boundary_invariant_checks_enabled()` now makes checks default-on, with explicit override only via `OMNI_DISABLE_BOUNDARY_INVARIANTS=1`.
+    - added regression `run_memory_lifetime_boundary_invariant_policy_tests(...)` to verify default-on behavior in test runs and env override parity.
   - validation:
     - `c3c build` passed.
     - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1706/0`, `compiler: 85/0`).

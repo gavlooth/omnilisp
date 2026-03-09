@@ -1310,8 +1310,8 @@ Source: `docs/plans/session-34-44-boundary-hardening.md`
 - [x] Session 38: update changelog with failure model notes.
 - [x] Session 39, Commit A: `lifetime: add centralized invariant hooks for ownership transitions`.
 - [x] Session 39: add centralized invariant macros/helpers in boundary layer.
-- [ ] Session 39, Commit B: `tests: enforce invariant checks in sanitizer and test modes`.
-- [ ] Session 39: enable boundary invariant checks by default in test/ASAN runs.
+- [x] Session 39, Commit B: `tests: enforce invariant checks in sanitizer and test modes`.
+- [x] Session 39: enable boundary invariant checks by default in test/ASAN runs.
 - [ ] Session 39: run global gates.
 - [ ] Session 39: update changelog with enabled invariant set.
 - [ ] Session 40, Commit A: `tests: add boundary regression cases for return/env/splice transitions`.

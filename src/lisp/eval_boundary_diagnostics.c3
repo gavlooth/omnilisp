@@ -938,8 +938,13 @@ fn void boundary_invariant_fail(char[] domain, char[] msg) @noinline {
     unreachable("boundary invariant failure");
 }
 
+fn bool boundary_invariant_checks_enabled() @inline {
+    if (boundary_env_flag_enabled("OMNI_DISABLE_BOUNDARY_INVARIANTS")) return false;
+    return true;
+}
+
 macro boundary_invariant_require(cond, domain, msg) {
-    if (!(cond)) {
+    if (boundary_invariant_checks_enabled() && !(cond)) {
         boundary_invariant_fail(domain, msg);
     }
 }

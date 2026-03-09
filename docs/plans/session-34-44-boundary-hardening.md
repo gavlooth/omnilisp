@@ -1184,8 +1184,8 @@ rg -n "TODO|FIXME|HACK" src/lisp src | head
 
 - [x] Commit A: `lifetime: add centralized invariant hooks for ownership transitions`
 - [x] Add centralized invariant macros/helpers in boundary layer.
-- [ ] Commit B: `tests: enforce invariant checks in sanitizer and test modes`
-- [ ] Enable boundary invariant checks by default in test/ASAN runs.
+- [x] Commit B: `tests: enforce invariant checks in sanitizer and test modes`
+- [x] Enable boundary invariant checks by default in test/ASAN runs.
 - [ ] Run Global Gates.
 - [ ] Update changelog with enabled invariant set.
 

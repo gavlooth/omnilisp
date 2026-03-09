@@ -112,6 +112,28 @@ fn void run_memory_lifetime_boundary_copy_fault_tests(Interp* interp, int* pass,
     }
 }
 
+fn void run_memory_lifetime_boundary_invariant_policy_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: boundary invariant checks are enabled by default in tests.
+    {
+        (void)interp;
+        bool disabled_via_env = boundary_env_flag_enabled("OMNI_DISABLE_BOUNDARY_INVARIANTS");
+        bool enabled = boundary_invariant_checks_enabled();
+        bool ok = disabled_via_env ? !enabled : enabled;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: boundary invariant policy defaults");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: boundary invariant policy defaults (env_disabled=%s enabled=%s)",
+                disabled_via_env ? "yes" : "no",
+                enabled ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_boundary_scope_interleaving_test(Interp* interp, int* pass, int* fail) {
     // Invariant: nested boundary enter/leave + child push/pop restores state exactly.
     {
