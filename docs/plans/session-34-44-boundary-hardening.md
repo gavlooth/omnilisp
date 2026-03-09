@@ -1187,7 +1187,7 @@ rg -n "TODO|FIXME|HACK" src/lisp src | head
 - [x] Commit B: `tests: enforce invariant checks in sanitizer and test modes`
 - [x] Enable boundary invariant checks by default in test/ASAN runs.
 - [ ] Run Global Gates.
-- [ ] Update changelog with enabled invariant set.
+- [x] Update changelog with enabled invariant set.
 
 ## Session 40: Boundary Regression Pack
 
