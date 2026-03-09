@@ -83,11 +83,9 @@ fn FinalizePathOutcome run_jit_finalize_path(
     bool scope_spliced = false;
     Value* final = jit_finalize_scoped_result(
         result,
-        result,
         interp,
         saved_scope,
         active_scope,
-        copy_site,
         &scope_spliced
     );
 
@@ -539,8 +537,8 @@ fn void run_memory_lifetime_lane_barrier_tests(Interp* interp, int* pass, int* f
 }
 
 fn void run_memory_lifetime_root_boundary_promotion_test(Interp* interp, int* pass, int* fail) {
-    // Invariant: root-boundary promotion keeps defensive-copy semantics for
-    // disjoint scope values (value not owned by releasing scope and not rooted).
+    // Invariant: root-boundary promotion handles disjoint scope values through
+    // explicit destination routing without fallback copy-site usage.
     {
         main::ScopeRegion* saved = interp.current_scope;
         main::ScopeRegion* scope_a = main::scope_create(saved);
@@ -560,7 +558,7 @@ fn void run_memory_lifetime_root_boundary_promotion_test(Interp* interp, int* pa
                       promoted.cons_val.car != null &&
                       promoted.cons_val.car.tag == INT &&
                       promoted.cons_val.car.int_val == 21 &&
-                      delta_in_range(site_delta, 1, 3) &&
+                      site_delta == 0 &&
                       !main::is_in_scope((void*)promoted, scope_b);
 
         // Releasing source scope must not invalidate promoted value.
@@ -577,12 +575,448 @@ fn void run_memory_lifetime_root_boundary_promotion_test(Interp* interp, int* pa
 
         bool ok = pre_ok && post_ok;
         if (ok) {
-            emit_pass_literal("[PASS] lifetime: root-boundary promotion defends disjoint scope");
+            emit_pass_literal("[PASS] lifetime: root-boundary disjoint destination route");
             (*pass)++;
         } else {
-            io::printfn("[FAIL] lifetime: root-boundary promotion defends disjoint scope (site_delta=%d same=%s pre_ok=%s post_ok=%s)",
+            io::printfn("[FAIL] lifetime: root-boundary disjoint destination route (site_delta=%d same=%s pre_ok=%s post_ok=%s)",
                 (long)site_delta,
                 (promoted == foreign) ? "yes" : "no",
+                pre_ok ? "yes" : "no",
+                post_ok ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_memory_lifetime_root_boundary_direct_promotion_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: releasing-owned root-store values use direct destination
+    // promotion and do not increment copy-site fallback counters.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        if (child == null) {
+            io::printn("[FAIL] lifetime: root-boundary direct destination promotion (setup)");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = child;
+        Value* local = make_cons(interp, make_int(interp, 37), make_nil(interp));
+        usz base_site = copy_to_parent_site_calls(COPY_SITE_JIT_EVAL_SET);
+        Value* promoted = promote_to_root_site(local, interp, COPY_SITE_JIT_EVAL_SET);
+        usz site_delta = copy_to_parent_site_calls(COPY_SITE_JIT_EVAL_SET) - base_site;
+
+        bool pre_ok = promoted != null &&
+                      promoted != local &&
+                      promoted.tag == CONS &&
+                      boundary_ptr_in_scope((void*)promoted, interp.root_scope) &&
+                      promoted.cons_val.car != null &&
+                      promoted.cons_val.car.tag == INT &&
+                      promoted.cons_val.car.int_val == 37 &&
+                      site_delta == 0 &&
+                      !main::is_in_scope((void*)promoted, child);
+
+        interp.current_scope = saved;
+        main::scope_release(child);
+
+        bool post_ok = promoted != null &&
+                       promoted.tag == CONS &&
+                       promoted.cons_val.car != null &&
+                       promoted.cons_val.car.tag == INT &&
+                       promoted.cons_val.car.int_val == 37;
+
+        bool ok = pre_ok && post_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: root-boundary direct destination promotion");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: root-boundary direct destination promotion (site_delta=%d same=%s pre_ok=%s post_ok=%s)",
+                (long)site_delta,
+                (promoted == local) ? "yes" : "no",
+                pre_ok ? "yes" : "no",
+                post_ok ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_memory_lifetime_root_boundary_array_clone_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: child-owned ARRAY payload crossing root-store boundary is
+    // cloned into root lifetime (wrapper + payload), and source wrapper remains
+    // valid until source scope release.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        if (child == null) {
+            io::printn("[FAIL] lifetime: root-boundary ARRAY clone path (setup child)");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = child;
+
+        Value* local = interp.alloc_value();
+        local.tag = ARRAY;
+        main::scope_register_dtor(child, (void*)local, &scope_dtor_value);
+
+        Array* arr = (Array*)mem::malloc(Array.sizeof);
+        if (arr == null) {
+            interp.current_scope = saved;
+            main::scope_release(child);
+            io::printn("[FAIL] lifetime: root-boundary ARRAY clone path (setup array)");
+            (*fail)++;
+            return;
+        }
+        arr.capacity = 4;
+        arr.length = 1;
+        arr.items = (Value**)mem::malloc(Value*.sizeof * arr.capacity);
+        if (arr.items == null) {
+            mem::free(arr);
+            interp.current_scope = saved;
+            main::scope_release(child);
+            io::printn("[FAIL] lifetime: root-boundary ARRAY clone path (setup items)");
+            (*fail)++;
+            return;
+        }
+        arr.items[0] = make_int(interp, 73);
+        local.array_val = arr;
+
+        usz base_site = copy_to_parent_site_calls(COPY_SITE_JIT_EVAL_SET);
+        Value* promoted = promote_to_root_site(local, interp, COPY_SITE_JIT_EVAL_SET);
+        usz site_delta = copy_to_parent_site_calls(COPY_SITE_JIT_EVAL_SET) - base_site;
+
+        bool pre_ok = promoted != null &&
+                      promoted.tag == ARRAY &&
+                      promoted != local &&
+                      promoted.array_val != null &&
+                      local.array_val != null &&
+                      promoted.array_val != local.array_val &&
+                      promoted.array_val.length == 1 &&
+                      promoted.array_val.items[0] != null &&
+                      promoted.array_val.items[0].tag == INT &&
+                      promoted.array_val.items[0].int_val == 73 &&
+                      local.array_val.length == 1 &&
+                      local.array_val.items[0] != null &&
+                      local.array_val.items[0].tag == INT &&
+                      local.array_val.items[0].int_val == 73 &&
+                      site_delta == 0;
+
+        interp.current_scope = saved;
+        main::scope_release(child);
+
+        bool post_ok = promoted != null &&
+                       promoted.tag == ARRAY &&
+                       promoted.array_val != null &&
+                       promoted.array_val.length == 1 &&
+                       promoted.array_val.items[0] != null &&
+                       promoted.array_val.items[0].tag == INT &&
+                       promoted.array_val.items[0].int_val == 73;
+
+        bool ok = pre_ok && post_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: root-boundary ARRAY clone path");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: root-boundary ARRAY clone path (site_delta=%d pre_ok=%s post_ok=%s)",
+                (long)site_delta,
+                pre_ok ? "yes" : "no",
+                post_ok ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_memory_lifetime_root_boundary_hashmap_clone_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: child-owned HASHMAP payload crossing root-store boundary is
+    // cloned into root lifetime and source wrapper remains valid until release.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        if (child == null) {
+            io::printn("[FAIL] lifetime: root-boundary HASHMAP clone path (setup child)");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = child;
+
+        Value* local = interp.alloc_value();
+        local.tag = HASHMAP;
+        main::scope_register_dtor(child, (void*)local, &scope_dtor_value);
+
+        HashMap* map = (HashMap*)mem::malloc(HashMap.sizeof);
+        if (map == null) {
+            interp.current_scope = saved;
+            main::scope_release(child);
+            io::printn("[FAIL] lifetime: root-boundary HASHMAP clone path (setup map)");
+            (*fail)++;
+            return;
+        }
+
+        map.capacity = 8;
+        map.count = 1;
+        map.mask = map.capacity - 1;
+        map.entries = (HashEntry*)mem::malloc(HashEntry.sizeof * map.capacity);
+        if (map.entries == null) {
+            mem::free(map);
+            interp.current_scope = saved;
+            main::scope_release(child);
+            io::printn("[FAIL] lifetime: root-boundary HASHMAP clone path (setup entries)");
+            (*fail)++;
+            return;
+        }
+        for (uint i = 0; i < map.capacity; i++) {
+            map.entries[i].key = null;
+            map.entries[i].value = null;
+        }
+        Value* key_one = make_int(interp, 1);
+        Value* val_ninety_nine = make_int(interp, 99);
+        uint key_idx = hash_value(key_one) & map.mask;
+        map.entries[key_idx].key = key_one;
+        map.entries[key_idx].value = val_ninety_nine;
+        local.hashmap_val = map;
+
+        usz base_site = copy_to_parent_site_calls(COPY_SITE_JIT_EVAL_SET);
+        Value* promoted = promote_to_root_site(local, interp, COPY_SITE_JIT_EVAL_SET);
+        usz site_delta = copy_to_parent_site_calls(COPY_SITE_JIT_EVAL_SET) - base_site;
+
+        Value* promoted_key = null;
+        Value* promoted_val = null;
+        if (promoted != null && promoted.hashmap_val != null && promoted.hashmap_val.entries != null) {
+            for (uint i = 0; i < promoted.hashmap_val.capacity; i++) {
+                if (promoted.hashmap_val.entries[i].key != null) {
+                    promoted_key = promoted.hashmap_val.entries[i].key;
+                    promoted_val = promoted.hashmap_val.entries[i].value;
+                    break;
+                }
+            }
+        }
+
+        bool pre_ok = promoted != null &&
+                      promoted.tag == HASHMAP &&
+                      promoted != local &&
+                      promoted.hashmap_val != null &&
+                      local.hashmap_val != null &&
+                      promoted.hashmap_val != local.hashmap_val &&
+                      promoted.hashmap_val.count == 1 &&
+                      promoted_key != null &&
+                      promoted_val != null &&
+                      boundary_ptr_in_scope((void*)promoted_key, interp.root_scope) &&
+                      boundary_ptr_in_scope((void*)promoted_val, interp.root_scope) &&
+                      local.hashmap_val.count == 1 &&
+                      site_delta == 0;
+
+        interp.current_scope = saved;
+        main::scope_release(child);
+
+        Value* got = (promoted != null && promoted.hashmap_val != null)
+            ? hashmap_get(promoted.hashmap_val, make_int(interp, 1))
+            : null;
+        bool post_ok = got != null && got.tag == INT && got.int_val == 99;
+
+        bool ok = pre_ok && post_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: root-boundary HASHMAP clone path");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: root-boundary HASHMAP clone path (site_delta=%d pre_ok=%s post_ok=%s)",
+                (long)site_delta,
+                pre_ok ? "yes" : "no",
+                post_ok ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_memory_lifetime_root_boundary_method_table_clone_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: child-owned METHOD_TABLE payload crossing root-store boundary is
+    // cloned into root lifetime and source wrapper remains valid until release.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        if (child == null) {
+            io::printn("[FAIL] lifetime: root-boundary METHOD_TABLE clone path (setup child)");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = child;
+
+        Value* local = interp.alloc_value();
+        local.tag = METHOD_TABLE;
+        main::scope_register_dtor(child, (void*)local, &scope_dtor_value);
+        local.method_table_val = null;
+
+        MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
+        if (mt == null) {
+            interp.current_scope = saved;
+            main::scope_release(child);
+            io::printn("[FAIL] lifetime: root-boundary METHOD_TABLE clone path (setup table)");
+            (*fail)++;
+            return;
+        }
+
+        mt.name = interp.symbols.intern("root-boundary-method-table");
+        mt.capacity = 1;
+        mt.entry_count = 1;
+        mt.fallback = make_int(interp, 33);
+        mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * mt.capacity);
+        if (mt.entries == null) {
+            mem::free(mt);
+            interp.current_scope = saved;
+            main::scope_release(child);
+            io::printn("[FAIL] lifetime: root-boundary METHOD_TABLE clone path (setup entries)");
+            (*fail)++;
+            return;
+        }
+
+        method_signature_init_empty(&mt.entries[0].sig);
+        MethodSignature src_sig;
+        if (!method_signature_alloc_arrays_in_scope(&src_sig, child, 1, 0)) {
+            mem::free(mt.entries);
+            mem::free(mt);
+            interp.current_scope = saved;
+            main::scope_release(child);
+            io::printn("[FAIL] lifetime: root-boundary METHOD_TABLE clone path (setup signature)");
+            (*fail)++;
+            return;
+        }
+        src_sig.param_types[0] = interp.tid_Int;
+        src_sig.val_literals[0].tag = NIL;
+        src_sig.val_literals[0].int_value = 0;
+        src_sig.val_literals[0].sym_value = 0;
+        src_sig.has_val_literal[0] = false;
+        if (!method_signature_copy_to_heap(&mt.entries[0].sig, &src_sig)) {
+            mem::free(mt.entries);
+            mem::free(mt);
+            interp.current_scope = saved;
+            main::scope_release(child);
+            io::printn("[FAIL] lifetime: root-boundary METHOD_TABLE clone path (copy signature)");
+            (*fail)++;
+            return;
+        }
+        mt.entries[0].implementation = make_int(interp, 42);
+        local.method_table_val = mt;
+
+        usz base_site = copy_to_parent_site_calls(COPY_SITE_JIT_EVAL_DEFINE);
+        Value* promoted = promote_to_root_site(local, interp, COPY_SITE_JIT_EVAL_DEFINE);
+        usz site_delta = copy_to_parent_site_calls(COPY_SITE_JIT_EVAL_DEFINE) - base_site;
+
+        bool pre_ok = promoted != null &&
+                      promoted.tag == METHOD_TABLE &&
+                      promoted != local &&
+                      promoted.method_table_val != null &&
+                      local.method_table_val != null &&
+                      promoted.method_table_val != local.method_table_val &&
+                      promoted.method_table_val.entry_count == 1 &&
+                      promoted.method_table_val.entries != null &&
+                      promoted.method_table_val.entries[0].sig.param_count == 1 &&
+                      promoted.method_table_val.entries[0].sig.param_types[0] == interp.tid_Int &&
+                      promoted.method_table_val.entries[0].implementation != null &&
+                      promoted.method_table_val.entries[0].implementation.tag == INT &&
+                      promoted.method_table_val.entries[0].implementation.int_val == 42 &&
+                      promoted.method_table_val.fallback != null &&
+                      promoted.method_table_val.fallback.tag == INT &&
+                      promoted.method_table_val.fallback.int_val == 33 &&
+                      site_delta == 0;
+
+        interp.current_scope = saved;
+        main::scope_release(child);
+
+        bool post_ok = promoted != null &&
+                       promoted.tag == METHOD_TABLE &&
+                       promoted.method_table_val != null &&
+                       promoted.method_table_val.entry_count == 1 &&
+                       promoted.method_table_val.entries != null &&
+                       promoted.method_table_val.entries[0].implementation != null &&
+                       promoted.method_table_val.entries[0].implementation.tag == INT &&
+                       promoted.method_table_val.entries[0].implementation.int_val == 42 &&
+                       promoted.method_table_val.fallback != null &&
+                       promoted.method_table_val.fallback.tag == INT &&
+                       promoted.method_table_val.fallback.int_val == 33;
+
+        bool ok = pre_ok && post_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: root-boundary METHOD_TABLE clone path");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: root-boundary METHOD_TABLE clone path (site_delta=%d pre_ok=%s post_ok=%s)",
+                (long)site_delta,
+                pre_ok ? "yes" : "no",
+                post_ok ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_memory_lifetime_root_boundary_primitive_clone_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: child-owned PRIMITIVE wrapper crossing root-store boundary is
+    // cloned (wrapper + Primitive payload) to avoid shared-ownership aliasing.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        if (child == null) {
+            io::printn("[FAIL] lifetime: root-boundary PRIMITIVE clone path (setup child)");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = child;
+
+        Value* local = interp.alloc_value();
+        local.tag = PRIMITIVE;
+        main::scope_register_dtor(child, (void*)local, &scope_dtor_value);
+        local.prim_val = null;
+
+        Primitive* prim = (Primitive*)mem::malloc(Primitive.sizeof);
+        if (prim == null) {
+            interp.current_scope = saved;
+            main::scope_release(child);
+            io::printn("[FAIL] lifetime: root-boundary PRIMITIVE clone path (setup primitive)");
+            (*fail)++;
+            return;
+        }
+        *prim = {};
+        prim.name[0] = 'p';
+        prim.name[1] = 0;
+        prim.arity = 2;
+        prim.tag = 123;
+        local.prim_val = prim;
+
+        usz base_site = copy_to_parent_site_calls(COPY_SITE_JIT_EVAL_SET);
+        Value* promoted = promote_to_root_site(local, interp, COPY_SITE_JIT_EVAL_SET);
+        usz site_delta = copy_to_parent_site_calls(COPY_SITE_JIT_EVAL_SET) - base_site;
+
+        bool pre_ok = promoted != null &&
+                      promoted.tag == PRIMITIVE &&
+                      promoted != local &&
+                      promoted.prim_val != null &&
+                      local.prim_val != null &&
+                      promoted.prim_val != local.prim_val &&
+                      promoted.prim_val.arity == 2 &&
+                      promoted.prim_val.tag == 123 &&
+                      promoted.prim_val.name[0] == 'p' &&
+                      promoted.prim_val.name[1] == 0 &&
+                      site_delta == 0;
+
+        interp.current_scope = saved;
+        main::scope_release(child);
+
+        bool post_ok = promoted != null &&
+                       promoted.tag == PRIMITIVE &&
+                       promoted.prim_val != null &&
+                       promoted.prim_val.arity == 2 &&
+                       promoted.prim_val.tag == 123 &&
+                       promoted.prim_val.name[0] == 'p' &&
+                       promoted.prim_val.name[1] == 0;
+
+        bool ok = pre_ok && post_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: root-boundary PRIMITIVE clone path");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: root-boundary PRIMITIVE clone path (site_delta=%d pre_ok=%s post_ok=%s)",
+                (long)site_delta,
                 pre_ok ? "yes" : "no",
                 post_ok ? "yes" : "no");
             (*fail)++;
@@ -630,7 +1064,8 @@ fn void run_memory_lifetime_cons_barrier_fallback_gate_test(Interp* interp, int*
 }
 
 fn void run_memory_lifetime_escape_disjoint_fallback_test(Interp* interp, int* pass, int* fail) {
-    // Invariant: disjoint-scope values take defensive copy fallback before escape-lane promotion.
+    // Invariant: disjoint-scope values commit directly to destination ESCAPE
+    // without detouring through generic copy fallback accounting.
     {
         main::ScopeRegion* saved = interp.current_scope;
         main::ScopeRegion* target = main::scope_create(saved);
@@ -651,7 +1086,7 @@ fn void run_memory_lifetime_escape_disjoint_fallback_test(Interp* interp, int* p
                       escaped.cons_val.car != null &&
                       escaped.cons_val.car.tag == INT &&
                       escaped.cons_val.car.int_val == 33 &&
-                      delta_in_range(site_delta, 1, 2) &&
+                      site_delta == 0 &&
                       !main::is_in_scope((void*)escaped, foreign);
 
         main::scope_release(foreign);
@@ -667,10 +1102,10 @@ fn void run_memory_lifetime_escape_disjoint_fallback_test(Interp* interp, int* p
 
         bool ok = pre_ok && post_ok;
         if (ok) {
-            emit_pass_literal("[PASS] lifetime: escape disjoint fallback copy gate");
+            emit_pass_literal("[PASS] lifetime: escape disjoint direct destination gate");
             (*pass)++;
         } else {
-            io::printfn("[FAIL] lifetime: escape disjoint fallback copy gate (site_delta=%d pre_ok=%s post_ok=%s)",
+            io::printfn("[FAIL] lifetime: escape disjoint direct destination gate (site_delta=%d pre_ok=%s post_ok=%s)",
                 (long)site_delta,
                 pre_ok ? "yes" : "no",
                 post_ok ? "yes" : "no");
@@ -679,10 +1114,145 @@ fn void run_memory_lifetime_escape_disjoint_fallback_test(Interp* interp, int* p
     }
 }
 
+fn void run_memory_lifetime_resume_missing_yield_scope_gate_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: coroutine resume boundary requires explicit yield provenance.
+    // Missing yield_scope must hard-error and must not re-enter copy fallback.
+    {
+        Value* saved_yield = interp.yield_value;
+        main::ScopeRegion* saved_yield_scope = interp.yield_scope;
+        defer {
+            interp.yield_value = saved_yield;
+            interp.yield_scope = saved_yield_scope;
+        }
+
+        usz base_site = copy_to_parent_site_calls(COPY_SITE_PRIM_RESUME);
+        interp.yield_value = make_int(interp, 5150);
+        interp.yield_scope = null;
+
+        Value* result = prim_resume_yield_result(interp);
+        usz site_delta = copy_to_parent_site_calls(COPY_SITE_PRIM_RESUME) - base_site;
+
+        bool ok = result != null &&
+                  result.tag == ERROR &&
+                  str_starts_with(result.str_chars[:result.str_len], "resume: missing yield-scope provenance") &&
+                  interp.yield_value == null &&
+                  interp.yield_scope == null &&
+                  site_delta == 0;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: resume missing yield provenance gate");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: resume missing yield provenance gate (site_delta=%d tag=%d state_yield=%s state_scope=%s)",
+                (long)site_delta,
+                result != null ? (int)result.tag : -1,
+                interp.yield_value == null ? "cleared" : "dirty",
+                interp.yield_scope == null ? "cleared" : "dirty");
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_memory_lifetime_ast_arena_validation_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: AstArena is chunked bump storage with deterministic growth and stable teardown.
+    {
+        bool interp_available = interp != null;
+        AstArena arena = {};
+        ast_arena_init(&arena);
+        bool init_ok = ast_arena_validate(&arena) && arena.chunks == null && arena.count == 0 && arena.capacity == 0;
+
+        Expr* first_expr = (Expr*)ast_arena_alloc(&arena, Expr.sizeof);
+        Expr* second_expr = (Expr*)ast_arena_alloc(&arena, Expr.sizeof);
+        Pattern* first_pattern = (Pattern*)ast_arena_alloc(&arena, Pattern.sizeof);
+        void* first_block = ast_arena_alloc(&arena, AST_ARENA_INITIAL_CHUNK_BYTES / 2);
+        void* second_block = ast_arena_alloc(&arena, AST_ARENA_INITIAL_CHUNK_BYTES / 2);
+        void* overflow_block = ast_arena_alloc(&arena, Expr.sizeof);
+
+        bool alloc_ok = first_expr != null &&
+                        second_expr != null &&
+                        first_pattern != null &&
+                        first_block != null &&
+                        second_block != null &&
+                        overflow_block != null &&
+                        arena.count >= 2 &&
+                        ((usz)first_expr % AST_ARENA_ALIGNMENT == 0) &&
+                        ((usz)first_pattern % AST_ARENA_ALIGNMENT == 0) &&
+                        ((usz)overflow_block % AST_ARENA_ALIGNMENT == 0) &&
+                        ast_arena_contains(&arena, first_expr) &&
+                        ast_arena_contains(&arena, first_pattern) &&
+                        ast_arena_contains(&arena, first_block) &&
+                        ast_arena_contains(&arena, second_block) &&
+                        ast_arena_contains(&arena, overflow_block);
+
+        bool overflow_gate_ok = true;
+        AstArenaChunk* chunk = arena.chunks;
+        if (chunk != null) {
+            usz chunk_used_save = chunk.used;
+            chunk.used = chunk.capacity + 1;
+            overflow_gate_ok = !ast_arena_validate(&arena);
+            chunk.used = chunk_used_save;
+        } else {
+            overflow_gate_ok = false;
+        }
+
+        usz count_before_destroy = arena.count;
+        usz capacity_before_destroy = arena.capacity;
+        ast_arena_destroy(&arena);
+        bool destroy_ok = ast_arena_validate(&arena) &&
+                          arena.chunks == null &&
+                          arena.count == 0 &&
+                          arena.capacity == 0 &&
+                          count_before_destroy > 0;
+
+        ast_arena_init(&arena);
+        usz expected_capacity = arena.capacity;
+        Expr* reinit_expr = (Expr*)ast_arena_alloc(&arena, Expr.sizeof);
+        bool reinit_ok = ast_arena_validate(&arena) &&
+                         reinit_expr != null &&
+                         ast_arena_contains(&arena, reinit_expr) &&
+                         expected_capacity == 0;
+
+        void* foreign = mem::malloc(16);
+        bool contains_foreign_is_false = foreign != null &&
+                                         !ast_arena_contains(&arena, foreign);
+        if (foreign != null) mem::free(foreign);
+
+        ast_arena_destroy(&arena);
+        bool ok = interp_available &&
+                  init_ok &&
+                  alloc_ok &&
+                  overflow_gate_ok &&
+                  destroy_ok &&
+                  reinit_ok &&
+                  contains_foreign_is_false;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: ast_arena chunked allocator validation");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: ast_arena chunked allocator validation (init=%s alloc=%s overflow=%s destroy=%s reinit=%s contains=%s)",
+                init_ok ? "yes" : "no",
+                alloc_ok ? "yes" : "no",
+                overflow_gate_ok ? "yes" : "no",
+                destroy_ok ? "yes" : "no",
+                reinit_ok ? "yes" : "no",
+                contains_foreign_is_false ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_root_fallback_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_root_boundary_promotion_test(interp, pass, fail);
+    run_memory_lifetime_root_boundary_direct_promotion_test(interp, pass, fail);
+    run_memory_lifetime_root_boundary_array_clone_test(interp, pass, fail);
+    run_memory_lifetime_root_boundary_hashmap_clone_test(interp, pass, fail);
+    run_memory_lifetime_root_boundary_method_table_clone_test(interp, pass, fail);
+    run_memory_lifetime_root_boundary_primitive_clone_test(interp, pass, fail);
     run_memory_lifetime_cons_barrier_fallback_gate_test(interp, pass, fail);
     run_memory_lifetime_escape_disjoint_fallback_test(interp, pass, fail);
+    run_memory_lifetime_resume_missing_yield_scope_gate_test(interp, pass, fail);
 }
 
 fn void run_memory_lifetime_regression_tests(Interp* interp, int* pass, int* fail) {
@@ -693,9 +1263,11 @@ fn void run_memory_lifetime_regression_tests(Interp* interp, int* pass, int* fai
     run_memory_lifetime_lane_barrier_tests(interp, pass, fail);
     run_memory_lifetime_root_fallback_tests(interp, pass, fail);
     run_memory_lifetime_boundary_scope_restore_tests(interp, pass, fail);
+    run_memory_lifetime_boundary_copy_fault_tests(interp, pass, fail);
     run_memory_lifetime_boundary_scope_interleaving_test(interp, pass, fail);
     run_memory_lifetime_boundary_return_classification_tests(interp, pass, fail);
     run_memory_lifetime_boundary_commit_escape_tests(interp, pass, fail);
+    run_memory_lifetime_boundary_policy_parse_tests(interp, pass, fail);
     run_memory_lifetime_boundary_graph_audit_tests(interp, pass, fail);
     run_memory_lifetime_boundary_txn_protocol_tests(interp, pass, fail);
     run_memory_lifetime_boundary_negative_stress_tests(interp, pass, fail);
@@ -705,5 +1277,7 @@ fn void run_memory_lifetime_regression_tests(Interp* interp, int* pass, int* fai
     run_memory_lifetime_env_copy_escape_mode_tests(interp, pass, fail);
     run_memory_lifetime_hot_budget_tests(interp, pass, fail);
     run_memory_lifetime_promotion_context_tests(interp, pass, fail);
+    run_memory_lifetime_ast_arena_validation_tests(interp, pass, fail);
     run_memory_lifetime_boundary_benchmarks(interp);
+    run_memory_lifetime_ast_arena_benchmark(interp);
 }

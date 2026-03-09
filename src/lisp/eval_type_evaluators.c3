@@ -12,8 +12,34 @@ import main;
  * owner_scope stores field payload lifetimes.
  * wrapper_scope stores the Value wrapper and destructor.
  */
+<*
+@require interp != null : "eval_copy_value_into_scope_site: null interp"
+@require target_scope != null : "eval_copy_value_into_scope_site: null target_scope"
+@require releasing_scope != null : "eval_copy_value_into_scope_site: null releasing_scope"
+*>
+fn BoundaryCopyResult eval_copy_value_into_scope_site(
+    Value* value,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope,
+    uint site
+) {
+    if (value == null || target_scope == null) return boundary_copy_ok(value);
+    BoundarySession session = boundary_session_begin(interp);
+    defer boundary_session_end(interp, &session);
+    interp.current_scope = target_scope;
+    interp.releasing_scope = releasing_scope;
+    PromotionContext copy_ctx = {};
+    boundary_promotion_context_begin(interp, &copy_ctx);
+    defer boundary_promotion_context_end(interp, &copy_ctx);
+    return boundary_copy_to_parent_site_ctx_checked(value, interp, site, &copy_ctx);
+}
+
 fn Value* make_instance_in_scope(Interp* interp, main::ScopeRegion* wrapper_scope,
     TypeId type_id, Value** fields, usz field_count) {
+    BoundarySession session = boundary_session_begin(interp);
+    defer boundary_session_end(interp, &session);
+
     main::ScopeRegion* owner_scope = main::scope_create(interp.root_scope);
     if (owner_scope == null) return null;
 
@@ -31,17 +57,29 @@ fn Value* make_instance_in_scope(Interp* interp, main::ScopeRegion* wrapper_scop
     }
 
     // Copy field payloads into owner_scope so Instance never points into caller scope.
-    main::ScopeRegion* saved_scope = interp.current_scope;
     for (usz i = 0; i < field_count; i++) {
         if (fields != null && fields[i] != null) {
-            Value* copied = boundary_copy_to_scope_site(
+            BoundaryCopyResult copied = eval_copy_value_into_scope_site(
                 fields[i],
                 interp,
                 owner_scope,
-                saved_scope,
+                session.current_scope,
                 COPY_SITE_GENERIC
             );
-            if (copied != null) inst.fields[i] = *copied;
+            if (!boundary_copy_result_ok(copied)) {
+                main::scope_release(owner_scope);
+                char[192] msg_buf;
+                if (try msg = io::bprintf(
+                    &msg_buf,
+                    "type constructor: boundary field copy failed at index %d (%s)",
+                    (int)i,
+                    (ZString)boundary_copy_fault_name(copied.fault_code)
+                )) {
+                    return raise_error(interp, msg);
+                }
+                return raise_error(interp, "type constructor: boundary field copy failed");
+            }
+            if (copied.value != null) inst.fields[i] = *copied.value;
         }
     }
     Value* v = boundary_alloc_value_in_scope(interp, wrapper_scope, true);
@@ -249,7 +287,7 @@ fn Value* constructor_arity_error(TypeInfo* ti, usz got, Interp* interp) {
 }
 
 fn bool is_type_param_annotation(TypeInfo* ti, SymbolId annotation_sym) {
-    if (annotation_sym == 0) return false;
+    if (annotation_sym == (SymbolId)0) return false;
     for (usz p = 0; p < ti.type_param_count; p++) {
         if (ti.type_params[p] == annotation_sym) return true;
     }

@@ -3,13 +3,46 @@ module lisp;
 import std::io;
 import main;
 
+fn void copy_env_invariant_fail(char[] msg) @noinline {
+    io::eprintfn("[copy-env] invariant failure: %s", (ZString)msg);
+    unreachable("copy_env invariant failure");
+}
+
+fn bool copy_env_value_copy_failure(Value* src, Value* copied) @inline {
+    return src != null && copied == null;
+}
+
+<*
+@require interp != null : "copy_env_begin_owned_promotion_ctx: null interp"
+@require interp.current_scope != null : "copy_env_begin_owned_promotion_ctx: null current_scope"
+@ensure return == null || interp.active_promotion_ctx == return : "copy_env_begin_owned_promotion_ctx: active context must point at returned ctx"
+*>
+fn PromotionContext* copy_env_begin_owned_promotion_ctx(Interp* interp) @inline {
+    PromotionContext* local_ctx = (PromotionContext*)interp.current_scope.alloc(PromotionContext.sizeof);
+    if (local_ctx == null) return null;
+    boundary_promotion_context_begin(interp, local_ctx);
+    return local_ctx;
+}
+
+<*
+@require interp != null : "copy_env_end_owned_promotion_ctx: null interp"
+@require ctx != null : "copy_env_end_owned_promotion_ctx: null ctx"
+@ensure interp.active_promotion_ctx == saved_active_ctx : "copy_env_end_owned_promotion_ctx: active context restore mismatch"
+*>
+fn void copy_env_end_owned_promotion_ctx(Interp* interp, PromotionContext* ctx, PromotionContext* saved_active_ctx) @inline {
+    boundary_promotion_context_end(interp, ctx);
+    if (interp.active_promotion_ctx != saved_active_ctx) {
+        copy_env_invariant_fail("copy_env_end_owned_promotion_ctx: active context restore mismatch");
+    }
+}
+
 fn bool copy_env_should_reuse_value(Value* v, Interp* interp) @inline {
     return !boundary_should_copy_env(v, interp);
 }
 
-fn Value* copy_env_copy_by_boundary_policy(Value* v, Interp* interp, PromotionContext* ctx) @inline {
-    if (copy_env_should_reuse_value(v, interp)) return v;
-    return boundary_copy_to_parent_site_ctx(v, interp, COPY_SITE_COPY_ENV_TO_SCOPE, ctx);
+fn BoundaryCopyResult copy_env_copy_by_boundary_policy(Value* v, Interp* interp, PromotionContext* ctx) @inline {
+    if (copy_env_should_reuse_value(v, interp)) return boundary_copy_ok(v);
+    return boundary_copy_to_parent_site_ctx_checked(v, interp, COPY_SITE_COPY_ENV_TO_SCOPE, ctx);
 }
 
 fn Value* copy_env_copy_time_point(Value* v, Interp* interp) {
@@ -45,10 +78,17 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = 
         case TIME_POINT:
             return copy_env_copy_time_point(v, interp);
         case INSTANCE:
-        case FFI_HANDLE:
-            return copy_env_copy_by_boundary_policy(v, interp, ctx);
+        case FFI_HANDLE: {
+            BoundaryCopyResult copied = copy_env_copy_by_boundary_policy(v, interp, ctx);
+            if (!boundary_copy_result_ok(copied)) return null;
+            return copied.value;
+        }
         default:
-            return copy_env_copy_by_boundary_policy(v, interp, ctx);
+        {
+            BoundaryCopyResult copied = copy_env_copy_by_boundary_policy(v, interp, ctx);
+            if (!boundary_copy_result_ok(copied)) return null;
+            return copied.value;
+        }
     }
 }
 
@@ -58,46 +98,27 @@ fn bool copy_env_should_clone_closure(Value* val, Interp* interp) @inline {
     return val.closure_val.scope_gen != interp.current_scope.generation;
 }
 
-fn void copy_env_clone_closure_payload(Value* result, Value* src, Interp* interp) {
-    result.tag = CLOSURE;
-    result.closure_val = (Closure*)interp.current_scope.alloc(Closure.sizeof);
-    *result.closure_val = *src.closure_val;
-    result.closure_val.scope_gen = interp.current_scope.generation;
-
-    if (src.closure_val.param_count > 0) {
-        result.closure_val.params = (SymbolId*)interp.current_scope.alloc(SymbolId.sizeof * src.closure_val.param_count);
-        for (usz p = 0; p < src.closure_val.param_count; p++) {
-            result.closure_val.params[p] = src.closure_val.params[p];
-        }
-    } else {
-        result.closure_val.params = null;
-    }
-
-    if (src.closure_val.type_sig != null) {
-        result.closure_val.type_sig = (MethodSignature*)interp.current_scope.alloc(MethodSignature.sizeof);
-        *result.closure_val.type_sig = *src.closure_val.type_sig;
-    }
-
-    if (result.closure_val.env_scope != null) {
-        result.closure_val.env_scope.refcount++;
-    }
-}
-
 fn Value* copy_env_clone_closure_if_needed(Value* val, Interp* interp) {
     if (!copy_env_should_clone_closure(val, interp)) return val;
     Value* result = interp.alloc_value();
-    copy_env_clone_closure_payload(result, val, interp);
+    // Reuse the shared closure-clone payload path so env-copy and return-boundary
+    // closure relocation keep the same retain/copy semantics.
+    copy_parent_clone_closure_payload(result, val, interp);
     main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_closure);
     return result;
 }
 
 fn Value* copy_env_clone_iterator_if_needed(Value* val, Interp* interp) {
     if (val == null || val.tag != ITERATOR) return val;
-    if (boundary_ptr_in_target_scope_chain((void*)val, interp)) return val;
+    if (boundary_ptr_in_target_scope_chain_with_hint((void*)val, interp, val.scope_gen)) return val;
 
     Value* inner = val.iterator_val;
     if (inner != null && inner.tag == CLOSURE && inner.closure_val.env_scope != null) {
-        inner = copy_env_clone_closure_if_needed(inner, interp);
+        Value* cloned = copy_env_clone_closure_if_needed(inner, interp);
+        if (cloned == null || cloned.tag != CLOSURE) {
+            copy_env_invariant_fail("copy_env_clone_iterator_if_needed: expected cloned closure payload");
+        }
+        inner = cloned;
     }
 
     Value* iter_result = interp.alloc_value();
@@ -116,24 +137,35 @@ fn Value* copy_env_binding_value(Value* val, Interp* interp, PromotionContext* c
     return copy_env_value_fast(val, interp, ctx);
 }
 
-fn Env* copy_env_alloc_frame(Env* src, Interp* interp) {
+fn BoundaryEnvCopyResult copy_env_alloc_frame(Env* src, Interp* interp, usz depth) {
     Env* dst = interp.alloc_env();
+    if (dst == null) {
+        return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_ENV_ALLOC, depth);
+    }
     dst.binding_count = src.binding_count;
+    dst.parent = null;
+    dst.hash_table = null;
+    dst.hash_capacity = 0;
+    dst.lifetime_kind = ENV_LIFETIME_LOCAL_SCOPE_FRAME;
+    dst.scope_gen = interp.current_scope.generation;
 
     if (src.binding_count <= 4) {
         dst.is_inline = true;
         dst.bindings = &dst.inline_bindings[0];
         dst.capacity = 4;
-        return dst;
+        return boundary_env_copy_ok(dst, depth);
     }
 
     dst.is_inline = false;
     dst.bindings = (Binding*)mem::malloc(Binding.sizeof * src.binding_count);
+    if (dst.bindings == null) {
+        return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_BINDING_BUFFER_ALLOC, depth);
+    }
     dst.capacity = src.binding_count;
-    return dst;
+    return boundary_env_copy_ok(dst, depth);
 }
 
-fn void copy_env_copy_bindings(
+fn bool copy_env_copy_bindings(
     Env* src,
     Env* dst,
     Interp* interp,
@@ -141,8 +173,13 @@ fn void copy_env_copy_bindings(
 ) {
     for (usz i = 0; i < src.binding_count; i++) {
         dst.bindings[i].name = src.bindings[i].name;
-        dst.bindings[i].value = copy_env_binding_value(src.bindings[i].value, interp, ctx);
+        Value* copied = copy_env_binding_value(src.bindings[i].value, interp, ctx);
+        if (copy_env_value_copy_failure(src.bindings[i].value, copied)) {
+            return false;
+        }
+        dst.bindings[i].value = copied;
     }
+    return true;
 }
 
 fn bool copy_env_is_terminal_frame(Env* env, Interp* interp, usz depth) @inline {
@@ -150,59 +187,100 @@ fn bool copy_env_is_terminal_frame(Env* env, Interp* interp, usz depth) @inline 
     return depth >= 256;
 }
 
-fn Env* copy_env_rewrite_persistent_parent(Env* env, Interp* interp, usz depth, PromotionContext* active_ctx) {
-    env.parent = copy_env_to_scope_inner(env.parent, interp, depth + 1, active_ctx);
-    return env;
+fn BoundaryEnvCopyResult copy_env_rewrite_persistent_parent(
+    Env* env,
+    Interp* interp,
+    usz depth,
+    PromotionContext* active_ctx
+) {
+    BoundaryEnvCopyResult parent_result = copy_env_to_scope_inner_checked(env.parent, interp, depth + 1, active_ctx);
+    if (!boundary_env_copy_result_ok(parent_result)) {
+        return parent_result;
+    }
+    env.parent = parent_result.env;
+    return boundary_env_copy_ok(env, depth);
 }
 
-fn Env* copy_env_materialize_frame(Env* env, Interp* interp, usz depth, PromotionContext* active_ctx) {
-    Env* new_env = copy_env_alloc_frame(env, interp);
-    copy_env_copy_bindings(env, new_env, interp, active_ctx);
-    new_env.parent = copy_env_to_scope_inner(env.parent, interp, depth + 1, active_ctx);
+fn BoundaryEnvCopyResult copy_env_materialize_frame(Env* env, Interp* interp, usz depth, PromotionContext* active_ctx) {
+    BoundaryEnvCopyResult alloc_result = copy_env_alloc_frame(env, interp, depth);
+    if (!boundary_env_copy_result_ok(alloc_result)) return alloc_result;
+    Env* new_env = alloc_result.env;
+
+    if (!copy_env_copy_bindings(env, new_env, interp, active_ctx)) {
+        return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY, depth);
+    }
+
+    BoundaryEnvCopyResult parent_result = copy_env_to_scope_inner_checked(env.parent, interp, depth + 1, active_ctx);
+    if (!boundary_env_copy_result_ok(parent_result)) {
+        return parent_result;
+    }
+    new_env.parent = parent_result.env;
     if (env.hash_table != null) {
         new_env.build_hash_table();
     }
     main::scope_register_dtor(interp.current_scope, (void*)new_env, &scope_dtor_env);
-    return new_env;
+    return boundary_env_copy_ok(new_env, depth);
 }
 
-fn Env* copy_env_to_scope_inner(Env* env, Interp* interp, usz depth, PromotionContext* active_ctx) {
+fn BoundaryEnvCopyResult copy_env_to_scope_inner_checked(
+    Env* env,
+    Interp* interp,
+    usz depth,
+    PromotionContext* active_ctx
+) {
     if (copy_env_is_terminal_frame(env, interp, depth)) {
-        if (depth >= 256) return null;
-        return env;
+        if (depth >= 256) {
+            return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_DEPTH_LIMIT, depth);
+        }
+        return boundary_env_copy_ok(env, depth);
     }
 
-    // Persistent env nodes (mutable boxes allocated in root_region) are kept
-    // as-is to preserve sharing between JIT stack slots and closure captures.
+    // Root-persistent mutable-box env nodes are kept as-is to preserve sharing
+    // between JIT stack slots and closure captures.
     // Their parent chain still needs fixing up since it may point to child-scope envs.
-    if (env.persistent) {
+    if (env.is_root_persistent_box()) {
         return copy_env_rewrite_persistent_parent(env, interp, depth, active_ctx);
     }
     return copy_env_materialize_frame(env, interp, depth, active_ctx);
 }
 
+fn Env* copy_env_to_scope_inner(Env* env, Interp* interp, usz depth, PromotionContext* active_ctx) {
+    return copy_env_to_scope_inner_checked(env, interp, depth, active_ctx).env;
+}
+
 /**
  * Copy an env chain into interp.current_scope (caller must set this to the target scope,
- * typically a closure's env_scope). Uses copy_to_parent for each binding value.
- * Stops at global_env (already in root_region). Skips persistent env nodes (mutable boxes).
+ * typically a closure's env_scope). Uses boundary copy routing for binding values.
+ * Stops at global_env (already in root-scope lifetime). Skips root-persistent mutable-box env nodes.
  * Replaces deep_copy_env — allocates into any scope, not just root_scope.
  */
-fn Env* copy_env_to_scope(Env* env, Interp* interp, usz depth = 0, PromotionContext* ctx = null) {
+fn BoundaryEnvCopyResult copy_env_to_scope_checked(
+    Env* env,
+    Interp* interp,
+    usz depth = 0,
+    PromotionContext* ctx = null
+) {
+    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
     PromotionContext* active_ctx = ctx;
     bool owns_ctx = false;
     if (active_ctx == null) active_ctx = interp.active_promotion_ctx;
     if (depth == 0 && active_ctx == null) {
         // Keep boundary context in scope memory (not stack local) so JIT-driven
         // env-copy paths use the same deterministic region lifetime model.
-        PromotionContext* local_ctx = (PromotionContext*)interp.current_scope.alloc(PromotionContext.sizeof);
-        if (local_ctx == null) return null;
-        boundary_promotion_context_begin(interp, local_ctx);
-        active_ctx = local_ctx;
+        active_ctx = copy_env_begin_owned_promotion_ctx(interp);
+        if (active_ctx == null) {
+            return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_PROMOTION_CTX_ALLOC, depth);
+        }
         owns_ctx = true;
     }
-    Env* copied = copy_env_to_scope_inner(env, interp, depth, active_ctx);
-    if (owns_ctx) boundary_promotion_context_end(interp, active_ctx);
-    return copied;
+    defer {
+        if (owns_ctx) copy_env_end_owned_promotion_ctx(interp, active_ctx, saved_active_ctx);
+    }
+    return copy_env_to_scope_inner_checked(env, interp, depth, active_ctx);
+}
+
+fn Env* copy_env_to_scope(Env* env, Interp* interp, usz depth = 0, PromotionContext* ctx = null) {
+    return copy_env_to_scope_checked(env, interp, depth, ctx).env;
 }
 
 // Continuations, effects, index — all handled by JIT (jit.c3)

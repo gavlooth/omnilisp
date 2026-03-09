@@ -181,27 +181,55 @@ fn void coroutine_ctx_cleanup(Value* coroutine_val, main::StackCtx* ctx, Interp*
     main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
 }
 
+fn void coroutine_clear_yield_boundary_state(Interp* interp) @inline {
+    interp.yield_value = null;
+    interp.yield_scope = null;
+}
+
 fn Value* prim_resume_error_and_cleanup(
     Value* coroutine_val,
     main::StackCtx* ctx,
     Interp* interp,
     char[] msg
 ) {
+    coroutine_clear_yield_boundary_state(interp);
     coroutine_ctx_cleanup(coroutine_val, ctx, interp);
     return raise_error(interp, msg);
 }
 
 fn Value* prim_resume_complete(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
     Value* result = (Value*)ctx.result;
+    coroutine_clear_yield_boundary_state(interp);
     coroutine_ctx_cleanup(coroutine_val, ctx, interp);
     return result != null ? result : make_nil(interp);
 }
 
 fn Value* prim_resume_yield_result(Interp* interp) {
-    if (interp.yield_value != null) {
-        return boundary_copy_to_parent_site(interp.yield_value, interp, COPY_SITE_PRIM_RESUME);
+    Value* yielded = interp.yield_value;
+    main::ScopeRegion* yield_scope = interp.yield_scope;
+    coroutine_clear_yield_boundary_state(interp);
+
+    if (yielded == null) return make_nil(interp);
+    if (yield_scope == null) {
+        return raise_error(interp, "resume: missing yield-scope provenance");
     }
-    return make_nil(interp);
+    BoundarySession session = boundary_session_begin(interp);
+    defer boundary_session_end(interp, &session);
+    interp.current_scope = session.current_scope;
+    interp.releasing_scope = yield_scope;
+    PromotionContext copy_ctx = {};
+    boundary_promotion_context_begin(interp, &copy_ctx);
+    defer boundary_promotion_context_end(interp, &copy_ctx);
+    BoundaryCopyResult copied = boundary_copy_to_parent_site_ctx_checked(
+        yielded,
+        interp,
+        COPY_SITE_PRIM_RESUME,
+        &copy_ctx
+    );
+    if (!boundary_copy_result_ok(copied)) {
+        return raise_error(interp, boundary_copy_fault_message(copied.fault_code));
+    }
+    return copied.value;
 }
 
 fn Value* prim_resume_require_ctx(
@@ -300,8 +328,10 @@ fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {
 
     Value* yield_val = args.len > 0 ? args[0] : make_nil(interp);
     interp.yield_value = yield_val;
+    interp.yield_scope = interp.current_scope;
 
     if (!prim_yield_suspend_and_restore(current, interp)) {
+        coroutine_clear_yield_boundary_state(interp);
         return raise_error(interp, "stack engine: failed to register suspend scope guard");
     }
     return prim_yield_resume_result(interp);
