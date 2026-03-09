@@ -713,7 +713,7 @@ Execution policy:
 - Performed a small parser cleanup in `parse_export_from_specifiers(...)`:
   - deduplicated repeated invalid-specifier error literal via local `spec_err`.
 - Preserved parser error-shape contract and accepted forms:
-  - only `:all` or `(name...)`.
+  - only `'all` or `(name...)`.
 - Validation:
   - `c3c build` + full suite: pass (`Unified 1157/0`, `Compiler 73/0`).
 
@@ -806,9 +806,9 @@ Execution policy:
   - `parser deftype compound missing name`
   - `parser defunion compound missing name`
   - `parser defunion variant missing close`
-- Added functional module regression for helperized `export-from :all` path:
-  - `export-from :all all-a`
-  - `export-from :all all-b`
+- Added functional module regression for helperized `export-from 'all` path:
+  - `export-from 'all all-a`
+  - `export-from 'all all-b`
 - Validation:
   - normal full suite green (`Stack engine 15/0`, `Unified 1167/0`, `Compiler 73/0`).
   - strict ASAN rerun green (`Stack engine 14/0`, `Unified 1166/0`, `Compiler 73/0`).
@@ -935,8 +935,8 @@ Execution policy:
 
 - Increased focused parser helper coverage for import/export/type edge patterns:
   - new `run_advanced_parser_import_edge_tests(...)` cases for:
-    - missing `:as` in paren import specifier,
-    - missing alias after `:as` (paren and symbol forms),
+    - missing `'as` in paren import specifier,
+    - missing alias after `'as` (paren and symbol forms),
     - non-symbol import list element,
     - missing close paren.
   - added export-from nested-list invalid case.
@@ -1173,12 +1173,12 @@ rg -n "TODO|FIXME|HACK" src/lisp src | head
 
 ## Session 38: Error Model Cleanup
 
-- [ ] Commit A: `lifetime: convert boundary failure paths to typed faults/optionals`
-- [ ] Replace ambiguous nil/error boundary failure paths.
-- [ ] Commit B: `lifetime: remove silent boundary fallbacks and improve diagnostics`
-- [ ] Make failure modes explicit and deterministic.
-- [ ] Run Global Gates.
-- [ ] Update changelog with failure model notes.
+- [x] Commit A: `lifetime: convert boundary failure paths to typed faults/optionals`
+- [x] Replace ambiguous nil/error boundary failure paths.
+- [x] Commit B: `lifetime: remove silent boundary fallbacks and improve diagnostics`
+- [x] Make failure modes explicit and deterministic.
+- [x] Run Global Gates.
+- [x] Update changelog with failure model notes.
 
 ## Session 39: Invariant Framework
 

@@ -61,6 +61,22 @@ enum BoundaryCommitOutcome : char {
 const usz BOUNDARY_COMMIT_OUTCOME_COUNT =
     (usz)BoundaryCommitOutcome.BOUNDARY_COMMIT_PASSTHROUGH + 1;
 
+enum BoundaryCommitFault : char {
+    BOUNDARY_COMMIT_FAULT_NONE,
+    BOUNDARY_COMMIT_FAULT_DESTINATION_ERROR_BUILD,
+    BOUNDARY_COMMIT_FAULT_DESTINATION_CONS_BUILD,
+    BOUNDARY_COMMIT_FAULT_DESTINATION_PARTIAL_BUILD,
+    BOUNDARY_COMMIT_FAULT_DESTINATION_ITERATOR_BUILD,
+    BOUNDARY_COMMIT_FAULT_DESTINATION_DIRECT_PROMOTION,
+    BOUNDARY_COMMIT_FAULT_PROMOTION_ABORTED,
+    BOUNDARY_COMMIT_FAULT_SPLICE_REJECTED,
+    BOUNDARY_COMMIT_FAULT_MIXED_DESTINATION_PROMOTION,
+    BOUNDARY_COMMIT_FAULT_FALLBACK_DISALLOWED,
+}
+
+const usz BOUNDARY_COMMIT_FAULT_COUNT =
+    (usz)BoundaryCommitFault.BOUNDARY_COMMIT_FAULT_FALLBACK_DISALLOWED + 1;
+
 enum BoundaryCommitFallbackRoute : char {
     BOUNDARY_COMMIT_FALLBACK_ROUTE_DISALLOWED,
 }
@@ -120,6 +136,7 @@ struct BoundaryReturnClassification {
 struct BoundaryCommitEscapeResult {
     Value* value;
     BoundaryCommitOutcome outcome;
+    BoundaryCommitFault fault_code;
     bool releasing_scope_spliced;
     bool reused_in_target_chain;
 }
@@ -179,6 +196,19 @@ const char[][] BOUNDARY_COMMIT_OUTCOME_NAMES = {
     "passthrough",
 };
 
+const char[][] BOUNDARY_COMMIT_FAULT_NAMES = {
+    "none",
+    "destination-error-build",
+    "destination-cons-build",
+    "destination-partial-build",
+    "destination-iterator-build",
+    "destination-direct-promotion",
+    "promotion-aborted",
+    "splice-rejected",
+    "mixed-destination-promotion",
+    "fallback-disallowed",
+};
+
 const char[][] BOUNDARY_COMMIT_FALLBACK_ROUTE_NAMES = {
     "fallback-disallowed",
 };
@@ -230,6 +260,7 @@ const char[][] BOUNDARY_COPY_SITE_NAMES = {
 };
 
 $assert(BOUNDARY_COMMIT_OUTCOME_NAMES.len == BOUNDARY_COMMIT_OUTCOME_COUNT);
+$assert(BOUNDARY_COMMIT_FAULT_NAMES.len == BOUNDARY_COMMIT_FAULT_COUNT);
 $assert(BOUNDARY_COMMIT_FALLBACK_ROUTE_NAMES.len == BOUNDARY_COMMIT_FALLBACK_ROUTE_COUNT);
 $assert(BOUNDARY_SCOPE_TRANSFER_REASON_NAMES.len == BOUNDARY_SCOPE_TRANSFER_REASON_COUNT);
 $assert(BOUNDARY_PROMOTION_ABORT_REASON_NAMES.len == BOUNDARY_PROMOTION_ABORT_REASON_COUNT);
@@ -242,6 +273,14 @@ fn char[] boundary_commit_outcome_name(BoundaryCommitOutcome outcome) @inline {
     usz idx = (usz)outcome;
     if (idx < BOUNDARY_COMMIT_OUTCOME_NAMES.len) {
         return BOUNDARY_COMMIT_OUTCOME_NAMES[idx];
+    }
+    return "unknown";
+}
+
+fn char[] boundary_commit_fault_name(BoundaryCommitFault fault_code) @inline {
+    usz idx = (usz)fault_code;
+    if (idx < BOUNDARY_COMMIT_FAULT_NAMES.len) {
+        return BOUNDARY_COMMIT_FAULT_NAMES[idx];
     }
     return "unknown";
 }

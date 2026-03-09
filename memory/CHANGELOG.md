@@ -5,6 +5,23 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 
 ## 2026-03-09
 
+- Boundary commit fallback diagnostics are now typed and explicit:
+  - `src/lisp/eval_boundary_api.c3`:
+    - added `BoundaryCommitFault` and `boundary_commit_fault_name(...)`.
+    - `BoundaryCommitEscapeResult` now carries `fault_code` alongside `outcome`.
+  - `src/lisp/eval_boundary_commit_flow.c3`:
+    - `boundary_commit_escape(...)` now classifies disallowed fallback exits with deterministic fault codes (destination-build failure class, promotion-aborted, splice-rejected, mixed-destination promotion failure, generic disallowed).
+    - fallback error payload now includes the typed fault label in the message: `boundary: traversal fallback disallowed for commit path (<fault>)`.
+  - tests updated to assert fault-classified disallowed paths:
+    - `src/lisp/tests_memory_lifetime_boundary_commit_groups.c3`
+    - `src/lisp/tests_memory_lifetime_boundary_stress_groups.c3`
+    - `src/lisp/tests_memory_lifetime_boundary_graph_txn_bench_groups.c3`
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1706/0`, `compiler: 85/0`).
+    - `c3c build --sanitize=address` passed.
+    - `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed.
+
 - Boundary error-model cleanup slice landed for copy-to-parent boundary paths:
   - introduced typed boundary copy fault surface in `src/lisp/eval_boundary_api.c3`:
     - `BoundaryCopyFault` enum + `BoundaryCopyResult`,

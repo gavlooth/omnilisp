@@ -1302,12 +1302,12 @@ Acceptance gate:
 
 Source: `docs/plans/session-34-44-boundary-hardening.md`
 
-- [ ] Session 38, Commit A: `lifetime: convert boundary failure paths to typed faults/optionals`.
-- [ ] Session 38: replace ambiguous nil/error boundary failure paths.
-- [ ] Session 38, Commit B: `lifetime: remove silent boundary fallbacks and improve diagnostics`.
-- [ ] Session 38: make failure modes explicit and deterministic.
-- [ ] Session 38: run global gates.
-- [ ] Session 38: update changelog with failure model notes.
+- [x] Session 38, Commit A: `lifetime: convert boundary failure paths to typed faults/optionals`.
+- [x] Session 38: replace ambiguous nil/error boundary failure paths.
+- [x] Session 38, Commit B: `lifetime: remove silent boundary fallbacks and improve diagnostics`.
+- [x] Session 38: make failure modes explicit and deterministic.
+- [x] Session 38: run global gates.
+- [x] Session 38: update changelog with failure model notes.
 - [ ] Session 39, Commit A: `lifetime: add centralized invariant hooks for ownership transitions`.
 - [ ] Session 39: add centralized invariant macros/helpers in boundary layer.
 - [ ] Session 39, Commit B: `tests: enforce invariant checks in sanitizer and test modes`.

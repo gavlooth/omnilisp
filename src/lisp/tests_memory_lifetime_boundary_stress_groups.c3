@@ -97,7 +97,7 @@ fn bool boundary_mixed_event_operation(
             return eval_err.error.has_error || (eval_err.value != null && eval_err.value.tag == ERROR);
         }
         case 2: {
-            Value* copied = boundary_copy_from_releasing_scope(
+            Value* copied = test_copy_from_releasing_scope(
                 src, interp, child, COPY_SITE_RUN_JIT_RESULT);
             return copied != null &&
                    copied != src &&
@@ -111,20 +111,19 @@ fn bool boundary_mixed_event_operation(
             boundary_promotion_context_begin(interp, &ctx, 0);
             BoundaryCommitEscapeResult committed = boundary_commit_escape(
                 src,
-                src,
                 interp,
                 parent,
                 child,
-                COPY_SITE_JIT_SINGLE_SCOPE_RETURN,
                 &ctx
             );
             boundary_promotion_context_end(interp, &ctx);
             return committed.value != null &&
-                   committed.fallback_copied &&
+                   committed.outcome == BOUNDARY_COMMIT_FALLBACK_DISALLOWED &&
+                   committed.fault_code == BOUNDARY_COMMIT_FAULT_PROMOTION_ABORTED &&
                    !committed.releasing_scope_spliced &&
                    !committed.reused_in_target_chain &&
-                   committed.value != src &&
                    ctx.aborted &&
+                   committed.value.tag == ERROR &&
                    main::is_in_scope((void*)committed.value, parent) &&
                    !main::is_in_scope((void*)committed.value, child);
         }
