@@ -1,0 +1,40 @@
+name: AOT E2E Gate
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "csrc/**"
+      - "scripts/run_e2e.sh"
+      - "scripts/build_omni_chelpers.sh"
+      - "project.json"
+      - "test_simple.omni"
+      - ".github/workflows/aot-e2e-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aot-e2e-gate:
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build main
+        run: c3c build
+
+      - name: AOT smoke build
+        run: LD_LIBRARY_PATH=/usr/local/lib ./build/main --build test_simple.omni -o build/test_simple_aot
+
+      - name: AOT smoke run
+        run: |
+          output="$(LD_LIBRARY_PATH=/usr/local/lib ./build/test_simple_aot)"
+          echo "$output"
+          test "$output" = "\"hello world\""
+
+      - name: E2E compile gate
+        run: OMNI_E2E_COMPILE_ONLY=1 scripts/run_e2e.sh

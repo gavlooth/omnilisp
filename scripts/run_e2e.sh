@@ -13,14 +13,21 @@ LD_LIBRARY_PATH=/usr/local/lib ./build/main --gen-e2e
 echo ""
 echo "=== Stage 3: Building e2e test binary ==="
 # Mirroring the AOT build command from src/entry.c3
+./scripts/build_omni_chelpers.sh
+
 c3c compile \
-  src/main.c3 src/scope_region.c3 src/stack_engine.c3 \
-  src/lisp/aot.c3 src/lisp/value.c3 src/lisp/eval.c3 src/lisp/parser.c3 \
-  src/lisp/jit.c3 src/lisp/primitives.c3 src/lisp/macros.c3 src/lisp/compiler.c3 \
-  src/lisp/utf8.c3 src/lisp/tests.c3 \
-  src/ffi_bindings.c3 \
+  src/main*.c3 src/scope_region*.c3 src/stack_engine*.c3 src/ffi_bindings.c3 \
+  src/lisp/*.c3 src/pika/*.c3 \
   build/e2e_test.c3 \
-  -o build/e2e_test -l omni_chelpers -l lightning -l ffi -l dl -l m -L build -L /usr/local/lib
+  -o build/e2e_test \
+  -L build -L /usr/local/lib -L deps/lib \
+  -l omni_chelpers -l lightning -l ffi -l dl -l m -l replxx -l stdc++ \
+  -l utf8proc -l deflate -l yyjson -l uv -l bearssl -l lmdb
+
+if [[ "${OMNI_E2E_COMPILE_ONLY:-0}" == "1" ]]; then
+    echo "E2E compile gate passed (generation + compile only)."
+    exit 0
+fi
 
 echo ""
 echo "=== Stage 4: Running e2e tests ==="
