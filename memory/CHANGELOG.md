@@ -5,6 +5,14 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 
 ## 2026-03-09
 
+- Boundary mixed-mode stress coverage expanded for nested and mixed interpreter/JIT transitions:
+  - `src/lisp/tests_memory_lifetime_boundary_stress_groups.c3`:
+    - added `run_memory_lifetime_boundary_mixed_jit_interp_stress_test(...)` to alternate interpreter and JIT evaluation across stress iterations while asserting boundary state restoration and promotion-context cleanup.
+    - wired the new stress case into `run_memory_lifetime_boundary_negative_stress_tests(...)`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1709/0`, `compiler: 85/0`).
+
 - Boundary transition regression pack landed for return/env/splice deterministic behavior:
   - `src/lisp/tests_memory_lifetime_boundary_groups.c3`:
     - added `run_memory_lifetime_boundary_transition_regression_tests(...)` with explicit assertions for:

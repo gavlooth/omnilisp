@@ -1193,10 +1193,10 @@ rg -n "TODO|FIXME|HACK" src/lisp src | head
 
 - [x] Commit A: `tests: add boundary regression cases for return/env/splice transitions`
 - [x] Add deterministic regression tests for boundary transitions.
-- [ ] Commit B: `tests: add stress cases for nested scopes and mixed jit/interp transitions`
-- [ ] Add stress tests for nested scope/mode boundary behavior.
+- [x] Commit B: `tests: add stress cases for nested scopes and mixed jit/interp transitions`
+- [x] Add stress tests for nested scope/mode boundary behavior.
 - [ ] Run Global Gates.
-- [ ] Update changelog with new test groups.
+- [x] Update changelog with new test groups.
 
 ## Session 41: Ownership-Domain Module Cleanup
 

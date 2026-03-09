@@ -346,8 +346,69 @@ fn void run_memory_lifetime_splice_legality_fuzz_test(Interp* interp, int* pass,
     }
 }
 
+fn void run_memory_lifetime_boundary_mixed_jit_interp_stress_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: alternating interpreter and JIT execution preserves boundary state across stress iterations.
+    {
+        BoundaryInterpState saved = boundary_save_interp_state(interp);
+        char[] expr = "(+ 20 22)";
+
+        JitFn compiled = null;
+        bool jit_ready = true;
+        if (jit_checks_enabled()) {
+            Expr* ast = parse_for_jit(expr, interp);
+            if (ast == null) {
+                jit_ready = false;
+            } else {
+                compiled = jit_compile(ast, interp);
+                jit_ready = compiled != null;
+            }
+        }
+
+        bool ok = jit_ready;
+        usz failed_iter = usz.max;
+        for (usz i = 0; i < 144 && ok; i++) {
+            BoundaryInterpState iter_saved = boundary_save_interp_state(interp);
+
+            EvalResult ri = run(expr, interp);
+            bool interp_ok = !ri.error.has_error &&
+                             ri.value != null &&
+                             ri.value.tag == INT &&
+                             ri.value.int_val == 42;
+
+            bool jit_ok = true;
+            if (jit_checks_enabled()) {
+                Value* jv = jit_exec(compiled, interp);
+                jit_ok = jv != null && jv.tag == INT && jv.int_val == 42;
+            }
+
+            bool state_ok = boundary_state_matches_snapshot(interp, iter_saved) &&
+                            interp.active_promotion_ctx == null;
+            if (!interp_ok || !jit_ok || !state_ok) {
+                ok = false;
+                failed_iter = i;
+            }
+        }
+
+        boundary_restore_interp_state(interp, saved);
+        bool final_state_ok = boundary_state_matches_snapshot(interp, saved);
+        if (ok && final_state_ok) {
+            emit_pass_literal("[PASS] lifetime: boundary mixed jit/interp stress");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: boundary mixed jit/interp stress (jit_ready=%s failed_iter=%d final_state_ok=%s)",
+                jit_ready ? "yes" : "no",
+                (long)failed_iter,
+                final_state_ok ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_boundary_negative_stress_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_boundary_session_nested_stress_test(interp, pass, fail);
     run_memory_lifetime_boundary_restore_mixed_event_order_stress_test(interp, pass, fail);
     run_memory_lifetime_splice_legality_fuzz_test(interp, pass, fail);
+    run_memory_lifetime_boundary_mixed_jit_interp_stress_test(interp, pass, fail);
 }

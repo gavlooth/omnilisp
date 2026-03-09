@@ -1316,10 +1316,10 @@ Source: `docs/plans/session-34-44-boundary-hardening.md`
 - [x] Session 39: update changelog with enabled invariant set.
 - [x] Session 40, Commit A: `tests: add boundary regression cases for return/env/splice transitions`.
 - [x] Session 40: add deterministic regression tests for boundary transitions.
-- [ ] Session 40, Commit B: `tests: add stress cases for nested scopes and mixed jit/interp transitions`.
-- [ ] Session 40: add stress tests for nested scope/mode boundary behavior.
+- [x] Session 40, Commit B: `tests: add stress cases for nested scopes and mixed jit/interp transitions`.
+- [x] Session 40: add stress tests for nested scope/mode boundary behavior.
 - [ ] Session 40: run global gates.
-- [ ] Session 40: update changelog with new test groups.
+- [x] Session 40: update changelog with new test groups.
 - [ ] Session 41, Commit A: `refactor: split lifetime boundary code by ownership domain`.
 - [ ] Session 41: split modules by policy/transition/invariant/diagnostics domains.
 - [ ] Session 41, Commit B: `refactor: remove dead boundary code and tighten internal visibility`.
