@@ -26,5 +26,5 @@ Status: active backlog queue (no release-blocking items).
 - [ ] Add tests for deterministic behavior in `deduce` cleanup and statistics operations under empty-relation and malformed-schema inputs.
 - [ ] Add benchmarks for deduce scan/query/copy hotspots at corpus sizes that represent regression envelopes.
 - [ ] Add a migration note for effect-handler composition helper names to avoid abbreviation drift in public-facing docs.
-- [ ] Add a one-page `syntax-decision.md` note that records final naming choices (`handle`/`block`/`function`/`Value`) and rationale for future contributors.
+- [x] Add a one-page `syntax-decision.md` note that records final naming choices (`handle`/`block`/`function`/`Value`) and rationale for future contributors.
 - [x] Add a lightweight checker that fails CI when TODO backlog items in this file are stale for more than one release cycle.

@@ -75,6 +75,15 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - docker validation defaults now target local `omni-validation:2026-03-10` image and require local image presence by default (`OMNI_DOCKER_REQUIRE_LOCAL_IMAGE=1`, `OMNI_VALIDATION_REQUIRE_LOCAL_IMAGE=1`) to avoid implicit pull fallback ambiguity.
     - `scripts/run_validation_container.sh` no longer mount-binds `/usr/local` by default; host toolchain mount is opt-in via `OMNI_VALIDATION_TOOLCHAIN_ROOT`.
 
+- Syntax surface governance reference:
+  - added `docs/syntax-decision.md` to capture canonical naming decisions:
+    - `lambda` vs removed `fn`,
+    - `block` vs removed `do`/`begin` surface usage,
+    - `handle`/`resolve`/`perform`/`with-continuation`,
+    - `Value` constructor usage and deprecated `Val`,
+    - `deduce 'block ...` transaction command contract.
+  - added `docs/syntax-decision.md` entry to documentation map in `docs/README.md`.
+
 - Post-complete backlog hygiene:
   - added `scripts/check_post_complete_backlog_freshness.sh`:
     - checks unchecked backlog entries in `docs/plans/post-complete-backlog.md` against recent release dates from `memory/CHANGELOG.md`.

@@ -30,6 +30,7 @@ Use this file to reduce context switching and avoid reading obsolete plans.
 - Type/dispatch syntax details: `docs/type-system-syntax.md`
 - User-facing reference: `docs/OMNI_REFERENCE.md`
 - Tooling and CLI: `docs/PROJECT_TOOLING.md`
+- Syntax naming rationale: `docs/syntax-decision.md`
 - Canonical feature example: `examples/finwatch/main.omni` (financial-service webserver)
 - Examples catalog: `examples/README.md`
 
