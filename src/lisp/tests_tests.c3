@@ -66,6 +66,37 @@ fn bool lisp_slice_high_memory(char* active_slice) @inline {
         lisp_slice_matches(active_slice, "memory-stress");
 }
 
+fn bool in_validation_container() @inline {
+    return test_c_getenv("OMNI_IN_VALIDATION_CONTAINER") != null;
+}
+
+fn bool allow_all_lisp_slice() @inline {
+    return test_c_getenv("OMNI_ALLOW_ALL_LISP_SLICE") != null;
+}
+
+fn char* resolved_lisp_slice() {
+    char* requested = test_c_getenv("OMNI_LISP_TEST_SLICE");
+    if (requested != null) return requested;
+
+    if (allow_all_lisp_slice()) {
+        return (char*)"all";
+    }
+
+    io::printfn("OMNI_TEST_SUMMARY slice default: OMNI_LISP_TEST_SLICE not set; using 'basic'. Set OMNI_ALLOW_ALL_LISP_SLICE=1 for full-suite run.");
+    return (char*)"basic";
+}
+
+fn void enforce_container_only_high_memory(char* active_slice) {
+    if (!lisp_slice_high_memory(active_slice)) return;
+
+    if (in_validation_container()) return;
+
+    io::printn("Refusing high-memory lisp slice outside validation container.");
+    io::printfn(
+        "Run this test selection via scripts/run_validation_container.sh.");
+    unreachable("high-memory lisp slices are container-only");
+}
+
 fn void emit_test_summary(char[] suite, int pass, int fail) {
     if (!test_summary_enabled()) return;
     io::printfn("OMNI_TEST_SUMMARY suite=%s pass=%d fail=%d", (ZString)suite, pass, fail);
@@ -321,7 +352,8 @@ fn void run_test_group_boundary_reset(Interp* interp) {
 }
 
 fn void run_lisp_tests() {
-    char* active_slice = test_c_getenv("OMNI_LISP_TEST_SLICE");
+    char* active_slice = resolved_lisp_slice();
+    enforce_container_only_high_memory(active_slice);
     assert(lisp_slice_known(active_slice), "unknown OMNI_LISP_TEST_SLICE");
 
     g_test_quiet_output =

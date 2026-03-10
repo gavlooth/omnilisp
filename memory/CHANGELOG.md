@@ -21,6 +21,11 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `block` is now the only sequencing form accepted by the parser.
     - legacy sequencing spellings no longer have a special-form parser branch.
     - serializer output and stdlib/examples/tests were normalized to `(block ...)`.
+  - Handle-clause canonicalization:
+    - removed legacy nested handle-clause form `((tag k arg) body)` from parser syntax.
+    - `handle` clauses now require the canonical shape `(tag arg body)` with explicit `with-continuation` for multi-shot usage.
+    - parser emits deterministic legacy-form rejection message: `legacy handle clause syntax was removed; use (tag arg body) and with-continuation when needed`.
+    - parser tests updated with a canonical `with-continuation` multi-shot case and explicit legacy-form rejection coverage.
   - Deduce transaction command canonicalization:
     - replaced the legacy transaction-start command with `(deduce 'block db ['read|'write])`.
     - updated runtime dispatch, durability tests, and docs to the `block` command.
@@ -32,6 +37,8 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 - Lisp advanced-slice workstation-safety hardening:
   - `src/lisp/tests_tests.c3` now runs `advanced` as isolated subgroups (fresh interpreter per subgroup) to prevent cumulative definition retention across the entire advanced umbrella run.
   - `src/lisp/tests_advanced_macro_hygiene_groups.c3` now gates the intentionally unbounded stack-overflow probe behind `OMNI_LISP_STACK_OVERFLOW_PROBE=1`; default `advanced` no longer executes that probe.
+  - `run_lisp_tests` now enforces container-only execution for high-memory selections.
+    - `all`, `memory-lifetime-soak`, and `memory-stress` require `OMNI_IN_VALIDATION_CONTAINER=1` by default.
 
 - Docker-only gate enforcement + 30% host-resource cap policy:
   - `scripts/c3c_limits.sh`:
@@ -101,11 +108,12 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - Added lisp slice fan-out in global gates via `OMNI_GLOBAL_GATES_LISP_SLICES` + per-slice `OMNI_LISP_TEST_SLICE` dispatch.
   - Default slice set is now group-granular (`basic`, `memory-lifetime`, `memory-stress`, `list-closure`, `arithmetic-comparison`, `string-type`, `diagnostics`, `jit-policy`, `advanced`, `escape-scope`, `limit-busting`, `tco-recycling`, `closure-lifecycle`, `pika`, `unicode`, `compression`, `data-format`, `json`, `async`, `reader-dispatch`, `schema`, `deduce`, `scheduler`, `http`, `atomic`, `compiler`) to avoid single giant lisp process peaks.
 - Lisp test runner now supports explicit slice selection:
-  - `src/lisp/tests_tests.c3` validates `OMNI_LISP_TEST_SLICE` values and runs only the requested group (or full suite when unset/`all`), while preserving existing summary emitters and compiler-suite invocation semantics.
-  - Unknown slice values fail fast with deterministic assertion (`unknown OMNI_LISP_TEST_SLICE`) to keep CI/profile misconfiguration obvious.
+    - `src/lisp/tests_tests.c3` validates `OMNI_LISP_TEST_SLICE` values and runs only the requested group (or `all` when explicitly opted in via `OMNI_ALLOW_ALL_LISP_SLICE=1`), while preserving existing summary emitters and compiler-suite invocation semantics.
+    - Unset `OMNI_LISP_TEST_SLICE` now defaults to the lightweight `basic` slice on host runs.
+    - Unknown slice values fail fast with deterministic assertion (`unknown OMNI_LISP_TEST_SLICE`) to keep CI/profile misconfiguration obvious.
 - Lisp slice selection now emits explicit high-memory flags in summary mode:
-  - `src/lisp/tests_tests.c3` emits `OMNI_TEST_SUMMARY suite=lisp_slice ... high_memory=<0|1>` for the active slice.
-  - `all`, `memory-lifetime-soak`, and `memory-stress` are flagged as high-memory selections with warning output to make workstation-risk slices obvious before heavy allocation phases.
+    - `src/lisp/tests_tests.c3` emits `OMNI_TEST_SUMMARY suite=lisp_slice ... high_memory=<0|1>` for the active slice.
+    - `all`, `memory-lifetime-soak`, and `memory-stress` are flagged as high-memory selections with warning output to make workstation-risk slices obvious before heavy allocation phases.
 - Memory-lifetime slice split for workstation-safe local execution:
   - `memory-lifetime` now maps to smoke coverage (`run_memory_lifetime_smoke_tests(...)`), and `memory-lifetime-smoke` is an explicit alias.
   - `memory-lifetime-soak` preserves the previous full heavy path (stress + hot-budget + promotion-context + optional bench hooks).
