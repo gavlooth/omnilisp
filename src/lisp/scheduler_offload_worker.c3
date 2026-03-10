@@ -220,6 +220,118 @@ fn bool scheduler_offload_http_get(SharedHandle* url_blob, OffloadCompletion* co
     return ok;
 }
 
+fn bool scheduler_offload_read_file(SharedHandle* path_blob, OffloadCompletion* completion) {
+    char[] path = "";
+    if (!scheduler_project_shared(path_blob, &path)) {
+        completion.kind = OFFLOAD_RES_NIL;
+        return true;
+    }
+
+    char* content_buf = null;
+    usz content_len = 0;
+    if (!io_uv_read_all_file(path, &content_buf, &content_len)) {
+        completion.kind = OFFLOAD_RES_NIL;
+        return true;
+    }
+
+    return scheduler_set_offload_bytes_owned(
+        completion,
+        content_buf,
+        content_len,
+        "offload read-file: result allocation failed"
+    );
+}
+
+fn bool scheduler_split_write_file_payload(char[] payload, char[]* out_path, char[]* out_content) {
+    if (out_path != null) *out_path = "";
+    if (out_content != null) *out_content = "";
+    if (payload.len == 0) return false;
+
+    usz sep = payload.len;
+    for (usz i = 0; i < payload.len; i++) {
+        if (payload[i] == 0) {
+            sep = i;
+            break;
+        }
+    }
+    if (sep == payload.len) return false;
+
+    if (out_path != null) *out_path = payload[:sep];
+    if (out_content != null) {
+        if (sep + 1 < payload.len) {
+            *out_content = payload[sep + 1..];
+        } else {
+            *out_content = "";
+        }
+    }
+    return true;
+}
+
+fn bool scheduler_offload_write_file(SharedHandle* payload_blob, OffloadCompletion* completion) {
+    char[] payload = "";
+    if (!scheduler_project_shared(payload_blob, &payload)) {
+        completion.kind = OFFLOAD_RES_NIL;
+        return true;
+    }
+
+    char[] path = "";
+    char[] content = "";
+    if (!scheduler_split_write_file_payload(payload, &path, &content)) {
+        scheduler_set_offload_error(completion, "offload write-file: invalid payload");
+        return false;
+    }
+
+    int fd = omni_uv_fs_open((ZString)path.ptr, 577, 0o644);
+    if (fd < 0) {
+        completion.kind = OFFLOAD_RES_NIL;
+        return true;
+    }
+
+    usz written = 0;
+    bool ok = true;
+    while (written < content.len) {
+        long n = omni_uv_fs_write(fd, content.ptr + written, content.len - written);
+        if (n <= 0) {
+            ok = false;
+            break;
+        }
+        written += (usz)n;
+    }
+    (void)omni_uv_fs_close(fd);
+
+    if (!ok) {
+        completion.kind = OFFLOAD_RES_NIL;
+        return true;
+    }
+
+    completion.kind = OFFLOAD_RES_INT;
+    completion.int_result = scheduler_domain_publish_sendable_int(
+        scheduler_primary_domain(),
+        (long)written
+    );
+    return true;
+}
+
+fn bool scheduler_offload_file_exists(SharedHandle* path_blob, OffloadCompletion* completion) {
+    char[] path = "";
+    if (!scheduler_project_shared(path_blob, &path)) {
+        completion.kind = OFFLOAD_RES_INT;
+        completion.int_result = scheduler_domain_publish_sendable_int(scheduler_primary_domain(), 0);
+        return true;
+    }
+
+    ulong size_out = 0;
+    uint mode_out = 0;
+    int status = omni_uv_fs_stat_basic((ZString)path.ptr, &size_out, &mode_out);
+
+    completion.kind = OFFLOAD_RES_INT;
+    completion.int_result = scheduler_domain_publish_sendable_int(
+        scheduler_primary_domain(),
+        status >= 0 ? 1 : 0
+    );
+    return true;
+}
+
 fn OffloadCompletion* scheduler_execute_offload(OffloadWork work) {
     OffloadCompletion* completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
     if (completion == null) {
@@ -242,95 +354,163 @@ fn OffloadCompletion* scheduler_execute_offload(OffloadWork work) {
             scheduler_offload_tcp_connect(work.shared, (int)work.int_arg, completion);
         case OFFLOAD_HTTP_GET:
             scheduler_offload_http_get(work.shared, completion);
+        case OFFLOAD_READ_FILE:
+            scheduler_offload_read_file(work.shared, completion);
+        case OFFLOAD_WRITE_FILE:
+            scheduler_offload_write_file(work.shared, completion);
+        case OFFLOAD_FILE_EXISTS:
+            scheduler_offload_file_exists(work.shared, completion);
+        case OFFLOAD_TLS_CONNECT:
+            scheduler_offload_tls_connect(work.int_arg, completion);
+        case OFFLOAD_TLS_READ:
+            scheduler_offload_tls_read(work.int_arg, work.int_arg2, completion);
+        case OFFLOAD_TLS_WRITE:
+            scheduler_offload_tls_write(work.int_arg, work.shared, completion);
+        case OFFLOAD_TLS_CLOSE:
+            scheduler_offload_tls_close(work.int_arg, completion);
     }
 
     scheduler_release_shared(work.shared);
     return completion;
 }
 
-fn int scheduler_offload_worker_main(void* arg) {
-    (void)arg;
-    while (true) {
-        OffloadWork work = {};
+struct QueuedOffloadWork {
+    OffloadWork work;
+    uint task_generation;
+    OffloadCompletion* completion;
+    bool executed;
+}
 
-        g_scheduler.offload_queue.mu.lock();
-        while (g_scheduler.offload_queue.count == 0 && g_scheduler.offload_queue.running) {
-            g_scheduler.offload_queue.cv.wait(&g_scheduler.offload_queue.mu);
+fn OffloadCompletion* scheduler_make_offload_alloc_failure_completion() {
+    OffloadCompletion* completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
+    if (completion == null) return null;
+    *completion = {};
+    scheduler_set_offload_error(completion, "offload: worker completion alloc failed");
+    return completion;
+}
+
+fn void scheduler_offload_admission_release_slot() {
+    OffloadAdmission* admission = &g_scheduler.offload_admission;
+    if (!admission.initialized) return;
+    admission.mu.lock();
+    if (admission.in_flight > 0) admission.in_flight--;
+    admission.mu.unlock();
+}
+
+fn void scheduler_uv_offload_work_cb(void* req) {
+    QueuedOffloadWork* queued = (QueuedOffloadWork*)omni_uv_req_get_data(req);
+    if (queued == null) return;
+
+    OffloadWork work = queued.work;
+    if (work.task_id != NO_TASK) {
+        if (!scheduler_try_begin_thread_task(work.task_id, queued.task_generation)) {
+            scheduler_release_shared(work.shared);
+            return;
         }
-        if (!g_scheduler.offload_queue.running) {
-            g_scheduler.offload_queue.mu.unlock();
-            return 0;
-        }
+    }
 
-        usz slot = g_scheduler.offload_queue.tail & OFFLOAD_QUEUE_MASK;
-        work = g_scheduler.offload_queue.ring[slot];
-        g_scheduler.offload_queue.tail++;
-        g_scheduler.offload_queue.count--;
-        g_scheduler.offload_queue.mu.unlock();
+    queued.executed = true;
+    queued.completion = scheduler_execute_offload(work);
+}
 
-        if (work.task_id != NO_TASK) {
-            if (!scheduler_try_begin_thread_task(work.task_id)) {
-                scheduler_release_shared(work.shared);
-                continue;
+fn void scheduler_uv_offload_after_cb(void* req, int status) {
+    (void)status;
+    scheduler_offload_admission_release_slot();
+
+    QueuedOffloadWork* queued = (QueuedOffloadWork*)omni_uv_req_get_data(req);
+    if (queued == null) {
+        omni_uv_work_req_free(req);
+        return;
+    }
+
+    OffloadWork work = queued.work;
+    OffloadCompletion* completion = queued.completion;
+
+    if (work.task_id != NO_TASK) {
+        scheduler_clear_thread_task_request(work.task_id, req, queued.task_generation);
+        if (queued.executed) {
+            if (completion == null) {
+                completion = scheduler_make_offload_alloc_failure_completion();
+            }
+            if (completion != null) {
+                scheduler_complete_thread_task(work.task_id, completion, queued.task_generation);
             }
         }
-
-        OffloadCompletion* completion = scheduler_execute_offload(work);
+    } else {
         if (completion == null) {
-            continue;
+            completion = scheduler_make_offload_alloc_failure_completion();
         }
-
-        if (work.task_id != NO_TASK) {
-            scheduler_complete_thread_task(work.task_id, completion);
-            continue;
-        }
-
-        if (!scheduler_publish_offload_ready(work.fiber_id, completion)) {
+        if (completion != null && !scheduler_publish_offload_ready(work.fiber_id, completion)) {
             scheduler_free_offload_completion(completion);
         }
     }
+
+    mem::free(queued);
+    omni_uv_work_req_free(req);
 }
 
-fn void scheduler_init_offload_queue() {
-    OffloadQueue* q = &g_scheduler.offload_queue;
-    if (q.initialized) return;
+fn void scheduler_init_offload_admission() {
+    OffloadAdmission* admission = &g_scheduler.offload_admission;
+    if (admission.initialized) return;
 
-    *q = {};
-    if (catch err = q.mu.init()) return;
-    if (catch err = q.cv.init()) {
-        q.mu.destroy();
-        return;
-    }
-    q.running = true;
-
-    if (catch err = q.worker.create(&scheduler_offload_worker_main, null)) {
-        q.cv.destroy();
-        q.mu.destroy();
-        *q = {};
-        return;
-    }
-
-    // Second worker thread: allows http-get and accept-fd to run concurrently.
-    // Both threads share the same mutex-protected queue safely.
-    if (catch err = q.worker2.create(&scheduler_offload_worker_main, null)) {
-        // Non-fatal: single worker still works, just with reduced concurrency.
-    }
-
-    q.initialized = true;
+    *admission = {};
+    if (catch err = admission.mu.init()) return;
+    admission.in_flight = 0;
+    admission.max_in_flight = OFFLOAD_ADMISSION_MAX_IN_FLIGHT;
+    admission.initialized = true;
 }
 
 fn bool scheduler_enqueue_offload(OffloadWork work) {
-    OffloadQueue* q = &g_scheduler.offload_queue;
-    if (!q.initialized) return false;
+    OffloadAdmission* admission = &g_scheduler.offload_admission;
+    if (!admission.initialized || !g_scheduler.uv_loop_ready || g_scheduler.uv_loop == null) return false;
 
-    q.mu.lock();
-    defer q.mu.unlock();
+    void* req = omni_uv_work_req_new();
+    if (req == null) return false;
+    QueuedOffloadWork* queued = (QueuedOffloadWork*)mem::malloc(QueuedOffloadWork.sizeof);
+    if (queued == null) {
+        omni_uv_work_req_free(req);
+        return false;
+    }
+    *queued = {};
+    queued.work = work;
+    queued.task_generation = 0;
 
-    if (q.count >= OFFLOAD_QUEUE_SIZE) return false;
-    usz slot = q.head & OFFLOAD_QUEUE_MASK;
-    q.ring[slot] = work;
-    q.head++;
-    q.count++;
-    q.cv.signal();
+    bool admitted = false;
+    admission.mu.lock();
+    if (admission.in_flight < admission.max_in_flight) {
+        admission.in_flight++;
+        admitted = true;
+    }
+    admission.mu.unlock();
+    if (!admitted) {
+        mem::free(queued);
+        omni_uv_work_req_free(req);
+        return false;
+    }
+
+    if (work.task_id != NO_TASK &&
+        !scheduler_bind_thread_task_request(work.task_id, req, &queued.task_generation)) {
+        scheduler_offload_admission_release_slot();
+        mem::free(queued);
+        omni_uv_work_req_free(req);
+        return false;
+    }
+
+    omni_uv_req_set_data(req, queued);
+    int status = omni_uv_queue_work_start(
+        g_scheduler.uv_loop,
+        req,
+        &scheduler_uv_offload_work_cb,
+        &scheduler_uv_offload_after_cb
+    );
+    if (status != 0) {
+        if (work.task_id != NO_TASK) {
+            scheduler_clear_thread_task_request(work.task_id, req, queued.task_generation);
+        }
+        scheduler_offload_admission_release_slot();
+        mem::free(queued);
+        omni_uv_work_req_free(req);
+        return false;
+    }
     return true;
 }

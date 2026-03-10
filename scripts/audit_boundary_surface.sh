@@ -13,7 +13,7 @@ declare -a symbols=(
   copy_to_parent
   promote_to_escape
   promote_to_root
-  copy_env_to_scope_inner
+  copy_env_to_scope_checked
   scope_splice_escapes
 )
 

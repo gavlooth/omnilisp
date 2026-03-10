@@ -7,18 +7,11 @@ import main;
 // SECTION 2.4: FRAME PUSH/POP (escape/root promotion)
 // =============================================================================
 fn Value* promote_to_escape_disjoint(Value* v, Interp* interp) {
-    PromotionContext local_ctx = {};
-    PromotionContext* local_ptr = interp.active_promotion_ctx;
-    bool owns_ctx = false;
-    if (local_ptr == null) {
-        boundary_promotion_context_begin(interp, &local_ctx);
-        local_ptr = &local_ctx;
-        owns_ctx = true;
-    }
-    Value* copied = copy_to_parent_site_ctx(v, interp, COPY_SITE_GENERIC, local_ptr);
-    if (owns_ctx) boundary_promotion_context_end(interp, local_ptr);
-    if (copied == null || copied == v) return copied;
-    return promote_to_escape(copied, interp);
+    PromotionContext* ctx = interp.active_promotion_ctx;
+    Value* result = promote_to_escape_by_tag(v, interp, ctx);
+    if (ctx != null && ctx.aborted) return v;
+    promote_to_escape_memo(v, result, interp, ctx);
+    return result;
 }
 
 fn bool promote_escape_can_mutate(Value* v, PromotionContext* ctx) @inline {
@@ -27,9 +20,12 @@ fn bool promote_escape_can_mutate(Value* v, PromotionContext* ctx) @inline {
 }
 
 fn bool promote_escape_should_iterate_cons_tail(Value* old_cdr, Interp* interp) @inline {
-    return old_cdr != null &&
-           old_cdr.tag == CONS &&
-           old_cdr.scope_gen == interp.current_scope.generation;
+    if (old_cdr == null || old_cdr.tag != CONS) return false;
+    // Keep long disjoint list promotion iterative to avoid recursive depth blowups
+    // under ASAN stack pressure. Reusable target-chain tails still short-circuit.
+    if (old_cdr.scope_gen == interp.current_scope.generation) return true;
+    if (boundary_ptr_in_target_scope_chain_with_hint((void*)old_cdr, interp, old_cdr.scope_gen)) return false;
+    return true;
 }
 
 fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionContext* ctx) {
@@ -47,6 +43,39 @@ fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionCont
     result.str_chars[len] = 0;
     result.str_len = len;
     return result;
+}
+
+fn bool method_signature_copy_to_escape(MethodSignature* dst, MethodSignature* src, main::ScopeRegion* scope) {
+    if (dst == null || src == null || scope == null) return false;
+    method_signature_init_empty(dst);
+    dst.param_count = src.param_count;
+    dst.constraint_count = src.constraint_count;
+
+    if (src.param_count > 0) {
+        dst.param_types = (TypeId*)scope.alloc_escape(TypeId.sizeof * src.param_count);
+        dst.param_type_vars = (SymbolId*)scope.alloc_escape(SymbolId.sizeof * src.param_count);
+        dst.val_literals = (ValueLiteralKey*)scope.alloc_escape(ValueLiteralKey.sizeof * src.param_count);
+        dst.has_val_literal = (bool*)scope.alloc_escape(bool.sizeof * src.param_count);
+        if (dst.param_types == null || dst.param_type_vars == null || dst.val_literals == null || dst.has_val_literal == null) {
+            return false;
+        }
+        for (usz i = 0; i < src.param_count; i++) {
+            dst.param_types[i] = src.param_types[i];
+            dst.param_type_vars[i] = src.param_type_vars[i];
+            dst.val_literals[i] = src.val_literals[i];
+            dst.has_val_literal[i] = src.has_val_literal[i];
+        }
+    }
+
+    if (src.constraint_count > 0) {
+        dst.constraints = (MethodConstraint*)scope.alloc_escape(MethodConstraint.sizeof * src.constraint_count);
+        if (dst.constraints == null) return false;
+        for (usz i = 0; i < src.constraint_count; i++) {
+            dst.constraints[i] = src.constraints[i];
+        }
+    }
+
+    return true;
 }
 
 fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
@@ -97,7 +126,10 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
 
     if (v.closure_val.type_sig != null) {
         result.closure_val.type_sig = (MethodSignature*)interp.current_scope.alloc_escape(MethodSignature.sizeof);
-        *result.closure_val.type_sig = *v.closure_val.type_sig;
+        if (result.closure_val.type_sig == null ||
+            !method_signature_copy_to_escape(result.closure_val.type_sig, v.closure_val.type_sig, interp.current_scope)) {
+            result.closure_val.type_sig = null;
+        }
     }
 
     if (result.closure_val.env_scope != null) {
@@ -152,12 +184,12 @@ fn bool promote_to_escape_fast_path(Value* v, Interp* interp, Value** out) {
         return true;
     }
     if (v.scope_gen != interp.current_scope.generation) {
-        if (boundary_ptr_in_target_scope_chain((void*)v, interp)) {
+        if (boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen)) {
             *out = v;
             return true;
         }
-        // Defensive fallback: disjoint lifetime object (e.g. standalone env_scope).
-        // Copy into current TEMP lane first, then continue promotion into ESCAPE.
+        // Explicit disjoint-lifetime route (e.g. standalone env_scope object):
+        // route through TEMP copy first, then continue promotion into ESCAPE.
         *out = promote_to_escape_disjoint(v, interp);
         return true;
     }
@@ -230,10 +262,9 @@ enum PromoteEscapeRoute : char {
     PE_ROUTE_INSTANCE,
     PE_ROUTE_FFI_HANDLE,
     PE_ROUTE_TIME_POINT,
-    PE_ROUTE_PASSTHROUGH,
 }
 
-fn PromoteEscapeRoute promote_escape_route_for_tag(ValueTag tag) @inline {
+fn PromoteEscapeRoute promote_escape_route_for_tag(ValueTag tag) {
     switch (tag) {
         case NIL:
         case INT:
@@ -268,11 +299,13 @@ fn PromoteEscapeRoute promote_escape_route_for_tag(ValueTag tag) @inline {
             return PE_ROUTE_INSTANCE;
         case FFI_HANDLE:
             return PE_ROUTE_FFI_HANDLE;
-        default:
-            return PE_ROUTE_PASSTHROUGH;
     }
 }
 
+<*
+@require v != null : "promote_to_escape_by_route: null value"
+@require interp != null : "promote_to_escape_by_route: null interp"
+*>
 fn Value* promote_to_escape_by_route(
     Value* v,
     Interp* interp,
@@ -305,8 +338,6 @@ fn Value* promote_to_escape_by_route(
             return promote_escape_instance(v, interp, ctx);
         case PE_ROUTE_FFI_HANDLE:
             return promote_escape_ffi_handle(v, interp, ctx);
-        default:
-            return v;
     }
 }
 
@@ -342,13 +373,348 @@ fn Value* promote_to_escape(Value* v, Interp* interp) {
     return result;
 }
 
-// Boundary helper: promote a child-scope value into root while preserving
-// releasing_scope context so copy_to_parent keeps its defensive-copy behavior
-// for disjoint transient lifetimes.
+fn Value* root_store_clone_primitive_to_scope(
+    Value* src,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope
+) {
+    if (src == null || interp == null || target_scope == null) return null;
+
+    BoundarySession session = boundary_session_begin(interp);
+    defer boundary_session_end(interp, &session);
+    interp.current_scope = target_scope;
+    interp.releasing_scope = releasing_scope;
+
+    Value* result = interp.alloc_value_escape();
+    result.tag = PRIMITIVE;
+    result.prim_val = null;
+
+    Primitive* src_prim = src.prim_val;
+    if (src_prim == null) {
+        main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+        return result;
+    }
+
+    Primitive* dst_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+    if (dst_prim == null) return null;
+    *dst_prim = *src_prim;
+
+    result.prim_val = dst_prim;
+    main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+    return result;
+}
+
+fn Value* root_store_clone_array_to_scope(
+    Value* src,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope
+) {
+    if (src == null || interp == null || target_scope == null) return null;
+
+    BoundarySession session = boundary_session_begin(interp);
+    defer boundary_session_end(interp, &session);
+    interp.current_scope = target_scope;
+    interp.releasing_scope = releasing_scope;
+    PromotionContext copy_ctx = {};
+    boundary_promotion_context_begin(interp, &copy_ctx);
+    defer boundary_promotion_context_end(interp, &copy_ctx);
+
+    Value* result = interp.alloc_value_escape();
+    result.tag = ARRAY;
+    result.array_val = null;
+
+    Array* src_arr = src.array_val;
+    if (src_arr == null) {
+        main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+        return result;
+    }
+
+    Array* dst_arr = (Array*)mem::malloc(Array.sizeof);
+    if (dst_arr == null) return null;
+
+    usz cap = src_arr.capacity;
+    if (cap < src_arr.length) cap = src_arr.length;
+    if (cap < 4) cap = 4;
+
+    dst_arr.capacity = cap;
+    dst_arr.length = src_arr.length;
+    dst_arr.items = (Value**)mem::malloc(Value*.sizeof * cap);
+    if (dst_arr.items == null) {
+        mem::free(dst_arr);
+        return null;
+    }
+
+    for (usz i = 0; i < src_arr.length; i++) {
+        dst_arr.items[i] = boundary_copy_to_parent_site_ctx(
+            src_arr.items[i],
+            interp,
+            COPY_SITE_PROMOTE_TO_ROOT,
+            &copy_ctx
+        );
+    }
+
+    result.array_val = dst_arr;
+    main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+    return result;
+}
+
+fn Value* root_store_clone_hashmap_to_scope(
+    Value* src,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope
+) {
+    if (src == null || interp == null || target_scope == null) return null;
+
+    BoundarySession session = boundary_session_begin(interp);
+    defer boundary_session_end(interp, &session);
+    interp.current_scope = target_scope;
+    interp.releasing_scope = releasing_scope;
+    PromotionContext copy_ctx = {};
+    boundary_promotion_context_begin(interp, &copy_ctx);
+    defer boundary_promotion_context_end(interp, &copy_ctx);
+
+    Value* result = interp.alloc_value_escape();
+    result.tag = HASHMAP;
+    result.hashmap_val = null;
+
+    HashMap* src_map = src.hashmap_val;
+    if (src_map == null) {
+        main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+        return result;
+    }
+
+    HashMap* dst_map = (HashMap*)mem::malloc(HashMap.sizeof);
+    if (dst_map == null) return null;
+    dst_map.capacity = src_map.capacity;
+    dst_map.count = src_map.count;
+    dst_map.mask = src_map.mask;
+    dst_map.entries = null;
+
+    if (src_map.capacity > 0) {
+        dst_map.entries = (HashEntry*)mem::malloc(HashEntry.sizeof * src_map.capacity);
+        if (dst_map.entries == null) {
+            mem::free(dst_map);
+            return null;
+        }
+
+        for (uint i = 0; i < src_map.capacity; i++) {
+            HashEntry* src_e = &src_map.entries[i];
+            HashEntry* dst_e = &dst_map.entries[i];
+            dst_e.key = null;
+            dst_e.value = null;
+            if (src_e.key != null) {
+                dst_e.key = boundary_copy_to_parent_site_ctx(
+                    src_e.key,
+                    interp,
+                    COPY_SITE_PROMOTE_TO_ROOT,
+                    &copy_ctx
+                );
+                dst_e.value = boundary_copy_to_parent_site_ctx(
+                    src_e.value,
+                    interp,
+                    COPY_SITE_PROMOTE_TO_ROOT,
+                    &copy_ctx
+                );
+            }
+        }
+    }
+
+    result.hashmap_val = dst_map;
+    main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+    return result;
+}
+
+fn void root_store_free_method_table_partial(MethodTable* mt, usz copied_entries) {
+    if (mt == null) return;
+    if (mt.entries != null) {
+        usz limit = copied_entries;
+        if (limit > mt.entry_count) limit = mt.entry_count;
+        for (usz i = 0; i < limit; i++) {
+            method_signature_destroy_heap(&mt.entries[i].sig);
+        }
+        mem::free(mt.entries);
+        mt.entries = null;
+    }
+    mem::free(mt);
+}
+
+fn Value* root_store_clone_method_table_to_scope(
+    Value* src,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope
+) {
+    if (src == null || interp == null || target_scope == null) return null;
+
+    BoundarySession session = boundary_session_begin(interp);
+    defer boundary_session_end(interp, &session);
+    interp.current_scope = target_scope;
+    interp.releasing_scope = releasing_scope;
+    PromotionContext copy_ctx = {};
+    boundary_promotion_context_begin(interp, &copy_ctx);
+    defer boundary_promotion_context_end(interp, &copy_ctx);
+
+    Value* result = interp.alloc_value_escape();
+    result.tag = METHOD_TABLE;
+    result.method_table_val = null;
+
+    MethodTable* src_mt = src.method_table_val;
+    if (src_mt == null) {
+        main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+        return result;
+    }
+
+    MethodTable* dst_mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
+    if (dst_mt == null) return null;
+    dst_mt.name = src_mt.name;
+    dst_mt.entry_count = src_mt.entry_count;
+    dst_mt.capacity = src_mt.capacity;
+    if (dst_mt.capacity < dst_mt.entry_count) dst_mt.capacity = dst_mt.entry_count;
+    dst_mt.entries = null;
+    dst_mt.fallback = null;
+
+    if (dst_mt.capacity > 0) {
+        dst_mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * dst_mt.capacity);
+        if (dst_mt.entries == null) {
+            mem::free(dst_mt);
+            return null;
+        }
+    }
+
+    usz copied_entries = 0;
+    for (usz i = 0; i < dst_mt.entry_count; i++) {
+        method_signature_init_empty(&dst_mt.entries[i].sig);
+        if (!method_signature_copy_to_heap(&dst_mt.entries[i].sig, &src_mt.entries[i].sig)) {
+            root_store_free_method_table_partial(dst_mt, copied_entries);
+            return null;
+        }
+        dst_mt.entries[i].implementation = boundary_copy_to_parent_site_ctx(
+            src_mt.entries[i].implementation,
+            interp,
+            COPY_SITE_PROMOTE_TO_ROOT,
+            &copy_ctx
+        );
+        copied_entries++;
+    }
+
+    dst_mt.fallback = boundary_copy_to_parent_site_ctx(
+        src_mt.fallback,
+        interp,
+        COPY_SITE_PROMOTE_TO_ROOT,
+        &copy_ctx
+    );
+
+    result.method_table_val = dst_mt;
+    main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+    return result;
+}
+
+fn Value* root_store_direct_promote_to_scope(
+    Value* v,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope
+) {
+    BoundarySession session = boundary_session_begin(interp);
+    defer boundary_session_end(interp, &session);
+    interp.current_scope = target_scope;
+    interp.releasing_scope = releasing_scope;
+    PromotionContext copy_ctx = {};
+    boundary_promotion_context_begin(interp, &copy_ctx);
+    defer boundary_promotion_context_end(interp, &copy_ctx);
+    return boundary_copy_to_parent_site_ctx(v, interp, COPY_SITE_PROMOTE_TO_ROOT, &copy_ctx);
+}
+
+fn Value* root_store_route_to_scope(
+    Value* v,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope
+) {
+    if (v == null || interp == null || target_scope == null) return null;
+
+    switch (v.tag) {
+        case PRIMITIVE: {
+            Value* cloned = root_store_clone_primitive_to_scope(
+                v,
+                interp,
+                target_scope,
+                releasing_scope
+            );
+            if (cloned == null) return raise_error(interp, "root-store: failed to clone primitive payload");
+            return cloned;
+        }
+        case ARRAY: {
+            Value* cloned = root_store_clone_array_to_scope(v, interp, target_scope, releasing_scope);
+            if (cloned == null) return raise_error(interp, "root-store: failed to clone array payload");
+            return cloned;
+        }
+        case HASHMAP: {
+            Value* cloned = root_store_clone_hashmap_to_scope(v, interp, target_scope, releasing_scope);
+            if (cloned == null) return raise_error(interp, "root-store: failed to clone hashmap payload");
+            return cloned;
+        }
+        case METHOD_TABLE: {
+            Value* cloned = root_store_clone_method_table_to_scope(
+                v,
+                interp,
+                target_scope,
+                releasing_scope
+            );
+            if (cloned == null) return raise_error(interp, "root-store: failed to clone method-table payload");
+            return cloned;
+        }
+        case NIL:
+        case INT:
+        case STRING:
+        case SYMBOL:
+        case CONS:
+        case CLOSURE:
+        case CONTINUATION:
+        case PARTIAL_PRIM:
+        case ERROR:
+        case DOUBLE:
+        case FFI_HANDLE:
+        case TYPE_INFO:
+        case INSTANCE:
+        case MODULE:
+        case ITERATOR:
+        case COROUTINE:
+        case TIME_POINT: {
+            Value* promoted = root_store_direct_promote_to_scope(
+                v,
+                interp,
+                target_scope,
+                releasing_scope
+            );
+            if (promoted != null) return promoted;
+            return raise_error(interp, "root-store: destination promotion returned null");
+        }
+    }
+}
+
+// Boundary helper: promote a child-scope value into root using explicit
+// transfer-safe routing:
+// - releasing-owned + transfer-safe tags -> direct destination ESCAPE promotion
+// - unsupported payload classes -> deterministic hard error
 fn Value* promote_to_root_site(Value* v, Interp* interp, uint site) {
     if (v == null || interp == null || interp.current_scope == interp.root_scope) return v;
+    (void)site;
+    main::ScopeRegion* target_scope = interp.root_scope;
     main::ScopeRegion* releasing_scope = interp.current_scope;
-    return boundary_copy_to_scope_site(v, interp, interp.root_scope, releasing_scope, site);
+    BoundaryReturnClassification c =
+        boundary_classify_return_value(v, interp, target_scope, releasing_scope);
+    switch (c.provenance) {
+        case BOUNDARY_RETURN_REUSABLE_IN_TARGET_CHAIN:
+            return v;
+        case BOUNDARY_RETURN_OWNED_BY_RELEASING_TEMP:
+        case BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE:
+        case BOUNDARY_RETURN_MIXED_UNCERTAIN:
+            return root_store_route_to_scope(v, interp, target_scope, releasing_scope);
+    }
 }
 
 /**

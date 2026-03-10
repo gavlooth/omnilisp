@@ -161,7 +161,7 @@
   (if (validate schema-name payload)
       payload
       (raise (format "schema validation failed: %s"
-                     (explain schema-name payload)))))
+                     (schema-explain schema-name payload)))))
 
 ;; Single place that converts ApiResult to an HTTP response dict.
 ;; All Ok/Err paths flow here — no {'status "error"...} scattered in repo code.

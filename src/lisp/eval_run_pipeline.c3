@@ -60,46 +60,14 @@ fn bool run_execute_expr(Expr* expr, Interp* interp, Value** result_value, EvalR
 fn Value* run_promote_result(Value* jit_result, Interp* interp, main::ScopeRegion* child_scope, main::ScopeRegion* saved_scope, bool* child_spliced) {
     boundary_assert_interp_scope_chain(interp);
     *child_spliced = false;
-    if (jit_result == null) return null;
-
-    Value* original_result = jit_result;
-    PromotionContext boundary_ctx = {};
-    boundary_promotion_context_begin(interp, &boundary_ctx, PROMOTION_CTX_BUDGET_RETURN);
-    main::ScopeRegion* promote_result_saved_scope = boundary_enter_scope(interp, saved_scope);
-    defer boundary_leave_scope(interp, promote_result_saved_scope);
-
-    if (child_scope.refcount == 1) {
-        if (jit_result.scope_gen != child_scope.escape_generation) {
-            main::ScopeRegion* promote_saved_scope = boundary_enter_scope(interp, child_scope);
-            jit_result = boundary_promote_to_escape(jit_result, interp);
-            boundary_leave_scope(interp, promote_saved_scope);
-        }
-        if (boundary_ctx.aborted) {
-            jit_result = boundary_copy_from_releasing_scope(
-                original_result,
-                interp,
-                child_scope,
-                COPY_SITE_RUN_JIT_RESULT
-            );
-        }
-        if (boundary_should_promote(jit_result, &boundary_ctx, child_scope)) {
-            if (boundary_try_scope_splice_escapes(saved_scope, child_scope)) {
-                *child_spliced = true;
-            }
-        }
-    }
-
-    if (!*child_spliced && main::is_in_scope((void*)jit_result, child_scope)) {
-        jit_result = boundary_copy_from_releasing_scope(
-            jit_result,
-            interp,
-            child_scope,
-            COPY_SITE_RUN_JIT_RESULT
-        );
-    }
-    boundary_promotion_context_end(interp, &boundary_ctx);
-    boundary_assert_interp_scope_chain(interp);
-    return jit_result;
+    ScopedFinalizeResult finalized = boundary_finalize_scoped_result(
+        jit_result,
+        interp,
+        saved_scope,
+        child_scope
+    );
+    *child_spliced = finalized.releasing_scope_spliced;
+    return finalized.value;
 }
 
 /**
@@ -202,17 +170,17 @@ fn EvalResult run(char[] source, Interp* interp) {
         return eval_error("run: failed to create child scope");
     }
     boundary_assert_interp_scope_chain(interp);
-    defer boundary_pop_child_scope(interp, saved_scope, child_scope);
 
     EvalResult result;
     Value* jit_result = null;
     if (!run_execute_expr(expr, interp, &jit_result, &result)) {
+        boundary_pop_child_scope(interp, saved_scope, child_scope);
         return result;
     }
 
     bool child_spliced = false;
     jit_result = run_promote_result(jit_result, interp, child_scope, saved_scope, &child_spliced);
-    if (child_spliced) child_scope = null;
+    main::ScopeRegion* release_scope = child_spliced ? null : child_scope;
 
     if (jit_result != null && jit_result.tag == ERROR) {
         result = eval_error_expr(jit_result.str_chars[:jit_result.str_len], expr);
@@ -220,6 +188,7 @@ fn EvalResult run(char[] source, Interp* interp) {
         result = eval_ok(jit_result);
     }
 
+    boundary_pop_child_scope(interp, saved_scope, release_scope);
     boundary_assert_interp_scope_chain(interp);
     dispatch_pending_signal_callbacks(interp);
     return result;

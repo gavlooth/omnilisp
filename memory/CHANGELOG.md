@@ -3,7 +3,169 @@
 
 Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md).
 
+## 2026-03-10
+
+- Docker-only gate enforcement + 30% host-resource cap policy:
+  - `scripts/c3c_limits.sh`:
+    - default hard-cap method switched to Docker (`OMNI_HARD_MEM_CAP_METHOD=docker`) for capped command execution.
+    - default cap percent switched to `30` (`OMNI_HARD_MEM_CAP_PERCENT=30`) with shared percent resolver.
+    - hard memory cap now enforces a strict upper bound at the configured percent (manual MB override is clamped, never above cap).
+    - Docker CPU quota is now computed from host CPU count at the same cap percent and clamped to that maximum.
+  - gate runners now default to Docker mode with explicit outside-container guardrails:
+    - `scripts/run_global_gates.sh`
+    - `scripts/run_boundary_hardening.sh`
+    - `scripts/run_e2e.sh`
+  - validation container wiring:
+    - `scripts/container_exec.sh` now exports `OMNI_IN_VALIDATION_CONTAINER=1` so gate scripts can distinguish single-container execution from host execution.
+    - `scripts/run_validation_container.sh` now defaults/clamps CPU quota to the same 30%-cap policy.
+
+- Validation containment upgrade: real Docker cap mode for gate execution.
+  - `scripts/c3c_limits.sh`:
+    - added `OMNI_HARD_MEM_CAP_METHOD=docker` execution path (`omni_run_with_docker_cap(...)`).
+    - Docker mode now enforces hard limits via `docker run` (`--memory`, `--memory-swap`, `--cpus`, `--pids-limit`, `--network`) while binding the repo workspace and optional host toolchain root.
+    - added per-run resource telemetry sampling (`docker stats`) to `build/docker_resource_stats.log` (configurable via `OMNI_DOCKER_MONITOR_LOG`).
+    - added optional wall-time kill guard with `OMNI_DOCKER_TIMEOUT_SEC`.
+  - gate wiring:
+    - `scripts/run_global_gates.sh`: docker cap mode now applies across normal and ASAN runs/slices; auto-enables `OMNI_C3_HARD_CAP_ENABLED=1` in docker mode.
+    - `scripts/run_boundary_hardening.sh`: stage runner now executes through the shared cap wrapper (and enables c3 hard-cap mode under docker).
+    - `scripts/run_e2e.sh`: generation/run stages now execute through shared cap wrapper (and enables c3 hard-cap mode under docker).
+  - single-container runner:
+    - added `scripts/run_validation_container.sh` for full validation sessions inside one constrained Docker container.
+    - added `scripts/container_exec.sh` container entrypoint helper to set mounted toolchain paths and disable recursive inner container mode by default.
+  - docs:
+    - `docs/PROJECT_TOOLING.md` now documents container-capped validation usage and docker tuning knobs.
+  - pinned container toolchain:
+    - added `docker/validation.Dockerfile` with pinned C3 toolchain (`v0.7.10` tarball + sha256), GNU lightning (`2.2.2`), and replxx (`release-0.0.4`) so validation can run without host toolchain mounts.
+    - added `scripts/build_validation_image.sh` to build the pinned image reproducibly.
+    - docker validation defaults now target local `omni-validation:2026-03-10` image and require local image presence by default (`OMNI_DOCKER_REQUIRE_LOCAL_IMAGE=1`, `OMNI_VALIDATION_REQUIRE_LOCAL_IMAGE=1`) to avoid implicit pull fallback ambiguity.
+    - `scripts/run_validation_container.sh` no longer mount-binds `/usr/local` by default; host toolchain mount is opt-in via `OMNI_VALIDATION_TOOLCHAIN_ROOT`.
+
+- Data-format semantic drift closure before API expansion:
+  - `src/lisp/primitives_data_formats.c3`:
+    - TOML boolean conversion now preserves Omni `false` symbol identity instead of coercing TOML `false` to `nil`.
+  - `src/lisp/primitives_data_formats_csv_parse.c3`:
+    - strict/default CSV parse now enforces RFC-4180 row separators (`\r\n`) and reports deterministic strict-line-ending errors for lone `\n` / bare `\r`.
+  - `src/lisp/primitives_data_formats_csv_emit.c3`:
+    - strict/default CSV emit now uses `\r\n` as the default row separator.
+  - regression updates:
+    - `src/lisp/tests_runtime_data_unicode_groups.c3` updated to assert strict/default CRLF behavior and preserved strict=false leniency paths.
+  - docs/checklist sync:
+    - `docs/reference/11-appendix-primitives.md` now documents strict/default RFC-4180 CRLF behavior.
+    - `docs/plans/idiomatic-libuv-surface-plan.md` and `TODO.md` step/checklist rows marked complete for this semantic-fix slice.
+
+- Libuv surface guardrail closure for typed-wrapper + docs parity drift:
+  - added `scripts/check_libuv_surface_policy.sh`:
+    - validates newly-added `io/*` surfaces keep raw/effect/wrapper mapping (`__raw-*` <-> `io/*` <-> stdlib wrapper).
+    - rejects newly-added `io/*` wrapper lambda aliases; requires function-style `define` wrappers.
+  - extended `scripts/check_primitive_docs_parity.sh`:
+    - keeps existing public primitive docs parity check.
+    - additionally validates newly-added `__raw-*` io primitives/wrappers are documented and mapped.
+  - updated `scripts/run_effects_contract_lint.sh` to run and report the new libuv surface policy log (`build/libuv_surface_policy.log`) in lint summary output.
+  - updated tooling/CI docs and boundary-hardening artifact upload list to include the new policy log.
+
+- Compiler/parser plan-governance TODO closure:
+  - `docs/plans/compiler-parser-refactor-plan.md` exit-criteria governance checkboxes are now closed (`single active plan`, `no overlapping active checklists`, `area+changelog sync`).
+  - `TODO.md` source rows for `docs/plans/compiler-parser-refactor-plan.md` governance items are now marked complete.
+  - `docs/areas/compiler-parser-refactor.md` was refreshed (`As of: 2026-03-10`) with explicit single-active-plan governance notes.
+
+- Global gate runner received workstation-safe lisp sharding controls:
+  - `scripts/run_global_gates.sh` now defaults hard-cap execution to `OMNI_HARD_MEM_CAP_METHOD=auto` (systemd `MemoryMax` when available, with existing cap fallback behavior intact).
+  - Added lisp slice fan-out in global gates via `OMNI_GLOBAL_GATES_LISP_SLICES` + per-slice `OMNI_LISP_TEST_SLICE` dispatch.
+  - Default slice set is now group-granular (`basic`, `memory-lifetime`, `memory-stress`, `list-closure`, `arithmetic-comparison`, `string-type`, `diagnostics`, `jit-policy`, `advanced`, `escape-scope`, `limit-busting`, `tco-recycling`, `closure-lifecycle`, `pika`, `unicode`, `compression`, `data-format`, `json`, `async`, `reader-dispatch`, `schema`, `deduce`, `scheduler`, `http`, `atomic`, `compiler`) to avoid single giant lisp process peaks.
+- Lisp test runner now supports explicit slice selection:
+  - `src/lisp/tests_tests.c3` validates `OMNI_LISP_TEST_SLICE` values and runs only the requested group (or full suite when unset/`all`), while preserving existing summary emitters and compiler-suite invocation semantics.
+  - Unknown slice values fail fast with deterministic assertion (`unknown OMNI_LISP_TEST_SLICE`) to keep CI/profile misconfiguration obvious.
+- Lisp slice selection now emits explicit high-memory flags in summary mode:
+  - `src/lisp/tests_tests.c3` emits `OMNI_TEST_SUMMARY suite=lisp_slice ... high_memory=<0|1>` for the active slice.
+  - `all`, `memory-lifetime-soak`, and `memory-stress` are flagged as high-memory selections with warning output to make workstation-risk slices obvious before heavy allocation phases.
+- Memory-lifetime slice split for workstation-safe local execution:
+  - `memory-lifetime` now maps to smoke coverage (`run_memory_lifetime_smoke_tests(...)`), and `memory-lifetime-smoke` is an explicit alias.
+  - `memory-lifetime-soak` preserves the previous full heavy path (stress + hot-budget + promotion-context + optional bench hooks).
+  - `scripts/run_global_gates.sh` now defaults to `memory-lifetime-smoke` and supports opt-in soak execution via `OMNI_GLOBAL_GATES_INCLUDE_LIFETIME_SOAK=1`.
+- Session 44 docs closure:
+  - published boundary architecture audit + invariants contract:
+    - `docs/BOUNDARY_ARCHITECTURE_AUDIT_2026-03-10.md`
+  - synchronized Session 44 checklist closure in:
+    - `TODO.md`
+    - `docs/plans/session-34-44-boundary-hardening.md`
+  - updated area hub source map:
+    - `docs/areas/memory-runtime.md`
+- Session 41 ownership-domain split inventory captured (module ownership map):
+  - Boundary API/types + compatibility facade: `src/lisp/eval_boundary_api.c3`.
+  - Runtime policy/config toggles: `src/lisp/eval_boundary_policy.c3`.
+  - Provenance/classification + transition routing helpers: `src/lisp/eval_boundary_provenance.c3`.
+  - Session/transaction lifecycle guards and scope-swap discipline: `src/lisp/eval_boundary_session_txn.c3`.
+  - Diagnostics/invariants/graph-audit assertions: `src/lisp/eval_boundary_diagnostics.c3`.
+  - Telemetry counters/snapshots/reporting: `src/lisp/eval_boundary_telemetry.c3`.
+  - Commit/escape policy outcomes and fallback routing: `src/lisp/eval_boundary_commit_flow.c3`.
+- Session 41 dead-path cleanup and surface tightening:
+  - Removed unused boundary wrappers from `src/lisp/eval_boundary_api.c3`:
+    - `boundary_env_usize_or_default(...)` (no runtime/test callsites),
+    - `boundary_copy_env_to_scope(...)` (legacy convenience wrapper; no runtime/test callsites).
+  - `c3c build` passed after removal.
+- Session 42 CI/policy enforcement rules captured (existing guardrails validated):
+  - Legacy direct boundary call guard script present and passing:
+    - `scripts/check_boundary_facade_usage.sh`,
+    - policy map `scripts/boundary_facade_policy.txt`.
+  - Boundary-change policy gate present:
+    - `scripts/check_boundary_change_policy.sh` requires summary evidence from normal + ASAN boundary-hardening runs for boundary-sensitive file changes.
+  - Workflow wiring present:
+    - `.github/workflows/boundary-hardening.yml` runs `scripts/run_boundary_hardening.sh` (facade guard + ASAN/normal evidence + policy check stage).
+  - Local validation:
+    - `bash -n scripts/check_boundary_facade_usage.sh` passed.
+    - `bash -n scripts/check_boundary_change_policy.sh` passed.
+    - `scripts/check_boundary_facade_usage.sh` passed (no disallowed legacy callsites).
+- Session 43 hot-path cleanup (redundant promotion work reduction):
+  - `src/lisp/eval_boundary_commit_flow.c3`:
+    - added `boundary_destination_promote_routed_escape(...)` fast-path helper for destination ESCAPE routing.
+    - destination cons/partial/iterator builders now skip redundant `boundary_promote_to_escape(...)` calls when:
+      - routed value is already in target ESCAPE lane (`scope_gen == target_scope.escape_generation`), or
+      - promotion context is already aborted (no additional promotion work attempted before fallback branch).
+  - Goal: reduce avoidable promotion calls in boundary commit hot paths without changing fallback/error semantics.
+  - Local validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite stack` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite scope` passed.
+- Session 44 Commit A closure (deprecated boundary entrypoint sweep):
+  - removed fully replaced legacy env-copy entrypoints from `src/lisp/eval_env_copy.c3`:
+    - `copy_env_to_scope_inner(...)`
+    - `copy_env_to_scope(...)`
+  - updated boundary-facade policy/audit surfaces to track only live legacy symbols:
+    - `scripts/boundary_facade_policy.txt` now gates `copy_env_to_scope_checked(...)` allow-list ownership.
+    - `scripts/check_boundary_facade_usage.sh` legacy symbol list now tracks `copy_env_to_scope_checked(...)` and drops retired symbols.
+    - `scripts/audit_boundary_surface.sh` symbol inventory now tracks `copy_env_to_scope_checked(...)`.
+  - regenerated `docs/BOUNDARY_SURFACE_AUDIT.md` after symbol inventory refresh.
+  - local validation:
+    - `scripts/check_boundary_facade_usage.sh` passed (`violations=0`).
+- Validation (local, cap-safe):
+  - `c3c build` passed.
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite stack` passed (`stack_engine: 21/0`).
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite scope` passed (`scope_region: 58/0`).
+  - `bash -n scripts/run_global_gates.sh` passed.
+  - `OMNI_LISP_TEST_SLICE=does-not-exist ./build/main --test-suite lisp` failed fast as expected with `unknown OMNI_LISP_TEST_SLICE`.
+- Remaining closure note:
+  - Session `run global gates` rows are now explicitly marked as local N/A/deferred in `TODO.md`; full normal+ASAN gate execution is expected on CI/large-host runners.
+
 ## 2026-03-09
+
+- Idiomatic libuv wrapper typing slice landed with dispatch-smoke coverage:
+  - `stdlib/stdlib.lisp`:
+    - converted remaining lambda alias wrappers to typed `define` methods with explicit untyped fallbacks for canonical payload compatibility:
+      - `tcp-listen`, `offload`, `thread-spawn`, `task-spawn`, `tls-connect`, `http-request`.
+    - added thin composition-only convenience helpers (no runtime substrate duplication):
+      - `job-spawn`, `job-join`, `job-join-timeout`, `job-cancel`, `request`.
+    - helper implementation note:
+      - typed variadic `define` dispatch remains runtime-limited; variadic helpers route through wrapper composition (`apply`) while keeping canonical `io/*` wrappers as execution entrypoints.
+  - focused typed-wrapper dispatch smoke tests added:
+    - `src/lisp/tests_runtime_feature_http_groups.c3`:
+      - `explain 'dispatch` smoke for typed/fallback wrapper routing (`tcp-connect`, `http-request`).
+      - helper smoke coverage for `request` single-url and method/url/body/headers routes.
+    - `src/lisp/tests_scheduler_io_task_groups.c3`:
+      - `explain 'dispatch` smoke for `task-spawn` / `thread-spawn` wrapper routing.
+      - helper smoke coverage for `job-spawn` + `job-join` task/thread routes.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1719/0`, `compiler: 85/0`).
 
 - Boundary mixed-mode stress coverage expanded for nested and mixed interpreter/JIT transitions:
   - `src/lisp/tests_memory_lifetime_boundary_stress_groups.c3`:

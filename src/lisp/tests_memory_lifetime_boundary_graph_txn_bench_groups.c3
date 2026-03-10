@@ -1180,11 +1180,13 @@ fn void run_memory_lifetime_boundary_benchmarks(Interp* interp) {
     usz decision_splice_ok = 0;
     usz decision_disallowed_ok = 0;
     usz decision_reuse_ok = 0;
+    usz decision_destination_reuse_ok = 0;
     usz splice_tail_ok = 0;
 
     long decision_splice_ms = 0;
     long decision_disallowed_ms = 0;
     long decision_reuse_ms = 0;
+    long decision_destination_reuse_ms = 0;
     long splice_tail_ms = 0;
 
     // Decision benchmark: splice-commit path.
@@ -1305,6 +1307,56 @@ fn void run_memory_lifetime_boundary_benchmarks(Interp* interp) {
         decision_reuse_ms = end_ms > start_ms ? end_ms - start_ms : 0;
     }
 
+    // Decision benchmark: destination partial build with target-escape routed args.
+    {
+        long start_ms = boundary_bench_now_ms();
+        for (usz i = 0; i < BOUNDARY_BENCH_DECISION_ITERS; i++) {
+            main::ScopeRegion* target_scope = main::scope_create(root_scope);
+            main::ScopeRegion* releasing_scope = target_scope == null ? null : main::scope_create(target_scope);
+            if (target_scope == null || releasing_scope == null) {
+                if (releasing_scope != null) main::scope_release(releasing_scope);
+                if (target_scope != null) main::scope_release(target_scope);
+                continue;
+            }
+
+            interp.current_scope = target_scope;
+            Value* escaped_first = promote_to_escape(make_int(interp, (long)(i + 501)), interp);
+            Value* escaped_second = promote_to_escape(make_int(interp, (long)(i + 901)), interp);
+
+            interp.current_scope = releasing_scope;
+            Value* src = interp.alloc_value();
+            src.tag = PARTIAL_PRIM;
+            src.partial_val.func = null;
+            src.partial_val.remaining = 1;
+            src.partial_val.first_arg = escaped_first;
+            src.partial_val.second_arg = escaped_second;
+
+            PromotionContext ctx = {};
+            boundary_promotion_context_begin(interp, &ctx, PROMOTION_CTX_BUDGET_RETURN);
+            Value* destination_partial = boundary_build_destination_partial_escape(
+                src,
+                interp,
+                target_scope,
+                releasing_scope,
+                &ctx
+            );
+            boundary_promotion_context_end(interp, &ctx);
+
+            bool ok = destination_partial != null &&
+                      destination_partial.tag == PARTIAL_PRIM &&
+                      destination_partial.scope_gen == target_scope.escape_generation &&
+                      destination_partial.partial_val.first_arg == escaped_first &&
+                      destination_partial.partial_val.second_arg == escaped_second;
+            if (ok) decision_destination_reuse_ok++;
+
+            interp.current_scope = root_scope;
+            main::scope_release(releasing_scope);
+            main::scope_release(target_scope);
+        }
+        long end_ms = boundary_bench_now_ms();
+        decision_destination_reuse_ms = end_ms > start_ms ? end_ms - start_ms : 0;
+    }
+
     // Splice benchmark: focus on escape-lane concat throughput/tail consistency.
     {
         long start_ms = boundary_bench_now_ms();
@@ -1354,6 +1406,12 @@ fn void run_memory_lifetime_boundary_benchmarks(Interp* interp) {
         (long)decision_splice_ok,
         (long)decision_disallowed_ok,
         (long)decision_reuse_ok
+    );
+    io::printfn(
+        "OMNI_BENCH_SUMMARY suite=boundary_destination_routed_escape iters=%d partial_ms=%d partial_ok=%d",
+        (long)BOUNDARY_BENCH_DECISION_ITERS,
+        decision_destination_reuse_ms,
+        (long)decision_destination_reuse_ok
     );
     io::printfn(
         "OMNI_BENCH_SUMMARY suite=scope_splice_tail iters=%d escapes_per_iter=%d splice_ms=%d splice_ok=%d",

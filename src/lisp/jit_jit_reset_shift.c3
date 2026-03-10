@@ -109,12 +109,12 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     // After stack_ctx_clone that pointer is stale, causing writes to the wrong stack.
     main::StackCtx* current = main::g_current_stack_ctx;
     if (current == null) {
-        return make_error(interp, "shift outside of reset");
+        return raise_error_with_payload_names(interp, "runtime", "runtime/shift-outside-reset", "shift outside of reset");
     }
 
     ResetState* rstate = (ResetState*)interp.current_reset_state;
     if (rstate == null) {
-        return make_error(interp, "shift outside of reset (no reset state)");
+        return raise_error_with_payload_names(interp, "runtime", "runtime/shift-outside-reset", "shift outside of reset (no reset state)");
     }
 
     // Create continuation wrapping the current context
@@ -138,7 +138,7 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
 
     // Suspend the context — control returns to jit_reset_impl
     if (!suspend_with_scope_guard(current, interp.current_scope)) {
-        return make_error(interp, "stack engine: failed to register suspend scope guard");
+        return raise_error_with_payload_names(interp, "runtime", "runtime/suspend-scope-guard", "stack engine: failed to register suspend scope guard");
     }
 
     // === RESUMED HERE by (k val) via jit_apply_continuation_impl ===
@@ -203,10 +203,19 @@ fn EvalResult jit_apply_continuation_impl(Value* k_val, Value* arg, Interp* inte
     EvalResult err;
     if (!jit_continuation_validate_ctx(ctx, &err)) return err;
 
-    // Clone for multi-shot safety (original stays suspended as template)
-    main::StackCtx* target = main::stack_ctx_clone(ctx, &interp.stack_ctx_pool);
-    if (target == null) {
-        return eval_error("stack engine: failed to clone context for continuation");
+    bool asan_runtime = main::stack_runtime_asan_enabled();
+    main::StackCtx* target = null;
+    if (asan_runtime) {
+        // ASAN fiber instrumentation does not support cloned suspended stacks.
+        // Fall back to one-shot continuation resume in sanitizer builds.
+        target = ctx;
+        k_val.cont_val.ctx = null;
+    } else {
+        // Clone for multi-shot safety (original stays suspended as template)
+        target = main::stack_ctx_clone(ctx, &interp.stack_ctx_pool);
+        if (target == null) {
+            return eval_error("stack engine: failed to clone context for continuation");
+        }
     }
 
     // Pass the resume value to the shift function

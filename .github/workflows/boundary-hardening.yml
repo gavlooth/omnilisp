@@ -10,9 +10,15 @@ on:
       - "src/lisp/eval_env_copy.c3"
       - "src/lisp/jit_jit_eval_scopes.c3"
       - "src/lisp/eval_run_pipeline.c3"
+      - "src/lisp/eval_init_primitives.c3"
+      - "stdlib/stdlib.lisp"
       - "scripts/run_boundary_hardening.sh"
       - "scripts/check_boundary_facade_usage.sh"
       - "scripts/check_boundary_change_policy.sh"
+      - "scripts/check_effects_contract_policy.sh"
+      - "scripts/check_primitive_docs_parity.sh"
+      - "scripts/run_effects_contract_lint.sh"
+      - "docs/reference/11-appendix-primitives.md"
       - ".github/workflows/boundary-hardening.yml"
   workflow_dispatch:
     inputs:
@@ -82,6 +88,10 @@ jobs:
             build/boundary_hardening_normal.log
             build/boundary_hardening_asan.log
             build/boundary_hardening_summary.json
+            build/effects_contract_lint_summary.json
+            build/effects_contract_policy.log
+            build/libuv_surface_policy.log
+            build/primitive_docs_parity.log
             build/boundary_hardening_job_summary.md
 
       - name: Publish boundary summary to job summary

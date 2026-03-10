@@ -138,7 +138,7 @@ fn void? jit_compile_import(void* s, Expr* expr, Interp* interp, JitLocals* loca
 
 fn Value* jit_do_export_from(Interp* interp, Expr* expr, Env* env) {
     EvalResult r = jit_eval_export_from_impl(expr, env, interp);
-    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+    if (r.error.has_error) return raise_error_with_payload_names(interp, "runtime", "runtime/export-from-failed", r.error.message[:256]);
     return r.value;
 }
 
@@ -250,15 +250,9 @@ fn void? jit_compile_defeffect(void* s, Expr* expr, Interp* interp, JitLocals* l
 }
 
 fn void? jit_compile_fallback(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    // Build env from JIT locals into V2 (callee-saved), or load runtime env
-    bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
-
-    // Fall back to interpreter: jit_eval_fallback(expr, env, interp)
-    _jit_prepare(s);
-    _jit_pushargi(s, (long)expr, CODE_PUSHARGI_L);                   // arg0 = expr ptr
-    _jit_pushargr(s, JIT_V2, CODE_PUSHARGR_L);                       // arg1 = env (V2)
-    _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);                       // arg2 = interp
-    _jit_finishi(s, (void*)&jit_eval_fallback);
-    _jit_retval_l(s, JIT_R0);
+    (void)s;
+    (void)expr;
+    (void)interp;
+    (void)locals;
+    return JIT_COMPILE_FAILED~;
 }

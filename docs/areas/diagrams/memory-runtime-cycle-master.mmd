@@ -43,7 +43,7 @@ flowchart TB
     RETURN_COPY --> END
 
     subgraph ROOTS["Ownership Roots and Lanes"]
-        ROOT_REGION["root_region (AST only)"]
+        ROOT_REGION["AstArena (AST only)"]
         ROOT_SCOPE["root_scope (runtime values/envs)"]
         PARENT_SCOPE["parent scope (caller)"]
         ESCAPE_PARENT["parent ESCAPE lane"]

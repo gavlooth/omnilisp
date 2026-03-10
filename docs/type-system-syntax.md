@@ -42,6 +42,57 @@ Use `Lambda` to match value-level syntax:
 ^(Lambda A B) fn                 ; polymorphic
 ```
 
+### 1.2.1 Lambda Call-Boundary Checking (Design + Current Runtime Contract)
+
+Status: implemented (`L3.3`) for argument compatibility. Return-type
+compatibility is an explicit non-goal in current syntax/runtime.
+
+Supported annotation shapes in callable parameter positions:
+
+- `^Lambda` - requires a closure/function-valued argument.
+- `^(Lambda A1 ... An R)` - currently requires a closure/function-valued
+  argument (shape gate). Embedded `A1..An/R` are not yet enforced as full
+  higher-order signature contracts.
+- Standard typed-parameter forms continue to be enforced at invocation
+  boundaries:
+  - simple nominal (`^Int`, `^Point`, ...)
+  - value literal (`^(Value lit)` / `^(Val lit)`)
+  - metadata constraint (`^{'T Bound}`)
+  - unresolved type-variable forms (`^T`) with repeated-symbol unification.
+
+Call-boundary argument checking rules:
+
+1. For typed closures, fixed parameters are validated before body evaluation
+   (including variadic closures: fixed-prefix args are checked).
+2. Match relation reuses dispatch compatibility:
+   - literal exact match,
+   - exact nominal match,
+   - dispatch widening (`Int` satisfies expected `Double`),
+   - subtype compatibility,
+   - `Any` fallback.
+3. Repeated type variables unify by runtime inferred type.
+4. Metadata constraints are enforced against unified bindings.
+
+Deterministic diagnostics:
+
+- Failure code: `type/arg-mismatch` (or `type/arity` for arity-form mismatches).
+- Payload `data` includes deterministic keys:
+  - `failure`
+  - `param-index`
+  - `expected`
+  - `actual`
+  - `expected-arity`
+  - `actual-arity`
+
+Explicit non-goals (current release):
+
+- Lambda return-type annotations on closure definitions are not yet part of the
+  surface syntax; return compatibility is therefore not runtime-enforced.
+- `^(Lambda A1 ... An R)` does not yet enforce full higher-order
+  argument/return compatibility of the passed closure signature.
+- No higher-rank/higher-kinded lambda typing or type inference beyond existing
+  dispatch-style type-variable unification.
+
 ### 1.3 Abstract Type Hierarchy
 
 ```lisp
@@ -64,6 +115,12 @@ Use `Lambda` to match value-level syntax:
 ; Inheritance (parenthesized form)
 (define [type] (Point3D Point)
   (^Float z))
+```
+
+`[struct]` is accepted as an alias for `[type]`:
+
+```lisp
+(define [struct] Vec2 (^Int x) (^Int y))
 ```
 
 ### 1.5 Parametric Types
@@ -90,6 +147,91 @@ Use `Lambda` to match value-level syntax:
 (Pair "key" 42)             ; infers Pair{String, Int}
 (^(Box Int) (Box 42))       ; explicit when needed
 ```
+
+### 1.5.1 Constructor Type-Application Checking (Design Contract)
+
+Status: implemented (`L3.2`), with runtime-inference fallback when nested
+constructor args are not materialized on runtime values.
+
+This section defines how constructor annotations such as `^(Box Int)` are
+checked in evaluation.
+
+#### A. Applicability gate
+
+For an annotation `^(Ctor A1 A2 ... An)` applied to runtime value `v`:
+
+1. `v` must be an instance value with a registered constructor/type id.
+2. The instance constructor must be `Ctor` (or a constructor whose nominal
+   type parent chain includes `Ctor` when parent compatibility is explicitly
+   enabled for that check site).
+3. Runtime inferred type-arg vector for `v` must exist (current source:
+   `type-args` inference path).
+
+Failure at this stage is a constructor mismatch diagnostic.
+
+#### B. Arity matching
+
+Let:
+- expected arity = number of annotation type args (`n`)
+- actual arity = inferred runtime type-arg count on `v`
+
+Rules:
+- if `n != actual arity`, raise canonical arity mismatch diagnostic.
+- no implicit fill/defaulting for missing type args.
+- no truncation of extra runtime type args.
+
+#### C. Type-arg matching
+
+For each index `i` in `0..n-1`, compare `expected[i]` vs `actual[i]`.
+
+Match relation:
+- exact nominal type match succeeds.
+- parent/subtype match succeeds only where the check site explicitly requests
+  subtype-compatible comparison; default is invariant matching for constructor
+  parameters.
+- `Any` matches any runtime type arg.
+- nested constructor applications compare recursively using the same rules.
+
+Failure at any index raises canonical type-arg mismatch diagnostic with
+deterministic index metadata.
+
+#### D. Nested constructor behavior
+
+Nested expected args are checked recursively, for example:
+
+```lisp
+(^(Box (List Int)) v)
+```
+
+Normative recursion rules:
+- recurse constructor-by-constructor until leaf nominal args.
+- preserve the same arity/type-arg mismatch diagnostics at the first failing
+  nested position.
+- nested failure payloads include both top-level arg index and nested path
+  segments for deterministic debugging.
+
+#### E. Canonical diagnostics
+
+All constructor type-application failures MUST use canonical payloaded `raise`
+shape:
+
+```lisp
+{ 'code ... 'message ... 'domain ... 'data ... }
+```
+
+Required diagnostic codes:
+- `type/ctor-arity-mismatch`
+- `type/ctor-type-arg-mismatch`
+
+Recommended deterministic `data` fields:
+- `ctor` (symbol)
+- `expected-args` (list of type symbols/forms)
+- `actual-args` (list of inferred type symbols/forms)
+- `arg-index` (int, for arg mismatch)
+- `arg-path` (list, for nested mismatch path; top-level index first)
+
+Message templates should be deterministic and mention constructor + first
+failing index/path.
 
 ### 1.6 Type Constraints
 
@@ -197,10 +339,54 @@ When metadata is flat, the **value type** determines meaning:
 | Multiple bounds | `'T Type 'U Type` | `^{'T Number 'U Eq}` |
 | Explicit grouping | `'with {...}` | `^{'with {'T Number}}` |
 | Abstract type | `(define [abstract] ...)` | `(define [abstract] Number)` |
-| Struct type | `(define [type] ...)` | `(define [type] Point ...)` |
+| Struct type | `(define [type] ...)` (`[struct]` alias) | `(define [type] Point ...)` |
 | Parametric type | `(define [type] (Name T) ...)` | `(define [type] (Box T) ...)` |
 | Union type | `(define [union] ...)` | `(define [union] (Option T) ...)` |
 | Type alias | `(define [alias] ...)` | `(define [alias] Text String)` |
+
+---
+
+## Julia Parity Matrix (Release-Critical)
+
+Status tags:
+- `done`: implemented and documented with tests.
+- `partial`: implemented in core behavior, but semantics/tests/docs are incomplete.
+- `missing`: not implemented yet.
+
+| Area | Julia Baseline | Omni Current Behavior | Status | Evidence / Anchor |
+|------|----------------|-----------------------|--------|-------------------|
+| Method specificity ordering | More-specific method wins | Score model: `Value/Val=1000`, `exact=100`, `subtype=10`, `any=1`; highest score wins | `done` | `src/lisp/eval_dispatch_types.c3` (`method_match_score`) |
+| Ambiguity handling | Ambiguity is diagnosed deterministically | Equal best score raises `ambiguous method call` with explicit equal-specificity detail (no implicit tie-break winner) | `done` | `src/lisp/eval_dispatch_types.c3` (`find_best_method`); `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
+| Parametric type behavior | Parametric construction + constraints + substitution | Parametric constructors + `type-args` inference are implemented; method type variables unify by symbol at dispatch (`(^T a) (^T b)` requires same runtime type), with bounds checked via metadata constraints | `done` | `src/lisp/eval_type_evaluators.c3`; `src/lisp/eval_dispatch_types.c3`; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
+| Variance policy | Explicit variance model in parametric dispatch | Explicit invariant policy: type params are invariant; `+T/-T` markers are rejected with deterministic parser errors | `done` (invariant policy) | `src/lisp/parser_type_defs.c3`; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
+| Union participation in dispatch applicability | Union/variant types participate in subtype dispatch | Union variants are registered as subtype of union; dispatch uses subtype chain so variant-specialized methods outrank union-parent methods | `done` | `src/lisp/eval_type_evaluators.c3` (`eval_defunion_register_variant_type`); `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
+| Numeric promotion in dispatch | Numeric lattice/promotion influences method applicability | Dispatch-only widening: `Int` can satisfy `^Double` method params (scored below exact type matches) | `done` | `src/lisp/eval_dispatch_types.c3`; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
+| `where`-style constraints | `where` clauses on methods/types | Omni uses metadata constraints (`^{'T Number}`), not Julia `where` syntax | `done` (intentional difference) | This document §1.6; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (constraint tests) |
+| Match/union exhaustiveness | Exhaustiveness diagnostics | Runtime missing-case diagnostics are normative; compile-time exhaustiveness checker is currently an explicit non-goal | `done` (runtime policy) | `src/lisp/eval_dispatch_types.c3` (`format_match_error`); `src/lisp/tests_runtime_feature_groups.c3` |
+
+### Parity Position: Julia vs Omni
+
+| Topic | Par with Julia | Intentionally Different |
+|-------|----------------|-------------------------|
+| Multiple dispatch core | Yes (specificity-based) | No |
+| Typed method fallback behavior | Yes (fallback possible) | No |
+| Ambiguity policy | Partial (deterministic detection) | Yes: error on equal score, no implicit winner |
+| Parametric type declaration | Partial | Yes: metadata-bound constraints instead of `where` |
+| Numeric promotion in dispatch | Partial | Yes: widening is limited to dispatch (`Int` -> `Double`) and does not imply full numeric-conversion semantics |
+| Exhaustiveness checking | Partial | Yes: runtime diagnostics first, compile-time check pending |
+
+### Test Anchors
+
+- Dispatch core and constraints: `src/lisp/tests_advanced_type_effect_ffi_groups.c3`
+- Dispatch diagnostics + match diagnostics: `src/lisp/tests_runtime_feature_groups.c3`
+- Type reference behavior: `src/lisp/eval_dispatch_types.c3`, `src/lisp/eval_type_evaluators.c3`
+
+### Exhaustiveness Policy (CP-13)
+
+- Omni currently enforces **runtime** match exhaustiveness diagnostics, not compile-time rejection.
+- A match expression is accepted syntactically even if variants are missing.
+- If execution reaches an uncovered case without wildcard fallback, runtime raises a diagnostic that includes missing variants for union scrutinees.
+- Wildcard (`_`) is the canonical explicit opt-out for compile-time exhaustiveness.
 
 ---
 
@@ -234,21 +420,21 @@ When metadata is flat, the **value type** determines meaning:
 
 ---
 
-## Implementation Status (as of 2026-02-20)
+## Implementation Status (as of 2026-03-09)
 
 ### Implemented (Phases 1-7)
 - [x] TypeRegistry wired to Interp with FNV-1a hash lookup
 - [x] `infer_value_type()` maps runtime values to TypeId
-- [x] `[type]` struct definitions with typed fields and constructors
+- [x] `[type]` struct definitions with typed fields and constructors (`[struct]` alias supported)
 - [x] `[abstract]` type definitions with parent hierarchy
 - [x] `[union]` ADT definitions with variant constructors
 - [x] `[alias]` type alias definitions
-- [x] `^Type` annotation parsing (simple, compound `^(List Int)`, Val `^(Val 42)`)
+- [x] `^Type` annotation parsing (simple, compound `^(List Int)`, Value `^(Value 42)` with sugar `^(Val 42)`)
 - [x] `^{'T Number}` flat metadata dict parsing in parser
 - [x] Multiple dispatch via MethodTable (typed `define` creates dispatch entries)
-- [x] Val dispatch `^(Val N)` for value-level pattern matching
+- [x] Value dispatch `^(Value literal)` for value-level pattern matching (`Val` sugar supported; literals: int/symbol/string/bool)
 - [x] Multi-argument dispatch
-- [x] Dispatch scoring: Val=1000, exact=100, subtype=10, any=1
+- [x] Dispatch scoring: Value/Val=1000, exact=100, numeric widening(Int->Double)=50, subtype=10, any=1
 - [x] Struct field access via dot-path: `point.x`, `line.start.y`
 - [x] Struct field mutation: `(set! point.x 99)`, nested paths
 - [x] Constructor pattern matching: `(match opt (None 0) ((Some x) x))`
@@ -259,11 +445,11 @@ When metadata is flat, the **value type** determines meaning:
 - [x] Type arg inference: `(type-args (Box 42))` → `'(Int)` — inferred from field values
 - [x] Constrained dispatch: `^{'T Number}` enforced at dispatch — arg type must be subtype of bound
 - [x] Parent vs type-param disambiguation at eval time (first symbol = registered type → parent)
+- [x] Constructor type-application checking (`(^(Ctor ...) value)`) with canonical mismatch/arity diagnostics and deterministic payload fields (`ctor`, `expected-args`, `actual-args`, `arg-index`, `arg-path`)  
+  Regression anchors: `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (`run_advanced_type_parametric_ctor_annotation_tests`)
+- [x] Lambda typed call-boundary argument checking with deterministic mismatch payload fields (`failure`, `param-index`, `expected`, `actual`, `expected-arity`, `actual-arity`) and cross-coverage for dispatch/union/numeric-widening behavior  
+  Regression anchors: `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (`run_advanced_type_lambda_call_boundary_tests`)
 - [x] 100+ type/dispatch/effect tests all passing
-
-### NOT Implemented (Future)
-- [ ] Type substitution algorithm — `(Box T)` + T=Int not checked at construction
-- [ ] `Lambda` function types — annotation exists but no checking
 
 ### Implementation Notes
 

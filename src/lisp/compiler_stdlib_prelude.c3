@@ -30,8 +30,6 @@ const char[] STDLIB_PRELUDE =
 (define (any? pred lst) (let loop (xs lst) (if (null? xs) nil (if (pred (car xs)) true (loop (cdr xs))))))
 (define (every? pred lst) (let loop (xs lst) (if (null? xs) true (if (pred (car xs)) (loop (cdr xs)) nil))))
 (define (try thunk handler) (handle (thunk nil) (raise msg (handler msg))))
-(define (raise->message err) (if (and (dict? err) (has? err 'message)) (ref err 'message) err))
-(define (try-message thunk handler) (try thunk (lambda (err) (handler (raise->message err)))))
 (define (assert! condition msg) (if condition true (signal raise msg)))
 (define (assoc key alist) (let loop (xs alist) (if (null? xs) nil (if (= (car (car xs)) key) (car xs) (loop (cdr xs))))))
 (define (assoc-ref key alist) (let (pair (assoc key alist)) (if (null? pair) nil (cdr pair))))

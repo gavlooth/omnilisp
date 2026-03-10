@@ -2,6 +2,12 @@
 
 **STATUS: COMPLETE** — All phases implemented across sessions 55-60. runtime.c3, runtime_bridge.c3 deleted. Compiler emits aot:: calls. AOT binaries link against JIT infrastructure. Effects, closures, let, named-let, factorial all verified E2E.
 
+Refactor tracking note:
+- Active compiler/parser modularization tracking now lives in
+  `docs/plans/compiler-parser-refactor-plan.md`.
+- This document is a completed unification history reference, not an active
+  refactor tracker.
+
 ## Context
 
 Omni has **two completely separate value systems**:
@@ -510,7 +516,7 @@ Only delete functions confirmed dead after runtime.c3 removal:
 - `write_barrier`
 - `DestructorRegistry`
 
-**Keep**: `Pool`, `SlotTable`, `ObjectHandle`, `RegionHandle`, `allocate_in`, `dereference_as` — still used by `alloc_expr()` and `alloc_pattern()` for Expr/Pattern allocation.
+**Status update (2026-03-08)**: old-region teardown completed for active runtime paths. `Pool`, `SlotTable`, `ObjectHandle`, `RegionHandle`, `allocate_in`, and `dereference_as` are retained here only as historical migration context, not as current components.
 
 ### 5g. Consider deleting `src/ghost_index.c3`
 
@@ -577,17 +583,17 @@ If `GhostTable` in main.c3 was its only consumer, this file is also dead. Grep t
 7. Read `src/entry.c3` for the --build pipeline
 
 ### Function name verification checklist:
-- [ ] What is the JIT's single-arg apply function? (`jit_apply_value`? `jit_apply`? something else?)
-- [ ] What is the JIT's multi-arg apply function? (`jit_apply_multi_args`? different?)
-- [ ] What is the env lookup function? (`env_lookup`? `env_get`? method on Env?)
-- [ ] What is the env define function? (`env_define`? method?)
-- [ ] What is the env set function? (`env_set`? method?)
-- [ ] What is `make_primitive`'s exact signature? How does it handle user_data?
-- [ ] How does `prim_user_data` work? Is it `interp.prim_user_data` or on the Value struct?
-- [ ] What is the print function? (`print_value`? `display_value`?)
-- [ ] What is `make_cons` signature? `make_cons(interp, car, cdr)` or different?
-- [ ] What is `make_hashmap` signature?
-- [ ] What is `hashmap_set` signature?
+- [x] JIT single-arg apply: `jit_apply_value(Value* func, Value* arg, Interp* interp)` (`src/lisp/jit_jit_apply_runtime.c3`).
+- [x] JIT multi-arg apply: `jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz arg_count)` (`src/lisp/jit_jit_apply_multi_prims.c3`).
+- [x] Env lookup is a method: `Env.lookup(Env* self, SymbolId name)` (`src/lisp/value_environment.c3`).
+- [x] Env define is a method: `Env.define(Env* self, SymbolId name, Value* value)` plus boundary wrapper `env_define_with_barrier(...)` for cross-scope safety.
+- [x] Env set is a method: `Env.set(Env* self, SymbolId name, Value* value)` plus boundary wrapper `env_set_with_barrier(...)`.
+- [x] `make_primitive` signature is `make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arity)`; it initializes `prim_val.user_data = null` and callers set user data explicitly.
+- [x] `prim_user_data` flow uses both fields: canonical storage is `Value.prim_val.user_data`, and call-time scratch is `Interp.prim_user_data` (set before primitive call dispatch).
+- [x] Print API is `print_value(Value* v, SymbolTable* syms)` (`src/lisp/value_print.c3`).
+- [x] `make_cons` signature is `make_cons(Interp* interp, Value* car, Value* cdr)` (`src/lisp/value_constructors.c3`).
+- [x] `make_hashmap` signature is `make_hashmap(Interp* interp, uint capacity)` (`src/lisp/prim_collection_hashmap.c3`).
+- [x] `hashmap_set` signature is `hashmap_set(HashMap* map, Value* key, Value* value, Interp* interp)` (`src/lisp/prim_collection_hashmap.c3`).
 
 ### C3 language gotchas:
 - C3 slices are INCLUSIVE: `buffer[0..n]` = n+1 elements, use `buffer[:n]` for n elements

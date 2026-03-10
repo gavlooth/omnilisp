@@ -6,15 +6,6 @@ import main;
 // =============================================================================
 // SECTION 2.4: FRAME PUSH/POP (copy-to-parent core)
 // =============================================================================
-fn bool in_target_scope_chain(void* ptr, Interp* interp) {
-    main::ScopeRegion* s = interp.current_scope;
-    while (s != null) {
-        if (main::is_in_scope(ptr, s)) return true;
-        s = s.parent;
-    }
-    return false;
-}
-
 fn Value* copy_cons_to_parent(Value* v, Interp* interp) {
     // Iterative copy to prevent C stack overflow on long lists.
     Value* head = interp.alloc_value();
@@ -45,15 +36,9 @@ fn Value* copy_cons_to_parent(Value* v, Interp* interp) {
     return head;
 }
 
-fn bool copy_parent_closure_in_releasing_scope(Value* v, Interp* interp) @inline {
-    if (interp.releasing_scope == null) return false;
-    return v.closure_val.scope_gen == interp.releasing_scope.generation ||
-        main::scope_contains(interp.releasing_scope, (void*)v.closure_val);
-}
-
 fn bool copy_parent_should_reuse_closure(Value* v, Interp* interp) @inline {
-    if (copy_parent_closure_in_releasing_scope(v, interp)) return false;
-    return boundary_ptr_in_target_scope_chain((void*)v, interp);
+    if (boundary_closure_payload_in_scope(v, interp.releasing_scope)) return false;
+    return boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen);
 }
 
 fn void copy_parent_clone_closure_payload(Value* result, Value* src, Interp* interp) {
@@ -73,11 +58,14 @@ fn void copy_parent_clone_closure_payload(Value* result, Value* src, Interp* int
 
     if (src.closure_val.type_sig != null) {
         result.closure_val.type_sig = (MethodSignature*)interp.current_scope.alloc(MethodSignature.sizeof);
-        *result.closure_val.type_sig = *src.closure_val.type_sig;
+        if (result.closure_val.type_sig == null ||
+            !method_signature_copy_to_scope(result.closure_val.type_sig, src.closure_val.type_sig, interp.current_scope)) {
+            result.closure_val.type_sig = null;
+        }
     }
 
     if (result.closure_val.env_scope != null) {
-        result.closure_val.env_scope.refcount++;
+        main::scope_retain(result.closure_val.env_scope);
     }
 }
 
@@ -113,15 +101,28 @@ fn Value* copy_ffi_handle_to_parent(Value* v, Interp* interp) {
     return result;
 }
 
+fn Value* copy_to_parent_missing_scope_provenance_error(Interp* interp) @noinline {
+    return raise_error(interp, "boundary: copy_to_parent requires target/releasing scope provenance");
+}
+
+<*
+@require interp != null : "copy_to_parent_try_fast_reuse: null interp"
+@require interp.current_scope != null : "copy_to_parent_try_fast_reuse: null current_scope"
+@require interp.releasing_scope != null : "copy_to_parent_try_fast_reuse: null releasing_scope"
+*>
 fn bool copy_to_parent_try_fast_reuse(Value* v, Interp* interp, Value** out) {
-    if (boundary_can_reuse_value(v, interp)) {
+    if (v == null) return false;
+    BoundaryReturnClassification classification = boundary_classify_return_value(
+        v,
+        interp,
+        interp.current_scope,
+        interp.releasing_scope
+    );
+    if (classification.provenance == BOUNDARY_RETURN_REUSABLE_IN_TARGET_CHAIN) {
         g_copy_to_parent_stats.fast_reuse_hits++;
         *out = v;
         return true;
     }
-
-    // Not in releasing_scope, but also not in a known surviving scope.
-    // Copy defensively to avoid dangling pointers from transient env scopes.
     g_copy_to_parent_stats.defensive_copies++;
     return false;
 }
@@ -185,10 +186,9 @@ enum CopyParentRoute : char {
     CP_ROUTE_MODULE,
     CP_ROUTE_ERROR,
     CP_ROUTE_TIME_POINT,
-    CP_ROUTE_PASSTHROUGH,
 }
 
-fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) @inline {
+fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) {
     switch (tag) {
         case NIL:
             return CP_ROUTE_NIL;
@@ -230,11 +230,13 @@ fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) @inline {
             return CP_ROUTE_ERROR;
         case TIME_POINT:
             return CP_ROUTE_TIME_POINT;
-        default:
-            return CP_ROUTE_PASSTHROUGH;
     }
 }
 
+<*
+@require v != null : "copy_to_parent_by_route: null value"
+@require interp != null : "copy_to_parent_by_route: null interp"
+*>
 fn Value* copy_to_parent_by_route(Value* v, Interp* interp, CopyParentRoute route) {
     switch (route) {
         case CP_ROUTE_NIL:
@@ -257,7 +259,7 @@ fn Value* copy_to_parent_by_route(Value* v, Interp* interp, CopyParentRoute rout
             // Deep copy: Value wrapper may be in child scope, and first_arg/second_arg may too.
             return copy_partial_prim_to_parent(v, interp);
         case CP_ROUTE_CONTINUATION:
-            // Shallow copy: Value wrapper may be in child scope, cont_val itself is in root_region.
+            // Shallow copy: Value wrapper may be in child scope, cont_val itself is interpreter-lifetime.
             return copy_continuation_to_parent(v, interp);
         case CP_ROUTE_SHARED_WRAPPER:
             // Value allocated in root_scope; backing data is malloc'd with registered destructors.
@@ -282,15 +284,20 @@ fn Value* copy_to_parent_by_route(Value* v, Interp* interp, CopyParentRoute rout
             return make_error(interp, v.str_chars[:v.str_len]);
         case CP_ROUTE_TIME_POINT:
             return copy_time_point_to_parent(v, interp);
-        default:
-            return v;
     }
 }
 
+<*
+@require interp != null : "copy_to_parent: null interp"
+*>
 fn Value* copy_to_parent(Value* v, Interp* interp) {
     if (v == null) return null;
     g_copy_to_parent_stats.total_calls++;
     copy_to_parent_note_tag(v.tag);
+    if (interp.current_scope == null || interp.releasing_scope == null) {
+        g_copy_to_parent_stats.defensive_copies++;
+        return copy_to_parent_missing_scope_provenance_error(interp);
+    }
 
     // Scope-aware optimization: if value is NOT in the scope being released,
     // reuse only when it is already in the target scope chain.
@@ -299,6 +306,7 @@ fn Value* copy_to_parent(Value* v, Interp* interp) {
     // rewriting per-value scope_gen stamps.
     Value* fast_reuse = null;
     if (copy_to_parent_try_fast_reuse(v, interp, &fast_reuse)) return fast_reuse;
+    copy_to_parent_note_cons_spine(v);
 
     CopyParentRoute route = copy_parent_route_for_tag(v.tag);
     return copy_to_parent_by_route(v, interp, route);

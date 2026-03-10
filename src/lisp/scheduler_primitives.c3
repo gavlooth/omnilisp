@@ -1,26 +1,75 @@
 module lisp;
-
-import std::core::mem;
-import std::atomic::types;
-import std::io;
-import std::thread;
 import main;
 
 // ============================================================
 // Scheduler public primitives and run loops
 // ============================================================
-fn Value* scheduler_run_offload_sync(OffloadWork work, Interp* interp) {
-    OffloadCompletion* completion = scheduler_execute_offload(work);
-    if (completion == null) {
+fn usz scheduler_max_rounds() @inline {
+    // ASAN runs are substantially slower; keep the infinite-yield guard
+    // deterministic without burning minutes in scheduler round loops.
+    if (main::stack_runtime_asan_enabled()) return 20000;
+    return 100000;
+}
+
+fn Value* scheduler_run_offload_via_queue_work(OffloadWork* work, Interp* interp) {
+    if (!g_scheduler.thread_task_mu_ready) {
+        scheduler_release_shared(work.shared);
         return scheduler_raise(
             interp,
-            "scheduler/offload-worker-completion-alloc-failed",
-            "offload: worker completion alloc failed"
+            "scheduler/offload-task-mutex-unavailable",
+            "offload: task mutex unavailable"
         );
     }
-    Value* out = scheduler_value_from_offload_completion(completion, interp);
-    scheduler_free_offload_completion(completion);
-    return out;
+    if (!g_scheduler.thread_task_cv_ready) {
+        scheduler_release_shared(work.shared);
+        return scheduler_raise(
+            interp,
+            "scheduler/offload-task-condition-unavailable",
+            "offload: task condition variable unavailable"
+        );
+    }
+    if (!g_scheduler.uv_loop_ready || g_scheduler.uv_loop == null) {
+        scheduler_release_shared(work.shared);
+        return scheduler_raise(
+            interp,
+            "scheduler/offload-backend-unavailable",
+            "offload: uv backend unavailable"
+        );
+    }
+
+    usz task_id = scheduler_alloc_thread_task();
+    if (task_id == NO_TASK) {
+        scheduler_release_shared(work.shared);
+        return scheduler_raise(
+            interp,
+            "scheduler/offload-task-table-full",
+            "offload: task table full"
+        );
+    }
+
+    work.fiber_id = NO_FIBER;
+    work.task_id = task_id;
+    if (!scheduler_enqueue_offload(*work)) {
+        scheduler_release_shared(work.shared);
+        scheduler_drop_thread_task(task_id);
+        return scheduler_raise(
+            interp,
+            "scheduler/offload-admission-full",
+            "offload: admission cap reached"
+        );
+    }
+
+    uint generation = 0;
+    if (!scheduler_get_thread_task_generation(task_id, &generation) || generation == 0) {
+        scheduler_drop_thread_task(task_id);
+        return scheduler_raise(
+            interp,
+            "scheduler/offload-task-handle-invalid",
+            "offload: failed to create task generation"
+        );
+    }
+
+    return scheduler_task_join_impl(task_id, generation, -1, null, interp);
 }
 
 fn Value* scheduler_parse_offload_job(
@@ -54,9 +103,7 @@ fn Value* scheduler_execute_offload_job(Value* job, bool allow_internal_io_ops, 
     if (parse_err != null) return parse_err;
 
     bool in_fiber = scheduler_is_running_fiber_context();
-    if (!in_fiber) {
-        return scheduler_run_offload_sync(work, interp);
-    }
+    if (!in_fiber) return scheduler_run_offload_via_queue_work(&work, interp);
 
     usz fiber_id = g_scheduler.current_fiber_id;
     Value* begin_err = scheduler_begin_fiber_offload(&work, fiber_id, interp);
@@ -89,7 +136,7 @@ fn Value* scheduler_begin_fiber_offload(OffloadWork* work, usz fiber_id, Interp*
     work.task_id = NO_TASK;
     if (!scheduler_enqueue_offload(*work)) {
         scheduler_release_shared(work.shared);
-        return scheduler_raise(interp, "scheduler/offload-queue-full", "offload: queue is full");
+        return scheduler_raise(interp, "scheduler/offload-admission-full", "offload: admission cap reached");
     }
 
     pending.active = true;
@@ -107,280 +154,6 @@ fn Value* prim_offload(Value*[] args, Env* env, Interp* interp) {
     return scheduler_execute_offload_job(args[0], false, interp);
 }
 
-// ============================================================
-// (__raw-thread-spawn (op arg...)) -> task-id
-// (__raw-thread-join task-id) -> value
-//
-// Minimal threaded task API over sendable offload jobs.
-// ============================================================
-
-fn Value* scheduler_prepare_thread_spawn(OffloadWork* work, usz* task_id_out, Interp* interp) {
-    usz task_id = scheduler_alloc_thread_task();
-    if (task_id == NO_TASK) {
-        scheduler_release_shared(work.shared);
-        return scheduler_raise(interp, "scheduler/thread-spawn-task-table-full", "thread-spawn: task table full");
-    }
-
-    work.fiber_id = NO_FIBER;
-    work.task_id = task_id;
-    if (!scheduler_enqueue_offload(*work)) {
-        scheduler_release_shared(work.shared);
-        scheduler_drop_thread_task(task_id);
-        return scheduler_raise(
-            interp,
-            "scheduler/thread-spawn-offload-queue-full",
-            "thread-spawn: offload queue is full"
-        );
-    }
-
-    *task_id_out = task_id;
-    return null;
-}
-
-fn Value* prim_thread_spawn(Value*[] args, Env* env, Interp* interp) {
-    (void)env;
-    scheduler_init();
-    if (!g_scheduler.thread_task_mu_ready) {
-        return scheduler_raise(
-            interp,
-            "scheduler/thread-task-mutex-unavailable",
-            "thread-spawn: task mutex unavailable"
-        );
-    }
-    OffloadWork work;
-    Value* parse_err = scheduler_parse_offload_job(
-        args,
-        "scheduler/thread-spawn-expected-job-list",
-        "thread-spawn: expected job list",
-        false,
-        &work,
-        interp
-    );
-    if (parse_err != null) return parse_err;
-
-    usz task_id = NO_TASK;
-    Value* spawn_err = scheduler_prepare_thread_spawn(&work, &task_id, interp);
-    if (spawn_err != null) return spawn_err;
-
-    return make_int(interp, (long)task_id);
-}
-
-fn Value* scheduler_thread_join_impl(long raw_id, long timeout_ms, Interp* interp) {
-    usz task_id = 0;
-    Value* id_err = scheduler_validate_thread_task_id(
-        raw_id,
-        "scheduler/thread-join-invalid-task-id",
-        "thread-join: invalid task id",
-        &task_id,
-        interp
-    );
-    if (id_err != null) return id_err;
-
-    long remaining = timeout_ms;
-    while (true) {
-        OffloadCompletion* completion = scheduler_take_thread_task_completion(task_id);
-        if (completion != null) {
-            Value* out = scheduler_value_from_offload_completion(completion, interp);
-            scheduler_free_offload_completion(completion);
-            return out;
-        }
-
-        if (!scheduler_thread_task_exists(task_id)) {
-            return scheduler_raise(
-                interp,
-                "scheduler/thread-join-task-already-joined-or-invalid",
-                "thread-join: task already joined or invalid"
-            );
-        }
-
-        if (remaining == 0) {
-            return scheduler_raise(interp, "scheduler/thread-join-timeout", "thread-join: timeout");
-        }
-
-        c_usleep(1000);
-        if (remaining > 0) remaining--;
-    }
-}
-
-fn Value* scheduler_validate_thread_join_context(char[] op_name, Interp* interp) {
-    if (!g_scheduler.thread_task_mu_ready) {
-        char[96] ebuf;
-        char[] msg = io::bprintf(&ebuf, "%s: task mutex unavailable", (ZString)op_name)!!;
-        return scheduler_raise(interp, "scheduler/thread-task-mutex-unavailable", msg);
-    }
-    if (scheduler_is_running_fiber_context()) {
-        char[96] ebuf;
-        char[] msg = io::bprintf(&ebuf, "%s: not allowed inside a running fiber", (ZString)op_name)!!;
-        return scheduler_raise(interp, "scheduler/not-allowed-in-running-fiber", msg);
-    }
-    return null;
-}
-
-fn Value* scheduler_parse_thread_join_timeout_pair(Value* pair, long* task_id_out, long* timeout_ms_out, Interp* interp) {
-    Value* task_id = pair.cons_val.car;
-    Value* timeout_val = pair.cons_val.cdr;
-    if (!is_int(task_id) || !is_int(timeout_val)) {
-        return scheduler_raise(
-            interp,
-            "scheduler/thread-join-timeout-invalid-pair",
-            "thread-join-timeout: expected integer task-id and timeout-ms"
-        );
-    }
-    long timeout_ms = timeout_val.int_val;
-    if (timeout_ms < 0) {
-        return scheduler_raise(
-            interp,
-            "scheduler/thread-join-timeout-negative-timeout",
-            "thread-join-timeout: timeout-ms must be >= 0"
-        );
-    }
-    *task_id_out = task_id.int_val;
-    *timeout_ms_out = timeout_ms;
-    return null;
-}
-
-fn Value* scheduler_parse_nonnegative_int_arg(
-    Value*[] args,
-    char[] expected_code,
-    char[] expected_msg,
-    char[] invalid_code,
-    char[] invalid_msg,
-    long* raw_id_out,
-    Interp* interp
-) {
-    if (args.len < 1 || !is_int(args[0])) {
-        return scheduler_raise(interp, expected_code, expected_msg);
-    }
-    long raw_id = args[0].int_val;
-    if (raw_id < 0) return scheduler_raise(interp, invalid_code, invalid_msg);
-    *raw_id_out = raw_id;
-    return null;
-}
-
-fn Value* scheduler_true_value(Interp* interp) @inline {
-    return interp.global_env.lookup(interp.sym_true);
-}
-
-fn Value* scheduler_validate_thread_task_id(
-    long raw_id,
-    char[] invalid_code,
-    char[] invalid_msg,
-    usz* task_id_out,
-    Interp* interp
-) {
-    if (raw_id < 0) return scheduler_raise(interp, invalid_code, invalid_msg);
-    usz task_id = (usz)raw_id;
-    if (task_id >= MAX_THREAD_TASKS) return scheduler_raise(interp, invalid_code, invalid_msg);
-    *task_id_out = task_id;
-    return null;
-}
-
-fn Value* scheduler_parse_existing_fiber_arg(
-    Value*[] args,
-    char[] expected_code,
-    char[] expected_msg,
-    char[] invalid_code,
-    char[] invalid_msg,
-    usz* fiber_id_out,
-    Interp* interp
-) {
-    long raw_id = 0;
-    Value* parse_err = scheduler_parse_nonnegative_int_arg(
-        args,
-        expected_code,
-        expected_msg,
-        invalid_code,
-        invalid_msg,
-        &raw_id,
-        interp
-    );
-    if (parse_err != null) return parse_err;
-    usz fiber_id = (usz)raw_id;
-    if (fiber_id >= g_scheduler.fiber_count) {
-        return scheduler_raise(interp, invalid_code, invalid_msg);
-    }
-    *fiber_id_out = fiber_id;
-    return null;
-}
-
-fn Value* prim_thread_join(Value*[] args, Env* env, Interp* interp) {
-    (void)env;
-    scheduler_init();
-    Value* context_err = scheduler_validate_thread_join_context("thread-join", interp);
-    if (context_err != null) return context_err;
-    if (args.len < 1 || !is_int(args[0])) {
-        return scheduler_raise(
-            interp,
-            "scheduler/thread-join-expected-task-id",
-            "thread-join: expected task-id integer"
-        );
-    }
-
-    return scheduler_thread_join_impl(args[0].int_val, -1, interp);
-}
-
-fn Value* prim_thread_join_timeout(Value*[] args, Env* env, Interp* interp) {
-    (void)env;
-    scheduler_init();
-    Value* context_err = scheduler_validate_thread_join_context("thread-join-timeout", interp);
-    if (context_err != null) return context_err;
-    if (args.len < 1 || !is_cons(args[0])) {
-        return scheduler_raise(
-            interp,
-            "scheduler/thread-join-timeout-expected-pair",
-            "thread-join-timeout: expected (task-id . timeout-ms)"
-        );
-    }
-
-    long task_id = 0;
-    long timeout_ms = 0;
-    Value* parse_err = scheduler_parse_thread_join_timeout_pair(args[0], &task_id, &timeout_ms, interp);
-    if (parse_err != null) return parse_err;
-    return scheduler_thread_join_impl(task_id, timeout_ms, interp);
-}
-
-fn Value* prim_thread_cancel(Value*[] args, Env* env, Interp* interp) {
-    (void)env;
-    scheduler_init();
-    if (!g_scheduler.thread_task_mu_ready) {
-        return scheduler_raise(
-            interp,
-            "scheduler/thread-task-mutex-unavailable",
-            "thread-cancel: task mutex unavailable"
-        );
-    }
-    long raw_id = 0;
-    Value* parse_err = scheduler_parse_nonnegative_int_arg(
-        args,
-        "scheduler/thread-cancel-expected-task-id",
-        "thread-cancel: expected task-id integer",
-        "scheduler/thread-cancel-invalid-task-id",
-        "thread-cancel: invalid task id",
-        &raw_id,
-        interp
-    );
-    if (parse_err != null) return parse_err;
-    usz task_id = 0;
-    Value* id_err = scheduler_validate_thread_task_id(
-        raw_id,
-        "scheduler/thread-cancel-invalid-task-id",
-        "thread-cancel: invalid task id",
-        &task_id,
-        interp
-    );
-    if (id_err != null) return id_err;
-
-    bool already_done = false;
-    if (!scheduler_cancel_thread_task(task_id, &already_done)) {
-        return scheduler_raise(
-            interp,
-            "scheduler/thread-cancel-task-already-joined-or-invalid",
-            "thread-cancel: task already joined or invalid"
-        );
-    }
-    if (already_done) return make_nil(interp);
-    return scheduler_true_value(interp);
-}
 
 // ============================================================
 // (fiber-cancel fiber-id) → true/nil
@@ -606,7 +379,11 @@ fn bool scheduler_resume_ready_round(Interp* interp, usz target, bool stop_on_ta
 
 fn bool scheduler_wait_blocked_once() {
     if (!scheduler_has_blocked_fibers()) return false;
-    scheduler_wait_for_io_once();
+    if (!scheduler_wait_for_io_once()) {
+        if (reliable_wakeup_pending_count() == 0) return false;
+        drain_wakeups();
+        return true;
+    }
     drain_wakeups();
     return true;
 }
@@ -638,6 +415,8 @@ fn void scheduler_abort_all_work() {
         scheduler_close_pending_offload(i);
         scheduler_close_pending_sleep(i);
         scheduler_close_pending_dns(i);
+        scheduler_close_pending_tcp_connect(i);
+        scheduler_close_pending_tcp_accept(i);
         g_scheduler.fibers[i] = {};
     }
 
@@ -663,7 +442,7 @@ fn Value* scheduler_run_until(usz target, Interp* interp) {
         g_scheduler.current_fiber_id = NO_FIBER;
     }
 
-    usz max_rounds = 100000;
+    usz max_rounds = scheduler_max_rounds();
     usz round = 0;
 
     while (g_scheduler.fibers[target].state != FIBER_DONE && round < max_rounds) {
@@ -714,6 +493,8 @@ fn void scheduler_reset_if_idle() {
         scheduler_close_pending_offload(i);
         scheduler_close_pending_sleep(i);
         scheduler_close_pending_dns(i);
+        scheduler_close_pending_tcp_connect(i);
+        scheduler_close_pending_tcp_accept(i);
     }
 
     g_scheduler.fiber_count = 0;
@@ -725,6 +506,8 @@ fn void scheduler_reset_if_idle() {
         g_scheduler.pending_offloads[i] = {};
         g_scheduler.pending_sleeps[i] = {};
         g_scheduler.pending_dns[i] = {};
+        g_scheduler.pending_connects[i] = {};
+        g_scheduler.pending_accepts[i] = {};
     }
 }
 
@@ -735,9 +518,9 @@ fn Value* scheduler_run_all(Interp* interp) {
         g_scheduler.current_fiber_id = NO_FIBER;
     }
 
-    // max_rounds guards against infinite-yield loops (fibers that never block or complete).
-    // I/O servers only consume rounds when actual work arrives, so 100K is ample for tests.
-    usz max_rounds = 100000;
+    // max_rounds guards against infinite-yield loops (fibers that never block
+    // or complete).
+    usz max_rounds = scheduler_max_rounds();
     usz round = 0;
 
     while (round < max_rounds) {

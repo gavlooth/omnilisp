@@ -2,6 +2,7 @@
 ;;
 ;; Idioms demonstrated:
 ;;   match (Ok/Err) — unwrap http/get results, never null?
+;;   match [a b]    — structural required-field checks for parsed payloads
 ;;   foldr + match  — collect successful HN items, drop failures in one pass
 ;;   try            — catch raise effects with stdlib function (replaces hand-rolled handle/raise)
 ;;   or             — default values: (or ts 0) instead of (if ts ts 0)
@@ -24,6 +25,18 @@
 (define (feed/->double x)
   (* 1.0 x))
 
+;; Fetch JSON from an HTTP endpoint and normalize to FetchResult.
+(define (feed/http-json host path)
+  (match (http/get host path)
+    ((Ok body) (Ok (json-parse body)))
+    ((Err msg) (Err msg))))
+
+;; Fold helper: keep successful FetchResult items, drop errors.
+(define (feed/cons-ok result acc)
+  (match result
+    ((Ok item) (cons item acc))
+    ((Err _)   acc)))
+
 ;; ── FX rates — api.frankfurter.app ─────────────────────────────────────────
 ;;
 ;; GET /latest?from=USD&to=EUR,GBP,JPY
@@ -33,11 +46,10 @@
 
 (define (feed/fetch-fx)
   (feed/safe (lambda (x)
-    (match (http/get "api.frankfurter.app"
-                     "/latest?from=USD&to=EUR,GBP,JPY")
-      ((Ok body)
-       (let (data  (json-parse body)
-             rates (ref data "rates")
+    (match (feed/http-json "api.frankfurter.app"
+                           "/latest?from=USD&to=EUR,GBP,JPY")
+      ((Ok data)
+       (let (rates (ref data "rates")
              ts    (time))
          (Ok (map (lambda (sym)
                     (Quote sym (feed/->double (ref rates sym)) ts))
@@ -51,11 +63,10 @@
 
 (define (feed/fetch-crypto)
   (feed/safe (lambda (x)
-    (match (http/get "api.coingecko.com"
-                     "/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd")
-      ((Ok body)
-       (let (data (json-parse body)
-             ts   (time))
+    (match (feed/http-json "api.coingecko.com"
+                           "/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd")
+      ((Ok data)
+       (let (ts (time))
          (Ok (list
                (Quote "BTC" (feed/->double (ref (ref data "bitcoin")  "usd")) ts)
                (Quote "ETH" (feed/->double (ref (ref data "ethereum") "usd")) ts)))))
@@ -72,29 +83,26 @@
 
 ;; Fetch a single HN item. Returns (Ok NewsItem) or (Err reason).
 (define (feed/fetch-hn-item id)
-  (match (http/get "hacker-news.firebaseio.com"
-                   (format "/v0/item/%d.json" id))
-    ((Ok body)
-     (let (data  (json-parse body)
-           title (ref data "title")
+  (match (feed/http-json "hacker-news.firebaseio.com"
+                         (format "/v0/item/%d.json" id))
+    ((Ok data)
+     (let (title (ref data "title")
            score (ref data "score")
            ts    (ref data "time"))
-       (if (and title score)
-           (Ok (NewsItem id title score (or ts 0)))
-           (Err "missing fields"))))
+       (match [title score]
+         ([nil _] (Err "missing fields"))
+         ([_ nil] (Err "missing fields"))
+         ([t s]   (Ok (NewsItem id t s (or ts 0)))))))
     ((Err e) (Err e))))
 
 ;; foldr + match: fetch each item, collect only successes, drop failures.
 (define (feed/fetch-news)
   (feed/safe (lambda (x)
-    (match (http/get "hacker-news.firebaseio.com" "/v0/topstories.json")
-      ((Ok body)
-       (let (ids   (json-parse body)
-             top   (take hn-top-n ids)
+    (match (feed/http-json "hacker-news.firebaseio.com" "/v0/topstories.json")
+      ((Ok ids)
+       (let (top   (take hn-top-n ids)
              items (foldr (lambda (id acc)
-                            (match (feed/fetch-hn-item id)
-                              ((Ok item) (cons item acc))
-                              ((Err _)   acc)))
+                            (feed/cons-ok (feed/fetch-hn-item id) acc))
                           nil top))
          (Ok items)))
       ((Err msg) (Err msg))))))

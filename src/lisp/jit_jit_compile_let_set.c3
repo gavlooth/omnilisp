@@ -98,7 +98,7 @@ fn void jit_store_mutable_let_local(void* s, Expr* expr, Interp* interp, JitLoca
     jit_load_locals_env_or_runtime(s, interp, locals);
 
     // Call jit_env_extend_root(interp, parent_env, name, init_value) -> Env* (the box)
-    // Uses root_region so the box is persistent and shared with closures.
+    // Uses root-scope lifetime so the box is persistent and shared with closures.
     emit_call_4_rrir(s, (void*)&jit_env_extend_root, JIT_V0, JIT_V2, (long)(uint)expr.let_expr.name, JIT_V1);
 
     // Store Env* to stack slot
@@ -281,4 +281,3 @@ fn void? jit_compile_perform(void* s, Expr* expr, Interp* interp, JitLocals* loc
     if (!has_env) emit_load_env(s, JIT_V2);
     emit_call_3i(s, (void*)&jit_exec_perform, JIT_V0, (long)expr, JIT_V2);
 }
-

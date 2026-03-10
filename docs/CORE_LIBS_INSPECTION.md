@@ -105,7 +105,7 @@ Validates dicts, arrays, and values against structural schemas.
 ;; => true
 
 ;; Explain failures
-(explain 'person (dict 'name "Alice" 'age -1))
+(schema-explain 'person (dict 'name "Alice" 'age -1))
 ;; => ((age "must satisfy (> 0)"))
 
 ;; Compose schemas

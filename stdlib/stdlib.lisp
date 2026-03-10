@@ -42,9 +42,13 @@
 (define [effect] (io/async-sleep (^Int ms)))
 (define [effect] (io/offload (^Any job)))
 (define [effect] (io/thread-spawn (^Any job)))
-(define [effect] (io/thread-join (^Int task-id)))
+(define [effect] (io/thread-join (^Any thread-handle)))
 (define [effect] (io/thread-join-timeout (^Any args)))
-(define [effect] (io/thread-cancel (^Int task-id)))
+(define [effect] (io/thread-cancel (^Any thread-handle)))
+(define [effect] (io/task-spawn (^Any job)))
+(define [effect] (io/task-join (^Any task-handle)))
+(define [effect] (io/task-join-timeout (^Any args)))
+(define [effect] (io/task-cancel (^Any task-handle)))
 (define [effect] (io/tls-connect (^Any args)))
 (define [effect] (io/tls-server-wrap (^Any args)))
 (define [effect] (io/tls-read (^Any handle)))
@@ -166,17 +170,43 @@
 ;; Error Handling Convention (via algebraic effects)
 ;; =========================================================================
 
+;; canonical-error-payload?: payload has the canonical raise shape
+(define (canonical-error-payload? payload)
+  (and (dict? payload)
+       (and (has? payload 'code)
+            (and (has? payload 'domain)
+                 (and (has? payload 'message)
+                      (has? payload 'data)))))
+)
+
+;; canonicalize-error-payload: normalize any raised value to canonical payload schema
+(define (canonicalize-error-payload payload default-code default-domain default-message)
+  (if (canonical-error-payload? payload)
+      payload
+      { 'code default-code
+        'domain default-domain
+        'message (if (string? payload) payload default-message)
+        'data payload }))
+
 ;; try: run a thunk, catch errors via 'raise' effect
-(define (try thunk handler) (handle (thunk nil) (raise msg (handler msg))))
-
-;; raise->message: compatibility extractor for canonical raise payloads
-(define (raise->message err) (if (and (dict? err) (has? err 'message)) (ref err 'message) err))
-
-;; try-message: compatibility wrapper that always forwards a message string
-(define (try-message thunk handler) (try thunk (lambda (err) (handler (raise->message err)))))
+(define (try thunk handler)
+  (handle (thunk nil)
+          (raise msg
+                 (handler (canonicalize-error-payload
+                            msg
+                            'runtime/legacy-raise-payload
+                            'runtime
+                            "raise: non-canonical payload")))))
 
 ;; assert!: check condition, raise if false
-(define (assert! condition msg) (if condition true (signal raise msg)))
+(define (assert! condition msg)
+  (if condition
+      true
+      (signal raise
+              { 'code 'stdlib/assert-failed
+                'domain 'stdlib
+                'message (if (string? msg) msg "assert!: condition failed")
+                'data msg })))
 
 ;; =========================================================================
 ;; Association List Helpers
@@ -272,39 +302,139 @@
 (define fs-readdir (lambda (path) (signal io/fs-readdir path)))
 (define fs-rename (lambda (src dst) (signal io/fs-rename (cons src dst))))
 (define fs-unlink (lambda (path) (signal io/fs-unlink path)))
-(define tcp-connect (lambda (host port) (signal io/tcp-connect (cons host port))))
-(define tcp-listen (lambda (host port .. rest) (signal io/tcp-listen (cons host (cons port rest)))))
-(define tcp-accept (lambda (listener) (signal io/tcp-accept listener)))
-(define tcp-read (lambda (handle) (signal io/tcp-read handle)))
-(define tcp-write (lambda (handle data) (signal io/tcp-write (cons handle data))))
-(define tcp-close (lambda (handle) (signal io/tcp-close handle)))
-(define udp-socket (lambda () (signal io/udp-socket nil)))
-(define udp-bind (lambda (handle host port) (signal io/udp-bind (cons handle (cons host (cons port nil))))))
-(define udp-send (lambda (handle host port data) (signal io/udp-send (cons handle (cons host (cons port (cons data nil)))))))
-(define udp-recv (lambda (handle) (signal io/udp-recv handle)))
-(define udp-close (lambda (handle) (signal io/udp-close handle)))
-(define pipe-connect (lambda (path) (signal io/pipe-connect path)))
-(define pipe-listen (lambda (path) (signal io/pipe-listen path)))
-(define process-spawn (lambda (cmd args env) (signal io/process-spawn (cons cmd (cons args (cons env nil))))))
-(define process-wait (lambda (handle) (signal io/process-wait handle)))
-(define process-kill (lambda (handle sig) (signal io/process-kill (cons handle (cons sig nil)))))
-(define signal-handle (lambda (sig callback) (signal io/signal-handle (cons sig (cons callback nil)))))
-(define signal-unhandle (lambda (handle) (signal io/signal-unhandle handle)))
-(define dns-resolve (lambda (host) (signal io/dns-resolve host)))
-(define async-sleep (lambda (ms) (signal io/async-sleep ms)))
-(define offload (lambda (op .. args) (signal io/offload (cons op args))))
-(define thread-spawn (lambda (op .. args) (signal io/thread-spawn (cons op args))))
-(define thread-join (lambda (task-id) (signal io/thread-join task-id)))
-(define thread-join-timeout (lambda (task-id timeout-ms) (signal io/thread-join-timeout (cons task-id timeout-ms))))
-(define thread-cancel (lambda (task-id) (signal io/thread-cancel task-id)))
-(define tls-connect (lambda (tcp-handle hostname .. rest) (signal io/tls-connect (cons tcp-handle (cons hostname rest)))))
-(define tls-server-wrap (lambda (tcp-handle cert-pem-path key-pem-path) (signal io/tls-server-wrap (cons tcp-handle (cons cert-pem-path (cons key-pem-path nil))))))
-(define tls-read (lambda (handle) (signal io/tls-read handle)))
-(define tls-write (lambda (handle data) (signal io/tls-write (cons handle data))))
-(define tls-close (lambda (handle) (signal io/tls-close handle)))
+(define (tcp-connect (^String host) (^Int port)) (signal io/tcp-connect (cons host port)))
+;; Keep untyped fallback so invalid args still flow through io/tcp-connect canonical payload errors.
+(define (tcp-connect host port) (signal io/tcp-connect (cons host port)))
+(define (tcp-listen (^String host) (^Int port) .. rest) (signal io/tcp-listen (cons host (cons port rest))))
+;; Keep untyped fallback so invalid args still flow through io/tcp-listen canonical payload errors.
+(define (tcp-listen host port .. rest) (signal io/tcp-listen (cons host (cons port rest))))
+(define (tcp-accept listener) (signal io/tcp-accept listener))
+(define (tcp-read handle) (signal io/tcp-read handle))
+(define (tcp-write handle data) (signal io/tcp-write (cons handle data)))
+(define (tcp-close handle) (signal io/tcp-close handle))
+(define (udp-socket) (signal io/udp-socket nil))
+(define (udp-bind handle (^String host) (^Int port)) (signal io/udp-bind (cons handle (cons host (cons port nil)))))
+(define (udp-send handle (^String host) (^Int port) data) (signal io/udp-send (cons handle (cons host (cons port (cons data nil))))))
+(define (udp-recv handle) (signal io/udp-recv handle))
+(define (udp-close handle) (signal io/udp-close handle))
+(define (pipe-connect (^String path)) (signal io/pipe-connect path))
+(define (pipe-listen (^String path)) (signal io/pipe-listen path))
+(define (process-spawn (^String cmd) args env) (signal io/process-spawn (cons cmd (cons args (cons env nil)))))
+(define (process-wait handle) (signal io/process-wait handle))
+(define (process-kill handle (^Int sig)) (signal io/process-kill (cons handle (cons sig nil))))
+(define (signal-handle (^Int sig) callback) (signal io/signal-handle (cons sig (cons callback nil))))
+(define (signal-unhandle handle) (signal io/signal-unhandle handle))
+(define (dns-resolve (^String host)) (signal io/dns-resolve host))
+(define (async-sleep (^Int ms)) (signal io/async-sleep ms))
+(define (offload (^Symbol op) .. args) (signal io/offload (cons op args)))
+;; Keep untyped fallback so invalid op payloads still flow through io/offload canonical payload errors.
+(define (offload op .. args) (signal io/offload (cons op args)))
+(define (thread-spawn (^Symbol op) .. args) (signal io/thread-spawn (cons op args)))
+;; Keep untyped fallback so invalid op payloads still flow through io/thread-spawn canonical payload errors.
+(define (thread-spawn op .. args) (signal io/thread-spawn (cons op args)))
+(define (thread-join thread-handle) (signal io/thread-join thread-handle))
+(define (thread-join-timeout thread-handle (^Int timeout-ms)) (signal io/thread-join-timeout (cons thread-handle timeout-ms)))
+(define (thread-cancel thread-handle) (signal io/thread-cancel thread-handle))
+(define (task-spawn (^Symbol op) .. args) (signal io/task-spawn (cons op args)))
+;; Keep untyped fallback so invalid op payloads still flow through io/task-spawn canonical payload errors.
+(define (task-spawn op .. args) (signal io/task-spawn (cons op args)))
+(define (task-join task-handle) (signal io/task-join task-handle))
+(define (task-join-timeout task-handle (^Int timeout-ms)) (signal io/task-join-timeout (cons task-handle timeout-ms)))
+(define (task-cancel task-handle) (signal io/task-cancel task-handle))
+(define (tls-connect tcp-handle (^String hostname) .. rest) (signal io/tls-connect (cons tcp-handle (cons hostname rest))))
+;; Keep untyped fallback so invalid args still flow through io/tls-connect canonical payload errors.
+(define (tls-connect tcp-handle hostname .. rest) (signal io/tls-connect (cons tcp-handle (cons hostname rest))))
+(define (tls-server-wrap tcp-handle (^String cert-pem-path) (^String key-pem-path)) (signal io/tls-server-wrap (cons tcp-handle (cons cert-pem-path (cons key-pem-path nil)))))
+(define (tls-read handle) (signal io/tls-read handle))
+(define (tls-write handle data) (signal io/tls-write (cons handle data)))
+(define (tls-close handle) (signal io/tls-close handle))
 (define [effect] (io/http-get (^String url)))
 (define [effect] (io/http-request (^Any args)))
-(define http-get (lambda (url) (signal io/http-get url)))
+(define (http-get (^String url)) (signal io/http-get url))
+(define (http-request (^String method) (^String url) .. rest) (signal io/http-request (cons method (cons url rest))))
+;; Keep untyped fallback so invalid args still flow through io/http-request canonical payload errors.
+(define (http-request method url .. rest) (signal io/http-request (cons method (cons url rest))))
+
+;; =========================================================================
+;; Thin dispatch convenience helpers (composition only, no runtime duplication)
+;; =========================================================================
+(define (job-spawn kind op .. args)
+  (if (= kind 'task)
+      (apply task-spawn (cons op args))
+      (if (= kind 'thread)
+          (apply thread-spawn (cons op args))
+          (signal raise
+                  { 'code 'io/job-spawn-kind-invalid
+                    'domain 'io
+                    'message "job-spawn: kind must be 'task or 'thread"
+                    'data {'kind kind} }))))
+(define (job-join ^(Value task) handle) (task-join handle))
+(define (job-join ^(Value thread) handle) (thread-join handle))
+(define (job-join-timeout ^(Value task) handle (^Int timeout-ms)) (task-join-timeout handle timeout-ms))
+(define (job-join-timeout ^(Value thread) handle (^Int timeout-ms)) (thread-join-timeout handle timeout-ms))
+(define (job-cancel ^(Value task) handle) (task-cancel handle))
+(define (job-cancel ^(Value thread) handle) (thread-cancel handle))
+
+(define (request (^String url)) (http-get url))
+(define (request (^String method) (^String url) (^String body) (^String headers)) (http-request method url body headers))
+(define (request method url body headers) (http-request method url body headers))
+
+;; format helpers stay thin: dispatch only selects existing primitive wrappers.
+(define [macro] parse
+  ([fmt src]
+    (let (f fmt s src)
+      (if (= f 'json)
+          (json-parse s)
+          (if (= f 'toml)
+              (toml-parse s)
+              (if (= f 'csv)
+                  (csv-parse s)
+                  (signal raise
+                          { 'code 'data/parse-format-unsupported
+                            'domain 'data
+                            'message "parse: unsupported format (supported: 'json, 'toml, 'csv)"
+                            'data {'format f} }))))))
+  ([fmt src opts]
+    (let (f fmt s src o opts)
+      (if (= f 'json)
+          (json-parse s o)
+          (if (= f 'toml)
+              (toml-parse s o)
+              (if (= f 'csv)
+                  (csv-parse s o)
+                  (signal raise
+                          { 'code 'data/parse-format-unsupported
+                            'domain 'data
+                            'message "parse: unsupported format (supported: 'json, 'toml, 'csv)"
+                            'data {'format f} })))))))
+
+(define [macro] emit
+  ([fmt value]
+    (let (f fmt v value)
+      (if (= f 'json)
+          (json-emit v)
+          (if (= f 'json-pretty)
+              (json-emit-pretty v)
+              (if (= f 'csv)
+                  (csv-emit v)
+                  (signal raise
+                          { 'code 'data/emit-format-unsupported
+                            'domain 'data
+                            'message "emit: unsupported format (supported: 'json, 'json-pretty, 'csv)"
+                            'data {'format f} }))))))
+  ([fmt value opts]
+    (let (f fmt v value o opts)
+      (if (= f 'json)
+          (json-emit v o)
+          (if (= f 'json-pretty)
+              (json-emit-pretty v o)
+              (if (= f 'csv)
+                  (csv-emit v o)
+                  (signal raise
+                          { 'code 'data/emit-format-unsupported
+                            'domain 'data
+                            'message "emit: unsupported format (supported: 'json, 'json-pretty, 'csv)"
+                            'data {'format f} })))))))
 
 ;; =========================================================================
 ;; Handler Composition

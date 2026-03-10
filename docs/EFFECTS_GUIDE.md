@@ -181,11 +181,14 @@ so the thunk keeps running. After the thunk finishes, the buffer is returned.
 ### File I/O effects
 
 ```lisp
-(read-file "data.txt")        ;; signals io/read-file
-(write-file "out.txt" "data") ;; signals io/write-file
-(file-exists? "data.txt")     ;; signals io/file-exists?
-(read-lines "data.txt")       ;; signals io/read-lines
+(await (spawn (lambda () (read-file "data.txt"))))        ;; signals io/read-file
+(await (spawn (lambda () (write-file "out.txt" "data")))) ;; signals io/write-file
+(await (spawn (lambda () (file-exists? "data.txt"))))     ;; signals io/file-exists?
+(await (spawn (lambda () (read-lines "data.txt"))))       ;; signals io/read-lines
 ```
+
+These file effects require running fiber context; non-fiber calls raise
+deterministic `io/*-fiber-required` errors.
 
 These can all be intercepted for testing:
 
@@ -218,8 +221,8 @@ string. `(signal my/ask "name?")` works.
 (define [effect] (scale (^Number factor)))
 ```
 
-Effects don't *need* to be declared — undeclared effects work fine, they just
-skip type checking:
+Effect declarations are optional by language design. Undeclared effects are
+canonical and skip declaration-based type checking:
 
 ```lisp
 (handle (signal my-tag 42) (my-tag x (resolve (+ x 1))))

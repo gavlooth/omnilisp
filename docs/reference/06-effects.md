@@ -64,7 +64,19 @@ If `resolve` is not called, the handler's return value replaces the entire
 (signal my/ask 42)         ;; ERROR: 42 is not a String
 ```
 
-Effects don't need to be declared — undeclared effects skip type checking.
+Effect declarations are optional by language design — undeclared effects are
+canonical and skip declaration-based type checking.
+
+### I/O Effect Naming Policy
+
+For runtime I/O surfaces, Omni uses operation-level effect tags (`io/tcp-connect`,
+`io/tcp-read`, `io/tcp-close`, etc.) as the canonical contract. This is
+intentional: handlers can intercept exactly one operation, and the no-handler
+fast path maps each tag directly to one raw primitive.
+
+Higher-level helper APIs may combine operations for ergonomics, but they should
+be thin wrappers that signal these canonical operation tags rather than
+introducing alternate runtime effect namespaces.
 
 ### Practical Patterns
 

@@ -49,7 +49,7 @@ flowchart TB
     end
 
     subgraph AstLifetime["AST Lifetime (separate ownership lane)"]
-        ROOT_REGION["root_region (Expr/Pattern only)"]
+        ROOT_REGION["AstArena (Expr/Pattern only)"]
     end
 
     EVAL --> BAPI
@@ -112,10 +112,11 @@ sequenceDiagram
     else result already outside releasing scope
         Boundary->>Scope: scope_release(child_scope)
         Boundary-->>Caller: reuse result as-is
-    else fallback
+    else explicit legacy boundary traversal (pending deletion)
         Boundary->>Promote: boundary_copy_from_releasing_scope(result)
         Boundary->>Scope: scope_release(child_scope)
         Boundary-->>Caller: copied result
+    note over Boundary: committed-root graph audit is debug-only and gated by OMNI_BOUNDARY_GRAPH_AUDIT, OMNI_BOUNDARY_GRAPH_AUDIT_RATE, OMNI_BOUNDARY_GRAPH_AUDIT_MAX_ROOTS
     end
 ```
 

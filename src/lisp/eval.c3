@@ -22,7 +22,10 @@ const uint COPY_SITE_JIT_EVAL_SET = 12;
 const uint COPY_SITE_JIT_EVAL_DEFINE = 13;
 const uint COPY_SITE_JIT_ENV_EXTEND_ROOT = 14;
 const uint COPY_SITE_COUNT = 15;
-const usz PROMOTION_CTX_BUDGET_RETURN = 4096;
+// Return-boundary promotion budget:
+// raised to reduce pre-aborted finalize contexts on deep unwind/large graph
+// returns while preserving explicit boundary provenance contracts.
+const usz PROMOTION_CTX_BUDGET_RETURN = 16384;
 const usz PROMOTION_CTX_BUDGET_TCO = 2048;
 
 struct CopyToParentStats {
@@ -38,6 +41,9 @@ struct CopyToParentStats {
     usz cons_calls;
     usz closure_calls;
     usz other_calls;
+    usz cons_spine_copy_samples;
+    usz cons_spine_copy_total_len;
+    usz cons_spine_copy_peak_len;
 
     usz[COPY_SITE_COUNT] site_calls;
 }
@@ -62,6 +68,26 @@ fn void copy_to_parent_note_tag(ValueTag tag) @inline {
             g_copy_to_parent_stats.closure_calls++;
         default:
             g_copy_to_parent_stats.other_calls++;
+    }
+}
+
+fn usz copy_to_parent_cons_spine_len(Value* v) @inline {
+    usz len = 0;
+    Value* cur = v;
+    while (cur != null && cur.tag == CONS) {
+        len++;
+        cur = cur.cons_val.cdr;
+    }
+    return len;
+}
+
+fn void copy_to_parent_note_cons_spine(Value* v) @inline {
+    if (v == null || v.tag != CONS) return;
+    usz len = copy_to_parent_cons_spine_len(v);
+    g_copy_to_parent_stats.cons_spine_copy_samples++;
+    g_copy_to_parent_stats.cons_spine_copy_total_len += len;
+    if (len > g_copy_to_parent_stats.cons_spine_copy_peak_len) {
+        g_copy_to_parent_stats.cons_spine_copy_peak_len = len;
     }
 }
 
@@ -98,6 +124,10 @@ fn void print_memory_promotion_stats() {
         (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_EVAL_DEFINE]);
     io::printfn("copy_to_parent by site: jit_env_extend_root=%d",
         (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_ENV_EXTEND_ROOT]);
+    io::printfn("copy_to_parent cons-spine copied: samples=%d total_len=%d peak_len=%d",
+        (long)g_copy_to_parent_stats.cons_spine_copy_samples,
+        (long)g_copy_to_parent_stats.cons_spine_copy_total_len,
+        (long)g_copy_to_parent_stats.cons_spine_copy_peak_len);
 }
 
 fn void reset_memory_promotion_stats() {
@@ -111,6 +141,10 @@ fn usz copy_to_parent_total_calls() @inline {
 fn usz copy_to_parent_site_calls(uint site) @inline {
     if (site >= COPY_SITE_COUNT) return 0;
     return g_copy_to_parent_stats.site_calls[(usz)site];
+}
+
+fn CopyToParentStats copy_to_parent_stats_snapshot() @inline {
+    return g_copy_to_parent_stats;
 }
 
 // =============================================================================

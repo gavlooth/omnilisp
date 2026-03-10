@@ -31,10 +31,14 @@ Fetches live FX rates, crypto prices, and news; serves a JSON API.
 ## Feature coverage checklist
 
 ### Language idioms
-- [x] `|>` pipe                         — request pipeline in handle-client (server.omni)
+- [x] `|>` pipe                         — request + cache projection pipelines (server.omni, cache.omni)
 - [x] `_` placeholder                   — `(+ 10 _)`, `(> _ 2)` create lambdas (portfolio.omni, smoke_test)
 - [x] `match (Ok/Err)`                  — FetchResult throughout, never null? (all files)
 - [x] `match [h .. t]`                  — list destructuring in decode-request (server.omni, cache.omni)
+- [x] `match [a b]`                     — structural required-field checks for payloads (feed.omni)
+- [x] `match [method path]`             — declarative route dispatch patterns (server.omni)
+- [x] `match (nil/...)`                 — request-body, dynamic-route, and optional-handle/path branching (server.omni, logging.omni)
+- [x] `match` literal branches          — status/exit-code classification without guard conditionals (http.omni, logging.omni)
 - [x] `sort-by`                         — curried comparator, replaces insertion sort (cache.omni, portfolio.omni)
 - [x] `partition`                       — split gainers/losers in one pass (portfolio.omni)
 - [x] `for-each`                        — side-effect iteration for cache stores (server.omni)
@@ -43,11 +47,9 @@ Fetches live FX rates, crypto prices, and news; serves a JSON API.
 - [x] `foldr` + `match`                 — collect Ok results, drop Err in one pass (portfolio.omni, feed.omni)
 - [x] `foldl` + `[a b]` destructuring   — accumulate totals with array pair (portfolio.omni)
 - [x] `or` for defaults                 — `(or ts 0)` instead of `(if ts ts 0)` (feed.omni)
-- [x] `cond`                            — routing, validation, truthiness checks (server.omni)
 - [x] `compose`                         — `(compose (= _ sym) 'symbol)` predicate chains (cache.omni)
 - [x] `partial`                         — bind socket in handle-client (server.omni)
 - [x] `set!`                            — mutable log handle state (logging.omni)
-- [x] `when`                            — conditional side-effect (logging.omni)
 - [x] `unless`                          — guard clause in validate-monotonic (events.omni)
 - [x] `assert!`                         — validate timestamp monotonicity (events.omni)
 - [x] `apply`                           — apply rule to arg list (rules.omni)
@@ -140,12 +142,12 @@ Fetches live FX rates, crypto prices, and news; serves a JSON API.
 
 ---
 
-## Remaining
+## Completed runtime closeout
 
-- [ ] **Live integration test** — run server, curl /health, verify 200 before first poll completes
-- [ ] **UDP/pipe I/O** — `udp-socket`/`udp-send`/`udp-recv`, `pipe-connect`/`pipe-listen` (deferred: not needed for current features)
-- [ ] **`signal-handle` / `signal-unhandle`** — OS signal handlers (deferred: needs process lifecycle)
-- [ ] **`process-kill`** — kill child process (deferred: needs background worker pattern)
+- [x] **Live integration test** — run server, curl /health, verify 200 before first poll completes (2026-03-09: `main.omni` + `server/start` verified; `/health` returned HTTP 200 while process remained alive)
+- [x] **UDP/pipe I/O** — `udp-socket`/`udp-send`/`udp-recv`, `pipe-connect`/`pipe-listen` (2026-03-09: added passing smoke coverage in `smoke_test.omni`: `pipe io: OK`, `udp io: OK`)
+- [x] **`signal-handle` / `signal-unhandle`** — OS signal handlers (2026-03-09: added passing smoke coverage in `smoke_test.omni`: `signal io: OK`)
+- [x] **`process-kill`** — kill child process (2026-03-09: added passing smoke coverage in `smoke_test.omni`: `process-kill: OK`)
 
 ---
 

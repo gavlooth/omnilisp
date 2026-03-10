@@ -145,6 +145,7 @@ fn void register_regular_primitives_collections(Interp* interp) {
         { "read-string", &prim_read_string, 1 }, { "string->symbol", &prim_string_to_symbol, 1 },
         { "symbol->string", &prim_symbol_to_string, 1 },
         // Type system
+        { "^", &prim_ctor_type_apply, 2 },
         { "type-of", &prim_type_of, 1 },
         { "is?", &prim_is_type, 2 },
         { "instance?", &prim_is_instance, 1 }, { "type-args", &prim_type_args, 1 },
@@ -227,6 +228,10 @@ fn void register_regular_primitives_io_and_deduce(Interp* interp) {
         { "__raw-thread-join", &prim_thread_join, 1 },
         { "__raw-thread-join-timeout", &prim_thread_join_timeout, 1 },
         { "__raw-thread-cancel", &prim_thread_cancel, 1 },
+        { "__raw-task-spawn", &prim_task_spawn, 1 },
+        { "__raw-task-join", &prim_task_join, 1 },
+        { "__raw-task-join-timeout", &prim_task_join_timeout, 1 },
+        { "__raw-task-cancel", &prim_task_cancel, 1 },
         { "fiber-cancel", &prim_fiber_cancel, 1 },
         // TLS
         { "__raw-tls-connect", &prim_tls_connect, -1 },
@@ -237,17 +242,10 @@ fn void register_regular_primitives_io_and_deduce(Interp* interp) {
         // Schema validation
         { "validate", &prim_validate, 2 },
         { "explain", &prim_explain, 2 },
+        { "schema-explain", &prim_schema_explain, 2 },
         // Deduce — unified dispatch
         { "deduce", &prim_deduce, -1 },
         { "__define-relation", &prim_define_relation, 1 },
-        // Legacy deduce primitives (kept for backward compat, will remove)
-        { "deduce-open", &prim_deduce_open, 1 },
-        { "fact!", &prim_assert_fact, -1 },
-        { "retract!", &prim_retract_fact, -1 },
-        { "deduce-scan", &prim_deduce_scan, 1 },
-        { "deduce-query", &prim_deduce_query, 2 },
-        { "deduce-count", &prim_deduce_count, 1 },
-        { "deduce-match", &prim_deduce_match, 2 },
         // Scheduler
         { "spawn", &prim_spawn, 1 },
         { "await", &prim_await, 1 },
@@ -271,7 +269,7 @@ fn void register_regular_primitives(Interp* interp) {
 }
 
 fn void register_effect_fast_paths(Interp* interp) {
-    const FAST_PATH_COUNT = 48;
+    const FAST_PATH_COUNT = 52;
     FastPathReg[FAST_PATH_COUNT] fast_paths = {
         { "io/print",      "__raw-print" },
         { "io/println",     "__raw-println" },
@@ -314,6 +312,10 @@ fn void register_effect_fast_paths(Interp* interp) {
         { "io/thread-join", "__raw-thread-join" },
         { "io/thread-join-timeout", "__raw-thread-join-timeout" },
         { "io/thread-cancel", "__raw-thread-cancel" },
+        { "io/task-spawn","__raw-task-spawn" },
+        { "io/task-join", "__raw-task-join" },
+        { "io/task-join-timeout", "__raw-task-join-timeout" },
+        { "io/task-cancel", "__raw-task-cancel" },
         { "io/tls-connect", "__raw-tls-connect" },
         { "io/tls-server-wrap", "__raw-tls-server-wrap" },
         { "io/tls-read",    "__raw-tls-read" },
@@ -346,7 +348,7 @@ fn void register_primitives(Interp* interp) {
 
 fn void register_fast_path(Interp* interp, char[] effect_name, char[] raw_prim_name) {
     Value* prim = interp.global_env.lookup(interp.symbols.intern(raw_prim_name));
-    if (prim != null && interp.fast_path_count < 48) {
+    if (prim != null && interp.fast_path_count < interp.fast_path_table.len) {
         interp.fast_path_table[interp.fast_path_count].tag = interp.symbols.intern(effect_name);
         interp.fast_path_table[interp.fast_path_count].prim = prim;
         interp.fast_path_count++;

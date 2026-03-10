@@ -10,10 +10,11 @@
 ;; Delegates to the http-get primitive with a full URL. Network errors raised
 ;; by http-get are caught and converted to (Err msg).
 (define (http/get host path)
-  (handle
-    (let (resp (http-get (format "https://%s%s" host path))
-          code ('status resp))
-      (if (= code 200)
-          (Ok ('body resp))
-          (Err (format "HTTP %d" code))))
-    (raise msg (Err msg))))
+  (try
+    (lambda (x)
+      (let (resp (http-get (format "https://%s%s" host path)))
+        (match ('status resp)
+          (200  (Ok ('body resp)))
+          (code (Err (format "HTTP %d" code))))))
+    (lambda (msg)
+      (Err msg))))

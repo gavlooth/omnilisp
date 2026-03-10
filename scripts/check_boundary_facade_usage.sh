@@ -4,6 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 policy_file="${OMNI_BOUNDARY_FACADE_POLICY_FILE:-scripts/boundary_facade_policy.txt}"
+search_root="${OMNI_BOUNDARY_FACADE_SEARCH_ROOT:-src/lisp}"
+search_glob="${OMNI_BOUNDARY_FACADE_SEARCH_GLOB:-*.c3}"
 
 declare -a policy_ignore_globs=()
 declare -A policy_allow=()
@@ -79,17 +81,22 @@ check_symbol_usage() {
       continue
     fi
     violations_ref+=("$line")
-  done < <(rg -n --no-heading "$pattern" src/lisp || true)
+  done < <(rg -n --no-heading -g "$search_glob" "$pattern" "$search_root" || true)
 }
 
 main() {
+  if [[ ! -d "$search_root" ]]; then
+    echo "FAIL: boundary facade search root missing: $search_root"
+    exit 1
+  fi
+
   load_policy
 
   local -a legacy_symbols=(
     copy_to_parent
     promote_to_escape
     promote_to_root
-    copy_env_to_scope_inner
+    copy_env_to_scope_checked
     scope_splice_escapes
   )
   local -a violations=()
@@ -98,17 +105,26 @@ main() {
     check_symbol_usage "$symbol" violations
   done
 
-  if ((${#violations[@]} == 0)); then
+  local -a violations_sorted=()
+  if ((${#violations[@]} > 0)); then
+    mapfile -t violations_sorted < <(printf '%s\n' "${violations[@]}" | LC_ALL=C sort -u)
+  fi
+
+  if ((${#violations_sorted[@]} == 0)); then
     echo "OK: boundary facade guard found no disallowed legacy boundary callsites."
     echo "Policy file: $policy_file"
+    echo "Search root: $search_root"
+    echo "Search glob: $search_glob"
     return 0
   fi
 
   echo "FAIL: disallowed direct legacy boundary callsites detected."
   echo "Use boundary_* facade entry points instead."
   echo "Policy file: $policy_file"
+  echo "Search root: $search_root"
+  echo "Search glob: $search_glob"
   echo ""
-  for v in "${violations[@]}"; do
+  for v in "${violations_sorted[@]}"; do
     echo "  $v"
   done
   return 1

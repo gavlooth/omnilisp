@@ -100,21 +100,29 @@ Define multiple implementations with typed parameters. The best match wins:
 (add2 "hello" " world")   ;; => "hello world"
 ```
 
-### Val Dispatch (Value-Level Matching)
+### Value Dispatch (Value-Level Matching)
 
 ```lisp
-(define (fib (^(Val 0) n)) 0)
-(define (fib (^(Val 1) n)) 1)
+(define (fib (^(Value 0) n)) 0)
+(define (fib (^(Value 1) n)) 1)
 (define (fib (^Int n)) (+ (fib (- n 1)) (fib (- n 2))))
+
+(define (udp (^(Value open) cmd)) (io/udp-open))
+(define (udp (^(Value bind) cmd) h host port) (io/udp-bind h host port))
+(define (udp (^(Value send) cmd) h host port payload) (io/udp-send h host port payload))
 
 (fib 10)    ;; => 55
 ```
+
+`Value` is the canonical constructor for value-literal dispatch. `Val` remains sugar.
+Supported literals in this position are integers, symbols, strings, and booleans (`true`/`false` symbols).
+Command-style facades should delegate to canonical `io/udp-*` operations. Module packaging for façade surfaces is deferred; core surface remains canonical `io/*`.
 
 ### Dispatch Scoring
 
 | Match | Score | Example |
 |-------|-------|---------|
-| Val literal | 1000 | `^(Val 42)` matches value 42 |
+| Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)` (or sugar `^(Val ...)`) |
 | Exact type | 100 | `^Int` matches INT value |
 | Subtype | 10 | `^Shape` matches Circle |
 | Any (untyped) | 1 | Untyped param matches anything |

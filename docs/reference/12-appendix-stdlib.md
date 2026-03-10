@@ -66,6 +66,8 @@ Force an iterator with constructors: `(list it)` or `(array it)`.
 | `compose` | `(compose f g)` | `(lambda (x) (f (g x)))` |
 | `partial` | `(partial f args...)` | Partial application |
 | `default` | `(default v fallback)` | Return v if non-nil, else fallback |
+| `parse` | `(parse format src [opts])` | Thin dispatched format parse helper (`'json`, `'toml`, `'csv`) |
+| `emit` | `(emit format value [opts])` | Thin dispatched format emit helper (`'json`, `'json-pretty`, `'csv`) |
 
 ### Association Lists
 
@@ -106,12 +108,14 @@ Force an iterator with constructors: `(list it)` or `(array it)`.
 These redefine I/O to go through effects (fast path when no handler):
 
 `print`, `println`, `display`, `newline`, `read-file`, `write-file`,
-`file-exists?`, `read-lines`, `tcp-connect`, `tcp-read`, `tcp-write`,
-`tcp-close`, `udp-socket`, `udp-bind`, `udp-send`, `udp-recv`, `udp-close`,
+`file-exists?`, `read-lines`, `tcp-connect`, `tcp-listen`, `tcp-accept`,
+`tcp-read`, `tcp-write`, `tcp-close`, `udp-socket`, `udp-bind`, `udp-send`, `udp-recv`, `udp-close`,
 `pipe-connect`, `pipe-listen`, `process-spawn`, `process-wait`,
-`process-kill`, `signal-handle`, `signal-unhandle`, `dns-resolve`, `async-sleep`, `tls-connect`, `tls-server-wrap`, `tls-read`,
-`tls-write`, `tls-close`, `http-get`, `offload`, `thread-spawn`,
-`thread-join`, `thread-join-timeout`, `thread-cancel`
+`process-kill`, `signal-handle`, `signal-unhandle`, `dns-resolve`, `async-sleep`,
+`offload`, `task-spawn`, `task-join`, `task-join-timeout`, `task-cancel`,
+`thread-spawn`, `thread-join`, `thread-join-timeout`, `thread-cancel`,
+`tls-connect`, `tls-server-wrap`, `tls-read`, `tls-write`, `tls-close`,
+`http-get`, `http-request`
 
 ### Type Predicates (Stdlib-Defined)
 

@@ -2,6 +2,7 @@ module lisp;
 
 import std::io;
 import std::collections::list;
+import std::core::mem;
 // =============================================================================
 // SECTION 4: JIT COMPILER
 // =============================================================================
@@ -39,6 +40,14 @@ usz g_jit_state_count = 0;
 bool g_jit_pool_warned = false;
 bool g_jit_gc_needed = false;  // signals that GC should run between evals
 usz g_jit_exec_depth = 0;      // active generated JIT frame depth
+
+struct JitStateSpillNode {
+    void* state;
+    JitStateSpillNode* next;
+}
+
+JitStateSpillNode* g_jit_spill_states = null;
+usz g_jit_spill_count = 0;
 
 // JIT compilation cache: Expr* → JitFn (open-addressing hash on pointer value)
 struct JitCacheEntry {
@@ -109,7 +118,14 @@ fn void jit_global_shutdown() {
             _jit_destroy_state(g_jit_states[i]);
             g_jit_states[i] = null;
         }
+        while (g_jit_spill_states != null) {
+            JitStateSpillNode* node = g_jit_spill_states;
+            g_jit_spill_states = node.next;
+            _jit_destroy_state(node.state);
+            mem::free(node);
+        }
         g_jit_state_count = 0;
+        g_jit_spill_count = 0;
         jit_cache_clear();
         g_jit_gc_needed = false;
         g_jit_pool_warned = false;
@@ -134,7 +150,14 @@ fn void jit_gc() {
         _jit_destroy_state(g_jit_states[i]);
         g_jit_states[i] = null;
     }
+    while (g_jit_spill_states != null) {
+        JitStateSpillNode* node = g_jit_spill_states;
+        g_jit_spill_states = node.next;
+        _jit_destroy_state(node.state);
+        mem::free(node);
+    }
     g_jit_state_count = 0;
+    g_jit_spill_count = 0;
     jit_cache_clear();
     g_jit_gc_needed = false;
     g_jit_pool_warned = false;
@@ -149,7 +172,7 @@ fn void jit_exec_leave() @inline {
     g_jit_exec_depth--;
 }
 
-fn void jit_track_compiled_state(void* s) {
+fn bool jit_track_compiled_state(void* s) {
     if (g_jit_state_count < JIT_STATE_POOL_SIZE) {
         g_jit_states[g_jit_state_count] = s;
         g_jit_state_count++;
@@ -164,13 +187,33 @@ fn void jit_track_compiled_state(void* s) {
                 $endif
             }
         }
-        return;
+        return true;
     }
 
+    JitStateSpillNode* spill = (JitStateSpillNode*)mem::malloc(JitStateSpillNode.sizeof);
+    if (spill == null) {
+        if (!g_jit_pool_warned) {
+            io::printfn("WARNING: JIT state pool full (%d states), spill allocation failed; JIT compile will fail for this expression", JIT_STATE_POOL_SIZE);
+            g_jit_pool_warned = true;
+        }
+        return false;
+    }
+
+    spill.state = s;
+    spill.next = g_jit_spill_states;
+    g_jit_spill_states = spill;
+    g_jit_spill_count++;
+    g_jit_gc_needed = true;
+
     if (!g_jit_pool_warned) {
-        io::printfn("WARNING: JIT state pool full (%d states), further states leaked", JIT_STATE_POOL_SIZE);
+        io::printfn(
+            "WARNING: JIT state pool full (%d states), tracking overflow in spill list (count=%d)",
+            JIT_STATE_POOL_SIZE,
+            g_jit_spill_count
+        );
         g_jit_pool_warned = true;
     }
+    return true;
 }
 
 /**
@@ -222,7 +265,11 @@ fn JitFn jit_compile(Expr* expr, Interp* interp) {
     // Track state for cleanup (code buffer lives inside it).
     // C9: Cannot destroy_state here — code buffer lives inside the state.
     // States are destroyed by jit_gc() between top-level evaluations.
-    jit_track_compiled_state(s);
+    if (!jit_track_compiled_state(s)) {
+        // Tracking failed (spill OOM edge). Destroy state so code buffer is not leaked.
+        _jit_destroy_state(s);
+        return null;
+    }
 
     return (JitFn)code;
 }

@@ -9,18 +9,33 @@
 ### Spawn & Await
 
 ```lisp
-;; Spawn CPU-bound work on the worker queue
-(define task-id (thread-spawn 'gzip "payload"))
+;; Current runtime behavior: pooled background job on the worker backend
+(define task-handle (task-spawn 'gzip "payload"))
 
 ;; Wait for result
-(define result (thread-join task-id))
+(define result (task-join task-handle))
 
 ;; With timeout
-(thread-join-timeout task-id 5000)   ;; 5 second timeout
+(task-join-timeout task-handle 5000)   ;; 5 second timeout
 
 ;; Cancel
-(thread-cancel task-id)
+(task-cancel task-handle)
 ```
+
+Current state:
+
+- `task-spawn` / `task-join` are implemented as pooled background-task
+  handles over the scheduler offload backend, not dedicated OS-thread creation.
+- This is the canonical pooled-task surface in the current runtime.
+- `task-join` / `task-join-timeout` are valid in both root and running-fiber
+  contexts; fiber waits use non-blocking scheduler slices.
+
+Target split:
+
+- `fiber` / `spawn` / `await`: full structured async concurrency
+- `offload`: immediate CPU-bound offload
+- `task-*`: pooled background jobs on `uv_queue_work`
+- `thread-*`: dedicated OS threads
 
 ### Run Fibers
 
@@ -66,11 +81,21 @@ Concurrency crossings are intentionally narrow:
 history. Production concurrency boundaries use `SharedHandle(kind=BLOB)` for
 byte-sharing payload transport.
 
-`offload` and `thread-spawn` are CPU-bound surfaces. Internal runtime I/O jobs
-(`accept-fd`, `tcp-connect`, `http-get`) are not part of the public API.
+`offload` and the current `task-spawn` surface are CPU-bound/public pooled
+job surfaces. Internal runtime I/O jobs (`accept-fd`, `tcp-connect`,
+`http-get`) are not part of the public API.
 
-Current backend policy: CPU offload jobs run on Omni's existing worker queue.
-The runtime has not switched this surface to `uv_queue_work` yet.
+Current backend policy (`uv_queue_work` + admission cap):
+
+- `offload` and `task-*` enqueue pooled jobs through `uv_queue_work`.
+- admission is bounded by an in-flight cap (`OFFLOAD_ADMISSION_MAX_IN_FLIGHT`,
+  currently `256`); saturation raises deterministic scheduler/task admission
+  errors instead of unbounded queue growth.
+- cancellation is two-phase:
+  - pending job: `uv_cancel` attempt
+  - running job: cooperative cancel flag, with cancelled completion surfaced at join
+- fairness is best-effort and queue-driven, not strict priority scheduling:
+  completion order can differ from submission order under mixed workloads.
 
 All concurrency primitives go through effects and can be intercepted.
 
@@ -144,7 +169,7 @@ Data-driven validation where schemas are plain Omni data.
 ;; => true
 
 ;; Explain failures
-(explain 'person {'name "Alice" 'age -1})
+(schema-explain 'person {'name "Alice" 'age -1})
 ;; => ((age "must satisfy (> 0)"))
 ```
 

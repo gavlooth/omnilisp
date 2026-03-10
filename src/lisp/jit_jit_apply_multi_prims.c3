@@ -1,5 +1,6 @@
 module lisp;
 
+import std::core::mem;
 import std::io;
 import std::collections::list;
 import main;
@@ -24,11 +25,34 @@ fn Value* jit_apply_multi_args_zeroarg_closure(Interp* interp, Value* func) {
     return jit_eval_in_single_scope(func.closure_val.body, func.closure_val.env, interp);
 }
 
+fn Value* jit_check_closure_typed_prefix_args(Interp* interp, Closure* closure, Value* arg_list, usz arg_count) {
+    if (closure == null || !closure.has_typed_params || closure.type_sig == null) return null;
+    usz checked_count = closure.type_sig.param_count;
+    if (checked_count == 0 || arg_count < checked_count) return null;
+
+    Value** checked_storage = (Value**)mem::malloc(Value*.sizeof * checked_count);
+    if (checked_storage == null) {
+        return raise_error(interp, "lambda type check: out of memory");
+    }
+    defer mem::free(checked_storage);
+
+    Value* curr = arg_list;
+    for (usz i = 0; i < checked_count; i++) {
+        if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
+        checked_storage[i] = curr.cons_val.car;
+        curr = curr.cons_val.cdr;
+    }
+
+    return check_lambda_call_boundary(closure, checked_storage[:checked_count], arg_count, interp);
+}
+
 fn Value* jit_apply_multi_args_variadic_closure(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
     usz pc = func.closure_val.param_count;
     if (arg_count < pc) {
         return raise_error(interp, "variadic lambda arity mismatch");
     }
+    Value* type_err = jit_check_closure_typed_prefix_args(interp, func.closure_val, arg_list, arg_count);
+    if (type_err != null) return type_err;
     Env* new_env = func.closure_val.env;
     Value* curr = arg_list;
     for (usz i = 0; i < pc; i++) {
@@ -67,6 +91,8 @@ fn Value* jit_apply_multi_args_closure_multi(Interp* interp, Value* func, Value*
     if (arg_count < pc) {
         return raise_error(interp, "arity mismatch");
     }
+    Value* type_err = jit_check_closure_typed_prefix_args(interp, func.closure_val, arg_list, arg_count);
+    if (type_err != null) return type_err;
     Env* call_env = make_env(interp, func.closure_val.env);
     Value* curr = arg_list;
     for (usz i = 0; i < pc; i++) {
@@ -91,7 +117,8 @@ fn Value* jit_apply_multi_args_method_table(Interp* interp, Value* func, Value* 
     usz actual_count = 0;
     for (usz i = 0; i < arg_count; i++) {
         if (curr == null || curr.tag != CONS) break;
-        args[actual_count++] = curr.cons_val.car;
+        Value* arg = curr.cons_val.car;
+        args[actual_count++] = arg;
         curr = curr.cons_val.cdr;
     }
     if (actual_count < arg_count) return raise_error(interp, "arg list too short");
@@ -185,6 +212,8 @@ fn Value* jit_apply_multi_args_tail_variadic(Interp* interp, Value* func, Value*
             (int)pc, (int)arg_count)!!;
         return raise_error(interp, msg);
     }
+    Value* type_err = jit_check_closure_typed_prefix_args(interp, func.closure_val, arg_list, arg_count);
+    if (type_err != null) return type_err;
     Env* new_env = func.closure_val.env;
     Value* curr = arg_list;
     for (usz i = 0; i < pc; i++) {
@@ -203,6 +232,8 @@ fn Value* jit_apply_multi_args_tail_closure_multi(Interp* interp, Value* func, V
         usz len = format_arity_error(&buf, pc, arg_count);
         return raise_error(interp, buf[:len]);
     }
+    Value* type_err = jit_check_closure_typed_prefix_args(interp, func.closure_val, arg_list, arg_count);
+    if (type_err != null) return type_err;
     Env* call_env = make_env(interp, func.closure_val.env);
     Value* curr = arg_list;
     for (usz i = 0; i < pc; i++) {
@@ -229,7 +260,8 @@ fn Value* jit_apply_multi_args_tail_method_table(Interp* interp, Value* func, Va
     usz actual_count = 0;
     for (usz i = 0; i < arg_count; i++) {
         if (curr == null || curr.tag != CONS) break;
-        args[actual_count++] = curr.cons_val.car;
+        Value* arg = curr.cons_val.car;
+        args[actual_count++] = arg;
         curr = curr.cons_val.cdr;
     }
     if (actual_count < arg_count) return raise_error(interp, "arg list too short");

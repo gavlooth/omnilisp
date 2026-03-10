@@ -25,6 +25,15 @@ struct HandleEffectState {
     Value*         aot_body;
 }
 
+fn Value* runtime_effect_raise(Interp* interp, char[] code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "runtime", code, message, null);
+}
+
+fn Value* eval_result_or_runtime_raise(EvalResult r, Interp* interp, char[] code) @inline {
+    if (r.error.has_error) return runtime_effect_raise(interp, code, r.error.message[:256]);
+    return r.value;
+}
+
 fn void handle_effect_entry(void* arg) {
     HandleEffectState* state = (HandleEffectState*)arg;
     Value* v;
@@ -74,12 +83,7 @@ fn Value* jit_signal_type_check(SymbolId tag, Value* arg_v, Interp* interp) {
 
     TypeId actual_tid = infer_value_type(arg_v, interp);
     if (actual_tid != INVALID_TYPE_ID && !interp.types.is_subtype(actual_tid, expected_tid)) {
-        return raise_error_with_payload_names(
-            interp,
-            "runtime",
-            "runtime/effect-arg-mismatch",
-            "perform: argument type mismatch"
-        );
+        return runtime_effect_raise(interp, "runtime/effect-arg-mismatch", "perform: argument type mismatch");
     }
     return null;
 }
@@ -115,15 +119,15 @@ fn Value* jit_signal_try_fast_path(SymbolId tag, Value* arg_v, Interp* interp) {
         int fp_arity = fp_prim.prim_val.arity;
         if (fp_arity == 0) {
             EvalResult r = apply_primitive(fp_prim, make_nil(interp), interp);
-            return r.error.has_error ? make_error(interp, r.error.message[:256]) : r.value;
+            return eval_result_or_runtime_raise(r, interp, "runtime/fast-path-primitive-failed");
         }
         if (fp_arity == 1 || fp_arity == -1) {
             EvalResult r = apply_primitive(fp_prim, arg_v, interp);
-            return r.error.has_error ? make_error(interp, r.error.message[:256]) : r.value;
+            return eval_result_or_runtime_raise(r, interp, "runtime/fast-path-primitive-failed");
         }
         if (arg_v != null && is_cons(arg_v)) {
             EvalResult r = apply_primitive(fp_prim, car(arg_v), interp);
-            if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+            if (r.error.has_error) return runtime_effect_raise(interp, "runtime/fast-path-primitive-failed", r.error.message[:256]);
             Value* result = jit_apply_value(r.value, cdr(arg_v), interp);
             if (result != null && result.tag == ERROR) return result;
             return result;
@@ -278,7 +282,7 @@ fn Value* dispatch_pending_raise(Expr* expr, Env* env, Interp* interp) {
             clause_env = clause_env.extend(interp, clause.arg_name, msg_val);
             Value* handler_v = jit_eval(clause.handler_body, clause_env, interp);
             if (handler_v == null) {
-                return make_error(interp, "raise handler returned nil");
+                return runtime_effect_raise(interp, "runtime/raise-handler-returned-nil", "raise handler returned nil");
             }
             return handler_v;
         }
@@ -429,8 +433,10 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
     if (!jit_handle_copy_clauses(h, expr)) {
         return eval_error("handle: failed to allocate clauses");
     }
-    defer mem::free(h.tags);
-    defer mem::free(h.clauses);
+    SymbolId* owned_tags = h.tags;
+    EffectClause* owned_clauses = h.clauses;
+    defer mem::free(owned_tags);
+    defer mem::free(owned_clauses);
 
     interp.handler_count = my_idx + 1;
     defer interp.handler_count = my_idx;

@@ -36,21 +36,49 @@ struct EnvHashEntry {
     usz      index;  // Index into bindings array
 }
 
-// Per-boundary memo table entry used by promotion/copy fallback.
+// Per-boundary memo table entry used by promotion/copy routing.
 struct PromotionMemoEntry {
     Value*              src;
     Value*              dst;
     PromotionMemoEntry* next;
 }
 
+// Promotion scope-chain cache entry (small fixed-size ownership-context cache).
+// Used to avoid repeated chain scans for recurring membership probes with the same
+// pinned generation and target scope pair while walking the same release chain.
+const usz PROMOTION_CONTEXT_SCOPE_CHAIN_CACHE_SIZE = 8;
+
+struct PromotionContextScopeChainCacheEntry {
+    void*               ptr;
+    main::ScopeRegion*  target_scope;
+    uint                target_generation;
+    uint                target_escape_generation;
+    uint                pinned_generation;
+    bool                in_scope_chain;
+    bool                used;
+}
+
 // Shared context for one promotion/copy boundary.
 // Supports nested boundaries via `prev`.
+enum PromotionAbortReason : char {
+    PROMOTION_ABORT_NONE,
+    PROMOTION_ABORT_BUDGET_EXHAUSTED,
+}
+
+enum EnvLifetimeKind : uint {
+    ENV_LIFETIME_LOCAL_SCOPE_FRAME,
+    ENV_LIFETIME_ROOT_PERSISTENT_MUTABLE_BOX,
+}
+
 struct PromotionContext {
     uint                epoch;
     usz                 budget;
     bool                aborted;
+    PromotionAbortReason abort_reason;
     PromotionMemoEntry* memo_head;
     PromotionContext*   prev;
+    usz scope_chain_cache_cursor;
+    PromotionContextScopeChainCacheEntry[ PROMOTION_CONTEXT_SCOPE_CHAIN_CACHE_SIZE ] scope_chain_cache;
 }
 
 /**
@@ -65,10 +93,18 @@ struct Env {
     Env*                  parent;
     EnvHashEntry*         hash_table;     // NULL if not using hash
     usz                   hash_capacity;  // Power of 2
-    bool                  persistent;     // true = allocated in root_region, skip in deep_copy_env
+    EnvLifetimeKind       lifetime_kind;  // Governs env copy semantics across scope boundaries
     uint                  scope_gen;      // Scope generation stamp for O(1) membership check
     bool                  is_inline;
     Binding[4]            inline_bindings;
+}
+
+fn bool Env.is_root_persistent_box(Env* self) @inline {
+    return self != null && self.lifetime_kind == ENV_LIFETIME_ROOT_PERSISTENT_MUTABLE_BOX;
+}
+
+fn bool Env.is_transient_scope_frame(Env* self) @inline {
+    return self != null && self.lifetime_kind == ENV_LIFETIME_LOCAL_SCOPE_FRAME;
 }
 
 fn Env* make_env(Interp* interp, Env* parent) {
@@ -85,7 +121,7 @@ fn Env* make_env(Interp* interp, Env* parent) {
     env.parent = parent;
     env.hash_table = null;
     env.hash_capacity = 0;
-    env.persistent = false;
+    env.lifetime_kind = ENV_LIFETIME_LOCAL_SCOPE_FRAME;
     env.scope_gen = use_escape_lane ? target.escape_generation : target.generation;
     if (use_escape_lane) {
         main::scope_register_dtor_escape(target, (void*)env, &scope_dtor_env);
@@ -216,7 +252,30 @@ fn Value* promote_for_env_target(Env* target, Value* value, Interp* interp) {
         return boundary_promote_to_escape(value, interp);
     }
 
-    return value;
+    // Same TEMP-lane frame: direct store is safe.
+    if (target.scope_gen == interp.current_scope.generation) {
+        return value;
+    }
+
+    // Cross-scope env writes (for example child eval -> global/module env) must
+    // copy into the target scope so child-scope values do not escape via env bindings.
+    main::ScopeRegion* target_scope = interp.current_scope;
+    while (target_scope != null &&
+           target_scope.generation != target.scope_gen &&
+           target_scope.escape_generation != target.scope_gen) {
+        target_scope = target_scope.parent;
+    }
+    if (target_scope == null) return value;
+
+    BoundarySession session = boundary_session_begin(interp);
+    defer boundary_session_end(interp, &session);
+    interp.current_scope = target_scope;
+    interp.releasing_scope = session.current_scope;
+    if (COPY_SITE_ENV_PROMOTE_FOR_TARGET < COPY_SITE_COUNT) {
+        g_copy_to_parent_stats.site_calls[COPY_SITE_ENV_PROMOTE_FOR_TARGET]++;
+    }
+    CopyParentRoute route = copy_parent_route_for_tag(value.tag);
+    return copy_to_parent_by_route(value, interp, route);
 }
 
 fn void env_define_with_barrier(Env* env, SymbolId name, Value* value, Interp* interp) {

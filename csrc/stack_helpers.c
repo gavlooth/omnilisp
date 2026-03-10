@@ -49,7 +49,11 @@ extern void __sanitizer_finish_switch_fiber(void *fake_stack_save,
     __attribute__((weak));
 
 int stack_asan_enabled(void) {
-    return __asan_init != NULL ? 1 : 0;
+    if (OMNI_WITH_ASAN) return 1;
+    if (__asan_init != NULL) return 1;
+    if (__sanitizer_start_switch_fiber != NULL) return 1;
+    if (__sanitizer_finish_switch_fiber != NULL) return 1;
+    return 0;
 }
 
 void* stack_current_sp(void) {

@@ -30,7 +30,13 @@ fn void run_memory_lifetime_boundary_scope_restore_tests(Interp* interp, int* pa
             defer boundary_session_end(interp, &copy_session);
             interp.current_scope = scope_c;
             interp.releasing_scope = scope_d;
-            noop = boundary_copy_to_parent_site(null, interp, COPY_SITE_COPY_ENV_TO_SCOPE);
+            BoundaryCopyResult noop_result = boundary_copy_to_parent_site_ctx_checked(
+                null,
+                interp,
+                COPY_SITE_COPY_ENV_TO_SCOPE,
+                null
+            );
+            noop = noop_result.value;
         }
         bool copy_scope_ok = noop == null &&
                              interp.current_scope == scope_a &&

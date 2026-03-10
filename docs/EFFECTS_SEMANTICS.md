@@ -1,7 +1,7 @@
 # Omni Effects Semantics (Normative)
 
 Status: Normative
-Last updated: 2026-03-06
+Last updated: 2026-03-09
 
 This document is the normative reference for effect behavior in Omni.
 `docs/EFFECTS_GUIDE.md` is tutorial-oriented. If there is a conflict, this
@@ -32,6 +32,8 @@ Each rule includes test anchors in Section 6.
 
 - `signal` MUST evaluate its argument expression before handler dispatch.
 - Type checking for declared effects MUST occur before dispatch.
+- If an effect tag has no declaration, `signal` MUST remain valid and MUST skip
+  declaration-based type checking.
 - If no matching handler exists, runtime MAY use a registered fast-path
   primitive for known I/O-style effects.
 
@@ -89,6 +91,28 @@ Don't:
 - Don’t bypass handler lookup in user-visible I/O APIs.
 - Don’t call handler code directly from worker/callback threads.
 - Don’t mutate runtime boundary fields in wakeup/offload bookkeeping paths.
+
+### EFX-9: Effect Explainability Surface
+
+- Effect-path introspection MUST use the canonical selector syntax:
+  - `(explain 'effect <form>)`
+- `<form>` MUST be analyzed through the explain thunk boundary (no eager
+  execution of the input form by explain itself).
+- `explain 'effect` output MUST keep a deterministic top-level shape:
+  - `kind`, `status`, `input`, `decision`, `candidates`, `trace`,
+    `debug_message`
+- `kind` MUST be `'effect`.
+- For signal-path explain, `decision.reason` MUST classify the selected path:
+  - `handler-match`
+  - `strict-unhandled-effect`
+  - `fast-path`
+  - `unhandled-effect`
+- For resolve-path explain, `decision.reason` MUST classify continuation state:
+  - `resolve-effect-continuation`
+  - `resolve-generic-continuation`
+  - `resolve-invalid-continuation`
+  - `resolve-dead-continuation`
+  - `resolve-continuation-not-suspended`
 
 ## 3. Executable Examples (Mirrored by Tests)
 
@@ -172,6 +196,20 @@ These examples are intended to remain executable and linked to regression tests.
 ; => 32
 ```
 
+11. Explain effect dispatch path:
+
+```lisp
+(ref (ref (explain 'effect (signal io/print "x")) 'decision) 'reason)
+; => 'fast-path
+```
+
+12. Explain resolve validity path:
+
+```lisp
+(ref (ref (explain 'effect (resolve 42)) 'decision) 'reason)
+; => 'resolve-invalid-continuation
+```
+
 ## 4. Runtime Notes
 
 - `with-continuation` desugars to binding the hidden continuation (`__k`) in
@@ -192,10 +230,11 @@ See `docs/ARCHITECTURE.md` and `docs/ERROR_MODEL.md` for migration status.
 | Rule | Regression anchors |
 |------|--------------------|
 | EFX-1 | `src/lisp/tests_advanced_tests.c3` `signal/resolve basic` (`run_advanced_effect_continuation_tests`), `src/lisp/tests_tests.c3` `handle ^strict: catches unhandled` |
-| EFX-2 | `src/lisp/tests_advanced_tests.c3` `effect wrong type int`, `effect wrong type str`, `io/read-file wrong type` (`run_advanced_io_typed_effect_tests`) |
+| EFX-2 | `src/lisp/tests_advanced_io_effect_ffi_groups.c3` `effect wrong type int`, `effect wrong type str`, `effect undeclared canonical`, `io/read-file wrong type` (`run_advanced_io_typed_effect_tests`) |
 | EFX-3 | `src/lisp/tests_advanced_tests.c3` `resolve outside handler`; `with-continuation basic`; `with-continuation single` |
 | EFX-4 | `src/lisp/tests_advanced_tests.c3` `signal abort`; `multi-perform abort` |
 | EFX-5 | `src/lisp/tests_tests.c3` `unhandled effect: shows tag name`; `unhandled effect: shows arg type`; `handle ^strict: catches unhandled` |
 | EFX-6 | `src/lisp/tests_tests.c3` `shift aborts`; `shift k resumes`; `reset passthrough`; `src/lisp/tests_advanced_tests.c3` `multi-shift sum` |
 | EFX-7 | `src/lisp/tests_tests.c3` `run_scheduler_wakeup_wraparound_boundary_tests`, `run_scheduler_wakeup_mixed_event_boundary_tests`, `run_scheduler_invalid_offload_wakeup_boundary_tests`, `run_scheduler_wakeup_full_payload_ownership_boundary_tests` |
 | EFX-8 | `src/lisp/tests_advanced_tests.c3` `io handle suppress`, `io handle capture`; `src/lisp/tests_tests.c3` scheduler boundary test group (`run_scheduler_tests`) |
+| EFX-9 | `src/lisp/tests_runtime_feature_schema_reader_groups.c3` explain-effect regressions: `explain effect handler match reason`, `explain effect strict boundary reason`, `explain effect fast-path reason`, `explain effect unhandled reason`, `explain effect resolve invalid continuation reason`, `explain effect resolve continuation reason`, `explain effect top-level schema keys` |

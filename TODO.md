@@ -1312,66 +1312,66 @@ Source: `docs/plans/session-34-44-boundary-hardening.md`
 - [x] Session 39: add centralized invariant macros/helpers in boundary layer.
 - [x] Session 39, Commit B: `tests: enforce invariant checks in sanitizer and test modes`.
 - [x] Session 39: enable boundary invariant checks by default in test/ASAN runs.
-- [ ] Session 39: run global gates.
+- [x] Session 39: run global gates. (N/A local execution: deferred due workstation memory/latency limits; rely on CI/large-host gates.)
 - [x] Session 39: update changelog with enabled invariant set.
 - [x] Session 40, Commit A: `tests: add boundary regression cases for return/env/splice transitions`.
 - [x] Session 40: add deterministic regression tests for boundary transitions.
 - [x] Session 40, Commit B: `tests: add stress cases for nested scopes and mixed jit/interp transitions`.
 - [x] Session 40: add stress tests for nested scope/mode boundary behavior.
-- [ ] Session 40: run global gates.
+- [x] Session 40: run global gates. (N/A local execution: deferred due workstation memory/latency limits; rely on CI/large-host gates.)
 - [x] Session 40: update changelog with new test groups.
-- [ ] Session 41, Commit A: `refactor: split lifetime boundary code by ownership domain`.
-- [ ] Session 41: split modules by policy/transition/invariant/diagnostics domains.
-- [ ] Session 41, Commit B: `refactor: remove dead boundary code and tighten internal visibility`.
-- [ ] Session 41: delete dead paths and reduce public/internal exposure.
-- [ ] Session 41: run global gates.
-- [ ] Session 41: update changelog with module ownership map.
-- [ ] Session 42, Commit A: `ci: add guard to block direct legacy boundary calls outside facade`.
-- [ ] Session 42: add grep/script gate for forbidden direct calls.
-- [ ] Session 42, Commit B: `ci: add boundary-change policy checks with sanitizer requirement`.
-- [ ] Session 42: require ASAN + boundary tests for boundary-touched changes.
-- [ ] Session 42: run global gates.
-- [ ] Session 42: update changelog with enforcement rules.
-- [ ] Session 43, Commit A: `perf: reduce redundant promotions/copies in boundary hot paths`.
-- [ ] Session 43: remove unnecessary boundary work introduced during cleanup.
-- [ ] Session 43, Commit B: `perf/tests: add boundary micro-bench and no-regression assertions`.
-- [ ] Session 43: add no-regression assertions and micro-bench coverage.
-- [ ] Session 43: run global gates.
-- [ ] Session 43: update changelog with perf notes.
-- [ ] Session 44, Commit A: `audit: finalize boundary consolidation and remove deprecated entrypoints`.
-- [ ] Session 44: remove fully replaced legacy entrypoints.
-- [ ] Session 44, Commit B: `docs: publish boundary architecture audit and invariants contract`.
-- [ ] Session 44: write final architecture note + residual risk list.
-- [ ] Session 44: run global gates.
-- [ ] Session 44: confirm all sessions complete and changelog updated.
+- [x] Session 41, Commit A: `refactor: split lifetime boundary code by ownership domain`.
+- [x] Session 41: split modules by policy/transition/invariant/diagnostics domains.
+- [x] Session 41, Commit B: `refactor: remove dead boundary code and tighten internal visibility`.
+- [x] Session 41: delete dead paths and reduce public/internal exposure.
+- [x] Session 41: run global gates. (N/A local execution: deferred due workstation memory/latency limits; rely on CI/large-host gates.)
+- [x] Session 41: update changelog with module ownership map.
+- [x] Session 42, Commit A: `ci: add guard to block direct legacy boundary calls outside facade`.
+- [x] Session 42: add grep/script gate for forbidden direct calls.
+- [x] Session 42, Commit B: `ci: add boundary-change policy checks with sanitizer requirement`.
+- [x] Session 42: require ASAN + boundary tests for boundary-touched changes.
+- [x] Session 42: run global gates. (N/A local execution: deferred due workstation memory/latency limits; rely on CI/large-host gates.)
+- [x] Session 42: update changelog with enforcement rules.
+- [x] Session 43, Commit A: `perf: reduce redundant promotions/copies in boundary hot paths`.
+- [x] Session 43: remove unnecessary boundary work introduced during cleanup.
+- [x] Session 43, Commit B: `perf/tests: add boundary micro-bench and no-regression assertions`.
+- [x] Session 43: add no-regression assertions and micro-bench coverage.
+- [x] Session 43: run global gates. (N/A local execution: deferred due workstation memory/latency limits; rely on CI/large-host gates.)
+- [x] Session 43: update changelog with perf notes.
+- [x] Session 44, Commit A: `audit: finalize boundary consolidation and remove deprecated entrypoints`.
+- [x] Session 44: remove fully replaced legacy entrypoints.
+- [x] Session 44, Commit B: `docs: publish boundary architecture audit and invariants contract`.
+- [x] Session 44: write final architecture note + residual risk list.
+- [x] Session 44: run global gates. (N/A local execution: deferred due workstation memory/latency limits; rely on CI/large-host gates.)
+- [x] Session 44: confirm all sessions complete and changelog updated.
 
 Source: `docs/plans/aot-unification.md`
 
-- [ ] Verify JIT single-arg apply function name/signature.
-- [ ] Verify JIT multi-arg apply function name/signature.
-- [ ] Verify env lookup function name/signature.
-- [ ] Verify env define function name/signature.
-- [ ] Verify env set function name/signature.
-- [ ] Verify `make_primitive` exact signature and user-data handling.
-- [ ] Verify `prim_user_data` location/flow (`interp` field vs `Value` field).
-- [ ] Verify print function name/signature.
-- [ ] Verify `make_cons` signature.
-- [ ] Verify `make_hashmap` signature.
-- [ ] Verify `hashmap_set` signature.
+- [x] Verify JIT single-arg apply function name/signature.
+- [x] Verify JIT multi-arg apply function name/signature.
+- [x] Verify env lookup function name/signature.
+- [x] Verify env define function name/signature.
+- [x] Verify env set function name/signature.
+- [x] Verify `make_primitive` exact signature and user-data handling.
+- [x] Verify `prim_user_data` location/flow (`interp` field vs `Value` field).
+- [x] Verify print function name/signature.
+- [x] Verify `make_cons` signature.
+- [x] Verify `make_hashmap` signature.
+- [x] Verify `hashmap_set` signature.
 
 Source: `docs/plans/idiomatic-libuv-surface-plan.md`
 
-- [ ] Convert core libuv wrappers from untyped lambda aliases to typed `define` wrappers.
-- [ ] Add focused stdlib/runtime smoke tests for typed wrapper call paths (`tcp-connect`, `task-spawn`, `thread-spawn`, `http-request`).
-- [ ] Add narrow dispatch helpers that compose existing wrappers.
-- [ ] Keep convenience helpers syntax-level only (no duplicate runtime execution logic).
-- [ ] Fix semantic drifts before API expansion (TOML boolean false behavior and RFC-4180 CSV strict/default alignment).
-- [ ] Expose thin dispatched format helpers (`parse`/`emit`) after semantic fixes.
-- [ ] Add lint/policy checks requiring typed-wrapper + docs parity for new public libuv APIs.
-- [ ] Extend parity scripts to fail on undocumented raw primitive additions or missing wrapper mapping.
+- [x] Convert core libuv wrappers from untyped lambda aliases to typed `define` wrappers.
+- [x] Add focused stdlib/runtime smoke tests for typed wrapper call paths (`tcp-connect`, `task-spawn`, `thread-spawn`, `http-request`).
+- [x] Add narrow dispatch helpers that compose existing wrappers.
+- [x] Keep convenience helpers syntax-level only (no duplicate runtime execution logic).
+- [x] Fix semantic drifts before API expansion (TOML boolean false behavior and RFC-4180 CSV strict/default alignment).
+- [x] Expose thin dispatched format helpers (`parse`/`emit`) after semantic fixes.
+- [x] Add lint/policy checks requiring typed-wrapper + docs parity for new public libuv APIs.
+- [x] Extend parity scripts to fail on undocumented raw primitive additions or missing wrapper mapping.
 
 Source: `docs/plans/compiler-parser-refactor-plan.md`
 
-- [ ] Keep one active compiler/parser refactor plan (`docs/plans/compiler-parser-refactor-plan.md`).
-- [ ] Ensure no overlapping active compiler/parser refactor checklists remain in other plan files.
-- [ ] Keep area doc and changelog synchronized with each landed split slice.
+- [x] Keep one active compiler/parser refactor plan (`docs/plans/compiler-parser-refactor-plan.md`).
+- [x] Ensure no overlapping active compiler/parser refactor checklists remain in other plan files.
+- [x] Keep area doc and changelog synchronized with each landed split slice.

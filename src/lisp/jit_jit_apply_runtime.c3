@@ -74,6 +74,9 @@ fn Value* jit_apply_value_closure(Value* func, Value* arg, Interp* interp) {
             return jit_eval_in_single_scope(closure.body, new_env, interp);
         }
         if (pc == 1) {
+            Value*[1] typed_args = { arg };
+            Value* type_err = check_lambda_call_boundary(closure, typed_args[:1], 1, interp);
+            if (type_err != null) return type_err;
             new_env = new_env.extend(interp, closure.params[0], arg);
             new_env = new_env.extend(interp, closure.rest_param, make_nil(interp));
             return jit_eval_in_single_scope(closure.body, new_env, interp);
@@ -85,6 +88,9 @@ fn Value* jit_apply_value_closure(Value* func, Value* arg, Interp* interp) {
         usz len = format_arity_error(&buf, closure.param_count, 1);
         return raise_error(interp, buf[:len]);
     }
+    Value*[1] typed_args = { arg };
+    Value* type_err = check_lambda_call_boundary(closure, typed_args[:1], 1, interp);
+    if (type_err != null) return type_err;
     assert(closure.env != null, "jit_apply_value_closure: env is null");
     Env* new_env = closure.env.extend(interp, closure.param, arg);
     return jit_eval_in_single_scope(closure.body, new_env, interp);
@@ -192,6 +198,9 @@ fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
                 Value* rest_list = make_cons(interp, arg, make_nil(interp));
                 new_env = new_env.extend(interp, func.closure_val.rest_param, rest_list);
             } else if (pc == 1) {
+                Value*[1] typed_args = { arg };
+                Value* type_err = check_lambda_call_boundary(func.closure_val, typed_args[:1], 1, interp);
+                if (type_err != null) return type_err;
                 new_env = func.closure_val.env;
                 new_env = new_env.extend(interp, func.closure_val.params[0], arg);
                 new_env = new_env.extend(interp, func.closure_val.rest_param, make_nil(interp));
@@ -204,6 +213,9 @@ fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
             usz len = format_arity_error(&buf, func.closure_val.param_count, 1);
             return raise_error(interp, buf[:len]);
         } else {
+            Value*[1] typed_args = { arg };
+            Value* type_err = check_lambda_call_boundary(func.closure_val, typed_args[:1], 1, interp);
+            if (type_err != null) return type_err;
             new_env = func.closure_val.env.extend(interp, func.closure_val.param, arg);
         }
         interp.jit_tco_expr = func.closure_val.body;

@@ -38,37 +38,41 @@
 
 ;; (log/close!) — flush and close the log file handle.
 (define (log/close!)
-  (when log-handle
-    (fs-close log-handle)
-    (set! log-handle nil)))
+  (match log-handle
+    (nil nil)
+    (h (begin
+         (fs-close h)
+         (set! log-handle nil)))))
 
 ;; ── Write ───────────────────────────────────────────────────────────────────
 
 ;; (log/write! line) — append a timestamped line to the log.
 ;; try: if fs-write fails (e.g. disk full), log the error to stdout instead.
 (define (log/write! line)
-  (when log-handle
-    (try (lambda (x)
-           (fs-write log-handle (format "%d %s\n" (time) line)))
-         (lambda (e)
-           (println (format "[log] write failed: %s" e))))))
+  (match log-handle
+    (nil nil)
+    (h
+      (try (lambda (x)
+             (fs-write h (format "%d %s\n" (time) line)))
+           (lambda (e)
+             (println (format "[log] write failed: %s" e)))))))
 
 ;; ── Read ────────────────────────────────────────────────────────────────────
 
 ;; (log/read-all) — read the entire log file as a string.
 ;; Uses read-file (high-level) since we want the full contents.
 (define (log/read-all)
-  (if log-path
-      (try (lambda (x) (read-file log-path))
-           (lambda (e) ""))
-      ""))
+  (match log-path
+    (nil  "")
+    (path (try (lambda (x) (read-file path))
+               (lambda (e) "")))))
 
 ;; (log/size) — current log file size in bytes via fs-stat.
 (define (log/size)
-  (if log-path
-      (try (lambda (x) ('size (fs-stat log-path)))
-           (lambda (e) 0))
-      0))
+  (match log-path
+    (nil  0)
+    (path (try (lambda (x) ('size (fs-stat path)))
+               (lambda (e) 0)))))
 
 ;; ── System info ─────────────────────────────────────────────────────────────
 
@@ -81,7 +85,7 @@
          (let (proc   (process-spawn "/usr/bin/uptime" '("-p") nil)
                output (fs-read ('stdout proc) 4096)
                result (process-wait ('handle proc)))
-           (if (= ('exit-code result) 0)
-               (string-trim output)
-               "unknown")))
+           (match ('exit-code result)
+             (0 (string-trim output))
+             (_ "unknown"))))
        (lambda (e) "unknown")))

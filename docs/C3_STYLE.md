@@ -218,10 +218,25 @@ Before merging C3 changes, verify:
 4. Compile-time invariants are asserted where layout/size matters.
 5. Ownership across scopes is explicit and test-covered.
 6. No macro added where function/generic is sufficient.
-7. No hidden global state mutation without clear naming/contracts.
-8. Tests include at least one failure-path or lifecycle assertion for the touched area.
 
-## 14. Migration Guidance (Underused Features)
+## 14. Boundary Hardening Rules (Omni Runtime)
+
+These rules are mandatory for `boundary_*` runtime work and related eval/JIT paths.
+
+1. Macro vs function:
+   Use macros only for instrumentation scaffolding (counters/trace/benchmark wrappers). Keep ownership transitions, session/txn lifecycle, and control flow in normal functions.
+2. Hot-path helper policy:
+   Only tiny predicates/accessors and state checks belong in `@inline` hot paths. Move verbose reporting, graph-audit traversal, and telemetry dumps to `@noinline`.
+3. Compile-time instrumentation gates:
+   All boundary telemetry/trace/benchmark behavior must be compile-time gated so default builds have zero or minimal overhead.
+4. Legal ownership-transition entrypoints:
+   Cross-scope ownership transitions must flow through boundary facade helpers only (`boundary_finalize_scoped_result`, `boundary_commit_escape`, `boundary_copy_from_releasing_scope`, `boundary_copy_to_scope_site`, and env-copy boundary helpers). Do not introduce ad-hoc direct promotion/copy in eval/JIT callsites.
+5. Debug graph-audit invariant:
+   For any committed ESCAPE root, no reachable Omni-owned edge may point into TEMP. Traversed edge sets must be explicit, and opaque foreign payload wrappers must stay excluded unless they gain explicit Omni-owned edges.
+6. No hidden global state mutation without clear naming/contracts.
+7. Tests include at least one failure-path or lifecycle assertion for the touched area.
+
+## 15. Migration Guidance (Underused Features)
 
 When touching legacy code, incrementally modernize:
 

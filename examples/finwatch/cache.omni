@@ -3,6 +3,7 @@
 ;; Idioms demonstrated:
 ;;   deduce        — three relations; fact!/retract! for upsert semantics
 ;;   match [h..t]  — list destructuring replaces null? checks
+;;   |>            — scan → map/read pipeline for typed projection
 ;;   sort-by       — built-in sort with curried comparator
 ;;   [type] params — typed function signatures with dot field access
 ;;   Ok / Err      — cache/quote-for returns FetchResult, not nullable
@@ -51,25 +52,29 @@
 
 ;; ── Read ────────────────────────────────────────────────────────────────────
 
+(define (cache/row->quote row)
+  (Quote ('symbol row) (* 1.0 ('price row)) ('ts row)))
+
+(define (cache/row->news row)
+  (NewsItem ('id row) ('title row) ('score row) ('ts row)))
+
 ;; All quotes as a list of Quote structs.
 (define (cache/latest-quotes)
-  (map (lambda (row)
-         (Quote ('symbol row) (* 1.0 ('price row)) ('ts row)))
-       (deduce 'scan quotes)))
+  (|> (deduce 'scan quotes)
+      (map cache/row->quote)))
 
 ;; Top-n news items sorted by score descending.
 ;; sort-by with curried comparator replaces hand-rolled insertion sort.
 (define (cache/latest-news n)
-  (let (items (map (lambda (row)
-                     (NewsItem ('id row) ('title row) ('score row) ('ts row)))
-                   (deduce 'scan news)))
+  (let (items (|> (deduce 'scan news)
+                  (map cache/row->news)))
     (take n (sort-by (lambda (a) (lambda (b) (- b.score a.score))) items))))
 
 ;; Look up a single quote by symbol string.
 ;; Returns (Ok quote) or (Err msg) — callers use match, never null?.
 (define (cache/quote-for sym)
   (match (deduce 'query quotes (compose (= _ sym) 'symbol))
-    ([row ..] (Ok (Quote ('symbol row) (* 1.0 ('price row)) ('ts row))))
+    ([row ..] (Ok (cache/row->quote row)))
     (_        (Err (format "no price for %s" sym)))))
 
 ;; ── TTL ─────────────────────────────────────────────────────────────────────

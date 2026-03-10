@@ -10,7 +10,7 @@ struct ScopedFinalizeResult {
 fn bool env_chain_contains_scope_gen(Env* env, uint scope_gen, Env* stop_at) {
     Env* cur = env;
     while (cur != null && cur != stop_at) {
-        if (!cur.persistent && cur.scope_gen == scope_gen) return true;
+        if (!cur.is_root_persistent_box() && cur.scope_gen == scope_gen) return true;
         cur = cur.parent;
     }
     return false;
@@ -46,11 +46,9 @@ fn bool env_chain_has_binding_in_scope(Env* env, main::ScopeRegion* scope, Env* 
 *>
 fn ScopedFinalizeResult boundary_finalize_scoped_result(
     Value* result,
-    Value* original_result,
     Interp* interp,
     main::ScopeRegion* saved_scope,
-    main::ScopeRegion* active_scope,
-    uint copy_site
+    main::ScopeRegion* active_scope
 ) {
     boundary_assert_interp_scope_chain(interp);
     ScopedFinalizeResult finalized = {
@@ -68,11 +66,9 @@ fn ScopedFinalizeResult boundary_finalize_scoped_result(
     }
     BoundaryCommitEscapeResult committed = boundary_commit_escape(
         result,
-        original_result,
         interp,
         saved_scope,
         active_scope,
-        copy_site,
         &boundary_ctx
     );
     finalized.value = committed.value;
@@ -82,20 +78,16 @@ fn ScopedFinalizeResult boundary_finalize_scoped_result(
 
 fn Value* jit_finalize_scoped_result(
     Value* result,
-    Value* original_result,
     Interp* interp,
     main::ScopeRegion* saved_scope,
     main::ScopeRegion* active_scope,
-    uint copy_site,
     bool* scope_spliced_out = null
 ) {
     ScopedFinalizeResult finalized = boundary_finalize_scoped_result(
         result,
-        original_result,
         interp,
         saved_scope,
-        active_scope,
-        copy_site
+        active_scope
     );
     if (scope_spliced_out != null) {
         *scope_spliced_out = finalized.releasing_scope_spliced;
@@ -337,11 +329,9 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
     boundary_leave_scope(interp, saved_scope);
     Value* final = jit_finalize_scoped_result(
         result,
-        result,
         interp,
         saved_scope,
-        active_scope,
-        COPY_SITE_JIT_SINGLE_SCOPE_RETURN
+        active_scope
     );
     if (registered_defer) {
         (void)pop_scope_guard_defer(current_ctx);
@@ -395,17 +385,38 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp, bool
     jit_restore_call_scope_state(interp, saved_state);
     Value* final = jit_finalize_scoped_result(
         result,
-        result,
         interp,
         saved_scope,
-        active_scope,
-        COPY_SITE_JIT_CALL_SCOPE_STEP2
+        active_scope
     );
     if (registered_defer) {
         (void)pop_scope_guard_defer(current_ctx);
     }
     boundary_assert_interp_scope_chain(interp);
     return final;
+}
+
+<*
+@require interp != null : "jit_scopes_copy_value_into_scope_site: null interp"
+@require target_scope != null : "jit_scopes_copy_value_into_scope_site: null target_scope"
+@require releasing_scope != null : "jit_scopes_copy_value_into_scope_site: null releasing_scope"
+*>
+fn Value* jit_scopes_copy_value_into_scope_site(
+    Value* value,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope,
+    uint site
+) {
+    if (value == null || target_scope == null) return value;
+    BoundarySession session = boundary_session_begin(interp);
+    defer boundary_session_end(interp, &session);
+    interp.current_scope = target_scope;
+    interp.releasing_scope = releasing_scope;
+    PromotionContext copy_ctx = {};
+    boundary_promotion_context_begin(interp, &copy_ctx);
+    defer boundary_promotion_context_end(interp, &copy_ctx);
+    return boundary_copy_to_parent_site_ctx(value, interp, site, &copy_ctx);
 }
 
 /// Copy env frames from `src` up to (but not including) `stop_at` into current_scope.
@@ -416,9 +427,9 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp, bool
 fn Env* copy_tco_env_chain(Env* src, Interp* interp) {
     if (src == null || src == interp.global_env) return src;
 
-    // Persistent env nodes (mutable boxes in root_region) are kept as-is.
+    // Root-persistent mutable-box env nodes are kept as-is.
     // Their parent chain still needs fixing up since it may point to env_scope frames.
-    if (src.persistent) {
+    if (src.is_root_persistent_box()) {
         src.parent = copy_tco_env_chain(src.parent, interp);
         return src;
     }
@@ -430,7 +441,23 @@ fn Env* copy_tco_env_chain(Env* src, Interp* interp) {
     Env* dst = make_env(interp, parent_copy);
     for (usz i = 0; i < src.binding_count; i++) {
         Value* sv = src.bindings[i].value;
-        Value* v = boundary_copy_value_if_owned_by_scope(sv, interp, interp.releasing_scope, COPY_SITE_JIT_TCO_FRAME_COPY);
+        Value* v = sv;
+        main::ScopeRegion* releasing_scope = interp.releasing_scope;
+        bool sv_in_releasing_scope = false;
+        if (sv != null && releasing_scope != null) {
+            if (sv.scope_gen == releasing_scope.generation || sv.scope_gen == releasing_scope.escape_generation) {
+                sv_in_releasing_scope = boundary_ptr_in_scope((void*)sv, releasing_scope);
+            }
+        }
+        if (sv_in_releasing_scope) {
+            v = jit_scopes_copy_value_into_scope_site(
+                sv,
+                interp,
+                interp.current_scope,
+                releasing_scope,
+                COPY_SITE_JIT_TCO_FRAME_COPY
+            );
+        }
         env_define_with_barrier(dst, src.bindings[i].name, v, interp);
     }
     // Rebuild hash table if source had one

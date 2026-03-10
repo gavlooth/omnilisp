@@ -15,6 +15,18 @@ fn Value* boundary_fallback_disallowed_error(Interp* interp, BoundaryCommitFault
     return raise_error(interp, "boundary: traversal fallback disallowed for commit path");
 }
 
+fn Value* boundary_destination_promote_routed_escape(
+    Value* routed,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    PromotionContext* ctx = null
+) @inline {
+    if (routed == null) return null;
+    if (ctx != null && ctx.aborted) return routed;
+    if (routed.scope_gen == target_scope.escape_generation) return routed;
+    return boundary_promote_to_escape(routed, interp);
+}
+
 <*
 @require list != null : "boundary_build_destination_cons_escape: null list"
 @require interp != null : "boundary_build_destination_cons_escape: null interp"
@@ -48,7 +60,12 @@ fn Value* boundary_build_destination_cons_escape(
             COPY_SITE_CONS_BARRIER_CAR,
             ctx
         );
-        current_new.cons_val.car = boundary_promote_to_escape(routed_car, interp);
+        current_new.cons_val.car = boundary_destination_promote_routed_escape(
+            routed_car,
+            interp,
+            target_scope,
+            ctx
+        );
         if (ctx != null && ctx.aborted) return list;
         assert(
             boundary_cons_escape_child_edge_safe(current_new.cons_val.car, target_scope),
@@ -75,7 +92,12 @@ fn Value* boundary_build_destination_cons_escape(
             COPY_SITE_CONS_BARRIER_CDR,
             ctx
         );
-        current_new.cons_val.cdr = boundary_promote_to_escape(routed_cdr, interp);
+        current_new.cons_val.cdr = boundary_destination_promote_routed_escape(
+            routed_cdr,
+            interp,
+            target_scope,
+            ctx
+        );
         if (ctx != null && ctx.aborted) return list;
         assert(
             boundary_cons_escape_child_edge_safe(current_new.cons_val.cdr, target_scope),
@@ -114,7 +136,12 @@ fn Value* boundary_build_destination_partial_escape(
         COPY_SITE_GENERIC,
         ctx
     );
-    Value* escaped_first = boundary_promote_to_escape(routed_first, interp);
+    Value* escaped_first = boundary_destination_promote_routed_escape(
+        routed_first,
+        interp,
+        target_scope,
+        ctx
+    );
     if (ctx != null && ctx.aborted) return partial;
     assert(
         boundary_cons_escape_child_edge_safe(escaped_first, target_scope),
@@ -127,7 +154,12 @@ fn Value* boundary_build_destination_partial_escape(
         COPY_SITE_GENERIC,
         ctx
     );
-    Value* escaped_second = boundary_promote_to_escape(routed_second, interp);
+    Value* escaped_second = boundary_destination_promote_routed_escape(
+        routed_second,
+        interp,
+        target_scope,
+        ctx
+    );
     if (ctx != null && ctx.aborted) return partial;
     assert(
         boundary_cons_escape_child_edge_safe(escaped_second, target_scope),
@@ -170,7 +202,12 @@ fn Value* boundary_build_destination_iterator_escape(
         COPY_SITE_GENERIC,
         ctx
     );
-    Value* escaped_inner = boundary_promote_to_escape(routed_inner, interp);
+    Value* escaped_inner = boundary_destination_promote_routed_escape(
+        routed_inner,
+        interp,
+        target_scope,
+        ctx
+    );
     if (ctx != null && ctx.aborted) return iterator;
     assert(
         boundary_cons_escape_child_edge_safe(escaped_inner, target_scope),

@@ -288,6 +288,12 @@ struct MetaEntry {
  * TypeAnnotation — Parsed ^Type annotation on a parameter.
  * Three forms: ^Int (simple), ^(List Int) (compound), ^{'T Number} (dict)
  */
+struct ValueLiteralKey {
+    ValueTag tag;         // INT/SYMBOL/STRING
+    long int_value;       // INT payload
+    SymbolId sym_value;   // SYMBOL payload or interned STRING payload
+}
+
 struct TypeAnnotation {
     bool has_annotation;
     bool is_compound;          // ^(List Int) form
@@ -297,7 +303,7 @@ struct TypeAnnotation {
     usz param_count;
     MetaEntry* meta;           // dict entries (heap-allocated)
     usz meta_count;
-    long val_literal;          // For ^(Val 42) — the literal value
+    ValueLiteralKey val_literal; // For ^(Value x) / ^(Val x) literal matching
     bool has_val_literal;      // true if this is a Val type with literal
 }
 
@@ -406,7 +412,8 @@ struct MethodConstraint {
  */
 struct MethodSignature {
     TypeId* param_types;     // length = param_count, INVALID_TYPE_ID = Any
-    long* val_literals;      // length = param_count, for Val types
+    SymbolId* param_type_vars; // length = param_count, non-zero when param is a type variable (e.g., ^T)
+    ValueLiteralKey* val_literals; // length = param_count, for Value/Val literal types
     bool* has_val_literal;   // length = param_count
     usz param_count;
     MethodConstraint* constraints;  // heap/scope-allocated, length = constraint_count

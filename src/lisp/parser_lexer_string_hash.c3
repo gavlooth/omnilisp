@@ -149,14 +149,27 @@ fn bool Lexer.scan_hash_regex_literal(Lexer* self, char next) {
     return true;
 }
 
-// Returns true if a hash dispatch was matched, false to fall through to symbol parsing
+// Returns true after consuming or reporting a hash dispatch token.
 fn bool Lexer.scan_hash_dispatch(Lexer* self) {
-    if (self.pos + 1 >= self.len) return false;
+    if (self.pos + 1 >= self.len) {
+        self.set_error_text("unknown # dispatch sequence");
+        return true;
+    }
     char next = self.source[self.pos + 1];
-    if (self.scan_hash_set_literal(next)) return true;
-    if (self.scan_hash_underscore_form(next)) return true;
-    if (self.scan_hash_counted_underscore_form(next)) return true;
-    if (self.scan_hash_regex_literal(next)) return true;
-    // Unrecognized # dispatch — treat as symbol char for backward compat
-    return false;
+    switch (next) {
+        case '{':
+            return self.scan_hash_set_literal(next);
+        case '_':
+            return self.scan_hash_underscore_form(next);
+        case 'r':
+            if (self.scan_hash_regex_literal(next)) return true;
+            self.set_error_text("unknown # dispatch sequence");
+            return true;
+        default:
+            if (next >= '1' && next <= '9' && self.scan_hash_counted_underscore_form(next)) {
+                return true;
+            }
+            self.set_error_text("unknown # dispatch sequence");
+            return true;
+    }
 }

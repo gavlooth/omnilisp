@@ -32,6 +32,22 @@ fn isz scheduler_find_pending_dns_by_req(void* req_handle) {
     return -1;
 }
 
+fn isz scheduler_find_pending_tcp_connect_by_req(void* req_handle) {
+    for (usz i = 0; i < g_scheduler.fiber_count; i++) {
+        PendingTcpConnect* pending = &g_scheduler.pending_connects[i];
+        if (pending.req_handle == req_handle) return (isz)i;
+    }
+    return -1;
+}
+
+fn isz scheduler_find_pending_tcp_accept_by_server(void* server_handle) {
+    for (usz i = 0; i < g_scheduler.fiber_count; i++) {
+        PendingTcpAccept* pending = &g_scheduler.pending_accepts[i];
+        if (pending.server_handle == server_handle) return (isz)i;
+    }
+    return -1;
+}
+
 fn void scheduler_free_handle_cb(void* handle) {
     if (handle != null) mem::free(handle);
 }
@@ -120,6 +136,54 @@ fn void scheduler_close_pending_dns(usz fiber_id) {
     g_scheduler.pending_dns[fiber_id] = {};
 }
 
+fn void scheduler_close_pending_tcp_connect(usz fiber_id) {
+    if (fiber_id >= g_scheduler.fiber_count) return;
+    PendingTcpConnect* pending = &g_scheduler.pending_connects[fiber_id];
+    if (!pending.active && pending.req_handle == null && pending.tcp_handle == null) return;
+
+    bool req_completed = pending.completed;
+    if (!req_completed && pending.req_handle != null) {
+        // Let libuv callback own final request/handle cleanup when cancellation
+        // races completion.
+        (void)omni_uv_cancel_req(pending.req_handle);
+        pending.active = false;
+        pending.completed = false;
+        pending.status = 0;
+        return;
+    }
+
+    if (pending.req_handle != null) {
+        omni_uv_tcp_connect_req_free(pending.req_handle);
+    }
+    if (pending.tcp_handle != null) {
+        omni_uv_tcp_close_and_free(pending.tcp_handle);
+    }
+    g_scheduler.pending_connects[fiber_id] = {};
+}
+
+fn void scheduler_close_pending_tcp_accept(usz fiber_id) {
+    if (fiber_id >= g_scheduler.fiber_count) return;
+    PendingTcpAccept* pending = &g_scheduler.pending_accepts[fiber_id];
+    if (!pending.active &&
+        pending.server_handle == null &&
+        pending.client_handle == null &&
+        !pending.has_accepted_fd) return;
+
+    if (pending.server_handle != null && pending.borrowed_server_handle) {
+        (void)omni_uv_pipe_listener_set_noop(pending.server_handle);
+    }
+    if (pending.server_handle != null && !pending.borrowed_server_handle) {
+        omni_uv_tcp_close_and_free(pending.server_handle);
+    }
+    if (pending.client_handle != null) {
+        omni_uv_tcp_close_and_free(pending.client_handle);
+    }
+    if (pending.has_accepted_fd && pending.accepted_fd >= 0) {
+        c_close_fd(pending.accepted_fd);
+    }
+    g_scheduler.pending_accepts[fiber_id] = {};
+}
+
 fn void scheduler_uv_close_cb(void* handle) {
     isz idx = scheduler_find_pending_by_handle(handle);
     if (idx < 0) {
@@ -183,381 +247,24 @@ fn void scheduler_complete_pending_dns(usz fiber_id) {
     if (f.state == FIBER_BLOCKED) f.state = FIBER_READY;
 }
 
-fn void scheduler_signal_async() @inline {
-    if (g_scheduler.async_handle != null) (void)uv_async_send(g_scheduler.async_handle);
-}
-
-fn void scheduler_handle_invalid_wakeup(WakeupEvent ev) {
-    if (ev.type == WAKEUP_OFFLOAD_READY && ev.payload != null) {
-        scheduler_free_offload_completion(ev.payload);
-    }
-}
-
-fn void scheduler_dispatch_wakeup_event(WakeupEvent ev) {
-    usz fid = ev.fiber_id;
-    if (fid >= g_scheduler.fiber_count) {
-        scheduler_handle_invalid_wakeup(ev);
-        return;
-    }
-
-    switch (ev.type) {
-        case WAKEUP_TIMER_EXPIRED:
-            scheduler_handle_wakeup_timer_expired(fid);
-        case WAKEUP_POLL_ERROR:
-            scheduler_handle_wakeup_poll_error(fid, ev.status);
-        case WAKEUP_POLL_READABLE:
-            scheduler_handle_wakeup_poll_readable(fid);
-        case WAKEUP_OFFLOAD_READY:
-            scheduler_handle_wakeup_offload_ready(fid, ev.payload);
-        case WAKEUP_SLEEP_DONE:
-            scheduler_handle_wakeup_sleep_done(fid);
-        case WAKEUP_DNS_DONE:
-            scheduler_handle_wakeup_dns_done(fid);
-    }
-}
-
-fn ReliableWakeupNode* reliable_wakeup_alloc_node(WakeupEvent ev) {
-    ReliableWakeupNode* node = (ReliableWakeupNode*)mem::malloc(ReliableWakeupNode.sizeof);
-    if (node == null) return null;
-    node.event = ev;
-    node.next = null;
-    return node;
-}
-
-fn bool scheduler_publish_reliable_wakeup(WakeupEvent ev) {
-    ReliableWakeupQueue* q = &g_scheduler.reliable_wakeups;
-    if (!q.initialized) {
-        g_scheduler.wakeup_enqueue_failures.add(1);
-        return false;
-    }
-
-    ReliableWakeupNode* node = reliable_wakeup_alloc_node(ev);
-    if (node == null) {
-        g_scheduler.wakeup_enqueue_failures.add(1);
-        return false;
-    }
-
-    q.mu.lock();
-    if (q.tail == null) {
-        q.head = node;
-        q.tail = node;
-    } else {
-        q.tail.next = node;
-        q.tail = node;
-    }
-    q.count++;
-    q.mu.unlock();
-
-    g_scheduler.reliable_wakeup_enqueues.add(1);
-    scheduler_signal_async();
-    return true;
-}
-
-fn ReliableWakeupNode* scheduler_take_reliable_wakeup_batch() {
-    ReliableWakeupQueue* q = &g_scheduler.reliable_wakeups;
-    if (!q.initialized) return null;
-
-    q.mu.lock();
-    ReliableWakeupNode* head = q.head;
-    q.head = null;
-    q.tail = null;
-    q.count = 0;
-    q.mu.unlock();
-    return head;
-}
-
-fn void scheduler_clear_reliable_wakeup_queue() {
-    ReliableWakeupNode* node = scheduler_take_reliable_wakeup_batch();
-    while (node != null) {
-        ReliableWakeupNode* next = node.next;
-        scheduler_handle_invalid_wakeup(node.event);
-        mem::free(node);
-        node = next;
-    }
-}
-
-fn usz reliable_wakeup_pending_count() {
-    ReliableWakeupQueue* q = &g_scheduler.reliable_wakeups;
-    if (!q.initialized) return 0;
-
-    q.mu.lock();
-    usz count = q.count;
-    q.mu.unlock();
-    return count;
-}
-
-fn bool scheduler_publish_timer_expired(usz fiber_id) @inline {
-    WakeupEvent ev = {};
-    ev.fiber_id = fiber_id;
-    ev.type = WAKEUP_TIMER_EXPIRED;
-    return scheduler_publish_reliable_wakeup(ev);
-}
-
-fn bool scheduler_publish_poll_error(usz fiber_id, int status) @inline {
-    WakeupEvent ev = {};
-    ev.fiber_id = fiber_id;
-    ev.type = WAKEUP_POLL_ERROR;
-    ev.status = status;
-    return scheduler_publish_reliable_wakeup(ev);
-}
-
-fn bool scheduler_publish_offload_ready(usz fiber_id, OffloadCompletion* completion) @inline {
-    WakeupEvent ev = {};
-    ev.fiber_id = fiber_id;
-    ev.type = WAKEUP_OFFLOAD_READY;
-    ev.payload = completion;
-    return scheduler_publish_reliable_wakeup(ev);
-}
-
-fn bool scheduler_publish_sleep_done(usz fiber_id) @inline {
-    WakeupEvent ev = {};
-    ev.fiber_id = fiber_id;
-    ev.type = WAKEUP_SLEEP_DONE;
-    return scheduler_publish_reliable_wakeup(ev);
-}
-
-fn bool scheduler_publish_dns_done(usz fiber_id) @inline {
-    WakeupEvent ev = {};
-    ev.fiber_id = fiber_id;
-    ev.type = WAKEUP_DNS_DONE;
-    return scheduler_publish_reliable_wakeup(ev);
-}
-
-fn void scheduler_signal_poll_readable(usz fiber_id) {
+fn void scheduler_complete_pending_tcp_connect(usz fiber_id) {
     if (fiber_id >= g_scheduler.fiber_count) return;
-    PendingTcpRead* op = &g_scheduler.pending_reads[fiber_id];
-    if (!op.active || op.completed) return;
-    if (op.write_mode) return;
-    if (op.readable_pending) {
-        g_scheduler.readable_signal_coalesces.add(1);
-        return;
-    }
+    PendingTcpConnect* pending = &g_scheduler.pending_connects[fiber_id];
+    if (!pending.active) return;
 
-    op.readable_pending = true;
-    scheduler_signal_async();
+    FiberEntry* f = &g_scheduler.fibers[fiber_id];
+    if (f.state == FIBER_BLOCKED) f.state = FIBER_READY;
 }
 
-fn void scheduler_signal_poll_writable(usz fiber_id) {
+fn void scheduler_complete_pending_tcp_accept(usz fiber_id) {
     if (fiber_id >= g_scheduler.fiber_count) return;
-    PendingTcpRead* op = &g_scheduler.pending_reads[fiber_id];
-    if (!op.active || op.completed) return;
-    if (!op.write_mode) return;
-    if (op.writable_pending) {
-        g_scheduler.readable_signal_coalesces.add(1);
-        return;
-    }
+    PendingTcpAccept* pending = &g_scheduler.pending_accepts[fiber_id];
+    if (!pending.active) return;
 
-    op.writable_pending = true;
-    scheduler_signal_async();
+    FiberEntry* f = &g_scheduler.fibers[fiber_id];
+    if (f.state == FIBER_BLOCKED) f.state = FIBER_READY;
 }
 
-fn void scheduler_uv_timer_cb(void* handle) {
-    isz idx = scheduler_find_pending_by_handle(handle);
-    if (idx < 0) return;
-
-    PendingTcpRead* op = &g_scheduler.pending_reads[(usz)idx];
-    if (!op.active || op.completed) return;
-
-    (void)scheduler_publish_timer_expired((usz)idx);
-}
-
-fn void scheduler_uv_sleep_timer_cb(void* handle) {
-    isz idx = scheduler_find_pending_sleep_by_handle(handle);
-    if (idx < 0) return;
-    PendingSleep* sleep = &g_scheduler.pending_sleeps[(usz)idx];
-    if (!sleep.active || sleep.completed) return;
-    (void)scheduler_publish_sleep_done((usz)idx);
-}
-
-fn void scheduler_uv_getaddrinfo_cb(void* req, int status, void* res) {
-    void* host_copy = omni_uv_req_get_data(req);
-    if (host_copy != null) {
-        mem::free(host_copy);
-        omni_uv_req_set_data(req, null);
-    }
-
-    isz idx = scheduler_find_pending_dns_by_req(req);
-    if (idx < 0) {
-        if (res != null) omni_uv_freeaddrinfo(res);
-        omni_uv_getaddrinfo_req_free(req);
-        return;
-    }
-
-    PendingDnsResolve* dns = &g_scheduler.pending_dns[(usz)idx];
-    dns.host_copy = null;
-
-    if (!dns.active || dns.completed) {
-        if (res != null) omni_uv_freeaddrinfo(res);
-        omni_uv_getaddrinfo_req_free(req);
-        dns.req_handle = null;
-        dns.addrinfo_result = null;
-        dns.completed = false;
-        dns.status = status;
-        return;
-    }
-
-    dns.status = status;
-    dns.addrinfo_result = res;
-    dns.completed = true;
-    if (!scheduler_publish_dns_done((usz)idx)) {
-        scheduler_complete_pending_dns((usz)idx);
-    }
-}
-
-fn void scheduler_uv_poll_cb(void* handle, int status, int events) {
-    isz idx = scheduler_find_pending_by_handle(handle);
-    if (idx < 0) return;
-
-    PendingTcpRead* op = &g_scheduler.pending_reads[(usz)idx];
-    if (!op.active || op.completed) return;
-
-    if (status < 0) {
-        (void)scheduler_publish_poll_error((usz)idx, status);
-    } else {
-        if ((events & UV_READABLE) != 0) {
-            scheduler_signal_poll_readable((usz)idx);
-        }
-        if ((events & UV_WRITABLE) != 0) {
-            scheduler_signal_poll_writable((usz)idx);
-        }
-    }
-}
-
-fn void scheduler_handle_wakeup_timer_expired(usz fid) {
-    PendingTcpRead* op = &g_scheduler.pending_reads[fid];
-    if (!op.active || op.completed) return;
-    op.timed_out = true;
-    op.completed = true;
-    scheduler_complete_pending_tcp_read(fid);
-}
-
-fn void scheduler_handle_wakeup_poll_error(usz fid, int status) {
-    PendingTcpRead* op = &g_scheduler.pending_reads[fid];
-    if (!op.active || op.completed) return;
-    op.error_code = status;
-    op.completed = true;
-    scheduler_complete_pending_tcp_read(fid);
-}
-
-fn void scheduler_handle_wakeup_poll_readable(usz fid) {
-    PendingTcpRead* op = &g_scheduler.pending_reads[fid];
-    if (!op.active || op.completed) return;
-    if (op.write_mode) return;
-    op.readable_pending = false;
-
-    long n = c_recv(op.fd, op.buffer, op.max_bytes, MSG_DONTWAIT);
-    if (n >= 0) {
-        op.nread = n;
-        op.completed = true;
-    } else {
-        int err = 0;
-        int* err_ptr = c_errno_location();
-        if (err_ptr != null) err = *err_ptr;
-        if (err != ERRNO_EAGAIN && err != ERRNO_EWOULDBLOCK) {
-            op.error_code = err;
-            op.completed = true;
-        }
-    }
-
-    if (op.completed) scheduler_complete_pending_tcp_read(fid);
-}
-
-fn void scheduler_handle_wakeup_poll_writable(usz fid) {
-    PendingTcpRead* op = &g_scheduler.pending_reads[fid];
-    if (!op.active || op.completed) return;
-    if (!op.write_mode) return;
-    op.writable_pending = false;
-
-    if (op.write_offset >= op.write_len) {
-        op.nwritten = (long)op.write_offset;
-        op.completed = true;
-        scheduler_complete_pending_tcp_read(fid);
-        return;
-    }
-
-    long n = c_send(
-        op.fd,
-        op.write_buffer + op.write_offset,
-        op.write_len - op.write_offset,
-        MSG_DONTWAIT
-    );
-    if (n > 0) {
-        op.write_offset += (usz)n;
-        op.nwritten = (long)op.write_offset;
-        if (op.write_offset >= op.write_len) {
-            op.completed = true;
-        }
-    } else if (n < 0) {
-        int err = 0;
-        int* err_ptr = c_errno_location();
-        if (err_ptr != null) err = *err_ptr;
-        if (err != ERRNO_EAGAIN && err != ERRNO_EWOULDBLOCK) {
-            op.error_code = err;
-            op.completed = true;
-        }
-    }
-
-    if (op.completed) scheduler_complete_pending_tcp_read(fid);
-}
-
-fn void scheduler_handle_wakeup_offload_ready(usz fid, void* payload) {
-    PendingOffload* off = &g_scheduler.pending_offloads[fid];
-    if (!off.active || off.completed) {
-        scheduler_free_offload_completion(payload);
-        return;
-    }
-
-    off.completion = payload;
-    off.completed = true;
-    scheduler_complete_pending_offload(fid);
-}
-
-fn void scheduler_handle_wakeup_sleep_done(usz fid) {
-    PendingSleep* sleep = &g_scheduler.pending_sleeps[fid];
-    if (!sleep.active || sleep.completed) return;
-
-    sleep.completed = true;
-    scheduler_complete_pending_sleep(fid);
-}
-
-fn void scheduler_handle_wakeup_dns_done(usz fid) {
-    PendingDnsResolve* dns = &g_scheduler.pending_dns[fid];
-    if (!dns.active || !dns.completed) return;
-    scheduler_complete_pending_dns(fid);
-}
-
-fn void scheduler_drain_coalesced_readable_signals() {
-    for (usz fid = 0; fid < g_scheduler.fiber_count; fid++) {
-        PendingTcpRead* op = &g_scheduler.pending_reads[fid];
-        if (!op.active || op.completed || !op.readable_pending) continue;
-        scheduler_handle_wakeup_poll_readable(fid);
-    }
-}
-
-fn void scheduler_drain_coalesced_writable_signals() {
-    for (usz fid = 0; fid < g_scheduler.fiber_count; fid++) {
-        PendingTcpRead* op = &g_scheduler.pending_reads[fid];
-        if (!op.active || op.completed || !op.writable_pending) continue;
-        scheduler_handle_wakeup_poll_writable(fid);
-    }
-}
-
-fn void drain_wakeups() {
-    while (true) {
-        ReliableWakeupNode* node = scheduler_take_reliable_wakeup_batch();
-        if (node == null) break;
-
-        while (node != null) {
-            ReliableWakeupNode* next = node.next;
-            scheduler_dispatch_wakeup_event(node.event);
-            mem::free(node);
-            node = next;
-        }
-    }
-
-    scheduler_drain_coalesced_readable_signals();
-    scheduler_drain_coalesced_writable_signals();
-}
 
 fn Value* scheduler_value_from_pending_tcp_read(PendingTcpRead* op, Interp* interp) {
     if (op.write_mode) {

@@ -33,22 +33,42 @@ is_boundary_sensitive_file() {
 
 collect_changed_files() {
   if [[ -n "$diff_range" ]]; then
-    git diff --name-only "$diff_range" || true
+    git diff --name-only "$diff_range" | awk 'NF' | LC_ALL=C sort -u || true
+    return
+  fi
+
+  local local_changes=0
+  if ! git diff --quiet --ignore-submodules --; then
+    local_changes=1
+  fi
+  if ! git diff --cached --quiet --ignore-submodules --; then
+    local_changes=1
+  fi
+  if [[ -n "$(git ls-files --others --exclude-standard || true)" ]]; then
+    local_changes=1
+  fi
+
+  if ((local_changes == 1)); then
+    {
+      git diff --name-only -- || true
+      git diff --name-only --cached -- || true
+      git ls-files --others --exclude-standard || true
+    } | awk 'NF' | LC_ALL=C sort -u
     return
   fi
 
   if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-    git diff --name-only HEAD~1..HEAD || true
+    git diff --name-only HEAD~1..HEAD | awk 'NF' | LC_ALL=C sort -u || true
     return
   fi
 
-  git diff-tree --no-commit-id --name-only -r HEAD || true
+  git diff-tree --no-commit-id --name-only -r HEAD | awk 'NF' | LC_ALL=C sort -u || true
 }
 
 extract_summary_line() {
   local log_file="$1"
   local suite="$2"
-  grep -E "OMNI_TEST_SUMMARY suite=${suite}( |$)" "$log_file" | tail -n 1 || true
+  grep -aE "OMNI_TEST_SUMMARY suite=${suite}( |$)" "$log_file" | tail -n 1 || true
 }
 
 extract_summary_field() {

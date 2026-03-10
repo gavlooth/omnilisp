@@ -242,10 +242,6 @@ fn BoundaryEnvCopyResult copy_env_to_scope_inner_checked(
     return copy_env_materialize_frame(env, interp, depth, active_ctx);
 }
 
-fn Env* copy_env_to_scope_inner(Env* env, Interp* interp, usz depth, PromotionContext* active_ctx) {
-    return copy_env_to_scope_inner_checked(env, interp, depth, active_ctx).env;
-}
-
 /**
  * Copy an env chain into interp.current_scope (caller must set this to the target scope,
  * typically a closure's env_scope). Uses boundary copy routing for binding values.
@@ -275,10 +271,6 @@ fn BoundaryEnvCopyResult copy_env_to_scope_checked(
         if (owns_ctx) copy_env_end_owned_promotion_ctx(interp, active_ctx, saved_active_ctx);
     }
     return copy_env_to_scope_inner_checked(env, interp, depth, active_ctx);
-}
-
-fn Env* copy_env_to_scope(Env* env, Interp* interp, usz depth = 0, PromotionContext* ctx = null) {
-    return copy_env_to_scope_checked(env, interp, depth, ctx).env;
 }
 
 // Continuations, effects, index — all handled by JIT (jit.c3)

@@ -5,7 +5,8 @@
 ;;   _ placeholder    — (+ 1 _) creates lambdas inline
 ;;   match [h .. t]   — list destructuring in decode-request
 ;;   match (Ok/Err)   — unwrap feed results and cache lookups
-;;   cond             — routing table and request validation
+;;   match [method path] — declarative route dispatch patterns
+;;   match (nil/payload) — request-body and dynamic-path branch handling
 ;;   {..} dict params — destructure POST body dicts directly
 ;;   for-each         — side-effect iteration (store results, not map)
 ;;   try              — catch raise effects with stdlib function
@@ -76,7 +77,12 @@
 (define (require! schema-name value)
   (if (validate schema-name value)
       value
-      (raise (format "validation failed: %s" (explain schema-name value)))))
+      (raise (format "validation failed: %s" (schema-explain schema-name value)))))
+
+;; Convert a request body row into a validated Holding.
+(define (server/row->holding {symbol qty cost})
+  (require! 'holding-schema {'symbol symbol 'qty qty 'cost cost})
+  (Holding symbol (* 1.0 qty) (* 1.0 cost)))
 
 ;; ── Route handlers ────────────────────────────────────────────────────────────
 
@@ -92,15 +98,11 @@
 ;; Body: [{"symbol":"BTC","qty":0.5,"cost":30000}, ...]
 ;; {symbol qty cost} dict destructuring extracts fields from each JSON object.
 (define (route/portfolio body)
-  (cond
-    [(not body) (err-response 400 "missing request body")]
-    [else
-     (let (holdings (map (lambda ({symbol qty cost})
-                           (begin
-                             (require! 'holding-schema {'symbol symbol 'qty qty 'cost cost})
-                             (Holding symbol (* 1.0 qty) (* 1.0 cost))))
-                         body))
-       (ok-response (portfolio/pnl holdings)))]))
+  (match body
+    (nil (err-response 400 "missing request body"))
+    (rows
+      (let (holdings (map server/row->holding rows))
+        (ok-response (portfolio/pnl holdings))))))
 
 ;; GET /health — uptime, last-refresh, log size, system uptime.
 ;; process-spawn shells out to `uptime -p` for system info.
@@ -120,40 +122,47 @@
                 'size (log/size)}))
 
 ;; GET /prices/:symbol — return a single cached quote by symbol
-;; re-match extracts the symbol via capture group; match on Ok/Err from cache.
-(define (route/price-by-symbol path)
-  (let (m (re-match "/prices/(.+)" path))
-    (cond
-      [(not m) (err-response 404 "not found")]
-      [else
-       (match (cache/quote-for (ref m 1))
-         ((Ok q)  (ok-response (to-json q)))
-         ((Err e) (err-response 404 e)))])))
+;; Parse `/prices/:symbol` using split-based routing to keep this path JIT-friendly.
+(define (route/price-symbol path)
+  (let (m (re-match "^/prices/([^/]+)$" path))
+    (match m
+      (nil nil)
+      (hit (ref hit 1)))))
+
+(define (route/price-by-symbol sym)
+  (match (cache/quote-for sym)
+    ((Ok q)  (ok-response (to-json q)))
+    ((Err e) (err-response 404 e))))
 
 ;; ── Router ────────────────────────────────────────────────────────────────────
 
 ;; Dispatch on method + path, return an HTTP response string.
-(define (dispatch method path body)
-  (cond
-    [(and (= method "GET")  (= path "/prices"))              (route/prices)]
-    [(and (= method "GET")  (= path "/news"))                (route/news)]
-    [(and (= method "GET")  (= path "/health"))              (route/health)]
-    [(and (= method "GET")  (= path "/logs"))                (route/logs)]
-    [(and (= method "POST") (= path "/portfolio"))           (route/portfolio body)]
-    [(and (= method "GET")  (re-match "^/prices/.+" path))  (route/price-by-symbol path)]
-    [else                                                    (err-response 404 "not found")]))
+;; Route dispatch is pattern-first: static routes are literal matches and the
+;; dynamic /prices/:symbol route is handled by a guarded GET path binding.
+(define (server-dispatch method path body)
+  (match [method path]
+    (["GET" "/prices"]     (route/prices))
+    (["GET" "/news"]       (route/news))
+    (["GET" "/health"]     (route/health))
+    (["GET" "/logs"]       (route/logs))
+    (["POST" "/portfolio"] (route/portfolio body))
+    (["GET" p]
+      (match (route/price-symbol p)
+        (nil (err-response 404 "not found"))
+        (sym (route/price-by-symbol sym))))
+    (_                     (err-response 404 "not found"))))
 
 ;; ── Connection handler ────────────────────────────────────────────────────────
 
 ;; |> pipe: raw bytes → decode → dispatch → respond.
 ;; partial binds the socket once — respond = (lambda (msg) (tcp-write client msg)).
 ;; handle/raise catches any raise signal from route handlers.
-(define (server/handle-client client)
+(define (server-handle-client client)
   (let (respond (partial tcp-write client))
     (handle
       (let (req (|> (tcp-read client) decode-request))
         (log/write! (format "%s %s" ('method req) ('path req)))
-        (|> (dispatch ('method req) ('path req) ('body req))
+        (|> (server-dispatch ('method req) ('path req) ('body req))
             respond)
         (tcp-close client))
       (raise msg
@@ -163,10 +172,10 @@
 
 ;; ── Accept loop ───────────────────────────────────────────────────────────────
 
-(define (server/accept-loop listener)
+(define (server-accept-loop listener)
   (let (client (tcp-accept listener))
-    (spawn (lambda () (server/handle-client client)))
-    (server/accept-loop listener)))
+    (spawn (lambda () (server-handle-client client)))
+    (server-accept-loop listener)))
 
 ;; ── Background poller ─────────────────────────────────────────────────────────
 
@@ -174,7 +183,7 @@
 ;; Each source is fire-and-forget — failures are logged but don't abort the poll.
 ;; for-each: side-effect only (storing into cache), not building a list.
 ;; match (Ok/Err) replaces null? checks on feed results.
-(define (server/poll-once!)
+(define (server-poll-once!)
   (define (store-quotes! result)
     (match result
       ((Ok quotes) (for-each cache/store-quote! quotes))
@@ -192,10 +201,10 @@
 ;; Polling loop: run immediately on start, then every poll-interval-ms.
 (define poll-interval-ms (* 60 1000))
 
-(define (server/poll-loop)
-  (server/poll-once!)
+(define (server-poll-loop)
+  (server-poll-once!)
   (async-sleep poll-interval-ms)
-  (server/poll-loop))
+  (server-poll-loop))
 
 ;; ── Entry points ──────────────────────────────────────────────────────────────
 
@@ -204,11 +213,11 @@
   (let (listener (tcp-listen host port 128))
     (println (format "finwatch listening on %s:%d" host port))
     (log/write! (format "server started on %s:%d" host port))
-    (spawn (lambda () (server/poll-loop)))
-    (spawn (lambda () (server/accept-loop listener)))
+    (spawn (lambda () (server-poll-loop)))
+    (spawn (lambda () (server-accept-loop listener)))
     {'host host 'port port 'listener listener}))
 
 ;; (server/start "127.0.0.1" 8080) — blocks, handing control to the scheduler.
 (define (server/start host port)
-  (server/start-async host port)
-  (run-fibers))
+  (let (srv (server/start-async host port))
+    (run-fibers)))

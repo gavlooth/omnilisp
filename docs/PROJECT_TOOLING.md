@@ -1,6 +1,6 @@
 # Omni Lisp — Project Tooling
 
-**Last updated:** 2026-03-05
+**Last updated:** 2026-03-10
 
 Omni provides CLI commands for creating projects and auto-generating FFI bindings from C headers.
 
@@ -82,6 +82,103 @@ Artifacts:
 - `build/boundary_hardening_normal.log`
 - `build/boundary_hardening_asan.log`
 - `build/boundary_hardening_summary.json`
+- `build/effects_contract_lint_summary.json`
+- `build/effects_contract_policy.log`
+- `build/libuv_surface_policy.log`
+- `build/primitive_docs_parity.log`
+
+### Container-Capped Validation (Docker)
+
+The shared cap wrapper (`scripts/c3c_limits.sh`) supports real Docker
+containment for validation runs:
+
+```bash
+scripts/build_validation_image.sh
+
+scripts/run_global_gates.sh
+```
+
+This mode runs each capped command in a constrained container with:
+- memory hard cap (`--memory`, `--memory-swap`),
+- CPU cap (`--cpus`),
+- PID cap (`--pids-limit`),
+- optional wall-time cap (`OMNI_DOCKER_TIMEOUT_SEC`),
+- resource telemetry log (`build/docker_resource_stats.log` by default).
+
+Default policy:
+- Docker-bound execution for gate scripts when run outside validation containers.
+- Max resource envelope of 30% host memory + 30% host CPUs per capped command (CPU and memory overrides are clamped to this maximum).
+
+Useful knobs:
+- `OMNI_DOCKER_IMAGE` (default `omni-validation:2026-03-10`)
+- `OMNI_DOCKER_CPUS` (default: auto 30% host CPU quota, clamped to max policy)
+- `OMNI_DOCKER_PIDS_LIMIT` (default `512`)
+- `OMNI_DOCKER_TIMEOUT_SEC` (default `0`, disabled)
+- `OMNI_DOCKER_NETWORK` (default `none`)
+- `OMNI_DOCKER_MONITOR` (default `1`)
+- `OMNI_DOCKER_MONITOR_LOG` (default `build/docker_resource_stats.log`)
+- `OMNI_DOCKER_REQUIRE_LOCAL_IMAGE` (default `1`, disables implicit pull noise)
+- `OMNI_DOCKER_EXTRA_ARGS` (extra raw `docker run` args)
+- `OMNI_DOCKER_TOOLCHAIN_ROOT` (optional host toolchain root mounted at `/opt/omni-host-toolchain`)
+
+When `OMNI_DOCKER_TOOLCHAIN_ROOT` is set, gate scripts automatically switch
+runtime `LD_LIBRARY_PATH` to `/opt/omni-host-toolchain/lib` for container runs.
+
+Pinned validation image build knobs:
+- `OMNI_VALIDATION_IMAGE` (default `omni-validation:2026-03-10`)
+- `OMNI_VALIDATION_DOCKERFILE` (default `docker/validation.Dockerfile`)
+- `OMNI_VALIDATION_BUILD_PULL` (default `1`)
+- `OMNI_VALIDATION_BUILD_ARGS` (raw extra `docker build` args)
+
+### Single-Container Validation Session
+
+For a full validation session in one constrained container (instead of
+per-command container launches), use:
+
+```bash
+scripts/run_validation_container.sh
+```
+
+By default this runs `scripts/run_global_gates.sh` inside one Docker container
+with hard caps + telemetry. You can pass a custom command:
+
+```bash
+scripts/run_validation_container.sh scripts/run_boundary_hardening.sh
+```
+
+Session knobs:
+- `OMNI_VALIDATION_IMAGE` (default `omni-validation:2026-03-10`)
+- `OMNI_VALIDATION_MEM_MB` (defaults to detected 30% hard cap; value is clamped to cap policy)
+- `OMNI_VALIDATION_CPUS` (defaults to auto 30% host CPU quota; value is clamped to cap policy)
+- `OMNI_VALIDATION_PIDS_LIMIT` (default `512`)
+- `OMNI_VALIDATION_TIMEOUT_SEC` (default `0`, disabled)
+- `OMNI_VALIDATION_NETWORK` (default `none`)
+- `OMNI_VALIDATION_REQUIRE_LOCAL_IMAGE` (default `1`, disables implicit pull noise)
+- `OMNI_VALIDATION_TOOLCHAIN_ROOT` (default empty, optional host toolchain mount)
+- `OMNI_VALIDATION_MONITOR_LOG` (default `build/docker_validation_container_stats.log`)
+
+### Effects-Contract Lint Profile
+
+```bash
+scripts/run_effects_contract_lint.sh
+```
+
+Runs contract drift guards for the effects-first error model:
+
+- `scripts/check_effects_contract_policy.sh`
+  - forbids `raise_error(...)` and `make_error(...)` in newly added public primitives.
+  - forbids newly-added direct `(signal raise ...)` forms in `stdlib/stdlib.lisp`.
+- `scripts/check_libuv_surface_policy.sh`
+  - requires newly introduced `io/*` surface additions to keep canonical raw/effect/wrapper mapping.
+  - forbids introducing new `io/*` wrappers as lambda aliases; wrapper additions must use function-style `define`.
+- `scripts/check_primitive_docs_parity.sh`
+  - fails when public primitives registered in `src/lisp/eval_init_primitives.c3`
+    are not documented in reference/spec docs.
+  - fails when newly-added `__raw-*` io primitives or wrappers are undocumented or missing wrapper/effect mapping.
+
+Artifact:
+
+- `build/effects_contract_lint_summary.json`
 
 ### CI Integration
 
@@ -101,6 +198,21 @@ It expects a self-hosted Linux runner with `c3c` and runtime dependencies preins
    - `build/boundary_hardening_normal.log`
    - `build/boundary_hardening_asan.log`
    - `build/boundary_hardening_summary.json`
+   - `build/effects_contract_lint_summary.json`
+   - `build/effects_contract_policy.log`
+   - `build/libuv_surface_policy.log`
+   - `build/primitive_docs_parity.log`
+
+### Lint Rules (Effects Error Contract)
+
+These are enforced by `scripts/run_effects_contract_lint.sh` in local and CI
+flows:
+
+1. New public primitives must not introduce legacy failure style (`raise_error`
+   / `make_error`); they must use canonical payload-aware raise helpers.
+2. New stdlib wrapper code must not add direct `(signal raise ...)` usage.
+3. Public primitive registration must stay doc-complete (reference/spec must
+   include every registered public primitive).
 
 Optional workflow input:
 

@@ -14,6 +14,10 @@ struct ResetValueState {
     Value*  shift_k;      // Captured k for shift body
 }
 
+fn Value* runtime_effects_raise(Interp* interp, char[] code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "runtime", code, message, null);
+}
+
 fn void reset_value_entry(void* arg) {
     ResetValueState* state = (ResetValueState*)arg;
     Value* v = jit_apply_value(state.body, make_nil(state.interp), state.interp);
@@ -93,7 +97,7 @@ fn Value* jit_shift_value(Interp* interp, Value* body) {
 }
 
 fn Value* jit_signal_eval_result_or_error(EvalResult r, Interp* interp) @inline {
-    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
+    if (r.error.has_error) return runtime_effects_raise(interp, "runtime/fast-path-primitive-failed", r.error.message[:256]);
     return r.value;
 }
 
@@ -357,8 +361,10 @@ fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz c
     if (!jit_handle_init_clauses(h, tags, closures, count)) {
         return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "handle: failed to allocate clauses");
     }
-    defer mem::free(h.tags);
-    defer mem::free(h.closures);
+    SymbolId* owned_tags = h.tags;
+    Value** owned_closures = h.closures;
+    defer mem::free(owned_tags);
+    defer mem::free(owned_closures);
 
     interp.handler_count = my_idx + 1;
     defer interp.handler_count = my_idx;

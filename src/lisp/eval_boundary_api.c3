@@ -25,26 +25,6 @@ fn bool boundary_env_flag_enabled(char* name) @inline {
     return false;
 }
 
-fn usz boundary_env_usize_or_default(char* name, usz default_value) @inline {
-    if (name == null) return default_value;
-    char* value = boundary_c_getenv(name);
-    if (value == null) return default_value;
-    while (*value != 0 && (*value == ' ' || *value == '\t' || *value == '\n' || *value == '\r')) {
-        value++;
-    }
-    if (*value == 0) return default_value;
-
-    usz result = 0;
-    bool has_digits = false;
-    for (char* cursor = value; *cursor != 0; cursor++) {
-        if (*cursor < '0' || *cursor > '9') return default_value;
-        has_digits = true;
-        result = result * 10 + (usz)(*cursor - '0');
-    }
-    if (!has_digits) return default_value;
-    return result;
-}
-
 enum BoundaryCommitOutcome : char {
     BOUNDARY_COMMIT_NULL_RESULT,
     BOUNDARY_COMMIT_REUSED_IN_TARGET_CHAIN,
@@ -406,21 +386,6 @@ fn void boundary_pop_child_scope(
 }
 
 <*
-@require interp != null : "boundary_copy_to_parent_site: null interp"
-*>
-fn Value* boundary_copy_to_parent_site(Value* v, Interp* interp, uint site) @inline {
-    return copy_to_parent_site(v, interp, site);
-}
-
-<*
-@require parent != null : "boundary_scope_splice_escapes: null parent"
-@require child != null : "boundary_scope_splice_escapes: null child"
-*>
-fn void boundary_scope_splice_escapes(main::ScopeRegion* parent, main::ScopeRegion* child) @inline {
-    main::scope_splice_escapes(parent, child);
-}
-
-<*
 @require interp != null : "boundary_copy_to_parent_site_ctx: null interp"
 *>
 fn BoundaryCopyResult boundary_copy_to_parent_site_ctx_checked(
@@ -439,7 +404,7 @@ fn BoundaryCopyResult boundary_copy_to_parent_site_ctx_checked(
         if (cached != null) return boundary_copy_ok(cached);
     }
     bool can_track = promotion_context_consume(ctx, 1);
-    Value* copied = boundary_copy_to_parent_site(v, interp, site);
+    Value* copied = copy_to_parent_site(v, interp, site);
     if (copied == null) {
         return boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
     }
@@ -581,13 +546,6 @@ fn Value* boundary_promote_to_root_site(Value* v, Interp* interp, uint site) @in
 *>
 fn Value* boundary_promote_to_root(Value* v, Interp* interp) @inline {
     return promote_to_root(v, interp);
-}
-
-<*
-@require interp != null : "boundary_copy_env_to_scope: null interp"
-*>
-fn Env* boundary_copy_env_to_scope(Env* env, Interp* interp, usz depth = 0, PromotionContext* ctx = null) @inline {
-    return copy_env_to_scope_checked(env, interp, depth, ctx).env;
 }
 
 <*

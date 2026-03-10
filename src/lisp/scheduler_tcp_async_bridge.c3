@@ -186,9 +186,9 @@ fn Value* scheduler_start_tcp_write_watcher(void* poll_handle, char* write_buf, 
     return null;
 }
 
-// Async bridge used by tcp-read fast-path:
-// returns non-null when it handled the call (including errors);
-// null means "fall back to blocking path".
+// Async bridge used by tcp-read:
+// returns non-null when it handled the call (including errors).
+// null is reserved for non-fiber call sites that use different policies.
 fn Value* scheduler_try_async_tcp_read(int fd, usz max_bytes, long timeout_ms, Interp* interp) {
     scheduler_init();
     if (!scheduler_is_running_fiber_context()) return null;
@@ -209,10 +209,22 @@ fn Value* scheduler_try_async_tcp_read(int fd, usz max_bytes, long timeout_ms, I
     Value* probe_result = scheduler_probe_tcp_read_nonblocking(fd, max_bytes, interp);
     if (probe_result != null) return probe_result;
 
-    if (!g_scheduler.uv_loop_ready || g_scheduler.uv_loop == null) return null;
+    if (!g_scheduler.uv_loop_ready || g_scheduler.uv_loop == null) {
+        return scheduler_raise(
+            interp,
+            "scheduler/tcp-read-libuv-unavailable",
+            "tcp-read: libuv loop unavailable"
+        );
+    }
 
     usz handle_size = uv_handle_size(UV_HANDLE_POLL);
-    if (handle_size == 0) return null;
+    if (handle_size == 0) {
+        return scheduler_raise(
+            interp,
+            "scheduler/tcp-read-uv-poll-handle-unavailable",
+            "tcp-read: uv poll handle unavailable"
+        );
+    }
 
     void* poll_handle = null;
     char* read_buf = null;
@@ -239,21 +251,9 @@ fn Value* scheduler_try_async_tcp_read(int fd, usz max_bytes, long timeout_ms, I
     return scheduler_consume_pending_tcp_read(fiber_id, interp);
 }
 
-fn Value* scheduler_finish_tcp_write_sync(int fd, char[] data, usz written, Interp* interp) {
-    usz offset = written;
-    while (offset < data.len) {
-        long n = c_send(fd, data.ptr + offset, data.len - offset, 0);
-        if (n <= 0) {
-            return scheduler_raise(interp, "scheduler/tcp-write-send-failed", "tcp-write: send failed");
-        }
-        offset += (usz)n;
-    }
-    return make_int(interp, (long)offset);
-}
-
-// Async bridge used by tcp-write fast-path:
-// returns non-null when it handled the call (including errors);
-// null means "fall back to blocking path".
+// Async bridge used by tcp-write:
+// returns non-null when it handled the call (including errors).
+// null is reserved for non-fiber call sites that use different policies.
 fn Value* scheduler_try_async_tcp_write(int fd, char[] data, Interp* interp) {
     scheduler_init();
     if (!scheduler_is_running_fiber_context()) return null;
@@ -285,14 +285,23 @@ fn Value* scheduler_try_async_tcp_write(int fd, char[] data, Interp* interp) {
         }
     }
 
-    // If libuv loop is unavailable, finish remaining bytes synchronously.
+    // Hard-error when loop setup is unavailable; do not run sync fallback in
+    // fiber async path.
     if (!g_scheduler.uv_loop_ready || g_scheduler.uv_loop == null) {
-        return scheduler_finish_tcp_write_sync(fd, data, written, interp);
+        return scheduler_raise(
+            interp,
+            "scheduler/tcp-write-libuv-unavailable",
+            "tcp-write: libuv loop unavailable"
+        );
     }
 
     usz handle_size = uv_handle_size(UV_HANDLE_POLL);
     if (handle_size == 0) {
-        return scheduler_finish_tcp_write_sync(fd, data, written, interp);
+        return scheduler_raise(
+            interp,
+            "scheduler/tcp-write-uv-poll-handle-unavailable",
+            "tcp-write: uv poll handle unavailable"
+        );
     }
 
     char* write_buf = (char*)mem::malloc(data.len);

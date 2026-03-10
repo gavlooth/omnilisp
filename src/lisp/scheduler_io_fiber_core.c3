@@ -28,6 +28,8 @@ fn usz scheduler_add_fiber(Value* coroutine, usz parent_id, Interp* interp) {
     g_scheduler.pending_offloads[id] = {};
     g_scheduler.pending_sleeps[id] = {};
     g_scheduler.pending_dns[id] = {};
+    g_scheduler.pending_connects[id] = {};
+    g_scheduler.pending_accepts[id] = {};
     g_scheduler.fiber_count++;
     return id;
 }
@@ -68,6 +70,8 @@ fn void scheduler_mark_done(usz fiber_id, Value* result, Interp* interp) {
     scheduler_close_pending_offload(fiber_id);
     scheduler_close_pending_sleep(fiber_id);
     scheduler_close_pending_dns(fiber_id);
+    scheduler_close_pending_tcp_connect(fiber_id);
+    scheduler_close_pending_tcp_accept(fiber_id);
 
     if (f.parent_id < g_scheduler.fiber_count) {
         FiberEntry* parent = &g_scheduler.fibers[f.parent_id];
@@ -147,10 +151,8 @@ fn void scheduler_resume_fiber(usz fiber_id, Interp* interp) {
     if (f.state == FIBER_RUNNING) f.state = FIBER_READY;
 }
 
-fn void scheduler_wait_for_io_once() {
-    if (g_scheduler.uv_loop_ready && g_scheduler.uv_loop != null) {
-        (void)uv_run(g_scheduler.uv_loop, UV_RUN_ONCE);
-    } else {
-        c_usleep(1000);  // fallback if libuv loop failed to initialize
-    }
+fn bool scheduler_wait_for_io_once() {
+    if (!g_scheduler.uv_loop_ready || g_scheduler.uv_loop == null) return false;
+    (void)uv_run(g_scheduler.uv_loop, UV_RUN_ONCE);
+    return true;
 }

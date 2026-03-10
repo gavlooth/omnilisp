@@ -63,8 +63,7 @@
         ;; sort-by with curried comparator: descending by gain
         sorted  (sort-by (lambda (a) (lambda (b) (- b.gain a.gain))) pnls)
         ;; partition splits in one pass: (gainers . losers)
-        ;; _ placeholder: (> _.gain 0) → (lambda (x) (> x.gain 0))
-        split   (partition (lambda (p) (> p.gain 0)) sorted)
+        split   (partition (> _.gain 0) sorted)
         gainers (car split)
         losers  (cdr split)
         [tc tv] (portfolio/totals pnls))

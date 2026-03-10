@@ -2,7 +2,7 @@
 
 Date: 2026-03-04
 Owner: runtime triage
-Status: open
+Status: resolved (2026-03-09)
 
 ## Problem Statement
 
@@ -132,3 +132,12 @@ Strong candidates:
 
 - This issue is currently triage-only documented; no API/user syntax changes required.
 - Preserve region-centric ownership model; avoid introducing per-type lifetime drift as a workaround.
+
+## Resolution Snapshot (2026-03-09)
+
+Current ASAN validation no longer reproduces the failure:
+
+- `c3c build --sanitize=address`
+- `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+
+Result: pass (`Unified: 1573 passed, 0 failed`; `Compiler: 79 passed, 0 failed`).

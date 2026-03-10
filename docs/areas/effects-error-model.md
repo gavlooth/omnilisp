@@ -1,11 +1,16 @@
 # Effects and Error Model
 
-Status: `yellow` (core contract accepted; migration/parity still in progress)  
-As of: 2026-03-07
+Status: `green` (contract + migration baseline implemented and validated)  
+As of: 2026-03-09
 
 ## Canonical Sources
 
 - `memory/CHANGELOG.md` (primary current-state source of truth)
+- `docs/LANGUAGE_SPEC.md`:
+  - `#04-advanced-omni-profile` (effects/continuations boundaries)
+  - `#05-error-model-quick-reference` (failure class + payload shape quick map)
+  - `#06-pitfalls-guide` (`nil` vs `raise`, `resolve` vs abort)
+  - `#10-effect-handlers` (language surface for effect operations)
 - `docs/ARCHITECTURE.md` (effects-first failure contract)
 - `docs/EFFECTS_SEMANTICS.md` (semantics and runtime obligations)
 - `docs/EFFECTS_GUIDE.md` (usage-facing guide)
@@ -16,16 +21,17 @@ As of: 2026-03-07
 - Effects-first failure contract is documented and accepted.
 - Canonical error payload schema is specified in architecture docs.
 - Runtime boundary/scheduler semantics are documented in effects semantics.
+- Explainability tooling is closed with canonical symbol selectors and deterministic structured output (`explain 'effect`, `explain 'dispatch`).
+- Conversion/compression primitive families now emit canonical payloaded raises (`type/*`, `runtime/*`) instead of string-only error paths.
+- Error-model migration matrix (`docs/ERROR_MODEL.md`) now has no remaining `missing` rows.
 
 ## Known Gaps
 
-- Effects/typesystem parity plan still has pending phases and done-definition items.
-- Explainability tooling (`explain 'effect`, `explain 'dispatch`) is not yet closed.
-- Full drift-prevention gates for this area are incomplete.
+- No open migration gaps in the current baseline.
+- New runtime/stdlib API families must still default to canonical payloaded `raise` and add explicit regression anchors.
 
 ## Next Steps
 
-1. Complete pending items in parity plan Phases 3-6.
-2. Finalize the parity matrix and link each done row to regression tests.
-3. Add CI/lint guardrails that block drift from effects-first failure policy.
-4. Keep examples/docs aligned to canonical symbol selector syntax (`'effect`, `'dispatch`).
+1. Keep CI/lint drift gates (`effects contract` checks) in mandatory validation paths.
+2. Add canonical payload code/domain regression checks when new API families are added.
+3. Keep examples/docs and area snapshots aligned with canonical selector syntax (`'effect`, `'dispatch`) and onboarding quick-reference sections.

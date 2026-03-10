@@ -565,7 +565,7 @@ The Omni compiler (`src/lisp/compiler.c3`) translates Lisp AST to C3 source code
 - **Reference-counted closures**: When a closure escapes its scope (e.g., returned from a function), `copy_to_parent` creates a new Value wrapper sharing the `Closure*` via refcount. The Closure owns a standalone `env_scope` holding its captured environment. Freed when the last reference's destructor runs
 - **TCO scope recycling**: At each tail-call bounce, if the current scope has RC=1 (nothing escaped), the scope is swapped for a fresh one — all body temporaries freed per loop iteration (Perceus-style reuse analysis)
 - **Root scope**: Permanent scope for `define`'d values, primitives, and type instances. Never released
-- **AST allocation**: Expr and Pattern nodes use a separate pool-based region (`root_region`) — permanent, never freed
+- **AST allocation**: Expr and Pattern nodes use a dedicated `AstArena` lane — interpreter-lifetime, independent from runtime `ScopeRegion` ownership
 - Hash map entries use `mem::malloc` for contiguous array indexing
 
 ---
@@ -590,10 +590,10 @@ The Omni compiler (`src/lisp/compiler.c3`) translates Lisp AST to C3 source code
 (describe "hi")    ;; => "string"
 ```
 
-Val dispatch for value-level matching:
+Value dispatch for value-level matching (`Val` remains sugar):
 ```lisp
-(define (fib (^(Val 0) n)) 0)
-(define (fib (^(Val 1) n)) 1)
+(define (fib (^(Value 0) n)) 0)
+(define (fib (^(Value 1) n)) 1)
 (define (fib (^Int n)) (+ (fib (- n 1)) (fib (- n 2))))
 (fib 10)  ;; => 55
 ```
@@ -705,8 +705,8 @@ See `docs/PROJECT_TOOLING.md` for the complete reference.
 | Bindings per env frame | 512 |
 | Values | Scope-region bump-allocated (no fixed pool) |
 | Environments | Scope-region bump-allocated (no fixed pool) |
-| Expressions | Pool-allocated in root region (no fixed pool) |
-| Patterns | Pool-allocated in root region (no fixed pool) |
+| Expressions | AstArena (dedicated chunked AST arena, interpreter-lifetime) |
+| Patterns | AstArena (dedicated chunked AST arena, interpreter-lifetime) |
 | Match clauses | Dynamic (no fixed limit) |
 | Effect handler clauses | Dynamic (no fixed limit) |
 | Handler stack depth | 16 |

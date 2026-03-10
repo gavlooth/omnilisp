@@ -224,8 +224,9 @@ fn Grammar make_grammar(String[] starts, RuleEntry[] rules) {
     mem::free(edges.ptr);
     mem::free(parent_counts.ptr);
     mem::free(seed_counts.ptr);
-
-    // Don't free parent_clauses_arr entries - they may still be useful
+    for (usz i = 0; i < parent_clauses_arr.len; i++) {
+        if (parent_clauses_arr[i].len > 0) mem::free(parent_clauses_arr[i].ptr);
+    }
     mem::free(parent_clauses_arr.ptr);
 
     Grammar grammar;

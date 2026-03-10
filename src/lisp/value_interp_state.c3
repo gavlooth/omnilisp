@@ -27,8 +27,8 @@ struct Interp {
     SymbolTable  symbols;
     Env*         global_env;
 
-    // Region-based allocation (Expr/Pattern only)
-    main::RegionHandle root_region;      // For Expr, Pattern allocation (AST nodes are permanent)
+    // Dedicated AST allocator (Expr/Pattern lifetime is interpreter-scoped)
+    AstArena ast_arena;
 
     // Scope-region allocation (Values, Envs, closures)
     main::ScopeRegion* root_scope;       // Permanent scope for defines (lives forever)
@@ -64,6 +64,7 @@ struct Interp {
 
     // Type system symbols
     SymbolId sym_type;      // "type" for [type] annotation
+    SymbolId sym_struct;    // "struct" alias for [type] annotation
     SymbolId sym_abstract;  // "abstract" for [abstract] annotation
     SymbolId sym_union;     // "union" for [union] annotation
     SymbolId sym_alias;     // "alias" for [alias] annotation
@@ -87,6 +88,7 @@ struct Interp {
     SymbolId sym_Array;
     SymbolId sym_Dict;
     SymbolId sym_Any;
+    SymbolId sym_Value;
     SymbolId sym_Val;
     SymbolId sym_Number;
     SymbolId sym_Collection;
@@ -107,7 +109,7 @@ struct Interp {
 
     // Effect fast-path dispatch table: maps effect tag → raw primitive
     // When a signal has no handler, the fast path looks up this table.
-    FastPathEntry[48] fast_path_table;
+    FastPathEntry[64] fast_path_table;
     usz fast_path_count;
     bool jit_debug_trace;  // trace JIT compile/exec steps
 
@@ -200,6 +202,7 @@ struct Interp {
     main::StackPool stack_ctx_pool;
     Value* resume_value;           // Value passed to (k val) — read by shift on resume
     Value* yield_value;            // Value passed by (yield val) — read by resume
+    main::ScopeRegion* yield_scope; // Scope owning yield_value while coroutine is suspended
     void* current_reset_state;     // Pointer to current ResetState (in jit.c3)
 
 }
@@ -208,7 +211,7 @@ fn void interp_init_runtime_state(Interp* self) {
     self.symbols.init();
     self.global_env = null;
 
-    self.root_region = main::thread_root_region();
+    ast_arena_init(&self.ast_arena);
     self.root_scope = main::scope_create(null);
     self.current_scope = self.root_scope;
 
@@ -228,6 +231,7 @@ fn void interp_init_runtime_state(Interp* self) {
     g_stack_ctx_pool = &self.stack_ctx_pool;
     self.resume_value = null;
     self.yield_value = null;
+    self.yield_scope = null;
     self.current_reset_state = null;
 }
 
@@ -262,6 +266,7 @@ fn void interp_init_core_symbols(Interp* self) {
 
 fn void interp_init_type_symbols(Interp* self) {
     self.sym_type = self.symbols.intern("type");
+    self.sym_struct = self.symbols.intern("struct");
     self.sym_abstract = self.symbols.intern("abstract");
     self.sym_union = self.symbols.intern("union");
     self.sym_alias = self.symbols.intern("alias");
@@ -283,6 +288,7 @@ fn void interp_init_type_symbols(Interp* self) {
     self.sym_Array = self.symbols.intern("Array");
     self.sym_Dict = self.symbols.intern("Dict");
     self.sym_Any = self.symbols.intern("Any");
+    self.sym_Value = self.symbols.intern("Value");
     self.sym_Val = self.symbols.intern("Val");
     self.sym_Number = self.symbols.intern("Number");
     self.sym_Collection = self.symbols.intern("Collection");
@@ -332,7 +338,15 @@ fn void interp_init_runtime_flags(Interp* self) {
 }
 
 fn Value* interp_apply_stack_overflow_error(Interp* interp) {
-    return make_error(interp, "stack overflow: insufficient stack headroom");
+    // Stack-overflow errors must survive deep unwind without per-frame
+    // boundary copy/promotion churn; allocate in root scope so callers can
+    // reuse the same value through scope-finalization boundaries.
+    if (interp == null || interp.root_scope == null) return null;
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
+    Value* err = make_error(interp, "stack overflow: insufficient stack headroom");
+    interp.current_scope = saved_scope;
+    return err;
 }
 
 fn Value* interp_apply_frame_enter(Interp* interp) @inline {
@@ -370,125 +384,6 @@ fn void Interp.init(Interp* self) {
     interp_init_macro_state(self);
 
     self.global_env = make_env(self, null);
-}
-
-fn void Interp.grow_macro_table(Interp* self) {
-    usz new_cap = self.macro_capacity * 2;
-    MacroDef* new_table = (MacroDef*)mem::malloc(MacroDef.sizeof * new_cap);
-    for (usz i = 0; i < self.macro_count; i++) new_table[i] = self.macro_table[i];
-    mem::free(self.macro_table);
-    self.macro_table = new_table;
-    self.macro_capacity = new_cap;
-
-    // Rebuild hash
-    usz new_hash_cap = new_cap * 2;
-    usz* new_hash = (usz*)mem::malloc(usz.sizeof * new_hash_cap);
-    for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = usz.max;
-    mem::free(self.macro_hash_index);
-    self.macro_hash_index = new_hash;
-    self.macro_hash_capacity = new_hash_cap;
-
-    usz mask = new_hash_cap - 1;
-    for (usz i = 0; i < self.macro_count; i++) {
-        char[] name_str = self.symbols.get_name(self.macro_table[i].name);
-        usz h = hash_symbol(name_str);
-        for (usz probe = 0; probe < new_hash_cap; probe++) {
-            usz slot = (h + probe) & mask;
-            if (new_hash[slot] == usz.max) {
-                new_hash[slot] = i;
-                break;
-            }
-        }
-    }
-}
-
-fn void Interp.grow_module_table(Interp* self) {
-    usz new_cap = self.module_capacity * 2;
-    Module* new_mods = (Module*)mem::malloc(Module.sizeof * new_cap);
-    for (usz i = 0; i < self.module_count; i++) new_mods[i] = self.modules[i];
-    mem::free(self.modules);
-    self.modules = new_mods;
-    self.module_capacity = new_cap;
-
-    // Rebuild hash
-    usz new_hash_cap = new_cap * 2;
-    usz* new_hash = (usz*)mem::malloc(usz.sizeof * new_hash_cap);
-    for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = usz.max;
-    mem::free(self.module_hash_index);
-    self.module_hash_index = new_hash;
-    self.module_hash_capacity = new_hash_cap;
-
-    usz mask = new_hash_cap - 1;
-    for (usz i = 0; i < self.module_count; i++) {
-        char[] name_str = self.symbols.get_name(self.modules[i].name);
-        usz h = hash_symbol(name_str);
-        for (usz probe = 0; probe < new_hash_cap; probe++) {
-            usz slot = (h + probe) & mask;
-            if (new_hash[slot] == usz.max) {
-                new_hash[slot] = i;
-                break;
-            }
-        }
-    }
-}
-
-fn void Interp.grow_handler_stack(Interp* self) {
-    usz new_cap = self.handler_capacity * 2;
-    EffectHandler* new_stack = (EffectHandler*)mem::malloc(EffectHandler.sizeof * new_cap);
-    for (usz i = 0; i < self.handler_count; i++) new_stack[i] = self.handler_stack[i];
-    mem::free(self.handler_stack);
-    self.handler_stack = new_stack;
-    self.handler_capacity = new_cap;
-}
-
-fn void Interp.destroy(Interp* self) {
-    // Release root scope last among value-owned structures so registered dtors run.
-    // This is the primary deterministic cleanup point for scope-managed values/envs.
-    if (self.root_scope != null) {
-        self.current_scope = self.root_scope;
-        self.releasing_scope = null;
-        self.tco_recycle_scope = null;
-        self.tco_scope_defer_slot = 0;
-        self.tco_scope_defer_active = false;
-        self.active_promotion_ctx = null;
-        main::scope_release(self.root_scope);
-        self.root_scope = null;
-        self.current_scope = null;
-    }
-
-    self.symbols.destroy();
-    self.types.destroy();
-    if (self.macro_table != null) {
-        for (usz i = 0; i < self.macro_count; i++) macro_def_destroy(&self.macro_table[i]);
-        mem::free(self.macro_table);
-        self.macro_table = null;
-    }
-    if (self.macro_hash_index != null) { mem::free(self.macro_hash_index); self.macro_hash_index = null; }
-    if (self.modules != null) {
-        for (usz i = 0; i < self.module_count; i++) {
-            if (self.modules[i].exports != null) {
-                mem::free(self.modules[i].exports);
-            }
-            if (self.modules[i].path != null) {
-                mem::free(self.modules[i].path);
-                self.modules[i].path = null;
-            }
-        }
-        mem::free(self.modules);
-        self.modules = null;
-    }
-    if (self.source_dirs != null) {
-        for (usz i = 0; i < self.source_dir_count; i++) {
-            if (self.source_dirs[i] != null) mem::free(self.source_dirs[i]);
-        }
-        mem::free(self.source_dirs);
-        self.source_dirs = null;
-    }
-    if (self.module_hash_index != null) { mem::free(self.module_hash_index); self.module_hash_index = null; }
-    if (self.handler_stack != null) { mem::free(self.handler_stack); self.handler_stack = null; }
-    main::stack_pool_shutdown(&self.stack_ctx_pool);
-    if (g_stack_ctx_pool == &self.stack_ctx_pool) g_stack_ctx_pool = null;
-    jit_global_shutdown();
 }
 
 fn Continuation* Interp.alloc_lisp_continuation(Interp* self) {
@@ -536,7 +431,7 @@ fn Env* Interp.alloc_env(Interp* self) @inline {
     e.parent = null;
     e.hash_table = null;
     e.hash_capacity = 0;
-    e.persistent = false;
+    e.lifetime_kind = ENV_LIFETIME_LOCAL_SCOPE_FRAME;
     e.scope_gen = self.current_scope.generation;
     return e;
 }
@@ -549,20 +444,20 @@ fn Env* Interp.alloc_env_escape(Interp* self) @inline {
     e.parent = null;
     e.hash_table = null;
     e.hash_capacity = 0;
-    e.persistent = false;
+    e.lifetime_kind = ENV_LIFETIME_LOCAL_SCOPE_FRAME;
     e.scope_gen = self.current_scope.escape_generation;
     return e;
 }
 
 fn Expr* Interp.alloc_expr(Interp* self) {
-    Expr e;
-    main::ObjectHandle h = main::allocate_in(self.root_region, Expr, e);
-    return main::dereference_as(Expr, h);
+    Expr* expr = (Expr*)ast_arena_alloc(&self.ast_arena, Expr.sizeof);
+    assert(expr != null, "alloc_expr: ast arena allocation failed");
+    return expr;
 }
 
 fn Pattern* Interp.alloc_pattern(Interp* self) {
-    Pattern p;
-    main::ObjectHandle h = main::allocate_in(self.root_region, Pattern, p);
-    return main::dereference_as(Pattern, h);
+    Pattern* pattern = (Pattern*)ast_arena_alloc(&self.ast_arena, Pattern.sizeof);
+    assert(pattern != null, "alloc_pattern: ast arena allocation failed");
+    return pattern;
 }
 

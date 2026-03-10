@@ -66,7 +66,7 @@
 | E_DEFMACRO | `(define [macro] ...)` | Pattern macro definition |
 | E_MODULE | `(module name ...)` | Module definition |
 | E_IMPORT | `(import name)` | Module import |
-| E_DEFTYPE | `(define [type] ...)` | Struct type definition |
+| E_DEFTYPE | `(define [type] ...)` / `(define [struct] ...)` | Struct type definition |
 | E_DEFABSTRACT | `(define [abstract] ...)` | Abstract type definition |
 | E_DEFUNION | `(define [union] ...)` | Union type definition |
 | E_DEFALIAS | `(define [alias] ...)` | Type alias definition |
@@ -163,6 +163,7 @@ Three branches required (no two-branch form).
 ;; Bracket attributes (NOT destructuring — [...] is always an attribute)
 (define [macro] name (pattern template))
 (define [type] Name (^Type field1) (^Type field2))
+(define [struct] Name (^Type field1) (^Type field2))  ;; alias of [type]
 (define [type] (Child Parent) (^Type field))
 (define [abstract] Name)
 (define [abstract] (Child Parent))
@@ -267,7 +268,8 @@ Omni has no dedicated keyword type; `'as` and `'all` are quoted symbols in modul
 ```lisp
 ^Int              ;; simple type
 ^(List Int)       ;; compound type
-^(Val 42)         ;; value-level type (dispatch on literal)
+^(Value 42)       ;; canonical value-level type (dispatch on literal)
+^(Val 42)         ;; sugar alias for ^(Value ...)
 ^{'T Number}      ;; metadata dictionary
 ```
 
@@ -284,7 +286,7 @@ Omni has no dedicated keyword type; `'as` and `'all` are quoted symbols in modul
 ### 4.3 Multiple Dispatch
 
 Typed defines create method tables. Best match wins:
-- Val literal match: score 1000
+- Value/Val literal match: score 1000
 - Exact type match: score 100
 - Subtype match: score 10
 - Any type (untyped param): score 1
@@ -341,6 +343,22 @@ The `_` token in a call expression creates a lambda at parse time. Works with an
 (map (+ 1 _) xs)   ;; adds 1 to each element
 (filter (> _ 0) xs) ;; keep positives
 ```
+
+Indexed placeholders are also supported in call-argument position:
+
+```lisp
+(- _2 _1)           ;; => (lambda (__p1 __p2) (- __p2 __p1))
+(+ _1 _1)           ;; argument reuse
+(+ _2 10)           ;; arity is 2 (highest index wins)
+```
+
+Rules:
+- `_n` requires `n >= 1` (`_1`, `_2`, ...).
+- Lambda arity is the highest referenced index in the call.
+- Repeated indices reuse the same generated lambda parameter.
+- Mixing `_` and `_n` in the same call is rejected.
+- Invalid `_n` forms in call args (`_0`, `_-1`, `_1x`) are rejected.
+- `_n` is not globally reserved syntax; outside call arguments it remains a normal symbol.
 
 ### 7.3 `|>` Pipe Operator (parser-level desugaring)
 

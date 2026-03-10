@@ -2,197 +2,10 @@ module lisp;
 
 import std::io;
 import std::collections::list;
-import main;
+
 // =============================================================================
-// SECTION 3: JIT HELPER FUNCTIONS (module/import + dispatch helpers)
+// SECTION 3: JIT HELPER FUNCTIONS (module/import)
 // =============================================================================
-fn bool jit_try_index_list(Interp* interp, Value* collection, Value* index, Value** out) {
-    if (!is_cons(collection) || !is_int(index)) return false;
-
-    // List/cons indexing — supports negative indexing.
-    long idx = index.int_val;
-    if (idx < 0) {
-        // Count list length for negative index resolution.
-        long len = 0;
-        Value* c = collection;
-        while (is_cons(c)) { len++; c = cdr(c); }
-        idx += len;
-        if (idx < 0) {
-            *out = raise_error(interp, "list index out of bounds");
-            return true;
-        }
-    }
-
-    Value* current = collection;
-    for (long i = 0; i < idx; i++) {
-        if (!is_cons(current)) {
-            *out = raise_error(interp, "list index out of bounds");
-            return true;
-        }
-        current = cdr(current);
-    }
-    if (!is_cons(current)) {
-        *out = raise_error(interp, "list index out of bounds");
-        return true;
-    }
-    *out = car(current);
-    return true;
-}
-
-fn bool jit_try_index_string(Interp* interp, Value* collection, Value* index, Value** out) {
-    if (!is_string(collection) || !is_int(index)) return false;
-
-    // String indexing — supports negative indexing, UTF-8 codepoint index.
-    char[] bytes = collection.str_chars[:collection.str_len];
-    usz cp_count = utf8_strlen(bytes);
-    long idx = index.int_val;
-    if (idx < 0) idx += (long)cp_count;
-    if (idx < 0 || idx >= (long)cp_count) {
-        *out = raise_error(interp, "string index out of bounds");
-        return true;
-    }
-    usz byte_off = utf8_byte_offset(bytes, (usz)idx);
-    usz pos = byte_off;
-    uint cp = utf8_decode(bytes, &pos);
-    *out = make_int(interp, (long)cp);
-    return true;
-}
-
-fn bool jit_try_index_array(Interp* interp, Value* collection, Value* index, Value** out) {
-    if (collection.tag != ARRAY || !is_int(index)) return false;
-
-    // Array indexing — supports negative indexing.
-    long idx = index.int_val;
-    long alen = (long)collection.array_val.length;
-    if (idx < 0) idx += alen;
-    if (idx < 0 || idx >= alen) {
-        *out = raise_error(interp, "array index out of bounds");
-        return true;
-    }
-    *out = collection.array_val.items[(usz)idx];
-    return true;
-}
-
-fn bool jit_try_index_dict(Interp* interp, Value* collection, Value* index, Value** out) {
-    if (collection.tag != HASHMAP) return false;
-    Value* result = hashmap_get(collection.hashmap_val, index);
-    if (result == null) result = make_nil(interp);
-    *out = result;
-    return true;
-}
-
-fn bool jit_try_index_instance(Interp* interp, Value* collection, Value* index, Value** out) {
-    if (collection.tag != INSTANCE) return false;
-
-    // Instance indexing — dispatch through `ref` method table if available.
-    SymbolId ref_sym = interp.symbols.intern("ref");
-    Value* ref_fn = interp.global_env.lookup(ref_sym);
-    if (ref_fn == null || ref_fn.tag != METHOD_TABLE) return false;
-    Value* args = make_cons(interp, collection, make_cons(interp, index, make_nil(interp)));
-    *out = jit_apply_multi_args(interp, ref_fn, args, 2);
-    return true;
-}
-
-fn Value* jit_index_type_error(Interp* interp, Value* collection) {
-    char[256] ebuf;
-    char[] msg = io::bprintf(&ebuf, "cannot index %s (expected array, dict, list, or string)",
-        (ZString)interp.symbols.get_name(value_type_name(collection, interp)))!!;
-    return raise_error(interp, msg);
-}
-
-fn Value* jit_do_index(Interp* interp, Value* collection, Value* index) {
-    if (collection == null) return raise_error(interp, "index: nil collection");
-    Value* result = null;
-    if (jit_try_index_list(interp, collection, index, &result)) return result;
-    if (jit_try_index_string(interp, collection, index, &result)) return result;
-    if (jit_try_index_array(interp, collection, index, &result)) return result;
-    if (jit_try_index_dict(interp, collection, index, &result)) return result;
-    if (jit_try_index_instance(interp, collection, index, &result)) return result;
-    return jit_index_type_error(interp, collection);
-}
-
-// Path helper — follows field access chain on Instance values.
-// Calls eval_path directly (it doesn't use eval internally).
-fn Value* jit_do_path(Interp* interp, Expr* expr, Env* env) {
-    EvalResult r = eval_path(expr, env, interp);
-    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-    return r.value;
-}
-
-// Match helper — evaluates scrutinee, runs pattern matching, evals matched result.
-// Eliminates one level of eval dispatch compared to jit_eval_match.
-fn Value* jit_do_match(Interp* interp, Value* scrutinee, Expr* expr, Env* env) {
-    // Set match_env so guard predicates can resolve free variables
-    interp.match_env = env;
-    for (usz i = 0; i < expr.match.clause_count; i++) {
-        MatchClause* clause = &expr.match.clauses[i];
-        MatchResult match_r = match_pattern(clause.pattern, scrutinee, interp);
-        if (match_r.matched) {
-            Env* clause_env = make_env(interp, env);
-            for (usz j = 0; j < match_r.binding_count; j++) {
-                env_define_with_barrier(clause_env, match_r.bindings[j].name, match_r.bindings[j].value, interp);
-            }
-            match_r.cleanup();
-            // Evaluate clause body directly — TCO bounce doesn't work when
-            // match is nested inside define/let/args (outer compiled code
-            // would receive the sentinel instead of the actual value).
-            return jit_eval(clause.result, clause_env, interp);
-        }
-    }
-    return format_match_error(scrutinee, expr, interp);
-}
-
-// Type definition helpers — call eval_* directly, no eval dispatch.
-fn Value* jit_do_deftype(Interp* interp, Expr* expr, Env* env) {
-    EvalResult r = eval_deftype(expr, env, interp);
-    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-    return r.value;
-}
-
-fn Value* jit_do_defabstract(Interp* interp, Expr* expr, Env* env) {
-    EvalResult r = eval_defabstract(expr, env, interp);
-    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-    return r.value;
-}
-
-fn Value* jit_do_defunion(Interp* interp, Expr* expr, Env* env) {
-    EvalResult r = eval_defunion(expr, env, interp);
-    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-    return r.value;
-}
-
-fn Value* jit_do_defalias(Interp* interp, Expr* expr, Env* env) {
-    EvalResult r = eval_defalias(expr, env, interp);
-    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-    return r.value;
-}
-
-fn Value* jit_do_defeffect(Interp* interp, Expr* expr, Env* env) {
-    EvalResult r = eval_defeffect(expr, env, interp);
-    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-    return r.value;
-}
-
-fn Value* jit_do_ffi_lib(Interp* interp, Expr* expr, Env* env) {
-    return eval_ffi_lib(expr, env, interp);
-}
-
-fn Value* jit_do_ffi_fn(Interp* interp, Expr* expr, Env* env) {
-    return eval_ffi_fn(expr, env, interp);
-}
-
-// JIT-native module/import — no eval() dependency.
-fn Value* jit_do_module(Interp* interp, Expr* expr, Env* env) {
-    EvalResult r = jit_eval_module_impl(expr, env, interp);
-    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-    return r.value;
-}
-
-fn Value* jit_do_import(Interp* interp, Expr* expr, Env* env) {
-    EvalResult r = jit_eval_import_impl(expr, env, interp);
-    if (r.error.has_error) return make_error(interp, r.error.message[:256]);
-    return r.value;
-}
 
 fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
     SymbolId name = expr.module_expr.name;
@@ -202,7 +15,6 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
         if (existing.loaded) {
             return eval_error("module already defined");
         }
-        // Previous load failed — allow re-definition by removing the stale entry
         existing.name = (SymbolId)0;
     }
 
@@ -220,7 +32,6 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
         mod.exports[i] = expr.module_expr.exports[i];
     }
 
-    // Module env must live in root_scope (module persists beyond run() scope).
     Env* mod_env = boundary_make_env_in_root(interp, interp.global_env);
     mod.env = mod_env;
     interp.module_count++;
@@ -249,23 +60,21 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
     return eval_ok(make_nil(interp));
 }
 
-// Extract directory from a file path (e.g. "lib/ffi/torch.omni" → "lib/ffi/")
-// Returns length of directory prefix (including trailing /).  0 if no directory.
 fn usz path_dir_len(char[] path) {
     usz last_slash = 0;
     bool found = false;
     for (usz i = 0; i < path.len; i++) {
-        if (path[i] == '/') { last_slash = i; found = true; }
+        if (path[i] == '/') {
+            last_slash = i;
+            found = true;
+        }
     }
     return found ? last_slash + 1 : 0;
 }
 
-// Resolve a relative path against the current source directory stack.
-// Writes resolved path into buf, returns length.  If no source dir on stack, copies path as-is.
 fn usz resolve_import_path(char[] rel_path, Interp* interp, char* buf, usz buf_cap) {
     usz pos = 0;
     if (interp.source_dir_count > 0) {
-        // Copy current source directory
         char* dir = interp.source_dirs[interp.source_dir_count - 1];
         usz di = 0;
         while (dir[di] != 0 && pos < buf_cap - 1) {
@@ -274,7 +83,6 @@ fn usz resolve_import_path(char[] rel_path, Interp* interp, char* buf, usz buf_c
             di++;
         }
     }
-    // Copy relative path
     for (usz i = 0; i < rel_path.len && pos < buf_cap - 1; i++) {
         buf[pos] = rel_path[i];
         pos++;
@@ -300,7 +108,6 @@ fn bool ensure_source_dir_capacity(Interp* interp, usz needed) {
     return true;
 }
 
-// Push a source directory derived from a file path.
 fn bool push_source_dir(char[] file_path, Interp* interp) {
     usz dlen = path_dir_len(file_path);
     if (dlen == 0) return true;
@@ -423,10 +230,13 @@ fn EvalResult jit_eval_implicit_module_file(SymbolId name, char[] path, List{Exp
     defer interp.global_env = saved_global;
 
     for (usz i = 0; i < expr_count; i++) {
-        EvalResult r = jit_eval_to_result((*expr_list)[i], mod.env, interp);
+        Expr* expr = (*expr_list)[i];
+        bool export_candidate = expr != null && expr.tag == E_DEFINE;
+        SymbolId export_name = export_candidate ? expr.define.name : (SymbolId)0;
+        EvalResult r = jit_eval_to_result(expr, mod.env, interp);
         if (r.error.has_error) return r;
-        if ((*expr_list)[i].tag == E_DEFINE) {
-            module_append_export(mod, (*expr_list)[i].define.name);
+        if (export_candidate) {
+            module_append_export(mod, export_name);
         }
     }
     mod.loaded = true;
@@ -464,17 +274,25 @@ fn Module* resolve_loaded_module(SymbolId name, char[] path, usz mod_count_befor
 fn bool build_default_module_rel_path(SymbolId name, Interp* interp, char* rel_buf, usz* len_out) {
     char[] sym_name = interp.symbols.get_name(name);
     if (4 + sym_name.len + 5 > 255) return false;
-    rel_buf[0] = 'l'; rel_buf[1] = 'i'; rel_buf[2] = 'b'; rel_buf[3] = '/';
+    rel_buf[0] = 'l';
+    rel_buf[1] = 'i';
+    rel_buf[2] = 'b';
+    rel_buf[3] = '/';
     usz rp = 4;
     for (usz i = 0; i < sym_name.len; i++) {
         rel_buf[rp] = sym_name[i];
         rp++;
     }
-    rel_buf[rp] = '.'; rp++;
-    rel_buf[rp] = 'o'; rp++;
-    rel_buf[rp] = 'm'; rp++;
-    rel_buf[rp] = 'n'; rp++;
-    rel_buf[rp] = 'i'; rp++;
+    rel_buf[rp] = '.';
+    rp++;
+    rel_buf[rp] = 'o';
+    rp++;
+    rel_buf[rp] = 'm';
+    rp++;
+    rel_buf[rp] = 'n';
+    rp++;
+    rel_buf[rp] = 'i';
+    rp++;
     rel_buf[rp] = 0;
     *len_out = rp;
     return true;
@@ -587,14 +405,4 @@ fn EvalResult jit_eval_import_impl(Expr* expr, Env* env, Interp* interp) {
     if (load_result.error.has_error) return load_result;
     if (mod == null) return eval_error("module not found");
     return bind_import_symbols(expr, env, mod, interp);
-}
-
-// Set last_call_name for error messages — called from JIT before apply.
-fn void jit_set_call_name(Interp* interp, SymbolId name) {
-    interp.last_call_name = name;
-}
-
-// Clear last_call_name (for computed function positions)
-fn void jit_clear_call_name(Interp* interp) {
-    interp.last_call_name = (SymbolId)0;
 }

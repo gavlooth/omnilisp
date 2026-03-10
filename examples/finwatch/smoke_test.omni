@@ -13,6 +13,9 @@
 (import "alerts.omni"    'all)
 (println "--- modules loaded ---")
 
+(define (print-bool-line ok true-msg false-msg)
+  (println (if ok true-msg false-msg)))
+
 ;; ── Types and dot access ──────────────────────────────────────────────────────
 (define q (Quote "BTC" 62000.0 1700000000))
 (define n (NewsItem 1 "Inflation hits 40-year high" 420 1700000000))
@@ -54,7 +57,7 @@
 ;; ── to-json PnL gain% ────────────────────────────────────────────────────────
 (let (p (PnL "TEST" 1.0 100.0 150.0 50.0) j (to-json p))
   (println (format "gain%%: %f" (ref j 'gain%)))
-  (if (= (ref j 'gain%) 50.0) (println "gain%: OK") (println "gain%: WRONG")))
+  (print-bool-line (= (ref j 'gain%) 50.0) "gain%: OK" "gain%: WRONG"))
 
 ;; ── Portfolio P&L ────────────────────────────────────────────────────────────
 (define holdings (list (Holding "BTC" 0.5 30000.0) (Holding "ETH" 2.0 2000.0)))
@@ -110,6 +113,68 @@
 ;; ── TTL check ───────────────────────────────────────────────────────────────
 (cache/set-last-refresh! (time))
 (println (format "stale(60s): %s" (cache/stale? (cache/last-refresh) 60)))
+
+;; ── pipe-connect / pipe-listen ─────────────────────────────────────────────
+(let (pipe-ok
+      (begin
+        (define pf (spawn (lambda ()
+          (define p (string-append "/tmp/finwatch_pipe_" (number->string (% (time-ms) 1000000)) ".sock"))
+          (define listener (pipe-listen p))
+          (define client (pipe-connect p))
+          (define server (tcp-accept listener))
+          (tcp-write client "pipe-ok")
+          (define got (tcp-read server))
+          (tcp-close client)
+          (tcp-close server)
+          (tcp-close listener)
+          (fs-unlink p)
+          (= got "pipe-ok"))))
+        (await pf)))
+  (print-bool-line pipe-ok "pipe io: OK" "pipe io: WRONG"))
+
+;; ── udp-socket / udp-send / udp-recv ───────────────────────────────────────
+(let (udp-ok
+      (begin
+        (define p (+ 35000 (% (time-ms) 20000)))
+        (define recv (udp-socket))
+        (udp-bind recv "127.0.0.1" p)
+        (define rf (spawn (lambda () (udp-recv recv))))
+        (async-sleep 5)
+        (define snd (udp-socket))
+        (udp-send snd "127.0.0.1" p "pong")
+        (define got (await rf))
+        (udp-close snd)
+        (udp-close recv)
+        (= got "pong")))
+  (print-bool-line udp-ok "udp io: OK" "udp io: WRONG"))
+
+;; ── signal-handle / signal-unhandle ────────────────────────────────────────
+(let (signal-ok
+      (begin
+        (define hits {'n 0})
+        (define h (signal-handle 10 (lambda (sig)
+                                      (dict-set! hits 'n (+ (ref hits 'n) 1)))))
+        (define notifier (process-spawn "/bin/sh" ["-c" "kill -USR1 $PPID"] nil))
+        (await (spawn (lambda () (process-wait (ref notifier 'handle)))))
+        (fs-close (ref notifier 'stdin))
+        (fs-close (ref notifier 'stdout))
+        (fs-close (ref notifier 'stderr))
+        (async-sleep 20)
+        (signal-unhandle h)
+        (= (ref hits 'n) 1)))
+  (print-bool-line signal-ok "signal io: OK" "signal io: WRONG"))
+
+;; ── process-kill ────────────────────────────────────────────────────────────
+(let (process-kill-ok
+      (begin
+        (define child (process-spawn "/bin/sh" ["-c" "sleep 2"] nil))
+        (process-kill (ref child 'handle) 15)
+        (define st (await (spawn (lambda () (process-wait (ref child 'handle))))))
+        (fs-close (ref child 'stdin))
+        (fs-close (ref child 'stdout))
+        (fs-close (ref child 'stderr))
+        (> (ref st 'term-signal) 0)))
+  (print-bool-line process-kill-ok "process-kill: OK" "process-kill: WRONG"))
 
 (println "--- original idioms passed ---")
 
@@ -245,14 +310,15 @@
 
 ;; reset / shift — backpressure (single-shot continuation capture)
 (let (bp-result (events/with-backpressure (range 10) 3))
-  (if (pair? bp-result)
+  (match (pair? bp-result)
+    (true
       (begin
         (println (format "bp first batch: %d items" (length (car bp-result))))
-        (println (if (procedure? (car (cdr bp-result)))
-                     "bp continuation captured: true"
-                     "bp continuation captured: false"))
-        (println (format "bp remaining items: %d" (length (car (cdr (cdr bp-result)))))))
-      (println (format "bp result: %s" bp-result))))
+        (print-bool-line (procedure? (car (cdr bp-result)))
+                         "bp continuation captured: true"
+                         "bp continuation captured: false")
+        (println (format "bp remaining items: %d" (length (car (cdr (cdr bp-result))))))))
+    (_ (println (format "bp result: %s" bp-result)))))
 
 ;; make-iterator / next / range-from — thread iterator through
 (let (p1 (next (range-from 10)))
@@ -278,9 +344,9 @@
 (let (above-60k (rules/threshold-above 60000.0)
       below-50k (rules/threshold-below 50000.0)
       in-range  (rules/in-range 55000.0 65000.0))
-  (println (if (above-60k 62000.0) "62000 > 60k? true" "62000 > 60k? false"))
-  (println (if (below-50k 62000.0) "62000 < 50k? true" "62000 < 50k? false"))
-  (println (if (in-range 62000.0) "62000 in [55k,65k]? true" "62000 in [55k,65k]? false")))
+  (print-bool-line (above-60k 62000.0) "62000 > 60k? true" "62000 > 60k? false")
+  (print-bool-line (below-50k 62000.0) "62000 < 50k? true" "62000 < 50k? false")
+  (print-bool-line (in-range 62000.0) "62000 in [55k,65k]? true" "62000 in [55k,65k]? false"))
 
 ;; apply — check-all applies rules to prices
 (let (rules-list (list (rules/threshold-above 100.0) (rules/threshold-below 200.0))

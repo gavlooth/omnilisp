@@ -1,7 +1,7 @@
 # Omni Lisp Language Specification
 
 **Version:** 0.4.6
-**Date:** 2026-03-06
+**Date:** 2026-03-09
 
 Omni Lisp is a Lisp dialect with first-class delimited continuations, algebraic effects, strict-arity multi-param lambdas, multiple dispatch, and a structural type system. It runs on a scope-region memory system (arena-per-call with reference-counted closures) implemented in C3 with a GNU Lightning JIT engine and a Lisp-to-C3 AOT transpiler.
 
@@ -11,6 +11,7 @@ Normative architecture contracts are recorded in `docs/ARCHITECTURE.md`.
 
 ## Table of Contents
 
+0. [Core Omni Profile](#0-core-omni-profile)
 1. [Syntax Overview](#1-syntax-overview)
 2. [Data Types](#2-data-types)
 3. [Special Forms](#3-special-forms)
@@ -28,6 +29,216 @@ Normative architecture contracts are recorded in `docs/ARCHITECTURE.md`.
 15. [CLI & Project Tooling](#15-cli--project-tooling)
 
 ---
+
+## 0. Core Omni Profile
+
+This profile is the shortest practical mental model for getting productive in
+Omni without learning advanced semantics first.
+
+### 0.1 Minimum Mental Model
+
+- Evaluation is expression-based: forms evaluate to values, function calls are
+  written as `(f arg1 arg2 ...)`.
+- Function arity is strict for user lambdas and function definitions; there is
+  no implicit partial application.
+- Truthiness rule is minimal:
+  - falsy: `nil`, `false`
+  - truthy: everything else (`0`, `""`, empty collections, symbols, etc.)
+- Start with these value families:
+  - scalars: int, double, string, symbol, nil
+  - functions: closures (`lambda`)
+  - collections: list, array, dict
+- Prefer generic collection operations (`length`, `ref`, `map`, `filter`,
+  `foldl`) instead of type-specific naming.
+
+### 0.2 First-Steps Command Set
+
+Run these in REPL first:
+
+```lisp
+(define x 10)
+(+ x 5)
+
+(let (a 3 b 4) (+ a b))
+(if (> x 5) "big" "small")
+
+(define (inc n) (+ n 1))
+(inc 41)
+
+'(1 2 3)                   ; list
+[1 2 3]                    ; array
+{'name "omni" 'year 2026}  ; dict
+
+(length [1 2 3])
+(ref {'a 10 'b 20} 'b)
+```
+
+Core forms to learn first:
+- binding/flow: `define`, `let`, `if`, `begin`
+- functions: `lambda`, strict arity calls
+- collections: list/array/dict literals + generic ops (`length`, `ref`, `map`)
+
+### 0.3 What To Ignore Initially
+
+You can safely postpone these until the core model above feels routine:
+
+- Effect handlers (`signal`, `handle`, `resolve`) and strict boundaries.
+- Delimited continuations (`reset`, `shift`, `with-continuation`).
+- Typed/multi-method dispatch details (`^Type`, value-level dispatch scoring).
+- Macro authoring and expansion internals.
+- FFI/modules/scheduler runtime details.
+- Runtime ownership and boundary internals (region lanes, promotion paths).
+
+### 0.4 Advanced Omni Profile
+
+Use this profile after the core model is comfortable and you need predictable
+behavior in larger systems.
+
+#### 0.4.1 Effects and Continuations: Model Boundaries
+
+- Effects (`signal`/`handle`/`resolve`) and continuations (`reset`/`shift`) are
+  separate control abstractions that can compose, but they should be reasoned
+  about at explicit boundaries.
+- Effect handlers are nearest-first by dynamic scope; `resolve` resumes a
+  captured continuation at the signal site, while returning without `resolve`
+  aborts the remaining body at that site.
+- Continuation operators control evaluation flow; handler clauses should stay
+  explicit about whether they resume (`resolve`) or terminate (`abort`) the
+  local effect path.
+
+#### 0.4.2 Multiple Dispatch and Typed Annotations
+
+- Type annotations (`^Type`, `^(Value ...)`) define method applicability and
+  specificity, not just documentation.
+- Dispatch picks the highest-scoring applicable method; equal-best results are
+  ambiguous and rejected.
+- Value-literal dispatch (`^(Value ...)`) is the most specific tier and is
+  useful for command-style APIs, while untyped parameters remain the broad
+  fallback.
+- Handler bodies can delegate type-specific behavior to dispatched functions
+  instead of duplicating ad-hoc type branching.
+
+#### 0.4.3 Runtime Ownership and Boundary Constraints (User-Facing)
+
+- Omni values follow deterministic scope/region lifetime rules; values crossing
+  boundaries may be copied/promoted, and this is part of correctness rather
+  than an optimization detail.
+- User code should treat boundary transitions (function return, handler
+  resumption, callback/wakeup handoff) as ownership-sensitive points where
+  invalid reuse assumptions can break behavior.
+- Prefer explicit, boundary-safe composition patterns:
+  - return plain values rather than retaining references to transient internals,
+  - keep effect handlers/callbacks narrow in responsibility,
+  - avoid designs that depend on implicit lifetime extension.
+
+### 0.5 Error Model Quick Reference
+
+Omni uses effects-first failure signaling for public API surfaces.
+
+#### 0.5.1 Failure Class Mapping
+
+| Failure class | Meaning | Surface behavior |
+|---|---|---|
+| `absence` | Query/data is valid but no result exists | return `nil` (or `false` for predicate APIs) |
+| `recoverable-op-failure` | Operation failed due to input/environment/runtime state and caller can fallback/retry | `signal raise` with canonical payload |
+| `programmer-error` | Call contract violated (shape/type/mode misuse) | `signal raise` with canonical payload |
+| `internal-runtime-error` | Runtime invariant break or corruption risk | hard runtime error (non-resumable) |
+
+Quick rule:
+- use `nil` for intentional absence only
+- use payloaded `raise` for recoverable and programmer-facing failures
+- do not downcast internal runtime failures into ordinary `raise`/`nil`
+
+#### 0.5.2 Canonical `raise` Payload Shape
+
+```lisp
+{ 'code ... 'message ... 'domain ... 'data ... }
+```
+
+Field contract:
+
+| Key | Type | Purpose |
+|---|---|---|
+| `'code` | symbol | stable machine-readable code for tests/routing |
+| `'message` | string | human-readable explanation |
+| `'domain` | symbol | subsystem domain (`io`, `parser`, `regex`, `scheduler`, `deduce`, `type`, `runtime`) |
+| `'data` | dict or `nil` | structured context payload |
+
+#### 0.5.3 Common Domains and Codes
+
+| Domain | Representative codes |
+|---|---|
+| `io` | `io/not-found`, `io/permission-denied`, `io/invalid-handle` |
+| `parser` | `parser/invalid-grammar`, `parser/no-root-match` |
+| `regex` | `regex/invalid-pattern`, `regex/invalid-arg-type` |
+| `scheduler` | `scheduler/invalid-handle`, `scheduler/timeout` |
+| `deduce` | `deduce/relation-not-found`, `deduce/txn-failed` |
+| `type` | `type/arg-mismatch`, `type/arity` |
+| `runtime` | `runtime/unhandled-effect`, `runtime/invalid-continuation` |
+
+Reference contract sources:
+- `docs/ARCHITECTURE.md` (ADR-2026-03-06-A)
+- `docs/ERROR_MODEL.md`
+
+### 0.6 Pitfalls Guide
+
+#### 0.6.1 `nil` vs `raise`
+
+Use `nil` for intentional absence, and `raise` for recoverable/programmer
+failures.
+
+```lisp
+; absence (valid "not found")
+(find (lambda (x) (= x 999)) '(1 2 3))
+; => nil
+
+; recoverable/programmer failure
+(signal raise
+  {'code 'io/not-found
+   'message "read-file: path not found"
+   'domain 'io
+   'data {'path "missing.txt"}})
+```
+
+Pitfall:
+- returning `nil` for operational failures hides actionable error context.
+
+#### 0.6.2 Truthiness Is Narrow
+
+Only `nil` and `false` are falsy. Everything else is truthy, including `0`,
+empty strings, and empty collections.
+
+```lisp
+(if 0 'yes 'no)            ; => 'yes
+(if "" 'yes 'no)           ; => 'yes
+(if [] 'yes 'no)           ; => 'yes
+(if nil 'yes 'no)          ; => 'no
+```
+
+Pitfall:
+- assuming "empty" values are falsy (as in some other languages) causes logic
+  bugs.
+
+#### 0.6.3 Effect `resolve` vs Abort
+
+Inside `handle`, `resolve` resumes the suspended computation at the signal site.
+Returning from the clause without `resolve` aborts that path and the clause
+result becomes the `handle` result.
+
+```lisp
+; resolve: body continues
+(handle (+ 1 (signal read nil))
+  (read x (resolve 41)))
+; => 42
+
+; abort: body after signal does not continue
+(handle (+ 1 (signal bail 5))
+  (bail x x))
+; => 5
+```
+
+Pitfall:
+- expecting post-signal code to run when the handler did not call `resolve`.
 
 ## 1. Syntax Overview
 
@@ -95,6 +306,20 @@ null?
 | `^` | Type annotation prefix |
 | `[` `]` | Array literals, bracket attributes, and patterns |
 | `{` `}` | Dict literals |
+
+### 1.4 Reader Dispatch (`#`)
+
+The reader supports a small canonical `#` dispatch surface:
+
+| Form | Meaning |
+|------|---------|
+| `#{...}` | set literal |
+| `#r"..."` | regex literal |
+| `#_ form` | skip next form |
+| `#N_ form...` | skip next `N` forms (`N` in `1..9`) |
+| `#| ... |#` | (nestable) block comment |
+
+Any other `#` sequence is rejected with a deterministic parser/lexer error.
 
 ---
 
@@ -193,7 +418,7 @@ null?
 (define (request {method url} body) ...)
 ```
 
-Note: `(define [...] ...)` with brackets is reserved for attribute syntax (`[type]`, `[ffi lib]`, `[relation db]`, etc.). Array destructuring is only available in `let` and `match`.
+Note: `(define [...] ...)` with brackets is reserved for attribute syntax (`[type]`, `[struct]`, `[ffi lib]`, `[relation db]`, etc.). `[struct]` is an alias of `[type]`. Array destructuring is only available in `let` and `match`.
 
 ### 3.2.1 ADR: `define` Unification Is Canonical Syntax
 
@@ -228,6 +453,52 @@ Counterexample (non-canonical syntax; do not add):
 
 ```lisp
 (defn add [x y] (+ x y))
+```
+
+### 3.2.2 `define` Forms Catalog (Type Family)
+
+`[abstract]`:
+- Intent: define a parent type for subtype checks and shared type hierarchy.
+
+```lisp
+(define [abstract] Shape)
+(define [type] (Circle Shape) (^Int radius))
+(is? (Circle 5) 'Shape)   ; => true
+```
+
+`[struct]` (alias of `[type]`):
+- Intent: define a concrete product type; this is syntax-level aliasing to `[type]`.
+
+```lisp
+(define [struct] Vec2 (^Int x) (^Int y))
+(let (v (Vec2 3 4)) v.x)   ; => 3
+```
+
+`[type]`:
+- Intent: define a concrete nominal type with named fields (and optional parent).
+
+```lisp
+(define [type] Point (^Int x) (^Int y))
+(type-of (Point 1 2))   ; => 'Point
+```
+
+`[union]`:
+- Intent: define sum types (ADTs) with explicit variants.
+
+```lisp
+(define [union] (Option T) None (Some T))
+(match (Some 42)
+  (None 0)
+  ((Some x) x))   ; => 42
+```
+
+`[alias]`:
+- Intent: declare a type alias name for readability and API clarity.
+
+```lisp
+(define [alias] Num Int)
+(define (id-num (^Num x)) x)
+(id-num 7)   ; => 7
 ```
 
 ### 3.3 `let` -- Local Binding
@@ -340,6 +611,7 @@ Dynamic clause count (no fixed limit). Pattern types:
 
 ```lisp
 (define [type] Point (^Int x) (^Int y))
+(define [struct] Vec2 (^Int x) (^Int y))   ; alias of [type]
 
 (Point 3 4)        ; construction
 point.x             ; field access => 3
@@ -386,7 +658,11 @@ None                    ; nullary variant
 ```lisp
 ^Int                    ; simple type
 ^(List Int)             ; compound type
-^(Val 42)               ; value-level type (match literal)
+^(Value 42)             ; canonical value-level constructor
+^(Val 42)               ; sugar alias for ^(Value ...)
+^(Value bind)           ; symbol literal
+^(Value "open")         ; string literal
+^(Value true)           ; boolean literal (true/false symbols)
 ```
 
 ### 4.6 Type Introspection
@@ -430,26 +706,79 @@ Define multiple implementations with typed parameters. Best match wins:
 (add2 "hello" " world") ; => "hello world"
 ```
 
-### 5.3 Val Dispatch (Value-Level Matching)
+### 5.3 Value Dispatch (Value-Level Matching)
 
 ```lisp
-(define (fib (^(Val 0) n)) 0)
-(define (fib (^(Val 1) n)) 1)
+(define (fib (^(Value 0) n)) 0)
+(define (fib (^(Value 1) n)) 1)
 (define (fib (^Int n)) (+ (fib (- n 1)) (fib (- n 2))))
+
+(define (udp (^(Value open) cmd)) (io/udp-open))
+(define (udp (^(Value bind) cmd) h host port) (io/udp-bind h host port))
+(define (udp (^(Value send) cmd) h host port payload) (io/udp-send h host port payload))
 
 (fib 10)    ; => 55
 ```
+
+Command-style facades like `udp` are valid API shape, but core operations remain canonical
+`io/*` effects and primitives. Facades should delegate to canonical `io/udp-*` operations.
 
 ### 5.4 Dispatch Scoring
 
 | Match Type | Score | Description |
 |------------|-------|-------------|
-| Val literal | 1000 | `^(Val 42)` matches value 42 |
+| Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)` (or sugar `^(Val ...)`) |
 | Exact type | 100 | `^Int` matches INT value |
+| Numeric widening | 50 | Dispatch-only widening (`Int` can satisfy `^Double`) |
 | Subtype | 10 | `^Shape` matches Circle (Shape child) |
 | Any type | 1 | Untyped parameter matches anything |
 
-Highest-scoring method wins. Ties broken by first-registered.
+Highest-scoring method wins. Equal-best ties are rejected as ambiguous (no implicit winner).
+
+### 5.5 Dispatch Explainability
+
+Use `explain` with the canonical symbol selector:
+
+```lisp
+(explain 'dispatch <form>)
+```
+
+`<form>` is analyzed as a thunked expression, so it is not eagerly evaluated by
+the explain call itself.
+
+```lisp
+(let (x 0)
+  (begin
+    (explain 'dispatch (set! x 1))
+    x))
+; => 0
+```
+
+`explain 'dispatch` returns a deterministic dictionary shape:
+
+- top-level keys: `kind`, `status`, `input`, `decision`, `candidates`, `trace`, `debug_message`
+- `kind` is always `'dispatch`
+- `status` is one of `'ok`, `'ambiguous`, `'no-match`, `'unsupported-form`
+
+`decision` includes stable keys:
+- `reason`, `winner-index`, `best-score`, `tie-count`, `fallback-source`, `outcome`, `debug_message`
+
+`candidates` is a list with one item per method-table entry. Each candidate
+includes:
+- method index/name/signature/constraints/source
+- applicability flag
+- score breakdown (`value`, `exact`, `widen`, `subtype`, `any`, `total`)
+- failure classification (`none`, `arity-mismatch`, `value-literal-mismatch`, `type-mismatch`, `constraint-mismatch`)
+
+Example:
+
+```lisp
+(define (score (^Int x) (^Int y)) (+ x y))
+(define (score (^Double x) (^Double y)) (+ x y))
+
+(ref (ref (explain 'dispatch (score 1 2)) 'decision) 'reason)
+; => 'method-match
+```
 
 ---
 
@@ -490,7 +819,7 @@ For non-Instance values, path notation uses alist lookup (association lists). Co
 | `/` | 2 | Integer/float division |
 | `%` | 2 | Modulo |
 
-Binary primitives partially apply when given one argument: `(+ 3)` returns a `PARTIAL_PRIM` that adds 3. This is built-in for binary primitives only — user-defined lambdas have strict arity (see `_` placeholder, `|>` pipe, or `partial` for general partial application).
+Binary primitives partially apply when given one argument: `(+ 3)` returns a `PARTIAL_PRIM` that adds 3. This is built-in for binary primitives only — user-defined lambdas have strict arity (see `_` / `_n` placeholders, `|>` pipe, or `partial` for general partial application).
 
 ### 7.2 Comparison (5)
 
@@ -798,7 +1127,9 @@ Higher-order functions and utilities defined in Omni:
 | `assoc` | `(key alist)` | Association list lookup |
 | `assoc-ref` | `(key alist)` | Lookup value only |
 
-Stdlib functions take multiple parameters with strict arity. For partial application: binary primitives auto-partial `(map (+ 1) '(1 2 3))`, `_` placeholder creates lambdas `(map (+ 1 _) '(1 2 3))`, or use `partial` from stdlib.
+Stdlib functions take multiple parameters with strict arity. For partial application: binary primitives auto-partial `(map (+ 1) '(1 2 3))`, `_` placeholder creates lambdas `(map (+ 1 _) '(1 2 3))`, `_n` placeholders support reuse/reordering (`((- _2 _1) 3 10)`), or use `partial` from stdlib.
+
+Compatibility note: `_n` placeholder desugaring is only active in call-argument position. Outside call arguments `_n` remains a normal symbol; however, existing call-argument bindings named like `_2` will now be interpreted as indexed placeholders.
 
 ### 8.1 Macros
 
@@ -813,8 +1144,6 @@ Stdlib functions take multiple parameters with strict arity. For partial applica
 | Name | Description |
 |------|-------------|
 | `try` | `(try thunk handler)` -- catch `raise` effects |
-| `raise->message` | `(raise->message err)` -- extract message from canonical raise payloads (compat) |
-| `try-message` | `(try-message thunk handler)` -- compatibility wrapper that always passes message strings |
 | `assert!` | `(assert! cond msg)` -- raise if condition fails |
 | `yield` | Macro for generator-style values |
 | `stream-take` | Take N values from a generator stream |
@@ -1061,8 +1390,8 @@ Goodbye!
 ### 14.2 Fibonacci with Dispatch
 
 ```lisp
-(define (fib (^(Val 0) n)) 0)
-(define (fib (^(Val 1) n)) 1)
+(define (fib (^(Value 0) n)) 0)
+(define (fib (^(Value 1) n)) 1)
 (define (fib (^Int n)) (+ (fib (- n 1)) (fib (- n 2))))
 (fib 10)  ; => 55
 ```
@@ -1234,12 +1563,12 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 | match | Y | Y | Y |
 | reset/shift | Y | Y | Y |
 | handle/signal/resolve | Y | Y | Y |
-| type definitions | Y | Y | eval* |
-| dispatch | Y | Y | eval* |
+| type definitions | Y | Y | Y† |
+| dispatch | Y | Y | Y† |
 | macros | Y | Y** | Y** |
 | modules | Y | Y | Y |
 
-*eval* = delegates to interpreter for dispatch resolution
+† Compiler parity for type definitions and dispatch is validated. Generated calls go through `aot::invoke`/`aot::apply_multi` (non-AOT callables route to `jit_apply*`), and type-definition/typed-define registration uses explicit `aot::eval_serialized_expr(...)` delegation as an implementation detail.
 **Y** = macro expansion at parse time
 
 ---

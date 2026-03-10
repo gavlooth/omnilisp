@@ -15,6 +15,11 @@ Use this file to reduce context switching and avoid reading obsolete plans.
 ## Primary Entry Points
 
 - Language behavior: `docs/LANGUAGE_SPEC.md`
+- Onboarding (core/advanced/error/pitfalls):
+  - `docs/LANGUAGE_SPEC.md#0-core-omni-profile`
+  - `docs/LANGUAGE_SPEC.md#04-advanced-omni-profile`
+  - `docs/LANGUAGE_SPEC.md#05-error-model-quick-reference`
+  - `docs/LANGUAGE_SPEC.md#06-pitfalls-guide`
 - Runtime constraints and ADRs: `docs/ARCHITECTURE.md`
 - C3 implementation rules: `docs/C3_STYLE.md`
 - Active implementation plans: `docs/plans/README.md`

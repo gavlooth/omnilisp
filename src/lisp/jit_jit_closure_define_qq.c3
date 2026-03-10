@@ -41,12 +41,45 @@ fn Value* jit_make_false(Interp* interp) {
     return make_symbol(interp, interp.sym_false);
 }
 
-fn bool jit_copy_closure_env_if_needed(Interp* interp, Value* closure, Env* env, bool need_env_copy) {
+fn char[] jit_env_copy_fault_message(BoundaryEnvCopyFault fault_code) @inline {
+    switch (fault_code) {
+        case BOUNDARY_ENV_COPY_FAULT_NONE:
+            return "jit: closure env-copy failed";
+        case BOUNDARY_ENV_COPY_FAULT_PROMOTION_CTX_ALLOC:
+            return "jit: closure env-copy failed (promotion context allocation)";
+        case BOUNDARY_ENV_COPY_FAULT_DEPTH_LIMIT:
+            return "jit: closure env-copy failed (env depth limit)";
+        case BOUNDARY_ENV_COPY_FAULT_ENV_ALLOC:
+            return "jit: closure env-copy failed (env frame allocation)";
+        case BOUNDARY_ENV_COPY_FAULT_BINDING_BUFFER_ALLOC:
+            return "jit: closure env-copy failed (binding buffer allocation)";
+        case BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY:
+            return "jit: closure env-copy failed (binding value copy)";
+        case BOUNDARY_ENV_COPY_FAULT_PARENT_COPY:
+            return "jit: closure env-copy failed (parent chain copy)";
+    }
+}
+
+fn bool jit_copy_closure_env_if_needed(
+    Interp* interp,
+    Value* closure,
+    Env* env,
+    bool need_env_copy,
+    BoundaryEnvCopyFault* fault_out = null
+) {
+    if (fault_out != null) *fault_out = BOUNDARY_ENV_COPY_FAULT_NONE;
     if (!need_env_copy) return true;
     main::ScopeRegion* env_scope = main::scope_create(null);
     if (env_scope == null) return false;
-    Env* copied_env = boundary_copy_env_to_target_scope(env, interp, env_scope);
+    BoundaryEnvCopyResult copied = boundary_copy_env_to_target_scope_checked(env, interp, env_scope);
+    if (!boundary_env_copy_result_ok(copied)) {
+        if (fault_out != null) *fault_out = copied.fault_code;
+        main::scope_release(env_scope);
+        return false;
+    }
+    Env* copied_env = copied.env;
     if (copied_env == null) {
+        if (fault_out != null) *fault_out = BOUNDARY_ENV_COPY_FAULT_ENV_ALLOC;
         main::scope_release(env_scope);
         return false;
     }
@@ -74,6 +107,7 @@ fn void jit_copy_lambda_variadic_info(Interp* interp, Value* closure, Expr* expr
 
 fn void method_signature_init_empty(MethodSignature* sig) {
     sig.param_types = null;
+    sig.param_type_vars = null;
     sig.val_literals = null;
     sig.has_val_literal = null;
     sig.param_count = 0;
@@ -87,9 +121,18 @@ fn bool method_signature_alloc_arrays_in_scope(MethodSignature* sig, main::Scope
     sig.constraint_count = constraint_count;
     if (param_count > 0) {
         sig.param_types = (TypeId*)scope.alloc(TypeId.sizeof * param_count);
-        sig.val_literals = (long*)scope.alloc(long.sizeof * param_count);
+        sig.param_type_vars = (SymbolId*)scope.alloc(SymbolId.sizeof * param_count);
+        sig.val_literals = (ValueLiteralKey*)scope.alloc(ValueLiteralKey.sizeof * param_count);
         sig.has_val_literal = (bool*)scope.alloc(bool.sizeof * param_count);
-        if (sig.param_types == null || sig.val_literals == null || sig.has_val_literal == null) return false;
+        if (sig.param_types == null || sig.param_type_vars == null || sig.val_literals == null || sig.has_val_literal == null) return false;
+        for (usz i = 0; i < param_count; i++) {
+            sig.param_types[i] = INVALID_TYPE_ID;
+            sig.param_type_vars[i] = (SymbolId)0;
+            sig.val_literals[i].tag = NIL;
+            sig.val_literals[i].int_value = 0;
+            sig.val_literals[i].sym_value = 0;
+            sig.has_val_literal[i] = false;
+        }
     }
     if (constraint_count > 0) {
         sig.constraints = (MethodConstraint*)scope.alloc(MethodConstraint.sizeof * constraint_count);
@@ -102,6 +145,7 @@ fn bool method_signature_copy_to_scope(MethodSignature* dst, MethodSignature* sr
     if (!method_signature_alloc_arrays_in_scope(dst, scope, src.param_count, src.constraint_count)) return false;
     for (usz i = 0; i < src.param_count; i++) {
         dst.param_types[i] = src.param_types[i];
+        dst.param_type_vars[i] = src.param_type_vars[i];
         dst.val_literals[i] = src.val_literals[i];
         dst.has_val_literal[i] = src.has_val_literal[i];
     }
@@ -112,6 +156,7 @@ fn bool method_signature_copy_to_scope(MethodSignature* dst, MethodSignature* sr
 fn void method_signature_destroy_heap(MethodSignature* sig) {
     if (sig == null) return;
     if (sig.param_types != null) mem::free(sig.param_types);
+    if (sig.param_type_vars != null) mem::free(sig.param_type_vars);
     if (sig.val_literals != null) mem::free(sig.val_literals);
     if (sig.has_val_literal != null) mem::free(sig.has_val_literal);
     if (sig.constraints != null) mem::free(sig.constraints);
@@ -124,14 +169,16 @@ fn bool method_signature_copy_to_heap(MethodSignature* dst, MethodSignature* src
     dst.constraint_count = src.constraint_count;
     if (src.param_count > 0) {
         dst.param_types = (TypeId*)mem::malloc(TypeId.sizeof * src.param_count);
-        dst.val_literals = (long*)mem::malloc(long.sizeof * src.param_count);
+        dst.param_type_vars = (SymbolId*)mem::malloc(SymbolId.sizeof * src.param_count);
+        dst.val_literals = (ValueLiteralKey*)mem::malloc(ValueLiteralKey.sizeof * src.param_count);
         dst.has_val_literal = (bool*)mem::malloc(bool.sizeof * src.param_count);
-        if (dst.param_types == null || dst.val_literals == null || dst.has_val_literal == null) {
+        if (dst.param_types == null || dst.param_type_vars == null || dst.val_literals == null || dst.has_val_literal == null) {
             method_signature_destroy_heap(dst);
             return false;
         }
         for (usz i = 0; i < src.param_count; i++) {
             dst.param_types[i] = src.param_types[i];
+            dst.param_type_vars[i] = src.param_type_vars[i];
             dst.val_literals[i] = src.val_literals[i];
             dst.has_val_literal[i] = src.has_val_literal[i];
         }
@@ -150,6 +197,7 @@ fn bool method_signature_copy_to_heap(MethodSignature* dst, MethodSignature* src
 fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
     MethodSignature* sig = (MethodSignature*)interp.current_scope.alloc(MethodSignature.sizeof);
     if (sig == null) return null;
+    SymbolId sym_lambda_type = interp.symbols.intern("Lambda");
 
     usz constraint_count = 0;
     for (usz i = 0; i < expr.lambda.param_count; i++) {
@@ -170,14 +218,26 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
         if (ann.has_annotation) {
             if (ann.has_val_literal) {
                 sig.param_types[i] = INVALID_TYPE_ID;
+                sig.param_type_vars[i] = (SymbolId)0;
                 sig.val_literals[i] = ann.val_literal;
                 sig.has_val_literal[i] = true;
             } else if (ann.is_dict) {
                 sig.param_types[i] = INVALID_TYPE_ID;
-                sig.val_literals[i] = 0;
+                sig.param_type_vars[i] = (SymbolId)0;
+                sig.val_literals[i].tag = NIL;
+                sig.val_literals[i].int_value = 0;
+                sig.val_literals[i].sym_value = 0;
                 sig.has_val_literal[i] = false;
+                bool saw_type_var = false;
                 for (usz m = 0; m < ann.meta_count; m++) {
                     if (!ann.meta[m].is_int) {
+                        if (!saw_type_var) {
+                            sig.param_type_vars[i] = ann.meta[m].key;
+                            saw_type_var = true;
+                        } else if ((uint)sig.param_type_vars[i] != (uint)ann.meta[m].key) {
+                            // Multi-key metadata does not have an unambiguous single type-var binding for this param.
+                            sig.param_type_vars[i] = (SymbolId)0;
+                        }
                         sig.constraints[sig.constraint_count].param_sym = ann.meta[m].key;
                         sig.constraints[sig.constraint_count].bound_type =
                             interp.types.lookup(ann.meta[m].sym_value, &interp.symbols);
@@ -185,13 +245,26 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
                     }
                 }
             } else {
-                sig.param_types[i] = interp.types.lookup(ann.base_type, &interp.symbols);
-                sig.val_literals[i] = 0;
+                TypeId resolved = interp.types.lookup(ann.base_type, &interp.symbols);
+                if ((uint)ann.base_type == (uint)sym_lambda_type) {
+                    // `^Lambda` / `^(Lambda ...)` gates function-valued args at call boundaries.
+                    sig.param_types[i] = interp.tid_Closure;
+                    sig.param_type_vars[i] = (SymbolId)0;
+                } else {
+                    sig.param_types[i] = resolved;
+                    sig.param_type_vars[i] = resolved == INVALID_TYPE_ID ? ann.base_type : (SymbolId)0;
+                }
+                sig.val_literals[i].tag = NIL;
+                sig.val_literals[i].int_value = 0;
+                sig.val_literals[i].sym_value = 0;
                 sig.has_val_literal[i] = false;
             }
         } else {
             sig.param_types[i] = INVALID_TYPE_ID;
-            sig.val_literals[i] = 0;
+            sig.param_type_vars[i] = (SymbolId)0;
+            sig.val_literals[i].tag = NIL;
+            sig.val_literals[i].int_value = 0;
+            sig.val_literals[i].sym_value = 0;
             sig.has_val_literal[i] = false;
         }
     }
@@ -204,12 +277,13 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
 // standalone env_scope (refcounted). Temporary closures freed when scope releases.
 fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
     bool need_env_copy = (interp.current_scope != interp.root_scope);
+    BoundaryEnvCopyFault copy_fault = BOUNDARY_ENV_COPY_FAULT_NONE;
 
     // Check for zero-arg lambda (sentinel param)
     if ((uint)expr.lambda.param == 0xFFFFFFFF && !expr.lambda.has_rest) {
         Value* closure = make_closure_no_param(interp, expr.lambda.body, env);
-        if (!jit_copy_closure_env_if_needed(interp, closure, env, need_env_copy)) {
-            return raise_error(interp, "jit: failed to allocate closure env scope");
+        if (!jit_copy_closure_env_if_needed(interp, closure, env, need_env_copy, &copy_fault)) {
+            return raise_error(interp, jit_env_copy_fault_message(copy_fault));
         }
         return closure;
     }
@@ -228,8 +302,8 @@ fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
         }
     }
 
-    if (!jit_copy_closure_env_if_needed(interp, closure, env, need_env_copy)) {
-        return raise_error(interp, "jit: failed to allocate closure env scope");
+    if (!jit_copy_closure_env_if_needed(interp, closure, env, need_env_copy, &copy_fault)) {
+        return raise_error(interp, jit_env_copy_fault_message(copy_fault));
     }
 
     return closure;
@@ -342,7 +416,12 @@ fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
 fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
     // Env bindings (closures, globals) live in root scope; promote child-lifetime
     // values before storing to avoid dangling pointers.
-    Value* stored = boundary_promote_to_root_site(value, interp, COPY_SITE_JIT_EVAL_SET);
+    Value* stored = boundary_promote_to_root_site(
+        value,
+        interp,
+        COPY_SITE_JIT_EVAL_SET
+    );
+    if (stored != null && stored.tag == ERROR) return stored;
     // Try local env first, then global
     if (catch err = env_set_with_barrier(env, name, stored, interp)) {
         if (interp.global_env == null) return raise_error(interp, "set!: unbound variable");
@@ -401,6 +480,29 @@ fn Value* jit_set_path_mutate_cons(Value* current, SymbolId last_seg, Value* val
     return raise_error(interp, "set!: cons only supports .car and .cdr");
 }
 
+<*
+@require interp != null : "jit_copy_value_into_scope_site: null interp"
+@require target_scope != null : "jit_copy_value_into_scope_site: null target_scope"
+@require releasing_scope != null : "jit_copy_value_into_scope_site: null releasing_scope"
+*>
+fn Value* jit_copy_value_into_scope_site(
+    Value* value,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope,
+    uint site
+) {
+    if (value == null || target_scope == null) return value;
+    BoundarySession session = boundary_session_begin(interp);
+    defer boundary_session_end(interp, &session);
+    interp.current_scope = target_scope;
+    interp.releasing_scope = releasing_scope;
+    PromotionContext copy_ctx = {};
+    boundary_promotion_context_begin(interp, &copy_ctx);
+    defer boundary_promotion_context_end(interp, &copy_ctx);
+    return boundary_copy_to_parent_site_ctx(value, interp, site, &copy_ctx);
+}
+
 fn Value* jit_set_path_mutate_instance(Value* current, SymbolId last_seg, Value* value, Interp* interp) {
     TypeInfo* ti = interp.types.get(current.instance_val.type_id);
     if (ti != null) {
@@ -408,13 +510,22 @@ fn Value* jit_set_path_mutate_instance(Value* current, SymbolId last_seg, Value*
             if (ti.fields[fi].name == last_seg && fi < current.instance_val.field_count) {
                 main::ScopeRegion* target = current.instance_val.owner_scope;
                 if (target == null) target = interp.root_scope;
-                Value* stored = boundary_copy_to_scope_site(
-                    value,
-                    interp,
-                    target,
-                    interp.current_scope,
-                    COPY_SITE_ENV_PROMOTE_FOR_TARGET
-                );
+                Value* stored = null;
+                if (target == interp.root_scope) {
+                    stored = boundary_promote_to_root_site(
+                        value,
+                        interp,
+                        COPY_SITE_ENV_PROMOTE_FOR_TARGET
+                    );
+                } else {
+                    stored = jit_copy_value_into_scope_site(
+                        value,
+                        interp,
+                        target,
+                        interp.current_scope,
+                        COPY_SITE_ENV_PROMOTE_FOR_TARGET
+                    );
+                }
                 if (stored != null) current.instance_val.fields[fi] = *stored;
                 return stored;
             }
@@ -450,129 +561,25 @@ fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) 
     return raise_error(interp, "set!: target is not an instance or cons");
 }
 
-// define helper — called from JIT-compiled code.
-// Full define with typed dispatch support, mirrors eval_define from eval.c3.
-fn Value* jit_make_method_table_value(Interp* interp, MethodTable* mt) {
-    Value* mt_val = boundary_alloc_value_in_root(interp, true);
-    mt_val.tag = METHOD_TABLE;
-    mt_val.method_table_val = mt;
-    return mt_val;
-}
-
-fn bool jit_method_sigs_equal(MethodSignature* a, MethodSignature* b) @inline {
-    if (a.param_count != b.param_count) return false;
-    if (a.constraint_count != b.constraint_count) return false;
-    for (usz i = 0; i < a.param_count; i++) {
-        if (a.param_types[i] != b.param_types[i]) return false;
-        if (a.has_val_literal[i] != b.has_val_literal[i]) return false;
-        if (a.has_val_literal[i] && a.val_literals[i] != b.val_literals[i]) return false;
-    }
-    for (usz i = 0; i < a.constraint_count; i++) {
-        if (a.constraints[i].param_sym != b.constraints[i].param_sym) return false;
-        if (a.constraints[i].bound_type != b.constraints[i].bound_type) return false;
-    }
-    return true;
-}
-
-fn void jit_method_table_append_entry(MethodTable* mt, Value* impl) {
-    MethodSignature* new_sig = impl.closure_val.type_sig;
-    // Replace existing entry with same signature (idempotent re-define).
-    for (usz i = 0; i < mt.entry_count; i++) {
-        if (jit_method_sigs_equal(&mt.entries[i].sig, new_sig)) {
-            mt.entries[i].implementation = impl;
-            return;
-        }
-    }
-    if (mt.entry_count >= mt.capacity) {
-        usz new_cap = mt.capacity * 2;
-        MethodEntry* new_entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * new_cap);
-        for (usz ei = 0; ei < mt.entry_count; ei++) new_entries[ei] = mt.entries[ei];
-        mem::free(mt.entries);
-        mt.entries = new_entries;
-        mt.capacity = new_cap;
-    }
-    if (!method_signature_copy_to_heap(&mt.entries[mt.entry_count].sig, new_sig)) return;
-    mt.entries[mt.entry_count].implementation = impl;
-    mt.entry_count++;
-}
-
-fn MethodTable* jit_new_method_table(SymbolId name, Value* impl, Value* fallback) {
-    MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
-    mt.name = name;
-    mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * METHOD_INITIAL_CAPACITY);
-    mt.capacity = METHOD_INITIAL_CAPACITY;
-    mt.entry_count = 1;
-    mt.fallback = fallback;
-    if (!method_signature_copy_to_heap(&mt.entries[0].sig, impl.closure_val.type_sig)) {
-        mem::free(mt.entries);
-        mem::free(mt);
-        return null;
-    }
-    mt.entries[0].implementation = impl;
-    return mt;
-}
-
-fn Value* jit_eval_define_typed_closure(Interp* interp, SymbolId name, Value* stored_val) {
-    Value* existing = interp.global_env.lookup(name);
-    if (existing != null && existing.tag == METHOD_TABLE) {
-        jit_method_table_append_entry(existing.method_table_val, stored_val);
-        return existing;
-    }
-    Value* fallback = null;
-    if (existing != null && (existing.tag == CLOSURE || existing.tag == PRIMITIVE)) {
-        fallback = existing;
-    }
-    MethodTable* mt = jit_new_method_table(name, stored_val, fallback);
-    if (mt == null) return raise_error(interp, "jit: failed to allocate method table");
-    Value* mt_val = jit_make_method_table_value(interp, mt);
-    env_define_with_barrier(interp.global_env, name, mt_val, interp);
-    return mt_val;
-}
-
-<* @require interp != null : "jit_eval_define: null interp"
-   @require value != null : "jit_eval_define: null value" *>
-fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
-    // Copy to root scope/region for globals (so value survives scope release)
-    Value* stored_val = boundary_promote_to_root_site(value, interp, COPY_SITE_JIT_EVAL_DEFINE);
-
-    // Check for typed closure → method table dispatch
-    if (stored_val != null && stored_val.tag == CLOSURE && stored_val.closure_val.has_typed_params) {
-        return jit_eval_define_typed_closure(interp, name, stored_val);
-    }
-
-    // Check if we're adding an untyped fallback to an existing method table
-    Value* existing_for_fallback = interp.global_env.lookup(name);
-    if (existing_for_fallback != null && existing_for_fallback.tag == METHOD_TABLE) {
-        existing_for_fallback.method_table_val.fallback = stored_val;
-        return existing_for_fallback;
-    }
-
-    // Tag closure with its bound name for display
-    if (stored_val != null && stored_val.tag == CLOSURE) {
-        stored_val.closure_val.name = name;
-    }
-
-    // Normal (untyped) define
-    env_define_with_barrier(interp.global_env, name, stored_val, interp);
-    return stored_val;
-}
-
 // Environment extension helper — called from JIT-compiled code.
 // Extends an env with a new binding for capturing let-locals in lambdas.
 fn Env* jit_env_extend(Interp* interp, Env* env, SymbolId name, Value* value) {
     return env.extend(interp, name, value);
 }
 
-// Mutable box allocation in root_region — called from JIT-compiled code.
-// Creates a persistent Env node that survives child region cleanup and
-// is preserved (not copied) by deep_copy_env. This ensures closures and
+// Mutable box allocation in root-scope lifetime — called from JIT-compiled code.
+// Creates a root-persistent mutable-box Env node that survives child region cleanup and
+// is preserved (not copied) by env_copy. This ensures closures and
 // the enclosing JIT scope share the same mutable box.
 <* @require interp != null : "jit_env_extend_root: null interp" *>
 fn Env* jit_env_extend_root(Interp* interp, Env* env, SymbolId name, Value* value) {
     // Promote initial payload before publishing into persistent root env box.
-    Value* promoted = boundary_promote_to_root_site(value, interp, COPY_SITE_JIT_ENV_EXTEND_ROOT);
+    Value* promoted = boundary_promote_to_root_site(
+        value,
+        interp,
+        COPY_SITE_JIT_ENV_EXTEND_ROOT
+    );
     Env* box = boundary_env_extend_in_root(interp, env, name, promoted);
-    box.persistent = true;
     return box;
 }
 

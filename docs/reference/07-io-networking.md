@@ -21,12 +21,26 @@ path calls the raw primitives directly (zero overhead).
 ### Files
 
 ```lisp
-(read-file "data.txt")              ;; => file contents as string
-(write-file "out.txt" "hello")       ;; write string to file
-(file-exists? "data.txt")            ;; => true/false
-(read-lines "data.txt")              ;; => list of lines
+(define rf
+  (spawn (lambda ()
+    (write-file "out.txt" "hello")
+    (read-file "out.txt"))))
+(await rf)                            ;; => "hello"
+
+(define ff
+  (spawn (lambda () (file-exists? "out.txt"))))
+(await ff)                            ;; => true
+
+(define lf
+  (spawn (lambda () (read-lines "out.txt"))))
+(await lf)                            ;; => list of lines
+
 (load "module.omni")                  ;; load and evaluate file
 ```
+
+`read-file`, `write-file`, `file-exists?`, and `read-lines` are async file
+effects and require running fiber context. Calling them outside a fiber raises
+deterministic `io/*-fiber-required` errors.
 
 ### Intercepting I/O
 
@@ -54,32 +68,53 @@ path calls the raw primitives directly (zero overhead).
 ### TCP
 
 ```lisp
-(define conn (tcp-connect "example.com" 80))
-(tcp-write conn "GET / HTTP/1.0\r\nHost: example.com\r\n\r\n")
-(define response (tcp-read conn))
-(tcp-close conn)
+(define tf
+  (spawn (lambda ()
+    (define conn (tcp-connect "example.com" 80))
+    (tcp-write conn "GET / HTTP/1.0\r\nHost: example.com\r\n\r\n")
+    (define response (tcp-read conn))
+    (tcp-close conn)
+    response)))
+
+(await tf)
 ```
 
 ### TCP Server
 
 ```lisp
-;; listener on localhost:8080 (optional backlog third arg)
-(define listener (tcp-listen "127.0.0.1" 8080 128))
+(define sf
+  (spawn (lambda ()
+    ;; listener on localhost:8080 (optional backlog third arg)
+    (define listener (tcp-listen "127.0.0.1" 8080 128))
+    ;; accept one client connection
+    (define client (tcp-accept listener))
+    ;; handle request bytes
+    (define req (tcp-read client))
+    (tcp-write client "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK")
+    (tcp-close client)
+    (tcp-close listener))))
 
-;; accept one client connection
-(define client (tcp-accept listener))
-
-;; handle request bytes
-(define req (tcp-read client))
-(tcp-write client "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK")
-(tcp-close client)
-(tcp-close listener)
+(await sf)
 ```
 
-`tcp-accept` is fiber-safe: when called inside a running fiber it offloads the
-blocking `accept()` syscall to the runtime worker and resumes the fiber on
-completion. This uses an internal runtime offload job, not the public
-`offload` API surface.
+`tcp-connect`, `tcp-listen`, `tcp-accept`, `tcp-read`, `tcp-write`, and
+`tcp-close` are async fiber operations and require running fiber context.
+Calling them outside a fiber raises deterministic `io/tcp-*-fiber-required`
+errors.
+
+### API Layering Contract (Anti-Drift)
+
+The runtime intentionally keeps TCP as operation-level effects and raw
+primitives (`io/tcp-connect` -> `__raw-tcp-connect`, etc.) instead of one
+monolithic runtime entrypoint. This is required for:
+- precise effect interception/mocking per operation,
+- direct fast-path mapping when no handler is installed,
+- stable policy and parity checks at primitive granularity.
+
+Public ergonomic facades (for example, a unified `tcp` helper) are allowed, but
+they must stay thin and delegate to canonical operation wrappers (`tcp-connect`,
+`tcp-read`, `tcp-write`, `tcp-close`). New code should not bypass that boundary
+or introduce parallel runtime plumbing.
 
 ### UDP
 
@@ -101,31 +136,34 @@ context.
 ### Unix Domain Sockets
 
 ```lisp
-(define path "/tmp/omni_example.sock")
-(define listener (pipe-listen path))
-(define client (pipe-connect path))
-(define server (tcp-accept listener))
+(define pf
+  (spawn (lambda ()
+    (define path "/tmp/omni_example.sock")
+    (define listener (pipe-listen path))
+    (define client (pipe-connect path))
+    (define server (tcp-accept listener))
+    (tcp-write client "pipe-ok")
+    (define msg (tcp-read server))
+    (tcp-close client)
+    (tcp-close server)
+    (tcp-close listener)
+    (fs-unlink path)
+    msg)))
 
-(tcp-write client "pipe-ok")
-(define msg (tcp-read server))
-
-(tcp-close client)
-(tcp-close server)
-(tcp-close listener)
-(fs-unlink path)
+(await pf)
 ```
 
 `pipe-connect`/`pipe-listen` return `tcp-handle`-compatible stream/listener
 handles, so existing `tcp-accept`/`tcp-read`/`tcp-write`/`tcp-close` APIs apply.
-Runtime default for these primitives is blocking POSIX Unix sockets, with the
-libuv pipe setup path retained as fallback integration wiring.
+In async paths these primitives run on libuv and require running fiber context
+for effect execution.
 
 ### Process Control
 
 ```lisp
 (define proc (process-spawn "/bin/sh" ["-c" "printf omni"] nil))
 (define out (fs-read (ref proc 'stdout) 32))
-(define status (process-wait (ref proc 'handle)))
+(define status (await (spawn (lambda () (process-wait (ref proc 'handle))))))
 
 (fs-close (ref proc 'stdin))
 (fs-close (ref proc 'stdout))
@@ -138,6 +176,8 @@ libuv pipe setup path retained as fallback integration wiring.
 - `'stdin`/`'stdout`/`'stderr` (`fs-handle` values compatible with `fs-read`/`fs-write`/`fs-close`)
 - `env` may be `nil` (inherit parent environment) or a list/array of
   `KEY=VALUE` strings/symbols for explicit environment override.
+- `process-wait` is fiber-only and raises `io/process-wait-fiber-required`
+  outside running fiber context.
 
 ### Signals
 
@@ -164,21 +204,26 @@ signal number argument when delivery is observed by the runtime event loop.
 ### TLS
 
 ```lisp
-(define tcp (tcp-connect "example.com" 443))
-(define tls (tls-connect tcp "example.com"))
-;; explicit CA bundle path (optional third argument)
-;; (define tls (tls-connect tcp "example.com" "/etc/ssl/certs/ca-certificates.crt"))
-;; client auth mTLS (optional client cert/key PEM pair)
-;; (define tls (tls-connect tcp "example.com" "client-cert.pem" "client-key.pem"))
-;; CA + mTLS + session resumption policy
-;; (define tls (tls-connect tcp "example.com"
-;;                         "/etc/ssl/certs/ca-certificates.crt"
-;;                         "client-cert.pem"
-;;                         "client-key.pem"
-;;                         true))
-(tls-write tls "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
-(define response (tls-read tls))
-(tls-close tls)
+(define tf
+  (spawn (lambda ()
+    (define tcp (tcp-connect "example.com" 443))
+    (define tls (tls-connect tcp "example.com"))
+    ;; explicit CA bundle path (optional third argument)
+    ;; (define tls (tls-connect tcp "example.com" "/etc/ssl/certs/ca-certificates.crt"))
+    ;; client auth mTLS (optional client cert/key PEM pair)
+    ;; (define tls (tls-connect tcp "example.com" "client-cert.pem" "client-key.pem"))
+    ;; CA + mTLS + session resumption policy
+    ;; (define tls (tls-connect tcp "example.com"
+    ;;                         "/etc/ssl/certs/ca-certificates.crt"
+    ;;                         "client-cert.pem"
+    ;;                         "client-key.pem"
+    ;;                         true))
+    (tls-write tls "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
+    (define response (tls-read tls))
+    (tls-close tls)
+    response)))
+
+(await tf)
 ```
 
 `tls-connect` performs certificate validation against a CA trust store. Trust
@@ -191,10 +236,15 @@ tries session resumption on future `tls-connect` calls for that host.
 Server-side wrap (RSA key + PEM cert chain):
 
 ```lisp
-(define listener (tcp-listen "127.0.0.1" 8443 8))
-(define tcp-client (tcp-accept listener))
-(define tls-client
-  (tls-server-wrap tcp-client "server-cert.pem" "server-key.pem"))
+(define sf
+  (spawn (lambda ()
+    (define listener (tcp-listen "127.0.0.1" 8443 8))
+    (define tcp-client (tcp-accept listener))
+    (define tls-client
+      (tls-server-wrap tcp-client "server-cert.pem" "server-key.pem"))
+    tls-client)))
+
+(await sf)
 ```
 
 Current `tls-server-wrap` support expects a PEM certificate chain and PEM RSA
@@ -203,7 +253,10 @@ private key path.
 ### HTTP
 
 ```lisp
-(http-get "https://example.com")   ;; => response string
+(define hf
+  (spawn (lambda () (http-get "https://example.com"))))
+
+(await hf)   ;; => response dict
 ```
 
 ### Timer

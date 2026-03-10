@@ -1,0 +1,33 @@
+;; dispatch_smoke.omni — bounded routing/failure checks for finwatch server routes.
+;; Run: LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/finwatch/dispatch_smoke.omni
+
+(import "server.omni" 'all)
+
+(define (assert-ok ok msg)
+  (if ok
+      true
+      (raise msg)))
+
+(let (req-prices (decode-request "GET /prices HTTP/1.1\nHost: local\n\n")
+      raw-prices (server-dispatch ('method req-prices) ('path req-prices) ('body req-prices)))
+  (assert-ok (and (string-contains? raw-prices "HTTP/1.1 200 OK")
+                  (string-contains? raw-prices "\"status\":\"ok\""))
+             "dispatch /prices route check failed"))
+
+(let (req-miss (decode-request "GET /no-such-route HTTP/1.1\nHost: local\n\n")
+      raw-miss (server-dispatch ('method req-miss) ('path req-miss) ('body req-miss)))
+  (assert-ok (and (string-contains? raw-miss "HTTP/1.1 404 Error")
+                  (string-contains? raw-miss "not found"))
+             "dispatch unknown route check failed"))
+
+(let (raw-missing-body (server-dispatch "POST" "/portfolio" nil))
+  (assert-ok (and (string-contains? raw-missing-body "HTTP/1.1 400 Error")
+                  (string-contains? raw-missing-body "missing request body"))
+             "dispatch missing portfolio body check failed"))
+
+(let (raw-bad-price-path (server-dispatch "GET" "/prices/" nil))
+  (assert-ok (and (string-contains? raw-bad-price-path "HTTP/1.1 404 Error")
+                  (string-contains? raw-bad-price-path "not found"))
+             "dispatch malformed price path check failed"))
+
+true

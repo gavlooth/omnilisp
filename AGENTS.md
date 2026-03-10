@@ -43,6 +43,7 @@ When implementing or reviewing features, preserve these constraints:
 - Runtime memory architecture is dual-lane (`TEMP`/`ESCAPE`) with no stop-the-world GC
 - `scope_adopt` is retired from normal return flow; do not reintroduce it in runtime paths
 - Boundary promotion/fallback logic must preserve shared promotion-context semantics
+- Boundary debug invariant: any committed ESCAPE root must not retain reachable Omni-owned edges into TEMP.
 - Hardening priority: stabilize JIT/eval boundary paths (`jit_*`, effect dispatch boundaries, scope handoff points) before adding new runtime wiring.
 - Repeated runtime invariants (ownership/lifetime/state guards) should be enforced through shared macros/helpers, not ad-hoc one-off checks.
 - Ownership guardrail: default to scope/region ownership (`scope_retain`/`scope_release`) for runtime values.
@@ -120,3 +121,10 @@ If asked to audit:
 - Report prioritized findings with `file:line` references
 - Focus on correctness, regressions, memory/lifetime risks, and missing tests
 - Keep summary short; findings come first
+
+## Refactoring 
+
+- File slitting
+  - Always split files top-down.
+  - Always split the largest files first, regardless of how hard it seems.
+  - Do this before splitting or reorganizing smaller files.

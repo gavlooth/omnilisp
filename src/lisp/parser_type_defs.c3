@@ -92,6 +92,7 @@ fn bool Parser.parse_deftype_name_compound(Parser* self, Expr* e) {
     if (!self.parse_compound_symbol_with_params(&e.deftype.name, &params, "expected type name")) {
         return false;
     }
+    if (!self.validate_invariant_type_params(&params)) return false;
     if (!self.copy_symbol_list(&e.deftype.type_params, &params, "out of memory while parsing type parameters")) {
         return false;
     }
@@ -159,181 +160,14 @@ fn Expr* Parser.parse_deftype(Parser* self, Expr* e) {
     return e;
 }
 
-/**
- * Parse abstract type: (define [abstract] Name) or (define [abstract] (Name Parent))
- */
-fn Expr* Parser.parse_defabstract(Parser* self, Expr* e) {
-    e.tag = E_DEFABSTRACT;
-    e.defabstract.has_parent = false;
-    e.defabstract.parent = 0;
+fn bool Parser.validate_invariant_type_params(Parser* self, List{SymbolId}* params) {
+    for (usz i = 0; i < params.len(); i++) {
+        char[] name = self.interp.symbols.get_name((*params)[i]);
+        if (name.len <= 1) continue;
+        if (name[0] != '+' && name[0] != '-') continue;
 
-    if (self.lexer.current.type == T_LPAREN) {
-        self.lexer.advance();
-        if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected type name"); return null; }
-        e.defabstract.name = self.get_current_symbol();
-        self.lexer.advance();
-        if (self.lexer.current.type == T_SYMBOL) {
-            e.defabstract.parent = self.get_current_symbol();
-            e.defabstract.has_parent = true;
-            self.lexer.advance();
-        }
-        self.expect(T_RPAREN, ")");
-    } else if (self.lexer.current.type == T_SYMBOL) {
-        e.defabstract.name = self.get_current_symbol();
-        self.lexer.advance();
-    } else {
-        self.set_error("expected type name after [abstract]");
-        return null;
-    }
-
-    self.expect(T_RPAREN, ")");  // close define
-    return e;
-}
-
-/**
- * Parse union type: (define [union] (Name T...) Variant1 (Variant2 fields...) ...)
- * or simple: (define [union] Name Variant1 (Variant2 T) ...)
- */
-fn void Parser.init_defunion_expr(Parser* self, Expr* e) {
-    e.tag = E_DEFUNION;
-    e.defunion = mem::malloc(ExprDefUnion.sizeof);
-    e.defunion.type_params = null;
-    e.defunion.type_param_count = 0;
-    e.defunion.variants = null;
-    e.defunion.variant_count = 0;
-}
-
-fn bool Parser.parse_defunion_name_compound(Parser* self, Expr* e) {
-    List{SymbolId} params;
-    defer params.free();
-    if (!self.parse_compound_symbol_with_params(&e.defunion.name, &params, "expected union name")) {
+        self.set_error("variance markers (+T/-T) are not supported yet; type parameters are invariant");
         return false;
     }
-    if (!self.copy_symbol_list(&e.defunion.type_params, &params, "out of memory while parsing union type parameters")) {
-        return false;
-    }
-    e.defunion.type_param_count = params.len();
     return true;
-}
-
-fn bool Parser.parse_defunion_name(Parser* self, Expr* e) {
-    if (self.lexer.current.type == T_LPAREN) {
-        return self.parse_defunion_name_compound(e);
-    }
-    if (self.lexer.current.type == T_SYMBOL) {
-        e.defunion.name = self.get_current_symbol();
-        self.lexer.advance();
-        return true;
-    }
-    self.set_error("expected union name after [union]");
-    return false;
-}
-
-fn bool Parser.parse_defunion_variant_compound(Parser* self, UnionVariant* v) {
-    List{SymbolId} fields;
-    defer fields.free();
-    bool ok = self.parse_compound_symbol_with_params(
-        &v.name,
-        &fields,
-        "expected variant name"
-    );
-    if (!ok) return false;
-    if (!self.copy_symbol_list(&v.fields, &fields, "out of memory while parsing union variant fields")) return false;
-    v.field_count = fields.len();
-    return true;
-}
-
-fn bool Parser.parse_defunion_variant(Parser* self, List{UnionVariant}* variants) {
-    UnionVariant v = {};
-    if (self.lexer.current.type == T_LPAREN) {
-        if (!self.parse_defunion_variant_compound(&v)) return false;
-    } else {
-        v.name = self.get_current_symbol();
-        v.fields = null;
-        v.field_count = 0;
-        self.lexer.advance();
-    }
-    variants.push(v);
-    return true;
-}
-
-fn Expr* Parser.parse_defunion(Parser* self, Expr* e) {
-    self.init_defunion_expr(e);
-    if (!self.parse_defunion_name(e)) return null;
-
-    List{UnionVariant} variants;
-    defer variants.free();
-    while ((self.lexer.current.type == T_SYMBOL || self.lexer.current.type == T_LPAREN) && !self.has_error) {
-        if (!self.parse_defunion_variant(&variants)) return null;
-    }
-
-    self.expect(T_RPAREN, ")");  // close define
-    if (self.has_error) return null;
-    if (!self.copy_union_variant_list(&e.defunion.variants, &variants)) return null;
-    e.defunion.variant_count = variants.len();
-    return e;
-}
-
-/**
- * Parse type alias: (define [alias] Name ^Target)
- */
-fn Expr* Parser.parse_defalias(Parser* self, Expr* e) {
-    e.tag = E_DEFALIAS;
-
-    if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected alias name after [alias]"); return null; }
-    e.defalias.name = self.get_current_symbol();
-    self.lexer.advance();
-
-    if (self.lexer.current.type == T_SYMBOL && self.lexer.current.text[0] == '^') {
-        e.defalias.target = self.parse_type_annotation();
-    } else if (self.lexer.current.type == T_SYMBOL) {
-        e.defalias.target.has_annotation = true;
-        e.defalias.target.is_compound = false;
-        e.defalias.target.is_dict = false;
-        e.defalias.target.base_type = self.get_current_symbol();
-        e.defalias.target.param_count = 0;
-        e.defalias.target.meta_count = 0;
-        e.defalias.target.has_val_literal = false;
-        self.lexer.advance();
-    } else {
-        self.set_error("expected target type after alias name");
-        return null;
-    }
-
-    self.expect(T_RPAREN, ")");
-    return e;
-}
-
-fn Expr* Parser.parse_defeffect(Parser* self, Expr* e) {
-    e.tag = E_DEFEFFECT;
-    e.defeffect.has_arg_type = false;
-
-    if (self.lexer.current.type != T_LPAREN) {
-        self.set_error("expected ( after [effect]");
-        return null;
-    }
-    self.lexer.advance();  // consume '('
-
-    if (self.lexer.current.type != T_SYMBOL) {
-        self.set_error("expected effect tag name");
-        return null;
-    }
-    e.defeffect.name = self.get_current_symbol();
-    self.lexer.advance();
-
-    if (self.lexer.current.type == T_LPAREN) {
-        self.lexer.advance();  // consume '('
-        if (self.lexer.current.type == T_SYMBOL && self.lexer.current.text[0] == '^') {
-            e.defeffect.arg_type = self.parse_type_annotation();
-            e.defeffect.has_arg_type = true;
-            if (self.lexer.current.type == T_SYMBOL) {
-                self.lexer.advance();
-            }
-        }
-        self.expect(T_RPAREN, ")");  // close param
-    }
-
-    self.expect(T_RPAREN, ")");  // close effect form
-    self.expect(T_RPAREN, ")");  // close define
-    return e;
 }

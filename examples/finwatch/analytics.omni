@@ -77,13 +77,14 @@
 (define (analytics/any-above-threshold? pnls threshold)
   (any? (lambda (p) (> p.gain threshold)) pnls))
 
+(define (analytics/holding-has-price? h)
+  (match (cache/quote-for h.symbol)
+    ((Ok _)  true)
+    ((Err _) nil)))
+
 ;; (analytics/all-have-prices? holdings) — true if every holding has a cached price.
 (define (analytics/all-have-prices? holdings)
-  (every? (lambda (h)
-            (match (cache/quote-for h.symbol)
-              ((Ok _) true)
-              ((Err _) nil)))
-          holdings))
+  (every? analytics/holding-has-price? holdings))
 
 ;; ── Display formatting ──────────────────────────────────────────────────────
 

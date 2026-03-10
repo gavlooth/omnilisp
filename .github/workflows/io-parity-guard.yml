@@ -1,0 +1,37 @@
+name: IO Parity Guard
+
+on:
+  pull_request:
+    paths:
+      - "stdlib/stdlib.lisp"
+      - "src/lisp/**"
+      - "csrc/uv_helpers.c"
+      - "docs/plans/library-gaps-todo.md"
+      - "scripts/check_io_boundary_facade.sh"
+      - "scripts/check_io_parity_status_map.sh"
+      - "scripts/check_async_fallback_policy.sh"
+      - ".github/workflows/io-parity-guard.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  io-boundary-facade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve io parity diff range
+        run: echo "OMNI_IO_PARITY_POLICY_RANGE=${{ github.event.pull_request.base.sha }}...${{ github.sha }}" >> "$GITHUB_ENV"
+
+      - name: Validate io boundary facade mapping
+        run: bash scripts/check_io_boundary_facade.sh
+
+      - name: Validate io parity status map
+        run: bash scripts/check_io_parity_status_map.sh
+
+      - name: Validate async fallback policy
+        run: bash scripts/check_async_fallback_policy.sh

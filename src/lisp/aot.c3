@@ -222,6 +222,16 @@ fn lisp::Value* lookup_prim(char[] name) {
     return lisp::make_nil(g_aot_interp);
 }
 
+// Evaluate a serialized Omni expression at runtime in the AOT global interpreter.
+// Used for explicit delegation of forms that are not yet lowered natively by codegen.
+fn lisp::Value* eval_serialized_expr(char[] source) {
+    lisp::EvalResult r = lisp::run(source, g_aot_interp);
+    if (r.error.has_error) {
+        return lisp::make_error(g_aot_interp, r.error.message[:256]);
+    }
+    return r.value != null ? r.value : lisp::make_nil(g_aot_interp);
+}
+
 // =============================================================================
 // AOT Closure Creation
 // =============================================================================

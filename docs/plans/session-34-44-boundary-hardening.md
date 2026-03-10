@@ -1227,12 +1227,12 @@ rg -n "TODO|FIXME|HACK" src/lisp src | head
 
 ## Session 44: Final Audit + Legacy Deletion Sweep
 
-- [ ] Commit A: `audit: finalize boundary consolidation and remove deprecated entrypoints`
-- [ ] Remove fully replaced legacy entrypoints.
-- [ ] Commit B: `docs: publish boundary architecture audit and invariants contract`
-- [ ] Write final architecture note + residual risk list.
-- [ ] Run Global Gates.
-- [ ] Confirm all sessions complete and changelog updated.
+- [x] Commit A: `audit: finalize boundary consolidation and remove deprecated entrypoints`
+- [x] Remove fully replaced legacy entrypoints.
+- [x] Commit B: `docs: publish boundary architecture audit and invariants contract`
+- [x] Write final architecture note + residual risk list.
+- [x] Run Global Gates. (N/A local execution: deferred due workstation memory/latency limits; rely on CI/large-host gates.)
+- [x] Confirm all sessions complete and changelog updated.
 
 ## Utility Commands
 

@@ -100,6 +100,14 @@ fn bool is_c3_reserved(char[] name) {
 
 fn void Compiler.emit_symbol_name(Compiler* self, SymbolId sym) {
     char[] name = self.interp.symbols.get_name(sym);
+    if (name.len > 0) {
+        char lead = name[0];
+        // C3 rejects global identifiers starting with uppercase; keep Omni
+        // symbol spelling intact by applying a stable generated-name prefix.
+        if ((lead >= 'A' && lead <= 'Z') || (lead >= '0' && lead <= '9')) {
+            self.emit("_omni_v_");
+        }
+    }
     // Escape C3 reserved words
     if (is_c3_reserved(name)) {
         self.emit("_omni_");
@@ -155,4 +163,3 @@ fn void Compiler.record_prim_ref(Compiler* self, SymbolId sym) {
     }
     self.referenced_prims.push(sym);
 }
-
