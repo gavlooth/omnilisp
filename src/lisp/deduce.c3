@@ -408,6 +408,65 @@ fn Value* prim_deduce_abort(Value*[] args, Env* env, Interp* interp) {
 }
 
 // ============================================================
+// Namespaced command aliases (deduce/<command> ...)
+// ============================================================
+fn Value* prim_deduce_ns_open(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_open(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_open_named(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_open_named(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_block(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_block(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_commit(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_commit(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_abort(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_abort(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_scan(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_scan(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_scan_range(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_scan_range(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_query(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_query(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_count(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_count(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_match(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_match(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_fact(Value*[] args, Env* env, Interp* interp) {
+    return prim_assert_fact(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_retract(Value*[] args, Env* env, Interp* interp) {
+    return prim_retract_fact(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_clear(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_clear(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_drop(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_drop(args, env, interp);
+}
+
+// ============================================================
 // Dispatch helpers
 // ============================================================
 fn bool deduce_cmd_matches(char[] name, char[] cmd) {

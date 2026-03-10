@@ -129,6 +129,47 @@ fn void run_deduce_open_smoke_test(Interp* interp, int* pass, int* fail) {
     }
 }
 
+fn void run_deduce_namespaced_alias_smoke_test(Interp* interp, int* pass, int* fail) {
+    EvalResult r = run(
+        "(block "
+        "  (define adb (deduce/open 'memory)) "
+        "  (define arel (deduce/open-named adb 'people \"people\" 'name 'age)) "
+        "  (deduce/fact! arel \"Alice\" 30) "
+        "  (define txr (deduce/block adb 'read)) "
+        "  (deduce/abort txr) "
+        "  (define txw (deduce/block adb 'write)) "
+        "  (deduce/commit txw) "
+        "  (define m (deduce/match arel '(people ?name ?age))) "
+        "  (define q (deduce/query arel (lambda (row) true))) "
+        "  (define s (deduce/scan arel)) "
+        "  (define sr (deduce/scan-range arel '(\"Alice\" 30) '(\"Alice\" 30))) "
+        "  (deduce/retract! arel \"Alice\" 30) "
+        "  (define after-retract (deduce/count arel)) "
+        "  (deduce/fact! arel \"Alice\" 30) "
+        "  (deduce/clear! arel) "
+        "  (define after-clear (deduce/count arel)) "
+        "  (deduce/drop! arel) "
+        "  (and (= (length m) 1) "
+        "       (and (= (length q) 1) "
+        "            (and (= (length s) 1) "
+        "                 (and (= (length sr) 1) "
+        "                      (and (= after-retract 0) "
+        "                           (= after-clear 0)))))))",
+        interp
+    );
+    if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+        emit_pass_literal("[PASS] deduce namespaced aliases");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce namespaced aliases (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printfn("[FAIL] deduce namespaced aliases (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+        }
+        (*fail)++;
+    }
+}
+
 fn void run_deduce_open_named_test(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
@@ -238,6 +279,7 @@ fn void run_deduce_legacy_alias_rejection_tests(Interp* interp, int* pass, int* 
 
 fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_open_smoke_test(interp, pass, fail);
+    run_deduce_namespaced_alias_smoke_test(interp, pass, fail);
     run_deduce_open_named_test(interp, pass, fail);
     run_deduce_durability_restart_test(interp, pass, fail);
     run_deduce_relation_attr_define_test(interp, pass, fail);

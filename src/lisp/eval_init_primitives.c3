@@ -243,8 +243,22 @@ fn void register_regular_primitives_io_and_deduce(Interp* interp) {
         { "validate", &prim_validate, 2 },
         { "explain", &prim_explain, 2 },
         { "schema-explain", &prim_schema_explain, 2 },
-        // Deduce — unified dispatch
+        // Deduce — unified dispatch + namespaced command aliases
         { "deduce", &prim_deduce, -1 },
+        { "deduce/open", &prim_deduce_ns_open, -1 },
+        { "deduce/open-named", &prim_deduce_ns_open_named, -1 },
+        { "deduce/block", &prim_deduce_ns_block, -1 },
+        { "deduce/commit", &prim_deduce_ns_commit, -1 },
+        { "deduce/abort", &prim_deduce_ns_abort, -1 },
+        { "deduce/scan", &prim_deduce_ns_scan, -1 },
+        { "deduce/scan-range", &prim_deduce_ns_scan_range, -1 },
+        { "deduce/query", &prim_deduce_ns_query, -1 },
+        { "deduce/count", &prim_deduce_ns_count, -1 },
+        { "deduce/match", &prim_deduce_ns_match, -1 },
+        { "deduce/fact!", &prim_deduce_ns_fact, -1 },
+        { "deduce/retract!", &prim_deduce_ns_retract, -1 },
+        { "deduce/clear!", &prim_deduce_ns_clear, -1 },
+        { "deduce/drop!", &prim_deduce_ns_drop, -1 },
         { "__define-relation", &prim_define_relation, 1 },
         // Scheduler
         { "spawn", &prim_spawn, 1 },
