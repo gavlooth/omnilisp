@@ -75,6 +75,14 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - docker validation defaults now target local `omni-validation:2026-03-10` image and require local image presence by default (`OMNI_DOCKER_REQUIRE_LOCAL_IMAGE=1`, `OMNI_VALIDATION_REQUIRE_LOCAL_IMAGE=1`) to avoid implicit pull fallback ambiguity.
     - `scripts/run_validation_container.sh` no longer mount-binds `/usr/local` by default; host toolchain mount is opt-in via `OMNI_VALIDATION_TOOLCHAIN_ROOT`.
 
+- Post-complete backlog hygiene:
+  - added `scripts/check_post_complete_backlog_freshness.sh`:
+    - checks unchecked backlog entries in `docs/plans/post-complete-backlog.md` against recent release dates from `memory/CHANGELOG.md`.
+    - fails when entries are stale beyond the configured release-cycle threshold.
+    - supports optional tuning via `OMNI_POST_COMPLETE_BACKLOG_RELEASE_CYCLES` and `OMNI_POST_COMPLETE_BACKLOG_FALLBACK_DAYS`.
+  - added CI coverage with `.github/workflows/post-complete-backlog-freshness.yml`.
+  - updated `docs/PROJECT_TOOLING.md` with check command and governance notes.
+
 - Data-format semantic drift closure before API expansion:
   - `src/lisp/primitives_data_formats.c3`:
     - TOML boolean conversion now preserves Omni `false` symbol identity instead of coercing TOML `false` to `nil`.

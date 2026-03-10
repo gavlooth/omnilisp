@@ -214,6 +214,23 @@ flows:
 3. Public primitive registration must stay doc-complete (reference/spec must
    include every registered public primitive).
 
+### Backlog Freshness Rule
+
+The post-completion backlog is validated by:
+
+```bash
+bash scripts/check_post_complete_backlog_freshness.sh
+```
+
+The check fails CI when unchecked entries in
+`docs/plans/post-complete-backlog.md` have not been updated within one
+release cycle relative to `memory/CHANGELOG.md`.
+
+Tunable knobs:
+
+- `OMNI_POST_COMPLETE_BACKLOG_RELEASE_CYCLES` (default: `1`)
+- `OMNI_POST_COMPLETE_BACKLOG_FALLBACK_DAYS` (default: `30`)
+
 Optional workflow input:
 
 - `pr_number` — when provided, the workflow posts the same boundary summary as a PR comment.

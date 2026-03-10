@@ -1,0 +1,19 @@
+name: Post-Complete Backlog Freshness
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backlog-freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate post-complete backlog freshness
+        run: bash scripts/check_post_complete_backlog_freshness.sh
