@@ -26,6 +26,7 @@ This folder is the canonical location for implementation plans.
 - `library-gaps-todo.md`
 - `remaining-optimizations.md`
 - `concurrency-hybrid-memory-checklist.md`
+- `post-complete-backlog.md` (non-blocking queue after language completion)
 
 ## Active Plan Ownership Notes
 

@@ -14,6 +14,7 @@ Use this file to reduce context switching and avoid reading obsolete plans.
 
 ## Primary Entry Points
 
+- Release state + gate policy: `docs/RELEASE_STATUS.md`
 - Language behavior: `docs/LANGUAGE_SPEC.md`
 - Onboarding (core/advanced/error/pitfalls):
   - `docs/LANGUAGE_SPEC.md#0-core-omni-profile`
