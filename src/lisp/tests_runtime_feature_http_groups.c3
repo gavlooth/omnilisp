@@ -55,7 +55,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         "http-request: requires running fiber context", pass, fail);
 
     test_truthy(interp, "http-get connect failure in fiber surfaces connection failure",
-        "(begin "
+        "(block "
         "  (define f (spawn (lambda () "
         "    (try (lambda (ignored) (http-get \"http://127.0.0.1:9/\")) (lambda (e) (if (and (dict? e) (has? e 'message)) (ref e 'message) e)))))) "
         "  (define msg (await f)) "
@@ -63,7 +63,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         pass, fail);
 
     test_truthy(interp, "http-request dns failure in fiber surfaces resolution failure",
-        "(begin "
+        "(block "
         "  (define f (spawn (lambda () "
         "    (try (lambda (ignored) (http-request \"GET\" \"http://bad host/\" \"\" \"\")) (lambda (e) (if (and (dict? e) (has? e 'message)) (ref e 'message) e)))))) "
         "  (define msg (await f)) "
@@ -71,7 +71,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         pass, fail);
 
     test_truthy(interp, "http-get in fiber via libuv tcp path",
-        "(begin "
+        "(block "
         "  (define hf (spawn (lambda () "
         "    (define p (+ 36200 (% (time-ms) 20000))) "
         "    (define listener (tcp-listen \"127.0.0.1\" p 8)) "
@@ -89,7 +89,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         pass, fail);
 
     test_truthy(interp, "http-request in fiber via libuv tcp path",
-        "(begin "
+        "(block "
         "  (define hf (spawn (lambda () "
         "    (define p (+ 36300 (% (time-ms) 20000))) "
         "    (define listener (tcp-listen \"127.0.0.1\" p 8)) "
@@ -110,7 +110,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
     // Finwatch canonical boot smoke (bounded): module/import boot path, interp-only by design.
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (load \"examples/finwatch/boot_smoke.omni\") "
             "  true)",
             interp
@@ -130,7 +130,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (load \"examples/finwatch/dispatch_smoke.omni\") "
             "  true)",
             interp
@@ -151,7 +151,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
     // Example CRUD server pipeline: tolerate LF-only header/body split.
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (let (req (pipeline/decode-request \"GET /items HTTP/1.1\\nHost: x\\n\\n\")) "
             "    (and (= ('method req) \"GET\") (= ('path req) \"/items\"))))",
@@ -168,7 +168,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
     // Malformed request line should degrade to route-not-found.
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (define req (pipeline/decode-request \"BROKENLINE\\r\\n\\r\\n\")) "
             "  (define out (pipeline/result->response (pipeline/execute req))) "
@@ -191,7 +191,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
     // Missing path token should also degrade to route-not-found.
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (define req (pipeline/decode-request \"GET\\r\\n\\r\\n\")) "
             "  (define out (pipeline/result->response (pipeline/execute req))) "
@@ -266,7 +266,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
     // Example CRUD pipeline routing: non-numeric item id should not match item route.
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (define bad (pipeline/result->response (pipeline/execute {'method \"GET\" 'path \"/items/not-int\" 'body nil}))) "
             "  (and (= ('status bad) \"error\") (= ('error bad) \"route not found\")))",
@@ -288,7 +288,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
     // Example CRUD pipeline routing: unknown route returns route-not-found.
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (define miss (pipeline/result->response (pipeline/execute {'method \"GET\" 'path \"/unknown\" 'body nil}))) "
             "  (and (= ('status miss) \"error\") (= ('error miss) \"route not found\")))",
@@ -309,7 +309,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
     // Example CRUD server response formatting (deterministic, no live listener).
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (define payload (pipeline/result->response (pipeline/execute {'method \"GET\" 'path \"/items\" 'body nil}))) "
             "  (define raw (http/response \"200 OK\" payload)) "
@@ -333,7 +333,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
     // Example CRUD pipeline schema gate: invalid POST payload fails validation.
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (null? (validate 'item-write {'id 21 'name \"bad\"})))",
             interp
@@ -354,7 +354,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
     // Example CRUD pipeline concurrency: duplicate POST race on same id.
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (define c1 "
             "    (spawn (lambda () "

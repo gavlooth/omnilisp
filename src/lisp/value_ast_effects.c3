@@ -20,10 +20,10 @@ struct ExprCall {
 }
 
 /**
- * ExprBegin — Sequence expression (begin e1 e2 ... en).
+ * ExprBlock — Sequence expression (block e1 e2 ... en).
  * Evaluates all expressions, returns the last.
  */
-struct ExprBegin {
+struct ExprBlock {
     Expr** exprs;
     usz expr_count;
 }
@@ -260,7 +260,7 @@ struct Expr {
         ExprAnd     and_expr;
         ExprOr      or_expr;
         ExprCall*   call;         // Pointer-indirect (large struct)
-        ExprBegin*  begin;        // Pointer-indirect (large struct)
+        ExprBlock*  block;                // Pointer-indirect (large struct)
         ExprSet     set_expr;
         ExprQuasiquote   quasiquote;
         ExprUnquote      unquote;

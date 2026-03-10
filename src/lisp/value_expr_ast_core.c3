@@ -40,7 +40,7 @@ enum ExprTag : char {
     E_AND,        // (and left right) - short-circuit boolean and
     E_OR,         // (or left right) - short-circuit boolean or
     E_CALL,       // (f a b c) - multi-arg call (not curried)
-    E_BEGIN,      // (begin e1 e2 ... en) - sequence, returns last
+    E_BLOCK,      // (block e1 e2 ... en) - sequence, returns last
     E_SET,        // (set! name value) - variable mutation
     E_QUASIQUOTE, // `template - quasiquote
     E_UNQUOTE,    // ,expr - unquote (inside quasiquote)

@@ -4,30 +4,30 @@ module lisp;
 import std::io;
 import main;
 fn void run_compiler_group_syntax_begin_zero_tests(Interp* interp, usz* pass, usz* fail) {
-    // --- E_BEGIN tests ---
+    // --- E_BLOCK tests ---
     {
-        char[] code = compile_to_c3("(begin 42)", interp);
+        char[] code = compile_to_c3("(block 42)", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: (begin 42)"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: (begin 42)"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: (block 42)"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: (block 42)"); }
     }
     {
-        char[] code = compile_to_c3("(begin 1 2 3)", interp);
+        char[] code = compile_to_c3("(block 1 2 3)", interp);
         bool ok = !str_contains(code, "unsupported") && str_contains(code, "make_int(3)");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: (begin 1 2 3)"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: (begin 1 2 3)"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: (block 1 2 3)"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: (block 1 2 3)"); }
     }
     {
-        char[] code = compile_to_c3("(begin (define x 1) x)", interp);
+        char[] code = compile_to_c3("(block (define x 1) x)", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: (begin (define x 1) x)"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: (begin (define x 1) x)"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: (block (define x 1) x)"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: (block (define x 1) x)"); }
     }
     {
-        char[] code = compile_to_c3("(lambda (x) (begin x x))", interp);
+        char[] code = compile_to_c3("(lambda (x) (block x x))", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: (lambda (x) (begin x x))"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: (lambda (x) (begin x x))"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: (lambda (x) (block x x))"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: (lambda (x) (block x x))"); }
     }
 
     // --- Zero-arg lambda tests ---
@@ -293,10 +293,10 @@ fn void run_compiler_group_continuation_set_begin_tests(Interp* interp, usz* pas
         else    { (*fail)++; io::printn("[FAIL] Compiler: reset/shift compiles natively"); }
     }
     {
-        char[] code = compile_to_c3("(define x 0) (begin (set! x 1) (set! x (+ x 1)) x)", interp);
+        char[] code = compile_to_c3("(define x 0) (block (set! x 1) (set! x (+ x 1)) x)", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: set! inside begin"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: set! inside begin"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: set! inside block"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: set! inside block"); }
     }
 }
 
@@ -333,7 +333,7 @@ fn void run_compiler_group_continuation_form_tests(Interp* interp, usz* pass, us
         else    { (*fail)++; io::printn("[FAIL] Compiler: reset compiles natively"); }
     }
     {
-        char[] code = compile_to_c3("(handle (begin (signal get 0) (signal set 1)) (get x (resolve 42)) (set v (resolve v)))", interp);
+        char[] code = compile_to_c3("(handle (block (signal get 0) (signal set 1)) (get x (resolve 42)) (set v (resolve v)))", interp);
         bool ok = str_contains(code, "compiled_handle");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: handle with multiple clauses"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: handle with multiple clauses"); }

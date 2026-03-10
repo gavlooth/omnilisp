@@ -1,4 +1,4 @@
-(begin
+(block
   (define port-str (default (getenv "OMNI_TLS_TEST_PORT") "45101"))
   (define cert (default (getenv "OMNI_TLS_TEST_CERT") "tests/lib/tls/server.cert.pem"))
   (define key (default (getenv "OMNI_TLS_TEST_KEY") "tests/lib/tls/server.key.pem"))
@@ -12,7 +12,7 @@
       (async-sleep 1500)
       (if done
           nil
-          (begin
+          (block
             (if stls (try (lambda (ignored) (tls-close stls)) (lambda (e) nil)) nil)
             (if sc (try (lambda (ignored) (tcp-close sc)) (lambda (e) nil)) nil)
             (if listener (try (lambda (ignored) (tcp-close listener)) (lambda (e) nil)) nil)

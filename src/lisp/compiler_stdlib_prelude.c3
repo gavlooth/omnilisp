@@ -26,7 +26,7 @@ const char[] STDLIB_PRELUDE =
 (define (drop n lst) (let loop (i n xs lst) (if (= i 0) xs (if (null? xs) nil (loop (- i 1) (cdr xs))))))
 (define (zip a b) (let loop (xs a ys b acc nil) (if (or (null? xs) (null? ys)) (reverse acc) (loop (cdr xs) (cdr ys) (cons (cons (car xs) (car ys)) acc)))))
 (define (range n) (let loop (i (- n 1) acc nil) (if (< i 0) acc (loop (- i 1) (cons i acc)))))
-(define (for-each f lst) (let loop (xs lst) (if (null? xs) nil (begin (f (car xs)) (loop (cdr xs))))))
+(define (for-each f lst) (let loop (xs lst) (if (null? xs) nil (block (f (car xs)) (loop (cdr xs))))))
 (define (any? pred lst) (let loop (xs lst) (if (null? xs) nil (if (pred (car xs)) true (loop (cdr xs))))))
 (define (every? pred lst) (let loop (xs lst) (if (null? xs) true (if (pred (car xs)) (loop (cdr xs)) nil))))
 (define (try thunk handler) (handle (thunk nil) (raise msg (handler msg))))

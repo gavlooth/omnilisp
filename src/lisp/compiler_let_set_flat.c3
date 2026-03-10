@@ -21,8 +21,8 @@ fn usz Compiler.compile_or_flat(Compiler* self, Expr* expr) {
     return self.compile_short_circuit(left, expr.or_expr.right, true, false);
 }
 
-fn usz Compiler.compile_begin_flat(Compiler* self, Expr* expr) {
-    return self.compile_begin_common(expr, false);
+fn usz Compiler.compile_block_flat(Compiler* self, Expr* expr) {
+    return self.compile_block_common(expr, false);
 }
 
 fn usz Compiler.compile_mutable_captured_set_flat(Compiler* self, SymbolId name, Expr* value) {

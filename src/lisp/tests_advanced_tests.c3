@@ -156,7 +156,7 @@ fn bool advanced_build_many_arg_macro_call(char* buf, usz cap, char[] macro_name
 
 fn bool advanced_build_many_capture_bindings_setup(char* buf, usz cap, usz binding_count) {
     usz len = 0;
-    if (!advanced_test_append(buf, cap, &len, "(begin")) return false;
+    if (!advanced_test_append(buf, cap, &len, "(block")) return false;
     for (usz i = 0; i < binding_count; i++) {
         if (!advanced_test_append(buf, cap, &len, " (define cap")) return false;
         if (!advanced_test_append_int(buf, cap, &len, i)) return false;
@@ -170,7 +170,7 @@ fn bool advanced_build_many_capture_bindings_setup(char* buf, usz cap, usz bindi
 
 fn bool advanced_build_many_capture_macro_define(char* buf, usz cap, usz binding_count) {
     usz len = 0;
-    if (!advanced_test_append(buf, cap, &len, "(define [macro] capture-wide ([] (begin")) return false;
+    if (!advanced_test_append(buf, cap, &len, "(define [macro] capture-wide ([] (block")) return false;
     for (usz i = 0; i < binding_count; i++) {
         if (!advanced_test_append(buf, cap, &len, " cap")) return false;
         if (!advanced_test_append_int(buf, cap, &len, i)) return false;

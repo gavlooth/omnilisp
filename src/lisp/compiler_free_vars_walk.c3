@@ -79,8 +79,8 @@ fn void Compiler.find_free_vars_complex_form(Compiler* self, Expr* expr, List{Sy
             self.find_free_vars_resolve(expr, bound_vars, free_vars, enclosing_scope);
         case E_HANDLE:
             self.find_free_vars_handle(expr, bound_vars, free_vars, enclosing_scope);
-        case E_BEGIN:
-            self.find_free_vars_list(expr.begin.exprs, expr.begin.expr_count, bound_vars, free_vars, enclosing_scope);
+        case E_BLOCK:
+            self.find_free_vars_list(expr.block.exprs, expr.block.expr_count, bound_vars, free_vars, enclosing_scope);
         case E_QUASIQUOTE:
             self.find_free_vars_in_qq(expr.quasiquote.body, bound_vars, free_vars, enclosing_scope);
         case E_MODULE:
@@ -128,7 +128,7 @@ fn void Compiler.find_free_vars(Compiler* self, Expr* expr, List{SymbolId}* boun
         case E_SHIFT:
         case E_RESOLVE:
         case E_HANDLE:
-        case E_BEGIN:
+        case E_BLOCK:
         case E_QUASIQUOTE:
         case E_MODULE:
         case E_SET:

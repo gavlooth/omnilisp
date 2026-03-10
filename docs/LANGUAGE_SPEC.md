@@ -74,7 +74,7 @@ Run these in REPL first:
 ```
 
 Core forms to learn first:
-- binding/flow: `define`, `let`, `if`, `begin`
+- binding/flow: `define`, `let`, `if`, `block`
 - functions: `lambda`, strict arity calls
 - collections: list/array/dict literals + generic ops (`length`, `ref`, `map`)
 
@@ -541,10 +541,10 @@ Counterexample (non-canonical syntax; do not add):
 
 Three branches required. Only the chosen branch is evaluated.
 
-### 3.5 `begin` -- Sequencing
+### 3.5 `block` -- Sequencing
 
 ```lisp
-(begin e1 e2 ... en)
+(block e1 e2 ... en)
 ```
 
 Evaluates all expressions in order, returns the last. Last expression is in tail position (TCO).
@@ -659,7 +659,6 @@ None                    ; nullary variant
 ^Int                    ; simple type
 ^(List Int)             ; compound type
 ^(Value 42)             ; canonical value-level constructor
-^(Val 42)               ; sugar alias for ^(Value ...)
 ^(Value bind)           ; symbol literal
 ^(Value "open")         ; string literal
 ^(Value true)           ; boolean literal (true/false symbols)
@@ -727,7 +726,7 @@ Command-style facades like `udp` are valid API shape, but core operations remain
 
 | Match Type | Score | Description |
 |------------|-------|-------------|
-| Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)` (or sugar `^(Val ...)`) |
+| Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)` |
 | Exact type | 100 | `^Int` matches INT value |
 | Numeric widening | 50 | Dispatch-only widening (`Int` can satisfy `^Double`) |
 | Subtype | 10 | `^Shape` matches Circle (Shape child) |
@@ -748,7 +747,7 @@ the explain call itself.
 
 ```lisp
 (let (x 0)
-  (begin
+  (block
     (explain 'dispatch (set! x 1))
     x))
 ; => 0
@@ -1257,12 +1256,12 @@ I/O operations go through effects with a fast path:
 (print 42)
 
 ; Custom handler intercepts I/O
-(handle (begin (println "suppressed") 42)
+(handle (block (println "suppressed") 42)
   (io/println x (resolve nil)))
 ; => 42 (output suppressed)
 
 ; Capture output
-(handle (begin (println "captured") nil)
+(handle (block (println "captured") nil)
   (io/println x x))
 ; => "captured"
 ```
@@ -1278,7 +1277,7 @@ Effect handlers match on tag name only. For type-specific behavior, use dispatch
 (define (on-show (^String s)) (string-append "str: " s))
 
 (handle
-  (begin (signal show 42) (signal show "hello"))
+  (block (signal show 42) (signal show "hello"))
   (show x (println (on-show x)) (resolve nil)))
 ```
 
@@ -1290,7 +1289,7 @@ Effect handlers match on tag name only. For type-specific behavior, use dispatch
 
 ```lisp
 (define [macro] when
-  ([test .. body] (if test (begin .. body) nil)))
+  ([test .. body] (if test (block .. body) nil)))
 
 (define [macro] cond
   ([] nil)
@@ -1307,7 +1306,7 @@ Effect handlers match on tag name only. For type-specific behavior, use dispatch
 
 ```lisp
 (macroexpand '(when true 1 2 3))
-; => (if true (begin 1 2 3) nil)
+; => (if true (block 1 2 3) nil)
 ```
 
 ---
@@ -1415,7 +1414,7 @@ Goodbye!
 ```lisp
 (handle
   (let (x (signal get nil))
-    (begin
+    (block
       (signal put (+ x 1))
       (signal get nil)))
   (get _ (resolve 0))
@@ -1539,7 +1538,7 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 | Handler stack depth | 16 |
 | Call arguments | Dynamic AST (JIT compiles up to 16 natively) |
 | Path segments | 8 |
-| Begin expressions | Dynamic (no fixed limit) |
+| Block expressions | Dynamic (no fixed limit) |
 | Lambda params | Dynamic (no fixed limit) |
 | String literal (inline) | 63 bytes (lexer limit) |
 | Macros | 64 |
@@ -1558,7 +1557,7 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 | Feature | Interpreter | JIT | Compiler |
 |---------|:-----------:|:---:|:--------:|
 | lambda/define/let/if | Y | Y | Y |
-| begin/set!/and/or | Y | Y | Y |
+| block/set!/and/or | Y | Y | Y |
 | quote/quasiquote | Y | Y | Y |
 | match | Y | Y | Y |
 | reset/shift | Y | Y | Y |

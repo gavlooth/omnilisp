@@ -521,9 +521,9 @@ fn bool explain_expr_contains_resolve(Expr* expr) {
         case E_LAMBDA:
             // Resolve inside nested lambdas is not guaranteed on this signal path.
             return false;
-        case E_BEGIN:
-            for (usz i = 0; i < expr.begin.expr_count; i++) {
-                if (explain_expr_contains_resolve(expr.begin.exprs[i])) return true;
+        case E_BLOCK:
+            for (usz i = 0; i < expr.block.expr_count; i++) {
+                if (explain_expr_contains_resolve(expr.block.exprs[i])) return true;
             }
             return false;
         case E_CALL:

@@ -174,7 +174,7 @@ These examples are intended to remain executable and linked to regression tests.
 8. I/O handler suppression:
 
 ```lisp
-(handle (begin (println "suppressed") 42)
+(handle (block (println "suppressed") 42)
   (io/println x (resolve nil)))
 ; => 42
 ```
@@ -182,7 +182,7 @@ These examples are intended to remain executable and linked to regression tests.
 9. I/O handler capture:
 
 ```lisp
-(handle (begin (println "captured") nil)
+(handle (block (println "captured") nil)
   (io/println x x))
 ; => "captured"
 ```

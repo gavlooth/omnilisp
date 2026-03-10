@@ -8,7 +8,7 @@ fn bool deduce_test_write_restart_script(char[] script_path, char[] db_path, boo
     char[] script = writer_phase
         ? io::bprintf(
             &script_buf,
-            "(begin "
+            "(block "
             "  (let (db (deduce 'open \"%s\") "
             "        rel (deduce 'open-named db 'person \"person_v1\" 'name 'age)) "
             "    (deduce 'fact! rel \"Alice\" 30) "
@@ -17,7 +17,7 @@ fn bool deduce_test_write_restart_script(char[] script_path, char[] db_path, boo
         )!!
         : io::bprintf(
             &script_buf,
-            "(begin "
+            "(block "
             "  (let (db (deduce 'open \"%s\") "
             "        rel (deduce 'open-named db 'person \"person_v1\" 'name 'age)) "
             "    (if (= (deduce 'count rel) 1) true (deduce 'count 42))))",
@@ -97,10 +97,10 @@ fn void run_deduce_durability_restart_test(Interp* interp, int* pass, int* fail)
 fn void run_deduce_transaction_tests(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define txn-db-commit (deduce 'open 'memory)) "
             "  (define [relation txn-db-commit] txn_person_commit (name) (age)) "
-            "  (define txc (deduce 'begin txn-db-commit)) "
+            "  (define txc (deduce 'block txn-db-commit)) "
             "  (deduce 'fact! txc txn_person_commit \"Alice\" 33) "
             "  (define before (deduce 'count txn_person_commit)) "
             "  (deduce 'commit txc) "
@@ -119,10 +119,10 @@ fn void run_deduce_transaction_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define txn-db-abort (deduce 'open 'memory)) "
             "  (define [relation txn-db-abort] txn_person_abort (name) (age)) "
-            "  (define txa (deduce 'begin txn-db-abort)) "
+            "  (define txa (deduce 'block txn-db-abort)) "
             "  (deduce 'fact! txa txn_person_abort \"Bob\" 21) "
             "  (deduce 'abort txa) "
             "  (= (deduce 'count txn_person_abort) 0))",
@@ -139,11 +139,11 @@ fn void run_deduce_transaction_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define txn-db-a (deduce 'open 'memory)) "
             "  (define txn-db-b (deduce 'open 'memory)) "
             "  (define [relation txn-db-b] txn_person_mismatch (name) (age)) "
-            "  (define txm (deduce 'begin txn-db-a)) "
+            "  (define txm (deduce 'block txn-db-a)) "
             "  (deduce 'fact! txm txn_person_mismatch \"Eve\" 44))",
             interp
         );
@@ -160,7 +160,7 @@ fn void run_deduce_transaction_tests(Interp* interp, int* pass, int* fail) {
 fn void run_deduce_clear_drop_tests(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define clr-db (deduce 'open 'memory)) "
             "  (define [relation clr-db] clr-person (name) (age)) "
             "  (deduce 'fact! clr-person \"Alice\" 30) "
@@ -183,7 +183,7 @@ fn void run_deduce_clear_drop_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define drp-db (deduce 'open 'memory)) "
             "  (define [relation drp-db] drp-person (name) (age)) "
             "  (deduce 'fact! drp-person \"Alice\" 30) "

@@ -57,7 +57,7 @@ fn bool dispatch_value_literal_matches(ValueLiteralKey* literal, Value* arg, Int
 
 /**
  * Find the best matching method in a method table for the given args.
- * Scoring: Val match (1000) > exact type (100) > subtype (10) > any (1)
+ * Scoring: Value-literal match (1000) > exact type (100) > subtype (10) > any (1)
  */
 fn bool method_constraints_satisfied(MethodEntry* entry, TypeId[] arg_types, Interp* interp) {
     usz limit = arg_types.len;

@@ -24,7 +24,7 @@ Fetches live FX rates, crypto prices, and news; serves a JSON API.
 - [x] `analytics.omni`   — set operations, zip, flatten, find, remove, predicates, string ops
 - [x] `events.omni`      — coroutines, iterators, delay/force, reset/shift, unless, assert!
 - [x] `rules.omni`       — macro DSL, gensym, eval/read-string, apply, quasiquote
-- [x] `alerts.omni`      — custom effects, with-handlers, alert dispatch
+- [x] `alerts.omni`      — custom effects, handle composition, alert dispatch
 
 ---
 
@@ -90,7 +90,7 @@ Fetches live FX rates, crypto prices, and news; serves a JSON API.
 - [x] `coroutine` / `resume` / `yield` / `coroutine?` — price tick generator (events.omni)
 - [x] `reset` / `shift`                 — delimited continuations, backpressure (events.omni)
 - [x] `delay` / `force`                 — lazy moving average computation (events.omni)
-- [x] `with-handlers`                   — compose alert sinks (alerts.omni)
+- [x] `handle` composition              — compose alert sinks (alerts.omni)
 - [x] `make-iterator` / `next` / `range-from` — lazy iterator sequences (events.omni, smoke_test)
 - [x] `repeat`                          — infinite repetition iterator (smoke_test.omni)
 

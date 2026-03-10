@@ -42,7 +42,7 @@ fn void run_deduce_scan_tests(Interp* interp, int* pass, int* fail) {
 
 fn void run_deduce_scan_range_tests(Interp* interp, int* pass, int* fail) {
     setup(interp,
-        "(begin "
+        "(block "
         "  (define scan-range-db (deduce 'open 'memory)) "
         "  (define [relation scan-range-db] scan_range_person (name) (age) (email)) "
         "  (deduce 'fact! scan_range_person \"Alice\" 20 \"a@x\") "

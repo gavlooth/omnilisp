@@ -14,6 +14,11 @@ fn void Parser.parse_compound_type_annotation(Parser* self, TypeAnnotation* ann)
     ann.base_type = self.get_current_symbol();
     self.lexer.advance();
 
+    if (parser_is_removed_val_ctor(self, ann.base_type)) {
+        self.set_error("Val constructor was removed; use Value");
+        return;
+    }
+
     if (parser_is_value_literal_ctor(self, ann.base_type)) {
         if (!self.parse_value_literal_annotation(ann)) return;
     } else {

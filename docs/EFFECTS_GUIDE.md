@@ -106,7 +106,7 @@ Handle different effect tags in the same block:
 
 ```lisp
 (handle
-  (begin
+  (block
     (signal log "starting")
     (+ 1 (signal ask nil)))
   (log msg (resolve nil))
@@ -135,7 +135,7 @@ don't use.
 ### Suppress output
 
 ```lisp
-(handle (begin (println "you won't see this") 42)
+(handle (block (println "you won't see this") 42)
   (io/println x (resolve nil)))
 ;; => 42   — nothing printed
 ```
@@ -143,7 +143,7 @@ don't use.
 ### Capture output to a string
 
 ```lisp
-(handle (begin (println "captured") nil)
+(handle (block (println "captured") nil)
   (io/println x x))
 ;; => "captured"
 ```
@@ -156,7 +156,7 @@ without calling `resolve` — so the body aborts and the string becomes the resu
 ```lisp
 (define (with-output-to-string thunk)
   (let (buf "")
-    (handle (begin (thunk) buf)
+    (handle (block (thunk) buf)
       (io/println x
         (set! buf (string-append buf (number->string x) "\n"))
         (resolve nil))
@@ -261,7 +261,7 @@ The stdlib declares a `raise` effect and provides `try` and `assert!`:
 
 ```lisp
 (handle
-  (begin
+  (block
     (println "before")
     (signal raise "oops")
     (println "after"))
@@ -323,11 +323,15 @@ regular functions and compose them:
       (signal raise "oops")))))
 ;; => "oops"
 
-;; Or compose with a helper
-(define (with-handlers handlers thunk)
-  (foldr (lambda (h acc) (lambda () (h acc))) thunk handlers))
+;; Or compose with a helper (left-to-right list order):
+;; first handler = outermost, last handler = innermost.
+(define (handle/chain handlers thunk)
+  (let loop (hs handlers)
+    (if (null? hs)
+        (thunk)
+        ((car hs) (lambda () (loop (cdr hs)))))))
 
-(with-handlers (list catch-errors silent-io)
+(handle/chain (list catch-errors silent-io)
   (lambda ()
     (println "gone")
     (signal raise "fail")))
@@ -366,7 +370,7 @@ regular functions and compose them:
 
 (define (with-logger thunk)
   (let (logs '())
-    (handle (begin (thunk) (reverse logs))
+    (handle (block (thunk) (reverse logs))
       (log msg
         (set! logs (cons msg logs))
         (resolve nil)))))

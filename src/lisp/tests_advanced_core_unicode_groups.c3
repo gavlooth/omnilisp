@@ -139,7 +139,7 @@ fn void run_advanced_unicode_lambda_utf8_tests(Interp* interp, int* pass, int* f
     test_eq(interp, "\xce\xbb application", "((\xce\xbb (x) (* x x)) 5)", 25, pass, fail);
     test_eq(interp, "\xce\xbb multi-param", "((\xce\xbb (x y) (+ x y)) 3 7)", 10, pass, fail);
     test_eq(interp, "\xce\xbb closure", "(let (a 10) ((\xce\xbb (x) (+ x a)) 5))", 15, pass, fail);
-    test_eq(interp, "\xce\xbb recursive define", "(begin (define sq (\xce\xbb (x) (* x x))) (sq 6))", 36, pass, fail);
+    test_eq(interp, "\xce\xbb recursive define", "(block (define sq (\xce\xbb (x) (* x x))) (sq 6))", 36, pass, fail);
 
     // Phase 2B: UTF-8 string support
     test_eq(interp, "utf8 strlen ASCII", "(string-length \"hello\")", 5, pass, fail);
@@ -188,7 +188,7 @@ fn void run_advanced_unicode_iterator_lazy_pipeline_tests(Interp* interp, int* p
     test_eq(interp, "iterator list list len", "(length (list (iterator (quote (1 2 3)))))", 3, pass, fail);
     test_eq(interp, "iterator array list car", "(car (list (iterator [10 20 30])))", 10, pass, fail);
     test_eq(interp, "iterator array list len", "(length (list (iterator [10 20 30])))", 3, pass, fail);
-    test_eq(interp, "iterator dict list len", "(length (list (iterator (begin (define iter-d {'a 1 'b 2}) iter-d))))", 2, pass, fail);
+    test_eq(interp, "iterator dict list len", "(length (list (iterator (block (define iter-d {'a 1 'b 2}) iter-d))))", 2, pass, fail);
     test_truthy(interp, "iterator idempotent", "(iterator? (iterator (iterator [1 2 3])))", pass, fail);
     // Lazy map on iterator
     test_eq(interp, "map + list car", "(car (list (map (lambda (x) (* x 2)) (iterator [1 2 3]))))", 2, pass, fail);
@@ -315,7 +315,7 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
         "scheduler/offload-op-cpu-only", pass, fail);
     test_str_val(interp,
         "scheduler join-timeout payload code",
-        "(handle (begin (define t-sched-timeout (thread-spawn 'sleep-ms 20)) (thread-join-timeout t-sched-timeout 0)) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (block (define t-sched-timeout (thread-spawn 'sleep-ms 20)) (thread-join-timeout t-sched-timeout 0)) (raise msg (symbol->string (ref msg 'code))))",
         "scheduler/thread-join-timeout", pass, fail);
     test_str_val(interp,
         "io tcp-connect payload domain",
@@ -379,8 +379,8 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
         test_eq(interp, "multi-shot let bindings", "(reset (+ 10 (shift k (let (a (k 1) b (k 2)) (+ a b)))))", 23, pass, fail);
         test_eq(interp, "multi-shot conditional", "(reset (+ 5 (shift k (if true (k 10) (k 20)))))", 15, pass, fail);
         test_eq(interp, "stream-yield continuation resumes beyond two yields",
-            "(begin "
-            "  (define (gen-s3) (reset (begin (stream-yield 1) (stream-yield 2) (stream-yield 3) nil))) "
+            "(block "
+            "  (define (gen-s3) (reset (block (stream-yield 1) (stream-yield 2) (stream-yield 3) nil))) "
             "  (car (drop 2 (stream-take 3 (gen-s3)))))",
             3, pass, fail);
         test_eq(interp, "multi-shot effect", "(handle (+ 1 (signal dup 0)) ((dup k x) (+ (k 10) (k 20))))", 32, pass, fail);
@@ -395,7 +395,7 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
     test_eq(interp, "TCO in reset body", "(reset (reset-loop 5000 0))", 5000, pass, fail);
     setup(interp, "(define shift-loop (lambda (n acc) (if (= n 0) acc (shift-loop (- n 1) (+ acc 1)))))");
     test_eq(interp, "TCO in shift body", "(reset (+ 1 (shift k (shift-loop 5000 0))))", 5000, pass, fail);
-    test_eq(interp, "TCO begin+if in reset", "(reset (begin (+ 1 2) (if true (+ 10 20) 99)))", 30, pass, fail);
+    test_eq(interp, "TCO block+if in reset", "(reset (block (+ 1 2) (if true (+ 10 20) 99)))", 30, pass, fail);
     test_eq(interp, "TCO let chains in shift", "(reset (+ 1 (shift k (let (x 10) (let (y 20) (+ x y))))))", 30, pass, fail);
     setup(interp, "(define cont-use-loop (lambda (k n) (if (= n 0) (k 42) (cont-use-loop k (- n 1)))))");
     test_eq(interp, "TCO tail-recursive k use", "(reset (+ 1 (shift k (cont-use-loop k 1000))))", 43, pass, fail);
@@ -419,7 +419,7 @@ fn void run_advanced_runtime_control_tests(Interp* interp, int* pass, int* fail)
     test_eq(interp, "coroutine nested", "(let (outer (coroutine (lambda () (let (inner (coroutine (lambda () 10))) (+ (resume inner) 5))))) (resume outer))", 15, pass, fail);
     test_eq(interp, "coroutine deep nest", "(let (f (coroutine (lambda () (let (a (coroutine (lambda () (let (b (coroutine (lambda () 1))) (+ (resume b) 2))))) (+ (resume a) 3))))) (resume f))", 6, pass, fail);
     test_eq(interp, "coroutine multi yield", "(let (g (coroutine (lambda () (yield 1) (yield 2) 3))) (+ (resume g) (+ (resume g) (resume g))))", 6, pass, fail);
-    setup(interp, "(define (coroutine-gen n) (coroutine (lambda () (let loop (i 0) (if (= i n) i (begin (yield i) (loop (+ i 1))))))))");
+    setup(interp, "(define (coroutine-gen n) (coroutine (lambda () (let loop (i 0) (if (= i n) i (block (yield i) (loop (+ i 1))))))))");
     test_eq(interp, "coroutine generator", "(let (g (coroutine-gen 3)) (+ (resume g) (+ (resume g) (+ (resume g) (resume g)))))", 6, pass, fail);
 
     // Variadic lambdas (native JIT apply path; no interpreter fallback route)
@@ -437,18 +437,20 @@ fn void run_advanced_runtime_control_tests(Interp* interp, int* pass, int* fail)
 }
 
 fn void run_advanced_lambda_syntax_tests(Interp* interp, int* pass, int* fail) {
-    // Begin
-    test_eq(interp, "begin returns last", "(begin 1 2 3)", 3, pass, fail);
-    test_eq(interp, "begin single", "(begin 42)", 42, pass, fail);
-    test_eq(interp, "begin side effects", "(begin (define begin-x 10) (define begin-y 20) (+ begin-x begin-y))", 30, pass, fail);
-    test_eq(interp, "begin nested", "(begin (begin 1 2) (begin 3 4))", 4, pass, fail);
-    test_eq(interp, "begin with if", "(begin (if true 10 20) (if false 30 40))", 40, pass, fail);
+    // Block
+    test_eq(interp, "block returns last", "(block 1 2 3)", 3, pass, fail);
+    test_eq(interp, "block single", "(block 42)", 42, pass, fail);
+    test_eq(interp, "block side effects", "(block (define block-x 10) (define block-y 20) (+ block-x block-y))", 30, pass, fail);
+    test_eq(interp, "block nested", "(block (block 1 2) (block 3 4))", 4, pass, fail);
+    test_eq(interp, "block with if", "(block (if true 10 20) (if false 30 40))", 40, pass, fail);
+    test_error_contains(interp, "do syntax removed", "(do 1 2)", "do syntax was removed; use block", pass, fail);
+    test_error_contains(interp, "fn syntax removed", "(fn (x) x)", "fn syntax was removed; use lambda", pass, fail);
 
     // Zero-arg lambdas
     test_eq(interp, "zero-arg thunk", "((lambda () 42))", 42, pass, fail);
     test_eq(interp, "zero-arg closure", "(let (a 10) ((lambda () a)))", 10, pass, fail);
     test_eq(interp, "zero-arg stored thunk", "(let (thunk (lambda () 99)) (thunk))", 99, pass, fail);
-    test_eq(interp, "zero-arg begin body", "((lambda () (begin 1 2 3)))", 3, pass, fail);
+    test_eq(interp, "zero-arg block body", "((lambda () (block 1 2 3)))", 3, pass, fail);
     test_eq(interp, "zero-arg computation", "((lambda () (+ 10 20)))", 30, pass, fail);
 
     // Multi-param lambda (strict arity)
@@ -521,14 +523,14 @@ fn void run_advanced_binding_mutation_tests(Interp* interp, int* pass, int* fail
     test_eq(interp, "set! basic", "set-test", 20, pass, fail);
 
     // Counter tests are stateful (calling counter1 mutates), use JIT-only to avoid double mutation
-    setup(interp, "(define make-counter (lambda () (let (count 0) (lambda () (begin (set! count (+ count 1)) count)))))");
+    setup(interp, "(define make-counter (lambda () (let (count 0) (lambda () (block (set! count (+ count 1)) count)))))");
     setup(interp, "(define counter1 (make-counter))");
     test_eq_jit(interp, "set! counter 1", "(counter1)", 1, pass, fail);
     test_eq_jit(interp, "set! counter 2", "(counter1)", 2, pass, fail);
     test_eq_jit(interp, "set! counter 3", "(counter1)", 3, pass, fail);
 
     // set! on let-local in closure (JIT detects and falls back to interpreter)
-    test_eq(interp, "set! parent scope", "(let (x 1) (let (f (lambda () (set! x 42))) (begin (f) x)))", 42, pass, fail);
+    test_eq(interp, "set! parent scope", "(let (x 1) (let (f (lambda () (set! x 42))) (block (f) x)))", 42, pass, fail);
     test_error(interp, "set! unbound", "(set! undefined-var-xyz 1)", pass, fail);
     setup(interp, "(define sr-test 100)");
     setup(interp, "(set! sr-test (+ sr-test 1))");

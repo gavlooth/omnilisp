@@ -20,7 +20,7 @@ Multi-param lambdas require exactly the right number of arguments. Use `_`
 placeholder, `|>` pipe, or `partial` for partial application (see
 [Section 8](02-functions.md#8-partial-application--pipe)).
 
-Lambda bodies support implicit begin — multiple expressions are evaluated in
+Lambda bodies support implicit block — multiple expressions are evaluated in
 sequence, returning the last:
 
 ```lisp
@@ -93,10 +93,10 @@ variables are the flat pairs, and calling the name recurs with new values.
 
 All three branches required. Only the chosen branch is evaluated.
 
-### `begin` — Sequencing
+### `block` — Sequencing
 
 ```lisp
-(begin
+(block
   (println "hello")
   (println "world")
   42)   ;; => 42

@@ -96,11 +96,10 @@ Force an iterator with constructors: `(list it)` or `(array it)`.
 |------|-----------|-------------|
 | `stream-take` | `(stream-take n gen)` | Take N from generator |
 
-### Handler Composition
+### Handler Helpers
 
 | Name | Signature | Description |
 |------|-----------|-------------|
-| `with-handlers` | `(with-handlers handlers thunk)` | Chain handlers |
 | `with-trampoline` | `(with-trampoline thunk)` | Trampoline bouncer |
 
 ### I/O Wrappers

@@ -34,8 +34,8 @@ fn bool expr_contains_shift(Expr* e) {
             // Lambda creates a closure boundary — shift inside captures
             // the lambda's context, not the named-let's. Safe to skip.
             return false;
-        case E_BEGIN:
-            return expr_slice_contains_shift(e.begin.exprs, e.begin.expr_count);
+        case E_BLOCK:
+            return expr_slice_contains_shift(e.block.exprs, e.block.expr_count);
         case E_CALL:
             if (expr_contains_shift(e.call.func)) return true;
             return expr_slice_contains_shift(e.call.args, e.call.arg_count);
@@ -122,8 +122,8 @@ fn void jit_warm_call_args(Expr* expr, Interp* interp) {
 }
 
 fn void jit_warm_begin_exprs(Expr* expr, Interp* interp) {
-    for (usz i = 0; i < expr.begin.expr_count; i++) {
-        jit_warm_expr_cache(expr.begin.exprs[i], interp);
+    for (usz i = 0; i < expr.block.expr_count; i++) {
+        jit_warm_expr_cache(expr.block.exprs[i], interp);
     }
 }
 
@@ -178,7 +178,7 @@ fn void jit_warm_expr_cache(Expr* expr, Interp* interp) {
         case E_CALL:
             jit_warm_expr_cache(expr.call.func, interp);
             jit_warm_call_args(expr, interp);
-        case E_BEGIN:
+        case E_BLOCK:
             jit_warm_begin_exprs(expr, interp);
         case E_SET:
             jit_warm_expr_cache(expr.set_expr.value, interp);

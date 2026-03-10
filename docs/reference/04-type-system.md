@@ -114,7 +114,7 @@ Define multiple implementations with typed parameters. The best match wins:
 (fib 10)    ;; => 55
 ```
 
-`Value` is the canonical constructor for value-literal dispatch. `Val` remains sugar.
+`Value` is the only supported constructor for value-literal dispatch.
 Supported literals in this position are integers, symbols, strings, and booleans (`true`/`false` symbols).
 Command-style facades should delegate to canonical `io/udp-*` operations. Module packaging for façade surfaces is deferred; core surface remains canonical `io/*`.
 
@@ -122,7 +122,7 @@ Command-style facades should delegate to canonical `io/udp-*` operations. Module
 
 | Match | Score | Example |
 |-------|-------|---------|
-| Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)` (or sugar `^(Val ...)`) |
+| Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)` |
 | Exact type | 100 | `^Int` matches INT value |
 | Subtype | 10 | `^Shape` matches Circle |
 | Any (untyped) | 1 | Untyped param matches anything |

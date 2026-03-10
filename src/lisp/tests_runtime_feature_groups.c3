@@ -10,27 +10,27 @@ fn void run_diagnostic_tests(Interp* interp, int* pass, int* fail) {
 
     // Type mismatch - shows arg types
     test_error_contains(interp, "dispatch: type mismatch shows types",
-        "(begin (define (typed-fn (^Int x)) x) (typed-fn \"hello\"))",
+        "(block (define (typed-fn (^Int x)) x) (typed-fn \"hello\"))",
         "String", pass, fail);
 
     // Shows method name
     test_error_contains(interp, "dispatch: shows method name",
-        "(begin (define (typed-fn2 (^Int x)) x) (typed-fn2 \"hello\"))",
+        "(block (define (typed-fn2 (^Int x)) x) (typed-fn2 \"hello\"))",
         "typed-fn2", pass, fail);
 
     // Arity mismatch
     test_error_contains(interp, "dispatch: arity mismatch",
-        "(begin (define [type] DPt (^Int x) (^Int y)) (define (dadd (^DPt a) (^DPt b)) 1) (dadd (DPt 1 2)))",
+        "(block (define [type] DPt (^Int x) (^Int y)) (define (dadd (^DPt a) (^DPt b)) 1) (dadd (DPt 1 2)))",
         "no matching method", pass, fail);
 
     // --- Match exhaustiveness ---
 
     // Union match missing variant
     test_error_contains(interp, "match: missing union variant",
-        "(begin (define [union] DiagResult DiagOk (DiagErr Int)) (match (DiagErr 42) ((DiagOk) 1)))",
+        "(block (define [union] DiagResult DiagOk (DiagErr Int)) (match (DiagErr 42) ((DiagOk) 1)))",
         "missing variants", pass, fail);
     test_eq(interp, "match: wildcard intentionally handles non-exhaustive union match",
-        "(begin (define [union] DiagResultW DiagOkW (DiagErrW Int)) (match (DiagErrW 42) ((DiagOkW) 1) (_ 2)))",
+        "(block (define [union] DiagResultW DiagOkW (DiagErrW Int)) (match (DiagErrW 42) ((DiagOkW) 1) (_ 2)))",
         2, pass, fail);
 
     // Non-union match shows type
@@ -132,7 +132,7 @@ fn void run_atomic_core_tests(Interp* interp, int* pass, int* fail) {
 fn void run_atomic_lifetime_tests(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define mk-atomic (lambda (n) (atomic n))) "
             "  (atomic-read (mk-atomic 7)))",
             interp);
@@ -146,9 +146,9 @@ fn void run_atomic_lifetime_tests(Interp* interp, int* pass, int* fail) {
     }
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define build-many (lambda (n) "
-            "    (if (= n 0) 0 (begin (atomic n) (build-many (- n 1)))))) "
+            "    (if (= n 0) 0 (block (atomic n) (build-many (- n 1)))))) "
             "  (build-many 128) "
             "  1)",
             interp);

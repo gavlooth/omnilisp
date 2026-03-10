@@ -61,8 +61,8 @@
 ;; =========================================================================
 ;; Standard Macros (defined before HOFs since macros may be used by them)
 ;; =========================================================================
-(define [macro] when ([test .. body] (if test (begin .. body) nil)))
-(define [macro] unless ([test .. body] (if test nil (begin .. body))))
+(define [macro] when ([test .. body] (if test (block .. body) nil)))
+(define [macro] unless ([test .. body] (if test nil (block .. body))))
 (define [macro] cond ([] nil) ([test body .. rest] (if test body (cond .. rest))))
 (define (default v fallback) (if (null? v) fallback v))
 
@@ -104,16 +104,16 @@
 
 ;; reverse: (reverse lst) — must be defined before map/filter (they depend on it)
 (define (reverse (^List lst)) (let loop (xs lst acc nil) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
-(define (reverse (^Array arr)) (let (len (length arr) result []) (let loop (i len) (if (= i 0) result (let (j (- i 1)) (begin (push! result (ref arr j)) (loop j)))))))
+(define (reverse (^Array arr)) (let (len (length arr) result []) (let loop (i len) (if (= i 0) result (let (j (- i 1)) (block (push! result (ref arr j)) (loop j)))))))
 
 ;; map: (map f coll) — apply f to each element, return same collection type
 (define (map f (^List lst)) (let loop (xs lst acc nil) (if (null? xs) (reverse acc) (loop (cdr xs) (cons (f (car xs)) acc)))))
-(define (map f (^Array arr)) (let (len (length arr) result []) (let loop (i 0) (if (= i len) result (begin (push! result (f (ref arr i))) (loop (+ i 1)))))))
+(define (map f (^Array arr)) (let (len (length arr) result []) (let loop (i 0) (if (= i len) result (block (push! result (f (ref arr i))) (loop (+ i 1)))))))
 (define (map (^Closure f)) (lambda (coll) (map f coll)))
 
 ;; filter: (filter pred coll) — keep elements where (pred x) is truthy
 (define (filter pred (^List lst)) (let loop (xs lst acc nil) (if (null? xs) (reverse acc) (if (pred (car xs)) (loop (cdr xs) (cons (car xs) acc)) (loop (cdr xs) acc)))))
-(define (filter pred (^Array arr)) (let (len (length arr) result []) (let loop (i 0) (if (= i len) result (if (pred (ref arr i)) (begin (push! result (ref arr i)) (loop (+ i 1))) (loop (+ i 1)))))))
+(define (filter pred (^Array arr)) (let (len (length arr) result []) (let loop (i 0) (if (= i len) result (if (pred (ref arr i)) (block (push! result (ref arr i)) (loop (+ i 1))) (loop (+ i 1)))))))
 (define (filter (^Closure pred)) (lambda (coll) (filter pred coll)))
 
 ;; foldl: (foldl f acc coll) — left fold, f takes 2 args: (f acc x)
@@ -141,21 +141,21 @@
 
 ;; take: (take n coll) — first n elements (shape-preserving)
 (define (take n (^List lst)) (let loop (i n xs lst acc nil) (if (= i 0) (reverse acc) (if (null? xs) (reverse acc) (loop (- i 1) (cdr xs) (cons (car xs) acc))))))
-(define (take n (^Array arr)) (let (len (length arr) result []) (let loop (i 0) (if (or (= i n) (= i len)) result (begin (push! result (ref arr i)) (loop (+ i 1)))))))
+(define (take n (^Array arr)) (let (len (length arr) result []) (let loop (i 0) (if (or (= i n) (= i len)) result (block (push! result (ref arr i)) (loop (+ i 1)))))))
 
 ;; drop: (drop n coll) — skip first n elements (shape-preserving)
 (define (drop n (^List lst)) (let loop (i n xs lst) (if (= i 0) xs (if (null? xs) nil (loop (- i 1) (cdr xs))))))
-(define (drop n (^Array arr)) (let (len (length arr) result []) (let loop (i n) (if (>= i len) result (begin (push! result (ref arr i)) (loop (+ i 1)))))))
+(define (drop n (^Array arr)) (let (len (length arr) result []) (let loop (i n) (if (>= i len) result (block (push! result (ref arr i)) (loop (+ i 1)))))))
 
 ;; zip: (zip a b) — zip two collections
 (define (zip (^List a) (^List b)) (let loop (xs a ys b acc nil) (if (or (null? xs) (null? ys)) (reverse acc) (loop (cdr xs) (cdr ys) (cons (cons (car xs) (car ys)) acc)))))
-(define (zip (^Array a) (^Array b)) (let (la (length a) lb (length b) result []) (let loop (i 0) (if (or (= i la) (= i lb)) result (begin (push! result (cons (ref a i) (ref b i))) (loop (+ i 1)))))))
+(define (zip (^Array a) (^Array b)) (let (la (length a) lb (length b) result []) (let loop (i 0) (if (or (= i la) (= i lb)) result (block (push! result (cons (ref a i) (ref b i))) (loop (+ i 1)))))))
 
 ;; range: (range n) — list from 0 to n-1 (iterative, builds in reverse)
 (define (range n) (let loop (i (- n 1) acc nil) (if (< i 0) acc (loop (- i 1) (cons i acc)))))
 
 ;; for-each: (for-each f lst) — apply f to each element for side effects, return nil
-(define (for-each f (^List lst)) (let loop (xs lst) (if (null? xs) nil (begin (f (car xs)) (loop (cdr xs))))))
+(define (for-each f (^List lst)) (let loop (xs lst) (if (null? xs) nil (block (f (car xs)) (loop (cdr xs))))))
 (define (for-each (^Closure f)) (lambda (lst) (for-each f lst)))
 
 ;; any?: (any? pred lst) — true if pred is truthy for any element
@@ -252,7 +252,7 @@
 (define (stream-take n gen) (let loop (i n g gen acc nil) (if (= i 0) (reverse acc) (if (null? g) (reverse acc) (let (pair (if (procedure? g) (g nil) g)) (if (null? pair) (reverse acc) (loop (- i 1) (cdr pair) (cons (car pair) acc))))))))
 
 ;; delay/force: promise (lazy evaluation)
-(define (delay thunk) (let (result nil forced nil) (lambda () (if forced result (begin (set! result (thunk nil)) (set! forced true) result)))))
+(define (delay thunk) (let (result nil forced nil) (lambda () (if forced result (block (set! result (thunk nil)) (set! forced true) result)))))
 (define (force p) (p))
 
 ;; =========================================================================
@@ -435,10 +435,3 @@
                             'domain 'data
                             'message "emit: unsupported format (supported: 'json, 'json-pretty, 'csv)"
                             'data {'format f} })))))))
-
-;; =========================================================================
-;; Handler Composition
-;; =========================================================================
-;; Each handler is a function (thunk -> result) that wraps a thunk in handle.
-;; with-handlers chains and runs them: outer handlers wrap inner handlers.
-(define (with-handlers handlers thunk) (if (null? handlers) (thunk) ((car handlers) (lambda () (with-handlers (cdr handlers) thunk)))))

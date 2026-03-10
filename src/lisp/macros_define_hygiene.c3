@@ -180,14 +180,14 @@ fn EvalResult eval_define_macro(Expr* expr, Env* env, Interp* interp) {
 }
 
 /**
- * Check if a symbol is a special form keyword (if, begin, let, lambda, etc.).
+ * Check if a symbol is a special form keyword (if, block, let, lambda, etc.).
  * Special forms are recognized by SymbolId in value_to_expr, so they don't need
  * hygienic resolution — they always produce the correct Expr tag regardless of
  * any user-defined shadowing.
  */
 fn bool is_special_form_symbol(SymbolId sym, Interp* interp) {
     return (uint)sym == (uint)interp.sym_if
-        || (uint)sym == (uint)interp.sym_begin
+        || (uint)sym == (uint)interp.sym_block
         || (uint)sym == (uint)interp.sym_let
         || (uint)sym == (uint)interp.sym_lambda
         || (uint)sym == (uint)interp.sym_define

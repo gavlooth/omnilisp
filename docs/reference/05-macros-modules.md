@@ -10,10 +10,10 @@
 
 ```lisp
 (define [macro] when
-  ([test .. body] (if test (begin .. body) nil)))
+  ([test .. body] (if test (block .. body) nil)))
 
 (define [macro] unless
-  ([test .. body] (if test nil (begin .. body))))
+  ([test .. body] (if test nil (block .. body))))
 
 (define [macro] cond
   ([] nil)
@@ -45,7 +45,7 @@
 
 ```lisp
 (macroexpand '(when true 1 2 3))
-;; => (if true (begin 1 2 3) nil)
+;; => (if true (block 1 2 3) nil)
 ```
 
 ---

@@ -11,21 +11,21 @@ fn void run_scheduler_boundary_stress_tests(Interp* interp, int* pass, int* fail
         switch (i & 3) {
             case 0:
                 r = run(
-                    "(begin "
+                    "(block "
                     "  (define st-t (task-spawn 'sleep-ms 1)) "
                     "  (task-join st-t) "
                     "  true)",
                     interp);
             case 1:
                 r = run(
-                    "(begin "
+                    "(block "
                     "  (define st-f (spawn (lambda () (offload 'sleep-ms 1)))) "
                     "  (await st-f) "
                     "  true)",
                     interp);
             case 2:
                 r = run(
-                    "(begin "
+                    "(block "
                     "  (spawn (lambda () 1)) "
                     "  (spawn (lambda () 2)) "
                     "  (run-fibers) "
@@ -33,7 +33,7 @@ fn void run_scheduler_boundary_stress_tests(Interp* interp, int* pass, int* fail
                     interp);
             case 3:
                 r = run(
-                    "(begin "
+                    "(block "
                     "  (define st-t1 (task-spawn 'sleep-ms 1)) "
                     "  (define st-t2 (task-spawn 'sleep-ms 1)) "
                     "  (task-join st-t1) "
@@ -155,7 +155,7 @@ fn void run_scheduler_thread_task_cancel_boundary_tests(Interp* interp, int* pas
 
         bool already_done = false;
         bool cancel_ok = scheduler_cancel_thread_task(task_id, &already_done);
-        bool begin_ok = !scheduler_try_begin_thread_task(task_id);
+        bool start_ok = !scheduler_try_begin_thread_task(task_id);
         OffloadCompletion* cancelled = scheduler_take_thread_task_completion(task_id);
         bool take_ok = cancelled != null &&
                        cancelled.kind == OFFLOAD_RES_ERROR &&
@@ -185,7 +185,7 @@ fn void run_scheduler_thread_task_cancel_boundary_tests(Interp* interp, int* pas
         bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
         bool cycle_ok = cancel_ok &&
                         !already_done &&
-                        begin_ok &&
+                        start_ok &&
                         take_ok &&
                         done_path_ok &&
                         invalid_cancel_ok &&
@@ -193,7 +193,7 @@ fn void run_scheduler_thread_task_cancel_boundary_tests(Interp* interp, int* pas
         if (!cycle_ok) {
             ok = false;
             failed_step = i;
-            if (!cancel_ok || already_done || !begin_ok || !take_ok) {
+            if (!cancel_ok || already_done || !start_ok || !take_ok) {
                 failed_phase = "cancel-path";
             } else if (!done_path_ok) {
                 failed_phase = "done-path";
@@ -241,7 +241,7 @@ fn void run_scheduler_mixed_boundary_state_restore_tests(Interp* interp, int* pa
     bool d_active_ctx = true;
     for (usz i = 0; i < 12; i++) {
         EvalResult success_r = run(
-            "(begin "
+            "(block "
             "  (define sb-t (task-spawn 'sleep-ms 1)) "
             "  (define sb-f (spawn (lambda () (offload 'sleep-ms 1)))) "
             "  (task-join sb-t) "
@@ -273,7 +273,7 @@ fn void run_scheduler_mixed_boundary_state_restore_tests(Interp* interp, int* pa
 
         // Expected-error path should also preserve boundary/runtime fields.
         EvalResult error_r = run(
-            "(begin "
+            "(block "
             "  (define sb-c (task-spawn 'sleep-ms 20)) "
             "  (task-cancel sb-c) "
             "  (task-join sb-c))",

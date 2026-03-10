@@ -17,10 +17,10 @@ fn void run_advanced_macro_hygiene_string_number_tests(Interp* interp, int* pass
     test_eq(interp, "non-tail recursion exceeds former 1024 eval cap",
         "(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 1500))",
         1500, pass, fail);
-    if (!main::stack_runtime_asan_enabled()) {
+    if (!main::stack_runtime_asan_enabled() && test_c_getenv("OMNI_LISP_STACK_OVERFLOW_PROBE") != null) {
         test_error(interp, "stack overflow caught", "(let ^rec (f (lambda (n) (+ 1 (f (+ n 1))))) (f 0))", pass, fail);
     } else {
-        emit_pass_literal("[PASS] stack overflow caught (ASAN runtime skip)");
+        emit_pass_literal("[PASS] stack overflow probe skipped (set OMNI_LISP_STACK_OVERFLOW_PROBE=1 to enable)");
         (*pass)++;
     }
 }
@@ -37,16 +37,16 @@ fn void run_advanced_macro_hygiene_quasi_pattern_tests(Interp* interp, int* pass
     test_eq(interp, "quasiquote splice empty", "(length `(a ,@qq-empty b))", 2, pass, fail);
 
     // Pattern macros
-    setup(interp, "(define [macro] when ([test .. body] (if test (begin .. body) nil)))");
+    setup(interp, "(define [macro] when ([test .. body] (if test (block .. body) nil)))");
     test_eq(interp, "when true", "(when true 42)", 42, pass, fail);
     test_nil(interp, "when false", "(when false 42)", pass, fail);
-    setup(interp, "(define [macro] unless ([test .. body] (if test nil (begin .. body))))");
+    setup(interp, "(define [macro] unless ([test .. body] (if test nil (block .. body))))");
     test_eq(interp, "unless false", "(unless false 99)", 99, pass, fail);
     test_nil(interp, "unless true", "(unless true 99)", pass, fail);
     setup(interp, "(define [macro] with-val ([name val body] (let (name val) body)))");
     test_eq(interp, "macro with-val", "(with-val z 100 (+ z 1))", 101, pass, fail);
     test_eq(interp, "unless macro preserves let inside define",
-        "(begin (unless false (define (ufoo3 x) (let (y 1) (+ x y)))) (ufoo3 2))",
+        "(block (unless false (define (ufoo3 x) (let (y 1) (+ x y)))) (ufoo3 2))",
         3, pass, fail);
     setup(interp, "(define [macro] cond ([] nil) ([test body .. rest] (if test body (cond .. rest))))");
     test_eq(interp, "cond macro", "(cond false 1 true 2 true 3)", 2, pass, fail);
@@ -81,7 +81,7 @@ fn void run_advanced_macro_hygiene_quasi_pattern_tests(Interp* interp, int* pass
 
 fn void run_advanced_macro_hygiene_gensym_tests(Interp* interp, int* pass, int* fail) {
     // Auto-gensym
-    setup(interp, "(define [macro] swap! ([a b] (let (tmp# a) (begin (set! a b) (set! b tmp#)))))");
+    setup(interp, "(define [macro] swap! ([a b] (let (tmp# a) (block (set! a b) (set! b tmp#)))))");
     setup(interp, "(define swap-x 10)");
     setup(interp, "(define swap-y 20)");
     setup(interp, "(swap! swap-x swap-y)");

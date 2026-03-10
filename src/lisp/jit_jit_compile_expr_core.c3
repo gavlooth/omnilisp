@@ -81,7 +81,7 @@ fn JitExprFamily jit_expr_family_for_tag(ExprTag tag) @inline {
         case E_AND:
         case E_OR:
         case E_CALL:
-        case E_BEGIN:
+        case E_BLOCK:
         case E_SET:
             return JitExprFamily.JIT_EXPR_FAMILY_CORE;
         case E_QUOTE:
@@ -127,8 +127,8 @@ fn void? jit_compile_expr_group_core(void* s, Expr* expr, Interp* interp,
             jit_compile_and(s, expr, interp, locals, is_tail)!;
         case E_OR:
             jit_compile_or(s, expr, interp, locals, is_tail)!;
-        case E_BEGIN:
-            jit_compile_begin(s, expr, interp, locals, is_tail)!;
+        case E_BLOCK:
+            jit_compile_block(s, expr, interp, locals, is_tail)!;
         case E_APP:
             jit_compile_app(s, expr, interp, locals, is_tail)!;
         case E_CALL:
@@ -347,8 +347,8 @@ fn void? jit_compile_or(void* s, Expr* expr, Interp* interp, JitLocals* locals, 
     _jit_patch(s, jump_end);
 }
 
-fn void? jit_compile_begin(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
-    usz count = expr.begin.expr_count;
+fn void? jit_compile_block(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
+    usz count = expr.block.expr_count;
     if (count == 0) {
         emit_call_1(s, (void*)&jit_make_nil);
         return;
@@ -356,7 +356,7 @@ fn void? jit_compile_begin(void* s, Expr* expr, Interp* interp, JitLocals* local
     // Evaluate all expressions; last inherits tail position
     for (usz i = 0; i < count; i++) {
         bool tail = is_tail && (i == count - 1);
-        jit_compile_expr(s, expr.begin.exprs[i], interp, locals, tail)!;
+        jit_compile_expr(s, expr.block.exprs[i], interp, locals, tail)!;
     }
 }
 

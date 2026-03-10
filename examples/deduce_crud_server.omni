@@ -90,7 +90,7 @@
   (let ({id name qty} payload)
     (if (repo/get-by-id id)
         (Err "item already exists")
-        (begin
+        (block
           (deduce 'fact! items id name qty)
           (Ok (Item id name qty))))))
 
@@ -99,7 +99,7 @@
         existing (repo/get-by-id id))
     (if (not existing)
         (Err "item not found")
-        (begin
+        (block
           ;; dot access on Item instance — no ('field dict) lookups needed
           (deduce 'retract! items existing.id existing.name existing.qty)
           (deduce 'fact! items id name qty)
@@ -110,7 +110,7 @@
         existing (repo/get-by-id id))
     (if (not existing)
         (Err "item not found")
-        (begin
+        (block
           (deduce 'retract! items existing.id existing.name existing.qty)
           (Ok existing)))))
 
@@ -221,7 +221,7 @@
     (set! acceptor-id (spawn (lambda () (server/accept-loop listener))))
     {'host host 'port port 'listener listener 'acceptor-id acceptor-id}))
 
-;; when — cleaner than (if x (begin ...) nil)
+;; when — cleaner than (if x (block ...) nil)
 (define (server/stop server-state)
   (when server-state
     (fiber-cancel ('acceptor-id server-state))

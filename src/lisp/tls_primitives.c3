@@ -32,8 +32,8 @@ fn Value* tls_require_async_runtime(Interp* interp, char[] op_name, char[] fiber
 
 fn Value* tls_run_fiber_offload(OffloadWork* work, Interp* interp) {
     usz fiber_id = g_scheduler.current_fiber_id;
-    Value* begin_err = scheduler_begin_fiber_offload(work, fiber_id, interp);
-    if (begin_err != null) return begin_err;
+    Value* start_err = scheduler_begin_fiber_offload(work, fiber_id, interp);
+    if (start_err != null) return start_err;
 
     Value*[1] yargs;
     yargs[0] = make_nil(interp);
@@ -176,10 +176,10 @@ fn Value* prim_tls_connect(Value*[] args, Env* env, Interp* interp) {
     work.op = OFFLOAD_TLS_CONNECT;
     work.int_arg = (long)(uptr)req;
     usz fiber_id = g_scheduler.current_fiber_id;
-    Value* begin_err = scheduler_begin_fiber_offload(&work, fiber_id, interp);
-    if (begin_err != null) {
+    Value* start_err = scheduler_begin_fiber_offload(&work, fiber_id, interp);
+    if (start_err != null) {
         tls_connect_req_free(req);
-        return begin_err;
+        return start_err;
     }
 
     Value*[1] yargs;

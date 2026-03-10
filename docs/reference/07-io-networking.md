@@ -46,12 +46,12 @@ deterministic `io/*-fiber-required` errors.
 
 ```lisp
 ;; Suppress output
-(handle (begin (println "silent") 42)
+(handle (block (println "silent") 42)
   (io/println x (resolve nil)))
 ;; => 42, nothing printed
 
 ;; Capture output
-(handle (begin (println "captured") nil)
+(handle (block (println "captured") nil)
   (io/println x x))
 ;; => "captured"
 

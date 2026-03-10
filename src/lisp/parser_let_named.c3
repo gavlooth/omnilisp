@@ -80,8 +80,8 @@ fn Expr* Parser.parse_named_let(Parser* self, Expr* e, SymbolId loop_name) {
         return null;
     }
 
-    // Parse body (implicit begin for multiple expressions)
-    Expr* body = self.parse_implicit_begin();
+    // Parse body (implicit block for multiple expressions)
+    Expr* body = self.parse_implicit_block();
     self.expect(T_RPAREN, ")");  // consume outer ')' of let form
 
     Expr* lambda_expr = self.build_named_let_lambda(e, &params, body);

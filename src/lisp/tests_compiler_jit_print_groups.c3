@@ -51,9 +51,9 @@ fn void run_compiler_group_jit_language_tests(Interp* interp, usz* pass, usz* fa
         else    { (*fail)++; io::printn("[FAIL] JIT: multi-arg call"); }
     }
 
-    // 72. mutable capture via JIT (using begin + define for set!)
+    // 72. mutable capture via JIT (using block + define for set!)
     {
-        EvalResult r = run("(begin (define x 0) (set! x (+ x 1)) (set! x (+ x 1)) x)", interp);
+        EvalResult r = run("(block (define x 0) (set! x (+ x 1)) (set! x (+ x 1)) x)", interp);
         bool ok = (!r.error.has_error && r.value != null && r.value.tag == ValueTag.INT && r.value.int_val == 2);
         if (ok) { (*pass)++; compiler_print_pass("JIT: mutable capture"); }
         else    { (*fail)++; io::printn("[FAIL] JIT: mutable capture"); }
@@ -61,7 +61,7 @@ fn void run_compiler_group_jit_language_tests(Interp* interp, usz* pass, usz* fa
 
     // 73. macro via JIT
     {
-        EvalResult r = run("(begin (define [macro] double ([x] (+ x x))) (double 21))", interp);
+        EvalResult r = run("(block (define [macro] double ([x] (+ x x))) (double 21))", interp);
         bool ok = (!r.error.has_error && r.value != null && r.value.tag == ValueTag.INT && r.value.int_val == 42);
         if (ok) { (*pass)++; compiler_print_pass("JIT: macro expansion"); }
         else    { (*fail)++; io::printn("[FAIL] JIT: macro expansion"); }

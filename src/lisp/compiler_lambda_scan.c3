@@ -62,10 +62,10 @@ fn bool Compiler.scan_lambdas_match_expr(Compiler* self, Expr* expr, List{Symbol
     return found;
 }
 
-fn bool Compiler.scan_lambdas_begin_expr(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
+fn bool Compiler.scan_lambdas_block_expr(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
     bool found = false;
-    for (usz i = 0; i < expr.begin.expr_count; i++) {
-        found |= self.scan_lambdas_with_scope(expr.begin.exprs[i], enclosing_bound);
+    for (usz i = 0; i < expr.block.expr_count; i++) {
+        found |= self.scan_lambdas_with_scope(expr.block.exprs[i], enclosing_bound);
     }
     return found;
 }
@@ -99,7 +99,7 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
         case E_PERFORM: return self.scan_lambdas_with_scope(expr.perform.arg, enclosing_bound);
         case E_RESOLVE: return self.scan_lambdas_with_scope(expr.resolve.value, enclosing_bound);
         case E_HANDLE: return self.scan_lambdas_handle(expr, enclosing_bound);
-        case E_BEGIN: return self.scan_lambdas_begin_expr(expr, enclosing_bound);
+        case E_BLOCK: return self.scan_lambdas_block_expr(expr, enclosing_bound);
         case E_SET: return self.scan_lambdas_with_scope(expr.set_expr.value, enclosing_bound);
         case E_QUASIQUOTE: return self.scan_lambdas_with_scope(expr.quasiquote.body, enclosing_bound);
         case E_UNQUOTE: return self.scan_lambdas_with_scope(expr.unquote.body, enclosing_bound);

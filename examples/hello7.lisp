@@ -1,1 +1,1 @@
-(handle (begin 42) (ask val val))
+(handle (block 42) (ask val val))

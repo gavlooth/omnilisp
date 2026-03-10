@@ -20,9 +20,9 @@ fn bool has_set_on_name(Expr* expr, SymbolId name) {
                    has_set_on_name(expr.if_expr.else_branch, name);
         case E_LAMBDA:
             return has_set_on_name(expr.lambda.body, name);
-        case E_BEGIN:
-            for (usz i = 0; i < expr.begin.expr_count; i++) {
-                if (has_set_on_name(expr.begin.exprs[i], name)) return true;
+        case E_BLOCK:
+            for (usz i = 0; i < expr.block.expr_count; i++) {
+                if (has_set_on_name(expr.block.exprs[i], name)) return true;
             }
             return false;
         case E_APP:
@@ -58,9 +58,9 @@ fn bool has_closure_set_on_local(Expr* body, SymbolId name) {
             return has_closure_set_on_local(body.if_expr.test, name) ||
                    has_closure_set_on_local(body.if_expr.then_branch, name) ||
                    has_closure_set_on_local(body.if_expr.else_branch, name);
-        case E_BEGIN:
-            for (usz i = 0; i < body.begin.expr_count; i++) {
-                if (has_closure_set_on_local(body.begin.exprs[i], name)) return true;
+        case E_BLOCK:
+            for (usz i = 0; i < body.block.expr_count; i++) {
+                if (has_closure_set_on_local(body.block.exprs[i], name)) return true;
             }
             return false;
         case E_APP:

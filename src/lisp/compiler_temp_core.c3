@@ -50,7 +50,7 @@ fn usz Compiler.compile_to_temp_non_null(Compiler* self, Expr* expr) {
         case E_LET: return self.compile_let_flat(expr);
         case E_AND: return self.compile_and_flat(expr);
         case E_OR: return self.compile_or_flat(expr);
-        case E_BEGIN: return self.compile_begin_flat(expr);
+        case E_BLOCK: return self.compile_block_flat(expr);
         case E_SET: return self.compile_set_flat(expr);
         case E_RESET: return self.compile_reset_flat(expr);
         case E_SHIFT: return self.compile_shift_flat(expr);
@@ -107,8 +107,8 @@ fn usz Compiler.compile_to_temp_tail(Compiler* self, Expr* expr) {
         case E_IF:
             return self.compile_tail_if_flat(expr);
 
-        case E_BEGIN:
-            return self.compile_tail_begin_flat(expr);
+        case E_BLOCK:
+            return self.compile_tail_block_flat(expr);
 
         case E_LET:
             return self.compile_let_flat_tail(expr);

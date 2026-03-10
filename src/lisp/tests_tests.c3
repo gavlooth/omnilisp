@@ -185,7 +185,7 @@ fn void emit_jit_fallback_summary() {
         jit_fallback_count(E_AND) +
         jit_fallback_count(E_OR) +
         jit_fallback_count(E_CALL) +
-        jit_fallback_count(E_BEGIN) +
+        jit_fallback_count(E_BLOCK) +
         jit_fallback_count(E_SET);
     usz effects_total =
         jit_fallback_count(E_QUOTE) +
@@ -263,6 +263,30 @@ fn void run_group_isolated(IsolatedTestGroupFn group_fn, int* pass, int* fail) {
     mem::free(tmp);
 
     run_test_global_boundary_reset();
+}
+
+fn void run_advanced_tests_isolated(int* pass, int* fail) {
+    // Keep advanced subgroup definitions from accumulating in one long-lived interpreter.
+    run_group_isolated(&run_advanced_core_semantics_tests, pass, fail);
+    run_group_isolated(&run_advanced_unicode_iterator_tests, pass, fail);
+    run_group_isolated(&run_advanced_logic_tco_tests, pass, fail);
+    run_group_isolated(&run_advanced_effect_continuation_tests, pass, fail);
+    run_group_isolated(&run_advanced_runtime_control_tests, pass, fail);
+    run_group_isolated(&run_advanced_lambda_syntax_tests, pass, fail);
+    run_group_isolated(&run_advanced_binding_mutation_tests, pass, fail);
+    run_group_isolated(&run_advanced_macro_hygiene_tests, pass, fail);
+    run_group_isolated(&run_advanced_collections_module_tests, pass, fail);
+    run_group_isolated(&run_advanced_stdlib_numeric_tests, pass, fail);
+    run_group_isolated(&run_advanced_type_dispatch_mutation_chain_tests, pass, fail);
+    run_group_isolated(&run_advanced_effect_union_limit_tests, pass, fail);
+    run_group_isolated(&run_advanced_ffi_system_tests, pass, fail);
+}
+
+fn void run_advanced_type_dispatch_mutation_chain_tests(Interp* interp, int* pass, int* fail) {
+    // These suites share type definitions (Point/Circle/Line/Box) and must run in one interpreter.
+    run_advanced_type_parametric_tests(interp, pass, fail);
+    run_advanced_dispatch_constructor_tests(interp, pass, fail);
+    run_advanced_mutation_hierarchy_dispatch_tests(interp, pass, fail);
 }
 
 // ---------------------------------------------------------------------------
@@ -376,7 +400,7 @@ fn void run_lisp_tests() {
     if (run_string_type) run_group_isolated(&run_string_type_tests, &pass, &fail);
     if (run_diagnostics) run_diagnostic_tests_isolated(&pass, &fail);
     if (run_jit_policy) run_jit_policy_tests_isolated(&pass, &fail);
-    if (run_advanced) run_group_isolated(&run_advanced_tests, &pass, &fail);
+    if (run_advanced) run_advanced_tests_isolated(&pass, &fail);
     if (run_escape_scope) run_group_isolated(&run_escape_scope_tests, &pass, &fail);
     if (run_limit_busting) run_group_isolated(&run_limit_busting_tests, &pass, &fail);
     if (run_tco_recycling) run_group_isolated(&run_tco_recycling_tests, &pass, &fail);

@@ -6,10 +6,10 @@
 (define qq-empty (list))
 (print `(a ,@qq-empty b))
 
-(define [macro] when ([test .. body] (if test (begin .. body) nil)))
+(define [macro] when ([test .. body] (if test (block .. body) nil)))
 (print (when true 42))
 
-(define [macro] unless ([test .. body] (if test nil (begin .. body))))
+(define [macro] unless ([test .. body] (if test nil (block .. body))))
 (print (unless false 42))
 
 (print "DONE")

@@ -282,13 +282,13 @@ fn void run_memory_lifetime_boundary_txn_protocol_tests(Interp* interp, int* pas
         }
     }
 
-    // Invariant: begin->commit->close is valid and session close restores state.
+    // Invariant: open->commit->close is valid and session close restores state.
     {
         main::ScopeRegion* saved_scope = interp.current_scope;
         main::ScopeRegion* saved_releasing = interp.releasing_scope;
 
         BoundaryTxn txn = boundary_txn_begin(interp);
-        bool begin_ok = txn.state == BOUNDARY_TXN_OPEN &&
+        bool open_ok = txn.state == BOUNDARY_TXN_OPEN &&
                         txn.session.active &&
                         txn.session.current_scope == saved_scope &&
                         txn.session.releasing_scope == saved_releasing;
@@ -301,14 +301,14 @@ fn void run_memory_lifetime_boundary_txn_protocol_tests(Interp* interp, int* pas
                         interp.current_scope == saved_scope &&
                         interp.releasing_scope == saved_releasing;
 
-        bool ok = begin_ok && commit_ok && close_ok;
+        bool ok = open_ok && commit_ok && close_ok;
         if (ok) {
             emit_pass_literal("[PASS] lifetime: boundary txn commit protocol");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: boundary txn commit protocol (begin_ok=%s commit_ok=%s close_ok=%s)",
-                begin_ok ? "yes" : "no",
+                "[FAIL] lifetime: boundary txn commit protocol (open_ok=%s commit_ok=%s close_ok=%s)",
+                open_ok ? "yes" : "no",
                 commit_ok ? "yes" : "no",
                 close_ok ? "yes" : "no"
             );
@@ -316,13 +316,13 @@ fn void run_memory_lifetime_boundary_txn_protocol_tests(Interp* interp, int* pas
         }
     }
 
-    // Invariant: begin->abort->close is valid and session close restores state.
+    // Invariant: open->abort->close is valid and session close restores state.
     {
         main::ScopeRegion* saved_scope = interp.current_scope;
         main::ScopeRegion* saved_releasing = interp.releasing_scope;
 
         BoundaryTxn txn = boundary_txn_begin(interp);
-        bool begin_ok = txn.state == BOUNDARY_TXN_OPEN &&
+        bool open_ok = txn.state == BOUNDARY_TXN_OPEN &&
                         txn.session.active &&
                         txn.session.current_scope == saved_scope &&
                         txn.session.releasing_scope == saved_releasing;
@@ -335,14 +335,14 @@ fn void run_memory_lifetime_boundary_txn_protocol_tests(Interp* interp, int* pas
                         interp.current_scope == saved_scope &&
                         interp.releasing_scope == saved_releasing;
 
-        bool ok = begin_ok && abort_ok && close_ok;
+        bool ok = open_ok && abort_ok && close_ok;
         if (ok) {
             emit_pass_literal("[PASS] lifetime: boundary txn abort protocol");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: boundary txn abort protocol (begin_ok=%s abort_ok=%s close_ok=%s)",
-                begin_ok ? "yes" : "no",
+                "[FAIL] lifetime: boundary txn abort protocol (open_ok=%s abort_ok=%s close_ok=%s)",
+                open_ok ? "yes" : "no",
                 abort_ok ? "yes" : "no",
                 close_ok ? "yes" : "no"
             );
@@ -636,17 +636,17 @@ fn char[] ast_arena_bench_compile_source(usz i) @inline {
     switch (i & 3) {
         case 0: return "(define (square x) (* x x)) (square 9)";
         case 1: return "(define [macro] double ([x] (+ x x))) (double 21)";
-        case 2: return "(begin (define total 0) (if (> 3 1) (set! total (+ total 1)) 0) total)";
+        case 2: return "(block (define total 0) (if (> 3 1) (set! total (+ total 1)) 0) total)";
         default: return "(let (fib (lambda (n) (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2))))) ) (fib 10))";
     }
 }
 
 fn char[] ast_arena_bench_macro_source(usz i) @inline {
     switch (i & 3) {
-        case 0: return "(begin (define [macro] double ([x] (+ x x))) (double 6))";
-        case 1: return "(begin (define [macro] inc ([x] (+ x 1))) (inc 41))";
-        case 2: return "(begin (define [macro] swap ([a b] (list b a))) (swap 1 2))";
-        default: return "(begin (define [macro] when-positive ([x expr]) (if (> x 0) expr 0)) (when-positive 3 7))";
+        case 0: return "(block (define [macro] double ([x] (+ x x))) (double 6))";
+        case 1: return "(block (define [macro] inc ([x] (+ x 1))) (inc 41))";
+        case 2: return "(block (define [macro] swap ([a b] (list b a))) (swap 1 2))";
+        default: return "(block (define [macro] when-positive ([x expr]) (if (> x 0) expr 0)) (when-positive 3 7))";
     }
 }
 
@@ -669,8 +669,8 @@ fn bool ast_arena_bench_macro_expanded(Expr* root, SymbolId macro_sym) @inline {
     if (root == null) return false;
 
     Expr* target = root;
-    if (root.tag == E_BEGIN && root.begin != null && root.begin.expr_count > 0) {
-        target = root.begin.exprs[root.begin.expr_count - 1];
+    if (root.tag == E_BLOCK && root.block != null && root.block.expr_count > 0) {
+        target = root.block.exprs[root.block.expr_count - 1];
     }
 
     if (target == null) return false;

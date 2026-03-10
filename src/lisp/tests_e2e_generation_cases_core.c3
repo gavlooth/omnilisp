@@ -80,9 +80,9 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "empty string truthy", `(if "" 1 0)` },
     { "empty list truthy", "(if (quote ()) 1 0)" },
 
-    // === Begin ===
-    { "begin single", "(begin 42)" },
-    { "begin multi", "(begin 1 2 3)" },
+    // === Block ===
+    { "block single", "(block 42)" },
+    { "block multi", "(block 1 2 3)" },
 
     // === Cons / Car / Cdr ===
     { "car cons", "(car (cons 1 2))" },
@@ -213,7 +213,7 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     // === Zero-arg lambdas ===
     { "thunk 42", "((lambda () 42))" },
     { "thunk capture", "(let (a 10) ((lambda () a)))" },
-    { "thunk begin", "((lambda () (begin 1 2 3)))" },
+    { "thunk block", "((lambda () (block 1 2 3)))" },
     { "thunk arith", "((lambda () (+ 10 20)))" },
 
     // === Multi-param lambdas (strict arity) ===
@@ -289,9 +289,9 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "float gt", "(> 3.5 2)" },
     { "float eq", "(= 1 1.0)" },
 
-    // === Begin edge cases ===
-    { "begin nested", "(begin (begin 1 2) (begin 3 4))" },
-    { "begin if", "(begin (if true 10 20) (if false 30 40))" },
+    // === Block edge cases ===
+    { "block nested", "(block (block 1 2) (block 3 4))" },
+    { "block if", "(block (if true 10 20) (if false 30 40))" },
 
     // === Recursive let 6 ===
     { "let rec fact 6", "(let ^rec (f (lambda (n) (if (= n 0) 1 (* n (f (- n 1)))))) (f 6))" },

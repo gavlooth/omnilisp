@@ -192,13 +192,13 @@ Deduce is an embedded relational database backed by LMDB.
 
 ```lisp
 ;; explicit write transaction
-(define tx (deduce 'begin db))
+(define tx (deduce 'block db))
 (deduce 'fact! tx person "Carol" 44 "carol@b.com")
 (deduce 'retract! tx edge "A" "B")
 (deduce 'commit tx)
 
 ;; explicit read transaction (for future read APIs that accept txn handles)
-(define ro (deduce 'begin db 'read))
+(define ro (deduce 'block db 'read))
 (deduce 'abort ro)
 ```
 

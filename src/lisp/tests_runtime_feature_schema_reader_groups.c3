@@ -95,7 +95,7 @@ fn void run_schema_tests(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "explain dispatch decision stable shape",
         "(let (d (ref (explain 'dispatch (explain-score 1 2)) 'decision)) (and (has? d 'reason) (and (has? d 'winner-index) (and (has? d 'best-score) (and (has? d 'tie-count) (and (has? d 'fallback-source) (and (has? d 'outcome) (has? d 'debug_message))))))))", pass, fail);
     test_eq(interp, "explain keeps target form unevaluated",
-        "(let (x 0) (begin (explain 'dispatch (set! x 1)) x))", 0, pass, fail);
+        "(let (x 0) (block (explain 'dispatch (set! x 1)) x))", 0, pass, fail);
     setup(interp, "(define (explain-amb (^Int x) y) 'a)");
     setup(interp, "(define (explain-amb x (^Int y)) 'b)");
     test_truthy(interp, "explain dispatch ambiguity status",

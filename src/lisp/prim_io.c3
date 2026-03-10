@@ -151,8 +151,8 @@ fn Value* io_file_require_async_runtime(Interp* interp, char[] op_name, char[] f
 
 fn Value* io_run_fiber_offload(OffloadWork* work, Interp* interp) {
     usz fiber_id = g_scheduler.current_fiber_id;
-    Value* begin_err = scheduler_begin_fiber_offload(work, fiber_id, interp);
-    if (begin_err != null) return begin_err;
+    Value* start_err = scheduler_begin_fiber_offload(work, fiber_id, interp);
+    if (start_err != null) return start_err;
 
     Value*[1] yargs;
     yargs[0] = make_nil(interp);

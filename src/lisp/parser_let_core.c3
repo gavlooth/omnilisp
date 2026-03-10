@@ -100,7 +100,7 @@ fn Expr* Parser.parse_let(Parser* self) {
     usz binding_count = names.len();
     if (binding_count < 1) { names.free(); patterns.free(); inits.free(); self.set_error("expected at least one binding in let"); return null; }
 
-    Expr* body = self.parse_implicit_begin();
+    Expr* body = self.parse_implicit_block();
 
     self.expect(T_RPAREN, ")");  // consume outer ')' of let form
 

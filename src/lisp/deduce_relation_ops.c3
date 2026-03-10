@@ -82,7 +82,7 @@ fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
     MdbTxn* write_txn = null;
     int rc = mdb_txn_begin(rel.db.env, null, 0, &write_txn);
     if (rc != MDB_SUCCESS || write_txn == null) {
-        return deduce_raise(interp, "deduce/fact-txn-begin-failed", "fact!: txn begin failed");
+        return deduce_raise(interp, "deduce/fact-txn-open-failed", "fact!: txn open failed");
     }
 
     rc = mdb_put(write_txn, rel.dbi, &key, &data, 0);
@@ -171,7 +171,7 @@ fn Value* prim_retract_fact(Value*[] args, Env* env, Interp* interp) {
     MdbTxn* write_txn = null;
     int rc = mdb_txn_begin(rel.db.env, null, 0, &write_txn);
     if (rc != MDB_SUCCESS || write_txn == null) {
-        return deduce_raise(interp, "deduce/retract-txn-begin-failed", "retract!: txn begin failed");
+        return deduce_raise(interp, "deduce/retract-txn-open-failed", "retract!: txn open failed");
     }
 
     rc = mdb_del(write_txn, rel.dbi, &key, null);
@@ -210,7 +210,7 @@ fn Value* prim_deduce_clear(Value*[] args, Env* env, Interp* interp) {
     MdbTxn* txn = null;
     int rc = mdb_txn_begin(rel.db.env, null, 0, &txn);
     if (rc != MDB_SUCCESS || txn == null) {
-        return deduce_raise(interp, "deduce/clear-txn-begin-failed", "deduce-clear: txn begin failed");
+        return deduce_raise(interp, "deduce/clear-txn-open-failed", "deduce-clear: txn open failed");
     }
 
     rc = mdb_drop(txn, rel.dbi, 0);
@@ -250,7 +250,7 @@ fn Value* prim_deduce_drop(Value*[] args, Env* env, Interp* interp) {
     MdbTxn* txn = null;
     int rc = mdb_txn_begin(rel.db.env, null, 0, &txn);
     if (rc != MDB_SUCCESS || txn == null) {
-        return deduce_raise(interp, "deduce/drop-txn-begin-failed", "deduce-drop: txn begin failed");
+        return deduce_raise(interp, "deduce/drop-txn-open-failed", "deduce-drop: txn open failed");
     }
 
     rc = mdb_drop(txn, rel.dbi, 1);

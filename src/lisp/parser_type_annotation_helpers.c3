@@ -21,7 +21,15 @@ fn TypeAnnotation parser_empty_type_annotation() @inline {
 }
 
 fn bool parser_is_value_literal_ctor(Parser* self, SymbolId sym) @inline {
-    return (uint)sym == (uint)self.interp.sym_Value || (uint)sym == (uint)self.interp.sym_Val;
+    return (uint)sym == (uint)self.interp.sym_Value;
+}
+
+fn bool parser_is_removed_val_ctor(Parser* self, SymbolId sym) @inline {
+    char[] name = self.interp.symbols.get_name(sym);
+    return name.len == 3 &&
+           name[0] == 'V' &&
+           name[1] == 'a' &&
+           name[2] == 'l';
 }
 
 fn bool parser_is_bool_symbol(Parser* self, SymbolId sym) @inline {

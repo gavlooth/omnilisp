@@ -17,7 +17,7 @@
 | Handler stack depth | 16 |
 | Call arguments | Dynamic AST (JIT: up to 16 native) |
 | Path segments | 8 |
-| Begin expressions | Dynamic (no fixed limit) |
+| Block expressions | Dynamic (no fixed limit) |
 | Lambda params | Dynamic (no fixed limit) |
 | String literal (inline) | 63 bytes (lexer limit) |
 | String value | Dynamic (no limit) |

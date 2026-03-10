@@ -1,31 +1,31 @@
 # Boundary Hardening TODO
 
-## P0. Fix `Value`/`Val` Dispatch First (Constructor + Sugar + API Shape)
+## P0. Fix `Value` Dispatch First (Constructor + API Shape)
 
-Goal: make literal-value dispatch truly extensible for idiomatic command-style APIs (for example `(udp 'bind ...)`), with canonical `Value` constructor and `Val` as sugar.
+Goal: make literal-value dispatch truly extensible for idiomatic command-style APIs (for example `(udp 'bind ...)`) with canonical `Value` constructor.
 
 - [x] Canonicalize type constructor naming:
   - [x] Introduce `Value` as the canonical value-literal type constructor in parser/runtime/docs.
-  - [x] Keep `Val` as strict sugar/alias of `Value` (same semantics, no forked behavior).
-  - [x] Normalize internal naming to avoid `Val`-only assumptions in parser/runtime structures.
+  - [x] Remove `Val` alias support; `Value` is now the only supported constructor.
+  - [x] Normalize internal naming to avoid legacy `Val` assumptions in parser/runtime structures.
 - [x] Extend parser value-literal annotation capture beyond int literals:
-  - [x] symbol literal support (`^(Value bind)` / `^(Val bind)`)
+  - [x] symbol literal support (`^(Value bind)`)
   - [x] string literal support (`^(Value "open")`)
   - [x] boolean literal support (`^(Value true)` / `^(Value false)`)
-  - [x] keep integer parity (`^(Value 0)` / `^(Val 0)`) unchanged
+  - [x] keep integer parity (`^(Value 0)`) unchanged
 - [x] Extend runtime method-match logic to compare value literals by runtime value tag/content (not int-only branch).
-- [x] Keep dispatch scoring semantics unchanged (`Value`/`Val` literal remains highest specificity); only widen literal domain.
+- [x] Keep dispatch scoring semantics unchanged (`Value` literal remains highest specificity); only widen literal domain.
 - [x] Add focused tests:
   - [x] positive dispatch: symbol value-literal routes to correct method
   - [x] positive dispatch: string and boolean value-literal routes to correct method
   - [x] ambiguity/error behavior when two equal-specificity value-literal candidates exist
   - [x] regression: existing integer value-literal dispatch still works
-  - [x] alias parity: `Value` and `Val` produce identical dispatch behavior
+  - [x] regression: legacy `Val` constructor is rejected with deterministic diagnostic
 - [x] Add API-shape tests/docs discussed in this session:
   - [x] command-style unified facade example: `(udp 'open)` / `(udp 'bind ...)` / `(udp 'send ...)`
   - [x] explicit contract note: command-style facades must delegate to canonical `io/udp-*` operation effects
   - [x] module-style façade work is explicitly deferred until dedicated module-boundary packaging work; near-term surface remains canonical `io/*` in core.
-- [x] Update language/reference docs to reflect canonical `Value` + sugar `Val`, literal domain, and examples.
+- [x] Update language/reference docs to reflect canonical `Value`, literal domain, and examples.
 
 Assumption lock (owner directive):
 - [x] Keep region RC as lifetime authority (`ScopeRegion` ownership remains primary).

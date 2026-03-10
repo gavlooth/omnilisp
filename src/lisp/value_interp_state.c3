@@ -53,7 +53,7 @@ struct Interp {
     SymbolId sym_or;
     SymbolId sym_true;
     SymbolId sym_false;
-    SymbolId sym_begin;
+    SymbolId sym_block;
     SymbolId sym_set;
     SymbolId sym_quasiquote;
     SymbolId sym_unquote;
@@ -89,7 +89,6 @@ struct Interp {
     SymbolId sym_Dict;
     SymbolId sym_Any;
     SymbolId sym_Value;
-    SymbolId sym_Val;
     SymbolId sym_Number;
     SymbolId sym_Collection;
     SymbolId sym_Iterator;
@@ -254,7 +253,7 @@ fn void interp_init_core_symbols(Interp* self) {
     self.sym_or = self.symbols.intern("or");
     self.sym_true = self.symbols.intern("true");
     self.sym_false = self.symbols.intern("false");
-    self.sym_begin = self.symbols.intern("begin");
+    self.sym_block = self.symbols.intern("block");
     self.sym_set = self.symbols.intern("set!");
     self.sym_quasiquote = self.symbols.intern("quasiquote");
     self.sym_unquote = self.symbols.intern("unquote");
@@ -289,7 +288,6 @@ fn void interp_init_type_symbols(Interp* self) {
     self.sym_Dict = self.symbols.intern("Dict");
     self.sym_Any = self.symbols.intern("Any");
     self.sym_Value = self.symbols.intern("Value");
-    self.sym_Val = self.symbols.intern("Val");
     self.sym_Number = self.symbols.intern("Number");
     self.sym_Collection = self.symbols.intern("Collection");
     self.sym_Iterator = self.symbols.intern("Iterator");

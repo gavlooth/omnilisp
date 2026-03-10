@@ -11,12 +11,12 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
 
     // Custom handler can suppress output
     test_eq_interp(interp, "io handle suppress",
-        "(handle (begin (println \"suppressed\") 42) (io/println x (resolve nil)))",
+        "(handle (block (println \"suppressed\") 42) (io/println x (resolve nil)))",
         42, pass, fail);
 
     // Custom handler can capture output
     test_truthy_interp(interp, "io handle capture",
-        "(= (handle (begin (println \"captured\") nil) (io/println x x)) \"captured\")",
+        "(= (handle (block (println \"captured\") nil) (io/println x x)) \"captured\")",
         pass, fail);
 
     // __raw-print still works directly
@@ -62,7 +62,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
 
     // libuv fs primitives round-trip and metadata path
     test_str_interp(interp, "fs roundtrip read/write",
-        "(begin "
+        "(block "
         "(define p \"/tmp/omni_fs_roundtrip.txt\") "
         "(define h (fs-open p 577 420)) "
         "(fs-write h \"abc\") "
@@ -78,7 +78,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "(array? (fs-readdir \"/tmp\"))", pass, fail);
 
     test_truthy_interp(interp, "fs stat returns dict",
-        "(begin "
+        "(block "
         "(define p \"/tmp/omni_fs_stat.txt\") "
         "(define h (fs-open p 577 420)) "
         "(fs-write h \"x\") "
@@ -89,13 +89,13 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         pass, fail);
 
     test_nil_interp(interp, "udp socket create/close",
-        "(begin "
+        "(block "
         "(define u (udp-socket)) "
         "(udp-close u))",
         pass, fail);
 
     test_str_interp(interp, "udp loopback roundtrip",
-        "(begin "
+        "(block "
         "(define p (+ 45000 (% (time-ms) 10000))) "
         "(define recv (udp-socket)) "
         "(udp-bind recv \"127.0.0.1\" p) "
@@ -108,7 +108,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         pass, fail);
 
     test_str_interp(interp, "pipe loopback roundtrip",
-        "(begin "
+        "(block "
         "(define f (spawn (lambda () "
         "  (define p (string-append \"/tmp/omni_pipe_\" (number->string (% (time-ms) 1000000)) \".sock\")) "
         "  (define listener (pipe-listen p)) "
@@ -125,7 +125,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         pass, fail);
 
     test_truthy_interp(interp, "process spawn stdio + wait",
-        "(begin "
+        "(block "
         "(define p (process-spawn \"/bin/sh\" [\"-c\" \"printf omni\"] nil)) "
         "(define out (fs-read (ref p 'stdout) 32)) "
         "(define st (await (spawn (lambda () (process-wait (ref p 'handle)))))) "
@@ -136,7 +136,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         pass, fail);
 
     test_truthy_interp(interp, "process spawn env override",
-        "(begin "
+        "(block "
         "(define p (process-spawn \"/bin/sh\" [\"-c\" \"printf $OMNI_PROC_TEST\"] [\"OMNI_PROC_TEST=ok\"])) "
         "(define out (fs-read (ref p 'stdout) 32)) "
         "(define st (await (spawn (lambda () (process-wait (ref p 'handle)))))) "
@@ -147,7 +147,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         pass, fail);
 
     test_truthy_interp(interp, "process wait in fiber context",
-        "(begin "
+        "(block "
         "(define p (process-spawn \"/bin/sh\" [\"-c\" \"sleep 0.05\"] nil)) "
         "(define st (await (spawn (lambda () (process-wait (ref p 'handle)))))) "
         "(fs-close (ref p 'stdin)) "
@@ -157,7 +157,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         pass, fail);
 
     test_truthy_interp(interp, "process wait requires fiber context",
-        "(begin "
+        "(block "
         "(define p (process-spawn \"/bin/sh\" [\"-c\" \"sleep 0.05\"] nil)) "
         "(define msg (try (lambda (ignored) (process-wait (ref p 'handle))) (lambda (e) (if (and (dict? e) (has? e 'message)) (ref e 'message) e)))) "
         "(define st (await (spawn (lambda () (process-wait (ref p 'handle)))))) "
@@ -168,7 +168,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         pass, fail);
 
     test_truthy_interp(interp, "process kill terminates child",
-        "(begin "
+        "(block "
         "(define p (process-spawn \"/bin/sh\" [\"-c\" \"sleep 2\"] nil)) "
         "(process-kill (ref p 'handle) 15) "
         "(define st (await (spawn (lambda () (process-wait (ref p 'handle)))))) "
@@ -179,7 +179,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         pass, fail);
 
     test_truthy_interp(interp, "signal handle/unhandle callback",
-        "(begin "
+        "(block "
         "(define hits {'n 0}) "
         "(define h (signal-handle 10 (lambda (sig) (dict-set! hits 'n (+ (ref hits 'n) 1))))) "
         "(shell \"kill -USR1 $PPID\") "
@@ -219,9 +219,9 @@ fn void run_advanced_union_memory_limit_tests(Interp* interp, int* pass, int* fa
 
     // === MEMORY RECLAMATION TESTS ===
     // unsafe-free! on array: releases backing, accessing freed value errors
-    test_error(interp, "unsafe-free! array UAF", "(let (a [1 2 3]) (begin (unsafe-free! a) a))", pass, fail);
+    test_error(interp, "unsafe-free! array UAF", "(let (a [1 2 3]) (block (unsafe-free! a) a))", pass, fail);
     // unsafe-free! on dict: releases backing, accessing freed value errors
-    test_error(interp, "unsafe-free! dict UAF", "(let (d {'a 1 'b 2}) (begin (unsafe-free! d) d))", pass, fail);
+    test_error(interp, "unsafe-free! dict UAF", "(let (d {'a 1 'b 2}) (block (unsafe-free! d) d))", pass, fail);
     // unsafe-free! on non-collection: no-op, returns nil
     test_nil_interp(interp, "unsafe-free! int noop", "(unsafe-free! 42)", pass, fail);
     // unsafe-free! on nil: no-op
@@ -238,11 +238,11 @@ fn void run_advanced_union_memory_limit_tests(Interp* interp, int* pass, int* fa
         43, pass, fail);
     // Large method table (>32 methods, was max 32, now 64)
     setup(interp, "(define [type] TestMT33 (^Int val))");
-    setup(interp, "(define (mt33-f (^(Val 1) n)) 1) (define (mt33-f (^(Val 2) n)) 2) (define (mt33-f (^(Val 3) n)) 3) (define (mt33-f (^(Val 4) n)) 4) (define (mt33-f (^(Val 5) n)) 5) (define (mt33-f (^(Val 6) n)) 6) (define (mt33-f (^(Val 7) n)) 7) (define (mt33-f (^(Val 8) n)) 8)");
-    setup(interp, "(define (mt33-f (^(Val 9) n)) 9) (define (mt33-f (^(Val 10) n)) 10) (define (mt33-f (^(Val 11) n)) 11) (define (mt33-f (^(Val 12) n)) 12) (define (mt33-f (^(Val 13) n)) 13) (define (mt33-f (^(Val 14) n)) 14) (define (mt33-f (^(Val 15) n)) 15) (define (mt33-f (^(Val 16) n)) 16)");
-    setup(interp, "(define (mt33-f (^(Val 17) n)) 17) (define (mt33-f (^(Val 18) n)) 18) (define (mt33-f (^(Val 19) n)) 19) (define (mt33-f (^(Val 20) n)) 20) (define (mt33-f (^(Val 21) n)) 21) (define (mt33-f (^(Val 22) n)) 22) (define (mt33-f (^(Val 23) n)) 23) (define (mt33-f (^(Val 24) n)) 24)");
-    setup(interp, "(define (mt33-f (^(Val 25) n)) 25) (define (mt33-f (^(Val 26) n)) 26) (define (mt33-f (^(Val 27) n)) 27) (define (mt33-f (^(Val 28) n)) 28) (define (mt33-f (^(Val 29) n)) 29) (define (mt33-f (^(Val 30) n)) 30) (define (mt33-f (^(Val 31) n)) 31) (define (mt33-f (^(Val 32) n)) 32)");
-    setup(interp, "(define (mt33-f (^(Val 33) n)) 33)");
+    setup(interp, "(define (mt33-f (^(Value 1) n)) 1) (define (mt33-f (^(Value 2) n)) 2) (define (mt33-f (^(Value 3) n)) 3) (define (mt33-f (^(Value 4) n)) 4) (define (mt33-f (^(Value 5) n)) 5) (define (mt33-f (^(Value 6) n)) 6) (define (mt33-f (^(Value 7) n)) 7) (define (mt33-f (^(Value 8) n)) 8)");
+    setup(interp, "(define (mt33-f (^(Value 9) n)) 9) (define (mt33-f (^(Value 10) n)) 10) (define (mt33-f (^(Value 11) n)) 11) (define (mt33-f (^(Value 12) n)) 12) (define (mt33-f (^(Value 13) n)) 13) (define (mt33-f (^(Value 14) n)) 14) (define (mt33-f (^(Value 15) n)) 15) (define (mt33-f (^(Value 16) n)) 16)");
+    setup(interp, "(define (mt33-f (^(Value 17) n)) 17) (define (mt33-f (^(Value 18) n)) 18) (define (mt33-f (^(Value 19) n)) 19) (define (mt33-f (^(Value 20) n)) 20) (define (mt33-f (^(Value 21) n)) 21) (define (mt33-f (^(Value 22) n)) 22) (define (mt33-f (^(Value 23) n)) 23) (define (mt33-f (^(Value 24) n)) 24)");
+    setup(interp, "(define (mt33-f (^(Value 25) n)) 25) (define (mt33-f (^(Value 26) n)) 26) (define (mt33-f (^(Value 27) n)) 27) (define (mt33-f (^(Value 28) n)) 28) (define (mt33-f (^(Value 29) n)) 29) (define (mt33-f (^(Value 30) n)) 30) (define (mt33-f (^(Value 31) n)) 31) (define (mt33-f (^(Value 32) n)) 32)");
+    setup(interp, "(define (mt33-f (^(Value 33) n)) 33)");
     test_eq(interp, "method table >32", "(mt33-f 33)", 33, pass, fail);
 }
 

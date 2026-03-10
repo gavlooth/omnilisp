@@ -19,7 +19,7 @@ fn void run_scheduler_offload_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define a (spawn (lambda () (offload 'sleep-ms 5)))) "
             "  (define b (spawn (lambda () (offload 'sleep-ms 5)))) "
             "  (await a) "
@@ -69,7 +69,7 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define h (job-spawn 'task 'sleep-ms 1)) "
             "  (job-join 'task h) "
             "  true)",
@@ -85,7 +85,7 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define h (job-spawn 'thread 'sleep-ms 1)) "
             "  (job-join 'thread h) "
             "  true)",
@@ -101,7 +101,7 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define t (task-spawn 'gzip \"thread-task\")) "
             "  (gunzip (task-join t)))",
             interp);
@@ -129,7 +129,7 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define t1 (task-spawn 'sleep-ms 5)) "
             "  (define t2 (task-spawn 'sleep-ms 5)) "
             "  (task-join t1) "
@@ -147,7 +147,7 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define t (task-spawn 'sleep-ms 1)) "
             "  (task-join t) "
             "  (task-join t))",
@@ -163,7 +163,7 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define t (thread-spawn 'gzip \"os-thread\")) "
             "  (gunzip (thread-join t)))",
             interp);
@@ -191,7 +191,7 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define t (thread-spawn 'sleep-ms 1)) "
             "  (thread-join t) "
             "  (thread-join t))",
@@ -207,7 +207,7 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define f (spawn (lambda () "
             "    (define t (task-spawn 'sleep-ms 1)) "
             "    (task-join t) "
@@ -225,7 +225,7 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define f (spawn (lambda () "
             "    (define t (thread-spawn 'sleep-ms 1)) "
             "    (thread-join t) "
@@ -245,7 +245,7 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
 fn void run_scheduler_thread_timeout_cancel_tests(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define t (task-spawn 'sleep-ms 20)) "
             "  (task-join-timeout t 0))",
             interp);
@@ -260,7 +260,7 @@ fn void run_scheduler_thread_timeout_cancel_tests(Interp* interp, int* pass, int
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define t (task-spawn 'sleep-ms 5)) "
             "  (task-join-timeout t 200) "
             "  1)",
@@ -276,7 +276,7 @@ fn void run_scheduler_thread_timeout_cancel_tests(Interp* interp, int* pass, int
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define f (spawn (lambda () "
             "    (define t (task-spawn 'sleep-ms 1)) "
             "    (task-join-timeout t 200) "
@@ -294,7 +294,7 @@ fn void run_scheduler_thread_timeout_cancel_tests(Interp* interp, int* pass, int
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define t (task-spawn 'sleep-ms 20)) "
             "  (task-cancel t) "
             "  (task-join t))",
@@ -310,7 +310,7 @@ fn void run_scheduler_thread_timeout_cancel_tests(Interp* interp, int* pass, int
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define t (thread-spawn 'sleep-ms 20)) "
             "  (thread-join-timeout t 0))",
             interp);
@@ -325,7 +325,7 @@ fn void run_scheduler_thread_timeout_cancel_tests(Interp* interp, int* pass, int
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define t (thread-spawn 'sleep-ms 5)) "
             "  (thread-join-timeout t 200) "
             "  1)",
@@ -341,7 +341,7 @@ fn void run_scheduler_thread_timeout_cancel_tests(Interp* interp, int* pass, int
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define f (spawn (lambda () "
             "    (define t (thread-spawn 'sleep-ms 1)) "
             "    (thread-join-timeout t 200) "
@@ -359,7 +359,7 @@ fn void run_scheduler_thread_timeout_cancel_tests(Interp* interp, int* pass, int
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define t (thread-spawn 'sleep-ms 20)) "
             "  (thread-cancel t) "
             "  (thread-join t))",
@@ -393,7 +393,7 @@ fn void run_scheduler_fiber_temp_thread_boundary_tests(Interp* interp, int* pass
 
     for (usz i = 0; i < 8; i++) {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define ft-t (task-spawn 'sleep-ms 1)) "
             "  (task-join ft-t) "
             "  true)",
@@ -426,7 +426,7 @@ fn void run_scheduler_wakeup_offload_interleave_tests(Interp* interp, int* pass,
 
     for (usz i = 0; i < 12; i++) {
         EvalResult async_r = run(
-            "(begin "
+            "(block "
             "  (define wf (spawn (lambda () (offload 'sleep-ms 1)))) "
             "  (await wf) "
             "  true)",
@@ -449,7 +449,7 @@ fn void run_scheduler_wakeup_offload_interleave_tests(Interp* interp, int* pass,
         }
 
         EvalResult thread_r = run(
-            "(begin "
+            "(block "
             "  (define wt (task-spawn 'sleep-ms 1)) "
             "  (task-join wt) "
             "  true)",
@@ -488,7 +488,7 @@ fn void run_scheduler_fiber_temp_cancel_timeout_boundary_tests(Interp* interp, i
 
     for (usz i = 0; i < 8; i++) {
         EvalResult timeout_r = run(
-            "(begin "
+            "(block "
             "  (define ft-to (task-spawn 'sleep-ms 20)) "
             "  (task-join-timeout ft-to 0))",
             interp);
@@ -498,7 +498,7 @@ fn void run_scheduler_fiber_temp_cancel_timeout_boundary_tests(Interp* interp, i
         }
 
         EvalResult cancel_r = run(
-            "(begin "
+            "(block "
             "  (define ft-c (task-spawn 'sleep-ms 20)) "
             "  (task-cancel ft-c) "
             "  (task-join ft-c))",
@@ -509,7 +509,7 @@ fn void run_scheduler_fiber_temp_cancel_timeout_boundary_tests(Interp* interp, i
         }
 
         EvalResult success_r = run(
-            "(begin "
+            "(block "
             "  (define ft-ok (task-spawn 'sleep-ms 1)) "
             "  (task-join-timeout ft-ok 200) "
             "  true)",
@@ -544,7 +544,7 @@ fn void run_scheduler_offload_cancel_boundary_tests(Interp* interp, int* pass, i
 
     for (usz i = 0; i < 12; i++) {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define oc (spawn (lambda () (offload 'sleep-ms 5)))) "
             "  (fiber-cancel oc) "
             "  (run-fibers) "
@@ -608,7 +608,7 @@ fn void run_scheduler_cancel_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define fc-parent (spawn (lambda () "
             "    (define fc-child (spawn (lambda () 99))) "
             "    (await fc-child)))) "
@@ -629,7 +629,7 @@ fn void run_scheduler_cancel_tests(Interp* interp, int* pass, int* fail) {
 fn void run_scheduler_fairness_tests(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define fair-a (spawn (lambda () 10))) "
             "  (define fair-b (spawn (lambda () 20))) "
             "  (run-fibers) "
@@ -646,7 +646,7 @@ fn void run_scheduler_fairness_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (spawn (lambda () 1)) (spawn (lambda () 2)) (spawn (lambda () 3)) "
             "  (spawn (lambda () 4)) (spawn (lambda () 5)) (spawn (lambda () 6)) "
             "  (spawn (lambda () 7)) (spawn (lambda () 8)) (spawn (lambda () 9)) "

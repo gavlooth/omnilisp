@@ -106,8 +106,8 @@ fn Value* scheduler_execute_offload_job(Value* job, bool allow_internal_io_ops, 
     if (!in_fiber) return scheduler_run_offload_via_queue_work(&work, interp);
 
     usz fiber_id = g_scheduler.current_fiber_id;
-    Value* begin_err = scheduler_begin_fiber_offload(&work, fiber_id, interp);
-    if (begin_err != null) return begin_err;
+    Value* start_err = scheduler_begin_fiber_offload(&work, fiber_id, interp);
+    if (start_err != null) return start_err;
 
     Value*[1] yargs;
     yargs[0] = make_nil(interp);

@@ -5,6 +5,34 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 
 ## 2026-03-10
 
+- Syntax-surface canonicalization pass:
+  - Removed `Val` constructor support from type/value-literal annotations; `Value` is now the only accepted constructor.
+    - parser now emits deterministic diagnostic for legacy usage: `Val constructor was removed; use Value`.
+    - updated dispatch/type tests and docs to canonical `^(Value ...)` forms.
+  - Canonicalized effect-composition messaging around `handle`:
+    - removed stdlib `with-handlers` helper export/definition.
+    - updated docs/examples (`EFFECTS_GUIDE`, finwatch alerts/smoke/TODO, stdlib appendix) to explicit handle-wrapper composition.
+  - Removed stale `lambda/fn` syntax mention from root README (language surface now documented as `lambda`).
+  - Parser now emits deterministic legacy-form diagnostics:
+    - `fn syntax was removed; use lambda`
+    - `do syntax was removed; use block`
+    - added regression coverage in advanced lambda/block syntax tests.
+  - Sequencing keyword canonicalization:
+    - `block` is now the only sequencing form accepted by the parser.
+    - legacy sequencing spellings no longer have a special-form parser branch.
+    - serializer output and stdlib/examples/tests were normalized to `(block ...)`.
+  - Deduce transaction command canonicalization:
+    - replaced the legacy transaction-start command with `(deduce 'block db ['read|'write])`.
+    - updated runtime dispatch, durability tests, and docs to the `block` command.
+    - transaction-start failure diagnostics were normalized to `txn open failed`.
+  - Handler-composition helper canonicalization:
+    - replaced fold-based guide helper with explicit recursive `handle/chain` in `docs/EFFECTS_GUIDE.md` (left-to-right list order, first handler outermost, thunk executed exactly once at base case).
+    - aligned finwatch helper naming from `alerts/apply-handlers` to `alerts/handle-chain` with unchanged wrapper semantics.
+
+- Lisp advanced-slice workstation-safety hardening:
+  - `src/lisp/tests_tests.c3` now runs `advanced` as isolated subgroups (fresh interpreter per subgroup) to prevent cumulative definition retention across the entire advanced umbrella run.
+  - `src/lisp/tests_advanced_macro_hygiene_groups.c3` now gates the intentionally unbounded stack-overflow probe behind `OMNI_LISP_STACK_OVERFLOW_PROBE=1`; default `advanced` no longer executes that probe.
+
 - Docker-only gate enforcement + 30% host-resource cap policy:
   - `scripts/c3c_limits.sh`:
     - default hard-cap method switched to Docker (`OMNI_HARD_MEM_CAP_METHOD=docker`) for capped command execution.

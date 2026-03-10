@@ -35,7 +35,7 @@ fn void run_scheduler_spawn_basic_tests(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define p (spawn (lambda () (let (c (spawn (lambda () 7))) (+ 1 (await c)))))) "
             "  (await p))",
             interp);
@@ -52,12 +52,12 @@ fn void run_scheduler_spawn_basic_tests(Interp* interp, int* pass, int* fail) {
 fn void run_scheduler_await_structure_tests(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define sched-done 0) "
             "  (define p "
             "    (spawn (lambda () "
-            "      (begin "
-            "        (spawn (lambda () (begin (set! sched-done 1) 99))) "
+            "      (block "
+            "        (spawn (lambda () (block (set! sched-done 1) 99))) "
             "        42)))) "
             "  (await p) "
             "  sched-done)",
@@ -73,7 +73,7 @@ fn void run_scheduler_await_structure_tests(Interp* interp, int* pass, int* fail
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define b (spawn (lambda () 99))) "
             "  (define a (spawn (lambda () (await b)))) "
             "  (await a))",
@@ -100,8 +100,8 @@ fn void run_scheduler_run_loop_failure_tests(Interp* interp, int* pass, int* fai
     test_error_contains(
         interp,
         "await surfaces round-limit failure",
-        "(begin "
-        "  (define p (spawn (lambda () (let loop (i 0) (begin (yield nil) (loop i)))))) "
+        "(block "
+        "  (define p (spawn (lambda () (let loop (i 0) (block (yield nil) (loop i)))))) "
         "  (await p))",
         "max rounds",
         pass,
@@ -111,8 +111,8 @@ fn void run_scheduler_run_loop_failure_tests(Interp* interp, int* pass, int* fai
     test_error_contains(
         interp,
         "run-fibers surfaces round-limit failure",
-        "(begin "
-        "  (spawn (lambda () (let loop (i 0) (begin (yield nil) (loop i))))) "
+        "(block "
+        "  (spawn (lambda () (let loop (i 0) (block (yield nil) (loop i))))) "
         "  (run-fibers))",
         "max rounds",
         pass,
@@ -121,7 +121,7 @@ fn void run_scheduler_run_loop_failure_tests(Interp* interp, int* pass, int* fai
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (spawn (lambda () 7)) "
             "  (run-fibers) "
             "  true)",
@@ -271,8 +271,8 @@ fn void run_scheduler_timer_wakeup_test(int* pass, int* fail) {
 
 fn void run_scheduler_atomic_cas_semantics_test(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define sched-cas (atomic 7))");
-    EvalResult ok_swap = run("(begin (atomic-cas! sched-cas 7 9) (atomic-read sched-cas))", interp);
-    EvalResult bad_swap = run("(begin (atomic-cas! sched-cas 7 11) (atomic-read sched-cas))", interp);
+    EvalResult ok_swap = run("(block (atomic-cas! sched-cas 7 9) (atomic-read sched-cas))", interp);
+    EvalResult bad_swap = run("(block (atomic-cas! sched-cas 7 11) (atomic-read sched-cas))", interp);
     if (!ok_swap.error.has_error && is_int(ok_swap.value) && ok_swap.value.int_val == 9 &&
         !bad_swap.error.has_error && is_int(bad_swap.value) && bad_swap.value.int_val == 9) {
         emit_pass_literal("[PASS] atomic-cas semantics");

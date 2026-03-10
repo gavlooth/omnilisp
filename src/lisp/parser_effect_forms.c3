@@ -76,8 +76,8 @@ fn Expr* Parser.parse_with_continuation(Parser* self) {
     SymbolId k_name = self.get_current_symbol();
     self.lexer.advance();
 
-    // Parse body expressions (implicit begin)
-    Expr* body = self.parse_implicit_begin();
+    // Parse body expressions (implicit block)
+    Expr* body = self.parse_implicit_block();
     self.expect(T_RPAREN, ")");
 
     // Desugar to (let ((k __k)) body)

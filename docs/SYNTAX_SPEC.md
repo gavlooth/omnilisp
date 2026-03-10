@@ -51,7 +51,7 @@
 | E_LET | `(let (n v) body)` | Local binding |
 | E_DEFINE | `(define n v)` | Global definition |
 | E_SET | `(set! n v)` | Variable mutation |
-| E_BEGIN | `(begin e1 e2 ...)` | Sequencing |
+| E_BEGIN | `(block e1 e2 ...)` | Sequencing |
 | E_AND | `(and a b)` | Short-circuit and |
 | E_OR | `(or a b)` | Short-circuit or |
 | E_QUOTE | `'datum` | Prevent evaluation |
@@ -181,10 +181,10 @@ Three branches required (no two-branch form).
 (set! pair.cdr value)            ;; cons cell cdr mutation
 ```
 
-### 3.6 `begin` - Sequencing
+### 3.6 `block` - Sequencing
 
 ```lisp
-(begin expr1 expr2 ... exprN)  ;; returns last value, TCO on last
+(block expr1 expr2 ... exprN)  ;; returns last value, TCO on last
 ```
 
 ### 3.7 `quote` / `quasiquote`
@@ -269,7 +269,6 @@ Omni has no dedicated keyword type; `'as` and `'all` are quoted symbols in modul
 ^Int              ;; simple type
 ^(List Int)       ;; compound type
 ^(Value 42)       ;; canonical value-level type (dispatch on literal)
-^(Val 42)         ;; sugar alias for ^(Value ...)
 ^{'T Number}      ;; metadata dictionary
 ```
 
@@ -286,7 +285,7 @@ Omni has no dedicated keyword type; `'as` and `'all` are quoted symbols in modul
 ### 4.3 Multiple Dispatch
 
 Typed defines create method tables. Best match wins:
-- Value/Val literal match: score 1000
+- Value literal match: score 1000
 - Exact type match: score 100
 - Subtype match: score 10
 - Any type (untyped param): score 1

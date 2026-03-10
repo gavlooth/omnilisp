@@ -201,31 +201,31 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
 
     // Pika grammar: seed/epsilon edge + unreachable-rule pruning
     test_eq(interp, "pika/grammar prunes unreachable rules",
-        "(begin (pika/grammar 'g-prune '(rule start \"a\") '(rule dead \"z\")) (length (pika/grammar-rules 'g-prune)))",
+        "(block (pika/grammar 'g-prune '(rule start \"a\") '(rule dead \"z\")) (length (pika/grammar-rules 'g-prune)))",
         1, pass, fail);
     test_tag(interp, "pika/parse epsilon seq matches empty input",
-        "(begin (pika/grammar 'g-eps '(rule start (seq)) '(rule dead \"x\")) (pika/parse 'g-eps \"\"))",
+        "(block (pika/grammar 'g-eps '(rule start (seq)) '(rule dead \"x\")) (pika/parse 'g-eps \"\"))",
         CONS, pass, fail);
     test_tag(interp, "pika/parse reachable start still matches",
-        "(begin (pika/grammar 'g-start '(rule start \"a\") '(rule dead \"b\")) (pika/parse 'g-start \"a\"))",
+        "(block (pika/grammar 'g-start '(rule start \"a\") '(rule dead \"b\")) (pika/parse 'g-start \"a\"))",
         CONS, pass, fail);
     test_tag(interp, "pika/parse scan clause basic",
-        "(begin (pika/grammar 'g-scan '(rule start (scan \"[a-z]+\"))) (pika/parse 'g-scan \"abc\"))",
+        "(block (pika/grammar 'g-scan '(rule start (scan \"[a-z]+\"))) (pika/parse 'g-scan \"abc\"))",
         CONS, pass, fail);
     test_str_val(interp, "pika/parse scan clause quantifier consumes run",
-        "(begin (pika/grammar 'g-scan-plus '(rule start (scan \"[a-z]+\"))) (car (cdr (pika/parse 'g-scan-plus \"abc123\"))))",
+        "(block (pika/grammar 'g-scan-plus '(rule start (scan \"[a-z]+\"))) (car (cdr (pika/parse 'g-scan-plus \"abc123\"))))",
         "abc", pass, fail);
     test_str_val(interp, "pika/parse scan clause negated class",
-        "(begin (pika/grammar 'g-scan-neg '(rule start (scan \"[^0-9]+\"))) (car (cdr (pika/parse 'g-scan-neg \"abc123\"))))",
+        "(block (pika/grammar 'g-scan-neg '(rule start (scan \"[^0-9]+\"))) (car (cdr (pika/parse 'g-scan-neg \"abc123\"))))",
         "abc", pass, fail);
     test_str_val(interp, "pika/parse scan clause shorthand class",
-        "(begin (pika/grammar 'g-scan-d '(rule start (scan \"[\\\\d]+\"))) (car (cdr (pika/parse 'g-scan-d \"123abc\"))))",
+        "(block (pika/grammar 'g-scan-d '(rule start (scan \"[\\\\d]+\"))) (car (cdr (pika/parse 'g-scan-d \"123abc\"))))",
         "123", pass, fail);
     test_error_contains(interp, "pika/grammar scan rejects invalid class",
         "(pika/grammar 'g-scan-bad '(rule start (scan \"[]\")))",
         "invalid scan pattern", pass, fail);
     test_tag(interp, "pika/parse scan clauses beyond legacy cap",
-        "(begin "
+        "(block "
         "  (pika/grammar 'g-scan-many "
         "    '(rule start (seq r1 r2 r3 r4 r5 r6 r7 r8 r9)) "
         "    '(rule r1 (scan \"[a]\")) '(rule r2 (scan \"[b]\")) '(rule r3 (scan \"[c]\")) "

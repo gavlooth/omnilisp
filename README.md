@@ -27,7 +27,7 @@ The project features a unified C99 + POSIX toolchain (parser, analysis, codegen)
 | **Metadata-Driven Transmigration** | ✅ | Type-driven clone/trace operations for all runtime types. |
 
 ### Language Features
-*   **Special Forms:** `define`, `lambda`/`fn`, `let`, `if`, `do`/`begin`, `match`, `handle`/`perform`.
+*   **Special Forms:** `define`, `lambda`, `let`, `if`, `block`, `match`, `handle`/`signal`.
 *   **Data Types:** Integers, Floats, Symbols, Lists, Arrays, Dicts, Strings, Characters.
 *   **Concurrency:** Delimited continuations (`prompt`/`control`), Fibers (ucontext), CSP Channels.
 *   **Modules:** Full module system with `export`, `import`, and namespace aliasing.
@@ -65,8 +65,8 @@ OmniLisp provides structured control flow through **Delimited Continuations** an
 
 ;; Handle the effect
 (handle
-  (str "Hello, " (perform ask))
-  (ask (_ resume) (resume "World")))  ; -> "Hello, World"
+  (str "Hello, " (signal ask nil))
+  (ask _ (resolve "World")))  ; -> "Hello, World"
 ```
 
 The concurrency model is two-tiered:
@@ -89,7 +89,7 @@ The concurrency model is two-tiered:
 ;; Hygienic macros
 (define [syntax unless]
   [(unless test body ...)
-   (if test nothing (do body ...))])
+   (if test nothing (block body ...))])
 
 ;; FFI with ownership annotations
 (define {extern malloc :from libc}

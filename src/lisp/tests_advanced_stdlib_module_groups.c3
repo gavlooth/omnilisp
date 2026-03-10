@@ -28,7 +28,7 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
     test_truthy(interp, "dict? yes", "(dict? (dict 1 2))", pass, fail);
     test_nil(interp, "dict? no", "(dict? 42)", pass, fail);
     setup(interp, "(define hm-big (dict))");
-    setup(interp, "(let loop (i 0) (if (= i 50) hm-big (begin (dict-set! hm-big i (* i i)) (loop (+ i 1)))))");
+    setup(interp, "(let loop (i 0) (if (= i 50) hm-big (block (dict-set! hm-big i (* i i)) (loop (+ i 1)))))");
     test_eq(interp, "dict auto-grow count", "(length hm-big)", 50, pass, fail);
     test_eq(interp, "dict auto-grow ref 7", "(ref hm-big 7)", 49, pass, fail);
 
@@ -48,9 +48,9 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
     // Cons cell dot-path access and mutation
     test_eq(interp, "cons .car", "(let (p (cons 1 2)) p.car)", 1, pass, fail);
     test_eq(interp, "cons .cdr", "(let (p (cons 1 2)) p.cdr)", 2, pass, fail);
-    test_eq_interp(interp, "set! cons .car", "(let (p (cons 1 2)) (begin (set! p.car 99) p.car))", 99, pass, fail);
-    test_eq_interp(interp, "set! cons .cdr", "(let (p (cons 1 2)) (begin (set! p.cdr 50) p.cdr))", 50, pass, fail);
-    test_eq_interp(interp, "set! cons preserves", "(let (p (cons 1 2)) (begin (set! p.car 99) p.cdr))", 2, pass, fail);
+    test_eq_interp(interp, "set! cons .car", "(let (p (cons 1 2)) (block (set! p.car 99) p.car))", 99, pass, fail);
+    test_eq_interp(interp, "set! cons .cdr", "(let (p (cons 1 2)) (block (set! p.cdr 50) p.cdr))", 50, pass, fail);
+    test_eq_interp(interp, "set! cons preserves", "(let (p (cons 1 2)) (block (set! p.car 99) p.cdr))", 2, pass, fail);
 }
 
 fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, int* fail) {
@@ -158,7 +158,7 @@ fn void run_advanced_module_all_dependency_tests(Interp* interp, int* pass, int*
     setup(interp, "(module private-mod (export) (define secret 42))");
     setup(interp, "(import private-mod)");
     test_error(interp, "module empty export hides", "secret", pass, fail);
-    setup(interp, "(module closure-mod (export make-counter) (define make-counter (lambda () (let (n 0) (lambda () (begin (set! n (+ n 1)) n))))))");
+    setup(interp, "(module closure-mod (export make-counter) (define make-counter (lambda () (let (n 0) (lambda () (block (set! n (+ n 1)) n))))))");
     setup(interp, "(import closure-mod (make-counter))");
     setup(interp, "(define my-counter (make-counter))");
     // Counter tests are stateful: JIT-only to avoid double mutation

@@ -2,7 +2,7 @@
 ;;
 ;; Idioms demonstrated:
 ;;   define [effect]     — custom alert dispatch effect
-;;   with-handlers       — compose multiple alert sinks
+;;   handle              — compose multiple alert sinks
 ;;   process-kill        — terminate background processes
 ;;   signal-handle / signal-unhandle — OS signal handlers
 
@@ -24,7 +24,7 @@
 ;; ── Alert handlers ──────────────────────────────────────────────────────────
 
 ;; Log handler: prints alerts to stdout.
-;; Returns a handler function compatible with with-handlers.
+;; Returns a wrapper function (thunk -> result).
 (define (alerts/make-log-handler prefix)
   (lambda (thunk)
     (handle (thunk)
@@ -54,6 +54,12 @@
   (signal alert/notify alert))
 
 ;; (alerts/dispatch-multi handler-list thunk) — run thunk with composed handlers.
-;; with-handlers chains handlers: outer wraps inner.
+;; Handlers are applied outer-to-inner via explicit recursion over wrapper funcs.
+(define (alerts/handle-chain handler-list thunk)
+  (if (null? handler-list)
+      (thunk)
+      ((car handler-list)
+       (lambda () (alerts/handle-chain (cdr handler-list) thunk)))))
+
 (define (alerts/dispatch-multi handler-list thunk)
-  (with-handlers handler-list thunk))
+  (alerts/handle-chain handler-list thunk))

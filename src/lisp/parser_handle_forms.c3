@@ -46,7 +46,7 @@ fn bool Parser.parse_handle_new_clause(Parser* self, EffectClause* clause) {
     self.lexer.advance();
 
     clause.k_name = self.interp.sym__k;
-    clause.handler_body = self.parse_implicit_begin();
+    clause.handler_body = self.parse_implicit_block();
     return !self.has_error;
 }
 

@@ -356,7 +356,7 @@ fn void run_scheduler_wakeup_offload_error_boundary_tests(Interp* interp, int* p
     char[] failed_phase = "";
     for (usz i = 0; i < 12; i++) {
         EvalResult success_r = run(
-            "(begin "
+            "(block "
             "  (define ws-ok (spawn (lambda () (offload 'sleep-ms 1)))) "
             "  (await ws-ok) "
             "  true)",
@@ -384,7 +384,7 @@ fn void run_scheduler_wakeup_offload_error_boundary_tests(Interp* interp, int* p
         }
 
         EvalResult error_r = run(
-            "(begin "
+            "(block "
             "  (define ws-err (spawn (lambda () (offload 'nope 1)))) "
             "  (await ws-err))",
             interp);

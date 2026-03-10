@@ -40,7 +40,7 @@
 (define (log/close!)
   (match log-handle
     (nil nil)
-    (h (begin
+    (h (block
          (fs-close h)
          (set! log-handle nil)))))
 

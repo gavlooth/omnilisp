@@ -39,7 +39,7 @@ Use `Lambda` to match value-level syntax:
 ; Type level
 ^(Lambda Int Int) inc            ; Int -> Int
 ^(Lambda Int Int Int) add        ; (Int, Int) -> Int
-^(Lambda A B) fn                 ; polymorphic
+^(Lambda A B) f                  ; polymorphic
 ```
 
 ### 1.2.1 Lambda Call-Boundary Checking (Design + Current Runtime Contract)
@@ -56,7 +56,7 @@ Supported annotation shapes in callable parameter positions:
 - Standard typed-parameter forms continue to be enforced at invocation
   boundaries:
   - simple nominal (`^Int`, `^Point`, ...)
-  - value literal (`^(Value lit)` / `^(Val lit)`)
+  - value literal (`^(Value lit)`)
   - metadata constraint (`^{'T Bound}`)
   - unresolved type-variable forms (`^T`) with repeated-symbol unification.
 
@@ -355,7 +355,7 @@ Status tags:
 
 | Area | Julia Baseline | Omni Current Behavior | Status | Evidence / Anchor |
 |------|----------------|-----------------------|--------|-------------------|
-| Method specificity ordering | More-specific method wins | Score model: `Value/Val=1000`, `exact=100`, `subtype=10`, `any=1`; highest score wins | `done` | `src/lisp/eval_dispatch_types.c3` (`method_match_score`) |
+| Method specificity ordering | More-specific method wins | Score model: `Value=1000`, `exact=100`, `subtype=10`, `any=1`; highest score wins | `done` | `src/lisp/eval_dispatch_types.c3` (`method_match_score`) |
 | Ambiguity handling | Ambiguity is diagnosed deterministically | Equal best score raises `ambiguous method call` with explicit equal-specificity detail (no implicit tie-break winner) | `done` | `src/lisp/eval_dispatch_types.c3` (`find_best_method`); `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
 | Parametric type behavior | Parametric construction + constraints + substitution | Parametric constructors + `type-args` inference are implemented; method type variables unify by symbol at dispatch (`(^T a) (^T b)` requires same runtime type), with bounds checked via metadata constraints | `done` | `src/lisp/eval_type_evaluators.c3`; `src/lisp/eval_dispatch_types.c3`; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
 | Variance policy | Explicit variance model in parametric dispatch | Explicit invariant policy: type params are invariant; `+T/-T` markers are rejected with deterministic parser errors | `done` (invariant policy) | `src/lisp/parser_type_defs.c3`; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
@@ -429,12 +429,12 @@ Status tags:
 - [x] `[abstract]` type definitions with parent hierarchy
 - [x] `[union]` ADT definitions with variant constructors
 - [x] `[alias]` type alias definitions
-- [x] `^Type` annotation parsing (simple, compound `^(List Int)`, Value `^(Value 42)` with sugar `^(Val 42)`)
+- [x] `^Type` annotation parsing (simple, compound `^(List Int)`, Value `^(Value 42)`)
 - [x] `^{'T Number}` flat metadata dict parsing in parser
 - [x] Multiple dispatch via MethodTable (typed `define` creates dispatch entries)
-- [x] Value dispatch `^(Value literal)` for value-level pattern matching (`Val` sugar supported; literals: int/symbol/string/bool)
+- [x] Value dispatch `^(Value literal)` for value-level pattern matching (literals: int/symbol/string/bool)
 - [x] Multi-argument dispatch
-- [x] Dispatch scoring: Value/Val=1000, exact=100, numeric widening(Int->Double)=50, subtype=10, any=1
+- [x] Dispatch scoring: Value=1000, exact=100, numeric widening(Int->Double)=50, subtype=10, any=1
 - [x] Struct field access via dot-path: `point.x`, `line.start.y`
 - [x] Struct field mutation: `(set! point.x 99)`, nested paths
 - [x] Constructor pattern matching: `(match opt (None 0) ((Some x) x))`

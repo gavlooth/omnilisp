@@ -57,13 +57,13 @@ fn Expr* Parser.parse_or(Parser* self) {
 }
 
 /**
- * Parse a begin expression (sequencing).
- * (begin e1 e2 ... en) - evaluates all, returns last
+ * Parse a block expression (sequencing).
+ * (block e1 e2 ... en) - evaluates all, returns last
  */
-fn Expr* Parser.parse_begin(Parser* self) {
+fn Expr* Parser.parse_block(Parser* self) {
     if (self.has_error) return null;
-    Expr* e = self.alloc_expr_here();  // Capture 'begin' location
-    self.lexer.advance();  // consume 'begin'
+    Expr* e = self.alloc_expr_here();  // Capture 'block' location
+    self.lexer.advance();  // consume 'block'
 
     List{Expr*} items;
     while (self.lexer.current.type != T_RPAREN && !self.has_error) {
@@ -72,18 +72,18 @@ fn Expr* Parser.parse_begin(Parser* self) {
     if (self.has_error) { items.free(); return null; }
     self.lexer.advance();  // consume ')'
 
-    // (begin) with no expressions evaluates to nil
+    // (block) with no expressions evaluates to nil
     if (items.len() == 0) {
         items.free();
         e.tag = E_LIT;
         e.lit.value = self.interp.alloc_value_root();
         e.lit.value.tag = NIL;
     } else {
-        e.tag = E_BEGIN;
-        e.begin = mem::malloc(ExprBegin.sizeof);
-        e.begin.expr_count = items.len();
-        e.begin.exprs = (Expr**)mem::malloc(Expr*.sizeof * items.len());
-        for (usz i = 0; i < items.len(); i++) { e.begin.exprs[i] = items[i]; }
+        e.tag = E_BLOCK;
+        e.block = mem::malloc(ExprBlock.sizeof);
+        e.block.expr_count = items.len();
+        e.block.exprs = (Expr**)mem::malloc(Expr*.sizeof * items.len());
+        for (usz i = 0; i < items.len(); i++) { e.block.exprs[i] = items[i]; }
         items.free();
     }
     return e;

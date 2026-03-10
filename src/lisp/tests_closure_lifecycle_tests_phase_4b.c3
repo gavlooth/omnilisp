@@ -52,7 +52,7 @@ fn void run_closure_lifecycle_tests(Interp* interp, int* pass, int* fail) {
 
     // 9. Closure over mutable variable — fresh counter per eval (avoids shared state between interp/jit)
     test_eq(interp, "closure-lc: mutable capture counter",
-        "(let (counter (let (n 0) (lambda () (set! n (+ n 1)) n))) (begin (counter) (counter) (counter)))", 3, pass, fail);
+        "(let (counter (let (n 0) (lambda () (set! n (+ n 1)) n))) (block (counter) (counter) (counter)))", 3, pass, fail);
 
     // 10. Coroutine with closure thunk — closure promoted to root_scope
     test_eq(interp, "closure-lc: coroutine with closure thunk",

@@ -38,9 +38,9 @@ fn bool Compiler.has_set_on(Compiler* self, SymbolId name, Expr* expr) {
             return self.has_set_on(name, expr.let_expr.init) || self.has_set_on(name, expr.let_expr.body);
         case E_LAMBDA:
             return self.has_set_on(name, expr.lambda.body);
-        case E_BEGIN:
-            for (usz i = 0; i < expr.begin.expr_count; i++) {
-                if (self.has_set_on(name, expr.begin.exprs[i])) return true;
+        case E_BLOCK:
+            for (usz i = 0; i < expr.block.expr_count; i++) {
+                if (self.has_set_on(name, expr.block.exprs[i])) return true;
             }
             return false;
         case E_CALL:
@@ -94,9 +94,9 @@ fn bool Compiler.is_captured_by_nested_lambda(Compiler* self, SymbolId name, Exp
         case E_LET:
             return self.is_captured_by_nested_lambda(name, expr.let_expr.init) ||
                    self.is_captured_by_nested_lambda(name, expr.let_expr.body);
-        case E_BEGIN:
-            for (usz i = 0; i < expr.begin.expr_count; i++) {
-                if (self.is_captured_by_nested_lambda(name, expr.begin.exprs[i])) return true;
+        case E_BLOCK:
+            for (usz i = 0; i < expr.block.expr_count; i++) {
+                if (self.is_captured_by_nested_lambda(name, expr.block.exprs[i])) return true;
             }
             return false;
         case E_CALL:

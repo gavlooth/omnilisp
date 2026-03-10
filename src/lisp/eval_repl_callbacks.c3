@@ -33,7 +33,7 @@ Interp* g_repl_interp = null;
 fn bool is_keyword(char[] name) {
     // Special forms
     char[][] keywords = {
-        "lambda", "define", "let", "if", "begin", "set!", "quote",
+        "lambda", "define", "let", "if", "block", "set!", "quote",
         "and", "or", "match", "reset", "shift", "signal", "handle",
         "resolve", "explain", "module", "import", "export", "with-continuation"
     };

@@ -69,8 +69,8 @@ fn void Compiler.prescan_mutable_captures(Compiler* self, Expr* expr) {
             self.prescan_mutable_captures(expr.if_expr.else_branch);
         case E_DEFINE:
             self.prescan_mutable_captures(expr.define.value);
-        case E_BEGIN:
-            self.prescan_expr_list(expr.begin.exprs, expr.begin.expr_count);
+        case E_BLOCK:
+            self.prescan_expr_list(expr.block.exprs, expr.block.expr_count);
         case E_CALL:
             self.prescan_mutable_captures(expr.call.func);
             self.prescan_expr_list(expr.call.args, expr.call.arg_count);

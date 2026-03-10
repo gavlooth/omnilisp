@@ -299,24 +299,24 @@ fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
 }
 
 // ============================================================
-// (deduce 'begin db ['read|'write]) -> transaction handle
+// (deduce 'block db ['read|'write]) -> transaction handle
 // (deduce 'commit txn) -> nil
 // (deduce 'abort txn) -> nil
 // ============================================================
-fn Value* prim_deduce_begin(Value*[] args, Env* env, Interp* interp) {
+fn Value* prim_deduce_block(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) {
-        return deduce_raise(interp, "deduce/begin-expected-database", "deduce-begin: expected (deduce 'begin db ['read|'write])");
+        return deduce_raise(interp, "deduce/block-expected-database", "deduce-block: expected (deduce 'block db ['read|'write])");
     }
     if (!deduce_ffi_handle_name_equals(args[0], "deduce-db")) {
-        return deduce_raise(interp, "deduce/begin-database-not-handle", "deduce-begin: first argument must be a deduce database handle");
+        return deduce_raise(interp, "deduce/block-database-not-handle", "deduce-block: first argument must be a deduce database handle");
     }
     if (args[0].ffi_val.lib_handle == null) {
-        return deduce_raise(interp, "deduce/begin-database-handle-closed", "deduce-begin: database handle is closed");
+        return deduce_raise(interp, "deduce/block-database-handle-closed", "deduce-block: database handle is closed");
     }
 
     DeduceDb* db = (DeduceDb*)args[0].ffi_val.lib_handle;
     if (db.env == null || !db.open) {
-        return deduce_raise(interp, "deduce/begin-database-not-open", "deduce-begin: database is not open");
+        return deduce_raise(interp, "deduce/block-database-not-open", "deduce-block: database is not open");
     }
 
     uint flags = 0;
@@ -324,7 +324,7 @@ fn Value* prim_deduce_begin(Value*[] args, Env* env, Interp* interp) {
     if (args.len == 2) {
         Value* mode = args[1];
         if (mode == null || mode.tag != SYMBOL) {
-            return deduce_raise(interp, "deduce/begin-mode-not-symbol", "deduce-begin: mode must be 'read or 'write");
+            return deduce_raise(interp, "deduce/block-mode-not-symbol", "deduce-block: mode must be 'read or 'write");
         }
         char[] mode_name = interp.symbols.get_name(mode.sym_val);
         if (deduce_name_equals(mode_name, "read")) {
@@ -334,20 +334,20 @@ fn Value* prim_deduce_begin(Value*[] args, Env* env, Interp* interp) {
             flags = 0;
             read_only = false;
         } else {
-            return deduce_raise(interp, "deduce/begin-invalid-mode", "deduce-begin: mode must be 'read or 'write");
+            return deduce_raise(interp, "deduce/block-invalid-mode", "deduce-block: mode must be 'read or 'write");
         }
     }
 
     MdbTxn* raw_txn = null;
     int rc = mdb_txn_begin(db.env, null, flags, &raw_txn);
     if (rc != MDB_SUCCESS || raw_txn == null) {
-        return deduce_raise(interp, "deduce/txn-failed", "deduce-begin: txn begin failed");
+        return deduce_raise(interp, "deduce/txn-failed", "deduce-block: txn open failed");
     }
 
     DeduceTxn* txn = (DeduceTxn*)mem::malloc(DeduceTxn.sizeof);
     if (txn == null) {
         mdb_txn_abort(raw_txn);
-        return deduce_raise(interp, "deduce/begin-out-of-memory", "deduce-begin: out of memory");
+        return deduce_raise(interp, "deduce/block-out-of-memory", "deduce-block: out of memory");
     }
 
     txn.db = db;
@@ -359,7 +359,7 @@ fn Value* prim_deduce_begin(Value*[] args, Env* env, Interp* interp) {
     if (txn_v == null) {
         deduce_txn_finalize(txn);
         mem::free(txn);
-        return deduce_raise(interp, "deduce/begin-out-of-memory", "deduce-begin: out of memory");
+        return deduce_raise(interp, "deduce/block-out-of-memory", "deduce-block: out of memory");
     }
     return txn_v;
 }
@@ -417,7 +417,7 @@ fn bool deduce_cmd_matches(char[] name, char[] cmd) {
 fn Value* prim_deduce_dispatch(char[] name, Value*[] rest, Env* env, Interp* interp) {
     if (deduce_cmd_matches(name, "open")) return prim_deduce_open(rest, env, interp);
     if (deduce_cmd_matches(name, "open-named")) return prim_deduce_open_named(rest, env, interp);
-    if (deduce_cmd_matches(name, "begin")) return prim_deduce_begin(rest, env, interp);
+    if (deduce_cmd_matches(name, "block")) return prim_deduce_block(rest, env, interp);
     if (deduce_cmd_matches(name, "commit")) return prim_deduce_commit(rest, env, interp);
     if (deduce_cmd_matches(name, "abort")) return prim_deduce_abort(rest, env, interp);
     if (deduce_cmd_matches(name, "scan")) return prim_deduce_scan(rest, env, interp);
@@ -438,7 +438,7 @@ fn Value* prim_deduce_dispatch(char[] name, Value*[] rest, Env* env, Interp* int
 // (deduce 'open 'memory)           → database handle
 // (deduce 'open "/path")           → database handle
 // (deduce 'open-named db rel-name db-name col...) → relation handle
-// (deduce 'begin db ['read|'write]) → transaction handle
+// (deduce 'block db ['read|'write]) → transaction handle
 // (deduce 'commit txn)             → nil
 // (deduce 'abort txn)              → nil
 // (deduce 'scan relation)          → list of dicts
@@ -465,5 +465,5 @@ fn Value* prim_deduce(Value*[] args, Env* env, Interp* interp) {
     Value* out = prim_deduce_dispatch(name, args[1..], env, interp);
     if (out != null) return out;
 
-    return deduce_raise(interp, "deduce/dispatch-unknown-command", "deduce: unknown command (expected 'open 'open-named 'begin 'commit 'abort 'scan 'scan-range 'query 'count 'match 'fact! 'retract! 'clear! 'drop!)");
+    return deduce_raise(interp, "deduce/dispatch-unknown-command", "deduce: unknown command (expected 'open 'open-named 'block 'commit 'abort 'scan 'scan-range 'query 'count 'match 'fact! 'retract! 'clear! 'drop!)");
 }

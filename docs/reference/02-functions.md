@@ -45,7 +45,7 @@ Lambdas capture their lexical environment:
 The following positions are tail positions (no stack growth):
 - `if`: both branches
 - `let`: body
-- `begin`: last expression
+- `block`: last expression
 - `and`/`or`: second operand
 - `match`: clause bodies
 
@@ -62,7 +62,7 @@ Named let is the idiomatic loop construct:
 (sum-to 1000000)   ;; works, no stack overflow
 ```
 
-### Implicit Begin
+### Implicit Block
 
 Lambda, define, and let bodies support multiple expressions:
 

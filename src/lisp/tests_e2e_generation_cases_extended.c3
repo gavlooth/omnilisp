@@ -67,8 +67,8 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
 
     // === set! mutation (setups define s_x=10, s_acc=0, s_count=0) ===
     { "set! returns value", "(set! s_x 20)" },
-    { "set! read back", "(begin (set! s_acc 1) (set! s_acc (+ s_acc 1)) s_acc)" },
-    { "set! in lambda", "(begin ((lambda (n) (set! s_count n)) 42) s_count)" },
+    { "set! read back", "(block (set! s_acc 1) (set! s_acc (+ s_acc 1)) s_acc)" },
+    { "set! in lambda", "(block ((lambda (n) (set! s_count n)) 42) s_count)" },
 
     // === Quasiquote (no unquote — eval_source can't see let-bound vars) ===
     { "quasiquote literal", "`42" },

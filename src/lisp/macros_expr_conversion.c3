@@ -49,10 +49,10 @@ fn Value* expr_lambda_to_value(Expr* expr, Interp* interp) {
 
 fn Value* expr_begin_to_value(Expr* expr, Interp* interp) {
     Value* items = make_nil(interp);
-    for (usz i = expr.begin.expr_count; i > 0; i--) {
-        items = make_cons(interp, expr_to_value(expr.begin.exprs[i - 1], interp), items);
+    for (usz i = expr.block.expr_count; i > 0; i--) {
+        items = make_cons(interp, expr_to_value(expr.block.exprs[i - 1], interp), items);
     }
-    return make_cons(interp, make_symbol(interp, interp.sym_begin), items);
+    return make_cons(interp, make_symbol(interp, interp.sym_block), items);
 }
 
 fn Value* expr_to_value(Expr* expr, Interp* interp) {
@@ -90,7 +90,7 @@ fn Value* expr_to_value(Expr* expr, Interp* interp) {
         }
         case E_LAMBDA:
             return expr_lambda_to_value(expr, interp);
-        case E_BEGIN:
+        case E_BLOCK:
             return expr_begin_to_value(expr, interp);
         case E_SET: {
             Value* name_sym = make_symbol(interp, expr.set_expr.name);
@@ -254,7 +254,7 @@ fn Expr* vte_let(Value* rest, Interp* interp) {
     return inner;
 }
 
-// Convert (begin e1 e2 ...) value-list to E_BEGIN expr.
+// Convert (block e1 e2 ...) value-list to E_BLOCK expr.
 fn Expr* vte_begin(Value* rest, Interp* interp) {
     List{Expr*} items;
     while (is_cons(rest)) {
@@ -262,11 +262,11 @@ fn Expr* vte_begin(Value* rest, Interp* interp) {
         rest = rest.cons_val.cdr;
     }
     Expr* e = interp.alloc_expr();
-    e.tag = E_BEGIN;
-    e.begin = mem::malloc(ExprBegin.sizeof);
-    e.begin.expr_count = items.len();
-    e.begin.exprs = (Expr**)mem::malloc(Expr*.sizeof * items.len());
-    for (usz i = 0; i < items.len(); i++) { e.begin.exprs[i] = items[i]; }
+    e.tag = E_BLOCK;
+    e.block = mem::malloc(ExprBlock.sizeof);
+    e.block.expr_count = items.len();
+    e.block.exprs = (Expr**)mem::malloc(Expr*.sizeof * items.len());
+    for (usz i = 0; i < items.len(); i++) { e.block.exprs[i] = items[i]; }
     items.free();
     return e;
 }
@@ -351,7 +351,7 @@ fn Expr* vte_special_form(SymbolId sym, Value* rest, Interp* interp) {
         e.quote.datum = is_cons(rest) ? rest.cons_val.car : make_nil(interp);
         return e;
     }
-    if ((uint)sym == (uint)interp.sym_begin)            return vte_begin(rest, interp);
+    if ((uint)sym == (uint)interp.sym_block)            return vte_begin(rest, interp);
     if ((uint)sym == (uint)interp.sym_lambda)           return vte_lambda(rest, interp);
     if ((uint)sym == (uint)interp.sym_let)              return vte_let(rest, interp);
     if ((uint)sym == (uint)interp.sym_define)           return vte_define_or_set_form(rest, interp, false);

@@ -30,7 +30,7 @@ cleanup() {
 trap cleanup EXIT
 
 cat >"$CLIENT_SCRIPT" <<'OMNI'
-(begin
+(block
   (define p (string->number (default (getenv "OMNI_TLS_TEST_PORT") "45101")))
   (define host (default (getenv "OMNI_TLS_CLIENT_HOST") "localhost"))
   (define expect-mode (default (getenv "OMNI_TLS_EXPECT_MODE") "pong"))
@@ -46,7 +46,7 @@ cat >"$CLIENT_SCRIPT" <<'OMNI'
         (define result
           (try
             (lambda (ignored)
-              (begin
+              (block
                 (set! c (tcp-connect "127.0.0.1" p))
                 (set! ctls
                   (if (and cert key)

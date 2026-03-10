@@ -183,7 +183,7 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
         }
         if (open_status == REL_OPEN_TXN_BEGIN_FAILED) {
             // fault: lisp::WRITE_FAILED
-            return deduce_raise(interp, "deduce/define-relation-txn-begin-failed", "__define-relation: txn begin failed");
+            return deduce_raise(interp, "deduce/define-relation-txn-open-failed", "__define-relation: txn open failed");
         }
         // fault: lisp::WRITE_FAILED
         return deduce_raise(interp, "deduce/define-relation-dbi-open-failed", "__define-relation: dbi open failed");
@@ -254,7 +254,7 @@ fn Value* prim_deduce_open_named(Value*[] args, Env* env, Interp* interp) {
             return deduce_raise(interp, "deduce/open-named-out-of-memory", "deduce-open-named: out of memory");
         }
         if (open_status == REL_OPEN_TXN_BEGIN_FAILED) {
-            return deduce_raise(interp, "deduce/open-named-txn-begin-failed", "deduce-open-named: txn begin failed");
+            return deduce_raise(interp, "deduce/open-named-txn-open-failed", "deduce-open-named: txn open failed");
         }
         return deduce_raise(interp, "deduce/open-named-dbi-open-failed", "deduce-open-named: dbi open failed");
     }

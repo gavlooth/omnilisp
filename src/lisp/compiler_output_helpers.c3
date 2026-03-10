@@ -82,7 +82,7 @@ fn void Compiler.emit_usz(Compiler* self, usz n) {
 }
 
 fn bool is_c3_reserved(char[] name) {
-    char[][*] reserved = {"try", "var", "fn", "if", "else", "for", "while", "do",
+    char[][*] reserved = {"try", "var", "fn", "if", "else", "for", "while", "block",
         "switch", "case", "default", "return", "break", "continue", "import",
         "module", "struct", "enum", "union", "const", "static", "true", "false",
         "null", "void", "bool", "int", "uint", "char", "float", "double", "usz"};

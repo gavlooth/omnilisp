@@ -10,7 +10,7 @@ fn void run_memory_lifetime_jit_copy_hot_budget_test(Interp* interp, int* pass, 
         reset_memory_promotion_stats();
 
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define step (lambda (x) (+ x 1))) "
             "  (define mk (lambda (n) (lambda (x) (+ x n)))) "
             "  (let ^rec (loop (lambda (i acc) "

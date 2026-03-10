@@ -377,32 +377,38 @@ fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass,
     test_truthy_interp(interp, "dispatch string", "(= (describe \"hi\") \"string\")", pass, fail);
     test_truthy_interp(interp, "dispatch fallback", "(= (describe '(1 2)) \"other\")", pass, fail);
 
-    // Val dispatch (Fibonacci)
-    setup(interp, "(define (fib (^(Val 0) n)) 0)");
-    setup(interp, "(define (fib (^(Val 1) n)) 1)");
+    // Value dispatch (Fibonacci)
+    setup(interp, "(define (fib (^(Value 0) n)) 0)");
+    setup(interp, "(define (fib (^(Value 1) n)) 1)");
     setup(interp, "(define (fib (^Int n)) (+ (fib (- n 1)) (fib (- n 2))))");
     test_eq_interp(interp, "dispatch fib 0", "(fib 0)", 0, pass, fail);
     test_eq_interp(interp, "dispatch fib 1", "(fib 1)", 1, pass, fail);
     test_eq_interp(interp, "dispatch fib 10", "(fib 10)", 55, pass, fail);
 
-    // Value/Val literal dispatch parity (symbol + string)
+    // Value literal dispatch coverage (symbol + string)
     setup(interp, "(define (udp-cmd (^(Value open) op)) 1)");
-    setup(interp, "(define (udp-cmd (^(Val bind) op) h host port) 2)");
+    setup(interp, "(define (udp-cmd (^(Value bind) op) h host port) 2)");
     setup(interp, "(define (udp-cmd op .. rest) 99)");
-    test_eq_interp(interp, "dispatch Value symbol literal", "(udp-cmd 'open)", 1, pass, fail);
-    test_eq_interp(interp, "dispatch Val symbol literal", "(udp-cmd 'bind 1 \"127.0.0.1\" 9000)", 2, pass, fail);
+    test_eq_interp(interp, "dispatch Value symbol literal open", "(udp-cmd 'open)", 1, pass, fail);
+    test_eq_interp(interp, "dispatch Value symbol literal bind", "(udp-cmd 'bind 1 \"127.0.0.1\" 9000)", 2, pass, fail);
 
     setup(interp, "(define (fmt (^(Value \"csv\") x)) 10)");
-    setup(interp, "(define (fmt (^(Val \"toml\") x)) 20)");
+    setup(interp, "(define (fmt (^(Value \"toml\") x)) 20)");
     setup(interp, "(define (fmt x) 99)");
-    test_eq_interp(interp, "dispatch Value string literal", "(fmt \"csv\")", 10, pass, fail);
-    test_eq_interp(interp, "dispatch Val string literal", "(fmt \"toml\")", 20, pass, fail);
+    test_eq_interp(interp, "dispatch Value string literal csv", "(fmt \"csv\")", 10, pass, fail);
+    test_eq_interp(interp, "dispatch Value string literal toml", "(fmt \"toml\")", 20, pass, fail);
 
     setup(interp, "(define (flag (^(Value true) x)) 11)");
-    setup(interp, "(define (flag (^(Val false) x)) 22)");
+    setup(interp, "(define (flag (^(Value false) x)) 22)");
     setup(interp, "(define (flag x) 99)");
     test_eq_interp(interp, "dispatch Value bool true literal", "(flag true)", 11, pass, fail);
-    test_eq_interp(interp, "dispatch Val bool false literal", "(flag false)", 22, pass, fail);
+    test_eq_interp(interp, "dispatch Value bool false literal", "(flag false)", 22, pass, fail);
+
+    test_error_contains(interp,
+        "dispatch removed Val ctor rejection",
+        "(define (legacy-fib (^(Val 0) n)) 0)",
+        "Val constructor was removed; use Value",
+        pass, fail);
 
     setup(interp, "(define (ambv (^(Value open) cmd) x) 1)");
     setup(interp, "(define (ambv x (^(Value open) cmd)) 2)");
@@ -595,19 +601,19 @@ fn void run_advanced_index_mutation_tests(Interp* interp, int* pass, int* fail) 
     test_eq(interp, "array index 2", "(let (v (array 10 20 30)) v.[2])", 30, pass, fail);
 
     // Struct field mutation (Phase 3)
-    test_eq_interp(interp, "set! struct field", "(let (p (Point 1 2)) (begin (set! p.x 99) p.x))", 99, pass, fail);
-    test_eq_interp(interp, "set! struct field y", "(let (p (Point 1 2)) (begin (set! p.y 50) p.y))", 50, pass, fail);
-    test_eq_interp(interp, "set! nested field", "(let (ln (Line (Point 0 0) (Point 10 10))) (begin (set! ln.start.x 5) ln.start.x))", 5, pass, fail);
-    test_eq_interp(interp, "set! preserves other", "(let (p (Point 3 4)) (begin (set! p.x 99) p.y))", 4, pass, fail);
+    test_eq_interp(interp, "set! struct field", "(let (p (Point 1 2)) (block (set! p.x 99) p.x))", 99, pass, fail);
+    test_eq_interp(interp, "set! struct field y", "(let (p (Point 1 2)) (block (set! p.y 50) p.y))", 50, pass, fail);
+    test_eq_interp(interp, "set! nested field", "(let (ln (Line (Point 0 0) (Point 10 10))) (block (set! ln.start.x 5) ln.start.x))", 5, pass, fail);
+    test_eq_interp(interp, "set! preserves other", "(let (p (Point 3 4)) (block (set! p.x 99) p.y))", 4, pass, fail);
     test_eq_interp(interp, "instance field ffi survives scope return",
-        "(begin "
+        "(block "
         "  (define [type] EscBox h) "
         "  (define (mk-esc-box) (let (a (atomic 7)) (EscBox a))) "
         "  (define b (mk-esc-box)) "
         "  (atomic-add! b.h 1) "
         "  (atomic-read b.h))", 8, pass, fail);
     test_eq_interp(interp, "closure capture instance ffi field",
-        "(begin "
+        "(block "
         "  (define [type] EscBoxFn h) "
         "  (define (mk-esc-fn) "
         "    (let (a (atomic 3) b (EscBoxFn a)) "

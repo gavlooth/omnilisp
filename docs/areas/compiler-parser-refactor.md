@@ -23,7 +23,7 @@ As of: 2026-03-10
 - `R5` continuation slice B landed on parser type definitions: union parsing moved to `parser_type_defs_union.c3`, leaving shared helpers and non-union type forms in `parser_type_defs.c3`.
 - `R5` continuation slice C landed on parser control/effects: handle-form parsing moved to `parser_handle_forms.c3`, while `parser_control_effects.c3` retained non-handle control/effect form entrypoints.
 - `R5` continuation slice D landed on define/let boundary cleanup: named-let parsing moved to `parser_let_named.c3`, while `parser_define_core.c3` retained define-family parsing and bracket-annotation dispatch.
-- `R5` continuation slice E landed on compiler temp control flow: short-circuit/if/begin temp helpers moved to `compiler_temp_control_flow.c3`, while `compiler_temp_core.c3` retained temp dispatch and scalar/simple-form lowering.
+- `R5` continuation slice E landed on compiler temp control flow: short-circuit/if/block temp helpers moved to `compiler_temp_control_flow.c3`, while `compiler_temp_core.c3` retained temp dispatch and scalar/simple-form lowering.
 - `R5` continuation slice F landed on compiler lambda scan effect wrapping: reset/shift/handle synthetic-wrapper helpers moved to `compiler_lambda_scan_effect_wrappers.c3`, while `compiler_lambda_scan.c3` retained capture/traversal dispatch logic.
 - `R5` continuation slice G landed on parser import/export split: export-from parsing moved to `parser_export_from.c3`, while `parser_import_export.c3` retained import-target/specifier parsing.
 - `R5` continuation slice H landed on compiler code emission split: global/main emission helpers moved to `compiler_code_emission_main_globals.c3`, while `compiler_code_emission.c3` retained lambda/closure emission logic.
@@ -56,7 +56,7 @@ As of: 2026-03-10
 - `R5` continuation slice AI landed on compiler native-match split: pattern-binding emit helpers moved to `compiler_native_match_bindings_flat_style.c3`, while `compiler_native_match_compilation_flat_style.c3` retained match entrypoint and pattern-check lowering.
 - `R5` continuation slice AJ landed on compiler call split: call arg/list construction helpers moved to `compiler_call_arg_list_helpers.c3`, while `compiler_call_flat.c3` retained call/app entrypoint lowering.
 - `R5` continuation slice AK landed on parser define-attrs split: relation-attribute define helpers moved to `parser_define_relation_attr.c3`, while `parser_define_attrs.c3` retained macro/schema/special define dispatch.
-- `R5` continuation slice AL landed on parser control/effects split: effect-form parse helpers moved to `parser_effect_forms.c3`, while `parser_control_effects.c3` retained quote/and/or/begin parsing.
+- `R5` continuation slice AL landed on parser control/effects split: effect-form parse helpers moved to `parser_effect_forms.c3`, while `parser_control_effects.c3` retained quote/and/or/block parsing.
 - Plan-governance closure is now explicit:
   - one active compiler/parser tracker remains (`docs/plans/compiler-parser-refactor-plan.md`),
   - historical plan files (`docs/plans/aot-unification.md`, `docs/plans/library-gaps-todo.md`) are reference-only and not active checklist surfaces for compiler/parser splits.

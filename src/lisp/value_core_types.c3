@@ -298,13 +298,13 @@ struct TypeAnnotation {
     bool has_annotation;
     bool is_compound;          // ^(List Int) form
     bool is_dict;              // ^{...} form
-    SymbolId base_type;        // Int, List, Lambda, Val, etc.
+    SymbolId base_type;        // Int, List, Lambda, Value, etc.
     SymbolId* params;          // compound type params (heap-allocated)
     usz param_count;
     MetaEntry* meta;           // dict entries (heap-allocated)
     usz meta_count;
-    ValueLiteralKey val_literal; // For ^(Value x) / ^(Val x) literal matching
-    bool has_val_literal;      // true if this is a Val type with literal
+    ValueLiteralKey val_literal; // For ^(Value x) literal matching
+    bool has_val_literal;      // true if this is a Value type with literal
 }
 
 /**
@@ -413,7 +413,7 @@ struct MethodConstraint {
 struct MethodSignature {
     TypeId* param_types;     // length = param_count, INVALID_TYPE_ID = Any
     SymbolId* param_type_vars; // length = param_count, non-zero when param is a type variable (e.g., ^T)
-    ValueLiteralKey* val_literals; // length = param_count, for Value/Val literal types
+    ValueLiteralKey* val_literals; // length = param_count, for Value literal types
     bool* has_val_literal;   // length = param_count
     usz param_count;
     MethodConstraint* constraints;  // heap/scope-allocated, length = constraint_count

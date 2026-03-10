@@ -116,7 +116,7 @@
 
 ;; ── pipe-connect / pipe-listen ─────────────────────────────────────────────
 (let (pipe-ok
-      (begin
+      (block
         (define pf (spawn (lambda ()
           (define p (string-append "/tmp/finwatch_pipe_" (number->string (% (time-ms) 1000000)) ".sock"))
           (define listener (pipe-listen p))
@@ -134,7 +134,7 @@
 
 ;; ── udp-socket / udp-send / udp-recv ───────────────────────────────────────
 (let (udp-ok
-      (begin
+      (block
         (define p (+ 35000 (% (time-ms) 20000)))
         (define recv (udp-socket))
         (udp-bind recv "127.0.0.1" p)
@@ -150,7 +150,7 @@
 
 ;; ── signal-handle / signal-unhandle ────────────────────────────────────────
 (let (signal-ok
-      (begin
+      (block
         (define hits {'n 0})
         (define h (signal-handle 10 (lambda (sig)
                                       (dict-set! hits 'n (+ (ref hits 'n) 1)))))
@@ -166,7 +166,7 @@
 
 ;; ── process-kill ────────────────────────────────────────────────────────────
 (let (process-kill-ok
-      (begin
+      (block
         (define child (process-spawn "/bin/sh" ["-c" "sleep 2"] nil))
         (process-kill (ref child 'handle) 15)
         (define st (await (spawn (lambda () (process-wait (ref child 'handle))))))
@@ -312,7 +312,7 @@
 (let (bp-result (events/with-backpressure (range 10) 3))
   (match (pair? bp-result)
     (true
-      (begin
+      (block
         (println (format "bp first batch: %d items" (length (car bp-result))))
         (print-bool-line (procedure? (car (cdr bp-result)))
                          "bp continuation captured: true"
@@ -389,7 +389,7 @@
 (println "--- rules passed ---")
 
 ;; =========================================================================
-;; alerts.omni — [effect], with-handlers, alert dispatch
+;; alerts.omni — [effect], handle composition, alert dispatch
 ;; =========================================================================
 
 ;; Test collector handler (captures alerts)
@@ -402,7 +402,7 @@
       (alerts/dispatch (SystemEvent "ALERT" "2 alerts fired" 1700000012))))
   (println (format "collected alerts: %d" (length (alerts/collected)))))
 
-;; Test log handler (prints to stdout) — with-handlers composition
+;; Test log handler (prints to stdout) — composed handle wrappers
 (let (logger (alerts/make-log-handler "[TEST-LOG]"))
   (alerts/dispatch-multi
     (list logger)

@@ -11,7 +11,7 @@ fn void run_limit_busting_generated_form_tests(Interp* interp, int* pass, int* f
     {
         char[8192] buf;
         usz pos = 0;
-        char[] prefix = "(begin ";
+        char[] prefix = "(block ";
         for (usz i = 0; i < prefix.len; i++) buf[pos++] = prefix[i];
         for (int i = 1; i <= 299; i++) {
             char[20] num;
@@ -21,13 +21,13 @@ fn void run_limit_busting_generated_form_tests(Interp* interp, int* pass, int* f
         }
         char[] suffix = "999)";
         for (usz i = 0; i < suffix.len; i++) buf[pos++] = suffix[i];
-        test_eq(interp, "begin >256 exprs", buf[:pos], 999, pass, fail);
+        test_eq(interp, "block >256 exprs", buf[:pos], 999, pass, fail);
     }
 
     {
         char[4096] buf;
         usz pos = 0;
-        char[] prefix = "(begin (define (f70 ";
+        char[] prefix = "(block (define (f70 ";
         for (usz i = 0; i < prefix.len; i++) buf[pos++] = prefix[i];
         for (int i = 0; i < 70; i++) {
             buf[pos++] = 'p';

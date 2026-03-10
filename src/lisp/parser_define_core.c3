@@ -26,7 +26,7 @@ fn Expr* Parser.parse_shorthand_define_body(
     List{SymbolId} destr_param_names
 ) {
     self.expect(T_RPAREN, ")");  // close param list
-    Expr* body = self.parse_implicit_begin();
+    Expr* body = self.parse_implicit_block();
     self.expect(T_RPAREN, ")");
     if (self.has_error) return null;
     return self.wrap_body_with_destructuring(e, body, destr_patterns, destr_param_names);

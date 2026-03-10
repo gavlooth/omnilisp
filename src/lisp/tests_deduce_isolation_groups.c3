@@ -68,7 +68,7 @@ fn void run_deduce_reopen_stress_test(Interp* interp, int* pass, int* fail) {
 
     for (usz i = 0; i < 64; i++) {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define ddb-reopen (deduce 'open 'memory)) "
             "  ddb-reopen)",
             interp

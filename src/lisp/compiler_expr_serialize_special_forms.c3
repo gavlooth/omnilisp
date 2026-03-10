@@ -36,10 +36,10 @@ fn void Compiler.serialize_symbol_and_arg_form(Compiler* self, char[] head, Symb
 }
 
 fn void Compiler.serialize_begin_expr_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
-    self.buf_append(buf, "(begin");
-    for (usz i = 0; i < expr.begin.expr_count; i++) {
+    self.buf_append(buf, "(block");
+    for (usz i = 0; i < expr.block.expr_count; i++) {
         buf.push(' ');
-        self.serialize_expr_to_buf(expr.begin.exprs[i], buf);
+        self.serialize_expr_to_buf(expr.block.exprs[i], buf);
     }
     buf.push(')');
 }
@@ -105,7 +105,7 @@ fn bool Compiler.serialize_expr_specialized_core(Compiler* self, Expr* expr, Lis
 
 fn bool Compiler.serialize_expr_specialized_reader(Compiler* self, Expr* expr, List{char}* buf) {
     switch (expr.tag) {
-        case E_BEGIN:
+        case E_BLOCK:
             self.serialize_begin_expr_to_buf(expr, buf);
             return true;
         case E_SET:

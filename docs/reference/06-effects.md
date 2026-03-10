@@ -46,7 +46,7 @@ If `resolve` is not called, the handler's return value replaces the entire
 
 ```lisp
 (handle
-  (begin
+  (block
     (signal log "starting")
     (+ 1 (signal ask nil)))
   (log msg (resolve nil))
@@ -98,7 +98,7 @@ introducing alternate runtime effect namespaces.
 ```lisp
 (define (with-logger thunk)
   (let (logs '())
-    (handle (begin (thunk) (reverse logs))
+    (handle (block (thunk) (reverse logs))
       (log msg (set! logs (cons msg logs)) (resolve nil)))))
 
 (with-logger
@@ -276,7 +276,7 @@ Errors in Omni flow through the `raise` effect.
 
 ```lisp
 (handle
-  (begin
+  (block
     (println "before")
     (signal raise "oops")
     (println "after"))     ;; never executes

@@ -4,9 +4,9 @@ import std::io;
 import std::collections::list;
 
 // Parse one or more body expressions before a closing ')'.
-// If multiple expressions, wraps them in an implicit E_BEGIN.
+// If multiple expressions, wraps them in an implicit E_BLOCK (block).
 // Does NOT consume the closing ')'.
-fn Expr* Parser.parse_implicit_begin(Parser* self) {
+fn Expr* Parser.parse_implicit_block(Parser* self) {
     if (self.has_error) return null;
     Expr* first = self.parse_expr();
     if (self.has_error) return null;
@@ -14,20 +14,20 @@ fn Expr* Parser.parse_implicit_begin(Parser* self) {
         // Single body expression - return as-is
         return first;
     }
-    // Multiple body expressions - wrap in begin
+    // Multiple body expressions - wrap in block
     List{Expr*} items;
     items.push(first);
     while (self.lexer.current.type != T_RPAREN && !self.has_error) {
         items.push(self.parse_expr());
     }
-    Expr* begin_e = self.interp.alloc_expr();
-    begin_e.tag = E_BEGIN;
-    begin_e.begin = (ExprBegin*)mem::malloc(ExprBegin.sizeof);
-    begin_e.begin.expr_count = items.len();
-    begin_e.begin.exprs = (Expr**)mem::malloc(Expr*.sizeof * items.len());
-    for (usz i = 0; i < items.len(); i++) { begin_e.begin.exprs[i] = items[i]; }
+    Expr* block_e = self.interp.alloc_expr();
+    block_e.tag = E_BLOCK;
+    block_e.block = (ExprBlock*)mem::malloc(ExprBlock.sizeof);
+    block_e.block.expr_count = items.len();
+    block_e.block.exprs = (Expr**)mem::malloc(Expr*.sizeof * items.len());
+    for (usz i = 0; i < items.len(); i++) { block_e.block.exprs[i] = items[i]; }
     items.free();
-    return begin_e;
+    return block_e;
 }
 
 fn Expr* Parser.wrap_body_with_destructuring(Parser* self, Expr* lambda_expr, Expr* body, List{Pattern*} patterns, List{SymbolId} names) {
@@ -133,7 +133,7 @@ fn bool Parser.parse_rest_param(Parser* self, SymbolId* rest_param) {
 }
 
 fn Expr* Parser.finalize_lambda_no_fixed_params(Parser* self, Expr* e, bool has_rest, SymbolId rest_param) {
-    Expr* body = self.parse_implicit_begin();
+    Expr* body = self.parse_implicit_block();
     self.expect(T_RPAREN, ")");
     if (self.has_error) return null;
     List{SymbolId} no_params;
@@ -143,7 +143,7 @@ fn Expr* Parser.finalize_lambda_no_fixed_params(Parser* self, Expr* e, bool has_
 }
 
 fn Expr* Parser.finalize_lambda_with_params(Parser* self, Expr* e, List{SymbolId} params, List{TypeAnnotation} param_anns, bool has_any_typed, bool has_rest, SymbolId rest_param, List{Pattern*} destr_patterns, List{SymbolId} destr_param_names, bool require_fixed_param) {
-    Expr* body = self.parse_implicit_begin();
+    Expr* body = self.parse_implicit_block();
     self.expect(T_RPAREN, ")");
     if (self.has_error) return null;
     if (require_fixed_param && params.len() < 1) {

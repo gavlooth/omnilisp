@@ -153,20 +153,20 @@ fn bool expand_macros_complex(Expr* expr, Interp* interp) {
 /**
  * expand_macros_in_expr — Pre-JIT macro expansion pass.
  *
- * Walks an AST and expands macros before JIT compilation. Within E_BEGIN
+ * Walks an AST and expands macros before JIT compilation. Within E_BLOCK
  * blocks, processes sequentially: E_DEFMACRO children are evaluated to register
  * the macro, then subsequent E_CALL children are expanded if they invoke a
  * known macro.
  *
  * Returns the (possibly transformed) expression. Mutates the tree in-place
- * where possible (e.g. replacing E_BEGIN children).
+ * where possible (e.g. replacing E_BLOCK children).
  */
 fn Expr* expand_macros_in_expr(Expr* expr, Interp* interp) {
     if (expr == null) return expr;
 
     switch (expr.tag) {
-        case E_BEGIN:
-            expand_macros_in_sequence(expr.begin.exprs, expr.begin.expr_count, interp);
+        case E_BLOCK:
+            expand_macros_in_sequence(expr.block.exprs, expr.block.expr_count, interp);
             return expr;
         case E_CALL: {
             if (Expr* expanded = expand_macro_call_site(expr, interp)) return expanded;

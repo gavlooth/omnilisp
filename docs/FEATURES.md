@@ -103,9 +103,9 @@
 - Binary only (not variadic)
 - Examples: `(or 42 99)` => 42, `(or nil 99)` => 99
 
-### 1.9 `begin` — Sequence Expression
+### 1.9 `block` — Sequence Expression
 ```lisp
-(begin e1 e2 ... en)
+(block e1 e2 ... en)
 ```
 - Evaluates all expressions in order, returns the last
 - Last expression is in tail position (TCO)
@@ -513,7 +513,7 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 Omni implements TCO via an eval loop with `continue` for tail positions:
 - `if` — both branches are tail positions
 - `let` — body is tail position
-- `begin` — last expression is tail position
+- `block` — last expression is tail position
 - `and`/`or` — second operand is tail position
 - `match` — clause bodies are tail positions
 - Function application — tail calls reuse the eval loop
@@ -590,7 +590,7 @@ The Omni compiler (`src/lisp/compiler.c3`) translates Lisp AST to C3 source code
 (describe "hi")    ;; => "string"
 ```
 
-Value dispatch for value-level matching (`Val` remains sugar):
+Value dispatch for value-level matching (`Value` is the only supported value-literal constructor):
 ```lisp
 (define (fib (^(Value 0) n)) 0)
 (define (fib (^(Value 1) n)) 1)
@@ -634,7 +634,7 @@ Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
 - TCO via V_THUNK trampoline pattern
 - All expression types compile natively (no interpreter delegation for effects/modules/quasiquote)
 - Type definitions and dispatch resolution delegate to interpreter
-- Supports: lambda, if, let (incl. ^rec), define, match, begin, and/or, call, reset/shift, handle/signal, quasiquote, modules, literals
+- Supports: lambda, if, let (incl. ^rec), define, match, block, and/or, call, reset/shift, handle/signal, quasiquote, modules, literals
 
 ### 11b. AOT Compilation
 
@@ -717,7 +717,7 @@ See `docs/PROJECT_TOOLING.md` for the complete reference.
 | Modules | 32 |
 | Macro clauses | 8 per macro |
 | Module exports | 128 per module |
-| Begin expressions | Dynamic (no fixed limit) |
+| Block expressions | Dynamic (no fixed limit) |
 | Lambda params | Dynamic (no fixed limit) |
 | String literal (inline) | 63 bytes (Token.text[64] lexer limit) |
 | String value | Dynamic (heap-allocated, no limit) |

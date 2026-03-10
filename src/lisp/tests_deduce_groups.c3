@@ -132,7 +132,7 @@ fn void run_deduce_open_smoke_test(Interp* interp, int* pass, int* fail) {
 fn void run_deduce_open_named_test(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define ndb (deduce 'open 'memory)) "
             "  (define rel-a (deduce 'open-named ndb 'nrel_a \"named_a\" 'name 'age)) "
             "  (define rel-b (deduce 'open-named ndb 'nrel_b \"named_b\" 'name 'age)) "
@@ -151,7 +151,7 @@ fn void run_deduce_open_named_test(Interp* interp, int* pass, int* fail) {
 
     {
         EvalResult r = run(
-            "(begin "
+            "(block "
             "  (define ndb2 (deduce 'open 'memory)) "
             "  (define rel-c (deduce 'open-named ndb2 'nrel_c 'named_c 'name 'age)) "
             "  (= (deduce 'count rel-c) 0))",
@@ -183,7 +183,7 @@ fn void run_deduce_open_named_test(Interp* interp, int* pass, int* fail) {
 
 fn void run_deduce_relation_attr_define_test(Interp* interp, int* pass, int* fail) {
     EvalResult r = run(
-        "(begin "
+        "(block "
         "  (define ddb-rel-attr (deduce 'open 'memory)) "
         "  (define [relation ddb-rel-attr] rel-attr-test (id) (name) (qty)) "
         "  (deduce 'count rel-attr-test))",
@@ -200,7 +200,7 @@ fn void run_deduce_relation_attr_define_test(Interp* interp, int* pass, int* fai
 
 fn void run_deduce_crud_example_flow_test(Interp* interp, int* pass, int* fail) {
     EvalResult r = run(
-        "(begin "
+        "(block "
         "  (load \"examples/deduce_crud_server.omni\") "
         "  (let (create1 (pipeline/result->response (repo/create {'id 101 'name \"paper\" 'qty 3})) "
         "        create2 (pipeline/result->response (repo/create {'id 101 'name \"paper\" 'qty 3})) "

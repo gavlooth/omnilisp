@@ -86,7 +86,7 @@
 (define cleanup-temp-files []
   (for-each (lambda (path)
               (when (file-exists? path)
-                (begin (ignore (delete-file path) nothing)))
+                (block (ignore (delete-file path) nothing)))
             temp-files)
   (set! temp-files (list)))
 

@@ -59,7 +59,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "runtime/effect-arg-mismatch", pass, fail);
 
     test_truthy(interp, "async file ops in fiber via offload path",
-        "(begin "
+        "(block "
         "  (define p (string-append \"/tmp/omni-async-file-\" (number->string (time-ms)) \".txt\")) "
         "  (define ok "
         "    (await "
@@ -77,7 +77,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         pass, fail);
 
     test_truthy(interp, "async file ops large payload roundtrip",
-        "(begin "
+        "(block "
         "  (define p (string-append \"/tmp/omni-async-large-\" (number->string (time-ms)) \".txt\")) "
         "  (define ok "
         "    (await "
@@ -94,34 +94,34 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         pass, fail);
 
     test_str_val(interp, "async write-file missing-path payload code",
-        "(begin "
+        "(block "
         "  (define p (string-append \"/tmp/omni-missing-dir-wf-\" (number->string (time-ms)) \"/x.txt\")) "
         "  (await (spawn (lambda () "
         "    (try (lambda (ignored) (write-file p \"x\")) (lambda (e) (symbol->string (ref e 'code))))))))",
         "io/write-file-failed", pass, fail);
 
     test_str_val(interp, "async read-file missing-path payload code",
-        "(begin "
+        "(block "
         "  (define p (string-append \"/tmp/omni-missing-dir-rf-\" (number->string (time-ms)) \"/x.txt\")) "
         "  (await (spawn (lambda () "
         "    (try (lambda (ignored) (read-file p)) (lambda (e) (symbol->string (ref e 'code))))))))",
         "io/read-file-failed", pass, fail);
 
     test_str_val(interp, "async read-lines missing-path payload code",
-        "(begin "
+        "(block "
         "  (define p (string-append \"/tmp/omni-missing-dir-rl-\" (number->string (time-ms)) \"/x.txt\")) "
         "  (await (spawn (lambda () "
         "    (try (lambda (ignored) (read-lines p)) (lambda (e) (symbol->string (ref e 'code))))))))",
         "io/read-lines-failed", pass, fail);
 
     test_nil(interp, "async file-exists? missing-path returns nil",
-        "(begin "
+        "(block "
         "  (define p (string-append \"/tmp/omni-missing-dir-fe-\" (number->string (time-ms)) \"/x.txt\")) "
         "  (await (spawn (lambda () (file-exists? p)))))",
         pass, fail);
 
     test_truthy(interp, "async file read cancel stress",
-        "(begin "
+        "(block "
         "  (define p (string-append \"/tmp/omni-async-cancel-\" (number->string (time-ms)) \".txt\")) "
         "  (await "
         "    (spawn (lambda () "
@@ -134,7 +134,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "        (define (loop n) "
         "          (if (= n 0) "
         "              true "
-        "              (begin "
+        "              (block "
         "                (define f (spawn (lambda () (read-file p)))) "
         "                (fiber-cancel f) "
         "                (run-fibers) "
@@ -192,7 +192,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
     // TLS offload timing), so keep argument/shape checks but skip handshake suite.
     if (async_tls_integration_enabled() && !main::stack_runtime_asan_enabled()) {
         test_truthy(interp, "tls valid cert handshake",
-        "(begin "
+        "(block "
         "  (define p (+ 45100 (% (time-ms) 10000))) "
         "  (define proc "
         "    (process-spawn \"/bin/sh\" "
@@ -209,7 +209,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "        (define outcome "
         "          (try "
         "            (lambda (ignored) "
-        "              (begin "
+        "              (block "
         "                (set! c (tcp-connect \"127.0.0.1\" p)) "
         "                (set! ctls (tls-connect c \"localhost\" \"tests/lib/tls/ca.cert.pem\")) "
         "                (tls-write ctls \"ping\") "
@@ -226,7 +226,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         pass, fail);
 
         test_truthy(interp, "tls rejects untrusted cert",
-        "(begin "
+        "(block "
         "  (define p (+ 45200 (% (time-ms) 10000))) "
         "  (define proc "
         "    (process-spawn \"/bin/sh\" "
@@ -244,7 +244,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "        (define outcome "
         "          (try "
         "            (lambda (ignored) "
-        "              (begin "
+        "              (block "
         "                (set! c (tcp-connect \"127.0.0.1\" p)) "
         "                (set! ctls (tls-connect c \"localhost\" \"tests/lib/tls/ca.cert.pem\")) "
         "                (tls-write ctls \"ping\") "
@@ -265,7 +265,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         pass, fail);
 
         test_truthy(interp, "tls rejects hostname mismatch",
-        "(begin "
+        "(block "
         "  (define p (+ 45300 (% (time-ms) 10000))) "
         "  (define proc "
         "    (process-spawn \"/bin/sh\" "
@@ -282,7 +282,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "        (define outcome "
         "          (try "
         "            (lambda (ignored) "
-        "              (begin "
+        "              (block "
         "                (set! c (tcp-connect \"127.0.0.1\" p)) "
         "                (set! ctls (tls-connect c \"not-localhost\" \"tests/lib/tls/ca.cert.pem\")) "
         "                (tls-write ctls \"ping\") "
@@ -303,7 +303,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         pass, fail);
 
         test_truthy(interp, "tls mTLS optional cert/key pass",
-        "(begin "
+        "(block "
         "  (define p (+ 45400 (% (time-ms) 10000))) "
         "  (define proc "
         "    (process-spawn \"/bin/sh\" "
@@ -320,7 +320,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "        (define outcome "
         "          (try "
         "            (lambda (ignored) "
-        "              (begin "
+        "              (block "
         "                (set! c (tcp-connect \"127.0.0.1\" p)) "
         "                (set! ctls (tls-connect c \"localhost\" \"tests/lib/tls/ca.cert.pem\" \"tests/lib/tls/client.cert.pem\" \"tests/lib/tls/client.key.pem\" true)) "
         "                (tls-write ctls \"ping\") "
@@ -337,7 +337,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         pass, fail);
 
         test_truthy(interp, "tls mTLS invalid key fails",
-        "(begin "
+        "(block "
         "  (define p (+ 45500 (% (time-ms) 10000))) "
         "  (define proc "
         "    (process-spawn \"/bin/sh\" "
@@ -354,7 +354,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "        (define outcome "
         "          (try "
         "            (lambda (ignored) "
-        "              (begin "
+        "              (block "
         "                (set! c (tcp-connect \"127.0.0.1\" p)) "
         "                (set! ctls (tls-connect c \"localhost\" \"tests/lib/tls/ca.cert.pem\" \"tests/lib/tls/client.cert.pem\" \"tests/lib/tls/missing-client.key.pem\")) "
         "                (tls-write ctls \"ping\") "
@@ -386,7 +386,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
 
     // listener lifecycle
     test_tag(interp, "tcp-listen open/close",
-        "(begin "
+        "(block "
         "  (define f (spawn (lambda () "
         "    (define ls (tcp-listen \"127.0.0.1\" 0 8)) "
         "    (tcp-close ls)))) "
@@ -395,7 +395,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
 
     // fiber-safe listen path: listen in fiber uses libuv tcp bind/listen bridge
     test_tag(interp, "tcp-listen in fiber via libuv bridge",
-        "(begin "
+        "(block "
         "  (define f (spawn (lambda () "
         "    (define ls (tcp-listen \"127.0.0.1\" 0 8)) "
         "    (tcp-close ls)))) "
@@ -411,7 +411,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
 
     // fiber-safe connect path: connect in fiber uses libuv tcp connect bridge
     test_truthy(interp, "tcp-connect in fiber via libuv bridge",
-        "(begin "
+        "(block "
         "  (define __tcp-connect-bridge-salt "
         "    (if (bound? '__tcp-connect-bridge-salt) "
         "        (+ __tcp-connect-bridge-salt 1) "
@@ -439,7 +439,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
 
     // fiber-safe accept path: accept in fiber uses libuv accept bridge
     test_truthy(interp, "tcp-accept in fiber via libuv bridge",
-        "(begin "
+        "(block "
         "  (define tf (spawn (lambda () "
         "    (define p (+ 30000 (% (time-ms) 20000))) "
         "    (define listener (tcp-listen \"127.0.0.1\" p 8)) "
@@ -458,7 +458,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
 
     // fiber-safe close path: close in fiber uses libuv tcp close helper
     test_tag(interp, "tcp-close in fiber via libuv bridge",
-        "(begin "
+        "(block "
         "  (define f (spawn (lambda () "
         "    (define ls (tcp-listen \"127.0.0.1\" 0 8)) "
         "    (tcp-close ls)))) "
@@ -467,7 +467,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
 
     // fiber-safe write path: write in fiber uses async writable wakeup bridge
     test_truthy(interp, "tcp-write in fiber via async bridge",
-        "(begin "
+        "(block "
         "  (define tf (spawn (lambda () "
         "    (define p (+ 30500 (% (time-ms) 20000))) "
         "    (define listener (tcp-listen \"127.0.0.1\" p 8)) "
@@ -494,7 +494,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "requires running fiber context", pass, fail);
 
     test_truthy(interp, "pipe connect/listen in fiber via libuv bridge",
-        "(begin "
+        "(block "
         "  (define pf (spawn (lambda () "
         "    (define p (string-append \"/tmp/omni_pipe_async_\" (number->string (% (time-ms) 1000000)) \".sock\")) "
         "    (define listener (pipe-listen p)) "
@@ -512,7 +512,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
 
     // fiber-safe UDP receive path: recv in fiber uses async wakeup bridge
     test_truthy(interp, "udp-recv in fiber via async bridge",
-        "(begin "
+        "(block "
         "  (define p (+ 35000 (% (time-ms) 20000))) "
         "  (define recv (udp-socket)) "
         "  (udp-bind recv \"127.0.0.1\" p) "
