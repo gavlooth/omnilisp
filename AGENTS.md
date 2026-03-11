@@ -76,6 +76,14 @@ Use the commands that match the current repo:
 - Run main binary: `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
 - Run end-to-end compiler checks: `scripts/run_e2e.sh`
 
+Container-bound validation rule:
+
+- Do not run heavy validation, full-suite runs, global gates, boundary-hardening runs, end-to-end gates, or high-memory Lisp slices directly on the host.
+- High-memory or slice-based test execution must run inside the bounded Docker validation path (`scripts/run_validation_container.sh` or the Docker-bound gate scripts).
+- Treat `OMNI_LISP_TEST_SLICE=all`, `memory-lifetime-soak`, and `memory-stress` as container-only.
+- When a test run could materially spike host memory or CPU, prefer the bounded container path even for targeted validation.
+- Keep validation within the repo policy cap: Docker-bound execution with at most 30% host memory and 30% host CPU.
+
 Before finishing significant code changes:
 
 - Run at least targeted tests for touched areas

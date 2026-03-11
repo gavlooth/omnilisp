@@ -37,9 +37,15 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
 - Boundary return-path telemetry now reports zero copy fallback pressure in both profiles (`copy_fallback_total=0` in normal and ASAN boundary hardening runs).
 - Session 44 docs closure artifact is published:
   - `docs/BOUNDARY_ARCHITECTURE_AUDIT_2026-03-10.md` defines boundary invariants contract and residual risk list.
-- Memory-lifetime execution policy is split for operator safety:
-  - `memory-lifetime` maps to smoke coverage,
-  - `memory-lifetime-soak` is explicit heavy stress/soak coverage.
+- Memory/ownership test policy is split into explicit lanes:
+  - `memory-lifetime` remains a compatibility alias for `memory-lifetime-smoke`.
+  - `memory-lifetime-smoke` owns boundary/scoping/coroutine ownership correctness.
+  - `memory-lifetime-policy` owns boundary-policy parser/config contracts.
+  - `memory-lifetime-bench` owns boundary allocation/perf coverage.
+  - `memory-lifetime-soak` owns explicit heavy saturation/stress ownership probes.
+  - `memory-stress` owns the global stress profile.
+  - `allocator-validation` owns AST allocator correctness (non-benchmark).
+  - `allocator-bench` owns AST throughput/benchmark-only coverage.
 - Parser/AST benchmark instrumentation is available under `OMNI_AST_ARENA_BENCH=1`, with dedicated parser and compiler smoke summaries (`ast_parser_smoke`, `ast_compiler_smoke`) for AST allocator shape validation.
 - Boundary graph traversal/copy-fallback routing is no longer a production return-path mechanism for eval/JIT finalize flows:
   - boundary commit paths now return explicit hard outcomes for disallowed fallback classes,

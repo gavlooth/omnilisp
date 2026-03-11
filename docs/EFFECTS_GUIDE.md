@@ -413,8 +413,8 @@ regular functions and compose them:
 In rare cases you need to resume the same continuation multiple times — for
 example, to explore multiple branches of a nondeterministic computation.
 
-Use `with-continuation` inside a handler clause to capture the continuation
-as a named value you can call directly:
+Use `with-continuation` only inside a handler clause to capture the
+continuation as a named value you can call directly:
 
 ```lisp
 (handle (+ 1 (signal choose 0))
@@ -426,7 +426,8 @@ as a named value you can call directly:
 
 `with-continuation` binds the hidden continuation to a name (`k` here, but
 any name works). You can then call it like a function. Each call resumes the
-body from where `signal` was, with the given value.
+body from where `signal` was, with the given value. Outside a handler clause
+it is invalid syntax.
 
 This is a power-user feature. For normal effects, `resolve` is all you need.
 
@@ -441,7 +442,7 @@ This is a power-user feature. For normal effects, `resolve` is all you need.
 | Handle effects | `(handle body (tag arg body...) ...)` | Install a handler |
 | Respond | `(resolve value)` | Send a value back, body continues |
 | Abort | don't call `resolve` | Short-circuit, return handler result |
-| Multi-shot | `(with-continuation k ...)` | Name the continuation for direct use |
+| Multi-shot | `(with-continuation k ...)` | Name the continuation explicitly inside a handler clause |
 
 | I/O Effect | Wrapper | Fast path |
 |-----------|---------|-----------|

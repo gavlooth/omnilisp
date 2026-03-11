@@ -16,28 +16,12 @@ fn bool Parser.consume_handle_strict_annotation(Parser* self) {
     return true;
 }
 
-fn bool Parser.parse_handle_old_clause(Parser* self, EffectClause* clause) {
-    self.lexer.advance();  // consume inner (
-    if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected effect tag"); return false; }
-    clause.effect_tag = self.get_current_symbol();
-    self.lexer.advance();
+fn bool Parser.parse_handle_clause(Parser* self, EffectClause* clause) {
+    if (self.lexer.current.type != T_SYMBOL) {
+        self.set_error("legacy handle clause syntax was removed; use (tag arg body) and with-continuation when needed");
+        return false;
+    }
 
-    if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected continuation name"); return false; }
-    clause.k_name = self.get_current_symbol();
-    self.lexer.advance();
-
-    if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected arg name"); return false; }
-    clause.arg_name = self.get_current_symbol();
-    self.lexer.advance();
-
-    self.expect(T_RPAREN, ")");
-    if (self.has_error) return false;
-    clause.handler_body = self.parse_expr();
-    return !self.has_error;
-}
-
-fn bool Parser.parse_handle_new_clause(Parser* self, EffectClause* clause) {
-    if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected effect tag"); return false; }
     clause.effect_tag = self.get_current_symbol();
     self.lexer.advance();
 
@@ -46,19 +30,11 @@ fn bool Parser.parse_handle_new_clause(Parser* self, EffectClause* clause) {
     self.lexer.advance();
 
     clause.k_name = self.interp.sym__k;
+    bool was_in_handle_clause = self.in_handle_clause;
+    self.in_handle_clause = true;
     clause.handler_body = self.parse_implicit_block();
+    self.in_handle_clause = was_in_handle_clause;
     return !self.has_error;
-}
-
-fn bool Parser.parse_handle_clause(Parser* self, EffectClause* clause) {
-    if (self.lexer.current.type == T_LPAREN) {
-        return self.parse_handle_old_clause(clause);
-    }
-    if (self.lexer.current.type == T_SYMBOL) {
-        return self.parse_handle_new_clause(clause);
-    }
-    self.set_error("expected effect tag or '('");
-    return false;
 }
 
 fn Expr* Parser.parse_handle(Parser* self) {

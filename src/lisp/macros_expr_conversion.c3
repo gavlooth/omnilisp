@@ -129,6 +129,14 @@ fn Expr* make_nil_expr(Interp* interp) @inline {
     return e;
 }
 
+// Create an E_LIT error expression.
+fn Expr* make_error_expr(Interp* interp, char[] msg) @inline {
+    Expr* e = interp.alloc_expr();
+    e.tag = E_LIT;
+    e.lit.value = make_error(interp, msg);
+    return e;
+}
+
 // Convert car of a cons rest-list to Expr, or nil if rest is not a cons.
 fn Expr* rest_car_expr(Value* rest, Interp* interp) @inline {
     if (is_cons(rest)) return value_to_expr(rest.cons_val.car, interp);
@@ -213,12 +221,13 @@ fn Expr* vte_lambda(Value* rest, Interp* interp) {
 
 // Convert (let (name1 val1 name2 val2 ...) body) value-list to nested E_LET exprs.
 fn Expr* vte_let(Value* rest, Interp* interp) {
-    if (!is_cons(rest)) return make_nil_expr(interp);
+    if (!is_cons(rest)) return make_error_expr(interp, "macro expansion emitted malformed let: expected bindings list and body");
     Value* bindings_list = rest.cons_val.car;
     rest = rest.cons_val.cdr;
     Expr* body = rest_car_expr(rest, interp);
 
-    if (!is_cons(bindings_list)) return body;
+    char[] invalid_bindings_msg = "macro expansion emitted invalid let bindings; expected flat pairs: (let (x 1 y 2) ...)";
+    if (!is_cons(bindings_list)) return make_error_expr(interp, invalid_bindings_msg);
 
     // Collect flat-pair bindings: name val name val ...
     List{SymbolId} names;
@@ -226,19 +235,34 @@ fn Expr* vte_let(Value* rest, Interp* interp) {
     Value* bp = bindings_list;
     while (is_cons(bp)) {
         Value* name_v = bp.cons_val.car;
-        if (name_v != null && name_v.tag == SYMBOL) {
-            names.push(name_v.sym_val);
-            bp = bp.cons_val.cdr;
-            if (is_cons(bp)) {
-                inits.push(bp.cons_val.car);
-                bp = bp.cons_val.cdr;
-            } else {
-                inits.push(make_nil(interp));
-            }
-        } else {
-            bp = bp.cons_val.cdr;
+        if (name_v == null || name_v.tag != SYMBOL) {
+            names.free();
+            inits.free();
+            return make_error_expr(interp, invalid_bindings_msg);
         }
+
+        names.push(name_v.sym_val);
+        bp = bp.cons_val.cdr;
+        if (!is_cons(bp)) {
+            names.free();
+            inits.free();
+            return make_error_expr(interp, invalid_bindings_msg);
+        }
+        inits.push(bp.cons_val.car);
+        bp = bp.cons_val.cdr;
     }
+    if (bp != null && bp.tag != NIL) {
+        names.free();
+        inits.free();
+        return make_error_expr(interp, invalid_bindings_msg);
+    }
+
+    if (names.len() == 0) {
+        names.free();
+        inits.free();
+        return make_error_expr(interp, "macro expansion emitted malformed let: expected at least one binding");
+    }
+
     // Build nested lets from inside out
     Expr* inner = body;
     for (usz i = names.len(); i > 0; i--) {

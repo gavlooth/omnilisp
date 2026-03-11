@@ -46,10 +46,18 @@ fn Expr* Parser.parse_symbol_head_form(Parser* self, SymbolId head, bool* matche
         self.set_error("do syntax was removed; use block");
         return null;
     }
+    if (parser_symbol_text_is(head_text, "letrec")) {
+        self.set_error("letrec syntax was removed; use let ^rec");
+        return null;
+    }
     if ((uint)head == (uint)self.interp.sym_if) return self.parse_if();
     if ((uint)head == (uint)self.interp.sym_let) return self.parse_let();
     if ((uint)head == (uint)self.interp.sym_define) return self.parse_define();
     if ((uint)head == (uint)self.interp.sym_quote) return self.parse_quote();
+    if (parser_symbol_text_is(head_text, "begin")) {
+        self.set_error("begin syntax was removed; use block");
+        return null;
+    }
     if ((uint)head == (uint)self.interp.sym_reset) return self.parse_reset();
     if ((uint)head == (uint)self.interp.sym_shift) return self.parse_shift();
     if ((uint)head == (uint)self.interp.sym_signal) return self.parse_perform();

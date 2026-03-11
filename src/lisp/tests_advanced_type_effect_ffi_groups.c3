@@ -357,6 +357,59 @@ fn void run_advanced_parser_type_def_edge_tests(Interp* interp, int* pass, int* 
         pass, fail);
 }
 
+fn void run_advanced_type_value_alias_deprecation_matrix_tests(Interp* interp, int* pass, int* fail) {
+    // Canonical constructor form should remain accepted.
+    test_eq_interp(interp,
+        "parser matrix accepts Value int constructor",
+        "((lambda ((^(Value 0) n)) n) 0)",
+        0,
+        pass,
+        fail);
+
+    test_eq_interp(interp,
+        "parser matrix accepts Value symbol constructor",
+        "((lambda ((^(Value open) cmd)) 88) 'open)",
+        88,
+        pass,
+        fail);
+
+    test_str_val(interp,
+        "parser matrix accepts Value string constructor",
+        "((lambda ((^(Value \"x\") x)) x) \"x\")",
+        "x",
+        pass,
+        fail);
+
+    test_eq_interp(interp,
+        "parser matrix accepts Value bool constructor",
+        "((lambda ((^(Value true) ok) ok) 99) true)",
+        99,
+        pass,
+        fail);
+
+    // Legacy alias should be rejected at parse time with explicit canonical message.
+    test_error_contains(interp,
+        "parser matrix rejects Val int constructor",
+        "((lambda ((^(Val 0) n)) n) 0)",
+        "Val constructor was removed; use Value",
+        pass,
+        fail);
+
+    test_error_contains(interp,
+        "parser matrix rejects Val symbol constructor",
+        "((lambda ((^(Val open) n)) n) 'open)",
+        "Val constructor was removed; use Value",
+        pass,
+        fail);
+
+    test_error_contains(interp,
+        "parser matrix rejects Val string constructor",
+        "((lambda ((^(Val \"x\") n)) n) \"x\")",
+        "Val constructor was removed; use Value",
+        pass,
+        fail);
+}
+
 fn void run_advanced_type_parametric_tests(Interp* interp, int* pass, int* fail) {
     run_advanced_type_parametric_core_hierarchy_tests(interp, pass, fail);
     run_advanced_type_parametric_type_args_tests(interp, pass, fail);
@@ -364,6 +417,7 @@ fn void run_advanced_type_parametric_tests(Interp* interp, int* pass, int* fail)
     run_advanced_type_lambda_call_boundary_tests(interp, pass, fail);
     run_advanced_type_parametric_disambiguation_tests(interp, pass, fail);
     run_advanced_parser_type_def_edge_tests(interp, pass, fail);
+    run_advanced_type_value_alias_deprecation_matrix_tests(interp, pass, fail);
 }
 
 fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass, int* fail) {
@@ -403,12 +457,6 @@ fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass,
     setup(interp, "(define (flag x) 99)");
     test_eq_interp(interp, "dispatch Value bool true literal", "(flag true)", 11, pass, fail);
     test_eq_interp(interp, "dispatch Value bool false literal", "(flag false)", 22, pass, fail);
-
-    test_error_contains(interp,
-        "dispatch removed Val ctor rejection",
-        "(define (legacy-fib (^(Val 0) n)) 0)",
-        "Val constructor was removed; use Value",
-        pass, fail);
 
     setup(interp, "(define (ambv (^(Value open) cmd) x) 1)");
     setup(interp, "(define (ambv x (^(Value open) cmd)) 2)");

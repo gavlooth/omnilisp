@@ -21,7 +21,25 @@ fn Expr* Parser.parse_match(Parser* self) {
     while (self.lexer.current.type == T_LPAREN && !self.has_error) {
         self.lexer.advance();  // consume '('
         Pattern* pattern = self.parse_pattern();
+        if (self.has_error) {
+            match_clauses.free();
+            return null;
+        }
+        if (self.lexer.current.type == T_RPAREN) {
+            match_clauses.free();
+            self.set_error("match clauses must be (pattern result) pairs");
+            return null;
+        }
         Expr* result = self.parse_expr();
+        if (self.has_error) {
+            match_clauses.free();
+            return null;
+        }
+        if (self.lexer.current.type != T_RPAREN) {
+            match_clauses.free();
+            self.set_error("match clauses must be (pattern result) pairs");
+            return null;
+        }
         self.expect(T_RPAREN, ")");
         match_clauses.push({ .pattern = pattern, .result = result });
     }

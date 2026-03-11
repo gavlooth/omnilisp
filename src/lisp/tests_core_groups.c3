@@ -84,6 +84,21 @@ fn void run_basic_control_flow_tests(Interp* interp, int* pass, int* fail) {
     // Recursive let
     test_eq(interp, "let ^rec factorial 5 => 120", "(let ^rec (fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1)))))) (fact 5))", 120, pass, fail);
     test_eq(interp, "non-recursive let", "(let (x 10) (+ x 5))", 15, pass, fail);
+    test_eq(interp, "let bindings are sequential",
+        "(let (x 1 y (+ x 2) z (+ y 3)) z)",
+        6, pass, fail);
+    test_eq(interp, "named let bindings are sequential",
+        "(let loop (x 1 y (+ x 2)) (+ x y))",
+        4, pass, fail);
+    test_error_contains(interp, "scheme let syntax rejected",
+        "(let ((x 10) (y 20)) (+ x y))",
+        "Scheme-style let bindings were removed; use flat pairs", pass, fail);
+    test_error_contains(interp, "let bracket binding syntax rejected",
+        "(let [x 10] (+ x 5))",
+        "let bindings must use flat pairs", pass, fail);
+    test_error_contains(interp, "named let scheme binding syntax rejected",
+        "(let loop ((x 0) (y 1)) (+ x y))",
+        "Scheme-style named let bindings were removed; use flat pairs", pass, fail);
 
     // And/or
     test_truthy(interp, "and true true", "(and true true)", pass, fail);

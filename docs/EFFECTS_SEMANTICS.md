@@ -45,6 +45,7 @@ Each rule includes test anchors in Section 6.
   re-resuming the same continuation is an error.
 - Multi-shot behavior MUST be explicit via `with-continuation`, not implicit
   repeated `resolve`.
+- `with-continuation` is valid only inside active handler-clause execution.
 
 ### EFX-4: Abort Semantics
 
@@ -214,6 +215,8 @@ These examples are intended to remain executable and linked to regression tests.
 
 - `with-continuation` desugars to binding the hidden continuation (`__k`) in
   handler scope and is the explicit multi-shot escape hatch.
+- Parser surface rule: `with-continuation` is rejected outside handler-clause
+  context.
 - Fast-path dispatch is an optimization for selected effect tags and does not
   change observable handler precedence semantics.
 

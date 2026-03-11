@@ -64,25 +64,14 @@ fn Value* prim_macroexpand(Value*[] args, Env* env, Interp* interp) {
     Value* form = args[0];
     // Form should be a list (macro-name arg...)
     if (!is_cons(form)) return form; // not a macro call, return as-is
-    Value* head = form.cons_val.car;
-    if (head == null || !is_symbol(head)) return form;
-    SymbolId sym = head.sym_val;
-    // Check macro table using hash index
-    usz mh = (usz)((uint)sym * 2654435761);
-    usz mmask = interp.macro_hash_capacity - 1;
-    for (usz probe = 0; probe < interp.macro_hash_capacity; probe++) {
-        usz slot = (mh + probe) & mmask;
-        usz midx = interp.macro_hash_index[slot];
-        if (midx == usz.max) break; // empty slot
-        if ((uint)interp.macro_table[midx].name == (uint)sym) {
-            Expr* call_expr = value_to_expr(form, interp);
-            if (call_expr == null) return form;
-            EvalResult r = expand_pattern_macro(&interp.macro_table[midx], call_expr, interp);
-            if (!r.error.has_error && r.value != null) return r.value;
-            return form;
-        }
-    }
-    return form;
+    Expr* call_expr = value_to_expr(form, interp);
+    if (call_expr == null) return form;
+
+    EvalResult r;
+    if (!try_expand_macro_call_expr(call_expr, interp, &r)) return form;
+    if (r.error.has_error) return raise_error(interp, r.error.message[:256]);
+    if (r.value != null) return r.value;
+    return make_nil(interp);
 }
 
 fn Value* prim_eval(Value*[] args, Env* env, Interp* interp) {

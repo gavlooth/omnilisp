@@ -408,15 +408,11 @@ fn bool jit_is_simple_expr(Expr* expr) {
 
 fn void? jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     // Check for macro expansion at compile time
-    if (expr.call.func.tag == E_VAR) {
-        MacroDef* macro_def = lookup_macro(expr.call.func.var_expr.name, interp);
-        if (macro_def != null) {
-            EvalResult macro_result = expand_pattern_macro(macro_def, expr, interp);
-            if (macro_result.error.has_error) return JIT_COMPILE_FAILED~;
-            Expr* expanded = value_to_expr(macro_result.value, interp);
-            jit_compile_expr(s, expanded, interp, locals, is_tail)!;
-            return;
-        }
+    EvalResult macro_result;
+    if (try_expand_macro_call_expr(expr, interp, &macro_result)) {
+        Expr* expanded = macro_result_to_expr(&macro_result, expr, interp);
+        jit_compile_expr(s, expanded, interp, locals, is_tail)!;
+        return;
     }
 
     // Check if this is a known binary primitive: (+ a b), (- a b), etc.

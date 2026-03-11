@@ -9,6 +9,7 @@ struct Parser {
     Lexer*    lexer;
     Interp*   interp;
     bool      has_error;
+    bool      in_handle_clause;
     char[256] error_msg;
     usz       error_msg_len;
     usz       error_line;
@@ -21,6 +22,7 @@ fn void Parser.init(Parser* self, Lexer* lexer, Interp* interp) {
     self.lexer = lexer;
     self.interp = interp;
     self.has_error = false;
+    self.in_handle_clause = false;
     self.error_msg_len = 0;
     self.error_line = 0;
     self.error_col = 0;

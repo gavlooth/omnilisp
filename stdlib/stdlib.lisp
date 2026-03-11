@@ -61,9 +61,22 @@
 ;; =========================================================================
 ;; Standard Macros (defined before HOFs since macros may be used by them)
 ;; =========================================================================
-(define [macro] when ([test .. body] (if test (block .. body) nil)))
-(define [macro] unless ([test .. body] (if test nil (block .. body))))
-(define [macro] cond ([] nil) ([test body .. rest] (if test body (cond .. rest))))
+(define [macro] when
+  (syntax-match
+    ([test .. body]
+      (template (if (insert test) (block (splice body)) nil)))))
+
+(define [macro] unless
+  (syntax-match
+    ([test .. body]
+      (template (if (insert test) nil (block (splice body)))))))
+
+(define [macro] cond
+  (syntax-match
+    ([]
+      (template nil))
+    ([test body .. rest]
+      (template (if (insert test) (insert body) (cond .. rest))))))
 (define (default v fallback) (if (null? v) fallback v))
 
 ;; with-defaults: wrap body with nil-checked defaults for dict destructured bindings
@@ -71,8 +84,12 @@
 ;; Last argument is the body expression. Preceding pairs are (name default-value).
 ;; Expands to nested lets: (let (name1 (default name1 val1)) (let (name2 ...) body))
 (define [macro] with-defaults
-  ([body] body)
-  ([name val .. rest] (let (name (default name val)) (with-defaults .. rest))))
+  (syntax-match
+    ([body]
+      (template (insert body)))
+    ([name val .. rest]
+      (template (let ((insert name) (default (insert name) (insert val)))
+                  (with-defaults .. rest))))))
 (define with-trampoline (lambda (thunk) (handle (thunk nil) (bounce next-thunk (resolve (with-trampoline next-thunk))))))
 
 ;; =========================================================================
@@ -246,7 +263,10 @@
 
 ;; stream-yield: (stream-yield val) inside a generator — returns (cons val continuation)
 ;; Note: yield is now a primitive for fibers. Use stream-yield for generator patterns.
-(define [macro] stream-yield ([val] (shift k (cons val k))))
+(define [macro] stream-yield
+  (syntax-match
+    ([val]
+      (template (shift k (cons (insert val) k))))))
 
 ;; stream-take: consume n values from a generator continuation
 (define (stream-take n gen) (let loop (i n g gen acc nil) (if (= i 0) (reverse acc) (if (null? g) (reverse acc) (let (pair (if (procedure? g) (g nil) g)) (if (null? pair) (reverse acc) (loop (- i 1) (cdr pair) (cons (car pair) acc))))))))
@@ -380,58 +400,30 @@
 (define (request method url body headers) (http-request method url body headers))
 
 ;; format helpers stay thin: dispatch only selects existing primitive wrappers.
-(define [macro] parse
-  ([fmt src]
-    (let (f fmt s src)
-      (if (= f 'json)
-          (json-parse s)
-          (if (= f 'toml)
-              (toml-parse s)
-              (if (= f 'csv)
-                  (csv-parse s)
-                  (signal raise
-                          { 'code 'data/parse-format-unsupported
-                            'domain 'data
-                            'message "parse: unsupported format (supported: 'json, 'toml, 'csv)"
-                            'data {'format f} }))))))
-  ([fmt src opts]
-    (let (f fmt s src o opts)
-      (if (= f 'json)
-          (json-parse s o)
-          (if (= f 'toml)
-              (toml-parse s o)
-              (if (= f 'csv)
-                  (csv-parse s o)
-                  (signal raise
-                          { 'code 'data/parse-format-unsupported
-                            'domain 'data
-                            'message "parse: unsupported format (supported: 'json, 'toml, 'csv)"
-                            'data {'format f} })))))))
+(define (parse fmt src .. rest)
+  (let (f fmt s src o (if (null? rest) nil (car rest)))
+    (if (= f 'json)
+        (if (null? rest) (json-parse s) (json-parse s o))
+        (if (= f 'toml)
+            (if (null? rest) (toml-parse s) (toml-parse s o))
+            (if (= f 'csv)
+                (if (null? rest) (csv-parse s) (csv-parse s o))
+                (signal raise
+                        { 'code 'data/parse-format-unsupported
+                          'domain 'data
+                          'message "parse: unsupported format (supported: 'json, 'toml, 'csv)"
+                          'data {'format f} }))))))
 
-(define [macro] emit
-  ([fmt value]
-    (let (f fmt v value)
-      (if (= f 'json)
-          (json-emit v)
-          (if (= f 'json-pretty)
-              (json-emit-pretty v)
-              (if (= f 'csv)
-                  (csv-emit v)
-                  (signal raise
-                          { 'code 'data/emit-format-unsupported
-                            'domain 'data
-                            'message "emit: unsupported format (supported: 'json, 'json-pretty, 'csv)"
-                            'data {'format f} }))))))
-  ([fmt value opts]
-    (let (f fmt v value o opts)
-      (if (= f 'json)
-          (json-emit v o)
-          (if (= f 'json-pretty)
-              (json-emit-pretty v o)
-              (if (= f 'csv)
-                  (csv-emit v o)
-                  (signal raise
-                          { 'code 'data/emit-format-unsupported
-                            'domain 'data
-                            'message "emit: unsupported format (supported: 'json, 'json-pretty, 'csv)"
-                            'data {'format f} })))))))
+(define (emit fmt value .. rest)
+  (let (f fmt v value o (if (null? rest) nil (car rest)))
+    (if (= f 'json)
+        (if (null? rest) (json-emit v) (json-emit v o))
+        (if (= f 'json-pretty)
+            (if (null? rest) (json-emit-pretty v) (json-emit-pretty v o))
+            (if (= f 'csv)
+                (if (null? rest) (csv-emit v) (csv-emit v o))
+                (signal raise
+                        { 'code 'data/emit-format-unsupported
+                          'domain 'data
+                          'message "emit: unsupported format (supported: 'json, 'json-pretty, 'csv)"
+                          'data {'format f} })))))))

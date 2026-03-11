@@ -66,11 +66,16 @@ fn Expr* Parser.parse_resolve(Parser* self) {
     return e;
 }
 
-// (with-continuation k body...) → (let ((k __k)) body...)
+// (with-continuation k body...) → (let (k __k) body...)
 fn Expr* Parser.parse_with_continuation(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();
     self.lexer.advance();  // consume 'with-continuation'
+
+    if (!self.in_handle_clause) {
+        self.set_error("with-continuation is only valid inside handle clauses");
+        return null;
+    }
 
     if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected continuation name"); return null; }
     SymbolId k_name = self.get_current_symbol();
@@ -80,7 +85,7 @@ fn Expr* Parser.parse_with_continuation(Parser* self) {
     Expr* body = self.parse_implicit_block();
     self.expect(T_RPAREN, ")");
 
-    // Desugar to (let ((k __k)) body)
+    // Desugar to canonical Omni let syntax: (let (k __k) body)
     e.tag = E_LET;
     e.let_expr.name = k_name;
     Expr* var_ref = self.interp.alloc_expr();

@@ -26,13 +26,13 @@ enum ExprTag : char {
     E_LAMBDA,     // (lambda (x) body)
     E_APP,        // (f arg)
     E_IF,         // (if test then else)
-    E_LET,        // (let ((x val)) body)
+    E_LET,        // (let (x val) body)
     E_DEFINE,     // (define name val)
     E_QUOTE,      // (quote datum)
     E_RESET,      // (reset body)
     E_SHIFT,      // (shift k body)
     E_PERFORM,    // (perform tag arg) or (signal tag arg)
-    E_HANDLE,     // (handle body (tag arg body) ...) or (handle body ((tag k arg) body) ...)
+    E_HANDLE,     // (handle body (tag arg body) ...)
     E_RESOLVE,    // (resolve value) — resume continuation in handler clause
     E_INDEX,      // arr.[0] - path index access
     E_PATH,       // point.x, person.address.city - field access

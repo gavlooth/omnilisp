@@ -7,6 +7,8 @@ import main;
 // =============================================================================
 // SECTION 3: JIT HELPER FUNCTIONS (apply-multi/tail + primitive shims)
 // =============================================================================
+const usz JIT_TYPED_PREFIX_INLINE_ARG_CAPACITY = 8;
+
 fn Value* jit_cons(Interp* interp, Value* car, Value* cdr) {
     return make_cons(interp, car, cdr);
 }
@@ -30,20 +32,28 @@ fn Value* jit_check_closure_typed_prefix_args(Interp* interp, Closure* closure, 
     usz checked_count = closure.type_sig.param_count;
     if (checked_count == 0 || arg_count < checked_count) return null;
 
-    Value** checked_storage = (Value**)mem::malloc(Value*.sizeof * checked_count);
-    if (checked_storage == null) {
-        return raise_error(interp, "lambda type check: out of memory");
+    Value*[] checked_args = {};
+    Value*[JIT_TYPED_PREFIX_INLINE_ARG_CAPACITY] checked_inline;
+    Value** checked_storage = null;
+    if (checked_count <= JIT_TYPED_PREFIX_INLINE_ARG_CAPACITY) {
+        checked_args = checked_inline[:checked_count];
+    } else {
+        checked_storage = (Value**)mem::malloc(Value*.sizeof * checked_count);
+        if (checked_storage == null) {
+            return raise_error(interp, "lambda type check: out of memory");
+        }
+        checked_args = checked_storage[:checked_count];
     }
-    defer mem::free(checked_storage);
+    defer if (checked_storage != null) mem::free(checked_storage);
 
     Value* curr = arg_list;
     for (usz i = 0; i < checked_count; i++) {
         if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
-        checked_storage[i] = curr.cons_val.car;
+        checked_args[i] = curr.cons_val.car;
         curr = curr.cons_val.cdr;
     }
 
-    return check_lambda_call_boundary(closure, checked_storage[:checked_count], arg_count, interp);
+    return check_lambda_call_boundary(closure, checked_args, arg_count, interp);
 }
 
 fn Value* jit_apply_multi_args_variadic_closure(Interp* interp, Value* func, Value* arg_list, usz arg_count) {

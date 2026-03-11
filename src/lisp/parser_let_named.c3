@@ -8,10 +8,21 @@ import std::collections::list;
  * (let name (x init-x y init-y) body...)
  *
  * Desugars to:
- * (let ^rec (name (lambda (x y) body)) (name init-x init-y))
+ * (let (x init-x y init-y)
+ *   (let ^rec (name (lambda (x y) body))
+ *     (name x y)))
  */
 fn bool Parser.parse_named_let_bindings(Parser* self, List{SymbolId}* params, List{Expr*}* inits) {
+    if (self.lexer.current.type != T_LPAREN) {
+        self.reject_legacy_let_binding_shape(true);
+        if (self.has_error) return false;
+    }
+
     self.expect(T_LPAREN, "(");  // consume '(' of bindings list
+    if (self.has_error) return false;
+    self.reject_legacy_let_binding_shape(true);
+    if (self.has_error) return false;
+
     while (self.lexer.current.type == T_SYMBOL && !self.has_error) {
         (*params).push(self.get_current_symbol());
         self.lexer.advance();
@@ -70,6 +81,42 @@ fn Expr* Parser.build_named_let_call(Parser* self, Expr* e, SymbolId loop_name, 
     return call_expr;
 }
 
+fn Expr* Parser.build_named_let_arg_ref(Parser* self, Expr* e, SymbolId name) {
+    Expr* name_ref = self.interp.alloc_expr();
+    name_ref.tag = E_VAR;
+    name_ref.loc_line = e.loc_line;
+    name_ref.loc_column = e.loc_column;
+    name_ref.var_expr.name = name;
+    return name_ref;
+}
+
+fn Expr* Parser.build_named_let_sequential_body(Parser* self, Expr* e, SymbolId loop_name, List{SymbolId}* params, List{Expr*}* inits, Expr* lambda_expr) {
+    usz param_count = (*params).len();
+    Expr* call_expr = self.build_named_let_call(e, loop_name, inits);
+    for (usz i = 0; i < param_count; i++) {
+        call_expr.call.args[i] = self.build_named_let_arg_ref(e, (*params)[i]);
+    }
+
+    Expr* recursive_let = self.interp.alloc_expr();
+    recursive_let.tag = E_LET;
+    recursive_let.loc_line = e.loc_line;
+    recursive_let.loc_column = e.loc_column;
+    recursive_let.let_expr.name = loop_name;
+    recursive_let.let_expr.init = lambda_expr;
+    recursive_let.let_expr.body = call_expr;
+    recursive_let.let_expr.is_recursive = true;
+    recursive_let.let_expr.pattern = null;
+
+    List{Pattern*} patterns;
+    for (usz i = 0; i < param_count; i++) {
+        patterns.push(null);
+    }
+
+    Expr* result = self.build_let_expr_chain(e, recursive_let, *params, patterns, *inits, false);
+    patterns.free();
+    return result;
+}
+
 fn Expr* Parser.parse_named_let(Parser* self, Expr* e, SymbolId loop_name) {
     if (self.has_error) return null;
     List{SymbolId} params;
@@ -85,15 +132,8 @@ fn Expr* Parser.parse_named_let(Parser* self, Expr* e, SymbolId loop_name) {
     self.expect(T_RPAREN, ")");  // consume outer ')' of let form
 
     Expr* lambda_expr = self.build_named_let_lambda(e, &params, body);
-    Expr* call_expr = self.build_named_let_call(e, loop_name, &inits);
+    Expr* result = self.build_named_let_sequential_body(e, loop_name, &params, &inits, lambda_expr);
     params.free();
     inits.free();
-
-    // Assemble: (let ^rec ((name lambda)) call)
-    e.tag = E_LET;
-    e.let_expr.name = loop_name;
-    e.let_expr.init = lambda_expr;
-    e.let_expr.body = call_expr;
-    e.let_expr.is_recursive = true;  // named let is always recursive
-    return e;
+    return result;
 }

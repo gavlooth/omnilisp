@@ -6,13 +6,13 @@
 (* 3 4)
 
 ; Let bindings
-(let [x 10]
-     [y 20]
+(let (x 10
+      y 20)
   (+ x y))
 
 ; Nested let
-(let [a 5]
-  (let [b (* a 2)]
+(let (a 5)
+  (let (b (* a 2))
     (+ a b)))
 
 ; Lifting to code generation
@@ -27,7 +27,7 @@
     200)
 
 ; Lambda expressions
-(let [square (lambda (x) (* x x))]
+(let (square (lambda (x) (* x x)))
   (square 5))
 
 ; List operations
@@ -37,9 +37,9 @@
 (< 5 10)
 (> 5 10)
 
-; Recursive factorial (using letrec)
-(letrec ((fact (lambda (n)
-                 (if (= n 0)
-                     1
-                     (* n (fact (- n 1)))))))
+; Recursive factorial (using let ^rec)
+(let ^rec (fact (lambda (n)
+                  (if (= n 0)
+                      1
+                      (* n (fact (- n 1))))))
   (fact 5))

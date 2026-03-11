@@ -2,6 +2,9 @@ module lisp;
 
 import std::io;
 
+const usz DISPATCH_INLINE_ARG_CAPACITY = 8;
+const usz DISPATCH_INLINE_BINDING_CAPACITY = 8;
+
 enum DispatchMatchFailureReason : char {
     DISPATCH_MATCH_FAIL_NONE,
     DISPATCH_MATCH_FAIL_ARITY,
@@ -65,20 +68,27 @@ fn bool method_constraints_satisfied(MethodEntry* entry, TypeId[] arg_types, Int
 
     SymbolId[] bound_syms = {};
     TypeId[] bound_types = {};
+    SymbolId[DISPATCH_INLINE_BINDING_CAPACITY] bound_syms_inline;
+    TypeId[DISPATCH_INLINE_BINDING_CAPACITY] bound_types_inline;
     SymbolId* bound_syms_storage = null;
     TypeId* bound_types_storage = null;
     usz bound_count = 0;
 
     if (entry.sig.param_count > 0) {
-        bound_syms_storage = (SymbolId*)mem::malloc(SymbolId.sizeof * entry.sig.param_count);
-        bound_types_storage = (TypeId*)mem::malloc(TypeId.sizeof * entry.sig.param_count);
-        if (bound_syms_storage == null || bound_types_storage == null) {
-            if (bound_syms_storage != null) mem::free(bound_syms_storage);
-            if (bound_types_storage != null) mem::free(bound_types_storage);
-            return false;
+        if (entry.sig.param_count <= DISPATCH_INLINE_BINDING_CAPACITY) {
+            bound_syms = bound_syms_inline[:entry.sig.param_count];
+            bound_types = bound_types_inline[:entry.sig.param_count];
+        } else {
+            bound_syms_storage = (SymbolId*)mem::malloc(SymbolId.sizeof * entry.sig.param_count);
+            bound_types_storage = (TypeId*)mem::malloc(TypeId.sizeof * entry.sig.param_count);
+            if (bound_syms_storage == null || bound_types_storage == null) {
+                if (bound_syms_storage != null) mem::free(bound_syms_storage);
+                if (bound_types_storage != null) mem::free(bound_types_storage);
+                return false;
+            }
+            bound_syms = bound_syms_storage[:entry.sig.param_count];
+            bound_types = bound_types_storage[:entry.sig.param_count];
         }
-        bound_syms = bound_syms_storage[:entry.sig.param_count];
-        bound_types = bound_types_storage[:entry.sig.param_count];
     }
     defer if (bound_syms_storage != null) mem::free(bound_syms_storage);
     defer if (bound_types_storage != null) mem::free(bound_types_storage);
@@ -373,13 +383,18 @@ fn Value* check_lambda_call_boundary(Closure* closure, Value*[] args, usz provid
     }
 
     TypeId[] arg_types = {};
+    TypeId[DISPATCH_INLINE_ARG_CAPACITY] arg_types_inline;
     TypeId* arg_types_storage = null;
     if (args.len > 0) {
-        arg_types_storage = (TypeId*)mem::malloc(TypeId.sizeof * args.len);
-        if (arg_types_storage == null) {
-            return raise_error(interp, "lambda type check: out of memory");
+        if (args.len <= DISPATCH_INLINE_ARG_CAPACITY) {
+            arg_types = arg_types_inline[:args.len];
+        } else {
+            arg_types_storage = (TypeId*)mem::malloc(TypeId.sizeof * args.len);
+            if (arg_types_storage == null) {
+                return raise_error(interp, "lambda type check: out of memory");
+            }
+            arg_types = arg_types_storage[:args.len];
         }
-        arg_types = arg_types_storage[:args.len];
         for (usz i = 0; i < args.len; i++) {
             arg_types[i] = infer_value_type(args[i], interp);
         }
@@ -400,13 +415,18 @@ fn Value* find_best_method(MethodTable* mt, Value*[] args, Interp* interp) {
     usz best_count = 0;
 
     TypeId[] arg_types = {};
+    TypeId[DISPATCH_INLINE_ARG_CAPACITY] arg_types_inline;
     TypeId* arg_types_storage = null;
     if (args.len > 0) {
-        arg_types_storage = (TypeId*)mem::malloc(TypeId.sizeof * args.len);
-        if (arg_types_storage == null) {
-            return raise_error(interp, "method dispatch: out of memory");
+        if (args.len <= DISPATCH_INLINE_ARG_CAPACITY) {
+            arg_types = arg_types_inline[:args.len];
+        } else {
+            arg_types_storage = (TypeId*)mem::malloc(TypeId.sizeof * args.len);
+            if (arg_types_storage == null) {
+                return raise_error(interp, "method dispatch: out of memory");
+            }
+            arg_types = arg_types_storage[:args.len];
         }
-        arg_types = arg_types_storage[:args.len];
     }
     defer if (arg_types_storage != null) mem::free(arg_types_storage);
 

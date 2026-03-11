@@ -2,6 +2,27 @@ module lisp;
 
 import std::collections::list;
 
+fn void Parser.reject_legacy_let_binding_shape(Parser* self, bool named_let) {
+    if (self.has_error) return;
+
+    if (self.lexer.current.type == T_LBRACKET || self.lexer.current.type == T_LBRACE) {
+        if (named_let) {
+            self.set_error("named let bindings must use flat pairs: (let loop (x 0 y 1) ...)");
+        } else {
+            self.set_error("let bindings must use flat pairs: (let (x 1 y 2) ...)");
+        }
+        return;
+    }
+
+    if (self.lexer.current.type == T_LPAREN) {
+        if (named_let) {
+            self.set_error("Scheme-style named let bindings were removed; use flat pairs: (let loop (x 0 y 1) ...)");
+        } else {
+            self.set_error("Scheme-style let bindings were removed; use flat pairs: (let (x 1 y 2) ...)");
+        }
+    }
+}
+
 fn bool Parser.consume_let_rec_annotation(Parser* self) {
     if (self.lexer.current.type != T_SYMBOL) return false;
     if (self.lexer.current.text_len < 1 || self.lexer.current.text[0] != '^') return false;
@@ -83,7 +104,17 @@ fn Expr* Parser.parse_let(Parser* self) {
         return self.parse_named_let(e, loop_name);
     }
 
+    if (self.lexer.current.type != T_LPAREN) {
+        self.reject_legacy_let_binding_shape(false);
+        if (self.has_error) return null;
+    }
+
     self.expect(T_LPAREN, "(");  // consume '(' of bindings list
+    if (self.has_error) return null;
+    if (self.lexer.current.type == T_LPAREN) {
+        self.reject_legacy_let_binding_shape(false);
+        if (self.has_error) return null;
+    }
 
     // Collect flat-pair bindings: (x 1 y 2 z 3) or ([a b] [1 2] x 3)
     // Each binding is either a symbol name or a destructuring pattern.

@@ -50,8 +50,9 @@ Brackets in `define` are reserved for attributes: `[type]`, `[macro]`,
 ;; Simple (flat pairs — no double parens)
 (let (x 10) (+ x 1))                       ;; => 11
 
-;; Multi-binding (desugars to nested lets)
+;; Multi-binding (sequential left-to-right)
 (let (x 1 y 2) (+ x y))                    ;; => 3
+(let (x 1 y (+ x 2) z (+ y 3)) z)          ;; => 6
 
 ;; Array destructuring
 (let ([a b] [10 20]) (+ a b))              ;; => 30
@@ -82,8 +83,9 @@ Brackets in `define` are reserved for attributes: `[type]`, `[macro]`,
     (loop (- n 1) (* acc n))))   ;; => 120
 ```
 
-Named let desugars to `let ^rec` with a self-calling lambda. The loop
-variables are the flat pairs, and calling the name recurs with new values.
+Named let uses flat-pair loop variables with sequential left-to-right
+initializers. It lowers through an outer sequential `let` and an inner
+`let ^rec`, and calling the name recurs with new values.
 
 ### `if` — Conditional
 
