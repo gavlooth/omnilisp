@@ -10,6 +10,9 @@ fn int main(int argc, char** argv) {
     idx = find_flag_index(argc, argv, "--version", "-v");
     if (idx >= 0) return print_version();
 
+    idx = find_flag_index(argc, argv, "--language-ref", "--lang-ref", "--manual");
+    if (idx >= 0) return print_language_reference();
+
     idx = find_flag_index(argc, argv, "--init");
     if (idx >= 0) return run_init(argc, argv, idx);
 

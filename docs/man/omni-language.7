@@ -1,0 +1,119 @@
+.TH OMNI-LANGUAGE 7 "March 2026" "Omni 0.1.5" "Omni Lisp Language"
+.SH NAME
+omni-language \- Omni Lisp language quick reference
+.SH SYNOPSIS
+Reference guide for Omni syntax, core forms, collections, dispatch, and effects.
+.SH DESCRIPTION
+Omni is an expression-oriented Lisp with strict function arity, multiple
+dispatch, algebraic effects, and deterministic scope/region lifetimes.
+.PP
+Truthiness rule:
+.B nil
+and
+.B false
+are falsy; all other values are truthy.
+.SH CORE FORMS
+.TP
+.B define
+Bind values and functions.
+.TP
+.B let
+Lexical bindings.
+.TP
+.B if
+Conditional expression.
+.TP
+.B block
+Evaluate forms in order and return the last value.
+.TP
+.B lambda
+Anonymous function with strict arity.
+.TP
+.B match
+Pattern matching for data and control flow.
+.TP
+.B handle / signal / resolve
+Algebraic effect operations.
+.SH COLLECTIONS
+Omni has three primary collection types:
+.IP "\(bu" 2
+list
+.IP "\(bu" 2
+array
+.IP "\(bu" 2
+dict
+.PP
+Prefer generic operations such as:
+.B length ,
+.B ref ,
+.B map ,
+.B filter ,
+.B foldl
+rather than type-prefixed variants.
+.SH LITERALS
+.TP
+.B '(1 2 3)
+List literal.
+.TP
+.B [1 2 3]
+Array literal.
+.TP
+.B {'name "omni" 'year 2026}
+Dict literal.
+.SH DEFINITIONS
+.EX
+(define x 10)
+(define (inc n) (+ n 1))
+(define add2 (lambda (a b) (+ a b)))
+.EE
+.SH CONTROL FLOW
+.EX
+(if (> x 5) "big" "small")
+
+(let (a 3 b 4)
+  (+ a b))
+
+(match value
+  (nil "none")
+  ([h .. t] h)
+  (_ "other"))
+.EE
+.SH DISPATCH
+Omni supports multiple dispatch by parameter annotations.
+.PP
+Value-level and type-level dispatch may coexist. Ambiguous best matches are
+rejected.
+.SH EFFECTS
+.EX
+(handle
+  (block
+    (signal ask 'name))
+  (ask _ (resolve "world")))
+.EE
+.PP
+Handlers are nearest-first by dynamic scope.
+.SH MODULES
+Import all exported names:
+.EX
+(import "module.omni" 'all)
+.EE
+.SH CLI AND TOOLING
+.TP
+.B omni --init <name>
+Scaffold a project.
+.TP
+.B omni --bind [dir]
+Generate FFI bindings from
+.I omni.toml
+\&.
+.TP
+.B omni --language-ref
+Print this quick reference from the embedded compressed payload.
+.SH SEE ALSO
+.BR omni (1),
+.BR docs/LANGUAGE_SPEC.md ,
+.BR docs/PROJECT_TOOLING.md
+.SH NOTES
+This page is a quick reference. The normative language contract is in
+.I docs/LANGUAGE_SPEC.md
+within the Omni repository.

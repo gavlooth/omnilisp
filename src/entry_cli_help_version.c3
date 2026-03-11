@@ -22,6 +22,7 @@ fn int print_help() {
     io::printn("  omni --bind [project-dir]         Generate FFI bindings from omni.toml");
     io::printn("");
     io::printn("Other:");
+    io::printn("  omni --language-ref, --manual    Print built-in language quick reference");
     io::printn("  omni --gen-e2e                    Generate end-to-end compiler tests");
     io::printn("  omni --stack-affinity-probe       Deliberately trigger stack ownership fail-fast probe");
     io::printn("  omni --version, -v                Print version");

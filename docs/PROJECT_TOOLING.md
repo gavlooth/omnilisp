@@ -6,7 +6,51 @@ Omni provides CLI commands for creating projects and auto-generating FFI binding
 
 ---
 
+## Install CLI + Man Page
+
+Install `omni` under a prefix (default `~/.local`) and install both manual pages:
+- `omni(1)` CLI reference
+- `omni-language(7)` language quick reference
+
+```bash
+scripts/install_omni.sh install
+```
+
+Uninstall from the same prefix:
+
+```bash
+scripts/install_omni.sh uninstall
+```
+
+Useful overrides:
+
+```bash
+scripts/install_omni.sh install --prefix /usr/local
+scripts/install_omni.sh install --binary /path/to/omni-build
+```
+
+Verify:
+
+```bash
+omni --version
+man -M "$HOME/.local/share/man" 1 omni
+man -M "$HOME/.local/share/man" 7 omni-language
+```
+
+---
+
 ## CLI Commands
+
+### `--language-ref` — Print Built-In Language Quick Reference
+
+```bash
+omni --language-ref
+```
+
+Alias flags: `--lang-ref`, `--manual`.
+
+Prints the embedded language quick reference directly from the executable
+without requiring external docs on disk.
 
 ### `--init` — Scaffold a New Project
 
