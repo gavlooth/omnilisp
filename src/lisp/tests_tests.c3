@@ -33,8 +33,12 @@ fn bool lisp_slice_known(char* active_slice) @inline {
         lisp_slice_matches(active_slice, "basic") ||
         lisp_slice_matches(active_slice, "memory-lifetime") ||
         lisp_slice_matches(active_slice, "memory-lifetime-smoke") ||
+        lisp_slice_matches(active_slice, "memory-lifetime-policy") ||
         lisp_slice_matches(active_slice, "memory-lifetime-soak") ||
+        lisp_slice_matches(active_slice, "memory-lifetime-bench") ||
         lisp_slice_matches(active_slice, "memory-stress") ||
+        lisp_slice_matches(active_slice, "allocator-validation") ||
+        lisp_slice_matches(active_slice, "allocator-bench") ||
         lisp_slice_matches(active_slice, "list-closure") ||
         lisp_slice_matches(active_slice, "arithmetic-comparison") ||
         lisp_slice_matches(active_slice, "string-type") ||
@@ -63,7 +67,20 @@ fn bool lisp_slice_known(char* active_slice) @inline {
 fn bool lisp_slice_high_memory(char* active_slice) @inline {
     return lisp_slice_any(active_slice) ||
         lisp_slice_matches(active_slice, "memory-lifetime-soak") ||
+        lisp_slice_matches(active_slice, "memory-lifetime-bench") ||
+        lisp_slice_matches(active_slice, "allocator-bench") ||
         lisp_slice_matches(active_slice, "memory-stress");
+}
+
+fn bool lisp_slice_memory_ownership(char* active_slice) @inline {
+    return lisp_slice_matches(active_slice, "memory-lifetime") ||
+        lisp_slice_matches(active_slice, "memory-lifetime-smoke") ||
+        lisp_slice_matches(active_slice, "memory-lifetime-policy") ||
+        lisp_slice_matches(active_slice, "memory-lifetime-soak") ||
+        lisp_slice_matches(active_slice, "memory-lifetime-bench") ||
+        lisp_slice_matches(active_slice, "memory-stress") ||
+        lisp_slice_matches(active_slice, "allocator-validation") ||
+        lisp_slice_matches(active_slice, "allocator-bench");
 }
 
 fn bool in_validation_container() @inline {
@@ -72,6 +89,30 @@ fn bool in_validation_container() @inline {
 
 fn bool allow_all_lisp_slice() @inline {
     return test_c_getenv("OMNI_ALLOW_ALL_LISP_SLICE") != null;
+}
+
+fn bool explicit_lisp_slice_requested() @inline {
+    return test_c_getenv("OMNI_LISP_TEST_SLICE") != null;
+}
+
+fn bool lisp_slice_deprecated_alias(char* active_slice) @inline {
+    return lisp_slice_matches(active_slice, "memory-soak") ||
+        lisp_slice_matches(active_slice, "syntax");
+}
+
+fn void reject_deprecated_slice_aliases(char* active_slice) {
+    if (!lisp_slice_deprecated_alias(active_slice)) return;
+
+    io::printfn("Deprecated OMNI_LISP_TEST_SLICE='%s' is no longer supported.", (ZString)active_slice);
+    io::printn("Use explicit ownership slices instead:");
+    io::printn("- memory-lifetime-smoke          (boundary/scoping correctness)");
+    io::printn("- memory-lifetime-policy          (boundary-policy parser contracts)");
+    io::printn("- memory-lifetime-bench           (boundary benchmark)");
+    io::printn("- allocator-validation            (AST arena correctness)");
+    io::printn("- allocator-bench                (AST throughput/benchmark)");
+    io::printn("- memory-lifetime-soak            (heavy saturation/stress)");
+    io::printn("- memory-stress                   (global stress)");
+    unreachable("deprecated OMNI_LISP_TEST_SLICE selected");
 }
 
 fn char* resolved_lisp_slice() {
@@ -84,6 +125,23 @@ fn char* resolved_lisp_slice() {
 
     io::printfn("OMNI_TEST_SUMMARY slice default: OMNI_LISP_TEST_SLICE not set; using 'basic'. Set OMNI_ALLOW_ALL_LISP_SLICE=1 for full-suite run.");
     return (char*)"basic";
+}
+
+fn void enforce_container_only_slice_execution(char* active_slice) {
+    if (in_validation_container()) return;
+
+    if (!explicit_lisp_slice_requested()) return;
+    if (lisp_slice_matches(active_slice, "basic")) return;
+    if (!lisp_slice_memory_ownership(active_slice)) return;
+
+    io::printfn(
+        "Refusing host-side memory-lifetime/allocator lisp test run for slice '%s'.",
+        (ZString)active_slice
+    );
+    io::printn(
+        "Run memory ownership slices via scripts/run_validation_container.sh so CPU and memory stay bounded."
+    );
+    unreachable("host-side memory ownership slices are container-only");
 }
 
 fn void enforce_container_only_high_memory(char* active_slice) {
@@ -110,7 +168,7 @@ fn void emit_lisp_slice_memory_flag(char* active_slice) {
             high_mem ? 1 : 0
         );
         if (high_mem) {
-            io::printn("[WARN] lisp slice 'all' includes high-memory groups: memory-lifetime-soak, memory-stress");
+            io::printn("[WARN] lisp slice 'all' includes high-memory groups: memory-lifetime-soak, memory-lifetime-bench, allocator-bench, memory-stress");
         }
         return;
     }
@@ -353,6 +411,8 @@ fn void run_test_group_boundary_reset(Interp* interp) {
 
 fn void run_lisp_tests() {
     char* active_slice = resolved_lisp_slice();
+    reject_deprecated_slice_aliases(active_slice);
+    enforce_container_only_slice_execution(active_slice);
     enforce_container_only_high_memory(active_slice);
     assert(lisp_slice_known(active_slice), "unknown OMNI_LISP_TEST_SLICE");
 
@@ -388,7 +448,16 @@ fn void run_lisp_tests() {
         lisp_slice_matches(active_slice, "memory-lifetime") ||
         lisp_slice_matches(active_slice, "memory-lifetime-smoke");
     bool run_memory_lifetime_soak = lisp_slice_matches(active_slice, "memory-lifetime-soak");
+    bool run_memory_lifetime_bench = lisp_slice_matches(active_slice, "memory-lifetime-bench");
+    bool run_memory_lifetime_policy =
+        lisp_slice_any(active_slice) ||
+        lisp_slice_matches(active_slice, "memory-lifetime-policy");
+    bool run_allocator_validation =
+        lisp_slice_any(active_slice) ||
+        lisp_slice_matches(active_slice, "allocator-validation");
     bool run_memory_stress = lisp_slice_any(active_slice) || lisp_slice_matches(active_slice, "memory-stress");
+    bool run_allocator_bench =
+        lisp_slice_matches(active_slice, "allocator-bench");
     bool run_list_closure = lisp_slice_any(active_slice) || lisp_slice_matches(active_slice, "list-closure");
     bool run_arithmetic_comparison = lisp_slice_any(active_slice) || lisp_slice_matches(active_slice, "arithmetic-comparison");
     bool run_string_type = lisp_slice_any(active_slice) || lisp_slice_matches(active_slice, "string-type");
@@ -413,7 +482,9 @@ fn void run_lisp_tests() {
     bool run_atomic = lisp_slice_any(active_slice) || lisp_slice_matches(active_slice, "atomic");
     bool run_compiler = lisp_slice_any(active_slice) || lisp_slice_matches(active_slice, "compiler");
     bool run_any_unified =
-        run_basic || run_memory_lifetime_smoke || run_memory_lifetime_soak || run_memory_stress || run_list_closure ||
+        run_basic || run_memory_lifetime_smoke || run_memory_lifetime_soak || run_memory_lifetime_bench || run_allocator_bench || run_memory_stress ||
+        run_memory_lifetime_policy || run_allocator_validation ||
+        run_list_closure ||
         run_arithmetic_comparison || run_string_type || run_diagnostics || run_jit_policy ||
         run_advanced || run_escape_scope || run_limit_busting || run_tco_recycling ||
         run_closure_lifecycle || run_pika || run_unicode || run_compression ||
@@ -423,8 +494,19 @@ fn void run_lisp_tests() {
     if (run_basic) run_group_isolated(&run_basic_tests, &pass, &fail);
     if (run_memory_lifetime_soak) {
         run_group_isolated(&run_memory_lifetime_soak_tests, &pass, &fail);
+    } else if (run_memory_lifetime_bench) {
+        run_group_isolated(&run_memory_lifetime_benchmark_tests, &pass, &fail);
     } else if (run_memory_lifetime_smoke) {
         run_group_isolated(&run_memory_lifetime_smoke_tests, &pass, &fail);
+    }
+    if (run_memory_lifetime_policy) {
+        run_group_isolated(&run_memory_lifetime_boundary_policy_parse_tests, &pass, &fail);
+    }
+    if (run_allocator_validation) {
+        run_group_isolated(&run_memory_lifetime_ast_arena_validation_tests, &pass, &fail);
+    }
+    if (run_allocator_bench) {
+        run_group_isolated(&run_allocator_benchmark_tests, &pass, &fail);
     }
     if (run_memory_stress) run_group_isolated(&run_memory_stress_tests, &pass, &fail);
     if (run_list_closure) run_group_isolated(&run_list_closure_tests, &pass, &fail);
