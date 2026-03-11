@@ -7,6 +7,13 @@
 
 Future feature demonstrations should use `finwatch` by default.
 
+### Finwatch Frontend Dashboard
+
+- `examples/finwatch/value_dashboard.html`
+- `examples/finwatch/value_dashboard_sample.csv`
+- Purpose: practical value screener UI for filtering stocks by valuation, quality,
+  leverage, and margin of safety criteria.
+
 ## Legacy Compatibility Example
 
 - `examples/deduce_crud_server.omni`

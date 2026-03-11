@@ -1,0 +1,13 @@
+ticker,name,sector,price,fair_value,pe,pfcf,debt_to_equity,roic,rev_cagr_5y,fcf_margin
+JNJ,Johnson & Johnson,Healthcare,149,182,15.8,17.2,0.45,14.1,5.2,21.4
+PG,Procter & Gamble,Consumer,159,177,24.6,23.5,0.62,17.8,4.1,19.9
+CVX,Chevron,Energy,151,178,12.1,10.6,0.17,15.5,7.6,16.8
+MSFT,Microsoft,Technology,425,412,34.8,31.3,0.29,28.2,14.6,33.8
+BMY,Bristol Myers Squibb,Healthcare,49,71,8.2,10.7,1.04,10.1,6.3,28.1
+TXN,Texas Instruments,Semiconductors,176,205,21.2,24.4,0.66,23.4,8.8,36.4
+PFE,Pfizer,Healthcare,27,39,9.3,11.8,0.63,8.9,2.5,18.7
+VZ,Verizon,Telecom,39,49,8.7,7.5,1.55,7.2,1.1,17.2
+UNH,UnitedHealth,Healthcare,488,564,21.9,17.6,0.74,20.1,11.0,8.3
+CSCO,Cisco,Technology,49,61,14.7,13.4,0.22,17.0,3.9,29.8
+INTC,Intel,Semiconductors,42,55,23.0,18.8,0.49,4.3,-1.8,4.1
+AMGN,Amgen,Healthcare,287,336,16.4,15.1,1.12,15.4,8.1,33.6

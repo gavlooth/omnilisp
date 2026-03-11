@@ -49,8 +49,15 @@
     (format "HTTP/1.1 %s\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: %d\r\n\r\n%s"
             status (string-length body) body)))
 
+(define (http-response/raw status content-type body)
+  (format "HTTP/1.1 %s\r\nContent-Type: %s\r\nConnection: close\r\nContent-Length: %d\r\n\r\n%s"
+          status content-type (string-length body) body))
+
 (define (ok-response payload)
   (http-response "200 OK" {'status "ok" 'data payload}))
+
+(define (ok-response/raw content-type body)
+  (http-response/raw "200 OK" content-type body))
 
 (define (err-response code msg)
   (http-response (format "%d Error" code) {'status "error" 'error msg}))
@@ -121,6 +128,34 @@
   (ok-response {'log  (log/read-all)
                 'size (log/size)}))
 
+;; Static dashboard assets (loaded once at module init, outside fiber routes).
+(define O_RDONLY 0)
+
+(define dashboard-html-path "examples/finwatch/value_dashboard.html")
+(define dashboard-csv-path  "examples/finwatch/value_dashboard_sample.csv")
+
+(define (server/read-file-text/sync path)
+  (let (st (fs-stat path)
+        fd (fs-open path O_RDONLY)
+        txt (fs-read fd (+ ('size st) 1)))
+    (fs-close fd)
+    txt))
+
+(define dashboard-html-content (server/read-file-text/sync dashboard-html-path))
+(define dashboard-csv-content  (server/read-file-text/sync dashboard-csv-path))
+
+;; GET /dashboard — serve static value screener frontend.
+(define (route/dashboard)
+  (if (> (string-length dashboard-html-content) 0)
+      (ok-response/raw "text/html; charset=utf-8" dashboard-html-content)
+      (err-response 404 "dashboard asset not found")))
+
+;; GET /dashboard/sample.csv — serve import-ready sample data.
+(define (route/dashboard-sample-csv)
+  (if (> (string-length dashboard-csv-content) 0)
+      (ok-response/raw "text/csv; charset=utf-8" dashboard-csv-content)
+      (err-response 404 "dashboard sample data not found")))
+
 ;; GET /prices/:symbol — return a single cached quote by symbol
 ;; Parse `/prices/:symbol` using split-based routing to keep this path JIT-friendly.
 (define (route/price-symbol path)
@@ -141,6 +176,9 @@
 ;; dynamic /prices/:symbol route is handled by a guarded GET path binding.
 (define (server-dispatch method path body)
   (match [method path]
+    (["GET" "/"]          (route/dashboard))
+    (["GET" "/dashboard"] (route/dashboard))
+    (["GET" "/dashboard/sample.csv"] (route/dashboard-sample-csv))
     (["GET" "/prices"]     (route/prices))
     (["GET" "/news"]       (route/news))
     (["GET" "/health"]     (route/health))
@@ -210,14 +248,14 @@
 
 (define (server/start-async host port)
   (log/open! "/tmp/finwatch.log")
-  (let (listener (tcp-listen host port 128))
-    (println (format "finwatch listening on %s:%d" host port))
-    (log/write! (format "server started on %s:%d" host port))
-    (spawn (lambda () (server-poll-loop)))
-    (spawn (lambda () (server-accept-loop listener)))
-    {'host host 'port port 'listener listener}))
+  (define listener (tcp-listen host port 128))
+  (println (format "finwatch listening on %s:%d" host port))
+  (log/write! (format "server started on %s:%d" host port))
+  (spawn (lambda () (server-poll-loop)))
+  (spawn (lambda () (server-accept-loop listener)))
+  {'host host 'port port 'listener listener})
 
 ;; (server/start "127.0.0.1" 8080) — blocks, handing control to the scheduler.
 (define (server/start host port)
-  (let (srv (server/start-async host port))
-    (run-fibers)))
+  (spawn (lambda () (server/start-async host port)))
+  (run-fibers))
