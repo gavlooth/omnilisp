@@ -244,7 +244,7 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
 
 fn void run_advanced_stdlib_introspection_lazy_tco_tests(Interp* interp, int* pass, int* fail) {
     // === INTROSPECTION TESTS (Phase 7) ===
-    setup(interp, "(define [macro] my-inc ([x] (+ x 1)))");
+    setup(interp, "(define [macro] my-inc (syntax-match ([x] (template (+ (insert x) 1)))))");
     test_truthy(interp, "macroexpand", "(pair? (macroexpand (quote (my-inc 5))))", pass, fail);
     test_eq(interp, "eval literal", "(eval 42)", 42, pass, fail);
     test_eq(interp, "eval list", "(eval (quote (+ 1 2)))", 3, pass, fail);

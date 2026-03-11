@@ -507,8 +507,9 @@ Counterexample (non-canonical syntax; do not add):
 ; Simple let (flat pairs)
 (let (name value) body)
 
-; Multi-binding (desugars to nested lets)
+; Multi-binding (sequential left-to-right; lowers to nested lets)
 (let (x 1 y 2) (+ x y))
+(let (x 1 y (+ x 2) z (+ y 3)) z)       ; => 6
 
 ; Array destructuring
 (let ([x y] [10 20]) (+ x y))         ; => 30
@@ -530,7 +531,8 @@ Counterexample (non-canonical syntax; do not add):
 (let loop (n 5 acc 1)
   (if (= n 0) acc
       (loop (- n 1) (* acc n))))
-; Named let desugars to let ^rec
+; Named let initializers are also sequential left-to-right.
+; It lowers through an outer sequential let and an inner let ^rec.
 ```
 
 ### 3.4 `if` -- Conditional
@@ -1285,22 +1287,29 @@ Effect handlers match on tag name only. For type-specific behavior, use dispatch
 
 ## 11. Macros
 
-### 11.1 Pattern-Based Macros
+### 11.1 Single-Transformer Macros
 
 ```lisp
 (define [macro] when
-  ([test .. body] (if test (block .. body) nil)))
+  (syntax-match
+    ([test .. body]
+      (template (if (insert test) (block (splice body)) nil))))
 
 (define [macro] cond
-  ([] nil)
-  ([test body .. rest] (if test body (cond .. rest))))
+  (syntax-match
+    ([]
+      (template nil))
+    ([test body .. rest]
+      (template (if (insert test) (insert body) (cond .. rest)))))
 ```
 
+- One macro surface only: `(define [macro] name (syntax-match ...))`
+- Macros are syntax transformers, not overloaded callable sets
 - Pattern-based with template substitution
 - Hygienic: template literals resolve at definition time
 - Auto-gensym: `name#` in templates generates unique symbols
 - `gensym` function for manual hygiene
-- Up to 8 clauses per macro
+- Legacy clause-style macro definitions are rejected with deterministic diagnostics
 
 ### 11.2 Expansion
 

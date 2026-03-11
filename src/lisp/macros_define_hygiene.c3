@@ -119,7 +119,7 @@ fn void capture_template_bindings_in_root_scope(
 
 /**
  * Evaluate a define-macro expression.
- * (define [macro] name (pattern1 template1) ...)
+ * (define [macro] name (syntax-match (pattern1 (template ...)) ...))
  * Captures definition-time bindings for template hygiene.
  */
 <* @require expr != null : "eval_define_macro: null expr"

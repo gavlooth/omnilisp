@@ -108,6 +108,31 @@ This mode runs each capped command in a constrained container with:
 Default policy:
 - Docker-bound execution for gate scripts when run outside validation containers.
 - Max resource envelope of 30% host memory + 30% host CPUs per capped command (CPU and memory overrides are clamped to this maximum).
+- Host-side sliced Lisp runs are intentionally restricted by ownership lane:
+  - explicit non-memory slices (for example `advanced`, `compiler`, `list-closure`, `json`) may run directly on the host.
+  - explicit memory/allocator ownership slices (`memory-lifetime`, `memory-lifetime-smoke`, `memory-lifetime-policy`, `memory-lifetime-soak`, `memory-lifetime-bench`, `memory-stress`, `allocator-validation`, `allocator-bench`) require `scripts/run_validation_container.sh`.
+- Contributor rule: choose test lanes by ownership of the changed subsystem, not convenience bundling.
+
+Slice-aware run profiles (container-first):
+
+- `basic` / `memory-lifetime` / `memory-lifetime-smoke` / `memory-lifetime-policy` / `memory-lifetime-bench`:
+  - memory-boundary correctness coverage by ownership family.
+  - run via `scripts/run_validation_container.sh`.
+- `allocator-validation`:
+  - non-benchmark `AstArena` correctness checks, no benchmark flags required.
+- `allocator-bench`:
+  - AST parser/compiler/macro throughput + allocation benchmarks.
+  - requires benchmark env flags (`OMNI_AST_ARENA_BENCH` and friends).
+- non-memory syntax/runtime lanes (for example `advanced`, `compiler`, `list-closure`, etc.):
+  - safe to run independently by their own slice.
+
+To include benchmark-adjacent lanes in global gates, opt in explicitly:
+
+```bash
+OMNI_GLOBAL_GATES_INCLUDE_LIFETIME_SOAK=1 \
+OMNI_GLOBAL_GATES_INCLUDE_ALLOCATOR_BENCH=1 \
+scripts/run_validation_container.sh scripts/run_global_gates.sh
+```
 
 Useful knobs:
 - `OMNI_DOCKER_IMAGE` (default `omni-validation:2026-03-10`)

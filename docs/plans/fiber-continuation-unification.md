@@ -1083,7 +1083,7 @@ Register in primitives:
     { "yield",  &prim_yield,  -1 },  // (yield [value]) -> resume-value
 ```
 
-Note: This conflicts with the existing `yield` macro in stdlib.lisp (line 159): `(define [macro] yield ([val] (shift k (cons val k))))`. The macro needs to be removed or renamed to `stream-yield` once real fibers exist, since `yield` will become a primitive. But since the macro is for generators (returns `(cons val k)`), and the primitive is for fibers (suspends and returns resume value), they have different semantics. The safest approach: keep the macro as `stream-yield` for generator patterns, and make `yield` the fiber primitive.
+Note: This conflicts with the historical `yield` macro in stdlib (now `stream-yield`), canonical form: `(define [macro] stream-yield (syntax-match ([val] (template (shift k (cons (insert val) k))))))`. `yield` should be reserved for the fiber primitive, while `stream-yield` keeps generator semantics (`(cons val k)`). This preserves semantic separation between generator streams and suspend/resume fibers.
 
 #### 3.3.3 Verification
 

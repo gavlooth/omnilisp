@@ -62,7 +62,7 @@ struct ExprUnquoteSplicing {
 
 /**
  * ExprDefineMacro — Pattern-based macro definition:
- * (define [macro] name (pattern template) ...)
+ * (define [macro] name (syntax-match (pattern (template ...)) ...))
  */
 struct ExprDefineMacro {
     SymbolId name;

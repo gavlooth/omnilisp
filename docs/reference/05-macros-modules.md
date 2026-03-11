@@ -10,14 +10,21 @@
 
 ```lisp
 (define [macro] when
-  ([test .. body] (if test (block .. body) nil)))
+  (syntax-match
+    ([test .. body]
+      (template (if (insert test) (block (splice body)) nil))))
 
 (define [macro] unless
-  ([test .. body] (if test nil (block .. body))))
+  (syntax-match
+    ([test .. body]
+      (template (if (insert test) nil (block (splice body))))))
 
 (define [macro] cond
-  ([] nil)
-  ([test body .. rest] (if test body (cond .. rest))))
+  (syntax-match
+    ([]
+      (template nil))
+    ([test body .. rest]
+      (template (if (insert test) (insert body) (cond .. rest)))))
 ```
 
 ### Usage
@@ -35,11 +42,11 @@
 
 ### Features
 
-- **Pattern-based**: each clause matches argument structure
+- **Single-surface**: define one transformer with `syntax-match` branches
 - **Hygienic**: template literals resolve at definition time
 - **Auto-gensym**: `name#` in templates generates unique symbols
 - **`gensym`** function for manual hygiene
-- Up to 8 clauses per macro
+- Legacy clause-style macro forms are rejected with migration diagnostics
 
 ### Expansion
 

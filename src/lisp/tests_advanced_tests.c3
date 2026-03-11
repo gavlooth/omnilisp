@@ -116,29 +116,29 @@ fn bool advanced_build_many_meta_entries_define(char* buf, usz cap, usz meta_cou
 
 fn bool advanced_build_many_clause_macro_define(char* buf, usz cap, usz clause_count) {
     usz len = 0;
-    if (!advanced_test_append(buf, cap, &len, "(define [macro] choose-wide")) return false;
+    if (!advanced_test_append(buf, cap, &len, "(define [macro] choose-wide (syntax-match")) return false;
     for (usz i = 0; i < clause_count; i++) {
         if (!advanced_test_append(buf, cap, &len, " ([")) return false;
         if (!advanced_test_append_int(buf, cap, &len, i)) return false;
-        if (!advanced_test_append(buf, cap, &len, "] ")) return false;
+        if (!advanced_test_append(buf, cap, &len, "] (template ")) return false;
         if (!advanced_test_append_int(buf, cap, &len, i)) return false;
-        if (!advanced_test_append(buf, cap, &len, ")")) return false;
+        if (!advanced_test_append(buf, cap, &len, "))")) return false;
     }
-    if (!advanced_test_append(buf, cap, &len, ")")) return false;
+    if (!advanced_test_append(buf, cap, &len, "))")) return false;
     return true;
 }
 
 fn bool advanced_build_many_pattern_vars_macro_define(char* buf, usz cap, usz var_count) {
     usz len = 0;
-    if (!advanced_test_append(buf, cap, &len, "(define [macro] pick-last ([")) return false;
+    if (!advanced_test_append(buf, cap, &len, "(define [macro] pick-last (syntax-match ([")) return false;
     for (usz i = 0; i < var_count; i++) {
         if (i > 0 && !advanced_test_append(buf, cap, &len, " ")) return false;
         if (!advanced_test_append(buf, cap, &len, "v")) return false;
         if (!advanced_test_append_int(buf, cap, &len, i)) return false;
     }
-    if (!advanced_test_append(buf, cap, &len, "] v")) return false;
+    if (!advanced_test_append(buf, cap, &len, "] (template (insert v")) return false;
     if (!advanced_test_append_int(buf, cap, &len, var_count - 1)) return false;
-    if (!advanced_test_append(buf, cap, &len, "))")) return false;
+    if (!advanced_test_append(buf, cap, &len, ")))))")) return false;
     return true;
 }
 
@@ -170,18 +170,18 @@ fn bool advanced_build_many_capture_bindings_setup(char* buf, usz cap, usz bindi
 
 fn bool advanced_build_many_capture_macro_define(char* buf, usz cap, usz binding_count) {
     usz len = 0;
-    if (!advanced_test_append(buf, cap, &len, "(define [macro] capture-wide ([] (block")) return false;
+    if (!advanced_test_append(buf, cap, &len, "(define [macro] capture-wide (syntax-match ([] (template (block")) return false;
     for (usz i = 0; i < binding_count; i++) {
         if (!advanced_test_append(buf, cap, &len, " cap")) return false;
         if (!advanced_test_append_int(buf, cap, &len, i)) return false;
     }
-    if (!advanced_test_append(buf, cap, &len, ")))")) return false;
+    if (!advanced_test_append(buf, cap, &len, ")))))")) return false;
     return true;
 }
 
 fn bool advanced_build_many_gensym_macro_define(char* buf, usz cap, usz gensym_count) {
     usz len = 0;
-    if (!advanced_test_append(buf, cap, &len, "(define [macro] gensym-wide ([] (let (")) return false;
+    if (!advanced_test_append(buf, cap, &len, "(define [macro] gensym-wide (syntax-match ([] (template (let (")) return false;
     for (usz i = 0; i < gensym_count; i++) {
         if (i > 0 && !advanced_test_append(buf, cap, &len, " ")) return false;
         if (!advanced_test_append(buf, cap, &len, "g")) return false;
@@ -189,9 +189,9 @@ fn bool advanced_build_many_gensym_macro_define(char* buf, usz cap, usz gensym_c
         if (!advanced_test_append(buf, cap, &len, "# ")) return false;
         if (!advanced_test_append_int(buf, cap, &len, i)) return false;
     }
-    if (!advanced_test_append(buf, cap, &len, ") g")) return false;
+    if (!advanced_test_append(buf, cap, &len, ") (insert g")) return false;
     if (!advanced_test_append_int(buf, cap, &len, gensym_count - 1)) return false;
-    if (!advanced_test_append(buf, cap, &len, "#)))")) return false;
+    if (!advanced_test_append(buf, cap, &len, "#))))))")) return false;
     return true;
 }
 

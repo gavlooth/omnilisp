@@ -7,15 +7,16 @@ fn void Compiler.serialize_defmacro_to_buf(Compiler* self, Expr* expr, List{char
     self.buf_append(buf, "(define [macro] ");
     char[] macro_name = self.interp.symbols.get_name(expr.define_macro.name);
     self.buf_append(buf, macro_name);
+    self.buf_append(buf, " (syntax-match");
     for (usz i = 0; i < expr.define_macro.clause_count; i++) {
         self.buf_append(buf, " (");
         self.serialize_pattern_to_buf(expr.define_macro.clauses[i].pattern, buf);
         buf.push(' ');
-        self.buf_append(buf, "(");
+        self.buf_append(buf, "(template ");
         self.serialize_value_to_buf(expr.define_macro.clauses[i].tmpl, buf);
         self.buf_append(buf, "))");
     }
-    buf.push(')');
+    self.buf_append(buf, "))");
 }
 
 fn void Compiler.serialize_module_to_buf(Compiler* self, Expr* expr, List{char}* buf) {

@@ -71,7 +71,9 @@
 ;; Expands to: (lambda (price#) (> price# 60000))
 ;; Auto-gensym price# ensures hygiene — no name clashes with caller.
 (define [macro] rule
-  ([op threshold] (lambda (price#) (op price# threshold))))
+  (syntax-match
+    ([op threshold]
+      (template (lambda (price#) ((insert op) price# (insert threshold)))))))
 
 ;; ── Dynamic rule loading ────────────────────────────────────────────────────
 

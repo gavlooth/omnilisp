@@ -61,7 +61,10 @@ fn void run_compiler_group_jit_language_tests(Interp* interp, usz* pass, usz* fa
 
     // 73. macro via JIT
     {
-        EvalResult r = run("(block (define [macro] double ([x] (+ x x))) (double 21))", interp);
+        EvalResult r = run(
+            "(block (define [macro] double (syntax-match ([x] (template (+ (insert x) (insert x)))))) (double 21))",
+            interp
+        );
         bool ok = (!r.error.has_error && r.value != null && r.value.tag == ValueTag.INT && r.value.int_val == 42);
         if (ok) { (*pass)++; compiler_print_pass("JIT: macro expansion"); }
         else    { (*fail)++; io::printn("[FAIL] JIT: macro expansion"); }

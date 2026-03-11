@@ -5,6 +5,23 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 
 ## 2026-03-10
 
+- Macro surface hard-fail migration closure:
+  - parser removed legacy clause-style macro definitions (`(define [macro] name ([...] ...))` and multi-clause variants).
+  - macro definitions now require the canonical single-transformer surface:
+    `(define [macro] name (syntax-match (... (template ...)) ...))`.
+  - parser emits deterministic migration diagnostics for removed legacy forms:
+    - `legacy macro clause syntax was removed; use (define [macro] name (syntax-match ([...] (template ...)) ...))`
+  - compiler macro serializer now emits canonical `syntax-match` + `template` shape instead of legacy clause syntax.
+  - migrated in-repo macro definitions in tests/bench/examples to canonical surface, including:
+    - advanced macro hygiene suites,
+    - compiler macro smoke paths,
+    - AST arena macro benchmark sources,
+    - `examples/finwatch/rules.omni`.
+  - added explicit regression coverage for removed forms:
+    - legacy single-clause and multi-clause syntax now have negative tests asserting deterministic failure.
+  - synchronized docs/spec references to canonical macro surface:
+    - `docs/LANGUAGE_SPEC.md`, `docs/SYNTAX_SPEC.md`, `docs/reference/05-macros-modules.md`, `docs/FEATURES.md`, and `docs/syntax-decision.md`.
+
 - Syntax-surface canonicalization pass:
   - Removed `Val` constructor support from type/value-literal annotations; `Value` is now the only accepted constructor.
     - parser now emits deterministic diagnostic for legacy usage: `Val constructor was removed; use Value`.
@@ -26,6 +43,19 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `handle` clauses now require the canonical shape `(tag arg body)` with explicit `with-continuation` for multi-shot usage.
     - parser emits deterministic legacy-form rejection message: `legacy handle clause syntax was removed; use (tag arg body) and with-continuation when needed`.
     - parser tests updated with a canonical `with-continuation` multi-shot case and explicit legacy-form rejection coverage.
+  - Let/match canonicalization:
+    - removed legacy grouped Scheme-style `let` binding forms in favor of canonical flat-pair `let`.
+    - removed legacy grouped named `let` binding forms in favor of canonical flat-pair named `let`.
+    - removed `letrec` parser syntax; parser now hard-fails with migration guidance to `let ^rec`.
+    - flat-pair `let` bindings are now documented and regression-covered as sequential left-to-right bindings.
+    - named `let` initializer lists now lower through an outer sequential `let` before entering the inner `let ^rec` loop binding, so later initializers can reference earlier ones.
+    - `match` clauses now require explicit `(pattern result)` pairs and emit deterministic diagnostics for missing-result and extra-form cases.
+    - `with-continuation` is now valid only inside `handle` clauses; parser rejects out-of-context usage explicitly.
+    - normalized shipped examples toward canonical flat-pair `let` syntax and documented the migration surface in `docs/syntax-decision.md`.
+  - Parser deprecation matrix:
+    - added dedicated `Value`/`Val` alias rejection matrix coverage in advanced parser/type tests:
+      - canonical `^(Value ...)` dispatch annotations are accepted for int, symbol, string, and bool literals.
+      - legacy `^(Val ...)` annotations are rejected with `Val constructor was removed; use Value`.
   - Deduce transaction command canonicalization:
     - replaced the legacy transaction-start command with `(deduce 'block db ['read|'write])`.
     - updated runtime dispatch, durability tests, and docs to the `block` command.
@@ -84,6 +114,20 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `deduce 'block ...` transaction command contract.
   - added `docs/syntax-decision.md` entry to documentation map in `docs/README.md`.
 
+- Memory-lifetime benchmark modularization:
+  - split AST arena benchmark support out of `src/lisp/tests_memory_lifetime_boundary_graph_txn_bench_groups.c3` into:
+    - `src/lisp/tests_memory_lifetime_boundary_ast_bench_groups.c3`
+  - retained boundary decision/splice benchmark coverage in:
+    - `src/lisp/tests_memory_lifetime_boundary_graph_txn_bench_groups.c3`
+  - intent: keep the benchmark-heavy memory-lifetime surfaces behavior-preserving while reducing file size and benchmark-domain coupling.
+
+- Memory-lifetime suite ownership split:
+  - split the mixed suite orchestration in `src/lisp/tests_memory_lifetime_groups.c3` into dedicated module owners:
+    - `src/lisp/tests_memory_lifetime_smoke_suite_groups.c3`
+    - `src/lisp/tests_memory_lifetime_stress_suite_groups.c3`
+    - `src/lisp/tests_memory_lifetime_benchmark_suite_groups.c3`
+  - preserved behavior while separating smoke, soak/stress, and benchmark domain entrypoints.
+
 - Post-complete backlog hygiene:
   - added `scripts/check_post_complete_backlog_freshness.sh`:
     - checks unchecked backlog entries in `docs/plans/post-complete-backlog.md` against recent release dates from `memory/CHANGELOG.md`.
@@ -91,6 +135,16 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - supports optional tuning via `OMNI_POST_COMPLETE_BACKLOG_RELEASE_CYCLES` and `OMNI_POST_COMPLETE_BACKLOG_FALLBACK_DAYS`.
   - added CI coverage with `.github/workflows/post-complete-backlog-freshness.yml`.
   - updated `docs/PROJECT_TOOLING.md` with check command and governance notes.
+
+- Additional host-safety hardening for Lisp slice execution:
+  - `src/lisp/tests_tests.c3` now rejects explicit host-side sliced Lisp runs outside validation containers for any `OMNI_LISP_TEST_SLICE` other than `basic`.
+  - existing container-only enforcement remains for high-memory selections (`all`, `memory-lifetime-soak`, `memory-stress`).
+  - intent: prevent accidental workstation-wide memory spikes from manually selected slices while preserving default host-safe `basic` behavior.
+  - `docs/PROJECT_TOOLING.md` now documents the stricter slice-execution rule.
+- Legacy lisp slice alias hardening:
+  - `src/lisp/tests_tests.c3` now fails fast for deprecated aliases (`memory-soak`, `syntax`) with a deterministic migration message.
+  - the failure path now points maintainers at explicit ownership-safe slices (`memory-lifetime-smoke`, `memory-lifetime-policy`, `memory-lifetime-bench`, `memory-stress`, `allocator-validation`, `allocator-bench`) instead of implicit compatibility behavior.
+  - this closes the deferred alias migration gap while keeping `memory-lifetime` as a scoped backward-compatible alias only.
 
 - Data-format semantic drift closure before API expansion:
   - `src/lisp/primitives_data_formats.c3`:

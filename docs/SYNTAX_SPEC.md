@@ -118,7 +118,7 @@ Three branches required (no two-branch form).
 ;; Simple let (flat pairs)
 (let (name init) body)
 
-;; Multi-binding let (flat pairs, desugars to nested lets)
+;; Multi-binding let (flat pairs, sequential left-to-right)
 (let (x 1 y 2) (+ x y))
 
 ;; Array destructuring
@@ -136,7 +136,7 @@ Three branches required (no two-branch form).
 ;; Recursive let
 (let ^rec (name init) body)
 
-;; Named let (desugars to let ^rec)
+;; Named let (initializer list is sequential; lowers through let + let ^rec)
 (let loop (x 0 acc nil)
   (if (= x 10) acc (loop (+ x 1) (cons x acc))))
 ```
@@ -161,7 +161,12 @@ Three branches required (no two-branch form).
 (define (f x) "other")  ;; fallback
 
 ;; Bracket attributes (NOT destructuring — [...] is always an attribute)
-(define [macro] name (pattern template))
+(define [macro] name
+  (syntax-match
+    (pattern1 (template ...))
+    (pattern2 (template ...))
+    ...))
+;; legacy clause-style macro forms are removed and parse as hard errors
 (define [type] Name (^Type field1) (^Type field2))
 (define [struct] Name (^Type field1) (^Type field2))  ;; alias of [type]
 (define [type] (Child Parent) (^Type field))

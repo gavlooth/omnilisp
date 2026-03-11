@@ -56,7 +56,9 @@
 ```lisp
 (let name (var init ...) body)
 ```
-- Named let desugars to: `(let ^rec (name (lambda (var ...) body)) (name init ...))`
+- Bindings are sequential left-to-right, like `let`
+- Named let lowers through an outer sequential `let` and an inner recursive binding:
+  `(let (var init ...) (let ^rec (name (lambda (var ...) body)) (name var ...)))`
 - Enables iterative loops via tail-recursive named function
 - Example: `(let loop (n 5 acc 1) (if (= n 0) acc (loop (- n 1) (* acc n))))` => 120
 
@@ -180,14 +182,17 @@
 ### 1.16 `defmacro` — Pattern-Based Macros
 ```lisp
 (define [macro] name
-  (pattern1 template1)
-  (pattern2 template2) ...)
+  (syntax-match
+    (pattern1 (template ...))
+    (pattern2 (template ...))
+    ...))
 ```
+- Single macro surface: one transformer with `syntax-match` branches
 - Pattern-based macros with template substitution
 - Hygienic binding capture: template literal symbols (not pattern vars, not gensyms, not special forms) are resolved at macro definition time, making them immune to expansion-site shadowing
 - Auto-gensym: `name#` in templates generates unique symbols for additional hygiene
 - `gensym` function available for manual hygiene
-- Up to 8 clauses per macro
+- Legacy clause-style macro definitions are rejected with deterministic diagnostics
 
 ### 1.17 Collections — Arrays, Dicts, and Generic Operations
 
@@ -715,7 +720,7 @@ See `docs/PROJECT_TOOLING.md` for the complete reference.
 | Pattern elements | Dynamic (no fixed limit) |
 | Macros | 64 |
 | Modules | 32 |
-| Macro clauses | 8 per macro |
+| Macro `syntax-match` clauses | Dynamic (no fixed limit) |
 | Module exports | 128 per module |
 | Block expressions | Dynamic (no fixed limit) |
 | Lambda params | Dynamic (no fixed limit) |

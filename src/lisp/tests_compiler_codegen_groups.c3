@@ -144,7 +144,10 @@ fn void run_compiler_group_quasiquote_macro_tests(Interp* interp, usz* pass_out,
 
     // 50. Defmacro delegates to eval_source
     {
-        char[] code = compile_to_c3("(define [macro] double ([x] (+ x x)))", interp);
+        char[] code = compile_to_c3(
+            "(define [macro] double (syntax-match ([x] (template (+ (insert x) (insert x))))))",
+            interp
+        );
         bool ok = str_contains(code, "make_nil") && !str_contains(code, "unsupported");
         if (ok) { pass++; compiler_print_pass("Compiler: defmacro compiles as no-op"); }
         else    { fail++; io::printn("[FAIL] Compiler: defmacro compiles as no-op"); }

@@ -225,7 +225,7 @@ struct CapturedBinding {
 
 /**
  * MacroDef — Stored macro definition (pattern-based).
- * (define [macro] name (pattern1 template1) (pattern2 template2) ...)
+ * (define [macro] name (syntax-match (pattern1 (template ...)) (pattern2 (template ...)) ...))
  * captured_bindings stores a SNAPSHOT of template literal values at definition time,
  * preventing expansion-site shadowing from capturing them.
  */
