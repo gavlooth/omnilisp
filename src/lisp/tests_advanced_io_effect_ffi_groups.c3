@@ -198,7 +198,8 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
 
 fn void run_advanced_union_memory_limit_tests(Interp* interp, int* pass, int* fail) {
     // === UNION PATTERN MATCHING TESTS (Phase 6) ===
-    // Option and Result types already defined in Phase 1 tests above
+    // Define Option locally so this isolated group does not depend on other suites.
+    setup(interp, "(define [union] (Option T) None (Some T))");
 
     // Nullary constructor match
     test_eq_interp(interp, "match None", "(match None (None 0) ((Some x) x))", 0, pass, fail);

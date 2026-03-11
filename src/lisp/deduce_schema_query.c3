@@ -1,7 +1,6 @@
 module lisp;
 
 import std::core::mem;
-import std::collections::list;
 
 // ============================================================
 // Relation definition + query
@@ -46,6 +45,7 @@ fn Relation* deduce_relation_alloc(DeduceDb* db, SymbolId rel_name) {
     if (rel == null) return null;
     rel.name = rel_name;
     rel.columns = null;
+    rel.column_key_values = null;
     rel.db = db;
     rel.col_count = 0;
     rel.col_capacity = 0;
@@ -293,26 +293,20 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
 
     Value* filter_fn = args[1];
 
-    // Scan all tuples and filter
+    // Scan all tuples and filter in a single pass.
+    // relation_scan_all returns rows in reverse cursor order; prepending
+    // matching rows here preserves the prior result ordering behavior.
     Value* all = relation_scan_all(rel, interp);
     Value* result = make_nil(interp);
-    List{Value*} matches;
-    defer matches.free();
 
     Value* curr = all;
     while (is_cons(curr)) {
         Value* row = car(curr);
-        // Apply filter function to row
         Value* keep = jit_apply_value(filter_fn, row, interp);
         if (keep != null && !is_falsy(keep, interp)) {
-            matches.push(row);
+            result = make_cons(interp, row, result);
         }
         curr = cdr(curr);
-    }
-
-    // Build result list in order
-    for (isz i = (isz)matches.len() - 1; i >= 0; i--) {
-        result = make_cons(interp, matches[(usz)i], result);
     }
     return result;
 }

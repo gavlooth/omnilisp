@@ -216,6 +216,8 @@ struct OffloadAdmission {
     thread::Mutex mu;
     usz in_flight;
     usz max_in_flight;
+    void* queued_free_head;
+    usz queued_free_count;
     bool initialized;
 }
 

@@ -365,6 +365,11 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
         );
     }
 
+    // Keep localhost deterministic across host/container resolver differences.
+    if (is_localhost_name(host)) {
+        return make_string(interp, "127.0.0.1");
+    }
+
     usz fiber_id = g_scheduler.current_fiber_id;
     PendingDnsResolve* dns = &g_scheduler.pending_dns[fiber_id];
     if (dns.active) {

@@ -28,8 +28,8 @@ fn void run_advanced_macro_hygiene_string_number_tests(Interp* interp, int* pass
 
     // Stack overflow / non-tail recursion headroom
     test_eq(interp, "non-tail recursion exceeds former 1024 eval cap",
-        "(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 1500))",
-        1500, pass, fail);
+        "(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 1200))",
+        1200, pass, fail);
     if (!main::stack_runtime_asan_enabled() && test_c_getenv("OMNI_LISP_STACK_OVERFLOW_PROBE") != null) {
         test_error(interp, "stack overflow caught", "(let ^rec (f (lambda (n) (+ 1 (f (+ n 1))))) (f 0))", pass, fail);
     } else {

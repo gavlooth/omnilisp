@@ -6,6 +6,9 @@ import main;
 const usz BOUNDARY_BENCH_DECISION_ITERS = 2048;
 const usz BOUNDARY_BENCH_SPLICE_ITERS = 2048;
 const usz BOUNDARY_BENCH_SPLICE_ESCAPES_PER_ITER = 64;
+const usz EQUALITY_BENCH_ITERS = 2048;
+const usz EQUALITY_BENCH_NESTED_LIST_DEPTH = 1024;
+const usz EQUALITY_BENCH_ARRAY_LENGTH = 1024;
 
 fn bool boundary_bench_enabled() @inline {
     return boundary_c_getenv("OMNI_BOUNDARY_BENCH") != null;
@@ -15,6 +18,38 @@ fn long boundary_bench_now_ms() @inline {
     long now_ms = scheduler_monotonic_ms();
     if (now_ms > 0) return now_ms;
     return 0;
+}
+
+fn Value* boundary_bench_make_nested_int_list(Interp* interp, usz depth, long tail_delta = 0) {
+    Value* list = make_nil(interp);
+    for (usz i = depth; i > 0; i--) {
+        long v = (long)(i - 1);
+        if (tail_delta != 0 && i == depth) v += tail_delta;
+        list = make_cons(interp, make_int(interp, v), list);
+    }
+    return list;
+}
+
+fn Value* boundary_bench_make_int_array(Interp* interp, usz len, long tail_delta = 0) {
+    Value* arr = make_array(interp, len);
+    if (arr == null || arr.array_val == null) return null;
+    for (usz i = 0; i < len; i++) {
+        long v = (long)i;
+        if (tail_delta != 0 && i + 1 == len) v += tail_delta;
+        arr.array_val.items[i] = make_int(interp, v);
+        arr.array_val.length++;
+    }
+    return arr;
+}
+
+fn void boundary_bench_accumulate_equality_workspace(
+    EqualityWorkspaceStats* total,
+    EqualityWorkspaceStats sample
+) @inline {
+    total.stack_heap_growths += sample.stack_heap_growths;
+    total.seen_heap_growths += sample.seen_heap_growths;
+    total.stack_heap_bytes += sample.stack_heap_bytes;
+    total.seen_heap_bytes += sample.seen_heap_bytes;
 }
 
 fn void run_memory_lifetime_boundary_benchmarks(Interp* interp) {
@@ -33,6 +68,17 @@ fn void run_memory_lifetime_boundary_benchmarks(Interp* interp) {
     long decision_reuse_ms = 0;
     long decision_destination_reuse_ms = 0;
     long splice_tail_ms = 0;
+    long equality_list_true_ms = 0;
+    long equality_list_false_ms = 0;
+    long equality_array_true_ms = 0;
+    long equality_array_false_ms = 0;
+
+    usz equality_list_true_ok = 0;
+    usz equality_list_false_ok = 0;
+    usz equality_array_true_ok = 0;
+    usz equality_array_false_ok = 0;
+    bool equality_fixture_ok = false;
+    EqualityWorkspaceStats equality_workspace = {};
 
     // Decision benchmark: splice-commit path.
     {
@@ -241,6 +287,66 @@ fn void run_memory_lifetime_boundary_benchmarks(Interp* interp) {
         splice_tail_ms = end_ms > start_ms ? end_ms - start_ms : 0;
     }
 
+    // Structural equality benchmark: measure large nested equality throughput
+    // and workspace heap-growth churn.
+    {
+        interp.current_scope = root_scope;
+        Value* list_left = boundary_bench_make_nested_int_list(interp, EQUALITY_BENCH_NESTED_LIST_DEPTH);
+        Value* list_right = boundary_bench_make_nested_int_list(interp, EQUALITY_BENCH_NESTED_LIST_DEPTH);
+        Value* list_mismatch = boundary_bench_make_nested_int_list(interp, EQUALITY_BENCH_NESTED_LIST_DEPTH, 1);
+
+        Value* array_left = boundary_bench_make_int_array(interp, EQUALITY_BENCH_ARRAY_LENGTH);
+        Value* array_right = boundary_bench_make_int_array(interp, EQUALITY_BENCH_ARRAY_LENGTH);
+        Value* array_mismatch = boundary_bench_make_int_array(interp, EQUALITY_BENCH_ARRAY_LENGTH, 1);
+
+        equality_fixture_ok = list_left != null &&
+            list_right != null &&
+            list_mismatch != null &&
+            array_left != null &&
+            array_right != null &&
+            array_mismatch != null;
+
+        if (equality_fixture_ok) {
+            long start_ms = boundary_bench_now_ms();
+            for (usz i = 0; i < EQUALITY_BENCH_ITERS; i++) {
+                EqualityWorkspaceStats stats = {};
+                bool eq = values_equal_with_workspace_stats(list_left, list_right, &stats);
+                if (eq) equality_list_true_ok++;
+                boundary_bench_accumulate_equality_workspace(&equality_workspace, stats);
+            }
+            long list_true_done_ms = boundary_bench_now_ms();
+
+            for (usz i = 0; i < EQUALITY_BENCH_ITERS; i++) {
+                EqualityWorkspaceStats stats = {};
+                bool eq = values_equal_with_workspace_stats(list_left, list_mismatch, &stats);
+                if (!eq) equality_list_false_ok++;
+                boundary_bench_accumulate_equality_workspace(&equality_workspace, stats);
+            }
+            long list_false_done_ms = boundary_bench_now_ms();
+
+            for (usz i = 0; i < EQUALITY_BENCH_ITERS; i++) {
+                EqualityWorkspaceStats stats = {};
+                bool eq = values_equal_with_workspace_stats(array_left, array_right, &stats);
+                if (eq) equality_array_true_ok++;
+                boundary_bench_accumulate_equality_workspace(&equality_workspace, stats);
+            }
+            long array_true_done_ms = boundary_bench_now_ms();
+
+            for (usz i = 0; i < EQUALITY_BENCH_ITERS; i++) {
+                EqualityWorkspaceStats stats = {};
+                bool eq = values_equal_with_workspace_stats(array_left, array_mismatch, &stats);
+                if (!eq) equality_array_false_ok++;
+                boundary_bench_accumulate_equality_workspace(&equality_workspace, stats);
+            }
+            long end_ms = boundary_bench_now_ms();
+
+            equality_list_true_ms = list_true_done_ms > start_ms ? list_true_done_ms - start_ms : 0;
+            equality_list_false_ms = list_false_done_ms > list_true_done_ms ? list_false_done_ms - list_true_done_ms : 0;
+            equality_array_true_ms = array_true_done_ms > list_false_done_ms ? array_true_done_ms - list_false_done_ms : 0;
+            equality_array_false_ms = end_ms > array_true_done_ms ? end_ms - array_true_done_ms : 0;
+        }
+    }
+
     interp.current_scope = root_scope;
     io::printfn(
         "OMNI_BENCH_SUMMARY suite=boundary_decision_cost iters=%d splice_ms=%d disallowed_ms=%d reuse_ms=%d splice_ok=%d disallowed_ok=%d reuse_ok=%d",
@@ -264,5 +370,24 @@ fn void run_memory_lifetime_boundary_benchmarks(Interp* interp) {
         (long)BOUNDARY_BENCH_SPLICE_ESCAPES_PER_ITER,
         splice_tail_ms,
         (long)splice_tail_ok
+    );
+    io::printfn(
+        "OMNI_BENCH_SUMMARY suite=equality_nested_workspace iters=%d fixture_ok=%d list_depth=%d array_len=%d list_true_ms=%d list_true_ok=%d list_false_ms=%d list_false_ok=%d array_true_ms=%d array_true_ok=%d array_false_ms=%d array_false_ok=%d stack_growth=%d seen_growth=%d stack_bytes=%d seen_bytes=%d",
+        (long)EQUALITY_BENCH_ITERS,
+        equality_fixture_ok ? 1 : 0,
+        (long)EQUALITY_BENCH_NESTED_LIST_DEPTH,
+        (long)EQUALITY_BENCH_ARRAY_LENGTH,
+        equality_list_true_ms,
+        (long)equality_list_true_ok,
+        equality_list_false_ms,
+        (long)equality_list_false_ok,
+        equality_array_true_ms,
+        (long)equality_array_true_ok,
+        equality_array_false_ms,
+        (long)equality_array_false_ok,
+        (long)equality_workspace.stack_heap_growths,
+        (long)equality_workspace.seen_heap_growths,
+        (long)equality_workspace.stack_heap_bytes,
+        (long)equality_workspace.seen_heap_bytes
     );
 }

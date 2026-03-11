@@ -2,6 +2,53 @@ module lisp;
 
 import std::core::mem;
 
+struct DeduceScanRangeBenchStats {
+    bool enabled;
+    usz calls;
+    usz rows_materialized;
+    usz key_symbols_allocated;
+    long materialize_ms;
+}
+
+DeduceScanRangeBenchStats deduce_scan_range_bench_stats;
+
+fn void deduce_scan_range_bench_reset() {
+    deduce_scan_range_bench_stats.calls = 0;
+    deduce_scan_range_bench_stats.rows_materialized = 0;
+    deduce_scan_range_bench_stats.key_symbols_allocated = 0;
+    deduce_scan_range_bench_stats.materialize_ms = 0;
+}
+
+fn void deduce_scan_range_bench_set_enabled(bool enabled) {
+    deduce_scan_range_bench_stats.enabled = enabled;
+    deduce_scan_range_bench_reset();
+}
+
+fn DeduceScanRangeBenchStats deduce_scan_range_bench_snapshot() {
+    return deduce_scan_range_bench_stats;
+}
+
+fn bool deduce_relation_ensure_column_key_values(Relation* rel, Interp* interp, usz* created_out) {
+    if (created_out != null) *created_out = 0;
+    if (rel == null) return false;
+    if (rel.col_count == 0) return true;
+    if (rel.column_key_values != null) return true;
+
+    Value** key_values = (Value**)mem::malloc(Value*.sizeof * rel.col_count);
+    if (key_values == null) return false;
+
+    for (usz i = 0; i < rel.col_count; i++) {
+        Value* key = boundary_alloc_value_in_root(interp);
+        key.tag = SYMBOL;
+        key.sym_val = rel.columns[i];
+        key_values[i] = key;
+    }
+
+    rel.column_key_values = key_values;
+    if (created_out != null) *created_out = rel.col_count;
+    return true;
+}
+
 fn int deduce_compare_value(Value* left, Value* right) {
     if (left == null && right == null) return 0;
     if (left == null) return -1;
@@ -115,6 +162,14 @@ fn Value* relation_scan_range(
     Value*[] upper_bound,
     bool has_end
 ) {
+    bool bench_enabled = deduce_scan_range_bench_stats.enabled;
+    if (bench_enabled) deduce_scan_range_bench_stats.calls++;
+    usz created_key_values = 0;
+    if (!deduce_relation_ensure_column_key_values(rel, interp, &created_key_values)) {
+        return make_nil(interp);
+    }
+    if (bench_enabled) deduce_scan_range_bench_stats.key_symbols_allocated += created_key_values;
+
     MdbTxn* txn = null;
     int rc = mdb_txn_begin(rel.db.env, null, MDB_RDONLY, &txn);
     if (rc != MDB_SUCCESS) return make_nil(interp);
@@ -132,6 +187,10 @@ fn Value* relation_scan_range(
         if (vals.ptr == null) return make_nil(interp);
     }
     defer if (vals.ptr != null) mem::free(vals.ptr);
+
+    uint dict_capacity = 8;
+    uint needed_capacity = (uint)(rel.col_count * 2);
+    while (dict_capacity < needed_capacity) dict_capacity *= 2;
 
     MdbVal key;
     MdbVal data;
@@ -161,12 +220,20 @@ fn Value* relation_scan_range(
         }
 
         if (count_opt == rel.col_count) {
-            Value* dict = make_hashmap(interp, 8);
+            long materialize_start_ms = 0;
+            if (bench_enabled) materialize_start_ms = scheduler_monotonic_ms();
+
+            Value* dict = make_hashmap(interp, dict_capacity);
             for (usz i = 0; i < rel.col_count; i++) {
-                Value* k = interp.alloc_value();
-                k.tag = SYMBOL;
-                k.sym_val = rel.columns[i];
+                Value* k = rel.column_key_values[i];
                 hashmap_set(dict.hashmap_val, k, vals[i], interp);
+            }
+            if (bench_enabled) {
+                deduce_scan_range_bench_stats.rows_materialized++;
+                long materialize_end_ms = scheduler_monotonic_ms();
+                if (materialize_end_ms > materialize_start_ms) {
+                    deduce_scan_range_bench_stats.materialize_ms += (materialize_end_ms - materialize_start_ms);
+                }
             }
             result = make_cons(interp, dict, result);
         }

@@ -99,15 +99,29 @@ fn void MatchResult.cleanup(MatchResult* self) {
 /**
  * Check if two values are equal (for literal pattern matching).
  */
-const usz EQUAL_STACK_INITIAL_CAPACITY = 256;
-const usz EQUAL_SEEN_INITIAL_CAPACITY = 256;
+const usz EQUAL_STACK_INLINE_CAPACITY = 256;
+const usz EQUAL_SEEN_INLINE_CAPACITY = 256;
+
+struct EqualityWorkspaceStats {
+    usz stack_heap_growths;
+    usz seen_heap_growths;
+    usz stack_heap_bytes;
+    usz seen_heap_bytes;
+}
 
 struct EqualPair {
     Value* left;
     Value* right;
 }
 
-fn bool values_equal(Value* a, Value* b) {
+fn bool values_equal_with_workspace_stats(Value* a, Value* b, EqualityWorkspaceStats* workspace_stats = null) {
+    if (workspace_stats != null) {
+        workspace_stats.stack_heap_growths = 0;
+        workspace_stats.seen_heap_growths = 0;
+        workspace_stats.stack_heap_bytes = 0;
+        workspace_stats.seen_heap_bytes = 0;
+    }
+
     if (a == null && b == null) return true;
     if (a == null || b == null) return false;
 
@@ -151,13 +165,18 @@ fn bool values_equal(Value* a, Value* b) {
             return a == b;  // Pointer equality for closures, etc.
     }
 
-    usz stack_cap = EQUAL_STACK_INITIAL_CAPACITY;
-    usz stack_count = 0;
-    EqualPair* stack = (EqualPair*)mem::malloc(EqualPair.sizeof * stack_cap);
+    EqualPair[EQUAL_STACK_INLINE_CAPACITY] stack_inline = {};
+    EqualPair[EQUAL_SEEN_INLINE_CAPACITY] seen_inline = {};
 
-    usz seen_cap = EQUAL_SEEN_INITIAL_CAPACITY;
+    EqualPair* stack = &stack_inline[0];
+    EqualPair* seen = &seen_inline[0];
+    bool stack_heap = false;
+    bool seen_heap = false;
+
+    usz stack_cap = EQUAL_STACK_INLINE_CAPACITY;
+    usz stack_count = 0;
+    usz seen_cap = EQUAL_SEEN_INLINE_CAPACITY;
     usz seen_count = 0;
-    EqualPair* seen = (EqualPair*)mem::malloc(EqualPair.sizeof * seen_cap);
 
     stack[stack_count++] = { .left = a, .right = b };
     bool ok = true;
@@ -239,10 +258,19 @@ fn bool values_equal(Value* a, Value* b) {
                 if (seen_count >= seen_cap) {
                     usz new_cap = seen_cap * 2;
                     EqualPair* new_seen = (EqualPair*)mem::malloc(EqualPair.sizeof * new_cap);
+                    if (new_seen == null) {
+                        ok = false;
+                        break;
+                    }
                     for (usz i = 0; i < seen_count; i++) new_seen[i] = seen[i];
-                    mem::free(seen);
+                    if (seen_heap) mem::free(seen);
                     seen = new_seen;
+                    seen_heap = true;
                     seen_cap = new_cap;
+                    if (workspace_stats != null) {
+                        workspace_stats.seen_heap_growths++;
+                        workspace_stats.seen_heap_bytes += EqualPair.sizeof * new_cap;
+                    }
                 }
                 seen[seen_count++] = { .left = left, .right = right };
 
@@ -251,11 +279,21 @@ fn bool values_equal(Value* a, Value* b) {
                     usz new_cap = stack_cap;
                     while (new_cap < needed) new_cap *= 2;
                     EqualPair* new_stack = (EqualPair*)mem::malloc(EqualPair.sizeof * new_cap);
+                    if (new_stack == null) {
+                        ok = false;
+                        break;
+                    }
                     for (usz i = 0; i < stack_count; i++) new_stack[i] = stack[i];
-                    mem::free(stack);
+                    if (stack_heap) mem::free(stack);
                     stack = new_stack;
+                    stack_heap = true;
                     stack_cap = new_cap;
+                    if (workspace_stats != null) {
+                        workspace_stats.stack_heap_growths++;
+                        workspace_stats.stack_heap_bytes += EqualPair.sizeof * new_cap;
+                    }
                 }
+                if (!ok) break;
                 // Push cdr first so car is processed next (matches recursive order).
                 stack[stack_count++] = { .left = left.cons_val.cdr, .right = right.cons_val.cdr };
                 stack[stack_count++] = { .left = left.cons_val.car, .right = right.cons_val.car };
@@ -283,11 +321,21 @@ fn bool values_equal(Value* a, Value* b) {
                 if (seen_count >= seen_cap) {
                     usz new_cap = seen_cap * 2;
                     EqualPair* new_seen = (EqualPair*)mem::malloc(EqualPair.sizeof * new_cap);
+                    if (new_seen == null) {
+                        ok = false;
+                        break;
+                    }
                     for (usz i = 0; i < seen_count; i++) new_seen[i] = seen[i];
-                    mem::free(seen);
+                    if (seen_heap) mem::free(seen);
                     seen = new_seen;
+                    seen_heap = true;
                     seen_cap = new_cap;
+                    if (workspace_stats != null) {
+                        workspace_stats.seen_heap_growths++;
+                        workspace_stats.seen_heap_bytes += EqualPair.sizeof * new_cap;
+                    }
                 }
+                if (!ok) break;
                 seen[seen_count++] = { .left = left, .right = right };
 
                 usz len = left.array_val.length;
@@ -296,11 +344,21 @@ fn bool values_equal(Value* a, Value* b) {
                     usz new_cap = stack_cap;
                     while (new_cap < needed) new_cap *= 2;
                     EqualPair* new_stack = (EqualPair*)mem::malloc(EqualPair.sizeof * new_cap);
+                    if (new_stack == null) {
+                        ok = false;
+                        break;
+                    }
                     for (usz i = 0; i < stack_count; i++) new_stack[i] = stack[i];
-                    mem::free(stack);
+                    if (stack_heap) mem::free(stack);
                     stack = new_stack;
+                    stack_heap = true;
                     stack_cap = new_cap;
+                    if (workspace_stats != null) {
+                        workspace_stats.stack_heap_growths++;
+                        workspace_stats.stack_heap_bytes += EqualPair.sizeof * new_cap;
+                    }
                 }
+                if (!ok) break;
                 for (usz i = len; i > 0; i--) {
                     usz idx = i - 1;
                     stack[stack_count++] = {
@@ -316,9 +374,13 @@ fn bool values_equal(Value* a, Value* b) {
         }
     }
 
-    mem::free(seen);
-    mem::free(stack);
+    if (seen_heap) mem::free(seen);
+    if (stack_heap) mem::free(stack);
     return ok;
+}
+
+fn bool values_equal(Value* a, Value* b) {
+    return values_equal_with_workspace_stats(a, b);
 }
 
 /**

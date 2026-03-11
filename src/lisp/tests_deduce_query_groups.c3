@@ -3,150 +3,13 @@ module lisp;
 
 import std::core::mem;
 import std::io;
+import main;
 
-fn void run_deduce_scan_tests(Interp* interp, int* pass, int* fail) {
-    {
-        EvalResult r = run("(length (deduce 'scan person))", interp);
-        if (!r.error.has_error && is_int(r.value) && r.value.int_val >= 2) {
-            emit_pass_literal("[PASS] deduce 'fact! + 'scan");
-            (*pass)++;
-        } else {
-            io::printfn("[FAIL] deduce 'fact! + 'scan (got %d)", is_int(r.value) ? (int)r.value.int_val : -1);
-            (*fail)++;
-        }
-    }
-
-    setup(interp, "(deduce 'retract! person \"Bob\" 25)");
-    {
-        EvalResult r = run("(length (deduce 'scan person))", interp);
-        if (!r.error.has_error && is_int(r.value) && r.value.int_val >= 1) {
-            emit_pass_literal("[PASS] deduce 'retract!");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] deduce 'retract!");
-            (*fail)++;
-        }
-    }
-
-    {
-        EvalResult r = run("('name (car (deduce 'scan person)))", interp);
-        if (!r.error.has_error && is_string(r.value)) {
-            emit_pass_literal("[PASS] deduce 'scan dict result");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] deduce 'scan dict result");
-            (*fail)++;
-        }
-    }
-}
-
-fn void run_deduce_scan_range_tests(Interp* interp, int* pass, int* fail) {
-    setup(interp,
-        "(block "
-        "  (define scan-range-db (deduce 'open 'memory)) "
-        "  (define [relation scan-range-db] scan_range_person (name) (age) (email)) "
-        "  (deduce 'fact! scan_range_person \"Alice\" 20 \"a@x\") "
-        "  (deduce 'fact! scan_range_person \"Bob\" 30 \"b@x\") "
-        "  (deduce 'fact! scan_range_person \"Carol\" 40 \"c@x\") "
-        "  (deduce 'fact! scan_range_person \"Dora\" 50 \"d@x\") "
-        ")");
-
-    {
-        EvalResult r = run("(length (deduce 'scan-range scan_range_person '(\"Bob\" 30 \"b@x\") '(\"Carol\" 40 \"c@x\")))", interp);
-        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 2) {
-            emit_pass_literal("[PASS] deduce 'scan-range bounded count");
-            (*pass)++;
-        } else {
-            io::printfn(
-                "[FAIL] deduce 'scan-range bounded count (got %d)",
-                is_int(r.value) ? (int)r.value.int_val : -1
-            );
-            (*fail)++;
-        }
-    }
-
-    {
-        EvalResult r = run("(length (deduce 'scan-range scan_range_person '(\"Zed\" 99 \"z@x\") '(\"Zoe\" 100 \"z@x\")))", interp);
-        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 0) {
-            emit_pass_literal("[PASS] deduce 'scan-range empty");
-            (*pass)++;
-        } else {
-            io::printfn(
-                "[FAIL] deduce 'scan-range empty (got %d)",
-                is_int(r.value) ? (int)r.value.int_val : -1
-            );
-            (*fail)++;
-        }
-    }
-
-    {
-        EvalResult r = run("(deduce 'scan-range scan_range_person \"bad\" '(\"Carol\" 40 \"c@x\"))", interp);
-        if (r.error.has_error) {
-            emit_pass_literal("[PASS] deduce 'scan-range lower bound not list");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] deduce 'scan-range lower bound not list");
-            (*fail)++;
-        }
-    }
-
-    {
-        EvalResult r = run("(deduce 'scan-range scan_range_person '(\"Bob\" 30) '(\"Carol\" 40 \"c@x\"))", interp);
-        if (r.error.has_error) {
-            emit_pass_literal("[PASS] deduce 'scan-range lower bound arity");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] deduce 'scan-range lower bound arity");
-            (*fail)++;
-        }
-    }
-}
-
-fn void run_deduce_query_filter_tests(Interp* interp, int* pass, int* fail) {
-    {
-        EvalResult r = run("(deduce 'count person)", interp);
-        if (!r.error.has_error && is_int(r.value) && r.value.int_val >= 1) {
-            emit_pass_literal("[PASS] deduce 'count");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] deduce 'count");
-            (*fail)++;
-        }
-    }
-
-    {
-        EvalResult r = run("(length (deduce 'query person (lambda (row) (> ('age row) 28))))", interp);
-        if (!r.error.has_error && is_int(r.value) && r.value.int_val >= 1) {
-            emit_pass_literal("[PASS] deduce 'query filter");
-            (*pass)++;
-        } else {
-            io::printfn("[FAIL] deduce 'query filter (got %d)", is_int(r.value) ? (int)r.value.int_val : -1);
-            (*fail)++;
-        }
-    }
-
-    {
-        EvalResult r = run("(length (deduce 'query person (lambda (row) false)))", interp);
-        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 0) {
-            emit_pass_literal("[PASS] deduce 'query false predicate");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] deduce 'query false predicate");
-            (*fail)++;
-        }
-    }
-
-    {
-        EvalResult r = run("('name (car (deduce 'query person (lambda (row) (> ('age row) 28)))))", interp);
-        if (!r.error.has_error && is_string(r.value)) {
-            emit_pass_literal("[PASS] deduce 'query dict result");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] deduce 'query dict result");
-            (*fail)++;
-        }
-    }
-}
+const usz DEDUCE_BENCH_CORPUS_ROWS = 4096;
+const usz DEDUCE_BENCH_SCAN_ITERS = 16;
+const usz DEDUCE_BENCH_SCAN_RANGE_ITERS = 16;
+const usz DEDUCE_BENCH_QUERY_ITERS = 16;
+const usz DEDUCE_BENCH_COUNT_ITERS = 4096;
 
 fn void run_deduce_match_tests(Interp* interp, int* pass, int* fail) {
     {
@@ -346,9 +209,201 @@ fn void run_deduce_match_tests(Interp* interp, int* pass, int* fail) {
     }
 }
 
+fn bool deduce_bench_seed_relation(
+    Interp* interp,
+    Value** rel_out,
+    usz* query_expected_out
+) {
+    if (interp == null || rel_out == null || query_expected_out == null) return false;
+    *rel_out = null;
+    *query_expected_out = 0;
+
+    Value*[1] open_args;
+    open_args[0] = make_symbol(interp, interp.symbols.intern("memory"));
+    Value* db = prim_deduce_open(open_args[..], null, interp);
+    if (db == null || db.tag != FFI_HANDLE || db.ffi_val == null) return false;
+
+    SymbolId rel_name = interp.symbols.intern("bench_person");
+    SymbolId id_sym = interp.symbols.intern("id");
+    SymbolId score_sym = interp.symbols.intern("score");
+    Value* rel = setup_deduce_relation_for_db(interp, db, rel_name, id_sym, score_sym);
+    if (rel == null || rel.tag != FFI_HANDLE || rel.ffi_val == null) return false;
+
+    usz query_expected = 0;
+    for (usz i = 0; i < DEDUCE_BENCH_CORPUS_ROWS; i++) {
+        long score = (long)(i % 100);
+        if (score > 50) query_expected++;
+
+        Value*[3] fact_args;
+        fact_args[0] = rel;
+        fact_args[1] = make_int(interp, (long)i);
+        fact_args[2] = make_int(interp, score);
+        Value* inserted = prim_assert_fact(fact_args[..], null, interp);
+        if (inserted == null || inserted.tag != NIL) return false;
+    }
+
+    *rel_out = rel;
+    *query_expected_out = query_expected;
+    return true;
+}
+
+fn void run_deduce_scan_query_count_benchmarks(Interp* interp) {
+    if (!deduce_bench_enabled()) return;
+    if (interp == null) return;
+
+    io::printn("\n--- Deduce Scan/Query/Count Benchmarks ---");
+
+    main::ScopeRegion* bench_scope = interp.current_scope;
+    Value* rel = null;
+    usz query_expected = 0;
+    bool seeded = deduce_bench_seed_relation(interp, &rel, &query_expected);
+
+    long scan_ms = 0;
+    long scan_range_ms = 0;
+    long query_ms = 0;
+    long count_ms = 0;
+
+    usz scan_ok = 0;
+    usz scan_range_ok = 0;
+    usz query_ok = 0;
+    usz count_ok = 0;
+    usz iter_scope_fail = 0;
+    DeduceScanRangeBenchStats scan_range_stats = {};
+
+    EvalResult filter_eval = run("(lambda (row) (> ('score row) 50))", interp);
+    Value* filter_fn = filter_eval.error.has_error ? null : filter_eval.value;
+    bool filter_ok = !filter_eval.error.has_error &&
+        filter_fn != null &&
+        filter_fn.tag == CLOSURE;
+
+    if (seeded) {
+        Value*[1] scan_args;
+        scan_args[0] = rel;
+        Value*[3] scan_range_args;
+        scan_range_args[0] = rel;
+        scan_range_args[1] = deduce_bench_make_bound_tuple(interp, 0, 0);
+        scan_range_args[2] = deduce_bench_make_bound_tuple(
+            interp,
+            (long)(DEDUCE_BENCH_CORPUS_ROWS - 1),
+            99
+        );
+        Value*[2] query_args;
+        query_args[0] = rel;
+        query_args[1] = filter_fn;
+        Value*[1] count_args;
+        count_args[0] = rel;
+
+        long scan_start = deduce_bench_now_ms();
+        for (usz i = 0; i < DEDUCE_BENCH_SCAN_ITERS; i++) {
+            main::ScopeRegion* iter_scope = main::scope_create(bench_scope);
+            if (iter_scope == null) {
+                iter_scope_fail++;
+                break;
+            }
+            interp.current_scope = iter_scope;
+
+            Value* rows = prim_deduce_scan(scan_args[..], null, interp);
+            bool ok = rows != null &&
+                rows.tag != ERROR &&
+                list_length(rows) == DEDUCE_BENCH_CORPUS_ROWS;
+            if (ok) scan_ok++;
+
+            interp.current_scope = bench_scope;
+            main::scope_release(iter_scope);
+        }
+        long scan_done = deduce_bench_now_ms();
+        scan_ms = scan_done > scan_start ? scan_done - scan_start : 0;
+
+        if (filter_ok) {
+            long query_start = deduce_bench_now_ms();
+            for (usz i = 0; i < DEDUCE_BENCH_QUERY_ITERS; i++) {
+                main::ScopeRegion* iter_scope = main::scope_create(bench_scope);
+                if (iter_scope == null) {
+                    iter_scope_fail++;
+                    break;
+                }
+                interp.current_scope = iter_scope;
+
+                Value* rows = prim_deduce_query(query_args[..], null, interp);
+                bool ok = rows != null &&
+                    rows.tag != ERROR &&
+                    list_length(rows) == query_expected;
+                if (ok) query_ok++;
+
+                interp.current_scope = bench_scope;
+                main::scope_release(iter_scope);
+            }
+            long query_done = deduce_bench_now_ms();
+            query_ms = query_done > query_start ? query_done - query_start : 0;
+        }
+
+        long count_start = deduce_bench_now_ms();
+        for (usz i = 0; i < DEDUCE_BENCH_COUNT_ITERS; i++) {
+            Value* count = prim_deduce_count(count_args[..], null, interp);
+            bool ok = count != null &&
+                count.tag == INT &&
+                count.int_val == (long)DEDUCE_BENCH_CORPUS_ROWS;
+            if (ok) count_ok++;
+        }
+        long count_done = deduce_bench_now_ms();
+        count_ms = count_done > count_start ? count_done - count_start : 0;
+
+        deduce_scan_range_bench_set_enabled(true);
+        long scan_range_start = deduce_bench_now_ms();
+        for (usz i = 0; i < DEDUCE_BENCH_SCAN_RANGE_ITERS; i++) {
+            main::ScopeRegion* iter_scope = main::scope_create(bench_scope);
+            if (iter_scope == null) {
+                iter_scope_fail++;
+                break;
+            }
+            interp.current_scope = iter_scope;
+
+            Value* rows = prim_deduce_scan_range(scan_range_args[..], null, interp);
+            bool ok = rows != null &&
+                rows.tag != ERROR &&
+                list_length(rows) == DEDUCE_BENCH_CORPUS_ROWS;
+            if (ok) scan_range_ok++;
+
+            interp.current_scope = bench_scope;
+            main::scope_release(iter_scope);
+        }
+        long scan_range_done = deduce_bench_now_ms();
+        scan_range_ms = scan_range_done > scan_range_start ? scan_range_done - scan_range_start : 0;
+        scan_range_stats = deduce_scan_range_bench_snapshot();
+        deduce_scan_range_bench_set_enabled(false);
+    }
+
+    interp.current_scope = bench_scope;
+    io::printfn(
+        "OMNI_BENCH_SUMMARY suite=deduce_scan_query_count iters_scan=%d iters_scan_range=%d iters_query=%d iters_count=%d corpus_rows=%d seeded_ok=%d filter_ok=%d scan_ms=%d scan_ok=%d scan_range_ms=%d scan_range_ok=%d scan_range_calls=%d scan_range_rows=%d scan_range_key_symbols=%d scan_range_materialize_ms=%d query_ms=%d query_ok=%d query_expected=%d count_ms=%d count_ok=%d iter_scope_fail=%d",
+        (long)DEDUCE_BENCH_SCAN_ITERS,
+        (long)DEDUCE_BENCH_SCAN_RANGE_ITERS,
+        (long)DEDUCE_BENCH_QUERY_ITERS,
+        (long)DEDUCE_BENCH_COUNT_ITERS,
+        (long)DEDUCE_BENCH_CORPUS_ROWS,
+        seeded ? 1 : 0,
+        filter_ok ? 1 : 0,
+        scan_ms,
+        (long)scan_ok,
+        scan_range_ms,
+        (long)scan_range_ok,
+        (long)scan_range_stats.calls,
+        (long)scan_range_stats.rows_materialized,
+        (long)scan_range_stats.key_symbols_allocated,
+        scan_range_stats.materialize_ms,
+        query_ms,
+        (long)query_ok,
+        (long)query_expected,
+        count_ms,
+        (long)count_ok,
+        (long)iter_scope_fail
+    );
+}
+
 fn void run_deduce_query_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_scan_tests(interp, pass, fail);
     run_deduce_scan_range_tests(interp, pass, fail);
     run_deduce_query_filter_tests(interp, pass, fail);
     run_deduce_match_tests(interp, pass, fail);
+    run_deduce_scan_query_count_benchmarks(interp);
 }
