@@ -41,7 +41,7 @@ man -M "$HOME/.local/share/man" 7 omni-language
 
 ## CLI Commands
 
-### `--language-ref` — Print Built-In Language Quick Reference
+### `--language-ref` — Print Built-In Full Language Reference
 
 ```bash
 omni --language-ref
@@ -49,7 +49,7 @@ omni --language-ref
 
 Alias flags: `--lang-ref`, `--manual`.
 
-Prints the embedded language quick reference directly from the executable
+Prints the embedded full language reference directly from the executable
 without requiring external docs on disk.
 
 ### `--init` — Scaffold a New Project
