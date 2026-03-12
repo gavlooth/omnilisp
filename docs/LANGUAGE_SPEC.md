@@ -313,7 +313,6 @@ The reader supports a small canonical `#` dispatch surface:
 
 | Form | Meaning |
 |------|---------|
-| `#{...}` | set literal |
 | `#r"..."` | regex literal |
 | `#_ form` | skip next form |
 | `#N_ form...` | skip next `N` forms (`N` in `1..9`) |
@@ -343,6 +342,10 @@ Any other `#` sequence is rejected with a deterministic parser/lexer error.
 | dict | `HASHMAP` | Mutable hash table | `{'a 1}`, `(dict 'a 1)` |
 | array | `ARRAY` | Mutable dynamic array | `[1 2 3]`, `(array 1 2 3)` |
 | coroutine | `COROUTINE` | User-level coroutine | `(coroutine (lambda () body))` |
+
+Omni does not currently define a builtin `Empty`/bottom type. `nil`/`Nil`
+cover the language's empty/false value, while `Void` is reserved for
+FFI/no-result annotation positions.
 | ffi-handle | `FFI_HANDLE` | Foreign library handle | `(define [ffi lib] libc "libc.so.6")` |
 | instance | `INSTANCE` | User-defined type instance | `(Point 3 4)` |
 | method-table | `METHOD_TABLE` | Multiple dispatch table | internal |
@@ -609,11 +612,17 @@ Dynamic clause count (no fixed limit). Pattern types:
 
 ## 4. Type System
 
+Canonical naming direction:
+
+- prefer descriptive language-facing type symbols and constructors over abbreviations,
+- `Integer`, `Boolean`, and `Dictionary` are the canonical builtin names,
+- `Int`, `Bool`, and `Dict` remain accepted compatibility aliases.
+
 ### 4.1 Struct Types
 
 ```lisp
-(define [type] Point (^Int x) (^Int y))
-(define [struct] Vec2 (^Int x) (^Int y))   ; alias of [type]
+(define [type] Point (^Integer x) (^Integer y))
+(define [struct] Vec2 (^Integer x) (^Integer y))   ; alias of [type]
 
 (Point 3 4)        ; construction
 point.x             ; field access => 3
@@ -625,7 +634,7 @@ point.[0]           ; positional access => 3
 
 ```lisp
 (define [abstract] Shape)
-(define [type] (Circle Shape) (^Int radius))
+(define [type] (Circle Shape) (^Integer radius))
 
 (is? (Circle 5) 'Shape)   ; => true (subtype check)
 (is? (Circle 5) 'Circle)  ; => true
@@ -652,14 +661,14 @@ None                    ; nullary variant
 ### 4.4 Type Aliases
 
 ```lisp
-(define [alias] Num Int)
+(define [alias] Num Integer)
 ```
 
 ### 4.5 Type Annotations
 
 ```lisp
-^Int                    ; simple type
-^(List Int)             ; compound type
+^Integer                ; simple type
+^(List Integer)         ; compound type
 ^(Value 42)             ; canonical value-level constructor
 ^(Value bind)           ; symbol literal
 ^(Value "open")         ; string literal
@@ -669,11 +678,11 @@ None                    ; nullary variant
 ### 4.6 Type Introspection
 
 ```lisp
-(type-of 42)            ; => 'Int
+(type-of 42)            ; => 'Integer
 (type-of "hi")          ; => 'String
 (type-of (Point 1 2))   ; => 'Point
 (= (type-of (array 1 2)) 'Array) ; exact type via symbol equality
-(is? 42 'Int)           ; => true
+(is? 42 'Integer)       ; => true
 (is? (Circle 5) 'Shape) ; => true (walks parent chain)
 (instance? (Point 1 2)) ; => true
 (instance? 42)          ; => nil
@@ -688,7 +697,7 @@ None                    ; nullary variant
 Define multiple implementations with typed parameters. Best match wins:
 
 ```lisp
-(define (describe (^Int n)) "integer")
+(define (describe (^Integer n)) "integer")
 (define (describe (^String s)) "string")
 (define (describe x) "other")
 
@@ -700,7 +709,7 @@ Define multiple implementations with typed parameters. Best match wins:
 ### 5.2 Multi-Argument Dispatch
 
 ```lisp
-(define (add2 (^Int a) (^Int b)) (+ a b))
+(define (add2 (^Integer a) (^Integer b)) (+ a b))
 (define (add2 (^String a) (^String b)) (string-append a b))
 
 (add2 3 4)              ; => 7
@@ -712,7 +721,7 @@ Define multiple implementations with typed parameters. Best match wins:
 ```lisp
 (define (fib (^(Value 0) n)) 0)
 (define (fib (^(Value 1) n)) 1)
-(define (fib (^Int n)) (+ (fib (- n 1)) (fib (- n 2))))
+(define (fib (^Integer n)) (+ (fib (- n 1)) (fib (- n 2))))
 
 (define (udp (^(Value open) cmd)) (io/udp-open))
 (define (udp (^(Value bind) cmd) h host port) (io/udp-bind h host port))
@@ -729,8 +738,8 @@ Command-style facades like `udp` are valid API shape, but core operations remain
 | Match Type | Score | Description |
 |------------|-------|-------------|
 | Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)` |
-| Exact type | 100 | `^Int` matches INT value |
-| Numeric widening | 50 | Dispatch-only widening (`Int` can satisfy `^Double`) |
+| Exact type | 100 | `^Integer` matches INT value |
+| Numeric widening | 50 | Dispatch-only widening (`Integer` can satisfy `^Double`) |
 | Subtype | 10 | `^Shape` matches Circle (Shape child) |
 | Any type | 1 | Untyped parameter matches anything |
 
@@ -948,7 +957,7 @@ Note: `length` (Section 7.3) is also generic — works on lists, arrays, dicts, 
 
 | Prim | Arity | Description |
 |------|-------|-------------|
-| `set` | variadic | Create set |
+| `Set` | variadic | Create set |
 | `set-add` | 2 | Add element |
 | `set-remove` | 2 | Remove element |
 | `set-contains?` | 2 | Check membership |
@@ -1023,15 +1032,16 @@ Note: `length` (Section 7.3) is also generic — works on lists, arrays, dicts, 
 (define [ffi lib] libc "libc.so.6")
 
 ;; Bind a C function as a native Omni function
-(define [ffi λ libc] (strlen (^String s)) ^Int)
-(define [ffi λ libc] (abs (^Int n)) ^Int)
+(define [ffi λ libc] (strlen (^String s)) ^Integer)
+(define [ffi λ libc] (abs (^Integer n)) ^Integer)
 
 (strlen "hello")  ; => 5
 (abs -42)          ; => 42
 ```
 
 - Uses libffi via C wrapper for portable ABI support
-- Type annotations: `^Int` → sint64, `^Double` → double, `^String`/`^Ptr` → pointer, `^Void` → void, `^Bool` → sint64
+- Type annotations: `^Integer`/`^Int` → sint64, `^Double` → double, `^String`/`^Ptr` → pointer, `^Void` → void, `^Boolean`/`^Bool` → sint64
+- `Nil` is the language-level empty/false value type; `Void` is reserved for FFI/no-result annotation positions
 - Lazy dlsym: symbol resolution deferred to first call and cached
 
 ### 7.21 Constants

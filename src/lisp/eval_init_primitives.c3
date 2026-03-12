@@ -38,7 +38,7 @@ fn void register_language_constants(Interp* interp) {
 }
 
 fn void register_dispatched_primitives(Interp* interp) {
-    const DISPATCHED_PRIM_COUNT = 33;
+    const DISPATCHED_PRIM_COUNT = 43;
     PrimReg[DISPATCHED_PRIM_COUNT] dispatched_prims = {
         // Arithmetic
         { "+", &prim_add, 2 }, { "-", &prim_sub, 2 }, { "*", &prim_mul, 2 },
@@ -65,6 +65,13 @@ fn void register_dispatched_primitives(Interp* interp) {
         { "ceiling", &prim_ceiling, 1 }, { "round", &prim_round, 1 },
         { "truncate", &prim_truncate, 1 }, { "sqrt", &prim_sqrt, 1 },
         { "min", &prim_min, 2 }, { "max", &prim_max, 2 },
+        // Callable type symbols / constructors
+        { "Integer", &prim_ctor_int, 1 }, { "Int", &prim_ctor_int, 1 },
+        { "Double", &prim_ctor_double, 1 },
+        { "String", &prim_ctor_string, 1 }, { "Symbol", &prim_ctor_symbol, 1 },
+        { "Boolean", &prim_ctor_bool, 1 }, { "Bool", &prim_ctor_bool, 1 },
+        { "Nil", &prim_ctor_nil, 1 },
+        { "Closure", &prim_ctor_closure, 1 }, { "Iterator", &prim_ctor_iterator, 1 },
     };
     $assert(dispatched_prims.len == DISPATCHED_PRIM_COUNT);
     register_dispatched_prim_table(interp, dispatched_prims[0:dispatched_prims.len]);
@@ -75,6 +82,7 @@ fn void register_regular_primitives_core(Interp* interp) {
         // List operations
         { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
         { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 },
+        { "List", &prim_list, -1 },
         { "list", &prim_list, -1 },
         // Boolean
         { "not", &prim_not, 1 },
@@ -106,8 +114,10 @@ fn void register_regular_primitives_core(Interp* interp) {
         { "exact->inexact", &prim_exact_to_inexact, 1 }, { "inexact->exact", &prim_inexact_to_exact, 1 },
         // Gensym
         { "gensym", &prim_gensym, 0 },
-        // Dict
-        { "dict", &prim_dict, -1 }, { "dict-set!", &prim_dict_set, 3 },
+        // Dictionary
+        { "Dictionary", &prim_dict, -1 }, { "dictionary", &prim_dict, -1 },
+        { "Dict", &prim_dict, -1 }, { "dict", &prim_dict, -1 },
+        { "dict-set!", &prim_dict_set, 3 },
         // Math library
         { "sin", &prim_sin, 1 }, { "cos", &prim_cos, 1 }, { "tan", &prim_tan, 1 },
         { "asin", &prim_asin, 1 }, { "acos", &prim_acos, 1 }, { "atan", &prim_atan, 1 },
@@ -134,10 +144,11 @@ fn void register_regular_primitives_collections(Interp* interp) {
         { "apply", &prim_apply, 2 }, { "bound?", &prim_bound, 1 },
         { "error", &prim_error, 1 }, { "error-message", &prim_error_message, 1 },
         // Arrays
+        { "Array", &prim_array, -1 },
         { "array", &prim_array, -1 },
         { "array-set!", &prim_array_set, 3 },
         // Sets
-        { "set", &prim_set, -1 },
+        { "Set", &prim_set, -1 },
         { "set-add", &prim_set_add, 2 },
         { "set-remove", &prim_set_remove, 2 }, { "set-contains?", &prim_set_contains, 2 },
         { "set-size", &prim_set_size, 1 }, { "set->list", &prim_set_to_list, 1 },
@@ -156,6 +167,7 @@ fn void register_regular_primitives_collections(Interp* interp) {
         { "next", &prim_next, 1 }, { "collect", &prim_collect, 1 },
         { "to-array", &prim_to_array, 1 },
         // Coroutines
+        { "Coroutine", &prim_coroutine, 1 },
         { "coroutine", &prim_coroutine, 1 },
         { "resume", &prim_resume, -1 },
         { "yield", &prim_yield, -1 },
@@ -191,6 +203,7 @@ fn void register_regular_primitives_collections(Interp* interp) {
         { "json-emit-pretty", &prim_json_emit_pretty, -1 },
         { "json-get", &prim_json_get, 2 },
         { "time-point?", &prim_time_point_p, 1 },
+        { "TimePoint", &prim_time_point, -1 },
         { "time-point", &prim_time_point, -1 },
         // TOML / CSV
         { "toml-parse", &prim_toml_parse, 1 },

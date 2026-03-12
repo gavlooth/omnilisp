@@ -19,6 +19,15 @@ fn Value* prim_make_iterator(Value*[] args, Env* env, Interp* interp) {
     return make_iterator(interp, args[0]);
 }
 
+fn Value* prim_ctor_iterator(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) {
+        return raise_error(interp, "Iterator: expected closure thunk, iterator, or collection");
+    }
+    if (args[0].tag == ITERATOR) return args[0];
+    if (args[0].tag == CLOSURE) return make_iterator(interp, args[0]);
+    return raise_error(interp, "Iterator: expected closure thunk, iterator, or collection");
+}
+
 fn Value* prim_next(Value*[] args, Env* env, Interp* interp) {
     Value* iterator = null;
     Value* parse_err = iterator_require_arg(args, "next: expected iterator", &iterator, interp);

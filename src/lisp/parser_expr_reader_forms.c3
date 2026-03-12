@@ -1,7 +1,5 @@
 module lisp;
 
-import std::collections::list;
-
 /**
  * Parse a complete expression.
  */
@@ -37,40 +35,6 @@ fn Expr* Parser.parse_form_comment_expr(Parser* self) {
         if (discarded == null || self.has_error) return null;
     }
     return self.parse_expr();
-}
-
-fn Expr* Parser.parse_set_literal_expr(Parser* self) {
-    Expr* e = self.alloc_expr_here();
-    self.lexer.advance();  // consume #{
-
-    List{Expr*} elems;
-    while (self.lexer.current.type != T_RBRACE && self.lexer.current.type != T_EOF && !self.has_error) {
-        elems.push(self.parse_expr());
-    }
-    if (self.has_error) {
-        elems.free();
-        return null;
-    }
-    self.expect(T_RBRACE, "}");
-
-    e.tag = E_CALL;
-    usz total = elems.len() + 1;
-    Expr** args = (Expr**)mem::malloc(Expr*.sizeof * total);
-    if (args == null) {
-        elems.free();
-        self.set_error("out of memory while parsing set literal");
-        return null;
-    }
-    args[0] = self.interp.alloc_expr();
-    args[0].tag = E_VAR;
-    args[0].var_expr.name = self.interp.symbols.intern("set");
-    for (usz i = 0; i < elems.len(); i++) {
-        args[i + 1] = elems[i];
-    }
-    e.call.args = args;
-    e.call.arg_count = total;
-    elems.free();
-    return e;
 }
 
 fn Expr* Parser.parse_regex_literal_expr(Parser* self) {

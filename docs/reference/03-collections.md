@@ -49,12 +49,16 @@ Omni has three collection types plus sets.
 ### Sets
 
 ```lisp
-(set 1 2 3)                ;; create set
+(Set 1 2 3)                ;; create set
 (set-add s 4)              ;; => new set with 4
 (set-remove s 2)           ;; => new set without 2
 (set-contains? s 1)        ;; => true
 (set-size s)               ;; => number of elements
 ```
+
+Sets now have a distinct builtin `Set` runtime type symbol. `type-of` reports
+`Set` for `(Set ...)` values, and printed set values use constructor-shaped
+syntax such as `(Set 1 2 3)`.
 
 ### Generic Operations
 

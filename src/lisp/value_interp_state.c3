@@ -77,22 +77,27 @@ struct Interp {
     SymbolId sym_Void;      // "Void" for ^Void type
 
     // Built-in type name symbols
+    SymbolId sym_Integer;
     SymbolId sym_Int;
     SymbolId sym_Double;
     SymbolId sym_String;
     SymbolId sym_Symbol;
     SymbolId sym_List;
+    SymbolId sym_Boolean;
     SymbolId sym_Bool;
     SymbolId sym_Nil;
     SymbolId sym_Closure;
     SymbolId sym_Array;
+    SymbolId sym_Dictionary;
     SymbolId sym_Dict;
+    SymbolId sym_Set;
     SymbolId sym_Any;
     SymbolId sym_Value;
     SymbolId sym_Number;
     SymbolId sym_Collection;
     SymbolId sym_Iterator;
     SymbolId sym_TimePoint;
+    SymbolId sym_Coroutine;
 
     // Error-as-effect
     SymbolId sym_raise;
@@ -113,21 +118,26 @@ struct Interp {
     bool jit_debug_trace;  // trace JIT compile/exec steps
 
     // Cached TypeIds for built-in types (avoid repeated hash lookups)
+    TypeId tid_Integer;
     TypeId tid_Int;
     TypeId tid_Double;
     TypeId tid_String;
     TypeId tid_Symbol;
     TypeId tid_List;
+    TypeId tid_Boolean;
     TypeId tid_Bool;
     TypeId tid_Nil;
     TypeId tid_Closure;
     TypeId tid_Array;
+    TypeId tid_Dictionary;
     TypeId tid_Dict;
+    TypeId tid_Set;
     TypeId tid_Any;
     TypeId tid_Number;
     TypeId tid_Collection;
     TypeId tid_Iterator;
     TypeId tid_TimePoint;
+    TypeId tid_Coroutine;
 
     // Type registry
     TypeRegistry types;
@@ -276,22 +286,27 @@ fn void interp_init_type_symbols(Interp* self) {
     self.sym_Ptr = self.symbols.intern("Ptr");
     self.sym_Void = self.symbols.intern("Void");
 
+    self.sym_Integer = self.symbols.intern("Integer");
     self.sym_Int = self.symbols.intern("Int");
     self.sym_Double = self.symbols.intern("Double");
     self.sym_String = self.symbols.intern("String");
     self.sym_Symbol = self.symbols.intern("Symbol");
     self.sym_List = self.symbols.intern("List");
+    self.sym_Boolean = self.symbols.intern("Boolean");
     self.sym_Bool = self.symbols.intern("Bool");
     self.sym_Nil = self.symbols.intern("Nil");
     self.sym_Closure = self.symbols.intern("Closure");
     self.sym_Array = self.symbols.intern("Array");
+    self.sym_Dictionary = self.symbols.intern("Dictionary");
     self.sym_Dict = self.symbols.intern("Dict");
+    self.sym_Set = self.symbols.intern("Set");
     self.sym_Any = self.symbols.intern("Any");
     self.sym_Value = self.symbols.intern("Value");
     self.sym_Number = self.symbols.intern("Number");
     self.sym_Collection = self.symbols.intern("Collection");
     self.sym_Iterator = self.symbols.intern("Iterator");
     self.sym_TimePoint = self.symbols.intern("TimePoint");
+    self.sym_Coroutine = self.symbols.intern("Coroutine");
 }
 
 fn void interp_init_misc_symbols(Interp* self) {

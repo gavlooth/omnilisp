@@ -54,6 +54,23 @@ fn void print_hashmap_value(Value* v, SymbolTable* syms) {
     io::print("}");
 }
 
+fn void print_set_value(Value* v, SymbolTable* syms) {
+    io::print("(Set");
+    uint printed = 0;
+    for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
+        if (v.hashmap_val.entries[hi].key != null) {
+            io::print(" ");
+            print_value(v.hashmap_val.entries[hi].key, syms);
+            printed++;
+        }
+    }
+    if (printed == 0) {
+        io::print(")");
+        return;
+    }
+    io::print(")");
+}
+
 fn void print_array_value(Value* v, SymbolTable* syms) {
     io::print("[");
     if (v.array_val != null) {
@@ -135,6 +152,8 @@ fn void print_value(Value* v, SymbolTable* syms) {
             io::printf("#<error: %s>", (ZString)v.str_chars);
         case HASHMAP:
             print_hashmap_value(v, syms);
+        case SET:
+            print_set_value(v, syms);
         case FFI_HANDLE:
             io::printf("#<ffi-handle:%s>", (ZString)&v.ffi_val.lib_name);
         case ARRAY:
@@ -248,6 +267,17 @@ fn void print_hashmap_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
     pb.append_char('}');
 }
 
+fn void print_set_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
+    pb.append_str("(Set");
+    for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
+        if (v.hashmap_val.entries[hi].key != null) {
+            pb.append_char(' ');
+            print_value_buf(v.hashmap_val.entries[hi].key, syms, pb);
+        }
+    }
+    pb.append_char(')');
+}
+
 fn void print_array_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
     pb.append_char('[');
     if (v.array_val != null) {
@@ -294,6 +324,8 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             pb.append_str("#<error>");
         case HASHMAP:
             print_hashmap_value_buf(v, syms, pb);
+        case SET:
+            print_set_value_buf(v, syms, pb);
         case ARRAY:
             print_array_value_buf(v, syms, pb);
         case MODULE:

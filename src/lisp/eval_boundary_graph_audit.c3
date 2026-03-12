@@ -180,6 +180,26 @@ fn BoundaryGraphAuditResult boundary_graph_audit_escape_reachability_result(
                         }
                     }
                     break;
+                case SET:
+                    assert(edge_class == BOUNDARY_GRAPH_EDGE_VALUE, "boundary graph audit: SET edge class mismatch");
+                    if (cur.hashmap_val != null && cur.hashmap_val.entries != null) {
+                        for (uint i = 0; i < cur.hashmap_val.capacity; i++) {
+                            Value* key = cur.hashmap_val.entries[i].key;
+                            if (key == null) continue;
+                            if (!boundary_graph_audit_push_value(value_stack, &value_stack_len, key)) {
+                                return boundary_graph_audit_result(
+                                    emit,
+                                    BOUNDARY_GRAPH_AUDIT_PUSH_VALUE_OVERFLOW,
+                                    target_scope,
+                                    root_tag,
+                                    BOUNDARY_GRAPH_AUDIT_EDGE_TAG_NONE,
+                                    root_scope_gen,
+                                    0
+                                );
+                            }
+                        }
+                    }
+                    break;
                 case CLOSURE:
                     assert(edge_class == BOUNDARY_GRAPH_EDGE_ENV, "boundary graph audit: CLOSURE edge class mismatch");
                     if (cur.closure_val != null &&

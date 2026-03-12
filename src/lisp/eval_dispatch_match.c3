@@ -34,8 +34,8 @@ fn bool dispatch_text_equals(char[] a, char[] b) @inline {
 }
 
 fn bool dispatch_numeric_widening_match(TypeId actual, TypeId expected, Interp* interp) @inline {
-    // Numeric promotion policy (dispatch-only): Int can satisfy Double-typed methods.
-    return actual == interp.tid_Int && expected == interp.tid_Double;
+    // Numeric promotion policy (dispatch-only): Integer can satisfy Double-typed methods.
+    return actual == interp.tid_Integer && expected == interp.tid_Double;
 }
 
 fn bool dispatch_value_literal_matches(ValueLiteralKey* literal, Value* arg, Interp* interp) @inline {
@@ -203,11 +203,13 @@ fn DispatchMatchBreakdown dispatch_match_breakdown(
             out.failure_arg_index = j;
             return out;
         }
-        if (actual == expected) {
+        TypeId actual_canonical = interp.types.resolve_alias(actual);
+        TypeId expected_canonical = interp.types.resolve_alias(expected);
+        if (actual_canonical == expected_canonical) {
             out.score_exact++;
             out.score_total += 100;
-        } else if (dispatch_numeric_widening_match(actual, expected, interp)) {
-            // Prefer exact Int methods over widened Double methods, but keep widening above generic subtype/Any.
+        } else if (dispatch_numeric_widening_match(actual_canonical, expected_canonical, interp)) {
+            // Prefer exact Integer methods over widened Double methods, but keep widening above generic subtype/Any.
             out.score_widen++;
             out.score_total += 50;
         } else if (interp.types.is_subtype(actual, expected)) {

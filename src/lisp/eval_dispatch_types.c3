@@ -8,14 +8,14 @@ import std::io;
  */
 fn void register_builtin_types(Interp* interp) {
     // Register built-in types with TK_BUILTIN kind
-    SymbolId[13] builtin_names = {
-        interp.sym_Int, interp.sym_Double, interp.sym_String,
-        interp.sym_Symbol, interp.sym_List, interp.sym_Bool,
+    SymbolId[15] builtin_names = {
+        interp.sym_Integer, interp.sym_Double, interp.sym_String,
+        interp.sym_Symbol, interp.sym_List, interp.sym_Boolean,
         interp.sym_Nil, interp.sym_Closure, interp.sym_Array,
-        interp.sym_Dict, interp.sym_Any, interp.sym_Iterator,
-        interp.sym_TimePoint
+        interp.sym_Dictionary, interp.sym_Set, interp.sym_Any, interp.sym_Iterator,
+        interp.sym_TimePoint, interp.sym_Coroutine
     };
-    for (usz i = 0; i < 13; i++) {
+    for (usz i = 0; i < 15; i++) {
         TypeInfo info;
         info.name = builtin_names[i];
         info.kind = TK_BUILTIN;
@@ -53,30 +53,82 @@ fn void register_builtin_types(Interp* interp) {
     interp.types.register_type(abs_info, &interp.symbols);
 
     // Cache TypeIds for O(1) dispatch lookups
-    interp.tid_Int = interp.types.lookup(interp.sym_Int, &interp.symbols);
+    interp.tid_Integer = interp.types.lookup(interp.sym_Integer, &interp.symbols);
     interp.tid_Double = interp.types.lookup(interp.sym_Double, &interp.symbols);
     interp.tid_String = interp.types.lookup(interp.sym_String, &interp.symbols);
     interp.tid_Symbol = interp.types.lookup(interp.sym_Symbol, &interp.symbols);
     interp.tid_List = interp.types.lookup(interp.sym_List, &interp.symbols);
-    interp.tid_Bool = interp.types.lookup(interp.sym_Bool, &interp.symbols);
+    interp.tid_Boolean = interp.types.lookup(interp.sym_Boolean, &interp.symbols);
     interp.tid_Nil = interp.types.lookup(interp.sym_Nil, &interp.symbols);
     interp.tid_Closure = interp.types.lookup(interp.sym_Closure, &interp.symbols);
+    TypeInfo int_alias;
+    int_alias.name = interp.sym_Int;
+    int_alias.kind = TK_ALIAS;
+    int_alias.parent = INVALID_TYPE_ID;
+    int_alias.fields = null;
+    int_alias.field_count = 0;
+    int_alias.type_params = null;
+    int_alias.type_param_count = 0;
+    int_alias.constraints = null;
+    int_alias.constraint_count = 0;
+    int_alias.variants = null;
+    int_alias.variant_count = 0;
+    int_alias.alias_target = interp.tid_Integer;
+    interp.types.register_type(int_alias, &interp.symbols);
+
+    TypeInfo bool_alias;
+    bool_alias.name = interp.sym_Bool;
+    bool_alias.kind = TK_ALIAS;
+    bool_alias.parent = INVALID_TYPE_ID;
+    bool_alias.fields = null;
+    bool_alias.field_count = 0;
+    bool_alias.type_params = null;
+    bool_alias.type_param_count = 0;
+    bool_alias.constraints = null;
+    bool_alias.constraint_count = 0;
+    bool_alias.variants = null;
+    bool_alias.variant_count = 0;
+    bool_alias.alias_target = interp.tid_Boolean;
+    interp.types.register_type(bool_alias, &interp.symbols);
+
+    TypeInfo dict_alias;
+    dict_alias.name = interp.sym_Dict;
+    dict_alias.kind = TK_ALIAS;
+    dict_alias.parent = INVALID_TYPE_ID;
+    dict_alias.fields = null;
+    dict_alias.field_count = 0;
+    dict_alias.type_params = null;
+    dict_alias.type_param_count = 0;
+    dict_alias.constraints = null;
+    dict_alias.constraint_count = 0;
+    dict_alias.variants = null;
+    dict_alias.variant_count = 0;
+    dict_alias.alias_target = interp.types.lookup(interp.sym_Dictionary, &interp.symbols);
+    interp.types.register_type(dict_alias, &interp.symbols);
+
+    interp.tid_Int = interp.types.lookup(interp.sym_Int, &interp.symbols);
+    interp.tid_Bool = interp.types.lookup(interp.sym_Bool, &interp.symbols);
     interp.tid_Array = interp.types.lookup(interp.sym_Array, &interp.symbols);
+    interp.tid_Dictionary = interp.types.lookup(interp.sym_Dictionary, &interp.symbols);
     interp.tid_Dict = interp.types.lookup(interp.sym_Dict, &interp.symbols);
+    interp.tid_Set = interp.types.lookup(interp.sym_Set, &interp.symbols);
     interp.tid_Any = interp.types.lookup(interp.sym_Any, &interp.symbols);
     interp.tid_Number = interp.types.lookup(interp.sym_Number, &interp.symbols);
     interp.tid_Collection = interp.types.lookup(interp.sym_Collection, &interp.symbols);
     interp.tid_Iterator = interp.types.lookup(interp.sym_Iterator, &interp.symbols);
     interp.tid_TimePoint = interp.types.lookup(interp.sym_TimePoint, &interp.symbols);
+    interp.tid_Coroutine = interp.types.lookup(interp.sym_Coroutine, &interp.symbols);
 
-    // Set parent chains: Int/Double → Number, List/Array/Dict → Collection, Nil → List
-    interp.types.types[(usz)interp.tid_Int].parent = interp.tid_Number;
+    // Set parent chains: Integer/Double → Number, List/Array/Dictionary/Set → Collection, Nil → List
+    interp.types.types[(usz)interp.tid_Integer].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_Double].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_List].parent = interp.tid_Collection;
     interp.types.types[(usz)interp.tid_Array].parent = interp.tid_Collection;
-    interp.types.types[(usz)interp.tid_Dict].parent = interp.tid_Collection;
+    interp.types.types[(usz)interp.tid_Dictionary].parent = interp.tid_Collection;
+    interp.types.types[(usz)interp.tid_Set].parent = interp.tid_Collection;
     interp.types.types[(usz)interp.tid_Nil].parent = interp.tid_List;  // nil IS the empty list
     interp.types.types[(usz)interp.tid_TimePoint].parent = interp.tid_Any;
+    interp.types.types[(usz)interp.tid_Coroutine].parent = interp.tid_Any;
 }
 
 /**
@@ -85,16 +137,18 @@ fn void register_builtin_types(Interp* interp) {
 fn TypeId infer_value_type(Value* v, Interp* interp) {
     if (v == null || v.tag == NIL) return interp.tid_Nil;
     switch (v.tag) {
-        case INT:       return interp.tid_Int;
+        case INT:       return interp.tid_Integer;
         case DOUBLE:    return interp.tid_Double;
         case STRING:    return interp.tid_String;
         case SYMBOL:    return interp.tid_Symbol;
         case CONS:      return interp.tid_List;
         case CLOSURE:   return interp.tid_Closure;
         case ARRAY:     return interp.tid_Array;
-        case HASHMAP:   return interp.tid_Dict;
+        case HASHMAP:   return interp.tid_Dictionary;
+        case SET:       return interp.tid_Set;
         case ITERATOR:  return interp.tid_Iterator;
         case TIME_POINT:return interp.tid_TimePoint;
+        case COROUTINE: return interp.tid_Coroutine;
         case INSTANCE:
             if (v.instance_val != null) return v.instance_val.type_id;
             return INVALID_TYPE_ID;
@@ -109,20 +163,21 @@ fn TypeId infer_value_type(Value* v, Interp* interp) {
 fn SymbolId value_type_name(Value* v, Interp* interp) {
     if (v == null || v.tag == NIL) return interp.sym_Nil;
     switch (v.tag) {
-        case INT:       return interp.sym_Int;
+        case INT:       return interp.sym_Integer;
         case DOUBLE:    return interp.sym_Double;
         case STRING:    return interp.sym_String;
         case SYMBOL:
-            // true/false are symbols but semantically Bool
-            if (v.sym_val == interp.sym_true || v.sym_val == interp.sym_false) { return interp.sym_Bool; }
+            // true/false are symbols but semantically Boolean
+            if (v.sym_val == interp.sym_true || v.sym_val == interp.sym_false) { return interp.sym_Boolean; }
             return interp.sym_Symbol;
         case CONS:      return interp.sym_List;
         case CLOSURE:   return interp.sym_Closure;
         case ARRAY:     return interp.sym_Array;
-        case HASHMAP:   return interp.sym_Dict;
+        case HASHMAP:   return interp.sym_Dictionary;
+        case SET:       return interp.sym_Set;
         case ITERATOR:  return interp.sym_Iterator;
         case TIME_POINT:return interp.sym_TimePoint;
-        case COROUTINE:     return interp.symbols.intern("Coroutine");
+        case COROUTINE:  return interp.sym_Coroutine;
         case INSTANCE:
             if (v.instance_val != null) {
                 TypeInfo* ti = interp.types.get(v.instance_val.type_id);

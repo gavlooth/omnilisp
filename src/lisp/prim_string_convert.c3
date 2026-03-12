@@ -14,6 +14,86 @@ fn Value* conversion_runtime_raise(Interp* interp, char[] code, char[] message) 
     return raise_error_with_payload_names(interp, "runtime", code, message, null);
 }
 
+fn Value* prim_ctor_int(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return conversion_type_raise(interp, "Integer: expected int, double, or numeric string");
+
+    Value* arg = args[0];
+    if (arg == null || arg.tag == NIL) {
+        return conversion_type_raise(interp, "Integer: expected int, double, or numeric string");
+    }
+    if (arg.tag == INT) return arg;
+    if (arg.tag == DOUBLE) return make_int(interp, (long)arg.double_val);
+    if (arg.tag == STRING) {
+        Value* parsed = prim_string_to_number(args, env, interp);
+        if (parsed != null && parsed.tag != NIL) {
+            if (parsed.tag == INT) return parsed;
+            if (parsed.tag == DOUBLE) return make_int(interp, (long)parsed.double_val);
+        }
+    }
+    return conversion_type_raise(interp, "Integer: expected int, double, or numeric string");
+}
+
+fn Value* prim_ctor_string(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return conversion_type_raise(interp, "String: expected string, number, or symbol");
+
+    Value* arg = args[0];
+    if (arg == null || arg.tag == NIL) {
+        return conversion_type_raise(interp, "String: expected string, number, or symbol");
+    }
+    if (arg.tag == STRING) return arg;
+    if (is_number(arg)) return prim_number_to_string(args, env, interp);
+    if (arg.tag == SYMBOL) return prim_symbol_to_string(args, env, interp);
+    return conversion_type_raise(interp, "String: expected string, number, or symbol");
+}
+
+fn Value* prim_ctor_double(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return conversion_type_raise(interp, "Double: expected int, double, or numeric string");
+
+    Value* arg = args[0];
+    if (arg == null || arg.tag == NIL) {
+        return conversion_type_raise(interp, "Double: expected int, double, or numeric string");
+    }
+    if (arg.tag == DOUBLE) return arg;
+    if (arg.tag == INT) return make_double(interp, (double)arg.int_val);
+    if (arg.tag == STRING) {
+        Value* parsed = prim_string_to_number(args, env, interp);
+        if (parsed != null && parsed.tag != NIL) {
+            if (parsed.tag == DOUBLE) return parsed;
+            if (parsed.tag == INT) return make_double(interp, (double)parsed.int_val);
+        }
+    }
+    return conversion_type_raise(interp, "Double: expected int, double, or numeric string");
+}
+
+fn Value* prim_ctor_symbol(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return conversion_type_raise(interp, "Symbol: expected symbol or string");
+
+    Value* arg = args[0];
+    if (arg == null || arg.tag == NIL) {
+        return conversion_type_raise(interp, "Symbol: expected symbol or string");
+    }
+    if (arg.tag == SYMBOL) return arg;
+    if (arg.tag == STRING) return prim_string_to_symbol(args, env, interp);
+    return conversion_type_raise(interp, "Symbol: expected symbol or string");
+}
+
+fn Value* prim_ctor_bool(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return conversion_type_raise(interp, "Boolean: expected 1 argument");
+    return is_falsy(args[0], interp) ? make_nil(interp) : make_symbol(interp, interp.sym_true);
+}
+
+fn Value* prim_ctor_nil(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return conversion_type_raise(interp, "Nil: expected nil/false");
+    return is_falsy(args[0], interp) ? make_nil(interp) : conversion_type_raise(interp, "Nil: expected nil/false");
+}
+
+fn Value* prim_ctor_closure(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return conversion_type_raise(interp, "Closure: expected closure");
+    Value* arg = args[0];
+    if (arg != null && arg.tag == CLOSURE) return arg;
+    return conversion_type_raise(interp, "Closure: expected closure");
+}
+
 fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) return make_nil(interp);
     char[] s = args[0].str_chars[:args[0].str_len];

@@ -6,7 +6,7 @@ import main;
 
 fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, int* fail) {
     // Dicts
-    setup(interp, "(define hm1 (dict 1 10 2 20 3 30))");
+    setup(interp, "(define hm1 (Dict 1 10 2 20 3 30))");
     test_eq(interp, "ref dict", "(ref hm1 2)", 20, pass, fail);
     test_nil(interp, "ref dict missing", "(ref hm1 99)", pass, fail);
     setup(interp, "(dict-set! hm1 2 200)");
@@ -14,20 +14,21 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
     test_truthy(interp, "has? dict yes", "(has? hm1 1)", pass, fail);
     test_nil(interp, "has? dict no", "(has? hm1 99)", pass, fail);
     test_eq(interp, "length dict", "(length hm1)", 3, pass, fail);
-    setup(interp, "(define hm2 (dict 1 10 2 20 3 30))");
+    setup(interp, "(define hm2 (Dict 1 10 2 20 3 30))");
     setup(interp, "(remove! hm2 2)");
     test_nil(interp, "remove! dict", "(has? hm2 2)", pass, fail);
     test_eq(interp, "remove! count", "(length hm2)", 2, pass, fail);
-    setup(interp, "(define hm3 (dict 1 10 2 20))");
+    setup(interp, "(define hm3 (Dict 1 10 2 20))");
     test_eq(interp, "keys len", "(length (keys hm3))", 2, pass, fail);
     test_eq(interp, "values len", "(length (values hm3))", 2, pass, fail);
-    setup(interp, "(define hm4 (dict \"name\" \"Alice\" \"age\" 30))");
+    setup(interp, "(define hm4 (Dict \"name\" \"Alice\" \"age\" 30))");
     test_str(interp, "dict string key", "(ref hm4 \"name\")", pass, fail);
-    setup(interp, "(define hm5 (dict))");
+    setup(interp, "(define hm5 (Dict))");
     test_eq(interp, "dict empty count", "(length hm5)", 0, pass, fail);
-    test_truthy(interp, "dict? yes", "(dict? (dict 1 2))", pass, fail);
+    test_truthy(interp, "dict? Dict", "(dict? (Dict 1 2))", pass, fail);
+    test_eq(interp, "dict compat alias", "(ref (dict 1 10 2 20) 1)", 10, pass, fail);
     test_nil(interp, "dict? no", "(dict? 42)", pass, fail);
-    setup(interp, "(define hm-big (dict))");
+    setup(interp, "(define hm-big (Dict))");
     setup(interp, "(let loop (i 0) (if (= i 50) hm-big (block (dict-set! hm-big i (* i i)) (loop (+ i 1)))))");
     test_eq(interp, "dict auto-grow count", "(length hm-big)", 50, pass, fail);
     test_eq(interp, "dict auto-grow ref 7", "(ref hm-big 7)", 49, pass, fail);
@@ -327,4 +328,3 @@ fn void run_advanced_collections_module_tests(Interp* interp, int* pass, int* fa
     run_advanced_collections_generic_ops_tests(interp, pass, fail);
     run_advanced_module_system_tests(interp, pass, fail);
 }
-

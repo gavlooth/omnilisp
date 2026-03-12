@@ -6,7 +6,20 @@ This file now tracks only active, actionable work.
 Full completed history is archived at:
 - `docs/plans/TODO_ARCHIVE_2026-03-11.md`
 
-Current actionable count: 0
+Current actionable count: 6
+
+## Language Surface Consistency (2026-03-12)
+
+- [ ] Decide the public fate of compatibility/runtime factory aliases:
+  `make-iterator`, lowercase `iterator`, lowercase `list`/`array`/`dict`/`time-point`, and similar surfaces still exist for compatibility; decide which remain public, which become deprecated, and which should disappear from docs/examples.
+- [ ] Decide whether abstract/meta builtin type symbols remain type-only:
+  `Any`, `Value`, `Number`, and `Collection` currently participate in type annotations and dispatch but do not have callable value-position constructor/coercion behavior.
+- [ ] Decide whether the current `false`/`nil` collapse is a stable language rule:
+  the new `Boolean`/`Bool` and `Nil` constructor contracts currently reflect the existing runtime truthiness model; if `Boolean` and `Nil` should become distinct runtime values later, constructor semantics and docs will need another pass.
+- [ ] Finish the descriptive-name audit for remaining shorthand-heavy surfaces:
+  `Ptr`, low-level namespace abbreviations like `fs-*`/`tcp-*`/`udp-*`/`tls-*`/`dns-*`, and any other public spellings that still prioritize brevity over clarity should be reviewed explicitly instead of drifting ad hoc.
+- [ ] Run a Docker-capped full constructor-surface conformance pass:
+  validate the constructor/type-symbol behavior across the advanced/e2e gates inside the validation container, not just the host-safe build/basic-smoke path.
 
 ## Active Failure Recovery (2026-03-11)
 

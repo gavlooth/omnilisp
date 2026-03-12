@@ -39,7 +39,7 @@
 (define [effect] (io/signal-handle (^Any args)))
 (define [effect] (io/signal-unhandle (^Any handle)))
 (define [effect] (io/dns-resolve (^String host)))
-(define [effect] (io/async-sleep (^Int ms)))
+(define [effect] (io/async-sleep (^Integer ms)))
 (define [effect] (io/offload (^Any job)))
 (define [effect] (io/thread-spawn (^Any job)))
 (define [effect] (io/thread-join (^Any thread-handle)))
@@ -95,16 +95,19 @@
 ;; =========================================================================
 ;; Type Predicates (defined via is? and abstract type hierarchy)
 ;; =========================================================================
-(define (int? x) (is? x 'Int))
+(define (integer? x) (is? x 'Integer))
+(define (int? x) (integer? x))
 (define (double? x) (is? x 'Double))
 (define (number? x) (is? x 'Number))
 (define (string? x) (is? x 'String))
 (define (symbol? x) (is? x 'Symbol))
 (define (boolean? x) (or (null? x) (= x true)))
+(define (bool? x) (boolean? x))
 (define (list? x) (or (null? x) (pair? x)))
 (define (closure? x) (is? x 'Closure))
 (define (array? x) (is? x 'Array))
-(define (dict? x) (is? x 'Dict))
+(define (dict? x) (is? x 'Dictionary))
+(define (dictionary? x) (is? x 'Dictionary))
 
 ;; =========================================================================
 ;; Numeric Predicates (defined via dispatched comparison ops)
@@ -280,26 +283,30 @@
 ;; =========================================================================
 
 ;; iterator-empty: the empty iterator
-(define iterator-empty (make-iterator (lambda () nil)))
+(define iterator-empty (Iterator (lambda () nil)))
 
-;; iterator: convert collection to lazy iterator (dispatched on type)
-(define (iterator (^List lst)) (if (null? lst) iterator-empty (make-iterator (lambda () (cons (car lst) (iterator (cdr lst)))))))
-(define (iterator (^Array arr)) (let (len (length arr)) (let make-it (i 0) (if (= i len) iterator-empty (make-iterator (lambda () (cons (ref arr i) (make-it (+ i 1)))))))))
-(define (iterator (^Dict d)) (iterator (keys d)))
-(define (iterator (^Iterator it)) it)
+;; Iterator: canonical iterator constructor / conversion surface
+(define (Iterator (^Closure thunk)) (make-iterator thunk))
+(define (Iterator (^List lst)) (if (null? lst) iterator-empty (Iterator (lambda () (cons (car lst) (Iterator (cdr lst)))))))
+(define (Iterator (^Array arr)) (let (len (length arr)) (let make-it (i 0) (if (= i len) iterator-empty (Iterator (lambda () (cons (ref arr i) (make-it (+ i 1)))))))))
+(define (Iterator (^Dictionary d)) (Iterator (keys d)))
+(define (Iterator (^Iterator it)) it)
+
+;; iterator: compatibility wrapper for the canonical Iterator constructor
+(define (iterator coll) (Iterator coll))
 
 ;; Iterator-dispatched map/filter (lazy)
-(define (map f (^Iterator it)) (make-iterator (lambda () (let (pair (next it)) (if (null? pair) nil (cons (f (car pair)) (map f (cdr pair))))))))
-(define (filter pred (^Iterator it)) (make-iterator (lambda () (let loop (pair (next it)) (if (null? pair) nil (if (pred (car pair)) (cons (car pair) (filter pred (cdr pair))) (loop (next (cdr pair)))))))))
-(define (take n (^Iterator it)) (if (= n 0) iterator-empty (make-iterator (lambda () (let (pair (next it)) (if (null? pair) nil (cons (car pair) (take (- n 1) (cdr pair)))))))))
+(define (map f (^Iterator it)) (Iterator (lambda () (let (pair (next it)) (if (null? pair) nil (cons (f (car pair)) (map f (cdr pair))))))))
+(define (filter pred (^Iterator it)) (Iterator (lambda () (let loop (pair (next it)) (if (null? pair) nil (if (pred (car pair)) (cons (car pair) (filter pred (cdr pair))) (loop (next (cdr pair)))))))))
+(define (take n (^Iterator it)) (if (= n 0) iterator-empty (Iterator (lambda () (let (pair (next it)) (if (null? pair) nil (cons (car pair) (take (- n 1) (cdr pair)))))))))
 (define (drop n (^Iterator it)) (if (= n 0) it (let (pair (next it)) (if (null? pair) iterator-empty (drop (- n 1) (cdr pair))))))
-(define (zip (^Iterator a) (^Iterator b)) (make-iterator (lambda () (let (pa (next a) pb (next b)) (if (or (null? pa) (null? pb)) nil (cons (cons (car pa) (car pb)) (zip (cdr pa) (cdr pb))))))))
+(define (zip (^Iterator a) (^Iterator b)) (Iterator (lambda () (let (pa (next a) pb (next b)) (if (or (null? pa) (null? pb)) nil (cons (cons (car pa) (car pb)) (zip (cdr pa) (cdr pb))))))))
 (define (foldl f acc (^Iterator it)) (let loop (a acc cur it) (let (pair (next cur)) (if (null? pair) a (loop (f a (car pair)) (cdr pair))))))
 
 ;; Infinite sources
-(define (range-from n) (make-iterator (lambda () (cons n (range-from (+ n 1))))))
-(define (repeat x) (make-iterator (lambda () (cons x (repeat x)))))
-(define (cycle coll) (let (it (iterator coll)) (make-iterator (lambda () (let (pair (next it)) (if (null? pair) (next (cycle coll)) pair))))))
+(define (range-from n) (Iterator (lambda () (cons n (range-from (+ n 1))))))
+(define (repeat x) (Iterator (lambda () (cons x (repeat x)))))
+(define (cycle coll) (let (it (Iterator coll)) (Iterator (lambda () (let (pair (next it)) (if (null? pair) (next (cycle coll)) pair))))))
 
 ;; =========================================================================
 ;; I/O Effect Wrappers
@@ -322,10 +329,10 @@
 (define fs-readdir (lambda (path) (signal io/fs-readdir path)))
 (define fs-rename (lambda (src dst) (signal io/fs-rename (cons src dst))))
 (define fs-unlink (lambda (path) (signal io/fs-unlink path)))
-(define (tcp-connect (^String host) (^Int port)) (signal io/tcp-connect (cons host port)))
+(define (tcp-connect (^String host) (^Integer port)) (signal io/tcp-connect (cons host port)))
 ;; Keep untyped fallback so invalid args still flow through io/tcp-connect canonical payload errors.
 (define (tcp-connect host port) (signal io/tcp-connect (cons host port)))
-(define (tcp-listen (^String host) (^Int port) .. rest) (signal io/tcp-listen (cons host (cons port rest))))
+(define (tcp-listen (^String host) (^Integer port) .. rest) (signal io/tcp-listen (cons host (cons port rest))))
 ;; Keep untyped fallback so invalid args still flow through io/tcp-listen canonical payload errors.
 (define (tcp-listen host port .. rest) (signal io/tcp-listen (cons host (cons port rest))))
 (define (tcp-accept listener) (signal io/tcp-accept listener))
@@ -333,19 +340,19 @@
 (define (tcp-write handle data) (signal io/tcp-write (cons handle data)))
 (define (tcp-close handle) (signal io/tcp-close handle))
 (define (udp-socket) (signal io/udp-socket nil))
-(define (udp-bind handle (^String host) (^Int port)) (signal io/udp-bind (cons handle (cons host (cons port nil)))))
-(define (udp-send handle (^String host) (^Int port) data) (signal io/udp-send (cons handle (cons host (cons port (cons data nil))))))
+(define (udp-bind handle (^String host) (^Integer port)) (signal io/udp-bind (cons handle (cons host (cons port nil)))))
+(define (udp-send handle (^String host) (^Integer port) data) (signal io/udp-send (cons handle (cons host (cons port (cons data nil))))))
 (define (udp-recv handle) (signal io/udp-recv handle))
 (define (udp-close handle) (signal io/udp-close handle))
 (define (pipe-connect (^String path)) (signal io/pipe-connect path))
 (define (pipe-listen (^String path)) (signal io/pipe-listen path))
 (define (process-spawn (^String cmd) args env) (signal io/process-spawn (cons cmd (cons args (cons env nil)))))
 (define (process-wait handle) (signal io/process-wait handle))
-(define (process-kill handle (^Int sig)) (signal io/process-kill (cons handle (cons sig nil))))
-(define (signal-handle (^Int sig) callback) (signal io/signal-handle (cons sig (cons callback nil))))
+(define (process-kill handle (^Integer sig)) (signal io/process-kill (cons handle (cons sig nil))))
+(define (signal-handle (^Integer sig) callback) (signal io/signal-handle (cons sig (cons callback nil))))
 (define (signal-unhandle handle) (signal io/signal-unhandle handle))
 (define (dns-resolve (^String host)) (signal io/dns-resolve host))
-(define (async-sleep (^Int ms)) (signal io/async-sleep ms))
+(define (async-sleep (^Integer ms)) (signal io/async-sleep ms))
 (define (offload (^Symbol op) .. args) (signal io/offload (cons op args)))
 ;; Keep untyped fallback so invalid op payloads still flow through io/offload canonical payload errors.
 (define (offload op .. args) (signal io/offload (cons op args)))
@@ -353,13 +360,13 @@
 ;; Keep untyped fallback so invalid op payloads still flow through io/thread-spawn canonical payload errors.
 (define (thread-spawn op .. args) (signal io/thread-spawn (cons op args)))
 (define (thread-join thread-handle) (signal io/thread-join thread-handle))
-(define (thread-join-timeout thread-handle (^Int timeout-ms)) (signal io/thread-join-timeout (cons thread-handle timeout-ms)))
+(define (thread-join-timeout thread-handle (^Integer timeout-ms)) (signal io/thread-join-timeout (cons thread-handle timeout-ms)))
 (define (thread-cancel thread-handle) (signal io/thread-cancel thread-handle))
 (define (task-spawn (^Symbol op) .. args) (signal io/task-spawn (cons op args)))
 ;; Keep untyped fallback so invalid op payloads still flow through io/task-spawn canonical payload errors.
 (define (task-spawn op .. args) (signal io/task-spawn (cons op args)))
 (define (task-join task-handle) (signal io/task-join task-handle))
-(define (task-join-timeout task-handle (^Int timeout-ms)) (signal io/task-join-timeout (cons task-handle timeout-ms)))
+(define (task-join-timeout task-handle (^Integer timeout-ms)) (signal io/task-join-timeout (cons task-handle timeout-ms)))
 (define (task-cancel task-handle) (signal io/task-cancel task-handle))
 (define (tls-connect tcp-handle (^String hostname) .. rest) (signal io/tls-connect (cons tcp-handle (cons hostname rest))))
 ;; Keep untyped fallback so invalid args still flow through io/tls-connect canonical payload errors.
@@ -390,8 +397,8 @@
                     'data {'kind kind} }))))
 (define (job-join ^(Value task) handle) (task-join handle))
 (define (job-join ^(Value thread) handle) (thread-join handle))
-(define (job-join-timeout ^(Value task) handle (^Int timeout-ms)) (task-join-timeout handle timeout-ms))
-(define (job-join-timeout ^(Value thread) handle (^Int timeout-ms)) (thread-join-timeout handle timeout-ms))
+(define (job-join-timeout ^(Value task) handle (^Integer timeout-ms)) (task-join-timeout handle timeout-ms))
+(define (job-join-timeout ^(Value thread) handle (^Integer timeout-ms)) (thread-join-timeout handle timeout-ms))
 (define (job-cancel ^(Value task) handle) (task-cancel handle))
 (define (job-cancel ^(Value thread) handle) (thread-cancel handle))
 

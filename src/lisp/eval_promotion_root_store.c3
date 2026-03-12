@@ -106,7 +106,7 @@ fn Value* root_store_clone_hashmap_to_scope(
     defer boundary_promotion_context_end(interp, &copy_ctx);
 
     Value* result = interp.alloc_value_escape();
-    result.tag = HASHMAP;
+    result.tag = src.tag;
     result.hashmap_val = null;
 
     HashMap* src_map = src.hashmap_val;
@@ -281,7 +281,8 @@ fn Value* root_store_route_to_scope(
             if (cloned == null) return raise_error(interp, "root-store: failed to clone array payload");
             return cloned;
         }
-        case HASHMAP: {
+        case HASHMAP:
+        case SET: {
             Value* cloned = root_store_clone_hashmap_to_scope(v, interp, target_scope, releasing_scope);
             if (cloned == null) return raise_error(interp, "root-store: failed to clone hashmap payload");
             return cloned;

@@ -31,6 +31,7 @@ fn void init_prim_hash_core_and_strings(SymbolTable* st) {
     prim_hash_insert(st.intern("cdr"), "aot::lookup_prim(\"cdr\")");
     prim_hash_insert(st.intern("null?"), "aot::lookup_prim(\"null?\")");
     prim_hash_insert(st.intern("pair?"), "aot::lookup_prim(\"pair?\")");
+    prim_hash_insert(st.intern("List"), "aot::lookup_prim(\"List\")");
     prim_hash_insert(st.intern("list"), "aot::lookup_prim(\"list\")");
     prim_hash_insert(st.intern("length"), "aot::lookup_prim(\"length\")");
     prim_hash_insert(st.intern("not"), "aot::lookup_prim(\"not\")");
@@ -56,9 +57,11 @@ fn void init_prim_hash_core_and_strings(SymbolTable* st) {
     prim_hash_insert(st.intern("string-trim"), "aot::lookup_prim(\"string-trim\")");
     prim_hash_insert(st.intern("string->number"), "aot::lookup_prim(\"string->number\")");
     prim_hash_insert(st.intern("number->string"), "aot::lookup_prim(\"number->string\")");
+    prim_hash_insert(st.intern("string-contains?"), "aot::lookup_prim(\"string-contains?\")");
 
     // Type predicates
     prim_hash_insert(st.intern("string?"), "aot::lookup_prim(\"string?\")");
+    prim_hash_insert(st.intern("integer?"), "aot::lookup_prim(\"integer?\")");
     prim_hash_insert(st.intern("int?"), "aot::lookup_prim(\"int?\")");
     prim_hash_insert(st.intern("symbol?"), "aot::lookup_prim(\"symbol?\")");
     prim_hash_insert(st.intern("closure?"), "aot::lookup_prim(\"closure?\")");
@@ -66,9 +69,23 @@ fn void init_prim_hash_core_and_strings(SymbolTable* st) {
     prim_hash_insert(st.intern("double?"), "aot::lookup_prim(\"double?\")");
     prim_hash_insert(st.intern("list?"), "aot::lookup_prim(\"list?\")");
     prim_hash_insert(st.intern("boolean?"), "aot::lookup_prim(\"boolean?\")");
+    prim_hash_insert(st.intern("bool?"), "aot::lookup_prim(\"bool?\")");
+    prim_hash_insert(st.intern("dictionary?"), "aot::lookup_prim(\"dictionary?\")");
     prim_hash_insert(st.intern("number?"), "aot::lookup_prim(\"number?\")");
     prim_hash_insert(st.intern("equal?"), "aot::lookup_prim(\"equal?\")");
     prim_hash_insert(st.intern("type-of"), "aot::lookup_prim(\"type-of\")");
+
+    // Callable type symbols / coercion constructors
+    prim_hash_insert(st.intern("Integer"), "aot::lookup_prim(\"Integer\")");
+    prim_hash_insert(st.intern("Int"), "aot::lookup_prim(\"Int\")");
+    prim_hash_insert(st.intern("Double"), "aot::lookup_prim(\"Double\")");
+    prim_hash_insert(st.intern("String"), "aot::lookup_prim(\"String\")");
+    prim_hash_insert(st.intern("Symbol"), "aot::lookup_prim(\"Symbol\")");
+    prim_hash_insert(st.intern("Boolean"), "aot::lookup_prim(\"Boolean\")");
+    prim_hash_insert(st.intern("Bool"), "aot::lookup_prim(\"Bool\")");
+    prim_hash_insert(st.intern("Nil"), "aot::lookup_prim(\"Nil\")");
+    prim_hash_insert(st.intern("Closure"), "aot::lookup_prim(\"Closure\")");
+    prim_hash_insert(st.intern("Iterator"), "aot::lookup_prim(\"Iterator\")");
 }
 
 fn void init_prim_hash_files_and_misc(SymbolTable* st) {
@@ -96,15 +113,37 @@ fn void init_prim_hash_files_and_misc(SymbolTable* st) {
 
 fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     // Dict/collection ops
+    prim_hash_insert(st.intern("Array"), "aot::lookup_prim(\"Array\")");
+    prim_hash_insert(st.intern("array"), "aot::lookup_prim(\"array\")");
+    prim_hash_insert(st.intern("array-set!"), "aot::lookup_prim(\"array-set!\")");
+    prim_hash_insert(st.intern("Dictionary"), "aot::lookup_prim(\"Dictionary\")");
+    prim_hash_insert(st.intern("dictionary"), "aot::lookup_prim(\"dictionary\")");
+    prim_hash_insert(st.intern("Dict"), "aot::lookup_prim(\"Dict\")");
     prim_hash_insert(st.intern("dict"), "aot::lookup_prim(\"dict\")");
     prim_hash_insert(st.intern("dict-set!"), "aot::lookup_prim(\"dict-set!\")");
     prim_hash_insert(st.intern("dict?"), "aot::lookup_prim(\"dict?\")");
+    prim_hash_insert(st.intern("Set"), "aot::lookup_prim(\"Set\")");
+    prim_hash_insert(st.intern("set-add"), "aot::lookup_prim(\"set-add\")");
+    prim_hash_insert(st.intern("set-remove"), "aot::lookup_prim(\"set-remove\")");
+    prim_hash_insert(st.intern("set-contains?"), "aot::lookup_prim(\"set-contains?\")");
+    prim_hash_insert(st.intern("set-size"), "aot::lookup_prim(\"set-size\")");
+    prim_hash_insert(st.intern("set->list"), "aot::lookup_prim(\"set->list\")");
     prim_hash_insert(st.intern("ref"), "aot::lookup_prim(\"ref\")");
     prim_hash_insert(st.intern("keys"), "aot::lookup_prim(\"keys\")");
     prim_hash_insert(st.intern("values"), "aot::lookup_prim(\"values\")");
     prim_hash_insert(st.intern("has?"), "aot::lookup_prim(\"has?\")");
     prim_hash_insert(st.intern("remove!"), "aot::lookup_prim(\"remove!\")");
     prim_hash_insert(st.intern("push!"), "aot::lookup_prim(\"push!\")");
+    prim_hash_insert(st.intern("iterator?"), "aot::lookup_prim(\"iterator?\")");
+    prim_hash_insert(st.intern("make-iterator"), "aot::lookup_prim(\"make-iterator\")");
+    prim_hash_insert(st.intern("next"), "aot::lookup_prim(\"next\")");
+    prim_hash_insert(st.intern("collect"), "aot::lookup_prim(\"collect\")");
+    prim_hash_insert(st.intern("to-array"), "aot::lookup_prim(\"to-array\")");
+    prim_hash_insert(st.intern("coroutine"), "aot::lookup_prim(\"coroutine\")");
+    prim_hash_insert(st.intern("Coroutine"), "aot::lookup_prim(\"Coroutine\")");
+    prim_hash_insert(st.intern("resume"), "aot::lookup_prim(\"resume\")");
+    prim_hash_insert(st.intern("yield"), "aot::lookup_prim(\"yield\")");
+    prim_hash_insert(st.intern("coroutine?"), "aot::lookup_prim(\"coroutine?\")");
     prim_hash_insert(st.intern("json-get"), "aot::lookup_prim(\"json-get\")");
     prim_hash_insert(st.intern("json-parse"), "aot::lookup_prim(\"json-parse\")");
     prim_hash_insert(st.intern("json-emit"), "aot::lookup_prim(\"json-emit\")");
@@ -112,6 +151,7 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("toml-parse"), "aot::lookup_prim(\"toml-parse\")");
     prim_hash_insert(st.intern("csv-parse"), "aot::lookup_prim(\"csv-parse\")");
     prim_hash_insert(st.intern("csv-emit"), "aot::lookup_prim(\"csv-emit\")");
+    prim_hash_insert(st.intern("TimePoint"), "aot::lookup_prim(\"TimePoint\")");
     prim_hash_insert(st.intern("time-point"), "aot::lookup_prim(\"time-point\")");
     prim_hash_insert(st.intern("time-point?"), "aot::lookup_prim(\"time-point?\")");
 

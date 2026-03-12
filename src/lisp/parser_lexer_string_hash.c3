@@ -81,14 +81,6 @@ fn void Lexer.scan_string(Lexer* self) {
     self.current.type = T_STRING;
 }
 
-fn bool Lexer.scan_hash_set_literal(Lexer* self, char next) @inline {
-    if (next != '{') return false;
-    self.next_char();  // consume #
-    self.next_char();  // consume {
-    self.current.type = T_HASH_LBRACE;
-    return true;
-}
-
 fn bool Lexer.scan_hash_underscore_form(Lexer* self, char next) @inline {
     if (next != '_') return false;
     self.next_char();  // consume #
@@ -157,8 +149,6 @@ fn bool Lexer.scan_hash_dispatch(Lexer* self) {
     }
     char next = self.source[self.pos + 1];
     switch (next) {
-        case '{':
-            return self.scan_hash_set_literal(next);
         case '_':
             return self.scan_hash_underscore_form(next);
         case 'r':

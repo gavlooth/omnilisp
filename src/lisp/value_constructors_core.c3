@@ -52,6 +52,7 @@ fn void scope_dtor_value(void* ptr) {
                 v.method_table_val = null;
             }
         case HASHMAP:
+        case SET:
             if (v.hashmap_val != null) {
                 if (v.hashmap_val.entries != null) mem::free(v.hashmap_val.entries);
                 mem::free(v.hashmap_val);

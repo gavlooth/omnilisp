@@ -10,6 +10,7 @@ Most features below are implemented (see Implementation Status at the end).
 3. **Minimal new tokens** - no special syntax like `{T}` for generics
 4. **Lisp-like** - parentheses for application, including type application
 5. **Flat metadata** - bounds inline in metadata dict, explicit grouping only when ambiguous
+6. **Clarity over terseness** - canonical language-facing names prefer descriptive forms; shorthands remain compatibility aliases unless explicitly removed
 
 ---
 
@@ -19,13 +20,13 @@ Most features below are implemented (see Implementation Status at the end).
 
 ```lisp
 ; Simple type annotation
-^Int x
+^Integer x
 ^String name
 
 ; Compound types use parentheses
-^(List Int) items
-^(Dict String Int) cache
-^(Lambda Int Int) successor      ; function type
+^(List Integer) items
+^(Dictionary String Integer) cache
+^(Lambda Integer Integer) successor      ; function type
 ```
 
 ### 1.2 Function Types
@@ -37,12 +38,62 @@ Use `Lambda` to match value-level syntax:
 (lambda (x) (* x 2))
 
 ; Type level
-^(Lambda Int Int) inc            ; Int -> Int
-^(Lambda Int Int Int) add        ; (Int, Int) -> Int
+^(Lambda Integer Integer) inc            ; Integer -> Integer
+^(Lambda Integer Integer Integer) add    ; (Integer, Integer) -> Integer
 ^(Lambda A B) f                  ; polymorphic
 ```
 
-### 1.2.1 Lambda Call-Boundary Checking (Design + Current Runtime Contract)
+### 1.2.1 Callable Type Symbols in Value Position
+
+Type symbols may also be callable in value position when they define a
+constructor or coercion surface.
+
+```lisp
+; User-defined nominal constructors
+(Point 1 2)
+(Box 42)
+
+; Builtin coercion constructors
+(Integer 3.9)    ; => 3
+(Double 3)       ; => 3.0
+(String 3)       ; => "3"
+(Symbol "name")  ; => 'name
+(Boolean 0)      ; => true
+(Boolean nil)    ; => nil
+(Nil nil)        ; => nil
+(Closure (lambda (x) x))
+(Coroutine (lambda () 1))
+
+; Runtime object constructor / conversion surface
+(List [1 2 3])
+(Array '(1 2 3))
+(Dictionary 'a 1 'b 2)
+(Iterator [1 2 3])
+(TimePoint 'date 2026 3 7)
+(Set 1 2 3)
+(Iterator (lambda () nil))
+```
+
+Current rule:
+
+- nominal user-defined types and union variants use the type symbol itself as
+  the constructor in value position,
+- selected builtin/runtime types may also expose callable constructor/coercion
+  behavior through the same symbol,
+- descriptive names are canonical (`Integer`, `Boolean`, `Dictionary`), while
+  shorter spellings such as `Int`, `Bool`, and `Dict` remain compatibility
+  aliases,
+- lowercase helpers such as `iterator` may remain as compatibility wrappers,
+  but the type symbol is the canonical constructor surface when one exists.
+
+Current exception note:
+
+- Omni does not currently define a builtin `Empty` or bottom type.
+- `Nil` is the language-level empty/false value type.
+- `Void` remains an FFI / no-result annotation concept rather than a normal
+  value-level empty type.
+
+### 1.2.2 Lambda Call-Boundary Checking (Design + Current Runtime Contract)
 
 Status: implemented (`L3.3`) for argument compatibility. Return-type
 compatibility is an explicit non-goal in current syntax/runtime.
@@ -55,7 +106,7 @@ Supported annotation shapes in callable parameter positions:
   higher-order signature contracts.
 - Standard typed-parameter forms continue to be enforced at invocation
   boundaries:
-  - simple nominal (`^Int`, `^Point`, ...)
+  - simple nominal (`^Integer`, `^Point`, ...)
   - value literal (`^(Value lit)`)
   - metadata constraint (`^{'T Bound}`)
   - unresolved type-variable forms (`^T`) with repeated-symbol unification.
@@ -67,7 +118,7 @@ Call-boundary argument checking rules:
 2. Match relation reuses dispatch compatibility:
    - literal exact match,
    - exact nominal match,
-   - dispatch widening (`Int` satisfies expected `Double`),
+   - dispatch widening (`Integer` satisfies expected `Double`),
    - subtype compatibility,
    - `Any` fallback.
 3. Repeated type variables unify by runtime inferred type.
@@ -120,7 +171,7 @@ Explicit non-goals (current release):
 `[struct]` is accepted as an alias for `[type]`:
 
 ```lisp
-(define [struct] Vec2 (^Int x) (^Int y))
+(define [struct] Vec2 (^Integer x) (^Integer y))
 ```
 
 ### 1.5 Parametric Types
@@ -136,16 +187,16 @@ Explicit non-goals (current release):
   (^B second))
 
 ; Type application in annotations
-^(Box Int) intBox
-^(Pair String Int) entry
+^(Box Integer) intBox
+^(Pair String Integer) entry
 ```
 
 **Construction** — infer type from arguments:
 
 ```lisp
-(Box 42)                    ; infers Box{Int}
-(Pair "key" 42)             ; infers Pair{String, Int}
-(^(Box Int) (Box 42))       ; explicit when needed
+(Box 42)                    ; infers Box{Integer}
+(Pair "key" 42)             ; infers Pair{String, Integer}
+(^(Box Integer) (Box 42))   ; explicit when needed
 ```
 
 ### 1.5.1 Constructor Type-Application Checking (Design Contract)
@@ -153,7 +204,7 @@ Explicit non-goals (current release):
 Status: implemented (`L3.2`), with runtime-inference fallback when nested
 constructor args are not materialized on runtime values.
 
-This section defines how constructor annotations such as `^(Box Int)` are
+This section defines how constructor annotations such as `^(Box Integer)` are
 checked in evaluation.
 
 #### A. Applicability gate
@@ -273,7 +324,7 @@ Bounds are specified directly in metadata (flat by default):
 
 ```lisp
 ; Simple union (enum-like)
-(define [union] Bool True False)
+(define [union] Flag True False)
 
 ; Parametric union
 (define [union] (Option T)
@@ -332,9 +383,9 @@ When metadata is flat, the **value type** determines meaning:
 
 | Feature | Syntax | Example |
 |---------|--------|---------|
-| Type annotation | `^Type` | `^Int x` |
-| Compound type | `^(Ctor Args)` | `^(List Int) xs` |
-| Function type | `^(Lambda Args Ret)` | `^(Lambda Int Int) f` |
+| Type annotation | `^Type` | `^Integer x` |
+| Compound type | `^(Ctor Args)` | `^(List Integer) xs` |
+| Function type | `^(Lambda Args Ret)` | `^(Lambda Integer Integer) f` |
 | Type bound | `'T Type` (flat) | `^{'T Number}` |
 | Multiple bounds | `'T Type 'U Type` | `^{'T Number 'U Eq}` |
 | Explicit grouping | `'with {...}` | `^{'with {'T Number}}` |
@@ -360,7 +411,7 @@ Status tags:
 | Parametric type behavior | Parametric construction + constraints + substitution | Parametric constructors + `type-args` inference are implemented; method type variables unify by symbol at dispatch (`(^T a) (^T b)` requires same runtime type), with bounds checked via metadata constraints | `done` | `src/lisp/eval_type_evaluators.c3`; `src/lisp/eval_dispatch_types.c3`; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
 | Variance policy | Explicit variance model in parametric dispatch | Explicit invariant policy: type params are invariant; `+T/-T` markers are rejected with deterministic parser errors | `done` (invariant policy) | `src/lisp/parser_type_defs.c3`; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
 | Union participation in dispatch applicability | Union/variant types participate in subtype dispatch | Union variants are registered as subtype of union; dispatch uses subtype chain so variant-specialized methods outrank union-parent methods | `done` | `src/lisp/eval_type_evaluators.c3` (`eval_defunion_register_variant_type`); `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
-| Numeric promotion in dispatch | Numeric lattice/promotion influences method applicability | Dispatch-only widening: `Int` can satisfy `^Double` method params (scored below exact type matches) | `done` | `src/lisp/eval_dispatch_types.c3`; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
+| Numeric promotion in dispatch | Numeric lattice/promotion influences method applicability | Dispatch-only widening: `Integer` can satisfy `^Double` method params (scored below exact type matches) | `done` | `src/lisp/eval_dispatch_types.c3`; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
 | `where`-style constraints | `where` clauses on methods/types | Omni uses metadata constraints (`^{'T Number}`), not Julia `where` syntax | `done` (intentional difference) | This document §1.6; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (constraint tests) |
 | Match/union exhaustiveness | Exhaustiveness diagnostics | Runtime missing-case diagnostics are normative; compile-time exhaustiveness checker is currently an explicit non-goal | `done` (runtime policy) | `src/lisp/eval_dispatch_types.c3` (`format_match_error`); `src/lisp/tests_runtime_feature_groups.c3` |
 
@@ -372,7 +423,7 @@ Status tags:
 | Typed method fallback behavior | Yes (fallback possible) | No |
 | Ambiguity policy | Partial (deterministic detection) | Yes: error on equal score, no implicit winner |
 | Parametric type declaration | Partial | Yes: metadata-bound constraints instead of `where` |
-| Numeric promotion in dispatch | Partial | Yes: widening is limited to dispatch (`Int` -> `Double`) and does not imply full numeric-conversion semantics |
+| Numeric promotion in dispatch | Partial | Yes: widening is limited to dispatch (`Integer` -> `Double`) and does not imply full numeric-conversion semantics |
 | Exhaustiveness checking | Partial | Yes: runtime diagnostics first, compile-time check pending |
 
 ### Test Anchors
@@ -407,7 +458,7 @@ Status tags:
   (Some T))
 
 ; Multiple dispatch
-(define (double (^Int x)) (+ x x))
+(define (double (^Integer x)) (+ x x))
 (define (double (^Double x)) (+ x x))
 
 ; Union pattern matching
@@ -415,7 +466,7 @@ Status tags:
   (None "empty")
   ((Some x) x))          ; => 42
 
-(double 21)              ; => 42 (dispatches to Int version)
+(double 21)              ; => 42 (dispatches to Integer version)
 ```
 
 ---
@@ -429,12 +480,12 @@ Status tags:
 - [x] `[abstract]` type definitions with parent hierarchy
 - [x] `[union]` ADT definitions with variant constructors
 - [x] `[alias]` type alias definitions
-- [x] `^Type` annotation parsing (simple, compound `^(List Int)`, Value `^(Value 42)`)
+- [x] `^Type` annotation parsing (simple, compound `^(List Integer)`, Value `^(Value 42)`)
 - [x] `^{'T Number}` flat metadata dict parsing in parser
 - [x] Multiple dispatch via MethodTable (typed `define` creates dispatch entries)
 - [x] Value dispatch `^(Value literal)` for value-level pattern matching (literals: int/symbol/string/bool)
 - [x] Multi-argument dispatch
-- [x] Dispatch scoring: Value=1000, exact=100, numeric widening(Int->Double)=50, subtype=10, any=1
+- [x] Dispatch scoring: Value=1000, exact=100, numeric widening(Integer->Double)=50, subtype=10, any=1
 - [x] Struct field access via dot-path: `point.x`, `line.start.y`
 - [x] Struct field mutation: `(set! point.x 99)`, nested paths
 - [x] Constructor pattern matching: `(match opt (None 0) ((Some x) x))`
@@ -442,7 +493,7 @@ Status tags:
 - [x] I/O effects: print/println/etc. go through `signal` with fast path
 - [x] `type-of`, `is?`, `instance?`, `type-args` introspection primitives
 - [x] Parametric types: `(define [type] (Box T) (^T value))` with type param collection
-- [x] Type arg inference: `(type-args (Box 42))` → `'(Int)` — inferred from field values
+- [x] Type arg inference: `(type-args (Box 42))` → `'(Integer)` — inferred from field values
 - [x] Constrained dispatch: `^{'T Number}` enforced at dispatch — arg type must be subtype of bound
 - [x] Parent vs type-param disambiguation at eval time (first symbol = registered type → parent)
 - [x] Constructor type-application checking (`(^(Ctor ...) value)`) with canonical mismatch/arity diagnostics and deterministic payload fields (`ctor`, `expected-args`, `actual-args`, `arg-index`, `arg-path`)  

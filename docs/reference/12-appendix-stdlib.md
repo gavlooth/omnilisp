@@ -49,14 +49,15 @@ Functions and macros defined in `stdlib/stdlib.lisp`.
 
 | Name | Signature | Description |
 |------|-----------|-------------|
-| `iterator` | `(iterator coll)` | Convert to lazy iterator (dispatched) |
+| `Iterator` | `(Iterator coll)` | Canonical iterator constructor/conversion surface |
+| `iterator` | `(iterator coll)` | Compatibility wrapper around `Iterator` |
 | `range-from` | `(range-from n)` | Infinite: n, n+1, n+2... |
 | `repeat` | `(repeat x)` | Infinite repetition |
 | `cycle` | `(cycle coll)` | Infinite cycle |
 
 Note: `map`, `filter`, `take`, `drop`, `zip`, and `foldl` are dispatched and
 operate lazily when passed an `Iterator`.
-Force an iterator with constructors: `(list it)` or `(array it)`.
+Force an iterator with constructors: `(List it)` or `(Array it)`.
 
 ### Utilities
 

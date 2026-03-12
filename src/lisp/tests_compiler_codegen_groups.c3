@@ -228,12 +228,33 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
         else    { (*fail)++; io::printn("[FAIL] Compiler: ref"); }
     }
 
+    // 58aa. List constructor compiles
+    {
+        char[] code = compile_to_c3("(List 1 2 3)", interp);
+        bool ok = str_contains(code, "lookup_prim(\"List\")") && !str_contains(code, "unsupported");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: List"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: List"); }
+    }
+    // 58ab. Dict constructor compiles
+    {
+        char[] code = compile_to_c3("(Dict 'a 1 'b 2)", interp);
+        bool ok = str_contains(code, "lookup_prim(\"Dict\")") && !str_contains(code, "unsupported");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: Dict"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: Dict"); }
+    }
     // 58b. time-point constructor compiles
     {
         char[] code = compile_to_c3("(time-point 'date 2026 3 7)", interp);
         bool ok = str_contains(code, "lookup_prim(\"time-point\")") && !str_contains(code, "unsupported");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: time-point"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: time-point"); }
+    }
+    // 58bb. TimePoint constructor compiles
+    {
+        char[] code = compile_to_c3("(TimePoint 'date 2026 3 7)", interp);
+        bool ok = str_contains(code, "lookup_prim(\"TimePoint\")") && !str_contains(code, "unsupported");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: TimePoint"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: TimePoint"); }
     }
     // 58c. time-point tz alias compiles
     {

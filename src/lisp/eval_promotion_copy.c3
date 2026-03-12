@@ -211,6 +211,7 @@ fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) {
         case CONTINUATION:
             return CP_ROUTE_CONTINUATION;
         case HASHMAP:
+        case SET:
         case ARRAY:
         case METHOD_TABLE:
             return CP_ROUTE_SHARED_WRAPPER;

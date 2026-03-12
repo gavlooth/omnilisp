@@ -67,6 +67,7 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = 
             return make_error(interp, v.str_chars[:v.str_len]);
         case PRIMITIVE:
         case HASHMAP:
+        case SET:
         case ARRAY:
         case METHOD_TABLE:
         case TYPE_INFO:

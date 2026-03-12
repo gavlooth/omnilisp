@@ -151,13 +151,32 @@ fn TypeInfo* TypeRegistry.get(TypeRegistry* self, TypeId id) {
     return &self.types[(usz)id];
 }
 
+fn TypeId TypeRegistry.resolve_alias(TypeRegistry* self, TypeId id) {
+    TypeId current = id;
+    for (usz depth = 0; depth < 16; depth++) {
+        TypeInfo* info = self.get(current);
+        if (info == null) return INVALID_TYPE_ID;
+        if (info.kind != TK_ALIAS || info.alias_target == INVALID_TYPE_ID) return current;
+        current = info.alias_target;
+    }
+    return current;
+}
+
 fn bool TypeRegistry.is_subtype(TypeRegistry* self, TypeId child, TypeId parent) {
+    child = self.resolve_alias(child);
+    parent = self.resolve_alias(parent);
+    if (child == INVALID_TYPE_ID || parent == INVALID_TYPE_ID) return false;
     if (child == parent) return true;
     // Walk parent chain (depth limit 16)
     TypeId current = child;
     for (usz depth = 0; depth < 16; depth++) {
         TypeInfo* info = self.get(current);
         if (info == null) return false;
+        if (info.kind == TK_ALIAS && info.alias_target != INVALID_TYPE_ID) {
+            current = info.alias_target;
+            if (current == parent) return true;
+            continue;
+        }
         if (info.parent == INVALID_TYPE_ID) return false;
         if (info.parent == parent) return true;
         current = info.parent;

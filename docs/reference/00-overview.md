@@ -58,7 +58,7 @@ Goodbye!
 
 | Type | Tag | Literal | Description |
 |------|-----|---------|-------------|
-| nil | `NIL` | `nil`, `()` | Empty/false value |
+| nil | `NIL` | `nil`, `()` | Empty/false value (`Nil` type symbol) |
 | int | `INT` | `42`, `-17` | 64-bit signed integer |
 | double | `DOUBLE` | `3.14`, `-0.5` | 64-bit floating point |
 | string | `STRING` | `"hello"` | Immutable string |

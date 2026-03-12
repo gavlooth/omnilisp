@@ -157,6 +157,7 @@ fn bool values_equal_with_workspace_stats(Value* a, Value* b, EqualityWorkspaceS
             if (a.time_point_val.tz_offset != b.time_point_val.tz_offset) return false;
             return a.time_point_val.kind == b.time_point_val.kind;
         case HASHMAP:
+        case SET:
             return a == b;  // Pointer equality for mutable containers
         case CONS:
         case ARRAY:
@@ -300,6 +301,7 @@ fn bool values_equal_with_workspace_stats(Value* a, Value* b, EqualityWorkspaceS
                 break;
             }
             case HASHMAP:
+            case SET:
                 if (left != right) ok = false;  // Pointer equality for mutable containers
                 break;
             case ARRAY:

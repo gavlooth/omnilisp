@@ -123,6 +123,8 @@ fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "toml-parse date equality",
         "(let (d1 (ref (toml-parse \"d = 1979-05-27\\n\") \"d\") d2 (ref (toml-parse \"d = 1979-05-27\\n\") \"d\")) (= d1 d2))",
         pass, fail);
+    test_tag(interp, "TimePoint constructor date",
+        "(TimePoint 'date 2026 3 7)", TIME_POINT, pass, fail);
     test_tag(interp, "time-point constructor date",
         "(time-point 'date 2026 3 7)", TIME_POINT, pass, fail);
     test_truthy(interp, "time-point predicate for date",

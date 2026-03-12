@@ -9,7 +9,7 @@
 ### Struct Types
 
 ```lisp
-(define [type] Point (^Int x) (^Int y))
+(define [type] Point (^Integer x) (^Integer y))
 
 (Point 3 4)           ;; construction
 (define p (Point 3 4))
@@ -22,8 +22,8 @@ p.[0]                  ;; => 3 (positional access)
 
 ```lisp
 (define [abstract] Shape)
-(define [type] (Circle Shape) (^Int radius))
-(define [type] (Rect Shape) (^Int width) (^Int height))
+(define [type] (Circle Shape) (^Integer radius))
+(define [type] (Rect Shape) (^Integer width) (^Integer height))
 
 (is? (Circle 5) 'Shape)    ;; => true
 (is? (Circle 5) 'Circle)   ;; => true
@@ -49,7 +49,7 @@ None              ;; nullary variant
 ### Type Aliases
 
 ```lisp
-(define [alias] Num Int)
+(define [alias] Num Integer)
 (define [alias] Text String)
 ```
 
@@ -62,17 +62,53 @@ None              ;; nullary variant
 (type-args (Box 42))    ;; => (Int)
 ```
 
+### Callable Core Type Symbols
+
+```lisp
+(Integer 3.9)        ;; => 3
+(Double 3)           ;; => 3.0
+(String 3)           ;; => "3"
+(Symbol "name")      ;; => 'name
+(Boolean 0)          ;; => true
+(Boolean nil)        ;; => nil
+(Nil nil)            ;; => nil
+(Closure (lambda (x) x))
+(Coroutine (lambda () 1))
+(List [1 2 3])       ;; => '(1 2 3)
+(Array '(1 2 3))     ;; => [1 2 3]
+(Dictionary 'a 1 'b 2) ;; => {'a 1 'b 2}
+(Set 1 2 3)          ;; => (Set 1 2 3)
+(Iterator [1 2 3])   ;; lazy iterator over the array
+(TimePoint 'date 2026 3 7)
+```
+
+User-defined types and selected builtin/runtime types therefore share the same
+“type symbol in type position, constructor/coercion in value position” surface.
+Canonical names favor descriptiveness over terseness: `Integer`, `Boolean`, and
+`Dictionary` are the primary spellings, while `Int`, `Bool`, and `Dict` remain
+accepted compatibility aliases.
+
+There is no builtin `Empty` type today. Use `Nil` for the language-level empty
+value, and treat `Void` as an FFI / no-result annotation rather than a normal
+value type.
+
 ### Type Introspection
 
 ```lisp
-(type-of 42)                ;; => Int
+(type-of 42)                ;; => Integer
 (type-of "hello")           ;; => String
+(type-of (Dictionary 'a 1)) ;; => Dictionary
+(type-of (Set 1 2 3))       ;; => Set
 (type-of (Point 1 2))       ;; => Point
-(is? 42 'Int)               ;; => true
+(is? 42 'Integer)           ;; => true
 (is? (Circle 5) 'Shape)     ;; => true (walks parent chain)
 (instance? (Point 1 2))     ;; => true
 (instance? 42)              ;; => nil
 ```
+
+`type-of` returns a symbol such as `Dictionary` or `Set`. A first-class type
+descriptor value prints as `#<type Dictionary>`, while ordinary collection values
+print structurally as `{'a 1}` or `(Set 1 2 3)`.
 
 ---
 
@@ -81,7 +117,7 @@ None              ;; nullary variant
 Define multiple implementations with typed parameters. The best match wins:
 
 ```lisp
-(define (describe (^Int n)) "integer")
+(define (describe (^Integer n)) "integer")
 (define (describe (^String s)) "string")
 (define (describe x) "other")
 
@@ -93,7 +129,7 @@ Define multiple implementations with typed parameters. The best match wins:
 ### Multi-Argument Dispatch
 
 ```lisp
-(define (add2 (^Int a) (^Int b)) (+ a b))
+(define (add2 (^Integer a) (^Integer b)) (+ a b))
 (define (add2 (^String a) (^String b)) (string-append a b))
 
 (add2 3 4)                ;; => 7
@@ -105,7 +141,7 @@ Define multiple implementations with typed parameters. The best match wins:
 ```lisp
 (define (fib (^(Value 0) n)) 0)
 (define (fib (^(Value 1) n)) 1)
-(define (fib (^Int n)) (+ (fib (- n 1)) (fib (- n 2))))
+(define (fib (^Integer n)) (+ (fib (- n 1)) (fib (- n 2))))
 
 (define (udp (^(Value open) cmd)) (io/udp-open))
 (define (udp (^(Value bind) cmd) h host port) (io/udp-bind h host port))
@@ -123,7 +159,7 @@ Command-style facades should delegate to canonical `io/udp-*` operations. Module
 | Match | Score | Example |
 |-------|-------|---------|
 | Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)` |
-| Exact type | 100 | `^Int` matches INT value |
+| Exact type | 100 | `^Integer` matches INT value |
 | Subtype | 10 | `^Shape` matches Circle |
 | Any (untyped) | 1 | Untyped param matches anything |
 
@@ -133,8 +169,8 @@ Highest total score wins. Ties broken by first-registered.
 
 ```lisp
 (define [abstract] Shape)
-(define [type] (Circle Shape) (^Int radius))
-(define [type] (Rect Shape) (^Int width) (^Int height))
+(define [type] (Circle Shape) (^Integer radius))
+(define [type] (Rect Shape) (^Integer width) (^Integer height))
 
 (define (area (^Circle c)) (* pi (* c.radius c.radius)))
 (define (area (^Rect r))   (* r.width r.height))

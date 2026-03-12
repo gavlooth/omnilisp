@@ -3,6 +3,43 @@
 
 Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md).
 
+## 2026-03-12
+
+- Set promotion + syntax simplification:
+  - sets now have a distinct runtime `SET` tag and builtin `Set` type symbol instead of masquerading as `Dictionary`.
+  - `Set` is now the canonical constructor surface for sets; lowercase `set` is no longer the creation entrypoint.
+  - reader sugar `#{...}` has been removed so set construction is spelled only as `(Set ...)`.
+  - `type-of` on set values now returns `Set`.
+  - set printing is now constructor-shaped (`(Set ...)`) instead of dict-shaped (`{k true ...}`).
+
+- Constructor/type-symbol surface unification slice:
+  - type symbols in value position now gain a first concrete builtin-constructor pass for:
+    - `Integer` as the canonical integer coercion constructor,
+    - `Int` as an integer shorthand alias,
+    - `Double` as a coercion constructor,
+    - `String` as a coercion constructor,
+    - `Symbol` as a coercion constructor,
+    - `Boolean` as the canonical truthiness coercion constructor,
+    - `Bool` as a boolean shorthand alias,
+    - `Nil` as a nil/false identity constructor,
+    - `Closure` as a closure identity constructor,
+    - `Coroutine` as the canonical coroutine constructor surface,
+    - `List` as the canonical list constructor/conversion surface,
+    - `Iterator` as the canonical iterator constructor/conversion surface,
+    - `Array` as the canonical array constructor/conversion surface,
+    - `Dictionary` as the canonical dictionary constructor surface,
+    - `TimePoint` as the canonical time-point constructor surface.
+  - runtime registration now binds callable builtin constructor names into the normal value-level environment instead of keeping iterator creation behind `make-*` naming only.
+  - iterator stdlib surface is being normalized so `Iterator` is the canonical constructor while lowercase `iterator` remains a compatibility wrapper.
+  - collection/time constructors now follow the same public naming rule:
+    - `Integer`, `Boolean`, `List`, `Array`, `Dictionary`, `Iterator`, and `TimePoint` are canonical,
+    - `Int`, `Bool`, `Dict`, and lowercase `list`, `array`, `dict`, `iterator`, and `time-point` remain compatibility aliases for existing code.
+  - intent:
+    - align builtin/runtime object construction more closely with existing user-defined type constructors (`Point`, `Box`, `Some`, ...),
+    - reduce public `make-*` surface drift,
+    - prefer clarity over terseness for canonical language-facing names,
+    - preserve compatibility for existing iterator code while shifting docs/tests/examples toward the type-symbol constructor form.
+
 ## 2026-03-10
 
 - Macro surface hard-fail migration closure:

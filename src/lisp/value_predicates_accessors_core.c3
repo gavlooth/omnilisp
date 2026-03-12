@@ -70,11 +70,11 @@ fn bool is_ffi_handle(Value* v) @inline {
 
 // Convert a ^Type annotation base_type symbol to FfiTypeTag
 fn FfiTypeTag type_ann_to_ffi_tag(SymbolId base_type, Interp* interp) {
-    if (base_type == interp.sym_Int) return FFI_TYPE_INT;
+    if (base_type == interp.sym_Integer || base_type == interp.sym_Int) return FFI_TYPE_INT;
     if (base_type == interp.sym_Double) return FFI_TYPE_DOUBLE;
     if (base_type == interp.sym_String) return FFI_TYPE_PTR;
     if (base_type == interp.sym_Ptr) return FFI_TYPE_PTR;
-    if (base_type == interp.sym_Bool) return FFI_TYPE_BOOL;
+    if (base_type == interp.sym_Boolean || base_type == interp.sym_Bool) return FFI_TYPE_BOOL;
     if (base_type == interp.sym_Void) return FFI_TYPE_VOID;
     // Unknown type — default to pointer (handles opaque types)
     return FFI_TYPE_PTR;
@@ -82,6 +82,18 @@ fn FfiTypeTag type_ann_to_ffi_tag(SymbolId base_type, Interp* interp) {
 
 fn bool is_array(Value* v) @inline {
     return v != null && v.tag == ARRAY;
+}
+
+fn bool is_dict(Value* v) @inline {
+    return v != null && v.tag == HASHMAP;
+}
+
+fn bool is_set(Value* v) @inline {
+    return v != null && v.tag == SET;
+}
+
+fn bool is_hashmap_backed(Value* v) @inline {
+    return v != null && (v.tag == HASHMAP || v.tag == SET);
 }
 
 fn Value* make_array(Interp* interp, usz capacity) {
@@ -102,6 +114,13 @@ fn Value* make_module(Interp* interp, Module* mod) {
     Value* v = boundary_alloc_value_in_root(interp);
     v.tag = MODULE;
     v.module_val = mod;
+    return v;
+}
+
+fn Value* make_set(Interp* interp, uint capacity) {
+    Value* v = boundary_alloc_value_in_root(interp, true);
+    v.tag = SET;
+    v.hashmap_val = hashmap_new(capacity, interp);
     return v;
 }
 

@@ -121,37 +121,40 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
 
 fn void run_advanced_stdlib_numeric_array_set_tests(Interp* interp, int* pass, int* fail) {
     // === ARRAY TESTS (Phase 8) ===
-    test_eq(interp, "length array", "(length (array 1 2 3))", 3, pass, fail);
-    test_eq(interp, "ref array", "(ref (array 10 20 30) 1)", 20, pass, fail);
-    test_eq(interp, "array from list", "(ref (array '(10 20 30)) 1)", 20, pass, fail);
-    setup(interp, "(define test-arr (array 1 2 3))");
+    test_eq(interp, "length Array", "(length (Array 1 2 3))", 3, pass, fail);
+    test_eq(interp, "ref Array", "(ref (Array 10 20 30) 1)", 20, pass, fail);
+    test_eq(interp, "Array from list", "(ref (Array '(10 20 30)) 1)", 20, pass, fail);
+    test_eq(interp, "array compat alias", "(ref (array 10 20 30) 1)", 20, pass, fail);
+    setup(interp, "(define test-arr (Array 1 2 3))");
     setup(interp, "(array-set! test-arr 1 99)");
     test_eq(interp, "array-set!", "(ref test-arr 1)", 99, pass, fail);
-    test_truthy(interp, "array?", "(array? (array 1 2))", pass, fail);
+    test_truthy(interp, "array? Array", "(array? (Array 1 2))", pass, fail);
     test_nil(interp, "array? non-arr", "(array? 42)", pass, fail);
     test_truthy(interp, "list from array", "(= (list [1 2 3]) '(1 2 3))", pass, fail);
-    test_eq(interp, "array from list 2", "(ref (array '(10 20 30)) 2)", 30, pass, fail);
-    test_eq(interp, "array nil→empty", "(length (array nil))", 0, pass, fail);
-    setup(interp, "(define push-arr (array 1 2))");
+    test_eq(interp, "Array from list 2", "(ref (Array '(10 20 30)) 2)", 30, pass, fail);
+    test_eq(interp, "Array nil→empty", "(length (Array nil))", 0, pass, fail);
+    setup(interp, "(define push-arr (Array 1 2))");
     setup(interp, "(push! push-arr 3)");
     test_eq(interp, "push!", "(length push-arr)", 3, pass, fail);
     test_eq(interp, "push! val", "(ref push-arr 2)", 3, pass, fail);
-    test_error(interp, "ref oob", "(ref (array 1) 5)", pass, fail);
-    test_error(interp, "array-set! oob", "(array-set! (array 1) 5 0)", pass, fail);
-    test_eq(interp, "empty array", "(length (array))", 0, pass, fail);
+    test_error(interp, "ref oob", "(ref (Array 1) 5)", pass, fail);
+    test_error(interp, "array-set! oob", "(array-set! (Array 1) 5 0)", pass, fail);
+    test_eq(interp, "empty Array", "(length (Array))", 0, pass, fail);
 
     // === SET TESTS (Phase 9) ===
-    test_eq(interp, "set-size", "(set-size (set 1 2 3))", 3, pass, fail);
-    test_truthy(interp, "set-contains?", "(set-contains? (set 1 2 3) 2)", pass, fail);
-    test_nil(interp, "set-contains? miss", "(set-contains? (set 1 2 3) 5)", pass, fail);
-    setup(interp, "(define test-set (set 1 2))");
+    test_eq(interp, "set-size", "(set-size (Set 1 2 3))", 3, pass, fail);
+    test_eq(interp, "set length", "(length (Set 1 2 3))", 3, pass, fail);
+    test_truthy(interp, "set-contains?", "(set-contains? (Set 1 2 3) 2)", pass, fail);
+    test_nil(interp, "set-contains? miss", "(set-contains? (Set 1 2 3) 5)", pass, fail);
+    setup(interp, "(define test-set (Set 1 2))");
     setup(interp, "(set-add test-set 3)");
     test_eq(interp, "set-add", "(set-size test-set)", 3, pass, fail);
     test_truthy(interp, "set-add contains", "(set-contains? test-set 3)", pass, fail);
     setup(interp, "(set-remove test-set 2)");
     test_eq(interp, "set-remove", "(set-size test-set)", 2, pass, fail);
     test_nil(interp, "set-remove gone", "(set-contains? test-set 2)", pass, fail);
-    test_eq(interp, "set dedup", "(set-size (set 1 1 2 2 3))", 3, pass, fail);
+    test_eq(interp, "set dedup", "(set-size (Set 1 1 2 2 3))", 3, pass, fail);
+    test_truthy(interp, "set type-of is Set", "(= (type-of (Set 1 2 3)) 'Set)", pass, fail);
 
     // === CONVENIENCE TESTS (Phase 12) ===
     test_eq(interp, "read-string", "(read-string \"(+ 1 2)\")", 3, pass, fail);

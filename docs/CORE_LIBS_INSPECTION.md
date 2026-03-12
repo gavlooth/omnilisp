@@ -536,7 +536,7 @@ Implementation: ~10 lines in `jit_apply_value` — when applying a SYMBOL, treat
 | `#\| ... \|#` | Block comment (nestable) | `#\| multi-line \|#` |
 | `#_` | Skip next form | `#_ (ignored) (this runs)` |
 | `#N_` | Skip next N forms | `#3_ (a) (b) (c) (this runs)` |
-| `#{}` | Set literal | `#{"red" "green" "blue"}` |
+| `Set` | Set constructor | `(Set "red" "green" "blue")` |
 | `#r"pat"` | Compiled Pika regex | `#r"[0-9]+"` |
 
 **Set literals** complete the collection trinity:
@@ -544,7 +544,7 @@ Implementation: ~10 lines in `jit_apply_value` — when applying a SYMBOL, treat
 '(1 2 3)          ;; list
 [1 2 3]           ;; array
 {'a 1 'b 2}       ;; dict
-#{"a" "b" "c"}    ;; set (desugars to (set "a" "b" "c"))
+(Set "a" "b" "c") ;; set constructor
 ```
 
 **Regex literals** make Pika regex first-class:
@@ -807,7 +807,7 @@ Omni = N interpreters, zero contention, true parallelism. Same model as Erlang
 Phase A (DONE):    libuv + utf8proc + Pika + yyjson + libdeflate + BearSSL
                    Effect fast-path dispatch table
                    ↓
-Phase B (next):    Reader dispatch (#r"", #{}, #N_, #| |#) + symbol-as-function
+Phase B (next):    Reader dispatch (#r"", #N_, #| |#) + symbol-as-function
                    ~90 lines parser, pure syntax — no new deps
                    ↓
 Phase C:           Contracts (define [schema]) — ~300 lines, pure Omni + dispatch

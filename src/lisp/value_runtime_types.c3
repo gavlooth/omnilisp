@@ -61,6 +61,7 @@ enum ValueTag : char {
     ERROR,          // Error value (carries error message in str_val)
     DOUBLE,         // Floating-point number
     HASHMAP,        // Hash map (mutable dictionary)
+    SET,            // Hash map payload with set semantics
     FFI_HANDLE,     // FFI library handle (dlopen result)
     ARRAY,          // Mutable array (dynamic array)
     TYPE_INFO,      // Type descriptor value

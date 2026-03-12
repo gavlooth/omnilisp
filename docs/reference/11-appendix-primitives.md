@@ -119,16 +119,22 @@ These support user extension via method tables.
 | `type-args` | 1 | Parametric type args |
 | `iterator?` | 1 | Is iterator value? |
 
+`Nil` is the language-level empty/false value type. `Void` is not a value
+constructor here; it is reserved for FFI/no-result annotation positions.
+
 **Conversion:**
 
 | Name | Arity | Description |
 |------|-------|-------------|
 | `string->number` | 1 | Parse number |
 | `number->string` | 1 | Number to string |
-| `exact->inexact` | 1 | Int to double |
+| `exact->inexact` | 1 | Integer to double |
 | `inexact->exact` | 1 | Double to int |
 | `string->symbol` | 1 | String to symbol |
 | `symbol->string` | 1 | Symbol to string |
+
+Callable core type symbols also provide constructor/coercion surface here:
+`Integer`, `Int`, `Double`, `String`, `Symbol`, `Boolean`, `Bool`, `Nil`, and `Closure`.
 
 **Math:**
 
@@ -165,9 +171,11 @@ These support user extension via method tables.
 |------|-------|-------------|
 | `array` | variadic | Create array / convert collection->array (list/iterator) |
 | `array-set!` | 3 | Set element at index |
-| `dict` | variadic | Create dict |
+| `Dictionary` | variadic | Create dictionary |
+| `Dict` | variadic | Dictionary shorthand |
+| `dict` | variadic | Dictionary shorthand |
 | `dict-set!` | 3 | Set key-value |
-| `set` | variadic | Create set |
+| `Set` | variadic | Create set |
 | `set-add` | 2 | Add to set |
 | `set-remove` | 2 | Remove from set |
 | `set-contains?` | 2 | Set membership |
@@ -194,13 +202,13 @@ These support user extension via method tables.
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `make-iterator` | 1 | Create from thunk |
+| `make-iterator` | 1 | Raw thunk helper; prefer `(Iterator coll)` / `(Iterator thunk)` as public surface |
 | `next` | 1 | Get next (value . rest) pair |
 | `collect` | 1 | Compatibility helper: collect iterator into list |
 | `to-array` | 1 | Compatibility helper: collect iterator into array |
 
 Preferred forcing style uses collection constructors:
-`(list it)` and `(array it)`.
+`(List it)` and `(Array it)`.
 
 **Misc:**
 
@@ -302,7 +310,8 @@ Preferred forcing style uses collection constructors:
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `time-point` | variadic | Construct TimePoint values (`date`, `time`, `datetime`, `datetime-tz` / `datetimetz`) |
+| `TimePoint` | variadic | Canonical TimePoint constructor (`time-point` remains a compatibility alias) |
+| `time-point` | variadic | Compatibility alias for `TimePoint` |
 | `time-point?` | 1 | TimePoint predicate |
 | `toml-parse` | 1-2 | Parse TOML string (optional options list: `((check-utf8 false))`)
 | `csv-parse` | 1-2 | Parse CSV text into rows (`delimiter` string or option list including `strict`; strict/default enforces RFC-4180 CRLF row endings) |

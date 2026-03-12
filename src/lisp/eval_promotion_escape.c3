@@ -290,6 +290,7 @@ fn PromoteEscapeRoute promote_escape_route_for_tag(ValueTag tag) {
             return PE_ROUTE_TIME_POINT;
         case PRIMITIVE:
         case HASHMAP:
+        case SET:
         case ARRAY:
         case METHOD_TABLE:
         case TYPE_INFO:

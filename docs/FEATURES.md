@@ -464,6 +464,7 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 
 - Uses libffi via C wrapper (`csrc/ffi_helpers.c`) for portable ABI support
 - Type annotations: `^Int` → sint64, `^Double` → double, `^String`/`^Ptr` → pointer, `^Void` → void, `^Bool` → sint64
+- `Nil` is the language-level empty/false value type; `Void` is reserved for FFI/no-result annotation positions
 - Lazy dlsym: symbol resolution deferred to first call and cached
 - Handles allocated in root scope (permanent, survive scope release)
 

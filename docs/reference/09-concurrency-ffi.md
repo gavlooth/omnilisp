@@ -141,7 +141,7 @@ All concurrency primitives go through effects and can be intercepted.
 | `^String` | `char*` | pointer |
 | `^Ptr` | `void*` | pointer |
 | `^Bool` | `int` (0/1) | sint64 |
-| `^Void` | `void` | void |
+| `^Void` | `void` | FFI/no-result only; not the language-level empty value |
 | (none) | `void` return | void |
 
 ### Features

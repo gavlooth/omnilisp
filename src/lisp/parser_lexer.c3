@@ -25,7 +25,6 @@ enum TokenType : char {
     T_COMMA_AT,     // ,@ unquote-splicing
     T_LBRACE,       // { for metadata dictionaries
     T_RBRACE,       // } for metadata dictionaries
-    T_HASH_LBRACE,  // #{ for set literals
     T_HASH_UNDERSCORE, // #_ or #N_ form comment (int_value = N)
     T_REGEX,        // #r"pattern" compiled regex literal
     T_ERROR,

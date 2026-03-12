@@ -27,18 +27,66 @@ fn void run_advanced_unicode_lambda_utf8_tests(Interp* interp, int* pass, int* f
     test_eq(interp, "utf8 string->list len", "(length (string->list \"h\xc3\xa9llo\"))", 5, pass, fail);
 }
 
+fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int* pass, int* fail) {
+    test_eq(interp, "Integer ctor from double", "(Integer 3.9)", 3, pass, fail);
+    test_eq(interp, "Integer ctor from string", "(Integer \"42\")", 42, pass, fail);
+    test_eq(interp, "Int shorthand ctor from double", "(Int 3.9)", 3, pass, fail);
+    test_double(interp, "Double ctor from int", "(Double 3)", 3.0, pass, fail);
+    test_double(interp, "Double ctor from string", "(Double \"3.5\")", 3.5, pass, fail);
+    test_str_val(interp, "String ctor from int", "(String 3)", "3", pass, fail);
+    test_str_val(interp, "String ctor from symbol", "(String 'alpha)", "alpha", pass, fail);
+    test_truthy(interp, "Symbol ctor from string", "(= (Symbol \"alpha\") 'alpha)", pass, fail);
+    test_truthy(interp, "Symbol ctor identity", "(= (Symbol 'alpha) 'alpha)", pass, fail);
+    test_truthy(interp, "Boolean ctor from truthy int", "(Boolean 0)", pass, fail);
+    test_nil(interp, "Boolean ctor from nil", "(Boolean nil)", pass, fail);
+    test_nil(interp, "Boolean ctor from quoted false symbol", "(Boolean 'false)", pass, fail);
+    test_truthy(interp, "Bool shorthand ctor from truthy int", "(Bool 0)", pass, fail);
+    test_truthy(interp, "Boolean ctor type", "(= (type-of (Boolean 0)) 'Boolean)", pass, fail);
+    test_nil(interp, "Nil ctor from nil", "(Nil nil)", pass, fail);
+    test_nil(interp, "Nil ctor from false", "(Nil false)", pass, fail);
+    test_truthy(interp, "Closure ctor identity", "(closure? (Closure (lambda (x) x)))", pass, fail);
+    test_truthy(interp, "Dictionary ctor type", "(= (type-of (Dictionary 'a 1)) 'Dictionary)", pass, fail);
+    test_eq(interp, "Dict shorthand ctor", "(ref (Dict 'a 1 'b 2) 'b)", 2, pass, fail);
+    test_truthy(interp, "Set ctor type", "(= (type-of (Set 1 2 3)) 'Set)", pass, fail);
+    test_eq(interp, "Set ctor dedup", "(set-size (Set 1 2 2 3))", 3, pass, fail);
+    test_truthy(interp, "Coroutine ctor type",
+        "(= (type-of (Coroutine (lambda () 1))) 'Coroutine)", pass, fail);
+    test_str_val(interp,
+        "Integer ctor invalid string payload code",
+        "(handle (Integer \"abc\") (raise msg (symbol->string (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp,
+        "Symbol ctor invalid payload code",
+        "(handle (Symbol 42) (raise msg (symbol->string (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp,
+        "Nil ctor invalid payload code",
+        "(handle (Nil 42) (raise msg (symbol->string (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp,
+        "Closure ctor invalid payload code",
+        "(handle (Closure 42) (raise msg (symbol->string (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp,
+        "Coroutine ctor invalid payload code",
+        "(handle (Coroutine 42) (raise msg (symbol->string (ref msg 'code))))",
+        "runtime/error", pass, fail);
+}
+
 fn void run_advanced_unicode_iterator_primitives_tests(Interp* interp, int* pass, int* fail) {
     // Phase 3A: Iterator type + primitives
     test_truthy(interp, "make-iterator creates iter",
         "(iterator? (make-iterator (lambda () nil)))", pass, fail);
+    test_truthy(interp, "Iterator ctor creates iter",
+        "(iterator? (Iterator (lambda () nil)))", pass, fail);
     test_truthy(interp, "next on empty iter is nil",
-        "(null? (next (make-iterator (lambda () nil))))", pass, fail);
+        "(null? (next (Iterator (lambda () nil))))", pass, fail);
     // Simple iterator: returns (cons 42 empty-iter), then empty
-    setup(interp, "(define empty-it (make-iterator (lambda () nil)))");
-    setup(interp, "(define one-it (make-iterator (lambda () (cons 42 empty-it))))");
+    setup(interp, "(define empty-it (Iterator (lambda () nil)))");
+    setup(interp, "(define one-it (Iterator (lambda () (cons 42 empty-it))))");
     test_eq(interp, "next returns pair car", "(car (next one-it))", 42, pass, fail);
     // Collect a hand-made 3-element iterator
-    setup(interp, "(define it3 (make-iterator (lambda () (cons 3 (make-iterator (lambda () (cons 2 (make-iterator (lambda () (cons 1 (make-iterator (lambda () nil))))))))))))" );
+    setup(interp, "(define it3 (Iterator (lambda () (cons 3 (Iterator (lambda () (cons 2 (Iterator (lambda () (cons 1 (Iterator (lambda () nil))))))))))))" );
     test_eq(interp, "list it3 car", "(car (list it3))", 3, pass, fail);
     test_eq(interp, "list it3 len", "(length (list it3))", 3, pass, fail);
     // array constructor from iterator
@@ -46,15 +94,18 @@ fn void run_advanced_unicode_iterator_primitives_tests(Interp* interp, int* pass
     test_eq(interp, "array it3 ref 0", "(ref (array it3) 0)", 3, pass, fail);
     // type-of iterator
     test_truthy(interp, "type-of iterator",
-        "(is? (make-iterator (lambda () nil)) (quote Iterator))", pass, fail);
+        "(is? (Iterator (lambda () nil)) (quote Iterator))", pass, fail);
 }
 
 fn void run_advanced_unicode_iterator_lazy_pipeline_tests(Interp* interp, int* pass, int* fail) {
     // Phase 3B: iterator constructors + lazy combinators
     test_truthy(interp, "iterator dispatches list",
         "(iterator? (iterator (quote (1 2 3))))", pass, fail);
+    test_truthy(interp, "Iterator dispatches list",
+        "(iterator? (Iterator (quote (1 2 3))))", pass, fail);
     test_eq(interp, "iterator list list car", "(car (list (iterator (quote (1 2 3)))))", 1, pass, fail);
     test_eq(interp, "iterator list list len", "(length (list (iterator (quote (1 2 3)))))", 3, pass, fail);
+    test_eq(interp, "Iterator list list car", "(car (list (Iterator (quote (1 2 3)))))", 1, pass, fail);
     test_eq(interp, "iterator array list car", "(car (list (iterator [10 20 30])))", 10, pass, fail);
     test_eq(interp, "iterator array list len", "(length (list (iterator [10 20 30])))", 3, pass, fail);
     test_eq(interp, "iterator dict list len", "(length (list (iterator (block (define iter-d {'a 1 'b 2}) iter-d))))", 2, pass, fail);
@@ -98,6 +149,7 @@ fn void run_advanced_unicode_iterator_lazy_pipeline_tests(Interp* interp, int* p
 
 fn void run_advanced_unicode_iterator_tests(Interp* interp, int* pass, int* fail) {
     run_advanced_unicode_lambda_utf8_tests(interp, pass, fail);
+    run_advanced_callable_type_symbol_constructor_tests(interp, pass, fail);
     run_advanced_unicode_iterator_primitives_tests(interp, pass, fail);
     run_advanced_unicode_iterator_lazy_pipeline_tests(interp, pass, fail);
 }
@@ -302,6 +354,7 @@ fn void run_advanced_runtime_control_tests(Interp* interp, int* pass, int* fail)
 
     // Coroutine primitives (coroutine/resume/yield)
     test_eq(interp, "coroutine basic", "(resume (coroutine (lambda () (+ 1 2))))", 3, pass, fail);
+    test_eq(interp, "Coroutine basic", "(resume (Coroutine (lambda () (+ 1 2))))", 3, pass, fail);
     test_eq(interp, "coroutine yield", "(let (f (coroutine (lambda () (yield 42) 99))) (resume f))", 42, pass, fail);
     test_eq(interp, "coroutine yield complete", "(let (f (coroutine (lambda () (yield 42) 99))) (resume f) (resume f))", 99, pass, fail);
     test_eq(interp, "coroutine resume value", "(let (f (coroutine (lambda () (+ 1 (yield 0))))) (resume f) (resume f 10))", 11, pass, fail);

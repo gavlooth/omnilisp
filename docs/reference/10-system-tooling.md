@@ -76,7 +76,7 @@ nil               ;; nil value
 '(1 2 3)          ;; quoted list
 [1 2 3]           ;; array literal    -> (array 1 2 3)
 {'a 1 'b 2}       ;; dict literal     -> (dict 'a 1 'b 2)
-#{"a" "b" "c"}    ;; set literal      -> (set "a" "b" "c")
+(Set "a" "b" "c") ;; set constructor
 ```
 
 ### Regex Literals

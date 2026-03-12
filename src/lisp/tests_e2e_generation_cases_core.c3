@@ -105,6 +105,19 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     // substring skipped: 3-arg function not yet supported in compiler runtime
     { "number->string", `(number->string 42)` },
     { "string->number", `(string->number "42")` },
+    { "Integer ctor double", "(Integer 3.9)" },
+    { "Int shorthand ctor double", "(Int 3.9)" },
+    { "Double ctor int", "(Double 3)" },
+    { "Boolean ctor truthy", "(Boolean 0)" },
+    { "Bool shorthand ctor truthy", "(Bool 0)" },
+    { "Nil ctor nil", "(Nil nil)" },
+    { "String ctor int", "(String 3)" },
+    { "Symbol ctor string", "(Symbol \"alpha\")" },
+    { "Dictionary ctor type", "(type-of (Dictionary 'a 1))" },
+    { "Set ctor type", "(type-of (Set 1 2 3))" },
+    { "Closure ctor lambda type", "(type-of (Closure (lambda (x) x)))" },
+    { "Coroutine ctor lambda type", "(type-of (Coroutine (lambda () 1)))" },
+    { "Iterator ctor array car", "(car (list (Iterator [4 5 6])))" },
 
     // === Recursive functions ===
     { "sum-to 50", "(sum-to 50)" },

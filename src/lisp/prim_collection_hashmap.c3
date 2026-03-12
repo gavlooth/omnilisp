@@ -23,14 +23,14 @@ fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
         return make_int(interp, (long)args[0].array_val.length);
     }
 
-    // Dict count
-    if (args[0].tag == HASHMAP) {
+    // Dict / Set count
+    if (is_hashmap_backed(args[0])) {
         return make_int(interp, (long)args[0].hashmap_val.count);
     }
 
     // Count cons cells
     if (!is_cons(args[0])) {
-        return raise_error(interp, "length: expected list, array, dict, or string");
+        return raise_error(interp, "length: expected list, array, dict, set, or string");
     }
 
     long count = 0;
