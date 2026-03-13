@@ -1,136 +1,159 @@
-# OmniLisp
+# Omni Lisp
 
-**OmniLisp** is a high-performance, multi-paradigm Lisp dialect designed for systems programming and modern application development. It combines the minimalism of **Scheme**, the industrial power of **Common Lisp**, the modern type system of **Julia**, and the data-driven elegance of **Clojure**, all built on a foundation of **Region-RC** memory management.
+Omni Lisp is a Lisp dialect with strict-arity lambdas, multiple dispatch,
+algebraic effects, and delimited continuations. The runtime is deterministic
+and scope/region-based, implemented in C3 with JIT and AOT compilation paths.
 
-## Key Design Pillars
+This README is aligned with the current syntax and language docs:
+- [Syntax Spec](docs/SYNTAX_SPEC.md)
+- [Language Spec](docs/LANGUAGE_SPEC.md)
+- [Docs Map](docs/README.md)
 
-*   **Region-RC Memory Model:** Scope-based regions with reference counting at region granularity (no stop-the-world GC).
-*   **Two-Tier Concurrency:** High-performance OS threads (pthreads) combined with lightweight green threads (delimited continuations).
-*   **Multiple Dispatch:** Full multiple dispatch on all arguments (Julia-style).
-*   **Algebraic Effects:** Resumable exception handling and structured control flow.
-*   **Hygienic Macros:** True syntax transformers with pattern matching and hygiene.
-*   **Modern Syntax:** S-expressions with specialized brackets (`[]` for arrays/bindings, `{}` for types/FFI, `#{}` for dicts).
+## Status
 
----
+Release status is tracked in [Release Status](docs/RELEASE_STATUS.md).
 
-## Current Status (2026-01-07)
+As of 2026-03-10:
+- language feature work is considered complete at current baseline,
+- full release validation is expected to run via Docker-bound gates.
 
-The project features a unified C99 + POSIX toolchain (parser, analysis, codegen) and runtime implementing:
+## Syntax Quick Start
 
-### Memory Management (Region-RC)
-| Optimization | Status | Description |
-|---|---|---|
-| **Region Lifetime Scheduling** | ✅ | Compiler schedules `region_create` / `region_exit` at scope boundaries. |
-| **Region-Level Reference Counting** | ✅ | Cross-region refs tracked at region granularity, not per-object. |
-| **Transmigration on Escape** | ✅ | Explicit escape repair: copy/move graphs between regions. |
-| **Thread-Safe Tethering** | ✅ | Borrow-window pinning to prevent region reclamation during calls. |
-| **Metadata-Driven Transmigration** | ✅ | Type-driven clone/trace operations for all runtime types. |
+The canonical syntax details are in [docs/SYNTAX_SPEC.md](docs/SYNTAX_SPEC.md).
+The examples below match that spec.
 
-### Language Features
-*   **Special Forms:** `define`, `lambda`, `let`, `if`, `block`, `match`, `handle`/`signal`.
-*   **Data Types:** Integers, Floats, Symbols, Lists, Arrays, Dicts, Strings, Characters.
-*   **Concurrency:** Delimited continuations (`prompt`/`control`), Fibers (ucontext), CSP Channels.
-*   **Modules:** Full module system with `export`, `import`, and namespace aliasing.
-*   **FFI:** Handle-based Foreign Function Interface with ownership annotations.
-
----
-
-## Memory Management: Region-RC
-
-OmniLisp uses **Region-RC**: scope-based regions with reference counting at
-region granularity. The compiler schedules region lifetimes and inserts explicit
-runtime operations for **escapes** (transmigration) and **borrows** (tethering).
-There is **no stop-the-world tracing collector**.
-
-**What makes Region-RC unique:**
-- Objects allocate in regions with O(1) bump-pointer allocation
-- Reference counting operates at the *region* level, not per-object
-- Cross-region references increment the target region's external RC
-- A region is freed when: its scope ends AND external_rc == 0
-
-Canonical references:
-
-- `docs/REGION_RC.md` (normative contract)
-- `runtime/docs/CTRR_TRANSMIGRATION.md` (detailed transmigration contract)
-
----
-
-## Concurrency & Effects
-
-OmniLisp provides structured control flow through **Delimited Continuations** and **Algebraic Effects**.
+### Core Expressions
 
 ```lisp
-;; Define an effect
-(define {effect ask} :one-shot (returns String))
+(define x 10)
+(define y 20)
+(+ x y)
 
-;; Handle the effect
+(if (> x 5) "big" "small")
+(block (println "a") (println "b") 42)
+```
+
+### `let` Bindings and Destructuring
+
+```lisp
+;; flat pair bindings
+(let (x 1 y 2) (+ x y))
+
+;; array destructuring
+(let ([a b .. rest] [10 20 30 40]) (+ a b))
+
+;; dict destructuring
+(let ({name age} {'name "Alice" 'age 30}) name)
+```
+
+### Functions and Arity
+
+```lisp
+;; strict arity
+(define (add2 a b) (+ a b))
+
+;; variadic parameter with ..
+(define (collect first .. rest) rest)
+
+;; lambda form
+(lambda (x y) (+ x y))
+```
+
+### Collections and Access
+
+```lisp
+;; list
+'(1 2 3)
+
+;; array literal (desugars to (array ...))
+[1 2 3]
+
+;; dict literal (desugars to (dict ...))
+{'a 1 'b 2}
+
+;; path and index access
+point.x
+arr.[0]
+dict.['key]
+```
+
+### Mutation
+
+```lisp
+(set! name value)
+(set! pair.car value)
+(set! pair.cdr value)
+(set! collection key value) ; generic Array/Dictionary update
+```
+
+`set!` returns `Void` on success.
+
+### Pattern Matching
+
+```lisp
+(match expr
+  ((Some x) x)
+  (None 0)
+  (_ -1))
+```
+
+### Effects and Continuations
+
+```lisp
+;; delimited continuations
+(reset (+ 1 (shift k (k 10))))
+
+;; algebraic effects
 (handle
-  (str "Hello, " (signal ask nil))
-  (ask _ (resolve "World")))  ; -> "Hello, World"
+  (signal 'ask "name")
+  (ask arg (resolve "ok")))
 ```
 
-The concurrency model is two-tiered:
-- **Tier 1:** OS Threads for true parallelism and blocking I/O.
-- **Tier 2:** Lightweight green threads (Fibers) for massive concurrency using CSP channels.
+## Language Rules That Matter
 
----
+- Truthiness:
+  - falsy: `nil`, `false`
+  - truthy: everything else
+- Collections: list, array, dict.
+- Dispatch is explicit and type-driven; no implicit widening/coercion in method match.
+- Constructors are explicit conversion points.
 
-## Syntax Showcase
+Canonical type names in docs/runtime are descriptive:
+`Integer`, `Double`, `String`, `Symbol`, `List`, `Array`, `Dictionary`,
+`Set`, `Iterator`, `Coroutine`, `TimePoint`, `Boolean`, `Nil`, `Void`.
 
-```lisp
-;; Vector bindings and dot notation
-(let [person #{:name "Alice" :age 30}]
-  (println person.name))
+Compatibility shorthands such as `Int`, `Bool`, and `Dict` are still accepted
+where documented, but descriptive names are preferred in spec/docs/examples.
 
-;; Multiple dispatch method
-(define [method area Circle] [c]
-  (* π c.radius c.radius))
-
-;; Hygienic macros
-(define [syntax unless]
-  [(unless test body ...)
-   (if test nothing (block body ...))])
-
-;; FFI with ownership annotations
-(define {extern malloc :from libc}
-  [size {CSize}]
-  -> {^:owned CPtr})
-```
-
----
-
-## References
-
-1.  *ASAP (paper terminology): As Static As Possible memory management* (Proust, 2017).
-2.  *Perceus: Garbage Free Reference Counting with Reuse* (Reinking et al., PLDI 2021).
-3.  *Cyclic Reference Counting by Typed Reference Fields* (Sitaram, 2011).
-4.  *Vale: Seamless, Fearless, Structured Concurrency* (Verdagon.dev).
-5.  *Region-Based Memory Management* (Tofte & Talpin, 1997).
-6.  *Abstracting Control* (Danvy & Filinski, 1990).
-7.  *Collapsing Towers of Interpreters* (Amin & Rompf, POPL 2018).
-
----
-
-## Building & Running
+## Build and Run
 
 ```bash
-# Build the compiler and runtime
-make
+# build
+c3c build
 
-# Run a script
-./omni examples/hello.lisp
-
-# Run an expression
-./omni -e "(+ 1 2)"
+# run main binary
+LD_LIBRARY_PATH=/usr/local/lib ./build/main
 ```
 
-## Documentation
+## Validation
 
-*   [SYNTAX.md](./SYNTAX.md) - Exhaustive syntax guide.
-*   [DESIGN.md](./DESIGN.md) - Full technical specification.
-*   [SUMMARY.md](./SUMMARY.md) - Feature implementation overview.
-*   [FFI_PROPOSAL.md](./FFI_PROPOSAL.md) - Foreign Function Interface design.
+```bash
+# generate + compile + run e2e compiler output parity
+scripts/run_e2e.sh
+```
 
-## Build and Test
+For full gate policy and Docker-capped validation paths, use:
+- [Project Tooling](docs/PROJECT_TOOLING.md)
+- [AGENTS guidance](AGENTS.md)
 
-See [docs/BUILD_AND_TEST.md](docs/BUILD_AND_TEST.md) for canonical build and test commands.
+## Documentation Index
+
+- [Docs Map](docs/README.md)
+- [Language Spec](docs/LANGUAGE_SPEC.md)
+- [Syntax Spec](docs/SYNTAX_SPEC.md)
+- [Type and Dispatch Syntax](docs/type-system-syntax.md)
+- [Effects Guide](docs/EFFECTS_GUIDE.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Project Tooling](docs/PROJECT_TOOLING.md)
+- [Reference Manual](docs/OMNI_REFERENCE.md)
+- [Memory Changelog (implementation truth)](memory/CHANGELOG.md)
