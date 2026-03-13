@@ -59,8 +59,8 @@
 | E_UNQUOTE | `,expr` | Unquote inside quasiquote |
 | E_UNQUOTE_SPLICING | `,@expr` | Splice into quasiquote |
 | E_MATCH | `(match expr clauses...)` | Pattern matching |
-| E_RESET | `(reset body)` | Delimited continuation prompt |
-| E_SHIFT | `(shift k body)` | Capture continuation |
+| E_RESET | `(checkpoint body)` | Delimited continuation prompt |
+| E_SHIFT | `(capture k body)` | Capture continuation |
 | E_PERFORM | `(signal tag arg)` | Signal algebraic effect (internal tag is E_PERFORM, keyword is `signal`) |
 | E_HANDLE | `(handle body clauses...)` | Handle algebraic effects |
 | E_DEFMACRO | `(define [macro] ...)` | Pattern macro definition |
@@ -214,12 +214,12 @@ Three branches required (no two-branch form).
 
 Patterns: literals, variables, wildcards `_`, sequences `[a b .. rest]`, quoted `'sym`, constructors `(Some x)`.
 
-### 3.9 `reset` / `shift` - Delimited Continuations
+### 3.9 `checkpoint` / `capture` - Delimited Continuations
 
 ```lisp
-(reset body)
-(shift k body)
-(reset (+ 1 (shift k (k (k 10)))))  ;; => 12
+(checkpoint body)
+(capture k body)
+(checkpoint (+ 1 (capture k (k (k 10)))))  ;; => 12
 ```
 
 ### 3.10 `signal` / `handle` - Algebraic Effects

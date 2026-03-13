@@ -50,7 +50,7 @@ fn Pattern* Parser.parse_seq_pattern(Parser* self) {
         if (self.has_error) { elems.free(); return null; }
 
         p.elem_count = elems.len();
-        p.elements = (Pattern**)mem::malloc(Pattern*.sizeof * elems.len());
+        p.elements = (Pattern**)ast_arena_alloc(&self.interp.ast_arena, Pattern*.sizeof * elems.len());
         for (usz i = 0; i < elems.len(); i++) { p.elements[i] = elems[i]; }
         elems.free();
 
@@ -63,7 +63,7 @@ fn Pattern* Parser.parse_seq_pattern(Parser* self) {
     }
 
     p.elem_count = elems.len();
-    p.elements = (Pattern**)mem::malloc(Pattern*.sizeof * elems.len());
+    p.elements = (Pattern**)ast_arena_alloc(&self.interp.ast_arena, Pattern*.sizeof * elems.len());
     for (usz i = 0; i < elems.len(); i++) { p.elements[i] = elems[i]; }
     elems.free();
 
@@ -100,7 +100,7 @@ fn Pattern* Parser.parse_dict_pattern(Parser* self) {
     if (self.has_error) { keys.free(); return null; }
 
     p.dict_key_count = keys.len();
-    p.dict_keys = (SymbolId*)mem::malloc(SymbolId.sizeof * keys.len());
+    p.dict_keys = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * keys.len());
     for (usz i = 0; i < keys.len(); i++) { p.dict_keys[i] = keys[i]; }
     keys.free();
 

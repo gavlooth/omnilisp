@@ -151,7 +151,7 @@ fn Expr* Parser.parse_define_macro_attr(Parser* self, Expr* e) {
     if (!self.parse_macro_syntax_match_body(&clauses)) return null;
 
     if (clauses.len() > 0) {
-        e.define_macro.clauses = (MacroClause*)mem::malloc(MacroClause.sizeof * clauses.len());
+        e.define_macro.clauses = (MacroClause*)ast_arena_alloc(&self.interp.ast_arena, MacroClause.sizeof * clauses.len());
         if (e.define_macro.clauses == null) {
             self.set_error("out of memory while parsing macro clauses");
             return null;

@@ -152,10 +152,10 @@ fn SymbolId val_to_sym(Value* v) @inline {
 fn Expr* make_single_lambda_expr(Interp* interp, SymbolId param, Expr* body) {
     Expr* e = interp.alloc_expr();
     e.tag = E_LAMBDA;
-    e.lambda = mem::malloc(ExprLambda.sizeof);
+    e.lambda = (ExprLambda*)ast_arena_alloc(&interp.ast_arena, ExprLambda.sizeof);
     e.lambda.param = param;
     e.lambda.param_count = 1;
-    e.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof);
+    e.lambda.params = (SymbolId*)ast_arena_alloc(&interp.ast_arena, SymbolId.sizeof);
     e.lambda.params[0] = param;
     e.lambda.has_rest = false;
     e.lambda.rest_param = 0;
@@ -169,7 +169,7 @@ fn Expr* make_single_lambda_expr(Interp* interp, SymbolId param, Expr* body) {
 fn Expr* make_nullary_lambda_expr(Interp* interp, Expr* body) {
     Expr* e = interp.alloc_expr();
     e.tag = E_LAMBDA;
-    e.lambda = mem::malloc(ExprLambda.sizeof);
+    e.lambda = (ExprLambda*)ast_arena_alloc(&interp.ast_arena, ExprLambda.sizeof);
     e.lambda.param = (SymbolId)0xFFFFFFFF;
     e.lambda.param_count = 0;
     e.lambda.params = null;
@@ -287,9 +287,9 @@ fn Expr* vte_begin(Value* rest, Interp* interp) {
     }
     Expr* e = interp.alloc_expr();
     e.tag = E_BLOCK;
-    e.block = mem::malloc(ExprBlock.sizeof);
+    e.block = (ExprBlock*)ast_arena_alloc(&interp.ast_arena, ExprBlock.sizeof);
     e.block.expr_count = items.len();
-    e.block.exprs = (Expr**)mem::malloc(Expr*.sizeof * items.len());
+    e.block.exprs = (Expr**)ast_arena_alloc(&interp.ast_arena, Expr*.sizeof * items.len());
     for (usz i = 0; i < items.len(); i++) { e.block.exprs[i] = items[i]; }
     items.free();
     return e;
@@ -309,10 +309,10 @@ fn Expr* vte_call(Value* val, Interp* interp) {
     }
     Expr* e = interp.alloc_expr();
     e.tag = E_CALL;
-    e.call = mem::malloc(ExprCall.sizeof);
+    e.call = (ExprCall*)ast_arena_alloc(&interp.ast_arena, ExprCall.sizeof);
     e.call.func = func_e;
     e.call.arg_count = args.len();
-    e.call.args = (Expr**)mem::malloc(Expr*.sizeof * args.len());
+    e.call.args = (Expr**)ast_arena_alloc(&interp.ast_arena, Expr*.sizeof * args.len());
     for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }
     args.free();
     return e;
@@ -382,13 +382,13 @@ fn Expr* vte_special_form(SymbolId sym, Value* rest, Interp* interp) {
     if ((uint)sym == (uint)interp.sym_set)              return vte_define_or_set_form(rest, interp, true);
     if ((uint)sym == (uint)interp.sym_and)              return vte_and_or_form(rest, interp, true);
     if ((uint)sym == (uint)interp.sym_or)               return vte_and_or_form(rest, interp, false);
-    if ((uint)sym == (uint)interp.sym_reset) {
+    if ((uint)sym == (uint)interp.sym_checkpoint) {
         Expr* e = interp.alloc_expr();
         e.tag = E_RESET;
         e.reset.body = rest_car_expr(rest, interp);
         return e;
     }
-    if ((uint)sym == (uint)interp.sym_shift) {
+    if ((uint)sym == (uint)interp.sym_capture) {
         if (!is_cons(rest)) return make_nil_expr(interp);
         Value* k_name = rest.cons_val.car;
         rest = rest.cons_val.cdr;

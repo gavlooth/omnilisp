@@ -28,14 +28,12 @@ fn void Parser.import_ensure_capacity(Parser* self, Expr* e, usz needed) {
     while (new_cap < needed) {
         new_cap *= 2;
     }
-    SymbolId* new_imports = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
-    SymbolId* new_aliases = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
+    SymbolId* new_imports = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * new_cap);
+    SymbolId* new_aliases = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * new_cap);
     for (usz i = 0; i < e.import_expr.import_count; i++) {
         new_imports[i] = e.import_expr.imports[i];
         new_aliases[i] = e.import_expr.aliases[i];
     }
-    if (e.import_expr.imports != null) mem::free(e.import_expr.imports);
-    if (e.import_expr.aliases != null) mem::free(e.import_expr.aliases);
     e.import_expr.imports = new_imports;
     e.import_expr.aliases = new_aliases;
     e.import_expr.import_capacity = new_cap;
@@ -55,7 +53,7 @@ fn bool Parser.parse_import_target(Parser* self, Expr* e) {
             self.set_error("import path is too long");
             return false;
         }
-        char* path_buf = (char*)mem::malloc(len + 1);
+        char* path_buf = (char*)ast_arena_alloc(&self.interp.ast_arena, len + 1);
         if (path_buf == null) {
             self.set_error("out of memory while parsing import path");
             return false;

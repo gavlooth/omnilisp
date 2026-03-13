@@ -47,7 +47,7 @@ fn Expr* Parser.parse_handle(Parser* self) {
     Expr* body = self.parse_expr();
 
     e.tag = E_HANDLE;
-    e.handle = (ExprHandle*)mem::malloc(ExprHandle.sizeof);
+    e.handle = (ExprHandle*)ast_arena_alloc(&self.interp.ast_arena, ExprHandle.sizeof);
     e.handle.body = body;
     e.handle.strict_mode = strict;
 
@@ -65,7 +65,7 @@ fn Expr* Parser.parse_handle(Parser* self) {
 
     // Finalize clauses
     e.handle.clause_count = clause_list.len();
-    e.handle.clauses = (EffectClause*)mem::malloc(EffectClause.sizeof * clause_list.len());
+    e.handle.clauses = (EffectClause*)ast_arena_alloc(&self.interp.ast_arena, EffectClause.sizeof * clause_list.len());
     for (usz i = 0; i < clause_list.len(); i++) { e.handle.clauses[i] = clause_list[i]; }
     clause_list.free();
 

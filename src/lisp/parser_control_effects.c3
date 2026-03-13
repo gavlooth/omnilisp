@@ -80,9 +80,9 @@ fn Expr* Parser.parse_block(Parser* self) {
         e.lit.value.tag = NIL;
     } else {
         e.tag = E_BLOCK;
-        e.block = mem::malloc(ExprBlock.sizeof);
+        e.block = (ExprBlock*)ast_arena_alloc(&self.interp.ast_arena, ExprBlock.sizeof);
         e.block.expr_count = items.len();
-        e.block.exprs = (Expr**)mem::malloc(Expr*.sizeof * items.len());
+        e.block.exprs = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * items.len());
         for (usz i = 0; i < items.len(); i++) { e.block.exprs[i] = items[i]; }
         items.free();
     }

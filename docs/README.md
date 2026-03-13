@@ -16,6 +16,7 @@ Use this file to reduce context switching and avoid reading obsolete plans.
 
 - Release state + gate policy: `docs/RELEASE_STATUS.md`
 - Language behavior: `docs/LANGUAGE_SPEC.md`
+- Deduce Datalog target semantics: `docs/deduce-datalog-spec.md`
 - Onboarding (core/advanced/error/pitfalls):
   - `docs/LANGUAGE_SPEC.md#0-core-omni-profile`
   - `docs/LANGUAGE_SPEC.md#04-advanced-omni-profile`

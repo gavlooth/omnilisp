@@ -115,10 +115,10 @@ fn void run_basic_control_flow_tests(Interp* interp, int* pass, int* fail) {
     // Truthiness
     test_eq(interp, "0 is truthy", "(if 0 42 99)", 42, pass, fail);
 
-    // Reset/shift
-    test_eq(interp, "shift aborts", "(reset (+ 1 (shift k 42)))", 42, pass, fail);
-    test_eq(interp, "shift k resumes", "(reset (+ 1 (shift k (k 10))))", 11, pass, fail);
-    test_eq(interp, "reset passthrough", "(reset (+ 10 20))", 30, pass, fail);
+    // Reset/capture
+    test_eq(interp, "capture aborts", "(checkpoint (+ 1 (capture k 42)))", 42, pass, fail);
+    test_eq(interp, "capture k resumes", "(checkpoint (+ 1 (capture k (k 10))))", 11, pass, fail);
+    test_eq(interp, "checkpoint passthrough", "(checkpoint (+ 10 20))", 30, pass, fail);
 
     // Effect handlers
     test_eq(interp, "handle without effect", "(handle 42 (ask x (resolve 0)))", 42, pass, fail);

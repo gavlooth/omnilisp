@@ -474,12 +474,12 @@ fn void run_compiler_group_set_path_tests(Interp* interp, usz* pass_out, usz* fa
 }
 
 fn void run_compiler_group_continuation_set_begin_tests(Interp* interp, usz* pass, usz* fail) {
-    // --- reset/shift via interpreter delegation ---
+    // --- checkpoint/capture via interpreter delegation ---
     {
-        char[] code = compile_to_c3("(reset (+ 1 (shift k (k 10))))", interp);
+        char[] code = compile_to_c3("(checkpoint (+ 1 (capture k (k 10))))", interp);
         bool ok = str_contains(code, "compiled_reset") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: reset/shift compiles natively"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: reset/shift compiles natively"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: checkpoint/capture compiles natively"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: checkpoint/capture compiles natively"); }
     }
     {
         char[] code = compile_to_c3("(define x 0) (block (set! x 1) (set! x (+ x 1)) x)", interp);
@@ -492,10 +492,10 @@ fn void run_compiler_group_continuation_set_begin_tests(Interp* interp, usz* pas
 fn void run_compiler_group_continuation_form_tests(Interp* interp, usz* pass, usz* fail) {
     // --- Continuation form tests (native compilation) ---
     {
-        char[] code = compile_to_c3("(define x 5) (reset (+ x (shift k (k 10))))", interp);
+        char[] code = compile_to_c3("(define x 5) (checkpoint (+ x (capture k (k 10))))", interp);
         bool ok = str_contains(code, "compiled_reset");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: reset uses compiled_reset"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: reset uses compiled_reset"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: checkpoint uses compiled_reset"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: checkpoint uses compiled_reset"); }
     }
     {
         char[] code = compile_to_c3("(handle (+ 1 (signal ask 0)) (ask x (resolve 10)))", interp);
@@ -510,16 +510,16 @@ fn void run_compiler_group_continuation_form_tests(Interp* interp, usz* pass, us
         else    { (*fail)++; io::printn("[FAIL] Compiler: signal uses compiled_signal"); }
     }
     {
-        char[] code = compile_to_c3("(shift k 42)", interp);
+        char[] code = compile_to_c3("(capture k 42)", interp);
         bool ok = str_contains(code, "compiled_shift");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: shift uses compiled_shift"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: shift uses compiled_shift"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: capture uses compiled_shift"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: capture uses compiled_shift"); }
     }
     {
-        char[] code = compile_to_c3("(reset (+ 1 2))", interp);
+        char[] code = compile_to_c3("(checkpoint (+ 1 2))", interp);
         bool ok = str_contains(code, "compiled_reset");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: reset compiles natively"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: reset compiles natively"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: checkpoint compiles natively"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: checkpoint compiles natively"); }
     }
     {
         char[] code = compile_to_c3("(handle (block (signal get 0) (signal set 1)) (get x (resolve 42)) (set v (resolve v)))", interp);
@@ -534,10 +534,10 @@ fn void run_compiler_group_continuation_form_tests(Interp* interp, usz* pass, us
         else    { (*fail)++; io::printn("[FAIL] Compiler: try from stdlib"); }
     }
     {
-        char[] code = compile_to_c3("(reset (+ 1 (shift k (+ (k 10) (k 20)))))", interp);
+        char[] code = compile_to_c3("(checkpoint (+ 1 (capture k (+ (k 10) (k 20)))))", interp);
         bool ok = str_contains(code, "compiled_reset") && str_contains(code, "compiled_shift");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: reset with nested shift"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: reset with nested shift"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: checkpoint with nested capture"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: checkpoint with nested capture"); }
     }
 }
 

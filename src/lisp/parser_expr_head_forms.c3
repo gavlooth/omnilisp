@@ -58,8 +58,16 @@ fn Expr* Parser.parse_symbol_head_form(Parser* self, SymbolId head, bool* matche
         self.set_error("begin syntax was removed; use block");
         return null;
     }
-    if ((uint)head == (uint)self.interp.sym_reset) return self.parse_reset();
-    if ((uint)head == (uint)self.interp.sym_shift) return self.parse_shift();
+    if (parser_symbol_text_is(head_text, "reset")) {
+        self.set_error("reset syntax was removed; use checkpoint");
+        return null;
+    }
+    if (parser_symbol_text_is(head_text, "shift")) {
+        self.set_error("shift syntax was removed; use capture");
+        return null;
+    }
+    if ((uint)head == (uint)self.interp.sym_checkpoint) return self.parse_reset();
+    if ((uint)head == (uint)self.interp.sym_capture) return self.parse_shift();
     if ((uint)head == (uint)self.interp.sym_signal) return self.parse_perform();
     if ((uint)head == (uint)self.interp.sym_handle) return self.parse_handle();
     if ((uint)head == (uint)self.interp.sym_resolve) return self.parse_resolve();

@@ -65,6 +65,19 @@ fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
     DeduceDb* db = (DeduceDb*)mem::malloc(DeduceDb.sizeof);
     // fault: lisp::WRITE_FAILED
     if (db == null) return deduce_raise(interp, "deduce/open-out-of-memory", "deduce-open: out of memory");
+    db.env = null;
+    db.open = false;
+    db.relation_schemas = null;
+    db.relation_schema_count = 0;
+    db.relation_schema_capacity = 0;
+    db.rule_signatures = null;
+    db.rule_signature_count = 0;
+    db.rule_signature_capacity = 0;
+    db.incremental_dirty_predicates = null;
+    db.incremental_dirty_count = 0;
+    db.incremental_dirty_capacity = 0;
+    db.incremental_mutation_epoch = 0;
+    db.incremental_full_recompute_required = false;
 
     int rc = mdb_env_create(&db.env);
     if (rc != MDB_SUCCESS) {
@@ -189,6 +202,10 @@ fn Value* prim_deduce_block(Value*[] args, Env* env, Interp* interp) {
     txn.txn = raw_txn;
     txn.open = true;
     txn.read_only = read_only;
+    txn.mutation_pending = false;
+    txn.mutation_entries = null;
+    txn.mutation_entry_count = 0;
+    txn.mutation_entry_capacity = 0;
 
     Value* txn_v = make_ffi_handle_ex(interp, (void*)txn, "deduce-txn", &deduce_txn_finalizer, true, false);
     if (txn_v == null) {
@@ -216,13 +233,23 @@ fn Value* prim_deduce_commit(Value*[] args, Env* env, Interp* interp) {
     }
 
     MdbTxn* raw_txn = txn.txn;
+    DeduceDb* owner_db = txn.db;
+    bool mutation_pending = txn.mutation_pending;
     txn.txn = null;
     txn.open = false;
     txn.db = null;
     int rc = mdb_txn_commit(raw_txn);
     if (rc != MDB_SUCCESS) {
+        txn.mutation_pending = false;
+        deduce_txn_clear_mutation_log(txn);
         return deduce_raise(interp, "deduce/txn-failed", "deduce-commit: txn commit failed");
     }
+    deduce_txn_apply_mutation_log(txn);
+    if (mutation_pending && owner_db != null) {
+        deduce_db_note_untracked_write_commit(owner_db);
+    }
+    txn.mutation_pending = false;
+    deduce_txn_clear_mutation_log(txn);
     return make_void(interp);
 }
 
@@ -301,6 +328,18 @@ fn Value* prim_deduce_ns_drop(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_drop(args, env, interp);
 }
 
+fn Value* prim_deduce_ns_rule(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_rule(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_explain(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_explain(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_analyze(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_analyze(args, env, interp);
+}
+
 // ============================================================
 // Dispatch helpers
 // ============================================================
@@ -323,6 +362,9 @@ fn Value* prim_deduce_dispatch(char[] name, Value*[] rest, Env* env, Interp* int
     if (deduce_cmd_matches(name, "retract!")) return prim_retract_fact(rest, env, interp);
     if (deduce_cmd_matches(name, "clear!")) return prim_deduce_clear(rest, env, interp);
     if (deduce_cmd_matches(name, "drop!")) return prim_deduce_drop(rest, env, interp);
+    if (deduce_cmd_matches(name, "rule!")) return prim_deduce_rule(rest, env, interp);
+    if (deduce_cmd_matches(name, "explain")) return prim_deduce_explain(rest, env, interp);
+    if (deduce_cmd_matches(name, "analyze")) return prim_deduce_analyze(rest, env, interp);
     return null;
 }
 
@@ -344,6 +386,9 @@ fn Value* prim_deduce_dispatch(char[] name, Value*[] rest, Env* env, Interp* int
 // (deduce 'retract! relation vals...)  → Void
 // (deduce 'clear! relation)        → Void
 // (deduce 'drop! relation)         → Void
+// (deduce 'rule! db head-atom body-atom...) → Void
+// (deduce 'explain db [head-symbol|rule-index]) → deterministic plan payload
+// (deduce 'analyze db)             → deterministic evaluator diagnostics payload
 // ============================================================
 
 fn Value* prim_deduce(Value*[] args, Env* env, Interp* interp) {
@@ -359,5 +404,5 @@ fn Value* prim_deduce(Value*[] args, Env* env, Interp* interp) {
     Value* out = prim_deduce_dispatch(name, args[1..], env, interp);
     if (out != null) return out;
 
-    return deduce_raise(interp, "deduce/dispatch-unknown-command", "deduce: unknown command (expected 'open 'open-named 'block 'commit 'abort 'scan 'scan-range 'query 'count 'match 'fact! 'retract! 'clear! 'drop!)");
+    return deduce_raise(interp, "deduce/dispatch-unknown-command", "deduce: unknown command (expected 'open 'open-named 'block 'commit 'abort 'scan 'scan-range 'query 'count 'match 'fact! 'retract! 'clear! 'drop! 'rule! 'explain 'analyze)");
 }

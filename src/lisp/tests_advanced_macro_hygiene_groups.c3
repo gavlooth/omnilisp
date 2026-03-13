@@ -13,7 +13,7 @@ fn void run_advanced_stdlib_macro_migration_regression_tests(Interp* interp, int
     test_nil(interp, "stdlib cond macro all false", "(cond false 1 false 2)", pass, fail);
     test_str_val(interp, "stdlib with-defaults nil fallback", "(let ({name} {'name nil}) (with-defaults name \"anon\" name))", "anon", pass, fail);
     test_str_val(interp, "stdlib with-defaults keeps non-nil", "(let ({name} {'name \"omni\"}) (with-defaults name \"anon\" name))", "omni", pass, fail);
-    test_eq(interp, "stdlib stream-yield macro expands to shift", "(car (reset (stream-yield 9)))", 9, pass, fail);
+    test_eq(interp, "stdlib stream-yield macro expands to capture", "(car (checkpoint (stream-yield 9)))", 9, pass, fail);
 }
 
 fn void run_advanced_macro_hygiene_string_number_tests(Interp* interp, int* pass, int* fail) {
@@ -68,8 +68,8 @@ fn void run_advanced_macro_hygiene_quasi_pattern_tests(Interp* interp, int* pass
     test_eq(interp, "my-and true", "(my-and true 42)", 42, pass, fail);
     setup(interp, "(define [macro] let1 (syntax-match ([name val body] (template (let ((insert name) (insert val)) (insert body))))))");
     test_eq(interp, "let1 macro", "(let1 x 10 (+ x 5))", 15, pass, fail);
-    test_eq(interp, "stream-yield macro expands shift special form",
-        "(car (reset (stream-yield 7)))",
+    test_eq(interp, "stream-yield macro expands capture special form",
+        "(car (checkpoint (stream-yield 7)))",
         7, pass, fail);
 
     {

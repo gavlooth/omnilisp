@@ -85,8 +85,8 @@ fn void run_escape_scope_env_lane_tests(Interp* interp, int* pass, int* fail) {
 
     test_eq(interp, "esc-env: handle+loop",
         "(handle (let loop (n 0 sum 0) (if (= n 5) sum (loop (+ n 1) (+ sum (signal get n))))) (get arg (resolve (* arg 2))))", 20, pass, fail);
-    test_eq(interp, "esc-env: shift-in-loop fallback",
-        "(reset (let loop (n 0 acc 0) (if (= n 3) acc (loop (+ n 1) (+ acc (shift k (k 10)))))))", 30, pass, fail);
+    test_eq(interp, "esc-env: capture-in-loop fallback",
+        "(checkpoint (let loop (n 0 acc 0) (if (= n 3) acc (loop (+ n 1) (+ acc (capture k (k 10)))))))", 30, pass, fail);
 }
 
 fn void run_escape_scope_tests(Interp* interp, int* pass, int* fail) {

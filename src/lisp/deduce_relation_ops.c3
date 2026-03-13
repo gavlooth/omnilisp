@@ -72,9 +72,14 @@ fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
 
     // Write to LMDB
     if (txn != null) {
+        MdbVal existing_data = {};
+        bool existed = mdb_get(txn.txn, rel.dbi, &key, &existing_data) == MDB_SUCCESS;
         int rc = mdb_put(txn.txn, rel.dbi, &key, &data, 0);
         if (rc != MDB_SUCCESS) {
             return deduce_raise(interp, "deduce/fact-put-failed", "fact!: put failed");
+        }
+        if (!existed && !deduce_txn_log_insert(txn, rel)) {
+            txn.mutation_pending = true;
         }
         return make_void(interp);
     }
@@ -85,6 +90,9 @@ fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
         return deduce_raise(interp, "deduce/fact-txn-open-failed", "fact!: txn open failed");
     }
 
+    MdbVal existing_data = {};
+    bool existed = mdb_get(write_txn, rel.dbi, &key, &existing_data) == MDB_SUCCESS;
+
     rc = mdb_put(write_txn, rel.dbi, &key, &data, 0);
     if (rc != MDB_SUCCESS) {
         mdb_txn_abort(write_txn);
@@ -94,6 +102,10 @@ fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
     rc = mdb_txn_commit(write_txn);
     if (rc != MDB_SUCCESS) {
         return deduce_raise(interp, "deduce/txn-failed", "fact!: txn commit failed");
+    }
+    if (!existed) {
+        deduce_relation_schema_note_insert(rel);
+        deduce_db_note_mutation(rel, false);
     }
     return make_void(interp);
 }
@@ -165,6 +177,9 @@ fn Value* prim_retract_fact(Value*[] args, Env* env, Interp* interp) {
         if (rc != MDB_SUCCESS && rc != MDB_NOTFOUND) {
             return deduce_raise(interp, "deduce/retract-del-failed", "retract!: delete failed");
         }
+        if (rc == MDB_SUCCESS && !deduce_txn_log_delete(txn, rel)) {
+            txn.mutation_pending = true;
+        }
         return make_void(interp);
     }
 
@@ -174,7 +189,9 @@ fn Value* prim_retract_fact(Value*[] args, Env* env, Interp* interp) {
         return deduce_raise(interp, "deduce/retract-txn-open-failed", "retract!: txn open failed");
     }
 
+    bool deleted = false;
     rc = mdb_del(write_txn, rel.dbi, &key, null);
+    if (rc == MDB_SUCCESS) deleted = true;
     if (rc != MDB_SUCCESS && rc != MDB_NOTFOUND) {
         mdb_txn_abort(write_txn);
         return deduce_raise(interp, "deduce/retract-del-failed", "retract!: delete failed");
@@ -182,6 +199,10 @@ fn Value* prim_retract_fact(Value*[] args, Env* env, Interp* interp) {
     rc = mdb_txn_commit(write_txn);
     if (rc != MDB_SUCCESS) {
         return deduce_raise(interp, "deduce/txn-failed", "retract!: txn commit failed");
+    }
+    if (deleted) {
+        deduce_relation_schema_note_delete(rel);
+        deduce_db_note_mutation(rel, true);
     }
     return make_void(interp);
 }
@@ -223,6 +244,8 @@ fn Value* prim_deduce_clear(Value*[] args, Env* env, Interp* interp) {
     if (rc != MDB_SUCCESS) {
         return deduce_raise(interp, "deduce/txn-failed", "deduce-clear: txn commit failed");
     }
+    deduce_relation_schema_note_clear(rel);
+    deduce_db_note_mutation(rel, true);
     return make_void(interp);
 }
 
@@ -264,6 +287,8 @@ fn Value* prim_deduce_drop(Value*[] args, Env* env, Interp* interp) {
         return deduce_raise(interp, "deduce/txn-failed", "deduce-drop: txn commit failed");
     }
 
+    deduce_relation_schema_note_clear(rel);
+    deduce_db_note_mutation(rel, true);
     rel.dropped = true;
     return make_void(interp);
 }

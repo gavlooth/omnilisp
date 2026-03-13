@@ -27,6 +27,8 @@ This folder is the canonical location for implementation plans.
 - `remaining-optimizations.md`
 - `concurrency-hybrid-memory-checklist.md`
 - `post-complete-backlog.md` (non-blocking queue after language completion)
+- `deduce-robust-datalog-roadmap.md` (Deduce roadmap: planner + semi-naive recursion + stratified negation)
+- `deduce-incremental-delta-propagation-design-2026-03-13.md` (Deduce O7.8 dependency-aware incremental invalidation design)
 
 ## Active Plan Ownership Notes
 

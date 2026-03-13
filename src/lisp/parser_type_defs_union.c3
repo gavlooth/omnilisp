@@ -9,7 +9,7 @@ import std::collections::list;
  */
 fn void Parser.init_defunion_expr(Parser* self, Expr* e) {
     e.tag = E_DEFUNION;
-    e.defunion = mem::malloc(ExprDefUnion.sizeof);
+    e.defunion = (ExprDefUnion*)ast_arena_alloc(&self.interp.ast_arena, ExprDefUnion.sizeof);
     e.defunion.type_params = null;
     e.defunion.type_param_count = 0;
     e.defunion.variants = null;

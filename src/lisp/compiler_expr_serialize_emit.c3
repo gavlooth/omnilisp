@@ -42,7 +42,7 @@ fn void Compiler.emit_serialized_expr(Compiler* self, Expr* expr) {
 }
 
 /**
- * Collect free variables from a continuation expression (reset/shift/handle/perform).
+ * Collect free variables from a continuation expression (checkpoint/capture/handle/perform).
  * These are variables that need to be injected into the interpreter before evaluation.
  * Returns the list of free variables (caller must free).
  */

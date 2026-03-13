@@ -8,7 +8,7 @@ fn bool Parser.copy_symbol_list(Parser* self, SymbolId** out, List{SymbolId}* it
         *out = null;
         return true;
     }
-    SymbolId* buf = (SymbolId*)mem::malloc(SymbolId.sizeof * items.len());
+    SymbolId* buf = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * items.len());
     if (buf == null) {
         self.set_error(oom_error);
         return false;
@@ -23,7 +23,7 @@ fn bool Parser.copy_type_field_list(Parser* self, TypeField** out, List{TypeFiel
         *out = null;
         return true;
     }
-    TypeField* buf = (TypeField*)mem::malloc(TypeField.sizeof * items.len());
+    TypeField* buf = (TypeField*)ast_arena_alloc(&self.interp.ast_arena, TypeField.sizeof * items.len());
     if (buf == null) {
         self.set_error("out of memory while parsing type fields");
         return false;
@@ -38,7 +38,7 @@ fn bool Parser.copy_union_variant_list(Parser* self, UnionVariant** out, List{Un
         *out = null;
         return true;
     }
-    UnionVariant* buf = (UnionVariant*)mem::malloc(UnionVariant.sizeof * items.len());
+    UnionVariant* buf = (UnionVariant*)ast_arena_alloc(&self.interp.ast_arena, UnionVariant.sizeof * items.len());
     if (buf == null) {
         self.set_error("out of memory while parsing union variants");
         return false;
@@ -77,7 +77,7 @@ fn bool Parser.parse_compound_symbol_with_params(
  */
 fn void Parser.init_deftype_expr(Parser* self, Expr* e) {
     e.tag = E_DEFTYPE;
-    e.deftype = mem::malloc(ExprDefType.sizeof);
+    e.deftype = (ExprDefType*)ast_arena_alloc(&self.interp.ast_arena, ExprDefType.sizeof);
     e.deftype.has_parent = false;
     e.deftype.fields = null;
     e.deftype.field_count = 0;

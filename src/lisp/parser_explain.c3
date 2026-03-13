@@ -22,7 +22,7 @@ fn Expr* make_explain_target_thunk(Parser* self, Expr* body) {
     thunk.tag = E_LAMBDA;
     thunk.loc_line = body != null ? body.loc_line : 0;
     thunk.loc_column = body != null ? body.loc_column : 0;
-    thunk.lambda = (ExprLambda*)mem::malloc(ExprLambda.sizeof);
+    thunk.lambda = (ExprLambda*)ast_arena_alloc(&self.interp.ast_arena, ExprLambda.sizeof);
     thunk.lambda.param = INVALID_SYMBOL_ID;
     thunk.lambda.params = null;
     thunk.lambda.param_count = 0;
@@ -65,10 +65,10 @@ fn Expr* Parser.parse_explain(Parser* self) {
     explain_fn.loc_column = call_expr.loc_column;
 
     call_expr.tag = E_CALL;
-    call_expr.call = (ExprCall*)mem::malloc(ExprCall.sizeof);
+    call_expr.call = (ExprCall*)ast_arena_alloc(&self.interp.ast_arena, ExprCall.sizeof);
     call_expr.call.func = explain_fn;
     call_expr.call.arg_count = 2;
-    call_expr.call.args = (Expr**)mem::malloc(Expr*.sizeof * 2);
+    call_expr.call.args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * 2);
     call_expr.call.args[0] = selector_expr;
     call_expr.call.args[1] = thunk_expr;
     return call_expr;

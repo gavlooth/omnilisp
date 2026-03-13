@@ -81,10 +81,10 @@ fn bool Compiler.serialize_expr_specialized_core(Compiler* self, Expr* expr, Lis
             self.serialize_value_to_buf(expr.quote.datum, buf);
             return true;
         case E_RESET:
-            self.serialize_unary_expr_form("(reset ", expr.reset.body, buf);
+            self.serialize_unary_expr_form("(checkpoint ", expr.reset.body, buf);
             return true;
         case E_SHIFT:
-            self.serialize_symbol_and_arg_form("(shift ", expr.shift.k_name, expr.shift.body, buf);
+            self.serialize_symbol_and_arg_form("(capture ", expr.shift.k_name, expr.shift.body, buf);
             return true;
         case E_PERFORM:
             self.serialize_symbol_and_arg_form("(perform ", expr.perform.tag, expr.perform.arg, buf);

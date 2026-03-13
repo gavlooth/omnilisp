@@ -124,30 +124,30 @@ introducing alternate runtime effect namespaces.
 
 ## 17. Delimited Continuations
 
-### `reset` / `shift`
+### `checkpoint` / `capture`
 
 ```lisp
-(reset body)
-(shift k body)
+(checkpoint body)
+(capture k body)
 ```
 
-`shift` captures the continuation up to the enclosing `reset` and binds it
+`capture` captures the continuation up to the enclosing `checkpoint` and binds it
 to `k`. `k` is a function — `(k value)` resumes with `value`.
 
 ```lisp
-(reset (+ 1 (shift k (k 10))))
+(checkpoint (+ 1 (capture k (k 10))))
 ;; k = (lambda (x) (+ 1 x))
 ;; => 11
 
 ;; Multi-shot: k can be called multiple times
-(reset (+ 1 (shift k (k (k 10)))))
+(checkpoint (+ 1 (capture k (k (k 10)))))
 ;; => (+ 1 (+ 1 10)) => 12
 ```
 
 ### Semantics
 
 - Continuations are **multi-shot** — each invocation clones the stack
-- The result of `shift`'s body becomes the result of `reset`
+- The result of `capture`'s body becomes the result of `checkpoint`
 - Continuations run on dedicated mmap'd stacks (64KB) with guard pages
 - x86_64 assembly context switching with FPU state isolation
 

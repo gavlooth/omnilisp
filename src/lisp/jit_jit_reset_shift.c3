@@ -3,7 +3,7 @@ module lisp;
 import std::collections::list;
 import main;
 // =============================================================================
-// SECTION 3: JIT HELPER FUNCTIONS (effects/reset/handle/continuations)
+// SECTION 3: JIT HELPER FUNCTIONS (effects/checkpoint/handle/continuations)
 // =============================================================================
 
 /**
@@ -11,8 +11,8 @@ import main;
  * Lives on the parent's stack frame. The body reads/writes via interp.current_reset_state.
  */
 struct ResetState {
-    Expr*   body;         // Reset body expression
-    Env*    env;          // Environment at reset time
+    Expr*   body;         // Checkpoint body expression
+    Env*    env;          // Environment at checkpoint time
     Interp* interp;       // Interpreter (for jit_eval)
     bool    shifted;      // Set true by shift before suspending
     Expr*   shift_body;   // Shift's body expression (to be eval'd in parent)
@@ -26,19 +26,19 @@ fn void reset_entry(void* arg) {
 }
 
 /**
- * Stack-context-based reset: runs body on a separate stack.
+ * Stack-context-based checkpoint: runs body on a separate stack.
  *
  * If the body completes normally, returns its value.
- * If the body calls (shift k BODY), the context suspends and BODY is
+ * If the body calls (capture k BODY), the context suspends and BODY is
  * evaluated in the parent context with k bound to the suspended context.
- * The shift body's return value becomes the reset's return value.
+ * The capture body's return value becomes the checkpoint's return value.
  */
 fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
-    // Precompile reset body on parent stack to avoid cache-miss compilation on switched stacks.
+    // Precompile checkpoint body on parent stack to avoid cache-miss compilation on switched stacks.
     jit_warm_expr_cache(expr.reset.body, interp);
 
     main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
-    if (ctx == null) return eval_error("stack engine: failed to create context for reset");
+    if (ctx == null) return eval_error("stack engine: failed to create context for checkpoint");
 
     ResetState state;
     state.body = expr.reset.body;
@@ -50,7 +50,7 @@ fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
 
     main::stack_ctx_init(ctx, &reset_entry, &state);
 
-    // Save/restore the reset state pointer for nesting
+    // Save/restore the checkpoint state pointer for nesting
     void* saved_state = interp.current_reset_state;
     interp.current_reset_state = &state;
 
@@ -67,7 +67,7 @@ fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
     // Stack overflow — context hit guard page
     if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
         main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
-        return eval_error("stack overflow in reset body");
+        return eval_error("stack overflow in checkpoint body");
     }
 
     if (state.shifted) {
@@ -89,7 +89,7 @@ fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
 }
 
 /**
- * Stack-context-based shift: suspends the current context and creates a continuation.
+ * Stack-context-based capture: suspends the current context and creates a continuation.
  *
  * This function is called INSIDE a context (created by jit_reset_impl).
  * It captures the current context as a continuation, stores the shift body info
@@ -102,12 +102,12 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     // After stack_ctx_clone that pointer is stale, causing writes to the wrong stack.
     main::StackCtx* current = main::g_current_stack_ctx;
     if (current == null) {
-        return raise_error_with_payload_names(interp, "runtime", "runtime/shift-outside-reset", "shift outside of reset");
+        return raise_error_with_payload_names(interp, "runtime", "runtime/capture-outside-checkpoint", "capture outside of checkpoint");
     }
 
     ResetState* rstate = (ResetState*)interp.current_reset_state;
     if (rstate == null) {
-        return raise_error_with_payload_names(interp, "runtime", "runtime/shift-outside-reset", "shift outside of reset (no reset state)");
+        return raise_error_with_payload_names(interp, "runtime", "runtime/capture-outside-checkpoint", "capture outside of checkpoint (no checkpoint state)");
     }
 
     // Create continuation wrapping the current context

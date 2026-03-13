@@ -71,7 +71,7 @@ fn Pattern* Parser.parse_paren_pattern(Parser* self) {
         subs.push(self.parse_pattern());
     }
     p.ctor_sub_count = subs.len();
-    p.ctor_sub_patterns = (Pattern**)mem::malloc(Pattern*.sizeof * subs.len());
+    p.ctor_sub_patterns = (Pattern**)ast_arena_alloc(&self.interp.ast_arena, Pattern*.sizeof * subs.len());
     for (usz i = 0; i < subs.len(); i++) { p.ctor_sub_patterns[i] = subs[i]; }
     subs.free();
     self.expect(T_RPAREN, ")");

@@ -45,10 +45,12 @@ fn Value* setup_deduce_relation_for_db(
     c2_sym.tag = SYMBOL;
     c2_sym.sym_val = col2;
 
-    Value* spec = make_cons(interp, name_sym, make_cons(interp, c1_sym, make_cons(interp, c2_sym, make_nil(interp))));
-    Value*[1] fargs;
-    fargs[0] = make_cons(interp, db_val, spec);
-    return prim_define_relation(fargs[..], null, interp);
+    Value*[4] args;
+    args[0] = db_val;
+    args[1] = name_sym;
+    args[2] = c1_sym;
+    args[3] = c2_sym;
+    return prim_define_relation(args[..], null, interp);
 }
 
 extern fn int deduce_test_mkdir(char* path, uint mode) @extern("mkdir");
@@ -402,6 +404,7 @@ fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_transaction_tests(interp, pass, fail);
     run_deduce_clear_drop_tests(interp, pass, fail);
     run_deduce_legacy_alias_rejection_tests(interp, pass, fail);
+    run_deduce_rule_validation_tests(interp, pass, fail);
     setup_deduce_person_relation(interp);
     run_deduce_query_tests(interp, pass, fail);
 }

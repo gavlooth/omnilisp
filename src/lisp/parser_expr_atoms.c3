@@ -78,7 +78,7 @@ fn Expr* Parser.parse_path_expr(Parser* self) {
         return null;
     }
     e.path.segment_count = segments.len();
-    e.path.segments = (SymbolId*)mem::malloc(SymbolId.sizeof * segments.len());
+    e.path.segments = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * segments.len());
     if (e.path.segments == null) {
         segments.free();
         self.set_error("out of memory while parsing path expression");

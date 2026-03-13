@@ -43,12 +43,12 @@ fn Expr* Parser.build_named_let_lambda(Parser* self, Expr* e, List{SymbolId}* pa
     usz param_count = (*params).len();
     Expr* lambda_expr = self.interp.alloc_expr();
     lambda_expr.tag = E_LAMBDA;
-    lambda_expr.lambda = mem::malloc(ExprLambda.sizeof);
+    lambda_expr.lambda = (ExprLambda*)ast_arena_alloc(&self.interp.ast_arena, ExprLambda.sizeof);
     lambda_expr.loc_line = e.loc_line;
     lambda_expr.loc_column = e.loc_column;
     lambda_expr.lambda.param = (*params)[0];
     lambda_expr.lambda.param_count = param_count;
-    lambda_expr.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * param_count);
+    lambda_expr.lambda.params = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * param_count);
     for (usz i = 0; i < param_count; i++) {
         lambda_expr.lambda.params[i] = (*params)[i];
     }
@@ -64,7 +64,7 @@ fn Expr* Parser.build_named_let_call(Parser* self, Expr* e, SymbolId loop_name, 
     usz arg_count = (*inits).len();
     Expr* call_expr = self.interp.alloc_expr();
     call_expr.tag = E_CALL;
-    call_expr.call = mem::malloc(ExprCall.sizeof);
+    call_expr.call = (ExprCall*)ast_arena_alloc(&self.interp.ast_arena, ExprCall.sizeof);
     call_expr.loc_line = e.loc_line;
     call_expr.loc_column = e.loc_column;
     Expr* name_ref = self.interp.alloc_expr();
@@ -74,7 +74,7 @@ fn Expr* Parser.build_named_let_call(Parser* self, Expr* e, SymbolId loop_name, 
     name_ref.var_expr.name = loop_name;
     call_expr.call.func = name_ref;
     call_expr.call.arg_count = arg_count;
-    call_expr.call.args = (Expr**)mem::malloc(Expr*.sizeof * arg_count);
+    call_expr.call.args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * arg_count);
     for (usz i = 0; i < arg_count; i++) {
         call_expr.call.args[i] = (*inits)[i];
     }

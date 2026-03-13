@@ -19,7 +19,7 @@ fn Expr* Parser.build_define_relation_call(Parser* self, SymbolId db_name, Symbo
     func.tag = E_VAR;
     func.var_expr.name = self.interp.symbols.intern("__define-relation");
 
-    Expr** call_args = (Expr**)mem::malloc(Expr*.sizeof * total_args);
+    Expr** call_args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * total_args);
 
     call_args[0] = self.interp.alloc_expr();
     call_args[0].tag = E_VAR;
@@ -41,7 +41,7 @@ fn Expr* Parser.build_define_relation_call(Parser* self, SymbolId db_name, Symbo
 
     Expr* call = self.interp.alloc_expr();
     call.tag = E_CALL;
-    call.call = mem::malloc(ExprCall.sizeof);
+    call.call = (ExprCall*)ast_arena_alloc(&self.interp.ast_arena, ExprCall.sizeof);
     call.call.func = func;
     call.call.args = call_args;
     call.call.arg_count = total_args;

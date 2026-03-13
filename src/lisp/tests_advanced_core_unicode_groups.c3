@@ -246,9 +246,9 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
         "(handle (resolve 42) (raise msg (symbol->string (ref msg 'code))))",
         "runtime/invalid-continuation", pass, fail);
     test_str_val(interp,
-        "shift outside reset payload code",
-        "(handle (shift k 1) (raise msg (symbol->string (ref msg 'code))))",
-        "runtime/shift-outside-reset", pass, fail);
+        "capture outside checkpoint payload code",
+        "(handle (capture k 1) (raise msg (symbol->string (ref msg 'code))))",
+        "runtime/capture-outside-checkpoint", pass, fail);
     test_str_val(interp,
         "effect arg mismatch payload code",
         "(handle (signal io/read-file 42) (raise msg (symbol->string (ref msg 'code))))",
@@ -326,17 +326,17 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
         "(handle (pika/grammar 'g-parser-bad '(rule start (nope \"a\"))) (raise msg (symbol->string (ref msg 'code))))",
         "parser/grammar-unknown-operator", pass, fail);
 
-    test_eq(interp, "multi-shift sum", "(reset (+ (shift k1 (k1 10)) (shift k2 (k2 20))))", 30, pass, fail);
+    test_eq(interp, "multi-capture sum", "(checkpoint (+ (capture k1 (k1 10)) (capture k2 (k2 20))))", 30, pass, fail);
 
     if (!main::stack_runtime_asan_enabled()) {
         // Multi-shot continuations
-        test_eq(interp, "multi-shot k twice", "(reset (+ 1 (shift k (+ (k 10) (k 20)))))", 32, pass, fail);
-        test_eq(interp, "multi-shot k thrice", "(reset (* 2 (shift k (+ (k 3) (+ (k 5) (k 7))))))", 30, pass, fail);
-        test_eq(interp, "multi-shot let bindings", "(reset (+ 10 (shift k (let (a (k 1) b (k 2)) (+ a b)))))", 23, pass, fail);
-        test_eq(interp, "multi-shot conditional", "(reset (+ 5 (shift k (if true (k 10) (k 20)))))", 15, pass, fail);
+        test_eq(interp, "multi-shot k twice", "(checkpoint (+ 1 (capture k (+ (k 10) (k 20)))))", 32, pass, fail);
+        test_eq(interp, "multi-shot k thrice", "(checkpoint (* 2 (capture k (+ (k 3) (+ (k 5) (k 7))))))", 30, pass, fail);
+        test_eq(interp, "multi-shot let bindings", "(checkpoint (+ 10 (capture k (let (a (k 1) b (k 2)) (+ a b)))))", 23, pass, fail);
+        test_eq(interp, "multi-shot conditional", "(checkpoint (+ 5 (capture k (if true (k 10) (k 20)))))", 15, pass, fail);
         test_eq(interp, "stream-yield continuation resumes beyond two yields",
             "(block "
-            "  (define (gen-s3) (reset (block (stream-yield 1) (stream-yield 2) (stream-yield 3) nil))) "
+            "  (define (gen-s3) (checkpoint (block (stream-yield 1) (stream-yield 2) (stream-yield 3) nil))) "
             "  (car (drop 2 (stream-take 3 (gen-s3)))))",
             3, pass, fail);
         test_error_contains(
@@ -366,16 +366,16 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
             fail);
     }
 
-    // TCO inside reset/shift
-    setup(interp, "(define reset-loop (lambda (n acc) (if (= n 0) acc (reset-loop (- n 1) (+ acc 1)))))");
-    test_eq(interp, "TCO in reset body", "(reset (reset-loop 5000 0))", 5000, pass, fail);
-    setup(interp, "(define shift-loop (lambda (n acc) (if (= n 0) acc (shift-loop (- n 1) (+ acc 1)))))");
-    test_eq(interp, "TCO in shift body", "(reset (+ 1 (shift k (shift-loop 5000 0))))", 5000, pass, fail);
-    test_eq(interp, "TCO block+if in reset", "(reset (block (+ 1 2) (if true (+ 10 20) 99)))", 30, pass, fail);
-    test_eq(interp, "TCO let chains in shift", "(reset (+ 1 (shift k (let (x 10) (let (y 20) (+ x y))))))", 30, pass, fail);
+    // TCO inside checkpoint/capture
+    setup(interp, "(define checkpoint-loop (lambda (n acc) (if (= n 0) acc (checkpoint-loop (- n 1) (+ acc 1)))))");
+    test_eq(interp, "TCO in checkpoint body", "(checkpoint (checkpoint-loop 5000 0))", 5000, pass, fail);
+    setup(interp, "(define capture-loop (lambda (n acc) (if (= n 0) acc (capture-loop (- n 1) (+ acc 1)))))");
+    test_eq(interp, "TCO in capture body", "(checkpoint (+ 1 (capture k (capture-loop 5000 0))))", 5000, pass, fail);
+    test_eq(interp, "TCO block+if in checkpoint", "(checkpoint (block (+ 1 2) (if true (+ 10 20) 99)))", 30, pass, fail);
+    test_eq(interp, "TCO let chains in capture", "(checkpoint (+ 1 (capture k (let (x 10) (let (y 20) (+ x y))))))", 30, pass, fail);
     setup(interp, "(define cont-use-loop (lambda (k n) (if (= n 0) (k 42) (cont-use-loop k (- n 1)))))");
-    test_eq(interp, "TCO tail-recursive k use", "(reset (+ 1 (shift k (cont-use-loop k 1000))))", 43, pass, fail);
-    test_eq(interp, "TCO nested reset", "(reset (+ (reset (if true 10 20)) (shift k (k 5))))", 15, pass, fail);
+    test_eq(interp, "TCO tail-recursive k use", "(checkpoint (+ 1 (capture k (cont-use-loop k 1000))))", 43, pass, fail);
+    test_eq(interp, "TCO nested checkpoint", "(checkpoint (+ (checkpoint (if true 10 20)) (capture k (k 5))))", 15, pass, fail);
     setup(interp, "(define handle-loop (lambda (n) (if (= n 0) 0 (+ 1 (handle-loop (- n 1))))))");
     test_eq(interp, "TCO handler body", "(handle (signal count 0) (count x (handle-loop 100)))", 100, pass, fail);
 }
@@ -424,6 +424,8 @@ fn void run_advanced_block_syntax_contract_matrix_tests(Interp* interp, int* pas
     test_error_contains(interp, "do syntax removed", "(do 1 2)", "do syntax was removed; use block", pass, fail);
     test_error_contains(interp, "fn syntax removed", "(fn (x) x)", "fn syntax was removed; use lambda", pass, fail);
     test_error_contains(interp, "letrec syntax removed", "(letrec ((f (lambda (x) x))) (f 1))", "letrec syntax was removed; use let ^rec", pass, fail);
+    test_error_contains(interp, "reset syntax removed", "(reset 1)", "reset syntax was removed; use checkpoint", pass, fail);
+    test_error_contains(interp, "shift syntax removed", "(shift k 1)", "shift syntax was removed; use capture", pass, fail);
 }
 
 fn void run_advanced_lambda_syntax_tests(Interp* interp, int* pass, int* fail) {

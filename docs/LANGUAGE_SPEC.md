@@ -83,7 +83,7 @@ Core forms to learn first:
 You can safely postpone these until the core model above feels routine:
 
 - Effect handlers (`signal`, `handle`, `resolve`) and strict boundaries.
-- Delimited continuations (`reset`, `shift`, `with-continuation`).
+- Delimited continuations (`checkpoint`, `capture`, `with-continuation`).
 - Typed/multi-method dispatch details (`^Type`, value-level dispatch scoring).
 - Macro authoring and expansion internals.
 - FFI/modules/scheduler runtime details.
@@ -96,7 +96,7 @@ behavior in larger systems.
 
 #### 0.4.1 Effects and Continuations: Model Boundaries
 
-- Effects (`signal`/`handle`/`resolve`) and continuations (`reset`/`shift`) are
+- Effects (`signal`/`handle`/`resolve`) and continuations (`checkpoint`/`capture`) are
   separate control abstractions that can compose, but they should be reasoned
   about at explicit boundaries.
 - Effect handlers are nearest-first by dynamic scope; `resolve` resumes a
@@ -338,7 +338,7 @@ Any other `#` sequence is rejected with a deterministic parser/lexer error.
 | symbol | `SYMBOL` | Interned identifier | `'foo`, `'hello` |
 | cons | `CONS` | Pair / list cell | `(cons 1 2)`, `'(1 2 3)` |
 | closure | `CLOSURE` | User-defined function with environment | `(lambda (x) x)` |
-| continuation | `CONTINUATION` | Captured delimited continuation | via `shift` |
+| continuation | `CONTINUATION` | Captured delimited continuation | via `capture` |
 | primitive | `PRIMITIVE` | Built-in function | `+`, `car` |
 | partial | `PARTIAL_PRIM` | Partially applied primitive | `(+ 3)` |
 | error | `ERROR` | Error value | `(error "oops")` |
@@ -1192,22 +1192,22 @@ Compatibility note: `_n` placeholder desugaring is only active in call-argument 
 
 ## 9. Delimited Continuations
 
-### 9.1 `reset` -- Establish Delimiter
+### 9.1 `checkpoint` -- Establish Delimiter
 
 ```lisp
-(reset body)
+(checkpoint body)
 ```
 
-### 9.2 `shift` -- Capture Continuation
+### 9.2 `capture` -- Capture Continuation
 
 ```lisp
-(shift k body)
+(capture k body)
 ```
 
-Captures the continuation up to the enclosing `reset` and binds it to `k`.
+Captures the continuation up to the enclosing `checkpoint` and binds it to `k`.
 
 ```lisp
-(reset (+ 1 (shift k (k (k 10)))))
+(checkpoint (+ 1 (capture k (k (k 10)))))
 ; k = (lambda (x) (+ 1 x))
 ; (k (k 10)) = (+ 1 (+ 1 10)) = 12
 ```
@@ -1216,7 +1216,7 @@ Captures the continuation up to the enclosing `reset` and binds it to `k`.
 
 - Continuations are **multi-shot**: each invocation of `k` clones the captured stack, so `k` can be called multiple times
 - `k` is a function: `(k value)` resumes with `value`
-- The result of `shift`'s body becomes the result of `reset`
+- The result of `capture`'s body becomes the result of `checkpoint`
 
 ---
 
@@ -1603,7 +1603,7 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 | block/set!/and/or | Y | Y | Y |
 | quote/quasiquote | Y | Y | Y |
 | match | Y | Y | Y |
-| reset/shift | Y | Y | Y |
+| checkpoint/capture | Y | Y | Y |
 | handle/signal/resolve | Y | Y | Y |
 | type definitions | Y | Y | Y† |
 | dispatch | Y | Y | Y† |

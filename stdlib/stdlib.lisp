@@ -269,7 +269,7 @@
 (define [macro] stream-yield
   (syntax-match
     ([val]
-      (template (shift k (cons (insert val) k))))))
+      (template (capture k (cons (insert val) k))))))
 
 ;; stream-take: consume n values from a generator continuation
 (define (stream-take n gen) (let loop (i n g gen acc nil) (if (= i 0) (reverse acc) (if (null? g) (reverse acc) (let (pair (if (procedure? g) (g nil) g)) (if (null? pair) (reverse acc) (loop (- i 1) (cdr pair) (cons (car pair) acc))))))))

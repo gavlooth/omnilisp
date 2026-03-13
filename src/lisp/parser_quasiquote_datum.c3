@@ -41,10 +41,10 @@ fn Expr* Parser.parse_qq_list_form(Parser* self) {
 
     Expr* e = self.interp.alloc_expr();
     e.tag = E_CALL;
-    e.call = mem::malloc(ExprCall.sizeof);
+    e.call = (ExprCall*)ast_arena_alloc(&self.interp.ast_arena, ExprCall.sizeof);
     e.call.func = func;
     e.call.arg_count = qq_args.len();
-    e.call.args = (Expr**)mem::malloc(Expr*.sizeof * qq_args.len());
+    e.call.args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * qq_args.len());
     for (usz i = 0; i < qq_args.len(); i++) { e.call.args[i] = qq_args[i]; }
     qq_args.free();
     return e;

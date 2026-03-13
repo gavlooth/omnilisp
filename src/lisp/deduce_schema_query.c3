@@ -189,6 +189,16 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
         return deduce_raise(interp, "deduce/define-relation-dbi-open-failed", "__define-relation: dbi open failed");
     }
 
+    DeduceSchemaRegisterStatus schema_status =
+        deduce_db_register_relation_schema(db, rel_name, rel.columns, rel.col_count, rel.key_col, rel.index_col);
+    if (schema_status != DEDUCE_SCHEMA_REGISTER_OK) {
+        deduce_relation_free(rel);
+        if (schema_status == DEDUCE_SCHEMA_REGISTER_ARITY_CONFLICT) {
+            return deduce_raise(interp, "deduce/relation-arity-conflict", "__define-relation: relation name already registered with different arity");
+        }
+        return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
+    }
+
     Value* v = make_ffi_handle_ex(interp, (void*)rel, "deduce-relation", &deduce_relation_finalizer, true, false);
     if (v == null) {
         deduce_relation_free(rel);
@@ -259,6 +269,16 @@ fn Value* prim_deduce_open_named(Value*[] args, Env* env, Interp* interp) {
         return deduce_raise(interp, "deduce/open-named-dbi-open-failed", "deduce-open-named: dbi open failed");
     }
 
+    DeduceSchemaRegisterStatus schema_status =
+        deduce_db_register_relation_schema(db, rel_name_v.sym_val, rel.columns, rel.col_count, rel.key_col, rel.index_col);
+    if (schema_status != DEDUCE_SCHEMA_REGISTER_OK) {
+        deduce_relation_free(rel);
+        if (schema_status == DEDUCE_SCHEMA_REGISTER_ARITY_CONFLICT) {
+            return deduce_raise(interp, "deduce/relation-arity-conflict", "deduce-open-named: relation name already registered with different arity");
+        }
+        return deduce_raise(interp, "deduce/open-named-out-of-memory", "deduce-open-named: out of memory");
+    }
+
     Value* rel_v = make_ffi_handle_ex(interp, (void*)rel, "deduce-relation", &deduce_relation_finalizer, true, false);
     if (rel_v == null) {
         deduce_relation_free(rel);
@@ -293,20 +313,24 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
 
     Value* filter_fn = args[1];
 
-    // Scan all tuples and filter in a single pass.
-    // relation_scan_all returns rows in reverse cursor order; prepending
-    // matching rows here preserves the prior result ordering behavior.
-    Value* all = relation_scan_all(rel, interp);
-    Value* result = make_nil(interp);
+    if (!deduce_relation_ensure_column_key_values(rel, interp, null)) {
+        return make_nil(interp);
+    }
 
-    Value* curr = all;
-    while (is_cons(curr)) {
-        Value* row = car(curr);
+    DeduceTupleIterator it = {};
+    if (!deduce_tuple_iterator_open(&it, rel, interp, null, 0, false, {}, {}, false)) {
+        return make_nil(interp);
+    }
+    defer deduce_tuple_iterator_close(&it);
+
+    uint dict_capacity = deduce_relation_row_dict_capacity(rel);
+    Value* filtered_rev = make_nil(interp);
+    while (deduce_tuple_iterator_next(&it)) {
+        Value* row = deduce_relation_materialize_row_dict(rel, it.vals, interp, dict_capacity);
         Value* keep = jit_apply_value(filter_fn, row, interp);
         if (keep != null && !is_falsy(keep, interp)) {
-            result = make_cons(interp, row, result);
+            filtered_rev = make_cons(interp, row, filtered_rev);
         }
-        curr = cdr(curr);
     }
-    return result;
+    return deduce_reverse_list(filtered_rev, interp);
 }

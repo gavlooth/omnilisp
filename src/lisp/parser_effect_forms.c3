@@ -2,8 +2,8 @@ module lisp;
 
 fn Expr* Parser.parse_reset(Parser* self) {
     if (self.has_error) return null;
-    Expr* e = self.alloc_expr_here();  // Capture 'reset' location
-    self.lexer.advance();  // consume 'reset'
+    Expr* e = self.alloc_expr_here();  // Capture 'checkpoint' location
+    self.lexer.advance();  // consume 'checkpoint'
 
     Expr* body = self.parse_expr();
 
@@ -16,8 +16,8 @@ fn Expr* Parser.parse_reset(Parser* self) {
 
 fn Expr* Parser.parse_shift(Parser* self) {
     if (self.has_error) return null;
-    Expr* e = self.alloc_expr_here();  // Capture 'shift' location
-    self.lexer.advance();  // consume 'shift'
+    Expr* e = self.alloc_expr_here();  // Capture 'capture' location
+    self.lexer.advance();  // consume 'capture'
 
     if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected continuation name"); return null; }
     SymbolId k_name = self.get_current_symbol();

@@ -7,11 +7,11 @@ fn Expr* parse_for_jit(char[] source, Interp* interp) {
 }
 // Parallel state for Value-based (AOT) effects
 struct ResetValueState {
-    Value*  body;         // Reset body closure
+    Value*  body;         // Checkpoint body closure
     Interp* interp;
     bool    shifted;
-    Value*  shift_body;   // Shift body closure
-    Value*  shift_k;      // Captured k for shift body
+    Value*  shift_body;   // Capture body closure
+    Value*  shift_k;      // Captured k for capture body
 }
 
 fn Value* runtime_effects_raise(Interp* interp, char[] code, char[] message) @inline {
@@ -56,7 +56,7 @@ fn Value* jit_reset_value(Interp* interp, Value* body) {
 
     if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
         main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
-        return raise_error_with_payload_names(interp, "runtime", "runtime/stack-overflow", "stack overflow in reset");
+        return raise_error_with_payload_names(interp, "runtime", "runtime/stack-overflow", "stack overflow in checkpoint");
     }
 
     if (state.shifted) {
@@ -71,12 +71,12 @@ fn Value* jit_reset_value(Interp* interp, Value* body) {
 fn Value* jit_shift_value(Interp* interp, Value* body) {
     main::StackCtx* current = main::g_current_stack_ctx;
     if (current == null) {
-        return raise_error_with_payload_names(interp, "runtime", "runtime/shift-outside-reset", "shift outside of reset");
+        return raise_error_with_payload_names(interp, "runtime", "runtime/capture-outside-checkpoint", "capture outside of checkpoint");
     }
 
     ResetValueState* rstate = (ResetValueState*)interp.current_reset_state;
     if (rstate == null) {
-        return raise_error_with_payload_names(interp, "runtime", "runtime/shift-outside-reset", "shift outside of reset");
+        return raise_error_with_payload_names(interp, "runtime", "runtime/capture-outside-checkpoint", "capture outside of checkpoint");
     }
 
     Continuation* k = interp.alloc_lisp_continuation();
@@ -89,7 +89,7 @@ fn Value* jit_shift_value(Interp* interp, Value* body) {
     rstate.shift_k = k_val;
 
     // Match jit_shift_impl: preserve suspended-context interp state so
-    // parent-side shift-body evaluation does not leak state back on resume.
+    // parent-side capture-body evaluation does not leak state back on resume.
     SavedInterpState saved;
     save_interp_state(interp, &saved);
 

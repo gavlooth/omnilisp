@@ -22,9 +22,9 @@ fn Expr* Parser.parse_implicit_block(Parser* self) {
     }
     Expr* block_e = self.interp.alloc_expr();
     block_e.tag = E_BLOCK;
-    block_e.block = (ExprBlock*)mem::malloc(ExprBlock.sizeof);
+    block_e.block = (ExprBlock*)ast_arena_alloc(&self.interp.ast_arena, ExprBlock.sizeof);
     block_e.block.expr_count = items.len();
-    block_e.block.exprs = (Expr**)mem::malloc(Expr*.sizeof * items.len());
+    block_e.block.exprs = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * items.len());
     for (usz i = 0; i < items.len(); i++) { block_e.block.exprs[i] = items[i]; }
     items.free();
     return block_e;
@@ -54,12 +54,12 @@ fn Expr* Parser.wrap_body_with_destructuring(Parser* self, Expr* lambda_expr, Ex
 fn void Parser.finalize_lambda_expr(Parser* self, Expr* e, List{SymbolId} params, List{TypeAnnotation} param_anns, bool has_any_typed, bool has_rest, SymbolId rest_param, Expr* body) {
     usz param_count = params.len();
     e.tag = E_LAMBDA;
-    e.lambda = mem::malloc(ExprLambda.sizeof);
+    e.lambda = (ExprLambda*)ast_arena_alloc(&self.interp.ast_arena, ExprLambda.sizeof);
     e.lambda.param = param_count > 0 ? params[0] : INVALID_SYMBOL_ID;
     e.lambda.param_count = param_count;
     e.lambda.params = null;
     if (param_count > 0) {
-        e.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * param_count);
+        e.lambda.params = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * param_count);
         for (usz i = 0; i < param_count; i++) {
             e.lambda.params[i] = params[i];
         }
@@ -69,7 +69,7 @@ fn void Parser.finalize_lambda_expr(Parser* self, Expr* e, List{SymbolId} params
     e.lambda.has_typed_params = has_any_typed;
     e.lambda.param_annotations = null;
     if (has_any_typed && param_count > 0) {
-        e.lambda.param_annotations = (TypeAnnotation*)mem::malloc(TypeAnnotation.sizeof * param_count);
+        e.lambda.param_annotations = (TypeAnnotation*)ast_arena_alloc(&self.interp.ast_arena, TypeAnnotation.sizeof * param_count);
         for (usz i = 0; i < param_count; i++) {
             e.lambda.param_annotations[i] = param_anns[i];
         }

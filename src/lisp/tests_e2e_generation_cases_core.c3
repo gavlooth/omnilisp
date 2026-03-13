@@ -156,9 +156,9 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "named let loop", "(let loop (n 10 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc n))))" },
 
     // === Effects ===
-    { "reset passthrough", "(reset (+ 10 20))" },
-    { "shift aborts", "(reset (+ 1 (shift k 42)))" },
-    { "shift k resumes", "(reset (+ 1 (shift k (k 10))))" },
+    { "checkpoint passthrough", "(checkpoint (+ 10 20))" },
+    { "capture aborts", "(checkpoint (+ 1 (capture k 42)))" },
+    { "capture k resumes", "(checkpoint (+ 1 (capture k (k 10))))" },
     { "handle no effect", "(handle 42 (ask x (resolve 0)))" },
     { "handle perform resume", "(handle (+ 1 (signal ask 0)) (ask x (resolve 10)))" },
     { "handle abort", "(handle (+ 1 (signal ask 5)) (ask x x))" },
@@ -259,10 +259,10 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "match string", `(match "hello" ("hello" 1) ("world" 2) (x 0))` },
 
     // === More effects/continuations ===
-    { "reset large", "(reset (+ 100 (shift k 42)))" },
-    { "shift resume mul", "(reset (* 2 (shift k (k 5))))" },
-    { "shift resume add", "(reset (+ 1 (shift k (k (+ 2 3)))))" },
-    { "multi-shot k", "(reset (+ 1 (shift k (+ (k 10) 1000))))" },
+    { "checkpoint large", "(checkpoint (+ 100 (capture k 42)))" },
+    { "capture resume mul", "(checkpoint (* 2 (capture k (k 5))))" },
+    { "capture resume add", "(checkpoint (+ 1 (capture k (k (+ 2 3)))))" },
+    { "multi-shot k", "(checkpoint (+ 1 (capture k (+ (k 10) 1000))))" },
     { "handle get", "(handle (+ 1 (signal get 0)) (get x (resolve 100)))" },
     { "handle double", "(handle (signal double 7) (double x (resolve (* x 2))))" },
     { "handle bail", "(handle (+ 1 (+ 2 (+ 3 (signal bail 42)))) (bail x x))" },

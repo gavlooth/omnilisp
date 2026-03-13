@@ -134,6 +134,34 @@ fn void? match_clause_against_row(
     }
 }
 
+fn void? match_clause_against_tuple(
+    Value* clause,         // list: (rel-name arg1 arg2 ...)
+    Value*[] tuple_vals,   // decoded tuple values in relation column order
+    Relation* rel,
+    Bindings* bindings,
+    Interp* interp
+) {
+    Value* args = cdr(clause);
+
+    for (usz col = 0; col < rel.col_count && is_cons(args); col++) {
+        Value* pattern_elem = car(args);
+        Value* col_val = col < tuple_vals.len ? tuple_vals[col] : make_nil(interp);
+
+        if (is_wildcard(pattern_elem, interp)) {
+            // _ matches anything
+        } else if (is_logic_var(pattern_elem, interp)) {
+            if (catch err = bindings_bind(bindings, pattern_elem.sym_val, col_val)) {
+                return TYPE_MISMATCH~;
+            }
+        } else {
+            if (!deduce_val_eq(pattern_elem, col_val)) {
+                return TYPE_MISMATCH~;
+            }
+        }
+        args = cdr(args);
+    }
+}
+
 // ============================================================
 // Build result dict from bindings + projection
 //
@@ -218,32 +246,24 @@ fn Value* prim_deduce_match(Value*[] args, Env* env, Interp* interp) {
     Value* pattern = args[1];
     if (!is_cons(pattern)) return deduce_raise(interp, "deduce/match-pattern-not-list", "deduce-match: pattern must be a list");
 
-    // Scan all rows and match against pattern
-    Value* all_rows = relation_scan_all(rel, interp);
+    DeduceTupleIterator it = {};
+    if (!deduce_tuple_iterator_open(&it, rel, interp, null, 0, false, {}, {}, false)) {
+        return make_nil(interp);
+    }
+    defer deduce_tuple_iterator_close(&it);
 
-    Value* result = make_nil(interp);
-    List{Value*} matches;
-    defer matches.free();
-
-    Value* curr = all_rows;
-    while (is_cons(curr)) {
-        Value* row = car(curr);
+    Value* result_rev = make_nil(interp);
+    while (deduce_tuple_iterator_next(&it)) {
         Bindings bindings;
         bindings_init(&bindings);
 
-        if (catch err = match_clause_against_row(pattern, row, rel, &bindings, interp)) {
+        if (catch err = match_clause_against_tuple(pattern, it.vals, rel, &bindings, interp)) {
             // Pattern didn't match this row — skip
         } else {
             Value* result_dict = build_result_dict(&bindings, null, interp);
-            matches.push(result_dict);
+            result_rev = make_cons(interp, result_dict, result_rev);
         }
         bindings_deinit(&bindings);
-        curr = cdr(curr);
     }
-
-    // Build list in order
-    for (isz i = (isz)matches.len() - 1; i >= 0; i--) {
-        result = make_cons(interp, matches[(usz)i], result);
-    }
-    return result;
+    return deduce_reverse_list(result_rev, interp);
 }

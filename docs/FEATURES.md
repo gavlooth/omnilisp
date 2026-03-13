@@ -145,21 +145,21 @@
 - Falls through on mismatch, returns nil if no match
 - See Section 2 for pattern types
 
-### 1.13 `reset` — Delimited Continuation Boundary
+### 1.13 `checkpoint` — Delimited Continuation Boundary
 ```lisp
-(reset body)
+(checkpoint body)
 ```
-- Establishes delimiter for `shift` operations
-- Returns body's value normally, or shift handler's value if shifted
+- Establishes delimiter for `capture` operations
+- Returns body's value normally, or capture handler's value if captured
 
-### 1.14 `shift` — Capture Continuation
+### 1.14 `capture` — Capture Continuation
 ```lisp
-(shift k body)
+(capture k body)
 ```
-- Captures continuation up to enclosing `reset` and binds to `k`
+- Captures continuation up to enclosing `checkpoint` and binds to `k`
 - `k` is callable: `(k value)` resumes computation with `value`
 - One-shot by default in the interpreter
-- Example: `(reset (+ 1 (shift k (k 10))))` => 11
+- Example: `(checkpoint (+ 1 (capture k (k 10))))` => 11
 
 ### 1.15 `handle` / `signal` — Algebraic Effect Handlers
 ```lisp
@@ -296,7 +296,7 @@ Dynamic element count per pattern (no fixed limit).
 | `symbol` | SYMBOL | Interned identifier | `foo`, `my-function`, `null?` |
 | `cons` | CONS | Pair (car/cdr) | `(cons 1 2)`, `'(1 2 3)` |
 | `closure` | CLOSURE | Lambda with captured environment | `(lambda (x) x)` |
-| `continuation` | CONTINUATION | Delimited continuation | captured by `shift` |
+| `continuation` | CONTINUATION | Delimited continuation | captured by `capture` |
 | `primitive` | PRIMITIVE | Built-in function | `+`, `car` |
 | `partial_prim` | PARTIAL_PRIM | Partially applied primitive | `(+ 3)` |
 | `error` | ERROR | Error value | `(error "oops")` |
@@ -502,9 +502,9 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 ## 6. Continuation & Effect System (Low-Level)
 
 ### 6.1 Delimited Continuations
-- `reset`/`shift` based (not call/cc)
+- `checkpoint`/`capture` based (not call/cc)
 - Multi-shot: each invocation of `k` clones the captured stack via `coro_clone`
-- `reset` body runs on a dedicated coroutine (mmap'd 64KB stack)
+- `checkpoint` body runs on a dedicated coroutine (mmap'd 64KB stack)
 - x86_64 assembly context switching with FPU state isolation
 - Stack overflow detection via guard pages + SIGSEGV handler
 
@@ -545,7 +545,7 @@ The Omni compiler (`src/lisp/compiler.c3`) translates Lisp AST to C3 source code
 | quote | Y | Y |
 | match | Y | Y |
 | and/or | Y | Y |
-| reset/shift | Y | Y |
+| checkpoint/capture | Y | Y |
 | handle/signal | Y | Y |
 | quasiquote | Y | Y |
 | modules | Y | Y |
@@ -644,14 +644,14 @@ Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
 - TCO via V_THUNK trampoline pattern
 - All expression types compile natively (no interpreter delegation for effects/modules/quasiquote)
 - Type definitions and dispatch resolution delegate to interpreter
-- Supports: lambda, if, let (incl. ^rec), define, match, block, and/or, call, reset/shift, handle/signal, quasiquote, modules, literals
+- Supports: lambda, if, let (incl. ^rec), define, match, block, and/or, call, checkpoint/capture, handle/signal, quasiquote, modules, literals
 
 ### 11b. AOT Compilation
 
 - `./build/main --build input.lisp -o output` — compiles Lisp to C3 to standalone binary
 - Generates 5 files: main.c3, continuation.c3, ghost_index.c3, runtime.c3, generated.c3
 - AOT binaries link only libc/libm/libdl (no GNU Lightning, no readline)
-- All 8 expression types (reset/shift/handle/signal/quasiquote/defmacro/module/import) compile natively
+- All 8 expression types (checkpoint/capture/handle/signal/quasiquote/defmacro/module/import) compile natively
 - Runtime bridge (`runtime_bridge.c3`) provides interpreter-to-runtime conversion
 
 ---

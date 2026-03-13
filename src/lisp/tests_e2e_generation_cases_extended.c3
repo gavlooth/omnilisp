@@ -100,7 +100,7 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "match on map result", "(match (map (lambda (x) (* x 10)) (quote (1 2 3))) ([a b c] (+ a (+ b c))))" },
     { "closure over let rec", "(let ^rec (f (lambda (n) (if (<= n 1) 1 (* n (f (- n 1)))))) (f 7))" },
     { "nested handle", "(handle (handle (+ 1 (signal inner 0)) (inner x (resolve 10))) (outer x (resolve 0)))" },
-    { "shift double resume", "(reset (+ (shift k (+ (k 1) (k 2))) 10))" },
+    { "capture double resume", "(checkpoint (+ (capture k (+ (k 1) (k 2))) 10))" },
     { "let-rec factorial 8", "(let ^rec (f (lambda (n) (if (= n 0) 1 (* n (f (- n 1)))))) (f 8))" },
 
     // === P1: type-of ===

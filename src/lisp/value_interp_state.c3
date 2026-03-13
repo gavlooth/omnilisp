@@ -40,8 +40,8 @@ struct Interp {
     SymbolId sym_let;
     SymbolId sym_define;
     SymbolId sym_quote;
-    SymbolId sym_reset;
-    SymbolId sym_shift;
+    SymbolId sym_checkpoint;
+    SymbolId sym_capture;
     SymbolId sym_perform;
     SymbolId sym_signal;
     SymbolId sym_handle;
@@ -193,7 +193,7 @@ struct Interp {
     SymbolId sym_all;          // "all" for quoted marker (import mod 'all)
     SymbolId sym_export_from;  // "export-from" for (export-from mod (sym...))
 
-    // Continuation/reset depth (saved/restored across context boundaries)
+    // Continuation/checkpoint depth (saved/restored across context boundaries)
     usz      reset_depth;
 
     // Effect handler stack (dynamic)
@@ -211,7 +211,7 @@ struct Interp {
 
     // StackCtx-based continuation system (stack engine)
     main::StackPool stack_ctx_pool;
-    Value* resume_value;           // Value passed to (k val) — read by shift on resume
+    Value* resume_value;           // Value passed to (k val) — read by capture on resume
     Value* yield_value;            // Value passed by (yield val) — read by resume
     main::ScopeRegion* yield_scope; // Scope owning yield_value while coroutine is suspended
     void* current_reset_state;     // Pointer to current ResetState (in jit.c3)
@@ -252,8 +252,8 @@ fn void interp_init_core_symbols(Interp* self) {
     self.sym_let = self.symbols.intern("let");
     self.sym_define = self.symbols.intern("define");
     self.sym_quote = self.symbols.intern("quote");
-    self.sym_reset = self.symbols.intern("reset");
-    self.sym_shift = self.symbols.intern("shift");
+    self.sym_checkpoint = self.symbols.intern("checkpoint");
+    self.sym_capture = self.symbols.intern("capture");
     self.sym_perform = self.symbols.intern("perform");
     self.sym_signal = self.symbols.intern("signal");
     self.sym_handle = self.symbols.intern("handle");

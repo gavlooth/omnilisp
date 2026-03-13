@@ -37,11 +37,11 @@ fn void run_advanced_core_semantics_match_tests(Interp* interp, int* pass, int* 
 
 fn void run_advanced_core_semantics_continuation_tests(Interp* interp, int* pass, int* fail) {
     // Continuations
-    test_eq(interp, "shift discard k", "(reset (+ 100 (shift k 42)))", 42, pass, fail);
-    test_eq(interp, "shift k mul", "(reset (* 2 (shift k (k 5))))", 10, pass, fail);
-    test_eq(interp, "shift k expr", "(reset (+ 1 (shift k (k (+ 2 3)))))", 6, pass, fail);
-    test_eq(interp, "shift use k result", "(reset (+ 1 (shift k (+ (k 10) 1000))))", 1011, pass, fail);
-    test_eq(interp, "reset value", "(reset 42)", 42, pass, fail);
+    test_eq(interp, "capture discard k", "(checkpoint (+ 100 (capture k 42)))", 42, pass, fail);
+    test_eq(interp, "capture k mul", "(checkpoint (* 2 (capture k (k 5))))", 10, pass, fail);
+    test_eq(interp, "capture k expr", "(checkpoint (+ 1 (capture k (k (+ 2 3)))))", 6, pass, fail);
+    test_eq(interp, "capture use k result", "(checkpoint (+ 1 (capture k (+ (k 10) 1000))))", 1011, pass, fail);
+    test_eq(interp, "checkpoint value", "(checkpoint 42)", 42, pass, fail);
 }
 
 fn void run_advanced_core_semantics_effect_cond_tests(Interp* interp, int* pass, int* fail) {
@@ -66,7 +66,7 @@ fn void run_advanced_core_semantics_error_tests(Interp* interp, int* pass, int* 
     // Error handling
     test_error(interp, "unbound variable", "nonexistent_var_xyz", pass, fail);
     test_error(interp, "call non-function", "(42 1)", pass, fail);
-    test_error(interp, "shift outside reset", "(shift k 42)", pass, fail);
+    test_error(interp, "capture outside checkpoint", "(capture k 42)", pass, fail);
 }
 
 fn void run_advanced_core_semantics_try_raise_tests(Interp* interp, int* pass, int* fail) {

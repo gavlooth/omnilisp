@@ -78,12 +78,12 @@ fn void Parser.replace_indexed_placeholders(Parser* self, Expr* call, SymbolId* 
 fn Expr* Parser.wrap_with_placeholder_lambdas(Parser* self, Expr* body, SymbolId* param_syms, usz param_count, usz line, usz col) {
     Expr* lam = self.interp.alloc_expr();
     lam.tag = E_LAMBDA;
-    lam.lambda = mem::malloc(ExprLambda.sizeof);
+    lam.lambda = (ExprLambda*)ast_arena_alloc(&self.interp.ast_arena, ExprLambda.sizeof);
     lam.loc_line = line;
     lam.loc_column = col;
     lam.lambda.param = param_syms[0];
     lam.lambda.param_count = param_count;
-    lam.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof * param_count);
+    lam.lambda.params = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * param_count);
     for (usz i = 0; i < param_count; i++) {
         lam.lambda.params[i] = param_syms[i];
     }

@@ -2,7 +2,7 @@
 ;;
 ;; Idioms demonstrated:
 ;;   coroutine / resume / yield / coroutine? — cooperative event generation
-;;   reset / shift            — delimited continuations (single-shot capture)
+;;   checkpoint / capture     — delimited continuations (single-shot capture)
 ;;   make-iterator / next / range-from — lazy iterator sequences
 ;;   delay / force            — deferred computation (lazy moving average)
 ;;   unless                   — guard clauses (skip stale events)
@@ -99,17 +99,17 @@
   (unless (null? event-list)
     (check-mono (event-ts (car event-list)) (cdr event-list))))
 
-;; ── Backpressure (reset / shift) ────────────────────────────────────────────
+;; ── Backpressure (checkpoint / capture) ──────────────────────────────────────────
 
-;; (events/with-backpressure events max-buffer) — demonstrate reset/shift for
+;; (events/with-backpressure events max-buffer) — demonstrate checkpoint/capture for
 ;; single-shot continuation capture. Captures the buffered batch and remaining
 ;; work as a continuation, then resumes once to show the pattern.
 (define (events/with-backpressure event-list max-buffer)
-  (let (result (reset
+  (let (result (checkpoint
     (let loop (remaining event-list buf nil count 0)
       (if (null? remaining)
           (if (null? buf) nil (reverse buf))
           (if (= count max-buffer)
-              (shift k (list (reverse buf) k remaining))
+              (capture k (list (reverse buf) k remaining))
               (loop (cdr remaining) (cons (car remaining) buf) (+ count 1)))))))
     result))

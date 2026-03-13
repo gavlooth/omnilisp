@@ -94,7 +94,7 @@ fn bool Parser.parse_value_literal_annotation(Parser* self, TypeAnnotation* ann)
 
 fn bool Parser.type_annotation_copy_params(Parser* self, TypeAnnotation* ann, List{SymbolId}* params) {
     if (params.len() == 0) return true;
-    ann.params = (SymbolId*)mem::malloc(SymbolId.sizeof * params.len());
+    ann.params = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * params.len());
     if (ann.params == null) {
         self.set_error("out of memory while parsing type annotation");
         return false;
@@ -106,7 +106,7 @@ fn bool Parser.type_annotation_copy_params(Parser* self, TypeAnnotation* ann, Li
 
 fn bool Parser.type_annotation_copy_meta(Parser* self, TypeAnnotation* ann, List{MetaEntry}* meta) {
     if (meta.len() == 0) return true;
-    ann.meta = (MetaEntry*)mem::malloc(MetaEntry.sizeof * meta.len());
+    ann.meta = (MetaEntry*)ast_arena_alloc(&self.interp.ast_arena, MetaEntry.sizeof * meta.len());
     if (ann.meta == null) {
         self.set_error("out of memory while parsing metadata dict");
         return false;

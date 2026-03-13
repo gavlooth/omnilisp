@@ -39,10 +39,10 @@ fn Expr* Parser.parse_constructor_type_application(Parser* self) {
     type_apply_fn.loc_column = call_expr.loc_column;
 
     call_expr.tag = E_CALL;
-    call_expr.call = (ExprCall*)mem::malloc(ExprCall.sizeof);
+    call_expr.call = (ExprCall*)ast_arena_alloc(&self.interp.ast_arena, ExprCall.sizeof);
     call_expr.call.func = type_apply_fn;
     call_expr.call.arg_count = 2;
-    call_expr.call.args = (Expr**)mem::malloc(Expr*.sizeof * 2);
+    call_expr.call.args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * 2);
     call_expr.call.args[0] = type_form_expr;
     call_expr.call.args[1] = target_expr;
     return call_expr;

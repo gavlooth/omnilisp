@@ -12,12 +12,12 @@ fn bool Parser.collect_application_args(Parser* self, List{Expr*}* args) {
 fn Expr* Parser.build_call_expr(Parser* self, Expr* func, List{Expr*}* args, usz line, usz col) {
     Expr* e = self.interp.alloc_expr();
     e.tag = E_CALL;
-    e.call = mem::malloc(ExprCall.sizeof);
+    e.call = (ExprCall*)ast_arena_alloc(&self.interp.ast_arena, ExprCall.sizeof);
     e.loc_line = line;
     e.loc_column = col;
     e.call.func = func;
     e.call.arg_count = args.len();
-    e.call.args = (Expr**)mem::malloc(Expr*.sizeof * args.len());
+    e.call.args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * args.len());
     for (usz i = 0; i < args.len(); i++) {
         e.call.args[i] = (*args)[i];
     }

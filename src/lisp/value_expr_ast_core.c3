@@ -29,8 +29,8 @@ enum ExprTag : char {
     E_LET,        // (let (x val) body)
     E_DEFINE,     // (define name val)
     E_QUOTE,      // (quote datum)
-    E_RESET,      // (reset body)
-    E_SHIFT,      // (shift k body)
+    E_RESET,      // (checkpoint body)
+    E_SHIFT,      // (capture k body)
     E_PERFORM,    // (perform tag arg) or (signal tag arg)
     E_HANDLE,     // (handle body (tag arg body) ...)
     E_RESOLVE,    // (resolve value) — resume continuation in handler clause

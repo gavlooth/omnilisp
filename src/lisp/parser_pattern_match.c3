@@ -14,7 +14,7 @@ fn Expr* Parser.parse_match(Parser* self) {
     Expr* scrutinee = self.parse_expr();
 
     e.tag = E_MATCH;
-    e.match = (ExprMatch*)mem::malloc(ExprMatch.sizeof);
+    e.match = (ExprMatch*)ast_arena_alloc(&self.interp.ast_arena, ExprMatch.sizeof);
     e.match.scrutinee = scrutinee;
 
     List{MatchClause} match_clauses;
@@ -45,7 +45,7 @@ fn Expr* Parser.parse_match(Parser* self) {
     }
 
     e.match.clause_count = match_clauses.len();
-    e.match.clauses = (MatchClause*)mem::malloc(MatchClause.sizeof * match_clauses.len());
+    e.match.clauses = (MatchClause*)ast_arena_alloc(&self.interp.ast_arena, MatchClause.sizeof * match_clauses.len());
     for (usz i = 0; i < match_clauses.len(); i++) { e.match.clauses[i] = match_clauses[i]; }
     match_clauses.free();
 

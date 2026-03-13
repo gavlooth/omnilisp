@@ -195,8 +195,8 @@ fn bool is_special_form_symbol(SymbolId sym, Interp* interp) {
         || (uint)sym == (uint)interp.sym_set
         || (uint)sym == (uint)interp.sym_and
         || (uint)sym == (uint)interp.sym_or
-        || (uint)sym == (uint)interp.sym_reset
-        || (uint)sym == (uint)interp.sym_shift
+        || (uint)sym == (uint)interp.sym_checkpoint
+        || (uint)sym == (uint)interp.sym_capture
         || (uint)sym == (uint)interp.sym_signal
         || (uint)sym == (uint)interp.sym_handle
         || (uint)sym == (uint)interp.sym_match

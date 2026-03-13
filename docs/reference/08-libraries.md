@@ -229,3 +229,39 @@ successful completion.
 (deduce 'match person '("Alice" _ _))     ;; pattern match
 (deduce 'scan-range person '("Alice" 0 "a@x") '("Charles" 999 "zzz")) ;; bounded scan
 ```
+
+### Rules, Explain, Analyze
+
+```lisp
+;; install rules
+(deduce 'rule! db '(ancestor ?x ?y) '(parent ?x ?y))
+(deduce 'rule! db '(ancestor ?x ?z) '(parent ?x ?y) '(ancestor ?y ?z))
+
+;; planner/execution metadata for a selected rule
+(deduce 'explain db 'ancestor)
+
+;; run SCC-fixpoint evaluator (semi-naive on recursive strata)
+(deduce 'analyze db)
+
+;; optional engine selection for recursive SCCs
+(deduce 'analyze db 'semi-naive)  ;; default
+(deduce 'analyze db 'naive)       ;; reference mode
+```
+
+`analyze` returns a diagnostics dict including `mode`, `execution-engine`,
+`rule-count`, `strata-count`, `stratum-count`, `recursive-strata`, `iteration-limit`,
+`max-component-iterations`, `iterations`, `derived-facts`,
+`incremental-dependency-edges`,
+`incremental-dirty-predicate-count`, and
+`incremental-invalidation-mode`.
+
+`strata-count` reflects SCC component count; `stratum-count` reflects computed
+stratification levels used by runtime scheduling.
+
+`incremental-invalidation-mode` is `tracked` for dependency-aware dirty-set
+propagation and `full-recompute` when a commit cannot guarantee complete
+dependency tracking (for example degraded fallback after mutation-log
+allocation failure).
+
+Write-transaction mutations are applied to incremental tracking only at
+`(deduce 'commit tx)`; `(deduce 'abort tx)` discards pending mutation state.

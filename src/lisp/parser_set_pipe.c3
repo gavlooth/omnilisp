@@ -117,22 +117,21 @@ fn Expr* Parser.parse_pipe(Parser* self) {
         Expr* step = steps[i];
         if (step.tag == E_CALL) {
             usz new_count = step.call.arg_count + 1;
-            Expr** new_args = (Expr**)mem::malloc(Expr*.sizeof * new_count);
+            Expr** new_args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * new_count);
             for (usz j = 0; j < step.call.arg_count; j++) { new_args[j] = step.call.args[j]; }
             new_args[step.call.arg_count] = acc;
-            mem::free(step.call.args);
             step.call.args = new_args;
             step.call.arg_count = new_count;
             acc = step;
         } else {
             Expr* call = self.interp.alloc_expr();
             call.tag = E_CALL;
-            call.call = mem::malloc(ExprCall.sizeof);
+            call.call = (ExprCall*)ast_arena_alloc(&self.interp.ast_arena, ExprCall.sizeof);
             call.loc_line = pipe_loc.loc_line;
             call.loc_column = pipe_loc.loc_column;
             call.call.func = step;
             call.call.arg_count = 1;
-            call.call.args = (Expr**)mem::malloc(Expr*.sizeof * 1);
+            call.call.args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * 1);
             call.call.args[0] = acc;
             acc = call;
         }

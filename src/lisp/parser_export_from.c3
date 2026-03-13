@@ -24,18 +24,17 @@ fn bool Parser.parse_export_from_source_module(Parser* self, Expr* e) {
 fn void Parser.ensure_export_from_name_capacity(Parser* self, Expr* e) {
     if (e.export_from.name_count < e.export_from.name_capacity) return;
     usz new_cap = e.export_from.name_capacity * 2;
-    SymbolId* new_names = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
+    SymbolId* new_names = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * new_cap);
     for (usz i = 0; i < e.export_from.name_count; i++) {
         new_names[i] = e.export_from.names[i];
     }
-    mem::free(e.export_from.names);
     e.export_from.names = new_names;
     e.export_from.name_capacity = new_cap;
 }
 
 fn bool Parser.parse_export_from_name_list(Parser* self, Expr* e) {
     e.export_from.name_capacity = 16;
-    e.export_from.names = (SymbolId*)mem::malloc(SymbolId.sizeof * 16);
+    e.export_from.names = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * 16);
     self.lexer.advance();  // consume '('
     while (self.lexer.current.type != T_RPAREN && !self.lexer.at_end() && !self.has_error) {
         self.ensure_export_from_name_capacity(e);

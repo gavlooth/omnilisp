@@ -65,11 +65,11 @@ Note: error payload normalization to canonical
 `{'code ... 'message ... 'domain ... 'data ...}`
 is tracked in `docs/ERROR_MODEL.md` and is not fully complete yet.
 
-### EFX-6: `reset` / `shift` Interaction
+### EFX-6: `checkpoint` / `capture` Interaction
 
-- `shift` outside `reset` MUST error.
+- `capture` outside `checkpoint` MUST error.
 - Continuation capture/resume ordering MUST remain deterministic.
-- Effects emitted inside `reset`/`shift` flows MUST obey the same handler lookup
+- Effects emitted inside `checkpoint`/`capture` flows MUST obey the same handler lookup
   and resolve/abort rules as non-continuation contexts.
 
 ### EFX-7: Async and Runtime Boundary Rules
@@ -237,7 +237,7 @@ See `docs/ARCHITECTURE.md` and `docs/ERROR_MODEL.md` for migration status.
 | EFX-3 | `src/lisp/tests_advanced_tests.c3` `resolve outside handler`; `with-continuation basic`; `with-continuation single` |
 | EFX-4 | `src/lisp/tests_advanced_tests.c3` `signal abort`; `multi-perform abort` |
 | EFX-5 | `src/lisp/tests_tests.c3` `unhandled effect: shows tag name`; `unhandled effect: shows arg type`; `handle ^strict: catches unhandled` |
-| EFX-6 | `src/lisp/tests_tests.c3` `shift aborts`; `shift k resumes`; `reset passthrough`; `src/lisp/tests_advanced_tests.c3` `multi-shift sum` |
+| EFX-6 | `src/lisp/tests_tests.c3` `capture aborts`; `capture k resumes`; `checkpoint passthrough`; `src/lisp/tests_advanced_tests.c3` `multi-capture sum` |
 | EFX-7 | `src/lisp/tests_tests.c3` `run_scheduler_wakeup_wraparound_boundary_tests`, `run_scheduler_wakeup_mixed_event_boundary_tests`, `run_scheduler_invalid_offload_wakeup_boundary_tests`, `run_scheduler_wakeup_full_payload_ownership_boundary_tests` |
 | EFX-8 | `src/lisp/tests_advanced_tests.c3` `io handle suppress`, `io handle capture`; `src/lisp/tests_tests.c3` scheduler boundary test group (`run_scheduler_tests`) |
 | EFX-9 | `src/lisp/tests_runtime_feature_schema_reader_groups.c3` explain-effect regressions: `explain effect handler match reason`, `explain effect strict boundary reason`, `explain effect fast-path reason`, `explain effect unhandled reason`, `explain effect resolve invalid continuation reason`, `explain effect resolve continuation reason`, `explain effect top-level schema keys` |

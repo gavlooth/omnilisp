@@ -55,10 +55,10 @@ fn Expr* Parser.parse_dict_literal(Parser* self) {
     }
 
     e.tag = E_CALL;
-    e.call = mem::malloc(ExprCall.sizeof);
+    e.call = (ExprCall*)ast_arena_alloc(&self.interp.ast_arena, ExprCall.sizeof);
     e.call.func = func;
     e.call.arg_count = args.len();
-    e.call.args = (Expr**)mem::malloc(Expr*.sizeof * args.len());
+    e.call.args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * args.len());
     for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }
     args.free();
 
@@ -92,10 +92,10 @@ fn Expr* Parser.parse_array_literal(Parser* self) {
     }
 
     e.tag = E_CALL;
-    e.call = mem::malloc(ExprCall.sizeof);
+    e.call = (ExprCall*)ast_arena_alloc(&self.interp.ast_arena, ExprCall.sizeof);
     e.call.func = func;
     e.call.arg_count = args.len();
-    e.call.args = (Expr**)mem::malloc(Expr*.sizeof * args.len());
+    e.call.args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * args.len());
     for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }
     args.free();
 

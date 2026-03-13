@@ -133,12 +133,12 @@ fn char[] macro_validate_emitted_form(Value* val, Interp* interp, usz depth = 0)
             if (name_v == null || name_v.tag != SYMBOL) return "malformed emitted form: set! name must be a symbol";
         } else if ((uint)sym == (uint)interp.sym_and || (uint)sym == (uint)interp.sym_or) {
             if (!macro_list_has_exact_arity(rest, 2)) return "malformed emitted form: and/or expects exactly 2 arguments";
-        } else if ((uint)sym == (uint)interp.sym_reset) {
-            if (!macro_list_has_exact_arity(rest, 1)) return "malformed emitted form: reset expects exactly 1 argument";
-        } else if ((uint)sym == (uint)interp.sym_shift) {
-            if (!macro_list_has_exact_arity(rest, 2)) return "malformed emitted form: shift expects continuation name and body";
+        } else if ((uint)sym == (uint)interp.sym_checkpoint) {
+            if (!macro_list_has_exact_arity(rest, 1)) return "malformed emitted form: checkpoint expects exactly 1 argument";
+        } else if ((uint)sym == (uint)interp.sym_capture) {
+            if (!macro_list_has_exact_arity(rest, 2)) return "malformed emitted form: capture expects continuation name and body";
             Value* k_name = rest.cons_val.car;
-            if (k_name == null || k_name.tag != SYMBOL) return "malformed emitted form: shift continuation name must be a symbol";
+            if (k_name == null || k_name.tag != SYMBOL) return "malformed emitted form: capture continuation name must be a symbol";
         } else if ((uint)sym == (uint)interp.sym_quasiquote ||
                    (uint)sym == (uint)interp.sym_unquote ||
                    (uint)sym == (uint)interp.sym_unquote_splicing) {

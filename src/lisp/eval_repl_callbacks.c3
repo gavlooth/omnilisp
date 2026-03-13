@@ -34,7 +34,7 @@ fn bool is_keyword(char[] name) {
     // Special forms
     char[][] keywords = {
         "lambda", "define", "let", "if", "block", "set!", "quote",
-        "and", "or", "match", "reset", "shift", "signal", "handle",
+        "and", "or", "match", "checkpoint", "capture", "signal", "handle",
         "resolve", "explain", "module", "import", "export", "with-continuation"
     };
     foreach (kw : keywords) {

@@ -279,6 +279,9 @@ fn void register_regular_primitives_io_and_deduce(Interp* interp) {
         { "deduce/retract!", &prim_deduce_ns_retract, -1 },
         { "deduce/clear!", &prim_deduce_ns_clear, -1 },
         { "deduce/drop!", &prim_deduce_ns_drop, -1 },
+        { "deduce/rule!", &prim_deduce_ns_rule, -1 },
+        { "deduce/explain", &prim_deduce_ns_explain, -1 },
+        { "deduce/analyze", &prim_deduce_ns_analyze, -1 },
         { "__define-relation", &prim_define_relation, 1 },
         // Scheduler
         { "spawn", &prim_spawn, 1 },

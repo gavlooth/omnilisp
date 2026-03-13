@@ -6,7 +6,7 @@ This file now tracks only active, actionable work.
 Full completed history is archived at:
 - `docs/plans/TODO_ARCHIVE_2026-03-11.md`
 
-Current actionable count: 2
+Current actionable count: 0
 
 ## Language Surface Consistency (2026-03-12)
 
@@ -64,12 +64,14 @@ Current actionable count: 2
   - shorthand spellings remain accepted for compatibility and ergonomics (`fs-*`, `tcp-*`, `udp-*`, `dns-resolve`, `tls-*`, `^Ptr`),
   - compatibility shorthands stay documented, but are explicitly marked non-preferred for new public examples/spec text,
   - effect-tag internals remain on stable `io/*` operation symbols (`io/tcp-*`, `io/udp-*`, etc.) to preserve handler/runtime parity and existing diagnostic domains.
-- [ ] Run a Docker-capped full constructor-surface conformance pass:
+- [x] Run a Docker-capped full constructor-surface conformance pass:
   validate the constructor/type-symbol behavior across the advanced/e2e gates inside the validation container, not just the host-safe build/basic-smoke path.
-  progress:
-  - Docker-capped advanced slice now passes clean (`1017 passed, 0 failed`) via:
+  completed:
+  - Docker-capped advanced constructor/dispatch surface pass is clean (`1019 passed, 0 failed`) via:
     - `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main --test-suite lisp`
-  - Host e2e parity now matches exactly (`build/e2e_diff.txt` empty) after fixing continuation resume primitive-return ABI handling in JIT apply; Docker-capped e2e re-run is still pending in this environment (no Docker in PATH).
+  - Docker-capped e2e compile+run parity is clean (`ALL 397 e2e compiler tests passed!`) via:
+    - `scripts/run_validation_container.sh env OMNI_HARD_MEM_CAP_METHOD=none scripts/run_e2e.sh` (with `OMNI_VALIDATION_EXTRA_ARGS` header/lib mounts for `yyjson`, `bearssl`, `uv`, `ffi`, and `libreplxx`)
+  - Container e2e diff is clean after run (`build/e2e_diff.txt` removed by `scripts/run_e2e.sh` on success).
 - [x] Lock in the new direct AOT lowering for type-definition forms:
   keep `deftype`, `defabstract`, `defunion`, `defalias`, and `defeffect` on structured helper paths and prevent regressions back to `aot::eval_serialized_expr(...)`.
 - [x] Add direct compiled-define regression coverage for each definition form individually:
@@ -93,11 +95,13 @@ Current actionable count: 2
 - [x] Decide whether compiled module/import/export semantics are intentionally static:
   AOT still treats module surfaces differently from interpreter/JIT runtime handling; either align semantics or document compiled-module behavior as intentionally distinct.
   decided: keep intentionally static compiled semantics for now; compiler backend inlines module bodies and lowers `import`/`export-from` to command-style `Void` no-ops. `LANGUAGE_SPEC`/module reference docs now state this explicitly, and compiler regression coverage asserts the static lowering shape.
-- [ ] Run a Docker-capped parity regression pass after the direct-lowering change:
+- [x] Run a Docker-capped parity regression pass after the direct-lowering change:
   include compiler slice, focused explain/type-dispatch e2e checks, and at least one compiled-binary parity sample that exercises typed define + type forms together.
-  progress:
-  - Docker-capped compiler slice still passes with direct-lowering regressions (`101 passed, 0 failed`) via `scripts/run_validation_container.sh`.
-  - Host parity compile+run now passes with zero output diff (`build/e2e_diff.txt` empty) after JIT continuation primitive-return fix; Docker-capped parity pass remains pending due unavailable Docker runtime in this session.
+  completed:
+  - Docker-capped compiler slice passes with direct-lowering regressions (`104 passed, 0 failed`) via:
+    - `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+  - Focused explain/type-dispatch parity is covered by Docker e2e cases (`dispatch exact subtype`, `dispatch parent subtype`, `dispatch numeric explicit conversion`, `dispatch ambiguity reason`).
+  - Compiled-binary parity sample requirement is satisfied by Docker e2e setup fixtures that combine type forms + typed defines (`define [abstract]/[struct]/[union]/[alias]` plus typed `define` dispatch methods), validated by the same `scripts/run_e2e.sh` container pass.
 
 ## Active Failure Recovery (2026-03-11)
 
@@ -147,3 +151,246 @@ Current actionable count: 2
 - [x] Continue largest-first modularization for oversized runtime modules that still combine hot-path logic with diagnostics or explainability helpers. (`docs/plans/runtime-modularization-split-2026-03-11.md`)
 - [x] Prioritize split candidates by size and hot-path relevance (`schema.c3`, `eval_dispatch_types.c3`, `scheduler_offload_worker.c3`). (`docs/plans/runtime-modularization-split-2026-03-11.md`)
 - [x] Keep behavior unchanged while splitting, and pair each split slice with targeted validation for the touched subsystem. (`docs/plans/runtime-modularization-split-2026-03-11.md`)
+
+### O7. Deduce Robust Datalog Engine
+
+#### O7.1 Semantics Lock (Spec + Scope)
+
+- [x] Add an execution roadmap for robust Deduce Datalog evolution with measurable phase gates. (`docs/plans/deduce-robust-datalog-roadmap.md`)
+- [x] Add a dedicated Deduce Datalog semantics draft (rules, recursion, stratified negation, explain contract, compatibility rules). (`docs/deduce-datalog-spec.md`)
+- [x] Finalize v1/v1.5 split in the spec (core deliverables vs post-v1 deferred features) and tag each item with acceptance tests. (`docs/deduce-datalog-spec.md`)
+- [x] Lock canonical public rule/query surface names (`deduce/rule!`, `deduce/query`, `deduce/match`, explain/analyze commands) with explicit compatibility notes. (`docs/deduce-datalog-spec.md`)
+
+#### O7.2 Logical IR + Validation Pipeline
+
+- [x] Introduce internal rule/query IR structs (`Predicate`, `Atom`, `Rule`, `Program`, `Binding`) decoupled from raw list AST handling. (`src/lisp/deduce_rule_ops.c3`)
+- [x] Add deterministic variable normalization so alpha-equivalent rules share the same canonical IR. (`src/lisp/deduce_rule_ops.c3`)
+- [x] Add arity validation for all head/body predicate references. (`src/lisp/deduce_rule_ops.c3`, `src/lisp/deduce_db_handles.c3`)
+- [x] Add unsafe-variable validation (head variables must be grounded in positive body atoms). (`src/lisp/deduce_rule_ops.c3`)
+- [x] Add negation-safety validation (variables in negated atoms must be positively bound beforehand). (`src/lisp/deduce_rule_ops.c3`)
+- [x] Add non-stratifiable dependency rejection with explicit `deduce/non-stratifiable-program` error payloads. (`src/lisp/deduce_rule_ops.c3`)
+
+#### O7.3 Predicate Access + Index Layer
+
+- [x] Extend relation metadata to describe available secondary/composite indexes. (`src/lisp/deduce_db_handles.c3`)
+- [x] Implement bound-argument-mask analysis for atoms to drive index-choice eligibility. (`src/lisp/deduce_rule_ops.c3`)
+- [x] Add tuple-iterator accessors that avoid eager per-row dict materialization in hot paths.
+  completed:
+  - introduced `DeduceTupleIterator` open/next/close helpers in `src/lisp/deduce_relation_scan_helpers.c3`,
+  - migrated `relation_scan_range(...)`, `deduce/query`, and `deduce/match` scan loops to tuple iteration.
+- [x] Preserve current API payload shapes by delaying dict materialization to output/projection boundaries.
+  completed:
+  - dict rows are now materialized only at output/projection boundaries via `deduce_relation_materialize_row_dict(...)`,
+  - API return shapes remain unchanged (scan/query/match still return dict rows).
+- [x] Add index-creation/open validation tests across memory-backed and file-backed Deduce DB modes.
+  completed:
+  - added schema index-shape assertions for memory-backed `define relation` and file-backed `open-named` paths in `src/lisp/tests_deduce_rule_groups.c3`,
+  - validated via `OMNI_LISP_TEST_SLICE=deduce` (`56 passed, 0 failed`).
+
+#### O7.4 Planner v1
+
+- [x] Implement logical-to-physical planning for conjunctive rule bodies and explicit query bodies.
+  completed:
+  - added deterministic conjunctive-body planner kernel (`deduce_plan_conjunctive_body`) in `src/lisp/deduce_rule_ops.c3`,
+  - `deduce/rule!` registration now stores body predicates/masks/index selections in planner order instead of raw parse order,
+  - planner scoring now prioritizes bound-mask/index selectivity with stable tie-breaking.
+- [x] Add baseline relation statistics capture (cardinality + distinct estimates) to support join ordering.
+  completed:
+  - extended relation schema metadata with `cardinality_estimate` and `distinct_estimate`,
+  - added schema-estimate maintenance hooks on non-transactional `fact!`/`retract!`/`clear!`/`drop!` paths,
+  - planner scoring now incorporates baseline schema cardinality/distinct estimates.
+- [x] Add filter pushdown and projection pushdown decisions in physical planning.
+  completed:
+  - planner now computes and stores per-step `body_filter_pushdown` and `body_projection_masks` metadata at `deduce/rule!` registration time,
+  - filter pushdown decision currently marks bound-argument predicates (and local equality-constrained atoms) as pushdown candidates,
+  - projection pushdown decision now tracks downstream-needed variable columns per planned step (head + future-body usage),
+  - `deduce/explain` now surfaces these decisions per step as `filter-pushdown` and `projection-mask`,
+  - validated via `OMNI_LISP_TEST_SLICE=deduce` (`59 passed, 0 failed`).
+- [x] Add planner fallback behavior when no index is available (explicit full-scan operator node rather than implicit behavior).
+  completed: planner step IR now records explicit operator kind (`FULL_SCAN`/`INDEX_SCAN` and negated variants), with deterministic full-scan fallback when no index is selected.
+- [x] Add deterministic `deduce/explain` payload skeleton for chosen operators and join order.
+  completed:
+  - added `deduce/explain` namespaced + dispatch command surfaces (`deduce/explain`, `deduce 'explain ...`) backed by planner metadata from registered rule signatures,
+  - payload now includes deterministic `join-order` and per-step operator/index fields (`steps` with `predicate`, `operator`, `bound-mask`, `selected-index`, `negated`),
+  - added deterministic explain regression in `src/lisp/tests_deduce_rule_groups.c3`,
+  - validated via `OMNI_LISP_TEST_SLICE=deduce` (`59 passed, 0 failed`).
+
+#### O7.5 Join Execution
+
+- [x] Implement index nested-loop join operator for selective bound predicates.
+  completed:
+  - added `deduce_index_nested_loop_join_count(...)` in `src/lisp/deduce_relation_scan_helpers.c3` with explicit join-column validation and per-probe execution stats,
+  - operator now reuses the outer iterator read transaction for same-environment joins (with cross-env readonly fallback txn), avoiding LMDB same-thread reader slot failures,
+  - exact inner probes now use encoded tuple keys via `mdb_get(...)` for index-backed existence checks,
+  - added regressions in `src/lisp/tests_deduce_rule_groups.c3` for exact bound join and literal+bound join probe paths,
+  - validated with `c3c build` and `OMNI_LISP_TEST_SLICE=deduce LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` (`61 passed, 0 failed`).
+- [x] Implement hash-join operator for large/intermediate joins.
+  completed:
+  - added `deduce_hash_join_count(...)` in `src/lisp/deduce_relation_scan_helpers.c3`,
+  - implementation builds an in-memory join-key frequency map from the inner side (with optional static literal filtering) and probes it from the outer side,
+  - keyed join counts support duplicate inner matches (multi-match emission) while preserving `DeduceJoinExecStats` probe/emission counters,
+  - added hash-join regressions in `src/lisp/tests_deduce_rule_groups.c3` for multi-match and literal+bound selective probes,
+  - validated with `c3c build` and `OMNI_LISP_TEST_SLICE=deduce LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` (`63 passed, 0 failed`).
+- [x] Add adaptive runtime fallback thresholds for large estimate miss conditions.
+  completed:
+  - added `deduce_adaptive_join_count(...)` in `src/lisp/deduce_relation_scan_helpers.c3`,
+  - adaptive policy now chooses index-probe first and falls back to hash join when probe volume and miss-ratio thresholds indicate estimate/selectivity miss,
+  - fallback thresholds are configurable per call (`fallback_probe_threshold`, `fallback_miss_ratio_percent`) with sensible defaults when omitted/invalid,
+  - added regressions in `src/lisp/tests_deduce_rule_groups.c3` for both fallback-to-hash and keep-index scenarios,
+  - validated with `c3c build` and `OMNI_LISP_TEST_SLICE=deduce LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` (`65 passed, 0 failed`).
+- [x] Add operator-level counters (rows read, rows emitted, index hits/misses) for planner observability.
+  completed:
+  - `DeduceJoinExecStats` tracks `outer_rows`, `inner_rows`, `inner_probes`, `index_hits`, `index_misses`, and `rows_emitted`,
+  - index/hash/adaptive helper paths populate these counters and regression tests assert core hit/miss/fallback behavior,
+  - `deduce/explain` per-step payload now includes deterministic `counters` dictionary:
+    - `rows-read`, `rows-emitted`, `index-hits`, `index-misses`, `counter-kind`,
+  - current `counter-kind` is `estimated`; counters are derived from rule-step planner metadata + relation cardinality/distinct estimates.
+
+#### O7.6 Recursive Evaluation
+
+- [x] Implement naive bottom-up evaluator as correctness reference mode.
+  completed:
+  - extended persisted `DeduceRuleSignature` metadata to include canonical head/body term mappings (variable ids + promoted literal payloads) in planner order,
+  - added `deduce/analyze` + `(deduce 'analyze ...)` command surfaces backed by a deterministic naive fixpoint evaluator,
+  - naive evaluator now executes installed rules over LMDB tuples with positive/negated body matching and derived-head insertion until convergence (or guarded iteration limit),
+  - added recursive closure regression in `src/lisp/tests_deduce_rule_groups.c3` (transitive `ancestor` derivation via `parent` rules),
+  - validated with `c3c build` and `OMNI_LISP_TEST_SLICE=deduce LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` (`66 passed, 0 failed`).
+- [x] Implement SCC decomposition to isolate recursive strata.
+  completed:
+  - added deterministic SCC decomposition (Tarjan) over rule dependency graph and persisted per-rule component assignment in analyze-time planning,
+  - evaluator now executes SCCs in dependency order (dependency-first component schedule), applying local fixpoint loops only to recursive SCCs,
+  - `deduce/analyze` payload now reports SCC diagnostics (`strata-count`, `recursive-strata`) alongside existing run stats,
+  - extended recursive analyze regression in `src/lisp/tests_deduce_rule_groups.c3` to assert SCC diagnostics for transitive-closure fixture.
+- [x] Implement semi-naive delta evaluator for recursive SCCs.
+  completed:
+  - recursive SCC evaluation now runs a delta-driven semi-naive loop (`deduce_seminaive_evaluate_recursive_component`) instead of naive local fixpoint repetition,
+  - evaluator seeds per-predicate delta sets from current SCC relation state, then iterates rule application using anchor-step gating over recursive positive body atoms,
+  - newly derived tuples are tracked into next-iteration delta sets and used as the convergence signal for recursive SCC termination,
+  - `deduce/analyze` output now includes `execution-engine` with value `semi-naive-scc` while retaining `mode = naive-bottom-up` for compatibility,
+  - updated recursive analyze regression in `src/lisp/tests_deduce_rule_groups.c3` to assert `execution-engine`,
+  - validated with `c3c build` and `OMNI_LISP_TEST_SLICE=deduce LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` (`66 passed, 0 failed`).
+- [x] Add convergence diagnostics and hard-stop safeguards for pathological rule graphs.
+  completed:
+  - analyze output now includes convergence-oriented runtime diagnostics:
+    `iteration-limit` and `max-component-iterations`,
+  - recursive SCC iteration-limit failures now emit structured payload data
+    (`component-id`, `iteration-limit`) on `deduce/analyze-iteration-limit`,
+  - recursive analyze regression now asserts the new convergence diagnostics
+    fields in `src/lisp/tests_deduce_rule_groups.c3`,
+  - validated with `c3c build` and `OMNI_LISP_TEST_SLICE=deduce LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` (`66 passed, 0 failed`).
+- [x] Add regression parity tests: naive output == semi-naive output for recursive fixtures.
+  completed:
+  - `deduce/analyze` now accepts optional recursive-engine selector (`'naive` / `'semi-naive`) while preserving one-arg default behavior,
+  - analyze payload now reports selected engine through `execution-engine` (`naive-scc` or `semi-naive-scc`),
+  - added recursive closure parity regression in `src/lisp/tests_deduce_rule_groups.c3` asserting naive vs semi-naive equality on closure count and derived-facts,
+  - validated with `c3c build` and `OMNI_LISP_TEST_SLICE=deduce LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` (`67 passed, 0 failed`).
+
+#### O7.7 Stratified Negation Runtime
+
+- [x] Implement stratum scheduler that enforces dependency order across positive/negative edges.
+  completed:
+  - SCC planning now computes explicit per-component stratum assignments (`component_strata`) with negative-edge strictness (`from > to` on negated edges),
+  - evaluate order is now stratum-first and dependency-stable within each stratum (topological rank tie-break),
+  - analyze payload now includes `stratum-count` alongside existing SCC diagnostics.
+- [x] Add runtime rejection path for non-stratifiable programs at rule-install time.
+  completed:
+  - `deduce_rule_validate_stratification(...)` rejects negative recursion cycles with `deduce/non-stratifiable-program` during `deduce/rule!` install,
+  - rejection path remains covered by the existing `src/lisp/tests_deduce_rule_groups.c3` regression (`deduce rule! rejects negative recursion cycle`).
+- [x] Add targeted tests for mixed positive/negative recursion boundaries.
+  completed:
+  - added `deduce analyze enforces negation stratum order` regression (negative dependency scheduling correctness),
+  - added `deduce analyze handles mixed recursive and negated stratum boundaries` regression (recursive positive closure + negated downstream stratum),
+  - validated with `c3c build` and `OMNI_LISP_TEST_SLICE=deduce LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` (`69 passed, 0 failed`).
+
+#### O7.8 Incremental Maintenance (Post-v1)
+
+- [x] Design dependency-aware delta propagation for `fact!`/`retract!` updates against derived relations.
+  completed:
+  - added concrete incremental propagation design doc with execution-ready
+    runtime contract in
+    `docs/plans/deduce-incremental-delta-propagation-design-2026-03-13.md`,
+  - added dependency-aware dirty propagation helpers in Deduce runtime
+    (`deduce_db_note_mutation`, transitive head invalidation over rule
+    dependencies),
+  - `deduce/analyze` now reports incremental diagnostics
+    (`incremental-*-...`) and resets dirty tracking after successful full
+    fixpoint run.
+- [x] Implement transaction-safe derived invalidation/update boundaries.
+  completed:
+  - write-transaction (`deduce 'block ... 'write`) mutations now accumulate in
+    per-relation transaction logs (insert/delete + destructive markers),
+  - on successful `deduce 'commit`, logs apply schema estimate deltas and
+    dependency-aware invalidation updates atomically at commit boundary,
+  - on `deduce 'abort`, pending mutation logs are discarded with no incremental
+    state drift,
+  - if mutation logging degrades (allocation pressure), commit falls back to
+    conservative `full-recompute` invalidation mode.
+- [x] Add mutation-heavy benchmark suite to compare full recompute vs incremental maintenance.
+  completed:
+  - added `run_deduce_incremental_mutation_benchmarks(...)` in
+    `src/lisp/tests_deduce_query_groups.c3` behind the existing
+    `OMNI_DEDUCE_BENCH=1` gate,
+  - benchmark now emits `OMNI_BENCH_SUMMARY suite=deduce_incremental_mutation`
+    with tracked-mode (`fact!` only) versus full-recompute-mode
+    (`retract!`+`fact!`) lanes and per-lane analyze/mode counters,
+  - recorded baseline capture in
+    `docs/plans/deduce-incremental-mutation-benchmark-baseline-2026-03-13.md`.
+
+#### O7.9 Benchmarks + Validation Gates
+
+- [x] Add selective join benchmark suite with explain-counter assertions.
+  completed:
+  - added `run_deduce_selective_join_benchmarks(...)` in
+    `src/lisp/tests_deduce_query_groups.c3` behind `OMNI_DEDUCE_BENCH=1`,
+  - benchmark emits `OMNI_BENCH_SUMMARY suite=deduce_selective_join` with
+    explain-lane assertion counters (`explain_ok`, `explain_mode_miss`) and
+    captured counter estimates (`step0_rows_read`, `step1_rows_read`),
+  - analyze lane validates derived output cardinality each iteration for the
+    selective join fixture (`expected_rows`),
+  - baseline capture recorded in
+    `docs/plans/deduce-selective-join-benchmark-baseline-2026-03-13.md`.
+- [x] Add recursive transitive-closure benchmark suite for semi-naive speedup tracking.
+  completed:
+  - added `run_deduce_recursive_closure_benchmarks(...)` in
+    `src/lisp/tests_deduce_query_groups.c3` behind `OMNI_DEDUCE_BENCH=1`,
+  - benchmark compares explicit analyze engines (`'naive` vs `'semi-naive`)
+    on a chain-closure fixture and emits engine-hit + cardinality assertions
+    per lane,
+  - summary now includes `speedup_x1000` for regression tracking without
+    assuming a fixed winner across data shapes/runtime revisions,
+  - baseline capture recorded in
+    `docs/plans/deduce-recursive-closure-benchmark-baseline-2026-03-13.md`.
+- [x] Add skewed-cardinality benchmark suite to stress planner estimate robustness.
+  completed:
+  - added `run_deduce_skewed_cardinality_benchmarks(...)` in
+    `src/lisp/tests_deduce_query_groups.c3` behind `OMNI_DEDUCE_BENCH=1`,
+  - benchmark seeds a heavily skewed join fixture and emits explain-counter
+    stability metrics (`explain_ok`, `explain_mode_miss`) plus selectivity
+    tracking (`explain_selectivity_hits`, `step0_rows_read`, `step1_rows_read`),
+  - analyze lane validates derived cardinality under skew each iteration,
+  - baseline capture recorded in
+    `docs/plans/deduce-skewed-cardinality-benchmark-baseline-2026-03-13.md`.
+- [x] Add container-gated Deduce perf envelope checks to detect regression drift across releases.
+  completed:
+  - added `scripts/run_deduce_perf_envelope.sh`:
+    - Docker-gated outside containers (re-enters via
+      `scripts/run_validation_container.sh`),
+    - runs Deduce benchmark lane with `OMNI_LISP_TEST_SLICE=deduce` and
+      `OMNI_DEDUCE_BENCH=1`,
+    - enforces summary assertions across all Deduce benchmark suites
+      (`deduce_scan_query_count`, `deduce_incremental_mutation`,
+      `deduce_selective_join`, `deduce_recursive_closure`,
+      `deduce_skewed_cardinality`),
+    - mounts required host headers/libs into validation container for this repo
+      toolchain path (`yyjson`, `bearssl`, `libuv`, `libffi`, `libreplxx`).
+  - validated in Docker-bound run:
+    - `scripts/run_deduce_perf_envelope.sh`
+    - result: `Deduce perf envelope checks passed.`
+- [x] Run ASAN build and targeted Deduce slices for each memory-sensitive evaluator/planner change.
+  completed:
+  - `c3c build --sanitize=address`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+  - result: `=== Unified Tests: 70 passed, 0 failed ===` with no LeakSanitizer report and zero ASAN summary errors.
+  - closure notes:
+    - parser/macro AST sub-allocations were moved from raw heap (`mem::malloc`) to AST-arena ownership (`ast_arena_alloc`) across the high-frequency parse/macro conversion paths,
+    - this removed the prior parser/macro startup leak footprint from the Deduce ASAN lane.
