@@ -62,6 +62,7 @@ fn bool deduce_val_eq(Value* a, Value* b) {
         }
         case SYMBOL: return a.sym_val == b.sym_val;
         case NIL: return true;
+        case VOID: return true;
         default: return a == b;  // pointer equality for other types
     }
 }

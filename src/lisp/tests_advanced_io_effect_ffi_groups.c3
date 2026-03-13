@@ -6,8 +6,8 @@ import std::io;
 fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail) {
     // === I/O EFFECTS TESTS (Phase 5) ===
     // print/println go through effects now (fast path to __raw-*)
-    test_nil_interp(interp, "io effect print", "(print 42)", pass, fail);
-    test_nil_interp(interp, "io effect println", "(println 99)", pass, fail);
+    test_tag_interp(interp, "io effect print", "(print 42)", VOID, pass, fail);
+    test_tag_interp(interp, "io effect println", "(println 99)", VOID, pass, fail);
 
     // Custom handler can suppress output
     test_eq_interp(interp, "io handle suppress",
@@ -20,7 +20,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         pass, fail);
 
     // __raw-print still works directly
-    test_nil_interp(interp, "raw-print direct", "(__raw-print 0)", pass, fail);
+    test_tag_interp(interp, "raw-print direct", "(__raw-print 0)", VOID, pass, fail);
 
     // === TYPED EFFECT DECLARATIONS TESTS ===
     // Declaring effects doesn't error
@@ -49,8 +49,8 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "(handle (signal test/ping 99) (test/ping x x))", 99, pass, fail);
 
     // ^Any effects accept all types
-    test_nil_interp(interp, "io effect Any int", "(print 42)", pass, fail);
-    test_nil_interp(interp, "io effect Any str", "(print \"hello\")", pass, fail);
+    test_tag_interp(interp, "io effect Any int", "(print 42)", VOID, pass, fail);
+    test_tag_interp(interp, "io effect Any str", "(print \"hello\")", VOID, pass, fail);
 
     // io/read-file with wrong type should error (^String)
     test_error(interp, "io/read-file wrong type",
@@ -74,8 +74,44 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "s)",
         pass, fail);
 
+    test_str_interp(interp, "filesystem-* alias roundtrip read/write",
+        "(block "
+        "(define p \"/tmp/omni_filesystem_alias_roundtrip.txt\") "
+        "(define h (filesystem-open p 577 420)) "
+        "(filesystem-write h \"alias-ok\") "
+        "(filesystem-close h) "
+        "(define r (filesystem-open p 0)) "
+        "(define s (filesystem-read r 32)) "
+        "(filesystem-close r) "
+        "(filesystem-unlink p) "
+        "s)",
+        pass, fail);
+
     test_truthy_interp(interp, "fs readdir returns array",
         "(array? (fs-readdir \"/tmp\"))", pass, fail);
+
+    test_truthy_interp(interp, "filesystem-read-directory alias returns array",
+        "(array? (filesystem-read-directory \"/tmp\"))", pass, fail);
+
+    test_str_val(interp, "transmission-control alias payload code",
+        "(handle (transmission-control-connect 42 80) "
+        "  (raise msg (symbol->string (ref msg 'code))))",
+        "io/tcp-connect-host-not-string", pass, fail);
+
+    test_tag_interp(interp, "user-datagram alias socket create/close",
+        "(block "
+        "(define u (user-datagram-socket)) "
+        "(user-datagram-close u))",
+        VOID, pass, fail);
+
+    test_str_val(interp, "domain-name-resolve alias localhost",
+        "(await (spawn (lambda () (domain-name-resolve \"localhost\"))))",
+        "127.0.0.1", pass, fail);
+
+    test_str_val(interp, "transport-layer-security-connect alias payload code",
+        "(handle (transport-layer-security-connect nil \"localhost\" true) "
+        "  (raise msg (symbol->string (ref msg 'code))))",
+        "io/tls-connect-invalid-tcp-handle", pass, fail);
 
     test_truthy_interp(interp, "fs stat returns dict",
         "(block "
@@ -88,11 +124,11 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "(dict? st))",
         pass, fail);
 
-    test_nil_interp(interp, "udp socket create/close",
+    test_tag_interp(interp, "udp socket create/close",
         "(block "
         "(define u (udp-socket)) "
         "(udp-close u))",
-        pass, fail);
+        VOID, pass, fail);
 
     test_str_interp(interp, "udp loopback roundtrip",
         "(block "
@@ -223,10 +259,10 @@ fn void run_advanced_union_memory_limit_tests(Interp* interp, int* pass, int* fa
     test_error(interp, "unsafe-free! array UAF", "(let (a [1 2 3]) (block (unsafe-free! a) a))", pass, fail);
     // unsafe-free! on dict: releases backing, accessing freed value errors
     test_error(interp, "unsafe-free! dict UAF", "(let (d {'a 1 'b 2}) (block (unsafe-free! d) d))", pass, fail);
-    // unsafe-free! on non-collection: no-op, returns nil
-    test_nil_interp(interp, "unsafe-free! int noop", "(unsafe-free! 42)", pass, fail);
-    // unsafe-free! on nil: no-op
-    test_nil_interp(interp, "unsafe-free! nil noop", "(unsafe-free! nil)", pass, fail);
+    // unsafe-free! on non-collection: no-op, returns Void
+    test_tag(interp, "unsafe-free! int noop returns Void", "(unsafe-free! 42)", VOID, pass, fail);
+    // unsafe-free! on nil: no-op, returns Void
+    test_tag(interp, "unsafe-free! nil noop returns Void", "(unsafe-free! nil)", VOID, pass, fail);
 
     // === RAISED LIMITS TESTS ===
     // Match with 17 clauses (was max 16, now 32)
@@ -288,9 +324,11 @@ fn void run_advanced_ffi_system_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define [ffi λ libm] (ldexp (^Double x) (^Int exp)) ^Double)");
     test_eq_double(interp, "ffi λ ldexp", "(ldexp 1.0 10)", 1024.0, pass, fail);
 
-    // Void return
+    // Void return (canonical pointer annotation + compatibility shorthand)
+    setup(interp, "(define [ffi λ libc] (free (^Pointer p)))");
+    test_truthy(interp, "ffi λ free null (^Pointer)", "(= (type-of (free 0)) 'Void)", pass, fail);
     setup(interp, "(define [ffi λ libc] (free (^Ptr p)))");
-    test_nil_jit(interp, "ffi λ free null", "(free 0)", pass, fail);
+    test_truthy(interp, "ffi λ free null (^Ptr alias)", "(= (type-of (free 0)) 'Void)", pass, fail);
 
     // Error cases
     test_error(interp, "ffi lib bad", "(define [ffi lib] bad-lib \"nonexistent_xyz.so\")", pass, fail);
@@ -317,6 +355,6 @@ fn void run_advanced_ffi_system_tests(Interp* interp, int* pass, int* fail) {
     test_nil(interp, "getenv missing", "(getenv \"OMNI_NONEXISTENT_VAR_XYZ\")", pass, fail);
     // shell — captures stdout
     test_str_val(interp, "shell echo", "(shell \"echo hello\")", "hello", pass, fail);
-    // sleep — returns nil (tiny sleep to not slow tests)
-    test_nil(interp, "sleep tiny", "(sleep 0.001)", pass, fail);
+    // sleep — returns void (tiny sleep to not slow tests)
+    test_tag_interp(interp, "sleep tiny", "(sleep 0.001)", VOID, pass, fail);
 }

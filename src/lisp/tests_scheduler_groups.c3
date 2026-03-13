@@ -32,6 +32,7 @@ fn void run_scheduler_spawn_basic_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+    test_tag(interp, "run-fibers returns Void", "(run-fibers)", VOID, pass, fail);
 
     {
         EvalResult r = run(

@@ -251,6 +251,6 @@ fn Value* prim_task_cancel(Value*[] args, Env* env, Interp* interp) {
             "task-cancel: task already joined or invalid"
         );
     }
-    if (already_done) return make_nil(interp);
-    return scheduler_true_value(interp);
+    if (already_done) return make_void(interp);
+    return make_void(interp);
 }

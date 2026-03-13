@@ -168,6 +168,7 @@ fn Value* copy_time_point_to_parent(Value* v, Interp* interp) {
 
 enum CopyParentRoute : char {
     CP_ROUTE_NIL,
+    CP_ROUTE_VOID,
     CP_ROUTE_INT,
     CP_ROUTE_DOUBLE,
     CP_ROUTE_STRING,
@@ -192,6 +193,8 @@ fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) {
     switch (tag) {
         case NIL:
             return CP_ROUTE_NIL;
+        case VOID:
+            return CP_ROUTE_VOID;
         case INT:
             return CP_ROUTE_INT;
         case DOUBLE:
@@ -242,6 +245,8 @@ fn Value* copy_to_parent_by_route(Value* v, Interp* interp, CopyParentRoute rout
     switch (route) {
         case CP_ROUTE_NIL:
             return make_nil(interp);
+        case CP_ROUTE_VOID:
+            return make_void(interp);
         case CP_ROUTE_INT:
             return make_int(interp, v.int_val);
         case CP_ROUTE_DOUBLE:

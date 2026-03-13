@@ -71,6 +71,7 @@ enum ValueTag : char {
     ITERATOR,       // Lazy iterator (backed by closure thunk)
     COROUTINE,          // User-facing coroutine (wraps StackCtx*)
     TIME_POINT,         // Temporal value (date/time/datetime/timestamp)
+    VOID,               // Singleton no-result value
 }
 
 /**

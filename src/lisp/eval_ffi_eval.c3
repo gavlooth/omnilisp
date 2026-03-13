@@ -138,7 +138,7 @@ fn Value* ffi_return_value_for(FfiTypeTag return_type, long ret_int, double ret_
             if (ret_ptr == null) return make_nil(interp);
             return make_int(interp, (long)(uptr)ret_ptr);
         case FFI_TYPE_VOID:
-            return make_nil(interp);
+            return make_void(interp);
         default:
             return make_nil(interp);
     }

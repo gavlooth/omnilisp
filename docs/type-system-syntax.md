@@ -90,8 +90,11 @@ Current exception note:
 
 - Omni does not currently define a builtin `Empty` or bottom type.
 - `Nil` is the language-level empty/false value type.
-- `Void` remains an FFI / no-result annotation concept rather than a normal
-  value-level empty type.
+- `Void` is now a real builtin singleton type/value; `(Void)` constructs the
+  runtime no-result value, and FFI `^Void` returns map to that same value.
+- Existing side-effecting helpers may still return `nil` for compatibility;
+  migrating ordinary no-result surfaces to `Void` is a separate language
+  follow-up, not an implicit compatibility break.
 
 ### 1.2.2 Lambda Call-Boundary Checking (Design + Current Runtime Contract)
 
@@ -118,7 +121,6 @@ Call-boundary argument checking rules:
 2. Match relation reuses dispatch compatibility:
    - literal exact match,
    - exact nominal match,
-   - dispatch widening (`Integer` satisfies expected `Double`),
    - subtype compatibility,
    - `Any` fallback.
 3. Repeated type variables unify by runtime inferred type.
@@ -411,7 +413,7 @@ Status tags:
 | Parametric type behavior | Parametric construction + constraints + substitution | Parametric constructors + `type-args` inference are implemented; method type variables unify by symbol at dispatch (`(^T a) (^T b)` requires same runtime type), with bounds checked via metadata constraints | `done` | `src/lisp/eval_type_evaluators.c3`; `src/lisp/eval_dispatch_types.c3`; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
 | Variance policy | Explicit variance model in parametric dispatch | Explicit invariant policy: type params are invariant; `+T/-T` markers are rejected with deterministic parser errors | `done` (invariant policy) | `src/lisp/parser_type_defs.c3`; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
 | Union participation in dispatch applicability | Union/variant types participate in subtype dispatch | Union variants are registered as subtype of union; dispatch uses subtype chain so variant-specialized methods outrank union-parent methods | `done` | `src/lisp/eval_type_evaluators.c3` (`eval_defunion_register_variant_type`); `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
-| Numeric promotion in dispatch | Numeric lattice/promotion influences method applicability | Dispatch-only widening: `Integer` can satisfy `^Double` method params (scored below exact type matches) | `done` | `src/lisp/eval_dispatch_types.c3`; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
+| Numeric conversion in dispatch | Numeric conversion should be explicit at call sites | Dispatch uses exact-or-subtype applicability only; cross-numeric matching requires constructor conversion such as `(Double 7)` | `done` | `src/lisp/eval_dispatch_match.c3`; `src/lisp/tests_advanced_type_dispatch_groups.c3` |
 | `where`-style constraints | `where` clauses on methods/types | Omni uses metadata constraints (`^{'T Number}`), not Julia `where` syntax | `done` (intentional difference) | This document §1.6; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (constraint tests) |
 | Match/union exhaustiveness | Exhaustiveness diagnostics | Runtime missing-case diagnostics are normative; compile-time exhaustiveness checker is currently an explicit non-goal | `done` (runtime policy) | `src/lisp/eval_dispatch_types.c3` (`format_match_error`); `src/lisp/tests_runtime_feature_groups.c3` |
 
@@ -423,7 +425,7 @@ Status tags:
 | Typed method fallback behavior | Yes (fallback possible) | No |
 | Ambiguity policy | Partial (deterministic detection) | Yes: error on equal score, no implicit winner |
 | Parametric type declaration | Partial | Yes: metadata-bound constraints instead of `where` |
-| Numeric promotion in dispatch | Partial | Yes: widening is limited to dispatch (`Integer` -> `Double`) and does not imply full numeric-conversion semantics |
+| Numeric conversion in dispatch | Partial | Yes: Omni requires explicit constructor conversion (`(Double 7)`) instead of implicit dispatch-time widening |
 | Exhaustiveness checking | Partial | Yes: runtime diagnostics first, compile-time check pending |
 
 ### Test Anchors
@@ -485,7 +487,7 @@ Status tags:
 - [x] Multiple dispatch via MethodTable (typed `define` creates dispatch entries)
 - [x] Value dispatch `^(Value literal)` for value-level pattern matching (literals: int/symbol/string/bool)
 - [x] Multi-argument dispatch
-- [x] Dispatch scoring: Value=1000, exact=100, numeric widening(Integer->Double)=50, subtype=10, any=1
+- [x] Dispatch scoring: Value=1000, exact=100, subtype=10, any=1
 - [x] Struct field access via dot-path: `point.x`, `line.start.y`
 - [x] Struct field mutation: `(set! point.x 99)`, nested paths
 - [x] Constructor pattern matching: `(match opt (None 0) ((Some x) x))`
@@ -498,7 +500,7 @@ Status tags:
 - [x] Parent vs type-param disambiguation at eval time (first symbol = registered type → parent)
 - [x] Constructor type-application checking (`(^(Ctor ...) value)`) with canonical mismatch/arity diagnostics and deterministic payload fields (`ctor`, `expected-args`, `actual-args`, `arg-index`, `arg-path`)  
   Regression anchors: `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (`run_advanced_type_parametric_ctor_annotation_tests`)
-- [x] Lambda typed call-boundary argument checking with deterministic mismatch payload fields (`failure`, `param-index`, `expected`, `actual`, `expected-arity`, `actual-arity`) and cross-coverage for dispatch/union/numeric-widening behavior  
+- [x] Lambda typed call-boundary argument checking with deterministic mismatch payload fields (`failure`, `param-index`, `expected`, `actual`, `expected-arity`, `actual-arity`) and cross-coverage for dispatch/union/explicit-conversion behavior  
   Regression anchors: `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (`run_advanced_type_lambda_call_boundary_tests`)
 - [x] 100+ type/dispatch/effect tests all passing
 

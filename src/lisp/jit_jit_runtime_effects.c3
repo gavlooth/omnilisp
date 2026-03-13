@@ -20,8 +20,7 @@ fn Value* runtime_effects_raise(Interp* interp, char[] code, char[] message) @in
 
 fn void reset_value_entry(void* arg) {
     ResetValueState* state = (ResetValueState*)arg;
-    Value* v = jit_apply_value(state.body, make_nil(state.interp), state.interp);
-    main::g_current_stack_ctx.result = v;
+    main::g_current_stack_ctx.result = jit_apply_value(state.body, make_nil(state.interp), state.interp);
 }
 
 fn Value* jit_reset_value(Interp* interp, Value* body) {
@@ -61,7 +60,8 @@ fn Value* jit_reset_value(Interp* interp, Value* body) {
     }
 
     if (state.shifted) {
-        return jit_apply_value(state.shift_body, state.shift_k, interp);
+        Value* shift_result = jit_apply_value(state.shift_body, state.shift_k, interp);
+        return shift_result;
     }
 
     Value* v = (Value*)ctx.result;
@@ -88,11 +88,17 @@ fn Value* jit_shift_value(Interp* interp, Value* body) {
     rstate.shift_body = body;
     rstate.shift_k = k_val;
 
+    // Match jit_shift_impl: preserve suspended-context interp state so
+    // parent-side shift-body evaluation does not leak state back on resume.
+    SavedInterpState saved;
+    save_interp_state(interp, &saved);
+
     if (!suspend_with_scope_guard(current, interp.current_scope)) {
         return raise_error_with_payload_names(
             interp, "runtime", "runtime/suspend-scope-guard", "stack engine: failed to register suspend scope guard"
         );
     }
+    restore_interp_state(interp, &saved);
     return interp.resume_value;
 }
 

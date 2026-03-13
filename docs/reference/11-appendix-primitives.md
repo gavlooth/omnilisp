@@ -53,9 +53,10 @@ These support user extension via method tables.
 | `cons` | 2 | Construct pair |
 | `car` | 1 | First element |
 | `cdr` | 1 | Rest |
+| `List` | variadic | Canonical list constructor / conversion surface |
 | `null?` | 1 | Is nil? |
 | `pair?` | 1 | Is cons? |
-| `list` | variadic | Create list / convert collection->list (array/iterator) |
+| `list` | variadic | Public helper + compatibility alias for list construction/conversion |
 
 **Boolean:**
 
@@ -80,14 +81,18 @@ These support user extension via method tables.
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `fs-open` | variadic | Open file handle with mode/options |
-| `fs-read` | 2 | Read bytes/chars from handle |
-| `fs-write` | 2 | Write bytes/chars to handle |
-| `fs-close` | 1 | Close file handle |
-| `fs-stat` | 1 | File metadata lookup |
-| `fs-readdir` | 1 | Read directory entries |
-| `fs-rename` | 2 | Rename/move file |
-| `fs-unlink` | 1 | Remove file path |
+| `filesystem-open` | variadic | Open file handle with mode/options |
+| `filesystem-read` | 2 | Read bytes/chars from handle |
+| `filesystem-write` | 2 | Write bytes/chars to handle |
+| `filesystem-close` | 1 | Close file handle |
+| `filesystem-stat` | 1 | File metadata lookup |
+| `filesystem-read-directory` | 1 | Read directory entries |
+| `filesystem-rename` | 2 | Rename/move file |
+| `filesystem-unlink` | 1 | Remove file path |
+
+Compatibility shorthands (same behavior/arity):
+`fs-open`, `fs-read`, `fs-write`, `fs-close`, `fs-stat`, `fs-readdir`,
+`fs-rename`, and `fs-unlink`.
 
 **String:**
 
@@ -119,8 +124,11 @@ These support user extension via method tables.
 | `type-args` | 1 | Parametric type args |
 | `iterator?` | 1 | Is iterator value? |
 
-`Nil` is the language-level empty/false value type. `Void` is not a value
-constructor here; it is reserved for FFI/no-result annotation positions.
+`Nil` is the language-level empty/false value type. `Void` is now a real
+singleton value constructor with zero arguments, and FFI `^Void` returns map to
+that same runtime value.
+Value-level `false` remains a stable alias of `nil` (quoted `'false` is still a
+symbol literal).
 
 **Conversion:**
 
@@ -134,7 +142,8 @@ constructor here; it is reserved for FFI/no-result annotation positions.
 | `symbol->string` | 1 | Symbol to string |
 
 Callable core type symbols also provide constructor/coercion surface here:
-`Integer`, `Int`, `Double`, `String`, `Symbol`, `Boolean`, `Bool`, `Nil`, and `Closure`.
+`Integer`, `Int`, `Double`, `String`, `Symbol`, `Boolean`, `Bool`, `Nil`,
+`Void`, and `Closure`.
 
 **Math:**
 
@@ -169,11 +178,13 @@ Callable core type symbols also provide constructor/coercion surface here:
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `array` | variadic | Create array / convert collection->array (list/iterator) |
+| `Array` | variadic | Canonical array constructor / conversion surface |
+| `array` | variadic | Compatibility alias for `Array` |
 | `array-set!` | 3 | Set element at index |
 | `Dictionary` | variadic | Create dictionary |
-| `Dict` | variadic | Dictionary shorthand |
-| `dict` | variadic | Dictionary shorthand |
+| `Dict` | variadic | Public shorthand alias for `Dictionary` |
+| `dict` | variadic | Compatibility alias for `Dictionary` |
+| `dictionary` | variadic | Compatibility alias for `Dictionary` |
 | `dict-set!` | 3 | Set key-value |
 | `Set` | variadic | Create set |
 | `set-add` | 2 | Add to set |
@@ -202,7 +213,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `make-iterator` | 1 | Raw thunk helper; prefer `(Iterator coll)` / `(Iterator thunk)` as public surface |
+| `make-iterator` | 1 | Low-level compatibility helper; prefer `(Iterator coll)` / `(Iterator thunk)` |
 | `next` | 1 | Get next (value . rest) pair |
 | `collect` | 1 | Compatibility helper: collect iterator into list |
 | `to-array` | 1 | Compatibility helper: collect iterator into array |
@@ -222,7 +233,7 @@ Preferred forcing style uses collection constructors:
 | `apply` | 2 | Apply function to arg list |
 | `macroexpand` | 1 | Expand macro |
 | `load` | 1 | Load and evaluate file |
-| `unsafe-free!` | 1 | Free heap backing |
+| `unsafe-free!` | 1 | Free heap backing; returns `Void` |
 
 **Schema:**
 
@@ -260,8 +271,8 @@ Preferred forcing style uses collection constructors:
 | `atomic-cas!` | 3 | Compare-and-swap |
 | `spawn` | 1 | Spawn fiber task |
 | `await` | 1 | Await spawned task result |
-| `run-fibers` | variadic | Run thunks as fibers |
-| `fiber-cancel` | 1 | Cancel a fiber |
+| `run-fibers` | 0 | Run scheduled fibers to completion (returns `Void`) |
+| `fiber-cancel` | 1 | Cancel a fiber (always returns `Void` for valid fiber ids; already-done/running targets are no-op completions) |
 
 **Regex (Pika):**
 

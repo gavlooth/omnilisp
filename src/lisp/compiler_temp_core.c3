@@ -77,7 +77,7 @@ fn usz Compiler.compile_to_temp_non_null(Compiler* self, Expr* expr) {
         case E_DEFUNION:
         case E_DEFALIAS:
         case E_DEFEFFECT:
-            return self.compile_eval_serialized_expr_flat(expr);
+            return self.compile_type_form_direct(expr);
         default: return self.compile_leaf_expr_to_temp(expr);
     }
 }

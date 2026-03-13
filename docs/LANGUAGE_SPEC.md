@@ -208,6 +208,9 @@ Pitfall:
 Only `nil` and `false` are falsy. Everything else is truthy, including `0`,
 empty strings, and empty collections.
 
+`false` is a value-level alias of `nil` in Omni's current stable semantics.
+Use quoted `'false` if you need the literal symbol name as symbol data.
+
 ```lisp
 (if 0 'yes 'no)            ; => 'yes
 (if "" 'yes 'no)           ; => 'yes
@@ -342,10 +345,11 @@ Any other `#` sequence is rejected with a deterministic parser/lexer error.
 | dict | `HASHMAP` | Mutable hash table | `{'a 1}`, `(dict 'a 1)` |
 | array | `ARRAY` | Mutable dynamic array | `[1 2 3]`, `(array 1 2 3)` |
 | coroutine | `COROUTINE` | User-level coroutine | `(coroutine (lambda () body))` |
+| void | `VOID` | Singleton no-result value | `(Void)` |
 
 Omni does not currently define a builtin `Empty`/bottom type. `nil`/`Nil`
-cover the language's empty/false value, while `Void` is reserved for
-FFI/no-result annotation positions.
+cover the language's empty/false value, while `Void` is now a real builtin
+singleton type/value used by FFI `^Void` returns as well.
 | ffi-handle | `FFI_HANDLE` | Foreign library handle | `(define [ffi lib] libc "libc.so.6")` |
 | instance | `INSTANCE` | User-defined type instance | `(Point 3 4)` |
 | method-table | `METHOD_TABLE` | Multiple dispatch table | internal |
@@ -562,7 +566,11 @@ Evaluates all expressions in order, returns the last. Last expression is in tail
 (set! obj.nested.field value)  ; nested field mutation
 (set! pair.car value)          ; cons cell car mutation
 (set! pair.cdr value)          ; cons cell cdr mutation
+(set! collection key value)    ; generic collection update (Array/Dictionary)
 ```
+
+`set!` returns `Void` on successful mutation.
+`array-set!` and `dict-set!` remain supported compatibility aliases.
 
 ### 3.7 `quote` / `quasiquote`
 
@@ -617,6 +625,10 @@ Canonical naming direction:
 - prefer descriptive language-facing type symbols and constructors over abbreviations,
 - `Integer`, `Boolean`, and `Dictionary` are the canonical builtin names,
 - `Int`, `Bool`, and `Dict` remain accepted compatibility aliases.
+- collection/time constructor policy:
+  - canonical constructor surfaces: `List`, `Array`, `Dictionary`, `Iterator`, `TimePoint`
+  - retained public helper: `list` (idiomatic Lisp list builder/conversion helper)
+  - compatibility-only aliases (non-preferred in new examples/docs): `array`, `dict`, `dictionary`, `iterator`, `time-point`, `make-iterator`
 
 ### 4.1 Struct Types
 
@@ -674,6 +686,11 @@ None                    ; nullary variant
 ^(Value "open")         ; string literal
 ^(Value true)           ; boolean literal (true/false symbols)
 ```
+
+Meta/abstract symbols `Any`, `Value`, `Number`, and `Collection` are type-position
+surfaces. They participate in annotations/dispatch, but are not callable value-position
+constructors. In particular, `Value` is valid for value-literal dispatch only as
+`^(Value literal)`; `(Value ...)` is not a constructor call surface.
 
 ### 4.6 Type Introspection
 
@@ -739,7 +756,6 @@ Command-style facades like `udp` are valid API shape, but core operations remain
 |------------|-------|-------------|
 | Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)` |
 | Exact type | 100 | `^Integer` matches INT value |
-| Numeric widening | 50 | Dispatch-only widening (`Integer` can satisfy `^Double`) |
 | Subtype | 10 | `^Shape` matches Circle (Shape child) |
 | Any type | 1 | Untyped parameter matches anything |
 
@@ -777,7 +793,7 @@ the explain call itself.
 includes:
 - method index/name/signature/constraints/source
 - applicability flag
-- score breakdown (`value`, `exact`, `widen`, `subtype`, `any`, `total`)
+- score breakdown (`value`, `exact`, `subtype`, `any`, `total`; legacy `widen` key remains in explain output for compatibility and is currently `0`)
 - failure classification (`none`, `arity-mismatch`, `value-literal-mismatch`, `type-mismatch`, `constraint-mismatch`)
 
 Example:
@@ -848,7 +864,8 @@ Binary primitives partially apply when given one argument: `(+ 3)` returns a `PA
 | `cons` | 2 | Construct pair |
 | `car` | 1 | First element |
 | `cdr` | 1 | Rest element |
-| `list` | variadic | Create list; single collection arg dispatches conversion (`(list [1 2 3])`, `(list (iterator ...))`) |
+| `list` | variadic | Create list; single collection arg dispatches conversion (`(list [1 2 3])`, `(list (Iterator ...))`) |
+| `List` | variadic | Canonical list constructor/conversion surface (`list` remains a public helper) |
 | `length` | 1 | Generic: list, array, dict, or string length |
 | `null?` | 1 | Check if nil |
 | `pair?` | 1 | Check if cons |
@@ -921,7 +938,7 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 | Prim | Arity | Description |
 |------|-------|-------------|
 | `read-file` | 1 | Read file as string |
-| `write-file` | 2 | Write string to file |
+| `write-file` | 2 | Write string to file (returns `Void` on success) |
 | `file-exists?` | 1 | Check file existence |
 | `read-lines` | 1 | Read file as list of lines |
 | `load` | 1 | Load and evaluate a .omni file |
@@ -933,12 +950,17 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 | `dict` | variadic | Create dict from key-value pairs; `{'a 1 'b 2}` desugars to this |
 | `dict-set!` | 3 | Set key-value pair |
 
+Canonical constructor surface is `Dictionary` (with `Dict` shorthand). `dict` is
+kept as a compatibility alias.
+
 ### 7.11 Array Operations (2)
 
 | Prim | Arity | Description |
 |------|-------|-------------|
-| `array` | variadic | Create array; `[1 2 3]` desugars to this; single collection arg dispatches conversion (`(array '(1 2 3))`, `(array (iterator ...))`) |
+| `array` | variadic | Create array; `[1 2 3]` desugars to this; single collection arg dispatches conversion (`(array '(1 2 3))`, `(array (Iterator ...))`) |
 | `array-set!` | 3 | Set element at index |
+
+Canonical constructor surface is `Array`. `array` is kept as a compatibility alias.
 
 ### 7.12 Generic Collection Operations (6)
 
@@ -1040,8 +1062,8 @@ Note: `length` (Section 7.3) is also generic — works on lists, arrays, dicts, 
 ```
 
 - Uses libffi via C wrapper for portable ABI support
-- Type annotations: `^Integer`/`^Int` → sint64, `^Double` → double, `^String`/`^Ptr` → pointer, `^Void` → void, `^Boolean`/`^Bool` → sint64
-- `Nil` is the language-level empty/false value type; `Void` is reserved for FFI/no-result annotation positions
+- Type annotations: `^Integer`/`^Int` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred; `^Ptr` remains a compatibility shorthand) → pointer, `^Void` → void, `^Boolean`/`^Bool` → sint64
+- `Nil` is the language-level empty/false value type; `Void` is a real singleton runtime value/type, and FFI `^Void` returns produce that value
 - Lazy dlsym: symbol resolution deferred to first call and cached
 
 ### 7.21 Constants
@@ -1057,7 +1079,7 @@ Note: `length` (Section 7.3) is also generic — works on lists, arrays, dicts, 
 
 | Primitive | Args | Description |
 |-----------|------|-------------|
-| `unsafe-free!` | 1 | Free heap backing of array/dict/instance/string. Value becomes an error — accessing it after free raises "use after unsafe-free!". No-op on int/nil/other non-heap types. |
+| `unsafe-free!` | 1 | Free heap backing of array/dict/instance/string and return `Void`. Value becomes an error — accessing it after free raises "use after unsafe-free!". No-op on int/nil/other non-heap types also return `Void`. |
 
 ### 7.23 Regex and Pika Parsing
 
@@ -1368,6 +1390,8 @@ Effect handlers match on tag name only. For type-specific behavior, use dispatch
 - Cached: modules loaded only once
 - Circular import detection
 - Method extensions are always global (dispatch is cross-cutting)
+- `module` / `import` / `export-from` are command-style forms and return `Void` on successful completion
+- Compiler backend (`AOT`) currently uses static module lowering: module bodies are inlined during compilation, and `import` / `export-from` lower to command-style `Void` no-ops (no runtime module loading/binding pass in generated code)
 
 ---
 
@@ -1586,7 +1610,7 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 | macros | Y | Y** | Y** |
 | modules | Y | Y | Y |
 
-† Compiler parity for type definitions and dispatch is validated. Generated calls go through `aot::invoke`/`aot::apply_multi` (non-AOT callables route to `jit_apply*`), and type-definition/typed-define registration uses explicit `aot::eval_serialized_expr(...)` delegation as an implementation detail.
+† Compiler parity for type definitions and dispatch is validated. Generated calls go through `aot::invoke`/`aot::apply_multi` (non-AOT callables route to `jit_apply*`), while type-definition and typed-define registration lower through explicit structured AOT helpers rather than `aot::eval_serialized_expr(...)`. AOT closure wrappers are classified semantically as `Closure` for runtime introspection parity, and compiled module/import/export surfaces are intentionally static (inline module bodies, `import`/`export-from` no-op `Void` lowering).
 **Y** = macro expansion at parse time
 
 ---

@@ -87,10 +87,15 @@ fn Value* prim_ctor_nil(Value*[] args, Env* env, Interp* interp) {
     return is_falsy(args[0], interp) ? make_nil(interp) : conversion_type_raise(interp, "Nil: expected nil/false");
 }
 
+fn Value* prim_ctor_void(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 0) return conversion_type_raise(interp, "Void: expected 0 arguments");
+    return make_void(interp);
+}
+
 fn Value* prim_ctor_closure(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return conversion_type_raise(interp, "Closure: expected closure");
     Value* arg = args[0];
-    if (arg != null && arg.tag == CLOSURE) return arg;
+    if (is_closure(arg)) return arg;
     return conversion_type_raise(interp, "Closure: expected closure");
 }
 

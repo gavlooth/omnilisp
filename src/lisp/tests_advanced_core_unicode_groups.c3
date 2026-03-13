@@ -39,21 +39,51 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
     test_truthy(interp, "Symbol ctor identity", "(= (Symbol 'alpha) 'alpha)", pass, fail);
     test_truthy(interp, "Boolean ctor from truthy int", "(Boolean 0)", pass, fail);
     test_nil(interp, "Boolean ctor from nil", "(Boolean nil)", pass, fail);
+    test_nil(interp, "Boolean ctor from false", "(Boolean false)", pass, fail);
     test_nil(interp, "Boolean ctor from quoted false symbol", "(Boolean 'false)", pass, fail);
     test_truthy(interp, "Bool shorthand ctor from truthy int", "(Bool 0)", pass, fail);
     test_truthy(interp, "Boolean ctor type", "(= (type-of (Boolean 0)) 'Boolean)", pass, fail);
+    test_truthy(interp, "false collapses to nil", "(= false nil)", pass, fail);
+    test_truthy(interp, "type-of false is Nil", "(= (type-of false) 'Nil)", pass, fail);
     test_nil(interp, "Nil ctor from nil", "(Nil nil)", pass, fail);
     test_nil(interp, "Nil ctor from false", "(Nil false)", pass, fail);
+    test_truthy(interp, "Void ctor type", "(= (type-of (Void)) 'Void)", pass, fail);
+    test_truthy(interp, "Void ctor equality", "(= (Void) (Void))", pass, fail);
+    test_truthy(interp, "Void ctor truthy", "(if (Void) true nil)", pass, fail);
     test_truthy(interp, "Closure ctor identity", "(closure? (Closure (lambda (x) x)))", pass, fail);
+    test_truthy(interp, "List ctor type", "(= (type-of (List 1 2 3)) 'List)", pass, fail);
+    test_eq(interp, "List ctor from array len", "(length (List [1 2 3]))", 3, pass, fail);
+    test_eq(interp, "List ctor from iterator len", "(length (List (Iterator [1 2 3])))", 3, pass, fail);
+    test_truthy(interp, "Array ctor type", "(= (type-of (Array 1 2 3)) 'Array)", pass, fail);
+    test_eq(interp, "Array ctor from list ref", "(ref (Array '(7 8 9)) 1)", 8, pass, fail);
+    test_eq(interp, "Array ctor from iterator ref", "(ref (Array (Iterator [7 8 9])) 1)", 8, pass, fail);
     test_truthy(interp, "Dictionary ctor type", "(= (type-of (Dictionary 'a 1)) 'Dictionary)", pass, fail);
     test_eq(interp, "Dict shorthand ctor", "(ref (Dict 'a 1 'b 2) 'b)", 2, pass, fail);
     test_truthy(interp, "Set ctor type", "(= (type-of (Set 1 2 3)) 'Set)", pass, fail);
     test_eq(interp, "Set ctor dedup", "(set-size (Set 1 2 2 3))", 3, pass, fail);
+    test_truthy(interp, "Iterator ctor from list type", "(= (type-of (Iterator '(1 2 3))) 'Iterator)", pass, fail);
     test_truthy(interp, "Coroutine ctor type",
         "(= (type-of (Coroutine (lambda () 1))) 'Coroutine)", pass, fail);
+    test_tag(interp, "TimePoint ctor type", "(TimePoint 'date 2026 3 7)", TIME_POINT, pass, fail);
+    setup(interp, "(define (ctor-only-array (^Array a)) 11)");
+    setup(interp, "(define (ctor-only-array x) 22)");
+    test_eq(interp, "ctor boundary array no implicit list->Array", "(ctor-only-array '(1 2 3))", 22, pass, fail);
+    test_eq(interp, "ctor boundary array explicit Array conversion", "(ctor-only-array (Array '(1 2 3)))", 11, pass, fail);
+    setup(interp, "(define (ctor-only-iter (^Iterator it)) 33)");
+    setup(interp, "(define (ctor-only-iter x) 44)");
+    test_eq(interp, "ctor boundary iterator no implicit array->Iterator", "(ctor-only-iter [1 2 3])", 44, pass, fail);
+    test_eq(interp, "ctor boundary iterator explicit Iterator conversion", "(ctor-only-iter (Iterator [1 2 3]))", 33, pass, fail);
     test_str_val(interp,
         "Integer ctor invalid string payload code",
         "(handle (Integer \"abc\") (raise msg (symbol->string (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp,
+        "Double ctor invalid string payload code",
+        "(handle (Double \"abc\") (raise msg (symbol->string (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp,
+        "String ctor invalid payload code",
+        "(handle (String nil) (raise msg (symbol->string (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
         "Symbol ctor invalid payload code",
@@ -64,13 +94,18 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
         "(handle (Nil 42) (raise msg (symbol->string (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
+        "Void ctor invalid payload code",
+        "(handle (Void 42) (raise msg (symbol->string (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp,
         "Closure ctor invalid payload code",
         "(handle (Closure 42) (raise msg (symbol->string (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
-    test_str_val(interp,
+    test_truthy(interp,
         "Coroutine ctor invalid payload code",
-        "(handle (Coroutine 42) (raise msg (symbol->string (ref msg 'code))))",
-        "runtime/error", pass, fail);
+        "(= (handle (Coroutine 42) (raise msg (symbol->string (ref msg 'code)))) "
+        "   \"type/arg-mismatch\")",
+        pass, fail);
 }
 
 fn void run_advanced_unicode_iterator_primitives_tests(Interp* interp, int* pass, int* fail) {
@@ -466,6 +501,7 @@ fn void run_advanced_binding_mutation_tests(Interp* interp, int* pass, int* fail
     test_eq(interp, "named-let 10000 iters", "(let loop (n 10000 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc 1))))", 10000, pass, fail);
 
     // set!
+    test_tag(interp, "set! returns void", "(block (define set-void-local 1) (set! set-void-local 2))", VOID, pass, fail);
     setup(interp, "(define set-test 10)");
     setup(interp, "(set! set-test 20)");
     test_eq(interp, "set! basic", "set-test", 20, pass, fail);

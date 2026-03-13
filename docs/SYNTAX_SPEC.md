@@ -184,7 +184,11 @@ Three branches required (no two-branch form).
 (set! instance.nested.field value) ;; nested mutation
 (set! pair.car value)            ;; cons cell car mutation
 (set! pair.cdr value)            ;; cons cell cdr mutation
+(set! collection key value)      ;; generic collection update (Array/Dictionary)
 ```
+
+`set!` returns `Void` on successful mutation.
+`array-set!` and `dict-set!` remain valid compatibility aliases.
 
 ### 3.6 `block` - Sequencing
 

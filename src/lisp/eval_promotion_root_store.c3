@@ -298,6 +298,7 @@ fn Value* root_store_route_to_scope(
             return cloned;
         }
         case NIL:
+        case VOID:
         case INT:
         case STRING:
         case SYMBOL:

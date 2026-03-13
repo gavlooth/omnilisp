@@ -13,6 +13,7 @@ Omni has three collection types plus sets.
 ```lisp
 '(1 2 3)                   ;; quoted list
 (list 1 2 3)               ;; explicit construction
+(List [1 2 3])             ;; canonical constructor/conversion surface
 (cons 1 (cons 2 nil))      ;; manual construction
 (car '(1 2 3))             ;; => 1
 (cdr '(1 2 3))             ;; => (2 3)
@@ -23,12 +24,14 @@ Omni has three collection types plus sets.
 
 ```lisp
 [1 2 3]                    ;; array literal (desugars to (array 1 2 3))
-(array 1 2 3)              ;; explicit construction
+(Array 1 2 3)              ;; canonical construction
+(array 1 2 3)              ;; compatibility alias
 (ref arr 0)                ;; => first element
-(push! arr 4)              ;; append element (mutates)
-(array-set! arr 0 99)      ;; set element at index
+(push! arr 4)              ;; append element (mutates, returns Void)
+(set! arr 0 99)            ;; generic update form (returns Void)
+(array-set! arr 0 99)      ;; set element at index (returns Void)
 (length arr)               ;; => size
-(array '(1 2 3))           ;; list -> array conversion
+(Array '(1 2 3))           ;; list -> array conversion
 (list [1 2 3])             ;; array -> list conversion
 ```
 
@@ -36,13 +39,15 @@ Omni has three collection types plus sets.
 
 ```lisp
 {'name "Alice" 'age 30}    ;; dict literal (desugars to (dict ...))
-(dict 'name "Alice")        ;; explicit construction
+(Dictionary 'name "Alice")  ;; canonical construction
+(dict 'name "Alice")        ;; compatibility alias
 (ref d 'name)               ;; => "Alice"
-(dict-set! d 'email "a@b")  ;; set key
+(set! d 'email "a@b")       ;; generic update form (returns Void)
+(dict-set! d 'email "a@b")  ;; set key (returns Void)
 (has? d 'age)               ;; => true
 (keys d)                    ;; => (name age)
 (values d)                  ;; => ("Alice" 30)
-(remove! d 'age)            ;; remove key
+(remove! d 'age)            ;; remove key (returns Void)
 (length d)                  ;; => number of entries
 ```
 
@@ -50,8 +55,8 @@ Omni has three collection types plus sets.
 
 ```lisp
 (Set 1 2 3)                ;; create set
-(set-add s 4)              ;; => new set with 4
-(set-remove s 2)           ;; => new set without 2
+(set-add s 4)              ;; => Void (mutates set in place)
+(set-remove s 2)           ;; => Void (mutates set in place)
 (set-contains? s 1)        ;; => true
 (set-size s)               ;; => number of elements
 ```
@@ -59,6 +64,14 @@ Omni has three collection types plus sets.
 Sets now have a distinct builtin `Set` runtime type symbol. `type-of` reports
 `Set` for `(Set ...)` values, and printed set values use constructor-shaped
 syntax such as `(Set 1 2 3)`.
+
+`array-set!` and `dict-set!` remain available as compatibility aliases, but
+`set!` is the preferred generic update surface.
+
+Naming policy for new code/examples:
+- prefer `List`, `Array`, and `Dictionary` as constructor/coercion surfaces
+- keep `list` as an idiomatic public helper
+- treat lowercase `array`/`dict` as compatibility aliases
 
 ### Generic Operations
 

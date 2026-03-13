@@ -169,7 +169,7 @@ fn Value* prim_fs_write(Value*[] args, Env* env, Interp* interp) {
     return make_int(interp, wrote_n);
 }
 
-// (fs-close handle) -> nil
+// (fs-close handle) -> void
 fn Value* prim_fs_close(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) {
         return io_fs_raise(interp, "io/fs-close-expected-handle", "fs-close: expected (fs-close handle)");
@@ -178,7 +178,7 @@ fn Value* prim_fs_close(Value*[] args, Env* env, Interp* interp) {
     if (fh == null) {
         return io_fs_raise(interp, "io/fs-close-invalid-handle", "fs-close: invalid handle");
     }
-    if (!fh.open || fh.fd < 0) return make_nil(interp);
+    if (!fh.open || fh.fd < 0) return make_void(interp);
 
     int status = fs_uv_close(fh.fd);
     fh.fd = -1;
@@ -186,7 +186,7 @@ fn Value* prim_fs_close(Value*[] args, Env* env, Interp* interp) {
     if (status < 0) {
         return io_fs_raise(interp, "io/fs-close-failed", "fs-close: close failed");
     }
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 // (fs-stat path) -> dict {'size n 'mode n}
@@ -243,7 +243,7 @@ fn Value* prim_fs_readdir(Value*[] args, Env* env, Interp* interp) {
     return out;
 }
 
-// (fs-rename src dst) -> nil
+// (fs-rename src dst) -> void
 fn Value* prim_fs_rename(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || !is_string(args[0]) || !is_string(args[1])) {
         return io_fs_raise(interp, "io/fs-rename-expected-src-dst", "fs-rename: expected (fs-rename src dst)");
@@ -252,10 +252,10 @@ fn Value* prim_fs_rename(Value*[] args, Env* env, Interp* interp) {
     if (status < 0) {
         return io_fs_raise(interp, "io/fs-rename-failed", "fs-rename: rename failed");
     }
-    return make_nil(interp);
+    return make_void(interp);
 }
 
-// (fs-unlink path) -> nil
+// (fs-unlink path) -> void
 fn Value* prim_fs_unlink(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
         return io_fs_raise(interp, "io/fs-unlink-expected-path", "fs-unlink: expected (fs-unlink path)");
@@ -264,5 +264,5 @@ fn Value* prim_fs_unlink(Value*[] args, Env* env, Interp* interp) {
     if (status < 0) {
         return io_fs_raise(interp, "io/fs-unlink-failed", "fs-unlink: unlink failed");
     }
-    return make_nil(interp);
+    return make_void(interp);
 }

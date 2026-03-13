@@ -1,7 +1,7 @@
 # Type System and Dispatch
 
-Status: `green` (core parity matrix/explainability/type-gap/backend-matrix closure complete; area-level closeout evidence synchronized)  
-As of: 2026-03-09
+Status: `green` (core parity matrix/explainability/type-gap/backend-matrix closure complete; current direct-AOT lowering state synchronized)  
+As of: 2026-03-13
 
 ## Canonical Sources
 
@@ -19,18 +19,19 @@ As of: 2026-03-09
 - Language spec presents structural type system and multiple dispatch model.
 - Runtime and parser include type/dispatch infrastructure used by current tests.
 - Julia-parity matrix is explicit and currently has no `missing` rows.
-- Runtime dispatch semantics are test-anchored for ambiguity, unification, union participation, invariant variance policy, and numeric widening.
+- Runtime dispatch semantics are test-anchored for ambiguity, unification, union participation, invariant variance policy, and explicit numeric conversion.
 - Explainability tooling is implemented with canonical selector syntax and deterministic structured output (`explain 'dispatch`, `explain 'effect`).
 - Backend parity audit (`L4.1`, 2026-03-09) is complete and documented below.
 - Backend parity implementation bridge (`L4.2`, 2026-03-09) is landed:
-  - compiler lowers type-definition forms and typed lambda `define` forms through explicit `aot::eval_serialized_expr(...)` delegation (not unsupported fallback),
+  - compiler now lowers type-definition forms and typed lambda `define` forms through direct structured AOT helpers instead of delegated `aot::eval_serialized_expr(...)`,
+  - compiled `explain 'dispatch` and canonical `explain 'effect` signal/resolve forms also lower through direct AOT helpers instead of delegated eval,
   - generated call sites continue to route through `aot::invoke/apply_multi` into `jit_apply*`, preserving method-table dispatch semantics.
 - Backend parity E2E coverage slice (`L4.3`, 2026-03-09) is landed:
-  - `src/lisp/tests_e2e_generation_setups.c3` includes `[abstract]`, `[struct]`, `[union]`, `[alias]` fixtures and dispatch setup for exact/subtype/widen/value-literal paths.
+  - `src/lisp/tests_e2e_generation_setups.c3` includes `[abstract]`, `[struct]`, `[union]`, `[alias]` fixtures and dispatch setup for exact/subtype/value-literal paths with explicit numeric conversion.
   - `src/lisp/tests_e2e_generation_cases_extended.c3` includes compiler `--build` parity cases for constructor usage, dispatch specificity tiers, alias-annotation dispatch, and explain-based dispatch diagnostics.
   - compiler path hardening added for this coverage:
-    - constructor/global sync after delegated type forms in `src/lisp/compiler_program_pipeline.c3`,
-    - explain-form delegation + canonical re-serialization in `src/lisp/compiler_call_flat.c3` and `src/lisp/compiler_expr_serialize_exprs.c3`,
+    - constructor/global sync after direct type-form lowering in `src/lisp/compiler_program_pipeline.c3`,
+    - explain-form direct helper lowering + canonical source capture in `src/lisp/compiler_call_flat.c3`,
     - primitive hash mapping for `explain`/`schema-explain` in `src/lisp/compiler_primitive_variable_hash_table.c3`.
 - Backend matrix docs closure (`L4.4`, 2026-03-09) is landed:
   - `docs/LANGUAGE_SPEC.md` Appendix C now marks compiler support for type definitions and dispatch as `Y` with an implementation note (no `eval*` caveat row).
@@ -65,7 +66,7 @@ As of: 2026-03-09
   - closure introspection row (`type-of closure`).
 - L4 backend parity rows remain aligned:
   - type ctor rows (`type struct ctor`, `type union ctor`),
-  - dispatch rows (`dispatch exact subtype`, `dispatch parent subtype`, `dispatch numeric widen`, `dispatch value literal exact`, `dispatch value literal fallback`),
+  - dispatch rows (`dispatch exact subtype`, `dispatch parent subtype`, `dispatch numeric explicit conversion`, `dispatch value literal exact`, `dispatch value literal fallback`),
   - explainability row (`dispatch ambiguity reason`).
 - Baseline stability check:
   - `build/e2e_diff.txt` is identical to prior stored baseline snapshot (`build/e2e_diff_notests.txt`).

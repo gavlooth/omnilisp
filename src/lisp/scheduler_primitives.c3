@@ -6,11 +6,12 @@ import main;
 // ============================================================
 
 // ============================================================
-// (fiber-cancel fiber-id) → true/nil
+// (fiber-cancel fiber-id) → Void
 //
 // Cancels a BLOCKED or READY fiber. Cleans up pending I/O,
 // marks fiber DONE with error result, notifies parent.
-// Cannot cancel RUNNING or already-DONE fibers.
+// If the target fiber is already RUNNING or DONE, this is a no-op
+// command completion and still returns Void.
 // ============================================================
 
 fn bool scheduler_fiber_is_cancellable(FiberEntry* f) @inline {
@@ -66,10 +67,8 @@ fn Value* prim_fiber_cancel(Value*[] args, Env* env, Interp* interp) {
         );
     }
 
-    if (!scheduler_cancel_fiber(fiber_id, interp)) {
-        return make_nil(interp);  // already done or running
-    }
-    return scheduler_true_value(interp);
+    if (!scheduler_cancel_fiber(fiber_id, interp)) return make_void(interp);
+    return make_void(interp);
 }
 
 // ============================================================
@@ -192,7 +191,7 @@ fn Value* prim_await(Value*[] args, Env* env, Interp* interp) {
 }
 
 // ============================================================
-// (run-fibers) → nil
+// (run-fibers) → Void
 //
 // Runs all spawned fibers to completion. Round-robin scheduling.
 // ============================================================
@@ -200,7 +199,7 @@ fn Value* prim_await(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_run_fibers(Value*[] args, Env* env, Interp* interp) {
     Value* run_err = scheduler_run_all(interp);
     if (run_err != null) return run_err;
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 // ============================================================

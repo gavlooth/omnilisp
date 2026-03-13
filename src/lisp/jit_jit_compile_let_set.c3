@@ -200,6 +200,7 @@ fn void? jit_compile_set_immutable_local(void* s, Expr* expr, Interp* interp, Ji
     jit_compile_expr(s, expr.set_expr.value, interp, locals)!;
     _jit_new_node_www(s, CODE_STXI_L, (long)locals.locals[local_idx].stack_offset,
                      (long)JIT_FP, (long)JIT_R0);
+    emit_call_1(s, (void*)&jit_make_void);
 }
 
 fn void? jit_compile_set_env_assign(void* s, Expr* expr, Interp* interp, JitLocals* locals) {

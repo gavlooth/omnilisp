@@ -22,6 +22,11 @@
 (task-cancel task-handle)
 ```
 
+`task-cancel` and `thread-cancel` are command-style operations and return
+`Void` on successful completion.
+`fiber-cancel` also returns `Void` for valid fiber ids, including no-op
+completion when the target fiber is already done or running.
+
 Current state:
 
 - `task-spawn` / `task-join` are implemented as pooled background-task
@@ -40,9 +45,10 @@ Target split:
 ### Run Fibers
 
 ```lisp
-(define results (run-fibers
-  (lambda () (+ 1 2))
-  (lambda () (* 3 4))))
+(define a (spawn (lambda () (+ 1 2))))
+(define b (spawn (lambda () (* 3 4))))
+(run-fibers)          ;; => (Void)
+(list (await a) (await b))
 ;; => (3 12)
 ```
 
@@ -139,10 +145,13 @@ All concurrency primitives go through effects and can be intercepted.
 | `^Int` | `int`, `long`, `size_t` | sint64 |
 | `^Double` | `double`, `float` | double |
 | `^String` | `char*` | pointer |
-| `^Ptr` | `void*` | pointer |
+| `^Pointer` | `void*` | pointer |
+| `^Ptr` | `void*` | pointer (compatibility shorthand) |
 | `^Bool` | `int` (0/1) | sint64 |
-| `^Void` | `void` | FFI/no-result only; not the language-level empty value |
-| (none) | `void` return | void |
+| `^Void` | `void` | maps the C return to the runtime `Void` singleton value |
+| (none) | `void` return | use `^Void` when binding a function that returns C `void` |
+
+Use `^Pointer` in new bindings; `^Ptr` is retained for compatibility.
 
 ### Features
 

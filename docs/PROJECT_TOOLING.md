@@ -418,7 +418,7 @@ Running `--bind` produces one `.omni` file per dependency in `lib/ffi/`.
 
 - A `module` with an `export` list of all bound functions
 - A `_lib` handle opened via `ffi-open`
-- Each function gets typed parameters (`^Int`, `^Double`, `^String`) and a body calling `ffi-call` with the appropriate type annotations
+- Each function gets typed parameters (`^Integer`, `^Double`, `^String`, `^Pointer`) and a body calling `ffi-call` with the appropriate type annotations (`^Int` remains a shorthand alias)
 - C `snake_case` names are converted to Omni `kebab-case` (e.g., `string_length` becomes `string-length`)
 - Variadic C functions are skipped with a comment (Omni's FFI doesn't support variadic calls)
 
@@ -445,19 +445,19 @@ The binding generator uses libclang to resolve types (including typedefs) and ma
 
 | C Type | Omni FFI Symbol | Omni Type Annotation | Notes |
 |--------|----------------|---------------------|-------|
-| `int`, `long`, `unsigned int`, `unsigned long` | `'int` | `^Int` | All integer-width types |
-| `size_t`, `ssize_t` | `'int` | `^Int` | Resolved via typedef |
-| `enum` types | `'int` | `^Int` | Enums are integers |
+| `int`, `long`, `unsigned int`, `unsigned long` | `'int` | `^Integer` | All integer-width types (`^Int` shorthand supported) |
+| `size_t`, `ssize_t` | `'int` | `^Integer` | Resolved via typedef |
+| `enum` types | `'int` | `^Integer` | Enums are integers |
 | `float`, `double` | `'double` | `^Double` | All floating-point types |
 | `char *`, `const char *` | `'string` | `^String` | Detected by type spelling |
-| `void *`, other pointers | `'ptr` | `^Int` | Opaque handle as integer |
-| `void` (return only) | `'void` | — | No annotation for void returns |
+| `void *`, other pointers | `'ptr` | `^Pointer` | Opaque handle as pointer-sized value (`^Ptr` shorthand supported) |
+| `void` (return only) | `'void` | `^Void` | Returns the runtime `Void` singleton value |
 
 ### Limitations
 
 - **Struct parameters/returns**: C functions that pass or return structs by value cannot be bound (Omni's `ffi-call` only handles scalars and pointers)
 - **Variadic functions**: Skipped automatically (e.g., `printf`)
-- **Function pointers as parameters**: Mapped as `'ptr`/`^Int` (callback registration requires manual wrappers)
+- **Function pointers as parameters**: Mapped as `'ptr`/`^Pointer` (callback registration requires manual wrappers)
 - **Macros**: `#define` constants and macro-functions are not parsed (libclang only sees declarations)
 
 ---

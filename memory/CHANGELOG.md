@@ -3,7 +3,43 @@
 
 Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md).
 
+## 2026-03-13
+
+- AOT direct-lowering parity slice for type/dispatch/explain:
+  - compiler lowering no longer routes core type/effect definition forms through `aot::eval_serialized_expr(...)`:
+    - `deftype`,
+    - `defabstract`,
+    - `defunion`,
+    - `defalias`,
+    - `defeffect`.
+  - typed lambda `define` lowering now installs method-table entries through an explicit structured helper (`aot::define_typed_method(...)`) instead of delegated source re-evaluation.
+  - compiled `explain` lowering now uses direct helper paths for:
+    - `explain 'dispatch` call targets,
+    - `explain 'effect` signal/perform targets,
+    - `explain 'effect` resolve targets.
+  - AOT runtime now builds structured type annotations and method signatures directly from compiler-emitted specs, so compiled registration paths reuse the existing evaluator/dispatch machinery without reparsing source forms.
+  - dispatch table helpers were generalized so typed callable registration is no longer closure-tag-specific (`jit_eval_define_typed_callable(...)`).
+  - compiler regression expectations were updated to assert direct helper lowering and the absence of delegated eval on these paths.
+  - current remaining parity gaps are narrower and explicitly tracked in `TODO.md`:
+    - AOT closure representation still differs from runtime `CLOSURE`,
+    - compiled module/import/export semantics still need an explicit parity/design decision,
+    - `aot::eval_serialized_expr(...)` still exists as legacy infrastructure and should not drift back into normal compiler lowering.
+  - validation:
+    - `c3c build` passed.
+    - `OMNI_IN_VALIDATION_CONTAINER=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passed (`Compiler Tests: 91 passed, 0 failed`).
+
 ## 2026-03-12
+
+- Void promotion from annotation-only to runtime singleton:
+  - `Void` is now a real builtin singleton type/value instead of an FFI-only annotation exception.
+  - runtime values can now inhabit `Void`, `type-of` can now return `Void`, and the type registry now includes `Void` under `Any`.
+  - `(Void)` is now the canonical zero-argument constructor for the singleton runtime value.
+  - FFI `^Void` returns now map to the runtime `Void` value instead of collapsing to `nil`.
+  - intent:
+    - remove the remaining public type-symbol exception from the hierarchical type surface,
+    - keep FFI and normal type/value vocabulary aligned,
+    - preserve the truthiness rule (`Void` is truthy; only `nil` and `false` are falsy),
+    - leave ordinary nil-returning no-result primitives as a compatibility migration follow-up rather than silently changing them all at once.
 
 - Set promotion + syntax simplification:
   - sets now have a distinct runtime `SET` tag and builtin `Set` type symbol instead of masquerading as `Dictionary`.
@@ -39,6 +75,85 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - reduce public `make-*` surface drift,
     - prefer clarity over terseness for canonical language-facing names,
     - preserve compatibility for existing iterator code while shifting docs/tests/examples toward the type-symbol constructor form.
+
+- Dispatch numeric widening removal:
+  - removed implicit dispatch-time numeric widening from method applicability and typed lambda call-boundary checks.
+  - `Integer` arguments no longer satisfy `^Double` parameters automatically.
+  - dispatch now uses exact type + subtype + untyped fallback scoring only.
+  - explicit constructor conversion is now required for cross-numeric calls (for example `(Double 7)`).
+  - updated dispatch and typed-lambda regression coverage to assert:
+    - no implicit `Integer -> Double` matching,
+    - explicit conversion behavior is preserved,
+    - e2e dispatch fixture uses explicit conversion.
+
+- Descriptive low-level alias surface:
+  - added explicit descriptive aliases for low-level wrappers while preserving existing shorthand names:
+    - filesystem wrappers: `filesystem-open` / `filesystem-read` / `filesystem-write` / `filesystem-close` / `filesystem-stat` / `filesystem-read-directory` / `filesystem-rename` / `filesystem-unlink`,
+    - TCP wrappers: `transmission-control-connect` / `transmission-control-listen` / `transmission-control-accept` / `transmission-control-read` / `transmission-control-write` / `transmission-control-close`,
+    - UDP wrappers: `user-datagram-socket` / `user-datagram-bind` / `user-datagram-send` / `user-datagram-receive` / `user-datagram-close`,
+    - DNS wrapper: `domain-name-resolve`,
+    - TLS wrappers: `transport-layer-security-connect` / `transport-layer-security-server-wrap` / `transport-layer-security-read` / `transport-layer-security-write` / `transport-layer-security-close`.
+  - existing shorthand names (`fs-*`, `tcp-*`, `udp-*`, `dns-resolve`, `tls-*`) remain compatibility surfaces.
+  - added advanced regression coverage for the descriptive alias wrappers (filesystem roundtrip, directory-read alias, TCP/DNS/TLS alias delegation, and UDP alias close path).
+
+- FFI pointer annotation descriptive alias:
+  - promoted `Pointer` as the canonical FFI pointer annotation spelling (`^Pointer`) while keeping `^Ptr` as compatibility shorthand.
+  - runtime FFI annotation mapping now accepts both spellings equivalently (`sym_Pointer` and `sym_Ptr` map to pointer ABI type).
+  - advanced FFI regression now validates both spellings on `free`-style void-return bindings.
+  - bindgen pointer mapping now emits `^Pointer` for non-string pointer parameters/returns.
+  - bindgen integer mappings now emit canonical `^Integer` (with `^Int` remaining shorthand-compatible at runtime).
+  - compiler regression coverage now exercises bindgen output generation and asserts canonical `^Integer`/`^Pointer`/`^Void` annotation emission.
+  - docs/spec/tooling references now describe `^Pointer` as canonical and `^Ptr` as shorthand.
+
+- Command-style `Void` migration follow-up:
+  - `write-file` now returns `Void` on successful completion instead of `true`.
+  - `unsafe-free!` now returns `Void` for both successful frees and no-op targets (such as `int`/`nil`), keeping it as a command-style surface.
+  - `run-fibers` now returns `Void` on successful scheduler drain completion instead of overloading `nil`.
+  - module/import command forms now return `Void` on successful completion instead of overloading `nil`:
+    - `module`,
+    - `import`,
+    - `export-from`.
+  - re-export runtime eval path now also returns `Void` on success:
+    - `jit_eval_export_from_impl` in `jit_jit_compile_effects_modules.c3`.
+  - AOT flat compiler module/import/export-from codegen now emits `aot::make_void()` for parity with interpreter/JIT command semantics.
+  - scheduler cancellation commands now return `Void` on success instead of `true`/`nil` status booleans:
+    - `task-cancel`,
+    - `thread-cancel`.
+  - `fiber-cancel` now returns `Void` when cancellation is performed; it still
+    returns `nil` when the target fiber is already done/running.
+  - `set!` now follows command-style `Void` semantics on successful mutation:
+    - variable mutation (`set! name value`) returns `Void` instead of the assigned payload,
+    - dot-path mutation (`set! obj.field value`, including cons paths) returns `Void`,
+    - JIT mutable-local/env/path helpers and immutable-local codegen are aligned,
+    - AOT flat compiler `set!` lowering now emits `aot::make_void()` results.
+  - `set!` now also has a generic collection-update call surface:
+    - `(set! collection key value)` dispatches to collection mutation (currently `Array`/`Dictionary`),
+    - parser preserves legacy 2-arg mutation semantics for binding/path updates while routing 3+ arg forms through normal call dispatch,
+    - compiler primitive maps and free-var primitive recognition now include callable `set!`,
+    - `array-set!` and `dict-set!` remain supported compatibility aliases.
+  - deduce command surfaces now return `Void` on success instead of overloading `nil`:
+    - transaction control: `commit`, `abort`,
+    - relation mutation/maintenance: `fact!`, `retract!`, `clear!`, `drop!`.
+  - updated regression coverage:
+    - async I/O tests assert `write-file` success returns `VOID`,
+    - advanced memory tests assert `unsafe-free!` no-op paths return `VOID`,
+    - scheduler tests assert `run-fibers` success returns `VOID`,
+    - scheduler cancel tests assert `fiber-cancel` success returns `VOID`,
+    - core/module regression tests assert `set!` success returns `VOID` (including cons-path mutation),
+    - advanced/compile regression tests assert generic `(set! collection key value)` updates for array/dict paths,
+    - advanced module tests assert `module`, `import`, and `export-from` command forms return `VOID`,
+    - scheduler offload/thread tests assert `task-cancel` and `thread-cancel` return `VOID`,
+    - deduce tests assert command/txn surfaces above return `VOID`.
+
+- AOT delegated-eval parity hardening (compiler bridge injection):
+  - compiler delegated-bridge lowering now injects referenced compiled bindings into the AOT interpreter env before calling `aot::eval_serialized_expr(...)`.
+  - injection is emitted as `aot::define_var("name", name)` for free variables that have generated C3 bindings (declared/local or tracked globals), while still skipping builtin primitives.
+  - this closes a concrete parity gap where typed-define bridge paths could miss referenced compiled globals in delegated eval (for example `(define y 10)` followed by typed define bodies referencing `y`).
+  - added compiler regression coverage:
+    - `Compiler: typed define bridge injects referenced globals` in `src/lisp/tests_compiler_core_groups.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `OMNI_IN_VALIDATION_CONTAINER=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passed (`Compiler Tests: 91 passed, 0 failed`).
 
 ## 2026-03-10
 

@@ -14,6 +14,10 @@ fn Value* jit_make_nil(Interp* interp) {
     return make_nil(interp);
 }
 
+fn Value* jit_make_void(Interp* interp) {
+    return make_void(interp);
+}
+
 fn Value* jit_lookup_global(Interp* interp, uint sym_id) {
     SymbolId name = (SymbolId)sym_id;
     Value* v = interp.global_env.lookup(name);
@@ -110,6 +114,32 @@ fn Value* jit_apply_value_method_table(Value* func, Value* arg, Interp* interp) 
     return jit_apply_value(resolved, arg, interp);
 }
 
+fn Value* jit_apply_value_primitive(Value* func, Value* arg, Interp* interp) {
+    int arity = func.prim_val.arity;
+    // IMPORTANT: keep primitive apply on Value* return path.
+    // Avoid EvalResult struct-return here because this call site can cross
+    // suspend/resume cloned stack boundaries (AOT closure primitive path).
+    if (arity <= 1 || arity == -1) {
+        Value*[8] args;
+        args[0] = arg;
+        interp.constructor_type_id = func.prim_val.tag;
+        interp.prim_user_data = func.prim_val.user_data;
+        Value* result = func.prim_val.func(args[:1], null, interp);
+        if (result != null && result.tag == ERROR) {
+            return make_error(interp, result.str_chars[:result.str_len]);
+        }
+        return result;
+    }
+
+    Value* partial = interp.alloc_value();
+    partial.tag = PARTIAL_PRIM;
+    partial.partial_val.func = func.prim_val.func;
+    partial.partial_val.first_arg = arg;
+    partial.partial_val.second_arg = null;
+    partial.partial_val.remaining = arity - 1;
+    return partial;
+}
+
 fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
     if (func == null) {
         if ((uint)interp.last_call_name != 0) {
@@ -129,10 +159,7 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
             return jit_apply_value_closure(func, arg, interp);
 
         case PRIMITIVE: {
-            // Set constructor type_id (needed for type constructor primitives)
-            interp.constructor_type_id = func.prim_val.tag;
-            EvalResult r = apply_primitive(func, arg, interp);
-            return jit_apply_eval_result_or_error(r, interp);
+            return jit_apply_value_primitive(func, arg, interp);
         }
 
         case PARTIAL_PRIM: {

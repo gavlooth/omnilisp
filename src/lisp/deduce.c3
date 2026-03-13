@@ -135,8 +135,8 @@ fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
 
 // ============================================================
 // (deduce 'block db ['read|'write]) -> transaction handle
-// (deduce 'commit txn) -> nil
-// (deduce 'abort txn) -> nil
+// (deduce 'commit txn) -> Void
+// (deduce 'abort txn) -> Void
 // ============================================================
 fn Value* prim_deduce_block(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) {
@@ -223,7 +223,7 @@ fn Value* prim_deduce_commit(Value*[] args, Env* env, Interp* interp) {
     if (rc != MDB_SUCCESS) {
         return deduce_raise(interp, "deduce/txn-failed", "deduce-commit: txn commit failed");
     }
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 fn Value* prim_deduce_abort(Value*[] args, Env* env, Interp* interp) {
@@ -239,7 +239,7 @@ fn Value* prim_deduce_abort(Value*[] args, Env* env, Interp* interp) {
 
     DeduceTxn* txn = (DeduceTxn*)args[0].ffi_val.lib_handle;
     deduce_txn_finalize(txn);
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 // ============================================================
@@ -333,17 +333,17 @@ fn Value* prim_deduce_dispatch(char[] name, Value*[] rest, Env* env, Interp* int
 // (deduce 'open "/path")           → database handle
 // (deduce 'open-named db rel-name db-name col...) → relation handle
 // (deduce 'block db ['read|'write]) → transaction handle
-// (deduce 'commit txn)             → nil
-// (deduce 'abort txn)              → nil
+// (deduce 'commit txn)             → Void
+// (deduce 'abort txn)              → Void
 // (deduce 'scan relation)          → list of dicts
 // (deduce 'scan-range relation lower-bound upper-bound) → list of dicts
 // (deduce 'query relation fn)      → filtered list of dicts
 // (deduce 'count relation)         → int
 // (deduce 'match relation pattern) → list of dicts
-// (deduce 'fact! relation vals...) → nil
-// (deduce 'retract! relation vals...)  → nil
-// (deduce 'clear! relation)        → nil
-// (deduce 'drop! relation)         → nil
+// (deduce 'fact! relation vals...) → Void
+// (deduce 'retract! relation vals...)  → Void
+// (deduce 'clear! relation)        → Void
+// (deduce 'drop! relation)         → Void
 // ============================================================
 
 fn Value* prim_deduce(Value*[] args, Env* env, Interp* interp) {

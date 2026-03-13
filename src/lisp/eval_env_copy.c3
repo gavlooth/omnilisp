@@ -55,6 +55,8 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = 
     switch (v.tag) {
         case NIL:
             return make_nil(interp);
+        case VOID:
+            return make_void(interp);
         case INT:
             return make_int(interp, v.int_val);
         case DOUBLE:

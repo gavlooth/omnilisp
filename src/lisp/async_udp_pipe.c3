@@ -68,7 +68,7 @@ fn Value* prim_udp_bind(Value*[] args, Env* env, Interp* interp) {
     if (c_bind(uh.fd, &addr, SockaddrIn.sizeof) < 0) {
         return io_raise(interp, "io/udp-bind-failed", "udp-bind: bind failed");
     }
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 // (udp-send handle host port data) — send one datagram
@@ -195,7 +195,7 @@ fn Value* prim_udp_close(Value*[] args, Env* env, Interp* interp) {
         uh.open = false;
         uh.fd = -1;
     }
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 // ============================================================
@@ -315,4 +315,3 @@ fn Value* prim_pipe_listen(Value*[] args, Env* env, Interp* interp) {
     }
     return make_pipe_listener_handle(interp, fd, listener_handle);
 }
-

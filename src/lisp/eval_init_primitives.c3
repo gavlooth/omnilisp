@@ -38,7 +38,7 @@ fn void register_language_constants(Interp* interp) {
 }
 
 fn void register_dispatched_primitives(Interp* interp) {
-    const DISPATCHED_PRIM_COUNT = 43;
+    const DISPATCHED_PRIM_COUNT = 45;
     PrimReg[DISPATCHED_PRIM_COUNT] dispatched_prims = {
         // Arithmetic
         { "+", &prim_add, 2 }, { "-", &prim_sub, 2 }, { "*", &prim_mul, 2 },
@@ -48,6 +48,7 @@ fn void register_dispatched_primitives(Interp* interp) {
         { "<=", &prim_le, 2 }, { ">=", &prim_ge, 2 },
         // Collections
         { "length", &prim_length, 1 }, { "ref", &prim_ref, 2 },
+        { "set!", &prim_set_bang, 3 },
         { "push!", &prim_push, 2 }, { "keys", &prim_keys, 1 },
         { "values", &prim_values, 1 }, { "has?", &prim_has, 2 },
         { "remove!", &prim_remove, 2 },
@@ -70,7 +71,7 @@ fn void register_dispatched_primitives(Interp* interp) {
         { "Double", &prim_ctor_double, 1 },
         { "String", &prim_ctor_string, 1 }, { "Symbol", &prim_ctor_symbol, 1 },
         { "Boolean", &prim_ctor_bool, 1 }, { "Bool", &prim_ctor_bool, 1 },
-        { "Nil", &prim_ctor_nil, 1 },
+        { "Nil", &prim_ctor_nil, 1 }, { "Void", &prim_ctor_void, -1 },
         { "Closure", &prim_ctor_closure, 1 }, { "Iterator", &prim_ctor_iterator, 1 },
     };
     $assert(dispatched_prims.len == DISPATCHED_PRIM_COUNT);
@@ -82,8 +83,8 @@ fn void register_regular_primitives_core(Interp* interp) {
         // List operations
         { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
         { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 },
-        { "List", &prim_list, -1 },
-        { "list", &prim_list, -1 },
+        { "List", &prim_list, -1 }, // Canonical constructor/conversion surface.
+        { "list", &prim_list, -1 }, // Public Lisp-style helper + compatibility alias.
         // Boolean
         { "not", &prim_not, 1 },
         // I/O (raw primitives for effect fast path)
@@ -108,6 +109,10 @@ fn void register_regular_primitives_core(Interp* interp) {
         { "fs-write", &prim_fs_write, 2 }, { "fs-close", &prim_fs_close, 1 },
         { "fs-stat", &prim_fs_stat, 1 }, { "fs-readdir", &prim_fs_readdir, 1 },
         { "fs-rename", &prim_fs_rename, 2 }, { "fs-unlink", &prim_fs_unlink, 1 },
+        { "filesystem-open", &prim_fs_open, -1 }, { "filesystem-read", &prim_fs_read, 2 },
+        { "filesystem-write", &prim_fs_write, 2 }, { "filesystem-close", &prim_fs_close, 1 },
+        { "filesystem-stat", &prim_fs_stat, 1 }, { "filesystem-read-directory", &prim_fs_readdir, 1 },
+        { "filesystem-rename", &prim_fs_rename, 2 }, { "filesystem-unlink", &prim_fs_unlink, 1 },
         { "load", &prim_load, 1 },
         // Conversion
         { "string->number", &prim_string_to_number, 1 }, { "number->string", &prim_number_to_string, 1 },
@@ -115,8 +120,10 @@ fn void register_regular_primitives_core(Interp* interp) {
         // Gensym
         { "gensym", &prim_gensym, 0 },
         // Dictionary
-        { "Dictionary", &prim_dict, -1 }, { "dictionary", &prim_dict, -1 },
-        { "Dict", &prim_dict, -1 }, { "dict", &prim_dict, -1 },
+        { "Dictionary", &prim_dict, -1 }, // Canonical constructor.
+        { "Dict", &prim_dict, -1 },       // Canonical shorthand alias (kept public).
+        { "dictionary", &prim_dict, -1 }, // Compatibility alias.
+        { "dict", &prim_dict, -1 },       // Compatibility alias.
         { "dict-set!", &prim_dict_set, 3 },
         // Math library
         { "sin", &prim_sin, 1 }, { "cos", &prim_cos, 1 }, { "tan", &prim_tan, 1 },
@@ -144,8 +151,8 @@ fn void register_regular_primitives_collections(Interp* interp) {
         { "apply", &prim_apply, 2 }, { "bound?", &prim_bound, 1 },
         { "error", &prim_error, 1 }, { "error-message", &prim_error_message, 1 },
         // Arrays
-        { "Array", &prim_array, -1 },
-        { "array", &prim_array, -1 },
+        { "Array", &prim_array, -1 }, // Canonical constructor/conversion surface.
+        { "array", &prim_array, -1 }, // Compatibility alias (literals may desugar through this path).
         { "array-set!", &prim_array_set, 3 },
         // Sets
         { "Set", &prim_set, -1 },
@@ -163,7 +170,7 @@ fn void register_regular_primitives_collections(Interp* interp) {
         // Memory reclamation
         { "unsafe-free!", &prim_free_bang, 1 },
         // Iterators
-        { "iterator?", &prim_iterator_p, 1 }, { "make-iterator", &prim_make_iterator, 1 },
+        { "iterator?", &prim_iterator_p, 1 }, { "make-iterator", &prim_make_iterator, 1 }, // Low-level compatibility helper; prefer Iterator.
         { "next", &prim_next, 1 }, { "collect", &prim_collect, 1 },
         { "to-array", &prim_to_array, 1 },
         // Coroutines
@@ -203,8 +210,8 @@ fn void register_regular_primitives_collections(Interp* interp) {
         { "json-emit-pretty", &prim_json_emit_pretty, -1 },
         { "json-get", &prim_json_get, 2 },
         { "time-point?", &prim_time_point_p, 1 },
-        { "TimePoint", &prim_time_point, -1 },
-        { "time-point", &prim_time_point, -1 },
+        { "TimePoint", &prim_time_point, -1 }, // Canonical constructor.
+        { "time-point", &prim_time_point, -1 }, // Compatibility alias.
         // TOML / CSV
         { "toml-parse", &prim_toml_parse, 1 },
         { "csv-parse", &prim_csv_parse, -1 },

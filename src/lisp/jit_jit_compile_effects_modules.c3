@@ -203,7 +203,7 @@ fn EvalResult jit_reexport_selected_symbols(Expr* expr, Module* source_mod, Modu
         Value* val = source_mod.env.lookup(sym);
         jit_bind_and_reexport(env, interp, current_mod, sym, val);
     }
-    return eval_ok(make_nil(interp));
+    return eval_ok(make_void(interp));
 }
 
 fn EvalResult jit_eval_export_from_impl(Expr* expr, Env* env, Interp* interp) {
@@ -220,7 +220,7 @@ fn EvalResult jit_eval_export_from_impl(Expr* expr, Env* env, Interp* interp) {
 
     if (expr.export_from.all) {
         jit_reexport_all_symbols(source_mod, current_mod, env, interp);
-        return eval_ok(make_nil(interp));
+        return eval_ok(make_void(interp));
     }
     return jit_reexport_selected_symbols(expr, source_mod, current_mod, env, interp);
 }

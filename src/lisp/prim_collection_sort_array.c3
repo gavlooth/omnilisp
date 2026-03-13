@@ -134,7 +134,7 @@ fn Value* prim_array_set(Value*[] args, Env* env, Interp* interp) {
     if (idx < 0) idx += alen;
     if (idx < 0 || idx >= alen) return raise_error(interp, "array-set!: index out of range");
     args[0].array_val.items[(usz)idx] = boundary_promote_to_root(args[2], interp);
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 fn Value* prim_array_length(Value*[] args, Env* env, Interp* interp) {
@@ -185,5 +185,5 @@ fn Value* prim_array_push(Value*[] args, Env* env, Interp* interp) {
         vec.capacity = new_cap;
     }
     vec.items[vec.length++] = boundary_promote_to_root(args[1], interp);
-    return make_nil(interp);
+    return make_void(interp);
 }

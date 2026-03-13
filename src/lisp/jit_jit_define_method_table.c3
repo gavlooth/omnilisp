@@ -38,8 +38,7 @@ fn bool jit_method_sigs_equal(MethodSignature* a, MethodSignature* b) @inline {
     return true;
 }
 
-fn void jit_method_table_append_entry(MethodTable* mt, Value* impl) {
-    MethodSignature* new_sig = impl.closure_val.type_sig;
+fn void jit_method_table_append_entry_with_sig(MethodTable* mt, MethodSignature* new_sig, Value* impl) {
     // Replace existing entry with same signature (idempotent re-define).
     for (usz i = 0; i < mt.entry_count; i++) {
         if (jit_method_sigs_equal(&mt.entries[i].sig, new_sig)) {
@@ -60,14 +59,19 @@ fn void jit_method_table_append_entry(MethodTable* mt, Value* impl) {
     mt.entry_count++;
 }
 
-fn MethodTable* jit_new_method_table(SymbolId name, Value* impl, Value* fallback) {
+fn void jit_method_table_append_entry(MethodTable* mt, Value* impl) {
+    MethodSignature* new_sig = impl.closure_val.type_sig;
+    jit_method_table_append_entry_with_sig(mt, new_sig, impl);
+}
+
+fn MethodTable* jit_new_method_table_with_sig(SymbolId name, MethodSignature* sig, Value* impl, Value* fallback) {
     MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
     mt.name = name;
     mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * METHOD_INITIAL_CAPACITY);
     mt.capacity = METHOD_INITIAL_CAPACITY;
     mt.entry_count = 1;
     mt.fallback = fallback;
-    if (!method_signature_copy_to_heap(&mt.entries[0].sig, impl.closure_val.type_sig)) {
+    if (!method_signature_copy_to_heap(&mt.entries[0].sig, sig)) {
         mem::free(mt.entries);
         mem::free(mt);
         return null;
@@ -76,21 +80,29 @@ fn MethodTable* jit_new_method_table(SymbolId name, Value* impl, Value* fallback
     return mt;
 }
 
-fn Value* jit_eval_define_typed_closure(Interp* interp, SymbolId name, Value* stored_val) {
+fn MethodTable* jit_new_method_table(SymbolId name, Value* impl, Value* fallback) {
+    return jit_new_method_table_with_sig(name, impl.closure_val.type_sig, impl, fallback);
+}
+
+fn Value* jit_eval_define_typed_callable(Interp* interp, SymbolId name, Value* stored_val, MethodSignature* sig) {
     Value* existing = interp.global_env.lookup(name);
     if (existing != null && existing.tag == METHOD_TABLE) {
-        jit_method_table_append_entry(existing.method_table_val, stored_val);
+        jit_method_table_append_entry_with_sig(existing.method_table_val, sig, stored_val);
         return existing;
     }
     Value* fallback = null;
     if (existing != null && (existing.tag == CLOSURE || existing.tag == PRIMITIVE)) {
         fallback = existing;
     }
-    MethodTable* mt = jit_new_method_table(name, stored_val, fallback);
+    MethodTable* mt = jit_new_method_table_with_sig(name, sig, stored_val, fallback);
     if (mt == null) return raise_error(interp, "jit: failed to allocate method table");
     Value* mt_val = jit_make_method_table_value(interp, mt);
     env_define_with_barrier(interp.global_env, name, mt_val, interp);
     return mt_val;
+}
+
+fn Value* jit_eval_define_typed_closure(Interp* interp, SymbolId name, Value* stored_val) {
+    return jit_eval_define_typed_callable(interp, name, stored_val, stored_val.closure_val.type_sig);
 }
 
 <* @require interp != null : "jit_eval_define: null interp"

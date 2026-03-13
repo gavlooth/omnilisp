@@ -35,8 +35,22 @@ fn bool is_cons(Value* v) @inline {
     return v != null && v.tag == CONS;
 }
 
+fn bool primitive_name_equals(Value* v, char[] expected) @inline {
+    if (v == null || v.tag != PRIMITIVE) return false;
+    for (usz i = 0; i < expected.len; i++) {
+        char actual = v.prim_val.name[i];
+        if (actual == 0 || actual != expected[i]) return false;
+    }
+    return v.prim_val.name[expected.len] == 0;
+}
+
+fn bool is_aot_closure_wrapper(Value* v) @inline {
+    return primitive_name_equals(v, "aot-closure")
+        || primitive_name_equals(v, "aot-closure-var");
+}
+
 fn bool is_closure(Value* v) @inline {
-    return v != null && v.tag == CLOSURE;
+    return v != null && (v.tag == CLOSURE || is_aot_closure_wrapper(v));
 }
 
 fn bool is_continuation(Value* v) @inline {
@@ -73,6 +87,7 @@ fn FfiTypeTag type_ann_to_ffi_tag(SymbolId base_type, Interp* interp) {
     if (base_type == interp.sym_Integer || base_type == interp.sym_Int) return FFI_TYPE_INT;
     if (base_type == interp.sym_Double) return FFI_TYPE_DOUBLE;
     if (base_type == interp.sym_String) return FFI_TYPE_PTR;
+    if (base_type == interp.sym_Pointer) return FFI_TYPE_PTR;
     if (base_type == interp.sym_Ptr) return FFI_TYPE_PTR;
     if (base_type == interp.sym_Boolean || base_type == interp.sym_Bool) return FFI_TYPE_BOOL;
     if (base_type == interp.sym_Void) return FFI_TYPE_VOID;

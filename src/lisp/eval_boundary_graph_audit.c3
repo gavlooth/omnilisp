@@ -327,6 +327,7 @@ fn BoundaryGraphAuditResult boundary_graph_audit_escape_reachability_result(
                 case TYPE_INFO:
                 case COROUTINE:
                 case TIME_POINT:
+                case VOID:
                     assert(edge_class == BOUNDARY_GRAPH_EDGE_NONE, "boundary graph audit: leaf edge class mismatch");
                     break;
             }

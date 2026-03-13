@@ -76,7 +76,7 @@ fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
         if (rc != MDB_SUCCESS) {
             return deduce_raise(interp, "deduce/fact-put-failed", "fact!: put failed");
         }
-        return make_nil(interp);
+        return make_void(interp);
     }
 
     MdbTxn* write_txn = null;
@@ -95,11 +95,11 @@ fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
     if (rc != MDB_SUCCESS) {
         return deduce_raise(interp, "deduce/txn-failed", "fact!: txn commit failed");
     }
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 // ============================================================
-// (retract! relation val1 val2 ...) → nil
+// (retract! relation val1 val2 ...) → Void
 // ============================================================
 
 fn Value* prim_retract_fact(Value*[] args, Env* env, Interp* interp) {
@@ -165,7 +165,7 @@ fn Value* prim_retract_fact(Value*[] args, Env* env, Interp* interp) {
         if (rc != MDB_SUCCESS && rc != MDB_NOTFOUND) {
             return deduce_raise(interp, "deduce/retract-del-failed", "retract!: delete failed");
         }
-        return make_nil(interp);
+        return make_void(interp);
     }
 
     MdbTxn* write_txn = null;
@@ -183,7 +183,7 @@ fn Value* prim_retract_fact(Value*[] args, Env* env, Interp* interp) {
     if (rc != MDB_SUCCESS) {
         return deduce_raise(interp, "deduce/txn-failed", "retract!: txn commit failed");
     }
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 fn Value* prim_deduce_clear(Value*[] args, Env* env, Interp* interp) {
@@ -223,7 +223,7 @@ fn Value* prim_deduce_clear(Value*[] args, Env* env, Interp* interp) {
     if (rc != MDB_SUCCESS) {
         return deduce_raise(interp, "deduce/txn-failed", "deduce-clear: txn commit failed");
     }
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 fn Value* prim_deduce_drop(Value*[] args, Env* env, Interp* interp) {
@@ -245,7 +245,7 @@ fn Value* prim_deduce_drop(Value*[] args, Env* env, Interp* interp) {
     if (rel.db == null || !rel.db.open) {
         return deduce_raise(interp, "deduce/drop-database-not-open", "deduce-drop: database not open");
     }
-    if (rel.dropped) return make_nil(interp);
+    if (rel.dropped) return make_void(interp);
 
     MdbTxn* txn = null;
     int rc = mdb_txn_begin(rel.db.env, null, 0, &txn);
@@ -265,7 +265,7 @@ fn Value* prim_deduce_drop(Value*[] args, Env* env, Interp* interp) {
     }
 
     rel.dropped = true;
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 // ============================================================

@@ -90,11 +90,11 @@ fn Value* prim_exit(Value*[] args, Env* env, Interp* interp) {
     int code = 0;
     if (args.len >= 1 && args[0].tag == INT) code = (int)args[0].int_val;
     c_exit(code);
-    return make_nil(interp);  // unreachable
+    return make_void(interp);  // unreachable
 }
 
 /**
- * (sleep secs) -> nil
+ * (sleep secs) -> Void
  * secs can be int or double (fractional seconds supported)
  */
 fn Value* prim_sleep(Value*[] args, Env* env, Interp* interp) {
@@ -105,5 +105,5 @@ fn Value* prim_sleep(Value*[] args, Env* env, Interp* interp) {
     else { return raise_error(interp, "sleep: expected number"); }
     uint usec = (uint)(secs * 1000000.0);
     c_usleep(usec);
-    return make_nil(interp);
+    return make_void(interp);
 }

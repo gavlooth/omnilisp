@@ -391,6 +391,8 @@ fn void run_compiler_group_iterative_stdlib_tests(Interp* interp, usz* pass_out,
         else    { fail++; io::printn("[FAIL] Compiler: STDLIB filter uses loop pattern"); }
     }
 
+    run_compiler_group_bindgen_canonical_type_tests(interp, &pass, &fail);
+
     *pass_out += pass;
     *fail_out += fail;
 }
@@ -398,4 +400,109 @@ fn void run_compiler_group_iterative_stdlib_tests(Interp* interp, usz* pass_out,
 fn void run_compiler_group_mutable_integration_iterative_tests(Interp* interp, usz* pass_out, usz* fail_out) {
     run_compiler_group_mutable_integration_tests(interp, pass_out, fail_out);
     run_compiler_group_iterative_stdlib_tests(interp, pass_out, fail_out);
+}
+
+fn bool compiler_write_text_file(char[] path, char[] text) {
+    if (try file = io::file::open((String)path, "w")) {
+        defer (void)file.close();
+        file.write(text)!!;
+        return true;
+    }
+    return false;
+}
+
+fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pass_out, usz* fail_out) {
+    (void)_interp;
+    usz pass = 0;
+    usz fail = 0;
+
+    LibclangHandle clang;
+    if (!libclang_init(&clang)) {
+        pass++;
+        compiler_print_pass("Compiler: bindgen canonical types skipped (libclang unavailable)");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
+    defer libclang_destroy(&clang);
+
+    char[] header_path = "/tmp/omni_bindgen_canonical_types.h";
+    char[] output_path = "/tmp/omni_bindgen_canonical_types.omni";
+    char[] header_source =
+        "int omni_bindgen_int(int x);\n"
+        "void omni_bindgen_void_ptr(void* p);\n"
+        "void* omni_bindgen_ret_ptr(void);\n"
+        "void omni_bindgen_void_ret(void);\n";
+
+    if (!compiler_write_text_file(header_path, header_source)) {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen canonical types write header");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
+    defer (void)io::file::delete((String)header_path);
+    defer (void)io::file::delete((String)output_path);
+
+    const usz MAX_FUNCS = 32;
+    ParsedFunc* funcs = (ParsedFunc*)mem::malloc(ParsedFunc.sizeof * MAX_FUNCS);
+    if (funcs == null) {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen canonical types alloc funcs");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
+    defer mem::free(funcs);
+    for (usz i = 0; i < MAX_FUNCS; i++) {
+        funcs[i].params = null;
+        funcs[i].param_count = 0;
+        funcs[i].param_capacity = 0;
+        funcs[i].is_variadic = false;
+    }
+    defer {
+        for (usz i = 0; i < MAX_FUNCS; i++) {
+            if (funcs[i].params != null) mem::free(funcs[i].params);
+        }
+    }
+
+    usz func_count = parse_header(&clang, header_path, funcs, MAX_FUNCS, null, 0, false);
+    bool parsed = func_count >= 4;
+    if (!parsed) {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen canonical types parse header");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
+
+    bool generated_ok = generate_ffi_module("bindgen-canonical", "bindgen", funcs, func_count, output_path);
+    if (!generated_ok) {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen canonical types generate module");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
+
+    if (try generated = io::file::load_temp((String)output_path)) {
+        bool has_integer = str_contains(generated, "(^Integer arg0)");
+        bool has_pointer = str_contains(generated, "(^Pointer arg0)");
+        bool has_void = str_contains(generated, ") ^Void)");
+        bool has_ret_pointer = str_contains(generated, ") ^Pointer)");
+        bool ok = has_integer && has_pointer && has_void && has_ret_pointer;
+        if (ok) {
+            pass++;
+            compiler_print_pass("Compiler: bindgen canonical Integer/Pointer/Void annotations");
+        } else {
+            fail++;
+            io::printn("[FAIL] Compiler: bindgen canonical Integer/Pointer/Void annotations");
+        }
+    } else {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen canonical types load generated module");
+    }
+
+    *pass_out += pass;
+    *fail_out += fail;
 }

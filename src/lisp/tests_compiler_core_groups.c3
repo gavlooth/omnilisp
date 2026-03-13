@@ -139,35 +139,80 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
 }
 
 fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass, usz* fail) {
-    // Type forms: currently delegated explicitly via serialized eval bridge.
+    // Type forms should lower to direct AOT helpers and still sync generated globals.
     {
         char[] code = compile_to_c3("(define [type] Box (^Int value)) (define b (Box 1))", interp);
-        bool ok = str_contains(code, "aot::eval_serialized_expr")
+        bool ok = str_contains(code, "aot::define_type(")
             && str_contains(code, "Box = aot::lookup_var(\"Box\")")
+            && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: [type] bridge syncs constructor global"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: [type] bridge syncs constructor global"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: [type] lowers directly and syncs constructor global"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: [type] lowers directly and syncs constructor global"); }
     }
 
-    // Union forms must sync generated variant constructors into AOT globals.
+    // Union forms must lower directly and sync generated variant constructors into AOT globals.
     {
         char[] code = compile_to_c3("(define [union] Maybe None (Some Int)) (Some 1)", interp);
-        bool ok = str_contains(code, "aot::eval_serialized_expr")
+        bool ok = str_contains(code, "aot::define_union(")
             && str_contains(code, "None = aot::lookup_var(\"None\")")
             && str_contains(code, "Some = aot::lookup_var(\"Some\")")
+            && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: [union] bridge syncs variant globals"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: [union] bridge syncs variant globals"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: [union] lowers directly and syncs variant globals"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: [union] lowers directly and syncs variant globals"); }
     }
 
-    // Typed define should use explicit eval bridge (method-table semantics stay in runtime path).
+    // Abstract forms should lower directly through the dedicated helper.
+    {
+        char[] code = compile_to_c3("(define [abstract] Entity)", interp);
+        bool ok = str_contains(code, "aot::define_abstract(")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: [abstract] lowers directly"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: [abstract] lowers directly"); }
+    }
+
+    // Alias forms should lower directly through the dedicated helper.
+    {
+        char[] code = compile_to_c3("(define [alias] UserAlias User)", interp);
+        bool ok = str_contains(code, "aot::define_alias(")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: [alias] lowers directly"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: [alias] lowers directly"); }
+    }
+
+    // Effect forms should lower directly through the dedicated helper.
+    {
+        char[] code = compile_to_c3("(define [effect] (test/ping (^String msg)))", interp);
+        bool ok = str_contains(code, "aot::define_effect(")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: [effect] lowers directly"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: [effect] lowers directly"); }
+    }
+
+    // Typed define should install dispatch entries directly through the typed-method helper.
     {
         char[] code = compile_to_c3("(define (describe (^Int x)) \"int\")", interp);
-        bool ok = str_contains(code, "aot::eval_serialized_expr")
-            && str_contains(code, "aot::lookup_var(\"describe\")")
+        bool ok = str_contains(code, "aot::define_typed_method(")
+            && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: typed define uses explicit eval bridge"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: typed define uses explicit eval bridge"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: typed define lowers through typed-method helper"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: typed define lowers through typed-method helper"); }
+    }
+
+    // Typed define should compile captures normally rather than injecting globals into eval.
+    {
+        char[] code = compile_to_c3(
+            "(define y 10) (define (describe (^Int x)) (+ x y))",
+            interp
+        );
+        bool ok = str_contains(code, "aot::define_typed_method(")
+            && !str_contains(code, "aot::define_var(\"y\", y);")
+            && !str_contains(code, "aot::eval_serialized_expr");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: typed define no longer uses eval injection"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: typed define no longer uses eval injection"); }
     }
 
     // Repeated typed define names should not emit duplicate global declarations.
@@ -182,25 +227,160 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
         else    { (*fail)++; io::printn("[FAIL] Compiler: typed define globals are deduplicated"); }
     }
 
-    // Explain primitives should be mapped through primitive lookup/caching.
+    // Repeated typed methods should all stay on direct helper lowering (no eval fallback path).
     {
-        char[] code = compile_to_c3("(ref (ref (explain 'dispatch (+ 1 2)) 'decision) 'reason)", interp);
-        bool ok = str_contains(code, "aot::lookup_prim(\"explain\")")
-            || str_contains(code, "_prim_explain")
-            || (str_contains(code, "aot::eval_serialized_expr")
-                && str_contains(code, "(explain 'dispatch (+ 1 2))"));
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain is mapped as a primitive"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: explain is mapped as a primitive"); }
+        char[] code = compile_to_c3(
+            "(define (route (^Int x)) (+ x 1)) "
+            "(define (route (^String x)) x) "
+            "(define (route (^Double x)) (+ x 1.0))",
+            interp
+        );
+        usz typed_calls = compiler_str_count(code, "aot::define_typed_method(");
+        bool ok = typed_calls == 3
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: typed define multi-method extension stays direct"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: typed define multi-method extension stays direct"); }
     }
 
-    // Parsed explain forms should delegate through serialized eval to preserve thunk semantics.
+    // Typed + untyped mix should preserve direct typed registration and plain fallback define.
     {
-        char[] code = compile_to_c3("(ref (explain 'dispatch (+ 1 2)) 'status)", interp);
-        bool ok = str_contains(code, "aot::eval_serialized_expr")
-            && str_contains(code, "(explain 'dispatch (+ 1 2))")
+        char[] code = compile_to_c3(
+            "(define delta 7) "
+            "(define (mix (^Int x)) (+ x delta)) "
+            "(define (mix (^String x)) x) "
+            "(define (mix x) x)",
+            interp
+        );
+        usz typed_calls = compiler_str_count(code, "aot::define_typed_method(");
+        bool ok = typed_calls == 2
+            && str_contains(code, "mix = ")
+            && !str_contains(code, "aot::define_var(\"delta\", delta);")
+            && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain forms use eval bridge"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: explain forms use eval bridge"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: typed define fallback mix avoids eval injection"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: typed define fallback mix avoids eval injection"); }
+    }
+
+    // Explain dispatch should lower directly instead of delegating through eval.
+    {
+        char[] code = compile_to_c3("(ref (ref (explain 'dispatch (+ 1 2)) 'decision) 'reason)", interp);
+        bool ok = str_contains(code, "aot::explain_dispatch(")
+            && !str_contains(code, "aot::eval_serialized_expr");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain dispatch lowers directly"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: explain dispatch lowers directly"); }
+    }
+
+    // Explain dispatch direct path: explicit multi-arg call target should stay on helper lowering.
+    {
+        char[] code = compile_to_c3(
+            "(ref (ref (explain 'dispatch (route3 1 2 3)) 'decision) 'reason)",
+            interp
+        );
+        bool ok = str_contains(code, "aot::explain_dispatch(")
+            && !str_contains(code, "aot::eval_serialized_expr");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain dispatch multi-arg call lowers directly"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: explain dispatch multi-arg call lowers directly"); }
+    }
+
+    // Explain dispatch direct path: explicit zero-arg call target should stay on helper lowering.
+    {
+        char[] code = compile_to_c3(
+            "(ref (ref (explain 'dispatch (route0)) 'decision) 'reason)",
+            interp
+        );
+        bool ok = str_contains(code, "aot::explain_dispatch(")
+            && !str_contains(code, "aot::eval_serialized_expr");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain dispatch zero-arg call lowers directly"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: explain dispatch zero-arg call lowers directly"); }
+    }
+
+    // Explain effect should also lower directly for signal forms.
+    {
+        char[] code = compile_to_c3("(ref (explain 'effect (signal io/print \"x\")) 'status)", interp);
+        bool ok = str_contains(code, "aot::explain_effect_signal(")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain effect lowers directly"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: explain effect lowers directly"); }
+    }
+
+    // Explain effect should lower directly for perform call-surface spelling.
+    {
+        char[] code = compile_to_c3("(ref (explain 'effect (perform io/print \"x\")) 'status)", interp);
+        bool ok = str_contains(code, "aot::explain_effect_signal(")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain effect perform call-surface lowers directly"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: explain effect perform call-surface lowers directly"); }
+    }
+
+    // Explain effect should lower directly for resolve forms.
+    {
+        char[] code = compile_to_c3("(ref (explain 'effect (resolve 42)) 'status)", interp);
+        bool ok = str_contains(code, "aot::explain_effect_resolve(")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: explain effect resolve lowers directly"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: explain effect resolve lowers directly"); }
+    }
+
+    // Compiler output should not emit serialized-eval bridge calls in normal lowering paths.
+    {
+        char[] code = compile_to_c3(
+            "(define [type] Box (^Int value)) "
+            "(define (render (^Int x)) (+ x 1)) "
+            "(define (render x) x) "
+            "(ref (ref (explain 'dispatch (render 1)) 'decision) 'reason)",
+            interp
+        );
+        bool ok = !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: serialized-eval bridge is quarantined from normal lowering"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: serialized-eval bridge is quarantined from normal lowering"); }
+    }
+
+    // Compiled module forms are static: body lowers inline and form returns Void.
+    {
+        char[] code = compile_to_c3(
+            "(module cmod (export add) (define (add x y) (+ x y)))",
+            interp
+        );
+        bool ok = str_contains(code, "add = ")
+            && str_contains(code, "aot::make_void()")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: module lowers as static inline form"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: module lowers as static inline form"); }
+    }
+
+    // Compiled import form is intentionally static no-op and returns Void.
+    {
+        char[] code = compile_to_c3(
+            "(module imod (export v) (define v 1)) (import imod)",
+            interp
+        );
+        bool ok = str_contains(code, "import: inline module")
+            && str_contains(code, "aot::make_void()")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: import lowers as static no-op"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: import lowers as static no-op"); }
+    }
+
+    // Compiled export-from form is intentionally static no-op and returns Void.
+    {
+        char[] code = compile_to_c3(
+            "(module exp-src (export z) (define z 9)) "
+            "(module exp-dst (export z) (export-from exp-src (z)))",
+            interp
+        );
+        bool ok = str_contains(code, "export-from: no-op in compiled mode")
+            && str_contains(code, "aot::make_void()")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: export-from lowers as static no-op"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: export-from lowers as static no-op"); }
     }
 }
 
@@ -218,21 +398,30 @@ fn void run_compiler_group_set_mutation_tests(Interp* interp, usz* pass, usz* fa
     // --- set! tests ---
     {
         char[] code = compile_to_c3("(define x 10) (set! x 20)", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "x = ");
+        bool ok = !str_contains(code, "unsupported")
+            && str_contains(code, "x = ")
+            && str_contains(code, "aot::make_void()");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: (set! x 20)"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: (set! x 20)"); }
     }
     {
-        char[] code = compile_to_c3("(define x 10) (+ (set! x 20) x)", interp);
-        bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: set! in expression"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: set! in expression"); }
+        char[] code = compile_to_c3("(define x 10) (block (set! x 20) x)", interp);
+        bool ok = !str_contains(code, "unsupported")
+            && str_contains(code, "aot::make_void()");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: set! command form"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: set! command form"); }
     }
     {
         char[] code = compile_to_c3("(define counter 0) (define inc! (lambda (n) (set! counter (+ counter n))))", interp);
         bool ok = !str_contains(code, "unsupported");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: set! inside lambda"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: set! inside lambda"); }
+    }
+    {
+        char[] code = compile_to_c3("(define arr (Array 1 2 3)) (set! arr 1 9)", interp);
+        bool ok = !str_contains(code, "unsupported");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: set! generic collection form"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: set! generic collection form"); }
     }
 }
 

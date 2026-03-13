@@ -202,6 +202,8 @@ fn Value* promote_escape_scalar(Value* v, Interp* interp, PromotionContext* ctx)
     switch (v.tag) {
         case NIL:
             result.tag = NIL;
+        case VOID:
+            result.tag = VOID;
         case INT:
             result.tag = INT;
             result.int_val = v.int_val;
@@ -267,6 +269,7 @@ enum PromoteEscapeRoute : char {
 fn PromoteEscapeRoute promote_escape_route_for_tag(ValueTag tag) {
     switch (tag) {
         case NIL:
+        case VOID:
         case INT:
         case DOUBLE:
         case SYMBOL:

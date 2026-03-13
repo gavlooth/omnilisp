@@ -15,9 +15,9 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
     test_str_val(interp, "dns-resolve localhost (fiber)",
         "(await (spawn (lambda () (dns-resolve \"localhost\"))))", "127.0.0.1", pass, fail);
 
-    // async-sleep returns nil (fiber-only path)
-    test_tag(interp, "async-sleep returns nil (fiber)",
-        "(await (spawn (lambda () (async-sleep 1))))", NIL, pass, fail);
+    // async-sleep returns void (fiber-only path)
+    test_tag(interp, "async-sleep returns void (fiber)",
+        "(await (spawn (lambda () (async-sleep 1))))", VOID, pass, fail);
 
     // DNS resolve returns a string (fiber-only path)
     test_str(interp, "dns-resolve returns string (fiber)",
@@ -54,6 +54,13 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
     test_str_val(interp, "read-lines invalid args payload code",
         "(handle (read-lines 42) (raise msg (symbol->string (ref msg 'code))))",
         "runtime/effect-arg-mismatch", pass, fail);
+    test_tag(interp, "write-file returns Void on success",
+        "(block "
+        "  (define p (string-append \"/tmp/omni-write-file-void-\" (number->string (time-ms)) \".txt\")) "
+        "  (define result (await (spawn (lambda () (write-file p \"ok\"))))) "
+        "  (fs-unlink p) "
+        "  result)",
+        VOID, pass, fail);
 
     test_truthy(interp, "async file ops in fiber via offload path",
         "(block "

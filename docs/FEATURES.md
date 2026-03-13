@@ -116,10 +116,14 @@
 ### 1.10 `set!` — Variable Mutation
 ```lisp
 (set! name value)
+(set! collection key value)
 ```
 - Mutates an existing binding (local or global)
 - Searches local env chain first, then global
 - Error if variable is not defined
+- 3+ arg form dispatches generic collection updates (currently `Array`/`Dictionary`)
+- Returns `Void` on success
+- `array-set!` and `dict-set!` remain compatibility aliases
 
 ### 1.11 `quasiquote` — Template Expressions
 ```lisp
@@ -434,7 +438,7 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 | Primitive | Arity | Description |
 |-----------|-------|-------------|
 | `read-file` | 1 | Read entire file as string |
-| `write-file` | 2 | Write string to file |
+| `write-file` | 2 | Write string to file (returns `Void` on success) |
 | `file-exists?` | 1 | Test if file exists |
 | `read-lines` | 1 | Read file as list of lines |
 | `load` | 1 | Load and evaluate an Omni file |
@@ -455,16 +459,16 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 (define [ffi lib] libc "libc.so.6")
 
 ;; Bind a C function as a native Omni function
-(define [ffi λ libc] (strlen (^String s)) ^Int)
-(define [ffi λ libc] (abs (^Int n)) ^Int)
+(define [ffi λ libc] (strlen (^String s)) ^Integer)
+(define [ffi λ libc] (abs (^Integer n)) ^Integer)
 
-(strlen "hello")  ;; => 5
+(strlen "hello")   ;; => 5
 (abs -42)          ;; => 42
 ```
 
 - Uses libffi via C wrapper (`csrc/ffi_helpers.c`) for portable ABI support
-- Type annotations: `^Int` → sint64, `^Double` → double, `^String`/`^Ptr` → pointer, `^Void` → void, `^Bool` → sint64
-- `Nil` is the language-level empty/false value type; `Void` is reserved for FFI/no-result annotation positions
+- Type annotations: `^Integer`/`^Int` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred; `^Ptr` remains a compatibility shorthand) → pointer, `^Void` → void, `^Boolean`/`^Bool` → sint64
+- `Nil` is the language-level empty/false value type; `Void` is a real builtin singleton value/type and FFI `^Void` returns map to it
 - Lazy dlsym: symbol resolution deferred to first call and cached
 - Handles allocated in root scope (permanent, survive scope release)
 
@@ -491,7 +495,7 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 
 | Primitive | Arity | Description |
 |-----------|-------|-------------|
-| `unsafe-free!` | 1 | Free heap backing of array/dict/instance/string. Value becomes an error — accessing it after free raises "use after unsafe-free!". No-op on int/nil/other non-heap types. |
+| `unsafe-free!` | 1 | Free heap backing of array/dict/instance/string and return `Void`. Value becomes an error — accessing it after free raises "use after unsafe-free!". No-op on int/nil/other non-heap types also return `Void`. |
 
 ---
 
@@ -694,7 +698,7 @@ functions = ["sin", "cos", "sqrt"]    # optional filter
 )
 ```
 
-**C-to-Omni type mapping:** `int`/`long` → `'int`/`^Int`, `double`/`float` → `'double`/`^Double`, `char*` → `'string`/`^String`, `void*` → `'ptr`/`^Int`.
+**C-to-Omni type mapping:** `int`/`long` → `'int`/`^Integer` (with `^Int` shorthand), `double`/`float` → `'double`/`^Double`, `char*` → `'string`/`^String`, `void*` → `'ptr`/`^Pointer` (preferred; `^Ptr` remains a compatibility shorthand).
 
 **Requires:** libclang (optional runtime dependency, only loaded when `--bind` runs).
 

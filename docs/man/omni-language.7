@@ -85,8 +85,8 @@ Value-level and type-level dispatch may coexist. Ambiguous best matches are
 rejected.
 .PP
 Omni does not define a builtin Empty/bottom type. Use Nil for the
-language-level empty/false value; Void is reserved for FFI or no-result
-annotation positions.
+language-level empty/false value; Void is a real builtin singleton
+value/type and FFI ^Void returns map to it.
 .SH EFFECTS
 .EX
 (handle

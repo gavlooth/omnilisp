@@ -84,7 +84,7 @@ struct ParsedParam {
     char[64] name;
     char[64] c_type;      // Original C type string from clang
     char[16] ffi_type;    // Mapped: 'int, 'double, 'string, 'ptr, 'void
-    char[16] omni_type;   // Mapped: Int, Double, String, Int (for ptrs)
+    char[16] omni_type;   // Mapped: Integer, Double, String, Pointer (for ptrs)
 }
 
 struct ParsedFunc {
@@ -199,12 +199,12 @@ fn void map_c_type(LibclangHandle* h, CXType ty, char* ffi_out, char* omni_out, 
 
     if (kind == CXTYPE_VOID) {
         copy_str("'void", ffi_out, buf_size);
-        copy_str("", omni_out, buf_size);
+        copy_str("Void", omni_out, buf_size);
     } else if (kind == CXTYPE_INT || kind == CXTYPE_UINT ||
                kind == CXTYPE_LONG || kind == CXTYPE_ULONG ||
                kind == CXTYPE_ENUM) {
         copy_str("'int", ffi_out, buf_size);
-        copy_str("Int", omni_out, buf_size);
+        copy_str("Integer", omni_out, buf_size);
     } else if (kind == CXTYPE_FLOAT || kind == CXTYPE_DOUBLE) {
         copy_str("'double", ffi_out, buf_size);
         copy_str("Double", omni_out, buf_size);
@@ -224,12 +224,12 @@ fn void map_c_type(LibclangHandle* h, CXType ty, char* ffi_out, char* omni_out, 
             copy_str("String", omni_out, buf_size);
         } else {
             copy_str("'ptr", ffi_out, buf_size);
-            copy_str("Int", omni_out, buf_size);
+            copy_str("Pointer", omni_out, buf_size);
         }
     } else {
         // Unknown type — treat as int (best effort)
         copy_str("'int", ffi_out, buf_size);
-        copy_str("Int", omni_out, buf_size);
+        copy_str("Integer", omni_out, buf_size);
     }
 }
 

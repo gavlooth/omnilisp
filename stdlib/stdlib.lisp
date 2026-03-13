@@ -321,6 +321,8 @@
 (define write-file (lambda (path content) (signal io/write-file (cons path content))))
 (define file-exists? (lambda (path) (signal io/file-exists? path)))
 (define read-lines (lambda (path) (signal io/read-lines path)))
+;; Canonical descriptive filesystem names remain exported (`filesystem-*`).
+;; `fs-*` spellings are retained for compatibility.
 (define fs-open (lambda (path flags .. rest) (signal io/fs-open (cons path (cons flags rest)))))
 (define fs-read (lambda (handle n) (signal io/fs-read (cons handle n))))
 (define fs-write (lambda (handle data) (signal io/fs-write (cons handle data))))
@@ -329,6 +331,14 @@
 (define fs-readdir (lambda (path) (signal io/fs-readdir path)))
 (define fs-rename (lambda (src dst) (signal io/fs-rename (cons src dst))))
 (define fs-unlink (lambda (path) (signal io/fs-unlink path)))
+(define filesystem-open fs-open)
+(define filesystem-read fs-read)
+(define filesystem-write fs-write)
+(define filesystem-close fs-close)
+(define filesystem-stat fs-stat)
+(define filesystem-read-directory fs-readdir)
+(define filesystem-rename fs-rename)
+(define filesystem-unlink fs-unlink)
 (define (tcp-connect (^String host) (^Integer port)) (signal io/tcp-connect (cons host port)))
 ;; Keep untyped fallback so invalid args still flow through io/tcp-connect canonical payload errors.
 (define (tcp-connect host port) (signal io/tcp-connect (cons host port)))
@@ -375,6 +385,30 @@
 (define (tls-read handle) (signal io/tls-read handle))
 (define (tls-write handle data) (signal io/tls-write (cons handle data)))
 (define (tls-close handle) (signal io/tls-close handle))
+
+;; Canonical descriptive protocol aliases; short protocol spellings remain
+;; compatibility shorthands.
+(define transmission-control-connect tcp-connect)
+(define transmission-control-listen tcp-listen)
+(define transmission-control-accept tcp-accept)
+(define transmission-control-read tcp-read)
+(define transmission-control-write tcp-write)
+(define transmission-control-close tcp-close)
+
+(define user-datagram-socket udp-socket)
+(define user-datagram-bind udp-bind)
+(define user-datagram-send udp-send)
+(define user-datagram-receive udp-recv)
+(define user-datagram-close udp-close)
+
+(define domain-name-resolve dns-resolve)
+
+(define transport-layer-security-connect tls-connect)
+(define transport-layer-security-server-wrap tls-server-wrap)
+(define transport-layer-security-read tls-read)
+(define transport-layer-security-write tls-write)
+(define transport-layer-security-close tls-close)
+
 (define [effect] (io/http-get (^String url)))
 (define [effect] (io/http-request (^Any args)))
 (define (http-get (^String url)) (signal io/http-get url))

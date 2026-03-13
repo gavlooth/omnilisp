@@ -114,7 +114,11 @@ tail position.
 (set! point.x 99)             ;; struct field mutation
 (set! pair.car 10)             ;; cons cell car mutation
 (set! obj.nested.field 5)      ;; nested field mutation
+(set! arr 0 99)               ;; generic collection update
 ```
+
+Returns `Void` on successful mutation.
+`array-set!` / `dict-set!` remain compatibility aliases.
 
 ### `quote` / `quasiquote`
 

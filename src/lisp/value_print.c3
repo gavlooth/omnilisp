@@ -140,6 +140,8 @@ fn void print_value(Value* v, SymbolTable* syms) {
             io::printf("%s", (ZString)syms.get_name(v.sym_val));
         case CONS:
             print_cons_value(v, syms);
+        case VOID:
+            io::print("(Void)");
         case CLOSURE:
             print_closure_value(v, syms);
         case CONTINUATION:
@@ -312,6 +314,8 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             pb.append_str(syms.get_name(v.sym_val));
         case CONS:
             print_cons_value_buf(v, syms, pb);
+        case VOID:
+            pb.append_str("(Void)");
         case CLOSURE:
             print_closure_value_buf(v, syms, pb);
         case CONTINUATION:

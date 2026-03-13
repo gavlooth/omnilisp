@@ -131,6 +131,6 @@ fn Value* prim_thread_cancel(Value*[] args, Env* env, Interp* interp) {
             "thread-cancel: thread already joined or invalid"
         );
     }
-    if (already_done) return make_nil(interp);
-    return scheduler_true_value(interp);
+    if (already_done) return make_void(interp);
+    return make_void(interp);
 }

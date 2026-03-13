@@ -80,16 +80,17 @@ fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass,
     test_eq_interp(interp, "dispatch multi-arg int", "(add2 3 4)", 7, pass, fail);
     test_truthy_interp(interp, "dispatch multi-arg str", "(= (add2 \"hello\" \" world\") \"hello world\")", pass, fail);
 
-    // Numeric promotion in dispatch: Int can satisfy ^Double via widening.
+    // Numeric dispatch without implicit widening: exact match or subtype only.
     setup(interp, "(define (num-tag (^Double x)) 10)");
     setup(interp, "(define (num-tag (^Int x)) 20)");
     setup(interp, "(define (num-tag x) 30)");
     test_eq_interp(interp, "dispatch numeric promotion double exact", "(num-tag 3.5)", 10, pass, fail);
-    test_eq_interp(interp, "dispatch numeric promotion int exact beats widening", "(num-tag 3)", 20, pass, fail);
+    test_eq_interp(interp, "dispatch numeric exact Int method", "(num-tag 3)", 20, pass, fail);
 
     setup(interp, "(define (only-double (^Double x)) 11)");
     setup(interp, "(define (only-double x) 22)");
-    test_eq_interp(interp, "dispatch numeric promotion int to double", "(only-double 7)", 11, pass, fail);
+    test_eq_interp(interp, "dispatch numeric no implicit Int->Double widening", "(only-double 7)", 22, pass, fail);
+    test_eq_interp(interp, "dispatch numeric explicit constructor conversion", "(only-double (Double 7))", 11, pass, fail);
 
     // Last-arg dispatch past legacy 8-arg scoring cap
     setup(interp, "(define (dispatch9 a b c d e f g h (^Int i)) 111)");

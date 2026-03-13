@@ -407,5 +407,5 @@ fn Value* prim_tcp_close(Value*[] args, Env* env, Interp* interp) {
         th.fd = -1;
     }
 
-    return make_nil(interp);
+    return make_void(interp);
 }

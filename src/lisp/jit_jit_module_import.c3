@@ -46,7 +46,7 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
     Env* saved_global = interp.global_env;
     interp.global_env = mod_env;
 
-    EvalResult last_result = eval_ok(make_nil(interp));
+    EvalResult last_result = eval_ok(make_void(interp));
     for (usz i = 0; i < expr.module_expr.body_count; i++) {
         last_result = jit_eval_to_result(expr.module_expr.body[i], mod_env, interp);
         if (last_result.error.has_error) {
@@ -57,7 +57,7 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
 
     interp.global_env = saved_global;
     mod.loaded = true;
-    return eval_ok(make_nil(interp));
+    return eval_ok(make_void(interp));
 }
 
 fn usz path_dir_len(char[] path) {
@@ -198,14 +198,14 @@ fn EvalResult jit_eval_module_top_level(List{Expr*}* expr_list, usz start, usz e
         EvalResult r = jit_eval_to_result((*expr_list)[i], env, interp);
         if (r.error.has_error) return r;
     }
-    return eval_ok(make_nil(interp));
+    return eval_ok(make_void(interp));
 }
 
 fn EvalResult jit_eval_declared_module_file(List{Expr*}* expr_list, usz expr_count, char[] path, Interp* interp) {
     SymbolId declared_name = (*expr_list)[0].module_expr.name;
     Module* already = find_module(declared_name, interp);
     if (already != null && already.loaded) {
-        return eval_ok(make_nil(interp));
+        return eval_ok(make_void(interp));
     }
 
     EvalResult mod_result = jit_eval_to_result((*expr_list)[0], interp.global_env, interp);
@@ -240,7 +240,7 @@ fn EvalResult jit_eval_implicit_module_file(SymbolId name, char[] path, List{Exp
         }
     }
     mod.loaded = true;
-    return eval_ok(make_nil(interp));
+    return eval_ok(make_void(interp));
 }
 
 fn bool module_path_matches(Module* mod, char[] path) {
@@ -303,7 +303,7 @@ fn EvalResult load_import_target_module(Expr* expr, SymbolId name, Interp* inter
     if (mod != null) {
         if (!mod.loaded) return eval_error("circular import detected");
         *mod_out = mod;
-        return eval_ok(make_nil(interp));
+        return eval_ok(make_void(interp));
     }
 
     if (expr.import_expr.has_path) {
@@ -315,7 +315,7 @@ fn EvalResult load_import_target_module(Expr* expr, SymbolId name, Interp* inter
         EvalResult load_result = jit_load_module_from_file(path, name, interp);
         if (load_result.error.has_error) return load_result;
         *mod_out = resolve_loaded_module(name, path, mod_count_before, interp);
-        return eval_ok(make_nil(interp));
+        return eval_ok(make_void(interp));
     }
 
     char[256] rel_buf;
@@ -329,7 +329,7 @@ fn EvalResult load_import_target_module(Expr* expr, SymbolId name, Interp* inter
     EvalResult load_result = jit_load_module_from_file(path, name, interp);
     if (load_result.error.has_error) return load_result;
     *mod_out = find_module(name, interp);
-    return eval_ok(make_nil(interp));
+    return eval_ok(make_void(interp));
 }
 
 fn bool module_exports_symbol(Module* mod, SymbolId name) {
@@ -348,7 +348,7 @@ fn EvalResult bind_import_symbols(Expr* expr, Env* env, Module* mod, Interp* int
             Value* val = mod.env.lookup(mod.exports[i]);
             if (val != null) env_define_with_barrier(env, mod.exports[i], val, interp);
         }
-        return eval_ok(make_nil(interp));
+        return eval_ok(make_void(interp));
     }
 
     for (usz i = 0; i < expr.import_expr.import_count; i++) {
@@ -364,7 +364,7 @@ fn EvalResult bind_import_symbols(Expr* expr, Env* env, Module* mod, Interp* int
         SymbolId bind_name = (uint)alias_name != 0 ? alias_name : imp_name;
         env_define_with_barrier(env, bind_name, val, interp);
     }
-    return eval_ok(make_nil(interp));
+    return eval_ok(make_void(interp));
 }
 
 fn EvalResult jit_load_module_from_file(char[] path, SymbolId name, Interp* interp) {

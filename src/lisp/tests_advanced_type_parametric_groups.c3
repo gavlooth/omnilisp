@@ -6,7 +6,7 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
     // === TYPE SYSTEM TESTS (Phase 1) ===
 
     // type-of primitive
-    test_truthy(interp, "type-of int", "(= (type-of 42) 'Int)", pass, fail);
+    test_truthy(interp, "type-of int", "(= (type-of 42) 'Integer)", pass, fail);
     test_truthy(interp, "type-of double", "(= (type-of 3.14) 'Double)", pass, fail);
     test_truthy(interp, "type-of string", "(= (type-of \"hello\") 'String)", pass, fail);
     test_truthy(interp, "type-of symbol", "(= (type-of 'foo) 'Symbol)", pass, fail);
@@ -14,7 +14,7 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
     test_truthy(interp, "type-of list", "(= (type-of '(1 2 3)) 'List)", pass, fail);
     test_truthy(interp, "type-of array", "(= (type-of (array 1 2 3)) 'Array)", pass, fail);
     test_truthy(interp, "type-of closure", "(= (type-of (lambda (x) x)) 'Closure)", pass, fail);
-    test_truthy(interp, "type-of true", "(= (type-of true) 'Bool)", pass, fail);
+    test_truthy(interp, "type-of true", "(= (type-of true) 'Boolean)", pass, fail);
 
     // is? primitive
     test_truthy(interp, "is? int", "(is? 42 'Int)", pass, fail);
@@ -105,15 +105,15 @@ fn void run_advanced_type_parametric_type_args_tests(Interp* interp, int* pass, 
     test_eq_interp(interp, "Box field access", "(let (b (Box 42)) b.value)", 42, pass, fail);
     test_truthy_interp(interp, "Box type-of", "(= (type-of (Box 42)) 'Box)", pass, fail);
 
-    // type-args primitive — infer T=Int from (Box 42)
-    test_truthy_interp(interp, "type-args Box Int", "(= (car (type-args (Box 42))) 'Int)", pass, fail);
+    // type-args primitive — infer T=Integer from (Box 42)
+    test_truthy_interp(interp, "type-args Box Integer", "(= (car (type-args (Box 42))) 'Integer)", pass, fail);
     test_truthy_interp(interp, "type-args Box String", "(= (car (type-args (Box \"hi\"))) 'String)", pass, fail);
 
     // Parametric type with two type params
     setup(interp, "(define [type] (Pair A B) (^A first) (^B second))");
     test_eq_interp(interp, "Pair field first", "(let (p (Pair 1 \"two\")) p.first)", 1, pass, fail);
     test_truthy_interp(interp, "Pair field second", "(= (let (p (Pair 1 \"two\")) p.second) \"two\")", pass, fail);
-    test_truthy_interp(interp, "type-args Pair A", "(= (car (type-args (Pair 1 \"two\"))) 'Int)", pass, fail);
+    test_truthy_interp(interp, "type-args Pair A", "(= (car (type-args (Pair 1 \"two\"))) 'Integer)", pass, fail);
     test_truthy_interp(interp, "type-args Pair B", "(= (car (cdr (type-args (Pair 1 \"two\")))) 'String)", pass, fail);
 
     {
@@ -244,9 +244,11 @@ fn void run_advanced_type_lambda_call_boundary_tests(Interp* interp, int* pass, 
         "   \"ok\")",
         pass, fail);
 
-    // Cross-test: numeric widening contract is shared with dispatch checks.
-    test_truthy_interp(interp, "typed lambda numeric widening Int->Double",
-        "(= ((lambda ((^Double x)) x) 7) 7.0)", pass, fail);
+    // Cross-test: typed lambda boundaries follow exact-or-subtype semantics (no implicit widening).
+    test_error(interp, "typed lambda numeric no implicit Int->Double widening",
+        "((lambda ((^Double x)) x) 7)", pass, fail);
+    test_truthy_interp(interp, "typed lambda numeric explicit constructor conversion",
+        "(= ((lambda ((^Double x)) x) (Double 7)) 7.0)", pass, fail);
 
     // Cross-test: typed lambda boundary checks compose with dispatch-selected methods.
     setup(interp, "(define (l3-dispatch-lam (^Int x)) ((lambda ((^Int y)) (+ y 5)) x))");
@@ -409,6 +411,35 @@ fn void run_advanced_type_value_alias_deprecation_matrix_tests(Interp* interp, i
         fail);
 }
 
+fn void run_advanced_type_meta_symbols_type_only_tests(Interp* interp, int* pass, int* fail) {
+    // Meta/abstract symbols remain type-position-only. They remain valid type symbols...
+    test_truthy(interp,
+        "Any type symbol participates in is?",
+        "(is? 7 'Any)",
+        pass,
+        fail);
+
+    test_eq_interp(interp,
+        "Number annotation accepts int",
+        "((lambda ((^Number x)) x) 7)",
+        7,
+        pass,
+        fail);
+
+    test_eq_interp(interp,
+        "Collection annotation accepts array",
+        "(length ((lambda ((^Collection xs)) xs) (Array 1 2 3)))",
+        3,
+        pass,
+        fail);
+
+    // ...but they are not callable constructor/coercion symbols in value position.
+    test_error(interp, "Any value-position constructor rejected", "(Any 1)", pass, fail);
+    test_error(interp, "Value value-position constructor rejected", "(Value 1)", pass, fail);
+    test_error(interp, "Number value-position constructor rejected", "(Number 1)", pass, fail);
+    test_error(interp, "Collection value-position constructor rejected", "(Collection (Array 1))", pass, fail);
+}
+
 fn void run_advanced_type_parametric_tests(Interp* interp, int* pass, int* fail) {
     run_advanced_type_parametric_core_hierarchy_tests(interp, pass, fail);
     run_advanced_type_parametric_type_args_tests(interp, pass, fail);
@@ -417,4 +448,5 @@ fn void run_advanced_type_parametric_tests(Interp* interp, int* pass, int* fail)
     run_advanced_type_parametric_disambiguation_tests(interp, pass, fail);
     run_advanced_parser_type_def_edge_tests(interp, pass, fail);
     run_advanced_type_value_alias_deprecation_matrix_tests(interp, pass, fail);
+    run_advanced_type_meta_symbols_type_only_tests(interp, pass, fail);
 }

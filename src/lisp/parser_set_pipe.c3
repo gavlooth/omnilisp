@@ -3,66 +3,81 @@ module lisp;
 import std::collections::list;
 
 /**
- * Parse a set! expression (variable mutation).
- * (set! name value)
+ * Parse set! forms:
+ * - (set! name value) / (set! obj.field value): mutation special form
+ * - (set! collection key value ...): desugared to regular call
  */
+fn Expr* Parser.build_set_call_symbol(Parser* self, usz line, usz col) {
+    Expr* fn_expr = self.alloc_expr_here();
+    fn_expr.tag = E_VAR;
+    fn_expr.loc_line = line;
+    fn_expr.loc_column = col;
+    fn_expr.var_expr.name = self.interp.sym_set;
+    return fn_expr;
+}
+
+fn Expr* Parser.parse_generic_set_call(Parser* self, Expr* lhs, Expr* rhs, usz line, usz col) {
+    List{Expr*} args;
+    args.push(lhs);
+    args.push(rhs);
+    while (self.lexer.current.type != T_RPAREN && !self.has_error) {
+        args.push(self.parse_expr());
+    }
+    if (self.has_error) {
+        args.free();
+        return null;
+    }
+    self.expect(T_RPAREN, ")");
+
+    Expr* set_fn = self.build_set_call_symbol(line, col);
+    Expr* call_expr = self.build_call_expr(set_fn, &args, line, col);
+    args.free();
+    return self.parse_postfix_index(call_expr);
+}
+
 fn Expr* Parser.parse_set(Parser* self) {
     if (self.has_error) return null;
-    Expr* e = self.alloc_expr_here();
+    usz set_line = self.lexer.current.line;
+    usz set_col = self.lexer.current.column;
     self.lexer.advance();  // consume 'set!'
 
-    if (self.lexer.current.type == T_PATH) {
-        // (set! obj.field value) — path mutation
-        e.set_expr.is_path = true;
-        e.set_expr.path_segment_count = 0;
-        e.set_expr.path_segments = null;
-        List{SymbolId} segments;
-        usz text_len = self.lexer.current.text_len;
-        usz start = 0;
-        for (usz i = 0; i <= text_len; i++) {
-            if (i == text_len || self.lexer.current.text[i] == '.') {
-                if (i > start) {
-                    usz seg_len = i - start;
-                    SymbolId seg_sym = self.interp.symbols.intern(self.lexer.current.text[start:seg_len]);
-                    segments.push(seg_sym);
-                }
-                start = i + 1;
-            }
-        }
-        if (segments.len() == 0) {
-            segments.free();
+    Expr* lhs = self.parse_expr();
+    if (lhs == null || self.has_error) return null;
+    Expr* rhs = self.parse_expr();
+    if (rhs == null || self.has_error) return null;
+
+    // Generic call surface: (set! collection key value ...)
+    if (self.lexer.current.type != T_RPAREN) {
+        return self.parse_generic_set_call(lhs, rhs, set_line, set_col);
+    }
+
+    // Mutation special form surface: (set! name value) or (set! obj.field value)
+    Expr* e = self.alloc_expr_here();
+    e.loc_line = set_line;
+    e.loc_column = set_col;
+    e.tag = E_SET;
+    e.set_expr.value = rhs;
+    e.set_expr.path_segments = null;
+    e.set_expr.path_segment_count = 0;
+    e.set_expr.is_path = false;
+
+    if (lhs.tag == E_VAR) {
+        e.set_expr.name = lhs.var_expr.name;
+    } else if (lhs.tag == E_PATH) {
+        if (lhs.path.segment_count == 0 || lhs.path.segments == null) {
             self.set_error("empty path in set!");
             return null;
         }
-        e.set_expr.path_segment_count = segments.len();
-        e.set_expr.path_segments = (SymbolId*)mem::malloc(SymbolId.sizeof * segments.len());
-        if (e.set_expr.path_segments == null) {
-            segments.free();
-            self.set_error("out of memory while parsing set! path");
-            return null;
-        }
-        for (usz i = 0; i < segments.len(); i++) {
-            e.set_expr.path_segments[i] = segments[i];
-        }
-        segments.free();
-        e.set_expr.name = e.set_expr.path_segments[0];
-        self.lexer.advance();
-    } else if (self.lexer.current.type == T_SYMBOL) {
-        e.set_expr.is_path = false;
-        e.set_expr.path_segment_count = 0;
-        e.set_expr.path_segments = null;
-        e.set_expr.name = self.get_current_symbol();
-        self.lexer.advance();
+        e.set_expr.is_path = true;
+        e.set_expr.path_segment_count = lhs.path.segment_count;
+        e.set_expr.path_segments = lhs.path.segments;
+        e.set_expr.name = lhs.path.segments[0];
     } else {
         self.set_error("expected variable name or path after set!");
         return null;
     }
 
-    Expr* value = self.parse_expr();
     self.expect(T_RPAREN, ")");
-
-    e.tag = E_SET;
-    e.set_expr.value = value;
     return e;
 }
 

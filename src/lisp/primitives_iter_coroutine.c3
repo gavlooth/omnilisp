@@ -5,6 +5,10 @@ import main;
 
 const usz ITER_BUFFER_MAX = 4096;
 
+fn Value* coroutine_ctor_type_raise(Interp* interp, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "type", "type/arg-mismatch", message, null);
+}
+
 // Iterator and coroutine primitives.
 fn Value* prim_iterator_p(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return make_nil(interp);
@@ -13,7 +17,7 @@ fn Value* prim_iterator_p(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_make_iterator(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != CLOSURE) {
+    if (args.len < 1 || !is_closure(args[0])) {
         return raise_error(interp, "make-iterator: expected closure thunk");
     }
     return make_iterator(interp, args[0]);
@@ -24,7 +28,7 @@ fn Value* prim_ctor_iterator(Value*[] args, Env* env, Interp* interp) {
         return raise_error(interp, "Iterator: expected closure thunk, iterator, or collection");
     }
     if (args[0].tag == ITERATOR) return args[0];
-    if (args[0].tag == CLOSURE) return make_iterator(interp, args[0]);
+    if (is_closure(args[0])) return make_iterator(interp, args[0]);
     return raise_error(interp, "Iterator: expected closure thunk, iterator, or collection");
 }
 
@@ -130,10 +134,10 @@ fn Value* prim_coroutine_p(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_coroutine_require_thunk(Value*[] args, Value** thunk_out, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "coroutine: expected a thunk argument");
+    if (args.len < 1) return coroutine_ctor_type_raise(interp, "Coroutine: expected closure thunk");
     Value* thunk = args[0];
-    if (thunk == null || thunk.tag != CLOSURE) {
-        return raise_error(interp, "coroutine: argument must be a closure");
+    if (!is_closure(thunk)) {
+        return coroutine_ctor_type_raise(interp, "Coroutine: expected closure thunk");
     }
     *thunk_out = thunk;
     return null;

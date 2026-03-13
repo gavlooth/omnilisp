@@ -15,7 +15,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "    (define ls (tcp-listen \"127.0.0.1\" 0 8)) "
         "    (tcp-close ls)))) "
         "  (await f))",
-        NIL, pass, fail);
+        VOID, pass, fail);
 
     // fiber-safe listen path: listen in fiber uses libuv tcp bind/listen bridge
     test_tag(interp, "tcp-listen in fiber via libuv bridge",
@@ -24,7 +24,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "    (define ls (tcp-listen \"127.0.0.1\" 0 8)) "
         "    (tcp-close ls)))) "
         "  (await f))",
-        NIL, pass, fail);
+        VOID, pass, fail);
 
     test_error_contains(interp, "tcp-read requires fiber context",
         "(tcp-read nil)",
@@ -87,7 +87,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
         "    (define ls (tcp-listen \"127.0.0.1\" 0 8)) "
         "    (tcp-close ls)))) "
         "  (await f))",
-        NIL, pass, fail);
+        VOID, pass, fail);
 
     // fiber-safe write path: write in fiber uses async writable wakeup bridge
     test_truthy(interp, "tcp-write in fiber via async bridge",

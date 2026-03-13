@@ -1,12 +1,5 @@
 module lisp;
 
-import std::io;
-import std::collections::list;
-import main;
-
-module lisp;
-
-import std::io;
 import std::collections::list;
 import main;
 // =============================================================================

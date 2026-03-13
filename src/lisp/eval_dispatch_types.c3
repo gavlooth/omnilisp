@@ -8,14 +8,14 @@ import std::io;
  */
 fn void register_builtin_types(Interp* interp) {
     // Register built-in types with TK_BUILTIN kind
-    SymbolId[15] builtin_names = {
+    SymbolId[16] builtin_names = {
         interp.sym_Integer, interp.sym_Double, interp.sym_String,
         interp.sym_Symbol, interp.sym_List, interp.sym_Boolean,
-        interp.sym_Nil, interp.sym_Closure, interp.sym_Array,
+        interp.sym_Nil, interp.sym_Void, interp.sym_Closure, interp.sym_Array,
         interp.sym_Dictionary, interp.sym_Set, interp.sym_Any, interp.sym_Iterator,
         interp.sym_TimePoint, interp.sym_Coroutine
     };
-    for (usz i = 0; i < 15; i++) {
+    for (usz i = 0; i < 16; i++) {
         TypeInfo info;
         info.name = builtin_names[i];
         info.kind = TK_BUILTIN;
@@ -60,6 +60,7 @@ fn void register_builtin_types(Interp* interp) {
     interp.tid_List = interp.types.lookup(interp.sym_List, &interp.symbols);
     interp.tid_Boolean = interp.types.lookup(interp.sym_Boolean, &interp.symbols);
     interp.tid_Nil = interp.types.lookup(interp.sym_Nil, &interp.symbols);
+    interp.tid_Void = interp.types.lookup(interp.sym_Void, &interp.symbols);
     interp.tid_Closure = interp.types.lookup(interp.sym_Closure, &interp.symbols);
     TypeInfo int_alias;
     int_alias.name = interp.sym_Int;
@@ -119,7 +120,8 @@ fn void register_builtin_types(Interp* interp) {
     interp.tid_TimePoint = interp.types.lookup(interp.sym_TimePoint, &interp.symbols);
     interp.tid_Coroutine = interp.types.lookup(interp.sym_Coroutine, &interp.symbols);
 
-    // Set parent chains: Integer/Double → Number, List/Array/Dictionary/Set → Collection, Nil → List
+    // Set parent chains: Integer/Double → Number, List/Array/Dictionary/Set → Collection,
+    // Nil → List, and standalone runtime leaf types under Any.
     interp.types.types[(usz)interp.tid_Integer].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_Double].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_List].parent = interp.tid_Collection;
@@ -127,6 +129,7 @@ fn void register_builtin_types(Interp* interp) {
     interp.types.types[(usz)interp.tid_Dictionary].parent = interp.tid_Collection;
     interp.types.types[(usz)interp.tid_Set].parent = interp.tid_Collection;
     interp.types.types[(usz)interp.tid_Nil].parent = interp.tid_List;  // nil IS the empty list
+    interp.types.types[(usz)interp.tid_Void].parent = interp.tid_Any;
     interp.types.types[(usz)interp.tid_TimePoint].parent = interp.tid_Any;
     interp.types.types[(usz)interp.tid_Coroutine].parent = interp.tid_Any;
 }
@@ -142,7 +145,12 @@ fn TypeId infer_value_type(Value* v, Interp* interp) {
         case STRING:    return interp.tid_String;
         case SYMBOL:    return interp.tid_Symbol;
         case CONS:      return interp.tid_List;
+        case VOID:      return interp.tid_Void;
         case CLOSURE:   return interp.tid_Closure;
+        case PRIMITIVE:
+            // AOT compiled closures are represented as primitive wrappers.
+            if (is_aot_closure_wrapper(v)) return interp.tid_Closure;
+            return INVALID_TYPE_ID;
         case ARRAY:     return interp.tid_Array;
         case HASHMAP:   return interp.tid_Dictionary;
         case SET:       return interp.tid_Set;
@@ -171,7 +179,12 @@ fn SymbolId value_type_name(Value* v, Interp* interp) {
             if (v.sym_val == interp.sym_true || v.sym_val == interp.sym_false) { return interp.sym_Boolean; }
             return interp.sym_Symbol;
         case CONS:      return interp.sym_List;
+        case VOID:      return interp.sym_Void;
         case CLOSURE:   return interp.sym_Closure;
+        case PRIMITIVE:
+            // Preserve closure introspection parity for AOT wrapper closures.
+            if (is_aot_closure_wrapper(v)) return interp.sym_Closure;
+            return interp.sym_Any;
         case ARRAY:     return interp.sym_Array;
         case HASHMAP:   return interp.sym_Dictionary;
         case SET:       return interp.sym_Set;

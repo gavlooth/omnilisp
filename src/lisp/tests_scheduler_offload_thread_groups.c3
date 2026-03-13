@@ -297,6 +297,21 @@ fn void run_scheduler_thread_timeout_cancel_tests(Interp* interp, int* pass, int
         EvalResult r = run(
             "(block "
             "  (define t (task-spawn 'sleep-ms 20)) "
+            "  (task-cancel t))",
+            interp);
+        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
+            emit_pass_literal("[PASS] task-cancel returns Void");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] task-cancel returns Void");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define t (task-spawn 'sleep-ms 20)) "
             "  (task-cancel t) "
             "  (task-join t))",
             interp);
@@ -354,6 +369,21 @@ fn void run_scheduler_thread_timeout_cancel_tests(Interp* interp, int* pass, int
             (*pass)++;
         } else {
             io::printn("[FAIL] thread-join-timeout from fiber context");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define t (thread-spawn 'sleep-ms 20)) "
+            "  (thread-cancel t))",
+            interp);
+        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
+            emit_pass_literal("[PASS] thread-cancel returns Void");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] thread-cancel returns Void");
             (*fail)++;
         }
     }

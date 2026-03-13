@@ -197,11 +197,11 @@ fn void run_scheduler_cancel_tests(Interp* interp, int* pass, int* fail) {
     {
         setup(interp, "(define fc-fib1 (spawn (lambda () 42)))");
         EvalResult r = run("(fiber-cancel fc-fib1)", interp);
-        if (!r.error.has_error && r.value != null && r.value.tag != NIL && r.value.tag != ERROR) {
-            emit_pass_literal("[PASS] fiber-cancel ready fiber");
+        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
+            emit_pass_literal("[PASS] fiber-cancel ready fiber returns Void");
             (*pass)++;
         } else {
-            io::printn("[FAIL] fiber-cancel ready fiber");
+            io::printn("[FAIL] fiber-cancel ready fiber returns Void");
             (*fail)++;
         }
     }
@@ -210,11 +210,11 @@ fn void run_scheduler_cancel_tests(Interp* interp, int* pass, int* fail) {
         setup(interp, "(define fc-fib2 (spawn (lambda () 1)))");
         setup(interp, "(fiber-cancel fc-fib2)");
         EvalResult r = run("(fiber-cancel fc-fib2)", interp);
-        if (!r.error.has_error && r.value != null && r.value.tag == NIL) {
-            emit_pass_literal("[PASS] fiber-cancel twice → nil");
+        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
+            emit_pass_literal("[PASS] fiber-cancel twice → Void");
             (*pass)++;
         } else {
-            io::printn("[FAIL] fiber-cancel twice → nil");
+            io::printn("[FAIL] fiber-cancel twice → Void");
             (*fail)++;
         }
     }

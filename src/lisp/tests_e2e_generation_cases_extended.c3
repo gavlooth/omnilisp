@@ -66,9 +66,11 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "string-trim", `(string-trim "  hello  ")` },
 
     // === set! mutation (setups define s_x=10, s_acc=0, s_count=0) ===
-    { "set! returns value", "(set! s_x 20)" },
+    { "set! returns Void", "(set! s_x 20)" },
     { "set! read back", "(block (set! s_acc 1) (set! s_acc (+ s_acc 1)) s_acc)" },
     { "set! in lambda", "(block ((lambda (n) (set! s_count n)) 42) s_count)" },
+    { "set! generic array", "(let (a [1 2 3]) (block (set! a 1 99) (ref a 1)))" },
+    { "set! generic dict", "(let (d {'k 1}) (block (set! d 'k 9) (ref d 'k)))" },
 
     // === Quasiquote (no unquote — eval_source can't see let-bound vars) ===
     { "quasiquote literal", "`42" },
@@ -200,7 +202,7 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "type union ctor", "(type-of (Some 5))" },
     { "dispatch exact subtype", `(who (Admin "ops"))` },
     { "dispatch parent subtype", `(who-parent (Admin "ops"))` },
-    { "dispatch numeric widen", "(who 7)" },
+    { "dispatch numeric explicit conversion", "(who (Double 7))" },
     { "dispatch value literal exact", "(ping 'ping)" },
     { "dispatch value literal fallback", "(ping 'other)" },
     { "alias annotation dispatch", `(alias-check (User "amy"))` },

@@ -100,3 +100,5 @@
 - Modules loaded only once (cached)
 - Circular import detection
 - Method extensions are always global (dispatch is cross-cutting)
+- `module` / `import` / `export-from` return `Void` on success
+- Compiler backend (`AOT`) currently treats module surfaces as static lowering: module bodies are inlined, while `import` / `export-from` compile to command-style `Void` no-ops

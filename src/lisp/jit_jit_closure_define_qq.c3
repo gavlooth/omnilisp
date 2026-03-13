@@ -108,7 +108,7 @@ fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
 }
 
 // set! helper — called from JIT-compiled code.
-// Evaluates to the set value, mirrors E_SET in eval().
+// Command semantics: returns Void on successful mutation.
 fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
     // Env bindings (closures, globals) live in root scope; promote child-lifetime
     // values before storing to avoid dangling pointers.
@@ -125,7 +125,7 @@ fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
             return raise_error(interp, "set!: unbound variable");
         }
     }
-    return stored;
+    return make_void(interp);
 }
 
 fn Value* jit_resolve_set_path_root(Interp* interp, Expr* expr, Env* env) {
@@ -165,13 +165,14 @@ fn Value* jit_set_path_step(Value* current, SymbolId seg, Interp* interp) {
 
 fn Value* jit_set_path_mutate_cons(Value* current, SymbolId last_seg, Value* value, Interp* interp) {
     Value* stored = boundary_promote_to_root(value, interp);
+    if (stored != null && stored.tag == ERROR) return stored;
     if ((uint)last_seg == (uint)interp.sym_car) {
         current.cons_val.car = stored;
-        return stored;
+        return make_void(interp);
     }
     if ((uint)last_seg == (uint)interp.sym_cdr) {
         current.cons_val.cdr = stored;
-        return stored;
+        return make_void(interp);
     }
     return raise_error(interp, "set!: cons only supports .car and .cdr");
 }
@@ -222,8 +223,9 @@ fn Value* jit_set_path_mutate_instance(Value* current, SymbolId last_seg, Value*
                         COPY_SITE_ENV_PROMOTE_FOR_TARGET
                     );
                 }
+                if (stored != null && stored.tag == ERROR) return stored;
                 if (stored != null) current.instance_val.fields[fi] = *stored;
-                return stored;
+                return make_void(interp);
             }
         }
     }

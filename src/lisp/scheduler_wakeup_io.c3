@@ -377,5 +377,5 @@ fn Value* scheduler_consume_pending_sleep(usz fiber_id, Interp* interp) {
     }
 
     g_scheduler.pending_sleeps[fiber_id] = {};
-    return make_nil(interp);
+    return make_void(interp);
 }

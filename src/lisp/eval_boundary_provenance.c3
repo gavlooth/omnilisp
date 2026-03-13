@@ -213,6 +213,7 @@ fn bool boundary_nonunique_destination_retry_allowed(Value* v) @inline {
     if (v == null) return false;
     switch (v.tag) {
         case NIL:
+        case VOID:
         case INT:
         case DOUBLE:
         case SYMBOL:

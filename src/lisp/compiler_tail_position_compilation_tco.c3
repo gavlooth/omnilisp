@@ -54,10 +54,10 @@ fn usz Compiler.compile_module_flat(Compiler* self, Expr* expr) {
         }
     }
 
-    // Module evaluates to nil
+    // Module is command-style and evaluates to Void.
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = aot::make_nil();\n");
+    self.emit(" = aot::make_void();\n");
     return id;
 }
 
@@ -68,7 +68,7 @@ fn usz Compiler.compile_module_flat(Compiler* self, Expr* expr) {
 fn usz Compiler.compile_import_flat(Compiler* self, Expr* expr) {
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = aot::make_nil(); // import: inline module\n");
+    self.emit(" = aot::make_void(); // import: inline module\n");
     return id;
 }
 
@@ -79,7 +79,6 @@ fn usz Compiler.compile_import_flat(Compiler* self, Expr* expr) {
 fn usz Compiler.compile_export_from_flat(Compiler* self, Expr* expr) {
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = aot::make_nil(); // export-from: no-op in compiled mode\n");
+    self.emit(" = aot::make_void(); // export-from: no-op in compiled mode\n");
     return id;
 }
-

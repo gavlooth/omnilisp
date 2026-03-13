@@ -234,7 +234,7 @@ fn Value* prim_process_wait(Value*[] args, Env* env, Interp* interp) {
     return out;
 }
 
-// (process-kill process-handle|process-dict sig) -> nil
+// (process-kill process-handle|process-dict sig) -> void
 fn Value* prim_process_kill(Value*[] args, Env* env, Interp* interp) {
     Value* target_v = null;
     Value* sig_v = null;
@@ -269,7 +269,7 @@ fn Value* prim_process_kill(Value*[] args, Env* env, Interp* interp) {
     if (kill_status < 0) {
         return io_raise(interp, "io/process-kill-failed", "process-kill: kill failed");
     }
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 // (signal-handle sig callback) -> signal-handle
@@ -315,7 +315,7 @@ fn Value* prim_signal_handle(Value*[] args, Env* env, Interp* interp) {
     return make_signal_handle(interp, uv_watch, signum, callback_v);
 }
 
-// (signal-unhandle signal-handle) -> nil
+// (signal-unhandle signal-handle) -> void
 fn Value* prim_signal_unhandle(Value*[] args, Env* env, Interp* interp) {
     Value* handle_v = null;
     if (args.len == 1 && is_cons(args[0])) {
@@ -335,7 +335,7 @@ fn Value* prim_signal_unhandle(Value*[] args, Env* env, Interp* interp) {
     drain_signal_handle_pending(sh, interp);
     unregister_signal_handle(sh);
     close_signal_handle(sh);
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 // ============================================================

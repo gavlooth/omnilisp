@@ -9,13 +9,15 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
     setup(interp, "(define hm1 (Dict 1 10 2 20 3 30))");
     test_eq(interp, "ref dict", "(ref hm1 2)", 20, pass, fail);
     test_nil(interp, "ref dict missing", "(ref hm1 99)", pass, fail);
-    setup(interp, "(dict-set! hm1 2 200)");
+    test_tag_interp(interp, "dict-set! returns void", "(dict-set! hm1 2 200)", VOID, pass, fail);
     test_eq(interp, "dict-set! overwrite", "(ref hm1 2)", 200, pass, fail);
+    test_tag_interp(interp, "set! generic dict returns void", "(set! hm1 2 250)", VOID, pass, fail);
+    test_eq(interp, "set! generic dict overwrite", "(ref hm1 2)", 250, pass, fail);
     test_truthy(interp, "has? dict yes", "(has? hm1 1)", pass, fail);
     test_nil(interp, "has? dict no", "(has? hm1 99)", pass, fail);
     test_eq(interp, "length dict", "(length hm1)", 3, pass, fail);
     setup(interp, "(define hm2 (Dict 1 10 2 20 3 30))");
-    setup(interp, "(remove! hm2 2)");
+    test_tag_interp(interp, "remove! returns void", "(remove! hm2 2)", VOID, pass, fail);
     test_nil(interp, "remove! dict", "(has? hm2 2)", pass, fail);
     test_eq(interp, "remove! count", "(length hm2)", 2, pass, fail);
     setup(interp, "(define hm3 (Dict 1 10 2 20))");
@@ -49,6 +51,7 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
     // Cons cell dot-path access and mutation
     test_eq(interp, "cons .car", "(let (p (cons 1 2)) p.car)", 1, pass, fail);
     test_eq(interp, "cons .cdr", "(let (p (cons 1 2)) p.cdr)", 2, pass, fail);
+    test_tag(interp, "set! cons returns void", "(let (p (cons 1 2)) (set! p.car 99))", VOID, pass, fail);
     test_eq_interp(interp, "set! cons .car", "(let (p (cons 1 2)) (block (set! p.car 99) p.car))", 99, pass, fail);
     test_eq_interp(interp, "set! cons .cdr", "(let (p (cons 1 2)) (block (set! p.cdr 50) p.cdr))", 50, pass, fail);
     test_eq_interp(interp, "set! cons preserves", "(let (p (cons 1 2)) (block (set! p.car 99) p.cdr))", 2, pass, fail);
@@ -86,7 +89,7 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_error(interp, ".[-4] list oob", "(let (l '(10 20 30)) l.[-4])", pass, fail);
     test_str(interp, "char-at -1", "(char-at \"abc\" -1)", pass, fail);
     setup(interp, "(define neg-arr [1 2 3])");
-    setup(interp, "(array-set! neg-arr -1 99)");
+    test_tag_interp(interp, "array-set! returns void", "(array-set! neg-arr -1 99)", VOID, pass, fail);
     test_eq(interp, "array-set! -1", "(ref neg-arr 2)", 99, pass, fail);
     // length - generic
     test_eq(interp, "length array", "(length [1 2 3])", 3, pass, fail);
@@ -95,7 +98,7 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_eq(interp, "length list", "(length '(1 2 3 4))", 4, pass, fail);
     // push!
     setup(interp, "(define ga [1 2])");
-    setup(interp, "(push! ga 3)");
+    test_tag_interp(interp, "push! returns void", "(push! ga 3)", VOID, pass, fail);
     test_eq(interp, "push! generic", "(length ga)", 3, pass, fail);
     test_eq(interp, "push! val", "(ref ga 2)", 3, pass, fail);
     // keys / values / has? / remove!
@@ -104,12 +107,22 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_eq(interp, "values len", "(length (values gd))", 2, pass, fail);
     test_truthy(interp, "has? yes", "(has? gd 'x)", pass, fail);
     test_nil(interp, "has? no", "(has? gd 'z)", pass, fail);
-    setup(interp, "(remove! gd 'x)");
+    test_tag_interp(interp, "remove! returns void", "(remove! gd 'x)", VOID, pass, fail);
     test_nil(interp, "remove! gone", "(has? gd 'x)", pass, fail);
     test_eq(interp, "remove! count", "(length gd)", 1, pass, fail);
 }
 
 fn void run_advanced_module_qualified_cached_tests(Interp* interp, int* pass, int* fail) {
+    test_tag_interp(
+        interp,
+        "module returns void",
+        "(module cmd-void-mod (export value) (define value 1))",
+        VOID,
+        pass,
+        fail
+    );
+    test_tag_interp(interp, "import returns void", "(import cmd-void-mod)", VOID, pass, fail);
+
     // Qualified access (default import = qualified-only)
     setup(interp, "(module math-utils (export dbl triple) (define dbl (lambda (x) (* x 2))) (define triple (lambda (x) (* x 3))) (define internal (lambda (x) (+ x 100))))");
     setup(interp, "(import math-utils)");
@@ -194,6 +207,13 @@ fn void run_advanced_module_reexport_shorthand_tests(Interp* interp, int* pass, 
     test_eq(interp, "shorthand define multi", "(sh-add3 10 20 30)", 60, pass, fail);
     setup(interp, "(define (sh-answer) 42)");
     test_eq(interp, "shorthand define zero-arg", "(sh-answer)", 42, pass, fail);
+
+    // export-from is command-style and should evaluate to Void.
+    setup(interp, "(module export-ret-source (export val) (define val 5))");
+    setup(interp, "(module export-ret-target (export ret-type val) (define ret-type (type-of (export-from export-ret-source (val)))) (export-from export-ret-source (val)))");
+    setup(interp, "(import export-ret-target (ret-type val))");
+    test_truthy(interp, "export-from return type is Void", "(= ret-type 'Void)", pass, fail);
+    test_eq(interp, "export-from still re-exports symbol", "val", 5, pass, fail);
 }
 
 fn void run_advanced_parser_export_from_edge_tests(Interp* interp, int* pass, int* fail) {

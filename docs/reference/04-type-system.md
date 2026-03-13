@@ -88,9 +88,27 @@ Canonical names favor descriptiveness over terseness: `Integer`, `Boolean`, and
 `Dictionary` are the primary spellings, while `Int`, `Bool`, and `Dict` remain
 accepted compatibility aliases.
 
+Collection/time constructor naming policy:
+- canonical constructor surfaces: `List`, `Array`, `Dictionary`, `Iterator`, `TimePoint`
+- retained public helper: `list`
+- compatibility-only aliases for existing code: `array`, `dict`, `dictionary`, `iterator`, `time-point`, `make-iterator`
+
+Meta/abstract symbols `Any`, `Value`, `Number`, and `Collection` remain
+type-position-only surfaces. They participate in annotation/dispatch semantics,
+but are not callable constructor/coercion symbols in value position. `Value`
+specifically is valid as `^(Value literal)` for value-literal dispatch, not as
+`(Value ...)`.
+
 There is no builtin `Empty` type today. Use `Nil` for the language-level empty
-value, and treat `Void` as an FFI / no-result annotation rather than a normal
-value type.
+value. `Void` is a real builtin singleton type/value, constructed with
+`(Void)`, and FFI `^Void` maps to that same runtime value.
+
+Current stable rule: value-level `false` collapses to `nil`. If you need the
+symbol name itself as data, use quoted `'false`.
+
+Command-style success paths should now prefer `Void` over `nil` where possible so
+query/absence semantics remain on `Nil` and side-effect completion is explicitly
+`Void`.
 
 ### Type Introspection
 
@@ -99,6 +117,7 @@ value type.
 (type-of "hello")           ;; => String
 (type-of (Dictionary 'a 1)) ;; => Dictionary
 (type-of (Set 1 2 3))       ;; => Set
+(type-of (Void))            ;; => Void
 (type-of (Point 1 2))       ;; => Point
 (is? 42 'Integer)           ;; => true
 (is? (Circle 5) 'Shape)     ;; => true (walks parent chain)
@@ -106,8 +125,8 @@ value type.
 (instance? 42)              ;; => nil
 ```
 
-`type-of` returns a symbol such as `Dictionary` or `Set`. A first-class type
-descriptor value prints as `#<type Dictionary>`, while ordinary collection values
+`type-of` returns a symbol such as `Dictionary`, `Set`, or `Void`. A first-class
+type descriptor value prints as `#<type Dictionary>`, while ordinary collection values
 print structurally as `{'a 1}` or `(Set 1 2 3)`.
 
 ---

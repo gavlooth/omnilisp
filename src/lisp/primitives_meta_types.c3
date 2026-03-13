@@ -169,7 +169,12 @@ fn bool ctor_match_type_form(
         if ((uint)expected_sym == (uint)interp.sym_Any) return true;
         if (actual_tid == INVALID_TYPE_ID) return false;
         TypeId expected_tid = interp.types.lookup(expected_sym, &interp.symbols);
-        if (expected_tid != INVALID_TYPE_ID) return actual_tid == expected_tid;
+        if (expected_tid != INVALID_TYPE_ID) {
+            TypeId expected_canonical = interp.types.resolve_alias(expected_tid);
+            TypeId actual_canonical = interp.types.resolve_alias(actual_tid);
+            if (expected_canonical == INVALID_TYPE_ID || actual_canonical == INVALID_TYPE_ID) return false;
+            return actual_canonical == expected_canonical;
+        }
         TypeInfo* actual_ti = interp.types.get(actual_tid);
         return actual_ti != null && (uint)actual_ti.name == (uint)expected_sym;
     }
@@ -375,7 +380,7 @@ fn Value* prim_type_args(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "unsafe-free!: expected 1 argument");
     Value* v = args[0];
-    if (v == null) return make_nil(interp);
+    if (v == null) return make_void(interp);
 
     // Free heap-allocated backing storage and mark as error.
     // Note: Array struct is malloc'd, but HashMap/Instance structs are region-allocated.
@@ -409,7 +414,7 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
                 mem::free(v.str_chars);
                 v.str_chars = null;
             }
-        default: return make_nil(interp);  // No backing to free
+        default: return make_void(interp);  // No backing to free
     }
     // Mark as error so use-after-free is caught instead of silently becoming nil
     v.tag = ERROR;
@@ -421,7 +426,7 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
     err_builder.chars[msg.len] = 0;
     err_builder.len = msg.len;
     strval_into_value(err_builder, v);
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 // =============================================================================

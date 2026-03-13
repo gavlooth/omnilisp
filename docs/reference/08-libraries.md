@@ -188,6 +188,9 @@ Deduce is an embedded relational database backed by LMDB.
 (deduce 'retract! person "Alice" 30 "alice@b.com")
 ```
 
+`fact!` and `retract!` are command-style operations and return `Void` on
+successful completion.
+
 ### Transactions
 
 ```lisp
@@ -202,6 +205,8 @@ Deduce is an embedded relational database backed by LMDB.
 (deduce 'abort ro)
 ```
 
+`commit` and `abort` return `Void` on success.
+
 ### Relation Maintenance
 
 ```lisp
@@ -211,6 +216,8 @@ Deduce is an embedded relational database backed by LMDB.
 ;; drop relation backing store; existing relation handle becomes invalid for scans/writes
 (deduce 'drop! person)
 ```
+
+`clear!` and `drop!` return `Void` on success.
 
 ### Query
 

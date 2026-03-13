@@ -261,38 +261,24 @@ fn bool explain_eval_call_target(
     return true;
 }
 
-fn Value* explain_dispatch_result_from_thunk(Interp* interp, Value* thunk_value) {
-    if (thunk_value == null || thunk_value.tag != CLOSURE || thunk_value.closure_val == null) {
-        return raise_error(interp, "explain dispatch: expected thunked form");
-    }
-    Closure* thunk = thunk_value.closure_val;
-    if (thunk.param_count != 0 || thunk.has_rest) {
-        return raise_error(interp, "explain dispatch: expected zero-arg thunk");
-    }
+fn Value* explain_input_form_from_source(Interp* interp, char[] source) {
+    Expr* parsed = parse(source, interp);
+    if (parsed == null) return make_nil(interp);
+    return expr_to_value(parsed, interp);
+}
 
-    Expr* target = thunk.body;
-    Env* target_env = thunk.env != null ? thunk.env : interp.global_env;
-    Value* input_form = expr_to_value(target, interp);
-
+fn Value* explain_dispatch_result_from_evaluated_call(
+    Interp* interp,
+    Value* input_form,
+    Value* callee,
+    Value*[] call_args
+) {
     Value* out = make_hashmap(interp, 16);
     Value* decision = make_hashmap(interp, 16);
     Value* trace = make_hashmap(interp, 16);
     explain_init_common_output(interp, out, interp.symbols.intern("dispatch"), input_form, decision, trace);
     explain_init_dispatch_decision_shape(interp, decision);
     explain_init_dispatch_trace_shape(interp, trace);
-
-    if (target == null || target.tag != E_CALL) {
-        explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("unsupported-form"));
-        explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("dispatch-target-not-call"));
-        return out;
-    }
-
-    Value* callee = null;
-    Value*[] call_args = {};
-    Value** call_args_storage = null;
-    bool evaluated = explain_eval_call_target(target, target_env, interp, &callee, &call_args, &call_args_storage);
-    defer if (call_args_storage != null) mem::free(call_args_storage);
-    if (!evaluated) return callee;
 
     TypeId[] arg_types = {};
     TypeId* arg_types_storage = null;
@@ -396,6 +382,51 @@ fn Value* explain_dispatch_result_from_thunk(Interp* interp, Value* thunk_value)
     }
 
     return out;
+}
+
+fn Value* explain_dispatch_result_from_compiled_call(
+    Interp* interp,
+    char[] source,
+    Value* callee,
+    Value*[] call_args
+) {
+    Value* input_form = explain_input_form_from_source(interp, source);
+    return explain_dispatch_result_from_evaluated_call(interp, input_form, callee, call_args);
+}
+
+fn Value* explain_dispatch_result_from_thunk(Interp* interp, Value* thunk_value) {
+    if (thunk_value == null || thunk_value.tag != CLOSURE || thunk_value.closure_val == null) {
+        return raise_error(interp, "explain dispatch: expected thunked form");
+    }
+    Closure* thunk = thunk_value.closure_val;
+    if (thunk.param_count != 0 || thunk.has_rest) {
+        return raise_error(interp, "explain dispatch: expected zero-arg thunk");
+    }
+
+    Expr* target = thunk.body;
+    Env* target_env = thunk.env != null ? thunk.env : interp.global_env;
+    Value* input_form = expr_to_value(target, interp);
+
+    if (target == null || target.tag != E_CALL) {
+        Value* out = make_hashmap(interp, 16);
+        Value* decision = make_hashmap(interp, 16);
+        Value* trace = make_hashmap(interp, 16);
+        explain_init_common_output(interp, out, interp.symbols.intern("dispatch"), input_form, decision, trace);
+        explain_init_dispatch_decision_shape(interp, decision);
+        explain_init_dispatch_trace_shape(interp, trace);
+        explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("unsupported-form"));
+        explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("dispatch-target-not-call"));
+        return out;
+    }
+
+    Value* callee = null;
+    Value*[] call_args = {};
+    Value** call_args_storage = null;
+    bool evaluated = explain_eval_call_target(target, target_env, interp, &callee, &call_args, &call_args_storage);
+    defer if (call_args_storage != null) mem::free(call_args_storage);
+    if (!evaluated) return callee;
+
+    return explain_dispatch_result_from_evaluated_call(interp, input_form, callee, call_args);
 }
 
 fn Value* prim_explain(Value*[] args, Env* env, Interp* interp) {

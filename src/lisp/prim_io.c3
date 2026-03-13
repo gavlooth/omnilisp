@@ -98,21 +98,21 @@ fn Value* io_console_emit(Value* value, bool display_mode, bool append_newline, 
         nl[0] = '\n';
         (void)io_console_write_all(nl[..]);
     }
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 fn Value* prim_print(Value*[] args, Env* env, Interp* interp) {
     if (args.len >= 1) {
         return io_console_emit(args[0], false, false, interp);
     }
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 fn Value* prim_println(Value*[] args, Env* env, Interp* interp) {
     if (args.len >= 1) {
         return io_console_emit(args[0], false, true, interp);
     }
-    return make_nil(interp);
+    return make_void(interp);
 }
 
 fn Value* prim_newline(Value*[] args, Env* env, Interp* interp) {
@@ -277,7 +277,7 @@ fn Value* prim_read_file(Value*[] args, Env* env, Interp* interp) {
 }
 
 /**
- * (write-file path content) -> true on success, nil on error
+ * (write-file path content) -> Void on success
  */
 fn Value* prim_write_file(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || !is_string(args[0]) || !is_string(args[1])) {
@@ -310,7 +310,7 @@ fn Value* prim_write_file(Value*[] args, Env* env, Interp* interp) {
 
     Value* out = io_run_fiber_offload(&work, interp);
     if (out != null && out.tag == ERROR) return out;
-    if (is_int(out) && out.int_val >= 0) return make_symbol(interp, interp.sym_true);
+    if (is_int(out) && out.int_val >= 0) return make_void(interp);
     return io_file_raise(interp, "io/write-file-failed", "write-file: write failed");
 }
 

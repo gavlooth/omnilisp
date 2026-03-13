@@ -166,7 +166,7 @@ fn void run_deduce_large_relation_schema_test(Interp* interp, int* pass, int* fa
               rel.columns != null &&
               rel.columns[COL_COUNT - 1] == col_syms[COL_COUNT - 1] &&
               insert != null &&
-              insert.tag == NIL &&
+              insert.tag != ERROR &&
               row != null &&
               row.tag == HASHMAP &&
               row.hashmap_val != null &&
@@ -233,8 +233,8 @@ fn void run_deduce_long_relation_name_isolation_test(Interp* interp, int* pass, 
     Value* count_a_final = prim_deduce_count(count_args_a[..], null, interp);
     Value* count_b_final = prim_deduce_count(count_args_b[..], null, interp);
 
-    bool ok = insert_a != null && insert_a.tag == NIL &&
-              insert_b != null && insert_b.tag == NIL &&
+    bool ok = insert_a != null && insert_a.tag != ERROR &&
+              insert_b != null && insert_b.tag != ERROR &&
               count_a_after_a != null && count_a_after_a.tag == INT && count_a_after_a.int_val == 1 &&
               count_b_after_a != null && count_b_after_a.tag == INT && count_b_after_a.int_val == 0 &&
               count_a_final != null && count_a_final.tag == INT && count_a_final.int_val == 1 &&
@@ -306,8 +306,8 @@ fn void run_deduce_long_open_path_isolation_test(Interp* interp, int* pass, int*
     Value* count_a_final = prim_deduce_count(count_args_a[..], null, interp);
     Value* count_b_final = prim_deduce_count(count_args_b[..], null, interp);
 
-    bool ok = insert_a != null && insert_a.tag == NIL &&
-              insert_b != null && insert_b.tag == NIL &&
+    bool ok = insert_a != null && insert_a.tag != ERROR &&
+              insert_b != null && insert_b.tag != ERROR &&
               count_a_after_a != null && count_a_after_a.tag == INT && count_a_after_a.int_val == 1 &&
               count_b_after_a != null && count_b_after_a.tag == INT && count_b_after_a.int_val == 0 &&
               count_a_final != null && count_a_final.tag == INT && count_a_final.int_val == 1 &&

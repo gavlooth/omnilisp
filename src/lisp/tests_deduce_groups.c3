@@ -239,6 +239,115 @@ fn void run_deduce_relation_attr_define_test(Interp* interp, int* pass, int* fai
     }
 }
 
+fn void run_deduce_command_void_return_tests(Interp* interp, int* pass, int* fail) {
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-vfact (deduce 'open 'memory)) "
+            "  (define [relation db-vfact] rel-vfact (name) (age)) "
+            "  (deduce 'fact! rel-vfact \"Alice\" 30))",
+            interp
+        );
+        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
+            emit_pass_literal("[PASS] deduce fact! returns Void");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] deduce fact! returns Void (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-vretract (deduce 'open 'memory)) "
+            "  (define [relation db-vretract] rel-vretract (name) (age)) "
+            "  (deduce 'fact! rel-vretract \"Alice\" 30) "
+            "  (deduce 'retract! rel-vretract \"Alice\" 30))",
+            interp
+        );
+        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
+            emit_pass_literal("[PASS] deduce retract! returns Void");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] deduce retract! returns Void (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-vcommit (deduce 'open 'memory)) "
+            "  (define [relation db-vcommit] rel-vcommit (name) (age)) "
+            "  (define tx (deduce 'block db-vcommit)) "
+            "  (deduce 'fact! tx rel-vcommit \"Alice\" 30) "
+            "  (deduce 'commit tx))",
+            interp
+        );
+        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
+            emit_pass_literal("[PASS] deduce commit returns Void");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] deduce commit returns Void (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-vabort (deduce 'open 'memory)) "
+            "  (define [relation db-vabort] rel-vabort (name) (age)) "
+            "  (define tx (deduce 'block db-vabort 'read)) "
+            "  (deduce 'abort tx))",
+            interp
+        );
+        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
+            emit_pass_literal("[PASS] deduce abort returns Void");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] deduce abort returns Void (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-vclear (deduce 'open 'memory)) "
+            "  (define [relation db-vclear] rel-vclear (name) (age)) "
+            "  (deduce 'fact! rel-vclear \"Alice\" 30) "
+            "  (deduce 'clear! rel-vclear))",
+            interp
+        );
+        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
+            emit_pass_literal("[PASS] deduce clear! returns Void");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] deduce clear! returns Void (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-vdrop (deduce 'open 'memory)) "
+            "  (define [relation db-vdrop] rel-vdrop (name) (age)) "
+            "  (deduce 'drop! rel-vdrop))",
+            interp
+        );
+        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
+            emit_pass_literal("[PASS] deduce drop! returns Void");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] deduce drop! returns Void (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_deduce_crud_example_flow_test(Interp* interp, int* pass, int* fail) {
     EvalResult r = run(
         "(block "
@@ -289,6 +398,7 @@ fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_large_relation_schema_test(interp, pass, fail);
     run_deduce_long_relation_name_isolation_test(interp, pass, fail);
     run_deduce_long_open_path_isolation_test(interp, pass, fail);
+    run_deduce_command_void_return_tests(interp, pass, fail);
     run_deduce_transaction_tests(interp, pass, fail);
     run_deduce_clear_drop_tests(interp, pass, fail);
     run_deduce_legacy_alias_rejection_tests(interp, pass, fail);

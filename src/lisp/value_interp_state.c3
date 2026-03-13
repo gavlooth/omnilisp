@@ -70,11 +70,12 @@ struct Interp {
     SymbolId sym_alias;     // "alias" for [alias] annotation
     SymbolId sym_effect;    // "effect" for [effect] annotation
 
-    // FFI annotation symbols
+    // FFI annotation symbols and shared builtin type names
     SymbolId sym_ffi;       // "ffi" for [ffi ...] annotation
     SymbolId sym_lib;       // "lib" for [ffi lib]
-    SymbolId sym_Ptr;       // "Ptr" for ^Ptr type
-    SymbolId sym_Void;      // "Void" for ^Void type
+    SymbolId sym_Pointer;   // "Pointer" canonical FFI pointer annotation type
+    SymbolId sym_Ptr;       // "Ptr" compatibility alias for ^Pointer
+    SymbolId sym_Void;      // "Void" for ^Void type and runtime Void value/type
 
     // Built-in type name symbols
     SymbolId sym_Integer;
@@ -127,6 +128,7 @@ struct Interp {
     TypeId tid_Boolean;
     TypeId tid_Bool;
     TypeId tid_Nil;
+    TypeId tid_Void;
     TypeId tid_Closure;
     TypeId tid_Array;
     TypeId tid_Dictionary;
@@ -283,6 +285,7 @@ fn void interp_init_type_symbols(Interp* self) {
 
     self.sym_ffi = self.symbols.intern("ffi");
     self.sym_lib = self.symbols.intern("lib");
+    self.sym_Pointer = self.symbols.intern("Pointer");
     self.sym_Ptr = self.symbols.intern("Ptr");
     self.sym_Void = self.symbols.intern("Void");
 

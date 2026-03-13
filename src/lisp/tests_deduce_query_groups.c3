@@ -59,7 +59,7 @@ fn void run_deduce_match_tests(Interp* interp, int* pass, int* fail) {
             fact_args[1] = make_int(interp, (long)i);
             fact_args[2] = make_int(interp, (long)(20 + (int)(i % 50)));
             Value* insert = prim_assert_fact(fact_args[..], null, interp);
-            if (insert == null || insert.tag != NIL) {
+            if (insert == null || insert.tag == ERROR) {
                 io::printfn("[FAIL] deduce 'match preserves >512 results (insert %d)", (int)i);
                 (*fail)++;
                 return;
@@ -164,7 +164,7 @@ fn void run_deduce_match_tests(Interp* interp, int* pass, int* fail) {
         fact_args[0] = rel;
 
         Value* insert = prim_assert_fact(fact_args, null, interp);
-        if (insert == null || insert.tag != NIL) {
+        if (insert == null || insert.tag == ERROR) {
             io::printn("[FAIL] deduce 'match preserves >32 bindings (insert)");
             (*fail)++;
             return;
@@ -239,7 +239,7 @@ fn bool deduce_bench_seed_relation(
         fact_args[1] = make_int(interp, (long)i);
         fact_args[2] = make_int(interp, score);
         Value* inserted = prim_assert_fact(fact_args[..], null, interp);
-        if (inserted == null || inserted.tag != NIL) return false;
+        if (inserted == null || inserted.tag == ERROR) return false;
     }
 
     *rel_out = rel;

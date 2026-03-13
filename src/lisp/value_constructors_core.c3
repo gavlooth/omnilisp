@@ -73,6 +73,8 @@ fn void scope_dtor_value(void* ptr) {
                 main::stack_ctx_destroy(v.coroutine_val, g_stack_ctx_pool);
                 v.coroutine_val = null;
             }
+        case VOID:
+            break;
         // CONTINUATION lifetime remains managed by reset/shift/handle paths.
         default: {}
     }
@@ -103,6 +105,13 @@ fn void scope_dtor_env(void* ptr) {
 fn Value* make_nil(Interp* interp) @inline {
     Value* v = interp.alloc_value();
     v.tag = NIL;
+    return v;
+}
+
+<* @ensure return != null *>
+fn Value* make_void(Interp* interp) @inline {
+    Value* v = interp.alloc_value();
+    v.tag = VOID;
     return v;
 }
 

@@ -66,8 +66,8 @@ fn usz Compiler.compile_zero_arg_tail_call(Compiler* self, Expr* expr) {
     usz func_r = self.compile_to_temp(expr.call.func);
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = aot::invoke_tail(");
+    self.emit(" = aot::apply_multi_tail(");
     self.emit_temp_ref(func_r);
-    self.emit(", aot::make_nil());\n");
+    self.emit(", aot::make_nil(), 0);\n");
     return id;
 }

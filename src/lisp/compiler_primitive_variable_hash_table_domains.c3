@@ -84,6 +84,7 @@ fn void init_prim_hash_core_and_strings(SymbolTable* st) {
     prim_hash_insert(st.intern("Boolean"), "aot::lookup_prim(\"Boolean\")");
     prim_hash_insert(st.intern("Bool"), "aot::lookup_prim(\"Bool\")");
     prim_hash_insert(st.intern("Nil"), "aot::lookup_prim(\"Nil\")");
+    prim_hash_insert(st.intern("Void"), "aot::lookup_prim(\"Void\")");
     prim_hash_insert(st.intern("Closure"), "aot::lookup_prim(\"Closure\")");
     prim_hash_insert(st.intern("Iterator"), "aot::lookup_prim(\"Iterator\")");
 }
@@ -102,6 +103,14 @@ fn void init_prim_hash_files_and_misc(SymbolTable* st) {
     prim_hash_insert(st.intern("fs-readdir"), "aot::lookup_prim(\"fs-readdir\")");
     prim_hash_insert(st.intern("fs-rename"), "aot::lookup_prim(\"fs-rename\")");
     prim_hash_insert(st.intern("fs-unlink"), "aot::lookup_prim(\"fs-unlink\")");
+    prim_hash_insert(st.intern("filesystem-open"), "aot::lookup_prim(\"filesystem-open\")");
+    prim_hash_insert(st.intern("filesystem-read"), "aot::lookup_prim(\"filesystem-read\")");
+    prim_hash_insert(st.intern("filesystem-write"), "aot::lookup_prim(\"filesystem-write\")");
+    prim_hash_insert(st.intern("filesystem-close"), "aot::lookup_prim(\"filesystem-close\")");
+    prim_hash_insert(st.intern("filesystem-stat"), "aot::lookup_prim(\"filesystem-stat\")");
+    prim_hash_insert(st.intern("filesystem-read-directory"), "aot::lookup_prim(\"filesystem-read-directory\")");
+    prim_hash_insert(st.intern("filesystem-rename"), "aot::lookup_prim(\"filesystem-rename\")");
+    prim_hash_insert(st.intern("filesystem-unlink"), "aot::lookup_prim(\"filesystem-unlink\")");
 
     // Misc
     prim_hash_insert(st.intern("gensym"), "aot::lookup_prim(\"gensym\")");
@@ -129,6 +138,7 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("set-size"), "aot::lookup_prim(\"set-size\")");
     prim_hash_insert(st.intern("set->list"), "aot::lookup_prim(\"set->list\")");
     prim_hash_insert(st.intern("ref"), "aot::lookup_prim(\"ref\")");
+    prim_hash_insert(st.intern("set!"), "aot::lookup_prim(\"set!\")");
     prim_hash_insert(st.intern("keys"), "aot::lookup_prim(\"keys\")");
     prim_hash_insert(st.intern("values"), "aot::lookup_prim(\"values\")");
     prim_hash_insert(st.intern("has?"), "aot::lookup_prim(\"has?\")");

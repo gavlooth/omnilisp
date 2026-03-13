@@ -35,6 +35,12 @@ fn void Compiler.emit_escaped(Compiler* self, char[] s) {
     }
 }
 
+fn void Compiler.emit_string_literal(Compiler* self, char[] s) {
+    self.emit_char('"');
+    self.emit_escaped(s);
+    self.emit_char('"');
+}
+
 fn void Compiler.emit_line(Compiler* self, char[] s) {
     self.emit_indent();
     self.emit(s);

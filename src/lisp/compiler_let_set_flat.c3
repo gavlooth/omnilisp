@@ -27,14 +27,17 @@ fn usz Compiler.compile_block_flat(Compiler* self, Expr* expr) {
 
 fn usz Compiler.compile_mutable_captured_set_flat(Compiler* self, SymbolId name, Expr* value) {
     usz val_r = self.compile_to_temp(value);
-    usz id = self.next_result();
-    self.emit_temp_decl(id);
-    self.emit(" = aot::set_var(\"");
+    self.emit_indent();
+    self.emit("aot::set_var(\"");
     char[] set_name = self.interp.symbols.get_name(name);
     self.emit_escaped(set_name);
     self.emit("\", ");
     self.emit_temp_ref(val_r);
     self.emit(");\n");
+
+    usz id = self.next_result();
+    self.emit_temp_decl(id);
+    self.emit(" = aot::make_void();\n");
     return id;
 }
 
@@ -48,9 +51,7 @@ fn usz Compiler.compile_local_set_flat(Compiler* self, SymbolId name, Expr* valu
 
     usz id = self.next_result();
     self.emit_temp_decl(id);
-    self.emit(" = ");
-    self.emit_symbol_name(name);
-    self.emit(";\n");
+    self.emit(" = aot::make_void();\n");
     return id;
 }
 
@@ -80,18 +81,20 @@ fn bool Compiler.is_builtin_primitive(Compiler* self, SymbolId sym) {
         "closure?", "continuation?", "double?", "list?",
         "boolean?", "bool?", "number?", "dictionary?",
         "string->number", "number->string",
-        "Integer", "Int", "Double", "String", "Symbol", "Boolean", "Bool", "Nil", "Closure", "Iterator",
+        "Integer", "Int", "Double", "String", "Symbol", "Pointer", "Ptr", "Boolean", "Bool", "Nil", "Void", "Closure", "Iterator",
         "gensym", "load", "apply", "equal?",
         "Array", "array", "array-set!",
         "Dictionary", "dictionary",
         "Dict", "dict", "dict-set!", "dict?",
         "Set", "set-add", "set-remove", "set-contains?", "set-size", "set->list",
-        "ref", "push!", "keys", "values", "has?", "remove!",
+        "ref", "set!", "push!", "keys", "values", "has?", "remove!",
         "iterator?", "make-iterator", "next", "collect", "to-array",
         "coroutine", "Coroutine", "resume", "yield", "coroutine?",
         "json-get",
         "TimePoint", "time-point", "time-point?",
         "read-file", "write-file", "file-exists?", "read-lines",
+        "filesystem-open", "filesystem-read", "filesystem-write", "filesystem-close",
+        "filesystem-stat", "filesystem-read-directory", "filesystem-rename", "filesystem-unlink",
         "type-of",
         "abs", "min", "max", "floor", "ceiling", "round",
         "truncate", "sqrt", "even?", "odd?", "zero?",

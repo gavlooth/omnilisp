@@ -104,7 +104,16 @@ fn Value* prim_remove(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return raise_error(interp, "remove!: expected 2 arguments");
     if (args[0].tag != HASHMAP) return raise_error(interp, "remove!: expected dict");
     hashmap_remove(args[0].hashmap_val, args[1]);
-    return args[0];
+    return make_void(interp);
+}
+
+// Generic mutating update surface:
+// (set! collection key value) dispatches by collection type.
+fn Value* prim_set_bang(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 3) return raise_error(interp, "set!: expected collection, key, value");
+    if (args[0].tag == ARRAY) return prim_array_set(args, env, interp);
+    if (args[0].tag == HASHMAP) return prim_dict_set(args, env, interp);
+    return raise_error(interp, "set!: generic form expects array or dict target");
 }
 
 // --- Phase 9: Set primitives ---
@@ -130,13 +139,13 @@ fn Value* prim_set_add(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != SET) return raise_error(interp, "set-add: expected set and value");
     Value* true_val = make_symbol(interp, interp.sym_true);
     hashmap_set(args[0].hashmap_val, args[1], true_val, interp);
-    return args[0];
+    return make_void(interp);
 }
 
 fn Value* prim_set_remove(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != SET) return raise_error(interp, "set-remove: expected set and value");
     hashmap_remove(args[0].hashmap_val, args[1]);
-    return args[0];
+    return make_void(interp);
 }
 
 fn Value* prim_set_contains(Value*[] args, Env* env, Interp* interp) {

@@ -256,7 +256,7 @@ fn Value* prim_dict_set(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3) return raise_error(interp, "dict-set!: expected 3 arguments");
     if (args[0].tag != HASHMAP) return raise_error(interp, "dict-set!: expected dict");
     hashmap_set(args[0].hashmap_val, args[1], args[2], interp);
-    return args[0];
+    return make_void(interp);
 }
 
 // prim_dict_has, prim_dict_remove, prim_dict_keys, prim_dict_values

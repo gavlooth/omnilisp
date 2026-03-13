@@ -367,7 +367,7 @@ fn Value* prim_tls_write(Value*[] args, Env* env, Interp* interp) {
 }
 
 // ============================================================
-// (tls-close tls-handle) -> nil
+// (tls-close tls-handle) -> void
 // ============================================================
 
 fn Value* prim_tls_close(Value*[] args, Env* env, Interp* interp) {
@@ -392,5 +392,5 @@ fn Value* prim_tls_close(Value*[] args, Env* env, Interp* interp) {
     work.int_arg = (long)(uptr)th;
     Value* out = tls_run_fiber_offload(&work, interp);
     if (out != null && out.tag == ERROR) return out;
-    return make_nil(interp);
+    return make_void(interp);
 }

@@ -271,7 +271,7 @@ fn Value* prim_async_sleep(Value*[] args, Env* env, Interp* interp) {
     }
 
     long ms = args[0].int_val;
-    if (ms <= 0) return make_nil(interp);
+    if (ms <= 0) return make_void(interp);
 
     usz fiber_id = g_scheduler.current_fiber_id;
     PendingSleep* sleep = &g_scheduler.pending_sleeps[fiber_id];

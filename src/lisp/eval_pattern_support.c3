@@ -133,6 +133,7 @@ fn bool values_equal_with_workspace_stats(Value* a, Value* b, EqualityWorkspaceS
 
     switch (a.tag) {
         case NIL:
+        case VOID:
             return true;
         case INT:
             return a.int_val == b.int_val;
@@ -209,6 +210,7 @@ fn bool values_equal_with_workspace_stats(Value* a, Value* b, EqualityWorkspaceS
 
         switch (left.tag) {
             case NIL:
+            case VOID:
                 break;
             case INT:
                 if (left.int_val != right.int_val) ok = false;

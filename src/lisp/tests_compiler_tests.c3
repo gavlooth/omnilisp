@@ -28,6 +28,24 @@ fn bool str_contains(char[] haystack, char[] needle) {
     return false;
 }
 
+fn usz compiler_str_count(char[] haystack, char[] needle) {
+    if (needle.len == 0) return 0;
+    if (needle.len > haystack.len) return 0;
+
+    usz count = 0;
+    for (usz i = 0; i <= haystack.len - needle.len; i++) {
+        bool match = true;
+        for (usz j = 0; j < needle.len; j++) {
+            if (haystack[i + j] != needle[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) count++;
+    }
+    return count;
+}
+
 fn void compiler_print_pass(char[] msg) {
     bool quiet = compiler_c_getenv("OMNI_TEST_QUIET") != null ||
                  (compiler_c_getenv("OMNI_TEST_SUMMARY") != null &&

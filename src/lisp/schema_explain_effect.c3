@@ -190,11 +190,14 @@ fn void explain_init_effect_trace_shape(Interp* interp, Value* trace) {
     explain_dict_set(trace, interp, "debug_message", make_nil(interp));
 }
 
-fn Value* explain_effect_result_from_signal(Interp* interp, Expr* target, Env* target_env, Value* out, Value* decision, Value* trace) {
-    Value* arg_value = jit_eval(target.perform.arg, target_env, interp);
-    if (arg_value != null && arg_value.tag == ERROR) return arg_value;
-
-    SymbolId effect_tag = target.perform.tag;
+fn Value* explain_effect_result_from_signal_value(
+    Interp* interp,
+    SymbolId effect_tag,
+    Value* arg_value,
+    Value* out,
+    Value* decision,
+    Value* trace
+) {
     TypeId arg_type = infer_value_type(arg_value, interp);
     bool has_stack_ctx = main::g_current_stack_ctx != null;
 
@@ -346,8 +349,19 @@ fn Value* explain_effect_result_from_signal(Interp* interp, Expr* target, Env* t
     return out;
 }
 
-fn Value* explain_effect_result_from_resolve(Interp* interp, Env* target_env, Value* out, Value* decision, Value* trace) {
-    Value* k_val = explain_effect_continuation_lookup(target_env, interp);
+fn Value* explain_effect_result_from_signal(Interp* interp, Expr* target, Env* target_env, Value* out, Value* decision, Value* trace) {
+    Value* arg_value = jit_eval(target.perform.arg, target_env, interp);
+    if (arg_value != null && arg_value.tag == ERROR) return arg_value;
+    return explain_effect_result_from_signal_value(interp, target.perform.tag, arg_value, out, decision, trace);
+}
+
+fn Value* explain_effect_result_from_resolve_value(
+    Interp* interp,
+    Value* k_val,
+    Value* out,
+    Value* decision,
+    Value* trace
+) {
     explain_dict_set(trace, interp, "has-continuation-binding", explain_bool_value(interp, k_val != null));
 
     if (k_val == null || k_val.tag != CONTINUATION) {
@@ -384,6 +398,40 @@ fn Value* explain_effect_result_from_resolve(Interp* interp, Env* target_env, Va
     explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("resolve-generic-continuation"));
     explain_dict_set_symbol(decision, interp, "outcome", interp.sym_resolve);
     return out;
+}
+
+fn Value* explain_effect_result_from_resolve(Interp* interp, Env* target_env, Value* out, Value* decision, Value* trace) {
+    Value* k_val = explain_effect_continuation_lookup(target_env, interp);
+    return explain_effect_result_from_resolve_value(interp, k_val, out, decision, trace);
+}
+
+fn Value* explain_effect_result_from_compiled_signal(
+    Interp* interp,
+    char[] source,
+    SymbolId effect_tag,
+    Value* arg_value
+) {
+    Value* input_form = explain_input_form_from_source(interp, source);
+    Value* out = make_hashmap(interp, 16);
+    Value* decision = make_hashmap(interp, 16);
+    Value* trace = make_hashmap(interp, 16);
+    explain_init_common_output(interp, out, interp.sym_effect, input_form, decision, trace);
+    explain_init_effect_decision_shape(interp, decision);
+    explain_init_effect_trace_shape(interp, trace);
+    Value* result = explain_effect_result_from_signal_value(interp, effect_tag, arg_value, out, decision, trace);
+    if (result != null && result.tag == ERROR) return result;
+    return out;
+}
+
+fn Value* explain_effect_result_from_compiled_resolve(Interp* interp, char[] source, Value* continuation) {
+    Value* input_form = explain_input_form_from_source(interp, source);
+    Value* out = make_hashmap(interp, 16);
+    Value* decision = make_hashmap(interp, 16);
+    Value* trace = make_hashmap(interp, 16);
+    explain_init_common_output(interp, out, interp.sym_effect, input_form, decision, trace);
+    explain_init_effect_decision_shape(interp, decision);
+    explain_init_effect_trace_shape(interp, trace);
+    return explain_effect_result_from_resolve_value(interp, continuation, out, decision, trace);
 }
 
 fn Value* explain_effect_result_from_thunk(Interp* interp, Value* thunk_value) {
