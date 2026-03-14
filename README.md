@@ -65,10 +65,10 @@ The examples below match that spec.
 ;; list
 '(1 2 3)
 
-;; array literal (desugars to (array ...))
+;; array literal (desugars to (Array ...))
 [1 2 3]
 
-;; dict literal (desugars to (dict ...))
+;; dict literal (desugars to (Dictionary ...))
 {'a 1 'b 2}
 
 ;; path and index access
@@ -101,7 +101,7 @@ dict.['key]
 
 ```lisp
 ;; delimited continuations
-(reset (+ 1 (shift k (k 10))))
+(checkpoint (+ 1 (capture k (k 10))))
 
 ;; algebraic effects
 (handle

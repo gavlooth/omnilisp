@@ -1010,6 +1010,11 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 
 Canonical constructor surface is `Dictionary` (with `Dict` shorthand). `dict`
 is kept as a compatibility alias.
+Dictionary keys are value-typed: symbols, strings, integers, and other stable
+value keys are supported.
+Style guidance:
+- prefer symbol keys for internal language/runtime maps
+- prefer string keys for external payload maps (JSON/HTTP/config)
 
 ### 7.11 Array Operations (2)
 
@@ -1024,7 +1029,7 @@ Canonical constructor surface is `Array`. `array` is kept as a compatibility ali
 
 | Prim | Arity | Description | Supported types |
 |------|-------|-------------|-----------------|
-| `ref` | 2 | Lookup by key/index | Array (int), Dictionary (any), cons (0=car, 1=cdr), string (char) |
+| `ref` | 2 | Lookup by key/index | Array (int), Dictionary (any key type), cons (0=car, 1=cdr), string (char) |
 | `push!` | 2 | Append element | Array |
 | `keys` | 1 | List of keys | Dictionary |
 | `values` | 1 | List of values | Dictionary |

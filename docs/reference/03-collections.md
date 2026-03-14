@@ -40,8 +40,10 @@ Omni has three collection types plus sets.
 ```lisp
 {'name "Alice" 'age 30}    ;; dict literal (canonical constructor surface: Dictionary)
 (Dictionary 'name "Alice")  ;; canonical construction
+(Dictionary "name" "Alice") ;; string keys are supported
 (dict 'name "Alice")        ;; compatibility alias
 (ref d 'name)               ;; => "Alice"
+(ref (Dictionary "name" "Alice") "name") ;; => "Alice"
 (set! d 'email "a@b")       ;; generic update form (returns Void)
 (dict-set! d 'email "a@b")  ;; set key (returns Void)
 (has? d 'age)               ;; => true
@@ -73,6 +75,11 @@ Naming policy for new code/examples:
 - prefer `List`, `Array`, and `Dictionary` as constructor/coercion surfaces
 - keep `list` as an idiomatic public helper
 - treat lowercase `array`/`dict` as compatibility aliases
+
+Dictionary key policy:
+- symbols are preferred for internal language-owned maps (`'name`, `'code`)
+- strings are preferred at data boundaries (JSON/HTTP/config payloads)
+- keys are value-typed (`Dictionary` supports symbol, string, int, etc. keys)
 
 Ordering contract:
 - `keys` and `values` are deterministic and share the same canonical key order.
