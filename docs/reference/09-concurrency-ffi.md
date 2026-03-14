@@ -118,9 +118,9 @@ All concurrency primitives go through effects and can be intercepted.
 ### Bind Functions
 
 ```lisp
-(define [ffi λ libc] (strlen (^String s)) ^Int)
-(define [ffi λ libc] (abs (^Int n)) ^Int)
-(define [ffi λ libc] (getpid) ^Int)
+(define [ffi λ libc] (strlen (^String s)) ^Integer)
+(define [ffi λ libc] (abs (^Integer n)) ^Integer)
+(define [ffi λ libc] (getpid) ^Integer)
 
 (strlen "hello")    ;; => 5
 (abs -42)           ;; => 42
@@ -142,16 +142,17 @@ All concurrency primitives go through effects and can be intercepted.
 
 | Omni Annotation | C Type | FFI Type |
 |-----------------|--------|----------|
-| `^Int` | `int`, `long`, `size_t` | sint64 |
+| `^Integer` | `int`, `long`, `size_t` | sint64 |
 | `^Double` | `double`, `float` | double |
 | `^String` | `char*` | pointer |
 | `^Pointer` | `void*` | pointer |
 | `^Ptr` | `void*` | pointer (compatibility shorthand) |
-| `^Bool` | `int` (0/1) | sint64 |
+| `^Boolean` | `int` (0/1) | sint64 |
 | `^Void` | `void` | maps the C return to the runtime `Void` singleton value |
 | (none) | `void` return | use `^Void` when binding a function that returns C `void` |
 
 Use `^Pointer` in new bindings; `^Ptr` is retained for compatibility.
+`^Int`/`^Bool` remain accepted shorthand aliases.
 
 ### Features
 

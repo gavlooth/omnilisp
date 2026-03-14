@@ -21,50 +21,6 @@ fn bool jit_resolve_is_effect_continuation(Value* k_val) @inline {
     return k_val.cont_val.is_coroutine_based && k_val.cont_val.handle_state != null;
 }
 
-fn Value* jit_resolve_resume_effect_continuation(Interp* interp, Value* k_val, Value* val) {
-    main::StackCtx* ctx = k_val.cont_val.ctx;
-    if (ctx == null || ctx.status != main::StackCtxStatus.CTX_SUSPENDED) {
-        return raise_error_with_payload_names(
-            interp, "runtime", "runtime/continuation-not-suspended", "resolve: continuation not suspended"
-        );
-    }
-
-    HandleEffectState* hstate = (HandleEffectState*)k_val.cont_val.handle_state;
-
-    // Reinstall handler so the body can signal again
-    if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
-    interp.handler_stack[hstate.handler_idx] = hstate.handler_copy;
-    interp.handler_count = hstate.handler_idx + 1;
-
-    // Set resume value
-    interp.resume_value = val;
-
-    SavedInterpState saved_resolve;
-    save_interp_state(interp, &saved_resolve);
-
-    main::StackContext parent_ctx;
-    main::stack_ctx_resume(ctx, &parent_ctx);
-
-    restore_interp_state(interp, &saved_resolve);
-
-    // Pop the reinstalled handler
-    interp.handler_count = hstate.handler_idx;
-
-    // Stack overflow — context hit guard page after resolve
-    if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
-        return raise_error_with_payload_names(interp, "runtime", "runtime/stack-overflow", "stack overflow after resolve");
-    }
-
-    // Return value: body result if completed, or val as placeholder
-    if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
-        Value* body_result = (Value*)ctx.result;
-        return body_result != null ? body_result : val;
-    }
-    // Body signaled again (hstate.signaled set by signal) — return val
-    // The handle loop will dispatch the next signal
-    return val;
-}
-
 fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
     // Evaluate the value to resolve with
     Value* val = jit_eval(expr.resolve.value, env, interp);
@@ -73,17 +29,14 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
     Value* k_val = jit_resolve_lookup_continuation(interp, env);
     if (k_val != null && k_val.tag == ERROR) return k_val;
 
-    // Effect handler path: single-shot resume (no clone)
-    if (jit_resolve_is_effect_continuation(k_val)) {
-        return jit_resolve_resume_effect_continuation(interp, k_val, val);
+    if (!jit_resolve_is_effect_continuation(k_val)) {
+        return raise_error_with_payload_names(
+            interp, "runtime", "runtime/invalid-continuation", "resolve: continuation is not handler-bound"
+        );
     }
 
-    // All continuations are context-based — apply directly
-    EvalResult r = jit_apply_continuation(k_val, val, interp);
-    if (r.error.has_error) {
-        return raise_error_with_payload_names(interp, "runtime", "runtime/resolve-apply-failed", r.error.message[:256]);
-    }
-    return r.value;
+    // Effect-handler resolve is single-shot by contract.
+    return jit_resolve_value(interp, k_val, val);
 }
 
 fn void? jit_compile_resolve(void* s, Expr* expr, Interp* interp, JitLocals* locals) {

@@ -11,6 +11,27 @@ fn void run_advanced_index_mutation_tests(Interp* interp, int* pass, int* fail) 
     test_eq_interp(interp, "set! struct field y", "(let (p (Point 1 2)) (block (set! p.y 50) p.y))", 50, pass, fail);
     test_eq_interp(interp, "set! nested field", "(let (ln (Line (Point 0 0) (Point 10 10))) (block (set! ln.start.x 5) ln.start.x))", 5, pass, fail);
     test_eq_interp(interp, "set! preserves other", "(let (p (Point 3 4)) (block (set! p.x 99) p.y))", 4, pass, fail);
+    test_error_contains(interp, "set! unbound path root error",
+        "(set! missing-point.x 1)",
+        "set!: unbound path root", pass, fail);
+    test_error_contains(interp, "set! path intermediate non-instance error",
+        "(let (p (Point 1 2)) (set! p.x.y.z 7))",
+        "set!: path segment is not an instance or cons", pass, fail);
+    test_error_contains(interp, "set! path missing intermediate field error",
+        "(let (ln (Line (Point 0 0) (Point 10 10))) (set! ln.nope.x 7))",
+        "set!: field not found in path", pass, fail);
+    test_error_contains(interp, "set! final missing instance field error",
+        "(let (p (Point 1 2)) (set! p.nope 7))",
+        "set!: field not found", pass, fail);
+    test_error_contains(interp, "set! cons path segment restriction",
+        "(let (p (cons 1 2)) (set! p.foo 7))",
+        "set!: cons only supports .car and .cdr", pass, fail);
+    test_error_contains(interp, "set! target type restriction",
+        "(let (x 1) (set! x.y 7))",
+        "set!: target is not an instance or cons", pass, fail);
+    test_error_contains(interp, "set! generic target restriction",
+        "(set! 42 0 7)",
+        "set!: generic form expects array or dict target", pass, fail);
     test_eq_interp(interp, "instance field ffi survives scope return",
         "(block "
         "  (define [type] EscBox h) "

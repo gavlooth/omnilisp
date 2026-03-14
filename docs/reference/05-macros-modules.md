@@ -18,13 +18,6 @@
   (syntax-match
     ([test .. body]
       (template (if (insert test) nil (block (splice body))))))
-
-(define [macro] cond
-  (syntax-match
-    ([]
-      (template nil))
-    ([test body .. rest]
-      (template (if (insert test) (insert body) (cond .. rest)))))
 ```
 
 ### Usage
@@ -34,10 +27,10 @@
   (println "positive")
   x)
 
-(cond
-  (< x 0) "negative"
-  (= x 0) "zero"
-  true     "positive")
+(match Void
+  ((? (< x 0)) "negative")
+  ((? (= x 0)) "zero")
+  (_ "positive"))
 ```
 
 ### Features

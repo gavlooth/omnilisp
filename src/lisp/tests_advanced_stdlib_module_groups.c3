@@ -23,6 +23,14 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
     setup(interp, "(define hm3 (Dict 1 10 2 20))");
     test_eq(interp, "keys len", "(length (keys hm3))", 2, pass, fail);
     test_eq(interp, "values len", "(length (values hm3))", 2, pass, fail);
+    test_truthy(interp, "keys canonical order symbol",
+        "(= (keys (Dictionary 'b 2 'a 1 'c 3)) '(a b c))", pass, fail);
+    test_truthy(interp, "values canonical follow keys",
+        "(= (values (Dictionary 'b 2 'a 1 'c 3)) '(1 2 3))", pass, fail);
+    test_truthy(interp, "keys canonical after remove+insert",
+        "(let (d (Dictionary 'c 3 'a 1 'b 2)) (block (remove! d 'b) (set! d 'b 20) (= (keys d) '(a b c))))", pass, fail);
+    test_truthy(interp, "values canonical after remove+insert",
+        "(let (d (Dictionary 'c 3 'a 1 'b 2)) (block (remove! d 'b) (set! d 'b 20) (= (values d) '(1 20 3))))", pass, fail);
     setup(interp, "(define hm4 (Dict \"name\" \"Alice\" \"age\" 30))");
     test_str(interp, "dict string key", "(ref hm4 \"name\")", pass, fail);
     setup(interp, "(define hm5 (Dict))");

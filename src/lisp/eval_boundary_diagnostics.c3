@@ -105,8 +105,8 @@ fn bool boundary_invariant_checks_enabled() @inline {
     return true;
 }
 
-macro boundary_invariant_require(cond, domain, msg) {
-    if (boundary_invariant_checks_enabled() && !(cond)) {
+macro boundary_invariant_require(condition, domain, msg) {
+    if (boundary_invariant_checks_enabled() && !(condition)) {
         boundary_invariant_fail(domain, msg);
     }
 }

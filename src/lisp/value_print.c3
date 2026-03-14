@@ -6,6 +6,53 @@ import std::io;
 // SECTION 8: VALUE PRINTING
 // =============================================================================
 
+fn bool zstr_eq(char* left, char* right) @inline {
+    if (left == null || right == null) return left == right;
+    usz i = 0;
+    while (left[i] != 0 && right[i] != 0) {
+        if (left[i] != right[i]) return false;
+        i++;
+    }
+    return left[i] == right[i];
+}
+
+fn ZString primitive_type_descriptor_name(Primitive* prim) {
+    if (prim == null) return null;
+    char* name = &prim.name;
+
+    // User-defined type constructors share prim_type_constructor.
+    if (prim.func == &prim_type_constructor) return (ZString)name;
+
+    if (zstr_eq(name, "Int")) return (ZString)"Integer";
+    if (zstr_eq(name, "Bool")) return (ZString)"Boolean";
+    if (zstr_eq(name, "Dict")) return (ZString)"Dictionary";
+
+    if (zstr_eq(name, "Integer") ||
+        zstr_eq(name, "Double") ||
+        zstr_eq(name, "String") ||
+        zstr_eq(name, "Symbol") ||
+        zstr_eq(name, "Boolean") ||
+        zstr_eq(name, "Nil") ||
+        zstr_eq(name, "Void") ||
+        zstr_eq(name, "Closure") ||
+        zstr_eq(name, "List") ||
+        zstr_eq(name, "Array") ||
+        zstr_eq(name, "Dictionary") ||
+        zstr_eq(name, "Set") ||
+        zstr_eq(name, "Iterator") ||
+        zstr_eq(name, "Coroutine") ||
+        zstr_eq(name, "TimePoint")) {
+        return (ZString)name;
+    }
+    return null;
+}
+
+fn Primitive* method_table_fallback_prim(MethodTable* mt) {
+    if (mt == null || mt.entry_count != 0 || mt.fallback == null) return null;
+    if (mt.fallback.tag != PRIMITIVE || mt.fallback.prim_val == null) return null;
+    return mt.fallback.prim_val;
+}
+
 fn void print_cons_value(Value* v, SymbolTable* syms) {
     io::print("(");
     print_value(v.cons_val.car, syms);
@@ -98,6 +145,16 @@ fn void print_instance_value(Value* v, SymbolTable* syms) {
 
 fn void print_method_table_value(Value* v, SymbolTable* syms) {
     if (v.method_table_val != null) {
+        Primitive* fallback_prim = method_table_fallback_prim(v.method_table_val);
+        if (fallback_prim != null) {
+            ZString type_name = primitive_type_descriptor_name(fallback_prim);
+            if (type_name != null) {
+                io::printf("#<type %s>", type_name);
+            } else {
+                io::printf("#<primitive %s>", (ZString)&fallback_prim.name);
+            }
+            return;
+        }
         io::printf("#<dispatch %s", (ZString)syms.get_name(v.method_table_val.name));
         if (v.method_table_val.entry_count > 0) {
             io::printf(" %d method%s", v.method_table_val.entry_count,
@@ -147,7 +204,12 @@ fn void print_value(Value* v, SymbolTable* syms) {
         case CONTINUATION:
             io::print("#<continuation>");
         case PRIMITIVE:
-            io::printf("#<primitive %s>", (ZString)&v.prim_val.name);
+            ZString type_name = primitive_type_descriptor_name(v.prim_val);
+            if (type_name != null) {
+                io::printf("#<type %s>", type_name);
+            } else {
+                io::printf("#<primitive %s>", (ZString)&v.prim_val.name);
+            }
         case PARTIAL_PRIM:
             io::printf("#<partial %d more>", v.partial_val.remaining);
         case ERROR:
@@ -291,6 +353,68 @@ fn void print_array_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
     pb.append_char(']');
 }
 
+fn void print_instance_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
+    if (v.instance_val != null) {
+        char[48] ibuf;
+        char[] id = io::bprintf(&ibuf, "%d", v.instance_val.type_id)!!;
+        pb.append_str("(instance:");
+        pb.append_str(id);
+        for (usz fi = 0; fi < v.instance_val.field_count; fi++) {
+            pb.append_char(' ');
+            print_value_buf(&v.instance_val.fields[fi], syms, pb);
+        }
+        pb.append_char(')');
+    } else {
+        pb.append_str("#<instance:null>");
+    }
+}
+
+fn void print_method_table_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
+    if (v.method_table_val == null) {
+        pb.append_str("#<dispatch:null>");
+        return;
+    }
+
+    Primitive* fallback_prim = method_table_fallback_prim(v.method_table_val);
+    if (fallback_prim != null) {
+        ZString type_name = primitive_type_descriptor_name(fallback_prim);
+        if (type_name != null) {
+            pb.append_str("#<type ");
+            pb.append_zstr(type_name);
+            pb.append_char('>');
+        } else {
+            pb.append_str("#<primitive ");
+            pb.append_zstr((ZString)&fallback_prim.name);
+            pb.append_char('>');
+        }
+        return;
+    }
+
+    pb.append_str("#<dispatch ");
+    pb.append_str(syms.get_name(v.method_table_val.name));
+    if (v.method_table_val.entry_count > 0) {
+        char[48] cbuf;
+        char[] count = io::bprintf(&cbuf, "%d", (int)v.method_table_val.entry_count)!!;
+        pb.append_char(' ');
+        pb.append_str(count);
+        pb.append_str(v.method_table_val.entry_count == 1 ? " method" : " methods");
+    }
+    if (v.method_table_val.fallback != null) {
+        pb.append_str(" +default");
+    }
+    pb.append_char('>');
+}
+
+fn void print_module_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
+    if (v.module_val != null) {
+        pb.append_str("#<module ");
+        pb.append_str(syms.get_name(v.module_val.name));
+        pb.append_char('>');
+    } else {
+        pb.append_str("#<module:null>");
+    }
+}
+
 fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
     if (v == null || v.tag == NIL) {
         pb.append_str("nil");
@@ -321,7 +445,16 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
         case CONTINUATION:
             pb.append_str("#<continuation>");
         case PRIMITIVE:
-            pb.append_str("#<primitive>");
+            ZString type_name = primitive_type_descriptor_name(v.prim_val);
+            if (type_name != null) {
+                pb.append_str("#<type ");
+                pb.append_zstr(type_name);
+                pb.append_char('>');
+            } else {
+                pb.append_str("#<primitive ");
+                pb.append_zstr((ZString)&v.prim_val.name);
+                pb.append_char('>');
+            }
         case PARTIAL_PRIM:
             pb.append_str("#<partial>");
         case ERROR:
@@ -330,10 +463,22 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             print_hashmap_value_buf(v, syms, pb);
         case SET:
             print_set_value_buf(v, syms, pb);
+        case FFI_HANDLE:
+            pb.append_str("#<ffi-handle:");
+            pb.append_zstr((ZString)&v.ffi_val.lib_name);
+            pb.append_char('>');
         case ARRAY:
             print_array_value_buf(v, syms, pb);
+        case TYPE_INFO:
+            pb.append_str("#<type ");
+            pb.append_str(syms.get_name(v.type_info_val.name));
+            pb.append_char('>');
+        case INSTANCE:
+            print_instance_value_buf(v, syms, pb);
+        case METHOD_TABLE:
+            print_method_table_value_buf(v, syms, pb);
         case MODULE:
-            pb.append_str("#<module>");
+            print_module_value_buf(v, syms, pb);
         case ITERATOR:
             pb.append_str("#<iterator>");
         case COROUTINE:

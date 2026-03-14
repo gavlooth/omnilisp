@@ -101,11 +101,11 @@ Validates dicts, arrays, and values against structural schemas.
     (email (maybe (re "^[^@]+@[^@]+$")))))
 
 ;; Validate
-(validate 'person (dict 'name "Alice" 'age 30))
+(validate 'person (Dictionary 'name "Alice" 'age 30))
 ;; => true
 
 ;; Explain failures
-(schema-explain 'person (dict 'name "Alice" 'age -1))
+(schema-explain 'person (Dictionary 'name "Alice" 'age -1))
 ;; => ((age "must satisfy (> 0)"))
 
 ;; Compose schemas
@@ -218,12 +218,12 @@ Columns reuse `define [type]` field syntax. Optional role prefix (`key`, `index`
 (define [relation db] edge (from to))
 
 ;; Typed columns — same as define [type] fields
-(define [relation db] road (^String city1) (^String city2) (^Int km))
+(define [relation db] road (^String city1) (^String city2) (^Integer km))
 
 ;; With roles — role prefix before ^Type name
 (define [relation db history] person
   (key ^String name)             ;; role + type + name
-  (index ^Int age)               ;; indexed for fast range scans
+  (index ^Integer age)           ;; indexed for fast range scans
   (^String email))               ;; no role, just typed
 
 ;; Parser: first token is ^ → plain column. First token is key/index → constrained.
@@ -234,7 +234,7 @@ Columns reuse `define [type]` field syntax. Optional role prefix (`key`, `index`
 | `(name)` | Untyped column |
 | `(^String name)` | Typed column (same as type fields) |
 | `(key ^String name)` | Primary key. Upsert on duplicate. |
-| `(index ^Int age)` | Secondary B+ tree index. Fast range scans. |
+| `(index ^Integer age)` | Secondary B+ tree index. Fast range scans. |
 | `(key index ^String name)` | Both key and indexed. |
 
 **Relation-level attributes (in the `define` bracket):**
@@ -273,13 +273,13 @@ Columns reuse `define [type]` field syntax. Optional role prefix (`key`, `index`
 ```lisp
 ;; All columns
 (query (person ?name ?age _) (> ?age 28))
-;; => ((dict 'name "Alice" 'age 30 'email "alice@b.com"))
+;; => ((Dictionary 'name "Alice" 'age 30 'email "alice@b.com"))
 
 ;; Projection — [...] selects which variables to return
 (query [?name ?age]
   (person ?name ?age _)
   (> ?age 28))
-;; => ((dict 'name "Alice" 'age 30))
+;; => ((Dictionary 'name "Alice" 'age 30))
 
 ;; Synergy with 'symbol-as-function:
 (|> (query [?name ?age] (person ?name ?age _) (> ?age 28))
@@ -298,12 +298,12 @@ Columns reuse `define [type]` field syntax. Optional role prefix (`key`, `index`
 ```lisp
 (query [(count ?name)]
   (adult ?name _))
-;; => ((dict 'count 5))
+;; => ((Dictionary 'count 5))
 
 (query [?dept (avg ?salary) (max ?salary)]
   (employee ?name ?dept ?salary))
-;; => ((dict 'dept "engineering" 'avg 95000 'max 140000)
-;;     (dict 'dept "sales" 'avg 72000 'max 90000))
+;; => ((Dictionary 'dept "engineering" 'avg 95000 'max 140000)
+;;     (Dictionary 'dept "sales" 'avg 72000 'max 90000))
 ```
 
 **Ordering — (order-by ?var 'asc/'desc) as final clause:**
@@ -311,7 +311,7 @@ Columns reuse `define [type]` field syntax. Optional role prefix (`key`, `index`
 (query [?name ?age]
   (person ?name ?age _)
   (order-by ?age 'desc))
-;; => ((dict 'name "Alice" 'age 30) (dict 'name "Bob" 'age 25))
+;; => ((Dictionary 'name "Alice" 'age 30) (Dictionary 'name "Bob" 'age 25))
 ```
 
 **Temporal queries — when history is enabled on a relation:**
@@ -324,8 +324,8 @@ Columns reuse `define [type]` field syntax. Optional role prefix (`key`, `index`
 (query [?name ?age ?t]
   (person ?name ?age _ :time ?t)
   (= ?name "Alice"))
-;; => ((dict 'name "Alice" 'age 29 't "2025-01-01")
-;;     (dict 'name "Alice" 'age 30 't "2026-01-15"))
+;; => ((Dictionary 'name "Alice" 'age 29 't "2025-01-01")
+;;     (Dictionary 'name "Alice" 'age 30 't "2026-01-15"))
 ```
 
 **Retract — with wildcard support:**
@@ -368,7 +368,7 @@ Columns reuse `define [type]` field syntax. Optional role prefix (`key`, `index`
   (edge ?b ?a))
 
 (query [?who] (reachable "A" ?who))
-;; => ((dict 'who "B") (dict 'who "C"))
+;; => ((Dictionary 'who "B") (Dictionary 'who "C"))
 ```
 
 #### Contracts + Deduce Integration
@@ -508,7 +508,7 @@ Tier 3: Omni code (unlimited)       — 0.1% of use cases
 When a quoted symbol is applied as a function, it performs a key lookup:
 
 ```lisp
-('name (dict 'name "Alice" 'age 30))   ;; => "Alice"
+('name (Dictionary 'name "Alice" 'age 30))   ;; => "Alice"
 
 ;; Powerful with HOFs and pipelines
 (map 'name people)                       ;; => ("Alice" "Bob")
@@ -563,11 +563,11 @@ Implementation: ~10 lines in `jit_apply_value` — when applying a SYMBOL, treat
 #2_ (define (broken x) ...)
      (assert (= (broken 1) 2))
 
-;; Disable one branch of a cond
-(cond
-  (< x 0) "negative"
-  #1_ (= x 0) "zero"       ;; disabled: skip 1 form (the "zero" string)
-  true "non-negative")
+;; Disable one guarded branch in a match Void chain
+(match Void
+  ((? (< x 0)) "negative")
+  #1_ ((? (= x 0)) "zero")  ;; disabled: skip 1 form (the guard branch)
+  (_ "non-negative"))
 ```
 
 **Block comments** nest — safe to comment out code containing block comments:
@@ -669,8 +669,8 @@ Users who want channel abstractions write a handler:
 ```lisp
 ;; Channel = effect handler managing a queue
 (define (make-channel)
-  (let (queue (array))
-    (dict 'send (lambda (msg) (signal io/chan-send (cons queue msg)))
+  (let (queue (Array))
+    (Dictionary 'send (lambda (msg) (signal io/chan-send (cons queue msg)))
           'recv (lambda () (signal io/chan-recv queue)))))
 ```
 

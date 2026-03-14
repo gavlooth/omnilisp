@@ -65,7 +65,7 @@ Goodbye!
 | symbol | `SYMBOL` | `'foo` | Interned identifier |
 | cons | `CONS` | `'(1 2 3)` | Pair / linked list cell |
 | closure | `CLOSURE` | `(lambda (x) x)` | Function with captured environment |
-| continuation | `CONTINUATION` | — | Captured via `shift` |
+| continuation | `CONTINUATION` | — | Captured via `capture` |
 | primitive | `PRIMITIVE` | `+`, `car` | Built-in function |
 | partial | `PARTIAL_PRIM` | `(+ 3)` | Partially applied binary primitive |
 | error | `ERROR` | `(error "oops")` | Error value |
@@ -92,6 +92,20 @@ Goodbye!
 (if '() "yes" "no")      ;; => "yes"
 (if nil "yes" "no")      ;; => "no"
 (if false "yes" "no")    ;; => "no"
+```
+
+### `Void` vs `Nil`
+
+Normative rule:
+- `Void` is for successful command/effect completion with no payload.
+- `Nil` is for absence/query-miss (and falsy predicate misses).
+
+```lisp
+(type-of (block (define x 1) (set! x 2)))   ;; => Void
+(type-of (let (d {'a 1}) (remove! d 'a)))   ;; => Void
+
+(type-of (ref {'a 1} 'missing))              ;; => Nil
+(type-of (has? {'a 1} 'missing))             ;; => Nil
 ```
 
 ### Equality

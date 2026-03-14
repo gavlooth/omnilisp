@@ -12,9 +12,10 @@ Functions and macros defined in `stdlib/stdlib.lisp`.
 |------|-----------|-------------|
 | `when` | `(when test body...)` | If test, evaluate body |
 | `unless` | `(unless test body...)` | If not test, evaluate body |
-| `cond` | `(cond t1 b1 t2 b2 ...)` | Multi-branch conditional |
 | `with-defaults` | `(with-defaults n1 v1 ... body)` | Default values for dict params |
 | `stream-yield` | `(stream-yield val)` | Generator-style yield |
+
+For multi-branch conditional chains, use `match` with `Void` + guard patterns.
 
 ### Higher-Order Functions
 
@@ -82,7 +83,7 @@ Force an iterator with constructors: `(List it)` or `(Array it)`.
 | Name | Signature | Description |
 |------|-----------|-------------|
 | `try` | `(try thunk handler)` | Catch `raise` effects |
-| `assert!` | `(assert! cond msg)` | Raise if condition fails |
+| `assert!` | `(assert! condition msg)` | Raise if condition fails |
 
 ### Lazy Evaluation
 

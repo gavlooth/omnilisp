@@ -34,7 +34,7 @@ sequence, returning the last:
 ```lisp
 (define x 42)                              ;; value
 (define (f x y) (+ x y))                   ;; function shorthand
-(define (describe (^Int n)) "integer")      ;; typed (creates dispatch entry)
+(define (describe (^Integer n)) "integer")  ;; typed (creates dispatch entry)
 (define (connect {host port}) body)         ;; dict destructuring param
 ```
 
@@ -120,6 +120,22 @@ tail position.
 Returns `Void` on successful mutation.
 `array-set!` / `dict-set!` remain compatibility aliases.
 
+Dispatch/target matrix:
+
+| Surface | Dispatch target | Success result | Invalid-target behavior |
+|---|---|---|---|
+| `(set! name value)` | variable binding | `Void` | `set!: unbound variable` |
+| `(set! root.seg... value)` | dot-path over `Instance` fields and cons `.car`/`.cdr` | `Void` | path errors (below) |
+| `(set! collection key value)` | generic update on `Array`/`Dictionary` | `Void` | `set!: generic form expects array or dict target` |
+
+Dot-path errors:
+- `set!: unbound path root`
+- `set!: field not found in path`
+- `set!: path segment is not an instance or cons`
+- `set!: cons only supports .car and .cdr`
+- `set!: field not found`
+- `set!: target is not an instance or cons`
+
 ### `quote` / `quasiquote`
 
 ```lisp
@@ -167,6 +183,9 @@ Binary only. `and` returns the left operand if falsy, else the right.
 | Head-tail | `([first .. rest] first)` | Binds head and rest |
 | Prefix | `([a b ..] (+ a b))` | Matches first N, ignores rest |
 | Suffix | `([.. last] last)` | Skips to last element(s) |
+| Guard | `((? (> _ 10)) "big")` | Callable guard receives scrutinee |
+| Direct guard | `((? (> x 10)) "big")` | Non-callable guard expression tested directly |
+| Guard + bind | `((? (> x 10) x) x)` | Evaluate guard after sub-pattern bindings |
 | Constructor | `((Some v) v)` | Matches union variant with fields |
 | Nullary ctor | `(None "empty")` | Matches nullary constructor |
 
@@ -196,6 +215,12 @@ Binary only. `and` returns the left operand if falsy, else the right.
 (match '(1 2)
   ([1 y] (+ 10 y))            ;; => 12
   ([x y] (+ x y)))
+
+;; Cond-style chain with match Void
+(match Void
+  ((? (> x 0)) "positive")
+  ((? (= x 0)) "zero")
+  (_ "negative"))
 ```
 
 Falls through on mismatch. Returns nil if no pattern matches.

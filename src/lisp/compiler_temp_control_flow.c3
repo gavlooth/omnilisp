@@ -62,13 +62,13 @@ fn usz Compiler.compile_tail_short_circuit(Compiler* self, usz left_r, Expr* rig
 }
 
 fn usz Compiler.compile_if_common(Compiler* self, Expr* expr, bool tail) {
-    usz cond = self.compile_to_temp(expr.if_expr.test);
+    usz condition_tmp = self.compile_to_temp(expr.if_expr.test);
     usz id = self.next_result();
     self.emit_temp_decl(id);
     self.emit(";\n");
     self.emit_indent();
     self.emit("if (aot::is_truthy(");
-    self.emit_temp_ref(cond);
+    self.emit_temp_ref(condition_tmp);
     self.emit(")) {\n");
     self.indent++;
     self.compile_branch_assign(id, expr.if_expr.then_branch, tail);

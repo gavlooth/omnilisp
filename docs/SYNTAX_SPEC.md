@@ -94,7 +94,7 @@
 (lambda (x .. rest) body)
 
 ;; Typed parameters (for dispatch)
-(lambda ((^Int x) (^String y)) body)
+(lambda ((^Integer x) (^String y)) body)
 
 ;; Dict destructuring parameter
 (lambda ({name age}) (println name age))
@@ -156,7 +156,7 @@ Three branches required (no two-branch form).
 ;; called as: (connect {'host "localhost" 'port 8080})
 
 ;; Typed function define (multiple dispatch)
-(define (f (^Int x)) "integer")
+(define (f (^Integer x)) "integer")
 (define (f (^String x)) "string")
 (define (f x) "other")  ;; fallback
 
@@ -190,6 +190,22 @@ Three branches required (no two-branch form).
 `set!` returns `Void` on successful mutation.
 `array-set!` and `dict-set!` remain valid compatibility aliases.
 
+`set!` dispatch target matrix:
+
+| Surface | Dispatch target | Success result | Invalid-target behavior |
+|---|---|---|---|
+| `(set! name value)` | variable binding | `Void` | `set!: unbound variable` |
+| `(set! root.seg... value)` | dot-path over `Instance` fields and cons `.car`/`.cdr` | `Void` | path errors (below) |
+| `(set! collection key value)` | generic update on `Array`/`Dictionary` | `Void` | `set!: generic form expects array or dict target` |
+
+Dot-path errors:
+- `set!: unbound path root`
+- `set!: field not found in path`
+- `set!: path segment is not an instance or cons`
+- `set!: cons only supports .car and .cdr`
+- `set!: field not found`
+- `set!: target is not an instance or cons`
+
 ### 3.6 `block` - Sequencing
 
 ```lisp
@@ -221,6 +237,10 @@ Patterns: literals, variables, wildcards `_`, sequences `[a b .. rest]`, quoted 
 (capture k body)
 (checkpoint (+ 1 (capture k (k (k 10)))))  ;; => 12
 ```
+
+- `capture` continuations are multi-shot: `k` may be invoked multiple times.
+- Each `k` invocation replays the resumed continuation segment, including side effects in that segment (`set!`, signaled effects, handled I/O).
+- Each invocation starts from the captured stack snapshot for that continuation segment.
 
 ### 3.10 `signal` / `handle` - Algebraic Effects
 
@@ -256,11 +276,11 @@ Omni has no dedicated keyword type; `'as` and `'all` are quoted symbols in modul
 ### 3.12 Collection Literals
 
 ```lisp
-;; Array literal — desugars to (array ...)
+;; Array literal — equivalent to (Array ...)
 [1 2 3]                ;; => mutable array with elements 1, 2, 3
 []                     ;; => empty array
 
-;; Dict literal — desugars to (dict ...)
+;; Dict literal — equivalent to (Dictionary ...)
 {'a 1 'b 2}            ;; => mutable dict with keys a, b
 {}                     ;; => empty dict
 
@@ -275,8 +295,8 @@ Omni has no dedicated keyword type; `'as` and `'all` are quoted symbols in modul
 ### 4.1 Type Annotations
 
 ```lisp
-^Int              ;; simple type
-^(List Int)       ;; compound type
+^Integer          ;; simple type
+^(List Integer)   ;; compound type
 ^(Value 42)       ;; canonical value-level type (dispatch on literal)
 ^{'T Number}      ;; metadata dictionary
 ```
@@ -284,11 +304,11 @@ Omni has no dedicated keyword type; `'as` and `'all` are quoted symbols in modul
 ### 4.2 Type Definitions
 
 ```lisp
-(define [type] Point (^Int x) (^Int y))
+(define [type] Point (^Integer x) (^Integer y))
 (define [abstract] Shape)
-(define [type] (Circle Shape) (^Int radius))
+(define [type] (Circle Shape) (^Integer radius))
 (define [union] (Option T) None (Some T))
-(define [alias] Num Int)
+(define [alias] Num Integer)
 ```
 
 ### 4.3 Multiple Dispatch
@@ -405,8 +425,8 @@ path        = symbol "." symbol { "." symbol } ;
 quoted      = "'" datum ;
 quasiquoted = "`" datum ;
 list        = "(" { expr } ")" ;
-array_lit   = "[" { expr } "]" ;           (* desugars to (array ...) *)
-dict_lit    = "{" { expr expr } "}" ;      (* desugars to (dict ...), must be even *)
+array_lit   = "[" { expr } "]" ;           (* equivalent to Array constructor call *)
+dict_lit    = "{" { expr expr } "}" ;      (* equivalent to Dictionary constructor call; must be even *)
 indexed     = expr ".[" expr "]" ;
 
 datum       = literal | symbol | "(" { datum } ")" | "'" datum ;

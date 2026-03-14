@@ -80,8 +80,34 @@ fn MatchResult match_pattern_constructor(Pattern* pat, Value* val, Interp* inter
     return result;
 }
 
+fn bool guard_pred_accepts_scrutinee(Value* pred) @inline {
+    if (pred == null) return false;
+    switch (pred.tag) {
+        case CLOSURE:
+        case PRIMITIVE:
+        case PARTIAL_PRIM:
+        case CONTINUATION:
+        case METHOD_TABLE:
+            return true;
+        default:
+            return false;
+    }
+}
+
+fn bool match_guard_predicate_passes(Value* pred, Value* val, Interp* interp) @inline {
+    if (pred == null || pred.tag == ERROR) return false;
+    if (!guard_pred_accepts_scrutinee(pred)) {
+        // Direct guard form: treat evaluated guard value itself as the condition.
+        return !jit_is_falsy(pred, interp);
+    }
+    Value* result = jit_apply_value(pred, val, interp);
+    if (result == null || result.tag == ERROR) return false;
+    return !jit_is_falsy(result, interp);
+}
+
 fn MatchResult match_pattern_guard(Pattern* pat, Value* val, Interp* interp) {
-    // Guard pattern: evaluate pred, apply to val
+    // Guard pattern: evaluate predicate in scope. Callable predicates are applied
+    // to the scrutinee; non-callable results are treated as direct conditions.
     if (pat.guard_sub != null) {
         MatchResult sub_r = match_pattern(pat.guard_sub, val, interp);
         if (!sub_r.matched) return match_fail();
@@ -92,20 +118,16 @@ fn MatchResult match_pattern_guard(Pattern* pat, Value* val, Interp* interp) {
             env_define_with_barrier(guard_env, sub_r.bindings[j].name, sub_r.bindings[j].value, interp);
         }
         Value* pred = jit_eval(pat.guard_pred, guard_env, interp);
-        if (pred == null || pred.tag == ERROR) { sub_r.cleanup(); return match_fail(); }
-        Value* result = jit_apply_value(pred, val, interp);
-        if (result == null || result.tag == ERROR || jit_is_falsy(result, interp)) {
+        if (!match_guard_predicate_passes(pred, val, interp)) {
             sub_r.cleanup();
             return match_fail();
         }
         return sub_r;
     }
 
-    // No sub-pattern: just evaluate pred and apply to val
+    // No sub-pattern: evaluate in current match env and test.
     Value* pred = jit_eval(pat.guard_pred, interp.match_env, interp);
-    if (pred == null || pred.tag == ERROR) return match_fail();
-    Value* result = jit_apply_value(pred, val, interp);
-    if (result == null || result.tag == ERROR || jit_is_falsy(result, interp)) {
+    if (!match_guard_predicate_passes(pred, val, interp)) {
         return match_fail();
     }
     return match_ok();

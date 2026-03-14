@@ -5,6 +5,10 @@ import std::core::mem;
 import main;
 
 // Collection primitives: length + hashmap/dict core.
+fn Value* dict_ctor_type_raise(Interp* interp, char[] code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "type", code, message, null);
+}
+
 fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "length: expected 1 argument");
 
@@ -104,6 +108,152 @@ fn uint hash_value(Value* key) {
         }
         default: return 0;
     }
+}
+
+fn int compare_char_slices(char[] left, char[] right) @inline {
+    usz min_len = left.len < right.len ? left.len : right.len;
+    for (usz i = 0; i < min_len; i++) {
+        if (left[i] < right[i]) return -1;
+        if (left[i] > right[i]) return 1;
+    }
+    if (left.len < right.len) return -1;
+    if (left.len > right.len) return 1;
+    return 0;
+}
+
+fn int compare_time_points(TimePoint left, TimePoint right) @inline {
+    if (left.year != right.year) return left.year < right.year ? -1 : 1;
+    if (left.month != right.month) return left.month < right.month ? -1 : 1;
+    if (left.day != right.day) return left.day < right.day ? -1 : 1;
+    if (left.hour != right.hour) return left.hour < right.hour ? -1 : 1;
+    if (left.minute != right.minute) return left.minute < right.minute ? -1 : 1;
+    if (left.second != right.second) return left.second < right.second ? -1 : 1;
+    if (left.microsecond != right.microsecond) return left.microsecond < right.microsecond ? -1 : 1;
+    if (left.tz_offset != right.tz_offset) return left.tz_offset < right.tz_offset ? -1 : 1;
+    if (left.kind != right.kind) return left.kind < right.kind ? -1 : 1;
+    return 0;
+}
+
+// Canonical ordering for dictionary/set iteration surfaces.
+// This intentionally uses a deterministic total-ish order for common key types
+// and a stable hash fallback for unsupported tags.
+fn int hashmap_iteration_key_compare(Value* left, Value* right, Interp* interp) {
+    if (left == right) return 0;
+    if (left == null) return -1;
+    if (right == null) return 1;
+    if (left.tag != right.tag) return left.tag < right.tag ? -1 : 1;
+
+    switch (left.tag) {
+        case NIL:
+        case VOID:
+            return 0;
+        case INT:
+            if (left.int_val < right.int_val) return -1;
+            if (left.int_val > right.int_val) return 1;
+            return 0;
+        case DOUBLE: {
+            double l = left.double_val;
+            double r = right.double_val;
+            bool l_nan = l != l;
+            bool r_nan = r != r;
+            if (l_nan && r_nan) return 0;
+            if (l_nan) return 1;
+            if (r_nan) return -1;
+            if (l < r) return -1;
+            if (l > r) return 1;
+            return 0;
+        }
+        case STRING:
+            return compare_char_slices(left.str_chars[:left.str_len], right.str_chars[:right.str_len]);
+        case SYMBOL: {
+            char[] l_name = interp.symbols.get_name(left.sym_val);
+            char[] r_name = interp.symbols.get_name(right.sym_val);
+            return compare_char_slices(l_name, r_name);
+        }
+        case TIME_POINT:
+            return compare_time_points(left.time_point_val, right.time_point_val);
+        default: {
+            uint l_hash = hash_value(left);
+            uint r_hash = hash_value(right);
+            if (l_hash < r_hash) return -1;
+            if (l_hash > r_hash) return 1;
+            return 0;
+        }
+    }
+}
+
+fn uint[] hashmap_sorted_slots(HashMap* map, Interp* interp) {
+    usz count = map == null ? 0 : (usz)map.count;
+    uint[] slots = mem::new_array(uint, count);
+    if (slots.ptr == null || count == 0) return slots;
+
+    usz used = 0;
+    for (uint i = 0; i < map.capacity && used < count; i++) {
+        if (map.entries[i].key != null) {
+            slots[used++] = i;
+        }
+    }
+
+    // Stable insertion sort by canonical key order.
+    for (usz i = 1; i < used; i++) {
+        uint slot_key = slots[i];
+        Value* key_value = map.entries[slot_key].key;
+        isz j = (isz)i - 1;
+        while (j >= 0) {
+            uint slot_j = slots[(usz)j];
+            Value* probe_value = map.entries[slot_j].key;
+            int cmp = hashmap_iteration_key_compare(probe_value, key_value, interp);
+            if (cmp <= 0) break;
+            slots[(usz)(j + 1)] = slot_j;
+            j--;
+        }
+        slots[(usz)(j + 1)] = slot_key;
+    }
+    return slots;
+}
+
+fn Value* hashmap_keys_list_canonical(HashMap* map, Interp* interp) {
+    if (map == null || map.count == 0) return make_nil(interp);
+
+    uint[] slots = hashmap_sorted_slots(map, interp);
+    if (slots.ptr == null) {
+        // Fallback under allocation pressure.
+        Value* fallback = make_nil(interp);
+        for (uint i = 0; i < map.capacity; i++) {
+            if (map.entries[i].key != null) fallback = make_cons(interp, map.entries[i].key, fallback);
+        }
+        return fallback;
+    }
+    defer mem::free(slots.ptr);
+
+    Value* result = make_nil(interp);
+    for (isz i = (isz)slots.len - 1; i >= 0; i--) {
+        uint slot = slots[(usz)i];
+        result = make_cons(interp, map.entries[slot].key, result);
+    }
+    return result;
+}
+
+fn Value* hashmap_values_list_canonical(HashMap* map, Interp* interp) {
+    if (map == null || map.count == 0) return make_nil(interp);
+
+    uint[] slots = hashmap_sorted_slots(map, interp);
+    if (slots.ptr == null) {
+        // Fallback under allocation pressure.
+        Value* fallback = make_nil(interp);
+        for (uint i = 0; i < map.capacity; i++) {
+            if (map.entries[i].key != null) fallback = make_cons(interp, map.entries[i].value, fallback);
+        }
+        return fallback;
+    }
+    defer mem::free(slots.ptr);
+
+    Value* result = make_nil(interp);
+    for (isz i = (isz)slots.len - 1; i >= 0; i--) {
+        uint slot = slots[(usz)i];
+        result = make_cons(interp, map.entries[slot].value, result);
+    }
+    return result;
 }
 
 fn HashMap* hashmap_new(uint capacity, Interp* interp) {
@@ -242,7 +392,9 @@ fn Value* make_hashmap(Interp* interp, uint capacity) {
 
 // Dict primitives
 fn Value* prim_dict(Value*[] args, Env* env, Interp* interp) {
-    if (args.len % 2 != 0) return raise_error(interp, "dict: expected even number of args");
+    if (args.len % 2 != 0) {
+        return dict_ctor_type_raise(interp, "type/arity", "Dictionary: expected even number of key/value arguments");
+    }
     uint cap = 16;
     while (cap < (uint)args.len * 2) cap *= 2;
     Value* v = make_hashmap(interp, cap);

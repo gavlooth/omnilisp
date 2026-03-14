@@ -24,7 +24,7 @@ future feature work and regressions.
 ## Next Steps
 
 - [x] Stabilize request/response paths in `examples/finwatch/server.omni`.
-  - Canonicalized malformed `cond` branches in routing/request handlers.
+  - Canonicalized malformed conditional branches in routing/request handlers.
   - Introduced explicit route-symbol extraction helper for `/prices/:symbol`.
   - Renamed slash-namespaced server symbols to canonical hyphen names to avoid
     module-load symbol collisions:

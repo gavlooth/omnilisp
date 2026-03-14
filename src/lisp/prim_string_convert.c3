@@ -14,23 +14,55 @@ fn Value* conversion_runtime_raise(Interp* interp, char[] code, char[] message) 
     return raise_error_with_payload_names(interp, "runtime", code, message, null);
 }
 
+const double CONVERSION_DOUBLE_FINITE_LIMIT = 1.7976931348623157e308;
+const double CONVERSION_INT_MAX_DOUBLE = (double)long.max;
+const double CONVERSION_INT_MIN_DOUBLE = (double)long.min;
+
+fn bool conversion_double_is_finite(double v) @inline {
+    if (v != v) return false; // NaN
+    return v <= CONVERSION_DOUBLE_FINITE_LIMIT && v >= -CONVERSION_DOUBLE_FINITE_LIMIT;
+}
+
+fn bool conversion_try_double_to_int(double v, long* out) @inline {
+    if (!conversion_double_is_finite(v)) return false;
+    if (v < CONVERSION_INT_MIN_DOUBLE || v > CONVERSION_INT_MAX_DOUBLE) return false;
+    *out = (long)v; // truncation toward zero
+    return true;
+}
+
+fn Value* conversion_int_from_double_or_raise(Interp* interp, double v, char[] message) @inline {
+    long out = 0;
+    if (!conversion_try_double_to_int(v, &out)) return conversion_type_raise(interp, message);
+    return make_int(interp, out);
+}
+
 fn Value* prim_ctor_int(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return conversion_type_raise(interp, "Integer: expected int, double, or numeric string");
+    if (args.len < 1) return conversion_type_raise(interp, "Integer: expected int, finite double, or in-range numeric string");
 
     Value* arg = args[0];
     if (arg == null || arg.tag == NIL) {
-        return conversion_type_raise(interp, "Integer: expected int, double, or numeric string");
+        return conversion_type_raise(interp, "Integer: expected int, finite double, or in-range numeric string");
     }
     if (arg.tag == INT) return arg;
-    if (arg.tag == DOUBLE) return make_int(interp, (long)arg.double_val);
+    if (arg.tag == DOUBLE) {
+        return conversion_int_from_double_or_raise(
+            interp,
+            arg.double_val,
+            "Integer: expected int, finite double, or in-range numeric string");
+    }
     if (arg.tag == STRING) {
         Value* parsed = prim_string_to_number(args, env, interp);
         if (parsed != null && parsed.tag != NIL) {
             if (parsed.tag == INT) return parsed;
-            if (parsed.tag == DOUBLE) return make_int(interp, (long)parsed.double_val);
+            if (parsed.tag == DOUBLE) {
+                return conversion_int_from_double_or_raise(
+                    interp,
+                    parsed.double_val,
+                    "Integer: expected int, finite double, or in-range numeric string");
+            }
         }
     }
-    return conversion_type_raise(interp, "Integer: expected int, double, or numeric string");
+    return conversion_type_raise(interp, "Integer: expected int, finite double, or in-range numeric string");
 }
 
 fn Value* prim_ctor_string(Value*[] args, Env* env, Interp* interp) {
@@ -128,27 +160,41 @@ fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
             bool exp_neg = false;
             if (i < s.len && (s[i] == '-' || s[i] == '+')) { exp_neg = s[i] == '-'; i++; }
             long exp_val = 0;
-            while (i < s.len && s[i] >= '0' && s[i] <= '9') { exp_val = exp_val * 10 + (long)(s[i] - '0'); i++; }
+            bool has_exp_digits = false;
+            while (i < s.len && s[i] >= '0' && s[i] <= '9') {
+                has_exp_digits = true;
+                if (exp_val > 10000) return make_nil(interp); // bounded parse cost / overflow guard
+                exp_val = exp_val * 10 + (long)(s[i] - '0');
+                i++;
+            }
+            if (!has_exp_digits) return make_nil(interp);
             double mult = 1.0;
             for (long e = 0; e < exp_val; e++) mult = mult * 10.0;
             if (exp_neg) { val = val / mult; } else { val = val * mult; }
         }
         if (i != s.len) return make_nil(interp);
         if (negative) val = -val;
+        if (!conversion_double_is_finite(val)) return make_nil(interp);
         return make_double(interp, val);
     }
     // Integer parse
     usz i = 0;
     bool negative = false;
-    if (s[0] == '-') { negative = true; i = 1; }
+    if (s[0] == '-' || s[0] == '+') { negative = s[0] == '-'; i = 1; }
     if (i >= s.len) return make_nil(interp);
     long val = 0;
     while (i < s.len) {
         if (s[i] < '0' || s[i] > '9') return make_nil(interp);
-        val = val * 10 + (long)(s[i] - '0');
+        long digit = (long)(s[i] - '0');
+        if (negative) {
+            if (val < (long.min + digit) / 10) return make_nil(interp);
+            val = val * 10 - digit;
+        } else {
+            if (val > (long.max - digit) / 10) return make_nil(interp);
+            val = val * 10 + digit;
+        }
         i++;
     }
-    if (negative) val = -val;
     return make_int(interp, val);
 }
 
@@ -168,7 +214,7 @@ fn Value* prim_exact_to_inexact(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_inexact_to_exact(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_number(args[0])) return conversion_type_raise(interp, "inexact->exact: expected number");
-    return make_int(interp, (long)to_double(args[0]));
+    return conversion_int_from_double_or_raise(interp, to_double(args[0]), "inexact->exact: expected finite number in Integer range");
 }
 
 fn Value* prim_read_string(Value*[] args, Env* env, Interp* interp) {

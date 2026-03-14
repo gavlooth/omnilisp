@@ -563,6 +563,8 @@ fn void run_advanced_lambda_syntax_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "guard with bind", "(match 5 ((? positive? x) x) (_ 0))", 5, pass, fail);
     test_eq(interp, "guard lambda", "(match 5 ((? (lambda (x) (> x 3))) 1) (_ 0))", 1, pass, fail);
     test_eq(interp, "guard placeholder", "(match 5 ((? (> _ 3)) 1) (_ 0))", 1, pass, fail);
+    test_eq(interp, "guard direct condition", "(match 5 ((? (> 10 3)) 1) (_ 0))", 1, pass, fail);
+    test_eq(interp, "guard direct condition with sub-pattern bind", "(match 5 ((? (> x 3) x) x) (_ 0))", 5, pass, fail);
 
     // Partial application
     test_eq(interp, "partial basic", "((partial + 1) 2)", 3, pass, fail);

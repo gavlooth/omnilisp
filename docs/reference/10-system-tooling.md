@@ -74,8 +74,8 @@ nil               ;; nil value
 
 ```lisp
 '(1 2 3)          ;; quoted list
-[1 2 3]           ;; array literal    -> (array 1 2 3)
-{'a 1 'b 2}       ;; dict literal     -> (dict 'a 1 'b 2)
+[1 2 3]           ;; array literal    -> (Array 1 2 3) (canonical constructor surface)
+{'a 1 'b 2}       ;; dict literal     -> (Dictionary 'a 1 'b 2) (canonical constructor surface)
 (Set "a" "b" "c") ;; set constructor
 ```
 

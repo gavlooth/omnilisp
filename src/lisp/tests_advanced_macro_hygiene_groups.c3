@@ -9,8 +9,8 @@ fn void run_advanced_stdlib_macro_migration_regression_tests(Interp* interp, int
     test_eq(interp, "stdlib when macro false branch keeps state", "(let (x 3) (block (when false (set! x 10)) x))", 3, pass, fail);
     test_eq(interp, "stdlib unless macro false branch", "(let (x 0) (block (unless false (set! x 20)) x))", 20, pass, fail);
     test_eq(interp, "stdlib unless macro true branch keeps state", "(let (x 4) (block (unless true (set! x 20)) x))", 4, pass, fail);
-    test_eq(interp, "stdlib cond macro branches", "(cond false 1 false 2 true 7)", 7, pass, fail);
-    test_nil(interp, "stdlib cond macro all false", "(cond false 1 false 2)", pass, fail);
+    test_eq(interp, "stdlib match Void branch chain", "(match Void ((? false) 1) ((? true) 2) (_ 3))", 2, pass, fail);
+    test_nil(interp, "stdlib match Void no matching guard", "(match Void ((? false) 1) ((? false) 2) (_ nil))", pass, fail);
     test_str_val(interp, "stdlib with-defaults nil fallback", "(let ({name} {'name nil}) (with-defaults name \"anon\" name))", "anon", pass, fail);
     test_str_val(interp, "stdlib with-defaults keeps non-nil", "(let ({name} {'name \"omni\"}) (with-defaults name \"anon\" name))", "omni", pass, fail);
     test_eq(interp, "stdlib stream-yield macro expands to capture", "(car (checkpoint (stream-yield 9)))", 9, pass, fail);
@@ -61,9 +61,9 @@ fn void run_advanced_macro_hygiene_quasi_pattern_tests(Interp* interp, int* pass
     test_eq(interp, "unless macro preserves let inside define",
         "(block (unless false (define (ufoo3 x) (let (y 1) (+ x y)))) (ufoo3 2))",
         3, pass, fail);
-    setup(interp, "(define [macro] cond (syntax-match ([] (template nil)) ([test body .. rest] (template (if (insert test) (insert body) (cond .. rest))))))");
-    test_eq(interp, "cond macro", "(cond false 1 true 2 true 3)", 2, pass, fail);
-    test_nil(interp, "cond all false", "(cond false 1 false 2)", pass, fail);
+    setup(interp, "(define [macro] choose-if (syntax-match ([] (template nil)) ([test body .. rest] (template (if (insert test) (insert body) (choose-if .. rest))))))");
+    test_eq(interp, "choose-if macro branch chain", "(choose-if false 1 true 2)", 2, pass, fail);
+    test_nil(interp, "choose-if macro all false", "(choose-if false 1 false 2)", pass, fail);
     setup(interp, "(define [macro] my-and (syntax-match ([a b] (template (if (insert a) (insert b) false)))))");
     test_eq(interp, "my-and true", "(my-and true 42)", 42, pass, fail);
     setup(interp, "(define [macro] let1 (syntax-match ([name val body] (template (let ((insert name) (insert val)) (insert body))))))");
@@ -149,7 +149,7 @@ fn void run_advanced_macro_hygiene_capture_tests(Interp* interp, int* pass, int*
     setup(interp, "(define x 999)");
     setup(interp, "(define [macro] hyg-id (syntax-match ([x] (template (insert x)))))");
     test_eq(interp, "hygiene patvar substitutes", "(hyg-id 7)", 7, pass, fail);
-    test_eq(interp, "hygiene recursive cond", "(cond false 1 false 2 true 3)", 3, pass, fail);
+    test_eq(interp, "hygiene recursive match Void guards", "(match Void ((? false) 1) ((? false) 2) ((? true) 3) (_ 4))", 3, pass, fail);
     setup(interp, "(define hyg-late-fn (lambda (x) (+ x 50)))");
     setup(interp, "(define [macro] hyg-late-macro (syntax-match ([x] (template (hyg-late-fn (insert x))))))");
     setup(interp, "(define hyg-late-fn (lambda (x) (- x 50)))");

@@ -56,6 +56,9 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "dict has? yes", "(has? (dict 1 10 2 20) 1)" },
     { "dict has? no", "(has? (dict 1 10) 99)" },
     { "dict keys", "(length (keys (dict 1 10 2 20)))" },
+    { "dict canonical keys", "(keys (Dictionary 'b 2 'a 1 'c 3))" },
+    { "dict canonical values", "(values (Dictionary 'b 2 'a 1 'c 3))" },
+    { "set canonical list", "(set->list (Set 3 1 2 2))" },
 
     // string-contains?, string-index-of, string-replace, char-at,
     // string-repeat, symbol->string, string->symbol — not mapped in compiler
@@ -69,6 +72,8 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "set! returns Void", "(set! s_x 20)" },
     { "set! read back", "(block (set! s_acc 1) (set! s_acc (+ s_acc 1)) s_acc)" },
     { "set! in lambda", "(block ((lambda (n) (set! s_count n)) 42) s_count)" },
+    { "set! generic array returns Void", "(let (a [1 2 3]) (type-of (set! a 1 99)))" },
+    { "set! generic dict returns Void", "(let (d {'k 1}) (type-of (set! d 'k 9)))" },
     { "set! generic array", "(let (a [1 2 3]) (block (set! a 1 99) (ref a 1)))" },
     { "set! generic dict", "(let (d {'k 1}) (block (set! d 'k 9) (ref d 'k)))" },
 
@@ -77,7 +82,7 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "quasiquote list", "`(1 2 3)" },
     { "quasiquote no unquote", "`(a b c)" },
 
-    // when/unless/cond — skipped: compiler doesn't expand eval-time macros
+    // when/unless — skipped: compiler doesn't expand eval-time macros
 
     // === Dot-bracket indexing ===
     { "dot-bracket 0", "(let (lst (quote (10 20 30))) lst.[0])" },
@@ -100,6 +105,9 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "match on map result", "(match (map (lambda (x) (* x 10)) (quote (1 2 3))) ([a b c] (+ a (+ b c))))" },
     { "closure over let rec", "(let ^rec (f (lambda (n) (if (<= n 1) 1 (* n (f (- n 1)))))) (f 7))" },
     { "nested handle", "(handle (handle (+ 1 (signal inner 0)) (inner x (resolve 10))) (outer x (resolve 0)))" },
+    { "effect abort skips remainder", "(let (x 0) (block (handle (block (signal bail 1) (set! x 99) 7) (bail v 5)) x))" },
+    { "resolve is terminal in clause",
+      "(let (x 0) (block (handle (signal once 10) (once v (block (resolve (+ v 1)) (set! x 99) 0))) x))" },
     { "capture double resume", "(checkpoint (+ (capture k (+ (k 1) (k 2))) 10))" },
     { "let-rec factorial 8", "(let ^rec (f (lambda (n) (if (= n 0) 1 (* n (f (- n 1)))))) (f 8))" },
 
@@ -149,6 +157,14 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "round down", "(round 3.4)" },
     { "truncate pos", "(truncate 3.9)" },
     { "truncate neg", "(truncate -3.9)" },
+    { "inexact->exact neg trunc", "(inexact->exact -3.7)" },
+    { "Integer ctor string overflow code",
+      "(handle (Integer \"9223372036854775808\") (raise msg (symbol->string (ref msg 'code))))" },
+    { "Integer ctor huge double overflow code",
+      "(handle (Integer (pow 10.0 400.0)) (raise msg (symbol->string (ref msg 'code))))" },
+    { "inexact->exact huge overflow code",
+      "(handle (inexact->exact (pow 10.0 400.0)) (raise msg (symbol->string (ref msg 'code))))" },
+    { "string->number int overflow type", "(type-of (string->number \"9223372036854775808\"))" },
     { "sqrt 4", "(sqrt 4)" },
     { "sqrt 9", "(sqrt 9)" },
     { "even? yes", "(even? 4)" },

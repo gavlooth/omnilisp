@@ -5,7 +5,7 @@ fn char[] ast_arena_bench_parser_source(usz i) @inline {
         case 0: return "(let (x 10 y 20) (+ x y))";
         case 1: return "(match (list 1 2 3) ([a b c] (+ a (+ b c))))";
         case 2: return "(define [macro] double (syntax-match ([x] (template (+ (insert x) (insert x))))))";
-        default: return "(cond ((> 7 3) (+ 1 2)) (else (- 3 1)))";
+        default: return "(match Void ((? (> 7 3)) (+ 1 2)) (_ (- 3 1)))";
     }
 }
 

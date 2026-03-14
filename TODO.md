@@ -6,7 +6,33 @@ This file now tracks only active, actionable work.
 Full completed history is archived at:
 - `docs/plans/TODO_ARCHIVE_2026-03-11.md`
 
-Current actionable count: 0
+Current actionable count: 23
+
+## Semantic Clarification Follow-Up (2026-03-14)
+
+- [ ] Decide and lock the predicate contract for `Void` in control forms (`if`, `when`, `match`) as normative behavior.
+- [ ] Add an explicit `LANGUAGE_SPEC` table for predicate truthiness inputs (`nil`, `false`, `Void`, numbers, strings, collections).
+- [ ] Add advanced regression coverage for the chosen `Void`-in-predicate behavior in interpreter mode.
+- [ ] Add compiler/e2e parity regression coverage for the same `Void`-in-predicate behavior.
+- [ ] Promote `match` to explicit core control-form status in language docs (not just pattern syntax), with clause-selection semantics locked as normative.
+- [ ] Define `match` behavior for `Void`/`nil`/`false` literal patterns, wildcard fallthrough, and guard evaluation order.
+- [ ] Add interpreter+compiler parity regressions for `match` semantics on `Void`/`nil`/`false` and guarded clauses.
+- [ ] Document `resume` as “invoke captured continuation with a value” in language + reference docs with one canonical example.
+- [ ] Add a runtime regression asserting `resume` behavior for repeated invocation of a multi-shot captured continuation.
+- [ ] Add a runtime regression asserting deterministic error payload for invalid `resume` target values.
+- [ ] Perform a primitive-surface audit to classify every primitive as command-style (`Void`) or query-style (`nil`-on-absence).
+- [ ] Add a docs appendix listing command/query classification for core mutation, I/O, and scheduler primitives.
+- [ ] Add coverage that command-style collection mutators never return `nil` on success (only `Void`).
+- [ ] Add coverage that query-style lookup predicates never return `Void` (absence remains `nil`).
+- [ ] Lock constructor alias policy text: canonical names appear in docs/errors; aliases are accepted input but non-canonical output.
+- [ ] Add regression coverage that constructor aliases (`Int`, `Bool`, `Dict`) normalize to canonical type identity in introspection.
+- [ ] Decide canonical type descriptor rendering shape (`#<type Dictionary>` vs `#<Dictionary>`) and record as a normative print contract.
+- [ ] Align printer implementation to the chosen type-descriptor shape across REPL output and `%s` fallback.
+- [ ] Add regression coverage for canonical type-descriptor printing of constructors and abstract/meta type symbols.
+- [ ] Lock deterministic multiple-dispatch ambiguity tie-break/error reporting fields and ordering in the spec.
+- [ ] Add advanced regression coverage for tie cases (same specificity distance) and assert stable ambiguity payload.
+- [ ] Add parity coverage that ambiguity reporting is identical across interpreter, JIT, and compiled execution.
+- [ ] Extend checkpoint/capture replay docs and tests to explicitly cover side-effect replay parity expectations for compiled paths.
 
 ## Semantic Clarifications (2026-03-14)
 

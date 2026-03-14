@@ -202,13 +202,13 @@
 
 ```lisp
 ; Array literal
-[1 2 3]                 ; desugars to (array 1 2 3)
-(array 1 2 3)           ; explicit constructor
-(array '(1 2 3))        ; list → array conversion
+[1 2 3]                 ; literal form
+(Array 1 2 3)           ; canonical constructor
+(Array '(1 2 3))        ; list → array conversion
 
 ; Dict literal
-{'a 1 'b 2}             ; desugars to (dict 'a 1 'b 2)
-(dict 'a 1 'b 2)        ; explicit constructor
+{'a 1 'b 2}             ; literal form
+(Dictionary 'a 1 'b 2)  ; canonical constructor
 
 ; Generic operations
 (ref coll key)           ; lookup by key/index (array, dict, cons, string)
@@ -300,8 +300,8 @@ Dynamic element count per pattern (no fixed limit).
 | `primitive` | PRIMITIVE | Built-in function | `+`, `car` |
 | `partial_prim` | PARTIAL_PRIM | Partially applied primitive | `(+ 3)` |
 | `error` | ERROR | Error value | `(error "oops")` |
-| `dict` | HASHMAP | Mutable hash table | `{'a 1}`, `(dict 'a 1)` |
-| `array` | ARRAY | Mutable dynamic array | `[1 2 3]`, `(array 1 2 3)` |
+| `dictionary` | HASHMAP | Mutable hash table | `{'a 1}`, `(Dictionary 'a 1)` |
+| `array` | ARRAY | Mutable dynamic array | `[1 2 3]`, `(Array 1 2 3)` |
 | `coroutine` | COROUTINE | User-level coroutine | `(coroutine (lambda () body))` |
 | `ffi_handle` | FFI_HANDLE | Foreign library handle | `(define [ffi lib] libc "libc.so.6")` |
 | `instance` | INSTANCE | User-defined type instance | `(Point 3 4)` |
@@ -584,16 +584,16 @@ The Omni compiler (`src/lisp/compiler.c3`) translates Lisp AST to C3 source code
 
 ### 9.1 Type Definitions
 ```lisp
-(define [type] Point (^Int x) (^Int y))           ;; struct type
+(define [type] Point (^Integer x) (^Integer y))   ;; struct type
 (define [abstract] Shape)                           ;; abstract type
-(define [type] (Circle Shape) (^Int radius))       ;; subtype of Shape
+(define [type] (Circle Shape) (^Integer radius))   ;; subtype of Shape
 (define [union] (Option T) None (Some T))          ;; union/ADT
-(define [alias] Num Int)                            ;; type alias
+(define [alias] Num Integer)                        ;; type alias
 ```
 
 ### 9.2 Multiple Dispatch
 ```lisp
-(define (describe (^Int n)) "integer")
+(define (describe (^Integer n)) "integer")
 (define (describe (^String s)) "string")
 (define (describe x) "other")           ;; fallback
 (describe 42)      ;; => "integer"
@@ -604,7 +604,7 @@ Value dispatch for value-level matching (`Value` is the only supported value-lit
 ```lisp
 (define (fib (^(Value 0) n)) 0)
 (define (fib (^(Value 1) n)) 1)
-(define (fib (^Int n)) (+ (fib (- n 1)) (fib (- n 2))))
+(define (fib (^Integer n)) (+ (fib (- n 1)) (fib (- n 2))))
 (fib 10)  ;; => 55
 ```
 

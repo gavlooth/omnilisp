@@ -23,7 +23,7 @@ Omni has three collection types plus sets.
 ### Arrays (Contiguous, Mutable)
 
 ```lisp
-[1 2 3]                    ;; array literal (desugars to (array 1 2 3))
+[1 2 3]                    ;; array literal (canonical constructor surface: Array)
 (Array 1 2 3)              ;; canonical construction
 (array 1 2 3)              ;; compatibility alias
 (ref arr 0)                ;; => first element
@@ -38,15 +38,15 @@ Omni has three collection types plus sets.
 ### Dicts (Hash Map, Mutable)
 
 ```lisp
-{'name "Alice" 'age 30}    ;; dict literal (desugars to (dict ...))
+{'name "Alice" 'age 30}    ;; dict literal (canonical constructor surface: Dictionary)
 (Dictionary 'name "Alice")  ;; canonical construction
 (dict 'name "Alice")        ;; compatibility alias
 (ref d 'name)               ;; => "Alice"
 (set! d 'email "a@b")       ;; generic update form (returns Void)
 (dict-set! d 'email "a@b")  ;; set key (returns Void)
 (has? d 'age)               ;; => true
-(keys d)                    ;; => (name age)
-(values d)                  ;; => ("Alice" 30)
+(keys d)                    ;; => (age name)    ; canonical key order
+(values d)                  ;; => (30 "Alice")  ; aligned with keys order
 (remove! d 'age)            ;; remove key (returns Void)
 (length d)                  ;; => number of entries
 ```
@@ -59,6 +59,7 @@ Omni has three collection types plus sets.
 (set-remove s 2)           ;; => Void (mutates set in place)
 (set-contains? s 1)        ;; => true
 (set-size s)               ;; => number of elements
+(set->list s)              ;; => canonical ordered list of set elements
 ```
 
 Sets now have a distinct builtin `Set` runtime type symbol. `type-of` reports
@@ -72,6 +73,11 @@ Naming policy for new code/examples:
 - prefer `List`, `Array`, and `Dictionary` as constructor/coercion surfaces
 - keep `list` as an idiomatic public helper
 - treat lowercase `array`/`dict` as compatibility aliases
+
+Ordering contract:
+- `keys` and `values` are deterministic and share the same canonical key order.
+- `set->list` is deterministic and uses canonical element order.
+- Treat dict/set literal insertion order as non-authoritative for iteration APIs.
 
 ### Generic Operations
 

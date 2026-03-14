@@ -645,6 +645,8 @@ Dynamic clause count (no fixed limit). Pattern types:
 | `[h .. t]` | Head-tail | `([first .. rest] first)` |
 | `[x y ..]` | Prefix | `([a b ..] (+ a b))` |
 | `[.. last]` | Suffix | `([.. z] z)` |
+| `(? pred)` | Guard; callable `pred` receives scrutinee, non-callable `pred` is tested directly | `((? (> _ 10)) "big")`, `((? (> x 10)) "big")` |
+| `(? pred pat)` | Guard with sub-pattern bindings before guard evaluation | `((? (> x 10) x) x)` |
 | `None` | Nullary constructor | `(None "empty")` |
 | `(Some x)` | Constructor pattern | `((Some v) v)` |
 
@@ -1243,14 +1245,22 @@ Compatibility note: `_n` placeholder desugaring is only active in call-argument 
 |-------|-------------|
 | `when` | `(when test body...)` -- if test, evaluate body |
 | `unless` | `(unless test body...)` -- if not test, evaluate body |
-| `cond` | `(cond (t1 b1) (t2 b2) ...)` -- multi-branch conditional |
+
+For multi-branch condition chains, use `match` with `Void` and guard patterns:
+
+```lisp
+(match Void
+  ((? (> x 0)) "positive")
+  ((? (= x 0)) "zero")
+  (_ "negative"))
+```
 
 ### 8.2 Effect Utilities
 
 | Name | Description |
 |------|-------------|
 | `try` | `(try thunk handler)` -- catch `raise` effects |
-| `assert!` | `(assert! cond msg)` -- raise if condition fails |
+| `assert!` | `(assert! condition msg)` -- raise if condition fails |
 | `yield` | Macro for generator-style values |
 | `stream-take` | Take N values from a generator stream |
 
@@ -1430,12 +1440,10 @@ Effect handlers match on tag name only. For type-specific behavior, use dispatch
     ([test .. body]
       (template (if (insert test) (block (splice body)) nil))))
 
-(define [macro] cond
+(define [macro] unless
   (syntax-match
-    ([]
-      (template nil))
-    ([test body .. rest]
-      (template (if (insert test) (insert body) (cond .. rest)))))
+    ([test .. body]
+      (template (if (insert test) nil (block (splice body))))))
 ```
 
 - One macro surface only: `(define [macro] name (syntax-match ...))`

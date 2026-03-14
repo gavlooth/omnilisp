@@ -70,13 +70,6 @@
   (syntax-match
     ([test .. body]
       (template (if (insert test) nil (block (splice body)))))))
-
-(define [macro] cond
-  (syntax-match
-    ([]
-      (template nil))
-    ([test body .. rest]
-      (template (if (insert test) (insert body) (cond .. rest))))))
 (define (default v fallback) (if (null? v) fallback v))
 
 ;; with-defaults: wrap body with nil-checked defaults for dict destructured bindings

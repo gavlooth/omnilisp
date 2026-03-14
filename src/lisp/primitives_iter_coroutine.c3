@@ -9,6 +9,10 @@ fn Value* coroutine_ctor_type_raise(Interp* interp, char[] message) @inline {
     return raise_error_with_payload_names(interp, "type", "type/arg-mismatch", message, null);
 }
 
+fn Value* iterator_ctor_raise(Interp* interp, char[] code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "type", code, message, null);
+}
+
 // Iterator and coroutine primitives.
 fn Value* prim_iterator_p(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return make_nil(interp);
@@ -17,19 +21,16 @@ fn Value* prim_iterator_p(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_make_iterator(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_closure(args[0])) {
-        return raise_error(interp, "make-iterator: expected closure thunk");
-    }
+    if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "make-iterator: expected 1 argument");
+    if (!is_closure(args[0])) return iterator_ctor_raise(interp, "type/arg-mismatch", "make-iterator: expected closure thunk");
     return make_iterator(interp, args[0]);
 }
 
 fn Value* prim_ctor_iterator(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) {
-        return raise_error(interp, "Iterator: expected closure thunk, iterator, or collection");
-    }
+    if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "Iterator: expected 1 argument");
     if (args[0].tag == ITERATOR) return args[0];
     if (is_closure(args[0])) return make_iterator(interp, args[0]);
-    return raise_error(interp, "Iterator: expected closure thunk, iterator, or collection");
+    return iterator_ctor_raise(interp, "type/arg-mismatch", "Iterator: expected closure thunk, iterator, or collection");
 }
 
 fn Value* prim_next(Value*[] args, Env* env, Interp* interp) {

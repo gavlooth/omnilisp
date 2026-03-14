@@ -8,6 +8,27 @@ import main;
 // MATH PRIMITIVES
 // =============================================================================
 
+const double MATH_DOUBLE_FINITE_LIMIT = 1.7976931348623157e308;
+const double MATH_INT_MAX_DOUBLE = (double)long.max;
+const double MATH_INT_MIN_DOUBLE = (double)long.min;
+
+fn bool math_try_double_to_int(double v, long* out) @inline {
+    if (v != v) return false; // NaN
+    if (v > MATH_DOUBLE_FINITE_LIMIT || v < -MATH_DOUBLE_FINITE_LIMIT) return false;
+    if (v < MATH_INT_MIN_DOUBLE || v > MATH_INT_MAX_DOUBLE) return false;
+    *out = (long)v; // truncation toward zero
+    return true;
+}
+
+fn Value* math_int_from_double_or_raise(Interp* interp, double value, char[] op_name) {
+    long out = 0;
+    if (math_try_double_to_int(value, &out)) return make_int(interp, out);
+
+    char[128] ebuf;
+    char[] msg = io::bprintf(&ebuf, "%s: result out of Integer range", (ZString)op_name)!!;
+    return raise_error(interp, msg);
+}
+
 fn Value* prim_add(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "+: expected at least 1 argument");
 
@@ -160,22 +181,22 @@ fn Value* prim_sqrt(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_floor(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "floor: expected number");
-    return make_int(interp, (long)c_floor(to_double(args[0])));
+    return math_int_from_double_or_raise(interp, c_floor(to_double(args[0])), "floor");
 }
 
 fn Value* prim_ceiling(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "ceiling: expected number");
-    return make_int(interp, (long)c_ceil(to_double(args[0])));
+    return math_int_from_double_or_raise(interp, c_ceil(to_double(args[0])), "ceiling");
 }
 
 fn Value* prim_round(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "round: expected number");
-    return make_int(interp, (long)c_round(to_double(args[0])));
+    return math_int_from_double_or_raise(interp, c_round(to_double(args[0])), "round");
 }
 
 fn Value* prim_truncate(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "truncate: expected number");
-    return make_int(interp, (long)to_double(args[0]));
+    return math_int_from_double_or_raise(interp, to_double(args[0]), "truncate");
 }
 
 fn Value* prim_abs(Value*[] args, Env* env, Interp* interp) {
@@ -277,7 +298,11 @@ fn Value* prim_random_int(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "random-int: expected max value");
     long n;
     if (args[0].tag == INT) { n = args[0].int_val; }
-    else if (args[0].tag == DOUBLE) { n = (long)args[0].double_val; }
+    else if (args[0].tag == DOUBLE) {
+        if (!math_try_double_to_int(args[0].double_val, &n)) {
+            return raise_error(interp, "random-int: expected finite max value in Integer range");
+        }
+    }
     else { return raise_error(interp, "random-int: expected number"); }
     if (n <= 0) return make_int(interp, 0);
 

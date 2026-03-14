@@ -23,23 +23,6 @@
   [(unless test body ...)
    (if test nil (do body ...))])
 
-;; cond - Multi-way conditional
-;; Usage: (cond [test1 result1] [test2 result2] ... [else default])
-;; Expands to nested if-else chain
-(define [syntax cond]
-  [literals else]
-  ;; Base case: no clauses left -> nil
-  [(cond) nil]
-  ;; else clause -> return its body
-  [(cond [else result ...])
-   (do result ...)]
-  ;; Single clause
-  [(cond [test result])
-   (if test result nil)]
-  ;; Multiple clauses
-  [(cond [test result] rest ...)
-   (if test result (cond rest ...))])
-
 ;; ============================================================
 ;; Threading Macros
 ;; ============================================================

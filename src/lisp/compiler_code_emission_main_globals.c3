@@ -48,7 +48,7 @@ fn void Compiler.emit_main_start(Compiler* self) {
         self.emit_newline();
     }
 
-    // Macros (when, unless, cond) are expanded at compile time — no runtime registration needed
+    // Macros (for example when/unless) are expanded at compile time — no runtime registration needed
     self.emit_newline();
 }
 

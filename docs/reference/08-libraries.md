@@ -173,7 +173,7 @@ Deduce is an embedded relational database backed by LMDB.
 
 ```lisp
 (define [relation db] person
-  (^String name) (^Int age) (^String email))
+  (^String name) (^Integer age) (^String email))
 
 (define [relation db] edge (from to))
 ```

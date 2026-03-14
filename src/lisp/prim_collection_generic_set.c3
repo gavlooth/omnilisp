@@ -70,27 +70,13 @@ fn Value* prim_push(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_keys(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "keys: expected 1 argument");
     if (args[0].tag != HASHMAP) return raise_error(interp, "keys: expected dict");
-    HashMap* map = args[0].hashmap_val;
-    Value* result = make_nil(interp);
-    for (uint i = 0; i < map.capacity; i++) {
-        if (map.entries[i].key != null) {
-            result = make_cons(interp, map.entries[i].key, result);
-        }
-    }
-    return result;
+    return hashmap_keys_list_canonical(args[0].hashmap_val, interp);
 }
 
 fn Value* prim_values(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "values: expected 1 argument");
     if (args[0].tag != HASHMAP) return raise_error(interp, "values: expected dict");
-    HashMap* map = args[0].hashmap_val;
-    Value* result = make_nil(interp);
-    for (uint i = 0; i < map.capacity; i++) {
-        if (map.entries[i].key != null) {
-            result = make_cons(interp, map.entries[i].value, result);
-        }
-    }
-    return result;
+    return hashmap_values_list_canonical(args[0].hashmap_val, interp);
 }
 
 fn Value* prim_has(Value*[] args, Env* env, Interp* interp) {
@@ -161,12 +147,5 @@ fn Value* prim_set_size(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_set_to_list(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != SET) return raise_error(interp, "set->list: expected set");
-    HashMap* map = args[0].hashmap_val;
-    Value* result = make_nil(interp);
-    for (uint i = 0; i < map.capacity; i++) {
-        if (map.entries[i].key != null) {
-            result = make_cons(interp, map.entries[i].key, result);
-        }
-    }
-    return result;
+    return hashmap_keys_list_canonical(args[0].hashmap_val, interp);
 }

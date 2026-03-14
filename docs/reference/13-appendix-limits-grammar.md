@@ -49,8 +49,8 @@ path        = symbol "." symbol { "." symbol } ;
 quoted      = "'" datum ;
 quasiquoted = "`" datum ;
 list        = "(" { expr } ")" ;
-array_lit   = "[" { expr } "]" ;           (* desugars to (array ...) *)
-dict_lit    = "{" { expr expr } "}" ;      (* desugars to (dict ...), must be even *)
+array_lit   = "[" { expr } "]" ;           (* equivalent to Array constructor call *)
+dict_lit    = "{" { expr expr } "}" ;      (* equivalent to Dictionary constructor call; must be even *)
 indexed     = expr ".[" expr "]" ;
 
 datum       = literal | symbol | "(" { datum } ")" | "'" datum ;

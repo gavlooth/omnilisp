@@ -81,8 +81,23 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_double(interp, "unary neg float", "(- 0 3.14)", -3.14, pass, fail);
     test_double(interp, "exact->inexact", "(exact->inexact 5)", 5.0, pass, fail);
     test_eq(interp, "inexact->exact", "(inexact->exact 3.7)", 3, pass, fail);
+    test_eq(interp, "inexact->exact negative truncates toward zero", "(inexact->exact -3.7)", -3, pass, fail);
     test_double(interp, "string->number float", "(string->number \"3.14\")", 3.14, pass, fail);
     test_double(interp, "string->number exp", "(string->number \"1.5e2\")", 150.0, pass, fail);
+    test_nil(interp, "string->number integer overflow => nil", "(string->number \"9223372036854775808\")", pass, fail);
+    test_nil(interp, "string->number integer underflow => nil", "(string->number \"-9223372036854775809\")", pass, fail);
+    test_str_val(interp, "Integer ctor overflow payload code",
+        "(handle (Integer \"9223372036854775808\") (raise msg (symbol->string (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp, "Integer ctor underflow payload code",
+        "(handle (Integer \"-9223372036854775809\") (raise msg (symbol->string (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp, "Integer ctor huge-double payload code",
+        "(handle (Integer (pow 10.0 400.0)) (raise msg (symbol->string (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp, "inexact->exact huge-double payload code",
+        "(handle (inexact->exact (pow 10.0 400.0)) (raise msg (symbol->string (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
     test_str(interp, "number->string double", "(number->string 3.14)", pass, fail);
     test_str_val(interp, "number->string invalid arg payload domain",
         "(handle (number->string 'bad) (raise msg (symbol->string (ref msg 'domain))))",
@@ -110,6 +125,9 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_eq(interp, "ceiling 3.2", "(ceiling 3.2)", 4, pass, fail);
     test_eq(interp, "round 3.5", "(round 3.5)", 4, pass, fail);
     test_eq(interp, "truncate 3.9", "(truncate 3.9)", 3, pass, fail);
+    test_eq(interp, "truncate -3.9", "(truncate -3.9)", -3, pass, fail);
+    test_error_contains(interp, "truncate overflow raises",
+        "(truncate (pow 10.0 400.0))", "out of Integer range", pass, fail);
     test_eq(interp, "abs -5", "(abs -5)", 5, pass, fail);
     test_double(interp, "abs -3.14", "(abs -3.14)", 3.14, pass, fail);
     test_eq(interp, "min 3 7", "(min 3 7)", 3, pass, fail);
@@ -156,6 +174,10 @@ fn void run_advanced_stdlib_numeric_array_set_tests(Interp* interp, int* pass, i
     test_eq(interp, "set-remove", "(set-size test-set)", 2, pass, fail);
     test_nil(interp, "set-remove gone", "(set-contains? test-set 2)", pass, fail);
     test_eq(interp, "set dedup", "(set-size (Set 1 1 2 2 3))", 3, pass, fail);
+    test_truthy(interp, "set->list canonical order",
+        "(= (set->list (Set 3 1 2 2)) '(1 2 3))", pass, fail);
+    test_truthy(interp, "set->list canonical after mutations",
+        "(let (s (Set 5 1 3)) (block (set-add s 4) (set-remove s 3) (= (set->list s) '(1 4 5))))", pass, fail);
     test_truthy(interp, "set type-of is Set", "(= (type-of (Set 1 2 3)) 'Set)", pass, fail);
 
     // === CONVENIENCE TESTS (Phase 12) ===
@@ -233,6 +255,9 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
     test_str_val(interp, "format %s int", "(format \"%s\" 42)", "42", pass, fail);
     test_str_val(interp, "format %s str", "(format \"%s\" \"hello\")", "hello", pass, fail);
     test_str_val(interp, "format %s nil", "(format \"%s\" nil)", "nil", pass, fail);
+    test_str_val(interp, "format %s type descriptor Integer", "(format \"%s\" Integer)", "#<type Integer>", pass, fail);
+    test_str_val(interp, "format %s type descriptor Dict alias", "(format \"%s\" Dict)", "#<type Dictionary>", pass, fail);
+    test_str_val(interp, "format %s primitive fallback", "(format \"%s\" +)", "#<primitive +>", pass, fail);
     test_str_val(interp, "format %d", "(format \"%d\" 42)", "42", pass, fail);
     test_str_val(interp, "format %x", "(format \"%x\" 255)", "ff", pass, fail);
     test_str_val(interp, "format %X", "(format \"%X\" 255)", "FF", pass, fail);

@@ -114,7 +114,11 @@ fn void format_append_display(StringVal* sv, Value* a, Interp* interp) {
     } else if (is_symbol(a)) {
         strval_append(sv, interp.symbols.get_name(a.sym_val));
     } else {
-        strval_append(sv, "#<obj>");
+        // Fallback to canonical value renderer so type descriptors and
+        // structured values have the same `%s` surface as REPL printing.
+        char[512] rendered;
+        usz rendered_len = print_value_to_buf(a, &interp.symbols, &rendered, rendered.len);
+        strval_append(sv, rendered[:rendered_len]);
     }
 }
 

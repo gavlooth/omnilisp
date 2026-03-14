@@ -189,18 +189,18 @@
 
 ;; Generic count for vectors, maps, and sets
 (define (count coll)
-  (cond
-    [(vector? coll) (vector-count coll)]
-    [(hash-map? coll) (map-count coll)]
-    [(hash-set? coll) (set-count coll)]
-    [else 0]))
+  (match Void
+    ((? (vector? coll)) (vector-count coll))
+    ((? (hash-map? coll)) (map-count coll))
+    ((? (hash-set? coll)) (set-count coll))
+    (_ 0)))
 
 ;; Generic conj for vectors, maps, and sets
 (define (conj coll elem)
-  (cond
-    [(vector? coll) (vector-push coll elem)]
-    [(hash-set? coll) (set-conj coll elem)]
-    [else coll]))
+  (match Void
+    ((? (vector? coll)) (vector-push coll elem))
+    ((? (hash-set? coll)) (set-conj coll elem))
+    (_ coll)))
 
 ;; Generic into for building collections from other collections
 (define (into to from)

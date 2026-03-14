@@ -5,8 +5,8 @@
 ;; Variable x is defined in the then branch and doesn't escape
 ;; Should be stack-allocated
 (define test1-simple-non-escaping
-  (lambda (cond)
-    (if cond
+  (lambda (condition)
+    (if condition
         (let [x 42]
           (+ x 10))  ; x doesn't escape to if-then branch
         0)))
@@ -15,8 +15,8 @@
 ;; Variable y is defined in the then branch and returned
 ;; Should be region-allocated (escapes via RETURN)
 (define test2-escaping-return
-  (lambda (cond)
-    (if cond
+  (lambda (condition)
+    (if condition
         (let [y 100]
           y)       ; y escapes via return
         0)))

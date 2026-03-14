@@ -423,6 +423,12 @@ fn void run_compiler_group_set_mutation_tests(Interp* interp, usz* pass, usz* fa
         if (ok) { (*pass)++; compiler_print_pass("Compiler: set! generic collection form"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: set! generic collection form"); }
     }
+    {
+        char[] code = compile_to_c3("(define hm (Dictionary 'k 1)) (set! hm 'k 9)", interp);
+        bool ok = !str_contains(code, "unsupported");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: set! generic dictionary form"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: set! generic dictionary form"); }
+    }
 }
 
 fn void run_compiler_group_dot_index_tests(Interp* interp, usz* pass, usz* fail) {

@@ -51,7 +51,7 @@ fn void run_advanced_core_semantics_effect_cond_tests(Interp* interp, int* pass,
     test_eq(interp, "effect bail", "(handle (+ 1 (+ 2 (+ 3 (signal bail 42)))) (bail x x))", 42, pass, fail);
     test_eq(interp, "handle no effect", "(handle (+ 10 20) (unused x 999))", 30, pass, fail);
 
-    // If/cond edge cases
+    // If edge cases
     test_eq(interp, "if nil => 2", "(if nil 1 2)", 2, pass, fail);
     test_eq(interp, "if false => 2", "(if false 1 2)", 2, pass, fail);
     test_eq(interp, "if 0 => 1 (truthy)", "(if 0 1 2)", 1, pass, fail);
