@@ -68,6 +68,14 @@ is tracked in `docs/ERROR_MODEL.md` and is not fully complete yet.
 ### EFX-6: `checkpoint` / `capture` Interaction
 
 - `capture` outside `checkpoint` MUST error.
+- `capture` continuations are a language-level multi-shot contract.
+- Each invocation of a captured continuation MUST replay the resumed
+  continuation segment from the capture site, including side effects in that
+  segment, in source order.
+- Each invocation MUST begin from the captured stack snapshot for that
+  continuation segment. Mutations to lexical locals in the resumed segment do
+  not implicitly persist across later invocations unless they target shared
+  state outside the captured snapshot.
 - Continuation capture/resume ordering MUST remain deterministic.
 - Effects emitted inside `checkpoint`/`capture` flows MUST obey the same handler lookup
   and resolve/abort rules as non-continuation contexts.
@@ -211,6 +219,13 @@ These examples are intended to remain executable and linked to regression tests.
 ; => 'resolve-invalid-continuation
 ```
 
+13. Multi-shot continuation replay:
+
+```lisp
+(checkpoint (+ 1 (capture k (+ (k 10) (k 20)))))
+; => 32
+```
+
 ## 4. Runtime Notes
 
 - `with-continuation` desugars to binding the hidden continuation (`__k`) in
@@ -232,12 +247,12 @@ See `docs/ARCHITECTURE.md` and `docs/ERROR_MODEL.md` for migration status.
 
 | Rule | Regression anchors |
 |------|--------------------|
-| EFX-1 | `src/lisp/tests_advanced_tests.c3` `signal/resolve basic` (`run_advanced_effect_continuation_tests`), `src/lisp/tests_tests.c3` `handle ^strict: catches unhandled` |
+| EFX-1 | `src/lisp/tests_advanced_core_unicode_groups.c3` `signal/resolve basic` (`run_advanced_effect_continuation_tests`), `src/lisp/tests_tests.c3` `handle ^strict: catches unhandled` |
 | EFX-2 | `src/lisp/tests_advanced_io_effect_ffi_groups.c3` `effect wrong type int`, `effect wrong type str`, `effect undeclared canonical`, `io/read-file wrong type` (`run_advanced_io_typed_effect_tests`) |
-| EFX-3 | `src/lisp/tests_advanced_tests.c3` `resolve outside handler`; `with-continuation basic`; `with-continuation single` |
-| EFX-4 | `src/lisp/tests_advanced_tests.c3` `signal abort`; `multi-perform abort` |
+| EFX-3 | `src/lisp/tests_advanced_core_unicode_groups.c3` `resolve outside handler`; `with-continuation basic`; `with-continuation single` |
+| EFX-4 | `src/lisp/tests_advanced_core_unicode_groups.c3` `signal abort`; `multi-perform abort` |
 | EFX-5 | `src/lisp/tests_tests.c3` `unhandled effect: shows tag name`; `unhandled effect: shows arg type`; `handle ^strict: catches unhandled` |
-| EFX-6 | `src/lisp/tests_tests.c3` `capture aborts`; `capture k resumes`; `checkpoint passthrough`; `src/lisp/tests_advanced_tests.c3` `multi-capture sum` |
+| EFX-6 | `src/lisp/tests_tests.c3` `capture aborts`; `capture k resumes`; `checkpoint passthrough`; `src/lisp/tests_advanced_core_unicode_groups.c3` `multi-capture sum`, `multi-shot k twice`, `multi-shot replay set! in resumed segment`, `multi-shot replay deduce fact writes`, `multi-shot replay handled io effect` |
 | EFX-7 | `src/lisp/tests_tests.c3` `run_scheduler_wakeup_wraparound_boundary_tests`, `run_scheduler_wakeup_mixed_event_boundary_tests`, `run_scheduler_invalid_offload_wakeup_boundary_tests`, `run_scheduler_wakeup_full_payload_ownership_boundary_tests` |
-| EFX-8 | `src/lisp/tests_advanced_tests.c3` `io handle suppress`, `io handle capture`; `src/lisp/tests_tests.c3` scheduler boundary test group (`run_scheduler_tests`) |
+| EFX-8 | `src/lisp/tests_advanced_io_effect_ffi_groups.c3` `io handle suppress`, `io handle capture`; `src/lisp/tests_tests.c3` scheduler boundary test group (`run_scheduler_tests`) |
 | EFX-9 | `src/lisp/tests_runtime_feature_schema_reader_groups.c3` explain-effect regressions: `explain effect handler match reason`, `explain effect strict boundary reason`, `explain effect fast-path reason`, `explain effect unhandled reason`, `explain effect resolve invalid continuation reason`, `explain effect resolve continuation reason`, `explain effect top-level schema keys` |

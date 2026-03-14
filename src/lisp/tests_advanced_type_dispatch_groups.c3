@@ -92,6 +92,12 @@ fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass,
     test_eq_interp(interp, "dispatch numeric no implicit Int->Double widening", "(only-double 7)", 22, pass, fail);
     test_eq_interp(interp, "dispatch numeric explicit constructor conversion", "(only-double (Double 7))", 11, pass, fail);
 
+    setup(interp, "(define (only-int (^Int x)) 33)");
+    setup(interp, "(define (only-int x) 44)");
+    test_eq_interp(interp, "dispatch numeric no implicit Double->Int narrowing", "(only-int 3.9)", 44, pass, fail);
+    test_eq_interp(interp, "dispatch numeric explicit Integer constructor conversion", "(only-int (Integer 3.9))", 33, pass, fail);
+    test_eq_interp(interp, "dispatch numeric explicit Int constructor conversion alias", "(only-int (Int 3.9))", 33, pass, fail);
+
     // Last-arg dispatch past legacy 8-arg scoring cap
     setup(interp, "(define (dispatch9 a b c d e f g h (^Int i)) 111)");
     setup(interp, "(define (dispatch9 a b c d e f g h (^String i)) 222)");

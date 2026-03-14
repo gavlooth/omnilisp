@@ -32,9 +32,9 @@ Cross-numeric matching is explicit via constructors (for example `(Double 7)`).
 
 - [x] Lock the language rule: dispatch does not silently coerce numeric arguments; method applicability is exact type match or subtype only.
 - [x] Remove dispatch-only `Integer` -> `Double` widening/scoring from the runtime compatibility path in `src/lisp/eval_dispatch_match.c3` and any shared typed-call boundary helpers that currently reuse that rule.
-- [ ] Preserve explicit numeric conversion through constructors/aliases only:
-  - [ ] `(Double 3)` remains the canonical Integer -> Double conversion path.
-  - [ ] `(Integer 3.9)` and `(Int 3.9)` remain the canonical Double -> Integer conversion paths.
+- [x] Preserve explicit numeric conversion through constructors/aliases only:
+  - [x] `(Double 3)` remains the canonical Integer -> Double conversion path.
+  - [x] `(Integer 3.9)` and `(Int 3.9)` remain the canonical Double -> Integer conversion paths.
 - [x] Update normative docs to remove dispatch-widening language and replace it with explicit-conversion guidance:
   - [x] `docs/LANGUAGE_SPEC.md`
   - [x] `docs/type-system-syntax.md`

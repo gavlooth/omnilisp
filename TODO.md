@@ -8,6 +8,60 @@ Full completed history is archived at:
 
 Current actionable count: 0
 
+## Semantic Clarifications (2026-03-14)
+
+- [x] Lock continuation shotness as an explicit language contract.
+  completed:
+  - normative + language/reference syntax docs now explicitly state that `capture` continuations are multi-shot by contract.
+- [x] Specify `capture` replay semantics for side effects (`set!`, I/O, deduce writes) under repeated continuation invocation.
+  completed:
+  - docs define replay behavior for resumed continuation segments and stack-snapshot restart semantics.
+  - advanced runtime regressions lock replay for:
+    - `set!` mutation (`multi-shot replay set! in resumed segment`) across interpreter+JIT.
+    - Deduce write paths during replay (`multi-shot replay deduce fact writes`) in interpreter runtime semantics.
+    - handled I/O replay behavior under checkpoint/capture + effect handlers (`multi-shot replay handled io effect`) in interpreter semantics.
+- [x] Define `set!` target matrix (variable, dot-path field, `Array` index, `Dictionary` key, cons `car/cdr`) and invalid-target error behavior.
+  completed:
+  - language/syntax/reference docs now include a normative `set!` target/dispatch matrix with explicit invalid-target error strings,
+  - advanced regression coverage now asserts invalid-target behavior for unbound roots, bad intermediate segments, missing fields, cons-segment restrictions, and generic non-collection targets.
+- [x] Lock `set!` success return contract to `Void` across interpreter, JIT, and AOT paths.
+  completed:
+  - runtime regression coverage continues to assert `Void` success on variable/dot-path/generic collection `set!` surfaces,
+  - compiler regression coverage now includes both generic `set!` collection shapes (`Array` + `Dictionary`) as accepted compile forms,
+  - e2e parity coverage now asserts `type-of` on generic collection `set!` results is `Void` across interpreter and compiled execution.
+- [x] Codify `Void` vs `Nil` semantics as a normative rule (`Void` for command/effect completion, `Nil` for absence/query miss).
+  completed:
+  - language/reference docs now include a dedicated normative `Void` vs `Nil` contract section with explicit examples,
+  - advanced regression coverage now includes a focused contract block asserting `Void` on command completion (`set!`, `push!`, `remove!`) and `Nil` on absence/query misses (`ref`, `has?`, `set-contains?`).
+- [x] Lock constructor/coercion behavior for callable type symbols (`Integer`, `Double`, `String`, `Boolean`, `List`, `Array`, `Dictionary`, `Set`, `Iterator`) including deterministic failure semantics.
+  completed:
+  - constructor failure signaling is now explicitly deterministic for callable type symbols: `type/arity` for constructor-shape mismatch and `type/arg-mismatch` for non-convertible values,
+  - runtime paths now emit canonical payloaded constructor failures for iterator helpers (`Iterator`, `make-iterator`) and `Dictionary` odd key/value arity,
+  - advanced regression coverage now asserts constructor failure payload codes for `Dictionary`/`Dict` odd arity and `Iterator`/`make-iterator` invalid argument types, in addition to existing scalar constructor checks.
+- [x] Formalize numeric conversion and overflow behavior (truncate/widen/overflow policy) and enforce interpreter/JIT/AOT parity tests.
+  completed:
+  - numeric narrowing policy is now explicit and enforced: double→Integer conversions truncate toward zero, require finite input, and require Integer-range results,
+  - `Integer`/`inexact->exact` now reject non-finite or out-of-range values with deterministic `type/arg-mismatch` payloads; `string->number` now returns `nil` for integer overflow/underflow parse cases,
+  - math narrowing forms (`floor`, `ceiling`, `round`, `truncate`) now reject out-of-range/non-finite results deterministically instead of relying on unchecked casts,
+  - advanced regression coverage now asserts overflow/underflow conversion behavior, and compiler slice remains clean after parity-case additions in e2e generation fixtures.
+- [x] Define iteration-order guarantees for `Dictionary` and `Set` and enforce with deterministic regression tests.
+  completed:
+  - `keys` and `values` now use the same deterministic canonical key order (type/value comparator) instead of raw hash-slot traversal order,
+  - `set->list` now returns deterministic canonical element order,
+  - advanced + e2e regressions now assert canonical dictionary/set iteration order, including mutation paths.
+- [x] Define effect-resume discipline (`resolve` single-use, double-resolve error, no-resolve abort semantics) with explicit runtime/docs tests.
+  completed:
+  - interpreter `resolve` now reuses the same single-shot continuation-resume path as AOT (`jit_resolve_value`), eliminating JIT/AOT discipline drift,
+  - `resolve` is now explicitly handler-bound in runtime (`runtime/invalid-continuation` when `__k` is not handler-bound),
+  - runtime guards keep deterministic double-use rejection (`runtime/continuation-resumed`) at continuation boundary level,
+  - advanced regressions now assert abort semantics (`no resolve` skips post-signal body execution) and terminal `resolve` clause behavior,
+  - language + reference docs now codify the resolve discipline and the `with-continuation` multi-shot distinction.
+- [x] Standardize printing/introspection contract for values and type descriptors (`type-of` symbols vs `#<type ...>` rendering).
+  completed:
+  - constructor-backed callable symbols now render as type descriptors (`#<type Integer>`, `#<type Dictionary>`) while ordinary callable primitives keep primitive rendering (`#<primitive +>`),
+  - method-table fallback rendering now distinguishes constructor aliases (`Int`/`Bool`/`Dict`) from non-constructor primitive callables,
+  - `%s` formatting fallback now routes through canonical value rendering (`print_value_to_buf`) with buffer-printer coverage aligned for `METHOD_TABLE`/`TYPE_INFO` and related introspection tags.
+
 ## Language Surface Consistency (2026-03-12)
 
 - [x] Decide the public fate of compatibility/runtime factory aliases:

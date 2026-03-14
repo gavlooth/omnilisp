@@ -42,6 +42,12 @@ the code that signals them.
 If `resolve` is not called, the handler's return value replaces the entire
 `handle` expression.
 
+Resolve discipline:
+- `resolve` targets the current handler-bound continuation (`__k`).
+- That continuation is single-shot for `resolve`; repeated `resolve` on the same
+  continuation raises `runtime/continuation-resumed`.
+- Use `with-continuation` and explicit `(k ...)` calls for multi-shot behavior.
+
 ### Multiple Clauses
 
 ```lisp
@@ -142,12 +148,26 @@ to `k`. `k` is a function — `(k value)` resumes with `value`.
 ;; Multi-shot: k can be called multiple times
 (checkpoint (+ 1 (capture k (k (k 10)))))
 ;; => (+ 1 (+ 1 10)) => 12
+
+;; Handled I/O replay in resumed segment
+(block
+  (define c 0)
+  (checkpoint
+    (+ (capture k (+ (k 1) (k 1)))
+       (block
+         (handle (signal io/println "x")
+           (io/println msg (resolve 0)))
+         (set! c (+ c 1))
+         c))))
+;; side effects in resumed segment execute per k invocation
 ```
 
 ### Semantics
 
 - Continuations are **multi-shot** — each invocation clones the stack
 - The result of `capture`'s body becomes the result of `checkpoint`
+- Each `k` invocation replays the resumed continuation segment, so side effects in that segment (`set!`, signaled effects, handled I/O) execute per invocation in source order
+- Each invocation starts from the captured stack snapshot; lexical locals in the resumed segment are restored per call unless mutation targets shared state outside that snapshot
 - Continuations run on dedicated mmap'd stacks (64KB) with guard pages
 - x86_64 assembly context switching with FPU state isolation
 
@@ -206,9 +226,9 @@ Lazy sequences that compute values on demand.
 ### Creating Iterators
 
 ```lisp
-(iterator '(1 2 3))         ;; from list
-(iterator [1 2 3])           ;; from array
-(iterator {'a 1 'b 2})      ;; from dict (iterates keys)
+(Iterator '(1 2 3))         ;; from list
+(Iterator [1 2 3])          ;; from array
+(Iterator {'a 1 'b 2})      ;; from dict (iterates keys)
 (range-from 0)                ;; infinite: 0, 1, 2, 3, ...
 (repeat 42)                   ;; infinite: 42, 42, 42, ...
 (cycle [1 2 3])               ;; infinite: 1,2,3,1,2,3,...
@@ -217,19 +237,19 @@ Lazy sequences that compute values on demand.
 ### Lazy Combinators
 
 ```lisp
-(map (+ 1) (iterator '(1 2 3)))         ;; lazy +1 on each
-(filter even? (iterator '(1 2 3 4)))    ;; lazy keep evens
+(map (+ 1) (Iterator '(1 2 3)))         ;; lazy +1 on each
+(filter even? (Iterator '(1 2 3 4)))    ;; lazy keep evens
 (take 5 (range-from 0))                  ;; first 5 naturals
-(drop 3 (iterator '(1 2 3 4 5)))        ;; skip first 3
-(zip (iterator '(1 2)) (iterator '(a b))) ;; zip two iterators
+(drop 3 (Iterator '(1 2 3 4 5)))        ;; skip first 3
+(zip (Iterator '(1 2)) (Iterator '(a b))) ;; zip two iterators
 ```
 
 ### Consuming Iterators
 
 ```lisp
 (list (take 5 (range-from 0)))          ;; => (0 1 2 3 4)
-(array (take 5 (range-from 0)))         ;; => [0 1 2 3 4]
-(foldl + 0 (iterator '(1 2 3 4 5)))     ;; => 15
+(Array (take 5 (range-from 0)))         ;; => [0 1 2 3 4]
+(foldl + 0 (Iterator '(1 2 3 4 5)))     ;; => 15
 ```
 
 ### Pipeline Example
@@ -250,8 +270,8 @@ Lazy sequences that compute values on demand.
 Passing an iterator keeps lazy semantics:
 
 ```lisp
-(map (+ 1) (iterator '(1 2 3)))     ;; lazy iterator, not a list
-(filter even? (iterator '(1 2 3 4))) ;; lazy iterator
+(map (+ 1) (Iterator '(1 2 3)))     ;; lazy iterator, not a list
+(filter even? (Iterator '(1 2 3 4))) ;; lazy iterator
 (take 3 (range-from 0))              ;; lazy iterator
 ```
 

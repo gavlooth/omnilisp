@@ -273,8 +273,8 @@ string->list
 null?
 
 ; Collection literals
-[1 2 3]         ; array literal, desugars to (array 1 2 3)
-{'a 1 'b 2}     ; dict literal, desugars to (dict 'a 1 'b 2)
+[1 2 3]         ; array literal, equivalent to (Array 1 2 3)
+{'a 1 'b 2}     ; dict literal, equivalent to (Dictionary 'a 1 'b 2)
 
 ; Quote shorthand
 'symbol     ; equivalent to (quote symbol)
@@ -342,8 +342,8 @@ Any other `#` sequence is rejected with a deterministic parser/lexer error.
 | primitive | `PRIMITIVE` | Built-in function | `+`, `car` |
 | partial | `PARTIAL_PRIM` | Partially applied primitive | `(+ 3)` |
 | error | `ERROR` | Error value | `(error "oops")` |
-| dict | `HASHMAP` | Mutable hash table | `{'a 1}`, `(dict 'a 1)` |
-| array | `ARRAY` | Mutable dynamic array | `[1 2 3]`, `(array 1 2 3)` |
+| dict | `HASHMAP` | Mutable hash table | `{'a 1}`, `(Dictionary 'a 1)` |
+| array | `ARRAY` | Mutable dynamic array | `[1 2 3]`, `(Array 1 2 3)` |
 | coroutine | `COROUTINE` | User-level coroutine | `(coroutine (lambda () body))` |
 | void | `VOID` | Singleton no-result value | `(Void)` |
 
@@ -359,7 +359,23 @@ singleton type/value used by FFI `^Void` returns as well.
 - **Falsy:** `nil`, `false`
 - **Truthy:** Everything else, including `0`, `""`, `'()`, and empty collections
 
-### 2.3 Equality
+### 2.3 `Void` vs `Nil` Contract
+
+Normative rule:
+- `Void` means successful command/effect completion with no payload.
+- `Nil` means absence/query-miss (or falsey result in predicate-style APIs).
+
+Contract examples:
+
+```lisp
+(type-of (block (define x 1) (set! x 2)))   ; => 'Void
+(type-of (let (d {'a 1}) (remove! d 'a)))   ; => 'Void
+
+(type-of (ref {'a 1} 'missing))             ; => 'Nil
+(type-of (has? {'a 1} 'missing))            ; => 'Nil
+```
+
+### 2.4 Equality
 
 `=` performs structural equality:
 - Integers and doubles: numeric comparison
@@ -389,7 +405,7 @@ singleton type/value used by FFI `^Void` returns as well.
 (lambda (x .. rest) body)
 
 ; Typed parameters (for dispatch)
-(lambda ((^Int x) (^String y)) body)
+(lambda ((^Integer x) (^String y)) body)
 
 ; Dict destructuring parameter — caller passes a dict
 (lambda ({name age}) (println name age))
@@ -413,7 +429,7 @@ singleton type/value used by FFI `^Void` returns as well.
 (define (thunk) 42)
 
 ; Typed function define (creates dispatch entry)
-(define (describe (^Int n)) "integer")
+(define (describe (^Integer n)) "integer")
 (define (describe (^String s)) "string")
 (define (describe x) "other")   ; fallback
 
@@ -452,7 +468,7 @@ Examples:
 
 ```lisp
 (define (add x y) (+ x y))
-(define [type] Point (^Int x) (^Int y))
+(define [type] Point (^Integer x) (^Integer y))
 (define [effect] (io/read-file (^String path)))
 ```
 
@@ -469,7 +485,7 @@ Counterexample (non-canonical syntax; do not add):
 
 ```lisp
 (define [abstract] Shape)
-(define [type] (Circle Shape) (^Int radius))
+(define [type] (Circle Shape) (^Integer radius))
 (is? (Circle 5) 'Shape)   ; => true
 ```
 
@@ -477,7 +493,7 @@ Counterexample (non-canonical syntax; do not add):
 - Intent: define a concrete product type; this is syntax-level aliasing to `[type]`.
 
 ```lisp
-(define [struct] Vec2 (^Int x) (^Int y))
+(define [struct] Vec2 (^Integer x) (^Integer y))
 (let (v (Vec2 3 4)) v.x)   ; => 3
 ```
 
@@ -485,7 +501,7 @@ Counterexample (non-canonical syntax; do not add):
 - Intent: define a concrete nominal type with named fields (and optional parent).
 
 ```lisp
-(define [type] Point (^Int x) (^Int y))
+(define [type] Point (^Integer x) (^Integer y))
 (type-of (Point 1 2))   ; => 'Point
 ```
 
@@ -503,7 +519,7 @@ Counterexample (non-canonical syntax; do not add):
 - Intent: declare a type alias name for readability and API clarity.
 
 ```lisp
-(define [alias] Num Int)
+(define [alias] Num Integer)
 (define (id-num (^Num x)) x)
 (id-num 7)   ; => 7
 ```
@@ -571,6 +587,22 @@ Evaluates all expressions in order, returns the last. Last expression is in tail
 
 `set!` returns `Void` on successful mutation.
 `array-set!` and `dict-set!` remain supported compatibility aliases.
+
+Target/dispatch matrix:
+
+| Surface | Dispatch target | Success result | Invalid-target behavior |
+|---|---|---|---|
+| `(set! name value)` | lexical/global variable binding | `Void` | `set!: unbound variable` |
+| `(set! root.seg... value)` | dot-path over `Instance` fields and cons `.car`/`.cdr` | `Void` | `set!` path errors (below) |
+| `(set! collection key value)` | generic update for `Array` and `Dictionary` | `Void` | `set!: generic form expects array or dict target` |
+
+Dot-path invalid-target errors:
+- `set!: unbound path root`
+- `set!: field not found in path` (missing intermediate field)
+- `set!: path segment is not an instance or cons` (non-final segment resolves to non-path value)
+- `set!: cons only supports .car and .cdr`
+- `set!: field not found` (missing final instance field)
+- `set!: target is not an instance or cons` (final target value is not mutable path target)
 
 ### 3.7 `quote` / `quasiquote`
 
@@ -698,12 +730,36 @@ constructors. In particular, `Value` is valid for value-literal dispatch only as
 (type-of 42)            ; => 'Integer
 (type-of "hi")          ; => 'String
 (type-of (Point 1 2))   ; => 'Point
-(= (type-of (array 1 2)) 'Array) ; exact type via symbol equality
+(= (type-of (Array 1 2)) 'Array) ; exact type via symbol equality
 (is? 42 'Integer)       ; => true
 (is? (Circle 5) 'Shape) ; => true (walks parent chain)
 (instance? (Point 1 2)) ; => true
 (instance? 42)          ; => nil
 ```
+
+Printing/introspection contract:
+- `type-of` always returns a symbol (for example `'Integer`, `'Dictionary`).
+- Constructor/type symbols in value position render as type descriptors:
+  `#<type Integer>`, `#<type Dictionary>`, etc.
+- Ordinary callable primitives keep primitive rendering (`#<primitive +>`).
+
+### 4.7 Callable Constructor Failure Semantics
+
+Callable type symbols (`Integer`, `Double`, `String`, `Boolean`, `List`,
+`Array`, `Dictionary`, `Set`, `Iterator`) follow deterministic recoverable
+failure signaling:
+
+- `type/arity` is used when the constructor form has the wrong argument shape.
+  Example: `(Dictionary 'a)` (odd key/value arity).
+- `type/arg-mismatch` is used when arity is acceptable but argument values are
+  not convertible. Examples: `(Integer "abc")`, `(Iterator 42)`.
+
+Collection constructor behavior remains explicit and stable:
+
+- `List`, `Array`, and `Set` are variadic constructor surfaces.
+- `List`/`Array` additionally treat a single iterator/collection argument as
+  conversion (`(List [1 2 3])`, `(Array '(1 2 3))`).
+- `Dictionary` requires even key/value argument count.
 
 ---
 
@@ -799,7 +855,7 @@ includes:
 Example:
 
 ```lisp
-(define (score (^Int x) (^Int y)) (+ x y))
+(define (score (^Integer x) (^Integer y)) (+ x y))
 (define (score (^Double x) (^Double y)) (+ x y))
 
 (ref (ref (explain 'dispatch (score 1 2)) 'decision) 'reason)
@@ -947,17 +1003,17 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 
 | Prim | Arity | Description |
 |------|-------|-------------|
-| `dict` | variadic | Create dict from key-value pairs; `{'a 1 'b 2}` desugars to this |
+| `Dictionary` / `Dict` | variadic | Create dict from key-value pairs; `{'a 1 'b 2}` is equivalent to this |
 | `dict-set!` | 3 | Set key-value pair |
 
-Canonical constructor surface is `Dictionary` (with `Dict` shorthand). `dict` is
-kept as a compatibility alias.
+Canonical constructor surface is `Dictionary` (with `Dict` shorthand). `dict`
+is kept as a compatibility alias.
 
 ### 7.11 Array Operations (2)
 
 | Prim | Arity | Description |
 |------|-------|-------------|
-| `array` | variadic | Create array; `[1 2 3]` desugars to this; single collection arg dispatches conversion (`(array '(1 2 3))`, `(array (Iterator ...))`) |
+| `Array` | variadic | Create array; `[1 2 3]` is equivalent to this; single collection arg dispatches conversion (`(Array '(1 2 3))`, `(Array (Iterator ...))`) |
 | `array-set!` | 3 | Set element at index |
 
 Canonical constructor surface is `Array`. `array` is kept as a compatibility alias.
@@ -966,16 +1022,21 @@ Canonical constructor surface is `Array`. `array` is kept as a compatibility ali
 
 | Prim | Arity | Description | Supported types |
 |------|-------|-------------|-----------------|
-| `ref` | 2 | Lookup by key/index | array (int), dict (any), cons (0=car, 1=cdr), string (char) |
-| `push!` | 2 | Append element | array |
-| `keys` | 1 | List of keys | dict |
-| `values` | 1 | List of values | dict |
-| `has?` | 2 | Check key existence | dict |
-| `remove!` | 2 | Remove by key | dict |
+| `ref` | 2 | Lookup by key/index | Array (int), Dictionary (any), cons (0=car, 1=cdr), string (char) |
+| `push!` | 2 | Append element | Array |
+| `keys` | 1 | List of keys | Dictionary |
+| `values` | 1 | List of values | Dictionary |
+| `has?` | 2 | Check key existence | Dictionary |
+| `remove!` | 2 | Remove by key | Dictionary |
 
 Note: `length` (Section 7.3) is also generic — works on lists, arrays, dicts, and strings.
+Iteration order contract:
+- `keys` and `values` use the same canonical key order.
+- Canonical key order is deterministic by key type/value (for common key kinds:
+  numeric ascending, string/symbol lexicographic, time-point chronological).
+- `values` ordering is key-aligned (`(values d)[i]` corresponds to `(keys d)[i]`).
 
-### 7.13 Set Operations (5)
+### 7.13 Set Operations (6)
 
 | Prim | Arity | Description |
 |------|-------|-------------|
@@ -984,6 +1045,11 @@ Note: `length` (Section 7.3) is also generic — works on lists, arrays, dicts, 
 | `set-remove` | 2 | Remove element |
 | `set-contains?` | 2 | Check membership |
 | `set-size` | 1 | Set cardinality |
+| `set->list` | 1 | Materialize set elements as list (canonical order) |
+
+Set order contract:
+- `set->list` returns elements in deterministic canonical element order
+  (same comparator family as dictionary keys).
 
 ### 7.14 Math Library (19)
 
@@ -1017,6 +1083,13 @@ Note: `length` (Section 7.3) is also generic — works on lists, arrays, dicts, 
 | `inexact->exact` | Double to int |
 | `string->symbol` | String to symbol |
 | `symbol->string` | Symbol to string |
+
+Numeric conversion policy:
+- Narrowing to `Integer` (`Integer`, `inexact->exact`, `truncate`) truncates toward zero.
+- Narrowing requires finite numeric input and an in-range `Integer` result.
+- `string->number` returns `nil` on parse failure or numeric overflow/underflow.
+- Constructor/coercion narrowing failures use deterministic recoverable code `type/arg-mismatch`.
+- Dispatch does not do implicit numeric widening; cross-numeric calls require explicit conversion.
 
 ### 7.17 Introspection & Meta (7)
 
@@ -1217,6 +1290,27 @@ Captures the continuation up to the enclosing `checkpoint` and binds it to `k`.
 - Continuations are **multi-shot**: each invocation of `k` clones the captured stack, so `k` can be called multiple times
 - `k` is a function: `(k value)` resumes with `value`
 - The result of `capture`'s body becomes the result of `checkpoint`
+- Multi-shot replay is explicit: each `k` invocation re-runs the resumed continuation segment, including side effects in that segment (`set!`, `signal`, I/O handlers), in source order.
+- Each `k` invocation starts from the captured stack snapshot; lexical locals in that resumed segment are restored per invocation unless mutation targets shared state outside the snapshot.
+- Side effects that occur in `capture` body code outside resumed continuation segments run when that code executes; they are not replayed unless that body path itself is executed again.
+
+Replay example:
+
+```lisp
+(checkpoint (+ 1 (capture k (+ (k 10) (k 20)))))
+; => 32
+
+(block
+  (define c 0)
+  (checkpoint
+    (+ (capture k (+ (k 1) (k 1)))
+       (block
+         (handle (signal io/println "x")
+           (io/println msg (resolve 0)))
+         (set! c (+ c 1))
+         c))))
+; handled I/O in resumed segment is replayed per k invocation
+```
 
 ---
 
@@ -1268,6 +1362,15 @@ The body continues as if `signal` returned that value.
 If `resolve` is not called, the handler's return value becomes the result
 of the entire `handle` expression (abort).
 
+Discipline contract:
+- `resolve` is handler-bound: it must target the hidden continuation from the
+  current `handle` clause (`__k`).
+- `resolve` is single-shot for that continuation. A second `resolve` attempt on
+  the same continuation raises deterministic recoverable code
+  `runtime/continuation-resumed`.
+- Multi-shot behavior is available only through explicit continuation calls
+  (`with-continuation` + `(k ...)`), not through repeated `resolve`.
+
 ```lisp
 ; Resolve — body continues
 (handle (signal double 5)
@@ -1307,7 +1410,7 @@ Effect tags: `io/print`, `io/println`, `io/display`, `io/newline`, `io/read-file
 Effect handlers match on tag name only. For type-specific behavior, use dispatched functions inside the handler body — this reuses the existing MethodTable dispatch system rather than introducing a parallel matching mechanism:
 
 ```lisp
-(define (on-show (^Int x))    (string-append "int: " (number->string x)))
+(define (on-show (^Integer x)) (string-append "int: " (number->string x)))
 (define (on-show (^String s)) (string-append "str: " s))
 
 (handle
@@ -1434,7 +1537,7 @@ Goodbye!
 ```lisp
 (define (fib (^(Value 0) n)) 0)
 (define (fib (^(Value 1) n)) 1)
-(define (fib (^Int n)) (+ (fib (- n 1)) (fib (- n 2))))
+(define (fib (^Integer n)) (+ (fib (- n 1)) (fib (- n 2))))
 (fib 10)  ; => 55
 ```
 
@@ -1477,12 +1580,12 @@ Goodbye!
 (define person {'name "Alice" 'age 30})
 (ref person 'name)      ; => "Alice"
 (has? person 'age)      ; => true
-(keys person)           ; => '(name age)
+(keys person)           ; => '(age name)
 
 ; Constructor dispatch
-(array '(1 2 3))        ; list → array conversion
+(Array '(1 2 3))        ; list → array conversion
 (list [1 2 3])          ; array → list conversion
-(array (take 5 (range-from 0))) ; force iterator into array
+(Array (take 5 (range-from 0))) ; force iterator into array
 (list (take 5 (range-from 0)))  ; force iterator into list
 
 ; Cons mutation via dot-path
@@ -1495,8 +1598,8 @@ p.car                   ; => 99
 
 ```lisp
 (define [abstract] Shape)
-(define [type] (Circle Shape) (^Int radius))
-(define [type] (Rect Shape) (^Int width) (^Int height))
+(define [type] (Circle Shape) (^Integer radius))
+(define [type] (Rect Shape) (^Integer width) (^Integer height))
 
 (define (area (^Circle c)) (* pi (* c.radius c.radius)))
 (define (area (^Rect r)) (* r.width r.height))
@@ -1555,8 +1658,8 @@ path        = symbol "." symbol { "." symbol } ;
 quoted      = "'" datum ;
 quasiquoted = "`" datum ;
 list        = "(" { expr } ")" ;
-array_lit   = "[" { expr } "]" ;           (* desugars to (array ...) *)
-dict_lit    = "{" { expr expr } "}" ;      (* desugars to (dict ...), must be even *)
+array_lit   = "[" { expr } "]" ;           (* equivalent to Array constructor call *)
+dict_lit    = "{" { expr expr } "}" ;      (* equivalent to Dictionary constructor call; must be even *)
 indexed     = expr ".[" expr "]" ;
 
 datum       = literal | symbol | "(" { datum } ")" | "'" datum ;

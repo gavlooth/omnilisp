@@ -58,14 +58,15 @@ None              ;; nullary variant
 ```lisp
 (define [type] (Box T) (^T value))
 
-(Box 42)                ;; infers Box{Int}
-(type-args (Box 42))    ;; => (Int)
+(Box 42)                ;; infers Box{Integer}
+(type-args (Box 42))    ;; => (Integer)
 ```
 
 ### Callable Core Type Symbols
 
 ```lisp
 (Integer 3.9)        ;; => 3
+(Int 3.9)            ;; => 3 (alias of Integer)
 (Double 3)           ;; => 3.0
 (String 3)           ;; => "3"
 (Symbol "name")      ;; => 'name
@@ -110,6 +111,30 @@ Command-style success paths should now prefer `Void` over `nil` where possible s
 query/absence semantics remain on `Nil` and side-effect completion is explicitly
 `Void`.
 
+### Constructor Failure Contract
+
+Callable type symbols use deterministic recoverable failure codes:
+
+- `type/arity`: wrong constructor argument shape (for example `(Dictionary 'a)`
+  with odd key/value arity).
+- `type/arg-mismatch`: arity is valid, but values are not convertible (for
+  example `(Integer "abc")`, `(Iterator 42)`).
+
+Collection constructors keep explicit behavior:
+
+- `List`, `Array`, and `Set` are variadic.
+- `List`/`Array` support single-argument conversion from collection/iterator
+  inputs.
+- `Dictionary` requires even key/value arity.
+
+Numeric conversion contract:
+
+- `Integer` and `inexact->exact` truncate toward zero.
+- Narrowing must be finite and within `Integer` range; overflow/non-finite
+  inputs raise `type/arg-mismatch`.
+- `string->number` returns `nil` for parse failure and integer
+  overflow/underflow.
+
 ### Type Introspection
 
 ```lisp
@@ -126,8 +151,9 @@ query/absence semantics remain on `Nil` and side-effect completion is explicitly
 ```
 
 `type-of` returns a symbol such as `Dictionary`, `Set`, or `Void`. A first-class
-type descriptor value prints as `#<type Dictionary>`, while ordinary collection values
-print structurally as `{'a 1}` or `(Set 1 2 3)`.
+type descriptor value prints as `#<type Dictionary>` (for example `(format "%s" Dictionary)`),
+while ordinary collection values print structurally as `{'a 1}` or `(Set 1 2 3)`.
+Non-constructor primitives keep primitive rendering (`#<primitive +>`).
 
 ---
 

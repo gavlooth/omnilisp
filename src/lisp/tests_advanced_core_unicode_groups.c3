@@ -90,6 +90,14 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
         "(handle (Symbol 42) (raise msg (symbol->string (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
+        "Dictionary ctor odd-arity payload code",
+        "(handle (Dictionary 'a) (raise msg (symbol->string (ref msg 'code))))",
+        "type/arity", pass, fail);
+    test_str_val(interp,
+        "Dict shorthand odd-arity payload code",
+        "(handle (Dict 'a) (raise msg (symbol->string (ref msg 'code))))",
+        "type/arity", pass, fail);
+    test_str_val(interp,
         "Nil ctor invalid payload code",
         "(handle (Nil 42) (raise msg (symbol->string (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
@@ -101,11 +109,37 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
         "Closure ctor invalid payload code",
         "(handle (Closure 42) (raise msg (symbol->string (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
+    test_str_val(interp,
+        "Iterator ctor invalid payload code",
+        "(handle (Iterator 42) (raise msg (symbol->string (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp,
+        "make-iterator invalid payload code",
+        "(handle (make-iterator 42) (raise msg (symbol->string (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
     test_truthy(interp,
         "Coroutine ctor invalid payload code",
         "(= (handle (Coroutine 42) (raise msg (symbol->string (ref msg 'code)))) "
         "   \"type/arg-mismatch\")",
         pass, fail);
+}
+
+fn void run_advanced_void_nil_contract_tests(Interp* interp, int* pass, int* fail) {
+    // Void = command/effect completion.
+    test_truthy(interp, "Void contract set! completion",
+        "(= (type-of (block (define void-nil-x 1) (set! void-nil-x 2))) 'Void)", pass, fail);
+    test_truthy(interp, "Void contract push! completion",
+        "(= (type-of (let (a [1]) (push! a 2))) 'Void)", pass, fail);
+    test_truthy(interp, "Void contract remove! completion",
+        "(= (type-of (let (d {'a 1}) (remove! d 'a))) 'Void)", pass, fail);
+
+    // Nil = absence/query miss.
+    test_truthy(interp, "Nil contract ref missing",
+        "(= (type-of (ref {'a 1} 'missing)) 'Nil)", pass, fail);
+    test_truthy(interp, "Nil contract has? miss",
+        "(= (type-of (has? {'a 1} 'missing)) 'Nil)", pass, fail);
+    test_truthy(interp, "Nil contract set-contains? miss",
+        "(= (type-of (set-contains? (Set 1 2) 99)) 'Nil)", pass, fail);
 }
 
 fn void run_advanced_unicode_iterator_primitives_tests(Interp* interp, int* pass, int* fail) {
@@ -185,6 +219,7 @@ fn void run_advanced_unicode_iterator_lazy_pipeline_tests(Interp* interp, int* p
 fn void run_advanced_unicode_iterator_tests(Interp* interp, int* pass, int* fail) {
     run_advanced_unicode_lambda_utf8_tests(interp, pass, fail);
     run_advanced_callable_type_symbol_constructor_tests(interp, pass, fail);
+    run_advanced_void_nil_contract_tests(interp, pass, fail);
     run_advanced_unicode_iterator_primitives_tests(interp, pass, fail);
     run_advanced_unicode_iterator_lazy_pipeline_tests(interp, pass, fail);
 }
@@ -232,7 +267,11 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
     // signal/resolve syntax (new match-style clauses)
     test_eq(interp, "signal/resolve basic", "(handle (+ 1 (signal read nil)) (read x (resolve 41)))", 42, pass, fail);
     test_eq(interp, "signal abort", "(handle (+ 1 (signal bail 5)) (bail x x))", 5, pass, fail);
+    test_eq(interp, "signal abort skips post-signal body effects",
+        "(let (x 0) (block (handle (block (signal bail 1) (set! x 99) 7) (bail v 5)) x))", 0, pass, fail);
     test_eq(interp, "signal/resolve double", "(handle (signal double 7) (double x (resolve (* x 2))))", 14, pass, fail);
+    test_eq(interp, "resolve is terminal in clause",
+        "(let (x 0) (block (handle (signal once 10) (once v (block (resolve (+ v 1)) (set! x 99) 0))) x))", 0, pass, fail);
     test_eq(interp, "signal no trigger", "(handle (+ 10 20) (unused x 999))", 30, pass, fail);
     test_eq(interp, "signal multi-resume", "(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x (resolve x)))", 30, pass, fail);
     test_error_contains(interp, "resolve outside handler", "(resolve 42)", "resolve", pass, fail);
@@ -334,6 +373,51 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
         test_eq(interp, "multi-shot k thrice", "(checkpoint (* 2 (capture k (+ (k 3) (+ (k 5) (k 7))))))", 30, pass, fail);
         test_eq(interp, "multi-shot let bindings", "(checkpoint (+ 10 (capture k (let (a (k 1) b (k 2)) (+ a b)))))", 23, pass, fail);
         test_eq(interp, "multi-shot conditional", "(checkpoint (+ 5 (capture k (if true (k 10) (k 20)))))", 15, pass, fail);
+        test_eq(
+            interp,
+            "multi-shot replay set! in resumed segment",
+            "(block "
+            "  (define replay-set-counter 0) "
+            "  (define replay-set-r (checkpoint (+ (capture k (+ (k 1) (k 1))) (block (set! replay-set-counter (+ replay-set-counter 1)) replay-set-counter)))) "
+            "  (+ (* 10 replay-set-r) replay-set-counter))",
+            52,
+            pass,
+            fail
+        );
+        test_eq_interp(
+            interp,
+            "multi-shot replay deduce fact writes",
+            "(block "
+            "  (define replay-db (deduce 'open 'memory)) "
+            "  (define replay-rel (deduce 'open-named replay-db 'replay_rel 'replay_rel 'name 'age)) "
+            "  (define replay-deduce-id 0) "
+            "  (define replay-deduce-r "
+            "    (checkpoint (+ (capture k (+ (k 1) (k 1))) "
+            "                   (block (set! replay-deduce-id (+ replay-deduce-id 1)) "
+            "                          (deduce 'fact! replay-rel \"u\" replay-deduce-id) "
+            "                          (deduce 'count replay-rel))))) "
+            "  (+ (* 10 replay-deduce-r) replay-deduce-id))",
+            52,
+            pass,
+            fail
+        );
+        test_eq_interp(
+            interp,
+            "multi-shot replay handled io effect",
+            "(block "
+            "  (define replay-io-counter 0) "
+            "  (define replay-io-r "
+            "    (checkpoint "
+            "      (+ (capture k (+ (k 1) (k 1))) "
+            "         (block "
+            "           (handle (signal io/println \"replay-io\") (io/println x (resolve 0))) "
+            "           (set! replay-io-counter (+ replay-io-counter 1)) "
+            "           replay-io-counter)))) "
+            "  (+ (* 10 replay-io-r) replay-io-counter))",
+            52,
+            pass,
+            fail
+        );
         test_eq(interp, "stream-yield continuation resumes beyond two yields",
             "(block "
             "  (define (gen-s3) (checkpoint (block (stream-yield 1) (stream-yield 2) (stream-yield 3) nil))) "
