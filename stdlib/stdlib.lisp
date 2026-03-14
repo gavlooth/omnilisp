@@ -70,6 +70,26 @@
   (syntax-match
     ([test .. body]
       (template (if (insert test) nil (block (splice body)))))))
+
+;; branch: cond-style conditional chain with explicit default marker
+;; Usage:
+;;   (branch (cond1 expr1) (cond2 expr2) ... (_ default-expr))
+;; Rules:
+;;   - _ is the default clause marker
+;;   - _ must appear only in final position
+;;   - if no condition matches and no default is provided, result is nil
+(define [macro] branch
+  (syntax-match
+    ([]
+      (template nil))
+    ([['__placeholder result]]
+      (template (insert result)))
+    ([['__placeholder result] .. rest]
+      (template (assert! false "branch: _ default clause must be final")))
+    ([[test result]]
+      (template (if (insert test) (insert result) nil)))
+    ([[test result] .. rest]
+      (template (if (insert test) (insert result) (branch .. rest))))))
 (define (default v fallback) (if (null? v) fallback v))
 
 ;; with-defaults: wrap body with nil-checked defaults for dict destructured bindings

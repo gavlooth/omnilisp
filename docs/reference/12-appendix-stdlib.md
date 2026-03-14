@@ -12,10 +12,13 @@ Functions and macros defined in `stdlib/stdlib.lisp`.
 |------|-----------|-------------|
 | `when` | `(when test body...)` | If test, evaluate body |
 | `unless` | `(unless test body...)` | If not test, evaluate body |
+| `branch` | `(branch (c1 e1) ... [(_ default)])` | Multi-branch conditional chain |
 | `with-defaults` | `(with-defaults n1 v1 ... body)` | Default values for dict params |
 | `stream-yield` | `(stream-yield val)` | Generator-style yield |
 
-For multi-branch conditional chains, use `match` with `Void` + guard patterns.
+`branch` notes:
+- `_` is the default marker and must appear only in final position.
+- Without `_`, `branch` returns `nil` when no condition is truthy.
 
 ### Higher-Order Functions
 

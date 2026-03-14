@@ -1245,8 +1245,20 @@ Compatibility note: `_n` placeholder desugaring is only active in call-argument 
 |-------|-------------|
 | `when` | `(when test body...)` -- if test, evaluate body |
 | `unless` | `(unless test body...)` -- if not test, evaluate body |
+| `branch` | `(branch (c1 e1) ... (_ default))` -- condition chain with explicit default marker |
 
-For multi-branch condition chains, use `match` with `Void` and guard patterns:
+For multi-branch condition chains, prefer `branch`:
+
+```lisp
+(branch ((> x 0) "positive")
+        ((= x 0) "zero")
+        (_ "negative"))
+```
+
+`_` is the default marker and must appear only in final position. If no
+condition matches and no `_` clause is provided, `branch` returns `nil`.
+
+Equivalent low-level form using `match` + guards:
 
 ```lisp
 (match Void

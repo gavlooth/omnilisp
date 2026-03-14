@@ -9,6 +9,12 @@ fn void run_advanced_stdlib_macro_migration_regression_tests(Interp* interp, int
     test_eq(interp, "stdlib when macro false branch keeps state", "(let (x 3) (block (when false (set! x 10)) x))", 3, pass, fail);
     test_eq(interp, "stdlib unless macro false branch", "(let (x 0) (block (unless false (set! x 20)) x))", 20, pass, fail);
     test_eq(interp, "stdlib unless macro true branch keeps state", "(let (x 4) (block (unless true (set! x 20)) x))", 4, pass, fail);
+    test_eq(interp, "stdlib branch picks first truthy condition", "(branch (false 1) (true 2) (_ 3))", 2, pass, fail);
+    test_eq(interp, "stdlib branch default clause with _", "(branch (false 1) (false 2) (_ 3))", 3, pass, fail);
+    test_nil(interp, "stdlib branch no match without default returns nil", "(branch (false 1) (false 2))", pass, fail);
+    test_truthy(interp, "stdlib branch rejects non-final _ default marker",
+        "(= (symbol->string (handle (branch (_ 1) (true 2)) (raise msg (ref msg 'code)))) \"stdlib/assert-failed\")",
+        pass, fail);
     test_eq(interp, "stdlib match Void branch chain", "(match Void ((? false) 1) ((? true) 2) (_ 3))", 2, pass, fail);
     test_nil(interp, "stdlib match Void no matching guard", "(match Void ((? false) 1) ((? false) 2) (_ nil))", pass, fail);
     test_str_val(interp, "stdlib with-defaults nil fallback", "(let ({name} {'name nil}) (with-defaults name \"anon\" name))", "anon", pass, fail);

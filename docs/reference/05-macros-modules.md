@@ -27,10 +27,9 @@
   (println "positive")
   x)
 
-(match Void
-  ((? (< x 0)) "negative")
-  ((? (= x 0)) "zero")
-  (_ "positive"))
+(branch ((< x 0) "negative")
+        ((= x 0) "zero")
+        (_ "positive"))
 ```
 
 ### Features
