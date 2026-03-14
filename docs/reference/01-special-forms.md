@@ -182,7 +182,7 @@ Binary only. `and` returns the left operand if falsy, else the right.
 | Exact sequence | `([x y] (+ x y))` | Matches list/array of exactly N elements |
 | Head-tail | `([first .. rest] first)` | Binds head and rest |
 | Prefix | `([a b ..] (+ a b))` | Matches first N, ignores rest |
-| Suffix | `([.. last] last)` | Skips to last element(s) |
+| Suffix | `([.. prev last] (Array prev last))` | Matches one or more trailing elements |
 | Guard | `((? (> _ 10)) "big")` | Callable guard receives scrutinee |
 | Direct guard | `((? (> x 10)) "big")` | Non-callable guard expression tested directly |
 | Guard + bind | `((? (> x 10) x) x)` | Evaluate guard after sub-pattern bindings |
@@ -205,6 +205,10 @@ Binary only. `and` returns the left operand if falsy, else the right.
 ;; Head-tail decomposition
 (match '(10 20 30)
   ([head .. tail] head))      ;; => 10
+
+;; Suffix decomposition (multiple trailing elements)
+(match '(10 20 30 40)
+  ([.. prev last] (Array prev last)))  ;; => [30 40]
 
 ;; Union variant matching
 (match (Some 42)
@@ -239,6 +243,7 @@ Destructuring works in `let`, `match`, and lambda/define parameters.
 (let ([head .. tail] '(1 2 3 4)) tail)         ;; => (2 3 4)
 (let ([a b ..] '(1 2 3 4 5)) (+ a b))         ;; => 3
 (let ([.. last] '(1 2 3 4 5)) last)            ;; => 5
+(let ([.. prev last] '(1 2 3 4 5)) (Array prev last)) ;; => [4 5]
 (let ([_ b _] [10 20 30]) b)                   ;; => 20
 
 ;; Works on both lists and arrays

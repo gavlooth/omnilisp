@@ -228,7 +228,7 @@ Dot-path errors:
   (_ default))
 ```
 
-Patterns: literals, variables, wildcards `_`, sequences `[a b .. rest]`, quoted `'sym`, constructors `(Some x)`.
+Patterns: literals, variables, wildcards `_`, sequences (`[a b ..]`, `[head .. tail]`, `[.. prev last]`), quoted `'sym`, constructors `(Some x)`.
 
 ### 3.9 `checkpoint` / `capture` - Delimited Continuations
 

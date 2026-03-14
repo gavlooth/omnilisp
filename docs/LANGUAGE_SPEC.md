@@ -644,7 +644,7 @@ Dynamic clause count (no fixed limit). Pattern types:
 | `[a b c]` | Exact sequence | `([x y] (+ x y))` |
 | `[h .. t]` | Head-tail | `([first .. rest] first)` |
 | `[x y ..]` | Prefix | `([a b ..] (+ a b))` |
-| `[.. last]` | Suffix | `([.. z] z)` |
+| `[.. a b]` | Suffix | `([.. prev last] (Array prev last))` |
 | `(? pred)` | Guard; callable `pred` receives scrutinee, non-callable `pred` is tested directly | `((? (> _ 10)) "big")`, `((? (> x 10)) "big")` |
 | `(? pred pat)` | Guard with sub-pattern bindings before guard evaluation | `((? (> x 10) x) x)` |
 | `None` | Nullary constructor | `(None "empty")` |
