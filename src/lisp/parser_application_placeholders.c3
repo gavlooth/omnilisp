@@ -92,5 +92,6 @@ fn Expr* Parser.wrap_with_placeholder_lambdas(Parser* self, Expr* body, SymbolId
     lam.lambda.rest_param = 0;
     lam.lambda.has_typed_params = false;
     lam.lambda.body = body;
+    lam.lambda.is_accessor_shorthand = false;
     return lam;
 }

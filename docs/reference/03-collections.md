@@ -120,11 +120,15 @@ Examples:
 (.2 {2 "int-key"})               ;; => "int-key"
 (."2" {"2" "string-key"})        ;; => "string-key"
 (.[2] {[2] "array-key"})         ;; => "array-key"
+(map .1 '((10 20) (30 40)))      ;; => (20 40)
 
 ((lambda (x) (ref x 2)) {2 "int-key"})        ;; => "int-key"
 ((lambda (x) (ref x "2")) {"2" "string-key"}) ;; => "string-key"
 ((lambda (x) (ref x [2])) {[2] "array-key"})  ;; => "array-key"
 ```
+
+`(.2)` and wrapped forms like `((.2) arr)` are invalid. Use `(.2 arr)` for
+direct application, or pass `.2` as a value in higher-order calls.
 
 ### Postfix Index Access
 

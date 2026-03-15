@@ -162,6 +162,7 @@ fn Expr* make_single_lambda_expr(Interp* interp, SymbolId param, Expr* body) {
     e.lambda.has_typed_params = false;
     e.lambda.param_annotations = null;
     e.lambda.body = body;
+    e.lambda.is_accessor_shorthand = false;
     return e;
 }
 
@@ -178,6 +179,7 @@ fn Expr* make_nullary_lambda_expr(Interp* interp, Expr* body) {
     e.lambda.has_typed_params = false;
     e.lambda.param_annotations = null;
     e.lambda.body = body;
+    e.lambda.is_accessor_shorthand = false;
     return e;
 }
 

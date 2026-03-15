@@ -923,6 +923,8 @@ Shorthand notes:
 - `.'key` is shorthand for quoted-symbol key expression `'key`
 - `.1` / `.-1` are shorthand numeric key expressions `1` and `-1`
 - when `.` is followed by any other expression, that full expression is the key
+- leading-dot accessors are first-class values, so `(map .3 rows)` is valid
+- `(.3)` and wrapped forms like `((.3) coll)` are invalid; use `(.3 coll)` for direct application
 
 ### 6.2 Postfix Index Syntax
 

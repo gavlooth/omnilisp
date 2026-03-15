@@ -24,6 +24,14 @@ fn Expr* Parser.build_call_expr(Parser* self, Expr* func, List{Expr*}* args, usz
     return e;
 }
 
+fn bool Parser.reject_nullary_accessor_shorthand_call(Parser* self, Expr* func, usz arg_count) {
+    if (func == null || func.tag != E_LAMBDA || func.lambda == null) return false;
+    if (!func.lambda.is_accessor_shorthand || arg_count != 0) return false;
+
+    self.set_error("leading-dot accessor cannot be parenthesized on its own; use .expr as a value or apply it directly");
+    return true;
+}
+
 fn Expr* Parser.parse_application(Parser* self) {
     if (self.has_error) return null;
     usz app_line = self.lexer.current.line;
@@ -32,6 +40,10 @@ fn Expr* Parser.parse_application(Parser* self) {
 
     List{Expr*} arg_list;
     if (!self.collect_application_args(&arg_list)) {
+        arg_list.free();
+        return null;
+    }
+    if (self.reject_nullary_accessor_shorthand_call(func, arg_list.len())) {
         arg_list.free();
         return null;
     }

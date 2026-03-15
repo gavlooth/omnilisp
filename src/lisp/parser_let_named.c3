@@ -57,6 +57,7 @@ fn Expr* Parser.build_named_let_lambda(Parser* self, Expr* e, List{SymbolId}* pa
     lambda_expr.lambda.has_typed_params = false;
     lambda_expr.lambda.param_annotations = null;
     lambda_expr.lambda.body = body;
+    lambda_expr.lambda.is_accessor_shorthand = false;
     return lambda_expr;
 }
 

@@ -75,6 +75,7 @@ fn void Parser.finalize_lambda_expr(Parser* self, Expr* e, List{SymbolId} params
         }
     }
     e.lambda.body = body;
+    e.lambda.is_accessor_shorthand = false;
 }
 
 fn bool Parser.collect_callable_params(Parser* self, List{SymbolId}* params, List{TypeAnnotation}* param_anns, bool* has_any_typed, List{Pattern*}* destr_patterns, List{SymbolId}* destr_param_names) {

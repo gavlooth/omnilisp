@@ -97,6 +97,7 @@ fn Expr* Parser.build_lookup_accessor(Parser* self, Expr* key_expr, usz line, us
     lam.lambda.has_typed_params = false;
     lam.lambda.param_annotations = null;
     lam.lambda.body = call;
+    lam.lambda.is_accessor_shorthand = true;
     return lam;
 }
 

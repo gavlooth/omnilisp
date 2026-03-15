@@ -31,6 +31,7 @@ fn Expr* make_explain_target_thunk(Parser* self, Expr* body) {
     thunk.lambda.body = body;
     thunk.lambda.param_annotations = null;
     thunk.lambda.has_typed_params = false;
+    thunk.lambda.is_accessor_shorthand = false;
     return thunk;
 }
 

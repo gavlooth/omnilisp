@@ -75,6 +75,7 @@ struct ExprLambda {
     Expr*    body;
     TypeAnnotation* param_annotations;  // Type annotations for params (malloc'd, null if none)
     bool has_typed_params;    // True if any param has a type annotation
+    bool is_accessor_shorthand; // True only for leading-dot lookup lambdas like .name or .3
 }
 
 struct ExprApp {
