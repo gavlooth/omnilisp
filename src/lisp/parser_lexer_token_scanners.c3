@@ -79,7 +79,7 @@ fn bool Lexer.scan_logic_variable(Lexer* self, char c) {
 fn bool Lexer.scan_dot_tokens(Lexer* self, char c) {
     if (c != '.') return false;
 
-    // Rest pattern: .. (must check before .[ and symbol)
+    // Rest pattern: .. (must check before symbol tokens)
     if (self.pos + 1 < self.len && self.source[self.pos + 1] == '.') {
         // Make sure it's not ... or longer
         if (self.pos + 2 >= self.len || self.source[self.pos + 2] != '.') {
@@ -98,22 +98,6 @@ fn bool Lexer.scan_dot_tokens(Lexer* self, char c) {
         }
     }
 
-    // Index access: .[ (dot-bracket notation)
-    // Must check before symbol parsing since . is a symbol char
-    if (self.pos + 1 < self.len && self.source[self.pos + 1] == '[') {
-        if (!self.ensure_text_capacity(3)) {
-            self.set_error_text("out of memory while lexing token");
-            return true;
-        }
-        self.current.type = T_DOT_BRACKET;
-        self.current.text[0] = '.';
-        self.current.text[1] = '[';
-        self.current.text[2] = 0;
-        self.current.text_len = 2;
-        self.next_char();
-        self.next_char();
-        return true;
-    }
     return false;
 }
 

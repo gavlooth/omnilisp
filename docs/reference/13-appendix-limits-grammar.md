@@ -37,7 +37,7 @@
 ```ebnf
 program     = { expr } ;
 expr        = literal | symbol | path | quoted | quasiquoted
-            | list | array_lit | dict_lit | indexed ;
+            | list | array_lit | dict_lit | indexed | accessor ;
 
 literal     = integer | float | string ;
 integer     = [ "-" ] digit { digit } ;
@@ -52,6 +52,7 @@ list        = "(" { expr } ")" ;
 array_lit   = "[" { expr } "]" ;           (* equivalent to Array constructor call *)
 dict_lit    = "{" { expr expr } "}" ;      (* equivalent to Dictionary constructor call; must be even *)
 indexed     = expr ".[" expr "]" ;
+accessor    = "." expr
 
 datum       = literal | symbol | "(" { datum } ")" | "'" datum ;
 

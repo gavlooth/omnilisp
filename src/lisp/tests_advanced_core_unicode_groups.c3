@@ -132,6 +132,8 @@ fn void run_advanced_void_nil_contract_tests(Interp* interp, int* pass, int* fai
         "(= (type-of (let (a [1]) (push! a 2))) 'Void)", pass, fail);
     test_truthy(interp, "Void contract remove! completion",
         "(= (type-of (let (d {'a 1}) (remove! d 'a))) 'Void)", pass, fail);
+    test_truthy(interp, "Void contract is operational truthy token",
+        "(= (if (block (define void-operational-x 1) (set! void-operational-x 2)) 1 0) 1)", pass, fail);
 
     // Nil = absence/query miss.
     test_truthy(interp, "Nil contract ref missing",

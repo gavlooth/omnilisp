@@ -4,7 +4,7 @@ fn void Lexer.scan_symbol(Lexer* self) {
     usz start = self.pos;
     bool has_dot = false;
     while (self.pos < self.len && is_symbol_char(self.source[self.pos])) {
-        // Stop before .[ so it can be lexed as T_DOT_BRACKET
+        // Stop before .[ so it can be parsed as '.' followed by '[' for index access.
         if (self.source[self.pos] == '.' &&
             self.pos + 1 < self.len && self.source[self.pos + 1] == '[') {
             break;

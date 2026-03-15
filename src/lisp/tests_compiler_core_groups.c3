@@ -445,6 +445,66 @@ fn void run_compiler_group_dot_index_tests(Interp* interp, usz* pass, usz* fail)
         if (ok) { (*pass)++; compiler_print_pass("Compiler: lst.[(+ 0 1)]"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: lst.[(+ 0 1)]"); }
     }
+    {
+        char[] code = compile_to_c3("((. [3]) {[3] 40})", interp);
+        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: leading . [3] accessor array-key shorthand"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: leading . [3] accessor array-key shorthand"); }
+    }
+    {
+        char[] code = compile_to_c3("((.[\"name\"]) {\"name\" 93})", interp);
+        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: leading .[\"name\"] accessor dynamic string key"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: leading .[\"name\"] accessor dynamic string key"); }
+    }
+    {
+        char[] code = compile_to_c3("((. [[1 2 3]]) { [ [1 2 3] 88 })", interp);
+        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: leading .[array] accessor array-key expression"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: leading .[array] accessor array-key expression"); }
+    }
+    {
+        char[] code = compile_to_c3("((.'k) {'k 9})", interp);
+        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: leading .'k accessor shorthand"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: leading .'k accessor shorthand"); }
+    }
+    {
+        char[] code = compile_to_c3("((.1) (list 10 20 30))", interp);
+        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: leading .1 accessor shorthand"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: leading .1 accessor shorthand"); }
+    }
+    {
+        char[] code = compile_to_c3("((.3) (list 10 20 30 40))", interp);
+        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: leading .3 accessor shorthand list"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: leading .3 accessor shorthand list"); }
+    }
+    {
+        char[] code = compile_to_c3("((.3) [10 20 30 40])", interp);
+        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: leading .3 accessor shorthand array"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: leading .3 accessor shorthand array"); }
+    }
+    {
+        char[] code = compile_to_c3("(.3 [10 20 30 40])", interp);
+        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: direct .3 accessor array"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: direct .3 accessor array"); }
+    }
+    {
+        char[] code = compile_to_c3("((.name) {'name 9})", interp);
+        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: leading .name accessor shorthand"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: leading .name accessor shorthand"); }
+    }
+    {
+        char[] code = compile_to_c3("((.\"name\") {\"name\" 9})", interp);
+        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: leading .\"name\" accessor shorthand"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: leading .\"name\" accessor shorthand"); }
+    }
 }
 
 fn void run_compiler_group_path_notation_tests(Interp* interp, usz* pass, usz* fail) {

@@ -99,10 +99,13 @@ Goodbye!
 Normative rule:
 - `Void` is for successful command/effect completion with no payload.
 - `Nil` is for absence/query-miss (and falsy predicate misses).
+- `Void` is operational-only (not an absence/data sentinel).
+- `Void` is truthy.
 
 ```lisp
 (type-of (block (define x 1) (set! x 2)))   ;; => Void
 (type-of (let (d {'a 1}) (remove! d 'a)))   ;; => Void
+(if (block (define x 1) (set! x 2)) 1 0)    ;; => 1
 
 (type-of (ref {'a 1} 'missing))              ;; => Nil
 (type-of (has? {'a 1} 'missing))             ;; => Nil

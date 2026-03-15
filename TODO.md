@@ -8,6 +8,13 @@ Full completed history is archived at:
 
 Current actionable count: 23
 
+## Lookup Accessor Rollout (Phased)
+
+- [x] Phase 1: support leading `.[expr]` as a first-class accessor form that desugars to `(lambda (x) (ref x expr))`.
+- [x] Phase 2: add `.name` shorthand as sugar for `.['name]`.
+- [x] Phase 3: add quoted leading-dot shorthand `."name"` as sugar for `.["name"]`.
+- [x] Phase 4: add numeric shorthand `.1` / `.-1` as sugar for `.[1]` / `.[-1]`.
+
 ## Semantic Clarification Follow-Up (2026-03-14)
 
 - [ ] Decide and lock the predicate contract for `Void` in control forms (`if`, `when`, `match`) as normative behavior.

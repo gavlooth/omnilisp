@@ -47,6 +47,22 @@ fn void run_basic_index_and_match_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "mylist.[2] => 30", "mylist.[2]", 30, pass, fail);
     setup(interp, "(define idx 3)");
     test_eq(interp, "mylist.[idx] => 40", "mylist.[idx]", 40, pass, fail);
+    test_eq(interp, "leading .1 accessor on list", "((.1) (quote (10 20 30)))", 20, pass, fail);
+    test_eq(interp, "leading .-1 accessor on list", "((.-1) (quote (10 20 30)))", 30, pass, fail);
+    setup(interp, "(define list (quote (10 20 30 40)))");
+    test_truthy(interp, "direct .3 equals ref list 3", "(= (.3 list) (ref list 3))", pass, fail);
+    setup(interp, "(define array (array 10 20 30 40))");
+    test_truthy(interp, "direct .3 equals ref array 3", "(= (.3 array) (ref array 3))", pass, fail);
+    test_eq(interp, "leading .name accessor on dict", "((.name) {'name 91})", 91, pass, fail);
+    test_eq(interp, "leading .\"name\" accessor on dict", "((.\"name\") {\"name\" 93})", 93, pass, fail);
+    test_eq(interp, "leading .[\"name\"] accessor on dict", "((.[\"name\"]) {\"name\" 93})", 93, pass, fail);
+    test_eq(interp, "leading . [3] accessor on array key", "((. [3]) { [3] 40 })", 40, pass, fail);
+    test_eq(interp, "leading .[ array-key ] accessor on dict", "((. [[1 2] ]) { [ [1 2] ] 99 })", 99, pass, fail);
+    test_eq(interp, "leading .3 accessor on list", "((.3) (quote (10 20 30 40)))", 40, pass, fail);
+    test_eq(interp, "leading .3 accessor on array", "((.3) [10 20 30 40])", 40, pass, fail);
+    setup(interp, "(define key 'name)");
+    test_eq(interp, "leading . key accessor on dict", "((. key) {'name 95})", 95, pass, fail);
+    test_eq(interp, "leading .key shorthand key lookup", "((.key) {'key 95})", 95, pass, fail);
 
     // Pattern matching basics
     test_eq(interp, "match literal", "(match 42 (42 1) (x 0))", 1, pass, fail);

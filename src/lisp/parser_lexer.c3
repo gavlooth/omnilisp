@@ -11,7 +11,7 @@ enum TokenType : char {
     T_RPAREN,
     T_LBRACKET,     // [ for array literals
     T_RBRACKET,     // ] for array literals
-    T_DOT_BRACKET,  // .[ for index access
+    T_DOT_BRACKET,  // legacy .[ compatibility token for parser-time index parsing
     T_DOTDOT,       // .. for rest patterns in destructuring
     T_QUOTE,
     T_INT,
@@ -76,7 +76,7 @@ fn bool Lexer.scan_literal_or_symbol(Lexer* self, char c) {
     if (self.scan_standalone_underscore(c)) return true;
 
     // Symbol or Path (dot-separated like point.x or person.address.city)
-    // Stops when seeing .[ (index access) or .. (rest pattern)
+    // Stops before rest-pattern tokens (`..`)
     if (is_symbol_char(c)) {
         self.scan_symbol();
         return true;
