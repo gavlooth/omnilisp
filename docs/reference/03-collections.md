@@ -98,14 +98,45 @@ These work across collection types:
 
 ### Dot-Bracket Index Access
 
+### Leading-Dot Accessor Shorthand
+
 ```lisp
-lst.[0]             ;; first element of list
-arr.[2]             ;; third element of array
-dict.['key]         ;; dict key lookup
-str.[0]             ;; character at index
-matrix.[i].[j]      ;; chained indexing
-arr.[-1]            ;; last element (negative indexing)
+.name                   ;; key expression 'name
+.1                      ;; key expression 1
+.-1                     ;; key expression -1
+.'key                   ;; key expression 'key
 ```
+
+Leading dot is separate from postfix indexing. It lowers to a one-argument
+lookup lambda over the next full expression.
+Canonical spelling omits whitespace after the leading `.`.
+
+Examples:
+
+```lisp
+(define arr [0 1 2])
+(.2 arr)                         ;; => 2
+
+(.2 {2 "int-key"})               ;; => "int-key"
+(."2" {"2" "string-key"})        ;; => "string-key"
+(.[2] {[2] "array-key"})         ;; => "array-key"
+
+((lambda (x) (ref x 2)) {2 "int-key"})        ;; => "int-key"
+((lambda (x) (ref x "2")) {"2" "string-key"}) ;; => "string-key"
+((lambda (x) (ref x [2])) {[2] "array-key"})  ;; => "array-key"
+```
+
+### Postfix Index Access
+
+```lisp
+lst.[0]                 ;; first element of list
+arr.[2]                 ;; third element of array
+dict.['key]             ;; dict key lookup
+str.[0]                 ;; character at index
+matrix.[i].[j]          ;; chained indexing
+arr.[-1]                ;; last element (negative indexing)
+```
+
 
 ---
 

@@ -304,7 +304,7 @@ null?
 |-------|-------------|
 | `_` | Wildcard (in patterns), NOT a symbol |
 | `..` | Rest/spread in patterns and variadic params |
-| `.[` | Dot-bracket for index access |
+| `.[` | Legacy compatibility token for old leading-dot-bracket parsing; parser now handles dot-bracket index as dot-token + array-literal (`.[` is emitted as `.` `[` internally) |
 | `.` | Dot for field/path access |
 | `^` | Type annotation prefix |
 | `[` `]` | Array literals, bracket attributes, and patterns |
@@ -364,12 +364,16 @@ singleton type/value used by FFI `^Void` returns as well.
 Normative rule:
 - `Void` means successful command/effect completion with no payload.
 - `Nil` means absence/query-miss (or falsey result in predicate-style APIs).
+- `Void` is an operational completion token, not a data/absence sentinel.
+- APIs should not encode query-miss/optional absence using `Void`; use `Nil`.
+- `Void` is truthy under Omni truthiness rules.
 
 Contract examples:
 
 ```lisp
 (type-of (block (define x 1) (set! x 2)))   ; => 'Void
 (type-of (let (d {'a 1}) (remove! d 'a)))   ; => 'Void
+(if (block (define x 1) (set! x 2)) 1 0)    ; => 1  (Void is truthy)
 
 (type-of (ref {'a 1} 'missing))             ; => 'Nil
 (type-of (has? {'a 1} 'missing))            ; => 'Nil
@@ -868,7 +872,61 @@ Example:
 
 ## 6. Path and Index Notation
 
-### 6.1 Dot-Bracket Index Access
+### 6.1 Leading-Dot Accessor Shorthand
+
+Leading dot is its own syntax family. It is distinct from path syntax and from
+postfix index syntax.
+
+Normative rule:
+- leading `.` consumes the next full expression as the lookup key expression
+- the form lowers to a single-argument accessor lambda
+- canonical spelling omits whitespace after the leading `.`
+
+Equivalent lowering:
+
+```lisp
+.expr    ; equivalent to (lambda (x) (ref x expr))
+```
+
+Examples:
+
+```lisp
+.name                ; key expression 'name
+.1                   ; key expression 1
+.-1                  ; key expression -1
+.'key                ; key expression 'key
+```
+
+Applied examples:
+
+```lisp
+.1 '(10 20 30)                   ; => 20
+.name {'name 91}                 ; => 91
+.'key {'key 92}                  ; => 92
+.["name"] {["name"] 93}          ; => 93
+
+(define arr [0 1 2])
+(.2 arr)                         ; => 2
+
+(.2 {2 "int-key"})               ; => "int-key"
+(."2" {"2" "string-key"})        ; => "string-key"
+(.[2] {[2] "array-key"})         ; => "array-key"
+
+((lambda (x) (ref x 2)) {2 "int-key"})        ; => "int-key"
+((lambda (x) (ref x "2")) {"2" "string-key"}) ; => "string-key"
+((lambda (x) (ref x [2])) {[2] "array-key"})  ; => "array-key"
+```
+
+Shorthand notes:
+- `.name` is shorthand for symbol key expression `'name`
+- `."name"` is shorthand for string key expression `"name"`
+- `.'key` is shorthand for quoted-symbol key expression `'key`
+- `.1` / `.-1` are shorthand numeric key expressions `1` and `-1`
+- when `.` is followed by any other expression, that full expression is the key
+
+### 6.2 Postfix Index Syntax
+
+Postfix index syntax is separate from leading-dot accessor shorthand.
 
 ```lisp
 list.[0]            ; first element
@@ -878,7 +936,9 @@ array.[0]           ; array indexing
 dict.['key]         ; dict key lookup
 ```
 
-### 6.2 Path Notation (Field Access)
+`expr.[key]` means lookup/index on `expr`. It is not leading-dot syntax.
+
+### 6.3 Path Notation (Field Access)
 
 ```lisp
 point.x             ; struct field access
@@ -887,7 +947,11 @@ pair.car             ; cons cell car access
 pair.cdr             ; cons cell cdr access
 ```
 
-For non-Instance values, path notation uses alist lookup (association lists). Cons cells also support `.car` and `.cdr` as special field names.
+Path notation is non-leading dotted syntax. It is distinct from leading-dot
+accessor shorthand and from postfix index syntax.
+
+For non-Instance values, path notation uses alist lookup (association lists).
+Cons cells also support `.car` and `.cdr` as special field names.
 
 ---
 
@@ -1671,7 +1735,7 @@ See `docs/PROJECT_TOOLING.md` for the complete reference including `omni.toml` f
 ```ebnf
 program     = { expr } ;
 expr        = literal | symbol | path | quoted | quasiquoted
-            | list | array_lit | dict_lit | indexed ;
+            | list | array_lit | dict_lit | indexed | accessor ;
 
 literal     = integer | float | string ;
 integer     = [ "-" ] digit { digit } ;
@@ -1686,6 +1750,7 @@ list        = "(" { expr } ")" ;
 array_lit   = "[" { expr } "]" ;           (* equivalent to Array constructor call *)
 dict_lit    = "{" { expr expr } "}" ;      (* equivalent to Dictionary constructor call; must be even *)
 indexed     = expr ".[" expr "]" ;
+accessor    = "." expr ;
 
 datum       = literal | symbol | "(" { datum } ")" | "'" datum ;
 

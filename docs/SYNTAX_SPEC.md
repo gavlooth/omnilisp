@@ -17,7 +17,7 @@
 | T_RBRACKET | `]` | Right bracket for array literals, patterns, attributes |
 | T_LBRACE | `{` | Left brace for dict literals, metadata dictionaries |
 | T_RBRACE | `}` | Right brace for dict literals, metadata dictionaries |
-| T_DOT_BRACKET | `.[` | Path index access (e.g., `arr.[0]`) |
+| T_DOT_BRACKET | `.[` | Legacy compatibility token used while parsing postfix index syntax `expr.[key]`. Leading-dot accessors are a separate `.` + expression surface. |
 | T_QUOTE | `'` | Quote shorthand |
 | T_BACKQUOTE | `` ` `` | Quasiquote shorthand |
 | T_COMMA | `,` | Unquote shorthand |
@@ -323,14 +323,28 @@ Typed defines create method tables. Best match wins:
 
 ## 5. Path and Index Notation
 
+Leading-dot accessor shorthand:
+
 ```lisp
-point.x           ;; struct field access
-line.start.y      ;; nested field access
-pair.car           ;; cons cell car access
-pair.cdr           ;; cons cell cdr access
+.name             ;; lookup lambda using key expression 'name
+.'key             ;; lookup lambda using key expression 'key
+```
+
+Postfix index syntax:
+
+```lisp
 arr.[0]           ;; list/array index
 dict.['key]       ;; dict key lookup
 matrix.[i].[j]    ;; chained indexing
+```
+
+Path syntax:
+
+```lisp
+point.x           ;; struct field access
+line.start.y      ;; nested field access
+pair.car          ;; cons cell car access
+pair.cdr          ;; cons cell cdr access
 ```
 
 ---
@@ -413,7 +427,7 @@ Runtime partial application — prepends initial args to a variadic lambda:
 ```ebnf
 program     = { expr } ;
 expr        = literal | symbol | path | quoted | quasiquoted
-            | list | array_lit | dict_lit | indexed ;
+            | list | array_lit | dict_lit | indexed | accessor ;
 
 literal     = integer | float | string ;
 integer     = [ "-" ] digit { digit } ;
@@ -428,6 +442,7 @@ list        = "(" { expr } ")" ;
 array_lit   = "[" { expr } "]" ;           (* equivalent to Array constructor call *)
 dict_lit    = "{" { expr expr } "}" ;      (* equivalent to Dictionary constructor call; must be even *)
 indexed     = expr ".[" expr "]" ;
+accessor    = "." expr
 
 datum       = literal | symbol | "(" { datum } ")" | "'" datum ;
 

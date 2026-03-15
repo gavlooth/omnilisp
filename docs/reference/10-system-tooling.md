@@ -91,7 +91,7 @@ nil               ;; nil value
 |-------|-------------|
 | `_` | Wildcard in patterns, placeholder in calls |
 | `..` | Rest/spread in patterns and variadic params |
-| `.[` | Dot-bracket index access |
+| `.[` | Legacy compatibility token used for postfix index parsing (`expr.[key]`); leading-dot accessor syntax is separate |
 | `.` | Field/path access |
 | `^` | Type annotation prefix |
 | `[` `]` | Arrays, patterns, bracket attributes |

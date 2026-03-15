@@ -315,7 +315,20 @@ Dynamic element count per pattern (no fixed limit).
 
 ## 4. Syntax Extensions
 
-### 4.1 Dot-Bracket Indexing
+### 4.1 Leading-Dot Accessor Shorthand
+```lisp
+.name            ; key expression 'name
+.1               ; key expression 1
+.-1              ; key expression -1
+.'key            ; key expression 'key
+```
+
+- Leading dot expands to a one-arg lookup lambda equivalent to `(lambda (x) (ref x key-expr))`
+- The key is the next full expression after `.`
+- This is separate from path notation and postfix indexing
+- Canonical spelling omits whitespace after the leading `.`
+
+### 4.2 Postfix Index Syntax
 ```lisp
 list.[0]         ; first element of list
 arr.[0]          ; first element of array
@@ -323,11 +336,8 @@ dict.['key]      ; dict key lookup
 str.[2]          ; character code at index 2
 matrix.[i].[j]   ; chained indexing
 ```
-- Works on lists, arrays, dicts, and strings
-- Index is any expression
-- Chainable for nested access
 
-### 4.2 Path Notation (Field Access)
+### 4.3 Path Notation (Field Access)
 ```lisp
 point.x                  ; struct field access
 person.address.city      ; chained field access
@@ -339,13 +349,13 @@ pair.cdr                 ; cons cell cdr access
 - Other values fall back to association list (alist) lookup
 - Up to 8 segments deep
 
-### 4.3 Quote Shorthand
+### 4.4 Quote Shorthand
 ```lisp
 'x        ; => (quote x)
 '(a b c)  ; => (quote (a b c))
 ```
 
-### 4.4 Escape Sequences in Strings
+### 4.5 Escape Sequences in Strings
 ```
 \n    newline
 \t    tab
@@ -353,7 +363,7 @@ pair.cdr                 ; cons cell cdr access
 \"    double quote
 ```
 
-### 4.5 Comments
+### 4.6 Comments
 ```lisp
 ; This is a comment (extends to end of line)
 ```
@@ -549,7 +559,7 @@ The Omni compiler (`src/lisp/compiler.c3`) translates Lisp AST to C3 source code
 | handle/signal | Y | Y |
 | quasiquote | Y | Y |
 | modules | Y | Y |
-| dot-bracket `.[i]` | Y | Y |
+| dot-bracket index `expr.[i]` | Y | Y |
 | path `a.b.c` | Y | Y |
 
 ---
