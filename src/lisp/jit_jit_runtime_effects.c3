@@ -45,14 +45,21 @@ fn Value* jit_reset_value(Interp* interp, Value* body) {
 
     // Save ALL interp state (was incomplete — only saved 3 of 12 fields)
     SavedInterpState saved;
-
     save_interp_state(interp, &saved);
-
     main::StackContext parent_ctx;
     main::stack_ctx_switch_to(ctx, &parent_ctx);
-
+    if (!jit_continuation_drive_blocked_fiber(ctx, interp, &parent_ctx)) {
+        interp.current_reset_state = saved_state;
+        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/fiber-yield-failed",
+            "checkpoint: failed to yield blocked scheduler fiber"
+        );
+    }
+    restore_interp_state_preserve_raise(interp, &saved);
     interp.current_reset_state = saved_state;
-    restore_interp_state(interp, &saved);
 
     if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
         main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
@@ -62,6 +69,15 @@ fn Value* jit_reset_value(Interp* interp, Value* body) {
     if (state.shifted) {
         Value* shift_result = jit_apply_value(state.shift_body, state.shift_k, interp);
         return shift_result;
+    }
+    if (ctx.status == main::StackCtxStatus.CTX_SUSPENDED) {
+        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/checkpoint-resuspended",
+            "checkpoint: body suspended before completion"
+        );
     }
 
     Value* v = (Value*)ctx.result;
@@ -94,12 +110,16 @@ fn Value* jit_shift_value(Interp* interp, Value* body) {
     save_interp_state(interp, &saved);
 
     if (!suspend_with_scope_guard(current, interp.current_scope)) {
+        rstate.shifted = false;
+        rstate.shift_body = null;
+        rstate.shift_k = null;
+        restore_interp_state_preserve_raise(interp, &saved);
         return raise_error_with_payload_names(
             interp, "runtime", "runtime/suspend-scope-guard", "stack engine: failed to register suspend scope guard"
         );
     }
-    restore_interp_state(interp, &saved);
-    return interp.resume_value;
+    restore_interp_state_preserve_raise(interp, &saved);
+    return interp_consume_resume_value_or_nil(interp);
 }
 
 fn Value* jit_signal_eval_result_or_error(EvalResult r, Interp* interp) @inline {
@@ -138,7 +158,10 @@ fn bool jit_signal_try_resume_handler(Interp* interp, main::StackCtx* current, S
             hstate.signaled = true;
             hstate.signal_tag = tag_sym;
             hstate.signal_arg = arg;
+            SavedInterpState saved;
+            save_interp_state(interp, &saved);
             if (!suspend_with_scope_guard(current, interp.current_scope)) {
+                restore_interp_state_preserve_raise(interp, &saved);
                 *out_result = raise_error_with_payload_names(
                     interp,
                     "runtime",
@@ -147,7 +170,8 @@ fn bool jit_signal_try_resume_handler(Interp* interp, main::StackCtx* current, S
                 );
                 return true;
             }
-            *out_result = interp.resume_value;
+            restore_interp_state_preserve_raise(interp, &saved);
+            *out_result = interp_consume_resume_value_or_nil(interp);
             return true;
         }
     }
@@ -175,6 +199,33 @@ fn Value* jit_signal_value(Interp* interp, Value* tag, Value* arg) {
     return raise_error_with_payload_names(interp, "runtime", "runtime/unhandled-effect", "unhandled effect");
 }
 
+fn Value* jit_resolve_reject_inactive_handle_continuation(
+    Interp* interp,
+    Continuation* k,
+    HandleEffectState* hstate
+) {
+    if (hstate != null && k.handle_retained && hstate.continuation_refcount > 0) {
+        hstate.continuation_refcount--;
+    }
+    if (k.ctx != null) {
+        main::StackPool* owner_pool = k.ctx.owner_pool;
+        if (owner_pool == null) owner_pool = &interp.stack_ctx_pool;
+        main::stack_ctx_destroy(k.ctx, owner_pool);
+    }
+    k.ctx = null;
+    k.handle_state = null;
+    k.handle_retained = false;
+    if (hstate != null && hstate.continuation_refcount == 0) {
+        handle_effect_state_release(hstate);
+    }
+    return raise_error_with_payload_names(
+        interp,
+        "runtime",
+        "runtime/continuation-frame-inactive",
+        "resolve: continuation escaped an inactive handle frame"
+    );
+}
+
 fn Value* jit_resolve_validate_input(Interp* interp, Value* k_val, Continuation** out_k) {
     if (k_val == null || k_val.tag != CONTINUATION) {
         return raise_error_with_payload_names(
@@ -183,6 +234,14 @@ fn Value* jit_resolve_validate_input(Interp* interp, Value* k_val, Continuation*
     }
 
     Continuation* k = k_val.cont_val;
+    if (k != null && k.owner_interp != null && k.owner_interp != interp) {
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/continuation-owner-mismatch",
+            "resolve: continuation belongs to a different interpreter"
+        );
+    }
 
     // Single-shot check
     if (k.ctx == null) {
@@ -202,6 +261,31 @@ fn Value* jit_resolve_validate_input(Interp* interp, Value* k_val, Continuation*
             interp, "runtime", "runtime/dead-continuation", "resolve: continuation context is dead"
         );
     }
+    if (k.ctx.status != main::StackCtxStatus.CTX_SUSPENDED) {
+        return raise_error_with_payload_names(
+            interp, "runtime", "runtime/invalid-continuation-state", "resolve: continuation context is not suspended"
+        );
+    }
+    if (k.ctx.owner_pool != &interp.stack_ctx_pool) {
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/continuation-owner-mismatch",
+            "resolve: continuation belongs to a different interpreter"
+        );
+    }
+    HandleEffectState* hstate = (HandleEffectState*)k.handle_state;
+    if (hstate != null && hstate.interp != interp) {
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/continuation-owner-mismatch",
+            "resolve: continuation handle state belongs to a different interpreter"
+        );
+    }
+    if (hstate != null && !hstate.frame_active) {
+        return jit_resolve_reject_inactive_handle_continuation(interp, k, hstate);
+    }
 
     *out_k = k;
     return null;
@@ -212,6 +296,7 @@ fn HandleEffectState* jit_resolve_push_handler_copy(Interp* interp, Continuation
     if (hstate != null) {
         if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
         interp.handler_stack[interp.handler_count] = hstate.handler_copy;
+        interp.handler_stack[interp.handler_count].effect_state = hstate;
         interp.handler_count++;
     }
     return hstate;
@@ -223,11 +308,30 @@ fn void jit_resolve_pop_handler_copy(Interp* interp, HandleEffectState* hstate) 
     }
 }
 
-fn Value* jit_resolve_finish_result(Interp* interp, Continuation* k) @inline {
-    if (k.ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
-        return (Value*)k.ctx.result;
+fn void jit_resolve_destroy_ctx(Interp* interp, main::StackCtx* ctx) @inline {
+    if (ctx == null) return;
+    main::StackPool* owner_pool = ctx.owner_pool;
+    if (owner_pool == null) owner_pool = &interp.stack_ctx_pool;
+    main::stack_ctx_destroy(ctx, owner_pool);
+}
+
+fn Value* jit_resolve_finish_result(Interp* interp, main::StackCtx* target_ctx, HandleEffectState* hstate) {
+    if (target_ctx.status == main::StackCtxStatus.CTX_DEAD) {
+        interp_clear_resume_value(interp);
+        if (hstate == null || !hstate.frame_active) {
+            jit_resolve_destroy_ctx(interp, target_ctx);
+        }
+        return raise_error_with_payload_names(interp, "runtime", "runtime/stack-overflow", "stack overflow in resolve");
     }
-    return interp.resume_value;
+    if (target_ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
+        Value* result = (Value*)target_ctx.result;
+        interp_clear_resume_value(interp);
+        if (hstate == null || !hstate.frame_active) {
+            jit_resolve_destroy_ctx(interp, target_ctx);
+        }
+        return result;
+    }
+    return interp_consume_resume_value_or_nil(interp);
 }
 
 fn Value* jit_resolve_value(Interp* interp, Value* k_val, Value* val) {
@@ -237,21 +341,82 @@ fn Value* jit_resolve_value(Interp* interp, Value* k_val, Value* val) {
 
     // Reinstall effect handler copy from when the signal occurred
     HandleEffectState* hstate = jit_resolve_push_handler_copy(interp, k);
+    main::StackCtx* target_ctx = k.ctx;
+
+    // Consume one-shot continuation before resuming, so re-entrant use from
+    // resumed code fails closed as already-resumed.
+    k.ctx = null;
+    k.handle_state = null;
+    k.handle_retained = false;
+
+    SavedInterpState saved;
+    save_interp_state(interp, &saved);
 
     // Pass resolve value to suspended context
     interp.resume_value = val;
 
     // Resume the context
     main::StackContext parent_ctx;
-    main::stack_ctx_switch_to(k.ctx, &parent_ctx);
+    main::stack_ctx_resume(target_ctx, &parent_ctx);
+    if (!jit_continuation_drive_blocked_fiber(target_ctx, interp, &parent_ctx)) {
+        jit_resolve_pop_handler_copy(interp, hstate);
+        interp_clear_resume_value(interp);
+        if (hstate != null && hstate.continuation_refcount > 0) hstate.continuation_refcount--;
+        jit_resolve_destroy_ctx(interp, target_ctx);
+        if (hstate != null && !hstate.frame_active && hstate.continuation_refcount == 0) {
+            handle_effect_state_release(hstate);
+        }
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/fiber-yield-failed",
+            "resolve: failed to yield blocked scheduler fiber"
+        );
+    }
+    restore_interp_state_preserve_raise(interp, &saved);
 
     // Context returned (either completed, signaled again, or died)
     jit_resolve_pop_handler_copy(interp, hstate);
-    Value* result = jit_resolve_finish_result(interp, k);
+    if (hstate != null &&
+        !hstate.frame_active &&
+        target_ctx.status == main::StackCtxStatus.CTX_SUSPENDED) {
+        Value* err = raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/resolve-resuspended",
+            "resolve: continuation suspended again outside an active handle"
+        );
+        interp_clear_resume_value(interp);
+        if (hstate.continuation_refcount > 0) hstate.continuation_refcount--;
+        jit_resolve_destroy_ctx(interp, target_ctx);
+        if (hstate.continuation_refcount == 0) {
+            handle_effect_state_release(hstate);
+        }
+        return err;
+    }
+    if (target_ctx.status == main::StackCtxStatus.CTX_SUSPENDED) {
+        interp_clear_resume_value(interp);
+        if (hstate != null && hstate.continuation_refcount > 0) hstate.continuation_refcount--;
+        jit_resolve_destroy_ctx(interp, target_ctx);
+        if (hstate != null && !hstate.frame_active && hstate.continuation_refcount == 0) {
+            handle_effect_state_release(hstate);
+        }
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/resolve-resuspended",
+            "resolve: continuation suspended before completion"
+        );
+    }
+    Value* result = jit_resolve_finish_result(interp, target_ctx, hstate);
 
     // Single-shot: invalidate continuation
-    k.ctx = null;
-    k.handle_state = null;
+    if (hstate != null) {
+        if (hstate.continuation_refcount > 0) hstate.continuation_refcount--;
+    }
+    if (hstate != null && !hstate.frame_active && hstate.continuation_refcount == 0) {
+        handle_effect_state_release(hstate);
+    }
 
     return result;
 }
@@ -292,6 +457,30 @@ fn Value* jit_handle_find_closure(HandleEffectState* state) {
     return null;
 }
 
+fn Value* jit_handle_dispatch_pending_raise_value(Interp* interp, HandleEffectState* state) {
+    if (!interp.flags.raise_pending || state == null) return null;
+    SymbolId raise_sym = interp.sym_raise;
+    for (usz i = 0; i < state.handler_copy.clause_count; i++) {
+        if ((uint)state.handler_copy.tags[i] != (uint)raise_sym) continue;
+        Value* handler_closure = state.handler_copy.closures[i];
+        if (handler_closure == null) {
+            return runtime_effects_raise(interp, "runtime/invalid-raise-handler", "handle: raise handler closure missing");
+        }
+        interp.flags.raise_pending = false;
+        Value* msg_val = interp.raise_payload;
+        if (msg_val == null) {
+            msg_val = make_string(interp, interp.raise_msg[:interp.raise_msg_len]);
+        }
+        interp.raise_payload = null;
+        interp.raise_msg_len = 0;
+        interp.raise_msg[0] = 0;
+        Value* k_val = make_nil(interp);
+        Value* pair = make_cons(interp, k_val, msg_val);
+        return jit_apply_value(handler_closure, pair, interp);
+    }
+    return null;
+}
+
 fn Value* jit_handle_run_signals(Interp* interp, main::StackCtx* ctx, HandleEffectState* state, usz handler_idx) {
     Value* last_handler_v = null;
     while (state.signaled) {
@@ -311,6 +500,8 @@ fn Value* jit_handle_run_signals(Interp* interp, main::StackCtx* ctx, HandleEffe
         Value* pair = make_cons(interp, k_val, state.signal_arg);
 
         last_handler_v = jit_apply_value(handler_closure, pair, interp);
+        // Retain before frame cleanup when the continuation escapes in the handler result graph.
+        continuation_retain_if_referenced_by_result(last_handler_v, k);
         if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) break;
     }
     return last_handler_v;
@@ -319,12 +510,7 @@ fn Value* jit_handle_run_signals(Interp* interp, main::StackCtx* ctx, HandleEffe
 fn bool jit_handle_alloc_state(Interp* interp, Value* body_closure, HandleEffectState** out_state) {
     HandleEffectState* state = (HandleEffectState*)mem::malloc(HandleEffectState.sizeof);
     if (state == null) return false;
-    state.body = null;
-    state.env = null;
-    state.interp = interp;
-    state.signaled = false;
-    state.signal_tag = (SymbolId)0;
-    state.signal_arg = null;
+    handle_effect_state_init(state, interp);
     state.is_aot = true;
     state.aot_body = body_closure;
     *out_state = state;
@@ -349,13 +535,22 @@ fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz c
             interp, "runtime", "runtime/stack-context-create", "stack engine: failed to create context for handle"
         );
     }
-    defer main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
+    bool destroy_ctx_on_exit = true;
+    defer if (destroy_ctx_on_exit) main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
 
     HandleEffectState* state = null;
     if (!jit_handle_alloc_state(interp, body_closure, &state)) {
         return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "handle: failed to allocate state");
     }
-    defer mem::free(state);
+    defer {
+        state.frame_active = false;
+        if (state.continuation_refcount == 0) {
+            handle_effect_state_release(state);
+        } else if (ctx.status == main::StackCtxStatus.CTX_SUSPENDED) {
+            // Continuation escaped; transfer ctx ownership to continuation/resolution path.
+            destroy_ctx_on_exit = false;
+        }
+    }
 
     main::stack_ctx_init(ctx, &handle_effect_entry, state);
 
@@ -375,11 +570,25 @@ fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz c
     interp.handler_count = my_idx + 1;
     defer interp.handler_count = my_idx;
 
-    state.handler_copy = *h;
     state.handler_idx = my_idx;
+    if (!handle_effect_state_capture_handler_copy(state, h)) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "handle: failed to capture handler state");
+    }
 
+    SavedInterpState saved;
+    save_interp_state(interp, &saved);
     main::StackContext parent_ctx;
     main::stack_ctx_switch_to(ctx, &parent_ctx);
+    if (!jit_continuation_drive_blocked_fiber(ctx, interp, &parent_ctx)) {
+        restore_interp_state_preserve_raise(interp, &saved);
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/fiber-yield-failed",
+            "handle: failed to yield blocked scheduler fiber"
+        );
+    }
+    restore_interp_state_preserve_raise(interp, &saved);
 
     if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
         return raise_error_with_payload_names(interp, "runtime", "runtime/stack-overflow", "stack overflow in handle body");
@@ -387,6 +596,27 @@ fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz c
 
     Value* last_handler_v = jit_handle_run_signals(interp, ctx, state, my_idx);
     if (last_handler_v != null && last_handler_v.tag == ERROR) return last_handler_v;
+
+    Value* pending_raise_v = jit_handle_dispatch_pending_raise_value(interp, state);
+    if (pending_raise_v != null) return pending_raise_v;
+
+    if (!jit_continuation_drive_blocked_fiber(ctx, interp, &parent_ctx)) {
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/fiber-yield-failed",
+            "handle: failed to yield blocked scheduler fiber"
+        );
+    }
+
+    if (ctx.status == main::StackCtxStatus.CTX_SUSPENDED && state.continuation_refcount == 0) {
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/handle-resuspended",
+            "handle: body suspended before completion"
+        );
+    }
 
     if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
         return (Value*)ctx.result;

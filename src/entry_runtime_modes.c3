@@ -4,40 +4,32 @@ import std::io;
 import lisp;
 
 fn int run_gen_e2e_mode() {
-    thread_registry_init();
-    lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
-    interp.init();
-    lisp::register_primitives(interp);
-    lisp::register_stdlib(interp);
-    interp.flags.jit_enabled = true;
+    lisp::Interp* interp = create_runtime_interp();
+    defer destroy_runtime_interp(interp);
 
     lisp::generate_e2e_tests(interp);
-
-    interp.destroy();
-    mem::free(interp);
-    thread_registry_shutdown();
     return 0;
 }
 
-fn int run_repl_mode() {
-    io::printn("Starting Lisp REPL...");
+fn int run_repl_mode(int argc, char** argv, int repl_idx) {
+    bool json = false;
+    for (int i = repl_idx + 1; i < argc; i++) {
+        if (str_eq(argv[i], "--json")) {
+            json = true;
+            break;
+        }
+    }
 
-    // Initialize thread-local registry first
-    thread_registry_init();
+    if (!json) {
+        io::printn("Starting Lisp REPL...");
+    }
+    lisp::Interp* interp = create_runtime_interp();
+    defer destroy_runtime_interp(interp);
 
-    // Initialize interpreter
-    lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
-    interp.init();
-    lisp::register_primitives(interp);
-    lisp::register_stdlib(interp);
-    interp.flags.jit_enabled = true;
-
-    // Run REPL
-    lisp::repl(interp);
-
-    // Clean up
-    interp.destroy();
-    mem::free(interp);
-    thread_registry_shutdown();
+    if (json) {
+        lisp::repl_json(interp);
+    } else {
+        lisp::repl(interp);
+    }
     return 0;
 }

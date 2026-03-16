@@ -54,6 +54,14 @@ fn void run_advanced_macro_hygiene_quasi_pattern_tests(Interp* interp, int* pass
     test_eq(interp, "quasiquote splice len", "(length `(a ,@qq-lst d))", 5, pass, fail);
     setup(interp, "(define qq-empty (list))");
     test_eq(interp, "quasiquote splice empty", "(length `(a ,@qq-empty b))", 2, pass, fail);
+    test_eq(
+        interp,
+        "quasiquote wide list length",
+        "(length `(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17))",
+        18,
+        pass,
+        fail
+    );
 
     // Pattern macros
     setup(interp, "(define [macro] when (syntax-match ([test .. body] (template (if (insert test) (block (splice body)) nil)))))");

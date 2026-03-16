@@ -22,12 +22,15 @@ struct FiberEntry {
     Value* coroutine;    // COROUTINE value
     Value* result;       // Final result (set on completion)
     Value* pending_result;   // Completion result while waiting on children
+    Interp* owner_interp;
+    uint wake_epoch;
     usz domain_id;
     usz parent_id;
     usz live_children;
     usz await_target;
     bool awaiting_fiber;
     bool waiting_children;
+    bool cancel_requested;
     FiberState state;
 }
 
@@ -55,6 +58,7 @@ struct PendingTcpRead {
 struct PendingOffload {
     bool active;
     bool completed;
+    uint wake_epoch;
     void* completion; // OffloadCompletion*
 }
 
@@ -68,6 +72,7 @@ struct PendingDnsResolve {
     bool active;
     bool completed;
     int status;
+    uint request_token;
     void* req_handle;
     void* addrinfo_result;
     char* host_copy;
@@ -77,8 +82,21 @@ struct PendingTcpConnect {
     bool active;
     bool completed;
     int status;
+    uint request_token;
     void* req_handle; // uv_connect_t*
     void* tcp_handle; // uv_tcp_t*
+}
+
+struct PendingDnsCallbackCtx {
+    usz fiber_id;
+    uint request_token;
+    char* host_copy;
+}
+
+struct PendingConnectCallbackCtx {
+    usz fiber_id;
+    uint request_token;
+    void* tcp_handle;
 }
 
 struct PendingTcpAccept {
@@ -196,6 +214,7 @@ enum OffloadResultKind : char {
 struct OffloadWork {
     usz fiber_id;
     usz task_id;
+    uint wake_epoch;
     OffloadOp op;
     long int_arg;
     long int_arg2;
@@ -236,11 +255,13 @@ struct TaskEntry {
     OffloadCompletion* completion;
     void* request_handle; // uv_work_t* while task is pending in libuv queue
     usz waiter_fiber_id;
+    uint waiter_wake_epoch; // per-registration join wake token
 }
 
 struct SchedulerTaskHandle {
     usz task_id;
     uint generation;
+    Interp* owner_interp;
 }
 
 enum OsThreadState : char {
@@ -259,11 +280,13 @@ struct OsThreadEntry {
     void* thread_handle; // uv_thread_t* allocated via omni_uv_thread_new
     OffloadCompletion* completion;
     usz waiter_fiber_id;
+    uint waiter_wake_epoch; // per-registration join wake token
 }
 
 struct SchedulerOsThreadHandle {
     usz thread_id;
     uint generation;
+    Interp* owner_interp;
 }
 
 struct Scheduler {
@@ -274,8 +297,16 @@ struct Scheduler {
     PendingDnsResolve[MAX_FIBERS] pending_dns;
     PendingTcpConnect[MAX_FIBERS] pending_connects;
     PendingTcpAccept[MAX_FIBERS] pending_accepts;
+    // Per-fiber token for currently armed task/thread join wait registration.
+    uint[MAX_FIBERS] fiber_join_wait_token;
+    // Allocation-free fallback wake latches used when reliable wakeup enqueue fails.
+    uint[MAX_FIBERS] latched_task_done_wake_epoch;
+    uint[MAX_FIBERS] latched_os_thread_done_wake_epoch;
     ReliableWakeupQueue reliable_wakeups;
     usz fiber_count;
+    uint fiber_wake_epoch_seed;
+    uint async_request_token_seed;
+    uint join_wait_token_seed;
     usz current_fiber_id;
     bool running;
     bool uv_loop_ready;

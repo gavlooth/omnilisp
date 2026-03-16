@@ -9,12 +9,22 @@ fn Value* jit_tco_sentinel() {
     return &g_jit_tco_sentinel;
 }
 
-// Execute a JitFn with trampoline TCO handling.
-// Must be used whenever calling a JitFn from outside jit_eval (e.g., run(), test harness).
-fn Value* jit_exec(JitFn f, Interp* interp) {
-    jit_exec_enter();
-    Value* result = f(interp);
-    jit_exec_leave();
+fn Value* jit_exec_compiled_checked(JitCompiledFn compiled, Interp* interp) {
+    if (jit_compiled_fn_is_null(compiled)) return raise_error(interp, "jit: null compiled function");
+    if (!jit_compiled_fn_is_live_for_interp(compiled, interp)) {
+        return raise_error(interp, "jit: stale or foreign compiled function pointer");
+    }
+    jit_exec_enter(interp);
+    Value* result = compiled.code_fn(interp);
+    jit_exec_leave(interp);
+    return result;
+}
+
+// Execute a compiled JIT handle with trampoline TCO handling.
+// Must be used whenever calling compiled JIT code from outside jit_eval.
+fn Value* jit_exec(JitCompiledFn compiled, Interp* interp) {
+    Value* result = jit_exec_compiled_checked(compiled, interp);
+    if (is_error(result)) return result;
     while (interp.flags.jit_tco_bounce) {
         interp.flags.jit_tco_bounce = false;
         result = jit_eval(interp.jit_tco_expr, interp.jit_tco_env, interp);

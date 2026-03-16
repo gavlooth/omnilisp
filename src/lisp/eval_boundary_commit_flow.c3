@@ -81,7 +81,8 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
                 Value* destination_error = boundary_build_destination_error_escape(
                     result,
                     interp,
-                    target_scope
+                    target_scope,
+                    active_ctx
                 );
                 if (destination_error != null &&
                     destination_error != result &&

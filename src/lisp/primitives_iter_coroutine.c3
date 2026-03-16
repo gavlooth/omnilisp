@@ -186,13 +186,23 @@ fn Value* prim_coroutine(Value*[] args, Env* env, Interp* interp) {
     return make_coroutine(interp, ctx);
 }
 
+fn bool coroutine_ctx_matches_interp(main::StackCtx* ctx, Interp* interp) @inline {
+    if (ctx == null || interp == null) return false;
+    if (ctx.owner_pool != &interp.stack_ctx_pool) return false;
+    CoroutineThunkState* state = (CoroutineThunkState*)ctx.user_data;
+    if (state != null && state.interp != interp) return false;
+    return true;
+}
+
 fn void coroutine_ctx_cleanup(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
     if (ctx.user_data != null) {
         mem::free(ctx.user_data);
         ctx.user_data = null;
     }
     coroutine_val.coroutine_val = null;
-    main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
+    main::StackPool* owner_pool = ctx.owner_pool;
+    if (owner_pool == null) owner_pool = &interp.stack_ctx_pool;
+    main::stack_ctx_destroy(ctx, owner_pool);
 }
 
 fn void coroutine_clear_yield_boundary_state(Interp* interp) @inline {
@@ -207,6 +217,7 @@ fn Value* prim_resume_error_and_cleanup(
     char[] msg
 ) {
     coroutine_clear_yield_boundary_state(interp);
+    interp_clear_resume_value(interp);
     coroutine_ctx_cleanup(coroutine_val, ctx, interp);
     return raise_error(interp, msg);
 }
@@ -214,6 +225,7 @@ fn Value* prim_resume_error_and_cleanup(
 fn Value* prim_resume_complete(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
     Value* result = (Value*)ctx.result;
     coroutine_clear_yield_boundary_state(interp);
+    interp_clear_resume_value(interp);
     coroutine_ctx_cleanup(coroutine_val, ctx, interp);
     return result != null ? result : make_nil(interp);
 }
@@ -260,6 +272,9 @@ fn Value* prim_resume_require_ctx(
 
     main::StackCtx* ctx = coroutine_val.coroutine_val;
     if (ctx == null) return raise_error(interp, "resume: null coroutine");
+    if (!coroutine_ctx_matches_interp(ctx, interp)) {
+        return raise_error(interp, "resume: coroutine belongs to a different interpreter");
+    }
 
     *coroutine_out = coroutine_val;
     *ctx_out = ctx;
@@ -277,7 +292,7 @@ fn void prim_resume_switch_context(main::StackCtx* ctx, Interp* interp) {
         main::stack_ctx_resume(ctx, &parent_ctx);
     }
 
-    restore_interp_state(interp, &saved);
+    restore_interp_state_preserve_raise(interp, &saved);
 }
 
 fn Value* prim_resume_post_switch(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
@@ -298,6 +313,9 @@ fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
 
     if (ctx.status == main::StackCtxStatus.CTX_COMPLETED || ctx.status == main::StackCtxStatus.CTX_DEAD) {
         return prim_resume_error_and_cleanup(coroutine_val, ctx, interp, "resume: coroutine already completed");
+    }
+    if (ctx.status != main::StackCtxStatus.CTX_READY && ctx.status != main::StackCtxStatus.CTX_SUSPENDED) {
+        return raise_error(interp, "resume: coroutine is not resumable");
     }
 
     Value* resume_val = args.len > 1 ? args[1] : make_nil(interp);
@@ -321,18 +339,17 @@ fn bool prim_yield_suspend_and_restore(main::StackCtx* current, Interp* interp) 
     save_interp_state(interp, &saved);
 
     if (!suspend_with_scope_guard(current, interp.current_scope)) {
-        restore_interp_state(interp, &saved);
+        restore_interp_state_preserve_raise(interp, &saved);
         return false;
     }
 
     // Resumed — restore full interpreter state.
-    restore_interp_state(interp, &saved);
+    restore_interp_state_preserve_raise(interp, &saved);
     return true;
 }
 
 fn Value* prim_yield_resume_result(Interp* interp) {
-    if (interp.resume_value != null) return interp.resume_value;
-    return make_nil(interp);
+    return interp_consume_resume_value_or_nil(interp);
 }
 
 fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {

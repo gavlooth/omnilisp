@@ -1,5 +1,20 @@
 module main;
 
+struct ShutdownForeignCtxProbe {
+    StackCtx* target;
+    bool callback_ran;
+    bool target_owner_visible;
+}
+
+fn void test_shutdown_touch_foreign_ctx(void* ptr) {
+    ShutdownForeignCtxProbe* probe = (ShutdownForeignCtxProbe*)ptr;
+    probe.callback_ran = true;
+    if (probe.target == null) return;
+    // Regression guard: this read must remain valid while shutdown callbacks run.
+    // Old single-pass shutdown could free target before this callback.
+    probe.target_owner_visible = probe.target.owner_pool != null;
+}
+
 fn bool test_stack_ctx_defer_destroy_lifo() {
     StackPool pool;
     stack_pool_init(&pool);
@@ -112,5 +127,34 @@ fn bool test_stack_ctx_defer_clone_hook() {
 
     // One destroy from clone + one destroy from source.
     ok = ok && arg.destroy_hits == 2;
+    return ok;
+}
+
+fn bool test_stack_pool_shutdown_defer_cross_ctx_order() {
+    StackPool pool;
+    stack_pool_init(&pool);
+
+    // Create holder first, then target: shutdown walks all_list head-first,
+    // so target is visited before holder callback runs.
+    StackCtx* holder = stack_ctx_create(&pool);
+    StackCtx* target = stack_ctx_create(&pool);
+    if (holder == null || target == null) {
+        stack_pool_shutdown(&pool);
+        return false;
+    }
+
+    ShutdownForeignCtxProbe probe;
+    probe.target = target;
+    probe.callback_ran = false;
+    probe.target_owner_visible = false;
+
+    StackCtxDeferOps ops;
+    ops.destroy_fn = &test_shutdown_touch_foreign_ctx;
+    ops.clone_fn = null;
+
+    bool ok = stack_ctx_defer(holder, &ops, &probe);
+    stack_pool_shutdown(&pool);
+    ok = ok && probe.callback_ran;
+    ok = ok && probe.target_owner_visible;
     return ok;
 }

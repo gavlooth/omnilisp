@@ -262,7 +262,7 @@ fn void run_test_group_boundary_reset(Interp* interp) {
     }
 }
 
-fn void run_lisp_tests() {
+fn bool run_lisp_tests() {
     char* active_slice = resolved_lisp_slice();
     reject_deprecated_slice_aliases(active_slice);
     enforce_container_only_slice_execution(active_slice);
@@ -291,6 +291,7 @@ fn void run_lisp_tests() {
 
     int pass = 0;
     int fail = 0;
+    bool ok = true;
     boundary_reset_decision_stats();
     reset_memory_promotion_stats();
     jit_fallback_audit_reset();
@@ -391,16 +392,17 @@ fn void run_lisp_tests() {
         emit_boundary_decision_summary();
         emit_boundary_traversal_summary();
         emit_jit_fallback_summary();
-        assert(fail == 0, "tests failed");
+        if (fail != 0) ok = false;
     }
 
     if (run_compiler) {
         run_test_group_boundary_reset(interp);
-        run_compiler_tests(interp);
+        if (!run_compiler_tests(interp)) ok = false;
     }
 
     // Final JIT teardown keeps ASAN leak checks deterministic.
     jit_global_shutdown();
     interp.destroy();
     mem::free(interp);
+    return ok;
 }

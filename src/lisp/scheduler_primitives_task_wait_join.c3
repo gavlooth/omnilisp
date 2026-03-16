@@ -241,6 +241,8 @@ fn Value* scheduler_task_join_impl(
     Interp* interp
 ) {
     if (scheduler_is_running_fiber_context()) {
+        Value* ctx_err = scheduler_require_fiber_root_context("task-join", interp);
+        if (ctx_err != null) return ctx_err;
         return scheduler_task_join_fiber_impl(task_id, generation, timeout_ms, handle, interp);
     }
 

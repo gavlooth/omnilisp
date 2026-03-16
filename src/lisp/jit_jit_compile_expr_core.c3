@@ -142,12 +142,13 @@ fn void? jit_compile_app(void* s, Expr* expr, Interp* interp, JitLocals* locals,
  * Check if a symbol names a known arithmetic primitive, return its direct helper.
  */
 fn void* jit_get_direct_prim(SymbolId name, Interp* interp) {
-    // If the symbol has been overloaded (METHOD_TABLE), don't use direct path
+    // Only use direct path for canonical primitive global bindings.
     Value* val = interp.global_env.lookup(name);
-    if (val != null && val.tag == METHOD_TABLE) return null;
+    if (val == null || val.tag != PRIMITIVE) return null;
 
     // Check against interned primitive symbols
     char[] sym_name = interp.symbols.get_name(name);
+    if (!primitive_name_equals(val, sym_name)) return null;
     if (sym_name.len == 1) {
         switch (sym_name[0]) {
             case '+': return (void*)&jit_prim_add;
@@ -160,6 +161,14 @@ fn void* jit_get_direct_prim(SymbolId name, Interp* interp) {
         }
     }
     return null;
+}
+
+fn bool jit_locals_shadow_symbol(JitLocals* locals, SymbolId name) @inline {
+    if (locals == null) return false;
+    for (usz i = locals.locals.len(); i > 0; i--) {
+        if ((uint)locals.locals[i - 1].name == (uint)name) return true;
+    }
+    return false;
 }
 
 /**
@@ -181,10 +190,13 @@ fn void? jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals
 
     // Check if this is a known binary primitive: (+ a b), (- a b), etc.
     if (expr.call.arg_count == 2 && expr.call.func.tag == E_VAR) {
-        void* direct_fn = jit_get_direct_prim(expr.call.func.var_expr.name, interp);
-        if (direct_fn != null) {
-            jit_compile_inline_binop(s, expr, interp, locals, direct_fn)!;
-            return;
+        SymbolId fn_name = expr.call.func.var_expr.name;
+        if (!jit_locals_shadow_symbol(locals, fn_name)) {
+            void* direct_fn = jit_get_direct_prim(fn_name, interp);
+            if (direct_fn != null) {
+                jit_compile_inline_binop(s, expr, interp, locals, direct_fn)!;
+                return;
+            }
         }
     }
 

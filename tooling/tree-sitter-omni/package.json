@@ -1,0 +1,26 @@
+{
+  "name": "tree-sitter-omni",
+  "version": "0.1.0",
+  "description": "Tree-sitter grammar scaffold for Omni Lisp",
+  "license": "MIT",
+  "main": "grammar.js",
+  "keywords": [
+    "parser",
+    "tree-sitter",
+    "omni",
+    "omni-lisp",
+    "lisp"
+  ],
+  "files": [
+    "grammar.js",
+    "queries",
+    "tree-sitter.json"
+  ],
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "parse": "tree-sitter parse examples/sample.omni"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.25.10"
+  }
+}

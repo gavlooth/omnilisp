@@ -3,6 +3,9 @@ module lisp;
 
 import std::io;
 import main;
+
+extern fn int compiler_test_getpid() @extern("getpid");
+usz g_compiler_bindgen_temp_seq = 0;
 fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz* fail_out) {
     usz pass = 0;
     usz fail = 0;
@@ -21,10 +24,10 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
 
     // 42. Multi-arg uses invoke_once for intermediate args
     {
-        char[] code = compile_to_c3("(+ 1 2)", interp);
-        bool ok = str_contains(code, "invoke_once") || str_contains(code, "invoke");
-        if (ok) { pass++; compiler_print_pass("Compiler: multi-arg uses invoke"); }
-        else    { fail++; io::printn("[FAIL] Compiler: multi-arg uses invoke"); }
+        char[] code = compile_to_c3("(f 1 2 3)", interp);
+        bool ok = str_contains(code, "invoke_once") || str_contains(code, "apply_multi");
+        if (ok) { pass++; compiler_print_pass("Compiler: multi-arg uses invoke_once or apply_multi lowering"); }
+        else    { fail++; io::printn("[FAIL] Compiler: multi-arg uses invoke_once or apply_multi lowering"); }
     }
 
     // 43. 3-arg call uses apply_multi
@@ -140,6 +143,13 @@ fn void run_compiler_group_quasiquote_macro_tests(Interp* interp, usz* pass_out,
         bool ok = str_contains(code, "make_symbol(\"a\")");
         if (ok) { pass++; compiler_print_pass("Compiler: quasiquote uses make_symbol"); }
         else    { fail++; io::printn("[FAIL] Compiler: quasiquote uses make_symbol"); }
+    }
+
+    {
+        char[] code = compile_to_c3("`(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17)", interp);
+        bool ok = str_contains(code, "aot::cons") && !str_contains(code, "unsupported");
+        if (ok) { pass++; compiler_print_pass("Compiler: wide quasiquote compiles natively"); }
+        else    { fail++; io::printn("[FAIL] Compiler: wide quasiquote compiles natively"); }
     }
 
     // 50. Defmacro delegates to eval_source
@@ -426,8 +436,22 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
     }
     defer libclang_destroy(&clang);
 
-    char[] header_path = "/tmp/omni_bindgen_canonical_types.h";
-    char[] output_path = "/tmp/omni_bindgen_canonical_types.omni";
+    char[512] header_path_buf;
+    char[512] output_path_buf;
+    int pid = compiler_test_getpid();
+    usz seq = g_compiler_bindgen_temp_seq++;
+    char[] header_path = io::bprintf(
+        &header_path_buf,
+        "/tmp/omni_bindgen_canonical_types-%d-%d.h",
+        pid,
+        (int)seq
+    )!!;
+    char[] output_path = io::bprintf(
+        &output_path_buf,
+        "/tmp/omni_bindgen_canonical_types-%d-%d.omni",
+        pid,
+        (int)seq
+    )!!;
     char[] header_source =
         "int omni_bindgen_int(int x);\n"
         "void omni_bindgen_void_ptr(void* p);\n"

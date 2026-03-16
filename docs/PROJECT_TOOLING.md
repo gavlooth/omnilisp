@@ -39,7 +39,77 @@ man -M "$HOME/.local/share/man" 7 omni-language
 
 ---
 
+## Editor Tooling
+
+First-party editor tooling scaffolds are kept in `tooling/` so they can track
+the current Omni syntax and CLI behavior:
+
+- `tooling/tree-sitter-omni/` for Tree-sitter grammar and highlight queries
+- `tooling/omni-lsp/` for diagnostics, completion, hover, and document symbols over stdio LSP
+- `tooling/omni-nvim/` for structured REPL-driven Neovim workflows
+
+These packages are intentionally thin. They reuse the installed `omni` binary
+where possible instead of carrying a second parser/runtime stack inside editor
+plugins.
+
+---
+
 ## CLI Commands
+
+### `--check` — Parse/Check Source Without Executing It
+
+```bash
+omni --check script.omni
+omni --check --json script.omni
+```
+
+Runs a non-executing parse/check pass over an Omni source file.
+
+Current behavior:
+
+- does not execute user code,
+- returns exit code `0` for clean input,
+- returns non-zero for syntax/read failures,
+- `--json` emits structured diagnostics with 0-based ranges.
+
+### `--eval` — Evaluate One Expression
+
+```bash
+omni --eval '(+ 1 2)'
+omni --eval --json '(+ 1 2)'
+```
+
+Runs one Omni expression through the normal runtime path.
+
+Current behavior:
+
+- evaluates exactly one CLI-supplied expression string,
+- returns rendered value output in text mode,
+- returns structured success/error payloads in `--json` mode,
+- returns non-zero on evaluation failure.
+
+### `--repl --json` — Structured Session Transport
+
+```bash
+printf '%s\n' '{"id":"1","input":"(+ 1 2)","mode":"expr"}' | omni --repl --json
+```
+
+Runs a persistent newline-delimited JSON request/response loop for tools.
+
+Current behavior:
+
+- accepts one JSON request per input line,
+- supports `mode: "expr"` and `mode: "program"`,
+- returns one JSON response per request line,
+- exits cleanly on stdin EOF.
+
+Current first-party usage:
+
+- `tooling/omni-nvim/` uses this transport for persistent editor requests,
+- current-line and current-form eval still prefer `omni --eval --json` for
+  one-shot calls,
+- whole-buffer sends and REPL fallback calls now go through the structured
+  session instead of scraping text REPL output.
 
 ### `--language-ref` — Print Built-In Full Language Reference
 

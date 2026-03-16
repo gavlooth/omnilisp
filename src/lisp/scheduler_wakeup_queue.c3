@@ -27,7 +27,7 @@ fn void scheduler_dispatch_wakeup_event(WakeupEvent ev) {
         case WAKEUP_POLL_READABLE:
             scheduler_handle_wakeup_poll_readable(fid);
         case WAKEUP_OFFLOAD_READY:
-            scheduler_handle_wakeup_offload_ready(fid, ev.payload);
+            scheduler_handle_wakeup_offload_ready(fid, ev.payload, (uint)ev.status);
         case WAKEUP_SLEEP_DONE:
             scheduler_handle_wakeup_sleep_done(fid);
         case WAKEUP_DNS_DONE:
@@ -37,9 +37,9 @@ fn void scheduler_dispatch_wakeup_event(WakeupEvent ev) {
         case WAKEUP_TCP_ACCEPT_DONE:
             scheduler_handle_wakeup_tcp_accept_done(fid);
         case WAKEUP_TASK_DONE:
-            scheduler_handle_wakeup_task_done(fid);
+            scheduler_handle_wakeup_task_done(fid, (uint)ev.status);
         case WAKEUP_OS_THREAD_DONE:
-            scheduler_handle_wakeup_os_thread_done(fid);
+            scheduler_handle_wakeup_os_thread_done(fid, (uint)ev.status);
     }
 }
 
@@ -128,10 +128,11 @@ fn bool scheduler_publish_poll_error(usz fiber_id, int status) @inline {
     return scheduler_publish_reliable_wakeup(ev);
 }
 
-fn bool scheduler_publish_offload_ready(usz fiber_id, OffloadCompletion* completion) @inline {
+fn bool scheduler_publish_offload_ready(usz fiber_id, OffloadCompletion* completion, uint wake_epoch = 0) @inline {
     WakeupEvent ev = {};
     ev.fiber_id = fiber_id;
     ev.type = WAKEUP_OFFLOAD_READY;
+    ev.status = (int)wake_epoch;
     ev.payload = completion;
     return scheduler_publish_reliable_wakeup(ev);
 }
@@ -164,17 +165,19 @@ fn bool scheduler_publish_tcp_accept_done(usz fiber_id) @inline {
     return scheduler_publish_reliable_wakeup(ev);
 }
 
-fn bool scheduler_publish_task_done(usz fiber_id) @inline {
+fn bool scheduler_publish_task_done(usz fiber_id, uint wake_epoch) @inline {
     WakeupEvent ev = {};
     ev.fiber_id = fiber_id;
     ev.type = WAKEUP_TASK_DONE;
+    ev.status = (int)wake_epoch;
     return scheduler_publish_reliable_wakeup(ev);
 }
 
-fn bool scheduler_publish_os_thread_done(usz fiber_id) @inline {
+fn bool scheduler_publish_os_thread_done(usz fiber_id, uint wake_epoch) @inline {
     WakeupEvent ev = {};
     ev.fiber_id = fiber_id;
     ev.type = WAKEUP_OS_THREAD_DONE;
+    ev.status = (int)wake_epoch;
     return scheduler_publish_reliable_wakeup(ev);
 }
 

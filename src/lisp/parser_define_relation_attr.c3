@@ -2,19 +2,68 @@ module lisp;
 
 import std::collections::list;
 
-fn void Parser.parse_relation_attr_options(Parser* self, List{SymbolId}* attrs, SymbolId sym_key, SymbolId sym_index, SymbolId* key_col, SymbolId* index_col) {
-    for (usz i = 2; i < attrs.len(); i++) {
-        if ((uint)(*attrs)[i] == (uint)sym_key && i + 1 < attrs.len()) {
-            *key_col = (*attrs)[++i];
-        } else if ((uint)(*attrs)[i] == (uint)sym_index && i + 1 < attrs.len()) {
-            *index_col = (*attrs)[++i];
+fn bool Parser.parse_relation_column_spec(
+    Parser* self,
+    List{SymbolId}* col_names,
+    SymbolId sym_key,
+    SymbolId sym_index,
+    SymbolId* key_col,
+    SymbolId* index_col
+) {
+    self.lexer.advance();  // consume (
+
+    bool has_key_role = false;
+    bool has_index_role = false;
+    while (self.lexer.current.type == T_SYMBOL) {
+        SymbolId current = self.get_current_symbol();
+        if ((uint)current == (uint)sym_key) {
+            has_key_role = true;
+            self.lexer.advance();
+            continue;
         }
+        if ((uint)current == (uint)sym_index) {
+            has_index_role = true;
+            self.lexer.advance();
+            continue;
+        }
+        break;
     }
+
+    if (self.lexer.current.type == T_SYMBOL && self.lexer.current.text[0] == '^') {
+        (void)self.parse_type_annotation();
+        if (self.has_error) return false;
+    }
+
+    if (self.lexer.current.type != T_SYMBOL) {
+        self.set_error("expected column name");
+        return false;
+    }
+
+    SymbolId col_name = self.get_current_symbol();
+    col_names.push(col_name);
+    if (has_key_role) *key_col = col_name;
+    if (has_index_role) *index_col = col_name;
+
+    self.lexer.advance();
+    self.expect(T_RPAREN, ")");
+    return !self.has_error;
 }
 
-fn Expr* Parser.build_define_relation_call(Parser* self, SymbolId db_name, SymbolId rel_name, List{SymbolId}* col_names) {
+fn Expr* Parser.build_define_relation_call(
+    Parser* self,
+    SymbolId db_name,
+    SymbolId rel_name,
+    List{SymbolId}* col_names,
+    SymbolId key_col,
+    SymbolId index_col
+) {
     usz col_count = col_names.len();
-    usz total_args = 2 + col_count;
+    SymbolId sym_role_key = self.interp.symbols.intern("__relation-role-key");
+    SymbolId sym_role_index = self.interp.symbols.intern("__relation-role-index");
+    usz role_arg_count = 0;
+    if (key_col != (SymbolId)0) role_arg_count++;
+    if (index_col != (SymbolId)0) role_arg_count++;
+    usz total_args = 2 + col_count + role_arg_count;
     Expr* func = self.interp.alloc_expr();
     func.tag = E_VAR;
     func.var_expr.name = self.interp.symbols.intern("__define-relation");
@@ -31,12 +80,32 @@ fn Expr* Parser.build_define_relation_call(Parser* self, SymbolId db_name, Symbo
     call_args[1].lit.value.tag = SYMBOL;
     call_args[1].lit.value.sym_val = rel_name;
 
+    usz arg_index = 2;
     for (usz i = 0; i < col_count; i++) {
-        call_args[2 + i] = self.interp.alloc_expr();
-        call_args[2 + i].tag = E_LIT;
-        call_args[2 + i].lit.value = self.interp.alloc_value_root();
-        call_args[2 + i].lit.value.tag = SYMBOL;
-        call_args[2 + i].lit.value.sym_val = (*col_names)[i];
+        SymbolId col_name = (*col_names)[i];
+        if ((uint)col_name == (uint)key_col) {
+            call_args[arg_index] = self.interp.alloc_expr();
+            call_args[arg_index].tag = E_LIT;
+            call_args[arg_index].lit.value = self.interp.alloc_value_root();
+            call_args[arg_index].lit.value.tag = SYMBOL;
+            call_args[arg_index].lit.value.sym_val = sym_role_key;
+            arg_index++;
+        }
+        if ((uint)col_name == (uint)index_col) {
+            call_args[arg_index] = self.interp.alloc_expr();
+            call_args[arg_index].tag = E_LIT;
+            call_args[arg_index].lit.value = self.interp.alloc_value_root();
+            call_args[arg_index].lit.value.tag = SYMBOL;
+            call_args[arg_index].lit.value.sym_val = sym_role_index;
+            arg_index++;
+        }
+
+        call_args[arg_index] = self.interp.alloc_expr();
+        call_args[arg_index].tag = E_LIT;
+        call_args[arg_index].lit.value = self.interp.alloc_value_root();
+        call_args[arg_index].lit.value.tag = SYMBOL;
+        call_args[arg_index].lit.value.sym_val = col_name;
+        arg_index++;
     }
 
     Expr* call = self.interp.alloc_expr();
@@ -59,7 +128,6 @@ fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, List{SymbolId}
     SymbolId index_col = 0;
     SymbolId sym_key = self.interp.symbols.intern("key");
     SymbolId sym_index = self.interp.symbols.intern("index");
-    self.parse_relation_attr_options(attrs, sym_key, sym_index, &key_col, &index_col);
 
     if (self.lexer.current.type != T_SYMBOL) {
         self.set_error("expected relation name");
@@ -71,30 +139,14 @@ fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, List{SymbolId}
     List{SymbolId} col_names;
     defer col_names.free();
     while (self.lexer.current.type == T_LPAREN && !self.has_error) {
-        self.lexer.advance();  // consume (
-        if (self.lexer.current.type == T_SYMBOL) {
-            SymbolId first = self.get_current_symbol();
-            if ((uint)first == (uint)sym_key || (uint)first == (uint)sym_index) {
-                if ((uint)first == (uint)sym_key) { key_col = key_col; }
-                if ((uint)first == (uint)sym_index) { index_col = index_col; }
-                self.lexer.advance();
-            }
-        }
-        if (self.lexer.current.type == T_SYMBOL && self.lexer.current.text[0] == '^') {
-            self.lexer.advance();
-        }
-        if (self.lexer.current.type != T_SYMBOL) {
-            self.set_error("expected column name");
+        if (!self.parse_relation_column_spec(&col_names, sym_key, sym_index, &key_col, &index_col)) {
             return null;
         }
-        col_names.push(self.get_current_symbol());
-        self.lexer.advance();
-        self.expect(T_RPAREN, ")");
     }
 
     self.expect(T_RPAREN, ")");  // close define
 
-    Expr* call = self.build_define_relation_call(db_name, rel_name, &col_names);
+    Expr* call = self.build_define_relation_call(db_name, rel_name, &col_names, key_col, index_col);
 
     e.tag = E_DEFINE;
     e.define.name = rel_name;

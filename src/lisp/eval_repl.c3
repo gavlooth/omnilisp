@@ -38,22 +38,47 @@ extern fn void replxx_set_indent_multiline(void* rx, CInt val) @extern("replxx_s
  * Read a line of input from stdin.
  * Returns the number of characters read (not including null terminator).
  */
-fn usz read_line(char[] buffer) {
-    usz len = 0;
+struct ReadLineResult {
+    usz len;
+    bool eof;
+    bool truncated;
+}
+
+fn ReadLineResult read_line(char[] buffer) {
+    ReadLineResult out = { .len = 0, .eof = false, .truncated = false };
     usz max_len = buffer.len - 1;
-    while (len < max_len) {
+    while (out.len < max_len) {
         if (try c = io::stdin().read_byte()) {
             if (c == '\n') {
                 break;
             }
-            buffer[len] = c;
-            len++;
+            buffer[out.len] = c;
+            out.len++;
         } else {
+            out.eof = true;
             break;  // EOF or error
         }
     }
-    buffer[len] = 0;  // Null terminate
-    return len;
+
+    if (out.len >= max_len) {
+        if (try c = io::stdin().read_byte()) {
+            if (c != '\n') {
+                out.truncated = true;
+            }
+            if (c != '\n') {
+                while (try c2 = io::stdin().read_byte()) {
+                    if (c2 == '\n') {
+                        break;
+                    }
+                }
+            }
+        } else {
+            out.eof = true;
+        }
+    }
+
+    buffer[out.len] = 0;  // Null terminate
+    return out;
 }
 
 /**
@@ -147,22 +172,25 @@ fn bool repl_is_quit_command(char* line, usz len) @inline {
     return false;
 }
 
-fn void repl_append_line(char[8192]* buf, usz* buf_len, char* line, usz len) {
+fn bool repl_append_line(char[8192]* buf, usz* buf_len, char* line, usz len) {
     if (*buf_len > 0 && *buf_len < 8191) {
         (*buf)[*buf_len] = '\n';
         (*buf_len)++;
     }
+    bool truncated = false;
     usz copy_len = len;
     if (*buf_len + copy_len > 8191) {
         copy_len = 8191 - *buf_len;
+        truncated = true;
     }
     for (usz i = 0; i < copy_len; i++) {
         (*buf)[*buf_len + i] = line[i];
     }
     *buf_len += copy_len;
+    return !truncated && copy_len == len;
 }
 
-fn EvalResult repl_eval_line(char[] input, Interp* interp) {
+fn EvalResult repl_eval_source(char[] input, Interp* interp, bool program_mode) {
     boundary_assert_interp_scope_chain(interp);
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);
@@ -174,7 +202,7 @@ fn EvalResult repl_eval_line(char[] input, Interp* interp) {
     boundary_assert_interp_scope_chain(interp);
     defer boundary_pop_child_scope(interp, session.current_scope, repl_child_scope);
 
-    EvalResult r = run(input, interp);
+    EvalResult r = program_mode ? run_program(input, interp) : run(input, interp);
     if (!r.error.has_error && r.value != null) {
         BoundaryScopeSwap target_swap = boundary_scope_swap_begin(interp, session.current_scope);
         defer boundary_scope_swap_end(interp, &target_swap);
@@ -197,6 +225,14 @@ fn EvalResult repl_eval_line(char[] input, Interp* interp) {
     }
     boundary_assert_interp_scope_chain(interp);
     return r;
+}
+
+fn EvalResult repl_eval_line(char[] input, Interp* interp) {
+    return repl_eval_source(input, interp, false);
+}
+
+fn EvalResult repl_eval_program(char[] input, Interp* interp) {
+    return repl_eval_source(input, interp, true);
 }
 
 fn void repl_print_eval_outcome(EvalResult r, Interp* interp, char[] ansi_red, char[] ansi_green, char[] ansi_reset) {
@@ -328,7 +364,11 @@ fn bool repl_step(
     if (action == REPL_LINE_SKIP) return true;
     if (action == REPL_LINE_QUIT) return false;
 
-    repl_append_line(buf, buf_len, line, len);
+    if (!repl_append_line(buf, buf_len, line, len)) {
+        io::eprintn("Error: REPL input line too long");
+        *buf_len = 0;
+        return true;
+    }
     repl_eval_buffer(rx, buf, buf_len, interp, ansi_red, ansi_green, ansi_reset);
     return true;
 }

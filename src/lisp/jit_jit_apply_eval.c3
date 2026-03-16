@@ -93,12 +93,12 @@ fn void jit_warm_pattern_cache(Pattern* pat, Interp* interp) {
 
 fn void jit_cache_expr(Expr* expr, Interp* interp) {
     if (!run_jit_enabled(interp)) return;
-    JitFn cached = jit_cache_lookup(expr);
-    if (cached != null) return;
+    JitCompiledFn cached = jit_cache_lookup(expr, interp);
+    if (!jit_compiled_fn_is_null(cached)) return;
 
-    JitFn compiled = jit_compile(expr, interp);
-    if (compiled != null) {
-        jit_cache_store(expr, compiled);
+    JitCompiledFn compiled = jit_compile(expr, interp);
+    if (!jit_compiled_fn_is_null(compiled)) {
+        jit_cache_store(expr, compiled, interp);
     }
 }
 

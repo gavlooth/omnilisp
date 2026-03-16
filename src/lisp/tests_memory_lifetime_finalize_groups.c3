@@ -71,6 +71,186 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
         mem::free(tmp);
     }
 
+    // Invariant: boundary copy to parent transfers coroutine-wrapper ownership.
+    {
+        Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+        tmp.init();
+        register_primitives(tmp);
+
+        EvalResult r_thunk = run("(lambda () 42)", tmp);
+        if (r_thunk.error.has_error || r_thunk.value == null) {
+            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_root (failed to build thunk)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        Value*[1] coro_args;
+        coro_args[0] = r_thunk.value;
+        Value* base = prim_coroutine(coro_args[..], null, tmp);
+        if (base == null || base.tag != COROUTINE || base.coroutine_val == null) {
+            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_root (failed to build coroutine)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        main::StackCtx* owned_ctx = base.coroutine_val;
+        base.coroutine_val = null;
+
+        main::ScopeRegion* saved = tmp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        if (child == null) {
+            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_root (failed to allocate child scope)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        tmp.current_scope = child;
+        Value* local_owner = boundary_alloc_value_in_scope(tmp, child, true);
+        local_owner.tag = COROUTINE;
+        local_owner.coroutine_val = owned_ctx;
+
+        Value* promoted = promote_to_root(local_owner, tmp);
+        bool transfer_ok = promoted != null &&
+                           promoted.tag == COROUTINE &&
+                           promoted.coroutine_val == owned_ctx &&
+                           local_owner.coroutine_val == null;
+
+        tmp.current_scope = saved;
+        main::scope_release(child);
+
+        usz before = tmp.stack_ctx_pool.pool_size;
+        Value* resume_result = null;
+        if (promoted != null && promoted.tag == COROUTINE) {
+            Value*[1] resume_args;
+            resume_args[0] = promoted;
+            resume_result = prim_resume(resume_args[..], null, tmp);
+        }
+        usz after = tmp.stack_ctx_pool.pool_size;
+
+        bool ok = transfer_ok &&
+                  resume_result != null &&
+                  resume_result.tag == INT &&
+                  resume_result.int_val == 42 &&
+                  promoted != null &&
+                  promoted.coroutine_val == null &&
+                  after == before + 1;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: promote_to_root transfers coroutine wrapper ownership");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] lifetime: promote_to_root transfers coroutine wrapper ownership");
+            (*fail)++;
+        }
+
+        tmp.destroy();
+        mem::free(tmp);
+    }
+
+    // Invariant: promote_to_escape transfers coroutine-wrapper ownership into ESCAPE lane.
+    {
+        Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+        tmp.init();
+        register_primitives(tmp);
+
+        EvalResult r_thunk = run("(lambda () 7)", tmp);
+        if (r_thunk.error.has_error || r_thunk.value == null) {
+            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_escape (failed to build thunk)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        Value*[1] coro_args;
+        coro_args[0] = r_thunk.value;
+        Value* base = prim_coroutine(coro_args[..], null, tmp);
+        if (base == null || base.tag != COROUTINE || base.coroutine_val == null) {
+            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_escape (failed to build coroutine)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        main::StackCtx* owned_ctx = base.coroutine_val;
+        base.coroutine_val = null;
+
+        main::ScopeRegion* saved = tmp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        if (child == null) {
+            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_escape (failed to allocate child scope)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        tmp.current_scope = child;
+        Value* local_owner = boundary_alloc_value_in_scope(tmp, child, true);
+        local_owner.tag = COROUTINE;
+        local_owner.coroutine_val = owned_ctx;
+
+        usz before = tmp.stack_ctx_pool.pool_size;
+        Value* escaped = promote_to_escape(local_owner, tmp);
+        bool transfer_ok = escaped != null &&
+                           escaped.tag == COROUTINE &&
+                           escaped.scope_gen == child.escape_generation &&
+                           escaped.coroutine_val == owned_ctx &&
+                           local_owner.coroutine_val == null;
+
+        tmp.current_scope = saved;
+        main::scope_release(child);
+        usz after = tmp.stack_ctx_pool.pool_size;
+
+        bool ok = transfer_ok && after == before + 1;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: promote_to_escape transfers coroutine wrapper ownership");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] lifetime: promote_to_escape transfers coroutine wrapper ownership");
+            (*fail)++;
+        }
+
+        tmp.destroy();
+        mem::free(tmp);
+    }
+
+    // Invariant: handler clauses that ignore k must not retain suspended handle contexts.
+    {
+        Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+        tmp.init();
+        register_primitives(tmp);
+
+        usz before = tmp.stack_ctx_pool.pool_size;
+        EvalResult r = run("(handle (signal ask 1) (ask k x 99))", tmp);
+        usz after = tmp.stack_ctx_pool.pool_size;
+
+        bool ok = !r.error.has_error &&
+                  r.value != null &&
+                  r.value.tag == INT &&
+                  r.value.int_val == 99 &&
+                  after == before + 1;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: handle ignore-k does not retain suspended context");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: handle ignore-k does not retain suspended context (before=%d after=%d)",
+                (int)before, (int)after);
+            (*fail)++;
+        }
+
+        tmp.destroy();
+        mem::free(tmp);
+    }
+
     return true;
 }
 

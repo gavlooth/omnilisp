@@ -24,6 +24,7 @@ fn Value* scheduler_make_thread_handle_value(usz thread_id, uint generation, Int
     }
     handle.thread_id = thread_id;
     handle.generation = generation;
+    handle.owner_interp = interp;
 
     Value* out = make_ffi_handle_ex(
         interp,
@@ -69,6 +70,9 @@ fn Value* scheduler_parse_thread_handle_arg(
 
     SchedulerOsThreadHandle* handle = (SchedulerOsThreadHandle*)box.lib_handle;
     if (handle == null || handle.thread_id >= MAX_OS_THREADS || handle.generation == 0) {
+        return scheduler_raise(interp, invalid_code, invalid_msg);
+    }
+    if (handle.owner_interp != null && handle.owner_interp != interp) {
         return scheduler_raise(interp, invalid_code, invalid_msg);
     }
 
@@ -256,6 +260,8 @@ fn Value* scheduler_thread_join_impl(
     Interp* interp
 ) {
     if (scheduler_is_running_fiber_context()) {
+        Value* ctx_err = scheduler_require_fiber_root_context("thread-join", interp);
+        if (ctx_err != null) return ctx_err;
         return scheduler_thread_join_fiber_impl(thread_id, generation, timeout_ms, handle, interp);
     }
 

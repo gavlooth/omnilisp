@@ -30,6 +30,7 @@ fn Value* scheduler_make_task_handle_value(usz task_id, uint generation, Interp*
     }
     handle.task_id = task_id;
     handle.generation = generation;
+    handle.owner_interp = interp;
 
     Value* out = make_ffi_handle_ex(
         interp,
@@ -75,6 +76,9 @@ fn Value* scheduler_parse_task_handle_arg(
 
     SchedulerTaskHandle* handle = (SchedulerTaskHandle*)box.lib_handle;
     if (handle == null || handle.task_id >= MAX_THREAD_TASKS || handle.generation == 0) {
+        return scheduler_raise(interp, invalid_code, invalid_msg);
+    }
+    if (handle.owner_interp != null && handle.owner_interp != interp) {
         return scheduler_raise(interp, invalid_code, invalid_msg);
     }
 

@@ -391,11 +391,22 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
         return io_raise(interp, "io/dns-resolve-out-of-memory", "dns-resolve: out of memory");
     }
 
-    omni_uv_req_set_data(req_handle, host_copy);
+    PendingDnsCallbackCtx* req_ctx = (PendingDnsCallbackCtx*)mem::malloc(PendingDnsCallbackCtx.sizeof);
+    if (req_ctx == null) {
+        omni_uv_getaddrinfo_req_free(req_handle);
+        mem::free(host_copy);
+        return io_raise(interp, "io/dns-resolve-out-of-memory", "dns-resolve: out of memory");
+    }
+    *req_ctx = {};
+    req_ctx.fiber_id = fiber_id;
+    req_ctx.request_token = scheduler_next_async_request_token();
+    req_ctx.host_copy = host_copy;
+    omni_uv_req_set_data(req_handle, req_ctx);
 
     dns.active = true;
     dns.completed = false;
     dns.status = 0;
+    dns.request_token = req_ctx.request_token;
     dns.req_handle = req_handle;
     dns.addrinfo_result = null;
     dns.host_copy = host_copy;
@@ -409,8 +420,8 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
     );
     if (start_status != 0) {
         omni_uv_req_set_data(req_handle, null);
+        scheduler_free_dns_callback_ctx(req_ctx);
         omni_uv_getaddrinfo_req_free(req_handle);
-        mem::free(host_copy);
         g_scheduler.pending_dns[fiber_id] = {};
         return io_raise(interp, "io/dns-resolve-async-init-failed", "dns-resolve: async resolver init failed");
     }
@@ -422,7 +433,7 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
     Value* y = prim_yield(yargs[..], null, interp);
     if (y != null && y.tag == ERROR) return y;
 
-    if (!dns.active || !dns.completed || dns.req_handle == null) {
+    if (!dns.active || !dns.completed || dns.req_handle == null || dns.request_token == 0) {
         return io_raise(
             interp,
             "io/dns-resolve-resumed-before-completion",
@@ -433,16 +444,19 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
     void* result = dns.addrinfo_result;
     int status = dns.status;
     void* done_req = dns.req_handle;
+    PendingDnsCallbackCtx* done_ctx = scheduler_take_dns_callback_ctx(done_req);
     g_scheduler.pending_dns[fiber_id] = {};
 
     if (status != 0 || result == null) {
         if (result != null) omni_uv_freeaddrinfo(result);
+        scheduler_free_dns_callback_ctx(done_ctx);
         omni_uv_getaddrinfo_req_free(done_req);
         return io_raise(interp, "io/dns-resolve-resolution-failed", "dns-resolve: resolution failed");
     }
 
     Value* resolved = dns_result_to_ipv4_string(interp, result);
     omni_uv_freeaddrinfo(result);
+    scheduler_free_dns_callback_ctx(done_ctx);
     omni_uv_getaddrinfo_req_free(done_req);
     return resolved;
 }

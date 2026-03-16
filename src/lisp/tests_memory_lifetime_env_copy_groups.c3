@@ -75,7 +75,8 @@ fn void run_memory_lifetime_env_copy_memo_tests(Interp* interp, int* pass, int* 
 
 fn void run_memory_lifetime_env_copy_persistent_parent_rewrite_test(Interp* interp, int* pass, int* fail) {
     // Invariant: copy_env_to_scope rewrites persistent frame parents away from
-    // releasing source scopes, so persistent boxes never retain dangling parent links.
+    // releasing source scopes into root-owned lifetime so persistent boxes never
+    // retain dangling links to transient target scopes.
     {
         main::ScopeRegion* saved = interp.current_scope;
         main::ScopeRegion* source = main::scope_create(saved);
@@ -113,26 +114,25 @@ fn void run_memory_lifetime_env_copy_persistent_parent_rewrite_test(Interp* inte
         bool rewritten_ok = copied_ok &&
                            copied.parent != null &&
                            copied.parent != original_parent &&
-                           main::is_in_scope((void*)copied.parent, target);
+                           main::is_in_scope((void*)copied.parent, interp.root_scope);
 
         Value* before_release = rewritten_ok ? copied.lookup(payload_sym) : null;
         main::scope_release(source);
-        Value* after_release = rewritten_ok ? copied.lookup(payload_sym) : null;
+        Value* after_source_release = rewritten_ok ? copied.lookup(payload_sym) : null;
+
+        interp.current_scope = saved;
+        main::scope_release(target);
+        Value* after_target_release = rewritten_ok ? copied.lookup(payload_sym) : null;
 
         bool post_ok = before_release != null &&
                        before_release.tag == INT &&
                        before_release.int_val == 99 &&
-                       after_release != null &&
-                       after_release.tag == INT &&
-                       after_release.int_val == 99;
-
-        // Restore persistent parent chain to stable root path before releasing target.
-        if (copied_ok) {
-            copied.parent = interp.global_env;
-        }
-
-        interp.current_scope = saved;
-        main::scope_release(target);
+                       after_source_release != null &&
+                       after_source_release.tag == INT &&
+                       after_source_release.int_val == 99 &&
+                       after_target_release != null &&
+                       after_target_release.tag == INT &&
+                       after_target_release.int_val == 99;
 
         bool ok = copied_ok && rewritten_ok && post_ok;
         if (ok) {
@@ -150,7 +150,7 @@ fn void run_memory_lifetime_env_copy_persistent_parent_rewrite_test(Interp* inte
 
 fn void run_memory_lifetime_env_copy_mixed_chain_rewrite_test(Interp* interp, int* pass, int* fail) {
     // Invariant: mixed transient/persistent parent chains are fully rewritten
-    // when copying from a releasing scope into a target scope.
+    // when copying from a releasing scope, and rewritten parents become root-owned.
     {
         main::ScopeRegion* saved = interp.current_scope;
         main::ScopeRegion* source = main::scope_create(saved);
@@ -196,32 +196,32 @@ fn void run_memory_lifetime_env_copy_mixed_chain_rewrite_test(Interp* interp, in
         bool parent_b_ok = id_ok &&
                            copied.parent != null &&
                            copied.parent != orig_parent_b &&
-                           main::is_in_scope((void*)copied.parent, target);
+                           main::is_in_scope((void*)copied.parent, interp.root_scope);
         bool parent_a_ok = id_ok &&
                            persistent_a != null &&
                            persistent_a.parent != null &&
                            persistent_a.parent != orig_parent_a &&
-                           main::is_in_scope((void*)persistent_a.parent, target);
+                           main::is_in_scope((void*)persistent_a.parent, interp.root_scope);
 
         Value* va_before = id_ok ? copied.lookup(leaf_a) : null;
         Value* vb_before = id_ok ? copied.lookup(leaf_b) : null;
 
         main::scope_release(source);
 
-        Value* va_after = id_ok ? copied.lookup(leaf_a) : null;
-        Value* vb_after = id_ok ? copied.lookup(leaf_b) : null;
-
-        bool values_ok = va_before != null && va_before.tag == INT && va_before.int_val == 11 &&
-                         vb_before != null && vb_before.tag == INT && vb_before.int_val == 22 &&
-                         va_after != null && va_after.tag == INT && va_after.int_val == 11 &&
-                         vb_after != null && vb_after.tag == INT && vb_after.int_val == 22;
-
-        // Detach persistent nodes from target-owned copied parents before target release.
-        if (persistent_b != null) persistent_b.parent = persistent_a;
-        if (persistent_a != null) persistent_a.parent = interp.global_env;
+        Value* va_after_source_release = id_ok ? copied.lookup(leaf_a) : null;
+        Value* vb_after_source_release = id_ok ? copied.lookup(leaf_b) : null;
 
         interp.current_scope = saved;
         main::scope_release(target);
+        Value* va_after_target_release = id_ok ? copied.lookup(leaf_a) : null;
+        Value* vb_after_target_release = id_ok ? copied.lookup(leaf_b) : null;
+
+        bool values_ok = va_before != null && va_before.tag == INT && va_before.int_val == 11 &&
+                         vb_before != null && vb_before.tag == INT && vb_before.int_val == 22 &&
+                         va_after_source_release != null && va_after_source_release.tag == INT && va_after_source_release.int_val == 11 &&
+                         vb_after_source_release != null && vb_after_source_release.tag == INT && vb_after_source_release.int_val == 22 &&
+                         va_after_target_release != null && va_after_target_release.tag == INT && va_after_target_release.int_val == 11 &&
+                         vb_after_target_release != null && vb_after_target_release.tag == INT && vb_after_target_release.int_val == 22;
 
         bool ok = id_ok && parent_b_ok && parent_a_ok && values_ok;
         if (ok) {
@@ -398,6 +398,125 @@ fn void run_memory_lifetime_env_copy_fault_surface_tests(Interp* interp, int* pa
     }
 }
 
+fn void run_memory_lifetime_env_copy_invalid_persistent_in_place_guard_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: in-place rewrite is rejected for malformed persistent boxes that are
+    // not actually root-owned (fail closed instead of mutating transient env frames).
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* source = main::scope_create(saved_scope);
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        if (source == null || target == null) {
+            if (source != null) main::scope_release(source);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy invalid persistent in-place guard");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = source;
+        Env* bogus = make_env(interp, interp.global_env);
+        bool setup_ok = bogus != null && !main::is_in_scope((void*)bogus, interp.root_scope);
+        Env* parent_before = setup_ok ? bogus.parent : null;
+        if (setup_ok) {
+            // Deliberately malformed lifetime tag: local-scope frame claiming persistent semantics.
+            bogus.lifetime_kind = ENV_LIFETIME_ROOT_PERSISTENT_MUTABLE_BOX;
+        }
+
+        BoundaryEnvCopyResult copied = boundary_copy_env_to_target_scope_checked(bogus, interp, target);
+        bool ok = setup_ok &&
+                  copied.env == null &&
+                  copied.fault_code == BOUNDARY_ENV_COPY_FAULT_PARENT_COPY &&
+                  copied.depth == 0 &&
+                  bogus.parent == parent_before &&
+                  boundary_ptr_in_scope((void*)bogus, source);
+
+        interp.current_scope = saved_scope;
+        main::scope_release(source);
+        main::scope_release(target);
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env-copy invalid persistent in-place guard");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: env-copy invalid persistent in-place guard (fault=%s depth=%d env=%s)",
+                (ZString)boundary_env_copy_fault_name(copied.fault_code),
+                (long)copied.depth,
+                copied.env == null ? "null" : "non-null");
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_memory_lifetime_env_copy_rejects_undelimited_closure_alias_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: env-copy rejects releasing-scope closure/iterator wrappers that
+    // have no detached env_scope ownership envelope.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* source = main::scope_create(saved_scope);
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        if (source == null || target == null) {
+            if (source != null) main::scope_release(source);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy rejects undelimited closure alias");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId closure_sym = interp.symbols.intern("__copy_env_bad_closure");
+        SymbolId iter_sym = interp.symbols.intern("__copy_env_bad_iterator");
+
+        interp.current_scope = source;
+        Env* captured = make_env(interp, interp.global_env);
+        Value* bad_closure = captured != null ? make_closure_no_param(interp, null, captured) : null;
+        Value* bad_iter = bad_closure != null ? make_iterator(interp, bad_closure) : null;
+
+        Env* closure_frame = make_env(interp, interp.global_env);
+        if (closure_frame != null && bad_closure != null) {
+            env_define_with_barrier(closure_frame, closure_sym, bad_closure, interp);
+        }
+
+        Env* iter_frame = make_env(interp, interp.global_env);
+        if (iter_frame != null && bad_iter != null) {
+            env_define_with_barrier(iter_frame, iter_sym, bad_iter, interp);
+        }
+
+        BoundaryEnvCopyResult closure_copy = boundary_copy_env_to_target_scope_checked(closure_frame, interp, target);
+        BoundaryEnvCopyResult iter_copy = boundary_copy_env_to_target_scope_checked(iter_frame, interp, target);
+
+        bool setup_ok = captured != null &&
+                        bad_closure != null &&
+                        bad_closure.closure_val != null &&
+                        bad_closure.closure_val.env_scope == null &&
+                        bad_iter != null &&
+                        closure_frame != null &&
+                        iter_frame != null;
+        bool closure_fault_ok = closure_copy.env == null &&
+                                closure_copy.fault_code == BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY &&
+                                closure_copy.depth == 0;
+        bool iter_fault_ok = iter_copy.env == null &&
+                             iter_copy.fault_code == BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY &&
+                             iter_copy.depth == 0;
+        bool ok = setup_ok && closure_fault_ok && iter_fault_ok;
+
+        interp.current_scope = saved_scope;
+        main::scope_release(source);
+        main::scope_release(target);
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env-copy rejects undelimited closure alias");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: env-copy rejects undelimited closure alias (setup=%s closure_fault=%s iter_fault=%s closure=%s iter=%s)",
+                setup_ok ? "yes" : "no",
+                closure_fault_ok ? "yes" : "no",
+                iter_fault_ok ? "yes" : "no",
+                (ZString)boundary_env_copy_fault_name(closure_copy.fault_code),
+                (ZString)boundary_env_copy_fault_name(iter_copy.fault_code));
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_env_copy_escape_mode_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_copy_parent_closure_env_scope_retain_test(interp, pass, fail);
     run_memory_lifetime_env_copy_nested_closure_retain_test(interp, pass, fail);
@@ -407,4 +526,6 @@ fn void run_memory_lifetime_env_copy_escape_mode_tests(Interp* interp, int* pass
     run_memory_lifetime_env_copy_mixed_chain_rewrite_test(interp, pass, fail);
     run_memory_lifetime_escape_env_lane_tests(interp, pass, fail);
     run_memory_lifetime_env_copy_fault_surface_tests(interp, pass, fail);
+    run_memory_lifetime_env_copy_invalid_persistent_in_place_guard_test(interp, pass, fail);
+    run_memory_lifetime_env_copy_rejects_undelimited_closure_alias_test(interp, pass, fail);
 }

@@ -45,8 +45,8 @@ fn void run_clear_stale_jit_tco_state(Interp* interp) @inline {
 
 fn bool run_execute_expr(Expr* expr, Interp* interp, Value** result_value, EvalResult* result_error) {
     if (run_jit_enabled(interp)) {
-        JitFn f = jit_compile(expr, interp);
-        if (f == null) {
+        JitCompiledFn f = jit_compile(expr, interp);
+        if (jit_compiled_fn_is_null(f)) {
             *result_error = eval_error_expr("JIT compilation failed", expr);
             return false;
         }
@@ -108,8 +108,8 @@ fn EvalResult run_program(char[] source, Interp* interp) {
         // Expand macros before JIT compilation
         expr = expand_macros_in_expr(expr, interp);
         if (run_jit_enabled(interp)) {
-            JitFn f = jit_compile(expr, interp);
-            if (f != null) {
+            JitCompiledFn f = jit_compile(expr, interp);
+            if (!jit_compiled_fn_is_null(f)) {
                 Value* jit_result = jit_exec(f, interp);
                 if (jit_result != null && jit_result.tag == ERROR) {
                     result = eval_error_expr(jit_result.str_chars[:jit_result.str_len], expr);

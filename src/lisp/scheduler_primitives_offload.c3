@@ -46,6 +46,7 @@ fn Value* scheduler_run_offload_via_queue_work(OffloadWork* work, Interp* interp
 
     work.fiber_id = NO_FIBER;
     work.task_id = task_id;
+    work.wake_epoch = 0;
     if (!scheduler_enqueue_offload(*work)) {
         scheduler_release_shared(work.shared);
         scheduler_drop_thread_task(task_id);
@@ -101,6 +102,8 @@ fn Value* scheduler_execute_offload_job(Value* job, bool allow_internal_io_ops, 
 
     bool in_fiber = scheduler_is_running_fiber_context();
     if (!in_fiber) return scheduler_run_offload_via_queue_work(&work, interp);
+    Value* ctx_err = scheduler_require_fiber_root_context("offload", interp);
+    if (ctx_err != null) return ctx_err;
 
     usz fiber_id = g_scheduler.current_fiber_id;
     Value* start_err = scheduler_begin_fiber_offload(&work, fiber_id, interp);
@@ -131,15 +134,19 @@ fn Value* scheduler_begin_fiber_offload(OffloadWork* work, usz fiber_id, Interp*
 
     work.fiber_id = fiber_id;
     work.task_id = NO_TASK;
+    work.wake_epoch = g_scheduler.fibers[fiber_id].wake_epoch;
+    FiberState saved_state = g_scheduler.fibers[fiber_id].state;
+    pending.active = true;
+    pending.completed = false;
+    pending.wake_epoch = work.wake_epoch;
+    pending.completion = null;
+    g_scheduler.fibers[fiber_id].state = FIBER_BLOCKED;
     if (!scheduler_enqueue_offload(*work)) {
+        *pending = {};
+        g_scheduler.fibers[fiber_id].state = saved_state;
         scheduler_release_shared(work.shared);
         return scheduler_raise(interp, "scheduler/offload-admission-full", "offload: admission cap reached");
     }
-
-    pending.active = true;
-    pending.completed = false;
-    pending.completion = null;
-    g_scheduler.fibers[fiber_id].state = FIBER_BLOCKED;
     return null;
 }
 

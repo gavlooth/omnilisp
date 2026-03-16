@@ -244,9 +244,22 @@ fn Value* prim_pipe_connect(Value*[] args, Env* env, Interp* interp) {
         return io_raise(interp, "io/pipe-connect-async-init-failed", "pipe-connect: async connect init failed");
     }
 
+    PendingConnectCallbackCtx* req_ctx = (PendingConnectCallbackCtx*)mem::malloc(PendingConnectCallbackCtx.sizeof);
+    if (req_ctx == null) {
+        omni_uv_tcp_connect_req_free(req_handle);
+        omni_uv_tcp_close_and_free(pipe_handle);
+        return io_raise(interp, "io/pipe-connect-out-of-memory", "pipe-connect: out of memory");
+    }
+    *req_ctx = {};
+    req_ctx.fiber_id = fiber_id;
+    req_ctx.request_token = scheduler_next_async_request_token();
+    req_ctx.tcp_handle = pipe_handle;
+    omni_uv_req_set_data(req_handle, req_ctx);
+
     pending.active = true;
     pending.completed = false;
     pending.status = 0;
+    pending.request_token = req_ctx.request_token;
     pending.req_handle = req_handle;
     pending.tcp_handle = pipe_handle;
 
@@ -257,7 +270,11 @@ fn Value* prim_pipe_connect(Value*[] args, Env* env, Interp* interp) {
     Value* y = prim_yield(yargs[..], null, interp);
     if (y != null && y.tag == ERROR) return y;
 
-    if (!pending.active || !pending.completed || pending.req_handle == null || pending.tcp_handle == null) {
+    if (!pending.active ||
+        !pending.completed ||
+        pending.request_token == 0 ||
+        pending.req_handle == null ||
+        pending.tcp_handle == null) {
         return io_raise(
             interp,
             "io/pipe-connect-resumed-before-completion",
@@ -268,9 +285,11 @@ fn Value* prim_pipe_connect(Value*[] args, Env* env, Interp* interp) {
     int status = pending.status;
     void* done_req = pending.req_handle;
     void* done_pipe = pending.tcp_handle;
+    PendingConnectCallbackCtx* done_ctx = scheduler_take_connect_callback_ctx(done_req);
     g_scheduler.pending_connects[fiber_id] = {};
 
     if (status != 0) {
+        scheduler_free_connect_callback_ctx(done_ctx);
         omni_uv_tcp_connect_req_free(done_req);
         omni_uv_tcp_close_and_free(done_pipe);
         return io_raise(interp, "io/pipe-connect-failed", "pipe-connect: connect failed");
@@ -278,6 +297,7 @@ fn Value* prim_pipe_connect(Value*[] args, Env* env, Interp* interp) {
 
     int fd = -1;
     int fd_status = omni_uv_tcp_connect_detach_fd(done_pipe, &fd);
+    scheduler_free_connect_callback_ctx(done_ctx);
     omni_uv_tcp_connect_req_free(done_req);
     omni_uv_tcp_close_and_free(done_pipe);
     if (fd_status != 0 || fd < 0) {

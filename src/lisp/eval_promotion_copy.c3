@@ -41,14 +41,28 @@ fn bool copy_parent_should_reuse_closure(Value* v, Interp* interp) @inline {
     return boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen);
 }
 
-fn void copy_parent_clone_closure_payload(Value* result, Value* src, Interp* interp) {
+fn bool copy_parent_clone_closure_payload(
+    Value* result,
+    Value* src,
+    Interp* interp,
+    BoundaryCopyFault* fault_out = null
+) {
+    if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NONE;
     result.tag = CLOSURE;
     result.closure_val = (Closure*)interp.current_scope.alloc(Closure.sizeof);
+    if (result.closure_val == null) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        return false;
+    }
     *result.closure_val = *src.closure_val;
     result.closure_val.scope_gen = interp.current_scope.generation;
 
     if (src.closure_val.param_count > 0) {
         result.closure_val.params = (SymbolId*)interp.current_scope.alloc(SymbolId.sizeof * src.closure_val.param_count);
+        if (result.closure_val.params == null) {
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+            return false;
+        }
         for (usz i = 0; i < src.closure_val.param_count; i++) {
             result.closure_val.params[i] = src.closure_val.params[i];
         }
@@ -60,19 +74,25 @@ fn void copy_parent_clone_closure_payload(Value* result, Value* src, Interp* int
         result.closure_val.type_sig = (MethodSignature*)interp.current_scope.alloc(MethodSignature.sizeof);
         if (result.closure_val.type_sig == null ||
             !method_signature_copy_to_scope(result.closure_val.type_sig, src.closure_val.type_sig, interp.current_scope)) {
-            result.closure_val.type_sig = null;
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_CLOSURE_TYPE_SIG_COPY;
+            return false;
         }
     }
 
     if (result.closure_val.env_scope != null) {
         main::scope_retain(result.closure_val.env_scope);
     }
+    return true;
 }
 
-fn Value* copy_closure_to_parent(Value* v, Interp* interp) {
+fn Value* copy_closure_to_parent(
+    Value* v,
+    Interp* interp,
+    BoundaryCopyFault* fault_out = null
+) {
     if (copy_parent_should_reuse_closure(v, interp)) return v;
     Value* result = interp.alloc_value();
-    copy_parent_clone_closure_payload(result, v, interp);
+    if (!copy_parent_clone_closure_payload(result, v, interp, fault_out)) return null;
     main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_closure);
     return result;
 }
@@ -138,6 +158,12 @@ fn Value* copy_partial_prim_to_parent(Value* v, Interp* interp) {
 }
 
 fn Value* copy_continuation_to_parent(Value* v, Interp* interp) {
+    if (v.cont_val != null) {
+        if (v.cont_val.owner_interp != null && v.cont_val.owner_interp != interp) {
+            return raise_error(interp, "boundary: refusing continuation alias across interpreters");
+        }
+        continuation_retain_handle_state_for_boundary(v.cont_val);
+    }
     Value* result = interp.alloc_value();
     result.tag = CONTINUATION;
     result.cont_val = v.cont_val;
@@ -153,9 +179,14 @@ fn Value* copy_iterator_to_parent(Value* v, Interp* interp) {
 }
 
 fn Value* copy_coroutine_to_parent(Value* v, Interp* interp) {
-    Value* result = interp.alloc_value();
+    // Coroutine wrappers own StackCtx teardown. Never duplicate ownership across wrappers.
+    if (!boundary_value_in_releasing_scope(v, interp)) {
+        return raise_error(interp, "boundary: refusing coroutine wrapper alias across disjoint scopes");
+    }
+    Value* result = boundary_alloc_value_in_scope(interp, interp.current_scope, true);
     result.tag = COROUTINE;
     result.coroutine_val = v.coroutine_val;
+    v.coroutine_val = null;
     return result;
 }
 
@@ -241,7 +272,12 @@ fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) {
 @require v != null : "copy_to_parent_by_route: null value"
 @require interp != null : "copy_to_parent_by_route: null interp"
 *>
-fn Value* copy_to_parent_by_route(Value* v, Interp* interp, CopyParentRoute route) {
+fn Value* copy_to_parent_by_route(
+    Value* v,
+    Interp* interp,
+    CopyParentRoute route,
+    BoundaryCopyFault* fault_out = null
+) {
     switch (route) {
         case CP_ROUTE_NIL:
             return make_nil(interp);
@@ -258,7 +294,7 @@ fn Value* copy_to_parent_by_route(Value* v, Interp* interp, CopyParentRoute rout
         case CP_ROUTE_CONS:
             return copy_cons_to_parent(v, interp);
         case CP_ROUTE_CLOSURE:
-            return copy_closure_to_parent(v, interp);
+            return copy_closure_to_parent(v, interp, fault_out);
         case CP_ROUTE_PRIMITIVE:
             return v;
         case CP_ROUTE_PARTIAL_PRIM:
@@ -281,7 +317,7 @@ fn Value* copy_to_parent_by_route(Value* v, Interp* interp, CopyParentRoute rout
             // Promote underlying closure thunk so iterator outlives child scope.
             return copy_iterator_to_parent(v, interp);
         case CP_ROUTE_COROUTINE:
-            // Shallow copy: wrapper may be in child scope, Coro* is stack-pool managed.
+            // Transfer ownership into a single surviving wrapper.
             return copy_coroutine_to_parent(v, interp);
         case CP_ROUTE_MODULE:
             // Module lives in interpreter module table.
@@ -297,6 +333,15 @@ fn Value* copy_to_parent_by_route(Value* v, Interp* interp, CopyParentRoute rout
 @require interp != null : "copy_to_parent: null interp"
 *>
 fn Value* copy_to_parent(Value* v, Interp* interp) {
+    return copy_to_parent_with_fault(v, interp, null);
+}
+
+fn Value* copy_to_parent_with_fault(
+    Value* v,
+    Interp* interp,
+    BoundaryCopyFault* copy_fault_out
+) @inline {
+    if (copy_fault_out != null) *copy_fault_out = BOUNDARY_COPY_FAULT_NONE;
     if (v == null) return null;
     g_copy_to_parent_stats.total_calls++;
     copy_to_parent_note_tag(v.tag);
@@ -315,7 +360,14 @@ fn Value* copy_to_parent(Value* v, Interp* interp) {
     copy_to_parent_note_cons_spine(v);
 
     CopyParentRoute route = copy_parent_route_for_tag(v.tag);
-    return copy_to_parent_by_route(v, interp, route);
+    return copy_to_parent_by_route(v, interp, route, copy_fault_out);
+}
+
+fn Value* copy_to_parent_site_checked(Value* v, Interp* interp, uint site, BoundaryCopyFault* copy_fault_out) @inline {
+    if (v == null) return null;
+    if (copy_fault_out != null) *copy_fault_out = BOUNDARY_COPY_FAULT_NONE;
+    if (site < COPY_SITE_COUNT) g_copy_to_parent_stats.site_calls[(usz)site]++;
+    return copy_to_parent_with_fault(v, interp, copy_fault_out);
 }
 
 fn Value* copy_to_parent_site(Value* v, Interp* interp, uint site) {

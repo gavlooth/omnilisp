@@ -44,6 +44,9 @@ yyjson_val* omni_yyjson_arr_get_first(yyjson_val* arr) { return yyjson_arr_get_f
 
 /* Object iteration */
 size_t omni_yyjson_obj_size(yyjson_val* obj) { return yyjson_obj_size(obj); }
+yyjson_val* omni_yyjson_obj_getn(yyjson_val* obj, const char* key, size_t len) {
+    return yyjson_obj_getn(obj, key, len);
+}
 
 /* Unsafe next (works for both array elements and obj key-val pairs) */
 yyjson_val* omni_yyjson_next(yyjson_val* val) {

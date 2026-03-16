@@ -20,6 +20,9 @@ fn void scheduler_reset_wakeup_queue() {
     for (usz i = 0; i < MAX_FIBERS; i++) {
         g_scheduler.pending_reads[i].readable_pending = false;
         g_scheduler.pending_reads[i].writable_pending = false;
+        g_scheduler.fiber_join_wait_token[i] = 0;
+        g_scheduler.latched_task_done_wake_epoch[i] = 0;
+        g_scheduler.latched_os_thread_done_wake_epoch[i] = 0;
     }
 }
 
@@ -120,8 +123,10 @@ fn Value* scheduler_build_offload_work(Value* job, OffloadWork* work, Interp* in
 
     work.fiber_id = NO_FIBER;
     work.task_id = NO_TASK;
+    work.wake_epoch = 0;
     work.op = OFFLOAD_SLEEP_MS;
     work.int_arg = 0;
+    work.int_arg2 = 0;
     work.shared = null;
 
     if (scheduler_str_eq(op_name, "sleep-ms")) {

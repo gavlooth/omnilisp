@@ -17,6 +17,21 @@ starts the REPL.
 .B --repl
 Start the REPL explicitly.
 .TP
+.B --repl --json
+Start a structured JSON request/response REPL transport for tools.
+.TP
+.BI --eval " <expr> " "[--json]"
+Evaluate one Omni expression supplied on the command line.
+Use
+.B --json
+to emit a structured result payload.
+.TP
+.BI --check " <file> " "[--json]"
+Parse/check an Omni source file without executing it.
+Use
+.B --json
+to emit structured diagnostics with 0-based ranges.
+.TP
 .BI --test-suite " <all|stack|scope|lisp>"
 Run one bundled test suite.
 .TP
@@ -64,6 +79,23 @@ omni --bind /path/to/project
 Run script:
 .EX
 omni script.omni
+.EE
+.TP
+Evaluate one expression:
+.EX
+omni --eval '(+ 1 2)'
+omni --eval --json '(+ 1 2)'
+.EE
+.TP
+Structured REPL transport:
+.EX
+printf '%s\n' '{"id":"1","input":"(+ 1 2)","mode":"expr"}' | omni --repl --json
+.EE
+.TP
+Check without executing:
+.EX
+omni --check app.omni
+omni --check --json app.omni
 .EE
 .TP
 Compile to executable:

@@ -352,7 +352,7 @@ fn void run_memory_lifetime_boundary_mixed_jit_interp_stress_test(Interp* interp
         BoundaryInterpState saved = boundary_save_interp_state(interp);
         char[] expr = "(+ 20 22)";
 
-        JitFn compiled = null;
+        JitCompiledFn compiled = jit_compiled_fn_null();
         bool jit_ready = true;
         if (jit_checks_enabled()) {
             Expr* ast = parse_for_jit(expr, interp);
@@ -360,7 +360,7 @@ fn void run_memory_lifetime_boundary_mixed_jit_interp_stress_test(Interp* interp
                 jit_ready = false;
             } else {
                 compiled = jit_compile(ast, interp);
-                jit_ready = compiled != null;
+                jit_ready = !jit_compiled_fn_is_null(compiled);
             }
         }
 

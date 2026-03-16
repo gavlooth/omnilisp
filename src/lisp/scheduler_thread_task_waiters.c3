@@ -1,5 +1,7 @@
 module lisp;
 
+import std::thread;
+
 fn long scheduler_monotonic_ms() @inline {
     long[2] ts;
     if (c_clock_gettime(SCHEDULER_CLOCK_MONOTONIC, &ts) != 0) return 0;
@@ -11,6 +13,21 @@ fn long scheduler_remaining_wait_ms(long deadline_ms) @inline {
     if (now_ms <= 0) return 0;
     long remaining_ms = deadline_ms - now_ms;
     return remaining_ms > 0 ? remaining_ms : 0;
+}
+
+fn uint scheduler_next_join_wait_token_locked() @inline {
+    g_scheduler.join_wait_token_seed++;
+    if (g_scheduler.join_wait_token_seed == 0) g_scheduler.join_wait_token_seed = 1;
+    return g_scheduler.join_wait_token_seed;
+}
+
+fn void scheduler_set_join_wait_token_locked(usz waiter_fiber_id, uint token) @inline {
+    if (waiter_fiber_id >= MAX_FIBERS) return;
+    g_scheduler.fiber_join_wait_token[waiter_fiber_id] = token;
+}
+
+fn void scheduler_clear_join_wait_token_locked(usz waiter_fiber_id) @inline {
+    scheduler_set_join_wait_token_locked(waiter_fiber_id, 0);
 }
 
 fn void scheduler_signal_thread_task_waiters_locked() @inline {
@@ -39,7 +56,8 @@ fn bool scheduler_wait_thread_task_waiters(long timeout_ms) {
 
     if (catch err = g_scheduler.thread_task_cv.wait_timeout(&g_scheduler.thread_task_mu, (ulong)timeout_ms)) {
         // WAIT_TIMEOUT is expected; caller should continue timeout budgeting.
-        return true;
+        if (err == thread::WAIT_TIMEOUT) return true;
+        return false;
     }
     return true;
 }
@@ -84,7 +102,8 @@ fn int scheduler_wait_thread_task_completion_state(usz task_id, uint generation,
         }
 
         if (catch err = g_scheduler.thread_task_cv.wait_timeout(&g_scheduler.thread_task_mu, (ulong)wait_ms)) {
-            return SCHEDULER_JOIN_WAIT_TIMEOUT;
+            if (err == thread::WAIT_TIMEOUT) return SCHEDULER_JOIN_WAIT_TIMEOUT;
+            return SCHEDULER_JOIN_WAIT_FAILED;
         }
 
         if (finite_timeout) {
@@ -134,7 +153,8 @@ fn int scheduler_wait_os_thread_completion_state(usz thread_id, uint generation,
         }
 
         if (catch err = g_scheduler.thread_task_cv.wait_timeout(&g_scheduler.thread_task_mu, (ulong)wait_ms)) {
-            return SCHEDULER_JOIN_WAIT_TIMEOUT;
+            if (err == thread::WAIT_TIMEOUT) return SCHEDULER_JOIN_WAIT_TIMEOUT;
+            return SCHEDULER_JOIN_WAIT_FAILED;
         }
 
         if (finite_timeout) {
@@ -144,14 +164,73 @@ fn int scheduler_wait_os_thread_completion_state(usz thread_id, uint generation,
     }
 }
 
-fn void scheduler_signal_task_waiter_fiber(usz waiter_fiber_id) {
-    if (waiter_fiber_id == NO_FIBER) return;
-    (void)scheduler_publish_task_done(waiter_fiber_id);
+fn bool scheduler_latch_join_wakeup_epoch(
+    usz waiter_fiber_id,
+    uint waiter_wake_epoch,
+    bool os_thread_done,
+    bool thread_task_mu_locked = false
+) {
+    if (waiter_fiber_id == NO_FIBER || waiter_wake_epoch == 0) return false;
+    if (waiter_fiber_id >= MAX_FIBERS) return false;
+    if (!g_scheduler.thread_task_mu_ready) return false;
+
+    if (!thread_task_mu_locked) g_scheduler.thread_task_mu.lock();
+    bool latched = false;
+    if (waiter_fiber_id < g_scheduler.fiber_count) {
+        if (os_thread_done) {
+            g_scheduler.latched_os_thread_done_wake_epoch[waiter_fiber_id] = waiter_wake_epoch;
+        } else {
+            g_scheduler.latched_task_done_wake_epoch[waiter_fiber_id] = waiter_wake_epoch;
+        }
+        latched = true;
+    }
+    if (!thread_task_mu_locked) g_scheduler.thread_task_mu.unlock();
+
+    if (latched) scheduler_signal_async();
+    return latched;
 }
 
-fn void scheduler_signal_os_thread_waiter_fiber(usz waiter_fiber_id) {
-    if (waiter_fiber_id == NO_FIBER) return;
-    (void)scheduler_publish_os_thread_done(waiter_fiber_id);
+fn bool scheduler_signal_task_waiter_fiber(
+    usz waiter_fiber_id,
+    uint waiter_wake_epoch,
+    bool thread_task_mu_locked = false
+) {
+    if (waiter_fiber_id == NO_FIBER || waiter_wake_epoch == 0) return true;
+    if (scheduler_publish_task_done(waiter_fiber_id, waiter_wake_epoch)) return true;
+    return scheduler_latch_join_wakeup_epoch(waiter_fiber_id, waiter_wake_epoch, false, thread_task_mu_locked);
+}
+
+fn bool scheduler_signal_os_thread_waiter_fiber(
+    usz waiter_fiber_id,
+    uint waiter_wake_epoch,
+    bool thread_task_mu_locked = false
+) {
+    if (waiter_fiber_id == NO_FIBER || waiter_wake_epoch == 0) return true;
+    if (scheduler_publish_os_thread_done(waiter_fiber_id, waiter_wake_epoch)) return true;
+    return scheduler_latch_join_wakeup_epoch(waiter_fiber_id, waiter_wake_epoch, true, thread_task_mu_locked);
+}
+
+fn void scheduler_clear_thread_task_waiters_for_fiber(usz waiter_fiber_id) {
+    if (waiter_fiber_id == NO_FIBER || !g_scheduler.thread_task_mu_ready) return;
+    g_scheduler.thread_task_mu.lock();
+    for (usz i = 0; i < MAX_THREAD_TASKS; i++) {
+        if (!g_scheduler.thread_tasks[i].active) continue;
+        if (g_scheduler.thread_tasks[i].waiter_fiber_id == waiter_fiber_id) {
+            g_scheduler.thread_tasks[i].waiter_fiber_id = NO_FIBER;
+            g_scheduler.thread_tasks[i].waiter_wake_epoch = 0;
+        }
+    }
+    for (usz i = 0; i < MAX_OS_THREADS; i++) {
+        if (!g_scheduler.os_threads[i].active) continue;
+        if (g_scheduler.os_threads[i].waiter_fiber_id == waiter_fiber_id) {
+            g_scheduler.os_threads[i].waiter_fiber_id = NO_FIBER;
+            g_scheduler.os_threads[i].waiter_wake_epoch = 0;
+        }
+    }
+    scheduler_clear_join_wait_token_locked(waiter_fiber_id);
+    g_scheduler.latched_task_done_wake_epoch[waiter_fiber_id] = 0;
+    g_scheduler.latched_os_thread_done_wake_epoch[waiter_fiber_id] = 0;
+    g_scheduler.thread_task_mu.unlock();
 }
 
 
@@ -171,8 +250,12 @@ fn int scheduler_register_thread_task_waiter(usz task_id, uint generation, usz w
     if (task.state == THREAD_TASK_DONE || task.state == THREAD_TASK_CANCELLED) {
         return SCHEDULER_JOIN_WAIT_READY;
     }
+    uint waiter_wake_epoch = scheduler_next_join_wait_token_locked();
+    if (waiter_wake_epoch == 0) return SCHEDULER_JOIN_WAIT_INVALID;
     if (task.waiter_fiber_id == NO_FIBER || task.waiter_fiber_id == waiter_fiber_id) {
         task.waiter_fiber_id = waiter_fiber_id;
+        task.waiter_wake_epoch = waiter_wake_epoch;
+        scheduler_set_join_wait_token_locked(waiter_fiber_id, waiter_wake_epoch);
         return SCHEDULER_JOIN_WAIT_REGISTERED;
     }
     return SCHEDULER_JOIN_WAIT_CONFLICT;
@@ -187,6 +270,8 @@ fn void scheduler_clear_thread_task_waiter(usz task_id, uint generation, usz wai
         scheduler_task_generation_matches(task, generation) &&
         task.waiter_fiber_id == waiter_fiber_id) {
         task.waiter_fiber_id = NO_FIBER;
+        task.waiter_wake_epoch = 0;
+        scheduler_clear_join_wait_token_locked(waiter_fiber_id);
     }
     g_scheduler.thread_task_mu.unlock();
 }
@@ -207,8 +292,12 @@ fn int scheduler_register_os_thread_waiter(usz thread_id, uint generation, usz w
     if (entry.state == OS_THREAD_DONE || entry.state == OS_THREAD_CANCELLED) {
         return SCHEDULER_JOIN_WAIT_READY;
     }
+    uint waiter_wake_epoch = scheduler_next_join_wait_token_locked();
+    if (waiter_wake_epoch == 0) return SCHEDULER_JOIN_WAIT_INVALID;
     if (entry.waiter_fiber_id == NO_FIBER || entry.waiter_fiber_id == waiter_fiber_id) {
         entry.waiter_fiber_id = waiter_fiber_id;
+        entry.waiter_wake_epoch = waiter_wake_epoch;
+        scheduler_set_join_wait_token_locked(waiter_fiber_id, waiter_wake_epoch);
         return SCHEDULER_JOIN_WAIT_REGISTERED;
     }
     return SCHEDULER_JOIN_WAIT_CONFLICT;
@@ -223,6 +312,8 @@ fn void scheduler_clear_os_thread_waiter(usz thread_id, uint generation, usz wai
         scheduler_os_thread_generation_matches(entry, generation) &&
         entry.waiter_fiber_id == waiter_fiber_id) {
         entry.waiter_fiber_id = NO_FIBER;
+        entry.waiter_wake_epoch = 0;
+        scheduler_clear_join_wait_token_locked(waiter_fiber_id);
     }
     g_scheduler.thread_task_mu.unlock();
 }

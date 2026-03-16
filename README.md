@@ -146,6 +146,14 @@ For full gate policy and Docker-capped validation paths, use:
 - [Project Tooling](docs/PROJECT_TOOLING.md)
 - [AGENTS guidance](AGENTS.md)
 
+## Editor Tooling
+
+First-party editor integration scaffolds live under `tooling/`:
+
+- `tooling/tree-sitter-omni` for Tree-sitter grammar and queries
+- `tooling/omni-lsp` for a thin stdio language server
+- `tooling/omni-nvim` for Neovim REPL workflow integration
+
 ## Documentation Index
 
 - [Docs Map](docs/README.md)

@@ -24,6 +24,9 @@ fn void run_stack_engine_tests() {
     if (test_pool_lifecycle()) { stack_print_pass("pool create/recycle"); pass++; }
     else { io::printfn("  FAIL: pool create/recycle"); fail++; }
 
+    if (test_pool_double_destroy_idempotent()) { stack_print_pass("pool double-destroy idempotent"); pass++; }
+    else { io::printfn("  FAIL: pool double-destroy idempotent"); fail++; }
+
     if (test_stack_ctx_thread_affinity_state()) { stack_print_pass("stack thread-affinity ownership"); pass++; }
     else { io::printfn("  FAIL: stack thread-affinity ownership"); fail++; }
 
@@ -82,6 +85,9 @@ fn void run_stack_engine_tests() {
 
     if (test_stack_ctx_lifecycle_clone_hook()) { stack_print_pass("lifecycle clone hook"); pass++; }
     else { io::printfn("  FAIL: lifecycle clone hook"); fail++; }
+
+    if (test_stack_pool_shutdown_defer_cross_ctx_order()) { stack_print_pass("pool shutdown defer cross-context order"); pass++; }
+    else { io::printfn("  FAIL: pool shutdown defer cross-context order"); fail++; }
 
     io::printfn("\nStack engine: %d passed, %d failed", pass, fail);
     emit_stack_defer_summary();

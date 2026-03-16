@@ -1,8 +1,58 @@
 module lisp;
 
 
+import std::collections::list;
 import std::io;
 import main;
+
+fn bool compiler_str_eq(char[] left, char[] right) {
+    if (left.len != right.len) return false;
+    for (usz i = 0; i < left.len; i++) {
+        if (left[i] != right[i]) return false;
+    }
+    return true;
+}
+
+fn bool compiler_serializes_to_roundtrip(Interp* interp, char[] source, char[] expected) {
+    Lexer lex;
+    lex.init(source);
+    defer lex.destroy();
+
+    Parser p;
+    p.init(&lex, interp);
+    Expr* expr = p.parse_expr();
+    if (expr == null || p.has_error) {
+        io::printfn("[DEBUG] serializer source parse failed: %s", (ZString)source);
+        return false;
+    }
+
+    Compiler compiler;
+    compiler.init(interp);
+
+    List{char} buf;
+    defer buf.free();
+    compiler.serialize_expr_to_buf(expr, &buf);
+
+    char[] actual = "";
+    if (buf.len() > 0) {
+        actual = buf.entries[:buf.len()];
+    }
+    if (!compiler_str_eq(actual, expected)) {
+        io::print("[DEBUG] serializer expected: ");
+        io::printn(expected);
+        io::print("[DEBUG] serializer actual:   ");
+        io::printn(actual);
+        return false;
+    }
+
+    Expr* reparsed = parse(actual, interp);
+    if (reparsed == null) {
+        io::printfn("[DEBUG] serializer reparse failed: %s", (ZString)actual);
+        return false;
+    }
+    return true;
+}
+
 fn void run_compiler_group_syntax_begin_zero_tests(Interp* interp, usz* pass, usz* fail) {
     // --- E_BLOCK tests ---
     {
@@ -384,12 +434,43 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
     }
 }
 
+fn void run_compiler_group_serializer_roundtrip_tests(Interp* interp, usz* pass, usz* fail) {
+    {
+        bool ok = compiler_serializes_to_roundtrip(
+            interp,
+            "(import \"pkg/math.omni\" ((sum 'as plus) diff))",
+            "(import \"pkg/math.omni\" ((sum 'as plus) diff))"
+        );
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: import serializer preserves path and alias syntax"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: import serializer preserves path and alias syntax"); }
+    }
+    {
+        bool ok = compiler_serializes_to_roundtrip(
+            interp,
+            "(handle (+ 1 (signal ask 0)) (ask x (resolve x)))",
+            "(handle (+ 1 (perform ask 0)) (ask x (resolve x)))"
+        );
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: handle serializer emits parser-compatible clause syntax"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: handle serializer emits parser-compatible clause syntax"); }
+    }
+    {
+        bool ok = compiler_serializes_to_roundtrip(
+            interp,
+            "(match (list 1 2) ([a b] (+ a b)) (_ 0))",
+            "(match (list 1 2) ([a b] (+ a b)) (_ 0))"
+        );
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: match serializer preserves clause parens"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: match serializer preserves clause parens"); }
+    }
+}
+
 fn void run_compiler_group_stdlib_existing(Interp* interp, usz* pass_out, usz* fail_out) {
     usz pass = 0;
     usz fail = 0;
     run_compiler_group_stdlib_availability_tests(interp, &pass, &fail);
     run_compiler_group_existing_feature_tests(interp, &pass, &fail);
     run_compiler_group_type_dispatch_bridge_tests(interp, &pass, &fail);
+    run_compiler_group_serializer_roundtrip_tests(interp, &pass, &fail);
     *pass_out += pass;
     *fail_out += fail;
 }

@@ -6,9 +6,6 @@ import main;
 // SECTION 2: VALUE CONSTRUCTORS (Core + Destructors)
 // =============================================================================
 
-// Global stack context pool pointer for scope_dtor_value — set by Interp.init()
-main::StackPool* g_stack_ctx_pool = null;
-
 // Scope destructor for Values with heap-allocated backing data.
 // Mirrors destroy_value in eval.c3 but called from scope_region lifecycle.
 fn void scope_dtor_value(void* ptr) {
@@ -65,12 +62,15 @@ fn void scope_dtor_value(void* ptr) {
             }
         case COROUTINE:
             // Abandoned coroutines must return their StackCtx to the pool at scope teardown.
-            if (v.coroutine_val != null && g_stack_ctx_pool != null) {
+            if (v.coroutine_val != null) {
                 if (v.coroutine_val.user_data != null) {
                     mem::free(v.coroutine_val.user_data);
                     v.coroutine_val.user_data = null;
                 }
-                main::stack_ctx_destroy(v.coroutine_val, g_stack_ctx_pool);
+                main::StackPool* owner_pool = v.coroutine_val.owner_pool;
+                if (owner_pool != null) {
+                    main::stack_ctx_destroy(v.coroutine_val, owner_pool);
+                }
                 v.coroutine_val = null;
             }
         case VOID:

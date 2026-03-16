@@ -7,10 +7,15 @@ import main;
 // =============================================================================
 // SECTION 8a: STATEMENT-LEVEL COMPILATION (quasiquote call lowering)
 // =============================================================================
-fn bool Compiler.qq_call_has_splice(Compiler* self, Expr*[] elements, usz total, usz depth) {
+fn Expr* Compiler.qq_call_element(Compiler* self, Expr* tmpl, usz index) @inline {
+    if (index == 0) return tmpl.call.func;
+    return tmpl.call.args[index - 1];
+}
+
+fn bool Compiler.qq_call_has_splice(Compiler* self, Expr* tmpl, usz total, usz depth) {
     if (depth != 0) return false;
     for (usz i = 0; i < total; i++) {
-        if (elements[i].tag == E_UNQUOTE_SPLICING) return true;
+        if (self.qq_call_element(tmpl, i).tag == E_UNQUOTE_SPLICING) return true;
     }
     return false;
 }
@@ -44,19 +49,19 @@ fn usz Compiler.qq_emit_nil_result(Compiler* self) {
     return result_r;
 }
 
-fn usz Compiler.compile_qq_call_no_splice(Compiler* self, Expr*[] elements, usz total, usz depth) {
+fn usz Compiler.compile_qq_call_no_splice(Compiler* self, Expr* tmpl, usz total, usz depth) {
     usz result_r = self.qq_emit_nil_result();
     for (usz i = total; i > 0; i--) {
-        usz elem_r = self.compile_qq_flat(elements[i - 1], depth);
+        usz elem_r = self.compile_qq_flat(self.qq_call_element(tmpl, i - 1), depth);
         result_r = self.qq_emit_cons_pair(elem_r, result_r);
     }
     return result_r;
 }
 
-fn usz Compiler.compile_qq_call_with_splice(Compiler* self, Expr*[] elements, usz total, usz depth) {
+fn usz Compiler.compile_qq_call_with_splice(Compiler* self, Expr* tmpl, usz total, usz depth) {
     usz result_r = self.qq_emit_nil_result();
     for (usz i = total; i > 0; i--) {
-        Expr* elem = elements[i - 1];
+        Expr* elem = self.qq_call_element(tmpl, i - 1);
         if (elem.tag == E_UNQUOTE_SPLICING && depth == 0) {
             usz splice_r = self.compile_to_temp(elem.unquote_splicing.body);
             result_r = self.qq_emit_append_pair(splice_r, result_r);
@@ -74,14 +79,8 @@ fn usz Compiler.compile_qq_call_with_splice(Compiler* self, Expr*[] elements, us
  */
 fn usz Compiler.compile_qq_call_flat(Compiler* self, Expr* tmpl, usz depth) {
     usz total = tmpl.call.arg_count + 1;
-    Expr*[17] elements;
-    elements[0] = tmpl.call.func;
-    for (usz i = 0; i < tmpl.call.arg_count && i < 16; i++) {
-        elements[i + 1] = tmpl.call.args[i];
+    if (!self.qq_call_has_splice(tmpl, total, depth)) {
+        return self.compile_qq_call_no_splice(tmpl, total, depth);
     }
-
-    if (!self.qq_call_has_splice(elements[..], total, depth)) {
-        return self.compile_qq_call_no_splice(elements[..], total, depth);
-    }
-    return self.compile_qq_call_with_splice(elements[..], total, depth);
+    return self.compile_qq_call_with_splice(tmpl, total, depth);
 }

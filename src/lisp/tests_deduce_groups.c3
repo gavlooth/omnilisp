@@ -241,6 +241,93 @@ fn void run_deduce_relation_attr_define_test(Interp* interp, int* pass, int* fai
     }
 }
 
+fn void run_deduce_relation_attr_typed_role_schema_test(Interp* interp, int* pass, int* fail) {
+    SymbolId rel_sym = interp.symbols.intern("rel-attr-schema");
+    EvalResult r = run(
+        "(block "
+        "  (define ddb-rel-schema (deduce 'open 'memory)) "
+        "  (define [relation ddb-rel-schema] rel-attr-schema "
+        "    (key ^String name) "
+        "    (index ^Integer age) "
+        "    (^String email)) "
+        "  ddb-rel-schema)",
+        interp
+    );
+
+    bool ok = !r.error.has_error &&
+              r.value != null &&
+              r.value.tag == FFI_HANDLE &&
+              r.value.ffi_val != null &&
+              r.value.ffi_val.lib_handle != null;
+    if (ok) {
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        DeduceRelationSchema* schema = deduce_db_lookup_relation_schema(db, rel_sym);
+        usz[3] full = { 0, 1, 2 };
+        usz[1] key_col = { 0 };
+        usz[1] index_col = { 1 };
+        usz[2] key_index = { 0, 1 };
+        ok = schema != null &&
+             schema.arity == 3 &&
+             deduce_rule_test_schema_has_index(schema, full[..], true) &&
+             deduce_rule_test_schema_has_index(schema, key_col[..], true) &&
+             deduce_rule_test_schema_has_index(schema, index_col[..], false) &&
+             deduce_rule_test_schema_has_index(schema, key_index[..], false);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce [relation] typed fields with key/index roles");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce [relation] typed fields with key/index roles (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printn("[FAIL] deduce [relation] typed fields with key/index roles");
+        }
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_relation_attr_combined_role_test(Interp* interp, int* pass, int* fail) {
+    SymbolId rel_sym = interp.symbols.intern("rel-attr-combined");
+    EvalResult r = run(
+        "(block "
+        "  (define ddb-rel-combined (deduce 'open 'memory)) "
+        "  (define [relation ddb-rel-combined] rel-attr-combined "
+        "    (key index ^String id) "
+        "    (^String email)) "
+        "  ddb-rel-combined)",
+        interp
+    );
+
+    bool ok = !r.error.has_error &&
+              r.value != null &&
+              r.value.tag == FFI_HANDLE &&
+              r.value.ffi_val != null &&
+              r.value.ffi_val.lib_handle != null;
+    if (ok) {
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        DeduceRelationSchema* schema = deduce_db_lookup_relation_schema(db, rel_sym);
+        usz[2] full = { 0, 1 };
+        usz[1] key_index_col = { 0 };
+        ok = schema != null &&
+             schema.arity == 2 &&
+             deduce_rule_test_schema_has_index(schema, full[..], true) &&
+             deduce_rule_test_schema_has_index(schema, key_index_col[..], true);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce [relation] combined key/index role markers");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce [relation] combined key/index role markers (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printn("[FAIL] deduce [relation] combined key/index role markers");
+        }
+        (*fail)++;
+    }
+}
+
 fn void run_deduce_command_void_return_tests(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
@@ -394,6 +481,8 @@ fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_open_named_test(interp, pass, fail);
     run_deduce_durability_restart_test(interp, pass, fail);
     run_deduce_relation_attr_define_test(interp, pass, fail);
+    run_deduce_relation_attr_typed_role_schema_test(interp, pass, fail);
+    run_deduce_relation_attr_combined_role_test(interp, pass, fail);
     run_deduce_crud_example_flow_test(interp, pass, fail);
     run_deduce_memory_open_isolation_test(interp, pass, fail);
     run_deduce_reopen_stress_test(interp, pass, fail);

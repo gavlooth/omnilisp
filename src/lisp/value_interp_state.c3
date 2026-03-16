@@ -211,11 +211,22 @@ struct Interp {
 
     // StackCtx-based continuation system (stack engine)
     main::StackPool stack_ctx_pool;
+    Continuation* continuation_head;   // Intrusive list of root-owned continuation objects
     Value* resume_value;           // Value passed to (k val) — read by capture on resume
     Value* yield_value;            // Value passed by (yield val) — read by resume
     main::ScopeRegion* yield_scope; // Scope owning yield_value while coroutine is suspended
     void* current_reset_state;     // Pointer to current ResetState (in jit.c3)
 
+}
+
+fn void interp_clear_resume_value(Interp* self) @inline {
+    self.resume_value = null;
+}
+
+fn Value* interp_consume_resume_value_or_nil(Interp* self) @inline {
+    Value* resume = self.resume_value;
+    self.resume_value = null;
+    return resume != null ? resume : make_nil(self);
 }
 
 fn void interp_init_runtime_state(Interp* self) {
@@ -239,7 +250,7 @@ fn void interp_init_runtime_state(Interp* self) {
     self.raise_payload = null;
 
     main::stack_pool_init(&self.stack_ctx_pool);
-    g_stack_ctx_pool = &self.stack_ctx_pool;
+    self.continuation_head = null;
     self.resume_value = null;
     self.yield_value = null;
     self.yield_scope = null;
@@ -390,6 +401,7 @@ fn void interp_init_macro_state(Interp* self) {
 }
 
 fn void Interp.init(Interp* self) {
+    jit_runtime_attach_interp(self);
     interp_init_runtime_state(self);
     interp_init_core_symbols(self);
     interp_init_type_symbols(self);
@@ -405,8 +417,12 @@ fn void Interp.init(Interp* self) {
 fn Continuation* Interp.alloc_lisp_continuation(Interp* self) {
     Continuation* k = (Continuation*)self.root_scope.alloc(Continuation.sizeof);
     k.ctx = null;
+    k.owner_interp = self;
     k.is_coroutine_based = false;
     k.handle_state = null;
+    k.handle_retained = false;
+    k.next_owned = self.continuation_head;
+    self.continuation_head = k;
     return k;
 }
 

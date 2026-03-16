@@ -73,3 +73,32 @@ fn bool test_pool_lifecycle() {
     return same_ptr && new_id;
 }
 
+fn bool test_pool_double_destroy_idempotent() {
+    StackPool pool;
+    stack_pool_init(&pool);
+
+    StackCtx* c = stack_ctx_create(&pool);
+    if (c == null) return false;
+
+    stack_ctx_destroy(c, &pool);
+    if (pool.pool_size != 1) {
+        stack_pool_shutdown(&pool);
+        return false;
+    }
+
+    // Repeat destroy should be a no-op for already pooled contexts.
+    stack_ctx_destroy(c, &pool);
+    if (pool.pool_size != 1) {
+        stack_pool_shutdown(&pool);
+        return false;
+    }
+
+    StackCtx* reused = stack_ctx_create(&pool);
+    bool ok = reused == c && pool.pool_size == 0;
+    if (reused != null) {
+        stack_ctx_destroy(reused, &pool);
+    }
+    stack_pool_shutdown(&pool);
+    return ok;
+}
+

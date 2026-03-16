@@ -1,6 +1,33 @@
 module main;
 
 
+fn void stack_pool_link_ctx(StackPool* pool, StackCtx* c) @inline {
+    c.all_next = pool.all_list;
+    pool.all_list = c;
+    pool.all_count++;
+}
+
+fn void stack_pool_unlink_ctx(StackPool* pool, StackCtx* c) {
+    StackCtx* prev = null;
+    StackCtx* cur = pool.all_list;
+    while (cur != null) {
+        if (cur == c) {
+            if (prev == null) {
+                pool.all_list = cur.all_next;
+            } else {
+                prev.all_next = cur.all_next;
+            }
+            c.all_next = null;
+            assert(pool.all_count > 0, "stack pool all_count underflow");
+            pool.all_count--;
+            return;
+        }
+        prev = cur;
+        cur = cur.all_next;
+    }
+    unreachable("stack pool context unlink mismatch");
+}
+
 // =============================================================================
 // SECTION 8: COROUTINE LIFECYCLE
 // =============================================================================
@@ -10,6 +37,9 @@ module main;
  */
 fn StackCtx* stack_ctx_create(StackPool* pool) {
     stack_require_pool_owner(pool, "stack_ctx_create");
+    if (pool.shutting_down) {
+        return null;
+    }
     StackCtx* c;
 
     if (pool.free_list != null) {
@@ -27,6 +57,7 @@ fn StackCtx* stack_ctx_create(StackPool* pool) {
         }
         // Register guard page for stack overflow detection
         stack_guard_register(c.stack.base, GUARD_SIZE);
+        stack_pool_link_ctx(pool, c);
     }
 
     // Initialize state
@@ -40,6 +71,8 @@ fn StackCtx* stack_ctx_create(StackPool* pool) {
     c.parent_ctx = null;
     c.parent_stack_ctx = null;
     c.asan_fake_stack = null;
+    c.owner_pool = pool;
+    c.in_pool_cache = false;
     c.pool_next = null;
     c.user_data = null;
     c.owner_thread_token = stack_current_thread_token();
@@ -58,6 +91,27 @@ fn StackCtx* stack_ctx_create(StackPool* pool) {
 fn void stack_ctx_destroy(StackCtx* c, StackPool* pool) {
     stack_require_ctx_owner(c, "stack_ctx_destroy");
     stack_require_pool_owner(pool, "stack_ctx_destroy");
+    if (c.owner_pool != pool) {
+        unreachable("stack_ctx_destroy: pool ownership mismatch");
+    }
+    if (c.in_pool_cache) {
+        // Idempotency guard: repeated destroy on a pooled context must not
+        // re-enqueue the same node and corrupt the free list.
+        return;
+    }
+    if (c == g_current_stack_ctx || c.status == CTX_RUNNING) {
+        unreachable("stack_ctx_destroy: attempted to free running context");
+    }
+    if (pool.shutting_down) {
+        // Reentrant destroy during pool shutdown: the shutdown walker is the sole
+        // authority for unlinking and final free.
+        c.status = CTX_DEAD;
+        c.result = null;
+        c.parent_ctx = null;
+        c.parent_stack_ctx = null;
+        c.asan_fake_stack = null;
+        return;
+    }
     stack_ctx_run_deferred_destroy(c);
     stack_ctx_run_lifecycle_destroy(c);
     stack_ctx_clear_defer_storage(c);
@@ -70,11 +124,14 @@ fn void stack_ctx_destroy(StackCtx* c, StackPool* pool) {
         c.parent_stack_ctx = null;
         c.asan_fake_stack = null;
         c.user_data = null;
+        c.in_pool_cache = true;
         c.pool_next = pool.free_list;
         pool.free_list = c;
         pool.pool_size++;
     } else {
         // Pool full — unregister guard page and free everything
+        stack_pool_unlink_ctx(pool, c);
+        c.in_pool_cache = false;
         stack_guard_unregister(c.stack.base);
         stack_region_free(&c.stack);
         mem::free(c);

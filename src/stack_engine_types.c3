@@ -73,7 +73,10 @@ struct StackCtx {
     StackCtx* parent_stack_ctx; // Parent stack context (null = main stack)
     void* asan_fake_stack;    // ASAN fiber-switch token for this stack
     uint id;                  // Unique identifier
+    StackPool* owner_pool;    // Owning pool authority for teardown
+    bool in_pool_cache;       // True when currently parked on StackPool.free_list
     StackCtx* pool_next;      // Free-list link for StackPool
+    StackCtx* all_next;       // Intrusive owner-list link for StackPool
     StackCtxBootstrap boot;   // Bootstrap info for first switch
     void* user_data;          // Application-level data (e.g. CoroutineThunkState*)
     void* owner_thread_token; // Thread-affinity token for this context

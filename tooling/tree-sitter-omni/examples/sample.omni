@@ -1,0 +1,12 @@
+(define (inc x) (+ x 1))
+(define [macro] when
+  (syntax-match
+    ((when test body)
+     (template (if test body nil)))))
+
+(let (point {'x 10 'y 20})
+  point.['x])
+
+(handle
+  (signal 'ask 41)
+  (ask value (resolve (+ value 1))))

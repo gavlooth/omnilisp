@@ -6,6 +6,44 @@ import std::io;
 import std::thread;
 import main;
 
+fn uint scheduler_next_async_request_token() {
+    g_scheduler.async_request_token_seed++;
+    if (g_scheduler.async_request_token_seed == 0) g_scheduler.async_request_token_seed = 1;
+    return g_scheduler.async_request_token_seed;
+}
+
+fn PendingDnsCallbackCtx* scheduler_take_dns_callback_ctx(void* req_handle) {
+    if (req_handle == null) return null;
+    PendingDnsCallbackCtx* ctx = (PendingDnsCallbackCtx*)omni_uv_req_get_data(req_handle);
+    if (ctx != null) {
+        omni_uv_req_set_data(req_handle, null);
+    }
+    return ctx;
+}
+
+fn void scheduler_free_dns_callback_ctx(PendingDnsCallbackCtx* ctx) {
+    if (ctx == null) return;
+    if (ctx.host_copy != null) {
+        mem::free(ctx.host_copy);
+        ctx.host_copy = null;
+    }
+    mem::free(ctx);
+}
+
+fn PendingConnectCallbackCtx* scheduler_take_connect_callback_ctx(void* req_handle) {
+    if (req_handle == null) return null;
+    PendingConnectCallbackCtx* ctx = (PendingConnectCallbackCtx*)omni_uv_req_get_data(req_handle);
+    if (ctx != null) {
+        omni_uv_req_set_data(req_handle, null);
+    }
+    return ctx;
+}
+
+fn void scheduler_free_connect_callback_ctx(PendingConnectCallbackCtx* ctx) {
+    if (ctx == null) return;
+    mem::free(ctx);
+}
+
 fn isz scheduler_find_pending_by_handle(void* handle) {
     for (usz i = 0; i < g_scheduler.fiber_count; i++) {
         PendingTcpRead* op = &g_scheduler.pending_reads[i];
@@ -124,6 +162,7 @@ fn void scheduler_close_pending_dns(usz fiber_id) {
         return;
     }
 
+    PendingDnsCallbackCtx* ctx = scheduler_take_dns_callback_ctx(dns.req_handle);
     if (dns.addrinfo_result != null) {
         omni_uv_freeaddrinfo(dns.addrinfo_result);
     }
@@ -133,6 +172,7 @@ fn void scheduler_close_pending_dns(usz fiber_id) {
     if (dns.host_copy != null) {
         mem::free(dns.host_copy);
     }
+    scheduler_free_dns_callback_ctx(ctx);
     g_scheduler.pending_dns[fiber_id] = {};
 }
 
@@ -152,12 +192,17 @@ fn void scheduler_close_pending_tcp_connect(usz fiber_id) {
         return;
     }
 
+    PendingConnectCallbackCtx* ctx = scheduler_take_connect_callback_ctx(pending.req_handle);
     if (pending.req_handle != null) {
         omni_uv_tcp_connect_req_free(pending.req_handle);
     }
     if (pending.tcp_handle != null) {
         omni_uv_tcp_close_and_free(pending.tcp_handle);
     }
+    if (ctx != null && ctx.tcp_handle != null && ctx.tcp_handle != pending.tcp_handle) {
+        omni_uv_tcp_close_and_free(ctx.tcp_handle);
+    }
+    scheduler_free_connect_callback_ctx(ctx);
     g_scheduler.pending_connects[fiber_id] = {};
 }
 

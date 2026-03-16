@@ -36,6 +36,7 @@ extern fn int omni_yyjson_get_bool(YyjsonVal* val) @extern("omni_yyjson_get_bool
 extern fn usz omni_yyjson_arr_size(YyjsonVal* arr) @extern("omni_yyjson_arr_size");
 extern fn YyjsonVal* omni_yyjson_arr_get_first(YyjsonVal* arr) @extern("omni_yyjson_arr_get_first");
 extern fn usz omni_yyjson_obj_size(YyjsonVal* obj) @extern("omni_yyjson_obj_size");
+extern fn YyjsonVal* omni_yyjson_obj_getn(YyjsonVal* obj, char* key, usz len) @extern("omni_yyjson_obj_getn");
 extern fn YyjsonVal* omni_yyjson_obj_get_first(YyjsonVal* obj) @extern("omni_yyjson_obj_get_first");
 extern fn YyjsonVal* omni_yyjson_next(YyjsonVal* val) @extern("omni_yyjson_next");
 

@@ -90,6 +90,8 @@ const usz BOUNDARY_ENV_COPY_FAULT_COUNT =
 enum BoundaryCopyFault : char {
     BOUNDARY_COPY_FAULT_NONE,
     BOUNDARY_COPY_FAULT_MISSING_SCOPE_PROVENANCE,
+    BOUNDARY_COPY_FAULT_CONTEXT_ABORTED,
+    BOUNDARY_COPY_FAULT_CLOSURE_TYPE_SIG_COPY,
     BOUNDARY_COPY_FAULT_NULL_RESULT,
 }
 
@@ -218,6 +220,8 @@ const char[][] BOUNDARY_ENV_COPY_FAULT_NAMES = {
 const char[][] BOUNDARY_COPY_FAULT_NAMES = {
     "none",
     "missing-scope-provenance",
+    "context-aborted",
+    "closure-type-sig-copy",
     "null-result",
 };
 
@@ -325,6 +329,10 @@ fn char[] boundary_copy_fault_message(BoundaryCopyFault fault_code) @inline {
             return "boundary: copy succeeded";
         case BOUNDARY_COPY_FAULT_MISSING_SCOPE_PROVENANCE:
             return "boundary: copy_to_parent_site_ctx requires target/releasing scope provenance";
+        case BOUNDARY_COPY_FAULT_CONTEXT_ABORTED:
+            return "boundary: copy_to_parent_site_ctx aborted";
+        case BOUNDARY_COPY_FAULT_CLOSURE_TYPE_SIG_COPY:
+            return "boundary: closure type signature copy failed in copy_to_parent";
         case BOUNDARY_COPY_FAULT_NULL_RESULT:
             return "boundary: copy_to_parent_site_ctx returned null for non-null input";
     }

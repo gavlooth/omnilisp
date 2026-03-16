@@ -30,8 +30,8 @@ fn void test_eq(Interp* interp, char[] name, char[] expr, long expected, int* pa
     if (jit_checks_enabled()) {
         Expr* ast = parse_for_jit(expr, interp);
         if (ast != null) {
-            JitFn f = jit_compile(ast, interp);
-            if (f != null) {
+            JitCompiledFn f = jit_compile(ast, interp);
+            if (!jit_compiled_fn_is_null(f)) {
                 Value* jv = jit_exec(f, interp);
                 jit_ok = jv != null && jv.tag == INT && jv.int_val == expected;
             }
@@ -55,8 +55,8 @@ fn void test_eq_double(Interp* interp, char[] name, char[] expr, double expected
     if (jit_checks_enabled()) {
         Expr* ast = parse_for_jit(expr, interp);
         if (ast != null) {
-            JitFn f = jit_compile(ast, interp);
-            if (f != null) {
+            JitCompiledFn f = jit_compile(ast, interp);
+            if (!jit_compiled_fn_is_null(f)) {
                 Value* jv = jit_exec(f, interp);
                 jit_ok = jv != null && is_double(jv) && jv.double_val == expected;
             }
@@ -80,8 +80,8 @@ fn void test_truthy(Interp* interp, char[] name, char[] expr, int* pass, int* fa
     if (jit_checks_enabled()) {
         Expr* ast = parse_for_jit(expr, interp);
         if (ast != null) {
-            JitFn f = jit_compile(ast, interp);
-            if (f != null) {
+            JitCompiledFn f = jit_compile(ast, interp);
+            if (!jit_compiled_fn_is_null(f)) {
                 Value* jv = jit_exec(f, interp);
                 jit_ok = jv != null && !is_nil(jv) && !(is_symbol(jv) && jv.sym_val == interp.sym_false);
             }
@@ -105,8 +105,8 @@ fn void test_nil(Interp* interp, char[] name, char[] expr, int* pass, int* fail)
     if (jit_checks_enabled()) {
         Expr* ast = parse_for_jit(expr, interp);
         if (ast != null) {
-            JitFn f = jit_compile(ast, interp);
-            if (f != null) {
+            JitCompiledFn f = jit_compile(ast, interp);
+            if (!jit_compiled_fn_is_null(f)) {
                 Value* jv = jit_exec(f, interp);
                 jit_ok = jv != null && is_nil(jv);
             }
@@ -182,8 +182,8 @@ fn void test_str_val(Interp* interp, char[] name, char[] expr, char[] expected, 
     if (jit_checks_enabled()) {
         Expr* ast = parse_for_jit(expr, interp);
         if (ast != null) {
-            JitFn f = jit_compile(ast, interp);
-            if (f != null) {
+            JitCompiledFn f = jit_compile(ast, interp);
+            if (!jit_compiled_fn_is_null(f)) {
                 Value* jv = jit_exec(f, interp);
                 jit_ok = jv != null && jv.tag == STRING &&
                     str_starts_with(jv.str_chars[:jv.str_len], expected) &&
@@ -215,8 +215,8 @@ fn void test_str(Interp* interp, char[] name, char[] expr, int* pass, int* fail)
     if (jit_checks_enabled()) {
         Expr* ast = parse_for_jit(expr, interp);
         if (ast != null) {
-            JitFn f = jit_compile(ast, interp);
-            if (f != null) {
+            JitCompiledFn f = jit_compile(ast, interp);
+            if (!jit_compiled_fn_is_null(f)) {
                 Value* jv = jit_exec(f, interp);
                 jit_ok = jv != null && jv.tag == STRING;
             }
@@ -240,8 +240,8 @@ fn void test_tag(Interp* interp, char[] name, char[] expr, ValueTag expected, in
     if (jit_checks_enabled()) {
         Expr* ast = parse_for_jit(expr, interp);
         if (ast != null) {
-            JitFn f = jit_compile(ast, interp);
-            if (f != null) {
+            JitCompiledFn f = jit_compile(ast, interp);
+            if (!jit_compiled_fn_is_null(f)) {
                 Value* jv = jit_exec(f, interp);
                 jit_ok = jv != null && jv.tag == expected;
             }
@@ -265,8 +265,8 @@ fn void test_gt(Interp* interp, char[] name, char[] expr, long min, int* pass, i
     if (jit_checks_enabled()) {
         Expr* ast = parse_for_jit(expr, interp);
         if (ast != null) {
-            JitFn f = jit_compile(ast, interp);
-            if (f != null) {
+            JitCompiledFn f = jit_compile(ast, interp);
+            if (!jit_compiled_fn_is_null(f)) {
                 Value* jv = jit_exec(f, interp);
                 jit_ok = jv != null && jv.tag == INT && jv.int_val > min;
             }
@@ -348,8 +348,8 @@ fn void test_eq_jit(Interp* interp, char[] name, char[] source, long expected, i
     }
     Expr* ast = parse_for_jit(source, interp);
     if (ast == null) { (*fail)++; io::printfn("[FAIL] %s (JIT parse error)", (ZString)name); return; }
-    JitFn f = jit_compile(ast, interp);
-    if (f == null) { (*fail)++; io::printfn("[FAIL] %s (JIT compile error)", (ZString)name); return; }
+    JitCompiledFn f = jit_compile(ast, interp);
+    if (jit_compiled_fn_is_null(f)) { (*fail)++; io::printfn("[FAIL] %s (JIT compile error)", (ZString)name); return; }
     Value* result = jit_exec(f, interp);
     if (result != null && result.tag == INT && result.int_val == expected) {
         emit_pass(name);
@@ -368,8 +368,8 @@ fn void test_nil_jit(Interp* interp, char[] name, char[] source, int* pass, int*
     }
     Expr* ast = parse_for_jit(source, interp);
     if (ast == null) { (*fail)++; io::printfn("[FAIL] %s (JIT parse error)", (ZString)name); return; }
-    JitFn f = jit_compile(ast, interp);
-    if (f == null) { (*fail)++; io::printfn("[FAIL] %s (JIT compile error)", (ZString)name); return; }
+    JitCompiledFn f = jit_compile(ast, interp);
+    if (jit_compiled_fn_is_null(f)) { (*fail)++; io::printfn("[FAIL] %s (JIT compile error)", (ZString)name); return; }
     Value* result = jit_exec(f, interp);
     if (result == null || is_nil(result)) {
         emit_pass(name);
@@ -395,8 +395,8 @@ fn bool eval_expr_as_double(Interp* interp, char[] expr, double expected) {
 fn bool eval_jit_as_double(Interp* interp, char[] expr, double expected) {
     Expr* ast = parse_for_jit(expr, interp);
     if (ast == null) return false;
-    JitFn f = jit_compile(ast, interp);
-    if (f == null) return false;
+    JitCompiledFn f = jit_compile(ast, interp);
+    if (jit_compiled_fn_is_null(f)) return false;
     Value* jv = jit_exec(f, interp);
     return value_matches_double(jv, expected);
 }

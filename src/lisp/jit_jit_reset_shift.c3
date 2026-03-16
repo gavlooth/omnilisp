@@ -61,8 +61,8 @@ fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
     main::StackContext parent_ctx;
     main::stack_ctx_switch_to(ctx, &parent_ctx);
 
+    restore_interp_state_preserve_raise(interp, &saved);
     interp.current_reset_state = saved_state;
-    restore_interp_state(interp, &saved);
 
     // Stack overflow — context hit guard page
     if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
@@ -131,18 +131,26 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
 
     // Suspend the context — control returns to jit_reset_impl
     if (!suspend_with_scope_guard(current, interp.current_scope)) {
+        rstate.shifted = false;
+        rstate.shift_body = null;
+        rstate.shift_env = null;
+        restore_interp_state_preserve_raise(interp, &saved);
         return raise_error_with_payload_names(interp, "runtime", "runtime/suspend-scope-guard", "stack engine: failed to register suspend scope guard");
     }
 
     // === RESUMED HERE by (k val) via jit_apply_continuation_impl ===
-    restore_interp_state(interp, &saved);
+    restore_interp_state_preserve_raise(interp, &saved);
 
-    return interp.resume_value;
+    return interp_consume_resume_value_or_nil(interp);
 }
 
-fn bool jit_continuation_validate_ctx(main::StackCtx* ctx, EvalResult* out_err) {
+fn bool jit_continuation_validate_ctx(main::StackCtx* ctx, Interp* interp, EvalResult* out_err) {
     if (ctx == null) {
         *out_err = eval_error("cannot resume continuation: null stack context");
+        return false;
+    }
+    if (ctx.owner_pool != &interp.stack_ctx_pool) {
+        *out_err = eval_error("cannot resume continuation from a different interpreter");
         return false;
     }
     if (ctx.status == main::StackCtxStatus.CTX_COMPLETED || ctx.status == main::StackCtxStatus.CTX_DEAD) {
@@ -165,6 +173,41 @@ fn void jit_continuation_init_resume_state(ResetState* resume_state, Interp* int
     resume_state.interp = interp;
 }
 
+fn void jit_continuation_destroy_ctx(main::StackCtx* ctx, Interp* interp) @inline {
+    if (ctx == null) return;
+    main::StackPool* owner_pool = ctx.owner_pool;
+    if (owner_pool == null) owner_pool = &interp.stack_ctx_pool;
+    main::stack_ctx_destroy(ctx, owner_pool);
+}
+
+fn bool jit_continuation_needs_fiber_yield() @inline {
+    if (!g_scheduler.running) return false;
+    usz fid = g_scheduler.current_fiber_id;
+    if (fid >= g_scheduler.fiber_count) return false;
+    return g_scheduler.fibers[fid].state == FIBER_BLOCKED;
+}
+
+fn bool jit_continuation_drive_blocked_fiber(
+    main::StackCtx* target,
+    Interp* interp,
+    main::StackContext* parent_ctx
+) {
+    while (target != null &&
+           parent_ctx != null &&
+           target.status == main::StackCtxStatus.CTX_SUSPENDED &&
+           jit_continuation_needs_fiber_yield()) {
+        main::StackCtx* outer_ctx = main::g_current_stack_ctx;
+        if (outer_ctx == null) return false;
+        if (!prim_yield_suspend_and_restore(outer_ctx, interp)) return false;
+
+        SavedInterpState saved;
+        save_interp_state(interp, &saved);
+        main::stack_ctx_resume(target, parent_ctx);
+        restore_interp_state_preserve_raise(interp, &saved);
+    }
+    return true;
+}
+
 fn EvalResult jit_continuation_finish(main::StackCtx* target, ResetState* resume_state, Interp* interp) {
     if (resume_state.shifted) {
         // The resumed body hit another shift — evaluate that shift's body.
@@ -177,8 +220,17 @@ fn EvalResult jit_continuation_finish(main::StackCtx* target, ResetState* resume
         return eval_ok(shift_result);
     }
 
+    if (target.status == main::StackCtxStatus.CTX_SUSPENDED) {
+        // Continuation application is expected to settle in this call path.
+        // Do not treat a still-suspended clone as a completed frame/result.
+        jit_continuation_destroy_ctx(target, interp);
+        interp_clear_resume_value(interp);
+        return eval_error("continuation suspended before completion");
+    }
+
     Value* result = (Value*)target.result;
-    main::stack_ctx_destroy(target, &interp.stack_ctx_pool);
+    jit_continuation_destroy_ctx(target, interp);
+    interp_clear_resume_value(interp);
     if (result != null && result.tag == ERROR) {
         return eval_error(result.str_chars[:result.str_len]);
     }
@@ -192,9 +244,23 @@ fn EvalResult jit_continuation_finish(main::StackCtx* target, ResetState* resume
  * as a "template" for potential future invocations.
  */
 fn EvalResult jit_apply_continuation_impl(Value* k_val, Value* arg, Interp* interp) {
-    main::StackCtx* ctx = k_val.cont_val.ctx;
+    Continuation* k = k_val.cont_val;
+    if (k == null) return eval_error("cannot resume continuation: null continuation");
+    if (k.owner_interp != null && k.owner_interp != interp) {
+        return eval_error("cannot resume continuation from a different interpreter");
+    }
+    main::StackCtx* ctx = k.ctx;
     EvalResult err;
-    if (!jit_continuation_validate_ctx(ctx, &err)) return err;
+    if (!jit_continuation_validate_ctx(ctx, interp, &err)) return err;
+    if (k.handle_state != null) {
+        // Effect-handler continuations require resolve semantics so handler
+        // snapshot reinstall and single-shot lifecycle stay coherent.
+        Value* resolved = jit_resolve_value(interp, k_val, arg);
+        if (resolved != null && resolved.tag == ERROR) {
+            return eval_error(resolved.str_chars[:resolved.str_len]);
+        }
+        return eval_ok(resolved);
+    }
 
     bool asan_runtime = main::stack_runtime_asan_enabled();
     main::StackCtx* target = null;
@@ -202,7 +268,7 @@ fn EvalResult jit_apply_continuation_impl(Value* k_val, Value* arg, Interp* inte
         // ASAN fiber instrumentation does not support cloned suspended stacks.
         // Fall back to one-shot continuation resume in sanitizer builds.
         target = ctx;
-        k_val.cont_val.ctx = null;
+        k.ctx = null;
     } else {
         // Clone for multi-shot safety (original stays suspended as template)
         target = main::stack_ctx_clone(ctx, &interp.stack_ctx_pool);
@@ -228,12 +294,19 @@ fn EvalResult jit_apply_continuation_impl(Value* k_val, Value* arg, Interp* inte
     main::StackContext parent_ctx;
     main::stack_ctx_resume(target, &parent_ctx);
 
+    restore_interp_state_preserve_raise(interp, &saved);
     interp.current_reset_state = saved_state;
-    restore_interp_state(interp, &saved);
+
+    if (!jit_continuation_drive_blocked_fiber(target, interp, &parent_ctx)) {
+        jit_continuation_destroy_ctx(target, interp);
+        interp_clear_resume_value(interp);
+        return eval_error("continuation: async yield propagation failed");
+    }
 
     // Stack overflow — clone hit guard page
     if (target.status == main::StackCtxStatus.CTX_DEAD) {
-        main::stack_ctx_destroy(target, &interp.stack_ctx_pool);
+        jit_continuation_destroy_ctx(target, interp);
+        interp_clear_resume_value(interp);
         return eval_error("stack overflow in continuation");
     }
 

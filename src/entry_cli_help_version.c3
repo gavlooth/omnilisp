@@ -11,9 +11,12 @@ fn int print_help() {
     io::printn("  omni                              Start the REPL");
     io::printn("  omni <script.omni>                Run a script file");
     io::printn("  omni --repl                       Start the REPL (explicit)");
+    io::printn("  omni --repl --json                Start structured JSON REPL transport");
+    io::printn("  omni --eval '<expr>' [--json]     Evaluate one Omni expression");
     io::printn("  omni --test-suite <all|stack|scope|lisp>  Run one test suite (default: all)");
     io::printn("");
     io::printn("Building:");
+    io::printn("  omni --check <file> [--json]      Parse/check Omni source without executing it");
     io::printn("  omni --build <file> [-o output]   AOT compile to standalone binary");
     io::printn("  omni --compile <file> <out.c3>    Compile Omni source to C3");
     io::printn("");

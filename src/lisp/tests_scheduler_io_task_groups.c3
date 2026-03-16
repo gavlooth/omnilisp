@@ -248,6 +248,145 @@ fn void run_scheduler_cancel_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+
+    {
+        scheduler_init();
+        g_scheduler.fiber_count = 4;
+        g_scheduler.current_fiber_id = NO_FIBER;
+        g_scheduler.running = false;
+        g_scheduler.resume_offset = 0;
+        g_scheduler.fibers[0] = {};
+        g_scheduler.fibers[1] = {};
+        g_scheduler.fibers[2] = {};
+        g_scheduler.fibers[3] = {};
+        g_scheduler.pending_reads[0] = {};
+        g_scheduler.pending_reads[1] = {};
+        g_scheduler.pending_reads[2] = {};
+        g_scheduler.pending_reads[3] = {};
+        g_scheduler.pending_offloads[0] = {};
+        g_scheduler.pending_offloads[1] = {};
+        g_scheduler.pending_offloads[2] = {};
+        g_scheduler.pending_offloads[3] = {};
+        g_scheduler.pending_sleeps[0] = {};
+        g_scheduler.pending_sleeps[1] = {};
+        g_scheduler.pending_sleeps[2] = {};
+        g_scheduler.pending_sleeps[3] = {};
+        g_scheduler.pending_dns[0] = {};
+        g_scheduler.pending_dns[1] = {};
+        g_scheduler.pending_dns[2] = {};
+        g_scheduler.pending_dns[3] = {};
+        g_scheduler.pending_connects[0] = {};
+        g_scheduler.pending_connects[1] = {};
+        g_scheduler.pending_connects[2] = {};
+        g_scheduler.pending_connects[3] = {};
+        g_scheduler.pending_accepts[0] = {};
+        g_scheduler.pending_accepts[1] = {};
+        g_scheduler.pending_accepts[2] = {};
+        g_scheduler.pending_accepts[3] = {};
+
+        // Grandparent waits for two live children: sibling(1) and parent(2).
+        g_scheduler.fibers[0].state = FIBER_BLOCKED;
+        g_scheduler.fibers[0].parent_id = NO_FIBER;
+        g_scheduler.fibers[0].live_children = 2;
+        g_scheduler.fibers[0].waiting_children = true;
+
+        g_scheduler.fibers[1].state = FIBER_READY;
+        g_scheduler.fibers[1].parent_id = 0;
+
+        // Parent already completed body and is waiting only on child(3).
+        g_scheduler.fibers[2].state = FIBER_BLOCKED;
+        g_scheduler.fibers[2].parent_id = 0;
+        g_scheduler.fibers[2].live_children = 1;
+        g_scheduler.fibers[2].waiting_children = true;
+        g_scheduler.fibers[2].pending_result = make_int(interp, 99);
+
+        g_scheduler.fibers[3].state = FIBER_READY;
+        g_scheduler.fibers[3].parent_id = 2;
+
+        (void)scheduler_cancel_fiber(2, interp);
+        bool ok = g_scheduler.fibers[2].state == FIBER_DONE &&
+                  g_scheduler.fibers[2].result != null &&
+                  g_scheduler.fibers[2].result.tag == ERROR &&
+                  g_scheduler.fibers[0].state == FIBER_BLOCKED &&
+                  g_scheduler.fibers[0].waiting_children &&
+                  g_scheduler.fibers[0].live_children == 1;
+        if (ok) {
+            emit_pass_literal("[PASS] fiber-cancel avoids parent double-complete after child cascade");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] fiber-cancel avoids parent double-complete after child cascade");
+            (*fail)++;
+        }
+    }
+
+    {
+        scheduler_init();
+        g_scheduler.fiber_count = 2;
+        g_scheduler.current_fiber_id = NO_FIBER;
+        g_scheduler.running = false;
+        g_scheduler.resume_offset = 0;
+        g_scheduler.fibers[0] = {};
+        g_scheduler.fibers[1] = {};
+        g_scheduler.pending_reads[0] = {};
+        g_scheduler.pending_reads[1] = {};
+        g_scheduler.pending_offloads[0] = {};
+        g_scheduler.pending_offloads[1] = {};
+        g_scheduler.pending_sleeps[0] = {};
+        g_scheduler.pending_sleeps[1] = {};
+        g_scheduler.pending_dns[0] = {};
+        g_scheduler.pending_dns[1] = {};
+        g_scheduler.pending_connects[0] = {};
+        g_scheduler.pending_connects[1] = {};
+        g_scheduler.pending_accepts[0] = {};
+        g_scheduler.pending_accepts[1] = {};
+
+        // Parent has a live child currently RUNNING, so child cascade cannot
+        // cancel it immediately. Parent must remain waiting_children until that
+        // child exits.
+        g_scheduler.fibers[0].state = FIBER_READY;
+        g_scheduler.fibers[0].parent_id = NO_FIBER;
+        g_scheduler.fibers[0].live_children = 1;
+
+        g_scheduler.fibers[1].state = FIBER_RUNNING;
+        g_scheduler.fibers[1].parent_id = 0;
+
+        bool cancelled = scheduler_cancel_fiber(0, interp);
+        bool ok = cancelled &&
+                  g_scheduler.fibers[0].state == FIBER_BLOCKED &&
+                  g_scheduler.fibers[0].waiting_children &&
+                  g_scheduler.fibers[0].live_children == 1 &&
+                  g_scheduler.fibers[0].pending_result != null &&
+                  g_scheduler.fibers[0].pending_result.tag == ERROR &&
+                  g_scheduler.fibers[1].state == FIBER_RUNNING;
+        if (ok) {
+            emit_pass_literal("[PASS] fiber-cancel keeps parent blocked while running child is live");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] fiber-cancel keeps parent blocked while running child is live");
+            (*fail)++;
+        }
+
+        // Manual fixture reset so this synthetic RUNNING child does not leak
+        // scheduler state into subsequent tests.
+        g_scheduler.fiber_count = 0;
+        g_scheduler.current_fiber_id = NO_FIBER;
+        g_scheduler.running = false;
+        g_scheduler.resume_offset = 0;
+        g_scheduler.fibers[0] = {};
+        g_scheduler.fibers[1] = {};
+        g_scheduler.pending_reads[0] = {};
+        g_scheduler.pending_reads[1] = {};
+        g_scheduler.pending_offloads[0] = {};
+        g_scheduler.pending_offloads[1] = {};
+        g_scheduler.pending_sleeps[0] = {};
+        g_scheduler.pending_sleeps[1] = {};
+        g_scheduler.pending_dns[0] = {};
+        g_scheduler.pending_dns[1] = {};
+        g_scheduler.pending_connects[0] = {};
+        g_scheduler.pending_connects[1] = {};
+        g_scheduler.pending_accepts[0] = {};
+        g_scheduler.pending_accepts[1] = {};
+    }
 }
 
 fn void run_scheduler_fairness_tests(Interp* interp, int* pass, int* fail) {

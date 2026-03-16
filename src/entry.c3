@@ -13,11 +13,17 @@ fn int main(int argc, char** argv) {
     idx = find_flag_index(argc, argv, "--language-ref", "--lang-ref", "--manual");
     if (idx >= 0) return print_language_reference();
 
+    idx = find_flag_index(argc, argv, "--eval");
+    if (idx >= 0) return run_eval_mode(argc, argv, idx);
+
     idx = find_flag_index(argc, argv, "--init");
     if (idx >= 0) return run_init(argc, argv, idx);
 
     idx = find_flag_index(argc, argv, "--bind");
     if (idx >= 0) return run_bind(argc, argv, idx);
+
+    idx = find_flag_index(argc, argv, "--check");
+    if (idx >= 0) return run_check_mode(argc, argv, idx);
 
     idx = find_flag_index(argc, argv, "--build");
     if (idx >= 0) return run_build(argc, argv, idx);
@@ -42,8 +48,8 @@ fn int main(int argc, char** argv) {
     }
 
     idx = find_flag_index(argc, argv, "--repl", "-repl");
-    if (idx >= 0) return run_repl_mode();
+    if (idx >= 0) return run_repl_mode(argc, argv, idx);
 
     if (argc > 1) return run_script_mode(argv[1]);
-    return run_test_mode_with_self(argv[0]);
+    return run_repl_mode(argc, argv, argc);
 }

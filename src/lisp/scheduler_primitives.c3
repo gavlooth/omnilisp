@@ -29,17 +29,28 @@ fn void scheduler_cancel_fiber_children(usz fiber_id, Interp* interp) {
 
 fn bool scheduler_cancel_fiber(usz fiber_id, Interp* interp) {
     if (fiber_id >= g_scheduler.fiber_count) return false;
+    if (!scheduler_fiber_belongs_to_interp(fiber_id, interp)) return false;
     FiberEntry* f = &g_scheduler.fibers[fiber_id];
 
     // Can only cancel READY or BLOCKED fibers
     if (!scheduler_fiber_is_cancellable(f)) return false;
+    f.cancel_requested = true;
 
     // Cancel all children first (recursive)
     scheduler_cancel_fiber_children(fiber_id, interp);
 
+    // Child cancellation can complete this fiber (for example when the final
+    // awaited child transitions the parent from waiting_children -> DONE).
+    if (f.state == FIBER_DONE) return true;
+    // Re-check cancellability to avoid state races before completion.
+    if (!scheduler_fiber_is_cancellable(f)) {
+        f.cancel_requested = false;
+        return false;
+    }
+
     // Complete with cancellation error
     Value* cancel_err = scheduler_raise(interp, "scheduler/fiber-cancelled", "fiber cancelled");
-    scheduler_mark_done(fiber_id, cancel_err, interp);
+    scheduler_complete_fiber(fiber_id, cancel_err, interp);
     return true;
 }
 
@@ -57,6 +68,13 @@ fn Value* prim_fiber_cancel(Value*[] args, Env* env, Interp* interp) {
         interp
     );
     if (parse_err != null) return parse_err;
+    if (!scheduler_fiber_belongs_to_interp(fiber_id, interp)) {
+        return scheduler_raise(
+            interp,
+            "scheduler/fiber-owner-mismatch",
+            "fiber-cancel: fiber belongs to a different interpreter"
+        );
+    }
 
     // Cannot cancel self
     if (scheduler_is_running_fiber_context() && g_scheduler.current_fiber_id == fiber_id) {
@@ -78,6 +96,8 @@ fn Value* prim_fiber_cancel(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_spawn(Value*[] args, Env* env, Interp* interp) {
+    scheduler_reset_if_idle();
+
     if (args.len < 1) return scheduler_raise(interp, "scheduler/spawn-expected-thunk", "spawn: expected (spawn thunk)");
 
     Value* thunk = args[0];
@@ -96,8 +116,14 @@ fn Value* prim_spawn(Value*[] args, Env* env, Interp* interp) {
         parent_id = g_scheduler.current_fiber_id;
     }
 
-    usz id = scheduler_add_fiber(co, parent_id, interp);
-    if (id >= MAX_FIBERS) return scheduler_raise(interp, "scheduler/spawn-scheduler-full", "spawn: scheduler full");
+    bool promotion_failed = false;
+    usz id = scheduler_add_fiber(co, parent_id, interp, &promotion_failed);
+    if (id >= MAX_FIBERS) {
+        if (promotion_failed) {
+            return scheduler_raise(interp, "scheduler/spawn-scheduler-promotion-failed", "spawn: failed to promote coroutine into root scope");
+        }
+        return scheduler_raise(interp, "scheduler/spawn-scheduler-full", "spawn: scheduler full");
+    }
 
     if (parent_id < g_scheduler.fiber_count) {
         g_scheduler.fibers[parent_id].live_children++;
@@ -112,6 +138,16 @@ fn Value* scheduler_result_or_nil(usz fiber_id, Interp* interp) @inline {
 }
 
 fn Value* scheduler_await_in_fiber_context(usz target, Interp* interp) {
+    Value* ctx_err = scheduler_require_fiber_root_context("await", interp);
+    if (ctx_err != null) return ctx_err;
+    if (!scheduler_fiber_belongs_to_interp(target, interp)) {
+        return scheduler_raise(
+            interp,
+            "scheduler/fiber-owner-mismatch",
+            "await: fiber belongs to a different interpreter"
+        );
+    }
+
     usz waiter_id = g_scheduler.current_fiber_id;
     FiberEntry* waiter = &g_scheduler.fibers[waiter_id];
 
@@ -176,18 +212,29 @@ fn Value* prim_await(Value*[] args, Env* env, Interp* interp) {
         interp
     );
     if (parse_err != null) return parse_err;
+    if (!scheduler_fiber_belongs_to_interp(target, interp)) {
+        return scheduler_raise(
+            interp,
+            "scheduler/fiber-owner-mismatch",
+            "await: fiber belongs to a different interpreter"
+        );
+    }
 
     if (scheduler_is_running_fiber_context()) {
         return scheduler_await_in_fiber_context(target, interp);
     }
 
     if (g_scheduler.fibers[target].state == FIBER_DONE) {
-        return scheduler_result_or_nil(target, interp);
+        Value* out = scheduler_result_or_nil(target, interp);
+        scheduler_reset_if_idle();
+        return out;
     }
 
     Value* run_err = scheduler_run_until(target, interp);
     if (run_err != null) return run_err;
-    return scheduler_result_or_nil(target, interp);
+    Value* out = scheduler_result_or_nil(target, interp);
+    scheduler_reset_if_idle();
+    return out;
 }
 
 // ============================================================
@@ -197,6 +244,13 @@ fn Value* prim_await(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_run_fibers(Value*[] args, Env* env, Interp* interp) {
+    if (g_scheduler.running) {
+        return scheduler_raise(
+            interp,
+            "scheduler/reentrant-run-loop",
+            "run-fibers: scheduler run loop is already active"
+        );
+    }
     Value* run_err = scheduler_run_all(interp);
     if (run_err != null) return run_err;
     return make_void(interp);
@@ -285,6 +339,13 @@ fn Value* scheduler_fail_run_loop(char[] code, char[] message, Interp* interp) {
 }
 
 fn Value* scheduler_run_until(usz target, Interp* interp) {
+    if (g_scheduler.running) {
+        return scheduler_raise(
+            interp,
+            "scheduler/reentrant-run-loop",
+            "await: scheduler run loop is already active"
+        );
+    }
     g_scheduler.running = true;
     defer {
         g_scheduler.running = false;
@@ -361,6 +422,13 @@ fn void scheduler_reset_if_idle() {
 }
 
 fn Value* scheduler_run_all(Interp* interp) {
+    if (g_scheduler.running) {
+        return scheduler_raise(
+            interp,
+            "scheduler/reentrant-run-loop",
+            "run-fibers: scheduler run loop is already active"
+        );
+    }
     g_scheduler.running = true;
     defer {
         g_scheduler.running = false;

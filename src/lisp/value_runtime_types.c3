@@ -39,7 +39,7 @@ faultdef
     EXPECTED_SYMBOL;
 
 // Compile-time debug flag: set to false for release builds (zero-cost elimination).
-const bool DEBUG_BUILD = true;
+const bool DEBUG_BUILD = false;
 
 // =============================================================================
 // SECTION 1: VALUE TYPES
@@ -152,8 +152,11 @@ struct Closure {
  */
 struct Continuation {
     StackCtx* ctx;            // Suspended stack context backing this continuation
+    Interp* owner_interp;     // Owning interpreter for boundary ownership checks
     bool  is_coroutine_based; // Always true (kept for resolve dispatch)
     void* handle_state;   // HandleEffectState* (for resolve to reinstall handler)
+    bool  handle_retained; // True once boundary retention increments handle_state refcount
+    Continuation* next_owned; // Intrusive list for interpreter teardown invalidation
 }
 
 /**

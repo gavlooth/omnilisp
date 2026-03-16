@@ -135,6 +135,208 @@ fn void run_scheduler_thread_task_completion_boundary_tests(Interp* interp, int*
     }
 }
 
+fn void run_scheduler_thread_task_null_completion_fail_closed_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: null completion delivery into thread-task completion path
+    // must fail closed (error completion or drop) and restore boundary/runtime state.
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
+
+    bool ok = true;
+    usz failed_step = 0;
+    char[] failed_phase = "";
+
+    for (usz i = 0; i < 16; i++) {
+        usz task_id = scheduler_alloc_thread_task();
+        if (task_id == NO_TASK) {
+            ok = false;
+            failed_step = i;
+            failed_phase = "alloc-task";
+            break;
+        }
+
+        uint generation = 0;
+        if (!scheduler_get_thread_task_generation(task_id, &generation) || generation == 0) {
+            scheduler_drop_thread_task(task_id);
+            ok = false;
+            failed_step = i;
+            failed_phase = "generation";
+            break;
+        }
+
+        bool started = scheduler_try_begin_thread_task(task_id, generation);
+        scheduler_complete_thread_task(task_id, null, generation);
+        int wait_state = scheduler_wait_thread_task_completion_state(task_id, generation, 0);
+        bool resolved = false;
+        if (wait_state == SCHEDULER_JOIN_WAIT_READY) {
+            OffloadCompletion* completion = scheduler_take_thread_task_completion(task_id, generation);
+            resolved = completion != null &&
+                       completion.kind == OFFLOAD_RES_ERROR &&
+                       !scheduler_thread_task_exists(task_id, generation);
+            if (completion != null) scheduler_free_offload_completion(completion);
+        } else if (wait_state == SCHEDULER_JOIN_WAIT_INVALID) {
+            resolved = !scheduler_thread_task_exists(task_id, generation);
+        }
+        bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+
+        if (!started || !resolved || !state_ok) {
+            ok = false;
+            failed_step = i;
+            if (!started) {
+                failed_phase = "start";
+            } else if (!resolved) {
+                failed_phase = "resolve";
+            } else {
+                failed_phase = "boundary";
+            }
+            scheduler_drop_thread_task(task_id, generation);
+            break;
+        }
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler thread-task null completion fail-closed boundary restore");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] scheduler thread-task null completion fail-closed boundary restore at step %d (%s)",
+            (int)failed_step,
+            (ZString)failed_phase
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_scheduler_waiter_take_does_not_strand_blocked_fiber_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: completion-take paths must not strand an already-registered
+    // blocked waiter fiber when another consumer takes completion first.
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
+    bool ok = true;
+    char[] failed_phase = "";
+
+    scheduler_init();
+    usz saved_fiber_count = g_scheduler.fiber_count;
+    usz saved_current_fiber_id = g_scheduler.current_fiber_id;
+    bool saved_running = g_scheduler.running;
+    FiberEntry saved_fiber_0 = g_scheduler.fibers[0];
+    FiberEntry saved_fiber_1 = g_scheduler.fibers[1];
+    uint saved_join_token_1 = g_scheduler.fiber_join_wait_token[1];
+    uint saved_latched_task_1 = g_scheduler.latched_task_done_wake_epoch[1];
+    uint saved_latched_os_thread_1 = g_scheduler.latched_os_thread_done_wake_epoch[1];
+
+    if (g_scheduler.fiber_count < 2) g_scheduler.fiber_count = 2;
+    g_scheduler.fibers[1] = {};
+    g_scheduler.fibers[1].state = FIBER_BLOCKED;
+    g_scheduler.fiber_join_wait_token[1] = 0;
+    g_scheduler.latched_task_done_wake_epoch[1] = 0;
+    g_scheduler.latched_os_thread_done_wake_epoch[1] = 0;
+
+    {
+        usz task_id = scheduler_alloc_thread_task();
+        uint generation = 0;
+        OffloadCompletion* taken = null;
+        if (task_id == NO_TASK ||
+            !scheduler_get_thread_task_generation(task_id, &generation) ||
+            generation == 0) {
+            ok = false;
+            failed_phase = "task-alloc";
+            if (task_id != NO_TASK) scheduler_drop_thread_task(task_id);
+        } else if (!scheduler_try_begin_thread_task(task_id, generation)) {
+            ok = false;
+            failed_phase = "task-begin";
+            scheduler_drop_thread_task(task_id, generation);
+        } else {
+            int wait_state = scheduler_register_thread_task_waiter(task_id, generation, 1);
+            OffloadCompletion* completion = scheduler_make_task_cancel_completion();
+            if (wait_state != SCHEDULER_JOIN_WAIT_REGISTERED || completion == null) {
+                ok = false;
+                failed_phase = "task-register";
+                if (completion != null) scheduler_free_offload_completion(completion);
+                scheduler_drop_thread_task(task_id, generation);
+            } else {
+                scheduler_complete_thread_task(task_id, completion, generation);
+                taken = scheduler_take_thread_task_completion(task_id, generation);
+                drain_wakeups();
+                bool waiter_woken = g_scheduler.fibers[1].state == FIBER_READY;
+                bool token_cleared = g_scheduler.fiber_join_wait_token[1] == 0;
+                if (taken == null || !waiter_woken || !token_cleared) {
+                    ok = false;
+                    failed_phase = "task-wake";
+                }
+                if (taken != null) scheduler_free_offload_completion(taken);
+                if (scheduler_thread_task_exists(task_id, generation)) {
+                    scheduler_drop_thread_task(task_id, generation);
+                }
+            }
+        }
+    }
+
+    if (ok) {
+        g_scheduler.fibers[1].state = FIBER_BLOCKED;
+        g_scheduler.fiber_join_wait_token[1] = 0;
+        g_scheduler.latched_task_done_wake_epoch[1] = 0;
+        g_scheduler.latched_os_thread_done_wake_epoch[1] = 0;
+
+        usz thread_id = scheduler_alloc_os_thread();
+        uint generation = 0;
+        OffloadCompletion* taken = null;
+        if (thread_id == NO_OS_THREAD ||
+            !scheduler_get_os_thread_generation(thread_id, &generation) ||
+            generation == 0) {
+            ok = false;
+            failed_phase = "os-thread-alloc";
+            if (thread_id != NO_OS_THREAD) scheduler_drop_os_thread(thread_id);
+        } else {
+            int wait_state = scheduler_register_os_thread_waiter(thread_id, generation, 1);
+            OffloadCompletion* completion = scheduler_make_os_thread_cancel_completion();
+            if (wait_state != SCHEDULER_JOIN_WAIT_REGISTERED || completion == null) {
+                ok = false;
+                failed_phase = "os-thread-register";
+                if (completion != null) scheduler_free_offload_completion(completion);
+                scheduler_drop_os_thread(thread_id, generation);
+            } else {
+                scheduler_complete_os_thread(thread_id, generation, completion);
+                taken = scheduler_take_os_thread_completion(thread_id, generation);
+                drain_wakeups();
+                bool waiter_woken = g_scheduler.fibers[1].state == FIBER_READY;
+                bool token_cleared = g_scheduler.fiber_join_wait_token[1] == 0;
+                if (taken == null || !waiter_woken || !token_cleared) {
+                    ok = false;
+                    failed_phase = "os-thread-wake";
+                }
+                if (taken != null) scheduler_free_offload_completion(taken);
+                if (scheduler_os_thread_exists(thread_id, generation)) {
+                    scheduler_drop_os_thread(thread_id, generation);
+                }
+            }
+        }
+    }
+
+    g_scheduler.fiber_join_wait_token[1] = saved_join_token_1;
+    g_scheduler.latched_task_done_wake_epoch[1] = saved_latched_task_1;
+    g_scheduler.latched_os_thread_done_wake_epoch[1] = saved_latched_os_thread_1;
+    g_scheduler.fibers[0] = saved_fiber_0;
+    g_scheduler.fibers[1] = saved_fiber_1;
+    g_scheduler.running = saved_running;
+    g_scheduler.current_fiber_id = saved_current_fiber_id;
+    g_scheduler.fiber_count = saved_fiber_count;
+
+    bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+    if (ok && !state_ok) {
+        ok = false;
+        failed_phase = "boundary";
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler completion-take does not strand blocked waiter");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] scheduler completion-take does not strand blocked waiter (%s)",
+            (ZString)failed_phase
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_scheduler_thread_task_cancel_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: thread-task cancel state transitions preserve deterministic
     // completion semantics and boundary/runtime state.

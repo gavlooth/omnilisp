@@ -183,6 +183,7 @@ static volatile sig_atomic_t g_guard_hit = 0;
 
 static void* g_sigstack = NULL;
 static int g_initialized = 0;
+static int g_init_refcount = 0;
 
 /* The context switch function defined in stack_engine.c3 (@naked, SysV ABI) */
 extern void omni_context_switch(void* old_ctx, void* new_ctx);
@@ -220,7 +221,10 @@ reraise:
 }
 
 int stack_guard_init(void) {
-    if (g_initialized) return 0;
+    if (g_init_refcount > 0) {
+        g_init_refcount++;
+        return 0;
+    }
 
     /* Allocate alternate signal stack */
     g_sigstack = malloc(SIGSTKSZ);
@@ -248,10 +252,14 @@ int stack_guard_init(void) {
     }
 
     g_initialized = 1;
+    g_init_refcount = 1;
     return 0;
 }
 
 void stack_guard_shutdown(void) {
+    if (g_init_refcount <= 0) return;
+    g_init_refcount--;
+    if (g_init_refcount > 0) return;
     if (!g_initialized) return;
 
     struct sigaction sa;
@@ -268,6 +276,7 @@ void stack_guard_shutdown(void) {
     g_guard_count = 0;
     g_recovery_depth = 0;
     g_initialized = 0;
+    g_init_refcount = 0;
 }
 
 void stack_guard_register(void* base, size_t size) {

@@ -8,11 +8,14 @@ import std::io;
 
 struct StackPool {
     StackCtx*  free_list;   // Singly-linked list of available coros
+    StackCtx*  all_list;    // Intrusive list of all contexts owned by this pool
     usz    pool_size;   // Current count in free list
+    usz    all_count;   // Total contexts owned by this pool (free + active)
     usz    max_pool;    // Max cached before freeing
     uint   next_id;     // Monotonic ID counter
     usz    stack_size;  // Default stack size for this pool
     void*  owner_thread_token; // Thread-affinity token for this pool
+    bool   shutting_down;
 }
 
 const usz STACK_POOL_MAX = 64;
@@ -45,34 +48,55 @@ fn void stack_require_ctx_owner(StackCtx* c, char[] op) @inline {
 fn void stack_pool_init(StackPool* pool) {
     pool.owner_thread_token = stack_current_thread_token();
     pool.free_list = null;
+    pool.all_list = null;
     pool.pool_size = 0;
+    pool.all_count = 0;
     pool.max_pool = STACK_POOL_MAX;
     pool.next_id = 1;
     pool.stack_size = stack_runtime_asan_enabled() ? ASAN_STACK_SIZE : DEFAULT_STACK_SIZE;
+    pool.shutting_down = false;
     stack_guard_init();
 }
 
 fn void stack_pool_shutdown(StackPool* pool) {
     stack_require_pool_owner(pool, "stack_pool_shutdown");
-    // Free all cached coros and unregister their guard pages.
-    StackCtx* c = pool.free_list;
+    if (pool.shutting_down) return;
+    pool.shutting_down = true;
+    // Two-phase shutdown: run deferred/lifecycle callbacks for all contexts
+    // before freeing any StackCtx allocations. Deferred callbacks may release
+    // scopes that still reference other contexts in this pool.
+    StackCtx* shutdown_list = pool.all_list;
+    pool.all_list = null;
+    pool.free_list = null;
+    usz shutdown_count = 0;
+    StackCtx* c = shutdown_list;
     while (c != null) {
-        StackCtx* next = c.pool_next;
+        shutdown_count++;
         stack_require_ctx_owner(c, "stack_pool_shutdown_ctx");
-        if (c.defer_heap != null) {
-            mem::free(c.defer_heap);
-            c.defer_heap = null;
+        if (c == g_current_stack_ctx || c.status == CTX_RUNNING) {
+            unreachable("stack_pool_shutdown: attempted to free running context");
         }
-        if (c.lifecycle_heap != null) {
-            mem::free(c.lifecycle_heap);
-            c.lifecycle_heap = null;
-        }
+        c.in_pool_cache = false;
+        stack_ctx_run_deferred_destroy(c);
+        stack_ctx_run_lifecycle_destroy(c);
+        stack_ctx_clear_defer_storage(c);
+        stack_ctx_clear_lifecycle_storage(c);
+        c = c.all_next;
+    }
+    c = shutdown_list;
+    while (c != null) {
+        StackCtx* next = c.all_next;
+        c.all_next = null;
         stack_guard_unregister(c.stack.base);
         stack_region_free(&c.stack);
         mem::free(c);
         c = next;
     }
+    assert(pool.all_count == shutdown_count, "stack pool all_count mismatch during shutdown");
     pool.free_list = null;
+    pool.all_list = null;
     pool.pool_size = 0;
+    pool.all_count = 0;
+    pool.shutting_down = false;
     stack_guard_shutdown();
 }

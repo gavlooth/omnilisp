@@ -99,12 +99,22 @@ fn bool copy_env_should_clone_closure(Value* val, Interp* interp) @inline {
     return val.closure_val.scope_gen != interp.current_scope.generation;
 }
 
+fn bool copy_env_invalid_closure_alias_in_releasing_scope(Value* val, Interp* interp) @inline {
+    if (val == null || interp == null || interp.releasing_scope == null) return false;
+    if (val.tag != CLOSURE || val.closure_val == null) return false;
+    // A closure without env_scope has no detached ownership envelope; if that wrapper
+    // still belongs to releasing_scope, env-copy must fail closed instead of aliasing.
+    if (val.closure_val.env_scope != null) return false;
+    return boundary_ptr_in_scope((void*)val, interp.releasing_scope);
+}
+
 fn Value* copy_env_clone_closure_if_needed(Value* val, Interp* interp) {
+    if (copy_env_invalid_closure_alias_in_releasing_scope(val, interp)) return null;
     if (!copy_env_should_clone_closure(val, interp)) return val;
     Value* result = interp.alloc_value();
     // Reuse the shared closure-clone payload path so env-copy and return-boundary
     // closure relocation keep the same retain/copy semantics.
-    copy_parent_clone_closure_payload(result, val, interp);
+    if (!copy_parent_clone_closure_payload(result, val, interp, null)) return null;
     main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_closure);
     return result;
 }
@@ -114,6 +124,7 @@ fn Value* copy_env_clone_iterator_if_needed(Value* val, Interp* interp) {
     if (boundary_ptr_in_target_scope_chain_with_hint((void*)val, interp, val.scope_gen)) return val;
 
     Value* inner = val.iterator_val;
+    if (copy_env_invalid_closure_alias_in_releasing_scope(inner, interp)) return null;
     if (inner != null && inner.tag == CLOSURE && inner.closure_val.env_scope != null) {
         Value* cloned = copy_env_clone_closure_if_needed(inner, interp);
         if (cloned == null || cloned.tag != CLOSURE) {
@@ -188,12 +199,55 @@ fn bool copy_env_is_terminal_frame(Env* env, Interp* interp, usz depth) @inline 
     return depth >= 256;
 }
 
+fn bool copy_env_parent_needs_rewrite(Env* parent, main::ScopeRegion* releasing_scope) @inline {
+    if (parent == null || releasing_scope == null) return false;
+    if (parent.scope_gen != releasing_scope.generation &&
+        parent.scope_gen != releasing_scope.escape_generation) {
+        return false;
+    }
+    return boundary_ptr_in_scope((void*)parent, releasing_scope);
+}
+
+fn bool copy_env_can_rewrite_persistent_box_in_place(Env* env, Interp* interp) @inline {
+    if (env == null || interp == null || interp.root_scope == null) return false;
+    // In-place parent rewrites are only valid for true root-owned persistent boxes.
+    if (!main::is_in_scope((void*)env, interp.root_scope)) return false;
+    if (interp.releasing_scope != null && boundary_ptr_in_scope((void*)env, interp.releasing_scope)) return false;
+    return true;
+}
+
+fn void copy_env_cleanup_partial_frame(Env* env) @inline {
+    if (env == null) return;
+    if (!env.is_inline && env.bindings != null) {
+        mem::free(env.bindings);
+        env.bindings = null;
+    }
+    if (env.hash_table != null) {
+        mem::free(env.hash_table);
+        env.hash_table = null;
+    }
+}
+
 fn BoundaryEnvCopyResult copy_env_rewrite_persistent_parent(
     Env* env,
     Interp* interp,
     usz depth,
     PromotionContext* active_ctx
 ) {
+    if (!copy_env_can_rewrite_persistent_box_in_place(env, interp)) {
+        return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_PARENT_COPY, depth);
+    }
+
+    if (!copy_env_parent_needs_rewrite(env.parent, interp.releasing_scope)) {
+        return boundary_env_copy_ok(env, depth);
+    }
+
+    // Root-persistent mutable boxes keep identity, but parent rewrites must avoid
+    // borrowing lifetime from an ephemeral target scope.
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
+    defer interp.current_scope = saved_scope;
+
     BoundaryEnvCopyResult parent_result = copy_env_to_scope_inner_checked(env.parent, interp, depth + 1, active_ctx);
     if (!boundary_env_copy_result_ok(parent_result)) {
         return parent_result;
@@ -208,11 +262,13 @@ fn BoundaryEnvCopyResult copy_env_materialize_frame(Env* env, Interp* interp, us
     Env* new_env = alloc_result.env;
 
     if (!copy_env_copy_bindings(env, new_env, interp, active_ctx)) {
+        copy_env_cleanup_partial_frame(new_env);
         return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY, depth);
     }
 
     BoundaryEnvCopyResult parent_result = copy_env_to_scope_inner_checked(env.parent, interp, depth + 1, active_ctx);
     if (!boundary_env_copy_result_ok(parent_result)) {
+        copy_env_cleanup_partial_frame(new_env);
         return parent_result;
     }
     new_env.parent = parent_result.env;

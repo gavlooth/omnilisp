@@ -1,0 +1,20 @@
+{
+  "grammars": [
+    {
+      "name": "omni",
+      "camelcase": "Omni",
+      "scope": "source.omni",
+      "file-types": [
+        "omni"
+      ],
+      "highlights": "queries/highlights.scm",
+      "injections": "queries/injections.scm",
+      "locals": "queries/locals.scm"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Tree-sitter grammar scaffold for Omni Lisp"
+  }
+}

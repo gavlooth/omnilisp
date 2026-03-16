@@ -280,6 +280,385 @@ fn void run_scheduler_thread_task_worker_cancel_interleave_boundary_tests(Interp
     }
 }
 
+fn void run_scheduler_thread_task_nonexecuted_payload_release_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: if libuv after-work fires without executing work_cb (for
+    // example cancelled while queued), queued shared payload is still released
+    // and the task converges to one terminal completion.
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
+    bool ok = true;
+    char[] failed_phase = "";
+
+    if (!scheduler_shared_registry_ensure_ready()) {
+        ok = false;
+        failed_phase = "registry-init";
+    }
+
+    if (ok) {
+        scheduler_shared_registry_drain_retired(SHARED_RETIRED_QUEUE_CAPACITY);
+    }
+
+    usz task_id = NO_TASK;
+    uint generation = 0;
+    void* req = null;
+    usz shared_slot = SHARED_REGISTRY_CAPACITY;
+    uint shared_generation = 0;
+    if (ok) {
+        task_id = scheduler_alloc_thread_task();
+        if (task_id == NO_TASK) {
+            ok = false;
+            failed_phase = "task-alloc";
+        }
+    }
+
+    if (ok) {
+        req = omni_uv_work_req_new();
+        if (req == null) {
+            scheduler_drop_thread_task(task_id);
+            ok = false;
+            failed_phase = "req-alloc";
+        }
+    }
+
+    if (ok) {
+        OffloadWork work = {};
+        work.fiber_id = NO_FIBER;
+        work.task_id = task_id;
+        work.op = OFFLOAD_SLEEP_MS;
+        work.int_arg = 5;
+        work.shared = scheduler_publish_shared("cancel-before-work");
+        if (work.shared == null) {
+            omni_uv_work_req_free(req);
+            scheduler_drop_thread_task(task_id);
+            ok = false;
+            failed_phase = "shared-publish";
+        } else if (!scheduler_bind_thread_task_request(task_id, req, &generation) || generation == 0) {
+            scheduler_release_shared(work.shared);
+            omni_uv_work_req_free(req);
+            scheduler_drop_thread_task(task_id);
+            ok = false;
+            failed_phase = "bind-request";
+        } else {
+            shared_slot = work.shared.slot;
+            shared_generation = work.shared.generation;
+            QueuedOffloadWork* queued = (QueuedOffloadWork*)mem::malloc(QueuedOffloadWork.sizeof);
+            if (queued == null) {
+                scheduler_release_shared(work.shared);
+                scheduler_clear_thread_task_request(task_id, req, generation);
+                omni_uv_work_req_free(req);
+                scheduler_drop_thread_task(task_id, generation);
+                ok = false;
+                failed_phase = "queued-alloc";
+            } else {
+                *queued = {};
+                queued.work = work;
+                queued.task_generation = generation;
+                queued.executed = false;
+                queued.completion = null;
+                omni_uv_req_set_data(req, queued);
+                scheduler_uv_offload_after_cb(req, -1);
+            }
+        }
+    }
+
+    if (ok) {
+        OffloadCompletion* completion = scheduler_take_thread_task_completion(task_id, generation);
+        bool completion_ok = completion != null &&
+                             completion.kind == OFFLOAD_RES_ERROR &&
+                             !scheduler_thread_task_exists(task_id, generation);
+        if (completion != null) scheduler_free_offload_completion(completion);
+
+        SharedHandle probe = {};
+        probe.kind = SHARED_HANDLE_BLOB;
+        probe.slot = shared_slot;
+        probe.generation = shared_generation;
+        probe.payload = null;
+        bool shared_released = scheduler_shared_registry_resolve_blob(&probe) == null;
+
+        bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+        ok = completion_ok && shared_released && state_ok;
+        if (!ok) {
+            if (!completion_ok) {
+                failed_phase = "completion";
+            } else if (!shared_released) {
+                failed_phase = "shared-release";
+            } else {
+                failed_phase = "boundary";
+            }
+        }
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler non-executed worker cancel releases queued payload");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] scheduler non-executed worker cancel releases queued payload (%s)",
+            (ZString)failed_phase
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_scheduler_worker_prestart_cancel_single_shared_release_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: when task begin is rejected before execution, shared payload
+    // ownership is released exactly once across worker + after-work callbacks.
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
+    bool ok = true;
+    char[] failed_phase = "";
+
+    if (!scheduler_shared_registry_ensure_ready()) {
+        ok = false;
+        failed_phase = "registry-init";
+    }
+    if (ok) {
+        scheduler_shared_registry_drain_retired(SHARED_RETIRED_QUEUE_CAPACITY);
+    }
+
+    usz task_id = NO_TASK;
+    uint generation = 0;
+    void* req = null;
+    usz shared_slot = SHARED_REGISTRY_CAPACITY;
+    uint shared_generation = 0;
+    if (ok) {
+        task_id = scheduler_alloc_thread_task();
+        if (task_id == NO_TASK) {
+            ok = false;
+            failed_phase = "task-alloc";
+        }
+    }
+
+    if (ok) {
+        req = omni_uv_work_req_new();
+        if (req == null) {
+            scheduler_drop_thread_task(task_id);
+            ok = false;
+            failed_phase = "req-alloc";
+        }
+    }
+
+    if (ok) {
+        OffloadWork work = {};
+        work.fiber_id = NO_FIBER;
+        work.task_id = task_id;
+        work.op = OFFLOAD_SLEEP_MS;
+        work.int_arg = 5;
+        work.shared = scheduler_publish_shared("prestart-cancel");
+        if (work.shared == null) {
+            omni_uv_work_req_free(req);
+            scheduler_drop_thread_task(task_id);
+            ok = false;
+            failed_phase = "shared-publish";
+        } else if (!scheduler_bind_thread_task_request(task_id, req, &generation) || generation == 0) {
+            scheduler_release_shared(work.shared);
+            omni_uv_work_req_free(req);
+            scheduler_drop_thread_task(task_id);
+            ok = false;
+            failed_phase = "bind-request";
+        } else {
+            shared_slot = work.shared.slot;
+            shared_generation = work.shared.generation;
+            QueuedOffloadWork* queued = (QueuedOffloadWork*)mem::malloc(QueuedOffloadWork.sizeof);
+            if (queued == null) {
+                scheduler_release_shared(work.shared);
+                scheduler_clear_thread_task_request(task_id, req, generation);
+                omni_uv_work_req_free(req);
+                scheduler_drop_thread_task(task_id, generation);
+                ok = false;
+                failed_phase = "queued-alloc";
+            } else {
+                *queued = {};
+                queued.work = work;
+                queued.task_generation = generation;
+                queued.executed = false;
+                queued.completion = null;
+                omni_uv_req_set_data(req, queued);
+
+                bool cancel_ok = scheduler_cancel_thread_task(task_id, null, generation);
+                if (!cancel_ok) {
+                    scheduler_release_shared(work.shared);
+                    mem::free(queued);
+                    scheduler_clear_thread_task_request(task_id, req, generation);
+                    omni_uv_work_req_free(req);
+                    scheduler_drop_thread_task(task_id, generation);
+                    ok = false;
+                    failed_phase = "cancel";
+                } else {
+                    scheduler_uv_offload_work_cb(req);
+                    scheduler_uv_offload_after_cb(req, -1);
+                }
+            }
+        }
+    }
+
+    if (ok) {
+        OffloadCompletion* completion = scheduler_take_thread_task_completion(task_id, generation);
+        bool completion_ok = completion != null &&
+                             completion.kind == OFFLOAD_RES_ERROR &&
+                             !scheduler_thread_task_exists(task_id, generation);
+        if (completion != null) scheduler_free_offload_completion(completion);
+
+        SharedHandle probe = {};
+        probe.kind = SHARED_HANDLE_BLOB;
+        probe.slot = shared_slot;
+        probe.generation = shared_generation;
+        probe.payload = null;
+        bool shared_released = scheduler_shared_registry_resolve_blob(&probe) == null;
+
+        bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+        ok = completion_ok && shared_released && state_ok;
+        if (!ok) {
+            if (!completion_ok) {
+                failed_phase = "completion";
+            } else if (!shared_released) {
+                failed_phase = "shared-release";
+            } else {
+                failed_phase = "boundary";
+            }
+        }
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler prestart-cancel shared release remains single-owner");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] scheduler prestart-cancel shared release remains single-owner (%s)",
+            (ZString)failed_phase
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_scheduler_dns_connect_request_token_guard_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: async DNS/connect callbacks must not rebind into an unrelated
+    // pending slot just because req pointers alias.
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
+    bool ok = true;
+    char[] failed_phase = "";
+
+    scheduler_init();
+    usz saved_fiber_count = g_scheduler.fiber_count;
+    usz saved_current_fiber_id = g_scheduler.current_fiber_id;
+    bool saved_running = g_scheduler.running;
+    FiberEntry saved_fiber_0 = g_scheduler.fibers[0];
+    FiberEntry saved_fiber_1 = g_scheduler.fibers[1];
+    PendingDnsResolve saved_dns_1 = g_scheduler.pending_dns[1];
+    PendingTcpConnect saved_connect_1 = g_scheduler.pending_connects[1];
+
+    if (g_scheduler.fiber_count < 2) {
+        g_scheduler.fiber_count = 2;
+    }
+    g_scheduler.fibers[0] = {};
+    g_scheduler.fibers[1] = {};
+    g_scheduler.fibers[0].state = FIBER_BLOCKED;
+    g_scheduler.fibers[1].state = FIBER_BLOCKED;
+
+    {
+        void* dns_req = omni_uv_getaddrinfo_req_new();
+        char* dns_host = copy_to_heap_c_string("stale");
+        PendingDnsCallbackCtx* dns_ctx = null;
+        if (dns_req == null || dns_host == null) {
+            if (dns_req != null) omni_uv_getaddrinfo_req_free(dns_req);
+            if (dns_host != null) mem::free(dns_host);
+            ok = false;
+            failed_phase = "dns-alloc";
+        } else {
+            dns_ctx = (PendingDnsCallbackCtx*)mem::malloc(PendingDnsCallbackCtx.sizeof);
+            if (dns_ctx == null) {
+                omni_uv_getaddrinfo_req_free(dns_req);
+                mem::free(dns_host);
+                ok = false;
+                failed_phase = "dns-ctx";
+            } else {
+                *dns_ctx = {};
+                dns_ctx.fiber_id = 0;
+                dns_ctx.request_token = 701;
+                dns_ctx.host_copy = dns_host;
+                omni_uv_req_set_data(dns_req, dns_ctx);
+                g_scheduler.pending_dns[1] = {};
+                g_scheduler.pending_dns[1].active = true;
+                g_scheduler.pending_dns[1].completed = false;
+                g_scheduler.pending_dns[1].status = 0;
+                g_scheduler.pending_dns[1].request_token = 702;
+                g_scheduler.pending_dns[1].req_handle = dns_req;
+                scheduler_uv_getaddrinfo_cb(dns_req, 0, null);
+                bool dns_guard_ok = g_scheduler.pending_dns[1].active &&
+                                    !g_scheduler.pending_dns[1].completed &&
+                                    g_scheduler.pending_dns[1].status == 0 &&
+                                    g_scheduler.pending_dns[1].request_token == 702;
+                g_scheduler.pending_dns[1] = {};
+                if (!dns_guard_ok) {
+                    ok = false;
+                    failed_phase = "dns-guard";
+                }
+            }
+        }
+    }
+
+    if (ok) {
+        void* connect_req = omni_uv_work_req_new();
+        PendingConnectCallbackCtx* connect_ctx = null;
+        if (connect_req == null) {
+            ok = false;
+            failed_phase = "connect-alloc";
+        } else {
+            connect_ctx = (PendingConnectCallbackCtx*)mem::malloc(PendingConnectCallbackCtx.sizeof);
+            if (connect_ctx == null) {
+                omni_uv_work_req_free(connect_req);
+                ok = false;
+                failed_phase = "connect-ctx";
+            } else {
+                *connect_ctx = {};
+                connect_ctx.fiber_id = 0;
+                connect_ctx.request_token = 901;
+                connect_ctx.tcp_handle = null;
+                omni_uv_req_set_data(connect_req, connect_ctx);
+                g_scheduler.pending_connects[1] = {};
+                g_scheduler.pending_connects[1].active = true;
+                g_scheduler.pending_connects[1].completed = false;
+                g_scheduler.pending_connects[1].status = 0;
+                g_scheduler.pending_connects[1].request_token = 902;
+                g_scheduler.pending_connects[1].req_handle = connect_req;
+                scheduler_uv_tcp_connect_cb(connect_req, 0);
+                bool connect_guard_ok = g_scheduler.pending_connects[1].active &&
+                                        !g_scheduler.pending_connects[1].completed &&
+                                        g_scheduler.pending_connects[1].status == 0 &&
+                                        g_scheduler.pending_connects[1].request_token == 902;
+                g_scheduler.pending_connects[1] = {};
+                if (!connect_guard_ok) {
+                    ok = false;
+                    failed_phase = "connect-guard";
+                }
+            }
+        }
+    }
+
+    g_scheduler.pending_dns[1] = saved_dns_1;
+    g_scheduler.pending_connects[1] = saved_connect_1;
+    g_scheduler.fibers[0] = saved_fiber_0;
+    g_scheduler.fibers[1] = saved_fiber_1;
+    g_scheduler.running = saved_running;
+    g_scheduler.current_fiber_id = saved_current_fiber_id;
+    g_scheduler.fiber_count = saved_fiber_count;
+
+    bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+    if (ok && !state_ok) {
+        ok = false;
+        failed_phase = "boundary";
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler async callback token guards reject req-pointer rebinding");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] scheduler async callback token guards reject req-pointer rebinding (%s)",
+            (ZString)failed_phase
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_scheduler_task_join_timeout_then_join_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: timeout join does not consume task completion; a later join can
     // complete successfully and clear task entry, with boundary/runtime state preserved.

@@ -192,6 +192,8 @@ fn Value* scheduler_start_tcp_write_watcher(void* poll_handle, char* write_buf, 
 fn Value* scheduler_try_async_tcp_read(int fd, usz max_bytes, long timeout_ms, Interp* interp) {
     scheduler_init();
     if (!scheduler_is_running_fiber_context()) return null;
+    Value* ctx_err = scheduler_require_fiber_root_context("tcp-read", interp);
+    if (ctx_err != null) return ctx_err;
 
     usz fiber_id = g_scheduler.current_fiber_id;
     FiberEntry* f = &g_scheduler.fibers[fiber_id];
@@ -257,6 +259,8 @@ fn Value* scheduler_try_async_tcp_read(int fd, usz max_bytes, long timeout_ms, I
 fn Value* scheduler_try_async_tcp_write(int fd, char[] data, Interp* interp) {
     scheduler_init();
     if (!scheduler_is_running_fiber_context()) return null;
+    Value* ctx_err = scheduler_require_fiber_root_context("tcp-write", interp);
+    if (ctx_err != null) return ctx_err;
 
     if (data.len == 0) return make_int(interp, 0);
 

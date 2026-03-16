@@ -186,7 +186,7 @@ fn bool scheduler_shared_destroy(SharedHandle* handle) {
     }
 
     // Fallback safety in case a handle exists before registry availability.
-    if (!released && handle.payload != null) {
+    if (!released && (!registry.initialized || handle.slot >= SHARED_REGISTRY_CAPACITY) && handle.payload != null) {
         long old = handle.payload.refcount.add(-1);
         if (old <= 1) {
             if (handle.payload.bytes != null) mem::free(handle.payload.bytes);
@@ -308,10 +308,15 @@ fn bool scheduler_take_shared_bytes_owned(SharedHandle* handle, char** out_bytes
     if (out_bytes != null) *out_bytes = null;
     if (out_len != null) *out_len = 0;
     SharedHandleBlob* payload = shared_handle_as_blob(handle);
-    if (payload == null || payload.bytes == null) return false;
-    if (out_bytes != null) *out_bytes = payload.bytes;
+    if (payload == null || payload.bytes == null || out_bytes == null) return false;
+
+    usz len = payload.len;
+    char* owned = (char*)mem::malloc(len + 1);
+    if (owned == null) return false;
+    for (usz i = 0; i < len; i++) owned[i] = payload.bytes[i];
+    owned[len] = 0;
+    *out_bytes = owned;
     if (out_len != null) *out_len = payload.len;
-    shared_handle_clear_blob(handle);
     return true;
 }
 

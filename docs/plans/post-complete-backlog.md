@@ -24,6 +24,7 @@ Status: active backlog queue (no release-blocking items).
 - [ ] Continue largest-first modularization for oversized runtime/test modules outside the compiler/parser tracker.
 - [ ] Split memory-lifetime correctness tests away from benchmark-only modules so regression coverage and throughput harnesses do not share the same files.
 - [ ] Add a migration note for effect-handler composition helper names to avoid abbreviation drift in public-facing docs.
+- [ ] Execute the dedicated editor tooling roadmap in `docs/plans/editor-tooling-roadmap.md`.
 
 ### Numeric Dispatch Coercion Tightening
 

@@ -128,7 +128,11 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
         result.closure_val.type_sig = (MethodSignature*)interp.current_scope.alloc_escape(MethodSignature.sizeof);
         if (result.closure_val.type_sig == null ||
             !method_signature_copy_to_escape(result.closure_val.type_sig, v.closure_val.type_sig, interp.current_scope)) {
-            result.closure_val.type_sig = null;
+            if (ctx != null) {
+                ctx.aborted = true;
+                ctx.abort_reason = PROMOTION_ABORT_BUDGET_EXHAUSTED;
+            }
+            return raise_error(interp, boundary_copy_fault_message(BOUNDARY_COPY_FAULT_CLOSURE_TYPE_SIG_COPY));
         }
     }
 
@@ -221,6 +225,12 @@ fn Value* promote_escape_scalar(Value* v, Interp* interp, PromotionContext* ctx)
 
 fn Value* promote_escape_continuation(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
+    if (v.cont_val != null) {
+        if (v.cont_val.owner_interp != null && v.cont_val.owner_interp != interp) {
+            return raise_error(interp, "boundary: refusing continuation alias across interpreters");
+        }
+        continuation_retain_handle_state_for_boundary(v.cont_val);
+    }
     Value* result = interp.alloc_value_escape();
     result.tag = CONTINUATION;
     result.cont_val = v.cont_val;
@@ -237,9 +247,15 @@ fn Value* promote_escape_iterator(Value* v, Interp* interp, PromotionContext* ct
 
 fn Value* promote_escape_coroutine(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
+    if (!boundary_ptr_in_scope((void*)v, interp.current_scope) ||
+        v.scope_gen != interp.current_scope.generation) {
+        return raise_error(interp, "boundary: refusing coroutine wrapper alias during escape promotion");
+    }
     Value* result = interp.alloc_value_escape();
     result.tag = COROUTINE;
     result.coroutine_val = v.coroutine_val;
+    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    v.coroutine_val = null;
     return result;
 }
 

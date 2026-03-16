@@ -39,8 +39,12 @@ fn void Compiler.serialize_module_to_buf(Compiler* self, Expr* expr, List{char}*
 
 fn void Compiler.serialize_import_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
     self.buf_append(buf, "(import ");
-    char[] imp_name = self.interp.symbols.get_name(expr.import_expr.name);
-    self.buf_append(buf, imp_name);
+    if (expr.import_expr.has_path && expr.import_expr.path != null) {
+        self.serialize_quoted_text_to_buf(expr.import_expr.path[:expr.import_expr.path_len], buf);
+    } else {
+        char[] imp_name = self.interp.symbols.get_name(expr.import_expr.name);
+        self.buf_append(buf, imp_name);
+    }
     if (expr.import_expr.import_all) {
         self.buf_append(buf, " 'all");
     } else if (expr.import_expr.import_count > 0) {
@@ -48,11 +52,15 @@ fn void Compiler.serialize_import_to_buf(Compiler* self, Expr* expr, List{char}*
         for (usz i = 0; i < expr.import_expr.import_count; i++) {
             if (i > 0) buf.push(' ');
             char[] sel_name = self.interp.symbols.get_name(expr.import_expr.imports[i]);
-            self.buf_append(buf, sel_name);
             if ((uint)expr.import_expr.aliases[i] != 0) {
+                buf.push('(');
+                self.buf_append(buf, sel_name);
                 self.buf_append(buf, " 'as ");
                 char[] alias_name = self.interp.symbols.get_name(expr.import_expr.aliases[i]);
                 self.buf_append(buf, alias_name);
+                buf.push(')');
+            } else {
+                self.buf_append(buf, sel_name);
             }
         }
         buf.push(')');

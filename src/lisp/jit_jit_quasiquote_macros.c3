@@ -100,17 +100,16 @@ fn EvalResult jit_qq_expand_elements(Expr*[] elements, Env* env, Interp* interp,
     return eval_ok(result);
 }
 
+fn Expr* jit_qq_call_element(Expr* tmpl, usz index) @inline {
+    if (index == 0) return tmpl.call.func;
+    return tmpl.call.args[index - 1];
+}
+
 fn EvalResult jit_qq_expand_call(Expr* tmpl, Env* env, Interp* interp, usz depth) {
     usz total = tmpl.call.arg_count + 1;
-    Expr*[17] elements;
-    elements[0] = tmpl.call.func;
-    for (usz i = 0; i < tmpl.call.arg_count; i++) {
-        elements[i + 1] = tmpl.call.args[i];
-    }
-
     Value* result = make_nil(interp);
     for (usz i = total; i > 0; i--) {
-        Expr* elem = elements[i - 1];
+        Expr* elem = jit_qq_call_element(tmpl, i - 1);
         if (elem.tag == E_UNQUOTE_SPLICING && depth == 0) {
             EvalResult splice_result = jit_eval_to_result(elem.unquote_splicing.body, env, interp);
             if (splice_result.error.has_error) return splice_result;

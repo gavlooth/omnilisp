@@ -38,7 +38,8 @@ fn int run_test_mode_for_suite(char* suite_name) {
     }
 
     if (test_suite_is_all(suite_name) || test_suite_matches(suite_name, "lisp")) {
-        run_lisp_test_suite_with_registry();
+        int lisp_rc = run_lisp_test_suite_with_registry();
+        if (lisp_rc != 0) return lisp_rc;
     }
     return 0;
 }

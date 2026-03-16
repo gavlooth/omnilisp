@@ -479,6 +479,30 @@ fn void run_advanced_runtime_control_tests(Interp* interp, int* pass, int* fail)
     test_eq(interp, "coroutine yield", "(let (f (coroutine (lambda () (yield 42) 99))) (resume f))", 42, pass, fail);
     test_eq(interp, "coroutine yield complete", "(let (f (coroutine (lambda () (yield 42) 99))) (resume f) (resume f))", 99, pass, fail);
     test_eq(interp, "coroutine resume value", "(let (f (coroutine (lambda () (+ 1 (yield 0))))) (resume f) (resume f 10))", 11, pass, fail);
+    test_eq(
+        interp,
+        "coroutine implicit nil after explicit resume value",
+        "(let (f (coroutine (lambda () (block (yield 0) (if (yield 0) 99 1))))) (resume f) (resume f 10) (resume f))",
+        1,
+        pass,
+        fail
+    );
+    test_eq(
+        interp,
+        "effect resume value does not leak into later coroutine resume",
+        "(block (handle (+ 1 (signal ask 0)) (ask x (resolve 41))) (let (f (coroutine (lambda () (if (yield 0) 99 1)))) (resume f) (resume f)))",
+        1,
+        pass,
+        fail
+    );
+    test_eq(
+        interp,
+        "capture resume value does not leak into later coroutine resume",
+        "(block (checkpoint (+ 1 (capture k (k 41)))) (let (f (coroutine (lambda () (if (yield 0) 99 1)))) (resume f) (resume f)))",
+        1,
+        pass,
+        fail
+    );
     test_eq(interp, "coroutine nested", "(let (outer (coroutine (lambda () (let (inner (coroutine (lambda () 10))) (+ (resume inner) 5))))) (resume outer))", 15, pass, fail);
     test_eq(interp, "coroutine deep nest", "(let (f (coroutine (lambda () (let (a (coroutine (lambda () (let (b (coroutine (lambda () 1))) (+ (resume b) 2))))) (+ (resume a) 3))))) (resume f))", 6, pass, fail);
     test_eq(interp, "coroutine multi yield", "(let (g (coroutine (lambda () (yield 1) (yield 2) 3))) (+ (resume g) (+ (resume g) (resume g))))", 6, pass, fail);

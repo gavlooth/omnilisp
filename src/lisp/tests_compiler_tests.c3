@@ -54,7 +54,7 @@ fn void compiler_print_pass(char[] msg) {
     io::printfn("[PASS] %s", (ZString)msg);
 }
 
-fn void run_compiler_tests(Interp* _unused_interp) {
+fn bool run_compiler_tests(Interp* _unused_interp) {
     io::printn("\n=== Compiler Tests ===");
     usz pass = 0;
     usz fail = 0;
@@ -79,7 +79,7 @@ fn void run_compiler_tests(Interp* _unused_interp) {
     mem::free(interp);
     io::printfn("\n=== Compiler Tests: %d passed, %d failed ===", pass, fail);
     emit_test_summary("compiler", (int)pass, (int)fail);
-    assert(fail == 0, "compiler tests had failures");
+    return fail == 0;
 }
 
 // =============================================================================

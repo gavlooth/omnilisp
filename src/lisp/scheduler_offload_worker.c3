@@ -73,7 +73,6 @@ fn void scheduler_uv_offload_work_cb(void* req) {
     OffloadWork work = queued.work;
     if (work.task_id != NO_TASK) {
         if (!scheduler_try_begin_thread_task(work.task_id, queued.task_generation)) {
-            scheduler_release_shared(work.shared);
             return;
         }
     }
@@ -103,13 +102,30 @@ fn void scheduler_uv_offload_after_cb(void* req, int status) {
             }
             if (completion != null) {
                 scheduler_complete_thread_task(work.task_id, completion, queued.task_generation);
+            } else {
+                // OOM hardening: avoid stranding RUNNING tasks if completion materialization fails.
+                scheduler_drop_thread_task(work.task_id, queued.task_generation);
             }
+        } else {
+            // Cancellation before worker execution must still release queued payloads.
+            // The task transition path owns completion signaling for pending entries.
+            if (work.shared != null) {
+                scheduler_release_shared(work.shared);
+                work.shared = null;
+                queued.work.shared = null;
+            }
+            if (completion != null) {
+                scheduler_free_offload_completion(completion);
+                completion = null;
+            }
+            bool already_done = false;
+            (void)scheduler_cancel_thread_task(work.task_id, &already_done, queued.task_generation);
         }
     } else {
         if (completion == null) {
             completion = scheduler_make_offload_alloc_failure_completion();
         }
-        if (completion != null && !scheduler_publish_offload_ready(work.fiber_id, completion)) {
+        if (completion != null && !scheduler_publish_offload_ready(work.fiber_id, completion, work.wake_epoch)) {
             scheduler_free_offload_completion(completion);
         }
     }
