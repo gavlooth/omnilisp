@@ -76,12 +76,18 @@ fn Value* root_store_clone_array_to_scope(
     }
 
     for (usz i = 0; i < src_arr.length; i++) {
-        dst_arr.items[i] = boundary_copy_to_parent_site_ctx(
+        Value* copied = boundary_copy_to_parent_site_ctx(
             src_arr.items[i],
             interp,
             COPY_SITE_PROMOTE_TO_ROOT,
             &copy_ctx
         );
+        if (copied != null && copied.tag == ERROR) {
+            mem::free(dst_arr.items);
+            mem::free(dst_arr);
+            return copied;
+        }
+        dst_arr.items[i] = copied;
     }
 
     result.array_val = dst_arr;
@@ -135,18 +141,30 @@ fn Value* root_store_clone_hashmap_to_scope(
             dst_e.key = null;
             dst_e.value = null;
             if (src_e.key != null) {
-                dst_e.key = boundary_copy_to_parent_site_ctx(
+                Value* copied_key = boundary_copy_to_parent_site_ctx(
                     src_e.key,
                     interp,
                     COPY_SITE_PROMOTE_TO_ROOT,
                     &copy_ctx
                 );
-                dst_e.value = boundary_copy_to_parent_site_ctx(
+                if (copied_key != null && copied_key.tag == ERROR) {
+                    mem::free(dst_map.entries);
+                    mem::free(dst_map);
+                    return copied_key;
+                }
+                Value* copied_value = boundary_copy_to_parent_site_ctx(
                     src_e.value,
                     interp,
                     COPY_SITE_PROMOTE_TO_ROOT,
                     &copy_ctx
                 );
+                if (copied_value != null && copied_value.tag == ERROR) {
+                    mem::free(dst_map.entries);
+                    mem::free(dst_map);
+                    return copied_value;
+                }
+                dst_e.key = copied_key;
+                dst_e.value = copied_value;
             }
         }
     }
@@ -220,21 +238,31 @@ fn Value* root_store_clone_method_table_to_scope(
             root_store_free_method_table_partial(dst_mt, copied_entries);
             return null;
         }
-        dst_mt.entries[i].implementation = boundary_copy_to_parent_site_ctx(
+        Value* copied_impl = boundary_copy_to_parent_site_ctx(
             src_mt.entries[i].implementation,
             interp,
             COPY_SITE_PROMOTE_TO_ROOT,
             &copy_ctx
         );
+        if (copied_impl != null && copied_impl.tag == ERROR) {
+            root_store_free_method_table_partial(dst_mt, copied_entries + 1);
+            return copied_impl;
+        }
+        dst_mt.entries[i].implementation = copied_impl;
         copied_entries++;
     }
 
-    dst_mt.fallback = boundary_copy_to_parent_site_ctx(
+    Value* copied_fallback = boundary_copy_to_parent_site_ctx(
         src_mt.fallback,
         interp,
         COPY_SITE_PROMOTE_TO_ROOT,
         &copy_ctx
     );
+    if (copied_fallback != null && copied_fallback.tag == ERROR) {
+        root_store_free_method_table_partial(dst_mt, copied_entries);
+        return copied_fallback;
+    }
+    dst_mt.fallback = copied_fallback;
 
     result.method_table_val = dst_mt;
     main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);

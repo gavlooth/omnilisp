@@ -39,6 +39,79 @@ fn bool env_chain_has_binding_in_scope(Env* env, main::ScopeRegion* scope, Env* 
     return false;
 }
 
+fn bool env_chain_contains_root_persistent_box(Env* env, Env* stop_at) {
+    Env* cur = env;
+    while (cur != null && cur != stop_at) {
+        if (cur.is_root_persistent_box()) return true;
+        cur = cur.parent;
+    }
+    return false;
+}
+
+fn bool jit_value_is_graph_carrying(Value* v) @inline {
+    if (v == null) return false;
+    switch (v.tag) {
+        case CONS:
+        case ARRAY:
+        case HASHMAP:
+        case SET:
+        case CLOSURE:
+        case MODULE:
+        case PARTIAL_PRIM:
+        case METHOD_TABLE:
+        case ITERATOR:
+        case INSTANCE:
+            return true;
+        default:
+            return false;
+    }
+}
+
+fn bool env_chain_has_graph_binding_values(Env* env, Env* stop_at) {
+    Env* cur = env;
+    while (cur != null && cur != stop_at) {
+        for (usz i = 0; i < cur.binding_count; i++) {
+            if (jit_value_is_graph_carrying(cur.bindings[i].value)) return true;
+        }
+        cur = cur.parent;
+    }
+    return false;
+}
+
+fn bool jit_env_parent_needs_rewrite(Env* parent, main::ScopeRegion* releasing_scope) @inline {
+    if (parent == null || releasing_scope == null) return false;
+    if (parent.scope_gen != releasing_scope.generation &&
+        parent.scope_gen != releasing_scope.escape_generation) {
+        return false;
+    }
+    return boundary_ptr_in_scope((void*)parent, releasing_scope);
+}
+
+fn bool jit_binding_payload_in_releasing_scope(Value* v, main::ScopeRegion* releasing_scope) @inline {
+    if (v == null || releasing_scope == null) return false;
+    if (v.tag == CLOSURE) {
+        return boundary_closure_payload_in_scope(v, releasing_scope);
+    }
+    if (v.tag == ITERATOR) {
+        Value* payload = v.iterator_val;
+        if (payload != null && boundary_ptr_in_scope((void*)payload, releasing_scope)) {
+            return true;
+        }
+        if (payload != null &&
+            payload.tag == CLOSURE &&
+            boundary_closure_payload_in_scope(payload, releasing_scope)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn bool jit_tco_binding_needs_copy(Value* v, main::ScopeRegion* releasing_scope) @inline {
+    if (v == null || releasing_scope == null) return false;
+    if (boundary_ptr_in_scope((void*)v, releasing_scope)) return true;
+    return jit_binding_payload_in_releasing_scope(v, releasing_scope);
+}
+
 <*
 @require interp != null : "boundary_finalize_scoped_result: null interp"
 @require saved_scope != null : "boundary_finalize_scoped_result: null saved_scope"
@@ -117,12 +190,12 @@ fn Env* jit_copy_tco_env_chain_for_recycle(
     return copied;
 }
 
-fn JitFn jit_lookup_or_compile(Expr* expr, Interp* interp) {
-    JitFn cached = jit_cache_lookup(expr);
-    if (cached != null) return cached;
+fn JitCompiledFn jit_lookup_or_compile(Expr* expr, Interp* interp) {
+    JitCompiledFn cached = jit_cache_lookup(expr, interp);
+    if (!jit_compiled_fn_is_null(cached)) return cached;
     cached = jit_compile(expr, interp);
-    if (cached == null) return null;
-    jit_cache_store(expr, cached);
+    if (jit_compiled_fn_is_null(cached)) return jit_compiled_fn_null();
+    jit_cache_store(expr, cached, interp);
     return cached;
 }
 
@@ -195,8 +268,14 @@ fn Value* jit_prepare_tco_recycle(
         env_chain_contains_scope_gen(*env_io, cs.generation, interp.global_env);
     bool bindings_touch_releasing_scope =
         env_chain_has_binding_in_scope(*env_io, cs, interp.global_env);
+    bool has_root_persistent_box =
+        env_chain_contains_root_persistent_box(*env_io, interp.global_env);
+    bool has_graph_binding_values =
+        env_chain_has_graph_binding_values(*env_io, interp.global_env);
+    bool allow_fast_reset = !has_root_persistent_box && !has_graph_binding_values;
 
-    if (!chain_touches_releasing_scope &&
+    if (allow_fast_reset &&
+        !chain_touches_releasing_scope &&
         !bindings_touch_releasing_scope) {
         // Fast path: loop env graph is detached from recyclable TEMP lane.
         // Recycle TEMP lane in-place and keep env as-is.
@@ -259,8 +338,8 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
             return make_nil(interp);
         }
 
-        JitFn cached = jit_lookup_or_compile(expr, interp);
-        if (cached == null) {
+        JitCompiledFn cached = jit_lookup_or_compile(expr, interp);
+        if (jit_compiled_fn_is_null(cached)) {
             // JIT can't compile this expression
             interp.jit_env = saved_env;
             return raise_error(interp, "JIT compilation failed");
@@ -269,9 +348,11 @@ fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
         // Execute with env context.
         interp.jit_env = env;
         interp.flags.jit_tco_bounce = false;
-        jit_exec_enter();
-        Value* result = cached(interp);
-        jit_exec_leave();
+        Value* result = jit_exec_compiled_checked(cached, interp);
+        if (is_error(result)) {
+            interp.jit_env = saved_env;
+            return result;
+        }
 
         // Check for TCO bounce.
         if (interp.flags.jit_tco_bounce) {
@@ -325,6 +406,11 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
     Value* result = jit_eval(body, call_env, interp);
 
     main::ScopeRegion* active_scope = interp.current_scope;
+    if (registered_defer && !pop_scope_guard_defer(current_ctx)) {
+        interp.current_scope = saved_scope;
+        boundary_assert_interp_scope_chain(interp);
+        return raise_error(interp, "jit: call-scope defer stack mismatch");
+    }
 
     boundary_leave_scope(interp, saved_scope);
     Value* final = jit_finalize_scoped_result(
@@ -333,9 +419,6 @@ fn Value* jit_eval_in_single_scope(Expr* body, Env* call_env, Interp* interp) {
         saved_scope,
         active_scope
     );
-    if (registered_defer) {
-        (void)pop_scope_guard_defer(current_ctx);
-    }
     boundary_assert_interp_scope_chain(interp);
     return final;
 }
@@ -380,6 +463,10 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp, bool
 
     // After jit_eval, current_scope may differ from call_scope (TCO recycling)
     main::ScopeRegion* active_scope = interp.current_scope;
+    if (registered_defer && !pop_scope_guard_defer(current_ctx)) {
+        jit_restore_call_scope_state(interp, saved_state);
+        return raise_error(interp, "jit: call-scope defer stack mismatch");
+    }
 
     // Restore saved state
     jit_restore_call_scope_state(interp, saved_state);
@@ -389,9 +476,6 @@ fn Value* jit_eval_in_call_scope(Expr* body, Env* call_env, Interp* interp, bool
         saved_scope,
         active_scope
     );
-    if (registered_defer) {
-        (void)pop_scope_guard_defer(current_ctx);
-    }
     boundary_assert_interp_scope_chain(interp);
     return final;
 }
@@ -428,8 +512,17 @@ fn Env* copy_tco_env_chain(Env* src, Interp* interp) {
     if (src == null || src == interp.global_env) return src;
 
     // Root-persistent mutable-box env nodes are kept as-is.
-    // Their parent chain still needs fixing up since it may point to env_scope frames.
+    // Their parent chain still needs fixing up when it points at releasing-scope frames.
+    // Rewrites must not tie parent lifetime to transient target scopes.
     if (src.is_root_persistent_box()) {
+        if (!jit_env_parent_needs_rewrite(src.parent, interp.releasing_scope)) {
+            return src;
+        }
+
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        interp.current_scope = interp.root_scope;
+        defer interp.current_scope = saved_scope;
+
         src.parent = copy_tco_env_chain(src.parent, interp);
         return src;
     }
@@ -443,12 +536,7 @@ fn Env* copy_tco_env_chain(Env* src, Interp* interp) {
         Value* sv = src.bindings[i].value;
         Value* v = sv;
         main::ScopeRegion* releasing_scope = interp.releasing_scope;
-        bool sv_in_releasing_scope = false;
-        if (sv != null && releasing_scope != null) {
-            if (sv.scope_gen == releasing_scope.generation || sv.scope_gen == releasing_scope.escape_generation) {
-                sv_in_releasing_scope = boundary_ptr_in_scope((void*)sv, releasing_scope);
-            }
-        }
+        bool sv_in_releasing_scope = jit_tco_binding_needs_copy(sv, releasing_scope);
         if (sv_in_releasing_scope) {
             v = jit_scopes_copy_value_into_scope_site(
                 sv,

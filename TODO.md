@@ -6,7 +6,85 @@ This file now tracks only active, actionable work.
 Full completed history is archived at:
 - `docs/plans/TODO_ARCHIVE_2026-03-11.md`
 
-Current actionable count: 23
+Current actionable count: 28
+
+## Invasive Runtime Hardening (2026-03-16)
+
+- [ ] Rework JIT TCO env-copy/rewrite ownership gating to stop depending on stale scope-generation stamps.
+  target:
+  - `src/lisp/jit_jit_eval_scopes.c3`
+  - `src/lisp/eval_promotion_copy.c3`
+  acceptance:
+  - moved/chunk-transferred values in releasing scope are treated as copy-required even when generation stamps are stale.
+  - root-persistent parent rewrite cannot skip when parent physically resides in releasing scope.
+  - add focused regressions for stale-generation moved-binding and stale-generation persistent-parent paths.
+  - validate with `c3c build --sanitize=address` and `OMNI_LISP_TEST_SLICE=jit-policy`.
+
+- [ ] Make env-copy frame materialization failure transactional so partially copied bindings/wrappers cannot leak into target scope.
+  target:
+  - `src/lisp/eval_env_copy.c3`
+  acceptance:
+  - partial binding-copy failure releases any already materialized target-scope wrapper allocations/retains.
+  - no partially copied env frame remains reachable after failure return.
+  - add regressions for mid-frame copy failure with previously cloned closure/iterator/instance payloads.
+  - validate with `c3c build --sanitize=address` and `OMNI_LISP_TEST_SLICE=memory-lifetime-smoke` (container path).
+
+- [ ] Unify closure/iterator alias safety policy across env-copy and boundary promotion paths.
+  target:
+  - `src/lisp/eval_env_copy.c3`
+  - `src/lisp/eval_promotion_copy.c3`
+  - `src/lisp/eval_promotion_escape.c3`
+  acceptance:
+  - closures/iterators lacking detached ownership envelope are fail-closed (or deep-copied) regardless of originating transient scope, not only `releasing_scope`.
+  - iterator payloads cannot preserve unsafe aliasing through non-closure thunk wrappers.
+  - add regressions for cross-scope undelimited closure and iterator-thunk alias rejection.
+  - validate with `c3c build --sanitize=address`, `OMNI_LISP_TEST_SLICE=jit-policy`, and memory-lifetime targeted env-copy tests.
+
+## Runtime Hardening Follow-Ups (2026-03-16)
+
+- [ ] Preserve explicit cancellation error payload when converting late worker completions.
+  target:
+  - `src/lisp/scheduler_thread_task_transitions.c3`
+  acceptance:
+  - cancellation-converted completions always carry deterministic cancellation text (`task` and `thread` paths).
+  - regressions assert join-visible payload is cancellation-specific, not generic worker-failure.
+
+- [ ] Stop masking non-timeout condvar wait failures as normal timeouts in join waiters.
+  target:
+  - `src/lisp/scheduler_thread_task_waiters.c3`
+  - `src/lisp/scheduler_primitives_task_wait_join.c3`
+  - `src/lisp/scheduler_primitives_thread_helpers.c3`
+  acceptance:
+  - real `wait_timeout` error paths map to deterministic wait-failed scheduler errors, not timeout.
+  - explicit timeout behavior is unchanged for real timeout events.
+  - add regression coverage for wait-failed mapping in non-fiber join paths.
+
+- [x] Fail closed on closure signature-copy failure during promotion/copy instead of silently clearing `type_sig`.
+  target:
+  - `src/lisp/eval_promotion_copy.c3`
+  - `src/lisp/eval_promotion_escape.c3`
+  acceptance:
+  - signature-copy failure aborts boundary move with typed failure result.
+  - no successful boundary copy/promotion path silently drops callable signature metadata.
+  - add regression coverage for signature-copy allocation failure behavior.
+
+- [x] Prevent aborted escape-builder walks from leaving partially built destination-lane objects.
+  target:
+  - `src/lisp/eval_boundary_commit_escape_builders.c3`
+  - `src/lisp/eval_promotion_escape.c3`
+  acceptance:
+  - `ctx.aborted` is checked before destination allocations in commit/build paths, or allocated objects are rolled back deterministically.
+  - no unreachable partial destination objects remain after aborted walk.
+  - add targeted regressions for abort-mid-walk object allocation paths.
+
+- [x] Harden JIT scope-guard defer pop fallback so mismatched active context cannot strand stale defer state.
+  target:
+  - `src/lisp/jit_common.c3`
+  - `src/lisp/jit_jit_eval_scopes.c3`
+  acceptance:
+  - fallback context is attempted when current stack context pop is inapplicable/fails.
+  - call-scope wrappers treat unresolved defer-pop as fail-closed error path.
+  - add regression for mismatched stack-context cleanup ordering.
 
 ## Lookup Accessor Rollout (Phased)
 

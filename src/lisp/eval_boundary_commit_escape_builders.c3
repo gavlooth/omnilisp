@@ -28,12 +28,42 @@ fn Value* boundary_destination_promote_routed_escape(
     return boundary_promote_to_escape(routed, interp);
 }
 
+fn main::ScopeRegion* boundary_destination_build_scope_begin(
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope
+) @inline {
+    main::ScopeRegion* build_scope = main::scope_create(target_scope);
+    if (build_scope == null) return null;
+    interp.current_scope = build_scope;
+    interp.releasing_scope = releasing_scope;
+    return build_scope;
+}
+
+fn void boundary_destination_build_scope_abort(main::ScopeRegion** build_scope_io) @inline {
+    if (build_scope_io == null) return;
+    if (*build_scope_io == null) return;
+    main::scope_release(*build_scope_io);
+    *build_scope_io = null;
+}
+
+fn void boundary_destination_build_scope_commit(
+    main::ScopeRegion** build_scope_io,
+    main::ScopeRegion* target_scope
+) @inline {
+    if (build_scope_io == null) return;
+    main::ScopeRegion* build_scope = *build_scope_io;
+    if (build_scope == null || target_scope == null) return;
+    main::scope_splice_escapes(target_scope, build_scope);
+    *build_scope_io = null;
+}
+
 <*
 @require list != null : "boundary_build_destination_cons_escape: null list"
 @require interp != null : "boundary_build_destination_cons_escape: null interp"
 @require target_scope != null : "boundary_build_destination_cons_escape: null target_scope"
 @require releasing_scope != null : "boundary_build_destination_cons_escape: null releasing_scope"
-@ensure return == list || return.scope_gen == target_scope.escape_generation : "boundary_build_destination_cons_escape: expected ESCAPE-lane cons head"
+@ensure return == list || return.scope_gen == target_scope.escape_generation || boundary_ptr_in_scope((void*)return, target_scope) : "boundary_build_destination_cons_escape: expected ESCAPE-lane cons head"
 *>
 fn Value* boundary_build_destination_cons_escape(
     Value* list,
@@ -43,11 +73,18 @@ fn Value* boundary_build_destination_cons_escape(
     PromotionContext* ctx = null
 ) {
     if (list.tag != CONS) return list;
+    if (ctx != null && ctx.aborted) return list;
 
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);
-    interp.current_scope = target_scope;
-    interp.releasing_scope = releasing_scope;
+    main::ScopeRegion* build_scope = boundary_destination_build_scope_begin(
+        interp,
+        target_scope,
+        releasing_scope
+    );
+    if (build_scope == null) return list;
+    defer boundary_destination_build_scope_abort(&build_scope);
+    if (ctx != null && ctx.aborted) return list;
 
     Value* head = interp.alloc_value_escape();
     head.tag = CONS;
@@ -64,21 +101,21 @@ fn Value* boundary_build_destination_cons_escape(
         current_new.cons_val.car = boundary_destination_promote_routed_escape(
             routed_car,
             interp,
-            target_scope,
+            build_scope,
             ctx
         );
         if (ctx != null && ctx.aborted) return list;
         assert(
-            boundary_cons_escape_child_edge_safe(current_new.cons_val.car, target_scope),
+            boundary_cons_escape_child_edge_safe(current_new.cons_val.car, build_scope),
             "boundary destination-cons: ESCAPE car must not point into target TEMP lane"
         );
 
         Value* old_cdr = current_old.cons_val.cdr;
         bool extend_spine = old_cdr != null &&
             old_cdr.tag == CONS &&
-            old_cdr.scope_gen == releasing_scope.generation &&
             boundary_ptr_in_scope((void*)old_cdr, releasing_scope);
         if (extend_spine) {
+            if (ctx != null && ctx.aborted) return list;
             Value* next_new = interp.alloc_value_escape();
             next_new.tag = CONS;
             current_new.cons_val.cdr = next_new;
@@ -96,17 +133,18 @@ fn Value* boundary_build_destination_cons_escape(
         current_new.cons_val.cdr = boundary_destination_promote_routed_escape(
             routed_cdr,
             interp,
-            target_scope,
+            build_scope,
             ctx
         );
         if (ctx != null && ctx.aborted) return list;
         assert(
-            boundary_cons_escape_child_edge_safe(current_new.cons_val.cdr, target_scope),
+            boundary_cons_escape_child_edge_safe(current_new.cons_val.cdr, build_scope),
             "boundary destination-cons: ESCAPE cdr must not point into target TEMP lane"
         );
         break;
     }
 
+    boundary_destination_build_scope_commit(&build_scope, target_scope);
     return head;
 }
 
@@ -115,7 +153,7 @@ fn Value* boundary_build_destination_cons_escape(
 @require interp != null : "boundary_build_destination_partial_escape: null interp"
 @require target_scope != null : "boundary_build_destination_partial_escape: null target_scope"
 @require releasing_scope != null : "boundary_build_destination_partial_escape: null releasing_scope"
-@ensure return == partial || return.scope_gen == target_scope.escape_generation : "boundary_build_destination_partial_escape: expected ESCAPE-lane partial wrapper"
+@ensure return == partial || return.scope_gen == target_scope.escape_generation || boundary_ptr_in_scope((void*)return, target_scope) : "boundary_build_destination_partial_escape: expected ESCAPE-lane partial wrapper"
 *>
 fn Value* boundary_build_destination_partial_escape(
     Value* partial,
@@ -125,11 +163,18 @@ fn Value* boundary_build_destination_partial_escape(
     PromotionContext* ctx = null
 ) {
     if (partial.tag != PARTIAL_PRIM) return partial;
+    if (ctx != null && ctx.aborted) return partial;
 
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);
-    interp.current_scope = target_scope;
-    interp.releasing_scope = releasing_scope;
+    main::ScopeRegion* build_scope = boundary_destination_build_scope_begin(
+        interp,
+        target_scope,
+        releasing_scope
+    );
+    if (build_scope == null) return partial;
+    defer boundary_destination_build_scope_abort(&build_scope);
+    if (ctx != null && ctx.aborted) return partial;
 
     Value* routed_first = boundary_copy_to_parent_site_ctx(
         partial.partial_val.first_arg,
@@ -140,12 +185,12 @@ fn Value* boundary_build_destination_partial_escape(
     Value* escaped_first = boundary_destination_promote_routed_escape(
         routed_first,
         interp,
-        target_scope,
+        build_scope,
         ctx
     );
     if (ctx != null && ctx.aborted) return partial;
     assert(
-        boundary_cons_escape_child_edge_safe(escaped_first, target_scope),
+        boundary_cons_escape_child_edge_safe(escaped_first, build_scope),
         "boundary destination-partial: first arg must not point into target TEMP lane"
     );
 
@@ -158,12 +203,12 @@ fn Value* boundary_build_destination_partial_escape(
     Value* escaped_second = boundary_destination_promote_routed_escape(
         routed_second,
         interp,
-        target_scope,
+        build_scope,
         ctx
     );
     if (ctx != null && ctx.aborted) return partial;
     assert(
-        boundary_cons_escape_child_edge_safe(escaped_second, target_scope),
+        boundary_cons_escape_child_edge_safe(escaped_second, build_scope),
         "boundary destination-partial: second arg must not point into target TEMP lane"
     );
 
@@ -173,6 +218,7 @@ fn Value* boundary_build_destination_partial_escape(
     result.partial_val.remaining = partial.partial_val.remaining;
     result.partial_val.first_arg = escaped_first;
     result.partial_val.second_arg = escaped_second;
+    boundary_destination_build_scope_commit(&build_scope, target_scope);
     return result;
 }
 
@@ -181,7 +227,7 @@ fn Value* boundary_build_destination_partial_escape(
 @require interp != null : "boundary_build_destination_iterator_escape: null interp"
 @require target_scope != null : "boundary_build_destination_iterator_escape: null target_scope"
 @require releasing_scope != null : "boundary_build_destination_iterator_escape: null releasing_scope"
-@ensure return == iterator || return.scope_gen == target_scope.escape_generation : "boundary_build_destination_iterator_escape: expected ESCAPE-lane iterator wrapper"
+@ensure return == iterator || return.scope_gen == target_scope.escape_generation || boundary_ptr_in_scope((void*)return, target_scope) : "boundary_build_destination_iterator_escape: expected ESCAPE-lane iterator wrapper"
 *>
 fn Value* boundary_build_destination_iterator_escape(
     Value* iterator,
@@ -191,11 +237,18 @@ fn Value* boundary_build_destination_iterator_escape(
     PromotionContext* ctx = null
 ) {
     if (iterator.tag != ITERATOR) return iterator;
+    if (ctx != null && ctx.aborted) return iterator;
 
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);
-    interp.current_scope = target_scope;
-    interp.releasing_scope = releasing_scope;
+    main::ScopeRegion* build_scope = boundary_destination_build_scope_begin(
+        interp,
+        target_scope,
+        releasing_scope
+    );
+    if (build_scope == null) return iterator;
+    defer boundary_destination_build_scope_abort(&build_scope);
+    if (ctx != null && ctx.aborted) return iterator;
 
     Value* routed_inner = boundary_copy_to_parent_site_ctx(
         iterator.iterator_val,
@@ -206,18 +259,19 @@ fn Value* boundary_build_destination_iterator_escape(
     Value* escaped_inner = boundary_destination_promote_routed_escape(
         routed_inner,
         interp,
-        target_scope,
+        build_scope,
         ctx
     );
     if (ctx != null && ctx.aborted) return iterator;
     assert(
-        boundary_cons_escape_child_edge_safe(escaped_inner, target_scope),
+        boundary_cons_escape_child_edge_safe(escaped_inner, build_scope),
         "boundary destination-iterator: iterator payload must not point into target TEMP lane"
     );
 
     Value* result = interp.alloc_value_escape();
     result.tag = ITERATOR;
     result.iterator_val = escaped_inner;
+    boundary_destination_build_scope_commit(&build_scope, target_scope);
     return result;
 }
 
@@ -225,17 +279,31 @@ fn Value* boundary_build_destination_iterator_escape(
 @require error_value != null : "boundary_build_destination_error_escape: null error value"
 @require interp != null : "boundary_build_destination_error_escape: null interp"
 @require target_scope != null : "boundary_build_destination_error_escape: null target_scope"
-@ensure return == error_value || return.scope_gen == target_scope.escape_generation : "boundary_build_destination_error_escape: expected ESCAPE-lane error wrapper"
+@ensure return == error_value || return.scope_gen == target_scope.escape_generation || boundary_ptr_in_scope((void*)return, target_scope) : "boundary_build_destination_error_escape: expected ESCAPE-lane error wrapper"
 *>
 fn Value* boundary_build_destination_error_escape(
     Value* error_value,
     Interp* interp,
-    main::ScopeRegion* target_scope
+    main::ScopeRegion* target_scope,
+    PromotionContext* ctx = null
 ) {
     if (error_value.tag != ERROR) return error_value;
+    if (ctx != null && ctx.aborted) return error_value;
+
+    BoundarySession session = boundary_session_begin(interp);
+    defer boundary_session_end(interp, &session);
+    main::ScopeRegion* build_scope = boundary_destination_build_scope_begin(
+        interp,
+        target_scope,
+        session.releasing_scope
+    );
+    if (build_scope == null) return error_value;
+    defer boundary_destination_build_scope_abort(&build_scope);
+    if (ctx != null && ctx.aborted) return error_value;
+
     Value* result = interp.alloc_value_escape();
     result.tag = ERROR;
-    main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
+    main::scope_register_dtor_escape(build_scope, (void*)result, &scope_dtor_value);
 
     usz len = error_value.str_len;
     usz cap = len + 1;
@@ -246,5 +314,6 @@ fn Value* boundary_build_destination_error_escape(
     }
     result.str_chars[len] = 0;
     result.str_len = len;
+    boundary_destination_build_scope_commit(&build_scope, target_scope);
     return result;
 }

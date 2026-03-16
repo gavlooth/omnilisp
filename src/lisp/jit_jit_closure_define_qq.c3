@@ -110,18 +110,10 @@ fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
 // set! helper — called from JIT-compiled code.
 // Command semantics: returns Void on successful mutation.
 fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
-    // Env bindings (closures, globals) live in root scope; promote child-lifetime
-    // values before storing to avoid dangling pointers.
-    Value* stored = boundary_promote_to_root_site(
-        value,
-        interp,
-        COPY_SITE_JIT_EVAL_SET
-    );
-    if (stored != null && stored.tag == ERROR) return stored;
-    // Try local env first, then global
-    if (catch err = env_set_with_barrier(env, name, stored, interp)) {
+    // Barrier helper resolves target frame and promotes/copies at the actual write site.
+    if (catch err = env_set_with_barrier(env, name, value, interp)) {
         if (interp.global_env == null) return raise_error(interp, "set!: unbound variable");
-        if (catch err2 = env_set_with_barrier(interp.global_env, name, stored, interp)) {
+        if (catch err2 = env_set_with_barrier(interp.global_env, name, value, interp)) {
             return raise_error(interp, "set!: unbound variable");
         }
     }
@@ -207,22 +199,13 @@ fn Value* jit_set_path_mutate_instance(Value* current, SymbolId last_seg, Value*
             if (ti.fields[fi].name == last_seg && fi < current.instance_val.field_count) {
                 main::ScopeRegion* target = current.instance_val.owner_scope;
                 if (target == null) target = interp.root_scope;
-                Value* stored = null;
-                if (target == interp.root_scope) {
-                    stored = boundary_promote_to_root_site(
-                        value,
-                        interp,
-                        COPY_SITE_ENV_PROMOTE_FOR_TARGET
-                    );
-                } else {
-                    stored = jit_copy_value_into_scope_site(
-                        value,
-                        interp,
-                        target,
-                        interp.current_scope,
-                        COPY_SITE_ENV_PROMOTE_FOR_TARGET
-                    );
-                }
+                Value* stored = jit_copy_value_into_scope_site(
+                    value,
+                    interp,
+                    target,
+                    interp.current_scope,
+                    COPY_SITE_ENV_PROMOTE_FOR_TARGET
+                );
                 if (stored != null && stored.tag == ERROR) return stored;
                 if (stored != null) current.instance_val.fields[fi] = *stored;
                 return make_void(interp);

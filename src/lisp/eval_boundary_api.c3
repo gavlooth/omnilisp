@@ -2,6 +2,22 @@ module lisp;
 
 import main;
 
+fn void boundary_mark_active_promotion_ctx_aborted(Interp* interp, PromotionContext* local_ctx = null) @inline {
+    if (local_ctx != null) {
+        local_ctx.aborted = true;
+        if (local_ctx.abort_reason == PROMOTION_ABORT_NONE) {
+            local_ctx.abort_reason = PROMOTION_ABORT_BUDGET_EXHAUSTED;
+        }
+    }
+    PromotionContext* active_ctx = interp.active_promotion_ctx;
+    if (active_ctx != null) {
+        active_ctx.aborted = true;
+        if (active_ctx.abort_reason == PROMOTION_ABORT_NONE) {
+            active_ctx.abort_reason = PROMOTION_ABORT_BUDGET_EXHAUSTED;
+        }
+    }
+}
+
 // =============================================================================
 // SECTION 2.4: FRAME PUSH/POP (audited boundary facade)
 // =============================================================================
@@ -67,6 +83,9 @@ fn BoundaryCopyResult boundary_copy_to_parent_site_ctx_checked(
     PromotionContext* ctx
 ) @nodiscard @inline {
     if (v == null) return boundary_copy_ok(null);
+    if (ctx != null && ctx.aborted) {
+        return boundary_copy_fail(BOUNDARY_COPY_FAULT_CONTEXT_ABORTED);
+    }
     if (interp.current_scope == null || interp.releasing_scope == null) {
         (void)site;
         return boundary_copy_fail(BOUNDARY_COPY_FAULT_MISSING_SCOPE_PROVENANCE);
@@ -76,9 +95,16 @@ fn BoundaryCopyResult boundary_copy_to_parent_site_ctx_checked(
         if (cached != null) return boundary_copy_ok(cached);
     }
     bool can_track = promotion_context_consume(ctx, 1);
-    Value* copied = copy_to_parent_site(v, interp, site);
+    BoundaryCopyFault copy_fault = BOUNDARY_COPY_FAULT_NONE;
+    Value* copied = copy_to_parent_site_checked(v, interp, site, &copy_fault);
     if (copied == null) {
-        return boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
+        if (copy_fault == BOUNDARY_COPY_FAULT_CLOSURE_TYPE_SIG_COPY) {
+            boundary_mark_active_promotion_ctx_aborted(interp, ctx);
+        }
+        if (copy_fault == BOUNDARY_COPY_FAULT_NONE) {
+            return boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
+        }
+        return boundary_copy_fail(copy_fault);
     }
     if (can_track && ctx != null && copied != null) {
         promotion_context_remember(ctx, v, copied, interp);
