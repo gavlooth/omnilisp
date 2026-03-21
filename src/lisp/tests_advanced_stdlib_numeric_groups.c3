@@ -1,5 +1,46 @@
 module lisp;
 
+import std::io;
+import main;
+
+alias AdvancedStdlibNumericGroupFn = fn void(Interp* interp, int* pass, int* fail);
+
+fn void trace_env_chain_state(char[] label, Interp* interp, Env* env) {
+    if (env == null) {
+        std::io::printfn("OMNI_ADVANCED_GROUP_TRACE state %s env=null", (ZString)label);
+        return;
+    }
+    Env* cur = env;
+    for (int depth = 0; depth < 6 && cur != null; depth++) {
+        int name0 = cur.binding_count > 0 ? (int)cur.bindings[0].name : -1;
+        int tag0 = cur.binding_count > 0 && cur.bindings[0].value != null ? (int)cur.bindings[0].value.tag : -1;
+        int name1 = cur.binding_count > 1 ? (int)cur.bindings[1].name : -1;
+        int tag1 = cur.binding_count > 1 && cur.bindings[1].value != null ? (int)cur.bindings[1].value.tag : -1;
+        std::io::printfn(
+            "OMNI_ADVANCED_GROUP_TRACE state %s frame=%d ptr_in_current=%d is_root_box=%d scope_gen=%d count=%d name0=%d tag0=%d name1=%d tag1=%d parent_global=%d",
+            (ZString)label,
+            depth,
+            boundary_ptr_in_scope((void*)cur, interp.current_scope) ? 1 : 0,
+            cur.is_root_persistent_box() ? 1 : 0,
+            (int)cur.scope_gen,
+            (int)cur.binding_count,
+            name0,
+            tag0,
+            name1,
+            tag1,
+            cur.parent == interp.global_env ? 1 : 0
+        );
+        cur = cur.parent;
+    }
+}
+
+fn void run_advanced_stdlib_numeric_group(char[] name, AdvancedStdlibNumericGroupFn group_fn,
+    Interp* interp, int* pass, int* fail) {
+    emit_advanced_group_trace("begin", name);
+    group_fn(interp, pass, fail);
+    emit_advanced_group_trace("end", name);
+}
+
 fn void run_advanced_stdlib_numeric_collection_tests(Interp* interp, int* pass, int* fail) {
     // === STDLIB TESTS ===
     test_eq(interp, "map car", "(car (map (lambda (x) (* x 2)) (quote (1 2 3))))", 2, pass, fail);
@@ -52,11 +93,6 @@ fn void run_advanced_stdlib_numeric_collection_tests(Interp* interp, int* pass, 
         "            (and (= (symbol->string (ref payload 'code)) \"stdlib/assert-failed\") "
         "                 (= (ref payload 'message) \"fail\")))))",
         pass, fail);
-    setup(interp, "(define test-alist (list (cons 1 10) (cons 2 20) (cons 3 30)))");
-    test_eq(interp, "assoc find", "(cdr (assoc 2 test-alist))", 20, pass, fail);
-    test_nil(interp, "assoc not found", "(assoc 99 test-alist)", pass, fail);
-    test_eq(interp, "assoc-ref", "(assoc-ref 3 test-alist)", 30, pass, fail);
-    test_nil(interp, "assoc-ref not found", "(assoc-ref 99 test-alist)", pass, fail);
     test_eq(interp, "map+filter+foldl", "(foldl + 0 (filter (lambda (x) (> x 3)) (map (lambda (x) (* x 2)) (quote (1 2 3 4 5)))))", 28, pass, fail);
     test_eq(interp, "reverse+take", "(car (take 1 (reverse (quote (1 2 3)))))", 3, pass, fail);
     test_eq(interp, "sum of squares", "(foldl + 0 (map (lambda (x) (* x x)) (range 5)))", 30, pass, fail);
@@ -142,10 +178,10 @@ fn void run_advanced_stdlib_numeric_array_set_tests(Interp* interp, int* pass, i
     test_eq(interp, "length Array", "(length (Array 1 2 3))", 3, pass, fail);
     test_eq(interp, "ref Array", "(ref (Array 10 20 30) 1)", 20, pass, fail);
     test_eq(interp, "Array from list", "(ref (Array '(10 20 30)) 1)", 20, pass, fail);
-    test_eq(interp, "array compat alias", "(ref (array 10 20 30) 1)", 20, pass, fail);
+    test_eq(interp, "Array canonical constructor", "(ref (Array 10 20 30) 1)", 20, pass, fail);
     setup(interp, "(define test-arr (Array 1 2 3))");
-    test_tag_interp(interp, "array-set! returns void", "(array-set! test-arr 1 99)", VOID, pass, fail);
-    test_eq(interp, "array-set!", "(ref test-arr 1)", 99, pass, fail);
+    test_tag_interp(interp, "set! array returns void", "(set! test-arr 1 99)", VOID, pass, fail);
+    test_eq(interp, "set! array write", "(ref test-arr 1)", 99, pass, fail);
     test_tag_interp(interp, "set! generic array returns void", "(set! test-arr 1 77)", VOID, pass, fail);
     test_eq(interp, "set! generic array write", "(ref test-arr 1)", 77, pass, fail);
     test_truthy(interp, "array? Array", "(array? (Array 1 2))", pass, fail);
@@ -158,7 +194,7 @@ fn void run_advanced_stdlib_numeric_array_set_tests(Interp* interp, int* pass, i
     test_eq(interp, "push!", "(length push-arr)", 3, pass, fail);
     test_eq(interp, "push! val", "(ref push-arr 2)", 3, pass, fail);
     test_error(interp, "ref oob", "(ref (Array 1) 5)", pass, fail);
-    test_error(interp, "array-set! oob", "(array-set! (Array 1) 5 0)", pass, fail);
+    test_error(interp, "set! array oob", "(set! (Array 1) 5 0)", pass, fail);
     test_eq(interp, "empty Array", "(length (Array))", 0, pass, fail);
 
     // === SET TESTS (Phase 9) ===
@@ -274,28 +310,356 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
 
 fn void run_advanced_stdlib_introspection_lazy_tco_tests(Interp* interp, int* pass, int* fail) {
     // === INTROSPECTION TESTS (Phase 7) ===
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco setup-macro");
     setup(interp, "(define [macro] my-inc (syntax-match ([x] (template (+ (insert x) 1)))))");
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco macroexpand");
     test_truthy(interp, "macroexpand", "(pair? (macroexpand (quote (my-inc 5))))", pass, fail);
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco eval-literal");
     test_eq(interp, "eval literal", "(eval 42)", 42, pass, fail);
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco eval-list");
     test_eq(interp, "eval list", "(eval (quote (+ 1 2)))", 3, pass, fail);
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco apply");
     test_eq(interp, "apply +", "(apply + (quote (1 2)))", 3, pass, fail);
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco bound-yes");
     test_truthy(interp, "bound? yes", "(bound? '+)", pass, fail);
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco bound-no");
     test_nil(interp, "bound? no", "(bound? 'xyzzy-undefined)", pass, fail);
+    test_truthy(interp, "bound? Dictionary canonical", "(bound? 'Dictionary)", pass, fail);
+    test_truthy(interp, "bound? Dict shorthand", "(bound? 'Dict)", pass, fail);
+    test_nil(interp, "bound? dictionary removed", "(bound? 'dictionary)", pass, fail);
+    test_nil(interp, "bound? dict removed", "(bound? 'dict)", pass, fail);
+    test_truthy(interp, "bound? Array canonical", "(bound? 'Array)", pass, fail);
+    test_nil(interp, "bound? array removed", "(bound? 'array)", pass, fail);
+    test_truthy(interp, "bound? Coroutine canonical", "(bound? 'Coroutine)", pass, fail);
+    test_nil(interp, "bound? coroutine removed", "(bound? 'coroutine)", pass, fail);
+    test_truthy(interp, "bound? TimePoint canonical", "(bound? 'TimePoint)", pass, fail);
+    test_nil(interp, "bound? time-point removed", "(bound? 'time-point)", pass, fail);
+    test_nil(interp, "bound? dict-set! removed", "(bound? 'dict-set!)", pass, fail);
+    test_nil(interp, "bound? array-set! removed", "(bound? 'array-set!)", pass, fail);
+    test_nil(interp, "bound? iterator removed", "(bound? 'iterator)", pass, fail);
+    test_nil(interp, "bound? make-iterator removed", "(bound? 'make-iterator)", pass, fail);
+    test_nil(interp, "bound? collect removed", "(bound? 'collect)", pass, fail);
+    test_nil(interp, "bound? to-array removed", "(bound? 'to-array)", pass, fail);
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco error");
     test_error(interp, "error raises", "(error \"test error\")", pass, fail);
 
     // === LAZY EVALUATION TESTS (Phase 8) ===
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco setup-delay");
     setup(interp, "(define p (delay (lambda (xx) 42)))");
-    test_eq(interp, "delay/force", "(force p)", 42, pass, fail);
+    SymbolId p_sym = interp.symbols.intern("p");
+    Value* p_val = interp.global_env.lookup(p_sym);
+    bool p_is_closure = p_val != null && p_val.tag == CLOSURE && p_val.closure_val != null;
+    Env* p_env = p_is_closure ? p_val.closure_val.env : null;
+    bool p_env_is_global = p_is_closure && p_val.closure_val.env == interp.global_env;
+    bool p_env_in_current = p_is_closure && boundary_ptr_in_scope((void*)p_val.closure_val.env, interp.current_scope);
+    bool p_env_scope_in_current = p_is_closure &&
+        p_val.closure_val.env_scope != null &&
+        p_val.closure_val.env_scope == interp.current_scope;
+    bool p_env_parent_self = p_env != null && p_env.parent == p_env;
+    bool p_env_parent_global = p_env != null && p_env.parent == interp.global_env;
+    bool p_env_in_detached_scope = p_is_closure &&
+        p_val.closure_val.env_scope != null &&
+        boundary_ptr_in_scope((void*)p_env, p_val.closure_val.env_scope);
+    bool p_env_cycle = false;
+    bool p_env_hits_global = false;
+    int p_env_depth = 0;
+    SymbolId thunk_sym = interp.symbols.intern("thunk");
+    SymbolId result_sym = interp.symbols.intern("result");
+    SymbolId forced_sym = interp.symbols.intern("forced");
+    Value* thunk_val = p_env != null ? p_env.lookup(thunk_sym) : null;
+    Value* result_slot_val = p_env != null ? p_env.lookup(result_sym) : null;
+    Value* forced_slot_val = p_env != null ? p_env.lookup(forced_sym) : null;
+    Env*[8] p_seen = {};
+    Env* p_walk = p_env;
+    while (p_walk != null && p_env_depth < 8) {
+        for (int i = 0; i < p_env_depth; i++) {
+            if (p_seen[i] == p_walk) {
+                p_env_cycle = true;
+                p_walk = null;
+                break;
+            }
+        }
+        if (p_walk == null) break;
+        p_seen[p_env_depth] = p_walk;
+        if (p_walk == interp.global_env) {
+            p_env_hits_global = true;
+            p_env_depth++;
+            break;
+        }
+        p_walk = p_walk.parent;
+        p_env_depth++;
+    }
+    std::io::printfn(
+        "OMNI_ADVANCED_GROUP_TRACE state delay-force p_is_closure=%d p_env_scope=%d p_env_is_global=%d p_env_in_current=%d p_env_scope_in_current=%d p_env_in_detached_scope=%d p_env_parent_self=%d p_env_parent_global=%d p_env_cycle=%d p_env_hits_global=%d p_env_depth=%d thunk_sym=%d result_sym=%d forced_sym=%d thunk_tag=%d thunk_scope_gen=%d thunk_env_scope=%d thunk_env_scope_gen=%d result_tag=%d forced_tag=%d raise_pending=%d handler_count=%d p_env_scope_gen=%d current_gen=%d current_escape_gen=%d env_scope_gen=%d",
+        p_is_closure ? 1 : 0,
+        p_is_closure && p_val.closure_val.env_scope != null ? 1 : 0,
+        p_env_is_global ? 1 : 0,
+        p_env_in_current ? 1 : 0,
+        p_env_scope_in_current ? 1 : 0,
+        p_env_in_detached_scope ? 1 : 0,
+        p_env_parent_self ? 1 : 0,
+        p_env_parent_global ? 1 : 0,
+        p_env_cycle ? 1 : 0,
+        p_env_hits_global ? 1 : 0,
+        p_env_depth,
+        (int)thunk_sym,
+        (int)result_sym,
+        (int)forced_sym,
+        thunk_val != null ? (int)thunk_val.tag : -1,
+        thunk_val != null && thunk_val.tag == CLOSURE && thunk_val.closure_val != null ? (int)thunk_val.scope_gen : -1,
+        thunk_val != null && thunk_val.tag == CLOSURE && thunk_val.closure_val != null && thunk_val.closure_val.env_scope != null ? 1 : 0,
+        thunk_val != null && thunk_val.tag == CLOSURE && thunk_val.closure_val != null && thunk_val.closure_val.env_scope != null ? (int)thunk_val.closure_val.env_scope.generation : -1,
+        result_slot_val != null ? (int)result_slot_val.tag : -1,
+        forced_slot_val != null ? (int)forced_slot_val.tag : -1,
+        interp.flags.raise_pending ? 1 : 0,
+        (int)interp.handler_count,
+        p_env != null ? (int)p_env.scope_gen : -1,
+        interp.current_scope != null ? (int)interp.current_scope.generation : -1,
+        interp.current_scope != null ? (int)interp.current_scope.escape_generation : -1,
+        p_is_closure && p_val.closure_val.env_scope != null ? (int)p_val.closure_val.env_scope.generation : -1
+    );
+    trace_env_chain_state("delay-force-before", interp, p_env);
+    if (p_env != null && p_env.binding_count >= 3) {
+        std::io::printfn(
+            "OMNI_ADVANCED_GROUP_TRACE state delay-force env-bindings-before count=%d b0_name=%d b0_tag=%d b1_name=%d b1_tag=%d b2_name=%d b2_tag=%d",
+            (int)p_env.binding_count,
+            (int)p_env.bindings[0].name,
+            p_env.bindings[0].value != null ? (int)p_env.bindings[0].value.tag : -1,
+            (int)p_env.bindings[1].name,
+            p_env.bindings[1].value != null ? (int)p_env.bindings[1].value.tag : -1,
+            (int)p_env.bindings[2].name,
+            p_env.bindings[2].value != null ? (int)p_env.bindings[2].value.tag : -1
+        );
+    }
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force");
+    bool saved_jit_enabled = interp.flags.jit_enabled;
+    interp.flags.jit_enabled = false;
+    run_clear_stale_raise_state(interp);
+    run_clear_stale_jit_tco_state(interp);
+    dispatch_pending_signal_callbacks(interp);
+
+    EvalResult force_interp;
+    Lexer force_lex;
+    force_lex.init("(force p)");
+    defer force_lex.destroy();
+    Parser force_parser;
+    force_parser.init(&force_lex, interp);
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-parse");
+    Expr* force_expr = force_parser.parse_expr();
+    if (force_parser.has_error) {
+        force_interp = parser_error_to_eval_result(&force_parser);
+    } else {
+        emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-expand");
+        force_expr = expand_macros_in_expr(force_expr, interp);
+        main::ScopeRegion* force_saved_scope = null;
+        emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-push-child");
+        main::ScopeRegion* force_child_scope = boundary_push_child_scope(interp, &force_saved_scope);
+        if (force_child_scope == null) {
+            force_interp = eval_error("force: failed to create child scope");
+        } else {
+            bool force_child_spliced = false;
+            Value* force_value = null;
+            emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-before-execute");
+            bool force_eval_ok = false;
+            if (force_expr != null && force_expr.tag == E_CALL && force_expr.call.arg_count == 1) {
+                emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-eval-func");
+                Value* force_func = runtime_eval_expr(force_expr.call.func, interp.global_env, interp);
+                emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-after-func");
+                if (force_func != null && force_func.tag == ERROR) {
+                    force_interp = eval_error_expr(force_func.str_chars[:force_func.str_len], force_expr.call.func);
+                } else {
+                    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-eval-arg");
+                    Value* force_arg = runtime_eval_expr(force_expr.call.args[0], interp.global_env, interp);
+                    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-after-arg");
+                    if (force_arg != null && force_arg.tag == ERROR) {
+                        force_interp = eval_error_expr(force_arg.str_chars[:force_arg.str_len], force_expr.call.args[0]);
+                    } else {
+                        std::io::printfn(
+                            "OMNI_ADVANCED_GROUP_TRACE state delay-force arg_same_value=%d arg_is_closure=%d arg_env_same=%d arg_env_scope_same=%d",
+                            force_arg == p_val ? 1 : 0,
+                            force_arg != null && force_arg.tag == CLOSURE && force_arg.closure_val != null ? 1 : 0,
+                            force_arg != null &&
+                                force_arg.tag == CLOSURE &&
+                                force_arg.closure_val != null &&
+                                force_arg.closure_val.env == p_env ? 1 : 0,
+                            force_arg != null &&
+                                force_arg.tag == CLOSURE &&
+                                force_arg.closure_val != null &&
+                                force_arg.closure_val.env_scope == p_val.closure_val.env_scope ? 1 : 0
+                        );
+                        if (p_env != null && p_env.binding_count >= 3) {
+                            std::io::printfn(
+                                "OMNI_ADVANCED_GROUP_TRACE state delay-force env-bindings-after-arg count=%d b0_name=%d b0_tag=%d b1_name=%d b1_tag=%d b2_name=%d b2_tag=%d",
+                                (int)p_env.binding_count,
+                                (int)p_env.bindings[0].name,
+                                p_env.bindings[0].value != null ? (int)p_env.bindings[0].value.tag : -1,
+                                (int)p_env.bindings[1].name,
+                                p_env.bindings[1].value != null ? (int)p_env.bindings[1].value.tag : -1,
+                                (int)p_env.bindings[2].name,
+                                p_env.bindings[2].value != null ? (int)p_env.bindings[2].value.tag : -1
+                            );
+                        }
+                        if (force_arg != null && force_arg.tag == CLOSURE && force_arg.closure_val != null && force_arg.closure_val.env != null) {
+                            trace_env_chain_state("delay-force-after-arg", interp, force_arg.closure_val.env);
+                            Value* direct_thunk = force_arg.closure_val.env.lookup(thunk_sym);
+                            Value* direct_thunk_before = direct_thunk;
+                            std::io::printfn(
+                                "OMNI_ADVANCED_GROUP_TRACE state delay-force direct_thunk_before_tag=%d direct_thunk_before_scope_gen=%d direct_thunk_before_env_scope=%d direct_thunk_before_env_scope_gen=%d direct_thunk_same_as_initial=%d direct_thunk_in_current=%d direct_thunk_in_root=%d direct_thunk_payload_in_current=%d direct_thunk_payload_in_root=%d",
+                                direct_thunk_before != null ? (int)direct_thunk_before.tag : -1,
+                                direct_thunk_before != null ? (int)direct_thunk_before.scope_gen : -1,
+                                direct_thunk_before != null &&
+                                    direct_thunk_before.tag == CLOSURE &&
+                                    direct_thunk_before.closure_val != null &&
+                                    direct_thunk_before.closure_val.env_scope != null ? 1 : 0,
+                                direct_thunk_before != null &&
+                                    direct_thunk_before.tag == CLOSURE &&
+                                    direct_thunk_before.closure_val != null &&
+                                    direct_thunk_before.closure_val.env_scope != null ? (int)direct_thunk_before.closure_val.env_scope.generation : -1,
+                                direct_thunk_before == thunk_val ? 1 : 0,
+                                direct_thunk_before != null && boundary_ptr_in_scope((void*)direct_thunk_before, interp.current_scope) ? 1 : 0,
+                                direct_thunk_before != null && boundary_ptr_in_scope((void*)direct_thunk_before, interp.root_scope) ? 1 : 0,
+                                direct_thunk_before != null &&
+                                    direct_thunk_before.tag == CLOSURE &&
+                                    direct_thunk_before.closure_val != null &&
+                                    boundary_ptr_in_scope((void*)direct_thunk_before.closure_val, interp.current_scope) ? 1 : 0,
+                                direct_thunk_before != null &&
+                                    direct_thunk_before.tag == CLOSURE &&
+                                    direct_thunk_before.closure_val != null &&
+                                    boundary_ptr_in_scope((void*)direct_thunk_before.closure_val, interp.root_scope) ? 1 : 0
+                            );
+                            emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-direct-thunk-before-apply");
+                            Value* direct_thunk_result = direct_thunk != null
+                                ? jit_apply_value(direct_thunk, make_nil(interp), interp)
+                                : null;
+                            emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-direct-thunk-after-apply");
+                            Value* direct_thunk_after = force_arg.closure_val.env.lookup(thunk_sym);
+                            std::io::printfn(
+                                "OMNI_ADVANCED_GROUP_TRACE state delay-force direct_thunk_tag=%d direct_thunk_after_tag=%d direct_thunk_after_same_ptr=%d direct_thunk_result_tag=%d direct_thunk_result_int=%d",
+                                direct_thunk != null ? (int)direct_thunk.tag : -1,
+                                direct_thunk_after != null ? (int)direct_thunk_after.tag : -1,
+                                direct_thunk_after == direct_thunk_before ? 1 : 0,
+                                direct_thunk_result != null ? (int)direct_thunk_result.tag : -1,
+                                direct_thunk_result != null && direct_thunk_result.tag == INT ? (int)direct_thunk_result.int_val : -1
+                            );
+                        }
+                        emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-apply");
+                        force_value = jit_apply_value(force_func, force_arg, interp);
+                        emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-after-apply");
+                        force_eval_ok = true;
+                    }
+                }
+            } else if (!run_execute_expr(force_expr, interp, &force_value, &force_interp)) {
+                emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-execute-error");
+            } else {
+                force_eval_ok = true;
+            }
+
+            if (!force_eval_ok) {
+                boundary_pop_child_scope(interp, force_saved_scope, force_child_scope);
+            } else {
+                emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-after-execute");
+                emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-before-promote");
+                force_value = run_promote_result(force_value, interp, force_child_scope, force_saved_scope, &force_child_spliced);
+                emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-after-promote");
+                main::ScopeRegion* force_release_scope = force_child_spliced ? null : force_child_scope;
+                if (force_value != null && force_value.tag == ERROR) {
+                    force_interp = eval_error_expr(force_value.str_chars[:force_value.str_len], force_expr);
+                } else {
+                    force_interp = eval_ok(force_value);
+                }
+                emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-before-pop");
+                boundary_pop_child_scope(interp, force_saved_scope, force_release_scope);
+                emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-after-pop");
+                dispatch_pending_signal_callbacks(interp);
+            }
+        }
+    }
+    interp.flags.jit_enabled = saved_jit_enabled;
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-after-interp");
+    bool force_interp_ok =
+        !force_interp.error.has_error &&
+        is_int(force_interp.value) &&
+        force_interp.value.int_val == 42;
+
+    bool force_jit_ok = !jit_checks_enabled();
+    char[] force_jit_stage = "disabled";
+    Value* force_jit_value = null;
+    if (jit_checks_enabled()) {
+        emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-before-jit");
+        JitTopLevelEval force_jit = eval_jit_top_level(interp, "(force p)");
+        emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco force-after-jit");
+        force_jit_stage = force_jit.stage;
+        force_jit_value = force_jit.value;
+        force_jit_ok = force_jit.ok &&
+            force_jit_value != null &&
+            force_jit_value.tag == INT &&
+            force_jit_value.int_val == 42;
+    }
+
+    if (force_interp_ok && force_jit_ok) {
+        emit_pass("delay/force");
+        (*pass)++;
+    } else {
+        std::io::printfn("[FAIL] %s (interp=%s, jit=%s)", (ZString)"delay/force",
+            force_interp_ok ? "ok" : "FAIL",
+            force_jit_ok ? "ok" : "FAIL");
+        if (!force_jit_ok && jit_checks_enabled()) {
+            print_jit_failure_debug(interp, "delay/force", force_jit_stage, force_jit_value);
+        }
+        (*fail)++;
+    }
 
     // === TCO STDLIB TESTS (Phase 6) ===
-    test_eq(interp, "foldl TCO 4000", "(foldl + 0 (range 4000))", 7998000, pass, fail);
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco foldl-tco-4000");
+    char[] foldl_tco_expr = "(foldl + 0 (range 4000))";
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco foldl-tco-4000-before-interp");
+    EvalResult foldl_interp = run(foldl_tco_expr, interp);
+    emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco foldl-tco-4000-after-interp");
+    bool foldl_interp_ok =
+        !foldl_interp.error.has_error &&
+        is_int(foldl_interp.value) &&
+        foldl_interp.value.int_val == 7998000;
+
+    bool foldl_jit_ok = !jit_checks_enabled();
+    char[] foldl_jit_stage = "disabled";
+    Value* foldl_jit_value = null;
+    if (jit_checks_enabled()) {
+        emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco foldl-tco-4000-before-jit");
+        JitTopLevelEval foldl_jit = eval_jit_top_level(interp, foldl_tco_expr);
+        emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco foldl-tco-4000-after-jit");
+        foldl_jit_stage = foldl_jit.stage;
+        foldl_jit_value = foldl_jit.value;
+        foldl_jit_ok = foldl_jit.ok &&
+            foldl_jit_value != null &&
+            foldl_jit_value.tag == INT &&
+            foldl_jit_value.int_val == 7998000;
+    }
+
+    if (foldl_interp_ok && foldl_jit_ok) {
+        emit_pass("foldl TCO 4000");
+        (*pass)++;
+    } else {
+        std::io::printfn("[FAIL] %s (interp=%s, jit=%s)", (ZString)"foldl TCO 4000",
+            foldl_interp_ok ? "ok" : "FAIL",
+            foldl_jit_ok ? "ok" : "FAIL");
+        if (!foldl_jit_ok && jit_checks_enabled()) {
+            print_jit_failure_debug(interp, "foldl TCO 4000", foldl_jit_stage, foldl_jit_value);
+        }
+        (*fail)++;
+    }
 }
 
 fn void run_advanced_stdlib_numeric_tests(Interp* interp, int* pass, int* fail) {
-    run_advanced_stdlib_numeric_collection_tests(interp, pass, fail);
-    run_advanced_stdlib_numeric_float_math_tests(interp, pass, fail);
-    run_advanced_stdlib_sort_bitwise_hof_tests(interp, pass, fail);
-    run_advanced_stdlib_string_predicate_format_tests(interp, pass, fail);
-    run_advanced_stdlib_introspection_lazy_tco_tests(interp, pass, fail);
-    run_advanced_stdlib_numeric_array_set_tests(interp, pass, fail);
+    run_advanced_stdlib_numeric_group("advanced-stdlib-numeric-collections",
+        &run_advanced_stdlib_numeric_collection_tests, interp, pass, fail);
+    run_advanced_stdlib_numeric_group("advanced-stdlib-numeric-float-math",
+        &run_advanced_stdlib_numeric_float_math_tests, interp, pass, fail);
+    run_advanced_stdlib_numeric_group("advanced-stdlib-numeric-sort-bitwise-hof",
+        &run_advanced_stdlib_sort_bitwise_hof_tests, interp, pass, fail);
+    run_advanced_stdlib_numeric_group("advanced-stdlib-numeric-string-predicate-format",
+        &run_advanced_stdlib_string_predicate_format_tests, interp, pass, fail);
+    run_advanced_stdlib_numeric_group("advanced-stdlib-numeric-introspection-lazy-tco",
+        &run_advanced_stdlib_introspection_lazy_tco_tests, interp, pass, fail);
+    run_advanced_stdlib_numeric_group("advanced-stdlib-numeric-array-set",
+        &run_advanced_stdlib_numeric_array_set_tests, interp, pass, fail);
 }

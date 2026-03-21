@@ -251,6 +251,17 @@ fn bool advanced_build_constraint_define(char* buf, usz cap, usz constraint_coun
     return true;
 }
 
+fn bool advanced_build_match_last_list_expr(char* buf, usz cap, usz item_count) {
+    usz len = 0;
+    if (!advanced_test_append(buf, cap, &len, "(match '(")) return false;
+    for (usz i = 0; i < item_count; i++) {
+        if (i > 0 && !advanced_test_append(buf, cap, &len, " ")) return false;
+        if (!advanced_test_append_int(buf, cap, &len, i)) return false;
+    }
+    if (!advanced_test_append(buf, cap, &len, ") ([.. last] last))")) return false;
+    return true;
+}
+
 
 fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
     io::printn("\n--- Advanced Feature Tests ---");

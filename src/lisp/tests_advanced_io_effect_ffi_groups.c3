@@ -217,7 +217,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
     test_truthy_interp(interp, "signal handle/unhandle callback",
         "(block "
         "(define hits {'n 0}) "
-        "(define h (signal-handle 10 (lambda (sig) (dict-set! hits 'n (+ (ref hits 'n) 1))))) "
+        "(define h (signal-handle 10 (lambda (sig) (set! hits 'n (+ (ref hits 'n) 1))))) "
         "(shell \"kill -USR1 $PPID\") "
         "(async-sleep 20) "
         "(signal-unhandle h) "

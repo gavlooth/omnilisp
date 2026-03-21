@@ -2,6 +2,45 @@ module lisp;
 
 import std::collections::list;
 
+fn Expr* parser_make_bool_literal_expr(Parser* self, bool truthy, usz line, usz column) {
+    Expr* e = self.interp.alloc_expr();
+    e.loc_line = line;
+    e.loc_column = column;
+    e.tag = E_LIT;
+    e.lit.value = truthy ? make_symbol(self.interp, self.interp.sym_true) : make_nil(self.interp);
+    return e;
+}
+
+fn Expr* parser_make_logical_chain_expr(
+    Parser* self,
+    List{Expr*}* items,
+    bool is_and,
+    usz line,
+    usz column
+) {
+    if (items == null || items.len() == 0) {
+        return parser_make_bool_literal_expr(self, is_and, line, column);
+    }
+    if (items.len() == 1) return (*items)[0];
+
+    Expr* nested = (*items)[items.len() - 1];
+    for (isz i = (isz)items.len() - 2; i >= 0; i--) {
+        Expr* e = self.interp.alloc_expr();
+        e.loc_line = line;
+        e.loc_column = column;
+        e.tag = is_and ? E_AND : E_OR;
+        if (is_and) {
+            e.and_expr.left = (*items)[(usz)i];
+            e.and_expr.right = nested;
+        } else {
+            e.or_expr.left = (*items)[(usz)i];
+            e.or_expr.right = nested;
+        }
+        nested = e;
+    }
+    return nested;
+}
+
 fn Expr* Parser.parse_quote(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'quote' location
@@ -22,17 +61,22 @@ fn Expr* Parser.parse_quote(Parser* self) {
  */
 fn Expr* Parser.parse_and(Parser* self) {
     if (self.has_error) return null;
-    Expr* e = self.alloc_expr_here();  // Capture 'and' location
+    usz line = self.lexer.current.line;
+    usz column = self.lexer.current.column;
     self.lexer.advance();  // consume 'and'
 
-    Expr* left = self.parse_expr();
-    Expr* right = self.parse_expr();
+    List{Expr*} items;
+    while (self.lexer.current.type != T_RPAREN && !self.has_error) {
+        items.push(self.parse_expr());
+    }
+    if (self.has_error) {
+        items.free();
+        return null;
+    }
 
     self.expect(T_RPAREN, ")");
-
-    e.tag = E_AND;
-    e.and_expr.left = left;
-    e.and_expr.right = right;
+    Expr* e = parser_make_logical_chain_expr(self, &items, true, line, column);
+    items.free();
     return e;
 }
 
@@ -42,17 +86,22 @@ fn Expr* Parser.parse_and(Parser* self) {
  */
 fn Expr* Parser.parse_or(Parser* self) {
     if (self.has_error) return null;
-    Expr* e = self.alloc_expr_here();  // Capture 'or' location
+    usz line = self.lexer.current.line;
+    usz column = self.lexer.current.column;
     self.lexer.advance();  // consume 'or'
 
-    Expr* left = self.parse_expr();
-    Expr* right = self.parse_expr();
+    List{Expr*} items;
+    while (self.lexer.current.type != T_RPAREN && !self.has_error) {
+        items.push(self.parse_expr());
+    }
+    if (self.has_error) {
+        items.free();
+        return null;
+    }
 
     self.expect(T_RPAREN, ")");
-
-    e.tag = E_OR;
-    e.or_expr.left = left;
-    e.or_expr.right = right;
+    Expr* e = parser_make_logical_chain_expr(self, &items, false, line, column);
+    items.free();
     return e;
 }
 

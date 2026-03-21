@@ -102,6 +102,14 @@ fn Value* prim_list(Value*[] args, Env* env, Interp* interp) {
     return result;
 }
 
+fn Value* prim_reverse_list(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 1) return raise_error(interp, "__reverse-list: expected 1 argument");
+    if (!is_cons(args[0]) && !is_nil(args[0])) {
+        return raise_error(interp, "__reverse-list: expected list");
+    }
+    return dispatch_reverse_list(args[0], interp);
+}
+
 // =============================================================================
 
 /**

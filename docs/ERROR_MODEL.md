@@ -36,7 +36,7 @@ This inventory is grouped by API family and current observed style.
 
 | Family | Representative APIs | Current style (2026-03-09) | Evidence |
 |--------|----------------------|------------------------------|----------|
-| Search/lookup absence | `find`, `assoc-ref` | `nil` on not-found | `stdlib/stdlib.lisp` |
+| Search/lookup absence | `find` | `nil` on not-found | `stdlib/stdlib.lisp` |
 | Regex primitives | `re-match`, `re-fullmatch`, `re-find-all`, `re-replace` | `nil` for no-match paths; canonical `raise` for bad args | `src/pika/lisp_pika.c3` |
 | Pika grammar/primitives | `pika/grammar`, `pika/parse`, `pika/fold`, `pika/parse-lisp` | canonical `raise` for invalid args/grammar failures; `nil` for parse absence | `src/pika/lisp_pika.c3` |
 | I/O/network async | `tcp-*`, `dns-resolve`, `async-sleep` | canonical payloaded `raise` for core async primitives (`io/*`) | `src/lisp/async.c3` |
@@ -53,7 +53,6 @@ These remain `nil`-returning by contract because they model `absence`.
 | API | Absence meaning | Keep `nil`? |
 |-----|------------------|------------|
 | `find` | no matching element | yes |
-| `assoc-ref` | key not present | yes |
 | `re-match` | no match in input | yes (but invalid-arg/path failures must migrate) |
 | `re-fullmatch` | full match not found | yes (same migration caveat) |
 | `re-match-pos` | no match span | yes |
@@ -87,7 +86,7 @@ Status legend: `done`, `partial`, `missing`.
 | Effect dispatcher internals | `runtime-core` | `done` | canonical payloaded `raise` across effect dispatch/handle/checkpoint/capture/fast-path internals | payloaded `raise` for programmer/recoverable paths | `jit_jit_handle_signal.c3`, `jit_jit_runtime_effects.c3`, and related continuation/effect compile helpers now avoid mixed string-only error constructors (`CP-06`) |
 | Deduce APIs | `deduce` | `done` | canonical payloaded `raise` with stable `deduce/*` codes for open/dispatch/relation/query/fact/retract/count/scan/scan-range/match/txn/clear/drop | canonical payloaded `raise` | deduce-family string raises removed from `deduce.c3`, `deduce_relation_ops.c3`, `deduce_schema_query.c3`, and `unify.c3` |
 | Conversion/compression primitives | `runtime-core` | `done` | canonical payloaded `raise` for conversion (`number->string`, `exact->inexact`, `inexact->exact`, `read-string`, `string->symbol`, `symbol->string`) and compression/checksum (`gzip`, `gunzip`, `deflate`, `inflate`, `zlib-*`, `adler32`, `crc32`) families | canonical payloaded `raise` | argument paths now emit `type/arity` / `type/arg-mismatch`; compression operational failures emit stable `runtime/*` codes with regression coverage for domain/code extraction |
-| Absence APIs (`find`, `assoc-ref`) | `stdlib` | `done` | `nil` for no result | keep as-is | contract-aligned already |
+| Absence APIs (`find`) | `stdlib` | `done` | `nil` for no result | keep as-is | contract-aligned already |
 
 ## 6. Domain and Code Normalization Baseline (P2.7)
 

@@ -1,369 +1,144 @@
 module lisp;
 
-import std::io;
 import main;
 
 const usz ITER_BUFFER_MAX = 4096;
-
-fn Value* coroutine_ctor_type_raise(Interp* interp, char[] message) @inline {
-    return raise_error_with_payload_names(interp, "type", "type/arg-mismatch", message, null);
-}
 
 fn Value* iterator_ctor_raise(Interp* interp, char[] code, char[] message) @inline {
     return raise_error_with_payload_names(interp, "type", code, message, null);
 }
 
-// Iterator and coroutine primitives.
-fn Value* prim_iterator_p(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
-    if (args[0].tag == ITERATOR) return make_symbol(interp, interp.sym_true);
+fn Value* prim_iterator_map(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 2) return iterator_ctor_raise(interp, "type/arity", "__iterator-map: expected 2 arguments");
+    if (args[1] == null || args[1].tag != ITERATOR) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-map: expected iterator state");
+    }
+    return iterator_map_value(args[0], args[1], interp);
+}
+
+fn Value* prim_iterator_map_thunk(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 2) return make_nil(interp);
+    Value* func = args[0];
+    Value* iterator = args[1];
+    Value* pair = iterator_call_next(iterator, interp);
+    if (pair == null || pair.tag == NIL || pair.tag == ERROR) return pair;
+    if (!is_cons(pair)) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-map: expected iterator pair");
+    }
+
+    Value* mapped = jit_apply_value(func, car(pair), interp);
+    if (mapped != null && mapped.tag == ERROR) return mapped;
+    return make_cons(interp, mapped, iterator_map_value(func, cdr(pair), interp));
+}
+
+fn Value* prim_iterator_filter(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 2) return iterator_ctor_raise(interp, "type/arity", "__iterator-filter: expected 2 arguments");
+    if (args[1] == null || args[1].tag != ITERATOR) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-filter: expected iterator state");
+    }
+    return iterator_filter_value(args[0], args[1], interp);
+}
+
+fn Value* prim_iterator_filter_thunk(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 2) return make_nil(interp);
+    Value* pred = args[0];
+    Value* iterator = args[1];
+
+    while (iterator != null && iterator.tag == ITERATOR) {
+        Value* pair = iterator_call_next(iterator, interp);
+        if (pair == null || pair.tag == NIL || pair.tag == ERROR) return pair;
+        if (!is_cons(pair)) {
+            return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-filter: expected iterator pair");
+        }
+
+        Value* keep = jit_apply_value(pred, car(pair), interp);
+        if (keep != null && keep.tag == ERROR) return keep;
+        if (iterator_predicate_truthy(keep)) {
+            return make_cons(interp, car(pair), iterator_filter_value(pred, cdr(pair), interp));
+        }
+        iterator = cdr(pair);
+    }
     return make_nil(interp);
 }
 
-fn Value* prim_make_iterator(Value*[] args, Env* env, Interp* interp) {
-    if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "make-iterator: expected 1 argument");
-    if (!is_closure(args[0])) return iterator_ctor_raise(interp, "type/arg-mismatch", "make-iterator: expected closure thunk");
-    return make_iterator(interp, args[0]);
-}
-
-fn Value* prim_ctor_iterator(Value*[] args, Env* env, Interp* interp) {
-    if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "Iterator: expected 1 argument");
-    if (args[0].tag == ITERATOR) return args[0];
-    if (is_closure(args[0])) return make_iterator(interp, args[0]);
-    return iterator_ctor_raise(interp, "type/arg-mismatch", "Iterator: expected closure thunk, iterator, or collection");
-}
-
-fn Value* prim_next(Value*[] args, Env* env, Interp* interp) {
-    Value* iterator = null;
-    Value* parse_err = iterator_require_arg(args, "next: expected iterator", &iterator, interp);
-    if (parse_err != null) return parse_err;
-    // Call the thunk closure — iterator_val is a Value* (CLOSURE)
-    return jit_apply_value(iterator.iterator_val, make_nil(interp), interp);
-}
-
-fn Value* iterator_require_arg(Value*[] args, char[] expected_msg, Value** iterator_out, Interp* interp) {
-    if (args.len < 1 || args[0].tag != ITERATOR) {
-        return raise_error(interp, expected_msg);
+fn Value* prim_iterator_take(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 2) return iterator_ctor_raise(interp, "type/arity", "__iterator-take: expected 2 arguments");
+    if (args[0] == null || !is_int(args[0])) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-take: expected integer count");
     }
-    *iterator_out = args[0];
-    return null;
+    if (args[1] == null || args[1].tag != ITERATOR) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-take: expected iterator state");
+    }
+    if (args[0].int_val <= 0) return iterator_from_list_value(make_nil(interp), interp);
+    return iterator_take_value(args[0], args[1], interp);
 }
 
-fn Value* iterator_consume_items(Value* iterator, Value** items, usz* count_out, Interp* interp) {
-    usz count = 0;
-    Value* it = iterator;
+fn Value* prim_iterator_take_thunk(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 2) return make_nil(interp);
+    Value* n_value = args[0];
+    Value* iterator = args[1];
+    if (n_value == null || !is_int(n_value) || n_value.int_val <= 0) return make_nil(interp);
 
-    while (count < ITER_BUFFER_MAX) {
-        Value* pair = jit_apply_value(it.iterator_val, make_nil(interp), interp);
-        if (pair == null || pair.tag == NIL) break;
-        if (pair.tag == ERROR) return pair;
-        if (!is_cons(pair)) break;
-
-        items[count++] = car(pair);
-        Value* rest = cdr(pair);
-        if (rest == null || rest.tag != ITERATOR) break;
-        it = rest;
+    Value* pair = iterator_call_next(iterator, interp);
+    if (pair == null || pair.tag == NIL || pair.tag == ERROR) return pair;
+    if (!is_cons(pair)) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-take: expected iterator pair");
     }
 
-    *count_out = count;
-    return null;
-}
-
-fn Value* prim_collect(Value*[] args, Env* env, Interp* interp) {
-    Value* iterator = null;
-    Value* parse_err = iterator_require_arg(args, "collect: expected iterator", &iterator, interp);
-    if (parse_err != null) return parse_err;
-    // Consume iterator into a list
-    // Collect into stack buffer first, then build list in reverse
-    Value*[ITER_BUFFER_MAX] items;
-    usz count = 0;
-    Value* consume_err = iterator_consume_items(iterator, &items[0], &count, interp);
-    if (consume_err != null) return consume_err;
-
-    // Build list in reverse
-    Value* result = make_nil(interp);
-    for (isz i = (isz)count - 1; i >= 0; i--) {
-        result = make_cons(interp, items[(usz)i], result);
-    }
-    return result;
-}
-
-fn Value* prim_to_array(Value*[] args, Env* env, Interp* interp) {
-    Value* iterator = null;
-    Value* parse_err = iterator_require_arg(args, "to-array: expected iterator", &iterator, interp);
-    if (parse_err != null) return parse_err;
-    // Consume iterator into an array
-    Value*[ITER_BUFFER_MAX] items;
-    usz count = 0;
-    Value* consume_err = iterator_consume_items(iterator, &items[0], &count, interp);
-    if (consume_err != null) return consume_err;
-
-    Value* arr = make_array(interp, count);
-    for (usz i = 0; i < count; i++) {
-        arr.array_val.items[i] = items[i];
-    }
-    arr.array_val.length = count;
-    return arr;
-}
-
-// ============================================================================
-// COROUTINE PRIMITIVES
-// ============================================================================
-
-struct CoroutineThunkState {
-    Value*  thunk;
-    Interp* interp;
-}
-
-fn void coroutine_thunk_entry(void* arg) {
-    CoroutineThunkState* state = (CoroutineThunkState*)arg;
-    Value* result = jit_apply_value(state.thunk, null, state.interp);
-    main::g_current_stack_ctx.result = result;
-}
-
-fn CoroutineThunkState* coroutine_alloc_thunk_state(Value* thunk, Interp* interp) {
-    CoroutineThunkState* state = (CoroutineThunkState*)mem::malloc(CoroutineThunkState.sizeof);
-    if (state == null) return null;
-    state.thunk = thunk;
-    state.interp = interp;
-    return state;
-}
-
-fn Value* prim_coroutine_p(Value*[] args, Env* env, Interp* interp) {
-    if (args[0].tag == COROUTINE) return make_symbol(interp, interp.sym_true);
-    return make_nil(interp);
-}
-
-fn Value* prim_coroutine_require_thunk(Value*[] args, Value** thunk_out, Interp* interp) {
-    if (args.len < 1) return coroutine_ctor_type_raise(interp, "Coroutine: expected closure thunk");
-    Value* thunk = args[0];
-    if (!is_closure(thunk)) {
-        return coroutine_ctor_type_raise(interp, "Coroutine: expected closure thunk");
-    }
-    *thunk_out = thunk;
-    return null;
-}
-
-fn Value* prim_coroutine_prepare_thunk(Value* thunk, Interp* interp) {
-    // Phase 4b: Promote thunk to root_scope so it survives call_scope release.
-    // The coroutine may be resumed after the creating scope is freed.
-    thunk = boundary_promote_to_root(thunk, interp);
-    if (thunk != null && thunk.tag == CLOSURE) {
-        // Precompile coroutine body before first execution on switched stack.
-        jit_warm_expr_cache(thunk.closure_val.body, interp);
-    }
-    return thunk;
-}
-
-fn Value* prim_coroutine_create_ctx(Value* thunk, main::StackCtx** ctx_out, Interp* interp) {
-    main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
-    if (ctx == null) return raise_error(interp, "coroutine: failed to create context");
-
-    // Store thunk state on the context's user_data (lives as long as the context)
-    CoroutineThunkState* state = coroutine_alloc_thunk_state(thunk, interp);
-    if (state == null) {
-        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
-        return raise_error(interp, "coroutine: out of memory");
-    }
-    ctx.user_data = state;
-
-    main::stack_ctx_init(ctx, &coroutine_thunk_entry, state);
-    *ctx_out = ctx;
-    return null;
-}
-
-fn Value* prim_coroutine(Value*[] args, Env* env, Interp* interp) {
-    Value* thunk = null;
-    Value* parse_err = prim_coroutine_require_thunk(args, &thunk, interp);
-    if (parse_err != null) return parse_err;
-
-    thunk = prim_coroutine_prepare_thunk(thunk, interp);
-
-    main::StackCtx* ctx = null;
-    Value* ctx_err = prim_coroutine_create_ctx(thunk, &ctx, interp);
-    if (ctx_err != null) return ctx_err;
-
-    return make_coroutine(interp, ctx);
-}
-
-fn bool coroutine_ctx_matches_interp(main::StackCtx* ctx, Interp* interp) @inline {
-    if (ctx == null || interp == null) return false;
-    if (ctx.owner_pool != &interp.stack_ctx_pool) return false;
-    CoroutineThunkState* state = (CoroutineThunkState*)ctx.user_data;
-    if (state != null && state.interp != interp) return false;
-    return true;
-}
-
-fn void coroutine_ctx_cleanup(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
-    if (ctx.user_data != null) {
-        mem::free(ctx.user_data);
-        ctx.user_data = null;
-    }
-    coroutine_val.coroutine_val = null;
-    main::StackPool* owner_pool = ctx.owner_pool;
-    if (owner_pool == null) owner_pool = &interp.stack_ctx_pool;
-    main::stack_ctx_destroy(ctx, owner_pool);
-}
-
-fn void coroutine_clear_yield_boundary_state(Interp* interp) @inline {
-    interp.yield_value = null;
-    interp.yield_scope = null;
-}
-
-fn Value* prim_resume_error_and_cleanup(
-    Value* coroutine_val,
-    main::StackCtx* ctx,
-    Interp* interp,
-    char[] msg
-) {
-    coroutine_clear_yield_boundary_state(interp);
-    interp_clear_resume_value(interp);
-    coroutine_ctx_cleanup(coroutine_val, ctx, interp);
-    return raise_error(interp, msg);
-}
-
-fn Value* prim_resume_complete(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
-    Value* result = (Value*)ctx.result;
-    coroutine_clear_yield_boundary_state(interp);
-    interp_clear_resume_value(interp);
-    coroutine_ctx_cleanup(coroutine_val, ctx, interp);
-    return result != null ? result : make_nil(interp);
-}
-
-fn Value* prim_resume_yield_result(Interp* interp) {
-    Value* yielded = interp.yield_value;
-    main::ScopeRegion* yield_scope = interp.yield_scope;
-    coroutine_clear_yield_boundary_state(interp);
-
-    if (yielded == null) return make_nil(interp);
-    if (yield_scope == null) {
-        return raise_error(interp, "resume: missing yield-scope provenance");
-    }
-    BoundarySession session = boundary_session_begin(interp);
-    defer boundary_session_end(interp, &session);
-    interp.current_scope = session.current_scope;
-    interp.releasing_scope = yield_scope;
-    PromotionContext copy_ctx = {};
-    boundary_promotion_context_begin(interp, &copy_ctx);
-    defer boundary_promotion_context_end(interp, &copy_ctx);
-    BoundaryCopyResult copied = boundary_copy_to_parent_site_ctx_checked(
-        yielded,
+    return make_cons(
         interp,
-        COPY_SITE_PRIM_RESUME,
-        &copy_ctx
+        car(pair),
+        iterator_take_value(make_int(interp, n_value.int_val - 1), cdr(pair), interp)
     );
-    if (!boundary_copy_result_ok(copied)) {
-        return raise_error(interp, boundary_copy_fault_message(copied.fault_code));
-    }
-    return copied.value;
 }
 
-fn Value* prim_resume_require_ctx(
-    Value*[] args,
-    Value** coroutine_out,
-    main::StackCtx** ctx_out,
-    Interp* interp
-) {
-    if (args.len < 1) return raise_error(interp, "resume: expected a coroutine argument");
-    Value* coroutine_val = args[0];
-    if (coroutine_val == null || coroutine_val.tag != COROUTINE) {
-        return raise_error(interp, "resume: argument must be a coroutine");
+fn Value* prim_iterator_zip(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 2) return iterator_ctor_raise(interp, "type/arity", "__iterator-zip: expected 2 arguments");
+    if (args[0] == null || args[0].tag != ITERATOR || args[1] == null || args[1].tag != ITERATOR) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-zip: expected iterators");
     }
-
-    main::StackCtx* ctx = coroutine_val.coroutine_val;
-    if (ctx == null) return raise_error(interp, "resume: null coroutine");
-    if (!coroutine_ctx_matches_interp(ctx, interp)) {
-        return raise_error(interp, "resume: coroutine belongs to a different interpreter");
-    }
-
-    *coroutine_out = coroutine_val;
-    *ctx_out = ctx;
-    return null;
+    return iterator_zip_value(args[0], args[1], interp);
 }
 
-fn void prim_resume_switch_context(main::StackCtx* ctx, Interp* interp) {
-    SavedInterpState saved;
-    save_interp_state(interp, &saved);
-
-    main::StackContext parent_ctx;
-    if (ctx.status == main::StackCtxStatus.CTX_READY) {
-        main::stack_ctx_switch_to(ctx, &parent_ctx);
-    } else {
-        main::stack_ctx_resume(ctx, &parent_ctx);
+fn Value* prim_iterator_zip_thunk(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 2) return make_nil(interp);
+    Value* left = args[0];
+    Value* right = args[1];
+    Value* left_pair = iterator_call_next(left, interp);
+    if (left_pair == null || left_pair.tag == NIL || left_pair.tag == ERROR) return left_pair;
+    Value* right_pair = iterator_call_next(right, interp);
+    if (right_pair == null || right_pair.tag == NIL || right_pair.tag == ERROR) return right_pair;
+    if (!is_cons(left_pair) || !is_cons(right_pair)) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-zip: expected iterator pairs");
     }
 
-    restore_interp_state_preserve_raise(interp, &saved);
+    Value* item_pair = make_cons(interp, car(left_pair), car(right_pair));
+    return make_cons(interp, item_pair, iterator_zip_value(cdr(left_pair), cdr(right_pair), interp));
 }
 
-fn Value* prim_resume_post_switch(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
-    if (ctx.status == main::StackCtxStatus.CTX_DEAD) {
-        return prim_resume_error_and_cleanup(coroutine_val, ctx, interp, "stack overflow in coroutine");
-    }
-    if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
-        return prim_resume_complete(coroutine_val, ctx, interp);
-    }
-    return prim_resume_yield_result(interp);
-}
-
-fn Value* prim_resume(Value*[] args, Env* env, Interp* interp) {
-    Value* coroutine_val = null;
-    main::StackCtx* ctx = null;
-    Value* parse_err = prim_resume_require_ctx(args, &coroutine_val, &ctx, interp);
-    if (parse_err != null) return parse_err;
-
-    if (ctx.status == main::StackCtxStatus.CTX_COMPLETED || ctx.status == main::StackCtxStatus.CTX_DEAD) {
-        return prim_resume_error_and_cleanup(coroutine_val, ctx, interp, "resume: coroutine already completed");
-    }
-    if (ctx.status != main::StackCtxStatus.CTX_READY && ctx.status != main::StackCtxStatus.CTX_SUSPENDED) {
-        return raise_error(interp, "resume: coroutine is not resumable");
+fn Value* prim_iterator_foldl(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 3) return iterator_ctor_raise(interp, "type/arity", "__iterator-foldl: expected 3 arguments");
+    if (args[2] == null || args[2].tag != ITERATOR) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-foldl: expected iterator");
     }
 
-    Value* resume_val = args.len > 1 ? args[1] : make_nil(interp);
-    interp.resume_value = resume_val;
+    Value* func = args[0];
+    Value* acc = args[1];
+    Value* current = args[2];
 
-    prim_resume_switch_context(ctx, interp);
-    return prim_resume_post_switch(coroutine_val, ctx, interp);
-}
+    while (current != null && current.tag == ITERATOR) {
+        Value* pair = iterator_call_next(current, interp);
+        if (pair == null || pair.tag == NIL) return acc;
+        if (pair.tag == ERROR) return pair;
+        if (!is_cons(pair)) {
+            return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-foldl: expected iterator pair");
+        }
 
-fn Value* prim_yield_require_context(main::StackCtx** current_out, Interp* interp) {
-    main::StackCtx* current = main::g_current_stack_ctx;
-    if (current == null) {
-        return raise_error(interp, "yield: not inside a coroutine");
-    }
-    *current_out = current;
-    return null;
-}
-
-fn bool prim_yield_suspend_and_restore(main::StackCtx* current, Interp* interp) {
-    SavedInterpState saved;
-    save_interp_state(interp, &saved);
-
-    if (!suspend_with_scope_guard(current, interp.current_scope)) {
-        restore_interp_state_preserve_raise(interp, &saved);
-        return false;
+        Value* call_args = make_cons(interp, acc, make_cons(interp, car(pair), make_nil(interp)));
+        acc = jit_apply_multi_args(interp, func, call_args, 2);
+        if (acc != null && acc.tag == ERROR) return acc;
+        current = cdr(pair);
     }
 
-    // Resumed — restore full interpreter state.
-    restore_interp_state_preserve_raise(interp, &saved);
-    return true;
-}
-
-fn Value* prim_yield_resume_result(Interp* interp) {
-    return interp_consume_resume_value_or_nil(interp);
-}
-
-fn Value* prim_yield(Value*[] args, Env* env, Interp* interp) {
-    main::StackCtx* current = null;
-    Value* parse_err = prim_yield_require_context(&current, interp);
-    if (parse_err != null) return parse_err;
-
-    Value* yield_val = args.len > 0 ? args[0] : make_nil(interp);
-    interp.yield_value = yield_val;
-    interp.yield_scope = interp.current_scope;
-
-    if (!prim_yield_suspend_and_restore(current, interp)) {
-        coroutine_clear_yield_boundary_state(interp);
-        return raise_error(interp, "stack engine: failed to register suspend scope guard");
-    }
-    return prim_yield_resume_result(interp);
+    return acc;
 }

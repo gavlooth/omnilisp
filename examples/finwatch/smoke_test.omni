@@ -31,14 +31,14 @@
 (println (json-emit (to-json h)))
 
 ;; ── FetchResult match ─────────────────────────────────────────────────────────
-(match (Ok 42) ((Ok v) (println (format "Ok: %d" v))) ((Err e) (println e)))
+(match (Ok 42) ((Ok v) (println (format "Ok: %s" v))) ((Err e) (println e)))
 (match (Err "broke") ((Ok v) (println v)) ((Err e) (println (format "Err: %s" e))))
 
 ;; ── Cache round-trip ──────────────────────────────────────────────────────────
 (cache/store-quote! q)
 (cache/store-quote! (Quote "ETH" 3400.0 1700000000))
 (cache/store-quote! (Quote "JPY" 145.3 1700000000))
-(println (format "cached quotes: %d" (length (cache/latest-quotes))))
+(println (format "cached quotes: %s" (length (cache/latest-quotes))))
 (match (cache/quote-for "BTC")
   ((Ok fetched) (println (format "BTC price: %f" fetched.price)))
   ((Err e) (println e)))
@@ -50,9 +50,9 @@
 (cache/store-news! n)
 (cache/store-news! (NewsItem 2 "Fed raises rates again" 380 1700000000))
 (cache/store-news! (NewsItem 3 "Crypto rally continues" 500 1700000000))
-(println (format "cached news: %d" (length (cache/latest-news 10))))
+(println (format "cached news: %s" (length (cache/latest-news 10))))
 (let (top-item (car (cache/latest-news 1)))
-  (println (format "top news: %s (score=%d)" top-item.title top-item.score)))
+  (println (format "top news: %s (score=%s)" top-item.title top-item.score)))
 
 ;; ── to-json PnL gain% ────────────────────────────────────────────────────────
 (let (p (PnL "TEST" 1.0 100.0 150.0 50.0) j (to-json p))
@@ -64,15 +64,15 @@
 (define result (portfolio/pnl holdings))
 (println (json-emit result))
 
-;; ── |> pipe ──────────────────────────────────────────────────────────────────
-(println (|> '(3 1 4 1 5) (filter (> _ 2)) (map (* 10 _))))
+;; ── map demo ─────────────────────────────────────────────────────────────────
+(println (map (* 10 _) '(3 1 4 1 5)))
 
 ;; ── _ placeholder ───────────────────────────────────────────────────────────
 (println (map (+ 10 _) '(1 2 3)))
 
 ;; ── partition ───────────────────────────────────────────────────────────────
 (let (split (partition (> _ 3) '(1 5 2 4 3)))
-  (println (format "partition kept %d, rejected %d" (length (car split)) (length (cdr split)))))
+  (println (format "partition kept %s, rejected %s" (length (car split)) (length (cdr split)))))
 
 ;; ── try ─────────────────────────────────────────────────────────────────────
 (println (try (lambda (x) (signal raise "test-error"))
@@ -82,21 +82,21 @@
 (for-each (lambda (x) (println (format "  item: %s" x.symbol))) (cache/latest-quotes))
 
 ;; ── {..} dict destructuring ─────────────────────────────────────────────────
-(define (greet {name age}) (format "%s is %d" name age))
+(define (greet {name age}) (format "%s is %s" name age))
 (println (greet {'name "Alice" 'age 30}))
 
 ;; ── match [h .. t] ─────────────────────────────────────────────────────────
 (match '(10 20 30)
-  ([head .. rest] (println (format "head=%d rest-len=%d" head (length rest))))
+  ([head .. rest] (println (format "head=%s rest-len=%s" head (length rest))))
   (_ (println "WRONG")))
 
 ;; ── fs-open / fs-write / fs-close (logging) ────────────────────────────────
 (log/open! "/tmp/finwatch_smoke.log")
 (log/write! "smoke test started")
 (log/write! "cache populated")
-(println (format "log size: %d bytes" (log/size)))
+(println (format "log size: %s bytes" (log/size)))
 (let (contents (log/read-all))
-  (println (format "log lines: %d" (length (string-split contents "\n")))))
+  (println (format "log lines: %s" (length (string-split contents "\n")))))
 (log/close!)
 (fs-unlink "/tmp/finwatch_smoke.log")
 
@@ -105,10 +105,10 @@
 
 ;; ── fs-stat ─────────────────────────────────────────────────────────────────
 (let (info (fs-stat "/tmp"))
-  (println (format "fs-stat /tmp: size=%d" ('size info))))
+  (println (format "fs-stat /tmp: size=%s" ('size info))))
 
 ;; ── fs-readdir ──────────────────────────────────────────────────────────────
-(println (format "fs-readdir /tmp: %d entries" (length (fs-readdir "/tmp"))))
+(println (format "fs-readdir /tmp: %s entries" (length (fs-readdir "/tmp"))))
 
 ;; ── TTL check ───────────────────────────────────────────────────────────────
 (cache/set-last-refresh! (time))
@@ -153,7 +153,7 @@
       (block
         (define hits {'n 0})
         (define h (signal-handle 10 (lambda (sig)
-                                      (dict-set! hits 'n (+ (ref hits 'n) 1)))))
+                                      (set! hits 'n (+ (ref hits 'n) 1)))))
         (define notifier (process-spawn "/bin/sh" ["-c" "kill -USR1 $PPID"] nil))
         (await (spawn (lambda () (process-wait (ref notifier 'handle)))))
         (fs-close (ref notifier 'stdin))
@@ -196,20 +196,20 @@
 (println (event->str ae))
 (println (event->str se))
 (println (format "event-tag: %s" (event-tag pe)))
-(println (format "event-ts: %d" (event-ts pe)))
+(println (format "event-ts: %s" (event-ts pe)))
 
 ;; dot-bracket .[ on arrays and dicts
 (let (arr [10 20 30])
-  (println (format "arr.[0]=%d arr.[2]=%d" arr.[0] arr.[2])))
+  (println (format "arr.[0]=%s arr.[2]=%s" arr.[0] arr.[2])))
 (let (d {'x 1 'y 2})
-  (println (format "d.['x]=%d" d.['x])))
+  (println (format "d.['x]=%s" d.['x])))
 
 ;; [alias]
 (println (format "Timestamp alias: %s" (is? 100 'Int)))
 (println (format "Price alias: %s" (is? 3.14 'Double)))
 
 ;; string->number / number->string / symbol->string
-(println (format "string->number: %d" (string->number "42")))
+(println (format "string->number: %s" (string->number "42")))
 (println (format "number->string: %s" (number->string 99)))
 (println (format "symbol->string: %s" (symbol->string 'hello)))
 
@@ -227,9 +227,9 @@
 (analytics/add-symbol "ETH")
 (analytics/add-symbol "JPY")
 (analytics/add-symbol "BTC")
-(println (format "unique symbols: %d" (length (analytics/unique-symbols))))
+(println (format "unique symbols: %s" (length (analytics/unique-symbols))))
 (analytics/remove-symbol "JPY")
-(println (format "after remove JPY: %d" (length (analytics/unique-symbols))))
+(println (format "after remove JPY: %s" (length (analytics/unique-symbols))))
 
 ;; zip — use (list ...) for doubles (quoted double lists trigger dispatch loop)
 (let (historical (list (cons "BTC" 60000.0) (cons "ETH" 3000.0))
@@ -239,7 +239,7 @@
   (println (format "ETH delta: %f" (cdr (car (cdr deltas))))))
 
 ;; flatten
-(println (format "flattened: %d" (length (analytics/flatten-sectors '(("BTC" "ETH") ("EUR" "GBP" "JPY"))))))
+(println (format "flattened: %s" (length (analytics/flatten-sectors '(("BTC" "ETH") ("EUR" "GBP" "JPY"))))))
 
 ;; find
 (let (found (analytics/find-holding "BTC" holdings))
@@ -249,7 +249,7 @@
 ;; remove
 (let (exclusions {})
   (set-add exclusions "ETH")
-  (println (format "after exclude ETH: %d" (length (analytics/exclude-symbols exclusions holdings)))))
+  (println (format "after exclude ETH: %s" (length (analytics/exclude-symbols exclusions holdings)))))
 
 ;; any? / every?
 (let (test-pnls (list (PnL "BTC" 0.5 30000.0 31000.0 16000.0)
@@ -263,7 +263,7 @@
 
 ;; string-contains? — news search
 (let (crypto-news (analytics/search-news "Crypto" (cache/latest-news 10)))
-  (println (format "crypto news: %d items" (length crypto-news))))
+  (println (format "crypto news: %s items" (length crypto-news))))
 
 (println "--- analytics passed ---")
 
@@ -276,7 +276,7 @@
 (let (ticker (events/make-ticker '("BTC" "ETH") (list 60000.0 3000.0)))
   (println (format "ticker alive? %s" (coroutine? ticker)))
   (let (evts (events/pull-events ticker 4))
-    (println (format "pulled %d events" (length evts)))
+    (println (format "pulled %s events" (length evts)))
     (for-each (lambda (e) (println (format "  %s" (event->str e)))) evts))
   (println (format "still alive? %s" (coroutine? ticker))))
 
@@ -289,8 +289,8 @@
                         (PriceEvent "X" 6.0 1700000006)
                         (PriceEvent "X" 7.0 1700000007)))
   (let (batches (events/batch-events test-events 3))
-    (println (format "batches: %d" (length batches)))
-    (for-each (lambda (b) (println (format "  batch size: %d" (length b)))) batches)))
+    (println (format "batches: %s" (length batches)))
+    (for-each (lambda (b) (println (format "  batch size: %s" (length b)))) batches)))
 
 ;; delay / force — lazy average
 (let (lazy-avg (events/lazy-average (list 100.0 200.0 300.0)))
@@ -313,26 +313,26 @@
   (match (pair? bp-result)
     (true
       (block
-        (println (format "bp first batch: %d items" (length (car bp-result))))
+        (println (format "bp first batch: %s items" (length (car bp-result))))
         (print-bool-line (procedure? (car (cdr bp-result)))
                          "bp continuation captured: true"
                          "bp continuation captured: false")
-        (println (format "bp remaining items: %d" (length (car (cdr (cdr bp-result))))))))
+        (println (format "bp remaining items: %s" (length (car (cdr (cdr bp-result))))))))
     (_ (println (format "bp result: %s" bp-result)))))
 
-;; make-iterator / next / range-from — thread iterator through
+;; Iterator / next / range-from — thread iterator through
 (let (p1 (next (range-from 10)))
-  (println (format "range-from 1st: %d" (car p1)))
+  (println (format "range-from 1st: %s" (car p1)))
   (let (p2 (next (cdr p1)))
-    (println (format "range-from 2nd: %d" (car p2)))
+    (println (format "range-from 2nd: %s" (car p2)))
     (let (p3 (next (cdr p2)))
-      (println (format "range-from 3rd: %d" (car p3))))))
+      (println (format "range-from 3rd: %s" (car p3))))))
 
 ;; repeat — lazy infinite repetition
 (let (p1 (next (repeat 42)))
-  (println (format "repeat 1st: %d" (car p1)))
+  (println (format "repeat 1st: %s" (car p1)))
   (let (p2 (next (cdr p1)))
-    (println (format "repeat 2nd: %d" (car p2)))))
+    (println (format "repeat 2nd: %s" (car p2)))))
 
 (println "--- events passed ---")
 
@@ -351,7 +351,7 @@
 ;; apply — check-all applies rules to prices
 (let (rules-list (list (rules/threshold-above 100.0) (rules/threshold-below 200.0))
       results (rules/check-all rules-list (list 50.0 150.0 250.0)))
-  (println (format "check-all groups: %d" (length results))))
+  (println (format "check-all groups: %s" (length results))))
 
 ;; consecutive crossing — inline named let
 (let check (remaining '(50 150 200 300) count 0)
@@ -396,18 +396,23 @@
 (let (collector (alerts/make-collector-handler))
   (alerts/dispatch-multi
     (list collector)
-    (lambda ()
+    (lambda (x)
       (alerts/dispatch (AlertEvent "HIGH" "BTC above 60k" 1700000010))
       (alerts/dispatch (AlertEvent "LOW" "ETH below 3k" 1700000011))
       (alerts/dispatch (SystemEvent "ALERT" "2 alerts fired" 1700000012))))
-  (println (format "collected alerts: %d" (length (alerts/collected)))))
+  (println (format "collected alerts: %s" (length (alerts/collected)))))
 
 ;; Test log handler (prints to stdout) — composed handle wrappers
 (let (logger (alerts/make-log-handler "[TEST-LOG]"))
   (alerts/dispatch-multi
     (list logger)
-    (lambda ()
+    (lambda (x)
       (alerts/dispatch (AlertEvent "INFO" "composition test" 1700000020)))))
+
+;; Tutorial path — price + analytics alerts under a log+collector stack.
+(let (tutorial-alerts (alerts/tutorial-demo))
+  (println (format "tutorial alerts: %s" (length tutorial-alerts)))
+  (println (event->str (car tutorial-alerts))))
 
 (println "--- alerts passed ---")
 (println "--- smoke test passed ---")

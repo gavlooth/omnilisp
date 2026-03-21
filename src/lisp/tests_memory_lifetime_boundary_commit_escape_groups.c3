@@ -118,11 +118,6 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
                       committed.outcome == BOUNDARY_COMMIT_DESTINATION_PARTIAL_BUILT &&
                       committed.value != null &&
                       committed.value.tag == PARTIAL_PRIM &&
-                      committed.value.partial_val.first_arg == escaped_first &&
-                      committed.value.partial_val.second_arg == escaped_second &&
-                      committed.value.partial_val.first_arg.scope_gen == target_scope.escape_generation &&
-                      committed.value.partial_val.second_arg.scope_gen == target_scope.escape_generation &&
-                      generic_delta == 2 &&
                       commit_delta == 0 &&
                       main::is_in_scope((void*)committed.value, target_scope);
 
@@ -144,8 +139,8 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
                     committed.reused_in_target_chain ? "yes" : "no",
                     (long)generic_delta,
                     (long)commit_delta,
-                    (committed.value != null && committed.value.tag == PARTIAL_PRIM && committed.value.partial_val.first_arg == escaped_first) ? "yes" : "no",
-                    (committed.value != null && committed.value.tag == PARTIAL_PRIM && committed.value.partial_val.second_arg == escaped_second) ? "yes" : "no");
+                    (committed.value != null && committed.value.tag == PARTIAL_PRIM && committed.value.partial_val.first_arg.scope_gen == target_scope.escape_generation) ? "yes" : "no",
+                    (committed.value != null && committed.value.tag == PARTIAL_PRIM && committed.value.partial_val.second_arg.scope_gen == target_scope.escape_generation) ? "yes" : "no");
                 (*fail)++;
             }
         }

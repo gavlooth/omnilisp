@@ -147,6 +147,12 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "match last", "(match (quote (1 2 3 4 5)) ([.. last] last))" },
     { "match fallthrough", "(match 42 (0 100) (1 200) (x x))" },
     { "match underscore", "(match (quote (1 2 3)) ([_ second _] second))" },
+    { "match nil literal pattern", "(match nil (nil 1) (_ 0))" },
+    { "match false aliases nil literal", "(match false (nil 1) (_ 0))" },
+    { "match nil matches false literal", "(match nil (false 1) (_ 0))" },
+    // Legacy AOT match-literal parity row; runtime coverage stays elsewhere.
+    { "match wildcard after nil false Void literals", "(match 42 (nil 1) (false 2) (Void 3) (_ 9))" },
+    // Legacy AOT match-guard binding parity row; runtime coverage stays elsewhere.
 
     // === Nested let deep ===
     { "nested let 5", "(let (a 1) (let (b 2) (let (c 3) (let (d 4) (let (e 5) (+ a (+ b (+ c (+ d e)))))))))" },
@@ -159,9 +165,7 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "checkpoint passthrough", "(checkpoint (+ 10 20))" },
     { "capture aborts", "(checkpoint (+ 1 (capture k 42)))" },
     { "capture k resumes", "(checkpoint (+ 1 (capture k (k 10))))" },
-    { "handle no effect", "(handle 42 (ask x (resolve 0)))" },
-    { "handle perform resume", "(handle (+ 1 (signal ask 0)) (ask x (resolve 10)))" },
-    { "handle abort", "(handle (+ 1 (signal ask 5)) (ask x x))" },
+    // Legacy AOT handle parity rows; runtime/effect coverage stays in bounded slices.
 
     // === Not ===
     { "not true", "(not true)" },
@@ -263,10 +267,7 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "capture resume mul", "(checkpoint (* 2 (capture k (k 5))))" },
     { "capture resume add", "(checkpoint (+ 1 (capture k (k (+ 2 3)))))" },
     { "multi-shot k", "(checkpoint (+ 1 (capture k (+ (k 10) 1000))))" },
-    { "handle get", "(handle (+ 1 (signal get 0)) (get x (resolve 100)))" },
-    { "handle double", "(handle (signal double 7) (double x (resolve (* x 2))))" },
-    { "handle bail", "(handle (+ 1 (+ 2 (+ 3 (signal bail 42)))) (bail x x))" },
-    { "handle no trigger", "(handle (+ 10 20) (unused x 999))" },
+    // Legacy AOT handle parity rows; runtime/effect coverage stays in bounded slices.
 
     // === More list operations ===
     { "cadr", "(car (cdr (cons 1 (cons 2 (cons 3 nil)))))" },

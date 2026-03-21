@@ -9,8 +9,8 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
     setup(interp, "(define hm1 (Dict 1 10 2 20 3 30))");
     test_eq(interp, "ref dict", "(ref hm1 2)", 20, pass, fail);
     test_nil(interp, "ref dict missing", "(ref hm1 99)", pass, fail);
-    test_tag_interp(interp, "dict-set! returns void", "(dict-set! hm1 2 200)", VOID, pass, fail);
-    test_eq(interp, "dict-set! overwrite", "(ref hm1 2)", 200, pass, fail);
+    test_tag_interp(interp, "set! dict returns void", "(set! hm1 2 200)", VOID, pass, fail);
+    test_eq(interp, "set! dict overwrite", "(ref hm1 2)", 200, pass, fail);
     test_tag_interp(interp, "set! generic dict returns void", "(set! hm1 2 250)", VOID, pass, fail);
     test_eq(interp, "set! generic dict overwrite", "(ref hm1 2)", 250, pass, fail);
     test_truthy(interp, "has? dict yes", "(has? hm1 1)", pass, fail);
@@ -36,10 +36,10 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
     setup(interp, "(define hm5 (Dict))");
     test_eq(interp, "dict empty count", "(length hm5)", 0, pass, fail);
     test_truthy(interp, "dict? Dict", "(dict? (Dict 1 2))", pass, fail);
-    test_eq(interp, "dict compat alias", "(ref (dict 1 10 2 20) 1)", 10, pass, fail);
+    test_eq(interp, "Dictionary canonical constructor", "(ref (Dictionary 1 10 2 20) 1)", 10, pass, fail);
     test_nil(interp, "dict? no", "(dict? 42)", pass, fail);
     setup(interp, "(define hm-big (Dict))");
-    setup(interp, "(let loop (i 0) (if (= i 50) hm-big (block (dict-set! hm-big i (* i i)) (loop (+ i 1)))))");
+    setup(interp, "(let loop (i 0) (if (= i 50) hm-big (block (set! hm-big i (* i i)) (loop (+ i 1)))))");
     test_eq(interp, "dict auto-grow count", "(length hm-big)", 50, pass, fail);
     test_eq(interp, "dict auto-grow ref 7", "(ref hm-big 7)", 49, pass, fail);
 
@@ -97,8 +97,8 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_error(interp, ".[-4] list oob", "(let (l '(10 20 30)) l.[-4])", pass, fail);
     test_str(interp, "char-at -1", "(char-at \"abc\" -1)", pass, fail);
     setup(interp, "(define neg-arr [1 2 3])");
-    test_tag_interp(interp, "array-set! returns void", "(array-set! neg-arr -1 99)", VOID, pass, fail);
-    test_eq(interp, "array-set! -1", "(ref neg-arr 2)", 99, pass, fail);
+    test_tag_interp(interp, "set! array returns void", "(set! neg-arr -1 99)", VOID, pass, fail);
+    test_eq(interp, "set! array -1", "(ref neg-arr 2)", 99, pass, fail);
     // length - generic
     test_eq(interp, "length array", "(length [1 2 3])", 3, pass, fail);
     test_eq(interp, "length dict", "(length {'a 1 'b 2})", 2, pass, fail);

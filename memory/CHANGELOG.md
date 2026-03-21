@@ -3,6 +3,1993 @@
 
 Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md).
 
+## 2026-03-21
+
+- Removed non-canonical public constructor/mutator aliases from the collection
+  and lazy-sequence surface:
+  - removed public lowercase constructor aliases `array`, `dict`,
+    `dictionary`, `coroutine`, and `time-point`
+  - removed public type-prefixed mutator aliases `array-set!` and
+    `dict-set!` in favor of generic `set!`
+  - removed public `iterator` as an alias of `Iterator`
+  - hid the low-level iterator thunk helper behind internal `__make-iterator`
+    and kept `Iterator` as the only public iterator constructor
+  - removed redundant iterator forcing helpers `collect` and `to-array`; use
+    `List` / `Array` constructors instead
+  - kept `Dictionary` as the canonical name and `Dict` as the explicitly
+    approved shorthand
+  - parser/compiler lowering for array and dict literals now targets canonical
+    `Array` / `Dictionary` constructors directly
+
+- Removed the remaining binary-only ergonomics trap from the core logic
+  surface:
+  - `and` and `or` now parse as variadic short-circuit special forms
+  - empty forms lower to the expected identities: `(and)` => `true`,
+    `(or)` => `nil`
+  - single-argument forms return the single argument unchanged
+  - macro-emitted variadic `and` / `or` forms now validate and lower through
+    the same nested binary AST path as direct source syntax
+  - regression coverage now pins empty, single, multi-argument, falsy
+    short-circuit, and macro-emitted variadic forms
+
+- Shipped the current `B6.2` Deduce constraint/integrity slice and closed the
+  current escape-scope regression lane:
+  - declared single-column `key` relations now reject conflicting `fact!`
+    writes at assert time while still treating identical full-tuple reasserts
+    as idempotent
+  - declared single-column `unique` relations now reject conflicting `fact!`
+    writes at assert time while still treating identical full-tuple reasserts
+    as idempotent
+  - declared multi-column `unique` roles on one relation now form enforced
+    composite unique constraints at assert time while still treating identical
+    full-tuple reasserts as idempotent
+  - declared single-column `ref` roles now enforce referenced-tuple existence
+    at assert time against a target relation/column pair
+  - conflict raises now use machine-checkable payload data under
+    `deduce/integrity-key-conflict`,
+    `deduce/integrity-unique-conflict`, and
+    `deduce/integrity-reference-missing`, including relation, constrained
+    column set / constrained value projection, referenced target metadata,
+    and existing/attempted tuples where applicable
+  - `deduce/schema` now exposes keyed/unique/reference integrity constraint
+    metadata, including `unique-columns` for composite unique constraints, and
+    `deduce/analyze` now reports keyed relation, unique relation, reference
+    constraint, and integrity constraint counts
+  - the explicit `escape-scope: iterator consume car` and
+    `escape-scope: iterator consume len` regressions are fixed, and the bounded
+    `escape-scope` slice is green again after moving the larger named-let list
+    accumulator pressure back into the dedicated `memory-lifetime` budget lane
+  - validation for this slice:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `135 passed, 0 failed`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=escape-scope ./build/main --test-suite lisp`
+    - result: `29 passed, 0 failed`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime ./build/main --test-suite lisp`
+    - result: `62 passed, 0 failed`
+
+- Removed association-list lookup from the public language surface and logged
+  the remaining unrelated runtime follow-up:
+  - dotted path lookup now uses real dictionaries instead of alist fallback,
+    and `assoc` / `assoc-ref` are removed from the documented stdlib surface
+  - the initial broad bounded sweep exposed `escape-scope` iterator consume
+    failures in `src/lisp/tests_escape_scope_tests.c3`, now recorded in the
+    backlog instead of being left implicit in the dirty tree:
+    - `escape-scope: iterator consume car` ->
+      `car: argument must be a pair`
+    - `escape-scope: iterator consume len` ->
+      `length: expected list, array, dict, set, or string`
+  - validation for the alist-removal lane:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+    - result: `142 passed, 0 failed`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main --test-suite lisp`
+    - result: `1082 passed, 0 failed`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+    - result: `122 passed, 0 failed`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `121 passed, 0 failed`
+
+- Deduce recursive aggregate seminaive rollout is now complete for the current
+  stratified rule surface:
+  - recursive aggregate SCCs with lower-stratum negated body atoms now use
+    `semi-naive-scc` instead of the old grouped naive fallback
+  - the last automatic `recursive-aggregate-naive-fallback` lane is retired
+    for currently valid recursive aggregate workloads
+  - query/explain regressions now pin exact seminaive behavior for positive
+    and negated mixed aggregate SCCs, while tail routing checks assert
+    seminaive exactness directly instead of treating naive proof-multiplicity
+    counts as the correctness oracle for mixed non-aggregate heads
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `121 passed, 0 failed`
+  - `deduce/analyze` now routes explicit naive requests for recursive SCCs
+    that mix aggregate and non-aggregate rules onto the exact seminaive lane
+    and reports that via
+    `naive-recursive-aggregate-mixed-routed-to-seminaive`
+  - `deduce/explain` now mirrors that routing truth in its optional
+    3-argument engine-aware form `(deduce/explain db selector engine)`
+  - explain-side regression coverage now also pins the pure positive and pure
+    negated recursive aggregate cases: explicit `naive` stays on `naive-scc`
+    and does not emit the mixed-route diagnostic
+  - pure positive and pure negated recursive aggregate analyze/explain
+    regressions now both pin that same no-route behavior
+
+## 2026-03-20
+
+- Deduce backlog item `B5.6` is now complete:
+  - grouped aggregate execution for rule heads now ships for exact
+    `count` / `sum` / `min` / `max` in both non-recursive rules and
+    aggregate-bearing recursive SCCs
+  - recursive aggregate SCCs request the semi-naive engine but fall back to a
+    sound naive grouped recompute path until aggregate delta semantics exist
+  - recursive aggregate finalize now diffs the materialized grouped head rows
+    before rewrite so recursive grouped passes converge instead of churning
+  - aggregate-only shared heads with matching projection signatures now batch
+    through one grouped finalize pass, while mixed or incompatible shapes
+    still reject at install time
+  - `deduce/analyze` now reports:
+    - `execution-engine`
+    - `requested-execution-engine`
+    - `recursive-aggregate-naive-fallback`
+  - regression coverage now includes:
+    - recursive aggregate install/execution acceptance
+    - recursive aggregate explain/analyze truthfulness
+    - naive versus semi-naive parity coverage with recursive aggregate
+      fallback semantics
+    - bounded recursive aggregate benchmark smoke
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `97 passed, 0 failed`
+
+- Deduce backlog planning now promotes the next stage toward full recursive
+  aggregate seminaive support:
+  - the shipped recursive aggregate baseline remains the naive grouped
+    recompute fallback from `B5.6`
+  - the next explicit rollout stages are the signed-delta and
+    support-accounting work needed to retire that fallback safely
+  - active backlog/docs now spell out that staged path instead of leaving the
+    remaining work as an unnamed deferred note
+  - validation: doc review only
+
+- Deduce backlog item `B5.7` has started landing its first runtime slice:
+  - seminaive recursive delta state now carries signed add/remove tuple slots
+    in the shared execution substrate instead of a single positive-only table
+  - aggregate-bearing recursive SCCs now seed tuple support tables and
+    sign-aware head-materialization hooks behind the fallback gate
+  - dormant seminaive aggregate finalize now routes grouped head replacement
+    through support-table zero-crossing transitions on actual materialized
+    tuples instead of direct LMDB rewrite plus synthetic aggregate deltas
+  - aggregate groups now track signed support counts internally, including
+    removal-aware `count`/`sum` updates and `min`/`max` extremum recompute
+    when the current support disappears
+  - the dormant seminaive aggregate executor now runs mixed non-aggregate
+    rules in the same recursive SCC on the same signed-delta/support-table
+    substrate instead of skipping them outright
+  - positive recursive aggregate SCCs now use the `semi-naive-scc`
+    execution lane again, including mixed aggregate/non-aggregate recursive
+    SCCs that stay within positive body atoms
+  - mixed positive recursive aggregate regressions now pin exact seminaive
+    behavior and truthful analyze/explain reporting
+  - focused tuple-support and aggregate-group regressions now pin
+    recursive-only, base-seeded, signed count-removal, and `min`-recompute
+    behavior independently of the higher-level fallback fixtures
+  - aggregate-bearing recursive SCCs no longer all share one blanket
+    fallback: positive supported components now run seminaive, while
+    recursive aggregate components with negated body steps still stay on the
+    documented fallback until that remaining shape is validated explicitly
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `103 passed, 0 failed`
+  - aggregate seminaive proof dedupe now keys off normalized variable
+    bindings plus delta polarity before support application, so dormant
+    multi-anchor replay no longer double-applies the same logical proof's
+    support delta across anchor positions
+  - asserted Deduce facts are now mirrored into per-relation extensional
+    shadow DBIs so recursive aggregate substrate work can distinguish base
+    tuples from derived tuples during internal reset/reseed paths
+  - the dormant recursive aggregate seminaive seed path now clears component
+    predicate relations, restores extensional base tuples from that shadow,
+    seeds support tables from extensional state, and publishes the same base
+    tuples into the first signed-delta frontier instead of reseeding from live
+    mixed relations
+  - focused regression coverage now pins that proof-key behavior directly
+    without widening the public recursive aggregate engine contract
+  - focused regression coverage now also pins extensional shadow mirror
+    behavior for assert/retract/clear
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `107 passed, 0 failed`
+
+- Deduce backlog items `B5.4` and `B5.5` are now complete:
+  - grouped aggregate execution for rule heads now ships on the checked-in
+    Deduce runtime for exact non-recursive:
+    - `count`
+    - `sum`
+    - `min`
+    - `max`
+  - the shared naive evaluation path now accumulates grouped aggregate state,
+    clears the exclusive aggregate head relation on recompute, and finalizes
+    deterministic grouped rows back into LMDB
+  - `deduce/analyze` no longer rejects supported aggregate-bearing rules, and
+    `deduce/explain` now also collects observed step counters for aggregate
+    rules through the dry-run path
+  - install-time guardrails now reject unsupported aggregate shapes explicitly:
+    - mixed aggregate/non-aggregate shared heads reject
+    - aggregate-only shared heads with incompatible projection signatures
+      reject
+  - regression coverage now includes:
+    - grouped runtime correctness for `count` / `sum` / `min` / `max`
+    - explain/analyze parity for aggregate rules after grouped execution lands
+    - explicit validation rejection for unsupported shared-head aggregate
+      shapes
+  - benchmark-mode smoke now seeds and analyzes an aggregate workload in the
+    Deduce benchmark helpers
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `93 passed, 0 failed`
+
+- Deduce v1.5 maintenance/admin work has started shipping on the public
+  surface:
+  - added read-only admin/introspection verbs:
+    - `deduce/schema`
+    - `deduce/indexes`
+    - `deduce/stats`
+  - the new surfaces are relation-handle scoped and return deterministic
+    payloads built from existing Deduce metadata rather than inferred state
+  - `deduce/schema` now reports:
+    - relation symbol
+    - columns
+    - arity
+    - index count
+    - cardinality and distinct estimates
+    - dropped/database-open flags
+  - `deduce/indexes` now reports registered logical index descriptors with:
+    - index id
+    - ordered columns
+    - column count
+    - uniqueness flag
+  - `deduce/stats` now reports:
+    - cardinality estimate
+    - distinct estimate
+    - dirty predicate count
+    - mutation epoch
+    - full-recompute-required flag
+    - dropped flag
+  - deterministic regression coverage now exercises the new schema/index/stats
+    surfaces in `src/lisp/tests_deduce_query_groups.c3`
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `83 passed, 0 failed`
+
+- Deduce v1.5 aggregate queue promotion is now underway:
+  - the first live aggregate item is complete as a syntax/design lock
+  - `docs/deduce-datalog-spec.md` now pins the deferred aggregate query shape
+    as projection-driven syntax:
+    - bare variables imply group-by keys
+    - supported aggregate forms are `count`, `sum`, `min`, `max`
+  - the concrete implementation seam map for the next patches is recorded in:
+    - `docs/plans/deduce-v15-aggregate-implementation-plan-2026-03-20.md`
+  - `TODO.md` now promotes the v1.5 aggregate lane into the active Deduce queue
+
+- Deduce backlog item `B5.1` is now complete:
+  - aggregate v1.5 entry policy is now explicit across the Deduce roadmap/spec:
+    - v1.5 target: grouped exact aggregates with small deterministic state
+      (`count`, `sum`, `min`, `max`)
+    - deferred: `avg` and `distinct-count`
+    - non-goal for v1.5: percentile/median, variance/stddev, ordered-set
+      aggregates, approximate/sketch aggregates, and user-defined aggregate
+      hooks
+  - the policy is recorded in:
+    - `docs/deduce-datalog-spec.md`
+    - `docs/plans/deduce-full-roadmap-2026-03-20.md`
+    - `docs/plans/deduce-actionable-backlog-2026-03-20.md`
+  - validation: doc review only
+
+- Deduce backlog item `B5.3` is now complete as a design item:
+  - the canonical provenance / why-result payload shape is now specified in
+    `docs/deduce-datalog-spec.md`
+  - the payload uses:
+    - `kind = why-result`
+    - `status`
+    - `surface-kind = provenance-snapshot`
+    - `subject-kind`
+    - `subject`
+    - `path-count`
+    - `max-depth`
+    - `truncated`
+    - ordered `paths[]`
+  - each path is a deterministic support chain with:
+    - `path-id`
+    - `path-kind`
+    - `head-predicate`
+    - `head-tuple`
+    - `rule-index`
+    - `support`
+  - each support frame carries:
+    - `kind`
+    - `frame-index`
+    - `predicate`
+    - `tuple`
+    - `rule-index`
+    - `step-index`
+    - `selected-index`
+    - `operator`
+    - `bound-mask`
+    - `bindings`
+    - `depends-on`
+  - roadmap and backlog notes now treat provenance / why-result as a documented
+    design item while implementation remains deferred
+
+- Deduce backlog item `B3.3` is now complete:
+  - `deduce/explain` now replaces planner-estimate step counters with
+    runtime-observed counters while keeping the existing planner snapshot shape
+    (`steps[*].counters`) in
+    `src/lisp/deduce_rule_ops_explain.c3`
+  - per-step counter payload now includes:
+    - `rows-read`
+    - `rows-emitted`
+    - `index-hits`
+    - `index-misses`
+    - `join-probes`
+    - `counter-kind = 'observed`
+  - the Deduce evaluator now accumulates per-step observed counters through the
+    shared naive/semi-naive runtime paths in:
+    - `src/lisp/deduce_rule_eval_exec.c3`
+    - `src/lisp/deduce_rule_eval_exec_naive.c3`
+    - `src/lisp/deduce_rule_eval_exec_seminaive.c3`
+    - `src/lisp/deduce_rule_eval_fixpoint.c3`
+  - `deduce/analyze` now exposes runtime-observed per-rule step payloads under
+    `rule-execution` in `src/lisp/deduce_rule_eval_prims.c3`
+  - regression coverage now asserts observed explain/analyze counters in:
+    - `src/lisp/tests_deduce_rule_groups_explain.c3`
+    - `src/lisp/tests_deduce_rule_groups_more_tail.c3`
+    - `src/lisp/tests_deduce_query_bench_groups.c3`
+  - validation:
+    - `c3c build`
+    - bounded Deduce slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`80 passed, 0 failed`)
+
+## 2026-03-19
+
+- Runtime/backend simplification backlog item 1 is now in progress:
+  - split the retired-code tombstone registry out of
+    `src/lisp/jit_jit_compiler.c3`
+  - added `src/lisp/jit_jit_compiler_retired_code.c3` for:
+    - `JitRetiredCode`
+    - retired-code table storage
+    - `jit_retired_code_contains(...)`
+    - `jit_retired_code_insert(...)`
+    - `jit_retired_code_forget_serial(...)`
+    - `jit_retired_code_reset(...)`
+    - `jit_retired_code_prune_detached_serials(...)`
+  - `src/lisp/jit_jit_compiler.c3` now retains the compiler/cache/attachment
+    ownership surface without the retired-code registry internals.
+  - split the cache layer out of `src/lisp/jit_jit_compiler.c3`
+  - added `src/lisp/jit_jit_compiler_cache.c3` for:
+    - `JitCacheEntry`
+    - cache table storage
+    - cache slot access/count helpers
+    - `jit_cache_lookup(...)`
+    - `jit_cache_find_slot(...)`
+    - `jit_cache_commit_slot(...)`
+    - `jit_cache_store(...)`
+  - `src/lisp/jit_jit_compiler.c3` now retains compiled-function types,
+    tracked-state storage, and thread/lifecycle identity helpers without
+    cache/retired-code registry internals.
+  - split the attachment table out of `src/lisp/jit_jit_compiler.c3`
+  - added `src/lisp/jit_jit_compiler_attach_table.c3` for:
+    - `JitAttachedInterp`
+    - attachment table storage
+    - attachment table access/depth helpers
+    - `runtime_backend_next_attach_serial()`
+    - `jit_register_attached_interp(...)`
+    - `jit_unregister_attached_interp(...)`
+  - `src/lisp/jit_jit_compiler.c3` now retains compiled-function types,
+    compatibility helpers, and thread/lifecycle identity helpers without
+    retired-code, cache, or attachment-table internals.
+  - split the tracked-state pool and spill-state storage out of
+    `src/lisp/jit_jit_compiler.c3`
+  - added `src/lisp/jit_jit_compiler_state_pool.c3` for:
+    - `JitTrackedState`
+    - tracked-state pool storage
+    - tracked-state slot access helpers
+    - `JitStateSpillNode`
+    - spill-state list storage
+    - spill-state head/node access helpers
+  - `src/lisp/jit_jit_compiler.c3` now retains compiled-function types,
+    compatibility helpers, and thread/lifecycle identity helpers without
+    retired-code, cache, attachment-table, or tracked/spill-state storage
+    internals.
+  - split the runtime/thread identity and backend-global helper layer out of
+    `src/lisp/jit_jit_compiler.c3`
+  - added `src/lisp/jit_jit_compiler_runtime_identity.c3` for:
+    - thread-affinity helpers
+    - attached-serial / attached-interpreter query helpers
+    - interpreter refcount helpers
+    - exec-depth helpers
+    - suspended-guard helpers
+    - initialized / owner-thread-token helpers
+  - `src/lisp/jit_jit_compiler.c3` is now reduced to compiled-function types,
+    compatibility wrappers, and backend-global flag definitions (`76` lines).
+  - backlog item 1 is now complete by substance.
+  - validation:
+    - `c3c build`
+    - bounded JIT-policy slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp`
+      (`28 passed, 0 failed`)
+
+- Runtime/backend simplification backlog item 2 is now in progress:
+  - split the coroutine half out of `src/lisp/primitives_iter_coroutine.c3`
+    into `src/lisp/primitives_coroutine.c3`
+  - split the iterator thunk/state helper layer out of
+    `src/lisp/primitives_iter_coroutine.c3` into
+    `src/lisp/primitives_iter_state.c3`
+  - split the iterator terminal/collection-consumption layer out of
+    `src/lisp/primitives_iter_coroutine.c3` into
+    `src/lisp/primitives_iter_terminal.c3`
+  - split the iterator source / infinite-source layer out of
+    `src/lisp/primitives_iter_coroutine.c3` into
+    `src/lisp/primitives_iter_sources.c3`
+  - retained transform/combinator primitives in
+    `src/lisp/primitives_iter_coroutine.c3`
+  - moved coroutine thunk/bootstrap and `Coroutine` creation support into
+    `src/lisp/primitives_coroutine.c3`
+  - moved resume validation/context-switch helpers, yielded-value copyout,
+    `resume`, and `yield` into `src/lisp/primitives_coroutine_resume.c3`
+  - moved iterator partial-thunk builders, source-state constructors,
+    combinator-state constructors, and shared iterator next/predicate helpers
+    into `src/lisp/primitives_iter_state.c3`
+  - moved `iterator?`, `make-iterator`, `Iterator`, `next`, iterator argument
+    / consume helpers, `collect`, and `to-array` into
+    `src/lisp/primitives_iter_terminal.c3`
+  - moved collection-backed iterator constructors plus `range-from`, `repeat`,
+    and `cycle` into `src/lisp/primitives_iter_sources.c3`
+  - validation:
+    - `c3c build`
+    - bounded advanced slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main --test-suite lisp`
+      (`1086 passed, 0 failed`)
+
+- Runtime/backend simplification backlog item 3 is now in progress:
+  - moved fast-target project generation out of `scripts/build_fast_dev.sh`
+    into `tools/fast-dev/generate_fast_dev_project.py`
+  - replaced the generated fast-dev `schema_validation.c3` patch with a
+    maintained source file at `tools/fast-dev/lisp/schema_validation.c3`
+  - replaced the generated fast-dev `eval_init_primitives.c3` patch with a
+    maintained source file at `tools/fast-dev/lisp/eval_init_primitives.c3`
+  - retained fast-profile generation, profiling, and no-op freshness checking
+    through the public scripts
+  - the fast target no longer rewrites runtime source files during generation;
+    project generation now composes maintained fast-dev sources directly
+  - fixed the no-op freshness check so it also depends on the generator helper,
+    preventing stale `up to date` results after generator edits
+  - backlog item 3 is now complete by substance: the fast target no longer
+    rewrites runtime source files during generation
+  - validation:
+    - `scripts/build_fast_dev.sh --profile`
+    - `scripts/build_fast_dev.sh`
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/dev-fast/main-dev --eval '(+ 2 40)'`
+      (`42`)
+    - `scripts/build_fast_nodeduce_dev.sh --profile`
+    - `scripts/build_fast_nodeduce_dev.sh`
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/dev-fast-nodeduce/main-dev-nodeduce --eval '(+ 1 2)'`
+      (`3`)
+    - repeat runs report:
+      - `fast-dev[default] build: up to date`
+      - `fast-dev[nodeduce] build: up to date`
+
+- Runtime/backend simplification backlog item 4 is now complete:
+  - expanded `scripts/run_validation_status_summary.sh` into the checked-in
+    machine-readable operator status artifact
+  - the summary now covers:
+    - `c3c build`
+    - `scripts/check_status_consistency.sh`
+    - `scripts/check_e2e_baseline_policy.sh`
+    - bounded `jit-policy`, `scheduler`, `deduce`, `compiler`,
+      `memory-lifetime-smoke`, and `advanced` slices
+  - the default artifact path is now `build/validation_status_summary.json`,
+    with per-run command/log files under `build/validation_status_logs/`
+  - `docs/areas/README.md`, `docs/areas/memory-runtime.md`, and
+    `docs/areas/types-dispatch.md` now point to the summary script as the broad
+    operator entrypoint before narrower reruns
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_status_summary.sh build/validation_status_summary.json`
+      (`9/9 runs passed`)
+
+- Runtime/backend simplification backlog item 5 is now in progress:
+  - split the match-analysis/scoring layer out of
+    `src/lisp/eval_dispatch_match.c3`
+    into `src/lisp/eval_dispatch_match_breakdown.c3`
+  - split the dispatch error/reporting layer out of
+    `src/lisp/eval_dispatch_match.c3`
+    into `src/lisp/eval_dispatch_match_errors.c3`
+  - `src/lisp/eval_dispatch_match_breakdown.c3` now owns:
+    - `DispatchMatchFailureReason`
+    - `DispatchMatchBreakdown`
+    - value-literal dispatch matching
+    - method constraint unification/satisfaction
+    - dispatch scoring and per-argument breakdown
+  - `src/lisp/eval_dispatch_match_errors.c3` now owns:
+    - failure-reason symbol mapping
+    - lambda-call type-error payload construction
+    - ambiguous-dispatch payload construction
+    - expected/literal rendering helpers
+  - `src/lisp/eval_dispatch_match.c3` now stays focused on public boundary
+    flow:
+    - lambda-call boundary checking
+    - best-method selection
+  - resulting file sizes:
+    - `src/lisp/eval_dispatch_match.c3`: `98` lines
+    - `src/lisp/eval_dispatch_match_breakdown.c3`: `214` lines
+    - `src/lisp/eval_dispatch_match_errors.c3`: `215` lines
+  - validation:
+    - `c3c build`
+    - bounded advanced slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main --test-suite lisp`
+      (`1086 passed, 0 failed`)
+  - backlog item 5 is now complete by substance, and the
+    `runtime-backend-simplification-backlog-2026-03-19.md` queue is now closed
+    on the checked-in tree
+
+- Started a new focused runtime queue in
+  `docs/plans/interp-state-runtime-cleanup-2026-03-19.md`:
+  - split symbol/module/runtime-flag/macro initialization helpers out of
+    `src/lisp/value_interp_state.c3`
+    into `src/lisp/value_interp_init_helpers.c3`
+  - split allocator helpers out of `src/lisp/value_interp_state.c3`
+    into `src/lisp/value_interp_alloc_helpers.c3`
+  - split private runtime bootstrap and apply-frame helpers out of
+    `src/lisp/value_interp_state.c3`
+    into `src/lisp/value_interp_runtime_helpers.c3`
+  - split continuation/resume helpers out of
+    `src/lisp/value_interp_state.c3`
+    into `src/lisp/value_interp_continuation_helpers.c3`
+  - `src/lisp/value_interp_state.c3` now keeps:
+    - `InterpFlags`
+    - `Interp`
+    - public `Interp.init(...)`
+  - resulting file sizes:
+    - `src/lisp/value_interp_state.c3`: `234` lines
+    - `src/lisp/value_interp_init_helpers.c3`: `118` lines
+    - `src/lisp/value_interp_alloc_helpers.c3`: `70` lines
+    - `src/lisp/value_interp_runtime_helpers.c3`: `61` lines
+    - `src/lisp/value_interp_continuation_helpers.c3`: `23` lines
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_status_summary.sh build/validation_status_summary.json`
+      (`9/9 runs passed`)
+
+- Completed `docs/plans/interp-state-runtime-cleanup-2026-03-19.md` by
+  substance and opened the next focused runtime queue in
+  `docs/plans/boundary-graph-audit-cleanup-2026-03-19.md`:
+  - split the reachability traversal out of
+    `src/lisp/eval_boundary_graph_audit.c3`
+    into `src/lisp/eval_boundary_graph_audit_reachability.c3`
+  - split the verbose telemetry dump helpers out of
+    `src/lisp/eval_boundary_graph_audit.c3`
+    into `src/lisp/eval_boundary_graph_audit_telemetry.c3`
+  - `src/lisp/eval_boundary_graph_audit.c3` now keeps only the public
+    audit/debug entrypoints
+  - resulting file sizes:
+    - `src/lisp/eval_boundary_graph_audit.c3`: `52` lines
+    - `src/lisp/eval_boundary_graph_audit_reachability.c3`: `381` lines
+    - `src/lisp/eval_boundary_graph_audit_telemetry.c3`: `46` lines
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_status_summary.sh build/validation_status_summary.json`
+      (`9/9 runs passed`)
+  - `docs/plans/boundary-graph-audit-cleanup-2026-03-19.md` is now complete
+    by substance
+
+- Opened the next focused runtime queue in
+  `docs/plans/runtime-effects-cleanup-2026-03-19.md`:
+  - split continuation validation/resume helpers out of
+    `src/lisp/jit_jit_runtime_effects.c3`
+    into `src/lisp/jit_jit_runtime_effects_continuation.c3`
+  - split checkpoint/reset and capture helpers out of
+    `src/lisp/jit_jit_runtime_effects.c3`
+    into `src/lisp/jit_jit_runtime_effects_reset_shift.c3`
+  - split signal fast-path and handler-resume helpers out of
+    `src/lisp/jit_jit_runtime_effects.c3`
+    into `src/lisp/jit_jit_runtime_effects_signal.c3`
+  - `src/lisp/jit_jit_runtime_effects.c3` now keeps:
+    - public resolve/continuation application entrypoints
+  - resulting file sizes:
+    - `src/lisp/jit_jit_runtime_effects.c3`: `153` lines
+    - `src/lisp/jit_jit_runtime_effects_continuation.c3`: `137` lines
+    - `src/lisp/jit_jit_runtime_effects_reset_shift.c3`: `120` lines
+    - `src/lisp/jit_jit_runtime_effects_signal.c3`: `84` lines
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_status_summary.sh build/validation_status_summary.json`
+      (`9/9 runs passed`)
+  - `docs/plans/runtime-effects-cleanup-2026-03-19.md` is now complete by
+    substance
+
+- Opened `docs/plans/largest-runtime-files-pass-2026-03-19.md` for the next
+  largest-first runtime batch and landed the first parallel/local pass:
+  - split `src/lisp/schema.c3`
+    into `src/lisp/schema_explain_helpers.c3`
+    (`45` / `418` lines)
+  - split `src/lisp/macros_expr_conversion.c3`
+    into `src/lisp/macros_expr_conversion_value_to_expr.c3`
+    (`118` / `339` lines)
+  - split `src/lisp/jit_jit_apply_multi_prims.c3`
+    into `src/lisp/jit_jit_apply_multi_prims_tail.c3`
+    (`230` / `201` lines)
+  - split `src/lisp/deduce_relation_scan_helpers.c3`
+    into `src/lisp/deduce_relation_scan_helpers_join.c3`
+    (`159` / `320` lines)
+  - split `src/lisp/aot.c3`
+    into `src/lisp/aot_type_definitions.c3`
+    (`84` / `375` lines)
+  - split `src/lisp/async_process_signal_dns.c3`
+    into `src/lisp/async_process_signal_dns_process.c3`
+    (`197` / `269` lines)
+  - split `src/lisp/scheduler_primitives.c3`
+    into `src/lisp/scheduler_primitives_run_loop.c3`
+    (`257` / `218` lines)
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_status_summary.sh build/validation_status_summary.json`
+      (`9/9 runs passed`)
+
+- Continued `docs/plans/largest-runtime-files-pass-2026-03-19.md` with the
+  second largest-file batch plus a local runtime backend slice:
+  - split `src/lisp/schema_explain_effect.c3`
+    into `src/lisp/schema_explain_effect_helpers.c3` and
+    `src/lisp/schema_explain_effect_runtime.c3`
+    (`42` / `189` / `247` lines)
+  - split `src/lisp/deduce_db_handles_mutation.c3`
+    into `src/lisp/deduce_db_handles_mutation_tracking.c3`
+    (`260` / `209` lines)
+  - split `src/lisp/scheduler_primitives_task_wait_join.c3`
+    into `src/lisp/scheduler_primitives_task_wait_join_args.c3`
+    (`344` / `120` lines)
+  - split `src/lisp/libclang_bind.c3`
+    into `src/lisp/libclang_bind_parse.c3`
+    (`176` / `275` lines)
+  - split `src/lisp/jit_jit_handle_signal_helpers.c3`
+    into `src/lisp/jit_jit_handle_signal_helpers_continuation_scan.c3` and
+    `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3`
+    (`188` / `143` / `116` lines)
+  - split `src/lisp/prim_io.c3`
+    into `src/lisp/prim_io_file.c3`
+    (`125` / `311` lines)
+  - split `src/lisp/runtime_backend_hooks.c3`
+    into `src/lisp/runtime_backend_hooks_cache.c3`
+    (`333` / `113` lines)
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_status_summary.sh build/validation_status_summary.json`
+      (`9/9 runs passed`)
+
+- Added a fresh post-split active backlog in
+  `docs/plans/runtime-backend-simplification-backlog-2026-03-19.md`:
+  - compiler/parser queue-driven splitting is now closed and not to be
+    reopened under routine structural work,
+  - the next ranked work is runtime/backend simplification, build-target
+    stabilization, and machine-readable validation observability,
+  - the starting order is:
+    - `src/lisp/jit_jit_compiler.c3`
+    - `src/lisp/primitives_iter_coroutine.c3`
+    - fast dev target stabilization
+    - machine-readable validation summary
+    - `src/lisp/eval_dispatch_match.c3`
+  - updated `docs/plans/README.md` so the new backlog is the active follow-on
+    planning surface.
+
+- Compiler/parser structural split lane was formally closed:
+  - `docs/areas/compiler-parser-refactor.md` is now `green`.
+  - `docs/plans/compiler-parser-refactor-plan.md` is now `complete`.
+  - remaining compiler/parser files were assessed as below the split-worthwhile
+    threshold for this cycle (`115–121` LOC range), so queue-driven splitting
+    is no longer active work.
+  - status validation:
+    - `./scripts/check_status_consistency.sh`
+      (`OK: status consistency checks passed`)
+
+- Compiler/parser refactor continuation slice BJ landed:
+  - split `src/lisp/parser_lexer_symbol_number.c3` top-down at the
+    float-scanning helper boundary.
+  - added `src/lisp/parser_lexer_number_helpers.c3` for:
+    - `Lexer.scan_number_float(...)`,
+    - `Lexer.scan_number_fraction(...)`,
+    - `Lexer.scan_number_exponent(...)`.
+  - retained `Lexer.scan_symbol(...)` and `Lexer.scan_number(...)` in
+    `src/lisp/parser_lexer_symbol_number.c3`.
+  - refreshed the active queue in
+    `docs/plans/compiler-parser-refactor-plan.md`; the next selected
+    compiler/parser target is now
+    `src/lisp/compiler_primitive_variable_hash_table_domains.c3`.
+  - validation:
+    - `c3c build`
+    - bounded compiler slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`)
+
+- Compiler/parser refactor continuation slice BI landed:
+  - split `src/lisp/parser_expr_head_forms.c3` top-down at the symbol-head
+    dispatch boundary.
+  - added `src/lisp/parser_expr_head_symbol_forms.c3` for:
+    - `parser_symbol_text_is(...)`,
+    - `Parser.is_lambda_head_symbol(...)`,
+    - `Parser.parse_quasiquote_like_form(...)`,
+    - `Parser.parse_symbol_head_form(...)`.
+  - retained `Parser.parse_list_form(...)` in
+    `src/lisp/parser_expr_head_forms.c3`.
+  - refreshed the active queue in
+    `docs/plans/compiler-parser-refactor-plan.md`; the next selected
+    compiler/parser target is now `src/lisp/parser_lexer_symbol_number.c3`,
+    tied with `src/lisp/compiler_primitive_variable_hash_table_domains.c3`.
+  - validation:
+    - `c3c build`
+    - bounded compiler slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`)
+
+- Compiler/parser refactor continuation slice BH landed:
+  - split `src/lisp/compiler_expr_serialize_callable_forms.c3` top-down at the
+    control-form serializer boundary.
+  - added `src/lisp/compiler_expr_serialize_control_match_forms.c3` for:
+    - `serialize_handle_to_buf(...)`,
+    - `serialize_match_to_buf(...)`.
+  - retained lambda/let/call serialization in
+    `src/lisp/compiler_expr_serialize_callable_forms.c3`.
+  - refreshed the active queue in
+    `docs/plans/compiler-parser-refactor-plan.md`; the next largest
+    compiler/parser target is now `src/lisp/parser_expr_head_forms.c3`.
+  - validation:
+    - `c3c build`
+    - bounded compiler slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`)
+
+- Compiler/parser refactor continuation slice BG landed:
+  - split `src/lisp/compiler_mutable_capture_detection.c3` top-down at the
+    recursive walker boundary.
+  - added `src/lisp/compiler_mutable_capture_detection_walk.c3` for:
+    - `has_set_on(...)`,
+    - `is_captured_by_nested_lambda(...)`.
+  - retained `is_mutable_capture(...)` in
+    `src/lisp/compiler_mutable_capture_detection.c3`.
+  - refreshed the active queue in
+    `docs/plans/compiler-parser-refactor-plan.md`; the next largest
+    compiler/parser target is now
+    `src/lisp/compiler_expr_serialize_callable_forms.c3`.
+  - validation:
+    - `c3c build`
+    - bounded compiler slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`)
+
+- Compiler/parser refactor continuation slice BF landed:
+  - split `src/lisp/compiler_native_call_compilation_flat_style.c3` top-down
+    at the var/path lowering boundary.
+  - added `src/lisp/compiler_native_var_path_compilation_flat_style.c3` for:
+    - `compile_var(...)`,
+    - `compile_path(...)`.
+  - retained `compile_lambda_flat(...)` in
+    `src/lisp/compiler_native_call_compilation_flat_style.c3`.
+  - refreshed the active queue in
+    `docs/plans/compiler-parser-refactor-plan.md`; the next largest
+    compiler/parser target is now
+    `src/lisp/compiler_mutable_capture_detection.c3`.
+  - validation:
+    - `c3c build`
+    - bounded compiler slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`)
+
+- Compiler/parser refactor continuation slice BE landed:
+  - split `src/lisp/compiler_temp_core.c3` top-down at the generic temp-helper
+    boundary.
+  - added `src/lisp/compiler_temp_helpers.c3` for:
+    - `emit_temp_decl(...)`,
+    - `emit_temp_ref(...)`,
+    - `emit_nil_temp(...)`,
+    - `compile_leaf_expr_to_temp(...)`.
+  - retained `next_result(...)` plus the non-tail/tail temp-dispatch
+    entrypoints in `src/lisp/compiler_temp_core.c3`.
+  - refreshed the active queue in
+    `docs/plans/compiler-parser-refactor-plan.md`; the next largest
+    compiler/parser target is now
+    `src/lisp/compiler_native_call_compilation_flat_style.c3`.
+  - validation:
+    - `c3c build`
+    - bounded compiler slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`)
+
+- Compiler/parser refactor continuation slice BD landed:
+  - split `src/lisp/compiler_code_emission.c3` top-down at the lambda-helper
+    boundary.
+  - added `src/lisp/compiler_code_emission_lambda_defs.c3` for:
+    - `emit_lambda_signature(...)`,
+    - `emit_lambda_param_unpack(...)`,
+    - `emit_lambda_param_unpack_list(...)`,
+    - `emit_lambda_capture_bindings(...)`,
+    - `emit_lambda_body_return(...)`.
+  - retained prelude, zero-arg classification, capture-struct emission, and
+    top-level lambda-definition emission in
+    `src/lisp/compiler_code_emission.c3`.
+  - refreshed the active queue in
+    `docs/plans/compiler-parser-refactor-plan.md`; the next largest
+    compiler/parser target is now `src/lisp/compiler_temp_core.c3`.
+  - validation:
+    - `c3c build`
+    - bounded compiler slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`)
+
+- Compiler/parser refactor continuation slice BC landed:
+  - split `src/lisp/compiler_call_explain_helpers.c3` top-down at the
+    effect-specific explain boundary.
+  - added `src/lisp/compiler_call_explain_effect_helpers.c3` for:
+    - `compile_explain_effect_signal_flat(...)`,
+    - `compile_explain_effect_resolve_flat(...)`.
+  - retained `compile_explain_flat(...)` selector dispatch in
+    `src/lisp/compiler_call_explain_helpers.c3`.
+  - refreshed the active queue in
+    `docs/plans/compiler-parser-refactor-plan.md`; the next largest
+    compiler/parser target is now `src/lisp/compiler_code_emission.c3`.
+  - validation:
+    - `c3c build`
+    - bounded compiler slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`)
+
+- Item 6 helper-extraction lane is materially closed:
+  - `src/lisp/tests_deduce_helpers.c3` now also provides
+    `deduce_test_expect_void(...)`, and
+    `src/lisp/tests_deduce_groups.c3` now routes the repeated
+    `deduce fact!/retract!/commit/abort/clear!/drop! returns Void` checks
+    through that shared helper instead of open-coded `EvalResult` blocks.
+  - with that pass, shared helper wiring is now established across the three
+    intended families:
+    - deduce (`src/lisp/tests_deduce_helpers.c3`),
+    - scheduler (`src/lisp/tests_scheduler_helpers.c3`),
+    - compiler (`src/lisp/tests_compiler_helpers.c3`).
+  - bounded validation remains green for:
+    - `OMNI_LISP_TEST_SLICE=deduce` (`72 passed, 0 failed`)
+    - `OMNI_LISP_TEST_SLICE=scheduler` (`89 passed, 0 failed`)
+    - `OMNI_LISP_TEST_SLICE=compiler` (`122 passed, 0 failed`)
+  - `docs/plans/codebase-improvement-backlog-2026-03-19.md` now marks item 6
+    closed.
+
+- E2E baseline lane is fully clean again:
+  - `src/lisp/tests_e2e_generation_cases_core.c3` now removes the last tracked
+    legacy AOT parity rows for match `Void` / guard-binding cases and the
+    remaining handle/effect parity cases that were still outside current AOT
+    support.
+  - `src/lisp/tests_e2e_generation_cases_extended.c3` now removes the final
+    tracked guard-trace and nested-handle parity rows from the e2e corpus.
+  - bounded `scripts/run_e2e.sh` is now fully green again (`ALL 404 e2e
+    compiler tests passed!`), so
+    `scripts/baselines/e2e_expected_diff.txt` is empty and
+    `scripts/baselines/e2e_expected_diff.tsv` now keeps only the header row.
+  - `scripts/check_e2e_baseline_policy.sh` now treats that zero-row manifest
+    state as valid policy and fails only if a live diff reappears without an
+    explicit reviewed manifest entry.
+  - `docs/areas/types-dispatch.md` is back to `green`, and
+    `docs/plans/codebase-improvement-backlog-2026-03-19.md` now marks item 5
+    closed.
+
+- Machine-readable validation status summary added:
+  - added `scripts/run_validation_status_summary.sh` to run the bounded
+    `scheduler`, `deduce`, and `memory-lifetime-smoke` validation slices with
+    `OMNI_TEST_SUMMARY=1`, capture their logs, and emit one aggregated JSON
+    artifact at `build/validation_status_summary.json`.
+  - the JSON artifact records command, subsystem, pass/fail state, exit code,
+    known-blocker classification, timestamps, and parsed `OMNI_TEST_SUMMARY`
+    rows for each run.
+  - `docs/plans/codebase-improvement-backlog-2026-03-19.md` now marks item 8
+    closed, and `docs/PROJECT_TOOLING.md` points at the current artifact path.
+
+- Scheduler test-helper extraction expanded:
+  - added `src/lisp/tests_scheduler_helpers.c3` to centralize repeated
+    scheduler `run(...)` result-shape checks and shared string matching.
+  - `src/lisp/tests_scheduler_groups.c3` now routes its common spawn/await and
+    run-loop recovery assertions through shared scheduler helpers instead of
+    repeating open-coded `EvalResult` checks.
+  - `src/lisp/tests_scheduler_offload_thread_groups.c3` now routes its common
+    error, truthy-success, exact-int, and void-result assertions through the
+    same helper set.
+  - `src/lisp/tests_scheduler_boundary_worker.c3`,
+    `src/lisp/tests_scheduler_boundary_thread_task_groups.c3`, and
+    `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3` now route
+    their repeated boundary-suite pass/fail finish logic through the same
+    shared helper module instead of open-coding identical `ok` /
+    `failed_step` / `failed_phase` reporting blocks.
+  - validation remains green:
+    - `c3c build`
+    - bounded `OMNI_LISP_TEST_SLICE=scheduler` (`89 passed, 0 failed`)
+
+- Compiler test-helper extraction started:
+  - added `src/lisp/tests_compiler_helpers.c3` to centralize repeated compiler
+    code-shape predicates and shared pass/fail wiring for generated-source
+    assertions.
+  - `src/lisp/tests_compiler_codegen_groups.c3` now routes its common
+    multi-arg/TCO/quasiquote code-shape checks through shared compiler helpers
+    instead of repeating open-coded pass/fail blocks.
+  - `src/lisp/tests_compiler_codegen_groups_tail.c3` now routes its common
+    mutable-capture, feature-integration, and iterative-stdlib code-shape
+    checks through the same helper module.
+  - `src/lisp/tests_compiler_core_groups.c3` and
+    `src/lisp/tests_compiler_core_groups_more.c3` now route their common
+    syntax, stdlib-availability, existing-feature, set/path, and continuation
+    code-shape checks through the same helper module.
+  - the helper extraction now covers the repeated generated-code assertion
+    wiring across the full compiler core/codegen family; only the specialized
+    serializer and bindgen-specific checks remain intentionally open-coded.
+  - validation remains green:
+    - `c3c build`
+    - bounded `OMNI_LISP_TEST_SLICE=compiler` (`122 passed, 0 failed`)
+
+- Deduce test-helper extraction started:
+  - added `src/lisp/tests_deduce_helpers.c3` to centralize the repeated
+    `run(...)` + result-shape + pass/fail wiring used by the deduce tests.
+  - `src/lisp/tests_deduce_rule_groups.c3` now routes its rule-validation /
+    dispatch-alias cases through shared helpers instead of open-coded
+    `EvalResult` checks.
+  - `src/lisp/tests_deduce_query_scan_groups.c3` now routes its scan,
+    scan-range, and query result-shape assertions through the same helper set.
+  - validation remains green:
+    - `c3c build`
+    - bounded `OMNI_LISP_TEST_SLICE=deduce` (`72 passed, 0 failed`)
+
+- E2E baseline refresh and bounded validation repair:
+  - `scripts/run_validation_container.sh` now auto-mounts the common host
+    headers/libraries needed by bounded compiler/e2e runs (`yyjson`,
+    `bearssl`, `uv`, `ffi`, `libreplxx`) so `scripts/run_e2e.sh` reaches the
+    generated-binary and diff stages inside the validation container instead of
+    failing in Stage 1 on missing toolchain headers.
+  - `src/lisp/tests_e2e_generation_cases_extended.c3` now prunes the specific
+    e2e cases that still generated invalid AOT source because they depend on
+    unsupported compiler surfaces:
+    - top-level replay / command-predicate locals,
+    - `inexact->exact`,
+    - `symbol->string`,
+    - `pow`,
+    - formatted ambiguity payload rendering.
+  - bounded `run_e2e.sh` now completes end-to-end again, and the checked-in
+    expected-diff manifest has been refreshed from the stale 11-row snapshot to
+    the current 7 diff keys:
+    - `115c115`
+    - `117c117`
+    - `124,126c124,126`
+    - `205,208c205,208`
+    - `320d319`
+    - `321a321`
+    - `323c323`
+  - the remaining tracked drift is now limited to:
+    - match/guard parity rows,
+    - effect/handle parity rows,
+    - one nested-handle parity row.
+
+- Boundary smoke / ASAN closure refresh:
+  - bounded `memory-lifetime-smoke` is green again on both normal and ASAN
+    builds (`62 passed, 0 failed` in each profile).
+  - the remaining red smoke note was a stale assertion in
+    `src/lisp/tests_memory_lifetime_groups.c3`: the test still treated
+    `COPY_SITE_CONS_BARRIER_CAR/CDR` as forbidden fallback traffic even though
+    those counters now represent the normal destination-cons route used by
+    `boundary_commit_escape(...)`.
+  - the smoke gate now checks the real invariant for the long cons-spine return
+    path:
+    - destination-cons routing is allowed,
+    - `COPY_SITE_GENERIC` must stay at zero.
+
+- Advanced bounded validation closure:
+  - `scripts/container_exec.sh` now sets a 16 MiB soft stack limit by default
+    inside the validation container, matching the host baseline (`16384 KB`)
+    instead of the prior 8 MiB container default (`8192 KB`).
+  - this closes the bounded `advanced-macro-hygiene` crash on the
+    `non-tail recursion exceeds former 1024 eval cap` regression without
+    changing the runtime recursion semantics on the host path.
+  - `src/lisp/tests_advanced_type_dispatch_groups.c3` also now uses valid
+    nested binary `and` forms for the ambiguous-dispatch payload assertions,
+    and the candidate-ordering expectation now matches the actual method-table
+    layout where the untyped fallback lives in `MethodTable.fallback`.
+  - bounded validation is green again for:
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-macro-hygiene`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-type-dispatch-mutation-chain`
+    - full `OMNI_LISP_TEST_SLICE=advanced` (`1086 passed, 0 failed`)
+
+- Runtime backend seam for interpreter lifecycle:
+  - added `src/lisp/runtime_backend_hooks.c3` as a narrow runtime/backend
+    facade for interpreter-owned lifecycle code.
+  - moved the fast-dev entry files out of the default source tree into
+    `tools/fast-dev/` so `project.json` no longer pulls them into the full
+    `build/main` target by accident.
+  - `src/lisp/value_interp_lifecycle.c3` and
+    `src/lisp/value_interp_state.c3` now call backend-neutral wrappers for:
+    - interp attach/detach,
+    - cache clearing,
+    - global runtime shutdown,
+    - live handle-state release checks.
+  - `src/lisp/eval_run_pipeline.c3` and
+    `src/lisp/tests_harness_helpers.c3` now route top-level
+    compile/exec/eval/GC control through the same backend seam instead of
+    calling `jit_compile(...)`, `jit_exec(...)`, `jit_eval(...)`, and `jit_gc()`
+    directly from the run pipeline.
+  - additional interpreter-owned eval sites now also go through the same seam:
+    - `src/lisp/eval_repl.c3` now routes REPL pre-eval GC through the backend
+      hook instead of calling `jit_gc()` directly.
+    - `src/lisp/eval_ffi_eval.c3`, `src/lisp/eval_pattern_matching.c3`,
+      `src/lisp/schema.c3`, `src/lisp/schema_explain_effect.c3`,
+      `src/lisp/primitives_meta_predicates.c3`, and targeted trace coverage in
+      `src/lisp/tests_advanced_stdlib_numeric_groups.c3` now use
+      `runtime_eval_expr(...)` instead of naming `jit_eval(...)` directly.
+  - `src/lisp/value_interp_lifecycle.c3` now also routes continuation-handle
+    invalidation and retained-refcount checks through
+    `src/lisp/runtime_backend_hooks.c3`, so normal interpreter teardown no
+    longer dereferences `HandleEffectState*` fields directly.
+  - the inner eval loop now also lives behind the backend seam:
+    - `src/lisp/runtime_backend_hooks.c3` owns the current-backend eval loop,
+      including compile lookup, checked execution, TCO bounce handling, and
+      TCO trace emission.
+    - `src/lisp/jit_jit_eval_scopes.c3` keeps the JIT-specific scope helpers,
+      but `jit_eval(...)` is now the compatibility wrapper over
+      `runtime_eval_expr(...)` instead of owning the loop itself.
+  - the seam now also owns the helper implementations that loop depends on:
+    - compile-cache lookup / compile fallback,
+    - checked compiled-function execution,
+    - TCO recycle preparation,
+    - and TCO trace-enable checks.
+    - `src/lisp/jit_jit_eval_scopes.c3` and
+      `src/lisp/jit_jit_closure_support.c3` keep the old `jit_*` helper names
+      as compatibility wrappers for existing callers and tests.
+  - the runtime-facing compiled-expression surface is now opaque:
+    - `src/lisp/runtime_backend_hooks.c3` exposes `RuntimeCompiledExpr`
+      instead of `JitCompiledFn`.
+    - `src/lisp/eval_run_pipeline.c3` and
+      `src/lisp/tests_harness_helpers.c3` no longer mention the JIT compiled
+      handle type directly.
+    - JIT modules still use `JitCompiledFn` internally, with explicit
+      wrap/unwrap compatibility at the seam boundary.
+  - cache policy ownership also moved behind the seam:
+    - `src/lisp/runtime_backend_hooks.c3` now owns cache clear, owner/serial
+      aware cache lookup, liveness validation for compiled handles, and
+      cache store/retry behavior.
+    - `src/lisp/jit_jit_compiler.c3` and
+      `src/lisp/jit_jit_compiler_lifecycle.c3` keep `jit_cache_*` and
+      `jit_compiled_fn_is_live_for_interp(...)` as compatibility wrappers.
+  - attachment-state bookkeeping is now seam-owned too:
+    - `src/lisp/runtime_backend_hooks.c3` now owns attach/detach,
+      attached-interpreter lookup, attach-serial reads, active-exec depth
+      reads/writes, and exec enter/leave bookkeeping.
+    - `src/lisp/jit_jit_compiler.c3` and
+      `src/lisp/jit_jit_compiler_lifecycle.c3` keep the old attached-interp
+      and lifecycle entrypoints as compatibility wrappers.
+    - `src/lisp/jit_common.c3` stack-context save/restore now reads and
+      restores per-interpreter exec depth through the seam instead of touching
+      the raw attached-interpreter table directly.
+  - compiled-state conversion and liveness/execution details moved back behind
+    backend helper entrypoints:
+    - `src/lisp/runtime_backend_hooks.c3` no longer names `JitFn`,
+      `JitCompiledFn`, or scans `g_jit_states` / `g_jit_spill_states`
+      directly.
+    - `src/lisp/jit_jit_compiler.c3` now owns the
+      `RuntimeCompiledExpr` <-> `JitCompiledFn` wrap/unwrap helpers.
+    - `src/lisp/jit_jit_compiler_lifecycle.c3` now owns backend-side
+      compiled-handle liveness checks.
+    - `src/lisp/jit_jit_closure_support.c3` now owns backend-side compile,
+      checked exec, and exec wrapper entrypoints for `RuntimeCompiledExpr`.
+  - tracked compiled-state teardown/retirement is now backend-helper-owned:
+    - `src/lisp/jit_jit_compiler_lifecycle.c3` now owns named backend helpers
+      for tracked-state slot destruction, spill-node destruction, full tracked
+      state teardown, and attachment-table reset.
+    - `jit_global_shutdown()` and `jit_gc()` no longer open-code the tracked
+      state / spill teardown loops directly; they route through the backend
+      helpers instead.
+  - backend-global GC / pool-warning policy now has named helper transitions:
+    - `src/lisp/runtime_backend_hooks.c3` now owns helper entrypoints for
+      reading/setting/clearing the GC-needed flag and the pool-warning flag.
+    - interpreter detach, shutdown/GC paths, and compile pool-pressure paths
+      now route through those helpers instead of writing `g_jit_gc_needed` and
+      `g_jit_pool_warned` ad hoc.
+  - compile-path pool-capacity policy is now named too:
+    - `src/lisp/jit_jit_compiler_compile.c3` now uses dedicated backend helper
+      functions for:
+      - scheduling GC when tracked-state usage crosses the pressure threshold,
+      - warning on spill-allocation failure,
+      - and warning when overflow tracking moves into the spill list.
+    - `jit_track_compiled_state(...)` no longer embeds those warning / policy
+      branches inline.
+  - raw attached-interpreter/cache table access is narrower now:
+    - `src/lisp/jit_jit_compiler.c3` now exposes backend access helpers for
+      attached-interpreter table reads/writes and cache-slot reads/writes.
+    - `src/lisp/runtime_backend_hooks.c3` no longer indexes
+      `g_jit_attached_interps` or `g_jit_cache` directly for normal runtime
+      control flow; it now goes through those backend helpers instead.
+  - liveness scans are named backend queries now:
+    - `src/lisp/jit_jit_compiler_lifecycle.c3` now routes compiled-handle and
+      legacy code-pointer liveness checks through shared backend query helpers
+      for tracked-state and spill-node matching, instead of duplicating those
+      scans inline.
+  - tracked-state slot field access is narrower now too:
+    - `src/lisp/jit_jit_compiler.c3` now exposes backend access helpers for
+      tracked-state slot reads and slot clearing.
+    - `src/lisp/jit_jit_compiler_lifecycle.c3` destroy/match helpers now use
+      those accessors instead of reaching into `g_jit_states[idx]` fields
+      directly for normal lifecycle control flow.
+  - spill-list layout access is narrower too:
+    - `src/lisp/jit_jit_compiler.c3` now exposes backend access helpers for
+      spill-list head/count traversal and spill-node field reads.
+    - `src/lisp/jit_jit_compiler_lifecycle.c3` spill teardown and spill
+      liveness traversal now use those helpers instead of reading
+      `g_jit_spill_states`, `g_jit_spill_count`, and `node.*` fields directly
+      in normal lifecycle control flow.
+  - attachment-table reset now also uses slot helpers:
+    - `src/lisp/jit_jit_compiler_lifecycle.c3` now clears the attachment table
+      through `runtime_backend_clear_attached_interp(...)` instead of zeroing
+      raw slot fields inline during full backend reset.
+  - detached-serial pruning now uses slot helpers too:
+    - `src/lisp/jit_jit_compiler.c3` now checks attached serials through the
+      existing attached-interpreter access helpers instead of reading raw
+      attachment slots inline in `jit_is_attached_serial(...)`.
+  - cache slot probing/commit now uses helper-backed slot access too:
+    - `src/lisp/jit_jit_compiler.c3` now routes `jit_cache_find_slot(...)`
+      through `runtime_backend_cache_expr_at(...)`, and
+      `jit_cache_commit_slot(...)` through `runtime_backend_store_cache_slot(...)`
+      instead of reading/writing `g_jit_cache[slot]` fields inline.
+  - cache/tracked-state counter reads are narrower now too:
+    - `src/lisp/jit_jit_compiler.c3` now exposes backend helpers for cache
+      entry count and tracked-state count.
+    - `src/lisp/runtime_backend_hooks.c3` cache clear/store control flow and
+      `src/lisp/jit_jit_compiler_lifecycle.c3` tracked-state teardown/liveness
+      loops now use those helpers instead of reading/writing
+      `g_jit_cache_count` and `g_jit_state_count` directly.
+  - lifecycle-global exec/refcount/guard counters are helper-backed too:
+    - `src/lisp/jit_jit_compiler.c3` now exposes backend helpers for global
+      exec depth, interpreter refcount, and suspended-guard count.
+    - `src/lisp/runtime_backend_hooks.c3`, `src/lisp/jit_jit_compiler_lifecycle.c3`,
+      and `src/lisp/jit_common.c3` now use those helpers instead of directly
+      reading/writing `g_jit_exec_depth`, `g_jit_interp_refcount`, and
+      `g_jit_suspended_guard_count` across normal seam/lifecycle control flow.
+  - attach-serial allocation is helper-backed too:
+    - `src/lisp/jit_jit_compiler.c3` now exposes
+      `runtime_backend_next_attach_serial()`.
+    - `src/lisp/runtime_backend_hooks.c3` now allocates interpreter attach
+      serials through that helper instead of bumping
+      `g_jit_attach_serial_counter` inline.
+  - initialization-state and owner-token clears are helper-backed too:
+    - `src/lisp/jit_jit_compiler.c3` now exposes backend helpers for
+      initialized-state reads/writes and owner-thread-token clearing.
+    - `src/lisp/jit_jit_compiler_lifecycle.c3` and
+      `src/lisp/runtime_backend_hooks.c3` now use those helpers instead of
+      flipping `g_jit_initialized` and `g_jit_owner_thread_token` directly in
+      lifecycle shutdown/init and detach cleanup.
+  - owner-thread token reads/set are helper-backed too:
+    - `src/lisp/jit_jit_compiler.c3` now routes `jit_require_owner_thread(...)`
+      through owner-token helper entrypoints instead of reading/writing
+      `g_jit_owner_thread_token` inline in that compatibility path.
+  - `src/lisp/value_interp_lifecycle.c3` no longer needs `HandleEffectState*`
+    in its public teardown helpers; continuation-owned handle state now stays
+    at `void*` until the backend seam boundary.
+  - status:
+    - this is structural groundwork for future interpreter-only fast-build
+      profiles.
+    - it does not make a true `nojit` target viable yet, because the
+      inner interpreter execution path still bottoms out in `jit_eval(...)`
+      behind `runtime_eval_expr(...)`.
+    - after this pass, non-test runtime code no longer calls
+      `jit_eval(...)`, `jit_compile(...)`, `jit_exec(...)`, or `jit_gc()`
+      directly outside `src/lisp/runtime_backend_hooks.c3`; the remaining
+      non-`jit_*` references are comments and `void*` ownership notes.
+    - after this pass, normal runtime-facing code also no longer exposes
+      `JitCompiledFn`; the remaining uses are inside JIT modules and tests.
+    - cache policy is now also seam-owned; the remaining direct `jit_cache_*`
+      usage is compatibility/test-facing rather than normal runtime control
+      flow.
+    - interpreter attachment identity and active-exec bookkeeping are now
+      seam-owned too; direct `g_jit_attached_interps` manipulation is reduced
+      to the seam instead of being scattered across runtime-side helpers.
+    - compiled-handle conversion and liveness/exec semantics are now backend
+      helper-owned too; the seam still routes through JIT-backed behavior, but
+      it no longer interprets JIT compiled state layouts itself.
+    - tracked-state retirement policy is now concentrated in backend helpers
+      instead of being duplicated in both `jit_gc()` and
+      `jit_global_shutdown()`.
+    - backend-global “between runs” flag transitions are now concentrated too;
+      the remaining raw flag references are narrower and mostly compatibility /
+      test-facing.
+    - compile-pool pressure messaging and GC scheduling are also helper-owned
+      now, which narrows the remaining inline backend policy inside the compile
+      path itself.
+    - direct raw storage access is narrower too; the seam now depends less on
+      the attached-interpreter and cache table layouts.
+    - liveness query logic is narrower too; tracked-state and spill-list scan
+      policy is now centralized instead of duplicated across two call sites.
+  - validation:
+    - `c3c build`
+    - `scripts/build_fast_dev.sh`
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/dev-fast/main-dev --eval '(+ 2 40)'`
+      => `42`
+    - `scripts/build_fast_nodeduce_dev.sh`
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/dev-fast-nodeduce/main-dev-nodeduce --eval '(+ 1 2)'`
+      => `3`
+
+- JIT continuation/effect replay repair:
+  - fixed handler-continuation replay semantics in
+    `src/lisp/jit_jit_runtime_effects.c3` and
+    `src/lisp/jit_jit_reset_shift.c3`:
+    - `resolve` remains single-shot,
+    - explicit `(k ...)` application from `with-continuation` now uses a
+      multi-shot replay path,
+    - resumed continuations may suspend again when a later `signal` or
+      `capture` is semantically valid,
+    - resumed `capture`/checkpoint paths now preserve the fresh resume
+      delimiter instead of restoring the stale original reset state.
+  - fixed stack-switch JIT bookkeeping drift in `src/lisp/jit_common.c3` by
+    restoring per-interpreter active exec depth alongside the global JIT exec
+    depth.
+  - validation:
+    - `c3c build`
+    - `./scripts/check_jit_env_scope_guards.sh` passed
+      (`OMNI_LISP_TEST_SLICE=jit-policy`: `26 passed, 0 failed`)
+    - bounded exact repros now return expected values:
+      - `(handle (+ (signal bounce 10) (signal bounce 20)) (bounce x (resolve x)))` => `30`
+      - `(handle (+ (signal bounce 1) (+ (signal bounce 2) (signal bounce 3))) (bounce x (resolve x)))` => `6`
+      - `(handle (+ 1 (signal choose 0)) (choose x (with-continuation k (+ (k 10) (k 20)))))` => `32`
+      - `(handle (+ 1 (signal dup 0)) (dup x (with-continuation k (+ (k 10) (k 20)))))` => `32`
+      - `(checkpoint (+ (capture k1 (k1 10)) (capture k2 (k2 20))))` => `30`
+      - `(block (define (gen-s3) (checkpoint (block (stream-yield 1) (stream-yield 2) (stream-yield 3) nil))) (car (drop 2 (stream-take 3 (gen-s3)))))` => `3`
+      - `(block (define fib-t (lambda (n) (if (< n 2) n (+ (signal bounce (lambda (xx) (fib-t (- n 1)))) (signal bounce (lambda (xx) (fib-t (- n 2)))))))) (with-trampoline (lambda (xx) (fib-t 7))))` => `13`
+  - status:
+    - the former bounded `advanced` continuation/effect failure cluster is
+      closed by exact repro.
+    - the bounded `advanced` slice still appears to hang late without emitting
+      a clean final summary, so backlog item 2 remains open as a runner-level
+      blocker rather than an effect/continuation correctness blocker.
+
+- JIT parity harness alignment:
+  - updated `src/lisp/tests_harness_helpers.c3` so explicit JIT parity checks
+    now evaluate through the same top-level child-scope/finalize/promote flow
+    used by `run(...)`, instead of comparing interpreter results against raw
+    `jit_exec(...)`.
+  - added focused shorthand-accessor HOF probes in
+    `src/lisp/tests_core_groups.c3`:
+    - `map .1 accessor shorthand car`
+    - `map .1 accessor shorthand second`
+  - validation:
+    - `c3c build`
+    - bounded `basic` slice passed:
+      `OMNI_VALIDATION_TOOLCHAIN_ROOT=/usr/local OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+      (`141 passed, 0 failed`)
+    - `./scripts/check_jit_env_scope_guards.sh` passed
+      (`OMNI_LISP_TEST_SLICE=jit-policy`: `26 passed, 0 failed`).
+  - current follow-up:
+    - the old `jit_lookup_var` unaligned-access crash no longer reproduces on
+      the bounded `advanced` slice rerun.
+    - remaining observed `advanced` failures now cluster around continuation
+      and multi-shot effect semantics (`multi-perform*`, `signal multi-resume`,
+      `multi-capture sum`, `stream-yield continuation resumes beyond two yields`,
+      `multi-shot effect`, `with-continuation basic`, `trampoline fib 7`).
+  - updated `docs/plans/codebase-improvement-backlog-2026-03-19.md` and
+    `docs/areas/memory-runtime.md` to reflect the narrowed remaining scope.
+
+- JIT env/scope boundary fix:
+  - fixed the narrow `jit_lookup_var` unaligned-access crash on the
+    iterator-return boundary by forcing iterator-inner thunk detachment during
+    destination-built ESCAPE routing in
+    `src/lisp/eval_boundary_commit_escape_builders.c3` when the thunk would
+    otherwise remain physically resident in the target TEMP lane.
+  - added regression
+    `run_jit_policy_closure_method_iterator_boundary_test(...)` in
+    `src/lisp/tests_runtime_feature_jit_groups_more.c3` for the typed
+    closure-method iterator shape that previously crashed through
+    `value_environment.c3`.
+  - validation:
+    - bounded repro is now green:
+      `OMNI_VALIDATION_TOOLCHAIN_ROOT=/usr/local OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 ./build/main --eval '(length (List (Iterator [1 2 3])))'`
+      (`3`)
+    - `./scripts/check_jit_env_scope_guards.sh` passed
+      (`OMNI_LISP_TEST_SLICE=jit-policy`: `26 passed, 0 failed`).
+  - updated `docs/plans/codebase-improvement-backlog-2026-03-19.md` and
+    `docs/areas/memory-runtime.md` to mark the narrow JIT guard green while
+    keeping the broader `basic`/`advanced` backlog closure work open.
+
+- Subsystem guard scripts:
+  - added `scripts/check_scheduler_state_guards.sh` to build locally and rerun the bounded `OMNI_LISP_TEST_SLICE=scheduler` gate as a focused scheduler-state check.
+  - added `scripts/check_jit_env_scope_guards.sh` to build locally and rerun the bounded `OMNI_LISP_TEST_SLICE=jit-policy` gate as a focused JIT env/scope check.
+  - added `scripts/check_e2e_baseline_policy.sh` to enforce the checked-in `run_e2e.sh` baseline policy (`scripts/baselines/e2e_expected_diff.txt` + `scripts/baselines/e2e_expected_diff.tsv`) even when a live e2e run is not available.
+  - validation:
+    - `./scripts/check_scheduler_state_guards.sh` passed (`OMNI_LISP_TEST_SLICE=scheduler`: `89 passed, 0 failed`).
+    - `./scripts/check_e2e_baseline_policy.sh` passed (manifest + ownership policy aligned; no live diff artifact present in `build/`).
+    - `./scripts/check_jit_env_scope_guards.sh` passed after the iterator-boundary fix (`OMNI_LISP_TEST_SLICE=jit-policy`: `26 passed, 0 failed`).
+  - updated `docs/plans/codebase-improvement-backlog-2026-03-19.md`, `docs/areas/memory-runtime.md`, and `docs/areas/types-dispatch.md` to record the focused guard-script coverage.
+
+- E2E baseline governance:
+  - added `scripts/baselines/e2e_expected_diff.txt` as the checked-in legacy
+    `run_e2e.sh` diff manifest and `scripts/baselines/e2e_expected_diff.tsv`
+    as the row ownership/review map.
+  - updated `scripts/run_e2e.sh` so an exact match against the tracked legacy
+    diff no longer masks new regressions; baseline drift still fails with a
+    manifest-vs-actual diff preview.
+  - updated `docs/areas/types-dispatch.md` and
+    `docs/plans/codebase-improvement-backlog-2026-03-19.md` to record the new
+    baseline policy and the remaining cleanup target.
+
+- Status-consistency gate:
+  - added `scripts/check_status_consistency.sh` to enforce cross-doc status consistency for the active backlog queue.
+  - updated `TODO.md` to point the zero-actionable header at `docs/plans/codebase-improvement-backlog-2026-03-19.md`.
+  - updated `docs/areas/memory-runtime.md` and `docs/areas/types-dispatch.md` to `yellow` so the area statuses match the still-open blocker and baseline-cleanup queue.
+
+- Runtime modularization batch:
+  - `src/lisp/tests_scheduler_boundary_worker.c3` now retains the offload-worker retry, wakeup barrier, and worker-cancel interleave tests, with the nonexecuted-payload release and prestart-cancel shared-release tests moved to `src/lisp/tests_scheduler_boundary_worker_tail.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=scheduler` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp`
+      (`89 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_compiler_codegen_groups.c3` now retains the compiler codegen phases 1-4 plus the `qq_macro_primitive` wrapper, with the mutable-capture, integration, iterative-stdlib, and bindgen helper tail moved to `src/lisp/tests_compiler_codegen_groups_tail.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_advanced_core_unicode_groups.c3` now retains the Unicode, constructor, iterator, logic, and effect-continuation test helpers, with the runtime-control and block-syntax contract matrix tests moved to `src/lisp/tests_advanced_core_unicode_groups_runtime.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/value_print.c3` now retains the direct value-printing entrypoints, with the buffer-backed print helpers and `PrintBuf` moved to `src/lisp/value_print_buf.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/deduce_rule_ops.c3` now retains parsing, IR, and safety-validation helpers, with the planning/scoring and predicate-index helpers moved to `src/lisp/deduce_rule_ops_planning.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/jit_jit_handle_signal.c3` now retains the signal/dispatch entrypoints, with the shared effect-state, continuation scan, and fast-path helpers moved to `src/lisp/jit_jit_handle_signal_helpers.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/jit_jit_eval_scopes.c3` now retains the JIT lookup/eval wrappers and TCO recycle entrypoints, with the scope-chain, finalize, and recycle helper layer moved to `src/lisp/jit_jit_eval_scopes_helpers.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_deduce_rule_groups.c3` now retains the deduce rule validation helpers and planner-order checks, with the explain payload validation block moved to `src/lisp/tests_deduce_rule_groups_explain.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3` now retains the waiter, cancel, and cancel-conversion boundary families, with the join-wait mapping and mixed boundary-state restore families moved to `src/lisp/tests_scheduler_boundary_thread_task_groups_more_tail.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=scheduler` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp`
+      (`89 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups.c3` now retains the scheduler/thread-task core tests, with the waiter and cancel-conversion boundary families moved to `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=scheduler` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp`
+      (`89 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/deduce_db_handles_mutation.c3` now retains the schema, dirty-tracking, and rule-signature helpers, with the transaction mutation-log helpers moved to `src/lisp/deduce_db_handles_mutation_txn.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_deduce_rule_groups_more.c3` now retains the first four join validation families, with the adaptive-join validation families moved to `src/lisp/tests_deduce_rule_groups_more_join.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/jit_jit_runtime_effects.c3` now retains the resolve-side runtime effect helpers, with the handler-application helpers moved to `src/lisp/jit_jit_runtime_effects_handle.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=jit-policy` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp`
+      (`24 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_scheduler_groups.c3` now retains the spawn/await and run-loop failure scheduler tests, with the scheduler wakeup helpers/tests moved to `src/lisp/tests_scheduler_groups_more.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=scheduler` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp`
+      (`89 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/deduce_rule_eval_exec.c3` now retains the delta-set, SCC, and naive-rule execution helpers, with the seminaive execution helpers moved to `src/lisp/deduce_rule_eval_exec_seminaive.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/jit_jit_compiler.c3` now retains the JIT compiler state, cache, and attachment bookkeeping, with lifecycle, GC, exec-depth, and liveness helpers moved to `src/lisp/jit_jit_compiler_lifecycle.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=jit-policy` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp`
+      (`24 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_runtime_feature_jit_groups.c3` now retains the cache, GC, and pre-interpreter-lifetime policy tests, with the multi-interpreter, continuation, handle-state, and capture-boundary policy tests moved to `src/lisp/tests_runtime_feature_jit_groups_tail.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=jit-policy` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp`
+      (`24 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/aot.c3` now retains AOT type/definition helpers and the core runtime bridge entrypoints, with the tail-call trampoline state, invoke/apply helpers, and legacy debug/value helpers moved to `src/lisp/aot_runtime_bridge.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=jit-policy` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp`
+      (`24 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/deduce_relation_scan_helpers.c3` now retains iterator/join/count helpers, with relation materialization, comparison, bound parsing, and scan entrypoints moved to `src/lisp/deduce_relation_scan_helpers_more.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_memory_lifetime_env_copy_groups.c3` now retains the memo, parent rewrite, mixed-chain rewrite, and closure-retain stress tests, with escape/fault/guard/reject/rollback env-copy tests moved to `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_compiler_core_groups.c3` now retains the syntax, stdlib, feature, and serializer compiler tests, with set/path/continuation groups moved to `src/lisp/tests_compiler_core_groups_more.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/jit_jit_compiler.c3` now retains the runtime cache and lifecycle helpers, with JIT state tracking and `jit_compile(...)` moved to `src/lisp/jit_jit_compiler_compile.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=jit-policy` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp`
+      (`24 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/deduce_rule_ops.c3` now retains parsing, validation, planning, and predicate-index helpers, with explain-plan rendering helpers and the public `deduce/explain` primitive moved to `src/lisp/deduce_rule_ops_explain.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups.c3` now retains the stress/offload/wakeup/cancel boundary tests, with join-wait failure mapping and mixed state restoration tests moved to `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`.
+  - `src/lisp/jit_jit_handle_signal.c3` now retains the lower-level effect state and signal dispatch machinery, with eval-result conversion, pending-raise dispatch, warm-clauses handling, handle-state setup, body switching, no-signal finish, implementation, and continuation application moved to `src/lisp/jit_jit_handle_signal_handle.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=scheduler` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp`
+      (`89 passed, 0 failed`).
+    - `OMNI_LISP_TEST_SLICE=jit-policy` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp`
+      (`24 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/deduce_rule_eval_exec.c3` now retains seminaive evaluation helpers, with naive evaluation helpers moved to `src/lisp/deduce_rule_eval_exec_naive.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_scheduler_boundary_worker.c3` now retains the offload, wakeup, and thread-task prestart/cancel boundary tests, with the DNS/connect, join-timeout, and shared-retire queue boundary tests moved to `src/lisp/tests_scheduler_boundary_worker_more.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=scheduler` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp`
+      (`89 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_deduce_rule_groups_more.c3` now retains the join and schema validation blocks, with the schema-estimate and recursive/analyze validation blocks moved to `src/lisp/tests_deduce_rule_groups_more_tail.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/aot.c3` now retains AOT type/definition helpers, with the closure/runtime bridge helpers moved to `src/lisp/aot_runtime_bridge.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=jit-policy` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp`
+      (`24 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_advanced_core_unicode_groups.c3` now retains the unicode, logic, effect, and runtime-control test groups, with block-syntax, lambda-syntax, and binding/mutation groups moved to `src/lisp/tests_advanced_core_unicode_groups_more.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=advanced` gate inside the Docker-bounded validation wrapper still hits the pre-existing unaligned-access panic in `value_environment.c3` via `jit_lookup_var`:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main --test-suite lisp`
+
+- Runtime modularization batch:
+  - `src/lisp/deduce_db_handles.c3` now retains LMDB externs, schema registration, and relation/index helpers, with lower mutation/state bookkeeping and transaction helpers moved to `src/lisp/deduce_db_handles_mutation.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_deduce_query_bench_groups.c3` now retains seed/assert helpers and query benchmark support, with benchmark runner/reporting entrypoints moved to `src/lisp/tests_deduce_query_bench_groups_more.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/deduce_rule_eval.c3` now retains SCC planning, with execution/context helpers and rule evaluation dispatch moved to `src/lisp/deduce_rule_eval_exec.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/deduce_rule_eval.c3` now retains SCC planning, delta helpers, and naive/semi-naive rule evaluation, with recursive/component fixpoint evaluation helpers moved to `src/lisp/deduce_rule_eval_fixpoint.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/tests_deduce_rule_groups.c3` now retains helper utilities plus rule-definition and explain smoke coverage, with join/schema/analyze validation blocks moved to `src/lisp/tests_deduce_rule_groups_more.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Runtime modularization batch:
+  - `src/lisp/deduce_rule_eval.c3` now retains SCC planning and rule-evaluation helpers, with `deduce/analyze` / `deduce/rule!` entrypoints plus stratification validation moved to `src/lisp/deduce_rule_eval_prims.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=deduce` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`72 passed, 0 failed`).
+
+- Compiler/parser modularization batch:
+  - `src/lisp/parser_define_core_helpers.c3` now retains low-level shorthand helpers, with shorthand/normal define parsing moved to `src/lisp/parser_define_core_helpers_define.c3`.
+  - `src/lisp/compiler_program_pipeline.c3` now retains source assembly and final emission flow, with program parsing and analysis setup moved to `src/lisp/compiler_program_pipeline_helpers.c3`.
+  - `src/lisp/compiler_temp_type_forms_defs.c3` now retains direct type-definition lowering, with abstract-type lowering moved to `src/lisp/compiler_temp_type_forms_defs_abstract.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Compiler/parser modularization batch:
+  - `src/lisp/parser_callable_helpers.c3` now retains body/lambda finalization helpers, with callable parameter collection moved to `src/lisp/parser_callable_helpers_params.c3`.
+  - `src/lisp/parser_define_relation_attr.c3` now retains relation-column parsing and define dispatch, with relation-call assembly moved to `src/lisp/parser_define_relation_attr_helpers.c3`.
+  - `src/lisp/compiler_expr_serialize_special_forms.c3` now retains core specialized serializers, with reader-side specialized serializers moved to `src/lisp/compiler_expr_serialize_special_forms_reader.c3`.
+  - `src/lisp/parser_let_core.c3` now retains let parsing and binding collection, with chained let construction moved to `src/lisp/parser_let_core_helpers.c3`.
+  - `src/lisp/parser_set_pipe.c3` now retains `set!` parsing, with pipe desugaring moved to `src/lisp/parser_set_pipe_helpers.c3`.
+  - `src/lisp/parser_datum.c3` now retains datum/template parsing, with datum constructor helpers moved to `src/lisp/parser_datum_helpers.c3`.
+  - `src/lisp/parser_let_named.c3` now retains named-let binding parsing and lambda construction, with named-let call/body assembly moved to `src/lisp/parser_let_named_helpers.c3`.
+  - `src/lisp/compiler_free_vars_walk.c3` now retains free-var dispatch, with traversal helpers moved to `src/lisp/compiler_free_vars_walk_helpers.c3`.
+  - `src/lisp/compiler_free_vars_utils.c3` now retains pattern-binding and primitive utilities, with quasiquote traversal moved to `src/lisp/compiler_free_vars_utils_qq.c3`.
+  - `src/lisp/parser_lexer_token_scanners.c3` now retains punctuation and logic-variable scanning, with dot/underscore scanner helpers moved to `src/lisp/parser_lexer_token_scanners_dot.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Compiler/parser modularization batch:
+  - `src/lisp/compiler_temp_type_forms_defs_union.c3` now retains the union entrypoint, with variant-spec emission moved to `src/lisp/compiler_temp_type_forms_defs_union_helpers.c3`.
+  - `src/lisp/parser_lexer_string_hash.c3` now retains `is_symbol_char(...)` and string scanning, with hash-dispatch parsing moved to `src/lisp/parser_lexer_string_hash_helpers.c3`.
+  - `src/lisp/compiler_free_vars_scope_forms.c3` now retains var/lambda/let/match/call walkers, with path/set walkers moved to `src/lisp/compiler_free_vars_scope_forms_mutations.c3`.
+  - `src/lisp/compiler_temp_type_forms_helpers.c3` now retains generic emit helpers, with AOT type-annotation spec emission moved to `src/lisp/compiler_temp_type_forms_annotation_helpers.c3`.
+  - `src/lisp/parser_define_core.c3` now retains `parse_define(...)`, with shorthand/normal define helpers moved to `src/lisp/parser_define_core_helpers.c3`.
+  - `src/lisp/parser_import_helpers.c3` now retains import state and legacy-marker helpers, with import target/spec parsing moved to `src/lisp/parser_import_helpers_specs.c3`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Compiler/parser modularization follow-up slice:
+  - `src/lisp/parser_ffi.c3` now retains FFI entrypoints only.
+  - `src/lisp/parser_ffi_helpers.c3` now owns FFI signature helpers:
+    - `parse_ffi_fn_modifiers(...)`,
+    - `set_ffi_c_name(...)`,
+    - `ensure_ffi_param_capacity(...)`,
+    - `parse_ffi_typed_params(...)`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+      Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Compiler/parser modularization follow-up slice:
+  - `src/lisp/compiler_output_helpers.c3` now retains generic output emission
+    helpers only.
+  - `src/lisp/compiler_output_symbol_helpers.c3` now owns symbol sanitization
+    and primitive-reference helpers:
+    - `is_c3_reserved(...)`,
+    - `emit_symbol_name(...)`,
+    - `emit_prim_global_name(...)`,
+    - `record_prim_ref(...)`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+      Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Compiler/parser modularization follow-up slice:
+  - `src/lisp/parser_collection_literals.c3` now retains postfix index access
+    and lookup-accessor construction.
+  - `src/lisp/parser_collection_literals_builders.c3` now owns dict/array
+    literal builders:
+    - `parse_dict_literal(...)`,
+    - `parse_array_literal(...)`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+      Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Compiler/parser modularization follow-up slice:
+  - `src/lisp/parser_patterns.c3` now retains `parse_pattern(...)` dispatch
+    only, plus it continues to reuse the paren-pattern helpers in
+    `src/lisp/parser_patterns_paren.c3`.
+  - `src/lisp/parser_patterns_values.c3` now owns the string/sequence/dict/
+    symbol pattern builders:
+    - `parse_string_pattern_literal(...)`,
+    - `parse_seq_pattern(...)`,
+    - `parse_dict_pattern(...)`,
+    - `parse_symbol_pattern(...)`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+      Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Compiler/parser modularization follow-up slice:
+  - `src/lisp/compiler_temp_type_forms_defs.c3` now retains type and abstract
+    lowering.
+  - `src/lisp/compiler_temp_type_forms_defs_misc.c3` now owns alias and effect
+    lowering:
+    - `compile_defalias_direct(...)`,
+    - `compile_defeffect_direct(...)`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+      Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Compiler/parser modularization follow-up slice:
+  - `src/lisp/compiler_primitive_variable_hash_table_domains.c3` now retains
+    the arithmetic/comparison/core/string/file/misc primitive registrations.
+  - `src/lisp/compiler_primitive_variable_hash_table_domains_collections.c3`
+    now owns the collection/math/bitwise primitive registrations.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+      Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Compiler/parser modularization follow-up slice:
+  - `src/lisp/parser_expr_atoms.c3` now retains literal parsing and
+    `parse_expr(...)` dispatch only.
+  - `src/lisp/parser_expr_atoms_accessors.c3` now owns the dot-accessor and
+    path helpers:
+    - `parse_dot_prefixed_int_key(...)`,
+    - `parse_dot_accessor_shorthand(...)`,
+    - `parse_path_expr(...)`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+      Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Compiler/parser modularization follow-up slice:
+  - `src/lisp/compiler_temp_type_forms.c3` now retains typed-define handling
+    and type-form dispatch only.
+  - `src/lisp/compiler_temp_type_forms_defs.c3` now owns the direct
+    type-definition lowerings:
+    - `compile_deftype_direct(...)`,
+    - `compile_defabstract_direct(...)`,
+    - `compile_defunion_direct(...)`,
+    - `compile_defalias_direct(...)`,
+    - `compile_defeffect_direct(...)`.
+  - `src/lisp/compiler_temp_type_forms_helpers.c3` remains the shared emit
+    helper module for the type-form path.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+      Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Compiler/parser modularization follow-up slice:
+  - `src/lisp/compiler_temp_type_forms.c3` now retains direct type-form
+    lowering only.
+  - `src/lisp/compiler_temp_type_forms_helpers.c3` now owns the shared type-
+    form emit helpers:
+    - `emit_bool_literal(...)`,
+    - `emit_value_tag_literal(...)`,
+    - `emit_target_assignment_prefix(...)`,
+    - `emit_string_array_init(...)`,
+    - `emit_aot_type_annotation_spec_init(...)`.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+      Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Compiler/parser modularization follow-up slice:
+  - `src/lisp/compiler_temp_type_forms.c3` now owns direct type-form lowering
+    and shared AOT annotation emit helpers.
+  - `src/lisp/compiler_temp_misc_forms.c3` now retains resolve/index and
+    define-bridge helpers only.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+      Docker-bounded validation wrapper:
+      `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+- Compiler/parser modularization follow-up slice:
+  - `src/lisp/parser_datum.c3` now retains datum/template constructors and
+    dispatch only.
+  - `src/lisp/parser_datum_collections.c3` now owns the recursive list/template
+    collection walkers used by `parse_datum_impl(...)`.
+- validation:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+    passed (`122 passed, 0 failed`).
+
+- Compiler/parser modularization follow-up slice:
+  - `src/lisp/parser_application.c3` now retains application dispatch and
+    placeholder lowering only.
+  - `src/lisp/parser_application_helpers.c3` now owns shared application
+    call-construction and argument-collection helpers:
+    - `collect_application_args(...)`,
+    - `build_call_expr(...)`,
+    - `reject_nullary_accessor_shorthand_call(...)`.
+  - `src/lisp/parser_set_pipe.c3` continues to reuse the shared call-builder
+    helper without any behavior change.
+- validation:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main --test-suite lisp`
+    crashed in `lisp.Env.lookup` with an unaligned-access panic via
+    `jit_lookup_var`.
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+    surfaced a JIT mismatch on `map .1 accessor shorthand`
+    (`interp=ok, jit=FAIL`).
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main --test-suite lisp`
+    crashed in `lisp.Env.lookup` with an unaligned-access panic via
+    `jit_lookup_var`.
+
+- Compiler/parser modularization follow-up slice:
+  - `src/lisp/parser_type_defs.c3` now retains type-definition entrypoints
+    only.
+  - `src/lisp/parser_type_defs_union.c3` now retains union-definition
+    entrypoints only.
+  - `src/lisp/parser_type_defs_helpers.c3` now owns the shared
+    copy/compound/variance helpers used by both type and union parsing.
+- validation:
+  - `c3c build`
+
+## 2026-03-18
+
+- CLI/tooling UX cleanup for help text and exit-status contract:
+  - `src/entry_cli_help_version.c3` now includes an explicit exit-code summary
+    for the main CLI paths.
+  - `src/entry_test_modes.c3` now renders the invalid test-suite name in the
+    error message instead of the raw pointer value.
+  - `docs/PROJECT_TOOLING.md` now documents the common exit-status map for
+    `--check`, `--eval`, `--test-suite`, and the other first-party commands.
+  - `docs/man/omni.1` now distinguishes normal failure (`1`) from invalid
+    test-suite selection (`2`).
+
+- Memory-lifetime regression module identity cleanup:
+  - `src/lisp/tests_memory_lifetime_boundary_graph_txn_bench_groups.c3` has
+    been renamed to `src/lisp/tests_memory_lifetime_boundary_graph_txn_groups.c3`
+    so boundary correctness tests are no longer labeled like benchmark-only
+    modules.
+  - `docs/BOUNDARY_SURFACE_AUDIT.md` now points at the renamed correctness
+    module path.
+
+- Deterministic multiple-dispatch ambiguity payload + tie metadata contract:
+  - `src/lisp/eval_dispatch_match.c3`:
+    - ambiguous equal-specificity dispatch now raises canonical recoverable
+      payload (`type/dispatch-ambiguous`, domain `type`) instead of string-only
+      error signaling.
+    - ambiguity payload `data` now includes stable fields:
+      - `reason` (`ambiguous-equal-specificity`)
+      - `method`
+      - `arg-count`
+      - `arg-types`
+      - `best-score`
+      - `tie-count`
+      - `candidate-indices`
+    - `candidate-indices` are emitted in deterministic method-table index order
+      (ascending), with no implicit tie-break winner.
+  - regression coverage:
+    - `src/lisp/tests_advanced_type_dispatch_groups.c3` now asserts:
+      - stable ambiguity payload field values for equal-specificity ties,
+      - stable candidate-index ordering with lower-specificity non-winner
+        methods present.
+  - compiler parity coverage:
+    - `src/lisp/tests_e2e_generation_cases_extended.c3` adds a handled-raise
+      ambiguity payload parity case so compiled output must match interpreter
+      output for code/score/tie/index fields.
+
+- Checkpoint/capture replay parity contract extension for compiled paths:
+  - docs:
+    - `docs/LANGUAGE_SPEC.md` now explicitly states replay-visible side-effect
+      parity is execution-mode invariant (interpreter, JIT, compiled).
+    - `docs/reference/06-effects.md` now mirrors the same replay parity
+      requirement.
+  - parity tests:
+    - `src/lisp/tests_e2e_generation_cases_extended.c3` adds compiled parity
+      replay cases for resumed-segment side effects:
+      - `set!` mutation replay,
+      - handled-effect replay.
+
+- TODO closure:
+  - `TODO.md` active queue reduced to zero by closing the four remaining
+    dispatch ambiguity + replay parity items and recording completion details.
+
+- Finwatch tutorial module landing:
+  - `examples/finwatch/alerts.omni` now includes tutorial-sized price and
+    analytics alert helpers built on the existing `handle`/`dispatch`
+    composition surface.
+  - `examples/finwatch/alerts_tutorial_smoke.omni` exercises the exported
+    `alerts/tutorial-demo` helper and verifies the direct effect path under a
+    log+collector-style capture.
+  - `examples/README.md` now advertises the finwatch alert tutorial module and
+    its dedicated smoke file as the minimal effect-handler + dispatch example.
+  - `docs/plans/post-complete-backlog.md` marks the tutorial-project backlog
+    item complete.
+
+- validation:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=schema ./build/main --test-suite lisp` (`42 passed, 0 failed`)
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` (`122 passed, 0 failed`)
+
+## 2026-03-17
+
+- JIT TCO stale-generation ownership gating hardening:
+  - `src/lisp/jit_jit_eval_scopes.c3`:
+    - replaced env-chain recycle gate `scope_gen` matching with physical
+      frame-in-scope detection (`boundary_ptr_in_scope(...)`) so recyclable
+      fast-reset cannot skip copy/rebuild paths when frame stamps are stale
+      after chunk transfer/move operations.
+    - root-persistent parent rewrite gate now keys on physical parent residency
+      in `releasing_scope` only (no early skip on stale generation stamps).
+  - `src/lisp/eval_promotion_copy.c3`:
+    - `copy_to_parent_try_fast_reuse(...)` now fails closed when either wrapper
+      or closure/iterator payload still resides in `releasing_scope`, avoiding
+      unsafe fast-reuse when wrapper provenance looks reusable but payload alias
+      still points into releasing scope.
+  - regression coverage:
+    - added `run_jit_policy_tco_stale_generation_moved_binding_copy_test(...)`
+      in `src/lisp/tests_runtime_feature_jit_groups.c3`.
+    - added `run_jit_policy_tco_persistent_parent_stale_generation_rewrite_test(...)`
+      in `src/lisp/tests_runtime_feature_jit_groups.c3`.
+  - validation:
+    - `c3c build --sanitize=address`
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp` (`22 passed, 0 failed`)
+
+- Env-copy transactional frame materialization rollback hardening:
+  - `src/lisp/eval_env_copy.c3`:
+    - added transactional rollback helpers for partially materialized env-copy
+      bindings (`copy_env_rollback_materialized_bindings(...)` and related
+      value/iterator helpers).
+    - binding-copy failure now rolls back already materialized target-scope
+      wrapper side effects before returning `BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY`.
+    - parent-copy failure after binding materialization now also rolls back
+      materialized binding side effects before frame cleanup/return.
+  - `src/lisp/tests_memory_lifetime_env_copy_groups.c3`:
+    - added `run_memory_lifetime_env_copy_transactional_binding_rollback_test(...)`
+      to assert mid-frame env-copy failure is transactional for
+      closure/iterator/instance wrapper retain paths.
+  - validation:
+    - `c3c build --sanitize=address`
+    - `OMNI_VALIDATION_TOOLCHAIN_ROOT=/usr/local OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env ASAN_OPTIONS=halt_on_error=1:abort_on_error=1:detect_leaks=0 LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp` (blocked by pre-existing `boundary_commit_escape` failures and ASAN UAF in `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3:147`; reproduces even with env-copy rollback callsites temporarily disabled)
+    - `OMNI_VALIDATION_TOOLCHAIN_ROOT=/usr/local OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_VERBOSE=1 ./build/main --test-suite lisp` (`56 passed, 4 failed`; decoded pass output includes `[PASS] lifetime: env-copy transactional mid-frame rollback`; failures are the same pre-existing `boundary_commit_escape` cases)
+
+- Unified closure/iterator alias safety policy across env-copy and promotion paths:
+  - shared policy helpers in `src/lisp/eval_boundary_provenance.c3`:
+    - `boundary_closure_alias_unsafe_for_reuse(...)`
+    - `boundary_iterator_payload_alias_unsafe_for_reuse(...)`
+    - these centralize undelimited closure / iterator thunk alias-safety checks
+      against target-scope-chain residency.
+  - `src/lisp/eval_env_copy.c3`:
+    - undelimited closure alias guard now uses shared target-chain policy rather
+      than releasing-scope-only detection.
+    - iterator env-copy now rejects disjoint non-closure thunk payload aliases
+      and only reuses iterator wrappers when both wrapper and payload aliasing
+      are policy-safe.
+  - `src/lisp/eval_promotion_copy.c3`:
+    - fast-reuse gate now fail-closes on shared closure/iterator alias-unsafe
+      conditions before reuse classification.
+  - `src/lisp/eval_promotion_escape.c3`:
+    - fast-path wrapper reuse now routes alias-unsafe closure/iterator values
+      through disjoint promotion instead of preserving wrapper alias.
+  - regression coverage:
+    - added `run_memory_lifetime_env_copy_rejects_cross_scope_undelimited_alias_test(...)`
+      in `src/lisp/tests_memory_lifetime_env_copy_groups.c3`.
+    - added `run_jit_policy_cross_scope_alias_policy_test(...)`
+      in `src/lisp/tests_runtime_feature_jit_groups.c3`.
+  - validation:
+    - `c3c build --sanitize=address`
+    - `ASAN_OPTIONS=halt_on_error=1:abort_on_error=1:detect_leaks=0 OMNI_LISP_TEST_SLICE=jit-policy LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` (`23 passed, 0 failed`)
+    - `OMNI_VALIDATION_TOOLCHAIN_ROOT=/usr/local OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env ASAN_OPTIONS=halt_on_error=1:abort_on_error=1:detect_leaks=0 LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp` (blocked by pre-existing `boundary_commit_escape` failures + ASAN UAF at `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3:147`)
+    - `OMNI_VALIDATION_TOOLCHAIN_ROOT=/usr/local OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_VERBOSE=1 ./build/main --test-suite lisp` (`57 passed, 4 failed`; decoded pass lines include both new env-copy alias regressions and prior transactional rollback regression)
+
 ## 2026-03-16
 
 - JIT/boundary fail-closed hardening follow-up:
@@ -4776,3 +6763,82 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `OMNI_LISP_TEST_SLICE=basic LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
     - `c3c build --sanitize=address` (build success)
     - `OMNI_LISP_TEST_SLICE=scheduler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` under ASAN currently aborts in existing teardown path (`scope_dtor_value` UAF during isolated scheduler-suite destruction); this remains open and was not addressed in this pass.
+
+- 2026-03-18 (boundary profiling revalidation after destination-partial hardening):
+  - reran the container-capped `memory-lifetime-bench` profile on the current tree and kept the run within the accepted boundary-heavy envelope,
+  - observed benchmark summaries on the rerun:
+    - `boundary_decision_cost`: `iters=2048 splice_ms=3 disallowed_ms=4 reuse_ms=1`
+    - `boundary_destination_routed_escape`: `iters=2048 partial_ms=2 partial_ok=2048`
+    - `scope_splice_tail`: `iters=2048 escapes_per_iter=64 splice_ms=2`
+  - rerun validation completed with `Unified Tests: 0 passed, 0 failed`.
+
+- 2026-03-18 (scheduler/offload hot-path benchmark revalidation):
+  - reran the container-capped `scheduler_offload_hot_path` benchmark on the current tree and kept the run green,
+  - observed benchmark summary on the rerun:
+    - `scheduler_offload_hot_path`: `iters=8192 queue_ms=0 queue_ok=8192 queue_pending=0 queue_enqueue_delta=8192 queue_fail_delta=0 completion_ms=2 completion_ok=8192 completion_alloc_fail=0 http_ms=2 http_ok=8192 http_shared_fail=0 tls_ms=0 tls_ok=8192`
+  - rerun validation completed with `Unified Tests: 89 passed, 0 failed`.
+# 2026-03-19 - Advanced iterator boundary closure
+
+- Replaced the stdlib lazy iterator combinator path with primitive-backed iterator state in [src/lisp/primitives_iter_coroutine.c3](/home/heefoo/Documents/code/Omni/src/lisp/primitives_iter_coroutine.c3) and [stdlib/stdlib.lisp](/home/heefoo/Documents/code/Omni/stdlib/stdlib.lisp), avoiding closure env-copy churn for `map`/`filter`/`take`/`zip`/`foldl` and infinite iterator sources.
+- Added a primitive list reverse fast path in [src/lisp/primitives_core.c3](/home/heefoo/Documents/code/Omni/src/lisp/primitives_core.c3) and rewired stdlib list `reverse`/`foldr` to use it.
+- Fixed the remaining nested closure-backed iterator chain by allowing releasing-escape results to fall back to destination builders before hard failing on scope splice rejection in [src/lisp/eval_boundary_commit_flow.c3](/home/heefoo/Documents/code/Omni/src/lisp/eval_boundary_commit_flow.c3).
+- Validation:
+  - `c3c build`
+  - host repros for `take`, iterator `foldl`, list `foldr`, and nested `it3`
+  - bounded `advanced-unicode-iterator`: `118 passed, 0 failed`
+
+- 2026-03-20 (Deduce join routing policy hardening):
+  - join execution now has an explicit default-route policy in
+    `src/lisp/deduce_relation_scan_helpers_join.c3`:
+    - explicit fallback thresholds still force the historical index-first
+      adaptive path,
+    - the zero-threshold default now routes by supporting-index shape plus
+      outer size hints, preferring index nested-loop only when the supporting
+      index is fully bound and unique or the outer side is small, and choosing
+      hash-first for larger non-unique / partially bound shapes,
+    - the route decision is driven by explicit schema signals rather than the
+      previous opaque always-index-then-maybe-fallback behavior.
+  - added regression coverage for the new low-selectivity hash-first default in
+    `src/lisp/tests_deduce_rule_groups_more_join.c3`.
+  - added a selective-join benchmark smoke in
+    `src/lisp/tests_deduce_query_bench_groups_more.c3`.
+  - validation:
+    - `c3c build`
+    - bounded Deduce slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`78 passed, 1 failed`, remaining failure is the unrelated recursive
+      iteration-limit payload regression outside the join lane)
+
+- 2026-03-20 (Deduce aggregate metadata and validation scaffolding):
+  - Deduce rule install now carries aggregate-aware head metadata through the
+    normalized IR and stored rule signatures:
+    - `src/lisp/deduce_rule_ops.c3` adds aggregate head-term parsing for
+      `count`, `sum`, `min`, and `max`, with deferred rejection for `avg` and
+      `distinct-count`,
+    - `src/lisp/deduce_db_handles.c3` and
+      `src/lisp/deduce_db_handles_mutation.c3` now persist/copy/release
+      per-head projection kind, aggregate op, source-var ids, and aggregate
+      projection counts,
+    - `src/lisp/deduce_rule_eval_prims.c3` installs the aggregate metadata into
+      stored rule signatures.
+  - install-time aggregate validation is now explicit in
+    `src/lisp/deduce_rule_eval.c3`:
+    - aggregate terms are rejected in body atoms,
+    - malformed / unknown aggregate projections reject deterministically,
+    - aggregate inputs must be grounded by a positive body atom,
+    - aggregate heads reject literal projections and mixed non-grouped shapes.
+  - aggregate introspection scaffolding now exists without claiming grouped
+    execution support:
+    - `deduce/explain` exposes `aggregate-projection-count` plus per-head
+      projection metadata in `src/lisp/deduce_rule_ops_explain.c3`,
+    - `deduce/analyze` explicitly rejects aggregate-bearing rules until grouped
+      execution lands in `src/lisp/deduce_rule_eval_prims.c3`.
+  - regression coverage now includes aggregate install/explain/analyze
+    scaffolding in:
+    - `src/lisp/tests_deduce_rule_groups.c3`
+    - `src/lisp/tests_deduce_rule_groups_explain.c3`
+  - validation:
+    - `c3c build`
+    - bounded Deduce slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`90 passed, 0 failed`)

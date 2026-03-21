@@ -131,6 +131,51 @@ fn void run_memory_lifetime_tco_boundary_state_restore_test(Interp* interp, int*
     }
 }
 
+fn void run_memory_lifetime_tco_list_accumulator_budget_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: recursive graph safety checks must not rescan already-safe cons tails
+    // on every TCO bounce for list accumulators.
+    {
+        reset_memory_promotion_stats();
+
+        EvalResult r = run(
+            "(block "
+            "  (define my-rev (lambda (lst) "
+            "    (let loop (xs lst acc (quote ())) "
+            "      (if (null? xs) "
+            "          acc "
+            "          (loop (cdr xs) (cons (car xs) acc)))))) "
+            "  (length (my-rev (range 2000))))",
+            interp);
+
+        usz tco_frame_delta = copy_to_parent_site_calls(COPY_SITE_JIT_TCO_FRAME_COPY);
+        usz copy_env_delta = copy_to_parent_site_calls(COPY_SITE_COPY_ENV_TO_SCOPE);
+        usz run_jit_delta = copy_to_parent_site_calls(COPY_SITE_RUN_JIT_RESULT);
+
+        bool ok_eval = !r.error.has_error &&
+                       r.value != null &&
+                       r.value.tag == INT &&
+                       r.value.int_val == 2000;
+        bool ok_budget = tco_frame_delta <= 4096 &&
+                         copy_env_delta <= 64 &&
+                         run_jit_delta <= 8;
+        bool ok = ok_eval && ok_budget;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: tco list-accumulator budget gate");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: tco list-accumulator budget gate (tco_frame=%d copy_env=%d run_jit=%d tag=%d int=%d err=%s)",
+                (long)tco_frame_delta,
+                (long)copy_env_delta,
+                (long)run_jit_delta,
+                r.value != null ? (int)r.value.tag : -1,
+                (r.value != null && r.value.tag == INT) ? (int)r.value.int_val : -1,
+                r.error.has_error ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_tco_runtime_fields_restore_test(Interp* interp, int* pass, int* fail) {
     // Invariant: TCO paths restore recycle/defer runtime fields on both success and error.
     {
@@ -252,6 +297,7 @@ fn void run_memory_lifetime_tco_recycle_error_restore_test(Interp* interp, int* 
 fn void run_memory_lifetime_hot_budget_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_jit_copy_hot_budget_test(interp, pass, fail);
     run_memory_lifetime_tco_frame_budget_test(interp, pass, fail);
+    run_memory_lifetime_tco_list_accumulator_budget_test(interp, pass, fail);
     run_memory_lifetime_tco_boundary_state_restore_test(interp, pass, fail);
     run_memory_lifetime_tco_runtime_fields_restore_test(interp, pass, fail);
     run_memory_lifetime_tco_recycle_error_restore_test(interp, pass, fail);

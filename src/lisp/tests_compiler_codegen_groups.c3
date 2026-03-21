@@ -3,9 +3,6 @@ module lisp;
 
 import std::io;
 import main;
-
-extern fn int compiler_test_getpid() @extern("getpid");
-usz g_compiler_bindgen_temp_seq = 0;
 fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz* fail_out) {
     usz pass = 0;
     usz fail = 0;
@@ -17,25 +14,41 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
     // 41. Multi-arg call uses inline currying (invoke_once + invoke)
     {
         char[] code = compile_to_c3("(+ 1 2)", interp);
-        bool ok = str_contains(code, "invoke") && !str_contains(code, "unsupported");
-        if (ok) { pass++; compiler_print_pass("Compiler: multi-arg uses inline currying"); }
-        else    { fail++; io::printn("[FAIL] Compiler: multi-arg uses inline currying"); }
+        bool ok = compiler_code_contains_all(code, {"invoke"}) &&
+                  compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: multi-arg uses inline currying",
+            "[FAIL] Compiler: multi-arg uses inline currying",
+            &pass,
+            &fail
+        );
     }
 
     // 42. Multi-arg uses invoke_once for intermediate args
     {
         char[] code = compile_to_c3("(f 1 2 3)", interp);
         bool ok = str_contains(code, "invoke_once") || str_contains(code, "apply_multi");
-        if (ok) { pass++; compiler_print_pass("Compiler: multi-arg uses invoke_once or apply_multi lowering"); }
-        else    { fail++; io::printn("[FAIL] Compiler: multi-arg uses invoke_once or apply_multi lowering"); }
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: multi-arg uses invoke_once or apply_multi lowering",
+            "[FAIL] Compiler: multi-arg uses invoke_once or apply_multi lowering",
+            &pass,
+            &fail
+        );
     }
 
     // 43. 3-arg call uses apply_multi
     {
         char[] code = compile_to_c3("(substring \"hello\" 1 3)", interp);
         bool ok = str_contains(code, "apply_multi");
-        if (ok) { pass++; compiler_print_pass("Compiler: 3-arg apply_multi"); }
-        else    { fail++; io::printn("[FAIL] Compiler: 3-arg apply_multi"); }
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: 3-arg apply_multi",
+            "[FAIL] Compiler: 3-arg apply_multi",
+            &pass,
+            &fail
+        );
     }
 
     // 43b. >32 arg call still compiles all args and uses apply_multi
@@ -45,11 +58,15 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
             "21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40)",
             interp
         );
-        bool ok = str_contains(code, "apply_multi") &&
-                  str_contains(code, "make_int(40)") &&
-                  !str_contains(code, "unsupported");
-        if (ok) { pass++; compiler_print_pass("Compiler: >32 arg call emits all temps"); }
-        else    { fail++; io::printn("[FAIL] Compiler: >32 arg call emits all temps"); }
+        bool ok = compiler_code_contains_all(code, {"apply_multi", "make_int(40)"}) &&
+                  compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: >32 arg call emits all temps",
+            "[FAIL] Compiler: >32 arg call emits all temps",
+            &pass,
+            &fail
+        );
     }
 
     // 43c. >32 arg list build still compiles all args
@@ -59,19 +76,28 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
             "21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40)",
             interp
         );
-        bool ok = str_contains(code, "make_int(40)") &&
-                  str_contains(code, "aot::cons") &&
-                  !str_contains(code, "unsupported");
-        if (ok) { pass++; compiler_print_pass("Compiler: >32 arg list emits all temps"); }
-        else    { fail++; io::printn("[FAIL] Compiler: >32 arg list emits all temps"); }
+        bool ok = compiler_code_contains_all(code, {"make_int(40)", "aot::cons"}) &&
+                  compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: >32 arg list emits all temps",
+            "[FAIL] Compiler: >32 arg list emits all temps",
+            &pass,
+            &fail
+        );
     }
 
     // 44. Zero-arg call via invoke
     {
         char[] code = compile_to_c3("((lambda () 42))", interp);
         bool ok = str_contains(code, "invoke") && str_contains(code, "make_nil()");
-        if (ok) { pass++; compiler_print_pass("Compiler: zero-arg invoke"); }
-        else    { fail++; io::printn("[FAIL] Compiler: zero-arg invoke"); }
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: zero-arg invoke",
+            "[FAIL] Compiler: zero-arg invoke",
+            &pass,
+            &fail
+        );
     }
 
     // =========================================================================
@@ -82,8 +108,13 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
     {
         char[] code = compile_to_c3("(define (f x) (f (+ x 1)))", interp);
         bool ok = str_contains(code, "apply_multi_tail");
-        if (ok) { pass++; compiler_print_pass("Compiler: tail call emits apply_multi_tail"); }
-        else    { fail++; io::printn("[FAIL] Compiler: tail call emits apply_multi_tail"); }
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: tail call emits apply_multi_tail",
+            "[FAIL] Compiler: tail call emits apply_multi_tail",
+            &pass,
+            &fail
+        );
     }
 
     // 45b. >32 arg tail call still compiles all args
@@ -93,11 +124,15 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
             "21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40))",
             interp
         );
-        bool ok = str_contains(code, "apply_multi_tail") &&
-                  str_contains(code, "make_int(40)") &&
-                  !str_contains(code, "unsupported");
-        if (ok) { pass++; compiler_print_pass("Compiler: >32 arg tail call emits all temps"); }
-        else    { fail++; io::printn("[FAIL] Compiler: >32 arg tail call emits all temps"); }
+        bool ok = compiler_code_contains_all(code, {"apply_multi_tail", "make_int(40)"}) &&
+                  compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: >32 arg tail call emits all temps",
+            "[FAIL] Compiler: >32 arg tail call emits all temps",
+            &pass,
+            &fail
+        );
     }
 
     // 46. Non-tail calls use apply_multi (not tail variant)
@@ -105,16 +140,26 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
         char[] code = compile_to_c3("(define (f x) (+ (f x) 1))", interp);
         // The (f x) is not in tail position (it's an argument to +)
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { pass++; compiler_print_pass("Compiler: non-tail compiles OK"); }
-        else    { fail++; io::printn("[FAIL] Compiler: non-tail compiles OK"); }
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: non-tail compiles OK",
+            "[FAIL] Compiler: non-tail compiles OK",
+            &pass,
+            &fail
+        );
     }
 
     // 47. If branches propagate tail position
     {
         char[] code = compile_to_c3("(define (f x) (if (= x 0) 1 (f (- x 1))))", interp);
         bool ok = str_contains(code, "apply_multi_tail");
-        if (ok) { pass++; compiler_print_pass("Compiler: if branch tail position"); }
-        else    { fail++; io::printn("[FAIL] Compiler: if branch tail position"); }
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: if branch tail position",
+            "[FAIL] Compiler: if branch tail position",
+            &pass,
+            &fail
+        );
     }
 
     *pass_out += pass;
@@ -133,23 +178,38 @@ fn void run_compiler_group_quasiquote_macro_tests(Interp* interp, usz* pass_out,
     {
         char[] code = compile_to_c3("(let (x 5) `(a ,x))", interp);
         bool ok = str_contains(code, "aot::cons") && str_contains(code, "make_symbol");
-        if (ok) { pass++; compiler_print_pass("Compiler: quasiquote compiles natively"); }
-        else    { fail++; io::printn("[FAIL] Compiler: quasiquote compiles natively"); }
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: quasiquote compiles natively",
+            "[FAIL] Compiler: quasiquote compiles natively",
+            &pass,
+            &fail
+        );
     }
 
     // 49. Quasiquote with unquote uses make_symbol for literal parts
     {
         char[] code = compile_to_c3("(let (x 5) `(a ,x))", interp);
         bool ok = str_contains(code, "make_symbol(\"a\")");
-        if (ok) { pass++; compiler_print_pass("Compiler: quasiquote uses make_symbol"); }
-        else    { fail++; io::printn("[FAIL] Compiler: quasiquote uses make_symbol"); }
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: quasiquote uses make_symbol",
+            "[FAIL] Compiler: quasiquote uses make_symbol",
+            &pass,
+            &fail
+        );
     }
 
     {
         char[] code = compile_to_c3("`(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17)", interp);
         bool ok = str_contains(code, "aot::cons") && !str_contains(code, "unsupported");
-        if (ok) { pass++; compiler_print_pass("Compiler: wide quasiquote compiles natively"); }
-        else    { fail++; io::printn("[FAIL] Compiler: wide quasiquote compiles natively"); }
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: wide quasiquote compiles natively",
+            "[FAIL] Compiler: wide quasiquote compiles natively",
+            &pass,
+            &fail
+        );
     }
 
     // 50. Defmacro delegates to eval_source
@@ -159,16 +219,26 @@ fn void run_compiler_group_quasiquote_macro_tests(Interp* interp, usz* pass_out,
             interp
         );
         bool ok = str_contains(code, "make_nil") && !str_contains(code, "unsupported");
-        if (ok) { pass++; compiler_print_pass("Compiler: defmacro compiles as no-op"); }
-        else    { fail++; io::printn("[FAIL] Compiler: defmacro compiles as no-op"); }
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: defmacro compiles as no-op",
+            "[FAIL] Compiler: defmacro compiles as no-op",
+            &pass,
+            &fail
+        );
     }
 
     // 51. Stdlib functions (when, unless) compiled from STDLIB_PRELUDE
     {
         char[] code = compile_to_c3("42", interp);
         bool ok = str_contains(code, "when") && str_contains(code, "unless");
-        if (ok) { pass++; compiler_print_pass("Compiler: stdlib functions compiled"); }
-        else    { fail++; io::printn("[FAIL] Compiler: stdlib functions compiled"); }
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: stdlib functions compiled",
+            "[FAIL] Compiler: stdlib functions compiled",
+            &pass,
+            &fail
+        );
     }
 
     *pass_out += pass;
@@ -183,41 +253,41 @@ fn void run_compiler_group_missing_numeric_symbol_tests(Interp* interp, usz* pas
     // 52. string->number compiles
     {
         char[] code = compile_to_c3("(string->number \"42\")", interp);
-        bool ok = str_contains(code, "lookup_prim(\"string->number\")") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: string->number"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: string->number"); }
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"string->number\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: string->number", "[FAIL] Compiler: string->number", pass, fail);
     }
 
     // 53. number->string compiles
     {
         char[] code = compile_to_c3("(number->string 42)", interp);
-        bool ok = str_contains(code, "lookup_prim(\"number->string\")") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: number->string"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: number->string"); }
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"number->string\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: number->string", "[FAIL] Compiler: number->string", pass, fail);
     }
 
     // 54. gensym compiles
     {
         char[] code = compile_to_c3("(gensym)", interp);
-        bool ok = str_contains(code, "lookup_prim(\"gensym\")") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: gensym"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: gensym"); }
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"gensym\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: gensym", "[FAIL] Compiler: gensym", pass, fail);
     }
 
     // 55. apply compiles
     {
         char[] code = compile_to_c3("(apply + (list 1 2))", interp);
-        bool ok = str_contains(code, "lookup_prim(\"apply\")") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: apply"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: apply"); }
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"apply\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: apply", "[FAIL] Compiler: apply", pass, fail);
     }
 
     // 56. equal? compiles
     {
         char[] code = compile_to_c3("(equal? 1 2)", interp);
-        bool ok = str_contains(code, "lookup_prim(\"equal?\")") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: equal?"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: equal?"); }
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"equal?\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: equal?", "[FAIL] Compiler: equal?", pass, fail);
     }
 }
 
@@ -225,68 +295,61 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
     // 57. display compiles
     {
         char[] code = compile_to_c3("(display \"hello\")", interp);
-        bool ok = str_contains(code, "lookup_prim(\"display\")") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: display"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: display"); }
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"display\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: display", "[FAIL] Compiler: display", pass, fail);
     }
 
     // 58. ref compiles
     {
         char[] code = compile_to_c3("(ref (dict) 'a)", interp);
-        bool ok = str_contains(code, "lookup_prim(\"ref\")") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: ref"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: ref"); }
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ref\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ref", "[FAIL] Compiler: ref", pass, fail);
     }
 
     // 58aa. List constructor compiles
     {
         char[] code = compile_to_c3("(List 1 2 3)", interp);
-        bool ok = str_contains(code, "lookup_prim(\"List\")") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: List"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: List"); }
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"List\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: List", "[FAIL] Compiler: List", pass, fail);
     }
     // 58ab. Dict constructor compiles
     {
         char[] code = compile_to_c3("(Dict 'a 1 'b 2)", interp);
-        bool ok = str_contains(code, "lookup_prim(\"Dict\")") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: Dict"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: Dict"); }
-    }
-    // 58b. time-point constructor compiles
-    {
-        char[] code = compile_to_c3("(time-point 'date 2026 3 7)", interp);
-        bool ok = str_contains(code, "lookup_prim(\"time-point\")") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: time-point"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: time-point"); }
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"Dict\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: Dict", "[FAIL] Compiler: Dict", pass, fail);
     }
     // 58bb. TimePoint constructor compiles
     {
         char[] code = compile_to_c3("(TimePoint 'date 2026 3 7)", interp);
-        bool ok = str_contains(code, "lookup_prim(\"TimePoint\")") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: TimePoint"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: TimePoint"); }
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"TimePoint\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: TimePoint", "[FAIL] Compiler: TimePoint", pass, fail);
     }
-    // 58c. time-point tz alias compiles
+    // 58c. TimePoint datetime-tz shorthand kind compiles
     {
-        char[] code = compile_to_c3("(time-point 'datetimetz 2026 3 7 8 15 30 123456 -420)", interp);
-        bool ok = str_contains(code, "lookup_prim(\"time-point\")") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: time-point alias"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: time-point alias"); }
+        char[] code = compile_to_c3("(TimePoint 'datetimetz 2026 3 7 8 15 30 123456 -420)", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"TimePoint\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: TimePoint datetimetz", "[FAIL] Compiler: TimePoint datetimetz", pass, fail);
     }
     // 58d. json-get compiles
     {
         char[] code = compile_to_c3("(json-get (json-parse \"{\\\"a\\\":1}\") \"/a\")", interp);
-        bool ok = str_contains(code, "lookup_prim(\"json-get\")") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: json-get"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: json-get"); }
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"json-get\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: json-get", "[FAIL] Compiler: json-get", pass, fail);
     }
 
     // 59. load compiles
     {
         char[] code = compile_to_c3("(load \"test.omni\")", interp);
-        bool ok = str_contains(code, "lookup_prim(\"load\")") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: load"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: load"); }
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"load\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: load", "[FAIL] Compiler: load", pass, fail);
     }
 }
 
@@ -302,231 +365,4 @@ fn void run_compiler_group_missing_primitive_tests(Interp* interp, usz* pass_out
 fn void run_compiler_group_qq_macro_primitive_tests(Interp* interp, usz* pass_out, usz* fail_out) {
     run_compiler_group_quasiquote_macro_tests(interp, pass_out, fail_out);
     run_compiler_group_missing_primitive_tests(interp, pass_out, fail_out);
-}
-
-fn void run_compiler_group_mutable_capture_codegen_tests(Interp* interp, usz* pass, usz* fail) {
-    // =========================================================================
-    // Phase 5: Mutable capture boxing
-    // =========================================================================
-
-    // 60. Mutable capture detected and uses aot::define_var
-    {
-        char[] code = compile_to_c3("(let (x 0) (let (inc (lambda () (set! x (+ x 1)))) (inc) x))", interp);
-        // Mutable capture test - checks generated code for interpreter env usage
-        bool ok = str_contains(code, "aot::define_var") && str_contains(code, "aot::set_var");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: mutable capture uses aot::define_var/aot::set_var"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: mutable capture uses aot::define_var/aot::set_var"); }
-    }
-
-    // 61. Mutable capture reads use aot::lookup_var
-    {
-        char[] code = compile_to_c3("(let (x 0) (let (inc (lambda () (set! x (+ x 1)))) (inc) x))", interp);
-        bool ok = str_contains(code, "aot::lookup_var");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: mutable capture reads use aot::lookup_var"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: mutable capture reads use aot::lookup_var"); }
-    }
-
-    // 62. Non-mutable let uses C3 local variable (Value* x =...)
-    {
-        char[] code = compile_to_c3("(let (x 42) x)", interp);
-        // The main fn body should contain "Value* x =" for a non-mutable let
-        bool ok = str_contains(code, "Value* x =");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: non-mutable let uses C3 local"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: non-mutable let uses C3 local"); }
-    }
-}
-
-fn void run_compiler_group_feature_integration_tests(Interp* interp, usz* pass, usz* fail) {
-    // =========================================================================
-    // Integration: Verify all features work together
-    // =========================================================================
-
-    // 63. Complex program with multiple features compiles
-    {
-        char[] code = compile_to_c3(
-            "(define (factorial n) (if (= n 0) 1 (* n (factorial (- n 1))))) (factorial 10)", interp);
-        bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: factorial compiles"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: factorial compiles"); }
-    }
-
-    // 64. Let-rec with tail call emits apply_multi_tail
-    {
-        char[] code = compile_to_c3(
-            "(let ^rec (loop (lambda (n) (if (= n 0) 'done (loop (- n 1))))) (loop 100))", interp);
-        bool ok = str_contains(code, "apply_multi_tail") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: let-rec tail call emits apply_multi_tail"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: let-rec tail call emits apply_multi_tail"); }
-    }
-
-    // 65. Nested multi-arg calls compile correctly
-    {
-        char[] code = compile_to_c3("(+ (* 2 3) (* 4 5))", interp);
-        bool ok = str_contains(code, "invoke") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: nested multi-arg calls"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: nested multi-arg calls"); }
-    }
-}
-
-fn void run_compiler_group_mutable_integration_tests(Interp* interp, usz* pass_out, usz* fail_out) {
-    usz pass = 0;
-    usz fail = 0;
-    run_compiler_group_mutable_capture_codegen_tests(interp, &pass, &fail);
-    run_compiler_group_feature_integration_tests(interp, &pass, &fail);
-    *pass_out += pass;
-    *fail_out += fail;
-}
-
-fn void run_compiler_group_iterative_stdlib_tests(Interp* interp, usz* pass_out, usz* fail_out) {
-    usz pass = 0;
-    usz fail = 0;
-
-    // =========================================================================
-    // Phase 6: STDLIB_PRELUDE iterative map/filter
-    // =========================================================================
-
-    // 66. STDLIB_PRELUDE map uses iterative loop pattern
-    {
-        char[] code = compile_to_c3("(map (lambda (x) x) (list 1))", interp);
-        bool ok = str_contains(code, "loop");
-        if (ok) { pass++; compiler_print_pass("Compiler: STDLIB map uses loop pattern"); }
-        else    { fail++; io::printn("[FAIL] Compiler: STDLIB map uses loop pattern"); }
-    }
-
-    // 67. STDLIB_PRELUDE filter uses iterative loop pattern
-    {
-        char[] code = compile_to_c3("(filter (lambda (x) x) (list 1))", interp);
-        bool ok = str_contains(code, "loop");
-        if (ok) { pass++; compiler_print_pass("Compiler: STDLIB filter uses loop pattern"); }
-        else    { fail++; io::printn("[FAIL] Compiler: STDLIB filter uses loop pattern"); }
-    }
-
-    run_compiler_group_bindgen_canonical_type_tests(interp, &pass, &fail);
-
-    *pass_out += pass;
-    *fail_out += fail;
-}
-
-fn void run_compiler_group_mutable_integration_iterative_tests(Interp* interp, usz* pass_out, usz* fail_out) {
-    run_compiler_group_mutable_integration_tests(interp, pass_out, fail_out);
-    run_compiler_group_iterative_stdlib_tests(interp, pass_out, fail_out);
-}
-
-fn bool compiler_write_text_file(char[] path, char[] text) {
-    if (try file = io::file::open((String)path, "w")) {
-        defer (void)file.close();
-        file.write(text)!!;
-        return true;
-    }
-    return false;
-}
-
-fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pass_out, usz* fail_out) {
-    (void)_interp;
-    usz pass = 0;
-    usz fail = 0;
-
-    LibclangHandle clang;
-    if (!libclang_init(&clang)) {
-        pass++;
-        compiler_print_pass("Compiler: bindgen canonical types skipped (libclang unavailable)");
-        *pass_out += pass;
-        *fail_out += fail;
-        return;
-    }
-    defer libclang_destroy(&clang);
-
-    char[512] header_path_buf;
-    char[512] output_path_buf;
-    int pid = compiler_test_getpid();
-    usz seq = g_compiler_bindgen_temp_seq++;
-    char[] header_path = io::bprintf(
-        &header_path_buf,
-        "/tmp/omni_bindgen_canonical_types-%d-%d.h",
-        pid,
-        (int)seq
-    )!!;
-    char[] output_path = io::bprintf(
-        &output_path_buf,
-        "/tmp/omni_bindgen_canonical_types-%d-%d.omni",
-        pid,
-        (int)seq
-    )!!;
-    char[] header_source =
-        "int omni_bindgen_int(int x);\n"
-        "void omni_bindgen_void_ptr(void* p);\n"
-        "void* omni_bindgen_ret_ptr(void);\n"
-        "void omni_bindgen_void_ret(void);\n";
-
-    if (!compiler_write_text_file(header_path, header_source)) {
-        fail++;
-        io::printn("[FAIL] Compiler: bindgen canonical types write header");
-        *pass_out += pass;
-        *fail_out += fail;
-        return;
-    }
-    defer (void)io::file::delete((String)header_path);
-    defer (void)io::file::delete((String)output_path);
-
-    const usz MAX_FUNCS = 32;
-    ParsedFunc* funcs = (ParsedFunc*)mem::malloc(ParsedFunc.sizeof * MAX_FUNCS);
-    if (funcs == null) {
-        fail++;
-        io::printn("[FAIL] Compiler: bindgen canonical types alloc funcs");
-        *pass_out += pass;
-        *fail_out += fail;
-        return;
-    }
-    defer mem::free(funcs);
-    for (usz i = 0; i < MAX_FUNCS; i++) {
-        funcs[i].params = null;
-        funcs[i].param_count = 0;
-        funcs[i].param_capacity = 0;
-        funcs[i].is_variadic = false;
-    }
-    defer {
-        for (usz i = 0; i < MAX_FUNCS; i++) {
-            if (funcs[i].params != null) mem::free(funcs[i].params);
-        }
-    }
-
-    usz func_count = parse_header(&clang, header_path, funcs, MAX_FUNCS, null, 0, false);
-    bool parsed = func_count >= 4;
-    if (!parsed) {
-        fail++;
-        io::printn("[FAIL] Compiler: bindgen canonical types parse header");
-        *pass_out += pass;
-        *fail_out += fail;
-        return;
-    }
-
-    bool generated_ok = generate_ffi_module("bindgen-canonical", "bindgen", funcs, func_count, output_path);
-    if (!generated_ok) {
-        fail++;
-        io::printn("[FAIL] Compiler: bindgen canonical types generate module");
-        *pass_out += pass;
-        *fail_out += fail;
-        return;
-    }
-
-    if (try generated = io::file::load_temp((String)output_path)) {
-        bool has_integer = str_contains(generated, "(^Integer arg0)");
-        bool has_pointer = str_contains(generated, "(^Pointer arg0)");
-        bool has_void = str_contains(generated, ") ^Void)");
-        bool has_ret_pointer = str_contains(generated, ") ^Pointer)");
-        bool ok = has_integer && has_pointer && has_void && has_ret_pointer;
-        if (ok) {
-            pass++;
-            compiler_print_pass("Compiler: bindgen canonical Integer/Pointer/Void annotations");
-        } else {
-            fail++;
-            io::printn("[FAIL] Compiler: bindgen canonical Integer/Pointer/Void annotations");
-        }
-    } else {
-        fail++;
-        io::printn("[FAIL] Compiler: bindgen canonical types load generated module");
-    }
-
-    *pass_out += pass;
-    *fail_out += fail;
 }

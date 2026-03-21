@@ -26,6 +26,22 @@ const usz DEDUCE_BENCH_SKEW_RARE_KEYS = 64;
 const usz DEDUCE_BENCH_SKEW_EXPLAIN_ITERS = 128;
 const usz DEDUCE_BENCH_SKEW_ANALYZE_ITERS = 64;
 
+fn Value* deduce_query_test_dict_get(Interp* interp, Value* dict, char[] key) {
+    if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null) return null;
+    return hashmap_get(dict.hashmap_val, make_symbol(interp, interp.symbols.intern(key)));
+}
+
+fn Value* deduce_query_test_find_row_by_value(Interp* interp, Value* rows, char[] key, Value* expected) {
+    Value* cur = rows;
+    while (is_cons(cur)) {
+        Value* row = car(cur);
+        Value* actual = deduce_query_test_dict_get(interp, row, key);
+        if (values_equal(actual, expected)) return row;
+        cur = cdr(cur);
+    }
+    return null;
+}
+
 fn void run_deduce_match_tests(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run("(length (deduce 'match person '(person ?name ?age)))", interp);
@@ -224,1265 +240,1035 @@ fn void run_deduce_match_tests(Interp* interp, int* pass, int* fail) {
     }
 }
 
-fn bool deduce_bench_seed_relation(
-    Interp* interp,
-    Value** rel_out,
-    usz* query_expected_out
-) {
-    if (interp == null || rel_out == null || query_expected_out == null) return false;
-    *rel_out = null;
-    *query_expected_out = 0;
-
-    Value*[1] open_args;
-    open_args[0] = make_symbol(interp, interp.symbols.intern("memory"));
-    Value* db = prim_deduce_open(open_args[..], null, interp);
-    if (db == null || db.tag != FFI_HANDLE || db.ffi_val == null) return false;
-
-    SymbolId rel_name = interp.symbols.intern("bench_person");
-    SymbolId id_sym = interp.symbols.intern("id");
-    SymbolId score_sym = interp.symbols.intern("score");
-    Value* rel = setup_deduce_relation_for_db(interp, db, rel_name, id_sym, score_sym);
-    if (rel == null || rel.tag != FFI_HANDLE || rel.ffi_val == null) return false;
-
-    usz query_expected = 0;
-    for (usz i = 0; i < DEDUCE_BENCH_CORPUS_ROWS; i++) {
-        long score = (long)(i % 100);
-        if (score > 50) query_expected++;
-
-        Value*[3] fact_args;
-        fact_args[0] = rel;
-        fact_args[1] = make_int(interp, (long)i);
-        fact_args[2] = make_int(interp, score);
-        Value* inserted = prim_assert_fact(fact_args[..], null, interp);
-        if (inserted == null || inserted.tag == ERROR) return false;
-    }
-
-    *rel_out = rel;
-    *query_expected_out = query_expected;
-    return true;
-}
-
-fn Value* deduce_query_bench_make_symbol_value(Interp* interp, SymbolId sym) {
-    Value* v = interp.alloc_value();
-    v.tag = SYMBOL;
-    v.sym_val = sym;
-    return v;
-}
-
-fn Value* deduce_query_bench_make_atom2(Interp* interp, SymbolId predicate, Value* a, Value* b) {
-    Value* pred = deduce_query_bench_make_symbol_value(interp, predicate);
-    return make_cons(interp, pred, make_cons(interp, a, make_cons(interp, b, make_nil(interp))));
-}
-
-fn Value* deduce_query_bench_dict_get(Interp* interp, Value* dict, char[] key) {
-    if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null) return null;
-    Value* key_val = make_symbol(interp, interp.symbols.intern(key));
-    return hashmap_get(dict.hashmap_val, key_val);
-}
-
-fn bool deduce_query_bench_seed_incremental_db(
-    Interp* interp,
-    Value** db_out,
-    Value** edge_out
-) {
-    if (interp == null || db_out == null || edge_out == null) return false;
-    *db_out = null;
-    *edge_out = null;
-
-    Value*[1] open_args;
-    open_args[0] = make_symbol(interp, interp.symbols.intern("memory"));
-    Value* db = prim_deduce_open(open_args[..], null, interp);
-    if (db == null || db.tag != FFI_HANDLE || db.ffi_val == null) return false;
-
-    SymbolId edge_sym = interp.symbols.intern("bench_edge");
-    SymbolId twohop_sym = interp.symbols.intern("bench_twohop");
-    SymbolId from_sym = interp.symbols.intern("from");
-    SymbolId to_sym = interp.symbols.intern("to");
-    Value* edge_rel = setup_deduce_relation_for_db(interp, db, edge_sym, from_sym, to_sym);
-    Value* twohop_rel = setup_deduce_relation_for_db(interp, db, twohop_sym, from_sym, to_sym);
-    if (edge_rel == null || edge_rel.tag != FFI_HANDLE || edge_rel.ffi_val == null) return false;
-    if (twohop_rel == null || twohop_rel.tag != FFI_HANDLE || twohop_rel.ffi_val == null) return false;
-
-    SymbolId x = interp.symbols.intern("?x");
-    SymbolId y = interp.symbols.intern("?y");
-    SymbolId z = interp.symbols.intern("?z");
-
-    Value* head = deduce_query_bench_make_atom2(
-        interp,
-        twohop_sym,
-        deduce_query_bench_make_symbol_value(interp, x),
-        deduce_query_bench_make_symbol_value(interp, z)
+fn void run_deduce_empty_relation_stats_tests(Interp* interp, int* pass, int* fail) {
+    EvalResult r = run(
+        "(block "
+        "  (define db-empty-stats (deduce 'open 'memory)) "
+        "  (define [relation db-empty-stats] empty-stats (id) (value)) "
+        "  (define count0 (deduce 'count empty-stats)) "
+        "  (define scan0 (deduce 'scan empty-stats)) "
+        "  (and (= count0 0) (null? scan0)))",
+        interp
     );
-    Value* body0 = deduce_query_bench_make_atom2(
-        interp,
-        edge_sym,
-        deduce_query_bench_make_symbol_value(interp, x),
-        deduce_query_bench_make_symbol_value(interp, y)
-    );
-    Value* body1 = deduce_query_bench_make_atom2(
-        interp,
-        edge_sym,
-        deduce_query_bench_make_symbol_value(interp, y),
-        deduce_query_bench_make_symbol_value(interp, z)
-    );
-    Value*[4] rule_args;
-    rule_args[0] = db;
-    rule_args[1] = head;
-    rule_args[2] = body0;
-    rule_args[3] = body1;
-    Value* rule_ok = prim_deduce_rule(rule_args[..], null, interp);
-    if (rule_ok == null || rule_ok.tag == ERROR) return false;
-
-    for (usz i = 0; i < DEDUCE_BENCH_MUTATION_SEED_ROWS; i++) {
-        Value*[3] fact_args;
-        fact_args[0] = edge_rel;
-        fact_args[1] = make_int(interp, (long)i);
-        fact_args[2] = make_int(interp, (long)(i + 1));
-        Value* inserted = prim_assert_fact(fact_args[..], null, interp);
-        if (inserted == null || inserted.tag == ERROR) return false;
-    }
-
-    Value*[1] analyze_args;
-    analyze_args[0] = db;
-    Value* baseline = prim_deduce_analyze(analyze_args[..], null, interp);
-    if (baseline == null || baseline.tag == ERROR) return false;
-
-    *db_out = db;
-    *edge_out = edge_rel;
-    return true;
-}
-
-fn bool deduce_query_bench_run_mutation_lane(
-    Interp* interp,
-    main::ScopeRegion* bench_scope,
-    Value* db,
-    Value* edge_rel,
-    usz iters,
-    bool destructive,
-    SymbolId expected_mode_sym,
-    long* mutation_ms_out,
-    long* analyze_ms_out,
-    usz* analyze_attempted_out,
-    usz* analyze_ok_out,
-    usz* mode_hits_out,
-    usz* iter_scope_fail_out
-) {
-    if (interp == null || bench_scope == null || db == null || edge_rel == null) return false;
-    if (mutation_ms_out == null || analyze_ms_out == null ||
-        analyze_attempted_out == null || analyze_ok_out == null ||
-        mode_hits_out == null || iter_scope_fail_out == null) return false;
-
-    *mutation_ms_out = 0;
-    *analyze_ms_out = 0;
-    *analyze_attempted_out = 0;
-    *analyze_ok_out = 0;
-    *mode_hits_out = 0;
-
-    long mutation_ms = 0;
-    long analyze_ms = 0;
-    usz analyze_attempted = 0;
-    usz analyze_ok = 0;
-    usz mode_hits = 0;
-    SymbolId status_ok_sym = interp.symbols.intern("ok");
-
-    Value*[1] analyze_args;
-    analyze_args[0] = db;
-
-    for (usz i = 0; i < iters; i++) {
-        main::ScopeRegion* iter_scope = main::scope_create(bench_scope);
-        if (iter_scope == null) {
-            (*iter_scope_fail_out)++;
-            break;
-        }
-        interp.current_scope = iter_scope;
-
-        long mutation_start = deduce_bench_now_ms();
-        bool mutation_ok = false;
-        if (destructive) {
-            long row_id = (long)(i % DEDUCE_BENCH_MUTATION_SEED_ROWS);
-            Value*[3] retract_args;
-            retract_args[0] = edge_rel;
-            retract_args[1] = make_int(interp, row_id);
-            retract_args[2] = make_int(interp, row_id + 1);
-            Value* deleted = prim_retract_fact(retract_args[..], null, interp);
-            if (deleted != null && deleted.tag != ERROR) {
-                Value*[3] fact_args;
-                fact_args[0] = edge_rel;
-                fact_args[1] = make_int(interp, row_id);
-                fact_args[2] = make_int(interp, row_id + 1);
-                Value* inserted = prim_assert_fact(fact_args[..], null, interp);
-                mutation_ok = inserted != null && inserted.tag != ERROR;
-            }
+    if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+        emit_pass_literal("[PASS] deduce empty relation stats stay deterministic");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce empty relation stats stay deterministic (error: %s)", (ZString)r.error.message[:256]);
         } else {
-            long row_id = (long)(DEDUCE_BENCH_MUTATION_SEED_ROWS + i);
+            io::printn("[FAIL] deduce empty relation stats stay deterministic");
+        }
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_admin_surface_tests(Interp* interp, int* pass, int* fail) {
+    {
+        SymbolId sym_memory = interp.symbols.intern("memory");
+        Value*[1] open_args;
+        open_args[0] = make_symbol(interp, sym_memory);
+        Value* db_val = prim_deduce_open(open_args[..], null, interp);
+
+        bool ok = db_val != null &&
+                  db_val.tag == FFI_HANDLE &&
+                  db_val.ffi_val != null &&
+                  db_val.ffi_val.lib_handle != null;
+        SymbolId rel_name = interp.symbols.intern("admin_person");
+        SymbolId col_name = interp.symbols.intern("name");
+        SymbolId col_age = interp.symbols.intern("age");
+        Value* rel = null;
+        if (ok) {
+            rel = setup_deduce_relation_for_db(interp, db_val, rel_name, col_name, col_age);
+            ok = rel != null && rel.tag == FFI_HANDLE && rel.ffi_val != null;
+        }
+
+        if (ok) {
             Value*[3] fact_args;
-            fact_args[0] = edge_rel;
-            fact_args[1] = make_int(interp, row_id);
-            fact_args[2] = make_int(interp, row_id + 1);
+            fact_args[0] = rel;
+            fact_args[1] = make_string(interp, "Alice");
+            fact_args[2] = make_int(interp, 30);
             Value* inserted = prim_assert_fact(fact_args[..], null, interp);
-            mutation_ok = inserted != null && inserted.tag != ERROR;
-        }
-        long mutation_done = deduce_bench_now_ms();
-        if (mutation_done > mutation_start) {
-            mutation_ms += mutation_done - mutation_start;
+            ok = inserted != null && inserted.tag == VOID;
         }
 
-        if (mutation_ok) {
-            analyze_attempted++;
-            long analyze_start = deduce_bench_now_ms();
-            Value* analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
-            long analyze_done = deduce_bench_now_ms();
-            if (analyze_done > analyze_start) {
-                analyze_ms += analyze_done - analyze_start;
+        Value* schema = null;
+        Value* stats = null;
+        Value* indexes = null;
+        if (ok) {
+            Value*[1] admin_args;
+            admin_args[0] = rel;
+            schema = prim_deduce_schema(admin_args[..], null, interp);
+            stats = prim_deduce_stats(admin_args[..], null, interp);
+            indexes = prim_deduce_indexes(admin_args[..], null, interp);
+            ok = schema != null && schema.tag == HASHMAP && schema.hashmap_val != null &&
+                 stats != null && stats.tag == HASHMAP && stats.hashmap_val != null;
+        }
+
+        if (ok) {
+            Value* relation = deduce_query_test_dict_get(interp, schema, "relation");
+            Value* arity = deduce_query_test_dict_get(interp, schema, "arity");
+            Value* columns = deduce_query_test_dict_get(interp, schema, "columns");
+            Value* key_column = deduce_query_test_dict_get(interp, schema, "key-column");
+            Value* unique_column = deduce_query_test_dict_get(interp, schema, "unique-column");
+            Value* index_column = deduce_query_test_dict_get(interp, schema, "index-column");
+            Value* index_count = deduce_query_test_dict_get(interp, schema, "index-count");
+            Value* constraint_count = deduce_query_test_dict_get(interp, schema, "constraint-count");
+            Value* constraints = deduce_query_test_dict_get(interp, schema, "constraints");
+            Value* cardinality = deduce_query_test_dict_get(interp, stats, "cardinality-estimate");
+            Value* distinct = deduce_query_test_dict_get(interp, stats, "distinct-estimate");
+            Value* dirty = deduce_query_test_dict_get(interp, stats, "dirty-predicate-count");
+            Value* epoch = deduce_query_test_dict_get(interp, stats, "mutation-epoch");
+            Value* first_index = is_cons(indexes) ? car(indexes) : null;
+            Value* first_index_column_count = deduce_query_test_dict_get(interp, first_index, "column-count");
+            Value* first_index_unique = deduce_query_test_dict_get(interp, first_index, "unique");
+
+            usz column_len = 0;
+            Value* col_cur = columns;
+            while (is_cons(col_cur)) {
+                column_len++;
+                col_cur = cdr(col_cur);
             }
 
-            if (analyzed != null && analyzed.tag == HASHMAP && analyzed.hashmap_val != null) {
-                Value* status = deduce_query_bench_dict_get(interp, analyzed, "status");
-                Value* mode = deduce_query_bench_dict_get(interp, analyzed, "incremental-invalidation-mode");
-                if (status != null && status.tag == SYMBOL && status.sym_val == status_ok_sym) {
-                    analyze_ok++;
-                }
-                if (mode != null && mode.tag == SYMBOL && mode.sym_val == expected_mode_sym) {
-                    mode_hits++;
-                }
+            usz index_len = 0;
+            Value* index_cur = indexes;
+            while (is_cons(index_cur)) {
+                index_len++;
+                index_cur = cdr(index_cur);
             }
+
+            ok = relation != null && relation.tag == SYMBOL && relation.sym_val == rel_name &&
+                 arity != null && arity.tag == INT && arity.int_val == 2 &&
+                 column_len == 2 &&
+                 key_column != null && key_column.tag == NIL &&
+                 unique_column != null && unique_column.tag == NIL &&
+                 index_column != null && index_column.tag == NIL &&
+                 index_count != null && index_count.tag == INT && index_count.int_val == 3 &&
+                 constraint_count != null && constraint_count.tag == INT && constraint_count.int_val == 0 &&
+                 constraints != null && constraints.tag == NIL &&
+                 cardinality != null && cardinality.tag == INT && cardinality.int_val == 1 &&
+                 distinct != null && distinct.tag == INT && distinct.int_val == 1 &&
+                 dirty != null && dirty.tag == INT && dirty.int_val == 1 &&
+                 epoch != null && epoch.tag == INT && epoch.int_val == 1 &&
+                 index_len == 3 &&
+                 first_index_column_count != null && first_index_column_count.tag == INT &&
+                 first_index_column_count.int_val == 2 &&
+                 first_index_unique != null && first_index_unique.tag == SYMBOL &&
+                 first_index_unique.sym_val == interp.sym_true;
         }
 
-        interp.current_scope = bench_scope;
-        main::scope_release(iter_scope);
+        if (ok) {
+            emit_pass_literal("[PASS] deduce schema/indexes/stats surfaces return deterministic metadata");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce schema/indexes/stats surfaces return deterministic metadata");
+            (*fail)++;
+        }
     }
 
-    interp.current_scope = bench_scope;
-    *mutation_ms_out = mutation_ms;
-    *analyze_ms_out = analyze_ms;
-    *analyze_attempted_out = analyze_attempted;
-    *analyze_ok_out = analyze_ok;
-    *mode_hits_out = mode_hits;
-    return true;
-}
-
-fn bool deduce_query_bench_seed_selective_join_db(
-    Interp* interp,
-    Value** db_out,
-    Value** out_rel_out,
-    SymbolId* out_sym_out,
-    long* expected_rows_out
-) {
-    if (interp == null || db_out == null || out_rel_out == null || out_sym_out == null || expected_rows_out == null) return false;
-    *db_out = null;
-    *out_rel_out = null;
-    *out_sym_out = 0;
-    *expected_rows_out = 0;
-
-    Value*[1] open_args;
-    open_args[0] = make_symbol(interp, interp.symbols.intern("memory"));
-    Value* db = prim_deduce_open(open_args[..], null, interp);
-    if (db == null || db.tag != FFI_HANDLE || db.ffi_val == null) return false;
-
-    SymbolId src_sym = interp.symbols.intern("bench_selective_src");
-    SymbolId filter_sym = interp.symbols.intern("bench_selective_filter");
-    SymbolId out_sym = interp.symbols.intern("bench_selective_out");
-    SymbolId col_a = interp.symbols.intern("a");
-    SymbolId col_b = interp.symbols.intern("b");
-    Value* src_rel = setup_deduce_relation_for_db(interp, db, src_sym, col_a, col_b);
-    Value* filter_rel = setup_deduce_relation_for_db(interp, db, filter_sym, col_a, col_b);
-    Value* out_rel = setup_deduce_relation_for_db(interp, db, out_sym, col_a, col_b);
-    if (src_rel == null || src_rel.tag != FFI_HANDLE || src_rel.ffi_val == null) return false;
-    if (filter_rel == null || filter_rel.tag != FFI_HANDLE || filter_rel.ffi_val == null) return false;
-    if (out_rel == null || out_rel.tag != FFI_HANDLE || out_rel.ffi_val == null) return false;
-
-    SymbolId x = interp.symbols.intern("?x");
-    SymbolId y = interp.symbols.intern("?y");
-    Value* head = deduce_query_bench_make_atom2(
-        interp,
-        out_sym,
-        deduce_query_bench_make_symbol_value(interp, x),
-        deduce_query_bench_make_symbol_value(interp, y)
-    );
-    Value* body_src = deduce_query_bench_make_atom2(
-        interp,
-        src_sym,
-        deduce_query_bench_make_symbol_value(interp, x),
-        deduce_query_bench_make_symbol_value(interp, y)
-    );
-    Value* body_filter = deduce_query_bench_make_atom2(
-        interp,
-        filter_sym,
-        make_int(interp, 0),
-        deduce_query_bench_make_symbol_value(interp, y)
-    );
-    Value*[4] rule_args;
-    rule_args[0] = db;
-    rule_args[1] = head;
-    rule_args[2] = body_src;
-    rule_args[3] = body_filter;
-    Value* rule_ok = prim_deduce_rule(rule_args[..], null, interp);
-    if (rule_ok == null || rule_ok.tag == ERROR) return false;
-
-    for (usz i = 0; i < DEDUCE_BENCH_SELECTIVE_FILTER_ROWS; i++) {
-        Value*[3] fact_args;
-        fact_args[0] = filter_rel;
-        fact_args[1] = make_int(interp, 0);
-        fact_args[2] = make_int(interp, (long)i);
-        Value* inserted = prim_assert_fact(fact_args[..], null, interp);
-        if (inserted == null || inserted.tag == ERROR) return false;
-    }
-
-    long expected_rows = 0;
-    for (usz i = 0; i < DEDUCE_BENCH_SELECTIVE_SRC_ROWS; i++) {
-        long bucket = (long)(i % 512);
-        if (bucket < (long)DEDUCE_BENCH_SELECTIVE_FILTER_ROWS) expected_rows++;
-
-        Value*[3] fact_args;
-        fact_args[0] = src_rel;
-        fact_args[1] = make_int(interp, (long)i);
-        fact_args[2] = make_int(interp, bucket);
-        Value* inserted = prim_assert_fact(fact_args[..], null, interp);
-        if (inserted == null || inserted.tag == ERROR) return false;
-    }
-
-    *db_out = db;
-    *out_rel_out = out_rel;
-    *out_sym_out = out_sym;
-    *expected_rows_out = expected_rows;
-    return true;
-}
-
-fn bool deduce_query_bench_assert_selective_explain(
-    Interp* interp,
-    Value* explained,
-    long* step0_rows_read_out,
-    long* step1_rows_read_out
-) {
-    if (interp == null || explained == null || explained.tag != HASHMAP || explained.hashmap_val == null) return false;
-    Value* steps = deduce_query_bench_dict_get(interp, explained, "steps");
-    if (!is_cons(steps) || !is_cons(cdr(steps)) || !is_nil(cdr(cdr(steps)))) return false;
-
-    SymbolId index_scan_sym = interp.symbols.intern("index-scan");
-    SymbolId estimated_sym = interp.symbols.intern("estimated");
-    Value* step0 = car(steps);
-    Value* step1 = car(cdr(steps));
-    Value* step0_op = deduce_query_bench_dict_get(interp, step0, "operator");
-    Value* step1_op = deduce_query_bench_dict_get(interp, step1, "operator");
-    Value* step0_counters = deduce_query_bench_dict_get(interp, step0, "counters");
-    Value* step1_counters = deduce_query_bench_dict_get(interp, step1, "counters");
-    Value* step0_rows_read = deduce_query_bench_dict_get(interp, step0_counters, "rows-read");
-    Value* step1_rows_read = deduce_query_bench_dict_get(interp, step1_counters, "rows-read");
-    Value* step0_counter_kind = deduce_query_bench_dict_get(interp, step0_counters, "counter-kind");
-    Value* step1_counter_kind = deduce_query_bench_dict_get(interp, step1_counters, "counter-kind");
-
-    bool ok = step0_op != null && step0_op.tag == SYMBOL && step0_op.sym_val == index_scan_sym &&
-        step1_op != null && step1_op.tag == SYMBOL && step1_op.sym_val == index_scan_sym &&
-        step0_rows_read != null && step0_rows_read.tag == INT &&
-        step1_rows_read != null && step1_rows_read.tag == INT &&
-        step0_counter_kind != null && step0_counter_kind.tag == SYMBOL && step0_counter_kind.sym_val == estimated_sym &&
-        step1_counter_kind != null && step1_counter_kind.tag == SYMBOL && step1_counter_kind.sym_val == estimated_sym &&
-        step0_rows_read.int_val <= step1_rows_read.int_val;
-    if (!ok) return false;
-
-    if (step0_rows_read_out != null) *step0_rows_read_out = step0_rows_read.int_val;
-    if (step1_rows_read_out != null) *step1_rows_read_out = step1_rows_read.int_val;
-    return true;
-}
-
-fn bool deduce_query_bench_assert_explain_counters_present(
-    Interp* interp,
-    Value* explained,
-    long* step0_rows_read_out,
-    long* step1_rows_read_out
-) {
-    if (interp == null || explained == null || explained.tag != HASHMAP || explained.hashmap_val == null) return false;
-    Value* steps = deduce_query_bench_dict_get(interp, explained, "steps");
-    if (!is_cons(steps) || !is_cons(cdr(steps)) || !is_nil(cdr(cdr(steps)))) return false;
-
-    SymbolId estimated_sym = interp.symbols.intern("estimated");
-    Value* step0 = car(steps);
-    Value* step1 = car(cdr(steps));
-    Value* step0_counters = deduce_query_bench_dict_get(interp, step0, "counters");
-    Value* step1_counters = deduce_query_bench_dict_get(interp, step1, "counters");
-    Value* step0_rows_read = deduce_query_bench_dict_get(interp, step0_counters, "rows-read");
-    Value* step1_rows_read = deduce_query_bench_dict_get(interp, step1_counters, "rows-read");
-    Value* step0_rows_emitted = deduce_query_bench_dict_get(interp, step0_counters, "rows-emitted");
-    Value* step1_rows_emitted = deduce_query_bench_dict_get(interp, step1_counters, "rows-emitted");
-    Value* step0_index_hits = deduce_query_bench_dict_get(interp, step0_counters, "index-hits");
-    Value* step1_index_hits = deduce_query_bench_dict_get(interp, step1_counters, "index-hits");
-    Value* step0_index_misses = deduce_query_bench_dict_get(interp, step0_counters, "index-misses");
-    Value* step1_index_misses = deduce_query_bench_dict_get(interp, step1_counters, "index-misses");
-    Value* step0_counter_kind = deduce_query_bench_dict_get(interp, step0_counters, "counter-kind");
-    Value* step1_counter_kind = deduce_query_bench_dict_get(interp, step1_counters, "counter-kind");
-
-    bool ok = step0_rows_read != null && step0_rows_read.tag == INT &&
-        step1_rows_read != null && step1_rows_read.tag == INT &&
-        step0_rows_emitted != null && step0_rows_emitted.tag == INT &&
-        step1_rows_emitted != null && step1_rows_emitted.tag == INT &&
-        step0_index_hits != null && step0_index_hits.tag == INT &&
-        step1_index_hits != null && step1_index_hits.tag == INT &&
-        step0_index_misses != null && step0_index_misses.tag == INT &&
-        step1_index_misses != null && step1_index_misses.tag == INT &&
-        step0_counter_kind != null && step0_counter_kind.tag == SYMBOL && step0_counter_kind.sym_val == estimated_sym &&
-        step1_counter_kind != null && step1_counter_kind.tag == SYMBOL && step1_counter_kind.sym_val == estimated_sym;
-    if (!ok) return false;
-
-    if (step0_rows_read_out != null) *step0_rows_read_out = step0_rows_read.int_val;
-    if (step1_rows_read_out != null) *step1_rows_read_out = step1_rows_read.int_val;
-    return true;
-}
-
-fn void run_deduce_selective_join_benchmarks(Interp* interp) {
-    if (!deduce_bench_enabled()) return;
-    if (interp == null) return;
-
-    io::printn("\n--- Deduce Selective Join Benchmarks ---");
-
-    main::ScopeRegion* bench_scope = interp.current_scope;
-    Value* db = null;
-    Value* out_rel = null;
-    SymbolId out_sym = 0;
-    long expected_rows = 0;
-    bool seeded = deduce_query_bench_seed_selective_join_db(interp, &db, &out_rel, &out_sym, &expected_rows);
-
-    long explain_ms = 0;
-    long analyze_ms = 0;
-    usz explain_attempted = 0;
-    usz explain_ok = 0;
-    usz analyze_ok = 0;
-    usz iter_scope_fail = 0;
-    long step0_rows_read = -1;
-    long step1_rows_read = -1;
-
-    if (seeded) {
-        Value*[2] explain_args;
-        explain_args[0] = db;
-        explain_args[1] = make_symbol(interp, out_sym);
-        long explain_start = deduce_bench_now_ms();
-        for (usz i = 0; i < DEDUCE_BENCH_SELECTIVE_EXPLAIN_ITERS; i++) {
-            main::ScopeRegion* iter_scope = main::scope_create(bench_scope);
-            if (iter_scope == null) {
-                iter_scope_fail++;
-                break;
-            }
-            interp.current_scope = iter_scope;
-
-            Value* explained = prim_deduce_explain(explain_args[..], null, interp);
-            if (explained != null && explained.tag == HASHMAP && explained.hashmap_val != null) {
-                explain_attempted++;
-                long rows0 = -1;
-                long rows1 = -1;
-                if (deduce_query_bench_assert_selective_explain(interp, explained, &rows0, &rows1)) {
-                    explain_ok++;
-                    step0_rows_read = rows0;
-                    step1_rows_read = rows1;
-                }
-            }
-
-            interp.current_scope = bench_scope;
-            main::scope_release(iter_scope);
-        }
-        long explain_done = deduce_bench_now_ms();
-        explain_ms = explain_done > explain_start ? explain_done - explain_start : 0;
-
-        Value*[1] analyze_args;
-        analyze_args[0] = db;
-        Value*[1] count_args;
-        count_args[0] = out_rel;
-        SymbolId status_ok_sym = interp.symbols.intern("ok");
-        long analyze_start = deduce_bench_now_ms();
-        for (usz i = 0; i < DEDUCE_BENCH_SELECTIVE_ANALYZE_ITERS; i++) {
-            main::ScopeRegion* iter_scope = main::scope_create(bench_scope);
-            if (iter_scope == null) {
-                iter_scope_fail++;
-                break;
-            }
-            interp.current_scope = iter_scope;
-
-            Value* analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
-            Value* count = prim_deduce_count(count_args[..], null, interp);
-            Value* status = deduce_query_bench_dict_get(interp, analyzed, "status");
-            if (analyzed != null &&
-                analyzed.tag == HASHMAP &&
-                analyzed.hashmap_val != null &&
-                status != null &&
-                status.tag == SYMBOL &&
-                status.sym_val == status_ok_sym &&
-                count != null &&
-                count.tag == INT &&
-                count.int_val == expected_rows) {
-                analyze_ok++;
-            }
-
-            interp.current_scope = bench_scope;
-            main::scope_release(iter_scope);
-        }
-        long analyze_done = deduce_bench_now_ms();
-        analyze_ms = analyze_done > analyze_start ? analyze_done - analyze_start : 0;
-    }
-
-    usz explain_mode_miss = explain_attempted >= explain_ok
-        ? explain_attempted - explain_ok
-        : 0;
-
-    interp.current_scope = bench_scope;
-    io::printfn(
-        "OMNI_BENCH_SUMMARY suite=deduce_selective_join src_rows=%d filter_rows=%d explain_iters=%d analyze_iters=%d seeded_ok=%d expected_rows=%d explain_ms=%d explain_attempted=%d explain_ok=%d explain_mode_miss=%d step0_rows_read=%d step1_rows_read=%d analyze_ms=%d analyze_ok=%d iter_scope_fail=%d",
-        (long)DEDUCE_BENCH_SELECTIVE_SRC_ROWS,
-        (long)DEDUCE_BENCH_SELECTIVE_FILTER_ROWS,
-        (long)DEDUCE_BENCH_SELECTIVE_EXPLAIN_ITERS,
-        (long)DEDUCE_BENCH_SELECTIVE_ANALYZE_ITERS,
-        seeded ? 1 : 0,
-        expected_rows,
-        explain_ms,
-        (long)explain_attempted,
-        (long)explain_ok,
-        (long)explain_mode_miss,
-        step0_rows_read,
-        step1_rows_read,
-        analyze_ms,
-        (long)analyze_ok,
-        (long)iter_scope_fail
-    );
-}
-
-fn bool deduce_query_bench_seed_recursive_closure_db(
-    Interp* interp,
-    Value** db_out,
-    Value** ancestor_rel_out,
-    long* expected_rows_out
-) {
-    if (interp == null || db_out == null || ancestor_rel_out == null || expected_rows_out == null) return false;
-    *db_out = null;
-    *ancestor_rel_out = null;
-    *expected_rows_out = 0;
-
-    Value*[1] open_args;
-    open_args[0] = make_symbol(interp, interp.symbols.intern("memory"));
-    Value* db = prim_deduce_open(open_args[..], null, interp);
-    if (db == null || db.tag != FFI_HANDLE || db.ffi_val == null) return false;
-
-    SymbolId parent_sym = interp.symbols.intern("bench_parent_tc");
-    SymbolId ancestor_sym = interp.symbols.intern("bench_ancestor_tc");
-    SymbolId src_sym = interp.symbols.intern("src");
-    SymbolId dst_sym = interp.symbols.intern("dst");
-    Value* parent_rel = setup_deduce_relation_for_db(interp, db, parent_sym, src_sym, dst_sym);
-    Value* ancestor_rel = setup_deduce_relation_for_db(interp, db, ancestor_sym, src_sym, dst_sym);
-    if (parent_rel == null || parent_rel.tag != FFI_HANDLE || parent_rel.ffi_val == null) return false;
-    if (ancestor_rel == null || ancestor_rel.tag != FFI_HANDLE || ancestor_rel.ffi_val == null) return false;
-
-    for (usz i = 0; i < DEDUCE_BENCH_RECURSIVE_CHAIN_EDGES; i++) {
-        Value*[3] fact_args;
-        fact_args[0] = parent_rel;
-        fact_args[1] = make_int(interp, (long)i);
-        fact_args[2] = make_int(interp, (long)(i + 1));
-        Value* inserted = prim_assert_fact(fact_args[..], null, interp);
-        if (inserted == null || inserted.tag == ERROR) return false;
-    }
-
-    SymbolId x = interp.symbols.intern("?x");
-    SymbolId y = interp.symbols.intern("?y");
-    SymbolId z = interp.symbols.intern("?z");
-    Value* head0 = deduce_query_bench_make_atom2(
-        interp,
-        ancestor_sym,
-        deduce_query_bench_make_symbol_value(interp, x),
-        deduce_query_bench_make_symbol_value(interp, y)
-    );
-    Value* body0 = deduce_query_bench_make_atom2(
-        interp,
-        parent_sym,
-        deduce_query_bench_make_symbol_value(interp, x),
-        deduce_query_bench_make_symbol_value(interp, y)
-    );
-    Value*[3] rule0_args;
-    rule0_args[0] = db;
-    rule0_args[1] = head0;
-    rule0_args[2] = body0;
-    Value* rule0_ok = prim_deduce_rule(rule0_args[..], null, interp);
-    if (rule0_ok == null || rule0_ok.tag == ERROR) return false;
-
-    Value* head1 = deduce_query_bench_make_atom2(
-        interp,
-        ancestor_sym,
-        deduce_query_bench_make_symbol_value(interp, x),
-        deduce_query_bench_make_symbol_value(interp, z)
-    );
-    Value* body1a = deduce_query_bench_make_atom2(
-        interp,
-        parent_sym,
-        deduce_query_bench_make_symbol_value(interp, x),
-        deduce_query_bench_make_symbol_value(interp, y)
-    );
-    Value* body1b = deduce_query_bench_make_atom2(
-        interp,
-        ancestor_sym,
-        deduce_query_bench_make_symbol_value(interp, y),
-        deduce_query_bench_make_symbol_value(interp, z)
-    );
-    Value*[4] rule1_args;
-    rule1_args[0] = db;
-    rule1_args[1] = head1;
-    rule1_args[2] = body1a;
-    rule1_args[3] = body1b;
-    Value* rule1_ok = prim_deduce_rule(rule1_args[..], null, interp);
-    if (rule1_ok == null || rule1_ok.tag == ERROR) return false;
-
-    long edges = (long)DEDUCE_BENCH_RECURSIVE_CHAIN_EDGES;
-    long expected_rows = edges * (edges + 1) / 2;
-    *db_out = db;
-    *ancestor_rel_out = ancestor_rel;
-    *expected_rows_out = expected_rows;
-    return true;
-}
-
-fn bool deduce_query_bench_run_recursive_engine_lane(
-    Interp* interp,
-    main::ScopeRegion* bench_scope,
-    Value* db,
-    Value* ancestor_rel,
-    SymbolId requested_engine,
-    SymbolId expected_execution_engine,
-    usz iters,
-    long expected_rows,
-    long* elapsed_ms_out,
-    usz* attempted_out,
-    usz* ok_out,
-    usz* engine_hit_out,
-    usz* iter_scope_fail_out
-) {
-    if (interp == null || bench_scope == null || db == null || ancestor_rel == null) return false;
-    if (elapsed_ms_out == null || attempted_out == null || ok_out == null || engine_hit_out == null || iter_scope_fail_out == null) return false;
-
-    *elapsed_ms_out = 0;
-    *attempted_out = 0;
-    *ok_out = 0;
-    *engine_hit_out = 0;
-
-    SymbolId status_ok_sym = interp.symbols.intern("ok");
-    Value* engine_arg = make_symbol(interp, requested_engine);
-    Value*[2] analyze_args;
-    analyze_args[0] = db;
-    analyze_args[1] = engine_arg;
-    Value*[1] count_args;
-    count_args[0] = ancestor_rel;
-
-    long elapsed_ms = 0;
-    usz attempted = 0;
-    usz ok = 0;
-    usz engine_hit = 0;
-
-    long lane_start = deduce_bench_now_ms();
-    for (usz i = 0; i < iters; i++) {
-        main::ScopeRegion* iter_scope = main::scope_create(bench_scope);
-        if (iter_scope == null) {
-            (*iter_scope_fail_out)++;
-            break;
-        }
-        interp.current_scope = iter_scope;
-
-        Value* analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
-        Value* count = prim_deduce_count(count_args[..], null, interp);
-        if (analyzed != null && analyzed.tag == HASHMAP && analyzed.hashmap_val != null) {
-            attempted++;
-            Value* status = deduce_query_bench_dict_get(interp, analyzed, "status");
-            Value* engine = deduce_query_bench_dict_get(interp, analyzed, "execution-engine");
-            bool row_ok = count != null && count.tag == INT && count.int_val == expected_rows;
-            if (status != null && status.tag == SYMBOL && status.sym_val == status_ok_sym && row_ok) {
-                ok++;
-            }
-            if (engine != null && engine.tag == SYMBOL && engine.sym_val == expected_execution_engine) {
-                engine_hit++;
-            }
-        }
-
-        interp.current_scope = bench_scope;
-        main::scope_release(iter_scope);
-    }
-    long lane_done = deduce_bench_now_ms();
-    elapsed_ms = lane_done > lane_start ? lane_done - lane_start : 0;
-
-    interp.current_scope = bench_scope;
-    *elapsed_ms_out = elapsed_ms;
-    *attempted_out = attempted;
-    *ok_out = ok;
-    *engine_hit_out = engine_hit;
-    return true;
-}
-
-fn void run_deduce_recursive_closure_benchmarks(Interp* interp) {
-    if (!deduce_bench_enabled()) return;
-    if (interp == null) return;
-
-    io::printn("\n--- Deduce Recursive Closure Benchmarks ---");
-
-    main::ScopeRegion* bench_scope = interp.current_scope;
-    Value* naive_db = null;
-    Value* naive_ancestor_rel = null;
-    long expected_rows = 0;
-    bool naive_seeded = deduce_query_bench_seed_recursive_closure_db(
-        interp,
-        &naive_db,
-        &naive_ancestor_rel,
-        &expected_rows
-    );
-
-    Value* semi_db = null;
-    Value* semi_ancestor_rel = null;
-    long semi_expected_rows = 0;
-    bool semi_seeded = deduce_query_bench_seed_recursive_closure_db(
-        interp,
-        &semi_db,
-        &semi_ancestor_rel,
-        &semi_expected_rows
-    );
-
-    SymbolId naive_engine = interp.symbols.intern("naive");
-    SymbolId semi_engine = interp.symbols.intern("semi-naive");
-    SymbolId naive_exec = interp.symbols.intern("naive-scc");
-    SymbolId semi_exec = interp.symbols.intern("semi-naive-scc");
-
-    long naive_ms = 0;
-    usz naive_attempted = 0;
-    usz naive_ok = 0;
-    usz naive_engine_hit = 0;
-
-    long semi_ms = 0;
-    usz semi_attempted = 0;
-    usz semi_ok = 0;
-    usz semi_engine_hit = 0;
-
-    usz iter_scope_fail = 0;
-    if (naive_seeded) {
-        (void)deduce_query_bench_run_recursive_engine_lane(
-            interp,
-            bench_scope,
-            naive_db,
-            naive_ancestor_rel,
-            naive_engine,
-            naive_exec,
-            DEDUCE_BENCH_RECURSIVE_NAIVE_ITERS,
-            expected_rows,
-            &naive_ms,
-            &naive_attempted,
-            &naive_ok,
-            &naive_engine_hit,
-            &iter_scope_fail
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-admin-key (deduce 'open 'memory)) "
+            "  (define [relation db-admin-key] admin-keyed (key id) (name)) "
+            "  (deduce 'fact! admin-keyed 1 \"Alice\") "
+            "  (define schema (deduce/schema admin-keyed)) "
+            "  (define analyze (deduce/analyze db-admin-key)) "
+            "  (define constraints (ref schema 'constraints)) "
+            "  (define first (car constraints)) "
+            "  (and (= (ref schema 'constraint-count) 1) "
+            "       (and (= (ref analyze 'keyed-relation-count) 1) "
+            "            (and (= (ref analyze 'integrity-constraint-count) 1) "
+            "                 (and (= (ref schema 'key-column) 'id) "
+            "                      (and (= (ref first 'kind) 'key) "
+            "                           (and (= (ref first 'unique) true) "
+            "                                (= (ref first 'enforced) true))))))))",
+            interp
         );
-    }
-
-    if (semi_seeded) {
-        (void)deduce_query_bench_run_recursive_engine_lane(
-            interp,
-            bench_scope,
-            semi_db,
-            semi_ancestor_rel,
-            semi_engine,
-            semi_exec,
-            DEDUCE_BENCH_RECURSIVE_SEMI_ITERS,
-            semi_expected_rows,
-            &semi_ms,
-            &semi_attempted,
-            &semi_ok,
-            &semi_engine_hit,
-            &iter_scope_fail
-        );
-    }
-
-    long speedup_x1000 = semi_ms > 0 ? (naive_ms * 1000) / semi_ms : 0;
-    usz naive_mode_miss = naive_attempted >= naive_engine_hit
-        ? naive_attempted - naive_engine_hit
-        : 0;
-    usz semi_mode_miss = semi_attempted >= semi_engine_hit
-        ? semi_attempted - semi_engine_hit
-        : 0;
-
-    interp.current_scope = bench_scope;
-    io::printfn(
-        "OMNI_BENCH_SUMMARY suite=deduce_recursive_closure chain_edges=%d expected_rows=%d naive_iters=%d semi_iters=%d naive_seeded_ok=%d semi_seeded_ok=%d naive_ms=%d naive_attempted=%d naive_ok=%d naive_engine_hit=%d naive_mode_miss=%d semi_ms=%d semi_attempted=%d semi_ok=%d semi_engine_hit=%d semi_mode_miss=%d speedup_x1000=%d iter_scope_fail=%d",
-        (long)DEDUCE_BENCH_RECURSIVE_CHAIN_EDGES,
-        expected_rows,
-        (long)DEDUCE_BENCH_RECURSIVE_NAIVE_ITERS,
-        (long)DEDUCE_BENCH_RECURSIVE_SEMI_ITERS,
-        naive_seeded ? 1 : 0,
-        semi_seeded ? 1 : 0,
-        naive_ms,
-        (long)naive_attempted,
-        (long)naive_ok,
-        (long)naive_engine_hit,
-        (long)naive_mode_miss,
-        semi_ms,
-        (long)semi_attempted,
-        (long)semi_ok,
-        (long)semi_engine_hit,
-        (long)semi_mode_miss,
-        speedup_x1000,
-        (long)iter_scope_fail
-    );
-}
-
-fn bool deduce_query_bench_seed_skewed_cardinality_db(
-    Interp* interp,
-    Value** db_out,
-    Value** out_rel_out,
-    SymbolId* out_sym_out,
-    long* expected_rows_out
-) {
-    if (interp == null || db_out == null || out_rel_out == null || out_sym_out == null || expected_rows_out == null) return false;
-    *db_out = null;
-    *out_rel_out = null;
-    *out_sym_out = 0;
-    *expected_rows_out = 0;
-
-    Value*[1] open_args;
-    open_args[0] = make_symbol(interp, interp.symbols.intern("memory"));
-    Value* db = prim_deduce_open(open_args[..], null, interp);
-    if (db == null || db.tag != FFI_HANDLE || db.ffi_val == null) return false;
-
-    SymbolId left_sym = interp.symbols.intern("bench_skew_left");
-    SymbolId right_sym = interp.symbols.intern("bench_skew_right");
-    SymbolId out_sym = interp.symbols.intern("bench_skew_out");
-    SymbolId key_sym = interp.symbols.intern("key");
-    SymbolId value_sym = interp.symbols.intern("value");
-    Value* left_rel = setup_deduce_relation_for_db(interp, db, left_sym, key_sym, value_sym);
-    Value* right_rel = setup_deduce_relation_for_db(interp, db, right_sym, key_sym, value_sym);
-    Value* out_rel = setup_deduce_relation_for_db(interp, db, out_sym, key_sym, value_sym);
-    if (left_rel == null || left_rel.tag != FFI_HANDLE || left_rel.ffi_val == null) return false;
-    if (right_rel == null || right_rel.tag != FFI_HANDLE || right_rel.ffi_val == null) return false;
-    if (out_rel == null || out_rel.tag != FFI_HANDLE || out_rel.ffi_val == null) return false;
-
-    SymbolId k = interp.symbols.intern("?k");
-    SymbolId v = interp.symbols.intern("?v");
-    SymbolId w = interp.symbols.intern("?w");
-    Value* head = deduce_query_bench_make_atom2(
-        interp,
-        out_sym,
-        deduce_query_bench_make_symbol_value(interp, k),
-        deduce_query_bench_make_symbol_value(interp, v)
-    );
-    Value* body_left = deduce_query_bench_make_atom2(
-        interp,
-        left_sym,
-        deduce_query_bench_make_symbol_value(interp, k),
-        deduce_query_bench_make_symbol_value(interp, v)
-    );
-    Value* body_right = deduce_query_bench_make_atom2(
-        interp,
-        right_sym,
-        deduce_query_bench_make_symbol_value(interp, k),
-        deduce_query_bench_make_symbol_value(interp, w)
-    );
-    Value*[4] rule_args;
-    rule_args[0] = db;
-    rule_args[1] = head;
-    rule_args[2] = body_left;
-    rule_args[3] = body_right;
-    Value* rule_ok = prim_deduce_rule(rule_args[..], null, interp);
-    if (rule_ok == null || rule_ok.tag == ERROR) return false;
-
-    for (usz i = 0; i < DEDUCE_BENCH_SKEW_HEAVY_ROWS; i++) {
-        Value*[3] fact_args;
-        fact_args[0] = left_rel;
-        fact_args[1] = make_int(interp, 0);
-        fact_args[2] = make_int(interp, (long)i);
-        Value* inserted = prim_assert_fact(fact_args[..], null, interp);
-        if (inserted == null || inserted.tag == ERROR) return false;
-    }
-
-    usz rare_start = DEDUCE_BENCH_SKEW_LEFT_ROWS - DEDUCE_BENCH_SKEW_HEAVY_ROWS;
-    for (usz i = 0; i < rare_start; i++) {
-        long key = (long)(i + 1);
-        Value*[3] fact_args;
-        fact_args[0] = left_rel;
-        fact_args[1] = make_int(interp, key);
-        fact_args[2] = make_int(interp, key);
-        Value* inserted = prim_assert_fact(fact_args[..], null, interp);
-        if (inserted == null || inserted.tag == ERROR) return false;
-    }
-
-    long expected_rows = 0;
-    long right_base_key = (long)(rare_start - DEDUCE_BENCH_SKEW_RARE_KEYS + 1);
-    for (usz i = 0; i < DEDUCE_BENCH_SKEW_RARE_KEYS; i++) {
-        long key = right_base_key + (long)i;
-        Value*[3] fact_args;
-        fact_args[0] = right_rel;
-        fact_args[1] = make_int(interp, key);
-        fact_args[2] = make_int(interp, (long)i);
-        Value* inserted = prim_assert_fact(fact_args[..], null, interp);
-        if (inserted == null || inserted.tag == ERROR) return false;
-        expected_rows++;
-    }
-
-    *db_out = db;
-    *out_rel_out = out_rel;
-    *out_sym_out = out_sym;
-    *expected_rows_out = expected_rows;
-    return true;
-}
-
-fn void run_deduce_skewed_cardinality_benchmarks(Interp* interp) {
-    if (!deduce_bench_enabled()) return;
-    if (interp == null) return;
-
-    io::printn("\n--- Deduce Skewed Cardinality Benchmarks ---");
-
-    main::ScopeRegion* bench_scope = interp.current_scope;
-    Value* db = null;
-    Value* out_rel = null;
-    SymbolId out_sym = 0;
-    long expected_rows = 0;
-    bool seeded = deduce_query_bench_seed_skewed_cardinality_db(interp, &db, &out_rel, &out_sym, &expected_rows);
-
-    long explain_ms = 0;
-    long analyze_ms = 0;
-    usz explain_attempted = 0;
-    usz explain_ok = 0;
-    usz explain_selectivity_hits = 0;
-    usz analyze_ok = 0;
-    usz iter_scope_fail = 0;
-    long step0_rows_read = -1;
-    long step1_rows_read = -1;
-
-    if (seeded) {
-        Value*[2] explain_args;
-        explain_args[0] = db;
-        explain_args[1] = make_symbol(interp, out_sym);
-        long explain_start = deduce_bench_now_ms();
-        for (usz i = 0; i < DEDUCE_BENCH_SKEW_EXPLAIN_ITERS; i++) {
-            main::ScopeRegion* iter_scope = main::scope_create(bench_scope);
-            if (iter_scope == null) {
-                iter_scope_fail++;
-                break;
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] deduce schema/analyze surfaces expose keyed integrity metadata");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] deduce schema/analyze surfaces expose keyed integrity metadata (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printn("[FAIL] deduce schema/analyze surfaces expose keyed integrity metadata");
             }
-            interp.current_scope = iter_scope;
-
-            Value* explained = prim_deduce_explain(explain_args[..], null, interp);
-            if (explained != null && explained.tag == HASHMAP && explained.hashmap_val != null) {
-                explain_attempted++;
-                long rows0 = -1;
-                long rows1 = -1;
-                if (deduce_query_bench_assert_explain_counters_present(interp, explained, &rows0, &rows1)) {
-                    explain_ok++;
-                    step0_rows_read = rows0;
-                    step1_rows_read = rows1;
-                    if (rows0 <= rows1) explain_selectivity_hits++;
-                }
-            }
-
-            interp.current_scope = bench_scope;
-            main::scope_release(iter_scope);
+            (*fail)++;
         }
-        long explain_done = deduce_bench_now_ms();
-        explain_ms = explain_done > explain_start ? explain_done - explain_start : 0;
-
-        Value*[1] analyze_args;
-        analyze_args[0] = db;
-        Value*[1] count_args;
-        count_args[0] = out_rel;
-        SymbolId status_ok_sym = interp.symbols.intern("ok");
-        long analyze_start = deduce_bench_now_ms();
-        for (usz i = 0; i < DEDUCE_BENCH_SKEW_ANALYZE_ITERS; i++) {
-            main::ScopeRegion* iter_scope = main::scope_create(bench_scope);
-            if (iter_scope == null) {
-                iter_scope_fail++;
-                break;
-            }
-            interp.current_scope = iter_scope;
-
-            Value* analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
-            Value* count = prim_deduce_count(count_args[..], null, interp);
-            Value* status = deduce_query_bench_dict_get(interp, analyzed, "status");
-            if (analyzed != null &&
-                analyzed.tag == HASHMAP &&
-                analyzed.hashmap_val != null &&
-                status != null &&
-                status.tag == SYMBOL &&
-                status.sym_val == status_ok_sym &&
-                count != null &&
-                count.tag == INT &&
-                count.int_val == expected_rows) {
-                analyze_ok++;
-            }
-
-            interp.current_scope = bench_scope;
-            main::scope_release(iter_scope);
-        }
-        long analyze_done = deduce_bench_now_ms();
-        analyze_ms = analyze_done > analyze_start ? analyze_done - analyze_start : 0;
     }
 
-    usz explain_mode_miss = explain_attempted >= explain_ok
-        ? explain_attempted - explain_ok
-        : 0;
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-admin-unique (deduce 'open 'memory)) "
+            "  (define [relation db-admin-unique] admin-unique (id) (unique email) (index dept)) "
+            "  (deduce 'fact! admin-unique 1 \"alice@x\" \"ops\") "
+            "  (define schema (deduce/schema admin-unique)) "
+            "  (define analyze (deduce/analyze db-admin-unique)) "
+            "  (define constraints (ref schema 'constraints)) "
+            "  (define first (car constraints)) "
+            "  (and (= (ref schema 'constraint-count) 1) "
+            "       (and (= (ref analyze 'keyed-relation-count) 0) "
+            "            (and (= (ref analyze 'unique-relation-count) 1) "
+            "                 (and (= (ref analyze 'integrity-constraint-count) 1) "
+            "                      (and (= (ref schema 'unique-column) 'email) "
+            "                           (and (= (ref first 'kind) 'unique) "
+            "                                (and (= (ref first 'unique) true) "
+            "                                     (= (ref first 'enforced) true)))))))))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] deduce schema/analyze surfaces expose unique integrity metadata");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] deduce schema/analyze surfaces expose unique integrity metadata (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printn("[FAIL] deduce schema/analyze surfaces expose unique integrity metadata");
+            }
+            (*fail)++;
+        }
+    }
 
-    interp.current_scope = bench_scope;
-    io::printfn(
-        "OMNI_BENCH_SUMMARY suite=deduce_skewed_cardinality left_rows=%d heavy_rows=%d rare_keys=%d explain_iters=%d analyze_iters=%d seeded_ok=%d expected_rows=%d explain_ms=%d explain_attempted=%d explain_ok=%d explain_mode_miss=%d explain_selectivity_hits=%d step0_rows_read=%d step1_rows_read=%d analyze_ms=%d analyze_ok=%d iter_scope_fail=%d",
-        (long)DEDUCE_BENCH_SKEW_LEFT_ROWS,
-        (long)DEDUCE_BENCH_SKEW_HEAVY_ROWS,
-        (long)DEDUCE_BENCH_SKEW_RARE_KEYS,
-        (long)DEDUCE_BENCH_SKEW_EXPLAIN_ITERS,
-        (long)DEDUCE_BENCH_SKEW_ANALYZE_ITERS,
-        seeded ? 1 : 0,
-        expected_rows,
-        explain_ms,
-        (long)explain_attempted,
-        (long)explain_ok,
-        (long)explain_mode_miss,
-        (long)explain_selectivity_hits,
-        step0_rows_read,
-        step1_rows_read,
-        analyze_ms,
-        (long)analyze_ok,
-        (long)iter_scope_fail
-    );
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-admin-unique-composite (deduce 'open 'memory)) "
+            "  (define [relation db-admin-unique-composite] admin-unique-composite (id) (unique email) (unique dept)) "
+            "  (deduce 'fact! admin-unique-composite 1 \"alice@x\" \"ops\") "
+            "  (define schema (deduce/schema admin-unique-composite)) "
+            "  (define analyze (deduce/analyze db-admin-unique-composite)) "
+            "  (define constraints (ref schema 'constraints)) "
+            "  (define first (car constraints)) "
+            "  (define unique-columns (ref schema 'unique-columns)) "
+            "  (define constraint-columns (ref first 'columns)) "
+            "  (and (= (ref schema 'constraint-count) 1) "
+            "       (and (= (ref analyze 'keyed-relation-count) 0) "
+            "            (and (= (ref analyze 'unique-relation-count) 1) "
+            "                 (and (= (ref analyze 'integrity-constraint-count) 1) "
+            "                      (and (nil? (ref schema 'unique-column)) "
+            "                           (and (= (car unique-columns) 'email) "
+            "                                (and (= (car (cdr unique-columns)) 'dept) "
+            "                                     (and (= (ref first 'kind) 'unique) "
+            "                                          (and (= (car constraint-columns) 'email) "
+            "                                               (and (= (car (cdr constraint-columns)) 'dept) "
+            "                                                    (and (= (ref first 'unique) true) "
+            "                                                         (= (ref first 'enforced) true)))))))))))))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] deduce schema/analyze surfaces expose composite unique integrity metadata");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] deduce schema/analyze surfaces expose composite unique integrity metadata (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printn("[FAIL] deduce schema/analyze surfaces expose composite unique integrity metadata");
+            }
+            (*fail)++;
+        }
+    }
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-admin-reference (deduce 'open 'memory)) "
+            "  (define [relation db-admin-reference] ref-users-admin (key id) (name)) "
+            "  (define [relation db-admin-reference] ref-audit-admin (ref ref-users-admin id user-id) (action)) "
+            "  (define schema (deduce/schema ref-audit-admin)) "
+            "  (define analyze (deduce/analyze db-admin-reference)) "
+            "  (define constraints (ref schema 'constraints)) "
+            "  (define first (car constraints)) "
+            "  (and (= (ref schema 'constraint-count) 1) "
+            "       (and (= (ref schema 'reference-constraint-count) 1) "
+            "            (and (= (ref schema 'resolved-reference-constraint-count) 1) "
+            "                 (and (= (ref schema 'unresolved-reference-constraint-count) 0) "
+            "                      (and (= (ref analyze 'keyed-relation-count) 1) "
+            "                           (and (= (ref analyze 'reference-constraint-count) 1) "
+            "                                (and (= (ref analyze 'resolved-reference-constraint-count) 1) "
+            "                                     (and (= (ref analyze 'unresolved-reference-constraint-count) 0) "
+            "                                          (and (= (ref analyze 'integrity-constraint-count) 2) "
+            "                                               (and (= (ref first 'kind) 'reference) "
+            "                                                    (and (= (car (ref first 'columns)) 'user-id) "
+            "                                                         (and (= (ref first 'referenced-relation) 'ref-users-admin) "
+            "                                                              (and (= (ref first 'referenced-column) 'id) "
+            "                                                                   (and (= (ref first 'target-declared) true) "
+            "                                                                        (and (= (ref first 'target-column-declared) true) "
+            "                                                                             (= (ref first 'resolved) true))))))))))))))))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] deduce schema/analyze surfaces expose reference integrity metadata");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] deduce schema/analyze surfaces expose reference integrity metadata (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printn("[FAIL] deduce schema/analyze surfaces expose reference integrity metadata");
+            }
+            (*fail)++;
+        }
+    }
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-admin-reference-missing-rel (deduce 'open 'memory)) "
+            "  (define [relation db-admin-reference-missing-rel] ref-audit-admin-missing-rel (ref ref-users-admin-missing-rel id user-id) (action)) "
+            "  (define schema (deduce/schema ref-audit-admin-missing-rel)) "
+            "  (define analyze (deduce/analyze db-admin-reference-missing-rel)) "
+            "  (define first (car (ref schema 'constraints))) "
+            "  (and (= (ref schema 'reference-constraint-count) 1) "
+            "       (and (= (ref schema 'resolved-reference-constraint-count) 0) "
+            "            (and (= (ref schema 'unresolved-reference-constraint-count) 1) "
+            "                 (and (= (ref analyze 'reference-constraint-count) 1) "
+            "                      (and (= (ref analyze 'resolved-reference-constraint-count) 0) "
+            "                           (and (= (ref analyze 'unresolved-reference-constraint-count) 1) "
+            "                                (and (= (ref first 'target-declared) false) "
+            "                                     (and (= (ref first 'target-column-declared) false) "
+            "                                          (= (ref first 'resolved) false)))))))))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] deduce schema/analyze surfaces expose unresolved missing-target relation metadata");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] deduce schema/analyze surfaces expose unresolved missing-target relation metadata (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printn("[FAIL] deduce schema/analyze surfaces expose unresolved missing-target relation metadata");
+            }
+            (*fail)++;
+        }
+    }
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-admin-reference-missing-col (deduce 'open 'memory)) "
+            "  (define [relation db-admin-reference-missing-col] ref-users-admin-missing-col (key id) (name)) "
+            "  (define [relation db-admin-reference-missing-col] ref-audit-admin-missing-col (ref ref-users-admin-missing-col missing-id user-id) (action)) "
+            "  (define schema (deduce/schema ref-audit-admin-missing-col)) "
+            "  (define analyze (deduce/analyze db-admin-reference-missing-col)) "
+            "  (define first (car (ref schema 'constraints))) "
+            "  (and (= (ref schema 'reference-constraint-count) 1) "
+            "       (and (= (ref schema 'resolved-reference-constraint-count) 0) "
+            "            (and (= (ref schema 'unresolved-reference-constraint-count) 1) "
+            "                 (and (= (ref analyze 'reference-constraint-count) 1) "
+            "                      (and (= (ref analyze 'resolved-reference-constraint-count) 0) "
+            "                           (and (= (ref analyze 'unresolved-reference-constraint-count) 1) "
+            "                                (and (= (ref first 'target-declared) true) "
+            "                                     (and (= (ref first 'target-column-declared) false) "
+            "                                          (= (ref first 'resolved) false)))))))))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] deduce schema/analyze surfaces expose unresolved missing-target column metadata");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] deduce schema/analyze surfaces expose unresolved missing-target column metadata (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printn("[FAIL] deduce schema/analyze surfaces expose unresolved missing-target column metadata");
+            }
+            (*fail)++;
+        }
+    }
 }
 
-fn void run_deduce_incremental_mutation_benchmarks(Interp* interp) {
-    if (!deduce_bench_enabled()) return;
-    if (interp == null) return;
+fn void run_deduce_aggregate_rule_tests(Interp* interp, int* pass, int* fail) {
+    {
+        SymbolId sym_memory = interp.symbols.intern("memory");
+        Value*[1] open_args;
+        open_args[0] = make_symbol(interp, sym_memory);
+        Value* db_val = prim_deduce_open(open_args[..], null, interp);
 
-    io::printn("\n--- Deduce Incremental Mutation Benchmarks ---");
+        bool ok = db_val != null &&
+                  db_val.tag == FFI_HANDLE &&
+                  db_val.ffi_val != null &&
+                  db_val.ffi_val.lib_handle != null;
 
-    main::ScopeRegion* bench_scope = interp.current_scope;
-    SymbolId tracked_mode_sym = interp.symbols.intern("tracked");
-    SymbolId full_mode_sym = interp.symbols.intern("full-recompute");
+        SymbolId rel_src = interp.symbols.intern("agg_src");
+        SymbolId rel_count = interp.symbols.intern("agg_count");
+        SymbolId rel_sum = interp.symbols.intern("agg_sum");
+        SymbolId rel_min = interp.symbols.intern("agg_min");
+        SymbolId rel_max = interp.symbols.intern("agg_max");
+        SymbolId col_dept = interp.symbols.intern("dept");
+        SymbolId col_amount = interp.symbols.intern("amount");
+        SymbolId col_n = interp.symbols.intern("n");
+        SymbolId col_total = interp.symbols.intern("total");
+        SymbolId col_low = interp.symbols.intern("low");
+        SymbolId col_high = interp.symbols.intern("high");
+        SymbolId var_dept = interp.symbols.intern("?dept");
+        SymbolId var_amount = interp.symbols.intern("?amount");
+        SymbolId sym_count = interp.symbols.intern("count");
+        SymbolId sym_sum = interp.symbols.intern("sum");
+        SymbolId sym_min = interp.symbols.intern("min");
+        SymbolId sym_max = interp.symbols.intern("max");
 
-    Value* tracked_db = null;
-    Value* tracked_edge = null;
-    bool tracked_seeded = deduce_query_bench_seed_incremental_db(interp, &tracked_db, &tracked_edge);
-
-    Value* full_db = null;
-    Value* full_edge = null;
-    bool full_seeded = deduce_query_bench_seed_incremental_db(interp, &full_db, &full_edge);
-
-    long tracked_mutation_ms = 0;
-    long tracked_analyze_ms = 0;
-    usz tracked_analyze_attempted = 0;
-    usz tracked_analyze_ok = 0;
-    usz tracked_mode_hits = 0;
-
-    long full_mutation_ms = 0;
-    long full_analyze_ms = 0;
-    usz full_analyze_attempted = 0;
-    usz full_analyze_ok = 0;
-    usz full_mode_hits = 0;
-
-    usz iter_scope_fail = 0;
-    if (tracked_seeded) {
-        (void)deduce_query_bench_run_mutation_lane(
-            interp,
-            bench_scope,
-            tracked_db,
-            tracked_edge,
-            DEDUCE_BENCH_MUTATION_TRACKED_ITERS,
-            false,
-            tracked_mode_sym,
-            &tracked_mutation_ms,
-            &tracked_analyze_ms,
-            &tracked_analyze_attempted,
-            &tracked_analyze_ok,
-            &tracked_mode_hits,
-            &iter_scope_fail
-        );
-    }
-
-    if (full_seeded) {
-        (void)deduce_query_bench_run_mutation_lane(
-            interp,
-            bench_scope,
-            full_db,
-            full_edge,
-            DEDUCE_BENCH_MUTATION_FULL_ITERS,
-            true,
-            full_mode_sym,
-            &full_mutation_ms,
-            &full_analyze_ms,
-            &full_analyze_attempted,
-            &full_analyze_ok,
-            &full_mode_hits,
-            &iter_scope_fail
-        );
-    }
-
-    usz tracked_mode_miss = tracked_analyze_attempted >= tracked_mode_hits
-        ? tracked_analyze_attempted - tracked_mode_hits
-        : 0;
-    usz full_mode_miss = full_analyze_attempted >= full_mode_hits
-        ? full_analyze_attempted - full_mode_hits
-        : 0;
-
-    interp.current_scope = bench_scope;
-    io::printfn(
-        "OMNI_BENCH_SUMMARY suite=deduce_incremental_mutation seed_rows=%d tracked_iters=%d full_iters=%d tracked_seeded_ok=%d full_seeded_ok=%d tracked_mutation_ms=%d tracked_analyze_ms=%d tracked_analyze_attempted=%d tracked_analyze_ok=%d tracked_mode_hits=%d tracked_mode_miss=%d full_mutation_ms=%d full_analyze_ms=%d full_analyze_attempted=%d full_analyze_ok=%d full_mode_hits=%d full_mode_miss=%d iter_scope_fail=%d",
-        (long)DEDUCE_BENCH_MUTATION_SEED_ROWS,
-        (long)DEDUCE_BENCH_MUTATION_TRACKED_ITERS,
-        (long)DEDUCE_BENCH_MUTATION_FULL_ITERS,
-        tracked_seeded ? 1 : 0,
-        full_seeded ? 1 : 0,
-        tracked_mutation_ms,
-        tracked_analyze_ms,
-        (long)tracked_analyze_attempted,
-        (long)tracked_analyze_ok,
-        (long)tracked_mode_hits,
-        (long)tracked_mode_miss,
-        full_mutation_ms,
-        full_analyze_ms,
-        (long)full_analyze_attempted,
-        (long)full_analyze_ok,
-        (long)full_mode_hits,
-        (long)full_mode_miss,
-        (long)iter_scope_fail
-    );
-}
-
-fn void run_deduce_scan_query_count_benchmarks(Interp* interp) {
-    if (!deduce_bench_enabled()) return;
-    if (interp == null) return;
-
-    io::printn("\n--- Deduce Scan/Query/Count Benchmarks ---");
-
-    main::ScopeRegion* bench_scope = interp.current_scope;
-    Value* rel = null;
-    usz query_expected = 0;
-    bool seeded = deduce_bench_seed_relation(interp, &rel, &query_expected);
-
-    long scan_ms = 0;
-    long scan_range_ms = 0;
-    long query_ms = 0;
-    long count_ms = 0;
-
-    usz scan_ok = 0;
-    usz scan_range_ok = 0;
-    usz query_ok = 0;
-    usz count_ok = 0;
-    usz iter_scope_fail = 0;
-    DeduceScanRangeBenchStats scan_range_stats = {};
-
-    EvalResult filter_eval = run("(lambda (row) (> ('score row) 50))", interp);
-    Value* filter_fn = filter_eval.error.has_error ? null : filter_eval.value;
-    bool filter_ok = !filter_eval.error.has_error &&
-        filter_fn != null &&
-        filter_fn.tag == CLOSURE;
-
-    if (seeded) {
-        Value*[1] scan_args;
-        scan_args[0] = rel;
-        Value*[3] scan_range_args;
-        scan_range_args[0] = rel;
-        scan_range_args[1] = deduce_bench_make_bound_tuple(interp, 0, 0);
-        scan_range_args[2] = deduce_bench_make_bound_tuple(
-            interp,
-            (long)(DEDUCE_BENCH_CORPUS_ROWS - 1),
-            99
-        );
-        Value*[2] query_args;
-        query_args[0] = rel;
-        query_args[1] = filter_fn;
-        Value*[1] count_args;
-        count_args[0] = rel;
-
-        long scan_start = deduce_bench_now_ms();
-        for (usz i = 0; i < DEDUCE_BENCH_SCAN_ITERS; i++) {
-            main::ScopeRegion* iter_scope = main::scope_create(bench_scope);
-            if (iter_scope == null) {
-                iter_scope_fail++;
-                break;
-            }
-            interp.current_scope = iter_scope;
-
-            Value* rows = prim_deduce_scan(scan_args[..], null, interp);
-            bool ok = rows != null &&
-                rows.tag != ERROR &&
-                list_length(rows) == DEDUCE_BENCH_CORPUS_ROWS;
-            if (ok) scan_ok++;
-
-            interp.current_scope = bench_scope;
-            main::scope_release(iter_scope);
+        Value* src = null;
+        Value* out_count = null;
+        Value* out_sum = null;
+        Value* out_min = null;
+        Value* out_max = null;
+        if (ok) {
+            src = setup_deduce_relation_for_db(interp, db_val, rel_src, col_dept, col_amount);
+            out_count = setup_deduce_relation_for_db(interp, db_val, rel_count, col_dept, col_n);
+            out_sum = setup_deduce_relation_for_db(interp, db_val, rel_sum, col_dept, col_total);
+            out_min = setup_deduce_relation_for_db(interp, db_val, rel_min, col_dept, col_low);
+            out_max = setup_deduce_relation_for_db(interp, db_val, rel_max, col_dept, col_high);
+            ok = src != null && src.tag == FFI_HANDLE &&
+                 out_count != null && out_count.tag == FFI_HANDLE &&
+                 out_sum != null && out_sum.tag == FFI_HANDLE &&
+                 out_min != null && out_min.tag == FFI_HANDLE &&
+                 out_max != null && out_max.tag == FFI_HANDLE;
         }
-        long scan_done = deduce_bench_now_ms();
-        scan_ms = scan_done > scan_start ? scan_done - scan_start : 0;
 
-        if (filter_ok) {
-            long query_start = deduce_bench_now_ms();
-            for (usz i = 0; i < DEDUCE_BENCH_QUERY_ITERS; i++) {
-                main::ScopeRegion* iter_scope = main::scope_create(bench_scope);
-                if (iter_scope == null) {
-                    iter_scope_fail++;
+        if (ok) {
+            char[][] depts = { "eng", "eng", "sales", "sales" };
+            long[] amounts = { 10, 15, 3, 9 };
+            for (usz i = 0; i < depts.len; i++) {
+                Value*[3] fact_args;
+                fact_args[0] = src;
+                fact_args[1] = make_string(interp, depts[i]);
+                fact_args[2] = make_int(interp, amounts[i]);
+                Value* inserted = prim_assert_fact(fact_args[..], null, interp);
+                if (inserted == null || inserted.tag == ERROR) {
+                    ok = false;
                     break;
                 }
-                interp.current_scope = iter_scope;
-
-                Value* rows = prim_deduce_query(query_args[..], null, interp);
-                bool ok = rows != null &&
-                    rows.tag != ERROR &&
-                    list_length(rows) == query_expected;
-                if (ok) query_ok++;
-
-                interp.current_scope = bench_scope;
-                main::scope_release(iter_scope);
             }
-            long query_done = deduce_bench_now_ms();
-            query_ms = query_done > query_start ? query_done - query_start : 0;
         }
 
-        long count_start = deduce_bench_now_ms();
-        for (usz i = 0; i < DEDUCE_BENCH_COUNT_ITERS; i++) {
-            Value* count = prim_deduce_count(count_args[..], null, interp);
-            bool ok = count != null &&
-                count.tag == INT &&
-                count.int_val == (long)DEDUCE_BENCH_CORPUS_ROWS;
-            if (ok) count_ok++;
+        if (ok) {
+            Value* count_head =
+                make_cons(interp,
+                    deduce_rule_test_make_symbol_value(interp, rel_count),
+                    make_cons(interp,
+                        deduce_rule_test_make_symbol_value(interp, var_dept),
+                        make_cons(interp,
+                            make_cons(interp,
+                                deduce_rule_test_make_symbol_value(interp, sym_count),
+                                make_cons(interp,
+                                    deduce_rule_test_make_symbol_value(interp, var_amount),
+                                    make_nil(interp))),
+                            make_nil(interp))));
+            Value* sum_head =
+                make_cons(interp,
+                    deduce_rule_test_make_symbol_value(interp, rel_sum),
+                    make_cons(interp,
+                        deduce_rule_test_make_symbol_value(interp, var_dept),
+                        make_cons(interp,
+                            make_cons(interp,
+                                deduce_rule_test_make_symbol_value(interp, sym_sum),
+                                make_cons(interp,
+                                    deduce_rule_test_make_symbol_value(interp, var_amount),
+                                    make_nil(interp))),
+                            make_nil(interp))));
+            Value* min_head =
+                make_cons(interp,
+                    deduce_rule_test_make_symbol_value(interp, rel_min),
+                    make_cons(interp,
+                        deduce_rule_test_make_symbol_value(interp, var_dept),
+                        make_cons(interp,
+                            make_cons(interp,
+                                deduce_rule_test_make_symbol_value(interp, sym_min),
+                                make_cons(interp,
+                                    deduce_rule_test_make_symbol_value(interp, var_amount),
+                                    make_nil(interp))),
+                            make_nil(interp))));
+            Value* max_head =
+                make_cons(interp,
+                    deduce_rule_test_make_symbol_value(interp, rel_max),
+                    make_cons(interp,
+                        deduce_rule_test_make_symbol_value(interp, var_dept),
+                        make_cons(interp,
+                            make_cons(interp,
+                                deduce_rule_test_make_symbol_value(interp, sym_max),
+                                make_cons(interp,
+                                    deduce_rule_test_make_symbol_value(interp, var_amount),
+                                    make_nil(interp))),
+                            make_nil(interp))));
+            Value* body = deduce_rule_test_make_atom2(
+                interp,
+                rel_src,
+                deduce_rule_test_make_symbol_value(interp, var_dept),
+                deduce_rule_test_make_symbol_value(interp, var_amount)
+            );
+
+            Value*[3] count_rule_args = { db_val, count_head, body };
+            Value*[3] sum_rule_args = { db_val, sum_head, body };
+            Value*[3] min_rule_args = { db_val, min_head, body };
+            Value*[3] max_rule_args = { db_val, max_head, body };
+            Value* count_rule_ok = prim_deduce_rule(count_rule_args[..], null, interp);
+            Value* sum_rule_ok = prim_deduce_rule(sum_rule_args[..], null, interp);
+            Value* min_rule_ok = prim_deduce_rule(min_rule_args[..], null, interp);
+            Value* max_rule_ok = prim_deduce_rule(max_rule_args[..], null, interp);
+            ok = count_rule_ok != null && count_rule_ok.tag == VOID &&
+                 sum_rule_ok != null && sum_rule_ok.tag == VOID &&
+                 min_rule_ok != null && min_rule_ok.tag == VOID &&
+                 max_rule_ok != null && max_rule_ok.tag == VOID;
         }
-        long count_done = deduce_bench_now_ms();
-        count_ms = count_done > count_start ? count_done - count_start : 0;
 
-        deduce_scan_range_bench_set_enabled(true);
-        long scan_range_start = deduce_bench_now_ms();
-        for (usz i = 0; i < DEDUCE_BENCH_SCAN_RANGE_ITERS; i++) {
-            main::ScopeRegion* iter_scope = main::scope_create(bench_scope);
-            if (iter_scope == null) {
-                iter_scope_fail++;
-                break;
-            }
-            interp.current_scope = iter_scope;
+        Value* analyzed = null;
+        Value* count_rows = null;
+        Value* sum_rows = null;
+        Value* min_rows = null;
+        Value* max_rows = null;
+        if (ok) {
+            Value*[1] analyze_args;
+            analyze_args[0] = db_val;
+            analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
 
-            Value* rows = prim_deduce_scan_range(scan_range_args[..], null, interp);
-            bool ok = rows != null &&
-                rows.tag != ERROR &&
-                list_length(rows) == DEDUCE_BENCH_CORPUS_ROWS;
-            if (ok) scan_range_ok++;
+            Value*[1] scan_args = { out_count };
+            count_rows = prim_deduce_scan(scan_args[..], null, interp);
+            scan_args[0] = out_sum;
+            sum_rows = prim_deduce_scan(scan_args[..], null, interp);
+            scan_args[0] = out_min;
+            min_rows = prim_deduce_scan(scan_args[..], null, interp);
+            scan_args[0] = out_max;
+            max_rows = prim_deduce_scan(scan_args[..], null, interp);
 
-            interp.current_scope = bench_scope;
-            main::scope_release(iter_scope);
+            ok = analyzed != null && analyzed.tag == HASHMAP && analyzed.hashmap_val != null;
         }
-        long scan_range_done = deduce_bench_now_ms();
-        scan_range_ms = scan_range_done > scan_range_start ? scan_range_done - scan_range_start : 0;
-        scan_range_stats = deduce_scan_range_bench_snapshot();
-        deduce_scan_range_bench_set_enabled(false);
+
+        if (ok) {
+            Value* analyze_status = deduce_query_test_dict_get(interp, analyzed, "status");
+            Value* eng = make_string(interp, "eng");
+            Value* sales = make_string(interp, "sales");
+            Value* count_eng_row = deduce_query_test_find_row_by_value(interp, count_rows, "dept", eng);
+            Value* count_sales_row = deduce_query_test_find_row_by_value(interp, count_rows, "dept", sales);
+            Value* sum_eng_row = deduce_query_test_find_row_by_value(interp, sum_rows, "dept", eng);
+            Value* sum_sales_row = deduce_query_test_find_row_by_value(interp, sum_rows, "dept", sales);
+            Value* min_eng_row = deduce_query_test_find_row_by_value(interp, min_rows, "dept", eng);
+            Value* min_sales_row = deduce_query_test_find_row_by_value(interp, min_rows, "dept", sales);
+            Value* max_eng_row = deduce_query_test_find_row_by_value(interp, max_rows, "dept", eng);
+            Value* max_sales_row = deduce_query_test_find_row_by_value(interp, max_rows, "dept", sales);
+
+            Value* count_eng = deduce_query_test_dict_get(interp, count_eng_row, "n");
+            Value* count_sales = deduce_query_test_dict_get(interp, count_sales_row, "n");
+            Value* sum_eng = deduce_query_test_dict_get(interp, sum_eng_row, "total");
+            Value* sum_sales = deduce_query_test_dict_get(interp, sum_sales_row, "total");
+            Value* min_eng = deduce_query_test_dict_get(interp, min_eng_row, "low");
+            Value* min_sales = deduce_query_test_dict_get(interp, min_sales_row, "low");
+            Value* max_eng = deduce_query_test_dict_get(interp, max_eng_row, "high");
+            Value* max_sales = deduce_query_test_dict_get(interp, max_sales_row, "high");
+
+            ok = analyze_status != null && analyze_status.tag == SYMBOL && analyze_status.sym_val == interp.symbols.intern("ok") &&
+                 count_eng != null && count_eng.tag == INT && count_eng.int_val == 2 &&
+                 count_sales != null && count_sales.tag == INT && count_sales.int_val == 2 &&
+                 sum_eng != null && sum_eng.tag == INT && sum_eng.int_val == 25 &&
+                 sum_sales != null && sum_sales.tag == INT && sum_sales.int_val == 12 &&
+                 min_eng != null && min_eng.tag == INT && min_eng.int_val == 10 &&
+                 min_sales != null && min_sales.tag == INT && min_sales.int_val == 3 &&
+                 max_eng != null && max_eng.tag == INT && max_eng.int_val == 15 &&
+                 max_sales != null && max_sales.tag == INT && max_sales.int_val == 9;
+        }
+
+        if (ok) {
+            emit_pass_literal("[PASS] deduce aggregate rules execute grouped count/sum/min/max");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce aggregate rules execute grouped count/sum/min/max");
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_deduce_recursive_aggregate_rule_tests(Interp* interp, int* pass, int* fail) {
+    Value* db_val = null;
+    Value* out_rel = null;
+    usz expected_rows = 0;
+    bool ok = deduce_query_bench_seed_recursive_aggregate_db(interp, 4, &db_val, &out_rel, &expected_rows);
+
+    Value* analyzed = null;
+    Value* rows = null;
+    if (ok) {
+        Value*[2] analyze_args;
+        analyze_args[0] = db_val;
+        analyze_args[1] = make_symbol(interp, interp.symbols.intern("semi-naive"));
+        analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
+        ok = analyzed != null && analyzed.tag == HASHMAP && analyzed.hashmap_val != null;
     }
 
-    interp.current_scope = bench_scope;
-    io::printfn(
-        "OMNI_BENCH_SUMMARY suite=deduce_scan_query_count iters_scan=%d iters_scan_range=%d iters_query=%d iters_count=%d corpus_rows=%d seeded_ok=%d filter_ok=%d scan_ms=%d scan_ok=%d scan_range_ms=%d scan_range_ok=%d scan_range_calls=%d scan_range_rows=%d scan_range_key_symbols=%d scan_range_materialize_ms=%d query_ms=%d query_ok=%d query_expected=%d count_ms=%d count_ok=%d iter_scope_fail=%d",
-        (long)DEDUCE_BENCH_SCAN_ITERS,
-        (long)DEDUCE_BENCH_SCAN_RANGE_ITERS,
-        (long)DEDUCE_BENCH_QUERY_ITERS,
-        (long)DEDUCE_BENCH_COUNT_ITERS,
-        (long)DEDUCE_BENCH_CORPUS_ROWS,
-        seeded ? 1 : 0,
-        filter_ok ? 1 : 0,
-        scan_ms,
-        (long)scan_ok,
-        scan_range_ms,
-        (long)scan_range_ok,
-        (long)scan_range_stats.calls,
-        (long)scan_range_stats.rows_materialized,
-        (long)scan_range_stats.key_symbols_allocated,
-        scan_range_stats.materialize_ms,
-        query_ms,
-        (long)query_ok,
-        (long)query_expected,
-        count_ms,
-        (long)count_ok,
-        (long)iter_scope_fail
-    );
+    if (ok) {
+        Value*[1] scan_args;
+        scan_args[0] = out_rel;
+        rows = prim_deduce_scan(scan_args[..], null, interp);
+
+        Value* status = deduce_query_test_dict_get(interp, analyzed, "status");
+        Value* engine = deduce_query_test_dict_get(interp, analyzed, "execution-engine");
+        Value* row0 = deduce_query_test_find_row_by_value(interp, rows, "node", make_int(interp, 0));
+        Value* row1 = deduce_query_test_find_row_by_value(interp, rows, "node", make_int(interp, 1));
+        Value* row2 = deduce_query_test_find_row_by_value(interp, rows, "node", make_int(interp, 2));
+        Value* row3 = deduce_query_test_find_row_by_value(interp, rows, "node", make_int(interp, 3));
+        Value* total0 = deduce_query_test_dict_get(interp, row0, "total");
+        Value* total1 = deduce_query_test_dict_get(interp, row1, "total");
+        Value* total2 = deduce_query_test_dict_get(interp, row2, "total");
+        Value* total3 = deduce_query_test_dict_get(interp, row3, "total");
+        Value*[1] count_args;
+        count_args[0] = out_rel;
+        Value* row_count = prim_deduce_count(count_args[..], null, interp);
+
+        ok = status != null && status.tag == SYMBOL && status.sym_val == interp.symbols.intern("ok") &&
+             engine != null && engine.tag == SYMBOL && engine.sym_val == interp.symbols.intern("semi-naive-scc") &&
+             row_count != null && row_count.tag == INT && row_count.int_val == (long)expected_rows &&
+             total0 != null && total0.tag == INT && total0.int_val == 4 &&
+             total1 != null && total1.tag == INT && total1.int_val == 3 &&
+             total2 != null && total2.tag == INT && total2.int_val == 2 &&
+             total3 != null && total3.tag == INT && total3.int_val == 1;
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce recursive aggregate sum runs on semi-naive SCC and remains exact");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce recursive aggregate sum runs on semi-naive SCC and remains exact");
+        (*fail)++;
+    }
+
+    {
+        Value* mixed_db = null;
+        Value* mixed_score = null;
+        Value* mixed_chosen = null;
+        usz mixed_expected_rows = 0;
+        bool mixed_ok = deduce_query_bench_seed_recursive_mixed_aggregate_db(
+            interp,
+            4,
+            &mixed_db,
+            &mixed_score,
+            &mixed_chosen,
+            &mixed_expected_rows
+        );
+
+        Value* mixed_analyzed = null;
+        Value* mixed_score_rows = null;
+        Value* mixed_chosen_rows = null;
+        if (mixed_ok) {
+            Value*[2] analyze_args;
+            analyze_args[0] = mixed_db;
+            analyze_args[1] = make_symbol(interp, interp.symbols.intern("semi-naive"));
+            mixed_analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
+            mixed_ok = mixed_analyzed != null && mixed_analyzed.tag == HASHMAP && mixed_analyzed.hashmap_val != null;
+        }
+
+        if (mixed_ok) {
+            Value*[1] scan_score_args;
+            scan_score_args[0] = mixed_score;
+            mixed_score_rows = prim_deduce_scan(scan_score_args[..], null, interp);
+
+            Value*[1] scan_chosen_args;
+            scan_chosen_args[0] = mixed_chosen;
+            mixed_chosen_rows = prim_deduce_scan(scan_chosen_args[..], null, interp);
+
+            Value* status = deduce_query_test_dict_get(interp, mixed_analyzed, "status");
+            Value* engine = deduce_query_test_dict_get(interp, mixed_analyzed, "execution-engine");
+            Value* score_row0 = deduce_query_test_find_row_by_value(interp, mixed_score_rows, "node", make_int(interp, 0));
+            Value* score_row1 = deduce_query_test_find_row_by_value(interp, mixed_score_rows, "node", make_int(interp, 1));
+            Value* score_row2 = deduce_query_test_find_row_by_value(interp, mixed_score_rows, "node", make_int(interp, 2));
+            Value* score_row3 = deduce_query_test_find_row_by_value(interp, mixed_score_rows, "node", make_int(interp, 3));
+            Value* chosen_row0 = deduce_query_test_find_row_by_value(interp, mixed_chosen_rows, "node", make_int(interp, 0));
+            Value* score_total0 = deduce_query_test_dict_get(interp, score_row0, "total");
+            Value* score_total1 = deduce_query_test_dict_get(interp, score_row1, "total");
+            Value* score_total2 = deduce_query_test_dict_get(interp, score_row2, "total");
+            Value* score_total3 = deduce_query_test_dict_get(interp, score_row3, "total");
+            Value* chosen_total0 = deduce_query_test_dict_get(interp, chosen_row0, "total");
+            Value*[1] count_score_args;
+            count_score_args[0] = mixed_score;
+            Value* score_count = prim_deduce_count(count_score_args[..], null, interp);
+            Value*[1] count_chosen_args;
+            count_chosen_args[0] = mixed_chosen;
+            Value* chosen_count = prim_deduce_count(count_chosen_args[..], null, interp);
+
+            mixed_ok = status != null && status.tag == SYMBOL && status.sym_val == interp.symbols.intern("ok") &&
+                       engine != null && engine.tag == SYMBOL && engine.sym_val == interp.symbols.intern("semi-naive-scc") &&
+                       score_count != null && score_count.tag == INT && score_count.int_val == (long)mixed_expected_rows &&
+                       chosen_count != null && chosen_count.tag == INT && chosen_count.int_val == (long)mixed_expected_rows &&
+                       score_total0 != null && score_total0.tag == INT && score_total0.int_val == 4 &&
+                       score_total1 != null && score_total1.tag == INT && score_total1.int_val == 3 &&
+                       score_total2 != null && score_total2.tag == INT && score_total2.int_val == 2 &&
+                       score_total3 != null && score_total3.tag == INT && score_total3.int_val == 1 &&
+                       chosen_total0 != null && chosen_total0.tag == INT && chosen_total0.int_val == 4;
+        }
+
+        if (mixed_ok) {
+            emit_pass_literal("[PASS] deduce mixed positive recursive aggregate SCCs run on semi-naive-scc and stay exact");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce mixed positive recursive aggregate SCCs run on semi-naive-scc and stay exact");
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* pure_db = null;
+        Value* pure_out = null;
+        usz pure_expected_rows = 0;
+        bool pure_ok = deduce_query_bench_seed_recursive_aggregate_db(
+            interp,
+            4,
+            &pure_db,
+            &pure_out,
+            &pure_expected_rows
+        );
+
+        Value* pure_analyzed = null;
+        if (pure_ok) {
+            Value*[2] analyze_args;
+            analyze_args[0] = pure_db;
+            analyze_args[1] = make_symbol(interp, interp.symbols.intern("naive"));
+            pure_analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
+            pure_ok = pure_analyzed != null && pure_analyzed.tag == HASHMAP && pure_analyzed.hashmap_val != null;
+        }
+
+        if (pure_ok) {
+            Value* engine = deduce_query_test_dict_get(interp, pure_analyzed, "execution-engine");
+            Value* requested = deduce_query_test_dict_get(interp, pure_analyzed, "requested-execution-engine");
+            Value* fallback = deduce_query_test_dict_get(interp, pure_analyzed, "recursive-aggregate-naive-fallback");
+            Value* routed = deduce_query_test_dict_get(
+                interp,
+                pure_analyzed,
+                "naive-recursive-aggregate-mixed-routed-to-seminaive"
+            );
+            Value*[1] count_args;
+            count_args[0] = pure_out;
+            Value* row_count = prim_deduce_count(count_args[..], null, interp);
+
+            pure_ok = engine != null && engine.tag == SYMBOL &&
+                      engine.sym_val == interp.symbols.intern("naive-scc") &&
+                      requested != null && requested.tag == SYMBOL &&
+                      requested.sym_val == interp.symbols.intern("naive-scc") &&
+                      fallback != null && fallback.tag == NIL &&
+                      routed != null && routed.tag == NIL &&
+                      row_count != null && row_count.tag == INT &&
+                      row_count.int_val == (long)pure_expected_rows;
+        }
+
+        if (pure_ok) {
+            emit_pass_literal("[PASS] deduce analyze keeps naive pure positive recursive aggregates off mixed-route diagnostics");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce analyze keeps naive pure positive recursive aggregates off mixed-route diagnostics");
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* mixed_db = null;
+        Value* mixed_score = null;
+        Value* mixed_chosen = null;
+        usz mixed_expected_rows = 0;
+        bool mixed_ok = deduce_query_bench_seed_recursive_mixed_aggregate_db(
+            interp,
+            4,
+            &mixed_db,
+            &mixed_score,
+            &mixed_chosen,
+            &mixed_expected_rows
+        );
+
+        Value* mixed_analyzed = null;
+        if (mixed_ok) {
+            Value*[2] analyze_args;
+            analyze_args[0] = mixed_db;
+            analyze_args[1] = make_symbol(interp, interp.symbols.intern("naive"));
+            mixed_analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
+            mixed_ok = mixed_analyzed != null && mixed_analyzed.tag == HASHMAP && mixed_analyzed.hashmap_val != null;
+        }
+
+        if (mixed_ok) {
+            Value* engine = deduce_query_test_dict_get(interp, mixed_analyzed, "execution-engine");
+            Value* requested = deduce_query_test_dict_get(interp, mixed_analyzed, "requested-execution-engine");
+            Value* fallback = deduce_query_test_dict_get(interp, mixed_analyzed, "recursive-aggregate-naive-fallback");
+            Value* routed = deduce_query_test_dict_get(
+                interp,
+                mixed_analyzed,
+                "naive-recursive-aggregate-mixed-routed-to-seminaive"
+            );
+            Value*[1] count_score_args;
+            count_score_args[0] = mixed_score;
+            Value* score_count = prim_deduce_count(count_score_args[..], null, interp);
+            Value*[1] count_chosen_args;
+            count_chosen_args[0] = mixed_chosen;
+            Value* chosen_count = prim_deduce_count(count_chosen_args[..], null, interp);
+
+            mixed_ok = engine != null && engine.tag == SYMBOL &&
+                       engine.sym_val == interp.symbols.intern("semi-naive-scc") &&
+                       requested != null && requested.tag == SYMBOL &&
+                       requested.sym_val == interp.symbols.intern("naive-scc") &&
+                       fallback != null && fallback.tag == NIL &&
+                       routed != null && routed.tag == SYMBOL &&
+                       routed.sym_val == interp.sym_true &&
+                       score_count != null && score_count.tag == INT &&
+                       score_count.int_val == (long)mixed_expected_rows &&
+                       chosen_count != null && chosen_count.tag == INT &&
+                       chosen_count.int_val == (long)mixed_expected_rows;
+        }
+
+        if (mixed_ok) {
+            emit_pass_literal("[PASS] deduce analyze routes naive mixed recursive aggregate SCCs to semi-naive-scc");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce analyze routes naive mixed recursive aggregate SCCs to semi-naive-scc");
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* neg_db = null;
+        Value* neg_out = null;
+        usz neg_expected_rows = 0;
+        bool neg_ok = deduce_query_bench_seed_recursive_aggregate_negated_db(
+            interp,
+            4,
+            &neg_db,
+            &neg_out,
+            &neg_expected_rows
+        );
+
+        Value* neg_analyzed = null;
+        Value* neg_rows = null;
+        if (neg_ok) {
+            Value*[2] analyze_args;
+            analyze_args[0] = neg_db;
+            analyze_args[1] = make_symbol(interp, interp.symbols.intern("semi-naive"));
+            neg_analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
+            neg_ok = neg_analyzed != null && neg_analyzed.tag == HASHMAP && neg_analyzed.hashmap_val != null;
+        }
+
+        if (neg_ok) {
+            Value*[1] scan_args;
+            scan_args[0] = neg_out;
+            neg_rows = prim_deduce_scan(scan_args[..], null, interp);
+
+            Value* status = deduce_query_test_dict_get(interp, neg_analyzed, "status");
+            Value* engine = deduce_query_test_dict_get(interp, neg_analyzed, "execution-engine");
+            Value* row0 = deduce_query_test_find_row_by_value(interp, neg_rows, "node", make_int(interp, 0));
+            Value* row1 = deduce_query_test_find_row_by_value(interp, neg_rows, "node", make_int(interp, 1));
+            Value* row2 = deduce_query_test_find_row_by_value(interp, neg_rows, "node", make_int(interp, 2));
+            Value* row3 = deduce_query_test_find_row_by_value(interp, neg_rows, "node", make_int(interp, 3));
+            Value* total0 = deduce_query_test_dict_get(interp, row0, "total");
+            Value* total1 = deduce_query_test_dict_get(interp, row1, "total");
+            Value* total2 = deduce_query_test_dict_get(interp, row2, "total");
+            Value*[1] count_args;
+            count_args[0] = neg_out;
+            Value* row_count = prim_deduce_count(count_args[..], null, interp);
+
+            neg_ok = status != null && status.tag == SYMBOL && status.sym_val == interp.symbols.intern("ok") &&
+                     engine != null && engine.tag == SYMBOL && engine.sym_val == interp.symbols.intern("semi-naive-scc") &&
+                     row_count != null && row_count.tag == INT && row_count.int_val == (long)neg_expected_rows &&
+                     total0 != null && total0.tag == INT && total0.int_val == 3 &&
+                     total1 != null && total1.tag == INT && total1.int_val == 2 &&
+                     total2 != null && total2.tag == INT && total2.int_val == 1 &&
+                     row3 == null;
+        }
+
+        if (neg_ok) {
+            emit_pass_literal("[PASS] deduce recursive aggregate SCCs with lower-stratum negation run on semi-naive-scc");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce recursive aggregate SCCs with lower-stratum negation run on semi-naive-scc");
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* mixed_neg_db = null;
+        Value* mixed_neg_score = null;
+        Value* mixed_neg_chosen = null;
+        usz expected_score_rows = 0;
+        usz expected_chosen_rows = 0;
+        bool mixed_neg_ok = deduce_query_bench_seed_recursive_mixed_aggregate_negated_db(
+            interp,
+            4,
+            &mixed_neg_db,
+            &mixed_neg_score,
+            &mixed_neg_chosen,
+            &expected_score_rows,
+            &expected_chosen_rows
+        );
+
+        Value* mixed_neg_analyzed = null;
+        Value* mixed_neg_score_rows = null;
+        Value* mixed_neg_chosen_rows = null;
+        if (mixed_neg_ok) {
+            Value*[2] analyze_args;
+            analyze_args[0] = mixed_neg_db;
+            analyze_args[1] = make_symbol(interp, interp.symbols.intern("semi-naive"));
+            mixed_neg_analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
+            mixed_neg_ok = mixed_neg_analyzed != null && mixed_neg_analyzed.tag == HASHMAP && mixed_neg_analyzed.hashmap_val != null;
+        }
+
+        if (mixed_neg_ok) {
+            Value*[1] scan_score_args;
+            scan_score_args[0] = mixed_neg_score;
+            mixed_neg_score_rows = prim_deduce_scan(scan_score_args[..], null, interp);
+
+            Value*[1] scan_chosen_args;
+            scan_chosen_args[0] = mixed_neg_chosen;
+            mixed_neg_chosen_rows = prim_deduce_scan(scan_chosen_args[..], null, interp);
+
+            Value* status = deduce_query_test_dict_get(interp, mixed_neg_analyzed, "status");
+            Value* engine = deduce_query_test_dict_get(interp, mixed_neg_analyzed, "execution-engine");
+            Value* score_row0 = deduce_query_test_find_row_by_value(interp, mixed_neg_score_rows, "node", make_int(interp, 0));
+            Value* score_row1 = deduce_query_test_find_row_by_value(interp, mixed_neg_score_rows, "node", make_int(interp, 1));
+            Value* score_row2 = deduce_query_test_find_row_by_value(interp, mixed_neg_score_rows, "node", make_int(interp, 2));
+            Value* score_row3 = deduce_query_test_find_row_by_value(interp, mixed_neg_score_rows, "node", make_int(interp, 3));
+            Value* chosen_row0 = deduce_query_test_find_row_by_value(interp, mixed_neg_chosen_rows, "node", make_int(interp, 0));
+            Value* chosen_row1 = deduce_query_test_find_row_by_value(interp, mixed_neg_chosen_rows, "node", make_int(interp, 1));
+            Value* chosen_row2 = deduce_query_test_find_row_by_value(interp, mixed_neg_chosen_rows, "node", make_int(interp, 2));
+            Value* chosen_row3 = deduce_query_test_find_row_by_value(interp, mixed_neg_chosen_rows, "node", make_int(interp, 3));
+            Value* score_total0 = deduce_query_test_dict_get(interp, score_row0, "total");
+            Value* score_total1 = deduce_query_test_dict_get(interp, score_row1, "total");
+            Value* score_total2 = deduce_query_test_dict_get(interp, score_row2, "total");
+            Value* score_total3 = deduce_query_test_dict_get(interp, score_row3, "total");
+            Value* chosen_total0 = deduce_query_test_dict_get(interp, chosen_row0, "total");
+            Value* chosen_total1 = deduce_query_test_dict_get(interp, chosen_row1, "total");
+            Value* chosen_total2 = deduce_query_test_dict_get(interp, chosen_row2, "total");
+            Value*[1] count_score_args;
+            count_score_args[0] = mixed_neg_score;
+            Value* score_count = prim_deduce_count(count_score_args[..], null, interp);
+            Value*[1] count_chosen_args;
+            count_chosen_args[0] = mixed_neg_chosen;
+            Value* chosen_count = prim_deduce_count(count_chosen_args[..], null, interp);
+
+            mixed_neg_ok =
+                status != null && status.tag == SYMBOL && status.sym_val == interp.symbols.intern("ok") &&
+                engine != null && engine.tag == SYMBOL && engine.sym_val == interp.symbols.intern("semi-naive-scc") &&
+                score_count != null && score_count.tag == INT && score_count.int_val == (long)expected_score_rows &&
+                chosen_count != null && chosen_count.tag == INT && chosen_count.int_val == (long)expected_chosen_rows &&
+                score_total0 != null && score_total0.tag == INT && score_total0.int_val == 3 &&
+                score_total1 != null && score_total1.tag == INT && score_total1.int_val == 2 &&
+                score_total2 != null && score_total2.tag == INT && score_total2.int_val == 1 &&
+                score_total3 != null && score_total3.tag == INT && score_total3.int_val == 1 &&
+                chosen_total0 != null && chosen_total0.tag == INT && chosen_total0.int_val == 3 &&
+                chosen_total1 != null && chosen_total1.tag == INT && chosen_total1.int_val == 2 &&
+                chosen_total2 != null && chosen_total2.tag == INT && chosen_total2.int_val == 1 &&
+                chosen_row3 == null;
+        }
+
+        if (mixed_neg_ok) {
+            emit_pass_literal("[PASS] deduce mixed recursive aggregate SCCs with lower-stratum negation run on semi-naive-scc");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce mixed recursive aggregate SCCs with lower-stratum negation run on semi-naive-scc");
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* neg_db = null;
+        Value* neg_out = null;
+        usz neg_expected_rows = 0;
+        bool neg_ok = deduce_query_bench_seed_recursive_aggregate_negated_db(
+            interp,
+            4,
+            &neg_db,
+            &neg_out,
+            &neg_expected_rows
+        );
+
+        Value* neg_analyzed = null;
+        if (neg_ok) {
+            Value*[2] analyze_args;
+            analyze_args[0] = neg_db;
+            analyze_args[1] = make_symbol(interp, interp.symbols.intern("naive"));
+            neg_analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
+            neg_ok = neg_analyzed != null && neg_analyzed.tag == HASHMAP && neg_analyzed.hashmap_val != null;
+        }
+
+        if (neg_ok) {
+            Value* engine = deduce_query_test_dict_get(interp, neg_analyzed, "execution-engine");
+            Value* requested = deduce_query_test_dict_get(interp, neg_analyzed, "requested-execution-engine");
+            Value* fallback = deduce_query_test_dict_get(interp, neg_analyzed, "recursive-aggregate-naive-fallback");
+            Value* routed = deduce_query_test_dict_get(
+                interp,
+                neg_analyzed,
+                "naive-recursive-aggregate-mixed-routed-to-seminaive"
+            );
+            Value*[1] count_args;
+            count_args[0] = neg_out;
+            Value* row_count = prim_deduce_count(count_args[..], null, interp);
+
+            neg_ok = engine != null && engine.tag == SYMBOL &&
+                     engine.sym_val == interp.symbols.intern("naive-scc") &&
+                     requested != null && requested.tag == SYMBOL &&
+                     requested.sym_val == interp.symbols.intern("naive-scc") &&
+                     fallback != null && fallback.tag == NIL &&
+                     routed != null && routed.tag == NIL &&
+                     row_count != null && row_count.tag == INT &&
+                     row_count.int_val == (long)neg_expected_rows;
+        }
+
+        if (neg_ok) {
+            emit_pass_literal("[PASS] deduce analyze keeps naive pure negated recursive aggregates off mixed-route diagnostics");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce analyze keeps naive pure negated recursive aggregates off mixed-route diagnostics");
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* mixed_neg_db = null;
+        Value* mixed_neg_score = null;
+        Value* mixed_neg_chosen = null;
+        usz expected_score_rows = 0;
+        usz expected_chosen_rows = 0;
+        bool mixed_neg_ok = deduce_query_bench_seed_recursive_mixed_aggregate_negated_db(
+            interp,
+            4,
+            &mixed_neg_db,
+            &mixed_neg_score,
+            &mixed_neg_chosen,
+            &expected_score_rows,
+            &expected_chosen_rows
+        );
+
+        Value* mixed_neg_analyzed = null;
+        if (mixed_neg_ok) {
+            Value*[2] analyze_args;
+            analyze_args[0] = mixed_neg_db;
+            analyze_args[1] = make_symbol(interp, interp.symbols.intern("naive"));
+            mixed_neg_analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
+            mixed_neg_ok = mixed_neg_analyzed != null && mixed_neg_analyzed.tag == HASHMAP && mixed_neg_analyzed.hashmap_val != null;
+        }
+
+        if (mixed_neg_ok) {
+            Value* engine = deduce_query_test_dict_get(interp, mixed_neg_analyzed, "execution-engine");
+            Value* requested = deduce_query_test_dict_get(interp, mixed_neg_analyzed, "requested-execution-engine");
+            Value* fallback = deduce_query_test_dict_get(interp, mixed_neg_analyzed, "recursive-aggregate-naive-fallback");
+            Value* routed = deduce_query_test_dict_get(
+                interp,
+                mixed_neg_analyzed,
+                "naive-recursive-aggregate-mixed-routed-to-seminaive"
+            );
+            Value*[1] count_score_args;
+            count_score_args[0] = mixed_neg_score;
+            Value* score_count = prim_deduce_count(count_score_args[..], null, interp);
+            Value*[1] count_chosen_args;
+            count_chosen_args[0] = mixed_neg_chosen;
+            Value* chosen_count = prim_deduce_count(count_chosen_args[..], null, interp);
+
+            mixed_neg_ok = engine != null && engine.tag == SYMBOL &&
+                           engine.sym_val == interp.symbols.intern("semi-naive-scc") &&
+                           requested != null && requested.tag == SYMBOL &&
+                           requested.sym_val == interp.symbols.intern("naive-scc") &&
+                           fallback != null && fallback.tag == NIL &&
+                           routed != null && routed.tag == SYMBOL &&
+                           routed.sym_val == interp.sym_true &&
+                           score_count != null && score_count.tag == INT &&
+                           score_count.int_val == (long)expected_score_rows &&
+                           chosen_count != null && chosen_count.tag == INT &&
+                           chosen_count.int_val == (long)expected_chosen_rows;
+        }
+
+        if (mixed_neg_ok) {
+            emit_pass_literal("[PASS] deduce analyze routes naive mixed negated recursive aggregate SCCs to semi-naive-scc");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce analyze routes naive mixed negated recursive aggregate SCCs to semi-naive-scc");
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_deduce_query_tests(Interp* interp, int* pass, int* fail) {
@@ -1490,6 +1276,12 @@ fn void run_deduce_query_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_scan_range_tests(interp, pass, fail);
     run_deduce_query_filter_tests(interp, pass, fail);
     run_deduce_match_tests(interp, pass, fail);
+    run_deduce_empty_relation_stats_tests(interp, pass, fail);
+    run_deduce_admin_surface_tests(interp, pass, fail);
+    run_deduce_aggregate_rule_tests(interp, pass, fail);
+    run_deduce_recursive_aggregate_rule_tests(interp, pass, fail);
+    run_deduce_aggregate_benchmarks(interp);
+    run_deduce_recursive_aggregate_benchmarks(interp);
     run_deduce_scan_query_count_benchmarks(interp);
     run_deduce_incremental_mutation_benchmarks(interp);
     run_deduce_selective_join_benchmarks(interp);

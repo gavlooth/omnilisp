@@ -1,6 +1,6 @@
 # Omni Lisp — Project Tooling
 
-**Last updated:** 2026-03-10
+**Last updated:** 2026-03-18
 
 Omni provides CLI commands for creating projects and auto-generating FFI bindings from C headers.
 
@@ -111,6 +111,29 @@ Current first-party usage:
 - whole-buffer sends and REPL fallback calls now go through the structured
   session instead of scraping text REPL output.
 
+---
+
+## Exit Status Map
+
+The CLI mostly follows a simple `0` success / `1` failure convention.
+`--test-suite` is the main exception because it distinguishes invalid suite
+selection from normal suite failure.
+
+- `--check`
+  - `0` on clean input
+  - `1` on usage, read, parse, or lowering/check failure
+- `--eval`
+  - `0` on successful evaluation
+  - `1` on usage or evaluation failure
+- `--test-suite`
+  - `0` on success
+  - `1` on suite failure or stack-affinity harness failure
+  - `2` on invalid suite name
+- `--build`, `--bind`, `--compile`, `--init`, `--repl`, `--gen-e2e`,
+  `--language-ref`, `--version`, and `--help`
+  - `0` on success
+  - `1` on failure or missing required inputs
+
 ### `--language-ref` — Print Built-In Full Language Reference
 
 ```bash
@@ -163,6 +186,87 @@ Reads `omni.toml`, parses C headers using libclang, and writes Omni FFI modules 
 
 ## Developer Test Profiles
 
+## Developer Build Loop
+
+For normal edit/build iteration, use the dedicated fast dev build:
+
+```bash
+scripts/build_fast_dev.sh
+LD_LIBRARY_PATH=/usr/local/lib ./build/dev-fast/main-dev --eval '(+ 1 2)'
+```
+
+This path:
+- builds into its own object/output trees,
+- excludes embedded test sources and test-only entry wiring,
+- keeps `--eval`, `--repl`, `--check`, and script-mode workflows.
+
+Use the full project build when you need the full binary:
+
+```bash
+c3c build
+LD_LIBRARY_PATH=/usr/local/lib ./build/main
+```
+
+Optional narrower profile for non-deduce work:
+
+```bash
+scripts/build_fast_nodeduce_dev.sh
+LD_LIBRARY_PATH=/usr/local/lib ./build/dev-fast-nodeduce/main-dev-nodeduce --eval '(+ 1 2)'
+```
+
+Use the full binary for:
+- `--test-suite`
+- `--gen-e2e`
+- `--stack-affinity-probe`
+- `--language-ref`
+- `--manual`
+- `--init`
+- `--bind`
+- `--build`
+- `--compile`
+- integration validation before finishing substantial changes
+
+Operational rule:
+- do not run multiple `c3c build` commands concurrently against the same `build/` tree
+- the fast dev path is safe to run alongside the full build because it uses separate build/output directories
+
+Current local baseline on this repo:
+- `c3c build`: about 15s
+- `scripts/build_fast_dev.sh` clean build: about 2.0s
+- `scripts/build_fast_nodeduce_dev.sh` clean build: about 2.0s
+- `scripts/build_fast_dev.sh` unchanged no-op: about 0.06s
+- `scripts/build_fast_nodeduce_dev.sh` unchanged no-op: about 0.06s
+
+To inspect what still dominates `main-dev` without compiling:
+
+```bash
+scripts/build_fast_dev.sh --profile
+```
+
+This prints:
+- included source count,
+- total included C3 size,
+- largest source groups,
+- the largest source files still linked into the lean target.
+
+To inspect the deduce-free variant:
+
+```bash
+OMNI_FAST_DEV_PROFILE=nodeduce scripts/build_fast_dev.sh --profile
+```
+
+Current profiling data shows the dominant remaining groups are `eval` and `jit`.
+That is why optional-surface cuts such as `deduce` only modestly affect clean
+build time.
+
+Fast-path caveat:
+- `main-dev` excludes the `pika` module to keep build time down, so regex-backed
+  schema validation is not a parity guarantee on the lean dev binary.
+- `main-dev` also excludes the compiler/AOT/bindgen source families, so the
+  lean binary is explicitly not an integration-equivalent build.
+- `main-dev-nodeduce` additionally excludes `deduce` / `deduce/*` bindings, so
+  those names are intentionally unavailable there.
+
 ### Boundary-Hardening Profile
 
 ```bash
@@ -197,9 +301,33 @@ Artifacts:
 - `build/boundary_hardening_asan.log`
 - `build/boundary_hardening_summary.json`
 - `build/effects_contract_lint_summary.json`
+- `build/validation_status_summary.json`
 - `build/effects_contract_policy.log`
 - `build/libuv_surface_policy.log`
 - `build/primitive_docs_parity.log`
+
+Validation status summary:
+
+```bash
+scripts/run_validation_status_summary.sh
+```
+
+This emits one current JSON artifact at `build/validation_status_summary.json`
+covering the bounded:
+
+- `scheduler`
+- `deduce`
+- `memory-lifetime-smoke`
+
+Each run records:
+
+- command
+- subsystem
+- pass/fail state
+- exit code
+- known-blocker classification
+- start/finish timestamps
+- parsed `OMNI_TEST_SUMMARY` rows
 
 ### Container-Capped Validation (Docker)
 

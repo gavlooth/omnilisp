@@ -126,21 +126,21 @@ fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
     test_tag(interp, "TimePoint constructor date",
         "(TimePoint 'date 2026 3 7)", TIME_POINT, pass, fail);
     test_tag(interp, "time-point constructor date",
-        "(time-point 'date 2026 3 7)", TIME_POINT, pass, fail);
+        "(TimePoint 'date 2026 3 7)", TIME_POINT, pass, fail);
     test_truthy(interp, "time-point predicate for date",
-        "(time-point? (time-point 'date 2026 3 7))", pass, fail);
+        "(time-point? (TimePoint 'date 2026 3 7))", pass, fail);
     test_tag(interp, "time-point constructor time",
-        "(time-point 'time 8 15 30 123456)", TIME_POINT, pass, fail);
+        "(TimePoint 'time 8 15 30 123456)", TIME_POINT, pass, fail);
     test_tag(interp, "time-point constructor datetime",
-        "(time-point 'datetime 2026 3 7 8 15 30 123456)", TIME_POINT, pass, fail);
+        "(TimePoint 'datetime 2026 3 7 8 15 30 123456)", TIME_POINT, pass, fail);
     test_tag(interp, "time-point constructor datetime with tz",
-        "(time-point 'datetime-tz 2026 3 7 8 15 30 123456 -420)", TIME_POINT, pass, fail);
+        "(TimePoint 'datetime-tz 2026 3 7 8 15 30 123456 -420)", TIME_POINT, pass, fail);
     test_tag(interp, "time-point constructor datetime with tz alias",
-        "(time-point 'datetimetz 2026 3 7 8 15 30 123456 -420)", TIME_POINT, pass, fail);
+        "(TimePoint 'datetimetz 2026 3 7 8 15 30 123456 -420)", TIME_POINT, pass, fail);
     test_error_contains(interp, "time-point rejects unknown kind",
-        "(time-point 'unknown 1 2 3)", "time-point:", pass, fail);
+        "(TimePoint 'unknown 1 2 3)", "time-point:", pass, fail);
     test_error_contains(interp, "time-point rejects bad datetime-tz arity",
-        "(time-point 'datetime-tz 2026 3 7 8 15 30)", "time-point: datetime-tz expects", pass, fail);
+        "(TimePoint 'datetime-tz 2026 3 7 8 15 30)", "time-point: datetime-tz expects", pass, fail);
     test_tag(interp, "toml-parse supports options list",
         "(toml-parse \"title = \\\"Toml\\\"\n\" '((check-utf8 false)))", HASHMAP, pass, fail);
     test_error_contains(interp, "toml-parse validates unknown option key",

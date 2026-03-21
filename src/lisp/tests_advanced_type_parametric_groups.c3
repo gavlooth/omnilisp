@@ -12,7 +12,7 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
     test_truthy(interp, "type-of symbol", "(= (type-of 'foo) 'Symbol)", pass, fail);
     test_truthy(interp, "type-of nil", "(= (type-of nil) 'Nil)", pass, fail);
     test_truthy(interp, "type-of list", "(= (type-of '(1 2 3)) 'List)", pass, fail);
-    test_truthy(interp, "type-of array", "(= (type-of (array 1 2 3)) 'Array)", pass, fail);
+    test_truthy(interp, "type-of array", "(= (type-of (Array 1 2 3)) 'Array)", pass, fail);
     test_truthy(interp, "type-of closure", "(= (type-of (lambda (x) x)) 'Closure)", pass, fail);
     test_truthy(interp, "type-of true", "(= (type-of true) 'Boolean)", pass, fail);
 
@@ -412,10 +412,29 @@ fn void run_advanced_type_value_alias_deprecation_matrix_tests(Interp* interp, i
 }
 
 fn void run_advanced_type_meta_symbols_type_only_tests(Interp* interp, int* pass, int* fail) {
-    // Meta/abstract symbols remain type-position-only. They remain valid type symbols...
+    // Meta/abstract symbols remain non-callable constructors. They remain valid
+    // type symbols and descriptor values...
     test_truthy(interp,
         "Any type symbol participates in is?",
         "(is? 7 'Any)",
+        pass,
+        fail);
+    test_str_val(interp,
+        "Any type descriptor rendering",
+        "(format \"%s\" Any)",
+        "#<type Any>",
+        pass,
+        fail);
+    test_str_val(interp,
+        "Number type descriptor rendering",
+        "(format \"%s\" Number)",
+        "#<type Number>",
+        pass,
+        fail);
+    test_str_val(interp,
+        "Collection type descriptor rendering",
+        "(format \"%s\" Collection)",
+        "#<type Collection>",
         pass,
         fail);
 

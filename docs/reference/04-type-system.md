@@ -89,16 +89,25 @@ Canonical names favor descriptiveness over terseness: `Integer`, `Boolean`, and
 `Dictionary` are the primary spellings, while `Int`, `Bool`, and `Dict` remain
 accepted compatibility aliases.
 
+Alias policy is input-tolerant but output-canonical:
+- aliases are accepted at constructor/type-annotation input sites,
+- introspection/rendering surfaces normalize to canonical names (`type-of`,
+  type-descriptor rendering),
+- constructor failure text uses canonical constructor names even when the call
+  used an alias.
+
 Collection/time constructor naming policy:
 - canonical constructor surfaces: `List`, `Array`, `Dictionary`, `Iterator`, `TimePoint`
 - retained public helper: `list`
-- compatibility-only aliases for existing code: `array`, `dict`, `dictionary`, `iterator`, `time-point`, `make-iterator`
 
-Meta/abstract symbols `Any`, `Value`, `Number`, and `Collection` remain
-type-position-only surfaces. They participate in annotation/dispatch semantics,
-but are not callable constructor/coercion symbols in value position. `Value`
-specifically is valid as `^(Value literal)` for value-literal dispatch, not as
-`(Value ...)`.
+Meta/abstract symbols `Any`, `Number`, and `Collection` remain annotation/dispatch
+surfaces and are also exposed as non-callable value-position type descriptors
+(`(format "%s" Any)` => `#<type Any>`, etc.). They are not callable
+constructor/coercion symbols (`(Any ...)`, `(Number ...)`, `(Collection ...)`
+still error).
+
+`Value` remains dedicated to value-literal annotation forms
+(`^(Value literal)`) and is not a callable constructor surface.
 
 There is no builtin `Empty` type today. Use `Nil` for the language-level empty
 value. `Void` is a real builtin singleton type/value, constructed with
@@ -150,10 +159,14 @@ Numeric conversion contract:
 (instance? 42)              ;; => nil
 ```
 
-`type-of` returns a symbol such as `Dictionary`, `Set`, or `Void`. A first-class
-type descriptor value prints as `#<type Dictionary>` (for example `(format "%s" Dictionary)`),
-while ordinary collection values print structurally as `{'a 1}` or `(Set 1 2 3)`.
-Non-constructor primitives keep primitive rendering (`#<primitive +>`).
+`type-of` returns a symbol such as `Dictionary`, `Set`, or `Void`. The canonical
+type-descriptor print shape is `#<type Name>` (not `#<Name>`); for example
+`(format "%s" Dictionary)` => `#<type Dictionary>` and
+`(format "%s" Number)` => `#<type Number>`. Ordinary collection values print
+structurally as `{'a 1}` or `(Set 1 2 3)`. Non-constructor primitives keep
+primitive rendering (`#<primitive +>`).
+Constructor aliases normalize to canonical introspection identities (for
+example `(type-of (Int 3.9)) => Integer`, `(format "%s" Dict) => #<type Dictionary>`).
 
 ---
 

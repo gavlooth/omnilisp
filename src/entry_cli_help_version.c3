@@ -30,6 +30,11 @@ fn int print_help() {
     io::printn("  omni --stack-affinity-probe       Deliberately trigger stack ownership fail-fast probe");
     io::printn("  omni --version, -v                Print version");
     io::printn("  omni --help, -h                   Print this help");
+    io::printn("");
+    io::printn("Exit codes:");
+    io::printn("  0  Success / clean input");
+    io::printn("  1  Usage error or command failure");
+    io::printn("  2  Invalid test-suite name");
     return 0;
 }
 

@@ -2,6 +2,39 @@ module lisp;
 
 import std::io;
 
+fn Value* prim_meta_type_symbol_not_callable(Value*[] args, Env* env, Interp* interp) {
+    if (interp == null || interp.last_call_name == INVALID_SYMBOL_ID) {
+        return raise_error(interp, "type symbol is not a callable constructor/coercion surface");
+    }
+
+    char[160] buf;
+    char[] msg = io::bprintf(&buf,
+        "%s: not a callable constructor/coercion surface",
+        (ZString)interp.symbols.get_name(interp.last_call_name))!!;
+    return raise_error(interp, msg);
+}
+
+fn void bind_non_callable_type_symbol(Interp* interp, SymbolId sym) {
+    if (interp == null) return;
+    if (interp.global_env == null) return;
+    if (interp.global_env.lookup(sym) != null) return;
+
+    char[] name = interp.symbols.get_name(sym);
+    Value* prim = make_primitive(interp, name, &prim_meta_type_symbol_not_callable, -1);
+
+    MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
+    mt.name = sym;
+    mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * METHOD_INITIAL_CAPACITY);
+    mt.entry_count = 0;
+    mt.capacity = METHOD_INITIAL_CAPACITY;
+    mt.fallback = prim;
+
+    Value* mt_val = boundary_alloc_value_in_root(interp, true);
+    mt_val.tag = METHOD_TABLE;
+    mt_val.method_table_val = mt;
+    env_define_with_barrier(interp.global_env, sym, mt_val, interp);
+}
+
 /**
  * Register built-in types in the type registry.
  * Called once during init, after symbol interning.
@@ -132,6 +165,12 @@ fn void register_builtin_types(Interp* interp) {
     interp.types.types[(usz)interp.tid_Void].parent = interp.tid_Any;
     interp.types.types[(usz)interp.tid_TimePoint].parent = interp.tid_Any;
     interp.types.types[(usz)interp.tid_Coroutine].parent = interp.tid_Any;
+
+    // Meta/abstract symbols are non-callable, but exposed as first-class
+    // descriptor values for canonical printing/introspection surfaces.
+    bind_non_callable_type_symbol(interp, interp.sym_Any);
+    bind_non_callable_type_symbol(interp, interp.sym_Number);
+    bind_non_callable_type_symbol(interp, interp.sym_Collection);
 }
 
 /**

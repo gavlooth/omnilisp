@@ -56,6 +56,6 @@ fn void run_closure_lifecycle_tests(Interp* interp, int* pass, int* fail) {
 
     // 10. Coroutine with closure thunk — closure promoted to root_scope
     test_eq(interp, "closure-lc: coroutine with closure thunk",
-        "(let (f (coroutine (lambda () (yield 1) (yield 2) 3))) (+ (resume f) (+ (resume f) (resume f))))", 6, pass, fail);
+        "(let (f (Coroutine (lambda () (yield 1) (yield 2) 3))) (+ (resume f) (+ (resume f) (resume f))))", 6, pass, fail);
 }
 

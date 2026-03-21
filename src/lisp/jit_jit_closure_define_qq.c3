@@ -95,7 +95,7 @@ fn bool jit_letrec_body_has_shift(Value* actual_value, Expr* init_expr) {
 
 fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
     Value* placeholder = make_nil(interp);
-    Env* rec_env = env.extend(interp, expr.let_expr.name, placeholder);
+    Env* rec_env = jit_env_extend(interp, env, expr.let_expr.name, placeholder);
     Value* actual_value = jit_eval(expr.let_expr.init, rec_env, interp);
     if (actual_value != null && actual_value.tag == ERROR) return actual_value;
 
@@ -245,7 +245,8 @@ fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) 
 // Environment extension helper — called from JIT-compiled code.
 // Extends an env with a new binding for capturing let-locals in lambdas.
 fn Env* jit_env_extend(Interp* interp, Env* env, SymbolId name, Value* value) {
-    return env.extend(interp, name, value);
+    if (interp == null || interp.current_scope == null || env == null) return null;
+    return boundary_env_extend_in_scope(interp, interp.current_scope, env, name, value);
 }
 
 // Mutable box allocation in root-scope lifetime — called from JIT-compiled code.

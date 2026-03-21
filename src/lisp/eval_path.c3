@@ -2,32 +2,6 @@ module lisp;
 
 import std::io;
 
-/**
- * Look up a key in an association list.
- * An alist is a list of pairs: ((key1 . val1) (key2 . val2) ...)
- * Returns the value associated with the key, or null if not found.
- */
-fn Value* alist_lookup(Value* alist, SymbolId key, Interp* interp) {
-    // Iterate through the alist
-    while (is_cons(alist)) {
-        Value* pair = car(alist);
-
-        // Each element should be a cons cell (key . value)
-        if (is_cons(pair)) {
-            Value* pair_key = car(pair);
-
-            // Check if the key matches (compare as symbols)
-            if (is_symbol(pair_key) && pair_key.sym_val == key) {
-                return cdr(pair);
-            }
-        }
-
-        alist = cdr(alist);
-    }
-
-    return null;  // Key not found
-}
-
 fn Value* eval_path_lookup_root(SymbolId root, Env* env, Interp* interp) {
     Value* current = env.lookup(root);
     if (current != null) return current;
@@ -77,6 +51,18 @@ fn EvalResult eval_path_instance_step(Value* current, SymbolId key, Interp* inte
     return eval_error(msg);
 }
 
+fn EvalResult eval_path_dict_step(Value* current, SymbolId key, Interp* interp) {
+    Value* lookup_key = make_symbol(interp, key);
+    Value* found = hashmap_get(current.hashmap_val, lookup_key);
+    if (found != null) return eval_ok(found);
+
+    char[256] ebuf;
+    char[] seg_n = interp.symbols.get_name(key);
+    char[] msg = io::bprintf(&ebuf, "cannot access '.%s' on %s value",
+        (ZString)seg_n, (ZString)interp.symbols.get_name(value_type_name(current, interp)))!!;
+    return eval_error(msg);
+}
+
 fn bool eval_path_cons_step(Value* current, SymbolId key, Interp* interp, Value** out_next) @inline {
     if (current == null || current.tag != CONS) return false;
     if ((uint)key == (uint)interp.sym_car) {
@@ -90,10 +76,7 @@ fn bool eval_path_cons_step(Value* current, SymbolId key, Interp* interp, Value*
     return false;
 }
 
-fn EvalResult eval_path_alist_step(Value* current, SymbolId key, Interp* interp) {
-    Value* found = alist_lookup(current, key, interp);
-    if (found != null) return eval_ok(found);
-
+fn EvalResult eval_path_invalid_step(Value* current, SymbolId key, Interp* interp) {
     char[256] ebuf;
     char[] seg_n = interp.symbols.get_name(key);
     char[] msg = io::bprintf(&ebuf, "cannot access '.%s' on %s value",
@@ -108,13 +91,15 @@ fn EvalResult eval_path_step(Value* current, SymbolId key, Interp* interp) {
     if (current != null && current.tag == INSTANCE && current.instance_val != null) {
         return eval_path_instance_step(current, key, interp);
     }
+    if (current != null && current.tag == HASHMAP && current.hashmap_val != null) {
+        return eval_path_dict_step(current, key, interp);
+    }
 
     Value* cons_step = null;
     if (eval_path_cons_step(current, key, interp, &cons_step)) {
         return eval_ok(cons_step);
     }
-    // Fall through to alist lookup for cons-based association lists.
-    return eval_path_alist_step(current, key, interp);
+    return eval_path_invalid_step(current, key, interp);
 }
 
 /**
@@ -123,7 +108,8 @@ fn EvalResult eval_path_step(Value* current, SymbolId key, Interp* interp) {
  *
  * For multi-segment paths like person.address.city:
  * 1. Look up the first segment as a variable
- * 2. For each subsequent segment, look it up as a key in an association list
+ * 2. For each subsequent segment, resolve it on modules, instances,
+ *    dictionaries, or cons `.car`/`.cdr`
  */
 fn EvalResult eval_path(Expr* expr, Env* env, Interp* interp) {
     if (expr.path.segment_count == 0) {
@@ -141,7 +127,7 @@ fn EvalResult eval_path(Expr* expr, Env* env, Interp* interp) {
         return eval_ok(current);
     }
 
-    // For each remaining segment, look up field in Instance, Module, or alist.
+    // For each remaining segment, look up the next path step.
     for (usz i = 1; i < expr.path.segment_count; i++) {
         SymbolId key = expr.path.segments[i];
         EvalResult step = eval_path_step(current, key, interp);

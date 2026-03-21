@@ -233,7 +233,6 @@ fn Value* make_closure_no_param(Interp* interp, Expr* body, Env* env) {
     v.closure_val.has_param = false;
     v.closure_val.has_typed_params = false;
     v.closure_val.type_sig = null;
-
     return v;
 }
 

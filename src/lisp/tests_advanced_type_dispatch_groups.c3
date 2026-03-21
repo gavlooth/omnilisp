@@ -60,6 +60,38 @@ fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass,
     test_error_contains(interp, "dispatch ambiguous Int positional equal-specificity detail",
         "(ambi-int 1 1)",
         "equal specificity", pass, fail);
+    test_truthy(interp, "dispatch ambiguous payload stable fields",
+        "(block "
+        "  (define (ambi-payload (^Int x) y) 10) "
+        "  (define (ambi-payload x (^Int y)) 20) "
+        "  (handle (ambi-payload 1 1) "
+        "    (raise payload "
+        "      (let (d (ref payload 'data)) "
+        "        (and (= (symbol->string (ref payload 'code)) \"type/dispatch-ambiguous\") "
+        "             (and (= (ref d 'reason) 'ambiguous-equal-specificity) "
+        "                  (and (= (ref d 'method) 'ambi-payload) "
+        "                       (and (= (ref d 'arg-count) 2) "
+        "                            (and (= (ref d 'best-score) 101) "
+        "                                 (and (= (ref d 'tie-count) 2) "
+        "                                      (and (= (length (ref d 'arg-types)) 2) "
+        "                                           (and (= (ref (ref d 'arg-types) 0) 'Integer) "
+        "                                                (and (= (ref (ref d 'arg-types) 1) 'Integer) "
+        "                                                     (and (= (length (ref d 'candidate-indices)) 2) "
+        "                                                          (and (= (ref (ref d 'candidate-indices) 0) 0) "
+        "                                                               (= (ref (ref d 'candidate-indices) 1) 1))))))))))))))))",
+        pass, fail);
+    test_truthy(interp, "dispatch ambiguous payload candidate ordering stable",
+        "(block "
+        "  (define (ambi-order x y) 0) "
+        "  (define (ambi-order (^Int x) y) 1) "
+        "  (define (ambi-order x (^Int y)) 2) "
+        "  (handle (ambi-order 1 1) "
+        "    (raise payload "
+        "      (let (idx (ref (ref payload 'data) 'candidate-indices)) "
+        "        (and (= (length idx) 2) "
+        "             (and (= (ref idx 0) 0) "
+        "                  (= (ref idx 1) 1)))))))",
+        pass, fail);
 
     // Unified command-style facade over canonical io/udp-* operations.
     setup(interp, "(define (io/udp-open) 'opened)");

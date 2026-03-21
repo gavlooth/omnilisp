@@ -6,6 +6,10 @@ import main;
 // =============================================================================
 // SECTION 3: JIT HELPER FUNCTIONS (apply/eval core)
 // =============================================================================
+fn bool zeroarg_closure_trace_enabled() @inline {
+    return boundary_c_getenv("OMNI_TRACE_ZEROARG_CLOSURE") != null;
+}
+
 fn Value* jit_make_int(Interp* interp, long n) {
     return make_int(interp, n);
 }
@@ -66,24 +70,55 @@ fn Value* jit_apply_non_callable_error(Value* func, Interp* interp) {
 fn Value* jit_apply_value_closure(Value* func, Value* arg, Interp* interp) {
     assert(func.closure_val != null, "jit_apply_value_closure: func.closure_val is null");
     Closure* closure = func.closure_val;
+    if (zeroarg_closure_trace_enabled()) {
+        io::printfn(
+            "OMNI_CLOSURE_TRACE enter param_count=%d has_rest=%d body_tag=%d env_scope=%d env_is_global=%d",
+            (int)closure.param_count,
+            closure.has_rest ? 1 : 0,
+            (int)closure.body.tag,
+            closure.env_scope != null ? 1 : 0,
+            closure.env == interp.global_env ? 1 : 0
+        );
+    }
     if (!closure.has_param && !closure.has_rest) {
-        return jit_eval_in_single_scope(closure.body, closure.env, interp);
+        if (zeroarg_closure_trace_enabled()) {
+            io::printfn(
+                "OMNI_ZEROARG_TRACE enter body_tag=%d env_scope=%d env_is_global=%d",
+                (int)closure.body.tag,
+                closure.env_scope != null ? 1 : 0,
+                closure.env == interp.global_env ? 1 : 0
+            );
+        }
+        Value* result = jit_eval_in_single_scope(closure.body, closure.env, interp);
+        if (zeroarg_closure_trace_enabled()) {
+            io::printfn("OMNI_ZEROARG_TRACE exit body_tag=%d", (int)closure.body.tag);
+            io::printfn("OMNI_CLOSURE_TRACE exit param_count=%d body_tag=%d", (int)closure.param_count, (int)closure.body.tag);
+        }
+        return result;
     }
     if (closure.has_rest) {
         usz pc = closure.param_count;
         Env* new_env = closure.env;
         if (pc == 0) {
             Value* rest_list = make_cons(interp, arg, make_nil(interp));
-            new_env = new_env.extend(interp, closure.rest_param, rest_list);
-            return jit_eval_in_single_scope(closure.body, new_env, interp);
+            new_env = jit_env_extend(interp, new_env, closure.rest_param, rest_list);
+            Value* result = jit_eval_in_single_scope(closure.body, new_env, interp);
+            if (zeroarg_closure_trace_enabled()) {
+                io::printfn("OMNI_CLOSURE_TRACE exit param_count=%d body_tag=%d", (int)closure.param_count, (int)closure.body.tag);
+            }
+            return result;
         }
         if (pc == 1) {
             Value*[1] typed_args = { arg };
             Value* type_err = check_lambda_call_boundary(closure, typed_args[:1], 1, interp);
             if (type_err != null) return type_err;
-            new_env = new_env.extend(interp, closure.params[0], arg);
-            new_env = new_env.extend(interp, closure.rest_param, make_nil(interp));
-            return jit_eval_in_single_scope(closure.body, new_env, interp);
+            new_env = jit_env_extend(interp, new_env, closure.params[0], arg);
+            new_env = jit_env_extend(interp, new_env, closure.rest_param, make_nil(interp));
+            Value* result = jit_eval_in_single_scope(closure.body, new_env, interp);
+            if (zeroarg_closure_trace_enabled()) {
+                io::printfn("OMNI_CLOSURE_TRACE exit param_count=%d body_tag=%d", (int)closure.param_count, (int)closure.body.tag);
+            }
+            return result;
         }
         return raise_error(interp, "too few arguments for variadic lambda");
     }
@@ -96,8 +131,12 @@ fn Value* jit_apply_value_closure(Value* func, Value* arg, Interp* interp) {
     Value* type_err = check_lambda_call_boundary(closure, typed_args[:1], 1, interp);
     if (type_err != null) return type_err;
     assert(closure.env != null, "jit_apply_value_closure: env is null");
-    Env* new_env = closure.env.extend(interp, closure.param, arg);
-    return jit_eval_in_single_scope(closure.body, new_env, interp);
+    Env* new_env = jit_env_extend(interp, closure.env, closure.param, arg);
+    Value* result = jit_eval_in_single_scope(closure.body, new_env, interp);
+    if (zeroarg_closure_trace_enabled()) {
+        io::printfn("OMNI_CLOSURE_TRACE exit param_count=%d body_tag=%d", (int)closure.param_count, (int)closure.body.tag);
+    }
+    return result;
 }
 
 fn Value* jit_apply_value_method_table(Value* func, Value* arg, Interp* interp) {
@@ -223,14 +262,14 @@ fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
             if (pc == 0) {
                 new_env = func.closure_val.env;
                 Value* rest_list = make_cons(interp, arg, make_nil(interp));
-                new_env = new_env.extend(interp, func.closure_val.rest_param, rest_list);
+                new_env = jit_env_extend(interp, new_env, func.closure_val.rest_param, rest_list);
             } else if (pc == 1) {
                 Value*[1] typed_args = { arg };
                 Value* type_err = check_lambda_call_boundary(func.closure_val, typed_args[:1], 1, interp);
                 if (type_err != null) return type_err;
                 new_env = func.closure_val.env;
-                new_env = new_env.extend(interp, func.closure_val.params[0], arg);
-                new_env = new_env.extend(interp, func.closure_val.rest_param, make_nil(interp));
+                new_env = jit_env_extend(interp, new_env, func.closure_val.params[0], arg);
+                new_env = jit_env_extend(interp, new_env, func.closure_val.rest_param, make_nil(interp));
             } else {
                 return raise_error(interp, "too few arguments for variadic lambda");
             }
@@ -243,7 +282,7 @@ fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
             Value*[1] typed_args = { arg };
             Value* type_err = check_lambda_call_boundary(func.closure_val, typed_args[:1], 1, interp);
             if (type_err != null) return type_err;
-            new_env = func.closure_val.env.extend(interp, func.closure_val.param, arg);
+            new_env = jit_env_extend(interp, func.closure_val.env, func.closure_val.param, arg);
         }
         interp.jit_tco_expr = func.closure_val.body;
         interp.jit_tco_env = new_env;

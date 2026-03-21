@@ -136,3 +136,13 @@ Rationale:
 - O1.2 scope-chain pressure capture: complete.
 - O1.3 return-path dominance capture: complete.
 - O1.4 accepted regression envelope capture: complete.
+
+## Revalidation (2026-03-18)
+
+- Container-capped rerun on the current tree remained within the accepted
+  envelope for the boundary-heavy benchmark lane.
+- Observed benchmark summaries on the rerun:
+  - `boundary_decision_cost`: `iters=2048 splice_ms=3 disallowed_ms=4 reuse_ms=1`
+  - `boundary_destination_routed_escape`: `iters=2048 partial_ms=2 partial_ok=2048`
+  - `scope_splice_tail`: `iters=2048 escapes_per_iter=64 splice_ms=2`
+- The rerun completed with `Unified Tests: 0 passed, 0 failed`.

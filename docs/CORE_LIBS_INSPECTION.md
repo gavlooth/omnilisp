@@ -223,17 +223,22 @@ Columns reuse `define [type]` field syntax. Optional role prefix (`key`, `index`
 ;; With roles — role prefix before ^Type name
 (define [relation db history] person
   (key ^String name)             ;; role + type + name
+  (unique ^String email)         ;; enforced unique constraint
+  (unique ^String dept)          ;; second unique marker joins the same composite constraint
+  (ref users id ^Integer user-id) ;; referenced tuple must exist in users.id
   (index ^Integer age)           ;; indexed for fast range scans
-  (^String email))               ;; no role, just typed
+  (^String city))                ;; no role, just typed
 
-;; Parser: first token is ^ → plain column. First token is key/index → constrained.
+;; Parser: first token is ^ → plain column. First token is key/unique/ref/index → constrained.
 ```
 
 | Column form | Meaning |
 |-------------|---------|
 | `(name)` | Untyped column |
 | `(^String name)` | Typed column (same as type fields) |
-| `(key ^String name)` | Primary key. Upsert on duplicate. |
+| `(key ^String name)` | Primary key. Conflicting writes are rejected; identical full-tuple reasserts stay idempotent. |
+| `(unique ^String email)` | Enforced unique constraint; multiple `unique` columns on one relation form one composite unique constraint. |
+| `(ref users id ^Integer user-id)` | Enforced reference integrity: `user-id` must match an existing tuple in `users.id`. |
 | `(index ^Integer age)` | Secondary B+ tree index. Fast range scans. |
 | `(key index ^String name)` | Both key and indexed. |
 

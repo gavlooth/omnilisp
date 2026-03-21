@@ -199,4 +199,40 @@ fn void run_deduce_clear_drop_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define clr-empty-db (deduce 'open 'memory)) "
+            "  (define [relation clr-empty-db] clr-empty-person (name) (age)) "
+            "  (define before (deduce 'count clr-empty-person)) "
+            "  (deduce 'clear! clr-empty-person) "
+            "  (define after (deduce 'count clr-empty-person)) "
+            "  (and (= before 0) (= after 0)))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] deduce clear! on empty relation is deterministic");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] deduce clear! on empty relation is deterministic (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printn("[FAIL] deduce clear! on empty relation is deterministic");
+            }
+            (*fail)++;
+        }
+    }
+
+    test_error_contains(
+        interp,
+        "[PASS] deduce open-named rejects relation arity conflict deterministically",
+        "(block "
+        "  (define arity-conflict-db (deduce 'open 'memory)) "
+        "  (define rel-a (deduce 'open-named arity-conflict-db 'arity_conflict \"arity_conflict_v1\" 'name 'age)) "
+        "  (deduce 'open-named arity-conflict-db 'arity_conflict \"arity_conflict_v2\" 'name 'age 'email))",
+        "relation name already registered with different arity",
+        pass,
+        fail
+    );
 }

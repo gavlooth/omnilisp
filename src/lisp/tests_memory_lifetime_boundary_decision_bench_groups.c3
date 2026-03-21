@@ -236,8 +236,8 @@ fn void run_memory_lifetime_boundary_benchmarks(Interp* interp) {
             bool ok = destination_partial != null &&
                       destination_partial.tag == PARTIAL_PRIM &&
                       destination_partial.scope_gen == target_scope.escape_generation &&
-                      destination_partial.partial_val.first_arg == escaped_first &&
-                      destination_partial.partial_val.second_arg == escaped_second;
+                      destination_partial.partial_val.first_arg.scope_gen == target_scope.escape_generation &&
+                      destination_partial.partial_val.second_arg.scope_gen == target_scope.escape_generation;
             if (ok) decision_destination_reuse_ok++;
 
             interp.current_scope = root_scope;

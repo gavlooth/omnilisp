@@ -31,6 +31,11 @@ tmp_tests/
 
 # Python scripts (not part of codebase)
 *.py
+!scripts/__init__.py
+!scripts/dialectic_mcp/
+!scripts/dialectic_mcp/*.py
+!scripts/tests/
+!scripts/tests/*.py
 
 # Editor/tool files
 syntax.md

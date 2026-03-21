@@ -4,6 +4,66 @@
 
 ---
 
+### Primitive Surface Audit: Command vs Query (2026-03-17)
+
+Audit source of truth:
+- registered primitive table in `src/lisp/eval_init_primitives.c3`.
+
+Normative classification contract:
+- command-style primitive: successful completion returns `Void` (or is a non-returning process command such as `exit`).
+- query-style primitive: returns data/handle/predicate values; when absence semantics apply, absence remains `nil` (not `Void`).
+
+Audit snapshot:
+- total registered primitive names: `263`
+- command-style names: `42`
+- query-style names: `221`
+
+#### Core Mutation Classification
+
+| Primitive | Style | Success contract |
+|------|-------|-------------|
+| `set!` | command-style | Returns `Void` after successful mutation dispatch (`array`/`dict`) |
+| `push!` | command-style | Returns `Void` after append |
+| `remove!` | command-style | Returns `Void` after key removal |
+| `set-add` | command-style | Returns `Void` after insert |
+| `set-remove` | command-style | Returns `Void` after delete |
+| `unsafe-free!` | command-style | Returns `Void` after releasing supported heap backing |
+| `ref` | query-style | Returns looked-up value, or `nil` on absence |
+| `has?` | query-style | Returns truthy on hit, `nil` on miss |
+| `set-contains?` | query-style | Returns truthy on hit, `nil` on miss |
+| `keys` | query-style | Returns key list |
+| `values` | query-style | Returns value list |
+
+#### I/O Classification
+
+| Primitive(s) | Style | Success contract |
+|------|-------|-------------|
+| `__raw-print`, `__raw-println`, `__raw-newline`, `__raw-display` | command-style | Return `Void` after console side effect |
+| `__raw-write-file` | command-style | Returns `Void` after write completion |
+| `__raw-fs-close`, `__raw-fs-rename`, `__raw-fs-unlink` | command-style | Return `Void` after lifecycle/path mutation |
+| `fs-close`, `fs-rename`, `fs-unlink` | command-style | Return `Void` (public alias surface) |
+| `filesystem-close`, `filesystem-rename`, `filesystem-unlink` | command-style | Return `Void` (long-form alias surface) |
+| `__raw-udp-bind`, `__raw-udp-close`, `__raw-tcp-close`, `__raw-process-kill`, `__raw-signal-unhandle`, `__raw-async-sleep`, `__raw-tls-close` | command-style | Return `Void` after side-effecting operation |
+| `sleep`, `exit` | command-style | `sleep` returns `Void`; `exit` is process-terminal |
+| `__raw-read-file`, `__raw-file-exists?`, `__raw-read-lines`, `__raw-fs-open`, `__raw-fs-read`, `__raw-fs-write`, `__raw-fs-stat`, `__raw-fs-readdir` | query-style | Return data/handles/metrics (`nil` only for absence-style queries) |
+| `fs-open`, `fs-read`, `fs-write`, `fs-stat`, `fs-readdir`, `filesystem-open`, `filesystem-read`, `filesystem-write`, `filesystem-stat`, `filesystem-read-directory` | query-style | Return handles/data/metrics |
+| `__raw-tcp-connect`, `__raw-tcp-listen`, `__raw-tcp-accept`, `__raw-tcp-read`, `__raw-tcp-write`, `__raw-udp-socket`, `__raw-udp-send`, `__raw-udp-recv`, `__raw-pipe-connect`, `__raw-pipe-listen`, `__raw-process-spawn`, `__raw-process-wait`, `__raw-signal-handle`, `__raw-dns-resolve`, `__raw-tls-connect`, `__raw-tls-server-wrap`, `__raw-tls-read`, `__raw-tls-write`, `__raw-http-get`, `__raw-http-request` | query-style | Return handles, payloads, or result dictionaries |
+
+#### Scheduler Classification
+
+| Primitive(s) | Style | Success contract |
+|------|-------|-------------|
+| `fiber-cancel`, `run-fibers` | command-style | Return `Void` on successful scheduler command completion |
+| `__raw-thread-cancel`, `__raw-task-cancel` | command-style | Return `Void` on successful cancellation command |
+| `spawn`, `await`, `__raw-offload`, `__raw-thread-spawn`, `__raw-thread-join`, `__raw-thread-join-timeout`, `__raw-task-spawn`, `__raw-task-join`, `__raw-task-join-timeout` | query-style | Return ids/handles/results (`join-timeout` may return `nil` timeout absence) |
+
+#### Exhaustive Classification Rule
+
+Command-style primitive set (`42` names):
+`set!`, `push!`, `remove!`, `set-add`, `set-remove`, `unsafe-free!`, `deduce/commit`, `deduce/abort`, `deduce/fact!`, `deduce/retract!`, `deduce/clear!`, `deduce/drop!`, `deduce/rule!`, `__raw-print`, `__raw-println`, `__raw-newline`, `__raw-display`, `__raw-write-file`, `__raw-fs-close`, `__raw-fs-rename`, `__raw-fs-unlink`, `fs-close`, `fs-rename`, `fs-unlink`, `filesystem-close`, `filesystem-rename`, `filesystem-unlink`, `__raw-udp-bind`, `__raw-udp-close`, `__raw-tcp-close`, `__raw-process-kill`, `__raw-signal-unhandle`, `__raw-async-sleep`, `__raw-thread-cancel`, `__raw-task-cancel`, `__raw-tls-close`, `sleep`, `exit`, `fiber-cancel`, `run-fibers`.
+
+All remaining registered primitive names are query-style.
+
 ### Dispatched Primitives (33)
 
 These support user extension via method tables.
@@ -179,13 +239,8 @@ Callable core type symbols also provide constructor/coercion surface here:
 | Name | Arity | Description |
 |------|-------|-------------|
 | `Array` | variadic | Canonical array constructor / conversion surface |
-| `array` | variadic | Compatibility alias for `Array` |
-| `array-set!` | 3 | Set element at index |
 | `Dictionary` | variadic | Create dictionary |
 | `Dict` | variadic | Public shorthand alias for `Dictionary` |
-| `dict` | variadic | Compatibility alias for `Dictionary` |
-| `dictionary` | variadic | Compatibility alias for `Dictionary` |
-| `dict-set!` | 3 | Set key-value |
 | `Set` | variadic | Create set |
 | `set-add` | 2 | Add to set |
 | `set-remove` | 2 | Remove from set |
@@ -197,7 +252,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `coroutine` | 1 | Create coroutine |
+| `Coroutine` | 1 | Canonical coroutine constructor |
 | `resume` | 1 | Resume coroutine |
 | `yield` | 1 | Yield value |
 | `coroutine?` | 1 | Type check |
@@ -213,10 +268,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `make-iterator` | 1 | Low-level compatibility helper; prefer `(Iterator coll)` / `(Iterator thunk)` |
 | `next` | 1 | Get next (value . rest) pair |
-| `collect` | 1 | Compatibility helper: collect iterator into list |
-| `to-array` | 1 | Compatibility helper: collect iterator into array |
 
 Preferred forcing style uses collection constructors:
 `(List it)` and `(Array it)`.
@@ -321,8 +373,7 @@ Preferred forcing style uses collection constructors:
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `TimePoint` | variadic | Canonical TimePoint constructor (`time-point` remains a compatibility alias) |
-| `time-point` | variadic | Compatibility alias for `TimePoint` |
+| `TimePoint` | variadic | Canonical TimePoint constructor |
 | `time-point?` | 1 | TimePoint predicate |
 | `toml-parse` | 1-2 | Parse TOML string (optional options list: `((check-utf8 false))`)
 | `csv-parse` | 1-2 | Parse CSV text into rows (`delimiter` string or option list including `strict`; strict/default enforces RFC-4180 CRLF row endings) |
@@ -387,3 +438,20 @@ Preferred forcing style uses collection constructors:
 | Name | Arity | Description |
 |------|-------|-------------|
 | `deduce` | variadic | Unified database interface |
+| `deduce/open` | variadic | Open deduce database handle |
+| `deduce/open-named` | variadic | Open/register named relation handle |
+| `deduce/block` | variadic | Open deduce transaction handle |
+| `deduce/commit` | variadic | Commit transaction (`Void`) |
+| `deduce/abort` | variadic | Abort transaction (`Void`) |
+| `deduce/scan` | variadic | Scan relation tuples |
+| `deduce/scan-range` | variadic | Bounded relation scan |
+| `deduce/query` | variadic | Query rows by predicate |
+| `deduce/count` | variadic | Count relation tuples |
+| `deduce/match` | variadic | Pattern match relation rows |
+| `deduce/fact!` | variadic | Assert fact (`Void`) |
+| `deduce/retract!` | variadic | Retract fact (`Void`) |
+| `deduce/clear!` | variadic | Clear relation (`Void`) |
+| `deduce/drop!` | variadic | Drop relation (`Void`) |
+| `deduce/rule!` | variadic | Install rule (`Void`) |
+| `deduce/explain` | variadic | Explain deduce query/rule plan |
+| `deduce/analyze` | variadic | Analyze deduce relation/rule surface |

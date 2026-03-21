@@ -1,0 +1,27 @@
+;; alerts_tutorial_smoke.omni — minimal finwatch effect-handler + dispatch check
+;; Run: LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/finwatch/alerts_tutorial_smoke.omni
+
+(import "alerts.omni" 'all)
+
+(define (assert-ok ok msg)
+  (if ok
+      true
+      (signal raise msg)))
+
+(define tutorial-quote (Quote "BTC" 66250.0 1700000000))
+(define tutorial-pnl (PnL "BTC" 0.5 30000.0 42000.0 12000.0))
+
+(let (price-alerts (alerts/price-alerts tutorial-quote 65000.0 50000.0)
+      analytics-alerts (alerts/analytics-alerts tutorial-pnl 5000.0))
+  (println (format "price alerts: %s" (length price-alerts)))
+  (println (format "analytics alerts: %s" (length analytics-alerts)))
+  (assert-ok (= (length price-alerts) 1) "tutorial price alert count mismatch")
+  (assert-ok (= (length analytics-alerts) 1) "tutorial analytics alert count mismatch"))
+
+(let (tutorial-alerts (alerts/tutorial-demo))
+  (println (format "collected alerts: %s" (length tutorial-alerts)))
+  (assert-ok (= (length tutorial-alerts) 2) "tutorial alert count mismatch")
+  (assert-ok (string-contains? (event->str (car tutorial-alerts)) "[ALERT/")
+             "tutorial dispatch payload mismatch"))
+
+true

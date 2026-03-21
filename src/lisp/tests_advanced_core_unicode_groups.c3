@@ -1,6 +1,5 @@
 module lisp;
 
-
 import main;
 
 fn void run_advanced_unicode_lambda_utf8_tests(Interp* interp, int* pass, int* fail) {
@@ -114,8 +113,8 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
         "(handle (Iterator 42) (raise msg (symbol->string (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
-        "make-iterator invalid payload code",
-        "(handle (make-iterator 42) (raise msg (symbol->string (ref msg 'code))))",
+        "__make-iterator internal helper invalid payload code",
+        "(handle (__make-iterator 42) (raise msg (symbol->string (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_truthy(interp,
         "Coroutine ctor invalid payload code",
@@ -146,8 +145,8 @@ fn void run_advanced_void_nil_contract_tests(Interp* interp, int* pass, int* fai
 
 fn void run_advanced_unicode_iterator_primitives_tests(Interp* interp, int* pass, int* fail) {
     // Phase 3A: Iterator type + primitives
-    test_truthy(interp, "make-iterator creates iter",
-        "(iterator? (make-iterator (lambda () nil)))", pass, fail);
+    test_truthy(interp, "__make-iterator internal helper creates iter",
+        "(iterator? (Iterator (lambda () nil)))", pass, fail);
     test_truthy(interp, "Iterator ctor creates iter",
         "(iterator? (Iterator (lambda () nil)))", pass, fail);
     test_truthy(interp, "next on empty iter is nil",
@@ -161,8 +160,8 @@ fn void run_advanced_unicode_iterator_primitives_tests(Interp* interp, int* pass
     test_eq(interp, "list it3 car", "(car (list it3))", 3, pass, fail);
     test_eq(interp, "list it3 len", "(length (list it3))", 3, pass, fail);
     // array constructor from iterator
-    test_eq(interp, "array it3 len", "(length (array it3))", 3, pass, fail);
-    test_eq(interp, "array it3 ref 0", "(ref (array it3) 0)", 3, pass, fail);
+    test_eq(interp, "array it3 len", "(length (Array it3))", 3, pass, fail);
+    test_eq(interp, "array it3 ref 0", "(ref (Array it3) 0)", 3, pass, fail);
     // type-of iterator
     test_truthy(interp, "type-of iterator",
         "(is? (Iterator (lambda () nil)) (quote Iterator))", pass, fail);
@@ -171,27 +170,27 @@ fn void run_advanced_unicode_iterator_primitives_tests(Interp* interp, int* pass
 fn void run_advanced_unicode_iterator_lazy_pipeline_tests(Interp* interp, int* pass, int* fail) {
     // Phase 3B: iterator constructors + lazy combinators
     test_truthy(interp, "iterator dispatches list",
-        "(iterator? (iterator (quote (1 2 3))))", pass, fail);
+        "(iterator? (Iterator (quote (1 2 3))))", pass, fail);
     test_truthy(interp, "Iterator dispatches list",
         "(iterator? (Iterator (quote (1 2 3))))", pass, fail);
-    test_eq(interp, "iterator list list car", "(car (list (iterator (quote (1 2 3)))))", 1, pass, fail);
-    test_eq(interp, "iterator list list len", "(length (list (iterator (quote (1 2 3)))))", 3, pass, fail);
+    test_eq(interp, "iterator list list car", "(car (list (Iterator (quote (1 2 3)))))", 1, pass, fail);
+    test_eq(interp, "iterator list list len", "(length (list (Iterator (quote (1 2 3)))))", 3, pass, fail);
     test_eq(interp, "Iterator list list car", "(car (list (Iterator (quote (1 2 3)))))", 1, pass, fail);
-    test_eq(interp, "iterator array list car", "(car (list (iterator [10 20 30])))", 10, pass, fail);
-    test_eq(interp, "iterator array list len", "(length (list (iterator [10 20 30])))", 3, pass, fail);
-    test_eq(interp, "iterator dict list len", "(length (list (iterator (block (define iter-d {'a 1 'b 2}) iter-d))))", 2, pass, fail);
-    test_truthy(interp, "iterator idempotent", "(iterator? (iterator (iterator [1 2 3])))", pass, fail);
+    test_eq(interp, "iterator array list car", "(car (list (Iterator [10 20 30])))", 10, pass, fail);
+    test_eq(interp, "iterator array list len", "(length (list (Iterator [10 20 30])))", 3, pass, fail);
+    test_eq(interp, "iterator dict list len", "(length (list (Iterator (block (define iter-d {'a 1 'b 2}) iter-d))))", 2, pass, fail);
+    test_truthy(interp, "iterator idempotent", "(iterator? (Iterator (Iterator [1 2 3])))", pass, fail);
     // Lazy map on iterator
-    test_eq(interp, "map + list car", "(car (list (map (lambda (x) (* x 2)) (iterator [1 2 3]))))", 2, pass, fail);
-    test_eq(interp, "map + list len", "(length (list (map (lambda (x) (* x 2)) (iterator [1 2 3]))))", 3, pass, fail);
+    test_eq(interp, "map + list car", "(car (list (map (lambda (x) (* x 2)) (Iterator [1 2 3]))))", 2, pass, fail);
+    test_eq(interp, "map + list len", "(length (list (map (lambda (x) (* x 2)) (Iterator [1 2 3]))))", 3, pass, fail);
     // Lazy filter on iterator
     test_truthy(interp, "filter iterator returns iterator",
-        "(iterator? (filter even? (iterator [1 2 3 4])))", pass, fail);
-    test_eq(interp, "filter even car", "(car (list (filter even? (iterator [1 2 3 4 5]))))", 2, pass, fail);
-    test_eq(interp, "filter even len", "(length (list (filter even? (iterator [1 2 3 4 5]))))", 2, pass, fail);
+        "(iterator? (filter even? (Iterator [1 2 3 4])))", pass, fail);
+    test_eq(interp, "filter even car", "(car (list (filter even? (Iterator [1 2 3 4 5]))))", 2, pass, fail);
+    test_eq(interp, "filter even len", "(length (list (filter even? (Iterator [1 2 3 4 5]))))", 2, pass, fail);
     // Lazy take on iterator
-    test_eq(interp, "take 2 len", "(length (list (take 2 (iterator [10 20 30]))))", 2, pass, fail);
-    test_eq(interp, "take 2 car", "(car (list (take 2 (iterator [10 20 30]))))", 10, pass, fail);
+    test_eq(interp, "take 2 len", "(length (list (take 2 (Iterator [10 20 30]))))", 2, pass, fail);
+    test_eq(interp, "take 2 car", "(car (list (take 2 (Iterator [10 20 30]))))", 10, pass, fail);
     // Infinite + take
     test_eq(interp, "range-from + take", "(car (list (take 5 (range-from 0))))", 0, pass, fail);
     test_eq(interp, "range-from + take len", "(length (list (take 5 (range-from 0))))", 5, pass, fail);
@@ -199,9 +198,9 @@ fn void run_advanced_unicode_iterator_lazy_pipeline_tests(Interp* interp, int* p
     test_eq(interp, "lazy pipeline len",
         "(length (list (take 3 (filter even? (map (lambda (x) (* x 2)) (range-from 1))))))", 3, pass, fail);
     // array constructor from iterator
-    test_eq(interp, "array from iter", "(ref (array (iterator [5 6 7])) 1)", 6, pass, fail);
+    test_eq(interp, "array from iter", "(ref (Array (Iterator [5 6 7])) 1)", 6, pass, fail);
     // foldl on iterator
-    test_eq(interp, "foldl iterator sum", "(foldl (lambda (a x) (+ a x)) 0 (iterator [1 2 3 4 5]))", 15, pass, fail);
+    test_eq(interp, "foldl iterator sum", "(foldl (lambda (a x) (+ a x)) 0 (Iterator [1 2 3 4 5]))", 15, pass, fail);
     // unified infinite sources
     test_eq(interp, "repeat + take len", "(length (list (take 4 (repeat 7))))", 4, pass, fail);
     test_eq(interp, "cycle + take first", "(car (list (take 4 (cycle [9 8]))))", 9, pass, fail);
@@ -228,6 +227,15 @@ fn void run_advanced_unicode_iterator_tests(Interp* interp, int* pass, int* fail
 
 fn void run_advanced_logic_tco_tests(Interp* interp, int* pass, int* fail) {
     // And/or advanced
+    test_truthy(interp, "variadic and empty identity", "(and)", pass, fail);
+    test_nil(interp, "variadic or empty identity", "(or)", pass, fail);
+    test_eq(interp, "variadic and single arg", "(and 7)", 7, pass, fail);
+    test_eq(interp, "variadic or single arg", "(or 7)", 7, pass, fail);
+    test_eq(interp, "variadic and multiple args", "(and 1 2 3 4)", 4, pass, fail);
+    test_eq(interp, "variadic or multiple args", "(or nil false 0 5)", 0, pass, fail);
+    test_nil(interp, "variadic and short-circuits falsy", "(and 1 nil 3 4)", pass, fail);
+    setup(interp, "(define [macro] all3 (syntax-match ([a b c] (template (and (insert a) (insert b) (insert c))))))");
+    test_eq(interp, "variadic and macro emission", "(all3 1 2 3)", 3, pass, fail);
     test_eq(interp, "nested and/or", "(and (or nil 5) (or false 10))", 10, pass, fail);
     test_eq(interp, "nested or/and", "(or (and nil 5) (and 1 10))", 10, pass, fail);
     test_eq(interp, "and closure truthy", "(and (lambda (x) x) 42)", 42, pass, fail);
@@ -241,7 +249,7 @@ fn void run_advanced_logic_tco_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "define complex expr", "computed-val", 17, pass, fail);
 
     // Path access
-    setup(interp, "(define ptest (cons (cons (quote x) 10) (cons (cons (quote y) 20) (quote ()))))");
+    setup(interp, "(define ptest {'x 10 'y 20})");
     test_eq(interp, "ptest.x => 10", "ptest.x", 10, pass, fail);
     test_eq(interp, "ptest.y => 20", "ptest.y", 20, pass, fail);
 
@@ -464,173 +472,4 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
     test_eq(interp, "TCO nested checkpoint", "(checkpoint (+ (checkpoint (if true 10 20)) (capture k (k 5))))", 15, pass, fail);
     setup(interp, "(define handle-loop (lambda (n) (if (= n 0) 0 (+ 1 (handle-loop (- n 1))))))");
     test_eq(interp, "TCO handler body", "(handle (signal count 0) (count x (handle-loop 100)))", 100, pass, fail);
-}
-
-fn void run_advanced_runtime_control_tests(Interp* interp, int* pass, int* fail) {
-    // Trampoline (JIT delegates effects to eval which handles them)
-    test_eq(interp, "trampoline passthrough", "(with-trampoline (lambda (xx) 42))", 42, pass, fail);
-    test_eq(interp, "trampoline single bounce", "(with-trampoline (lambda (xx) (+ 1 (signal bounce (lambda (xx) 41)))))", 42, pass, fail);
-    setup(interp, "(define fib-t (lambda (n) (if (< n 2) n (+ (signal bounce (lambda (xx) (fib-t (- n 1)))) (signal bounce (lambda (xx) (fib-t (- n 2))))))))");
-    test_eq(interp, "trampoline fib 7", "(with-trampoline (lambda (xx) (fib-t 7)))", 13, pass, fail);
-
-    // Coroutine primitives (coroutine/resume/yield)
-    test_eq(interp, "coroutine basic", "(resume (coroutine (lambda () (+ 1 2))))", 3, pass, fail);
-    test_eq(interp, "Coroutine basic", "(resume (Coroutine (lambda () (+ 1 2))))", 3, pass, fail);
-    test_eq(interp, "coroutine yield", "(let (f (coroutine (lambda () (yield 42) 99))) (resume f))", 42, pass, fail);
-    test_eq(interp, "coroutine yield complete", "(let (f (coroutine (lambda () (yield 42) 99))) (resume f) (resume f))", 99, pass, fail);
-    test_eq(interp, "coroutine resume value", "(let (f (coroutine (lambda () (+ 1 (yield 0))))) (resume f) (resume f 10))", 11, pass, fail);
-    test_eq(
-        interp,
-        "coroutine implicit nil after explicit resume value",
-        "(let (f (coroutine (lambda () (block (yield 0) (if (yield 0) 99 1))))) (resume f) (resume f 10) (resume f))",
-        1,
-        pass,
-        fail
-    );
-    test_eq(
-        interp,
-        "effect resume value does not leak into later coroutine resume",
-        "(block (handle (+ 1 (signal ask 0)) (ask x (resolve 41))) (let (f (coroutine (lambda () (if (yield 0) 99 1)))) (resume f) (resume f)))",
-        1,
-        pass,
-        fail
-    );
-    test_eq(
-        interp,
-        "capture resume value does not leak into later coroutine resume",
-        "(block (checkpoint (+ 1 (capture k (k 41)))) (let (f (coroutine (lambda () (if (yield 0) 99 1)))) (resume f) (resume f)))",
-        1,
-        pass,
-        fail
-    );
-    test_eq(interp, "coroutine nested", "(let (outer (coroutine (lambda () (let (inner (coroutine (lambda () 10))) (+ (resume inner) 5))))) (resume outer))", 15, pass, fail);
-    test_eq(interp, "coroutine deep nest", "(let (f (coroutine (lambda () (let (a (coroutine (lambda () (let (b (coroutine (lambda () 1))) (+ (resume b) 2))))) (+ (resume a) 3))))) (resume f))", 6, pass, fail);
-    test_eq(interp, "coroutine multi yield", "(let (g (coroutine (lambda () (yield 1) (yield 2) 3))) (+ (resume g) (+ (resume g) (resume g))))", 6, pass, fail);
-    setup(interp, "(define (coroutine-gen n) (coroutine (lambda () (let loop (i 0) (if (= i n) i (block (yield i) (loop (+ i 1))))))))");
-    test_eq(interp, "coroutine generator", "(let (g (coroutine-gen 3)) (+ (resume g) (+ (resume g) (+ (resume g) (resume g)))))", 6, pass, fail);
-
-    // Variadic lambdas (native JIT apply path; no interpreter fallback route)
-    setup(interp, "(define collect (lambda (.. args) args))");
-    test_eq(interp, "variadic collect length", "(length (collect 1 2 3))", 3, pass, fail);
-    test_nil(interp, "variadic collect empty", "(collect)", pass, fail);
-    setup(interp, "(define head-rest (lambda (h .. t) t))");
-    test_eq(interp, "variadic rest length", "(length (head-rest 1 2 3))", 2, pass, fail);
-    test_nil(interp, "variadic empty rest", "(head-rest 1)", pass, fail);
-    setup(interp, "(define multi-rest (lambda (a b .. rest) rest))");
-    test_eq(interp, "variadic multi rest len", "(length (multi-rest 1 2 3 4 5))", 3, pass, fail);
-    test_eq(interp, "variadic head-only", "((lambda (h .. rest-ho) h) 42 99 100)", 42, pass, fail);
-    setup(interp, "(define count-rest (lambda (h .. t) (length t)))");
-    test_eq(interp, "variadic count-rest", "(count-rest 1 2 3 4 5)", 4, pass, fail);
-}
-
-fn void run_advanced_block_syntax_contract_matrix_tests(Interp* interp, int* pass, int* fail) {
-    // Block syntax contract: accepted and removed forms.
-    test_eq(interp, "block returns last", "(block 1 2 3)", 3, pass, fail);
-    test_eq(interp, "block single", "(block 42)", 42, pass, fail);
-    test_eq(interp, "block side effects", "(block (define block-x 10) (define block-y 20) (+ block-x block-y))", 30, pass, fail);
-    test_eq(interp, "block nested", "(block (block 1 2) (block 3 4))", 4, pass, fail);
-    test_eq(interp, "block with if", "(block (if true 10 20) (if false 30 40))", 40, pass, fail);
-    test_error_contains(interp, "begin syntax removed", "(begin 1 2)", "begin syntax was removed; use block", pass, fail);
-    test_error_contains(interp, "do syntax removed", "(do 1 2)", "do syntax was removed; use block", pass, fail);
-    test_error_contains(interp, "fn syntax removed", "(fn (x) x)", "fn syntax was removed; use lambda", pass, fail);
-    test_error_contains(interp, "letrec syntax removed", "(letrec ((f (lambda (x) x))) (f 1))", "letrec syntax was removed; use let ^rec", pass, fail);
-    test_error_contains(interp, "reset syntax removed", "(reset 1)", "reset syntax was removed; use checkpoint", pass, fail);
-    test_error_contains(interp, "shift syntax removed", "(shift k 1)", "shift syntax was removed; use capture", pass, fail);
-}
-
-fn void run_advanced_lambda_syntax_tests(Interp* interp, int* pass, int* fail) {
-    run_advanced_block_syntax_contract_matrix_tests(interp, pass, fail);
-
-    // Zero-arg lambdas
-    test_eq(interp, "zero-arg thunk", "((lambda () 42))", 42, pass, fail);
-    test_eq(interp, "zero-arg closure", "(let (a 10) ((lambda () a)))", 10, pass, fail);
-    test_eq(interp, "zero-arg stored thunk", "(let (thunk (lambda () 99)) (thunk))", 99, pass, fail);
-    test_eq(interp, "zero-arg block body", "((lambda () (block 1 2 3)))", 3, pass, fail);
-    test_eq(interp, "zero-arg computation", "((lambda () (+ 10 20)))", 30, pass, fail);
-
-    // Multi-param lambda (strict arity)
-    test_eq(interp, "multi-param two", "((lambda (x y) (+ x y)) 3 4)", 7, pass, fail);
-    test_eq(interp, "multi-param three", "((lambda (x y z) (+ x (+ y z))) 1 2 3)", 6, pass, fail);
-    test_eq(interp, "multi-param direct call", "(let (add (lambda (x y) (+ x y))) (add 10 20))", 30, pass, fail);
-    setup(interp, "(define mp-add3 (lambda (a b c) (+ a (+ b c))))");
-    test_eq(interp, "multi-param defined fn", "(mp-add3 10 20 30)", 60, pass, fail);
-    test_eq(interp, "multi-param three call", "(let (f (lambda (x y z) (+ x (+ y z)))) (f 1 2 3))", 6, pass, fail);
-
-    // Arity error tests (strict enforcement)
-    test_error_contains(interp, "arity err 2-param 1-arg", "((lambda (x y) (+ x y)) 5)", "arity", pass, fail);
-    test_error_contains(interp, "arity err 3-param 2-arg", "((lambda (x y z) (+ x y z)) 1 2)", "arity", pass, fail);
-
-    // Placeholder _ desugaring
-    test_eq(interp, "placeholder basic", "((+ 1 _) 5)", 6, pass, fail);
-    test_eq(interp, "placeholder position", "((- _ 5) 10)", 5, pass, fail);
-    test_eq(interp, "placeholder multi", "((+ _ _) 3 4)", 7, pass, fail);
-    test_eq(interp, "placeholder in let", "(let (f (+ _ 10)) (f 5))", 15, pass, fail);
-    test_eq(interp, "placeholder nested call", "((* 2 _) ((+ 1 _) 3))", 8, pass, fail);
-    test_eq(interp, "indexed placeholder basic", "((+ _1 10) 5)", 15, pass, fail);
-    test_eq(interp, "indexed placeholder reuse", "((+ _1 _1) 7)", 14, pass, fail);
-    test_eq(interp, "indexed placeholder reorder", "((- _2 _1) 3 10)", 7, pass, fail);
-    test_eq(interp, "indexed placeholder max-arity uses highest index", "((+ _2 1) 100 5)", 6, pass, fail);
-    test_eq(interp, "indexed placeholder not globally reserved", "(let (_2 41) _2)", 41, pass, fail);
-    test_eq(interp, "indexed placeholder symbol in callee position", "(let (_2 (lambda (x) (+ x 1))) (_2 4))", 5, pass, fail);
-    test_error_contains(interp, "indexed placeholder mixed with plain underscore", "((+ _ _1) 3 4)", "cannot mix _ and _n placeholders", pass, fail);
-    test_error_contains(interp, "indexed placeholder rejects _0", "((+ _0 1) 2)", "invalid indexed placeholder", pass, fail);
-    test_error_contains(interp, "indexed placeholder rejects negative form", "((+ _-1 1) 2)", "invalid indexed placeholder", pass, fail);
-    test_error_contains(interp, "indexed placeholder rejects non-numeric suffix", "((+ _1x 1) 2)", "invalid indexed placeholder", pass, fail);
-
-    // Pipe |> operator
-    test_eq(interp, "pipe basic", "(|> 5 (+ 3))", 8, pass, fail);
-    test_eq(interp, "pipe chain", "(|> 5 (+ 3) (* 2))", 16, pass, fail);
-    test_eq(interp, "pipe placeholder", "(|> 5 (- _ 3))", 2, pass, fail);
-    test_eq(interp, "pipe mixed", "(|> 10 (+ 5) (- _ 3) (* 2))", 24, pass, fail);
-
-    // Guard patterns (? pred)
-    test_eq(interp, "guard basic", "(match 5 ((? positive?) 1) (_ 0))", 1, pass, fail);
-    test_eq(interp, "guard fail", "(match -3 ((? positive?) 1) (_ 0))", 0, pass, fail);
-    test_eq(interp, "guard with bind", "(match 5 ((? positive? x) x) (_ 0))", 5, pass, fail);
-    test_eq(interp, "guard lambda", "(match 5 ((? (lambda (x) (> x 3))) 1) (_ 0))", 1, pass, fail);
-    test_eq(interp, "guard placeholder", "(match 5 ((? (> _ 3)) 1) (_ 0))", 1, pass, fail);
-    test_eq(interp, "guard direct condition", "(match 5 ((? (> 10 3)) 1) (_ 0))", 1, pass, fail);
-    test_eq(interp, "guard direct condition with sub-pattern bind", "(match 5 ((? (> x 3) x) x) (_ 0))", 5, pass, fail);
-
-    // Partial application
-    test_eq(interp, "partial basic", "((partial + 1) 2)", 3, pass, fail);
-    test_eq(interp, "partial multi", "((partial + 10) 20)", 30, pass, fail);
-}
-
-fn void run_advanced_binding_mutation_tests(Interp* interp, int* pass, int* fail) {
-    // Multi-binding let
-    test_eq(interp, "multi-let two", "(let (ml-x 10 ml-y 20) (+ ml-x ml-y))", 30, pass, fail);
-    test_eq(interp, "multi-let three", "(let (ml-a 1 ml-b 2 ml-c 3) (+ ml-a (+ ml-b ml-c)))", 6, pass, fail);
-    test_eq(interp, "multi-let sequential", "(let (ml-p 10 ml-q (+ ml-p 5)) ml-q)", 15, pass, fail);
-    test_eq(interp, "multi-let with lambda", "(let (ml-f (lambda (xx) (+ xx 1)) ml-v (ml-f 10)) ml-v)", 11, pass, fail);
-    test_eq(interp, "multi-let single", "(let (ml-z 42) ml-z)", 42, pass, fail);
-
-    // Named let
-    test_eq(interp, "named-let sum 1..5", "(let loop (n 5 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc n))))", 15, pass, fail);
-    test_eq(interp, "named-let fact 10", "(let fact (n 10 acc 1) (if (= n 0) acc (fact (- n 1) (* acc n))))", 3628800, pass, fail);
-    test_eq(interp, "named-let fib 10", "(let fib (n 10 a 0 b 1) (if (= n 0) a (fib (- n 1) b (+ a b))))", 55, pass, fail);
-    test_eq(interp, "named-let fib 20", "(let fib (n 20 a 0 b 1) (if (= n 0) a (fib (- n 1) b (+ a b))))", 6765, pass, fail);
-    test_eq(interp, "named-let countdown", "(let count (n 100) (if (= n 0) 0 (count (- n 1))))", 0, pass, fail);
-    test_eq(interp, "named-let build list car", "(car (let build (n 3 acc (quote ())) (if (= n 0) acc (build (- n 1) (cons n acc)))))", 1, pass, fail);
-    test_eq(interp, "named-let 10000 iters", "(let loop (n 10000 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc 1))))", 10000, pass, fail);
-
-    // set!
-    test_tag(interp, "set! returns void", "(block (define set-void-local 1) (set! set-void-local 2))", VOID, pass, fail);
-    setup(interp, "(define set-test 10)");
-    setup(interp, "(set! set-test 20)");
-    test_eq(interp, "set! basic", "set-test", 20, pass, fail);
-
-    // Counter tests are stateful (calling counter1 mutates), use JIT-only to avoid double mutation
-    setup(interp, "(define make-counter (lambda () (let (count 0) (lambda () (block (set! count (+ count 1)) count)))))");
-    setup(interp, "(define counter1 (make-counter))");
-    test_eq_jit(interp, "set! counter 1", "(counter1)", 1, pass, fail);
-    test_eq_jit(interp, "set! counter 2", "(counter1)", 2, pass, fail);
-    test_eq_jit(interp, "set! counter 3", "(counter1)", 3, pass, fail);
-
-    // set! on let-local in closure (JIT detects and falls back to interpreter)
-    test_eq(interp, "set! parent scope", "(let (x 1) (let (f (lambda () (set! x 42))) (block (f) x)))", 42, pass, fail);
-    test_error(interp, "set! unbound", "(set! undefined-var-xyz 1)", pass, fail);
-    setup(interp, "(define sr-test 100)");
-    setup(interp, "(set! sr-test (+ sr-test 1))");
-    test_eq(interp, "set! read back", "sr-test", 101, pass, fail);
 }

@@ -3,7 +3,7 @@
 ;; Idioms demonstrated:
 ;;   coroutine / resume / yield / coroutine? — cooperative event generation
 ;;   checkpoint / capture     — delimited continuations (single-shot capture)
-;;   make-iterator / next / range-from — lazy iterator sequences
+;;   Iterator / next / range-from — lazy iterator sequences
 ;;   delay / force            — deferred computation (lazy moving average)
 ;;   unless                   — guard clauses (skip stale events)
 ;;   assert!                  — validate event timestamp monotonicity
@@ -27,8 +27,7 @@
 ;; quoted lists trigger a dispatch infinite loop — known runtime quirk).
 (define (events/make-ticker symbols base-prices)
   (let (pairs (zip symbols base-prices))
-    (coroutine
-      (lambda ()
+    (Coroutine (lambda ()
         (let loop (i 0 remaining pairs)
           (if (null? remaining)
               (loop (+ i 1) pairs)
@@ -61,11 +60,11 @@
 ;; ── Sliding window via iterators ────────────────────────────────────────────
 
 ;; (events/sliding-window prices window-size) — compute windowed averages.
-;; Uses make-iterator + range-from for lazy index generation.
+;; Uses Iterator + range-from for lazy index generation.
 (define (events/sliding-window prices window-size)
   (let (len (length prices)
         indices (take (- len (- window-size 1))
-                      (iterator (range len))))
+                      (Iterator (range len))))
     (foldl (lambda (acc idx-pair)
              (let (i (car idx-pair)
                    window (take window-size (drop i prices))

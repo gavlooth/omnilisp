@@ -1,7 +1,7 @@
 # Compiler, Parser, and Refactor Structure
 
-Status: `yellow` (major split landed; single active refactor plan is in place, `R2-R5` plus continuation slices `C-AL` landed, extraction slices remain)  
-As of: 2026-03-10
+Status: `green` (major split landed; remaining compiler/parser files are below the active split threshold and this lane is no longer an active work queue)  
+As of: 2026-03-19
 
 ## Canonical Sources
 
@@ -13,7 +13,7 @@ As of: 2026-03-10
 
 - Large monolith files have already been split into area-scoped files (`compiler_*`, `parser_*`, `jit_*`, `tests_*`, `value_*`, `eval_*`).
 - The codebase structure is significantly ahead of older "god-file" descriptions.
-- Active extraction backlog is now centralized in `docs/plans/compiler-parser-refactor-plan.md` with concrete largest-file targets and validation gates.
+- Historical extraction record remains centralized in `docs/plans/compiler-parser-refactor-plan.md`.
 - Active cycle threshold is now locked to modules over `500` LOC, executed in strict largest-first order (`R1` complete).
 - `R2` landed by splitting `compiler_expr_serialize_exprs.c3` into expression-family modules (`compiler_expr_serialize_callable_forms.c3`, `compiler_expr_serialize_definition_forms.c3`) while keeping dispatch in `compiler_expr_serialize_exprs.c3`.
 - `R3` landed by splitting effect lowering from native-call lowering (`compiler_native_effect_compilation_flat_style.c3` + `compiler_native_call_compilation_flat_style.c3`).
@@ -57,8 +57,53 @@ As of: 2026-03-10
 - `R5` continuation slice AJ landed on compiler call split: call arg/list construction helpers moved to `compiler_call_arg_list_helpers.c3`, while `compiler_call_flat.c3` retained call/app entrypoint lowering.
 - `R5` continuation slice AK landed on parser define-attrs split: relation-attribute define helpers moved to `parser_define_relation_attr.c3`, while `parser_define_attrs.c3` retained macro/schema/special define dispatch.
 - `R5` continuation slice AL landed on parser control/effects split: effect-form parse helpers moved to `parser_effect_forms.c3`, while `parser_control_effects.c3` retained quote/and/or/block parsing.
+- `R5` continuation slice AM landed on parser application split: shared call-construction and argument-collection helpers moved to `parser_application_helpers.c3`, while `parser_application.c3` retained application dispatch and placeholder lowering.
+- `R5` continuation slice AN landed on parser type-defs split: shared copy/compound/variance helpers moved to `parser_type_defs_helpers.c3`, while `parser_type_defs.c3` and `parser_type_defs_union.c3` retained the form-specific entrypoints.
+- `R5` continuation slice AO landed on parser datum split: recursive list/template collection walkers moved to `parser_datum_collections.c3`, while `parser_datum.c3` retained datum/template constructors and dispatch.
+- `R5` continuation slice AP landed on compiler temp type-forms split: direct AOT type lowering and annotation emit helpers moved to `compiler_temp_type_forms.c3`, while `compiler_temp_misc_forms.c3` retained resolve/index and define bridge helpers.
+- `R5` continuation slice AQ landed on compiler temp type-forms split: shared emit helpers moved to `compiler_temp_type_forms_helpers.c3`, while `compiler_temp_type_forms.c3` retained direct type-form lowering.
+- `R5` continuation slice AR landed on compiler temp type-forms split: direct type-definition lowering moved to `compiler_temp_type_forms_defs.c3`, while `compiler_temp_type_forms.c3` retained typed-define and type-form dispatch.
+- `R5` continuation slice AS landed on parser expr-atoms split: dot-accessor and path helpers moved to `parser_expr_atoms_accessors.c3`, while `parser_expr_atoms.c3` retained literal parsing and `parse_expr(...)` dispatch.
+- `R5` continuation slice AT landed on primitive-hash split: collection/math/bitwise primitive registrations moved to `compiler_primitive_variable_hash_table_domains_collections.c3`, while `compiler_primitive_variable_hash_table_domains.c3` retained the remaining primitive registrations.
+- `R5` continuation slice AU landed on compiler temp type-forms split: alias/effect lowering moved to `compiler_temp_type_forms_defs_misc.c3`, while `compiler_temp_type_forms_defs.c3` retained type and abstract lowering.
+- `R5` continuation slice AV landed on parser patterns split: string/sequence/dict/symbol pattern builders moved to `parser_patterns_values.c3`, while `parser_patterns.c3` retained pattern dispatch and `parser_patterns_paren.c3` retained paren-pattern helpers.
+- `R5` continuation slice AW landed on parser collection-literals split: dict/array literal builders moved to `parser_collection_literals_builders.c3`, while `parser_collection_literals.c3` retained postfix index access and lookup-accessor construction.
+- `R5` continuation slice AX landed on compiler output-helpers split: symbol sanitization and primitive-reference helpers moved to `compiler_output_symbol_helpers.c3`, while `compiler_output_helpers.c3` retained generic output emission helpers.
+- `R5` continuation slice AY landed on parser FFI split: FFI signature helpers moved to `parser_ffi_helpers.c3`, while `parser_ffi.c3` retained FFI entrypoints.
+- `R5` continuation batch BB landed three more behavior-preserving extractions:
+  - shorthand/normal define parsing moved to `parser_define_core_helpers_define.c3`,
+  - program parsing and analysis setup moved to `compiler_program_pipeline_helpers.c3`,
+  - abstract-type lowering moved to `compiler_temp_type_forms_defs_abstract.c3`.
+- `R5` continuation slice BC landed on compiler call/explain split:
+  - effect-signal and resolve explain lowering moved to `compiler_call_explain_effect_helpers.c3`,
+  - `compiler_call_explain_helpers.c3` now stays as the selector-dispatch and `compile_explain_flat(...)` entrypoint layer.
+- `R5` continuation slice BD landed on compiler code-emission split:
+  - lambda-signature, parameter-unpack, capture-binding, and body-return helpers moved to `compiler_code_emission_lambda_defs.c3`,
+  - `compiler_code_emission.c3` now stays as the prelude/capture-struct and top-level lambda-definition emission layer.
+- `R5` continuation slice BE landed on compiler temp-core split:
+  - generic temp declaration/reference/nil/leaf helpers moved to `compiler_temp_helpers.c3`,
+  - `compiler_temp_core.c3` now stays as the temp-id allocator plus non-tail and tail temp-dispatch layer.
+- `R5` continuation slice BF landed on compiler native-call split:
+  - variable and path lowering moved to `compiler_native_var_path_compilation_flat_style.c3`,
+  - `compiler_native_call_compilation_flat_style.c3` now stays as the lambda-lowering file.
+- `R5` continuation slice BG landed on compiler mutable-capture split:
+  - recursive `set!` / nested-lambda capture walkers moved to `compiler_mutable_capture_detection_walk.c3`,
+  - `compiler_mutable_capture_detection.c3` now stays as the `is_mutable_capture(...)` entrypoint layer.
+- `R5` continuation slice BH landed on compiler callable-serializer split:
+  - handle and match serialization moved to `compiler_expr_serialize_control_match_forms.c3`,
+  - `compiler_expr_serialize_callable_forms.c3` now stays as the lambda/let/call serializer file.
+- `R5` continuation slice BI landed on parser expr-head split:
+  - symbol-head special-form helpers moved to `parser_expr_head_symbol_forms.c3`,
+  - `parser_expr_head_forms.c3` now stays as the `parse_list_form(...)` dispatch file.
+- `R5` continuation slice BJ landed on parser lexer symbol/number split:
+  - float-literal scanning helpers moved to `parser_lexer_number_helpers.c3`,
+  - `parser_lexer_symbol_number.c3` now stays as the symbol and integer scanner file.
+- Compiler/parser split queue is now closed:
+  - the remaining largest compiler/parser files are in the `115–121` LOC range,
+  - they are below the threshold where more splitting is paying for itself,
+  - further work in this area should be correctness or feature driven, not queue-driven file splitting.
 - Plan-governance closure is now explicit:
-  - one active compiler/parser tracker remains (`docs/plans/compiler-parser-refactor-plan.md`),
+  - one historical compiler/parser tracker remains (`docs/plans/compiler-parser-refactor-plan.md`),
   - historical plan files (`docs/plans/aot-unification.md`, `docs/plans/library-gaps-todo.md`) are reference-only and not active checklist surfaces for compiler/parser splits.
 
 ## Known Drift
@@ -70,7 +115,6 @@ As of: 2026-03-10
 
 ## Next Steps
 
-1. Continue largest-first extraction with the next selected target (`src/lisp/parser_application.c3`) using behavior-preserving slices only.
-2. Keep extraction slices behavior-preserving and verify each with build + targeted runtime gates.
-3. Re-run inventory after each landed slice and keep largest-first progression explicit in the active plan.
-4. Record each completed refactor slice in `memory/CHANGELOG.md` and refresh this area summary.
+1. Keep this area closed unless a future compiler/parser file grows materially again or a correctness change justifies a structural move.
+2. Treat `docs/plans/compiler-parser-refactor-plan.md` as a historical execution record, not an active queue.
+3. If compiler/parser structure changes materially in the future, update `memory/CHANGELOG.md` first and then refresh this area summary.

@@ -14,6 +14,13 @@ Future feature demonstrations should use `finwatch` by default.
 - Purpose: practical value screener UI for filtering stocks by valuation, quality,
   leverage, and margin of safety criteria.
 
+### Finwatch Tutorial Module
+
+- `examples/finwatch/alerts.omni`
+- `examples/finwatch/alerts_tutorial_smoke.omni`
+- Purpose: minimal effect-handler + dispatch tutorial for price and analytics
+  alerts, with a collector/log handler pair.
+
 ## Legacy Compatibility Example
 
 - `examples/deduce_crud_server.omni`

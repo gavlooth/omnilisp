@@ -180,6 +180,28 @@ fn void emit_pass_literal(char[] msg) @inline {
 
 alias IsolatedTestGroupFn = fn void(Interp* interp, int* pass, int* fail);
 
+fn bool advanced_group_trace_enabled() @inline {
+    return test_c_getenv("OMNI_ADVANCED_GROUP_TRACE") != null;
+}
+
+fn bool advanced_group_filter_matches(char[] name) {
+    char* filter = test_c_getenv("OMNI_ADVANCED_GROUP_FILTER");
+    if (filter == null) return true;
+
+    usz len = 0;
+    while (filter[len] != 0) len++;
+    if (len != name.len) return false;
+    for (usz i = 0; i < len; i++) {
+        if (filter[i] != name[i]) return false;
+    }
+    return true;
+}
+
+fn void emit_advanced_group_trace(char[] phase, char[] name) {
+    if (!advanced_group_trace_enabled()) return;
+    io::printfn("OMNI_ADVANCED_GROUP_TRACE %s %s", (ZString)phase, (ZString)name);
+}
+
 fn void run_test_global_boundary_reset() {
     // Keep test groups independent from prior JIT/effect/promotion global state.
     if (g_jit_state_count > 0) {
@@ -207,21 +229,28 @@ fn void run_group_isolated(IsolatedTestGroupFn group_fn, int* pass, int* fail) {
     run_test_global_boundary_reset();
 }
 
+fn void run_named_group_isolated(char[] name, IsolatedTestGroupFn group_fn, int* pass, int* fail) {
+    if (!advanced_group_filter_matches(name)) return;
+    emit_advanced_group_trace("begin", name);
+    run_group_isolated(group_fn, pass, fail);
+    emit_advanced_group_trace("end", name);
+}
+
 fn void run_advanced_tests_isolated(int* pass, int* fail) {
     // Keep advanced subgroup definitions from accumulating in one long-lived interpreter.
-    run_group_isolated(&run_advanced_core_semantics_tests, pass, fail);
-    run_group_isolated(&run_advanced_unicode_iterator_tests, pass, fail);
-    run_group_isolated(&run_advanced_logic_tco_tests, pass, fail);
-    run_group_isolated(&run_advanced_effect_continuation_tests, pass, fail);
-    run_group_isolated(&run_advanced_runtime_control_tests, pass, fail);
-    run_group_isolated(&run_advanced_lambda_syntax_tests, pass, fail);
-    run_group_isolated(&run_advanced_binding_mutation_tests, pass, fail);
-    run_group_isolated(&run_advanced_macro_hygiene_tests, pass, fail);
-    run_group_isolated(&run_advanced_collections_module_tests, pass, fail);
-    run_group_isolated(&run_advanced_stdlib_numeric_tests, pass, fail);
-    run_group_isolated(&run_advanced_type_dispatch_mutation_chain_tests, pass, fail);
-    run_group_isolated(&run_advanced_effect_union_limit_tests, pass, fail);
-    run_group_isolated(&run_advanced_ffi_system_tests, pass, fail);
+    run_named_group_isolated("advanced-core-semantics", &run_advanced_core_semantics_tests, pass, fail);
+    run_named_group_isolated("advanced-unicode-iterator", &run_advanced_unicode_iterator_tests, pass, fail);
+    run_named_group_isolated("advanced-logic-tco", &run_advanced_logic_tco_tests, pass, fail);
+    run_named_group_isolated("advanced-effect-continuation", &run_advanced_effect_continuation_tests, pass, fail);
+    run_named_group_isolated("advanced-runtime-control", &run_advanced_runtime_control_tests, pass, fail);
+    run_named_group_isolated("advanced-lambda-syntax", &run_advanced_lambda_syntax_tests, pass, fail);
+    run_named_group_isolated("advanced-binding-mutation", &run_advanced_binding_mutation_tests, pass, fail);
+    run_named_group_isolated("advanced-macro-hygiene", &run_advanced_macro_hygiene_tests, pass, fail);
+    run_named_group_isolated("advanced-collections-module", &run_advanced_collections_module_tests, pass, fail);
+    run_named_group_isolated("advanced-stdlib-numeric", &run_advanced_stdlib_numeric_tests, pass, fail);
+    run_named_group_isolated("advanced-type-dispatch-mutation-chain", &run_advanced_type_dispatch_mutation_chain_tests, pass, fail);
+    run_named_group_isolated("advanced-effect-union-limit", &run_advanced_effect_union_limit_tests, pass, fail);
+    run_named_group_isolated("advanced-ffi-system", &run_advanced_ffi_system_tests, pass, fail);
 }
 
 fn void run_advanced_type_dispatch_mutation_chain_tests(Interp* interp, int* pass, int* fail) {

@@ -52,3 +52,10 @@ OMNI_BENCH_SUMMARY suite=scheduler_offload_hot_path iters=8192 queue_ms=1 queue_
 - This benchmark is env-gated and does not run in default scheduler tests.
 - The HTTP/TLS lanes intentionally use deterministic fast-fail fixtures to keep
   timing stable while still exercising the offload worker dispatch surface.
+
+## Revalidation (2026-03-18)
+
+- Container-capped rerun on the current tree remained green.
+- Observed benchmark summary on the rerun:
+  - `scheduler_offload_hot_path`: `iters=8192 queue_ms=0 queue_ok=8192 queue_pending=0 queue_enqueue_delta=8192 queue_fail_delta=0 completion_ms=2 completion_ok=8192 completion_alloc_fail=0 http_ms=2 http_ok=8192 http_shared_fail=0 tls_ms=0 tls_ok=8192`
+- The rerun completed with `Unified Tests: 89 passed, 0 failed`.

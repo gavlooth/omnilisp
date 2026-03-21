@@ -54,7 +54,6 @@ Functions and macros defined in `stdlib/stdlib.lisp`.
 | Name | Signature | Description |
 |------|-----------|-------------|
 | `Iterator` | `(Iterator coll)` | Canonical iterator constructor/conversion surface |
-| `iterator` | `(iterator coll)` | Compatibility wrapper around `Iterator` |
 | `range-from` | `(range-from n)` | Infinite: n, n+1, n+2... |
 | `repeat` | `(repeat x)` | Infinite repetition |
 | `cycle` | `(cycle coll)` | Infinite cycle |
@@ -73,13 +72,6 @@ Force an iterator with constructors: `(List it)` or `(Array it)`.
 | `default` | `(default v fallback)` | Return v if non-nil, else fallback |
 | `parse` | `(parse format src [opts])` | Thin dispatched format parse helper (`'json`, `'toml`, `'csv`) |
 | `emit` | `(emit format value [opts])` | Thin dispatched format emit helper (`'json`, `'json-pretty`, `'csv`) |
-
-### Association Lists
-
-| Name | Signature | Description |
-|------|-----------|-------------|
-| `assoc` | `(assoc key alist)` | Find pair with key |
-| `assoc-ref` | `(assoc-ref key alist)` | Get value for key |
 
 ### Error Handling
 

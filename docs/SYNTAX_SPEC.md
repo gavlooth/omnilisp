@@ -188,8 +188,6 @@ Three branches required (no two-branch form).
 ```
 
 `set!` returns `Void` on successful mutation.
-`array-set!` and `dict-set!` remain valid compatibility aliases.
-
 `set!` dispatch target matrix:
 
 | Surface | Dispatch target | Success result | Invalid-target behavior |
@@ -342,6 +340,7 @@ Path syntax:
 
 ```lisp
 point.x           ;; struct field access
+config.port       ;; dictionary symbol-key access
 line.start.y      ;; nested field access
 pair.car          ;; cons cell car access
 pair.cdr          ;; cons cell cdr access

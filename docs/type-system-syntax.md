@@ -80,11 +80,11 @@ Current rule:
   the constructor in value position,
 - selected builtin/runtime types may also expose callable constructor/coercion
   behavior through the same symbol,
-- descriptive names are canonical (`Integer`, `Boolean`, `Dictionary`), while
-  shorter spellings such as `Int`, `Bool`, and `Dict` remain compatibility
-  aliases,
-- lowercase helpers such as `iterator` may remain as compatibility wrappers,
-  but the type symbol is the canonical constructor surface when one exists.
+- descriptive names are canonical (`Integer`, `Boolean`, `Dictionary`),
+- shorthand names only exist when explicitly approved; the current builtin
+  exception is `Dict` alongside canonical `Dictionary`,
+- no lowercase compatibility wrappers are part of the canonical constructor
+  surface.
 
 Current exception note:
 

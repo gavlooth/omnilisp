@@ -89,19 +89,20 @@
 
 ### 1.7 `and` — Short-Circuit And
 ```lisp
-(and left right)
+(and expr...)
 ```
-- Returns `left` if falsy (without evaluating `right`)
-- Otherwise returns `right`
-- Binary only (not variadic)
-- Examples: `(and true 42)` => 42, `(and nil 42)` => nil
+- Returns the first falsy value without evaluating the remaining expressions
+- If all expressions are truthy, returns the last one
+- Empty form returns `true`
+- Examples: `(and true 42)` => 42, `(and nil 42)` => nil, `(and 1 2 3)` => 3
 
 ### 1.8 `or` — Short-Circuit Or
 ```lisp
-(or left right)
+(or expr...)
 ```
-- Returns `left` if truthy (without evaluating `right`)
-- Otherwise returns `right`
+- Returns the first truthy value without evaluating the remaining expressions
+- If all expressions are falsy, returns the last one
+- Empty form returns `nil`
 - Binary only (not variadic)
 - Examples: `(or 42 99)` => 42, `(or nil 99)` => 99
 
@@ -123,7 +124,6 @@
 - Error if variable is not defined
 - 3+ arg form dispatches generic collection updates (currently `Array`/`Dictionary`)
 - Returns `Void` on success
-- `array-set!` and `dict-set!` remain compatibility aliases
 
 ### 1.11 `quasiquote` — Template Expressions
 ```lisp
@@ -220,8 +220,8 @@
 (remove! d key)          ; dict key removal
 
 ; Mutation
-(array-set! arr idx val) ; set array element
-(dict-set! d key val)    ; set dict key-value
+(set! arr idx val) ; set array element
+(set! d key val)    ; set dict key-value
 (set! pair.car val)      ; cons cell car mutation
 (set! pair.cdr val)      ; cons cell cdr mutation
 
@@ -300,9 +300,9 @@ Dynamic element count per pattern (no fixed limit).
 | `primitive` | PRIMITIVE | Built-in function | `+`, `car` |
 | `partial_prim` | PARTIAL_PRIM | Partially applied primitive | `(+ 3)` |
 | `error` | ERROR | Error value | `(error "oops")` |
-| `dictionary` | HASHMAP | Mutable hash table | `{'a 1}`, `(Dictionary 'a 1)` |
-| `array` | ARRAY | Mutable dynamic array | `[1 2 3]`, `(Array 1 2 3)` |
-| `coroutine` | COROUTINE | User-level coroutine | `(coroutine (lambda () body))` |
+| `Dictionary` | HASHMAP | Mutable hash table | `{'a 1}`, `(Dictionary 'a 1)` |
+| `Array` | ARRAY | Mutable dynamic array | `[1 2 3]`, `(Array 1 2 3)` |
+| `Coroutine` | COROUTINE | User-level coroutine | `(Coroutine (lambda () body))` |
 | `ffi_handle` | FFI_HANDLE | Foreign library handle | `(define [ffi lib] libc "libc.so.6")` |
 | `instance` | INSTANCE | User-defined type instance | `(Point 3 4)` |
 | `method_table` | METHOD_TABLE | Multiple dispatch table | internal |
@@ -340,13 +340,14 @@ matrix.[i].[j]   ; chained indexing
 ### 4.3 Path Notation (Field Access)
 ```lisp
 point.x                  ; struct field access
+config.port              ; dictionary symbol-key access
 person.address.city      ; chained field access
 pair.car                 ; cons cell car access
 pair.cdr                 ; cons cell cdr access
 ```
 - Struct instances use field names
+- Dictionaries use symbol keys
 - Cons cells support `.car` and `.cdr` as special fields
-- Other values fall back to association list (alist) lookup
 - Up to 8 segments deep
 
 ### 4.4 Quote Shorthand
@@ -486,13 +487,13 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 ### 5.11 Coroutine Primitives (4)
 | Primitive | Arity | Description |
 |-----------|-------|-------------|
-| `coroutine` | 1 | Create a coroutine from a zero-arg thunk |
+| `Coroutine` | 1 | Create a coroutine from a zero-arg thunk |
 | `resume` | 1 | Resume a suspended coroutine, returns yielded or final value |
 | `yield` | 1 | Yield a value from inside a coroutine, suspending execution |
 | `coroutine?` | 1 | Test if value is a coroutine |
 
 ```lisp
-(define f (coroutine (lambda () (yield 1) (yield 2) 3)))
+(define f (Coroutine (lambda () (yield 1) (yield 2) 3)))
 (resume f)  ;; => 1
 (resume f)  ;; => 2
 (resume f)  ;; => 3

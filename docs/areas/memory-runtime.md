@@ -1,7 +1,7 @@
 # Memory and Runtime
 
-Status: `green` (boundary hardening runtime closure and L5 sync gates are closed)  
-As of: 2026-03-09
+Status: `green` (boundary hardening, bounded runtime/JIT gates, and release-signal cleanup are all currently validated)  
+As of: 2026-03-19
 
 ## Canonical Sources
 
@@ -29,7 +29,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `scripts/check_boundary_facade_usage.sh`
   - `scripts/check_boundary_change_policy.sh`
   - `scripts/run_boundary_hardening.sh`
-- Verification status for this hardening wave is current:
+- Focused runtime follow-up guard scripts also exist:
+  - `scripts/check_scheduler_state_guards.sh`
+  - `scripts/check_jit_env_scope_guards.sh`
+- Verification status for the already-closed hardening profile remains current:
   - `c3c build` passed.
   - `c3c build --sanitize=address` passed.
   - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1678/0`, `compiler: 85/0`).
@@ -61,7 +64,12 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
 
 - `memory/DESTINATION_ARENA_PLAN.md` closure language must remain synchronized with changelog-backed validation.
 - Historical ASAN repro artifacts are retained for forensics; current reruns are fully green for the active hardening profile.
-- Remaining updates are maintenance/synchronization hygiene, not runtime hardening correctness gaps.
+- `scripts/check_jit_env_scope_guards.sh` is now the narrow JIT env/scope regression gate; it is green again after the iterator closure-boundary fix and the later continuation/effect replay repair.
+- The bounded `basic` slice is green again after aligning explicit JIT parity checks with the top-level finalize/promote contract used by `run(...)`.
+- The former `advanced` continuation/effect failure cluster is fully closed:
+  - exact bounded repros are green,
+  - the full bounded `advanced` slice is green again,
+  - and the container stack-budget mismatch that used to make the runner look unstable is fixed in `scripts/container_exec.sh`.
 - Telemetry visibility for boundary policy gates is now tracked in verbose dumps (`graph_audit_invoked`, `graph_audit_skipped_rate`, `graph_audit_skipped_max_roots`) so hot-path scan suppression is observable.
 
 Repro artifacts:
@@ -80,9 +88,12 @@ Repro artifacts:
 
 ## Next Steps
 
-1. Keep `memory/CHANGELOG.md`, `TODO.md`, and `memory/DESTINATION_ARENA_PLAN.md` closure wording synchronized per landing.
-2. Keep `scripts/run_boundary_hardening.sh` and policy checks as required gate runs for boundary-sensitive changes.
-3. Continue pruning stale fallback-era wording in adjacent area docs as follow-on maintenance proceeds.
+1. Use `scripts/run_validation_status_summary.sh build/validation_status_summary.json` as the broad bounded-gate snapshot before drilling into narrower runtime guards.
+2. Keep `memory/CHANGELOG.md`, `TODO.md`, and `memory/DESTINATION_ARENA_PLAN.md` closure wording synchronized per landing.
+3. Keep `scripts/run_boundary_hardening.sh` and policy checks as required gate runs for boundary-sensitive changes.
+4. Use `scripts/check_scheduler_state_guards.sh` and `scripts/check_jit_env_scope_guards.sh` as the narrow release-signal reruns before escalating to broader runtime slices.
+5. Treat any new bounded `advanced`, `basic`, or `memory-lifetime-smoke` regression as a fresh blocker instead of reopening stale historical notes here.
+6. Keep runtime modularization queue updates in sync with `docs/plans/runtime-modularization-split-2026-03-11.md` and `memory/CHANGELOG.md` when deduce/runtime test splits land.
 
 ## Concurrency Boundary Plan Alignment
 

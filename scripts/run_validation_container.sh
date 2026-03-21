@@ -112,9 +112,34 @@ if [[ -n "$OMNI_VALIDATION_TOOLCHAIN_ROOT" ]]; then
   fi
 fi
 
-if [[ -n "${OMNI_VALIDATION_EXTRA_ARGS:-}" ]]; then
+validation_extra="${OMNI_VALIDATION_EXTRA_ARGS:-}"
+if [[ -f /usr/include/yyjson.h && "$validation_extra" != *"/usr/include/yyjson.h"* ]]; then
+  validation_extra="${validation_extra} --mount type=bind,src=/usr/include/yyjson.h,dst=/usr/include/yyjson.h,readonly"
+fi
+for header in /usr/include/bearssl*.h; do
+  if [[ -f "$header" && "$validation_extra" != *"$header"* ]]; then
+    validation_extra="${validation_extra} --mount type=bind,src=${header},dst=${header},readonly"
+  fi
+done
+if [[ -f /usr/include/uv.h && "$validation_extra" != *"/usr/include/uv.h"* ]]; then
+  validation_extra="${validation_extra} --mount type=bind,src=/usr/include/uv.h,dst=/usr/include/uv.h,readonly"
+fi
+if [[ -d /usr/include/uv && "$validation_extra" != *"/usr/include/uv,dst=/usr/include/uv"* ]]; then
+  validation_extra="${validation_extra} --mount type=bind,src=/usr/include/uv,dst=/usr/include/uv,readonly"
+fi
+if [[ -f /usr/include/ffi.h && "$validation_extra" != *"/usr/include/ffi.h"* ]]; then
+  validation_extra="${validation_extra} --mount type=bind,src=/usr/include/ffi.h,dst=/usr/include/ffi.h,readonly"
+fi
+if [[ -e /usr/lib/libreplxx.so.0 && "$validation_extra" != *"/usr/lib/libreplxx.so.0"* ]]; then
+  validation_extra="${validation_extra} --mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly"
+fi
+
+if [[ -n "$validation_extra" ]]; then
+  # Trim leading whitespace from concatenation flow above.
+  # shellcheck disable=SC2001
+  validation_extra="$(echo "$validation_extra" | sed 's/^ *//')"
   # shellcheck disable=SC2206
-  extra_args=(${OMNI_VALIDATION_EXTRA_ARGS})
+  extra_args=(${validation_extra})
   run_cmd+=("${extra_args[@]}")
 fi
 

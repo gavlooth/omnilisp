@@ -54,6 +54,29 @@ When implementing or reviewing features, preserve these constraints:
   - closure capture/env copy boundary,
   - destruction path (no UAF/double-free).
 
+## Surface Naming and Alias Policy
+
+Treat pre-alpha language surface cleanup as a design-sharpening phase, not a
+compatibility-preservation phase.
+
+- Default to one canonical language-facing name per concept.
+- Do not keep compatibility aliases "temporarily" unless the owner explicitly
+  asks for a migration window.
+- Do not add shorthand spellings unless the owner explicitly approves them.
+- Prefer descriptive non-abbreviated names for canonical language-facing
+  constructors, types, and operations.
+- Do not import borrowed vocabulary from other languages just because it is
+  familiar; first justify the capability gap in Omni terms.
+- When touching an area with legacy aliases, prefer removing non-canonical
+  spellings rather than documenting both.
+
+Current explicit exceptions approved by the owner:
+
+- `Dictionary` is the canonical dictionary constructor/type name.
+- `Dict` is an allowed shorthand alias for `Dictionary`.
+
+When naming direction is ambiguous, stop and ask instead of guessing.
+
 ## Ownership Drift Guardrails (Required)
 
 Use this as a hard gate before merging memory/lifetime changes:
@@ -112,6 +135,9 @@ Follow `docs/C3_STYLE.md`. Especially:
 
 - Apply safe, non-behavioral, non-hacky patches automatically without asking for
   confirmation.
+- When backlog items or code paths are independent, dispatch as much work in
+  parallel as is safely possible instead of serializing it. Keep workers scoped
+  to disjoint files, lanes, or review slices so they do not trample each other.
 - Only pause for explicit confirmation when:
   - the owner explicitly asks for review-before-apply,
   - the action is destructive/high-risk (for example history rewrite or broad

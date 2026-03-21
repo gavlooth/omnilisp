@@ -287,6 +287,137 @@ fn void run_deduce_relation_attr_typed_role_schema_test(Interp* interp, int* pas
     }
 }
 
+fn void run_deduce_relation_attr_unique_role_schema_test(Interp* interp, int* pass, int* fail) {
+    SymbolId rel_sym = interp.symbols.intern("rel-attr-unique");
+    EvalResult r = run(
+        "(block "
+        "  (define ddb-rel-unique (deduce 'open 'memory)) "
+        "  (define [relation ddb-rel-unique] rel-attr-unique "
+        "    (^Integer id) "
+        "    (unique ^String email) "
+        "    (index ^String dept)) "
+        "  ddb-rel-unique)",
+        interp
+    );
+
+    bool ok = !r.error.has_error &&
+              r.value != null &&
+              r.value.tag == FFI_HANDLE &&
+              r.value.ffi_val != null &&
+              r.value.ffi_val.lib_handle != null;
+    if (ok) {
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        DeduceRelationSchema* schema = deduce_db_lookup_relation_schema(db, rel_sym);
+        usz[1] unique_col = { 1 };
+        usz[1] index_col = { 2 };
+        ok = schema != null &&
+             schema.arity == 3 &&
+             schema.unique_column == interp.symbols.intern("email") &&
+             deduce_rule_test_schema_has_index(schema, unique_col[..], true) &&
+             deduce_rule_test_schema_has_index(schema, index_col[..], false);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce [relation] unique role adds enforced unique index");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce [relation] unique role adds enforced unique index (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printn("[FAIL] deduce [relation] unique role adds enforced unique index");
+        }
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_relation_attr_composite_unique_role_schema_test(Interp* interp, int* pass, int* fail) {
+    SymbolId rel_sym = interp.symbols.intern("rel-attr-unique-composite");
+    EvalResult r = run(
+        "(block "
+        "  (define ddb-rel-unique-composite (deduce 'open 'memory)) "
+        "  (define [relation ddb-rel-unique-composite] rel-attr-unique-composite "
+        "    (^Integer id) "
+        "    (unique ^String email) "
+        "    (unique ^String dept)) "
+        "  ddb-rel-unique-composite)",
+        interp
+    );
+
+    bool ok = !r.error.has_error &&
+              r.value != null &&
+              r.value.tag == FFI_HANDLE &&
+              r.value.ffi_val != null &&
+              r.value.ffi_val.lib_handle != null;
+    if (ok) {
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        DeduceRelationSchema* schema = deduce_db_lookup_relation_schema(db, rel_sym);
+        usz[2] unique_cols = { 1, 2 };
+        ok = schema != null &&
+             schema.arity == 3 &&
+             schema.unique_column == (SymbolId)0 &&
+             schema.unique_column_count == 2 &&
+             schema.unique_columns != null &&
+             schema.unique_columns[0] == interp.symbols.intern("email") &&
+             schema.unique_columns[1] == interp.symbols.intern("dept") &&
+             deduce_rule_test_schema_has_index(schema, unique_cols[..], true);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce [relation] composite unique role adds enforced composite index");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce [relation] composite unique role adds enforced composite index (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printn("[FAIL] deduce [relation] composite unique role adds enforced composite index");
+        }
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_relation_attr_reference_role_schema_test(Interp* interp, int* pass, int* fail) {
+    SymbolId rel_sym = interp.symbols.intern("rel-attr-reference");
+    EvalResult r = run(
+        "(block "
+        "  (define ddb-rel-reference (deduce 'open 'memory)) "
+        "  (define [relation ddb-rel-reference] users (key id) (name)) "
+        "  (define [relation ddb-rel-reference] rel-attr-reference "
+        "    (ref users id ^Integer user-id) "
+        "    (^String action)) "
+        "  ddb-rel-reference)",
+        interp
+    );
+
+    bool ok = !r.error.has_error &&
+              r.value != null &&
+              r.value.tag == FFI_HANDLE &&
+              r.value.ffi_val != null &&
+              r.value.ffi_val.lib_handle != null;
+    if (ok) {
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        DeduceRelationSchema* schema = deduce_db_lookup_relation_schema(db, rel_sym);
+        ok = schema != null &&
+             schema.arity == 2 &&
+             schema.reference_constraint_count == 1 &&
+             schema.reference_constraints != null &&
+             schema.reference_constraints[0].local_column == interp.symbols.intern("user-id") &&
+             schema.reference_constraints[0].target_relation == interp.symbols.intern("users") &&
+             schema.reference_constraints[0].target_column == interp.symbols.intern("id");
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce [relation] ref role records enforced reference metadata");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce [relation] ref role records enforced reference metadata (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printn("[FAIL] deduce [relation] ref role records enforced reference metadata");
+        }
+        (*fail)++;
+    }
+}
+
 fn void run_deduce_relation_attr_combined_role_test(Interp* interp, int* pass, int* fail) {
     SymbolId rel_sym = interp.symbols.intern("rel-attr-combined");
     EvalResult r = run(
@@ -329,112 +460,226 @@ fn void run_deduce_relation_attr_combined_role_test(Interp* interp, int* pass, i
 }
 
 fn void run_deduce_command_void_return_tests(Interp* interp, int* pass, int* fail) {
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define db-vfact (deduce 'open 'memory)) "
-            "  (define [relation db-vfact] rel-vfact (name) (age)) "
-            "  (deduce 'fact! rel-vfact \"Alice\" 30))",
-            interp
-        );
-        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
-            emit_pass_literal("[PASS] deduce fact! returns Void");
-            (*pass)++;
-        } else {
-            io::printfn("[FAIL] deduce fact! returns Void (tag=%d)", r.value != null ? (int)r.value.tag : -1);
-            (*fail)++;
-        }
-    }
+    deduce_test_expect_void(
+        interp,
+        "(block "
+        "  (define db-vfact (deduce 'open 'memory)) "
+        "  (define [relation db-vfact] rel-vfact (name) (age)) "
+        "  (deduce 'fact! rel-vfact \"Alice\" 30))",
+        "[PASS] deduce fact! returns Void",
+        "[FAIL] deduce fact! returns Void (tag=%d)",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define db-vretract (deduce 'open 'memory)) "
-            "  (define [relation db-vretract] rel-vretract (name) (age)) "
-            "  (deduce 'fact! rel-vretract \"Alice\" 30) "
-            "  (deduce 'retract! rel-vretract \"Alice\" 30))",
-            interp
-        );
-        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
-            emit_pass_literal("[PASS] deduce retract! returns Void");
-            (*pass)++;
-        } else {
-            io::printfn("[FAIL] deduce retract! returns Void (tag=%d)", r.value != null ? (int)r.value.tag : -1);
-            (*fail)++;
-        }
-    }
+    deduce_test_expect_void(
+        interp,
+        "(block "
+        "  (define db-vretract (deduce 'open 'memory)) "
+        "  (define [relation db-vretract] rel-vretract (name) (age)) "
+        "  (deduce 'fact! rel-vretract \"Alice\" 30) "
+        "  (deduce 'retract! rel-vretract \"Alice\" 30))",
+        "[PASS] deduce retract! returns Void",
+        "[FAIL] deduce retract! returns Void (tag=%d)",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define db-vcommit (deduce 'open 'memory)) "
-            "  (define [relation db-vcommit] rel-vcommit (name) (age)) "
-            "  (define tx (deduce 'block db-vcommit)) "
-            "  (deduce 'fact! tx rel-vcommit \"Alice\" 30) "
-            "  (deduce 'commit tx))",
-            interp
-        );
-        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
-            emit_pass_literal("[PASS] deduce commit returns Void");
-            (*pass)++;
-        } else {
-            io::printfn("[FAIL] deduce commit returns Void (tag=%d)", r.value != null ? (int)r.value.tag : -1);
-            (*fail)++;
-        }
-    }
+    deduce_test_expect_void(
+        interp,
+        "(block "
+        "  (define db-vcommit (deduce 'open 'memory)) "
+        "  (define [relation db-vcommit] rel-vcommit (name) (age)) "
+        "  (define tx (deduce 'block db-vcommit)) "
+        "  (deduce 'fact! tx rel-vcommit \"Alice\" 30) "
+        "  (deduce 'commit tx))",
+        "[PASS] deduce commit returns Void",
+        "[FAIL] deduce commit returns Void (tag=%d)",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define db-vabort (deduce 'open 'memory)) "
-            "  (define [relation db-vabort] rel-vabort (name) (age)) "
-            "  (define tx (deduce 'block db-vabort 'read)) "
-            "  (deduce 'abort tx))",
-            interp
-        );
-        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
-            emit_pass_literal("[PASS] deduce abort returns Void");
-            (*pass)++;
-        } else {
-            io::printfn("[FAIL] deduce abort returns Void (tag=%d)", r.value != null ? (int)r.value.tag : -1);
-            (*fail)++;
-        }
-    }
+    deduce_test_expect_void(
+        interp,
+        "(block "
+        "  (define db-vabort (deduce 'open 'memory)) "
+        "  (define [relation db-vabort] rel-vabort (name) (age)) "
+        "  (define tx (deduce 'block db-vabort 'read)) "
+        "  (deduce 'abort tx))",
+        "[PASS] deduce abort returns Void",
+        "[FAIL] deduce abort returns Void (tag=%d)",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define db-vclear (deduce 'open 'memory)) "
-            "  (define [relation db-vclear] rel-vclear (name) (age)) "
-            "  (deduce 'fact! rel-vclear \"Alice\" 30) "
-            "  (deduce 'clear! rel-vclear))",
-            interp
-        );
-        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
-            emit_pass_literal("[PASS] deduce clear! returns Void");
-            (*pass)++;
-        } else {
-            io::printfn("[FAIL] deduce clear! returns Void (tag=%d)", r.value != null ? (int)r.value.tag : -1);
-            (*fail)++;
-        }
-    }
+    deduce_test_expect_void(
+        interp,
+        "(block "
+        "  (define db-vclear (deduce 'open 'memory)) "
+        "  (define [relation db-vclear] rel-vclear (name) (age)) "
+        "  (deduce 'fact! rel-vclear \"Alice\" 30) "
+        "  (deduce 'clear! rel-vclear))",
+        "[PASS] deduce clear! returns Void",
+        "[FAIL] deduce clear! returns Void (tag=%d)",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define db-vdrop (deduce 'open 'memory)) "
-            "  (define [relation db-vdrop] rel-vdrop (name) (age)) "
-            "  (deduce 'drop! rel-vdrop))",
-            interp
-        );
-        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
-            emit_pass_literal("[PASS] deduce drop! returns Void");
-            (*pass)++;
-        } else {
-            io::printfn("[FAIL] deduce drop! returns Void (tag=%d)", r.value != null ? (int)r.value.tag : -1);
-            (*fail)++;
-        }
-    }
+    deduce_test_expect_void(
+        interp,
+        "(block "
+        "  (define db-vdrop (deduce 'open 'memory)) "
+        "  (define [relation db-vdrop] rel-vdrop (name) (age)) "
+        "  (deduce 'drop! rel-vdrop))",
+        "[PASS] deduce drop! returns Void",
+        "[FAIL] deduce drop! returns Void (tag=%d)",
+        pass,
+        fail
+    );
+}
+
+fn void run_deduce_key_integrity_fact_tests(Interp* interp, int* pass, int* fail) {
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-key-ok (deduce 'open 'memory)) "
+        "  (define [relation db-key-ok] rel-key-ok (key id) (name)) "
+        "  (deduce 'fact! rel-key-ok 1 \"Alice\") "
+        "  (deduce 'fact! rel-key-ok 1 \"Alice\") "
+        "  (= (deduce 'count rel-key-ok) 1))",
+        "[PASS] deduce keyed fact! remains idempotent for identical tuple",
+        "[FAIL] deduce keyed fact! remains idempotent for identical tuple",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-key-conflict (deduce 'open 'memory)) "
+        "  (define [relation db-key-conflict] rel-key-conflict (key id) (name)) "
+        "  (deduce 'fact! rel-key-conflict 1 \"Alice\") "
+        "  (define payload (handle (deduce 'fact! rel-key-conflict 1 \"Bob\") (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (and (= (ref payload 'domain) 'deduce) "
+        "            (and (= (ref payload 'code) 'deduce/integrity-key-conflict) "
+        "                 (let (data (ref payload 'data)) "
+        "                   (and (dict? data) "
+        "                        (and (= (ref data 'relation) 'rel-key-conflict) "
+        "                             (and (= (ref data 'key-column) 'id) "
+        "                                  (and (= (ref data 'key-value) 1) "
+        "                                       (and (= (ref data 'violation-kind) 'key-conflict) "
+        "                                            (= (car (ref data 'existing-tuple)) 1)))))))))))",
+        "[PASS] deduce keyed fact! exposes machine-checkable conflict payload",
+        "[FAIL] deduce keyed fact! exposes machine-checkable conflict payload",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-key-tx (deduce 'open 'memory)) "
+        "  (define [relation db-key-tx] rel-key-tx (key id) (name)) "
+        "  (deduce 'fact! rel-key-tx 1 \"Alice\") "
+        "  (define tx (deduce 'block db-key-tx)) "
+        "  (define payload (handle (deduce 'fact! tx rel-key-tx 1 \"Bob\") (raise msg msg))) "
+        "  (deduce 'abort tx) "
+        "  (and (dict? payload) "
+        "       (and (= (ref payload 'code) 'deduce/integrity-key-conflict) "
+        "            (= (deduce 'count rel-key-tx) 1))))",
+        "[PASS] deduce keyed fact! rejects conflicting transaction write",
+        "[FAIL] deduce keyed fact! rejects conflicting transaction write",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-unique-conflict (deduce 'open 'memory)) "
+        "  (define [relation db-unique-conflict] rel-unique-conflict (id) (unique email)) "
+        "  (deduce 'fact! rel-unique-conflict 1 \"alice@x\") "
+        "  (define payload (handle (deduce 'fact! rel-unique-conflict 2 \"alice@x\") (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (and (= (ref payload 'domain) 'deduce) "
+        "            (and (= (ref payload 'code) 'deduce/integrity-unique-conflict) "
+        "                 (let (data (ref payload 'data)) "
+        "                   (and (dict? data) "
+        "                        (and (= (ref data 'relation) 'rel-unique-conflict) "
+        "                             (and (= (ref data 'unique-column) 'email) "
+        "                                  (and (= (ref data 'key-value) \"alice@x\") "
+        "                                       (and (= (ref data 'violation-kind) 'unique-conflict) "
+        "                                            (= (car (ref data 'existing-tuple)) 1)))))))))))",
+        "[PASS] deduce unique fact! exposes machine-checkable conflict payload",
+        "[FAIL] deduce unique fact! exposes machine-checkable conflict payload",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-unique-composite-conflict (deduce 'open 'memory)) "
+        "  (define [relation db-unique-composite-conflict] rel-unique-composite-conflict (id) (unique email) (unique dept)) "
+        "  (deduce 'fact! rel-unique-composite-conflict 1 \"alice@x\" \"ops\") "
+        "  (deduce 'fact! rel-unique-composite-conflict 2 \"alice@x\" \"sales\") "
+        "  (define payload (handle (deduce 'fact! rel-unique-composite-conflict 3 \"alice@x\" \"ops\") (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (and (= (ref payload 'domain) 'deduce) "
+        "            (and (= (ref payload 'code) 'deduce/integrity-unique-conflict) "
+        "                 (let (data (ref payload 'data)) "
+        "                   (and (dict? data) "
+        "                        (and (= (ref data 'relation) 'rel-unique-composite-conflict) "
+        "                             (and (= (car (ref data 'columns)) 'email) "
+        "                                  (and (= (car (cdr (ref data 'columns))) 'dept) "
+        "                                       (and (= (car (ref data 'constraint-values)) \"alice@x\") "
+        "                                            (and (= (car (cdr (ref data 'constraint-values))) \"ops\") "
+        "                                                 (and (= (ref data 'violation-kind) 'unique-conflict) "
+        "                                                      (= (car (ref data 'existing-tuple)) 1)))))))))))))",
+        "[PASS] deduce composite unique fact! exposes machine-checkable conflict payload",
+        "[FAIL] deduce composite unique fact! exposes machine-checkable conflict payload",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-ref-ok (deduce 'open 'memory)) "
+        "  (define [relation db-ref-ok] ref-users-ok (key id) (name)) "
+        "  (define [relation db-ref-ok] ref-audit-ok (ref ref-users-ok id user-id) (action)) "
+        "  (deduce 'fact! ref-users-ok 42 \"Alice\") "
+        "  (deduce 'fact! ref-audit-ok 42 \"login\") "
+        "  (= (deduce 'count ref-audit-ok) 1))",
+        "[PASS] deduce reference fact! accepts existing referenced tuple",
+        "[FAIL] deduce reference fact! accepts existing referenced tuple",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-ref-missing (deduce 'open 'memory)) "
+        "  (define [relation db-ref-missing] ref-users-missing (key id) (name)) "
+        "  (define [relation db-ref-missing] ref-audit-missing (ref ref-users-missing id user-id) (action)) "
+        "  (define payload (handle (deduce 'fact! ref-audit-missing 42 \"login\") (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (and (= (ref payload 'domain) 'deduce) "
+        "            (and (= (ref payload 'code) 'deduce/integrity-reference-missing) "
+        "                 (let (data (ref payload 'data)) "
+        "                   (and (dict? data) "
+        "                        (and (= (ref data 'relation) 'ref-audit-missing) "
+        "                             (and (= (ref data 'referenced-relation) 'ref-users-missing) "
+        "                                  (and (= (ref data 'referenced-column) 'id) "
+        "                                       (and (= (ref data 'key-value) 42) "
+        "                                            (= (ref data 'violation-kind) 'reference-missing)))))))))))",
+        "[PASS] deduce reference fact! exposes machine-checkable missing-target payload",
+        "[FAIL] deduce reference fact! exposes machine-checkable missing-target payload",
+        pass,
+        fail
+    );
 }
 
 fn void run_deduce_crud_example_flow_test(Interp* interp, int* pass, int* fail) {
@@ -482,6 +727,9 @@ fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_durability_restart_test(interp, pass, fail);
     run_deduce_relation_attr_define_test(interp, pass, fail);
     run_deduce_relation_attr_typed_role_schema_test(interp, pass, fail);
+    run_deduce_relation_attr_unique_role_schema_test(interp, pass, fail);
+    run_deduce_relation_attr_composite_unique_role_schema_test(interp, pass, fail);
+    run_deduce_relation_attr_reference_role_schema_test(interp, pass, fail);
     run_deduce_relation_attr_combined_role_test(interp, pass, fail);
     run_deduce_crud_example_flow_test(interp, pass, fail);
     run_deduce_memory_open_isolation_test(interp, pass, fail);
@@ -489,6 +737,7 @@ fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_large_relation_schema_test(interp, pass, fail);
     run_deduce_long_relation_name_isolation_test(interp, pass, fail);
     run_deduce_long_open_path_isolation_test(interp, pass, fail);
+    run_deduce_key_integrity_fact_tests(interp, pass, fail);
     run_deduce_command_void_return_tests(interp, pass, fail);
     run_deduce_transaction_tests(interp, pass, fail);
     run_deduce_clear_drop_tests(interp, pass, fail);

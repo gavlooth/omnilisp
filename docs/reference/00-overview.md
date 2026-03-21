@@ -69,9 +69,9 @@ Goodbye!
 | primitive | `PRIMITIVE` | `+`, `car` | Built-in function |
 | partial | `PARTIAL_PRIM` | `(+ 3)` | Partially applied binary primitive |
 | error | `ERROR` | `(error "oops")` | Error value |
-| dict | `HASHMAP` | `{'a 1}` | Mutable hash table |
-| array | `ARRAY` | `[1 2 3]` | Mutable dynamic array |
-| coroutine | `COROUTINE` | — | User-level coroutine |
+| Dictionary | `HASHMAP` | `{'a 1}` | Mutable hash table |
+| Array | `ARRAY` | `[1 2 3]` | Mutable dynamic array |
+| Coroutine | `COROUTINE` | — | User-level coroutine |
 | ffi-handle | `FFI_HANDLE` | — | Foreign library handle |
 | instance | `INSTANCE` | `(Point 3 4)` | User-defined type instance |
 | method-table | `METHOD_TABLE` | — | Dispatch table (internal) |

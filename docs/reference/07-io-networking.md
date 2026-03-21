@@ -202,7 +202,7 @@ for effect execution.
 
 ```lisp
 (define hits {'n 0})
-(define h (signal-handle 10 (lambda (sig) (dict-set! hits 'n (+ (ref hits 'n) 1)))))
+(define h (signal-handle 10 (lambda (sig) (set! hits 'n (+ (ref hits 'n) 1)))))
 
 (shell "kill -USR1 $PPID")
 (async-sleep 20)

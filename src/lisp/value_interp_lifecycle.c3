@@ -85,10 +85,10 @@ fn void Interp.grow_handler_stack(Interp* self) {
     mem::free(old_stack);
 }
 
-fn bool interp_handle_state_seen_before(Continuation* head, Continuation* stop, HandleEffectState* state) {
+fn bool interp_handle_state_seen_before(Continuation* head, Continuation* stop, void* state) {
     Continuation* it = head;
     while (it != null && it != stop) {
-        if ((HandleEffectState*)it.handle_state == state) return true;
+        if (it.handle_state == state) return true;
         it = it.next_owned;
     }
     return false;
@@ -98,12 +98,9 @@ fn void interp_invalidate_live_continuations(Interp* self) {
     Continuation* head = self.continuation_head;
     Continuation* k = head;
     while (k != null) {
-        HandleEffectState* hstate = (HandleEffectState*)k.handle_state;
-        if (hstate != null && handle_effect_state_is_live(hstate)) {
-            hstate.frame_active = false;
-            if (k.handle_retained && hstate.continuation_refcount > 0) {
-                hstate.continuation_refcount--;
-            }
+        void* hstate = k.handle_state;
+        if (hstate != null && runtime_handle_state_is_live(hstate)) {
+            runtime_handle_state_invalidate_continuation(hstate, k.handle_retained);
         }
         // StackCtx objects are reclaimed by stack_pool_shutdown().
         k.ctx = null;
@@ -115,12 +112,12 @@ fn void interp_invalidate_live_continuations(Interp* self) {
     // Release each shared handle state once after all continuation decrements.
     k = head;
     while (k != null) {
-        HandleEffectState* hstate = (HandleEffectState*)k.handle_state;
+        void* hstate = k.handle_state;
         if (hstate != null &&
-            handle_effect_state_is_live(hstate) &&
+            runtime_handle_state_is_live(hstate) &&
             !interp_handle_state_seen_before(head, k, hstate) &&
-            hstate.continuation_refcount == 0) {
-            handle_effect_state_release(hstate);
+            runtime_handle_state_continuation_refcount(hstate) == 0) {
+            runtime_handle_state_release(hstate);
         }
         k = k.next_owned;
     }
@@ -134,8 +131,8 @@ fn void interp_invalidate_live_continuations(Interp* self) {
 }
 
 fn void Interp.destroy(Interp* self) {
-    if (jit_interp_on_current_stack(self)) {
-        assert(!jit_interp_has_active_exec(self), "Interp.destroy: cannot destroy interpreter with active JIT frames on current stack");
+    if (runtime_interp_on_current_stack(self)) {
+        assert(!runtime_interp_has_active_exec(self), "Interp.destroy: cannot destroy interpreter with active JIT frames on current stack");
     }
     assert(
         !scheduler_has_interp_owned_fibers(self),
@@ -146,7 +143,7 @@ fn void Interp.destroy(Interp* self) {
     interp_invalidate_live_continuations(self);
     // JIT cache keys are Expr* identities from the AST arena. Clear cache
     // before arena teardown so stale pointers cannot survive destruction.
-    jit_cache_clear();
+    runtime_cache_clear();
     ast_arena_destroy(&self.ast_arena);
 
     // Release root scope last among value-owned structures so registered dtors run.
@@ -194,6 +191,6 @@ fn void Interp.destroy(Interp* self) {
     if (self.module_hash_index != null) { mem::free(self.module_hash_index); self.module_hash_index = null; }
     if (self.handler_stack != null) { mem::free(self.handler_stack); self.handler_stack = null; }
     main::stack_pool_shutdown(&self.stack_ctx_pool);
-    jit_runtime_detach_interp(self);
-    jit_global_shutdown();
+    runtime_detach_interp(self);
+    runtime_global_shutdown();
 }

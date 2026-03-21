@@ -1,8 +1,10 @@
-;; alerts.omni — Multi-channel alert delivery with effects and handler composition
+;; alerts.omni — Price and analytics alert tutorial with effects and handler composition
 ;;
 ;; Idioms demonstrated:
 ;;   define [effect]     — custom alert dispatch effect
 ;;   handle              — compose multiple alert sinks
+;;   dispatch            — emit price and analytics alerts through one path
+;;   match               — classify alert conditions with explicit branches
 ;;   process-kill        — terminate background processes
 ;;   signal-handle / signal-unhandle — OS signal handlers
 
@@ -11,8 +13,13 @@
           alerts/make-collector-handler
           alerts/dispatch
           alerts/dispatch-multi
-          alerts/collected))
+          alerts/collected
+          alerts/price-alerts
+          alerts/analytics-alerts
+          alerts/emit-alerts
+          alerts/tutorial-demo))
 
+(import "models.omni" 'all)
 (import "types.omni" 'all)
 
 ;; ── Custom effect ───────────────────────────────────────────────────────────
@@ -24,27 +31,21 @@
 ;; ── Alert handlers ──────────────────────────────────────────────────────────
 
 ;; Log handler: prints alerts to stdout.
-;; Returns a wrapper function (thunk -> result).
+;; Returns a sink function (alert -> Void) used by dispatch-multi.
 (define (alerts/make-log-handler prefix)
-  (lambda (thunk)
-    (handle (thunk)
-      (alert/notify alert
-        (println (format "%s %s" prefix (event->str alert)))
-        (resolve nil)))))
+  (lambda (alert)
+    (println (format "%s %s" prefix (event->str alert)))))
 
 ;; Collector handler: accumulates alerts into a list for testing.
-;; After thunk completes, (alerts/collected) returns the list.
+;; After dispatch-multi completes, (alerts/collected) returns the list.
 (define alert-collection nil)
 
 (define (alerts/collected) alert-collection)
 
 (define (alerts/make-collector-handler)
   (set! alert-collection nil)
-  (lambda (thunk)
-    (handle (thunk)
-      (alert/notify alert
-        (set! alert-collection (cons alert alert-collection))
-        (resolve nil)))))
+  (lambda (alert)
+    (set! alert-collection (cons alert alert-collection))))
 
 ;; ── Dispatch helpers ────────────────────────────────────────────────────────
 
@@ -53,13 +54,69 @@
 (define (alerts/dispatch alert)
   (signal alert/notify alert))
 
-;; (alerts/dispatch-multi handler-list thunk) — run thunk with composed handlers.
-;; Handlers are applied outer-to-inner via explicit recursion over wrapper funcs.
-(define (alerts/handle-chain handler-list thunk)
-  (if (null? handler-list)
-      (thunk)
-      ((car handler-list)
-       (lambda () (alerts/handle-chain (cdr handler-list) thunk)))))
-
+;; (alerts/dispatch-multi handler-list thunk) — run thunk and fan alerts out to
+;; every sink in handler-list with one effect handler.
 (define (alerts/dispatch-multi handler-list thunk)
-  (alerts/handle-chain handler-list thunk))
+  (handle (thunk nil)
+    (alert/notify alert
+      (for-each (lambda (sink) (sink alert)) handler-list)
+      (resolve nil))))
+
+;; ── Tutorial helpers ────────────────────────────────────────────────────────
+
+;; (alerts/price-alerts quote upper lower) — return tutorial price alerts.
+;; Emits at most one alert for a given quote, so the smoke test stays small.
+(define (alerts/price-alerts (^Quote quote) (^Double upper) (^Double lower))
+  (let (ts (time))
+    (if (> quote.price upper)
+        (list (AlertEvent "HIGH"
+                          (format "%s price %f crossed above %f"
+                                  quote.symbol quote.price upper)
+                          ts))
+        (if (< quote.price lower)
+            (list (AlertEvent "LOW"
+                              (format "%s price %f fell below %f"
+                                      quote.symbol quote.price lower)
+                              ts))
+            nil))))
+
+;; (alerts/analytics-alerts pnl gain-threshold) — return analytics alerts.
+;; Uses a simple gain/loss rule so the tutorial can show a second dispatch path.
+(define (alerts/analytics-alerts (^PnL pnl) (^Double gain-threshold))
+  (let (ts (time))
+    (if (> pnl.gain gain-threshold)
+        (list (AlertEvent "GAIN"
+                          (format "%s unrealized gain %f exceeded %f"
+                                  pnl.symbol pnl.gain gain-threshold)
+                          ts))
+        (if (< pnl.gain 0)
+            (list (AlertEvent "RISK"
+                              (format "%s unrealized loss %f needs attention"
+                                      pnl.symbol pnl.gain)
+                              ts))
+            nil))))
+
+;; (alerts/emit-alerts alerts) — dispatch a list of alert events.
+(define (alerts/emit-alerts alerts)
+  (for-each alerts/dispatch alerts))
+
+;; (alerts/tutorial-demo) — run the tutorial path under a log+collector stack.
+;; Returns the collected alerts so smoke tests can assert on the resulting flow.
+(define (alerts/tutorial-demo)
+  (let (quote (Quote "BTC" 66250.0 1700000000)
+        pnl   (PnL "BTC" 0.5 30000.0 42000.0 12000.0))
+    (set! alert-collection nil)
+    (handle
+      (block
+        (match (alerts/price-alerts quote 65000.0 50000.0)
+          ([alert ..] (alerts/dispatch alert))
+          (_ nil))
+        (match (alerts/analytics-alerts pnl 5000.0)
+          ([alert ..] (alerts/dispatch alert))
+          (_ nil))
+        true)
+      (alert/notify alert
+        (println (format "[FINWATCH] %s" (event->str alert)))
+        (set! alert-collection (cons alert alert-collection))
+        (resolve nil)))
+    (alerts/collected)))

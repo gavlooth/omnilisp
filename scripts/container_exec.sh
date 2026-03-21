@@ -14,6 +14,11 @@ fi
 
 # Avoid recursive container-on-container invocation unless explicitly overridden.
 : "${OMNI_HARD_MEM_CAP_METHOD:=none}"
+: "${OMNI_VALIDATION_STACK_KB:=16384}"
+
+if [[ "$OMNI_VALIDATION_STACK_KB" =~ ^[0-9]+$ ]] && (( OMNI_VALIDATION_STACK_KB > 0 )); then
+  ulimit -S -s "$OMNI_VALIDATION_STACK_KB" || true
+fi
 
 if [[ $# -eq 0 ]]; then
   set -- scripts/run_global_gates.sh

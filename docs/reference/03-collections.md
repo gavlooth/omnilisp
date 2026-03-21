@@ -25,11 +25,9 @@ Omni has three collection types plus sets.
 ```lisp
 [1 2 3]                    ;; array literal (canonical constructor surface: Array)
 (Array 1 2 3)              ;; canonical construction
-(array 1 2 3)              ;; compatibility alias
 (ref arr 0)                ;; => first element
 (push! arr 4)              ;; append element (mutates, returns Void)
 (set! arr 0 99)            ;; generic update form (returns Void)
-(array-set! arr 0 99)      ;; set element at index (returns Void)
 (length arr)               ;; => size
 (Array '(1 2 3))           ;; list -> array conversion
 (list [1 2 3])             ;; array -> list conversion
@@ -41,11 +39,9 @@ Omni has three collection types plus sets.
 {'name "Alice" 'age 30}    ;; dict literal (canonical constructor surface: Dictionary)
 (Dictionary 'name "Alice")  ;; canonical construction
 (Dictionary "name" "Alice") ;; string keys are supported
-(dict 'name "Alice")        ;; compatibility alias
 (ref d 'name)               ;; => "Alice"
 (ref (Dictionary "name" "Alice") "name") ;; => "Alice"
 (set! d 'email "a@b")       ;; generic update form (returns Void)
-(dict-set! d 'email "a@b")  ;; set key (returns Void)
 (has? d 'age)               ;; => true
 (keys d)                    ;; => (age name)    ; canonical key order
 (values d)                  ;; => (30 "Alice")  ; aligned with keys order
@@ -68,13 +64,9 @@ Sets now have a distinct builtin `Set` runtime type symbol. `type-of` reports
 `Set` for `(Set ...)` values, and printed set values use constructor-shaped
 syntax such as `(Set 1 2 3)`.
 
-`array-set!` and `dict-set!` remain available as compatibility aliases, but
-`set!` is the preferred generic update surface.
-
 Naming policy for new code/examples:
 - prefer `List`, `Array`, and `Dictionary` as constructor/coercion surfaces
 - keep `list` as an idiomatic public helper
-- treat lowercase `array`/`dict` as compatibility aliases
 
 Dictionary key policy:
 - symbols are preferred for internal language-owned maps (`'name`, `'code`)

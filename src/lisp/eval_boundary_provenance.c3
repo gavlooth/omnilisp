@@ -128,6 +128,25 @@ fn bool boundary_value_in_releasing_scope(Value* v, Interp* interp) @inline {
     return boundary_ptr_in_scope((void*)v, interp.releasing_scope);
 }
 
+fn bool boundary_graph_alias_unsafe_for_reuse(Value* v, Interp* interp, usz depth = 0) {
+    if (v == null || interp == null) return false;
+    if (depth >= 128) return true;
+
+    switch (v.tag) {
+        case CLOSURE:
+            return boundary_closure_alias_unsafe_for_reuse(v, interp);
+        case PARTIAL_PRIM:
+            return boundary_partial_payload_alias_unsafe_for_reuse(v, interp);
+        case ITERATOR:
+            return boundary_iterator_payload_alias_unsafe_for_reuse(v, interp);
+        case CONS:
+            return boundary_graph_alias_unsafe_for_reuse(v.cons_val.car, interp, depth + 1) ||
+                boundary_graph_alias_unsafe_for_reuse(v.cons_val.cdr, interp, depth + 1);
+        default:
+            return false;
+    }
+}
+
 <*
 @require interp != null : "boundary_can_reuse_value: null interp"
 *>
@@ -135,6 +154,7 @@ fn bool boundary_can_reuse_value(Value* v, Interp* interp) @inline {
     if (v == null) return false;
     boundary_assert_interp_scope_chain(interp);
     if (boundary_value_in_releasing_scope(v, interp)) return false;
+    if (boundary_graph_alias_unsafe_for_reuse(v, interp)) return false;
     return boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen);
 }
 
@@ -159,8 +179,7 @@ fn BoundaryReturnClassification boundary_classify_return_value(
 
     classification.in_releasing_scope = boundary_ptr_in_scope((void*)v, releasing_scope);
     classification.in_target_scope_chain = boundary_ptr_in_scope_chain_with_hint((void*)v, target_scope, v.scope_gen);
-
-    if (!classification.in_releasing_scope && classification.in_target_scope_chain) {
+    if (!classification.in_releasing_scope && boundary_can_reuse_value(v, interp)) {
         classification.provenance = BOUNDARY_RETURN_REUSABLE_IN_TARGET_CHAIN;
         return classification;
     }
@@ -228,4 +247,73 @@ fn bool boundary_closure_payload_in_scope(Value* v, main::ScopeRegion* scope) @i
     if (v == null || scope == null || v.tag != CLOSURE || v.closure_val == null) return false;
     if (v.closure_val.scope_gen == scope.generation) return true;
     return boundary_ptr_in_scope((void*)v.closure_val, scope);
+}
+
+fn bool boundary_closure_has_detached_env_scope(Value* v) @inline {
+    return v != null &&
+        v.tag == CLOSURE &&
+        v.closure_val != null &&
+        v.closure_val.env_scope != null;
+}
+
+<*
+@require interp != null : "boundary_closure_alias_unsafe_for_reuse: null interp"
+*>
+fn bool boundary_closure_alias_unsafe_for_reuse(Value* v, Interp* interp) @inline {
+    if (v == null || v.tag != CLOSURE || v.closure_val == null) return false;
+    if (boundary_closure_has_detached_env_scope(v)) return false;
+
+    bool wrapper_in_target =
+        boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen);
+    bool payload_in_target =
+        boundary_ptr_in_target_scope_chain_with_hint(
+            (void*)v.closure_val,
+            interp,
+            v.closure_val.scope_gen
+        );
+
+    // Undelimited closures may only alias when both wrapper and payload already
+    // reside in the target scope chain.
+    return !(wrapper_in_target && payload_in_target);
+}
+
+<*
+@require interp != null : "boundary_partial_payload_alias_unsafe_for_reuse: null interp"
+*>
+fn bool boundary_partial_payload_alias_unsafe_for_reuse(Value* partial, Interp* interp) @inline {
+    if (partial == null || partial.tag != PARTIAL_PRIM) return false;
+
+    Value* first = partial.partial_val.first_arg;
+    if (first != null) {
+        if (boundary_value_in_releasing_scope(first, interp)) return true;
+        if (!boundary_ptr_in_target_scope_chain_with_hint((void*)first, interp, first.scope_gen)) return true;
+    }
+
+    Value* second = partial.partial_val.second_arg;
+    if (second != null) {
+        if (boundary_value_in_releasing_scope(second, interp)) return true;
+        if (!boundary_ptr_in_target_scope_chain_with_hint((void*)second, interp, second.scope_gen)) return true;
+    }
+
+    return false;
+}
+
+<*
+@require interp != null : "boundary_iterator_payload_alias_unsafe_for_reuse: null interp"
+*>
+fn bool boundary_iterator_payload_alias_unsafe_for_reuse(Value* iterator, Interp* interp) @inline {
+    if (iterator == null || iterator.tag != ITERATOR) return false;
+    Value* payload = iterator.iterator_val;
+    if (payload == null) return false;
+
+    if (payload.tag == CLOSURE) {
+        return boundary_closure_alias_unsafe_for_reuse(payload, interp);
+    }
+    if (payload.tag == PARTIAL_PRIM) {
+        return boundary_partial_payload_alias_unsafe_for_reuse(payload, interp);
+    }
+
+    // Iterator thunk wrappers that are not closures must not alias values from
+    // foreign/transient scope chains.
+    return !boundary_ptr_in_target_scope_chain_with_hint((void*)payload, interp, payload.scope_gen);
 }

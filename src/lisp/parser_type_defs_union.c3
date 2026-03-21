@@ -1,6 +1,5 @@
 module lisp;
 
-import std::core::mem;
 import std::collections::list;
 
 /**

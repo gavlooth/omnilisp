@@ -50,6 +50,11 @@ Omni without learning advanced semantics first.
   - collections: list, array, dict
 - Prefer generic collection operations (`length`, `ref`, `map`, `filter`,
   `foldl`) instead of type-specific naming.
+- Surface naming policy for contributors:
+  - prefer one canonical language-facing name per concept,
+  - prefer descriptive non-abbreviated canonical names,
+  - do not preserve compatibility aliases by default during pre-alpha cleanup,
+  - only keep shorthand spellings when explicitly approved.
 
 ### 0.2 First-Steps Command Set
 
@@ -342,9 +347,9 @@ Any other `#` sequence is rejected with a deterministic parser/lexer error.
 | primitive | `PRIMITIVE` | Built-in function | `+`, `car` |
 | partial | `PARTIAL_PRIM` | Partially applied primitive | `(+ 3)` |
 | error | `ERROR` | Error value | `(error "oops")` |
-| dict | `HASHMAP` | Mutable hash table | `{'a 1}`, `(Dictionary 'a 1)` |
-| array | `ARRAY` | Mutable dynamic array | `[1 2 3]`, `(Array 1 2 3)` |
-| coroutine | `COROUTINE` | User-level coroutine | `(coroutine (lambda () body))` |
+| Dictionary | `HASHMAP` | Mutable hash table | `{'a 1}`, `(Dictionary 'a 1)` |
+| Array | `ARRAY` | Mutable dynamic array | `[1 2 3]`, `(Array 1 2 3)` |
+| Coroutine | `COROUTINE` | User-level coroutine | `(Coroutine (lambda () body))` |
 | void | `VOID` | Singleton no-result value | `(Void)` |
 
 Omni does not currently define a builtin `Empty`/bottom type. `nil`/`Nil`
@@ -356,8 +361,20 @@ singleton type/value used by FFI `^Void` returns as well.
 
 ### 2.2 Truthiness
 
+Normative predicate contract:
+- Predicate positions in `if`, `when`, and `match` guards use the same
+  truthiness rules.
 - **Falsy:** `nil`, `false`
-- **Truthy:** Everything else, including `0`, `""`, `'()`, and empty collections
+- **Truthy:** everything else.
+
+| Predicate input | Example | Truthiness | Notes |
+|---|---|---|---|
+| `nil` | `nil` | falsy | Absence/false value |
+| `false` | `false` | falsy | Value-level alias of `nil` |
+| `Void` | `(Void)` | truthy | Command/effect completion token |
+| numbers | `0`, `-1`, `3.14` | truthy | Zero is still truthy |
+| strings | `""`, `"omni"` | truthy | Empty string is truthy |
+| collections | `'()`, `[]`, `{}` | truthy | Empty collections are truthy |
 
 ### 2.3 `Void` vs `Nil` Contract
 
@@ -568,7 +585,9 @@ Counterexample (non-canonical syntax; do not add):
 (if test then-expr else-expr)
 ```
 
-Three branches required. Only the chosen branch is evaluated.
+Three branches required. Only the chosen branch is evaluated. `test` uses the
+truthiness contract in [2.2](#22-truthiness), so `Void` in predicate position
+is truthy.
 
 ### 3.5 `block` -- Sequencing
 
@@ -590,8 +609,6 @@ Evaluates all expressions in order, returns the last. Last expression is in tail
 ```
 
 `set!` returns `Void` on successful mutation.
-`array-set!` and `dict-set!` remain supported compatibility aliases.
-
 Target/dispatch matrix:
 
 | Surface | Dispatch target | Success result | Invalid-target behavior |
@@ -623,8 +640,13 @@ Quasiquote supports nesting with depth tracking (Bawden's algorithm).
 ### 3.8 `and` / `or` -- Short-Circuit Logic
 
 ```lisp
-(and left right)    ; returns left if falsy, else right
-(or left right)     ; returns left if truthy, else right
+(and)               ; => true
+(and x)             ; => x
+(and a b c)         ; returns first falsy value, else last value
+
+(or)                ; => nil
+(or x)              ; => x
+(or a b c)          ; returns first truthy value, else last value
 ```
 
 ### 3.9 `match` -- Pattern Matching
@@ -636,14 +658,38 @@ Quasiquote supports nesting with depth tracking (Bawden's algorithm).
   (_ default))
 ```
 
-Dynamic clause count (no fixed limit). Pattern types:
+Dynamic clause count (no fixed limit). Clauses are checked in source order and
+the first matching clause wins.
+
+`match` is a core control form (not only pattern syntax sugar). Normative
+clause selection semantics:
+- evaluate scrutinee exactly once,
+- check clauses left-to-right,
+- select the first clause whose pattern matches and whose guard (if present) is
+  truthy,
+- if no non-wildcard clause matches, `_` fallthrough (when present) is used.
+
+Literal-pattern contract in `match`:
+- `nil` and `false` in pattern position are literal falsy patterns (not
+  variable bindings); both match Omni's runtime falsy sentinel.
+- `Void` in pattern position is a literal `Void` singleton pattern (not a
+  variable binding).
+
+Guard patterns (`(? pred)` / `(? pred pat)`) use the same truthiness contract
+as `if`/`when` ([2.2](#22-truthiness)); a guard result of `Void` is truthy.
+For `(? pred pat)`, `pat` is matched first; only successful sub-pattern matches
+evaluate `pred`, and `pred` sees the sub-pattern bindings.
+
+Pattern types:
 
 | Pattern | Description | Example |
 |---------|-------------|---------|
 | `_` | Wildcard | `(_ "default")` |
-| `x` | Variable binding | `(n (* n 2))` |
+| `x` | Variable binding (except reserved literal forms `nil`, `false`, `Void`) | `(n (* n 2))` |
 | `42` | Integer literal | `(0 "zero")` |
 | `"hi"` | String literal | `("hi" "greeting")` |
+| `nil` / `false` | Falsy literal pattern | `(nil "missing")`, `(false "missing")` |
+| `Void` | `Void` singleton literal pattern | `(Void "done")` |
 | `'sym` | Quoted symbol | `('red "red")` |
 | `[a b c]` | Exact sequence | `([x y] (+ x y))` |
 | `[h .. t]` | Head-tail | `([first .. rest] first)` |
@@ -663,10 +709,15 @@ Canonical naming direction:
 - prefer descriptive language-facing type symbols and constructors over abbreviations,
 - `Integer`, `Boolean`, and `Dictionary` are the canonical builtin names,
 - `Int`, `Bool`, and `Dict` remain accepted compatibility aliases.
+- alias policy is input-tolerant but output-canonical:
+  - aliases are accepted in constructor/type-annotation input position,
+  - docs/examples and introspection outputs use canonical names (`Integer`,
+    `Boolean`, `Dictionary`),
+  - constructor failure messages/payload text use canonical constructor names
+    even when invocation used an alias.
 - collection/time constructor policy:
   - canonical constructor surfaces: `List`, `Array`, `Dictionary`, `Iterator`, `TimePoint`
   - retained public helper: `list` (idiomatic Lisp list builder/conversion helper)
-  - compatibility-only aliases (non-preferred in new examples/docs): `array`, `dict`, `dictionary`, `iterator`, `time-point`, `make-iterator`
 
 ### 4.1 Struct Types
 
@@ -725,10 +776,14 @@ None                    ; nullary variant
 ^(Value true)           ; boolean literal (true/false symbols)
 ```
 
-Meta/abstract symbols `Any`, `Value`, `Number`, and `Collection` are type-position
-surfaces. They participate in annotations/dispatch, but are not callable value-position
-constructors. In particular, `Value` is valid for value-literal dispatch only as
-`^(Value literal)`; `(Value ...)` is not a constructor call surface.
+Meta/abstract symbols `Any`, `Number`, and `Collection` participate in
+annotations/dispatch and are also exposed as non-callable value-position type
+descriptors (`#<type Any>`, `#<type Number>`, `#<type Collection>`). They are
+not constructor/coercion call surfaces (`(Any ...)`, `(Number ...)`,
+`(Collection ...)` still error).
+
+`Value` remains the dedicated value-literal annotation surface:
+`^(Value literal)`. It is not a callable value-position constructor.
 
 ### 4.6 Type Introspection
 
@@ -745,8 +800,13 @@ constructors. In particular, `Value` is valid for value-literal dispatch only as
 
 Printing/introspection contract:
 - `type-of` always returns a symbol (for example `'Integer`, `'Dictionary`).
+- Canonical type-descriptor print shape is `#<type Name>` (not `#<Name>`).
 - Constructor/type symbols in value position render as type descriptors:
   `#<type Integer>`, `#<type Dictionary>`, etc.
+- Abstract/meta type descriptors for `Any`, `Number`, and `Collection` follow
+  the same canonical `#<type Name>` rendering.
+- constructor aliases (`Int`, `Bool`, `Dict`) normalize to canonical type
+  identity in introspection (`type-of`, descriptor rendering).
 - Ordinary callable primitives keep primitive rendering (`#<primitive +>`).
 
 ### 4.7 Callable Constructor Failure Semantics
@@ -823,6 +883,17 @@ Command-style facades like `udp` are valid API shape, but core operations remain
 
 Highest-scoring method wins. Equal-best ties are rejected as ambiguous (no implicit winner).
 
+Normative ambiguity contract:
+- Dispatch never applies an implicit tie-break when multiple methods share the
+  same best score.
+- Ambiguous calls raise recoverable payload code
+  `type/dispatch-ambiguous` in domain `type`.
+- Ambiguity payload `data` includes stable keys:
+  `reason`, `method`, `arg-count`, `arg-types`, `best-score`, `tie-count`,
+  `candidate-indices`.
+- `reason` is `ambiguous-equal-specificity`.
+- `candidate-indices` are ordered by method-table entry index (ascending).
+
 ### 5.5 Dispatch Explainability
 
 Use `explain` with the canonical symbol selector:
@@ -850,6 +921,13 @@ the explain call itself.
 
 `decision` includes stable keys:
 - `reason`, `winner-index`, `best-score`, `tie-count`, `fallback-source`, `outcome`, `debug_message`
+
+Ambiguity decision invariants:
+- `status` is `'ambiguous`
+- `reason` is `'ambiguous-equal-specificity`
+- `winner-index` is `nil`
+- `best-score` is an integer
+- `tie-count` is an integer `>= 2`
 
 `candidates` is a list with one item per method-table entry. Each candidate
 includes:
@@ -944,6 +1022,7 @@ dict.['key]         ; dict key lookup
 
 ```lisp
 point.x             ; struct field access
+config.port         ; dictionary symbol-key access
 line.start.y        ; nested field access (up to 8 segments)
 pair.car             ; cons cell car access
 pair.cdr             ; cons cell cdr access
@@ -952,8 +1031,8 @@ pair.cdr             ; cons cell cdr access
 Path notation is non-leading dotted syntax. It is distinct from leading-dot
 accessor shorthand and from postfix index syntax.
 
-For non-Instance values, path notation uses alist lookup (association lists).
-Cons cells also support `.car` and `.cdr` as special field names.
+Path notation resolves segments on instances, modules, and dictionaries with
+symbol keys. Cons cells only support `.car` and `.cdr` as special field names.
 
 ---
 
@@ -1067,29 +1146,26 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 | `read-lines` | 1 | Read file as list of lines |
 | `load` | 1 | Load and evaluate a .omni file |
 
-### 7.10 Dict Operations (2)
+### 7.10 Dict Operations (1)
 
 | Prim | Arity | Description |
 |------|-------|-------------|
 | `Dictionary` / `Dict` | variadic | Create dict from key-value pairs; `{'a 1 'b 2}` is equivalent to this |
-| `dict-set!` | 3 | Set key-value pair |
 
-Canonical constructor surface is `Dictionary` (with `Dict` shorthand). `dict`
-is kept as a compatibility alias.
+Canonical constructor surface is `Dictionary` (with `Dict` shorthand).
 Dictionary keys are value-typed: symbols, strings, integers, and other stable
 value keys are supported.
 Style guidance:
 - prefer symbol keys for internal language/runtime maps
 - prefer string keys for external payload maps (JSON/HTTP/config)
 
-### 7.11 Array Operations (2)
+### 7.11 Array Operations (1)
 
 | Prim | Arity | Description |
 |------|-------|-------------|
 | `Array` | variadic | Create array; `[1 2 3]` is equivalent to this; single collection arg dispatches conversion (`(Array '(1 2 3))`, `(Array (Iterator ...))`) |
-| `array-set!` | 3 | Set element at index |
 
-Canonical constructor surface is `Array`. `array` is kept as a compatibility alias.
+Canonical constructor surface is `Array`.
 
 ### 7.12 Generic Collection Operations (6)
 
@@ -1272,6 +1348,25 @@ Pika grammar notes:
 
 **Total: 130+ primitives**
 
+### 7.24 Primitive Command/Query Contract
+
+Primitive return semantics are classified into two normative styles:
+- command-style: successful completion returns `Void` (or is a non-returning command such as `exit`).
+- query-style: returns data/handle/predicate values; if absence semantics apply, absence is represented with `nil` (never `Void`).
+
+Audit source of truth is the registered primitive table in `src/lisp/eval_init_primitives.c3`.
+Audit snapshot (`2026-03-17`):
+- total registered primitive names: `263`
+- command-style names: `42`
+- query-style names: `221`
+
+Core mutation, I/O, and scheduler command/query classification tables are maintained in:
+- `docs/reference/11-appendix-primitives.md` (`Primitive Surface Audit: Command vs Query`).
+
+Exhaustive classification rule:
+- names in the audited command-style set are command-style by contract,
+- every other registered primitive name is query-style by contract.
+
 ---
 
 ## 8. Standard Library
@@ -1303,8 +1398,6 @@ Higher-order functions and utilities defined in Omni:
 | `partition` | `(pred lst)` | Split by predicate |
 | `remove` | `(pred lst)` | Remove matching elements |
 | `find` | `(pred lst)` | First matching element |
-| `assoc` | `(key alist)` | Association list lookup |
-| `assoc-ref` | `(key alist)` | Lookup value only |
 
 Stdlib functions take multiple parameters with strict arity. For partial application: binary primitives auto-partial `(map (+ 1) '(1 2 3))`, `_` placeholder creates lambdas `(map (+ 1 _) '(1 2 3))`, `_n` placeholders support reuse/reordering (`((- _2 _1) 3 10)`), or use `partial` from stdlib.
 
@@ -1317,6 +1410,9 @@ Compatibility note: `_n` placeholder desugaring is only active in call-argument 
 | `when` | `(when test body...)` -- if test, evaluate body |
 | `unless` | `(unless test body...)` -- if not test, evaluate body |
 | `branch` | `(branch (c1 e1) ... (_ default))` -- condition chain with explicit default marker |
+
+`when` and `unless` predicate checks use the same truthiness contract as `if`
+([2.2](#22-truthiness)).
 
 For multi-branch condition chains, prefer `branch`:
 
@@ -1381,11 +1477,23 @@ Captures the continuation up to the enclosing `checkpoint` and binds it to `k`.
 ### 9.3 Semantics
 
 - Continuations are **multi-shot**: each invocation of `k` clones the captured stack, so `k` can be called multiple times
-- `k` is a function: `(k value)` resumes with `value`
+- Continuation `resume` operation is function invocation: `(k value)` invokes the captured continuation with `value`
 - The result of `capture`'s body becomes the result of `checkpoint`
 - Multi-shot replay is explicit: each `k` invocation re-runs the resumed continuation segment, including side effects in that segment (`set!`, `signal`, I/O handlers), in source order.
 - Each `k` invocation starts from the captured stack snapshot; lexical locals in that resumed segment are restored per invocation unless mutation targets shared state outside the snapshot.
 - Side effects that occur in `capture` body code outside resumed continuation segments run when that code executes; they are not replayed unless that body path itself is executed again.
+- Replay semantics are execution-mode invariant: interpreter, JIT, and compiled
+  execution must preserve the same replay-visible side-effect outcomes.
+
+Canonical continuation-resume example:
+
+```lisp
+(checkpoint (+ 1 (capture k (k 41))))
+; => 42
+```
+
+Note: this continuation `resume` operation (`(k value)`) is distinct from the
+coroutine primitive `resume`.
 
 Replay example:
 

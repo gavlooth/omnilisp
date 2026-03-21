@@ -111,7 +111,6 @@ This table classifies existing public APIs against this contract.
 | API | Primary class | Contracted surface | Current style (2026-03-06) | Target |
 |-----|---------------|--------------------|------------------------------|--------|
 | `find` | `absence` | `nil` when not found | `nil` | keep |
-| `assoc-ref` | `absence` | `nil` when key missing | `nil` | keep |
 | `re-match` | `absence` + `recoverable-op-failure` | `nil` for no match; `raise` for invalid pattern | mixed (`nil` + implementation-specific failure) | normalize to contract |
 | `read-file` | `recoverable-op-failure` | `raise` on I/O failure | mixed across call paths | migrate to canonical `raise` payload |
 | `write-file` | `recoverable-op-failure` | `raise` on I/O failure | mixed across call paths | migrate to canonical `raise` payload |

@@ -146,9 +146,9 @@ fn void run_reader_dispatch_tests(Interp* interp, int* pass, int* fail) {
 
     // Symbol-as-function: ('name dict) => (ref dict 'name)
     test_str_val(interp, "symbol-as-function on dict",
-        "('name (dict 'name \"Alice\" 'age 30))", "Alice", pass, fail);
+        "('name (Dictionary 'name \"Alice\" 'age 30))", "Alice", pass, fail);
     test_eq(interp, "symbol-as-function on dict returns int",
-        "('age (dict 'name \"Alice\" 'age 30))", 30, pass, fail);
+        "('age (Dictionary 'name \"Alice\" 'age 30))", 30, pass, fail);
 }
 
 fn void run_reader_dispatch_tests_isolated(int* pass, int* fail) {

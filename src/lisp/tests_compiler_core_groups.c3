@@ -58,46 +58,39 @@ fn void run_compiler_group_syntax_begin_zero_tests(Interp* interp, usz* pass, us
     {
         char[] code = compile_to_c3("(block 42)", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: (block 42)"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: (block 42)"); }
+        compiler_test_finish_bool(ok, "Compiler: (block 42)", "[FAIL] Compiler: (block 42)", pass, fail);
     }
     {
         char[] code = compile_to_c3("(block 1 2 3)", interp);
         bool ok = !str_contains(code, "unsupported") && str_contains(code, "make_int(3)");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: (block 1 2 3)"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: (block 1 2 3)"); }
+        compiler_test_finish_bool(ok, "Compiler: (block 1 2 3)", "[FAIL] Compiler: (block 1 2 3)", pass, fail);
     }
     {
         char[] code = compile_to_c3("(block (define x 1) x)", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: (block (define x 1) x)"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: (block (define x 1) x)"); }
+        compiler_test_finish_bool(ok, "Compiler: (block (define x 1) x)", "[FAIL] Compiler: (block (define x 1) x)", pass, fail);
     }
     {
         char[] code = compile_to_c3("(lambda (x) (block x x))", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: (lambda (x) (block x x))"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: (lambda (x) (block x x))"); }
+        compiler_test_finish_bool(ok, "Compiler: (lambda (x) (block x x))", "[FAIL] Compiler: (lambda (x) (block x x))", pass, fail);
     }
 
     // --- Zero-arg lambda tests ---
     {
         char[] code = compile_to_c3("((lambda () 42))", interp);
         bool ok = !str_contains(code, "unsupported") && str_contains(code, "_unused");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: ((lambda () 42))"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: ((lambda () 42))"); }
+        compiler_test_finish_bool(ok, "Compiler: ((lambda () 42))", "[FAIL] Compiler: ((lambda () 42))", pass, fail);
     }
     {
         char[] code = compile_to_c3("(define thunk (lambda () 42)) (thunk)", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: zero-arg define + call"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: zero-arg define + call"); }
+        compiler_test_finish_bool(ok, "Compiler: zero-arg define + call", "[FAIL] Compiler: zero-arg define + call", pass, fail);
     }
     {
         char[] code = compile_to_c3("(let (f (lambda () 10)) (f))", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: zero-arg in let"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: zero-arg in let"); }
+        compiler_test_finish_bool(ok, "Compiler: zero-arg in let", "[FAIL] Compiler: zero-arg in let", pass, fail);
     }
 }
 
@@ -106,20 +99,17 @@ fn void run_compiler_group_syntax_multiarg_tests(Interp* interp, usz* pass, usz*
     {
         char[] code = compile_to_c3("((lambda (x y) (+ x y)) 3 4)", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: multi-param lambda"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: multi-param lambda"); }
+        compiler_test_finish_bool(ok, "Compiler: multi-param lambda", "[FAIL] Compiler: multi-param lambda", pass, fail);
     }
     {
         char[] code = compile_to_c3("(let (x 1 y 2) (+ x y))", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: multi-binding let"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: multi-binding let"); }
+        compiler_test_finish_bool(ok, "Compiler: multi-binding let", "[FAIL] Compiler: multi-binding let", pass, fail);
     }
     {
         char[] code = compile_to_c3("((lambda (a b c) a) 1 2 3)", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: 3-param lambda"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: 3-param lambda"); }
+        compiler_test_finish_bool(ok, "Compiler: 3-param lambda", "[FAIL] Compiler: 3-param lambda", pass, fail);
     }
 }
 
@@ -137,20 +127,17 @@ fn void run_compiler_group_stdlib_availability_tests(Interp* interp, usz* pass, 
     {
         char[] code = compile_to_c3("(map (lambda (x) (+ x 1)) (list 1))", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: map"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: map"); }
+        compiler_test_finish_bool(ok, "Compiler: map", "[FAIL] Compiler: map", pass, fail);
     }
     {
         char[] code = compile_to_c3("(filter (lambda (x) (> x 2)) (list 1 2 3))", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: filter"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: filter"); }
+        compiler_test_finish_bool(ok, "Compiler: filter", "[FAIL] Compiler: filter", pass, fail);
     }
     {
         char[] code = compile_to_c3("(foldl + 0 (list 1 2 3))", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: foldl"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: foldl"); }
+        compiler_test_finish_bool(ok, "Compiler: foldl", "[FAIL] Compiler: foldl", pass, fail);
     }
 }
 
@@ -159,32 +146,27 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
     {
         char[] code = compile_to_c3("(match (list 1 2 3) ([a b c] (+ a c)))", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: match"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: match"); }
+        compiler_test_finish_bool(ok, "Compiler: match", "[FAIL] Compiler: match", pass, fail);
     }
     {
         char[] code = compile_to_c3("(handle (+ 1 (signal ask 0)) (ask x (resolve 10)))", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: handle/perform"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: handle/perform"); }
+        compiler_test_finish_bool(ok, "Compiler: handle/perform", "[FAIL] Compiler: handle/perform", pass, fail);
     }
     {
         char[] code = compile_to_c3("(let (x 42) (let (f (lambda () x)) (f)))", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: zero-arg closure capture"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: zero-arg closure capture"); }
+        compiler_test_finish_bool(ok, "Compiler: zero-arg closure capture", "[FAIL] Compiler: zero-arg closure capture", pass, fail);
     }
     {
         char[] code = compile_to_c3("(id 5)", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: id"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: id"); }
+        compiler_test_finish_bool(ok, "Compiler: id", "[FAIL] Compiler: id", pass, fail);
     }
     {
         char[] code = compile_to_c3("(range 5)", interp);
         bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: range"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: range"); }
+        compiler_test_finish_bool(ok, "Compiler: range", "[FAIL] Compiler: range", pass, fail);
     }
 }
 
@@ -471,246 +453,6 @@ fn void run_compiler_group_stdlib_existing(Interp* interp, usz* pass_out, usz* f
     run_compiler_group_existing_feature_tests(interp, &pass, &fail);
     run_compiler_group_type_dispatch_bridge_tests(interp, &pass, &fail);
     run_compiler_group_serializer_roundtrip_tests(interp, &pass, &fail);
-    *pass_out += pass;
-    *fail_out += fail;
-}
-
-fn void run_compiler_group_set_mutation_tests(Interp* interp, usz* pass, usz* fail) {
-    // --- set! tests ---
-    {
-        char[] code = compile_to_c3("(define x 10) (set! x 20)", interp);
-        bool ok = !str_contains(code, "unsupported")
-            && str_contains(code, "x = ")
-            && str_contains(code, "aot::make_void()");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: (set! x 20)"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: (set! x 20)"); }
-    }
-    {
-        char[] code = compile_to_c3("(define x 10) (block (set! x 20) x)", interp);
-        bool ok = !str_contains(code, "unsupported")
-            && str_contains(code, "aot::make_void()");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: set! command form"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: set! command form"); }
-    }
-    {
-        char[] code = compile_to_c3("(define counter 0) (define inc! (lambda (n) (set! counter (+ counter n))))", interp);
-        bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: set! inside lambda"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: set! inside lambda"); }
-    }
-    {
-        char[] code = compile_to_c3("(define arr (Array 1 2 3)) (set! arr 1 9)", interp);
-        bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: set! generic collection form"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: set! generic collection form"); }
-    }
-    {
-        char[] code = compile_to_c3("(define hm (Dictionary 'k 1)) (set! hm 'k 9)", interp);
-        bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: set! generic dictionary form"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: set! generic dictionary form"); }
-    }
-}
-
-fn void run_compiler_group_dot_index_tests(Interp* interp, usz* pass, usz* fail) {
-    // --- dot-bracket indexing tests ---
-    {
-        char[] code = compile_to_c3("(define lst (list 10 20 30)) lst.[1]", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "aot::index");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: lst.[1]"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: lst.[1]"); }
-    }
-    {
-        char[] code = compile_to_c3("(define lst (list 1 2 3)) lst.[(+ 0 1)]", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "aot::index");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: lst.[(+ 0 1)]"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: lst.[(+ 0 1)]"); }
-    }
-    {
-        char[] code = compile_to_c3("(. [3] {[3] 40})", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: direct . [3] accessor array-key shorthand"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: direct . [3] accessor array-key shorthand"); }
-    }
-    {
-        char[] code = compile_to_c3("(.\"name\" {\"name\" 93})", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: direct .\"name\" accessor dynamic string key"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: direct .\"name\" accessor dynamic string key"); }
-    }
-    {
-        char[] code = compile_to_c3("(.[[1 2 3]] { [ [1 2 3] ] 88 })", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: direct .[array] accessor array-key expression"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: direct .[array] accessor array-key expression"); }
-    }
-    {
-        char[] code = compile_to_c3("(.'k {'k 9})", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: direct .'k accessor shorthand"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: direct .'k accessor shorthand"); }
-    }
-    {
-        char[] code = compile_to_c3("(.1 (list 10 20 30))", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: direct .1 accessor shorthand"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: direct .1 accessor shorthand"); }
-    }
-    {
-        char[] code = compile_to_c3("(.3 (list 10 20 30 40))", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: direct .3 accessor shorthand list"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: direct .3 accessor shorthand list"); }
-    }
-    {
-        char[] code = compile_to_c3("(.3 [10 20 30 40])", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: direct .3 accessor shorthand array"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: direct .3 accessor shorthand array"); }
-    }
-    {
-        char[] code = compile_to_c3("(.3 [10 20 30 40])", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: direct .3 accessor array"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: direct .3 accessor array"); }
-    }
-    {
-        char[] code = compile_to_c3("(.2 {2 77})", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: direct .2 accessor int-key dict"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: direct .2 accessor int-key dict"); }
-    }
-    {
-        char[] code = compile_to_c3("(.\"2\" {\"2\" 78})", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: direct .\"2\" accessor string-key dict"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: direct .\"2\" accessor string-key dict"); }
-    }
-    {
-        char[] code = compile_to_c3("(. [2] {[2] 79})", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: direct . [2] accessor array-key dict"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: direct . [2] accessor array-key dict"); }
-    }
-    {
-        char[] code = compile_to_c3("(.name {'name 9})", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: direct .name accessor shorthand"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: direct .name accessor shorthand"); }
-    }
-    {
-        char[] code = compile_to_c3("(.\"name\" {\"name\" 9})", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "lookup_prim(\"ref\")");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: direct .\"name\" accessor shorthand"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: direct .\"name\" accessor shorthand"); }
-    }
-}
-
-fn void run_compiler_group_path_notation_tests(Interp* interp, usz* pass, usz* fail) {
-    // --- path notation tests ---
-    {
-        char[] code = compile_to_c3("(define point (list (cons 'x 10) (cons 'y 20))) point.x", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "aot::field_access");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: point.x"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: point.x"); }
-    }
-    {
-        char[] code = compile_to_c3("(define obj (list (cons 'inner (list (cons 'val 42))))) obj.inner.val", interp);
-        bool ok = !str_contains(code, "unsupported") && str_contains(code, "aot::field_access");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: obj.inner.val"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: obj.inner.val"); }
-    }
-    {
-        char[] code = compile_to_c3("point.x", interp);
-        bool ok = str_contains(code, "make_string");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: path uses make_string for field name"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: path uses make_string for field name"); }
-    }
-}
-
-fn void run_compiler_group_set_path_tests(Interp* interp, usz* pass_out, usz* fail_out) {
-    usz pass = 0;
-    usz fail = 0;
-    run_compiler_group_set_mutation_tests(interp, &pass, &fail);
-    run_compiler_group_dot_index_tests(interp, &pass, &fail);
-    run_compiler_group_path_notation_tests(interp, &pass, &fail);
-    *pass_out += pass;
-    *fail_out += fail;
-}
-
-fn void run_compiler_group_continuation_set_begin_tests(Interp* interp, usz* pass, usz* fail) {
-    // --- checkpoint/capture via interpreter delegation ---
-    {
-        char[] code = compile_to_c3("(checkpoint (+ 1 (capture k (k 10))))", interp);
-        bool ok = str_contains(code, "compiled_reset") && !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: checkpoint/capture compiles natively"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: checkpoint/capture compiles natively"); }
-    }
-    {
-        char[] code = compile_to_c3("(define x 0) (block (set! x 1) (set! x (+ x 1)) x)", interp);
-        bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: set! inside block"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: set! inside block"); }
-    }
-}
-
-fn void run_compiler_group_continuation_form_tests(Interp* interp, usz* pass, usz* fail) {
-    // --- Continuation form tests (native compilation) ---
-    {
-        char[] code = compile_to_c3("(define x 5) (checkpoint (+ x (capture k (k 10))))", interp);
-        bool ok = str_contains(code, "compiled_reset");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: checkpoint uses compiled_reset"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: checkpoint uses compiled_reset"); }
-    }
-    {
-        char[] code = compile_to_c3("(handle (+ 1 (signal ask 0)) (ask x (resolve 10)))", interp);
-        bool ok = str_contains(code, "compiled_handle") && str_contains(code, "compiled_signal");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: handle/signal uses native compilation"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: handle/signal uses native compilation"); }
-    }
-    {
-        char[] code = compile_to_c3("(signal raise \"error\")", interp);
-        bool ok = str_contains(code, "compiled_signal");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: signal uses compiled_signal"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: signal uses compiled_signal"); }
-    }
-    {
-        char[] code = compile_to_c3("(capture k 42)", interp);
-        bool ok = str_contains(code, "compiled_shift");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: capture uses compiled_shift"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: capture uses compiled_shift"); }
-    }
-    {
-        char[] code = compile_to_c3("(checkpoint (+ 1 2))", interp);
-        bool ok = str_contains(code, "compiled_reset");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: checkpoint compiles natively"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: checkpoint compiles natively"); }
-    }
-    {
-        char[] code = compile_to_c3("(handle (block (signal get 0) (signal set 1)) (get x (resolve 42)) (set v (resolve v)))", interp);
-        bool ok = str_contains(code, "compiled_handle");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: handle with multiple clauses"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: handle with multiple clauses"); }
-    }
-    {
-        char[] code = compile_to_c3("(try (lambda (xx) (+ 1 2)) (lambda (msg) 0))", interp);
-        bool ok = !str_contains(code, "unsupported");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: try from stdlib"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: try from stdlib"); }
-    }
-    {
-        char[] code = compile_to_c3("(checkpoint (+ 1 (capture k (+ (k 10) (k 20)))))", interp);
-        bool ok = str_contains(code, "compiled_reset") && str_contains(code, "compiled_shift");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: checkpoint with nested capture"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: checkpoint with nested capture"); }
-    }
-}
-
-fn void run_compiler_group_continuation_native_tests(Interp* interp, usz* pass_out, usz* fail_out) {
-    usz pass = 0;
-    usz fail = 0;
-    run_compiler_group_continuation_set_begin_tests(interp, &pass, &fail);
-    run_compiler_group_continuation_form_tests(interp, &pass, &fail);
     *pass_out += pass;
     *fail_out += fail;
 }

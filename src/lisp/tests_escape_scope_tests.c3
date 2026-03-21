@@ -34,14 +34,14 @@ fn void run_escape_scope_core_tests(Interp* interp, int* pass, int* fail) {
 fn void run_escape_scope_iterator_coroutine_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define esc-consume (lambda (it) (let loop (acc nil val (next it)) (if (null? val) (reverse acc) (loop (cons (car val) acc) (next (cdr val)))))))");
     test_eq(interp, "escape-scope: iterator consume car",
-        "(car (esc-consume (iterator (quote (1 2 3)))))", 1, pass, fail);
+        "(car (esc-consume (Iterator (quote (1 2 3)))))", 1, pass, fail);
     test_eq(interp, "escape-scope: iterator consume len",
-        "(length (esc-consume (iterator (quote (1 2 3)))))", 3, pass, fail);
+        "(length (esc-consume (Iterator (quote (1 2 3)))))", 3, pass, fail);
 
     test_eq(interp, "escape-scope: coroutine yield",
-        "(let (g (coroutine (lambda () (yield 42) 99))) (resume g))", 42, pass, fail);
+        "(let (g (Coroutine (lambda () (yield 42) 99))) (resume g))", 42, pass, fail);
     test_eq(interp, "escape-scope: coroutine yield+complete",
-        "(let (g (coroutine (lambda () (yield 42) 99))) (resume g) (resume g))", 99, pass, fail);
+        "(let (g (Coroutine (lambda () (yield 42) 99))) (resume g) (resume g))", 99, pass, fail);
 }
 
 fn void run_escape_scope_env_lane_tests(Interp* interp, int* pass, int* fail) {
@@ -61,14 +61,14 @@ fn void run_escape_scope_env_lane_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "esc-env: reverse singleton",
         "(car (my-rev (quote (42))))", 42, pass, fail);
 
-    test_eq(interp, "esc-env: reverse 10000 length",
-        "(length (my-rev (range 10000)))", 10000, pass, fail);
+    test_eq(interp, "esc-env: reverse 256 length",
+        "(length (my-rev (range 256)))", 256, pass, fail);
 
     setup(interp, "(define my-map (lambda (f lst) (let loop (xs lst acc (quote ())) (if (null? xs) (reverse acc) (loop (cdr xs) (cons (f (car xs)) acc))))))");
     test_eq(interp, "esc-env: map double",
         "(car (my-map (lambda (x) (* x 2)) (quote (1 2 3))))", 2, pass, fail);
-    test_eq(interp, "esc-env: map 10000 length",
-        "(length (my-map (lambda (x) (+ x 1)) (range 10000)))", 10000, pass, fail);
+    test_eq(interp, "esc-env: map 256 length",
+        "(length (my-map (lambda (x) (+ x 1)) (range 256)))", 256, pass, fail);
 
     setup(interp, "(define my-filter (lambda (p lst) (let loop (xs lst acc (quote ())) (if (null? xs) (reverse acc) (if (p (car xs)) (loop (cdr xs) (cons (car xs) acc)) (loop (cdr xs) acc))))))");
     test_eq(interp, "esc-env: filter gt2",

@@ -51,7 +51,7 @@ fn void run_basic_index_and_match_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "direct .-1 accessor on list", "(.-1 (quote (10 20 30)))", 30, pass, fail);
     setup(interp, "(define sample-list (quote (10 20 30 40)))");
     test_truthy(interp, "direct .3 equals ref list 3", "(= (.3 sample-list) (ref sample-list 3))", pass, fail);
-    setup(interp, "(define sample-array (array 10 20 30 40))");
+    setup(interp, "(define sample-array (Array 10 20 30 40))");
     test_truthy(interp, "direct .3 equals ref array 3", "(= (.3 sample-array) (ref sample-array 3))", pass, fail);
     test_eq(interp, "direct .2 on array", "(.2 [0 1 2])", 2, pass, fail);
     test_eq(interp, "direct .2 on int-key dict", "(.2 {2 77})", 77, pass, fail);
@@ -64,6 +64,8 @@ fn void run_basic_index_and_match_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "direct .[ array-key ] accessor on dict", "(.[[1 2]] { [ [1 2] ] 99 })", 99, pass, fail);
     test_eq(interp, "direct .3 accessor on list", "(.3 (quote (10 20 30 40)))", 40, pass, fail);
     test_eq(interp, "direct .3 accessor on array", "(.3 [10 20 30 40])", 40, pass, fail);
+    test_eq(interp, "map .1 accessor shorthand car", "(car (map .1 '((10 20) (30 40))))", 20, pass, fail);
+    test_eq(interp, "map .1 accessor shorthand second", "(car (cdr (map .1 '((10 20) (30 40)))))", 40, pass, fail);
     test_truthy(interp, "map .1 accessor shorthand", "(= (map .1 '((10 20) (30 40))) '(20 40))", pass, fail);
     test_error_contains(interp, "wrapped .3 accessor invalid", "((.3) [10 20 30 40])",
         "leading-dot accessor cannot be parenthesized on its own", pass, fail);
@@ -91,20 +93,16 @@ fn void run_basic_control_flow_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "length '(1 2 3 4 5) => 5", "(length (quote (1 2 3 4 5)))", 5, pass, fail);
 
     // Path access
-    setup(interp, "(define namepair (cons (quote name) \"Alice\"))");
-    setup(interp, "(define agepair (cons (quote age) 30))");
-    setup(interp, "(define testperson (cons namepair (cons agepair (quote ()))))");
+    setup(interp, "(define testperson {'name \"Alice\" 'age 30})");
     test_str(interp, "testperson.name => string", "testperson.name", pass, fail);
     test_eq(interp, "testperson.age => 30", "testperson.age", 30, pass, fail);
 
     // Nested path
-    setup(interp, "(define citypair (cons (quote city) \"NYC\"))");
-    setup(interp, "(define zippair (cons (quote zip) 10001))");
-    setup(interp, "(define testaddress (cons citypair (cons zippair (quote ()))))");
-    setup(interp, "(define namepair2 (cons (quote name) \"Bob\"))");
-    setup(interp, "(define addrpair (cons (quote address) testaddress))");
-    setup(interp, "(define testperson2 (cons namepair2 (cons addrpair (quote ()))))");
+    setup(interp, "(define testperson2 {'name \"Bob\" 'address {'city \"NYC\" 'zip 10001}})");
     test_str(interp, "testperson2.address.city => string", "testperson2.address.city", pass, fail);
+    setup(interp, "(define legacy-person (cons (cons 'name \"Alice\") nil))");
+    test_error_contains(interp, "alist-style path rejected", "legacy-person.name",
+        "cannot access '.name' on List value", pass, fail);
 
     // Recursive let
     test_eq(interp, "let ^rec factorial 5 => 120", "(let ^rec (fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1)))))) (fact 5))", 120, pass, fail);

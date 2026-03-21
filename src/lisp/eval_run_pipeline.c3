@@ -1,5 +1,6 @@
 module lisp;
 
+import std::io;
 import std::collections::list;
 import main;
 
@@ -43,17 +44,36 @@ fn void run_clear_stale_jit_tco_state(Interp* interp) @inline {
     interp.jit_tco_env = null;
 }
 
+fn bool run_stage_trace_enabled() @inline {
+    return boundary_c_getenv("OMNI_TRACE_RUN_STAGES") != null;
+}
+
+fn bool run_source_matches_filter(char[] source, char* filter) @inline {
+    if (filter == null) return true;
+    for (usz i = 0; i < source.len; i++) {
+        if (filter[i] == 0 || filter[i] != source[i]) return false;
+    }
+    return filter[source.len] == 0;
+}
+
+fn void emit_run_stage_trace(char[] stage, char[] source) {
+    if (!run_stage_trace_enabled()) return;
+    char* source_filter = boundary_c_getenv("OMNI_TRACE_RUN_SOURCE");
+    if (!run_source_matches_filter(source, source_filter)) return;
+    io::printfn("OMNI_RUN_TRACE stage=%s source=%s", (ZString)stage, (ZString)source);
+}
+
 fn bool run_execute_expr(Expr* expr, Interp* interp, Value** result_value, EvalResult* result_error) {
     if (run_jit_enabled(interp)) {
-        JitCompiledFn f = jit_compile(expr, interp);
-        if (jit_compiled_fn_is_null(f)) {
+        RuntimeCompiledExpr f = runtime_compile_expr(expr, interp);
+        if (runtime_compiled_expr_is_null(f)) {
             *result_error = eval_error_expr("JIT compilation failed", expr);
             return false;
         }
-        *result_value = jit_exec(f, interp);
+        *result_value = runtime_exec_compiled_expr(f, interp);
         return true;
     }
-    *result_value = jit_eval(expr, interp.global_env, interp);
+    *result_value = runtime_eval_expr(expr, interp.global_env, interp);
     return true;
 }
 
@@ -103,14 +123,14 @@ fn EvalResult run_program(char[] source, Interp* interp) {
         dispatch_pending_signal_callbacks(interp);
 
         // GC JIT states between top-level expressions (safe: no JIT code on stack)
-        jit_gc();
+        runtime_gc_between_top_level_runs();
 
         // Expand macros before JIT compilation
         expr = expand_macros_in_expr(expr, interp);
         if (run_jit_enabled(interp)) {
-            JitCompiledFn f = jit_compile(expr, interp);
-            if (!jit_compiled_fn_is_null(f)) {
-                Value* jit_result = jit_exec(f, interp);
+            RuntimeCompiledExpr f = runtime_compile_expr(expr, interp);
+            if (!runtime_compiled_expr_is_null(f)) {
+                Value* jit_result = runtime_exec_compiled_expr(f, interp);
                 if (jit_result != null && jit_result.tag == ERROR) {
                     result = eval_error_expr(jit_result.str_chars[:jit_result.str_len], expr);
                 } else {
@@ -122,7 +142,7 @@ fn EvalResult run_program(char[] source, Interp* interp) {
             result = eval_error_expr("JIT compilation failed", expr);
             break;
         }
-        Value* interpreted = jit_eval(expr, interp.global_env, interp);
+        Value* interpreted = runtime_eval_expr(expr, interp.global_env, interp);
         if (interpreted != null && interpreted.tag == ERROR) {
             result = eval_error_expr(interpreted.str_chars[:interpreted.str_len], expr);
             break;
@@ -139,6 +159,7 @@ fn EvalResult run_program(char[] source, Interp* interp) {
  * Run a single expression.
  */
 fn EvalResult run(char[] source, Interp* interp) {
+    emit_run_stage_trace("start", source);
     run_clear_stale_raise_state(interp);
     run_clear_stale_jit_tco_state(interp);
     defer run_clear_stale_jit_tco_state(interp);
@@ -146,7 +167,7 @@ fn EvalResult run(char[] source, Interp* interp) {
     boundary_assert_interp_scope_chain(interp);
 
     // GC JIT states between top-level evaluations (safe: no JIT code on stack)
-    jit_gc();
+    runtime_gc_between_top_level_runs();
 
     Lexer lex;
     lex.init(source);
@@ -157,6 +178,7 @@ fn EvalResult run(char[] source, Interp* interp) {
     Expr* expr = p.parse_expr();
 
     if (p.has_error) {
+        emit_run_stage_trace("parse-error", source);
         return parser_error_to_eval_result(&p);
     }
 
@@ -167,19 +189,25 @@ fn EvalResult run(char[] source, Interp* interp) {
     main::ScopeRegion* saved_scope = null;
     main::ScopeRegion* child_scope = boundary_push_child_scope(interp, &saved_scope);
     if (child_scope == null) {
+        emit_run_stage_trace("child-scope-error", source);
         return eval_error("run: failed to create child scope");
     }
     boundary_assert_interp_scope_chain(interp);
 
     EvalResult result;
     Value* jit_result = null;
+    emit_run_stage_trace("before-execute-expr", source);
     if (!run_execute_expr(expr, interp, &jit_result, &result)) {
+        emit_run_stage_trace("execute-expr-error", source);
         boundary_pop_child_scope(interp, saved_scope, child_scope);
         return result;
     }
+    emit_run_stage_trace("after-execute-expr", source);
 
     bool child_spliced = false;
+    emit_run_stage_trace("before-promote-result", source);
     jit_result = run_promote_result(jit_result, interp, child_scope, saved_scope, &child_spliced);
+    emit_run_stage_trace("after-promote-result", source);
     main::ScopeRegion* release_scope = child_spliced ? null : child_scope;
 
     if (jit_result != null && jit_result.tag == ERROR) {
@@ -188,8 +216,11 @@ fn EvalResult run(char[] source, Interp* interp) {
         result = eval_ok(jit_result);
     }
 
+    emit_run_stage_trace("before-pop-child-scope", source);
     boundary_pop_child_scope(interp, saved_scope, release_scope);
+    emit_run_stage_trace("after-pop-child-scope", source);
     boundary_assert_interp_scope_chain(interp);
     dispatch_pending_signal_callbacks(interp);
+    emit_run_stage_trace("end", source);
     return result;
 }

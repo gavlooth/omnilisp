@@ -21,12 +21,27 @@ struct Relation {
     MdbDbi       dbi;           // LMDB database handle for this relation
     DeduceDb*    db;            // parent database
     SymbolId     key_col;       // primary key column (0 = none)
+    SymbolId     unique_col;    // unique column (0 = none)
+    SymbolId*    unique_cols;   // composite unique columns (possibly length 0/1+)
+    usz          unique_col_count;
+    usz          unique_col_capacity;
+    DeduceReferenceConstraint* reference_constraints;
+    usz          reference_constraint_count;
+    usz          reference_constraint_capacity;
     SymbolId     index_col;     // indexed column (0 = none)
     bool         dropped;       // true after relation database is dropped
 }
 
 fn void deduce_relation_free(Relation* rel) @inline {
     if (rel == null) return;
+    if (rel.reference_constraints != null) {
+        mem::free(rel.reference_constraints);
+        rel.reference_constraints = null;
+    }
+    if (rel.unique_cols != null) {
+        mem::free(rel.unique_cols);
+        rel.unique_cols = null;
+    }
     if (rel.column_key_values != null) {
         mem::free(rel.column_key_values);
         rel.column_key_values = null;
@@ -41,6 +56,14 @@ fn void deduce_relation_free(Relation* rel) @inline {
 fn void deduce_relation_finalizer(void* handle) {
     if (handle == null) return;
     Relation* rel = (Relation*)handle;
+    if (rel.reference_constraints != null) {
+        mem::free(rel.reference_constraints);
+        rel.reference_constraints = null;
+    }
+    if (rel.unique_cols != null) {
+        mem::free(rel.unique_cols);
+        rel.unique_cols = null;
+    }
     if (rel.column_key_values != null) {
         mem::free(rel.column_key_values);
         rel.column_key_values = null;
@@ -51,6 +74,10 @@ fn void deduce_relation_finalizer(void* handle) {
     }
     rel.col_count = 0;
     rel.col_capacity = 0;
+    rel.unique_col_count = 0;
+    rel.unique_col_capacity = 0;
+    rel.reference_constraint_count = 0;
+    rel.reference_constraint_capacity = 0;
     rel.dropped = true;
 }
 
@@ -304,6 +331,18 @@ fn Value* prim_deduce_ns_query(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_query(args, env, interp);
 }
 
+fn Value* prim_deduce_ns_schema(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_schema(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_indexes(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_indexes(args, env, interp);
+}
+
+fn Value* prim_deduce_ns_stats(Value*[] args, Env* env, Interp* interp) {
+    return prim_deduce_stats(args, env, interp);
+}
+
 fn Value* prim_deduce_ns_count(Value*[] args, Env* env, Interp* interp) {
     return prim_deduce_count(args, env, interp);
 }
@@ -356,6 +395,9 @@ fn Value* prim_deduce_dispatch(char[] name, Value*[] rest, Env* env, Interp* int
     if (deduce_cmd_matches(name, "scan")) return prim_deduce_scan(rest, env, interp);
     if (deduce_cmd_matches(name, "scan-range")) return prim_deduce_scan_range(rest, env, interp);
     if (deduce_cmd_matches(name, "query")) return prim_deduce_query(rest, env, interp);
+    if (deduce_cmd_matches(name, "schema")) return prim_deduce_schema(rest, env, interp);
+    if (deduce_cmd_matches(name, "indexes")) return prim_deduce_indexes(rest, env, interp);
+    if (deduce_cmd_matches(name, "stats")) return prim_deduce_stats(rest, env, interp);
     if (deduce_cmd_matches(name, "count")) return prim_deduce_count(rest, env, interp);
     if (deduce_cmd_matches(name, "match")) return prim_deduce_match(rest, env, interp);
     if (deduce_cmd_matches(name, "fact!")) return prim_assert_fact(rest, env, interp);
@@ -380,6 +422,9 @@ fn Value* prim_deduce_dispatch(char[] name, Value*[] rest, Env* env, Interp* int
 // (deduce 'scan relation)          → list of dicts
 // (deduce 'scan-range relation lower-bound upper-bound) → list of dicts
 // (deduce 'query relation fn)      → filtered list of dicts
+// (deduce 'schema relation)        → relation schema payload
+// (deduce 'indexes relation)       → registered logical indexes
+// (deduce 'stats relation)         → relation statistics payload
 // (deduce 'count relation)         → int
 // (deduce 'match relation pattern) → list of dicts
 // (deduce 'fact! relation vals...) → Void
@@ -404,5 +449,5 @@ fn Value* prim_deduce(Value*[] args, Env* env, Interp* interp) {
     Value* out = prim_deduce_dispatch(name, args[1..], env, interp);
     if (out != null) return out;
 
-    return deduce_raise(interp, "deduce/dispatch-unknown-command", "deduce: unknown command (expected 'open 'open-named 'block 'commit 'abort 'scan 'scan-range 'query 'count 'match 'fact! 'retract! 'clear! 'drop! 'rule! 'explain 'analyze)");
+    return deduce_raise(interp, "deduce/dispatch-unknown-command", "deduce: unknown command (expected 'open 'open-named 'block 'commit 'abort 'scan 'scan-range 'query 'schema 'indexes 'stats 'count 'match 'fact! 'retract! 'clear! 'drop! 'rule! 'explain 'analyze)");
 }

@@ -2,6 +2,22 @@ module lisp;
 
 import std::thread;
 
+usz g_scheduler_wait_timeout_failure_injections = 0;
+
+fn void scheduler_test_inject_wait_timeout_failure(usz count = 1) {
+    g_scheduler_wait_timeout_failure_injections = count;
+}
+
+fn void scheduler_test_clear_wait_timeout_failure_injection() {
+    g_scheduler_wait_timeout_failure_injections = 0;
+}
+
+fn bool scheduler_consume_wait_timeout_failure_injection() @inline {
+    if (g_scheduler_wait_timeout_failure_injections == 0) return false;
+    g_scheduler_wait_timeout_failure_injections--;
+    return true;
+}
+
 fn long scheduler_monotonic_ms() @inline {
     long[2] ts;
     if (c_clock_gettime(SCHEDULER_CLOCK_MONOTONIC, &ts) != 0) return 0;
@@ -54,6 +70,7 @@ fn bool scheduler_wait_thread_task_waiters(long timeout_ms) {
     }
     if (timeout_ms == 0) return true;
 
+    if (scheduler_consume_wait_timeout_failure_injection()) return false;
     if (catch err = g_scheduler.thread_task_cv.wait_timeout(&g_scheduler.thread_task_mu, (ulong)timeout_ms)) {
         // WAIT_TIMEOUT is expected; caller should continue timeout budgeting.
         if (err == thread::WAIT_TIMEOUT) return true;
@@ -101,6 +118,7 @@ fn int scheduler_wait_thread_task_completion_state(usz task_id, uint generation,
             if (wait_ms <= 0) return SCHEDULER_JOIN_WAIT_TIMEOUT;
         }
 
+        if (scheduler_consume_wait_timeout_failure_injection()) return SCHEDULER_JOIN_WAIT_FAILED;
         if (catch err = g_scheduler.thread_task_cv.wait_timeout(&g_scheduler.thread_task_mu, (ulong)wait_ms)) {
             if (err == thread::WAIT_TIMEOUT) return SCHEDULER_JOIN_WAIT_TIMEOUT;
             return SCHEDULER_JOIN_WAIT_FAILED;
@@ -152,6 +170,7 @@ fn int scheduler_wait_os_thread_completion_state(usz thread_id, uint generation,
             if (wait_ms <= 0) return SCHEDULER_JOIN_WAIT_TIMEOUT;
         }
 
+        if (scheduler_consume_wait_timeout_failure_injection()) return SCHEDULER_JOIN_WAIT_FAILED;
         if (catch err = g_scheduler.thread_task_cv.wait_timeout(&g_scheduler.thread_task_mu, (ulong)wait_ms)) {
             if (err == thread::WAIT_TIMEOUT) return SCHEDULER_JOIN_WAIT_TIMEOUT;
             return SCHEDULER_JOIN_WAIT_FAILED;

@@ -4,7 +4,6 @@ module lisp;
 import std::io;
 import std::collections::list;
 import main;
-import pika;
 
 const uint COPY_SITE_GENERIC = 0;
 const uint COPY_SITE_PROMOTE_TO_ROOT = 1;

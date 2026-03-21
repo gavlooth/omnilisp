@@ -1,5 +1,7 @@
 module lisp;
 
+import std::io;
+
 fn void run_advanced_core_semantics_match_tests(Interp* interp, int* pass, int* fail) {
     // Match patterns
     test_eq(interp, "match 1 => 10", "(match 1 (1 10) (2 20) (3 30))", 10, pass, fail);
@@ -12,12 +14,44 @@ fn void run_advanced_core_semantics_match_tests(Interp* interp, int* pass, int* 
     test_eq(interp, "match [a b c] product", "(match (quote (2 3 4)) ([a b c] (* a (* b c))))", 24, pass, fail);
     test_eq(interp, "match [h .. t] tail len", "(match (quote (1 2 3 4 5)) ([h .. t] (length t)))", 4, pass, fail);
     test_eq(interp, "match _ wildcard", "(match 42 (_ 0))", 0, pass, fail);
+    test_eq(interp, "match nil literal pattern", "(match nil (nil 1) (_ 0))", 1, pass, fail);
+    test_eq(interp, "match false literal pattern aliases nil", "(match false (nil 1) (_ 0))", 1, pass, fail);
+    test_eq(interp, "match nil matches false literal pattern", "(match nil (false 1) (_ 0))", 1, pass, fail);
+    test_eq(interp, "match Void literal pattern", "(match (Void) (Void 1) (_ 0))", 1, pass, fail);
+    test_eq(interp, "match wildcard fallthrough after nil false Void literals",
+        "(match 42 (nil 1) (false 2) (Void 3) (_ 9))",
+        9, pass, fail);
+    test_eq(interp, "match guard sub-pattern failure skips guard evaluation",
+        "(let (trace []) "
+        "  (match [1 2] "
+        "    ((? (block (push! trace 'g1) true) [x]) 1) "
+        "    (_ (length trace))))",
+        0, pass, fail);
+    test_eq(interp, "match guard sees sub-pattern bindings",
+        "(match [7] ((? (> x 0) [x]) x) (_ 0))",
+        7, pass, fail);
+    test_eq(interp, "match guard evaluation stops at first matching clause",
+        "(let (trace []) "
+        "  (match [7] "
+        "    ((? (block (push! trace 'g1) (> x 0)) [x]) (length trace)) "
+        "    ((? (block (push! trace 'g2) true) [_]) 99) "
+        "    (_ 0)))",
+        1, pass, fail);
     test_eq(interp, "match string hello", "(match \"hello\" (\"hello\" 1) (\"world\" 2) (x 0))", 1, pass, fail);
     test_eq(interp, "match string world", "(match \"world\" (\"hello\" 1) (\"world\" 2) (x 0))", 2, pass, fail);
     test_eq(interp, "match string default", "(match \"other\" (\"hello\" 1) (\"world\" 2) (x 0))", 0, pass, fail);
-    test_eq(interp, "match [.. last] long list >64",
-        "(match (let loop (i 79 acc (quote ())) (if (< i 0) acc (loop (- i 1) (cons i acc)))) ([.. last] last))",
-        79, pass, fail);
+    {
+        const usz LONG_LIST_COUNT = 80;
+        char[1024] match_buf;
+        if (!advanced_build_match_last_list_expr(&match_buf, match_buf.len, LONG_LIST_COUNT)) {
+            io::printn("[FAIL] long list match regression builder");
+            (*fail)++;
+        } else {
+            test_eq(interp, "match [.. last] long list >64",
+                match_buf[..advanced_test_cstr_len(&match_buf)],
+                (long)(LONG_LIST_COUNT - 1), pass, fail);
+        }
+    }
     test_eq(interp, "match as pattern binds whole list",
         "(match (quote (10 20)) (([a b] 'as pair) (length pair)))",
         2, pass, fail);

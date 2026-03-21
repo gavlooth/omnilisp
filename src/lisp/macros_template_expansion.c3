@@ -132,7 +132,7 @@ fn char[] macro_validate_emitted_form(Value* val, Interp* interp, usz depth = 0)
             Value* name_v = rest.cons_val.car;
             if (name_v == null || name_v.tag != SYMBOL) return "malformed emitted form: set! name must be a symbol";
         } else if ((uint)sym == (uint)interp.sym_and || (uint)sym == (uint)interp.sym_or) {
-            if (!macro_list_has_exact_arity(rest, 2)) return "malformed emitted form: and/or expects exactly 2 arguments";
+            if (!macro_list_has_min_arity(rest, 0)) return "malformed emitted form: and/or arguments must be a proper list";
         } else if ((uint)sym == (uint)interp.sym_checkpoint) {
             if (!macro_list_has_exact_arity(rest, 1)) return "malformed emitted form: checkpoint expects exactly 1 argument";
         } else if ((uint)sym == (uint)interp.sym_capture) {

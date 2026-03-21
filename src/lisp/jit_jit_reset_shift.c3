@@ -118,7 +118,7 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     Value* k_val = make_continuation(interp, k);
 
     // Bind k in the shift body's environment
-    Env* shift_env = env.extend(interp, expr.shift.k_name, k_val);
+    Env* shift_env = jit_env_extend(interp, env, expr.shift.k_name, k_val);
 
     // Store shift body info for the parent (jit_reset_impl) to evaluate
     rstate.shifted = true;
@@ -139,7 +139,9 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
     }
 
     // === RESUMED HERE by (k val) via jit_apply_continuation_impl ===
+    void* resumed_reset_state = interp.current_reset_state;
     restore_interp_state_preserve_raise(interp, &saved);
+    interp.current_reset_state = resumed_reset_state;
 
     return interp_consume_resume_value_or_nil(interp);
 }
@@ -221,11 +223,11 @@ fn EvalResult jit_continuation_finish(main::StackCtx* target, ResetState* resume
     }
 
     if (target.status == main::StackCtxStatus.CTX_SUSPENDED) {
-        // Continuation application is expected to settle in this call path.
-        // Do not treat a still-suspended clone as a completed frame/result.
-        jit_continuation_destroy_ctx(target, interp);
+        // Multi-shot continuation replay may suspend again on a later capture.
+        // Leave the resumed clone alive so the newly captured continuation can
+        // keep pointing at it and let the enclosing checkpoint logic continue.
         interp_clear_resume_value(interp);
-        return eval_error("continuation suspended before completion");
+        return eval_ok(make_nil(interp));
     }
 
     Value* result = (Value*)target.result;
@@ -253,9 +255,9 @@ fn EvalResult jit_apply_continuation_impl(Value* k_val, Value* arg, Interp* inte
     EvalResult err;
     if (!jit_continuation_validate_ctx(ctx, interp, &err)) return err;
     if (k.handle_state != null) {
-        // Effect-handler continuations require resolve semantics so handler
-        // snapshot reinstall and single-shot lifecycle stay coherent.
-        Value* resolved = jit_resolve_value(interp, k_val, arg);
+        // `resolve` stays single-shot, but explicit `(k ...)` applications from
+        // `with-continuation` are the multi-shot escape hatch.
+        Value* resolved = jit_apply_handle_continuation_value(interp, k_val, arg);
         if (resolved != null && resolved.tag == ERROR) {
             return eval_error(resolved.str_chars[:resolved.str_len]);
         }

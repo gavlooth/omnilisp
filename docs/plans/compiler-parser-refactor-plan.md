@@ -1,7 +1,7 @@
 # Compiler/Parser Refactor Consolidation Plan
 
-Status: `active`
-As of: 2026-03-09
+Status: `complete`
+As of: 2026-03-19
 Owner: Codex workflow
 
 ## Purpose
@@ -18,14 +18,16 @@ previously spread across multiple historical plan documents.
 - `docs/areas/compiler-parser-refactor.md` (area status + next-step summary)
 - current `src/lisp/compiler_*.c3` and `src/lisp/parser_*.c3` file layout
 
-## Active Queue
+## Final Queue Snapshot
 
-Post-`R5` continuation AL largest-file snapshot (`wc -l src/lisp/compiler*.c3 src/lisp/parser*.c3`, 2026-03-09):
+Post-closure largest-file snapshot (`wc -l src/lisp/compiler*.c3 src/lisp/parser*.c3`, 2026-03-19):
 
-- `src/lisp/parser_application.c3` (`178`)
-- `src/lisp/parser_lexer_string_hash.c3` (`175`)
-- `src/lisp/parser_type_defs.c3` (`173`)
-- `src/lisp/compiler_free_vars_walk.c3` (`170`)
+- `src/lisp/compiler_primitive_variable_hash_table_domains.c3` (`121`)
+- `src/lisp/parser_patterns_values.c3` (`120`)
+- `src/lisp/compiler_quasiquote_flat.c3` (`119`)
+
+These files are retained as-is. At this size, further queue-driven splitting is
+not active work.
 
 ### Checklist
 
@@ -38,6 +40,7 @@ Post-`R5` continuation AL largest-file snapshot (`wc -l src/lisp/compiler*.c3 sr
   - [x] changed file ownership map in this plan,
   - [x] validation commands in `memory/CHANGELOG.md`,
   - [x] area status summary update in `docs/areas/compiler-parser-refactor.md`.
+- [x] R7 Close the queue once remaining compiler/parser files fall below the split-worthwhile threshold and the area is no longer structurally blocked.
 
 ### R1 Threshold Lock (2026-03-09)
 
@@ -68,6 +71,9 @@ Post-`R5` continuation AL largest-file snapshot (`wc -l src/lisp/compiler*.c3 sr
     utility emitters.
 - Validation evidence:
   - `c3c build` passed.
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main --test-suite lisp`
+    crashed in `lisp.Env.lookup` with an unaligned-access panic via
+    `jit_lookup_var`.
   - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed
     (`unified: 1697/0`, `compiler: 85/0`).
 
@@ -964,6 +970,354 @@ Post-`R5` continuation AL largest-file snapshot (`wc -l src/lisp/compiler*.c3 sr
   - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed
     (`unified: 1697/0`, `compiler: 85/0`).
 
+### R5 Continuation Slice AM (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/parser_application.c3`:
+  - moved shared call-construction and argument-collection helpers to
+    `src/lisp/parser_application_helpers.c3`:
+    - `collect_application_args(...)`,
+    - `build_call_expr(...)`,
+    - `reject_nullary_accessor_shorthand_call(...)`.
+  - retained application dispatch and placeholder lowering in
+    `src/lisp/parser_application.c3`:
+    - `parse_application(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target selected:
+    `src/lisp/parser_lexer_string_hash.c3` (`165`).
+- Validation evidence:
+  - `c3c build` passed.
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+    surfaced a JIT mismatch on `map .1 accessor shorthand`
+    (`interp=ok, jit=FAIL`).
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main --test-suite lisp`
+    crashed in `lisp.Env.lookup` with an unaligned-access panic via
+    `jit_lookup_var`.
+
+### R5 Continuation Slice AN (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/parser_type_defs.c3` and `src/lisp/parser_type_defs_union.c3`:
+  - moved shared copy/compound/variance helpers to
+    `src/lisp/parser_type_defs_helpers.c3`:
+    - `copy_symbol_list(...)`,
+    - `copy_type_field_list(...)`,
+    - `copy_union_variant_list(...)`,
+    - `parse_compound_symbol_with_params(...)`,
+    - `validate_invariant_type_params(...)`.
+  - retained type-definition entrypoints in `src/lisp/parser_type_defs.c3`:
+    - `init_deftype_expr(...)`,
+    - `parse_deftype_name_compound(...)`,
+    - `parse_deftype_name(...)`,
+    - `parse_deftype_typed_field(...)`,
+    - `parse_deftype_bare_field(...)`,
+    - `parse_deftype(...)`.
+  - retained union-definition entrypoints in `src/lisp/parser_type_defs_union.c3`:
+    - `init_defunion_expr(...)`,
+    - `parse_defunion_name_compound(...)`,
+    - `parse_defunion_name(...)`,
+    - `parse_defunion_variant_compound(...)`,
+    - `parse_defunion_variant(...)`,
+    - `parse_defunion(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target selected:
+    `src/lisp/compiler_free_vars_walk.c3` (`170`).
+- Validation evidence:
+  - `c3c build` passed.
+
+### R5 Continuation Slice AO (2026-03-19)
+
+- Performed behavior-preserving extraction on `src/lisp/parser_datum.c3`:
+  - moved recursive list/template collection walkers to
+    `src/lisp/parser_datum_collections.c3`:
+    - `parse_datum_collection_template(...)`,
+    - `parse_datum_list(...)`.
+  - retained datum/template constructors and dispatch in
+    `src/lisp/parser_datum.c3`:
+    - `parser_make_nil_datum(...)`,
+    - `parser_make_int_datum(...)`,
+    - `parser_make_symbol_datum(...)`,
+    - `parser_make_string_datum(...)`,
+    - `parser_make_quote_datum(...)`,
+    - `parser_make_cons_datum(...)`,
+    - `parse_datum_template_only(...)`,
+    - `parse_datum_string(...)`,
+    - `parse_datum_quote(...)`,
+    - `parse_datum_impl(...)`,
+    - `parse_datum(...)`,
+    - `parse_template_datum(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target selected:
+    `src/lisp/compiler_temp_misc_forms.c3` (`610`).
+- Validation evidence:
+  - `c3c build` passed.
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+    passed (`122 passed, 0 failed`).
+
+### R5 Continuation Slice AP (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/compiler_temp_misc_forms.c3`:
+  - moved direct type-form lowering and shared AOT emit helpers to
+    `src/lisp/compiler_temp_type_forms.c3`:
+    - `emit_bool_literal(...)`,
+    - `emit_value_tag_literal(...)`,
+    - `emit_target_assignment_prefix(...)`,
+    - `emit_string_array_init(...)`,
+    - `emit_aot_type_annotation_spec_init(...)`,
+    - `compile_typed_define_direct(...)`,
+    - `compile_deftype_direct(...)`,
+    - `compile_defabstract_direct(...)`,
+    - `compile_defunion_direct(...)`,
+    - `compile_defalias_direct(...)`,
+    - `compile_defeffect_direct(...)`,
+    - `compile_type_form_direct(...)`.
+  - retained resolve/index and define-bridge helpers in
+    `src/lisp/compiler_temp_misc_forms.c3`:
+    - `compile_resolve_flat(...)`,
+    - `compile_index_flat(...)`,
+    - `is_typed_lambda_define(...)`,
+    - `compile_define_rhs_with_typed_bridge(...)`,
+    - `compile_define_flat(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target selected:
+    `src/lisp/compiler_temp_type_forms.c3` (`556`).
+- Validation evidence:
+  - `c3c build` passed.
+  - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+    Docker-bounded validation wrapper:
+    `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+    (`122 passed, 0 failed`).
+
+### R5 Continuation Slice AQ (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/compiler_temp_type_forms.c3`:
+  - moved shared type-form emit helpers to
+    `src/lisp/compiler_temp_type_forms_helpers.c3`:
+    - `emit_bool_literal(...)`,
+    - `emit_value_tag_literal(...)`,
+    - `emit_target_assignment_prefix(...)`,
+    - `emit_string_array_init(...)`,
+    - `emit_aot_type_annotation_spec_init(...)`.
+  - retained direct type-form lowering in
+    `src/lisp/compiler_temp_type_forms.c3`:
+    - `compile_typed_define_direct(...)`,
+    - `compile_deftype_direct(...)`,
+    - `compile_defabstract_direct(...)`,
+    - `compile_defunion_direct(...)`,
+    - `compile_defalias_direct(...)`,
+    - `compile_defeffect_direct(...)`,
+    - `compile_type_form_direct(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target selected:
+    `src/lisp/compiler_temp_type_forms.c3` (`400`).
+- Validation evidence:
+  - `c3c build` passed.
+  - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+    Docker-bounded validation wrapper:
+    `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+    (`122 passed, 0 failed`).
+
+### R5 Continuation Slice AR (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/compiler_temp_type_forms.c3`:
+  - moved direct type-definition lowering to
+    `src/lisp/compiler_temp_type_forms_defs.c3`:
+    - `compile_deftype_direct(...)`,
+    - `compile_defabstract_direct(...)`,
+    - `compile_defunion_direct(...)`,
+    - `compile_defalias_direct(...)`,
+    - `compile_defeffect_direct(...)`.
+  - retained typed-define and type-form dispatch in
+    `src/lisp/compiler_temp_type_forms.c3`:
+    - `compile_typed_define_direct(...)`,
+    - `compile_type_form_direct(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target selected:
+    `src/lisp/compiler_temp_type_forms_defs.c3` (`342`).
+- Validation evidence:
+  - `c3c build` passed.
+  - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+    Docker-bounded validation wrapper:
+    `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+    (`122 passed, 0 failed`).
+
+### R5 Continuation Slice AS (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/parser_expr_atoms.c3`:
+  - moved dot-accessor and path helpers to
+    `src/lisp/parser_expr_atoms_accessors.c3`:
+    - `parse_dot_prefixed_int_key(...)`,
+    - `parse_dot_accessor_shorthand(...)`,
+    - `parse_path_expr(...)`.
+  - retained literal parsing and `parse_expr(...)` dispatch in
+    `src/lisp/parser_expr_atoms.c3`:
+    - integer/float/string/symbol/placeholder parsing,
+    - top-level expression token dispatch.
+- Post-slice queue refresh (largest-first):
+  - next extraction target selected: `src/lisp/parser_define_attrs.c3` (`206`).
+- Validation evidence:
+  - `c3c build` passed.
+  - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+    Docker-bounded validation wrapper:
+    `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+    (`122 passed, 0 failed`).
+
+### R5 Continuation Slice AT (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/compiler_primitive_variable_hash_table_domains.c3`:
+  - moved collection/math/bitwise primitive registrations to
+    `src/lisp/compiler_primitive_variable_hash_table_domains_collections.c3`.
+  - retained arithmetic/comparison/core/string/file/misc primitive
+    registrations in `src/lisp/compiler_primitive_variable_hash_table_domains.c3`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target selected:
+    `src/lisp/compiler_temp_type_forms_defs.c3` (`182`).
+- Validation evidence:
+  - `c3c build` passed.
+  - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+    Docker-bounded validation wrapper:
+    `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+    (`122 passed, 0 failed`).
+
+### R5 Continuation Slice AU (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/compiler_temp_type_forms_defs.c3`:
+  - moved alias and effect lowering to
+    `src/lisp/compiler_temp_type_forms_defs_misc.c3`:
+    - `compile_defalias_direct(...)`,
+    - `compile_defeffect_direct(...)`.
+  - retained type and abstract lowering in
+    `src/lisp/compiler_temp_type_forms_defs.c3`:
+    - `compile_deftype_direct(...)`,
+    - `compile_defabstract_direct(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target selected: `src/lisp/parser_patterns.c3` (`173`).
+- Validation evidence:
+  - `c3c build` passed.
+  - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+    Docker-bounded validation wrapper:
+    `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+    (`122 passed, 0 failed`).
+
+### R5 Continuation Slice AV (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/parser_patterns.c3`:
+  - moved string/sequence/dict/symbol pattern builders to
+    `src/lisp/parser_patterns_values.c3`:
+    - `parse_string_pattern_literal(...)`,
+    - `parse_seq_pattern(...)`,
+    - `parse_dict_pattern(...)`,
+    - `parse_symbol_pattern(...)`.
+  - retained `parse_pattern(...)` dispatch in `src/lisp/parser_patterns.c3`
+    plus the existing paren-pattern helpers in
+    `src/lisp/parser_patterns_paren.c3`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target selected: `src/lisp/parser_collection_literals.c3` (`171`).
+- Validation evidence:
+  - `c3c build` passed.
+  - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+    Docker-bounded validation wrapper:
+    `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+    (`122 passed, 0 failed`).
+
+### R5 Continuation Slice AW (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/parser_collection_literals.c3`:
+  - moved dict/array literal builders to
+    `src/lisp/parser_collection_literals_builders.c3`:
+    - `parse_dict_literal(...)`,
+    - `parse_array_literal(...)`.
+  - retained postfix index access and lookup-accessor construction in
+    `src/lisp/parser_collection_literals.c3`:
+    - `parse_postfix_index(...)`,
+    - `build_lookup_accessor(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target selected: `src/lisp/compiler_output_helpers.c3` (`171`).
+- Validation evidence:
+  - `c3c build` passed.
+  - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+    Docker-bounded validation wrapper:
+    `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+    (`122 passed, 0 failed`).
+
+### R5 Continuation Slice AX (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/compiler_output_helpers.c3`:
+  - moved symbol sanitization and primitive-reference helpers to
+    `src/lisp/compiler_output_symbol_helpers.c3`:
+    - `is_c3_reserved(...)`,
+    - `emit_symbol_name(...)`,
+    - `emit_prim_global_name(...)`,
+    - `record_prim_ref(...)`.
+  - retained generic output emission helpers in
+    `src/lisp/compiler_output_helpers.c3`:
+    - `emit(...)`, `emit_char(...)`, `emit_escaped(...)`,
+    - `emit_string_literal(...)`, `emit_line(...)`,
+    - `emit_indent(...)`, `emit_newline(...)`,
+    - `emit_int(...)`, `emit_usz(...)`,
+    - `get_output(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target selected: `src/lisp/parser_ffi.c3` (`168`).
+- Validation evidence:
+  - `c3c build` passed.
+  - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+    Docker-bounded validation wrapper:
+    `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+    (`122 passed, 0 failed`).
+
+### R5 Continuation Slice AY (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/parser_ffi.c3`:
+  - moved FFI signature helpers to `src/lisp/parser_ffi_helpers.c3`:
+    - `parse_ffi_fn_modifiers(...)`,
+    - `set_ffi_c_name(...)`,
+    - `ensure_ffi_param_capacity(...)`,
+    - `parse_ffi_typed_params(...)`.
+  - retained FFI entrypoints in `src/lisp/parser_ffi.c3`:
+    - `parse_ffi_lib(...)`,
+    - `parse_ffi_fn(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target selected:
+    `src/lisp/compiler_temp_type_forms_defs_union.c3` (`166`).
+- Validation evidence:
+  - `c3c build` passed.
+  - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+    Docker-bounded validation wrapper:
+    `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+    (`122 passed, 0 failed`).
+
+### R5 Continuation Batch BB (2026-03-19)
+
+- Performed behavior-preserving extractions:
+  - `src/lisp/parser_define_core_helpers.c3` -> helper `src/lisp/parser_define_core_helpers_define.c3`
+    - moved shorthand/normal define parsing into the helper file.
+    - retained low-level shorthand helpers in the original file.
+  - `src/lisp/compiler_program_pipeline.c3` -> helper `src/lisp/compiler_program_pipeline_helpers.c3`
+    - moved program parsing and analysis setup into the helper file.
+    - retained source assembly and final emission flow in the original file.
+  - `src/lisp/compiler_temp_type_forms_defs.c3` -> helper `src/lisp/compiler_temp_type_forms_defs_abstract.c3`
+    - moved abstract-type lowering into the helper file.
+    - retained direct type-definition lowering in the original file.
+- Post-batch queue refresh (largest-first):
+  - next extraction target selected:
+    `src/lisp/compiler_call_explain_helpers.c3` (`130`).
+- Validation evidence:
+  - `c3c build` passed.
+  - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the
+    Docker-bounded validation wrapper:
+    `LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+    (`122 passed, 0 failed`).
+
 ### R3 Slice Landing (2026-03-09)
 
 - Split `src/lisp/compiler_native_effect_compilation_flat_style.c3` by
@@ -1025,6 +1379,175 @@ Post-`R5` continuation AL largest-file snapshot (`wc -l src/lisp/compiler*.c3 sr
   - `c3c build` passed.
   - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed
     (`unified: 1697/0`, `compiler: 85/0`).
+
+### R5 Continuation Slice BC (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/compiler_call_explain_helpers.c3`:
+  - moved effect explain lowering helpers to
+    `src/lisp/compiler_call_explain_effect_helpers.c3`:
+    - `compile_explain_effect_signal_flat(...)`,
+    - `compile_explain_effect_resolve_flat(...)`.
+  - retained selector dispatch and the
+    `compile_explain_flat(...)` entrypoint in
+    `src/lisp/compiler_call_explain_helpers.c3`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target: `src/lisp/compiler_code_emission.c3` (`127`).
+- Validation evidence:
+  - `c3c build` passed.
+  - Docker-bounded compiler slice passed:
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+### R5 Continuation Slice BD (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/compiler_code_emission.c3`:
+  - moved lambda-signature, parameter-unpack, capture-binding, and
+    body-return helpers to
+    `src/lisp/compiler_code_emission_lambda_defs.c3`:
+    - `emit_lambda_signature(...)`,
+    - `emit_lambda_param_unpack(...)`,
+    - `emit_lambda_param_unpack_list(...)`,
+    - `emit_lambda_capture_bindings(...)`,
+    - `emit_lambda_body_return(...)`.
+  - retained prelude, zero-arg classification, capture-struct emission, and
+    top-level lambda-definition/lambda-definitions emission in
+    `src/lisp/compiler_code_emission.c3`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target: `src/lisp/compiler_temp_core.c3` (`126`).
+- Validation evidence:
+  - `c3c build` passed.
+  - Docker-bounded compiler slice passed:
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+### R5 Continuation Slice BE (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/compiler_temp_core.c3`:
+  - moved generic temp helpers to `src/lisp/compiler_temp_helpers.c3`:
+    - `emit_temp_decl(...)`,
+    - `emit_temp_ref(...)`,
+    - `emit_nil_temp(...)`,
+    - `compile_leaf_expr_to_temp(...)`.
+  - retained temp-id allocation (`next_result(...)`) plus non-tail and tail
+    temp dispatch entrypoints in `src/lisp/compiler_temp_core.c3`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target:
+    `src/lisp/compiler_native_call_compilation_flat_style.c3` (`126`).
+- Validation evidence:
+  - `c3c build` passed.
+  - Docker-bounded compiler slice passed:
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+### R5 Continuation Slice BF (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/compiler_native_call_compilation_flat_style.c3`:
+  - moved variable and path lowering to
+    `src/lisp/compiler_native_var_path_compilation_flat_style.c3`:
+    - `compile_var(...)`,
+    - `compile_path(...)`.
+  - retained lambda lowering in
+    `src/lisp/compiler_native_call_compilation_flat_style.c3`:
+    - `compile_lambda_flat(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target:
+    `src/lisp/compiler_mutable_capture_detection.c3` (`126`).
+- Validation evidence:
+  - `c3c build` passed.
+  - Docker-bounded compiler slice passed:
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+### R5 Continuation Slice BG (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/compiler_mutable_capture_detection.c3`:
+  - moved recursive mutable-capture walk helpers to
+    `src/lisp/compiler_mutable_capture_detection_walk.c3`:
+    - `has_set_on(...)`,
+    - `is_captured_by_nested_lambda(...)`.
+  - retained the entrypoint in
+    `src/lisp/compiler_mutable_capture_detection.c3`:
+    - `is_mutable_capture(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target:
+    `src/lisp/compiler_expr_serialize_callable_forms.c3` (`125`).
+- Validation evidence:
+  - `c3c build` passed.
+  - Docker-bounded compiler slice passed:
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+### R5 Continuation Slice BH (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/compiler_expr_serialize_callable_forms.c3`:
+  - moved control-form serializers to
+    `src/lisp/compiler_expr_serialize_control_match_forms.c3`:
+    - `serialize_handle_to_buf(...)`,
+    - `serialize_match_to_buf(...)`.
+  - retained callable-form serializers in
+    `src/lisp/compiler_expr_serialize_callable_forms.c3`:
+    - `serialize_lambda_to_buf(...)`,
+    - `serialize_let_to_buf(...)`,
+    - `serialize_call_to_buf(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target:
+    `src/lisp/parser_expr_head_forms.c3` (`122`).
+- Validation evidence:
+  - `c3c build` passed.
+  - Docker-bounded compiler slice passed:
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+### R5 Continuation Slice BI (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/parser_expr_head_forms.c3`:
+  - moved symbol-head dispatch helpers to
+    `src/lisp/parser_expr_head_symbol_forms.c3`:
+    - `parser_symbol_text_is(...)`,
+    - `Parser.is_lambda_head_symbol(...)`,
+    - `Parser.parse_quasiquote_like_form(...)`,
+    - `Parser.parse_symbol_head_form(...)`.
+  - retained list-form dispatch in `src/lisp/parser_expr_head_forms.c3`:
+    - `Parser.parse_list_form(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target:
+    `src/lisp/parser_lexer_symbol_number.c3` (`121`).
+  - tied next target:
+    `src/lisp/compiler_primitive_variable_hash_table_domains.c3` (`121`).
+- Validation evidence:
+  - `c3c build` passed.
+  - Docker-bounded compiler slice passed:
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
+
+### R5 Continuation Slice BJ (2026-03-19)
+
+- Performed behavior-preserving extraction on
+  `src/lisp/parser_lexer_symbol_number.c3`:
+  - moved numeric float scanning helpers to
+    `src/lisp/parser_lexer_number_helpers.c3`:
+    - `Lexer.scan_number_float(...)`,
+    - `Lexer.scan_number_fraction(...)`,
+    - `Lexer.scan_number_exponent(...)`.
+  - retained top-level symbol and integer scanning in
+    `src/lisp/parser_lexer_symbol_number.c3`:
+    - `Lexer.scan_symbol(...)`,
+    - `Lexer.scan_number(...)`.
+- Post-slice queue refresh (largest-first):
+  - next extraction target:
+    `src/lisp/compiler_primitive_variable_hash_table_domains.c3` (`121`).
+- Validation evidence:
+  - `c3c build` passed.
+  - Docker-bounded compiler slice passed:
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+      (`122 passed, 0 failed`).
 
 ## Validation Gate Per Slice
 

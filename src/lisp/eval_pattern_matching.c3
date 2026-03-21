@@ -117,7 +117,7 @@ fn MatchResult match_pattern_guard(Pattern* pat, Value* val, Interp* interp) {
         for (usz j = 0; j < sub_r.binding_count; j++) {
             env_define_with_barrier(guard_env, sub_r.bindings[j].name, sub_r.bindings[j].value, interp);
         }
-        Value* pred = jit_eval(pat.guard_pred, guard_env, interp);
+        Value* pred = runtime_eval_expr(pat.guard_pred, guard_env, interp);
         if (!match_guard_predicate_passes(pred, val, interp)) {
             sub_r.cleanup();
             return match_fail();
@@ -126,7 +126,7 @@ fn MatchResult match_pattern_guard(Pattern* pat, Value* val, Interp* interp) {
     }
 
     // No sub-pattern: evaluate in current match env and test.
-    Value* pred = jit_eval(pat.guard_pred, interp.match_env, interp);
+    Value* pred = runtime_eval_expr(pat.guard_pred, interp.match_env, interp);
     if (!match_guard_predicate_passes(pred, val, interp)) {
         return match_fail();
     }

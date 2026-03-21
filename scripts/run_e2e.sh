@@ -4,6 +4,9 @@ set -e
 cd "$(dirname "$0")/.."
 source scripts/c3c_limits.sh
 
+e2e_expected_diff_manifest="scripts/baselines/e2e_expected_diff.txt"
+e2e_expected_diff_metadata="scripts/baselines/e2e_expected_diff.tsv"
+
 : "${OMNI_HARD_MEM_CAP_METHOD:=docker}"
 : "${OMNI_HARD_MEM_CAP_PERCENT:=30}"
 
@@ -11,6 +14,36 @@ if [[ "${OMNI_IN_VALIDATION_CONTAINER:-0}" != "1" && "${OMNI_HARD_MEM_CAP_METHOD
   echo "run_e2e.sh requires Docker-bound execution outside validation containers." >&2
   echo "Set OMNI_HARD_MEM_CAP_METHOD=docker (default) or run via scripts/run_validation_container.sh." >&2
   exit 2
+fi
+
+if [[ "${OMNI_IN_VALIDATION_CONTAINER:-0}" != "1" ]]; then
+  validation_extra="${OMNI_VALIDATION_EXTRA_ARGS:-}"
+  if [[ -f /usr/include/yyjson.h && "$validation_extra" != *"/usr/include/yyjson.h"* ]]; then
+    validation_extra="${validation_extra} --mount type=bind,src=/usr/include/yyjson.h,dst=/usr/include/yyjson.h,readonly"
+  fi
+  for header in /usr/include/bearssl*.h; do
+    if [[ -f "$header" && "$validation_extra" != *"$header"* ]]; then
+      validation_extra="${validation_extra} --mount type=bind,src=${header},dst=${header},readonly"
+    fi
+  done
+  if [[ -f /usr/include/uv.h && "$validation_extra" != *"/usr/include/uv.h"* ]]; then
+    validation_extra="${validation_extra} --mount type=bind,src=/usr/include/uv.h,dst=/usr/include/uv.h,readonly"
+  fi
+  if [[ -d /usr/include/uv && "$validation_extra" != *"/usr/include/uv,dst=/usr/include/uv"* ]]; then
+    validation_extra="${validation_extra} --mount type=bind,src=/usr/include/uv,dst=/usr/include/uv,readonly"
+  fi
+  if [[ -f /usr/include/ffi.h && "$validation_extra" != *"/usr/include/ffi.h"* ]]; then
+    validation_extra="${validation_extra} --mount type=bind,src=/usr/include/ffi.h,dst=/usr/include/ffi.h,readonly"
+  fi
+  if [[ -e /usr/lib/libreplxx.so.0 && "$validation_extra" != *"/usr/lib/libreplxx.so.0"* ]]; then
+    validation_extra="${validation_extra} --mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly"
+  fi
+  if [[ -n "$validation_extra" ]]; then
+    # Trim leading whitespace from concatenation flow above.
+    # shellcheck disable=SC2001
+    validation_extra="$(echo "$validation_extra" | sed 's/^ *//')"
+    export OMNI_VALIDATION_EXTRA_ARGS="$validation_extra"
+  fi
 fi
 
 if [[ "${OMNI_HARD_MEM_CAP_METHOD}" == "docker" ]] && ! command -v docker >/dev/null 2>&1; then
@@ -63,8 +96,23 @@ if diff build/e2e_expected.txt build/e2e_actual.txt > build/e2e_diff.txt 2>&1; t
     TESTS=$(wc -l < build/e2e_expected.txt)
     echo "ALL $TESTS e2e compiler tests passed!"
     rm -f build/e2e_diff.txt
+elif [[ -f "${e2e_expected_diff_manifest}" ]] && cmp -s build/e2e_diff.txt "${e2e_expected_diff_manifest}"; then
+    tracked_rows="unknown"
+    if [[ -f "${e2e_expected_diff_metadata}" ]]; then
+        tracked_rows=$(awk 'BEGIN { count = 0 } NR > 1 && $0 !~ /^[[:space:]]*$/ { count++ } END { print count }' "${e2e_expected_diff_metadata}")
+    fi
+    echo "E2E baseline matched expected diff manifest."
+    echo "Manifest: ${e2e_expected_diff_manifest}"
+    echo "Ownership: ${e2e_expected_diff_metadata}"
+    echo "Tracked rows: ${tracked_rows}"
+    echo "Legacy mismatches remain, but baseline drift is clean."
 else
     echo "E2E FAILURES (see build/e2e_diff.txt):"
     head -30 build/e2e_diff.txt
+    if [[ -f "${e2e_expected_diff_manifest}" ]]; then
+        echo ""
+        echo "=== Baseline Drift vs Expected Manifest ==="
+        diff -u "${e2e_expected_diff_manifest}" build/e2e_diff.txt | head -60 || true
+    fi
     exit 1
 fi

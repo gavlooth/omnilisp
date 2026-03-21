@@ -1,5 +1,6 @@
 module lisp;
 
+import std::io;
 import main;
 
 // =============================================================================
@@ -9,15 +10,28 @@ fn Value* jit_tco_sentinel() {
     return &g_jit_tco_sentinel;
 }
 
-fn Value* jit_exec_compiled_checked(JitCompiledFn compiled, Interp* interp) {
-    if (jit_compiled_fn_is_null(compiled)) return raise_error(interp, "jit: null compiled function");
-    if (!jit_compiled_fn_is_live_for_interp(compiled, interp)) {
+fn RuntimeCompiledExpr runtime_backend_compile_expr(Expr* expr, Interp* interp) @inline {
+    return runtime_backend_wrap_compiled_expr(jit_compile(expr, interp));
+}
+
+fn Value* runtime_backend_exec_compiled_checked_expr(RuntimeCompiledExpr compiled, Interp* interp) {
+    JitCompiledFn jit_compiled = runtime_backend_unwrap_compiled_expr(compiled);
+    if (jit_compiled_fn_is_null(jit_compiled)) return raise_error(interp, "jit: null compiled function");
+    if (!jit_compiled_fn_is_live_for_interp(jit_compiled, interp)) {
         return raise_error(interp, "jit: stale or foreign compiled function pointer");
     }
-    jit_exec_enter(interp);
-    Value* result = compiled.code_fn(interp);
-    jit_exec_leave(interp);
+    runtime_exec_enter(interp);
+    Value* result = jit_compiled.code_fn(interp);
+    runtime_exec_leave(interp);
     return result;
+}
+
+fn Value* runtime_backend_exec_compiled_expr(RuntimeCompiledExpr compiled, Interp* interp) @inline {
+    return jit_exec(runtime_backend_unwrap_compiled_expr(compiled), interp);
+}
+
+fn Value* jit_exec_compiled_checked(JitCompiledFn compiled, Interp* interp) {
+    return runtime_backend_exec_compiled_checked_expr(runtime_backend_wrap_compiled_expr(compiled), interp);
 }
 
 // Execute a compiled JIT handle with trampoline TCO handling.
@@ -69,6 +83,47 @@ fn char[] jit_env_copy_fault_message(BoundaryEnvCopyFault fault_code) @inline {
     }
 }
 
+fn bool delay_force_construct_trace_enabled() @inline {
+    return boundary_c_getenv("OMNI_TRACE_DELAY_FORCE_CONSTRUCT") != null;
+}
+
+fn bool jit_delay_force_promise_env_matches(Interp* interp, Env* env) {
+    if (interp == null || env == null) return false;
+    SymbolId thunk_sym = interp.symbols.intern("thunk");
+    SymbolId result_sym = interp.symbols.intern("result");
+    SymbolId forced_sym = interp.symbols.intern("forced");
+    return env.lookup(thunk_sym) != null &&
+        env.lookup(result_sym) != null &&
+        env.lookup(forced_sym) != null;
+}
+
+fn void jit_trace_delay_force_promise_closure(
+    Interp* interp,
+    Value* closure,
+    Env* source_env,
+    Env* copied_env,
+    main::ScopeRegion* env_scope,
+    bool need_env_copy
+) {
+    if (!delay_force_construct_trace_enabled()) return;
+    if (closure == null || closure.tag != CLOSURE || closure.closure_val == null) return;
+    bool promise_env = jit_delay_force_promise_env_matches(interp, source_env);
+    if (closure.closure_val.param_count != 0 && closure.closure_val.has_param) return;
+    io::printfn(
+        "OMNI_DELAY_TRACE construct promise_env=%d need_env_copy=%d source_env_in_current=%d source_env_scope_gen=%d copied_same=%d copied_in_env_scope=%d copied_env_scope_gen=%d env_scope_gen=%d current_gen=%d body_tag=%d",
+        promise_env ? 1 : 0,
+        need_env_copy ? 1 : 0,
+        source_env != null && boundary_ptr_in_scope((void*)source_env, interp.current_scope) ? 1 : 0,
+        source_env != null ? (int)source_env.scope_gen : -1,
+        copied_env == source_env ? 1 : 0,
+        copied_env != null && env_scope != null && boundary_ptr_in_scope((void*)copied_env, env_scope) ? 1 : 0,
+        copied_env != null ? (int)copied_env.scope_gen : -1,
+        env_scope != null ? (int)env_scope.generation : -1,
+        interp.current_scope != null ? (int)interp.current_scope.generation : -1,
+        (int)closure.closure_val.body.tag
+    );
+}
+
 fn bool jit_copy_closure_env_if_needed(
     Interp* interp,
     Value* closure,
@@ -77,7 +132,10 @@ fn bool jit_copy_closure_env_if_needed(
     BoundaryEnvCopyFault* fault_out = null
 ) {
     if (fault_out != null) *fault_out = BOUNDARY_ENV_COPY_FAULT_NONE;
-    if (!need_env_copy) return true;
+    if (!need_env_copy) {
+        jit_trace_delay_force_promise_closure(interp, closure, env, env, closure.closure_val.env_scope, need_env_copy);
+        return true;
+    }
     main::ScopeRegion* env_scope = main::scope_create(null);
     if (env_scope == null) return false;
     BoundaryEnvCopyResult copied = boundary_copy_env_to_target_scope_checked(env, interp, env_scope);
@@ -93,7 +151,21 @@ fn bool jit_copy_closure_env_if_needed(
         return false;
     }
     closure.closure_val.env = copied_env;
-    closure.closure_val.env_scope = env_scope;
+    if (boundary_ptr_in_scope((void*)copied_env, env_scope)) {
+        closure.closure_val.env_scope = env_scope;
+    } else {
+        // Env-copy may legally return an existing root-owned chain by identity.
+        // In that case the ownership envelope is root_scope, not the throwaway
+        // detached env_scope we allocated for the attempted copy.
+        main::scope_release(env_scope);
+        if (interp.root_scope != null && boundary_ptr_in_scope((void*)copied_env, interp.root_scope)) {
+            main::scope_retain(interp.root_scope);
+            closure.closure_val.env_scope = interp.root_scope;
+        } else {
+            closure.closure_val.env_scope = null;
+        }
+    }
+    jit_trace_delay_force_promise_closure(interp, closure, env, copied_env, closure.closure_val.env_scope, need_env_copy);
     return true;
 }
 

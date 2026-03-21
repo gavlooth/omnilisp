@@ -118,8 +118,6 @@ tail position.
 ```
 
 Returns `Void` on successful mutation.
-`array-set!` / `dict-set!` remain compatibility aliases.
-
 Dispatch/target matrix:
 
 | Surface | Dispatch target | Success result | Invalid-target behavior |

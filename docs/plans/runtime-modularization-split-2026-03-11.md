@@ -254,6 +254,398 @@ Applied in largest-first order:
 - retained `SECTION 1.5` type-system/signature/value-union definitions in:
   - `src/lisp/value_core_types.c3`
 
+42. `deduce_rule_eval.c3` (top-down continuation split)
+- extracted `deduce/analyze` and `deduce/rule!` entrypoints plus stratification validation into:
+  - `src/lisp/deduce_rule_eval_prims.c3`
+- retained SCC planning and rule-evaluation helpers in:
+  - `src/lisp/deduce_rule_eval.c3`
+
+43. `tests_deduce_rule_groups.c3` (top-down continuation split)
+- extracted join/schema/analyze validation blocks into:
+  - `src/lisp/tests_deduce_rule_groups_more.c3`
+- retained helper utilities plus rule-definition and explain smoke coverage in:
+  - `src/lisp/tests_deduce_rule_groups.c3`
+- post-step-43 line counts:
+  - `src/lisp/tests_deduce_rule_groups.c3`: `582` lines
+  - `src/lisp/tests_deduce_rule_groups_more.c3`: `1019` lines
+- next largest target after this split:
+  - `src/lisp/deduce_rule_eval.c3` (`1499` lines)
+
+44. `deduce_rule_eval.c3` (top-down continuation split)
+- extracted recursive/component fixpoint evaluation helpers into:
+  - `src/lisp/deduce_rule_eval_fixpoint.c3`
+- retained SCC planning, delta helpers, and naive/semi-naive rule evaluation in:
+  - `src/lisp/deduce_rule_eval.c3`
+- post-step-44 line counts:
+  - `src/lisp/deduce_rule_eval.c3`: `1242` lines
+  - `src/lisp/deduce_rule_eval_fixpoint.c3`: `260` lines
+- next largest target after this split:
+  - `src/lisp/tests_deduce_query_bench_groups.c3` (`1266` lines)
+
+45. `deduce_rule_eval.c3` (top-down continuation split)
+- extracted execution/context helpers and rule evaluation dispatch into:
+  - `src/lisp/deduce_rule_eval_exec.c3`
+- retained SCC planning in:
+  - `src/lisp/deduce_rule_eval.c3`
+- post-step-45 line counts:
+  - `src/lisp/deduce_rule_eval.c3`: `442` lines
+  - `src/lisp/deduce_rule_eval_exec.c3`: `805` lines
+- next largest target after this split:
+  - `src/lisp/tests_deduce_query_bench_groups.c3` (`1266` lines)
+
+46. `tests_deduce_query_bench_groups.c3` (top-down continuation split)
+- retained seed/assert helpers and query benchmark support in:
+  - `src/lisp/tests_deduce_query_bench_groups.c3`
+- extracted benchmark runner/reporting entrypoints into:
+  - `src/lisp/tests_deduce_query_bench_groups_more.c3`
+- post-step-46 line counts:
+  - `src/lisp/tests_deduce_query_bench_groups.c3`: `410` lines
+  - `src/lisp/tests_deduce_query_bench_groups_more.c3`: `24` lines
+- next largest target after this split:
+  - `src/lisp/deduce_db_handles.c3` (`1142` lines)
+
+47. `deduce_db_handles.c3` (top-down continuation split)
+- extracted lower mutation/state bookkeeping and transaction helpers into:
+  - `src/lisp/deduce_db_handles_mutation.c3`
+- retained LMDB externs, schema registration, and relation/index helpers in:
+  - `src/lisp/deduce_db_handles.c3`
+- post-step-47 line counts:
+  - `src/lisp/deduce_db_handles.c3`: `544` lines
+  - `src/lisp/deduce_db_handles_mutation.c3`: `602` lines
+- next largest target after this split:
+  - `src/lisp/tests_advanced_core_unicode_groups.c3` (`700` lines)
+
+48. `tests_advanced_core_unicode_groups.c3` (top-down continuation split)
+- retained unicode, logic, effect, and runtime-control test groups in:
+  - `src/lisp/tests_advanced_core_unicode_groups.c3`
+- extracted block-syntax, lambda-syntax, and binding/mutation groups into:
+  - `src/lisp/tests_advanced_core_unicode_groups_more.c3`
+- post-step-48 line counts:
+  - `src/lisp/tests_advanced_core_unicode_groups.c3`: `540` lines
+  - `src/lisp/tests_advanced_core_unicode_groups_more.c3`: `101` lines
+- next largest target after this split:
+  - `src/lisp/tests_runtime_feature_jit_groups.c3` (`1039` lines)
+
+49. `aot.c3` (top-down continuation split)
+- retained AOT type/definition helpers in:
+  - `src/lisp/aot.c3`
+- extracted the closure/runtime bridge helpers into:
+  - `src/lisp/aot_runtime_bridge.c3`
+- post-step-49 line counts:
+  - `src/lisp/aot.c3`: `677` lines
+  - `src/lisp/aot_runtime_bridge.c3`: `227` lines
+- next largest target after this split:
+  - `src/lisp/tests_deduce_rule_groups_more.c3` (`1019` lines)
+
+50. `tests_deduce_rule_groups_more.c3` (top-down continuation split)
+- retained the join and schema validation blocks in:
+  - `src/lisp/tests_deduce_rule_groups_more.c3`
+- extracted the schema-estimate and recursive/analyze validation blocks into:
+  - `src/lisp/tests_deduce_rule_groups_more_tail.c3`
+- post-step-50 line counts:
+  - `src/lisp/tests_deduce_rule_groups_more.c3`: `618` lines
+  - `src/lisp/tests_deduce_rule_groups_more_tail.c3`: `408` lines
+- next largest target after this split:
+  - `src/lisp/tests_scheduler_boundary_worker.c3` (`836` lines)
+
+51. `tests_scheduler_boundary_worker.c3` (top-down continuation split)
+- retained the offload, wakeup, and thread-task prestart/cancel boundary tests in:
+  - `src/lisp/tests_scheduler_boundary_worker.c3`
+- extracted the DNS/connect, join-timeout, and shared-retire queue boundary tests into:
+  - `src/lisp/tests_scheduler_boundary_worker_more.c3`
+- post-step-51 line counts:
+  - `src/lisp/tests_scheduler_boundary_worker.c3`: `531` lines
+  - `src/lisp/tests_scheduler_boundary_worker_more.c3`: `310` lines
+- next largest target after this split:
+  - `src/lisp/deduce_rule_eval_exec.c3` (`805` lines)
+
+52. `deduce_rule_eval_exec.c3` (top-down continuation split)
+- retained seminaive evaluation helpers in:
+  - `src/lisp/deduce_rule_eval_exec.c3`
+- extracted naive evaluation helpers into:
+  - `src/lisp/deduce_rule_eval_exec_naive.c3`
+- post-step-52 line counts:
+  - `src/lisp/deduce_rule_eval_exec.c3`: `638` lines
+  - `src/lisp/deduce_rule_eval_exec_naive.c3`: `171` lines
+- next largest target after this split:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups.c3` (`793` lines)
+
+53. `tests_scheduler_boundary_thread_task_groups.c3` (boundary continuation split)
+- retained the stress/offload/wakeup/cancel boundary tests in:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups.c3`
+- extracted the join-wait failure mapping and mixed state restoration tests into:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`
+- post-step-53 line counts:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups.c3`: `584` lines
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`: `214` lines
+- next largest target after this split:
+  - `src/lisp/jit_jit_handle_signal.c3` (`551` lines)
+
+54. `jit_jit_handle_signal.c3` (signal-dispatch continuation split)
+- retained the lower-level effect state and signal dispatch machinery in:
+  - `src/lisp/jit_jit_handle_signal.c3`
+- extracted eval-result conversion, pending-raise dispatch, warm-clauses handling, handle-state setup, body switching, no-signal finish, implementation, and continuation application into:
+  - `src/lisp/jit_jit_handle_signal_handle.c3`
+- post-step-54 line counts:
+  - `src/lisp/jit_jit_handle_signal.c3`: `551` lines
+  - `src/lisp/jit_jit_handle_signal_handle.c3`: `225` lines
+- next largest target after this split:
+  - `src/lisp/deduce_rule_ops.c3` (`767` lines)
+
+55. `deduce_rule_ops.c3` (explain-path continuation split)
+- retained parsing, validation, planning, and predicate-index helpers in:
+  - `src/lisp/deduce_rule_ops.c3`
+- extracted explain-plan rendering helpers and the public `deduce/explain` primitive into:
+  - `src/lisp/deduce_rule_ops_explain.c3`
+- post-step-55 line counts:
+  - `src/lisp/deduce_rule_ops.c3`: `548` lines
+  - `src/lisp/deduce_rule_ops_explain.c3`: `219` lines
+- next largest target after this split:
+  - `src/lisp/jit_jit_compiler.c3` (`753` lines)
+
+56. `jit_jit_compiler.c3` (compile-path continuation split)
+- retained runtime cache / lifecycle helpers in:
+  - `src/lisp/jit_jit_compiler.c3`
+- extracted JIT state tracking and `jit_compile(...)` into:
+  - `src/lisp/jit_jit_compiler_compile.c3`
+- post-step-56 line counts:
+  - `src/lisp/jit_jit_compiler.c3`: `638` lines
+  - `src/lisp/jit_jit_compiler_compile.c3`: `121` lines
+- next largest target after this split:
+  - `src/lisp/tests_compiler_core_groups.c3` (`716` lines)
+
+57. `tests_compiler_core_groups.c3` (compiler test-suite continuation split)
+- retained the syntax, stdlib, feature, and serializer groups in:
+  - `src/lisp/tests_compiler_core_groups.c3`
+- extracted set/path/continuation compiler groups into:
+  - `src/lisp/tests_compiler_core_groups_more.c3`
+- post-step-57 line counts:
+  - `src/lisp/tests_compiler_core_groups.c3`: `476` lines
+  - `src/lisp/tests_compiler_core_groups_more.c3`: `245` lines
+- next largest target after this split:
+  - `src/lisp/tests_memory_lifetime_env_copy_groups.c3` (`709` lines)
+
+58. `tests_memory_lifetime_env_copy_groups.c3` (env-copy boundary continuation split)
+- retained memo, parent rewrite, mixed-chain rewrite, and closure-retain stress tests in:
+  - `src/lisp/tests_memory_lifetime_env_copy_groups.c3`
+- extracted escape/fault/guard/reject/rollback env-copy tests into:
+  - `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3`
+- post-step-58 line counts:
+  - `src/lisp/tests_memory_lifetime_env_copy_groups.c3`: `476` lines
+  - `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3`: `245` lines
+- next largest target after this split:
+  - `src/lisp/deduce_relation_scan_helpers.c3` (`691` lines)
+
+59. `deduce_relation_scan_helpers.c3` (relation-scan continuation split)
+- retained iterator/join/count helpers in:
+  - `src/lisp/deduce_relation_scan_helpers.c3`
+- extracted relation materialization, comparison, bound parsing, and scan entrypoints into:
+  - `src/lisp/deduce_relation_scan_helpers_more.c3`
+- post-step-59 line counts:
+  - `src/lisp/deduce_relation_scan_helpers.c3`: `477` lines
+  - `src/lisp/deduce_relation_scan_helpers_more.c3`: `217` lines
+- next largest target after this split:
+  - `src/lisp/aot.c3` (`677` lines)
+
+60. `aot.c3` (top-down continuation split)
+- retained AOT type/definition helpers and core runtime bridge entrypoints in:
+  - `src/lisp/aot.c3`
+- extracted the tail-call trampoline state, invoke/apply helpers, and legacy debug/value helpers into:
+  - `src/lisp/aot_runtime_bridge.c3`
+- post-step-60 line counts:
+  - `src/lisp/aot.c3`: `467` lines
+  - `src/lisp/aot_runtime_bridge.c3`: `433` lines
+- next largest target after this split:
+  - `src/lisp/tests_runtime_feature_jit_groups.c3` (`654` lines)
+
+61. `tests_runtime_feature_jit_groups.c3` (top-down continuation split)
+- retained the cache, GC, and pre-interpreter-lifetime policy tests in:
+  - `src/lisp/tests_runtime_feature_jit_groups.c3`
+- extracted the multi-interpreter, continuation, handle-state, and capture-boundary policy tests into:
+  - `src/lisp/tests_runtime_feature_jit_groups_tail.c3`
+- post-step-61 line counts:
+  - `src/lisp/tests_runtime_feature_jit_groups.c3`: `345` lines
+  - `src/lisp/tests_runtime_feature_jit_groups_more.c3`: `392` lines
+  - `src/lisp/tests_runtime_feature_jit_groups_tail.c3`: `314` lines
+- next largest target after this split:
+  - `src/lisp/jit_jit_compiler.c3` (`638` lines)
+
+62. `jit_jit_compiler.c3` (top-down continuation split)
+- retained the JIT compiler state, cache, and attachment bookkeeping in:
+  - `src/lisp/jit_jit_compiler.c3`
+- extracted the lifecycle, GC, exec-depth, and liveness helpers into:
+  - `src/lisp/jit_jit_compiler_lifecycle.c3`
+- post-step-62 line counts:
+  - `src/lisp/jit_jit_compiler.c3`: `418` lines
+  - `src/lisp/jit_jit_compiler_lifecycle.c3`: `225` lines
+- next largest target after this split:
+  - `src/lisp/deduce_rule_eval_exec.c3` (`638` lines)
+
+63. `deduce_rule_eval_exec.c3` (top-down continuation split)
+- retained the delta-set, SCC, and naive-rule execution helpers in:
+  - `src/lisp/deduce_rule_eval_exec.c3`
+- extracted the seminaive execution helpers into:
+  - `src/lisp/deduce_rule_eval_exec_seminaive.c3`
+- post-step-63 line counts:
+  - `src/lisp/deduce_rule_eval_exec.c3`: `368` lines
+  - `src/lisp/deduce_rule_eval_exec_seminaive.c3`: `275` lines
+- next largest target after this split:
+  - `src/lisp/tests_scheduler_groups.c3` (`637` lines)
+
+64. `tests_scheduler_groups.c3` (top-down continuation split)
+- retained the spawn/await and run-loop failure scheduler tests in:
+  - `src/lisp/tests_scheduler_groups.c3`
+- extracted the scheduler wakeup helpers/tests into:
+  - `src/lisp/tests_scheduler_groups_more.c3`
+- post-step-64 line counts:
+  - `src/lisp/tests_scheduler_groups.c3`: `424` lines
+  - `src/lisp/tests_scheduler_groups_more.c3`: `218` lines
+- next largest target after this split:
+  - `src/lisp/jit_jit_runtime_effects.c3` (`625` lines)
+
+65. `jit_jit_runtime_effects.c3` (top-down continuation split)
+- retained the resolve-side runtime effect helpers in:
+  - `src/lisp/jit_jit_runtime_effects.c3`
+- extracted the handler-application helpers into:
+  - `src/lisp/jit_jit_runtime_effects_handle.c3`
+- post-step-65 line counts:
+  - `src/lisp/jit_jit_runtime_effects.c3`: `422` lines
+  - `src/lisp/jit_jit_runtime_effects_handle.c3`: `206` lines
+- next largest target after this split:
+  - `src/lisp/tests_deduce_rule_groups_more.c3` (`618` lines)
+
+66. `tests_deduce_rule_groups_more.c3` (top-down continuation split)
+- retained the first four join validation families in:
+  - `src/lisp/tests_deduce_rule_groups_more.c3`
+- extracted the adaptive-join validation families into:
+  - `src/lisp/tests_deduce_rule_groups_more_join.c3`
+- post-step-66 line counts:
+  - `src/lisp/tests_deduce_rule_groups_more.c3`: `520` lines
+  - `src/lisp/tests_deduce_rule_groups_more_join.c3`: `106` lines
+- next largest target after this split:
+  - `src/lisp/deduce_db_handles_mutation.c3` (`602` lines)
+
+67. `deduce_db_handles_mutation.c3` (top-down continuation split)
+- retained the schema, dirty-tracking, and rule-signature helpers in:
+  - `src/lisp/deduce_db_handles_mutation.c3`
+- extracted the transaction mutation-log helpers into:
+  - `src/lisp/deduce_db_handles_mutation_txn.c3`
+- post-step-67 line counts:
+  - `src/lisp/deduce_db_handles_mutation.c3`: `466` lines
+  - `src/lisp/deduce_db_handles_mutation_txn.c3`: `139` lines
+- next largest target after this split:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups.c3` (`584` lines)
+
+68. `tests_scheduler_boundary_thread_task_groups.c3` (top-down continuation split)
+- retained the scheduler/thread-task core tests in:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups.c3`
+- extracted the waiter and cancel-conversion boundary families into:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`
+- post-step-68 line counts:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups.c3`: `142` lines
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`: `664` lines
+- next largest target after this split:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3` (`664` lines)
+
+69. `tests_scheduler_boundary_thread_task_groups_more.c3` (top-down continuation split)
+- retained the waiter, cancel, and cancel-conversion boundary families in:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`
+- extracted the join-wait mapping and mixed boundary-state restore families into:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups_more_tail.c3`
+- post-step-69 line counts:
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`: `450` lines
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups_more_tail.c3`: `217` lines
+- next largest target after this split:
+  - `src/lisp/tests_deduce_rule_groups.c3` (`582` lines)
+
+70. `tests_deduce_rule_groups.c3` (top-down continuation split)
+- retained the deduce rule validation helpers and planner-order checks in:
+  - `src/lisp/tests_deduce_rule_groups.c3`
+- extracted the explain payload validation block into:
+  - `src/lisp/tests_deduce_rule_groups_explain.c3`
+- post-step-70 line counts:
+  - `src/lisp/tests_deduce_rule_groups.c3`: `419` lines
+  - `src/lisp/tests_deduce_rule_groups_explain.c3`: `170` lines
+- next largest target after this split:
+  - `src/lisp/jit_jit_eval_scopes.c3` (`557` lines)
+
+71. `jit_jit_eval_scopes.c3` (top-down continuation split)
+- retained the JIT lookup/eval wrappers and TCO recycle entrypoints in:
+  - `src/lisp/jit_jit_eval_scopes.c3`
+- extracted the scope-chain, finalize, and recycle helper layer into:
+  - `src/lisp/jit_jit_eval_scopes_helpers.c3`
+- post-step-71 line counts:
+  - `src/lisp/jit_jit_eval_scopes.c3`: `368` lines
+  - `src/lisp/jit_jit_eval_scopes_helpers.c3`: `192` lines
+- next largest target after this split:
+  - `src/lisp/jit_jit_handle_signal.c3` (`551` lines)
+
+72. `jit_jit_handle_signal.c3` (top-down continuation split)
+- retained the signal/dispatch entrypoints in:
+  - `src/lisp/jit_jit_handle_signal.c3`
+- extracted the shared effect-state, continuation scan, and fast-path helpers into:
+  - `src/lisp/jit_jit_handle_signal_helpers.c3`
+- post-step-72 line counts:
+  - `src/lisp/jit_jit_handle_signal.c3`: `108` lines
+  - `src/lisp/jit_jit_handle_signal_helpers.c3`: `446` lines
+- next largest target after this split:
+  - `src/lisp/deduce_rule_ops.c3` (`548` lines)
+
+73. `deduce_rule_ops.c3` (top-down continuation split)
+- retained parsing, IR, and safety-validation helpers in:
+  - `src/lisp/deduce_rule_ops.c3`
+- extracted the planning/scoring and predicate-index helpers into:
+  - `src/lisp/deduce_rule_ops_planning.c3`
+- post-step-73 line counts:
+  - `src/lisp/deduce_rule_ops.c3`: `412` lines
+  - `src/lisp/deduce_rule_ops_planning.c3`: `137` lines
+- next largest target after this split:
+  - `src/lisp/value_print.c3` (`547` lines)
+
+74. `value_print.c3` (top-down continuation split)
+- retained the direct value-printing entrypoints in:
+  - `src/lisp/value_print.c3`
+- extracted the buffer-backed print helpers and `PrintBuf` into:
+  - `src/lisp/value_print_buf.c3`
+- post-step-74 line counts:
+  - `src/lisp/value_print.c3`: `293` lines
+  - `src/lisp/value_print_buf.c3`: `257` lines
+- next largest target after this split:
+  - `src/lisp/deduce_db_handles.c3` (`544` lines)
+
+75. `tests_advanced_core_unicode_groups.c3` (top-down continuation split)
+- retained the Unicode, constructor, iterator, logic, and effect-continuation test helpers in:
+  - `src/lisp/tests_advanced_core_unicode_groups.c3`
+- extracted the runtime-control and block-syntax contract matrix tests into:
+  - `src/lisp/tests_advanced_core_unicode_groups_runtime.c3`
+- post-step-75 line counts:
+  - `src/lisp/tests_advanced_core_unicode_groups.c3`: `466` lines
+  - `src/lisp/tests_advanced_core_unicode_groups_runtime.c3`: `75` lines
+- next largest target after this split:
+  - `src/lisp/tests_compiler_codegen_groups.c3` (`532` lines)
+
+76. `tests_compiler_codegen_groups.c3` (top-down continuation split)
+- retained the compiler codegen phases 1-4 and the `qq_macro_primitive` wrapper in:
+  - `src/lisp/tests_compiler_codegen_groups.c3`
+- extracted the mutable-capture, integration, iterative-stdlib, and bindgen helper tail into:
+  - `src/lisp/tests_compiler_codegen_groups_tail.c3`
+- post-step-76 line counts:
+  - `src/lisp/tests_compiler_codegen_groups.c3`: `302` lines
+  - `src/lisp/tests_compiler_codegen_groups_tail.c3`: `235` lines
+- next largest target after this split:
+  - `src/lisp/tests_scheduler_boundary_worker.c3` (`531` lines)
+
+77. `tests_scheduler_boundary_worker.c3` (top-down continuation split)
+- retained the offload-worker retry, wakeup barrier, and worker-cancel interleave tests in:
+  - `src/lisp/tests_scheduler_boundary_worker.c3`
+- extracted the nonexecuted-payload release and prestart-cancel shared-release tests into:
+  - `src/lisp/tests_scheduler_boundary_worker_tail.c3`
+- post-step-77 line counts:
+  - `src/lisp/tests_scheduler_boundary_worker.c3`: `281` lines
+  - `src/lisp/tests_scheduler_boundary_worker_tail.c3`: `253` lines
+- next largest target after this split:
+  - `src/lisp/eval_dispatch_match.c3` (`528` lines)
+
 ## Size Snapshot
 
 Before:
@@ -295,7 +687,11 @@ Before:
 - `src/lisp/tests_memory_lifetime_root_boundary_groups.c3` (post-step-37 baseline): `492` lines
 - `src/lisp/unicode.c3` (post-step-38 baseline): `487` lines
 - `src/lisp/json.c3` (post-step-39 baseline): `485` lines
+- `src/lisp/tests_compiler_core_groups.c3`: `476` lines
 - `src/lisp/value_core_types.c3` (post-step-40 baseline): `476` lines
+- `src/lisp/tests_memory_lifetime_env_copy_groups.c3`: `476` lines
+- `src/lisp/deduce_relation_scan_helpers.c3`: `477` lines
+- `src/lisp/deduce_rule_eval.c3` (post-step-42 baseline): `1875` lines
 
 After:
 - `src/lisp/schema.c3`: `450` lines
@@ -315,7 +711,7 @@ After:
 - `src/lisp/eval_boundary_api_meta.c3`: `331` lines
 - `src/lisp/tests_memory_lifetime_boundary_commit_groups.c3`: `86` lines
 - `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3`: `534` lines
-- `src/lisp/tests_memory_lifetime_env_copy_groups.c3`: `410` lines
+- `src/lisp/tests_memory_lifetime_env_copy_groups.c3`: `476` lines
 - `src/lisp/tests_memory_lifetime_env_copy_closure_groups.c3`: `191` lines
 - `src/lisp/eval_boundary_diagnostics.c3`: `160` lines
 - `src/lisp/eval_boundary_graph_audit.c3`: `473` lines
@@ -370,14 +766,68 @@ After:
 - `src/lisp/value_constructors.c3`: `249` lines
 - `src/lisp/value_constructors_core.c3`: `264` lines
 - `src/lisp/tests_memory_lifetime_boundary_groups.c3`: `291` lines
+- `src/lisp/jit_jit_handle_signal_handle.c3`: `225` lines
+- `src/lisp/deduce_rule_ops_explain.c3`: `219` lines
 - `src/lisp/tests_memory_lifetime_boundary_state_groups.c3`: `219` lines
+- `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`: `214` lines
 - `src/lisp/unicode.c3`: `212` lines
 - `src/lisp/unicode_case_mapping.c3`: `276` lines
+- `src/lisp/deduce_rule_eval.c3`: `442` lines
+- `src/lisp/deduce_rule_eval_exec.c3`: `368` lines
+- `src/lisp/deduce_rule_eval_exec_seminaive.c3`: `275` lines
+- `src/lisp/deduce_rule_eval_fixpoint.c3`: `260` lines
+- `src/lisp/deduce_rule_eval_prims.c3`: `380` lines
+- `src/lisp/tests_scheduler_groups.c3`: `424` lines
+- `src/lisp/tests_scheduler_groups_more.c3`: `218` lines
+- `src/lisp/tests_deduce_query_bench_groups.c3`: `410` lines
+- `src/lisp/tests_deduce_query_bench_groups_more.c3`: `24` lines
+- `src/lisp/tests_compiler_core_groups_more.c3`: `245` lines
+- `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3`: `245` lines
+- `src/lisp/deduce_relation_scan_helpers_more.c3`: `217` lines
+- `src/lisp/aot.c3`: `467` lines
+- `src/lisp/aot_runtime_bridge.c3`: `433` lines
+- `src/lisp/tests_runtime_feature_jit_groups.c3`: `345` lines
+- `src/lisp/tests_runtime_feature_jit_groups_more.c3`: `392` lines
+- `src/lisp/tests_runtime_feature_jit_groups_tail.c3`: `314` lines
+- `src/lisp/jit_jit_compiler.c3`: `418` lines
+- `src/lisp/jit_jit_compiler_lifecycle.c3`: `225` lines
+- `src/lisp/deduce_db_handles_mutation.c3`: `602` lines
+- `src/lisp/jit_jit_eval_scopes.c3`: `557` lines
+- `src/lisp/jit_jit_handle_signal.c3`: `551` lines
+- `src/lisp/deduce_rule_ops.c3`: `548` lines
+- `src/lisp/deduce_db_handles.c3`: `544` lines
+- `src/lisp/tests_advanced_core_unicode_groups.c3`: `540` lines
+- `src/lisp/tests_advanced_core_unicode_groups_more.c3`: `101` lines
+- `src/lisp/deduce_rule_eval_exec_naive.c3`: `171` lines
 
 ## Validation
 
+- `c3c build` (post-step-64 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp` (post-step-64 check; 89 passed, 0 failed)
+- `c3c build` (post-step-63 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp` (post-step-63 check; 72 passed, 0 failed)
+- `c3c build` (post-step-62 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp` (post-step-62 check; 24 passed, 0 failed)
+- `c3c build` (post-step-61 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp` (post-step-61 check; 24 passed, 0 failed)
+- `c3c build` (post-step-60 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp` (post-step-60 check; 24 passed, 0 failed)
 - `c3c build`
+- `c3c build` (post-step-59 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp` (post-step-59 check; 72 passed, 0 failed)
+- `c3c build` (post-step-58 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` (post-step-58 check; 122 passed, 0 failed)
+- `c3c build` (post-step-57 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` (post-step-57 check; 122 passed, 0 failed)
+- `c3c build` (post-step-56 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp` (post-step-56 check; 24 passed, 0 failed)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp` (`72 passed, 0 failed`)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp` (`89 passed, 0 failed`)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp` (`24 passed, 0 failed`)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main --test-suite lisp` (current advanced slice still trips the pre-existing unaligned-access panic in `value_environment.c3` via `jit_lookup_var`)
 - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=schema ./build/main`
+- `c3c build` (post-step-42 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp` (post-step-42 check; 72 passed, 0 failed)
 - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main`
 - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler OMNI_SCHEDULER_BENCH=1 ./build/main`
 - `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main`
@@ -448,6 +898,8 @@ After:
 - `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main` (post-step-40 check)
 - `c3c build` (post-step-41 check)
 - `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main` (post-step-41 check)
+- `c3c build` (post-step-42 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp` (post-step-42 check; 72 passed, 0 failed)
 
 Outcome:
 - Behavior unchanged in targeted slices.

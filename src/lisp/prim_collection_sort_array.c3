@@ -128,11 +128,11 @@ fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_array_set(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 3 || !is_array(args[0]) || !is_int(args[1])) return raise_error(interp, "array-set!: expected array, int, value");
+    if (args.len < 3 || !is_array(args[0]) || !is_int(args[1])) return raise_error(interp, "set!: expected array target, integer index, value");
     long idx = args[1].int_val;
     long alen = (long)args[0].array_val.length;
     if (idx < 0) idx += alen;
-    if (idx < 0 || idx >= alen) return raise_error(interp, "array-set!: index out of range");
+    if (idx < 0 || idx >= alen) return raise_error(interp, "set!: array index out of range");
     args[0].array_val.items[(usz)idx] = boundary_promote_to_root(args[2], interp);
     return make_void(interp);
 }

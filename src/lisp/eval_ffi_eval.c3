@@ -25,7 +25,7 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
     ExprFfiLib* fl = &expr.ffi_lib;
 
     // Evaluate path expression
-    Value* path_val = jit_eval(fl.path_expr, env, interp);
+    Value* path_val = runtime_eval_expr(fl.path_expr, env, interp);
     if (path_val == null || path_val.tag == ERROR) return path_val;
     if (path_val.tag != STRING) return raise_error(interp, "ffi lib: path must be a string");
 

@@ -2,6 +2,53 @@ module lisp;
 
 import main;
 
+fn bool boundary_commit_closure_env_needs_normalize(Value* value) @inline {
+    if (value == null || value.tag != CLOSURE || value.closure_val == null) return false;
+    if (value.closure_val.env == null || value.closure_val.env_scope == null) return false;
+    return !boundary_ptr_in_scope((void*)value.closure_val.env, value.closure_val.env_scope);
+}
+
+fn Value* boundary_commit_normalize_closure_env(
+    Value* value,
+    Interp* interp,
+    PromotionContext* ctx = null
+) {
+    if (!boundary_commit_closure_env_needs_normalize(value)) return value;
+
+    main::ScopeRegion* replacement_env_scope = main::scope_create(null);
+    if (replacement_env_scope == null) {
+        return raise_error(interp, "boundary: failed to allocate normalized closure env scope");
+    }
+
+    BoundaryEnvCopyResult copied = boundary_copy_env_to_target_scope_checked(
+        value.closure_val.env,
+        interp,
+        replacement_env_scope,
+        0,
+        ctx
+    );
+    if (!boundary_env_copy_result_ok(copied) || copied.env == null) {
+        main::scope_release(replacement_env_scope);
+        return raise_error(interp, "boundary: failed to normalize closure env scope");
+    }
+
+    if (value.closure_val.env_scope != null) {
+        main::scope_release(value.closure_val.env_scope);
+    }
+    value.closure_val.env = copied.env;
+    value.closure_val.env_scope = replacement_env_scope;
+    return value;
+}
+
+fn bool boundary_commit_can_splice_escape_root(
+    Value* result,
+    main::ScopeRegion* releasing_scope
+) @inline {
+    if (result == null || releasing_scope == null) return false;
+    if (result.scope_gen != releasing_scope.escape_generation) return false;
+    return boundary_graph_audit_escape_reachability(result, releasing_scope);
+}
+
 <*
 @require interp != null : "boundary_commit_escape: null interp"
 @require target_scope != null : "boundary_commit_escape: null target_scope"
@@ -30,6 +77,18 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
     defer boundary_txn_close(interp, &txn);
     interp.current_scope = target_scope;
     interp.releasing_scope = releasing_scope;
+    Value* normalized_result = boundary_commit_normalize_closure_env(result, interp, ctx);
+    if (result != null &&
+        result.tag == CLOSURE &&
+        normalized_result != null &&
+        normalized_result.tag == ERROR) {
+        committed.value = normalized_result;
+        committed.outcome = BOUNDARY_COMMIT_FALLBACK_DISALLOWED;
+        committed.fault_code = BOUNDARY_COMMIT_FAULT_DESTINATION_DIRECT_PROMOTION;
+        boundary_txn_abort(&txn);
+        return committed;
+    }
+    result = normalized_result;
 
     BoundaryReturnClassification classification =
         boundary_classify_return_value(result, interp, target_scope, releasing_scope);
@@ -178,17 +237,22 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
             if (active_ctx.aborted) {
                 if (allow_scope_splice &&
                     classification.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE) {
-                    BoundaryScopeTransferResult splice_result =
-                        boundary_try_scope_splice_escapes_result(target_scope, releasing_scope);
-                    if (splice_result.allowed) {
-                        committed.value = result;
-                        committed.outcome = BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE;
-                        committed.releasing_scope_spliced = true;
-                        boundary_txn_commit(&txn);
-                        return committed;
+                    if (boundary_commit_can_splice_escape_root(result, releasing_scope)) {
+                        BoundaryScopeTransferResult splice_result =
+                            boundary_try_scope_splice_escapes_result(target_scope, releasing_scope);
+                        if (splice_result.allowed) {
+                            committed.value = result;
+                            committed.outcome = BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE;
+                            committed.releasing_scope_spliced = true;
+                            boundary_txn_commit(&txn);
+                            return committed;
+                        }
+                        splice_rejected_for_commit = true;
+                        splice_reject_reason = splice_result.reason;
+                    } else {
+                        splice_rejected_for_commit = true;
+                        splice_reject_reason = BOUNDARY_SCOPE_TRANSFER_CHILD_TEMP_LANE_INVALID;
                     }
-                    splice_rejected_for_commit = true;
-                    splice_reject_reason = splice_result.reason;
                 }
                 BoundaryPromotionAbortReason abort_reason =
                     BOUNDARY_PROMOTION_ABORT_BUDGET_EXHAUSTED;
@@ -208,17 +272,22 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
             if (allow_scope_splice &&
                 classification.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE &&
                 boundary_should_promote(result, active_ctx, releasing_scope)) {
-                BoundaryScopeTransferResult splice_result =
-                    boundary_try_scope_splice_escapes_result(target_scope, releasing_scope);
-                if (splice_result.allowed) {
-                    committed.value = result;
-                    committed.outcome = BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE;
-                    committed.releasing_scope_spliced = true;
-                    boundary_txn_commit(&txn);
-                    return committed;
+                if (boundary_commit_can_splice_escape_root(result, releasing_scope)) {
+                    BoundaryScopeTransferResult splice_result =
+                        boundary_try_scope_splice_escapes_result(target_scope, releasing_scope);
+                    if (splice_result.allowed) {
+                        committed.value = result;
+                        committed.outcome = BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE;
+                        committed.releasing_scope_spliced = true;
+                        boundary_txn_commit(&txn);
+                        return committed;
+                    }
+                    splice_rejected_for_commit = true;
+                    splice_reject_reason = splice_result.reason;
+                } else {
+                    splice_rejected_for_commit = true;
+                    splice_reject_reason = BOUNDARY_SCOPE_TRANSFER_CHILD_TEMP_LANE_INVALID;
                 }
-                splice_rejected_for_commit = true;
-                splice_reject_reason = splice_result.reason;
             }
         }
 
@@ -235,6 +304,81 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
                 committed.outcome = BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED;
                 boundary_txn_commit(&txn);
                 return committed;
+            }
+        }
+
+        if (classification.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE) {
+            if (result.tag == ERROR) {
+                Value* destination_error = boundary_build_destination_error_escape(
+                    result,
+                    interp,
+                    target_scope,
+                    active_ctx
+                );
+                if (!active_ctx.aborted &&
+                    destination_error != null &&
+                    destination_error != result &&
+                    destination_error.scope_gen == target_scope.escape_generation) {
+                    committed.value = destination_error;
+                    committed.outcome = BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED;
+                    boundary_txn_commit(&txn);
+                    return committed;
+                }
+                fallback_fault = BOUNDARY_COMMIT_FAULT_DESTINATION_ERROR_BUILD;
+            } else if (result.tag == CONS) {
+                Value* destination_cons = boundary_build_destination_cons_escape(
+                    result,
+                    interp,
+                    target_scope,
+                    releasing_scope,
+                    active_ctx
+                );
+                if (!active_ctx.aborted &&
+                    destination_cons != null &&
+                    destination_cons != result &&
+                    destination_cons.scope_gen == target_scope.escape_generation) {
+                    committed.value = destination_cons;
+                    committed.outcome = BOUNDARY_COMMIT_DESTINATION_CONS_BUILT;
+                    boundary_txn_commit(&txn);
+                    return committed;
+                }
+                fallback_fault = BOUNDARY_COMMIT_FAULT_DESTINATION_CONS_BUILD;
+            } else if (result.tag == PARTIAL_PRIM) {
+                Value* destination_partial = boundary_build_destination_partial_escape(
+                    result,
+                    interp,
+                    target_scope,
+                    releasing_scope,
+                    active_ctx
+                );
+                if (!active_ctx.aborted &&
+                    destination_partial != null &&
+                    destination_partial != result &&
+                    destination_partial.scope_gen == target_scope.escape_generation) {
+                    committed.value = destination_partial;
+                    committed.outcome = BOUNDARY_COMMIT_DESTINATION_PARTIAL_BUILT;
+                    boundary_txn_commit(&txn);
+                    return committed;
+                }
+                fallback_fault = BOUNDARY_COMMIT_FAULT_DESTINATION_PARTIAL_BUILD;
+            } else if (result.tag == ITERATOR) {
+                Value* destination_iterator = boundary_build_destination_iterator_escape(
+                    result,
+                    interp,
+                    target_scope,
+                    releasing_scope,
+                    active_ctx
+                );
+                if (!active_ctx.aborted &&
+                    destination_iterator != null &&
+                    destination_iterator != result &&
+                    destination_iterator.scope_gen == target_scope.escape_generation) {
+                    committed.value = destination_iterator;
+                    committed.outcome = BOUNDARY_COMMIT_DESTINATION_ITERATOR_BUILT;
+                    boundary_txn_commit(&txn);
+                    return committed;
+                }
+                fallback_fault = BOUNDARY_COMMIT_FAULT_DESTINATION_ITERATOR_BUILD;
             }
         }
 

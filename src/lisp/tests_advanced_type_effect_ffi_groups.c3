@@ -3,8 +3,8 @@ module lisp;
 
 fn void run_advanced_index_mutation_tests(Interp* interp, int* pass, int* fail) {
     // Array/dict indexing (Phase 3)
-    test_eq(interp, "array index", "(let (v (array 10 20 30)) v.[0])", 10, pass, fail);
-    test_eq(interp, "array index 2", "(let (v (array 10 20 30)) v.[2])", 30, pass, fail);
+    test_eq(interp, "array index", "(let (v (Array 10 20 30)) v.[0])", 10, pass, fail);
+    test_eq(interp, "array index 2", "(let (v (Array 10 20 30)) v.[2])", 30, pass, fail);
 
     // Struct field mutation (Phase 3)
     test_eq_interp(interp, "set! struct field", "(let (p (Point 1 2)) (block (set! p.x 99) p.x))", 99, pass, fail);

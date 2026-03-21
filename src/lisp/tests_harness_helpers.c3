@@ -22,20 +22,95 @@ fn Value* test_copy_from_releasing_scope(Value* v, Interp* interp, main::ScopeRe
     return boundary_copy_to_parent_site_ctx(v, interp, site, interp.active_promotion_ctx);
 }
 
+fn void print_jit_failure_debug(Interp* interp, char[] name, char[] stage, Value* value) {
+    if (value != null && value.tag == ERROR) {
+        io::printfn("  JIT debug [%s]: stage=%s error=%s",
+            (ZString)name,
+            (ZString)stage,
+            (ZString)value.str_chars);
+        return;
+    }
+
+    char[256] rendered = {};
+    usz len = print_value_to_buf(value, &interp.symbols, &rendered, rendered.len);
+    if (len > 0) {
+        io::printfn("  JIT debug [%s]: stage=%s value=%s",
+            (ZString)name,
+            (ZString)stage,
+            (ZString)&rendered);
+    } else {
+        io::printfn("  JIT debug [%s]: stage=%s value=<empty>",
+            (ZString)name,
+            (ZString)stage);
+    }
+}
+
+struct JitTopLevelEval {
+    bool ok;
+    char[] stage;
+    Value* value;
+}
+
+fn JitTopLevelEval eval_jit_top_level(Interp* interp, char[] source) {
+    JitTopLevelEval out = {
+        .ok = false,
+        .stage = "parse",
+        .value = null,
+    };
+    if (interp == null) {
+        out.stage = "interp";
+        return out;
+    }
+
+    run_clear_stale_raise_state(interp);
+    run_clear_stale_jit_tco_state(interp);
+    defer run_clear_stale_jit_tco_state(interp);
+    dispatch_pending_signal_callbacks(interp);
+    runtime_gc_between_top_level_runs();
+
+    Expr* ast = parse_for_jit(source, interp);
+    if (ast == null) return out;
+
+    ast = expand_macros_in_expr(ast, interp);
+
+    out.stage = "scope";
+    main::ScopeRegion* saved_scope = null;
+    main::ScopeRegion* child_scope = boundary_push_child_scope(interp, &saved_scope);
+    if (child_scope == null) return out;
+
+    out.stage = "compile";
+    RuntimeCompiledExpr compiled = runtime_compile_expr(ast, interp);
+    if (runtime_compiled_expr_is_null(compiled)) {
+        boundary_pop_child_scope(interp, saved_scope, child_scope);
+        return out;
+    }
+
+    out.stage = "exec";
+    Value* result = runtime_exec_compiled_expr(compiled, interp);
+    bool child_spliced = false;
+    result = run_promote_result(result, interp, child_scope, saved_scope, &child_spliced);
+    main::ScopeRegion* release_scope = child_spliced ? null : child_scope;
+    boundary_pop_child_scope(interp, saved_scope, release_scope);
+    dispatch_pending_signal_callbacks(interp);
+
+    out.ok = true;
+    out.stage = "ok";
+    out.value = result;
+    return out;
+}
+
 fn void test_eq(Interp* interp, char[] name, char[] expr, long expected, int* pass, int* fail) {
     EvalResult ri = run(expr, interp);
     bool interp_ok = !ri.error.has_error && is_int(ri.value) && ri.value.int_val == expected;
 
     bool jit_ok = !jit_checks_enabled();
+    char[] jit_stage = "disabled";
+    Value* jit_value = null;
     if (jit_checks_enabled()) {
-        Expr* ast = parse_for_jit(expr, interp);
-        if (ast != null) {
-            JitCompiledFn f = jit_compile(ast, interp);
-            if (!jit_compiled_fn_is_null(f)) {
-                Value* jv = jit_exec(f, interp);
-                jit_ok = jv != null && jv.tag == INT && jv.int_val == expected;
-            }
-        }
+        JitTopLevelEval jit_eval = eval_jit_top_level(interp, expr);
+        jit_stage = jit_eval.stage;
+        jit_value = jit_eval.value;
+        jit_ok = jit_eval.ok && jit_value != null && jit_value.tag == INT && jit_value.int_val == expected;
     }
 
     if (interp_ok && jit_ok) {
@@ -43,6 +118,7 @@ fn void test_eq(Interp* interp, char[] name, char[] expr, long expected, int* pa
         (*pass)++;
     } else {
         io::printfn("[FAIL] %s (interp=%s, jit=%s)", (ZString)name, interp_ok ? "ok" : "FAIL", jit_ok ? "ok" : "FAIL");
+        if (!jit_ok && jit_checks_enabled()) print_jit_failure_debug(interp, name, jit_stage, jit_value);
         (*fail)++;
     }
 }
@@ -53,14 +129,9 @@ fn void test_eq_double(Interp* interp, char[] name, char[] expr, double expected
 
     bool jit_ok = !jit_checks_enabled();
     if (jit_checks_enabled()) {
-        Expr* ast = parse_for_jit(expr, interp);
-        if (ast != null) {
-            JitCompiledFn f = jit_compile(ast, interp);
-            if (!jit_compiled_fn_is_null(f)) {
-                Value* jv = jit_exec(f, interp);
-                jit_ok = jv != null && is_double(jv) && jv.double_val == expected;
-            }
-        }
+        JitTopLevelEval jit_eval = eval_jit_top_level(interp, expr);
+        Value* jv = jit_eval.value;
+        jit_ok = jit_eval.ok && jv != null && is_double(jv) && jv.double_val == expected;
     }
 
     if (interp_ok && jit_ok) {
@@ -77,15 +148,16 @@ fn void test_truthy(Interp* interp, char[] name, char[] expr, int* pass, int* fa
     bool interp_ok = !ri.error.has_error && !is_nil(ri.value) && !(is_symbol(ri.value) && ri.value.sym_val == interp.sym_false);
 
     bool jit_ok = !jit_checks_enabled();
+    char[] jit_stage = "disabled";
+    Value* jit_value = null;
     if (jit_checks_enabled()) {
-        Expr* ast = parse_for_jit(expr, interp);
-        if (ast != null) {
-            JitCompiledFn f = jit_compile(ast, interp);
-            if (!jit_compiled_fn_is_null(f)) {
-                Value* jv = jit_exec(f, interp);
-                jit_ok = jv != null && !is_nil(jv) && !(is_symbol(jv) && jv.sym_val == interp.sym_false);
-            }
-        }
+        JitTopLevelEval jit_eval = eval_jit_top_level(interp, expr);
+        jit_stage = jit_eval.stage;
+        jit_value = jit_eval.value;
+        jit_ok = jit_eval.ok &&
+            jit_value != null &&
+            !is_nil(jit_value) &&
+            !(is_symbol(jit_value) && jit_value.sym_val == interp.sym_false);
     }
 
     if (interp_ok && jit_ok) {
@@ -93,6 +165,7 @@ fn void test_truthy(Interp* interp, char[] name, char[] expr, int* pass, int* fa
         (*pass)++;
     } else {
         io::printfn("[FAIL] %s (interp=%s, jit=%s)", (ZString)name, interp_ok ? "ok" : "FAIL", jit_ok ? "ok" : "FAIL");
+        if (!jit_ok && jit_checks_enabled()) print_jit_failure_debug(interp, name, jit_stage, jit_value);
         (*fail)++;
     }
 }
@@ -103,14 +176,8 @@ fn void test_nil(Interp* interp, char[] name, char[] expr, int* pass, int* fail)
 
     bool jit_ok = !jit_checks_enabled();
     if (jit_checks_enabled()) {
-        Expr* ast = parse_for_jit(expr, interp);
-        if (ast != null) {
-            JitCompiledFn f = jit_compile(ast, interp);
-            if (!jit_compiled_fn_is_null(f)) {
-                Value* jv = jit_exec(f, interp);
-                jit_ok = jv != null && is_nil(jv);
-            }
-        }
+        JitTopLevelEval jit_eval = eval_jit_top_level(interp, expr);
+        jit_ok = jit_eval.ok && jit_eval.value != null && is_nil(jit_eval.value);
     }
 
     if (interp_ok && jit_ok) {
@@ -180,16 +247,13 @@ fn void test_str_val(Interp* interp, char[] name, char[] expr, char[] expected, 
 
     bool jit_ok = !jit_checks_enabled();
     if (jit_checks_enabled()) {
-        Expr* ast = parse_for_jit(expr, interp);
-        if (ast != null) {
-            JitCompiledFn f = jit_compile(ast, interp);
-            if (!jit_compiled_fn_is_null(f)) {
-                Value* jv = jit_exec(f, interp);
-                jit_ok = jv != null && jv.tag == STRING &&
-                    str_starts_with(jv.str_chars[:jv.str_len], expected) &&
-                    jv.str_len == expected.len;
-            }
-        }
+        JitTopLevelEval jit_eval = eval_jit_top_level(interp, expr);
+        Value* jv = jit_eval.value;
+        jit_ok = jit_eval.ok &&
+            jv != null &&
+            jv.tag == STRING &&
+            str_starts_with(jv.str_chars[:jv.str_len], expected) &&
+            jv.str_len == expected.len;
     }
 
     if (interp_ok && jit_ok) {
@@ -213,14 +277,8 @@ fn void test_str(Interp* interp, char[] name, char[] expr, int* pass, int* fail)
 
     bool jit_ok = !jit_checks_enabled();
     if (jit_checks_enabled()) {
-        Expr* ast = parse_for_jit(expr, interp);
-        if (ast != null) {
-            JitCompiledFn f = jit_compile(ast, interp);
-            if (!jit_compiled_fn_is_null(f)) {
-                Value* jv = jit_exec(f, interp);
-                jit_ok = jv != null && jv.tag == STRING;
-            }
-        }
+        JitTopLevelEval jit_eval = eval_jit_top_level(interp, expr);
+        jit_ok = jit_eval.ok && jit_eval.value != null && jit_eval.value.tag == STRING;
     }
 
     if (interp_ok && jit_ok) {
@@ -238,14 +296,8 @@ fn void test_tag(Interp* interp, char[] name, char[] expr, ValueTag expected, in
 
     bool jit_ok = !jit_checks_enabled();
     if (jit_checks_enabled()) {
-        Expr* ast = parse_for_jit(expr, interp);
-        if (ast != null) {
-            JitCompiledFn f = jit_compile(ast, interp);
-            if (!jit_compiled_fn_is_null(f)) {
-                Value* jv = jit_exec(f, interp);
-                jit_ok = jv != null && jv.tag == expected;
-            }
-        }
+        JitTopLevelEval jit_eval = eval_jit_top_level(interp, expr);
+        jit_ok = jit_eval.ok && jit_eval.value != null && jit_eval.value.tag == expected;
     }
 
     if (interp_ok && jit_ok) {
@@ -263,14 +315,8 @@ fn void test_gt(Interp* interp, char[] name, char[] expr, long min, int* pass, i
 
     bool jit_ok = !jit_checks_enabled();
     if (jit_checks_enabled()) {
-        Expr* ast = parse_for_jit(expr, interp);
-        if (ast != null) {
-            JitCompiledFn f = jit_compile(ast, interp);
-            if (!jit_compiled_fn_is_null(f)) {
-                Value* jv = jit_exec(f, interp);
-                jit_ok = jv != null && jv.tag == INT && jv.int_val > min;
-            }
-        }
+        JitTopLevelEval jit_eval = eval_jit_top_level(interp, expr);
+        jit_ok = jit_eval.ok && jit_eval.value != null && jit_eval.value.tag == INT && jit_eval.value.int_val > min;
     }
 
     if (interp_ok && jit_ok) {
@@ -346,11 +392,9 @@ fn void test_eq_jit(Interp* interp, char[] name, char[] source, long expected, i
         test_eq_interp(interp, name, source, expected, pass, fail);
         return;
     }
-    Expr* ast = parse_for_jit(source, interp);
-    if (ast == null) { (*fail)++; io::printfn("[FAIL] %s (JIT parse error)", (ZString)name); return; }
-    JitCompiledFn f = jit_compile(ast, interp);
-    if (jit_compiled_fn_is_null(f)) { (*fail)++; io::printfn("[FAIL] %s (JIT compile error)", (ZString)name); return; }
-    Value* result = jit_exec(f, interp);
+    JitTopLevelEval jit_eval = eval_jit_top_level(interp, source);
+    if (!jit_eval.ok) { (*fail)++; io::printfn("[FAIL] %s (JIT %s error)", (ZString)name, (ZString)jit_eval.stage); return; }
+    Value* result = jit_eval.value;
     if (result != null && result.tag == INT && result.int_val == expected) {
         emit_pass(name);
         (*pass)++;
@@ -366,11 +410,9 @@ fn void test_nil_jit(Interp* interp, char[] name, char[] source, int* pass, int*
         test_nil_interp(interp, name, source, pass, fail);
         return;
     }
-    Expr* ast = parse_for_jit(source, interp);
-    if (ast == null) { (*fail)++; io::printfn("[FAIL] %s (JIT parse error)", (ZString)name); return; }
-    JitCompiledFn f = jit_compile(ast, interp);
-    if (jit_compiled_fn_is_null(f)) { (*fail)++; io::printfn("[FAIL] %s (JIT compile error)", (ZString)name); return; }
-    Value* result = jit_exec(f, interp);
+    JitTopLevelEval jit_eval = eval_jit_top_level(interp, source);
+    if (!jit_eval.ok) { (*fail)++; io::printfn("[FAIL] %s (JIT %s error)", (ZString)name, (ZString)jit_eval.stage); return; }
+    Value* result = jit_eval.value;
     if (result == null || is_nil(result)) {
         emit_pass(name);
         (*pass)++;
@@ -393,11 +435,9 @@ fn bool eval_expr_as_double(Interp* interp, char[] expr, double expected) {
 }
 
 fn bool eval_jit_as_double(Interp* interp, char[] expr, double expected) {
-    Expr* ast = parse_for_jit(expr, interp);
-    if (ast == null) return false;
-    JitCompiledFn f = jit_compile(ast, interp);
-    if (jit_compiled_fn_is_null(f)) return false;
-    Value* jv = jit_exec(f, interp);
+    JitTopLevelEval jit_eval = eval_jit_top_level(interp, expr);
+    if (!jit_eval.ok) return false;
+    Value* jv = jit_eval.value;
     return value_matches_double(jv, expected);
 }
 

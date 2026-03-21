@@ -1,8 +1,5 @@
 module lisp;
 
-import std::io;
-import main;
-
 // =============================================================================
 // SECTION 2.4: FRAME PUSH/POP (escape/root promotion)
 // =============================================================================
@@ -19,176 +16,19 @@ fn bool promote_escape_can_mutate(Value* v, PromotionContext* ctx) @inline {
     return promotion_context_consume(ctx, 1);
 }
 
-fn bool promote_escape_should_iterate_cons_tail(Value* old_cdr, Interp* interp) @inline {
-    if (old_cdr == null || old_cdr.tag != CONS) return false;
-    // Keep long disjoint list promotion iterative to avoid recursive depth blowups
-    // under ASAN stack pressure. Reusable target-chain tails still short-circuit.
-    if (old_cdr.scope_gen == interp.current_scope.generation) return true;
-    if (boundary_ptr_in_target_scope_chain_with_hint((void*)old_cdr, interp, old_cdr.scope_gen)) return false;
-    return true;
-}
-
-fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
-    result.tag = v.tag;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
-    usz len = v.str_len;
-    usz cap = len + 1;
-    if (cap < 32) cap = 32;
-    result.str_chars = (char*)mem::malloc(cap);
-    for (usz i = 0; i < len; i++) {
-        result.str_chars[i] = v.str_chars[i];
-    }
-    result.str_chars[len] = 0;
-    result.str_len = len;
-    return result;
-}
-
-fn bool method_signature_copy_to_escape(MethodSignature* dst, MethodSignature* src, main::ScopeRegion* scope) {
-    if (dst == null || src == null || scope == null) return false;
-    method_signature_init_empty(dst);
-    dst.param_count = src.param_count;
-    dst.constraint_count = src.constraint_count;
-
-    if (src.param_count > 0) {
-        dst.param_types = (TypeId*)scope.alloc_escape(TypeId.sizeof * src.param_count);
-        dst.param_type_vars = (SymbolId*)scope.alloc_escape(SymbolId.sizeof * src.param_count);
-        dst.val_literals = (ValueLiteralKey*)scope.alloc_escape(ValueLiteralKey.sizeof * src.param_count);
-        dst.has_val_literal = (bool*)scope.alloc_escape(bool.sizeof * src.param_count);
-        if (dst.param_types == null || dst.param_type_vars == null || dst.val_literals == null || dst.has_val_literal == null) {
-            return false;
-        }
-        for (usz i = 0; i < src.param_count; i++) {
-            dst.param_types[i] = src.param_types[i];
-            dst.param_type_vars[i] = src.param_type_vars[i];
-            dst.val_literals[i] = src.val_literals[i];
-            dst.has_val_literal[i] = src.has_val_literal[i];
-        }
-    }
-
-    if (src.constraint_count > 0) {
-        dst.constraints = (MethodConstraint*)scope.alloc_escape(MethodConstraint.sizeof * src.constraint_count);
-        if (dst.constraints == null) return false;
-        for (usz i = 0; i < src.constraint_count; i++) {
-            dst.constraints[i] = src.constraints[i];
-        }
-    }
-
-    return true;
-}
-
-fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promote_escape_can_mutate(v, ctx)) return v;
-    // Iterative spine copy to avoid recursion blowups on long lists.
-    Value* head = interp.alloc_value_escape();
-    head.tag = CONS;
-    Value* current_new = head;
-    Value* current_old = v;
-
-    while (true) {
-        current_new.cons_val.car = promote_to_escape(current_old.cons_val.car, interp);
-        if (ctx != null && ctx.aborted) return v;
-        Value* old_cdr = current_old.cons_val.cdr;
-        if (promote_escape_should_iterate_cons_tail(old_cdr, interp)) {
-            if (!promote_escape_can_mutate(v, ctx)) return v;
-            Value* next_new = interp.alloc_value_escape();
-            next_new.tag = CONS;
-            current_new.cons_val.cdr = next_new;
-            current_new = next_new;
-            current_old = old_cdr;
-        } else {
-            current_new.cons_val.cdr = promote_to_escape(old_cdr, interp);
-            if (ctx != null && ctx.aborted) return v;
-            break;
-        }
-    }
-    return head;
-}
-
-fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
-    result.tag = CLOSURE;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_closure);
-    result.closure_val = (Closure*)interp.current_scope.alloc_escape(Closure.sizeof);
-    *result.closure_val = *v.closure_val;
-    result.closure_val.scope_gen = interp.current_scope.escape_generation;
-
-    if (v.closure_val.param_count > 0) {
-        result.closure_val.params = (SymbolId*)interp.current_scope.alloc_escape(SymbolId.sizeof * v.closure_val.param_count);
-        for (usz i = 0; i < v.closure_val.param_count; i++) {
-            result.closure_val.params[i] = v.closure_val.params[i];
-        }
-    } else {
-        result.closure_val.params = null;
-    }
-
-    if (v.closure_val.type_sig != null) {
-        result.closure_val.type_sig = (MethodSignature*)interp.current_scope.alloc_escape(MethodSignature.sizeof);
-        if (result.closure_val.type_sig == null ||
-            !method_signature_copy_to_escape(result.closure_val.type_sig, v.closure_val.type_sig, interp.current_scope)) {
-            if (ctx != null) {
-                ctx.aborted = true;
-                ctx.abort_reason = PROMOTION_ABORT_BUDGET_EXHAUSTED;
-            }
-            return raise_error(interp, boundary_copy_fault_message(BOUNDARY_COPY_FAULT_CLOSURE_TYPE_SIG_COPY));
-        }
-    }
-
-    if (result.closure_val.env_scope != null) {
-        main::scope_retain(result.closure_val.env_scope);
-    }
-    return result;
-}
-
-fn Value* promote_escape_partial_prim(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
-    result.tag = PARTIAL_PRIM;
-    result.partial_val.func = v.partial_val.func;
-    result.partial_val.remaining = v.partial_val.remaining;
-    result.partial_val.first_arg = promote_to_escape(v.partial_val.first_arg, interp);
-    result.partial_val.second_arg = promote_to_escape(v.partial_val.second_arg, interp);
-    return result;
-}
-
-fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
-    *result = *v;
-    result.scope_gen = interp.current_scope.escape_generation;
-    return result;
-}
-
-fn Value* promote_escape_instance(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
-    result.tag = INSTANCE;
-    result.scope_gen = interp.current_scope.escape_generation;
-    result.instance_val = v.instance_val;
-    instance_retain(v.instance_val);
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
-    return result;
-}
-
-fn Value* promote_escape_ffi_handle(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
-    result.tag = FFI_HANDLE;
-    result.ffi_val = v.ffi_val;
-    ffi_handle_retain(result.ffi_val);
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
-    return result;
-}
-
 fn bool promote_to_escape_fast_path(Value* v, Interp* interp, Value** out) {
+    bool unsafe_alias = boundary_graph_alias_unsafe_for_reuse(v, interp);
+
     if (v.scope_gen == interp.current_scope.escape_generation) {
+        if (unsafe_alias) {
+            *out = promote_to_escape_disjoint(v, interp);
+            return true;
+        }
         *out = v;
         return true;
     }
     if (v.scope_gen != interp.current_scope.generation) {
-        if (boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen)) {
+        if (boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen) && !unsafe_alias) {
             *out = v;
             return true;
         }
@@ -200,72 +40,6 @@ fn bool promote_to_escape_fast_path(Value* v, Interp* interp, Value** out) {
     return false;
 }
 
-fn Value* promote_escape_scalar(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
-    switch (v.tag) {
-        case NIL:
-            result.tag = NIL;
-        case VOID:
-            result.tag = VOID;
-        case INT:
-            result.tag = INT;
-            result.int_val = v.int_val;
-        case DOUBLE:
-            result.tag = DOUBLE;
-            result.double_val = v.double_val;
-        case SYMBOL:
-            result.tag = SYMBOL;
-            result.sym_val = v.sym_val;
-        default:
-            return v;
-    }
-    return result;
-}
-
-fn Value* promote_escape_continuation(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promote_escape_can_mutate(v, ctx)) return v;
-    if (v.cont_val != null) {
-        if (v.cont_val.owner_interp != null && v.cont_val.owner_interp != interp) {
-            return raise_error(interp, "boundary: refusing continuation alias across interpreters");
-        }
-        continuation_retain_handle_state_for_boundary(v.cont_val);
-    }
-    Value* result = interp.alloc_value_escape();
-    result.tag = CONTINUATION;
-    result.cont_val = v.cont_val;
-    return result;
-}
-
-fn Value* promote_escape_iterator(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
-    result.tag = ITERATOR;
-    result.iterator_val = promote_to_escape(v.iterator_val, interp);
-    return result;
-}
-
-fn Value* promote_escape_coroutine(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promote_escape_can_mutate(v, ctx)) return v;
-    if (!boundary_ptr_in_scope((void*)v, interp.current_scope) ||
-        v.scope_gen != interp.current_scope.generation) {
-        return raise_error(interp, "boundary: refusing coroutine wrapper alias during escape promotion");
-    }
-    Value* result = interp.alloc_value_escape();
-    result.tag = COROUTINE;
-    result.coroutine_val = v.coroutine_val;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
-    v.coroutine_val = null;
-    return result;
-}
-
-fn Value* promote_escape_time_point(Value* v, Interp* interp, PromotionContext* ctx) {
-    if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
-    result.tag = TIME_POINT;
-    result.time_point_val = v.time_point_val;
-    return result;
-}
 
 enum PromoteEscapeRoute : char {
     PE_ROUTE_SCALAR,

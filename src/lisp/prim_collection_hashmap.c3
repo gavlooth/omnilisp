@@ -405,8 +405,8 @@ fn Value* prim_dict(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_dict_set(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 3) return raise_error(interp, "dict-set!: expected 3 arguments");
-    if (args[0].tag != HASHMAP) return raise_error(interp, "dict-set!: expected dict");
+    if (args.len < 3) return raise_error(interp, "set!: expected collection, key, value");
+    if (args[0].tag != HASHMAP) return raise_error(interp, "set!: generic form expects array or dict target");
     hashmap_set(args[0].hashmap_val, args[1], args[2], interp);
     return make_void(interp);
 }

@@ -27,6 +27,7 @@ struct SavedInterpState {
     bool        tco_scope_defer_active;
     usz         reset_depth;
     usz         jit_exec_depth;
+    usz         jit_interp_exec_depth;
     void*       current_reset_state;
     usz         handler_count;
     main::ScopeRegion* scope;
@@ -53,7 +54,8 @@ fn void save_interp_state(Interp* interp, SavedInterpState* s) {
     s.tco_scope_defer_slot = interp.tco_scope_defer_slot;
     s.tco_scope_defer_active = interp.tco_scope_defer_active;
     s.reset_depth     = interp.reset_depth;
-    s.jit_exec_depth  = g_jit_exec_depth;
+    s.jit_exec_depth  = runtime_backend_exec_depth();
+    s.jit_interp_exec_depth = runtime_interp_exec_depth(interp);
     s.current_reset_state = interp.current_reset_state;
     s.handler_count   = interp.handler_count;
     s.scope           = interp.current_scope;
@@ -79,7 +81,8 @@ fn void restore_interp_state(Interp* interp, SavedInterpState* s) {
     interp.tco_scope_defer_slot = s.tco_scope_defer_slot;
     interp.tco_scope_defer_active = s.tco_scope_defer_active;
     interp.reset_depth       = s.reset_depth;
-    g_jit_exec_depth         = s.jit_exec_depth;
+    runtime_backend_set_exec_depth(s.jit_exec_depth);
+    runtime_set_interp_exec_depth(interp, s.jit_interp_exec_depth);
     interp.current_reset_state = s.current_reset_state;
     interp.handler_count     = s.handler_count;
     interp.current_scope     = s.scope;

@@ -1,5 +1,6 @@
 module lisp;
 
+import std::io;
 import main;
 
 fn void copy_env_invariant_fail(char[] msg) @noinline {
@@ -8,6 +9,10 @@ fn void copy_env_invariant_fail(char[] msg) @noinline {
 
 fn bool copy_env_value_copy_failure(Value* src, Value* copied) @inline {
     return src != null && copied == null;
+}
+
+fn bool copy_env_binding_trace_enabled() @inline {
+    return boundary_c_getenv("OMNI_TRACE_ENV_COPY_BINDINGS") != null;
 }
 
 <*
@@ -94,22 +99,25 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = 
 }
 
 fn bool copy_env_should_clone_closure(Value* val, Interp* interp) @inline {
-    if (val == null || val.tag != CLOSURE || val.closure_val.env_scope == null) return false;
+    if (val == null || val.tag != CLOSURE || val.closure_val == null) return false;
     if (copy_env_should_reuse_value(val, interp)) return false;
-    return val.closure_val.scope_gen != interp.current_scope.generation;
+    if (val.closure_val.env_scope != null) {
+        return val.closure_val.scope_gen != interp.current_scope.generation;
+    }
+    Env* captured_env = val.closure_val.env;
+    if (captured_env == null || captured_env == interp.global_env) return true;
+    if (interp.root_scope != null && main::is_in_scope((void*)captured_env, interp.root_scope)) return true;
+    return false;
 }
 
-fn bool copy_env_invalid_closure_alias_in_releasing_scope(Value* val, Interp* interp) @inline {
-    if (val == null || interp == null || interp.releasing_scope == null) return false;
-    if (val.tag != CLOSURE || val.closure_val == null) return false;
-    // A closure without env_scope has no detached ownership envelope; if that wrapper
-    // still belongs to releasing_scope, env-copy must fail closed instead of aliasing.
-    if (val.closure_val.env_scope != null) return false;
-    return boundary_ptr_in_scope((void*)val, interp.releasing_scope);
+fn bool copy_env_invalid_closure_alias(Value* val, Interp* interp) @inline {
+    if (val == null || interp == null || val.tag != CLOSURE || val.closure_val == null) return false;
+    return boundary_closure_alias_unsafe_for_reuse(val, interp);
 }
 
 fn Value* copy_env_clone_closure_if_needed(Value* val, Interp* interp) {
-    if (copy_env_invalid_closure_alias_in_releasing_scope(val, interp)) return null;
+    bool safe_undelimited_clone = copy_env_should_clone_closure(val, interp);
+    if (copy_env_invalid_closure_alias(val, interp) && !safe_undelimited_clone) return null;
     if (!copy_env_should_clone_closure(val, interp)) return val;
     Value* result = interp.alloc_value();
     // Reuse the shared closure-clone payload path so env-copy and return-boundary
@@ -121,16 +129,31 @@ fn Value* copy_env_clone_closure_if_needed(Value* val, Interp* interp) {
 
 fn Value* copy_env_clone_iterator_if_needed(Value* val, Interp* interp) {
     if (val == null || val.tag != ITERATOR) return val;
-    if (boundary_ptr_in_target_scope_chain_with_hint((void*)val, interp, val.scope_gen)) return val;
+    bool wrapper_in_target = boundary_ptr_in_target_scope_chain_with_hint((void*)val, interp, val.scope_gen);
+    bool payload_alias_safe = !boundary_iterator_payload_alias_unsafe_for_reuse(val, interp);
+    if (wrapper_in_target && payload_alias_safe) return val;
 
     Value* inner = val.iterator_val;
-    if (copy_env_invalid_closure_alias_in_releasing_scope(inner, interp)) return null;
-    if (inner != null && inner.tag == CLOSURE && inner.closure_val.env_scope != null) {
-        Value* cloned = copy_env_clone_closure_if_needed(inner, interp);
-        if (cloned == null || cloned.tag != CLOSURE) {
-            copy_env_invariant_fail("copy_env_clone_iterator_if_needed: expected cloned closure payload");
+    if (inner != null && inner.tag == CLOSURE) {
+        if (copy_env_invalid_closure_alias(inner, interp)) return null;
+        if (inner.closure_val.env_scope != null) {
+            Value* cloned = copy_env_clone_closure_if_needed(inner, interp);
+            if (cloned == null || cloned.tag != CLOSURE) {
+                copy_env_invariant_fail("copy_env_clone_iterator_if_needed: expected cloned closure payload");
+            }
+            inner = cloned;
         }
-        inner = cloned;
+    } else if (inner != null && inner.tag == PARTIAL_PRIM) {
+        Value* copied_inner = copy_env_value_fast(inner, interp);
+        if (copied_inner == null || copied_inner.tag != PARTIAL_PRIM) {
+            return null;
+        }
+        inner = copied_inner;
+    } else if (inner != null && !boundary_ptr_in_target_scope_chain_with_hint((void*)inner, interp, inner.scope_gen)) {
+        // Iterator thunks are required to be closure-backed at boundary crossings.
+        // Scalar/shared payloads may alias only when they already live in the
+        // target scope chain; reject disjoint/transient aliases.
+        return null;
     }
 
     Value* iter_result = interp.alloc_value();
@@ -183,10 +206,29 @@ fn bool copy_env_copy_bindings(
     Interp* interp,
     PromotionContext* ctx
 ) {
+    main::ScopeRegion* target_scope = interp.current_scope;
     for (usz i = 0; i < src.binding_count; i++) {
         dst.bindings[i].name = src.bindings[i].name;
+        if (copy_env_binding_trace_enabled()) {
+            Value* binding_value = src.bindings[i].value;
+            io::printfn(
+                "OMNI_ENV_COPY_TRACE frame=%p depth_count=%d index=%d name=%d value=%p in_current=%d in_releasing=%d in_root=%d src_scope_gen=%d target_gen=%d releasing_gen=%d",
+                (void*)src,
+                (int)src.binding_count,
+                (int)i,
+                (int)src.bindings[i].name,
+                (void*)binding_value,
+                binding_value != null && interp.current_scope != null && boundary_ptr_in_scope((void*)binding_value, interp.current_scope) ? 1 : 0,
+                binding_value != null && interp.releasing_scope != null && boundary_ptr_in_scope((void*)binding_value, interp.releasing_scope) ? 1 : 0,
+                binding_value != null && interp.root_scope != null && boundary_ptr_in_scope((void*)binding_value, interp.root_scope) ? 1 : 0,
+                (int)src.scope_gen,
+                interp.current_scope != null ? (int)interp.current_scope.generation : -1,
+                interp.releasing_scope != null ? (int)interp.releasing_scope.generation : -1
+            );
+        }
         Value* copied = copy_env_binding_value(src.bindings[i].value, interp, ctx);
         if (copy_env_value_copy_failure(src.bindings[i].value, copied)) {
+            copy_env_rollback_materialized_bindings(src, dst, target_scope, i);
             return false;
         }
         dst.bindings[i].value = copied;
@@ -194,18 +236,72 @@ fn bool copy_env_copy_bindings(
     return true;
 }
 
+fn bool copy_env_is_materialized_target_value(
+    Value* src,
+    Value* copied,
+    main::ScopeRegion* target_scope
+) @inline {
+    if (src == null || copied == null || copied == src || target_scope == null) return false;
+    return boundary_ptr_in_scope((void*)copied, target_scope);
+}
+
+fn void copy_env_rollback_iterator_payload(Value* copied, main::ScopeRegion* target_scope) @inline {
+    if (copied == null || copied.tag != ITERATOR || target_scope == null) return;
+    Value* inner = copied.iterator_val;
+    if (inner == null || inner.tag != CLOSURE) return;
+    if (!boundary_ptr_in_scope((void*)inner, target_scope)) return;
+    scope_dtor_closure((void*)inner);
+}
+
+fn void copy_env_rollback_materialized_value(
+    Value* src,
+    Value* copied,
+    main::ScopeRegion* target_scope
+) @inline {
+    if (!copy_env_is_materialized_target_value(src, copied, target_scope)) return;
+    // Roll back nested closure-retain side effects produced by iterator-copy.
+    copy_env_rollback_iterator_payload(copied, target_scope);
+    if (copied.tag == CLOSURE) {
+        scope_dtor_closure((void*)copied);
+        return;
+    }
+    scope_dtor_value((void*)copied);
+}
+
+fn void copy_env_rollback_materialized_bindings(
+    Env* src,
+    Env* dst,
+    main::ScopeRegion* target_scope,
+    usz count
+) @inline {
+    if (src == null || dst == null || target_scope == null) return;
+    if (count > src.binding_count) count = src.binding_count;
+    for (usz i = 0; i < count; i++) {
+        copy_env_rollback_materialized_value(
+            src.bindings[i].value,
+            dst.bindings[i].value,
+            target_scope
+        );
+    }
+}
+
 fn bool copy_env_is_terminal_frame(Env* env, Interp* interp, usz depth) @inline {
     if (env == null || env == interp.global_env) return true;
     return depth >= 256;
 }
 
-fn bool copy_env_parent_needs_rewrite(Env* parent, main::ScopeRegion* releasing_scope) @inline {
-    if (parent == null || releasing_scope == null) return false;
-    if (parent.scope_gen != releasing_scope.generation &&
-        parent.scope_gen != releasing_scope.escape_generation) {
-        return false;
-    }
-    return boundary_ptr_in_scope((void*)parent, releasing_scope);
+fn bool copy_env_parent_needs_rewrite(
+    Env* parent,
+    main::ScopeRegion* releasing_scope,
+    main::ScopeRegion* root_scope
+) @inline {
+    if (parent == null) return false;
+    if (root_scope != null && main::is_in_scope((void*)parent, root_scope)) return false;
+    // Root-persistent mutable boxes must not retain any non-root transient env
+    // parent, even when that parent was allocated in an earlier child scope and
+    // is no longer in the immediate releasing scope.
+    (void)releasing_scope;
+    return true;
 }
 
 fn bool copy_env_can_rewrite_persistent_box_in_place(Env* env, Interp* interp) @inline {
@@ -238,7 +334,12 @@ fn BoundaryEnvCopyResult copy_env_rewrite_persistent_parent(
         return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_PARENT_COPY, depth);
     }
 
-    if (!copy_env_parent_needs_rewrite(env.parent, interp.releasing_scope)) {
+    if (env.parent == null) {
+        return boundary_env_copy_ok(env, depth);
+    }
+    bool parent_is_persistent_box = env.parent.is_root_persistent_box();
+    if (!parent_is_persistent_box &&
+        !copy_env_parent_needs_rewrite(env.parent, interp.releasing_scope, interp.root_scope)) {
         return boundary_env_copy_ok(env, depth);
     }
 
@@ -260,6 +361,7 @@ fn BoundaryEnvCopyResult copy_env_materialize_frame(Env* env, Interp* interp, us
     BoundaryEnvCopyResult alloc_result = copy_env_alloc_frame(env, interp, depth);
     if (!boundary_env_copy_result_ok(alloc_result)) return alloc_result;
     Env* new_env = alloc_result.env;
+    main::ScopeRegion* target_scope = interp.current_scope;
 
     if (!copy_env_copy_bindings(env, new_env, interp, active_ctx)) {
         copy_env_cleanup_partial_frame(new_env);
@@ -268,6 +370,7 @@ fn BoundaryEnvCopyResult copy_env_materialize_frame(Env* env, Interp* interp, us
 
     BoundaryEnvCopyResult parent_result = copy_env_to_scope_inner_checked(env.parent, interp, depth + 1, active_ctx);
     if (!boundary_env_copy_result_ok(parent_result)) {
+        copy_env_rollback_materialized_bindings(env, new_env, target_scope, env.binding_count);
         copy_env_cleanup_partial_frame(new_env);
         return parent_result;
     }

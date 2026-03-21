@@ -192,10 +192,13 @@ fn Env* boundary_env_extend_in_scope_impl(
     SymbolId name,
     Value* value
 ) @noinline {
-    BoundarySession session = boundary_session_begin(interp);
-    defer boundary_session_end(interp, &session);
-    interp.current_scope = target_scope;
-    return env.extend(interp, name, value);
+    Env* extended = boundary_make_env_in_scope(interp, target_scope, env);
+    if (extended == null) return null;
+    // Preserve the caller's source-scope context for the write barrier so
+    // cross-scope env extension copies child-scope values into the target env
+    // instead of storing transient wrappers by raw pointer.
+    env_define_with_barrier(extended, name, value, interp);
+    return extended;
 }
 
 <*

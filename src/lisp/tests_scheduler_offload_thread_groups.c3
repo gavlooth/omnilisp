@@ -36,27 +36,23 @@ fn void run_scheduler_offload_tests(Interp* interp, int* pass, int* fail) {
         }
     }
 
-    {
-        EvalResult r = run("(offload 'nope 1)", interp);
-        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
-            emit_pass_literal("[PASS] offload rejects unsupported op");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] offload rejects unsupported op");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_error(
+        interp,
+        "(offload 'nope 1)",
+        "[PASS] offload rejects unsupported op",
+        "[FAIL] offload rejects unsupported op",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run("(offload 'http-get \"https://example.com\")", interp);
-        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
-            emit_pass_literal("[PASS] offload rejects internal io op");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] offload rejects internal io op");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_error(
+        interp,
+        "(offload 'http-get \"https://example.com\")",
+        "[PASS] offload rejects internal io op",
+        "[FAIL] offload rejects internal io op",
+        pass,
+        fail
+    );
 }
 
 fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
@@ -68,37 +64,29 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
         "(let (r (ref (ref (explain 'dispatch (thread-spawn 'sleep-ms 1)) 'decision) 'reason)) (or (= r 'method-match) (= r 'fallback)))",
         pass, fail);
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define h (job-spawn 'task 'sleep-ms 1)) "
-            "  (job-join 'task h) "
-            "  true)",
-            interp);
-        if (!r.error.has_error && r.value != null && r.value.tag != ERROR && r.value.tag != NIL) {
-            emit_pass_literal("[PASS] helper job-spawn/job-join task route");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] helper job-spawn/job-join task route");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_truthy_success(
+        interp,
+        "(block "
+        "  (define h (job-spawn 'task 'sleep-ms 1)) "
+        "  (job-join 'task h) "
+        "  true)",
+        "[PASS] helper job-spawn/job-join task route",
+        "[FAIL] helper job-spawn/job-join task route",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define h (job-spawn 'thread 'sleep-ms 1)) "
-            "  (job-join 'thread h) "
-            "  true)",
-            interp);
-        if (!r.error.has_error && r.value != null && r.value.tag != ERROR && r.value.tag != NIL) {
-            emit_pass_literal("[PASS] helper job-spawn/job-join thread route");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] helper job-spawn/job-join thread route");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_truthy_success(
+        interp,
+        "(block "
+        "  (define h (job-spawn 'thread 'sleep-ms 1)) "
+        "  (job-join 'thread h) "
+        "  true)",
+        "[PASS] helper job-spawn/job-join thread route",
+        "[FAIL] helper job-spawn/job-join thread route",
+        pass,
+        fail
+    );
 
     {
         EvalResult r = run(
@@ -117,50 +105,41 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
         }
     }
 
-    {
-        EvalResult r = run("(task-spawn 'tcp-connect \"127.0.0.1\" 1)", interp);
-        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
-            emit_pass_literal("[PASS] task-spawn rejects internal io op");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] task-spawn rejects internal io op");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_error(
+        interp,
+        "(task-spawn 'tcp-connect \"127.0.0.1\" 1)",
+        "[PASS] task-spawn rejects internal io op",
+        "[FAIL] task-spawn rejects internal io op",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define t1 (task-spawn 'sleep-ms 5)) "
-            "  (define t2 (task-spawn 'sleep-ms 5)) "
-            "  (task-join t1) "
-            "  (task-join t2) "
-            "  1)",
-            interp);
-        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 1) {
-            emit_pass_literal("[PASS] task-spawn concurrent join");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] task-spawn concurrent join");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_int_exact(
+        interp,
+        "(block "
+        "  (define t1 (task-spawn 'sleep-ms 5)) "
+        "  (define t2 (task-spawn 'sleep-ms 5)) "
+        "  (task-join t1) "
+        "  (task-join t2) "
+        "  1)",
+        1,
+        "[PASS] task-spawn concurrent join",
+        "[FAIL] task-spawn concurrent join (got %d)",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define t (task-spawn 'sleep-ms 1)) "
-            "  (task-join t) "
-            "  (task-join t))",
-            interp);
-        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
-            emit_pass_literal("[PASS] task-join double join rejected");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] task-join double join rejected");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_error(
+        interp,
+        "(block "
+        "  (define t (task-spawn 'sleep-ms 1)) "
+        "  (task-join t) "
+        "  (task-join t))",
+        "[PASS] task-join double join rejected",
+        "[FAIL] task-join double join rejected",
+        pass,
+        fail
+    );
 
     {
         EvalResult r = run(
@@ -179,230 +158,178 @@ fn void run_scheduler_thread_join_tests(Interp* interp, int* pass, int* fail) {
         }
     }
 
-    {
-        EvalResult r = run("(thread-spawn 'tcp-connect \"127.0.0.1\" 1)", interp);
-        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
-            emit_pass_literal("[PASS] thread-spawn rejects internal io op");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] thread-spawn rejects internal io op");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_error(
+        interp,
+        "(thread-spawn 'tcp-connect \"127.0.0.1\" 1)",
+        "[PASS] thread-spawn rejects internal io op",
+        "[FAIL] thread-spawn rejects internal io op",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define t (thread-spawn 'sleep-ms 1)) "
-            "  (thread-join t) "
-            "  (thread-join t))",
-            interp);
-        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
-            emit_pass_literal("[PASS] thread-join double join rejected");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] thread-join double join rejected");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_error(
+        interp,
+        "(block "
+        "  (define t (thread-spawn 'sleep-ms 1)) "
+        "  (thread-join t) "
+        "  (thread-join t))",
+        "[PASS] thread-join double join rejected",
+        "[FAIL] thread-join double join rejected",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define f (spawn (lambda () "
-            "    (define t (task-spawn 'sleep-ms 1)) "
-            "    (task-join t) "
-            "    true))) "
-            "  (await f))",
-            interp);
-        if (!r.error.has_error && r.value != null && r.value.tag != ERROR && r.value.tag != NIL) {
-            emit_pass_literal("[PASS] task-join from fiber context");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] task-join from fiber context");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_truthy_success(
+        interp,
+        "(block "
+        "  (define f (spawn (lambda () "
+        "    (define t (task-spawn 'sleep-ms 1)) "
+        "    (task-join t) "
+        "    true))) "
+        "  (await f))",
+        "[PASS] task-join from fiber context",
+        "[FAIL] task-join from fiber context",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define f (spawn (lambda () "
-            "    (define t (thread-spawn 'sleep-ms 1)) "
-            "    (thread-join t) "
-            "    true))) "
-            "  (await f))",
-            interp);
-        if (!r.error.has_error && r.value != null && r.value.tag != ERROR && r.value.tag != NIL) {
-            emit_pass_literal("[PASS] thread-join from fiber context");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] thread-join from fiber context");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_truthy_success(
+        interp,
+        "(block "
+        "  (define f (spawn (lambda () "
+        "    (define t (thread-spawn 'sleep-ms 1)) "
+        "    (thread-join t) "
+        "    true))) "
+        "  (await f))",
+        "[PASS] thread-join from fiber context",
+        "[FAIL] thread-join from fiber context",
+        pass,
+        fail
+    );
 }
 
 fn void run_scheduler_thread_timeout_cancel_tests(Interp* interp, int* pass, int* fail) {
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define t (task-spawn 'sleep-ms 20)) "
-            "  (task-join-timeout t 0))",
-            interp);
-        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
-            emit_pass_literal("[PASS] task-join-timeout immediate timeout");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] task-join-timeout immediate timeout");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_error(
+        interp,
+        "(block "
+        "  (define t (task-spawn 'sleep-ms 20)) "
+        "  (task-join-timeout t 0))",
+        "[PASS] task-join-timeout immediate timeout",
+        "[FAIL] task-join-timeout immediate timeout",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define t (task-spawn 'sleep-ms 5)) "
-            "  (task-join-timeout t 200) "
-            "  1)",
-            interp);
-        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 1) {
-            emit_pass_literal("[PASS] task-join-timeout success");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] task-join-timeout success");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_int_exact(
+        interp,
+        "(block "
+        "  (define t (task-spawn 'sleep-ms 5)) "
+        "  (task-join-timeout t 200) "
+        "  1)",
+        1,
+        "[PASS] task-join-timeout success",
+        "[FAIL] task-join-timeout success (got %d)",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define f (spawn (lambda () "
-            "    (define t (task-spawn 'sleep-ms 1)) "
-            "    (task-join-timeout t 200) "
-            "    true))) "
-            "  (await f))",
-            interp);
-        if (!r.error.has_error && r.value != null && r.value.tag != ERROR && r.value.tag != NIL) {
-            emit_pass_literal("[PASS] task-join-timeout from fiber context");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] task-join-timeout from fiber context");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_truthy_success(
+        interp,
+        "(block "
+        "  (define f (spawn (lambda () "
+        "    (define t (task-spawn 'sleep-ms 1)) "
+        "    (task-join-timeout t 200) "
+        "    true))) "
+        "  (await f))",
+        "[PASS] task-join-timeout from fiber context",
+        "[FAIL] task-join-timeout from fiber context",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define t (task-spawn 'sleep-ms 20)) "
-            "  (task-cancel t))",
-            interp);
-        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
-            emit_pass_literal("[PASS] task-cancel returns Void");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] task-cancel returns Void");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_void(
+        interp,
+        "(block "
+        "  (define t (task-spawn 'sleep-ms 20)) "
+        "  (task-cancel t))",
+        "[PASS] task-cancel returns Void",
+        "[FAIL] task-cancel returns Void",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define t (task-spawn 'sleep-ms 20)) "
-            "  (task-cancel t) "
-            "  (task-join t))",
-            interp);
-        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
-            emit_pass_literal("[PASS] task-cancel causes join cancellation");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] task-cancel causes join cancellation");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_error(
+        interp,
+        "(block "
+        "  (define t (task-spawn 'sleep-ms 20)) "
+        "  (task-cancel t) "
+        "  (task-join t))",
+        "[PASS] task-cancel causes join cancellation",
+        "[FAIL] task-cancel causes join cancellation",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define t (thread-spawn 'sleep-ms 20)) "
-            "  (thread-join-timeout t 0))",
-            interp);
-        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
-            emit_pass_literal("[PASS] thread-join-timeout immediate timeout");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] thread-join-timeout immediate timeout");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_error(
+        interp,
+        "(block "
+        "  (define t (thread-spawn 'sleep-ms 20)) "
+        "  (thread-join-timeout t 0))",
+        "[PASS] thread-join-timeout immediate timeout",
+        "[FAIL] thread-join-timeout immediate timeout",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define t (thread-spawn 'sleep-ms 5)) "
-            "  (thread-join-timeout t 200) "
-            "  1)",
-            interp);
-        if (!r.error.has_error && is_int(r.value) && r.value.int_val == 1) {
-            emit_pass_literal("[PASS] thread-join-timeout success");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] thread-join-timeout success");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_int_exact(
+        interp,
+        "(block "
+        "  (define t (thread-spawn 'sleep-ms 5)) "
+        "  (thread-join-timeout t 200) "
+        "  1)",
+        1,
+        "[PASS] thread-join-timeout success",
+        "[FAIL] thread-join-timeout success (got %d)",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define f (spawn (lambda () "
-            "    (define t (thread-spawn 'sleep-ms 1)) "
-            "    (thread-join-timeout t 200) "
-            "    true))) "
-            "  (await f))",
-            interp);
-        if (!r.error.has_error && r.value != null && r.value.tag != ERROR && r.value.tag != NIL) {
-            emit_pass_literal("[PASS] thread-join-timeout from fiber context");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] thread-join-timeout from fiber context");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_truthy_success(
+        interp,
+        "(block "
+        "  (define f (spawn (lambda () "
+        "    (define t (thread-spawn 'sleep-ms 1)) "
+        "    (thread-join-timeout t 200) "
+        "    true))) "
+        "  (await f))",
+        "[PASS] thread-join-timeout from fiber context",
+        "[FAIL] thread-join-timeout from fiber context",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define t (thread-spawn 'sleep-ms 20)) "
-            "  (thread-cancel t))",
-            interp);
-        if (!r.error.has_error && r.value != null && r.value.tag == VOID) {
-            emit_pass_literal("[PASS] thread-cancel returns Void");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] thread-cancel returns Void");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_void(
+        interp,
+        "(block "
+        "  (define t (thread-spawn 'sleep-ms 20)) "
+        "  (thread-cancel t))",
+        "[PASS] thread-cancel returns Void",
+        "[FAIL] thread-cancel returns Void",
+        pass,
+        fail
+    );
 
-    {
-        EvalResult r = run(
-            "(block "
-            "  (define t (thread-spawn 'sleep-ms 20)) "
-            "  (thread-cancel t) "
-            "  (thread-join t))",
-            interp);
-        if (r.error.has_error || (r.value != null && r.value.tag == ERROR)) {
-            emit_pass_literal("[PASS] thread-cancel causes join cancellation");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] thread-cancel causes join cancellation");
-            (*fail)++;
-        }
-    }
+    scheduler_test_expect_error(
+        interp,
+        "(block "
+        "  (define t (thread-spawn 'sleep-ms 20)) "
+        "  (thread-cancel t) "
+        "  (thread-join t))",
+        "[PASS] thread-cancel causes join cancellation",
+        "[FAIL] thread-cancel causes join cancellation",
+        pass,
+        fail
+    );
 }
 
 fn void run_scheduler_offload_thread_tests(Interp* interp, int* pass, int* fail) {

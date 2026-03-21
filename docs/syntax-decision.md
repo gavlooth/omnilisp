@@ -157,8 +157,8 @@ single-transformer macro surface.
 - Collection syntax representation in macro input:
   - symbols and literals remain scalar syntax values,
   - list syntax is cons/list representation,
-  - array syntax is normalized as `(array ...)` (internal compatibility form, equivalent to public `(Array ...)`),
-  - dict syntax is normalized as `(dict k1 v1 ...)` (internal compatibility form, equivalent to public `(Dictionary ...)`).
+  - array syntax is normalized as `(Array ...)`,
+  - dict syntax is normalized as `(Dictionary k1 v1 ...)`.
 - Input is raw parsed syntax with deterministic normalization for collection
   literals only (array/dict internal constructor forms as above).
 

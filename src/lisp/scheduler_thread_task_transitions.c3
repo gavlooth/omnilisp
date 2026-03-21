@@ -16,18 +16,25 @@ fn OffloadCompletion* scheduler_make_task_alloc_failure_completion() {
     return completion;
 }
 
-fn void scheduler_prepare_cancel_completion_noalloc(OffloadCompletion* completion) @inline {
+fn void scheduler_prepare_cancel_completion_noalloc(OffloadCompletion* completion, char[] cancel_message) @inline {
     if (completion == null) return;
     if (completion.shared != null) {
         scheduler_release_shared(completion.shared);
         completion.shared = null;
     }
-    if (completion.error_msg != null) {
-        mem::free(completion.error_msg);
-        completion.error_msg = null;
+    if (completion.error_msg != null && completion.error_len >= cancel_message.len) {
+        for (usz i = 0; i < cancel_message.len; i++) {
+            completion.error_msg[i] = cancel_message[i];
+        }
+        completion.error_len = cancel_message.len;
+        completion.kind = OFFLOAD_RES_ERROR;
+        return;
     }
+    if (completion.error_msg != null) mem::free(completion.error_msg);
+    completion.error_msg = null;
     completion.error_len = 0;
     completion.kind = OFFLOAD_RES_ERROR;
+    scheduler_set_offload_error(completion, cancel_message);
 }
 
 fn bool scheduler_try_begin_thread_task(usz task_id, uint generation = 0) {
@@ -105,7 +112,7 @@ fn void scheduler_complete_thread_task(usz task_id, OffloadCompletion* completio
         task.waiter_wake_epoch = 0;
         if (task.completion == null) {
             if (completion != null) {
-                scheduler_prepare_cancel_completion_noalloc(completion);
+                scheduler_prepare_cancel_completion_noalloc(completion, "thread task cancelled");
                 task.completion = completion;
                 completion = null;
             } else {
@@ -268,7 +275,7 @@ fn void scheduler_complete_os_thread(usz thread_id, uint generation, OffloadComp
         entry.waiter_wake_epoch = 0;
         if (entry.completion == null) {
             if (completion != null) {
-                scheduler_prepare_cancel_completion_noalloc(completion);
+                scheduler_prepare_cancel_completion_noalloc(completion, "thread cancelled");
                 entry.completion = completion;
                 completion = null;
             } else {

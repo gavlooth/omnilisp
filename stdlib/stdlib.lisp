@@ -136,7 +136,7 @@
 ;; =========================================================================
 
 ;; reverse: (reverse lst) — must be defined before map/filter (they depend on it)
-(define (reverse (^List lst)) (let loop (xs lst acc nil) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
+(define (reverse (^List lst)) (__reverse-list lst))
 (define (reverse (^Array arr)) (let (len (length arr) result []) (let loop (i len) (if (= i 0) result (let (j (- i 1)) (block (push! result (ref arr j)) (loop j)))))))
 
 ;; map: (map f coll) — apply f to each element, return same collection type
@@ -242,16 +242,6 @@
                 'data msg })))
 
 ;; =========================================================================
-;; Association List Helpers
-;; =========================================================================
-
-;; assoc: (assoc key alist) — find pair with matching key
-(define (assoc key alist) (let loop (xs alist) (if (null? xs) nil (if (= (car (car xs)) key) (car xs) (loop (cdr xs))))))
-
-;; assoc-ref: (assoc-ref key alist) — get value for key (cdr of pair)
-(define (assoc-ref key alist) (let (pair (assoc key alist)) (if (null? pair) nil (cdr pair))))
-
-;; =========================================================================
 ;; Mathematical Constants
 ;; =========================================================================
 (define pi 3.141592653589793)
@@ -296,30 +286,27 @@
 ;; =========================================================================
 
 ;; iterator-empty: the empty iterator
-(define iterator-empty (Iterator (lambda () nil)))
+(define iterator-empty (__make-iterator (lambda () nil)))
 
 ;; Iterator: canonical iterator constructor / conversion surface
-(define (Iterator (^Closure thunk)) (make-iterator thunk))
-(define (Iterator (^List lst)) (if (null? lst) iterator-empty (Iterator (lambda () (cons (car lst) (Iterator (cdr lst)))))))
-(define (Iterator (^Array arr)) (let (len (length arr)) (let make-it (i 0) (if (= i len) iterator-empty (Iterator (lambda () (cons (ref arr i) (make-it (+ i 1)))))))))
-(define (Iterator (^Dictionary d)) (Iterator (keys d)))
+(define (Iterator (^Closure thunk)) (__make-iterator thunk))
+(define (Iterator (^List lst)) (__iterator-from-list lst))
+(define (Iterator (^Array arr)) (__iterator-from-array arr))
+(define (Iterator (^Dictionary d)) (__iterator-from-dict d))
 (define (Iterator (^Iterator it)) it)
 
-;; iterator: compatibility wrapper for the canonical Iterator constructor
-(define (iterator coll) (Iterator coll))
-
 ;; Iterator-dispatched map/filter (lazy)
-(define (map f (^Iterator it)) (Iterator (lambda () (let (pair (next it)) (if (null? pair) nil (cons (f (car pair)) (map f (cdr pair))))))))
-(define (filter pred (^Iterator it)) (Iterator (lambda () (let loop (pair (next it)) (if (null? pair) nil (if (pred (car pair)) (cons (car pair) (filter pred (cdr pair))) (loop (next (cdr pair)))))))))
-(define (take n (^Iterator it)) (if (= n 0) iterator-empty (Iterator (lambda () (let (pair (next it)) (if (null? pair) nil (cons (car pair) (take (- n 1) (cdr pair)))))))))
+(define (map f (^Iterator it)) (__iterator-map f it))
+(define (filter pred (^Iterator it)) (__iterator-filter pred it))
+(define (take n (^Iterator it)) (if (= n 0) iterator-empty (__iterator-take n it)))
 (define (drop n (^Iterator it)) (if (= n 0) it (let (pair (next it)) (if (null? pair) iterator-empty (drop (- n 1) (cdr pair))))))
-(define (zip (^Iterator a) (^Iterator b)) (Iterator (lambda () (let (pa (next a) pb (next b)) (if (or (null? pa) (null? pb)) nil (cons (cons (car pa) (car pb)) (zip (cdr pa) (cdr pb))))))))
-(define (foldl f acc (^Iterator it)) (let loop (a acc cur it) (let (pair (next cur)) (if (null? pair) a (loop (f a (car pair)) (cdr pair))))))
+(define (zip (^Iterator a) (^Iterator b)) (__iterator-zip a b))
+(define (foldl f acc (^Iterator it)) (__iterator-foldl f acc it))
 
 ;; Infinite sources
-(define (range-from n) (Iterator (lambda () (cons n (range-from (+ n 1))))))
-(define (repeat x) (Iterator (lambda () (cons x (repeat x)))))
-(define (cycle coll) (let (it (Iterator coll)) (Iterator (lambda () (let (pair (next it)) (if (null? pair) (next (cycle coll)) pair))))))
+(define (range-from n) (__iterator-range-from n))
+(define (repeat x) (__iterator-repeat x))
+(define (cycle coll) (__iterator-cycle coll))
 
 ;; =========================================================================
 ;; I/O Effect Wrappers

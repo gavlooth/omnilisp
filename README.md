@@ -128,12 +128,90 @@ where documented, but descriptive names are preferred in spec/docs/examples.
 ## Build and Run
 
 ```bash
-# build
+# full integration build
 c3c build
 
 # run main binary
 LD_LIBRARY_PATH=/usr/local/lib ./build/main
 ```
+
+For routine iteration, prefer the fast dev build:
+
+```bash
+# fast developer build
+scripts/build_fast_dev.sh
+
+# run the lean dev binary
+LD_LIBRARY_PATH=/usr/local/lib ./build/dev-fast/main-dev --eval '(+ 1 2)'
+```
+
+If you are explicitly not working on the deduce runtime, there is a narrower
+optional profile:
+
+```bash
+scripts/build_fast_nodeduce_dev.sh
+LD_LIBRARY_PATH=/usr/local/lib ./build/dev-fast-nodeduce/main-dev-nodeduce --eval '(+ 1 2)'
+```
+
+Current local baseline on this repo:
+- `c3c build`: about 15s
+- `scripts/build_fast_dev.sh` clean build: about 2.0s
+- `scripts/build_fast_nodeduce_dev.sh` clean build: about 2.0s
+- `scripts/build_fast_dev.sh` unchanged no-op: about 0.06s
+- `scripts/build_fast_nodeduce_dev.sh` unchanged no-op: about 0.06s
+
+To inspect what still dominates the lean target without compiling:
+
+```bash
+scripts/build_fast_dev.sh --profile
+```
+
+That reports the included source count, total included C3 size, and the largest
+files still linked into `main-dev`, along with the largest source groups.
+
+The deduce-free profile is available through:
+
+```bash
+OMNI_FAST_DEV_PROFILE=nodeduce scripts/build_fast_dev.sh --profile
+```
+
+Current profile output shows the remaining weight is dominated by `eval` and
+`jit`, not by optional surfaces like `deduce`.
+
+Use `c3c build` as the integration/full-runtime build. Use
+`scripts/build_fast_dev.sh` for the default edit/build loop when you do not
+need embedded test-suite support.
+
+Do not run multiple `c3c build` processes against the same `build/` tree at the
+same time. Parallel builds can collide on shared object outputs and fail during
+link.
+
+`build_fast_dev.sh` omits the test-entry wiring and all in-tree test sources, so
+it avoids recompiling the test surface, reuses the prebuilt helper archive, and
+it does not contend with the main `build/obj` tree.
+
+`main-dev` currently supports the default iteration loop:
+- `--eval`
+- `--repl`
+- `--check`
+- script execution (`./build/dev-fast/main-dev file.omni`)
+
+`main-dev-nodeduce` supports the same loop, but `deduce`/`deduce/*` are not
+registered and evaluate as unbound names.
+
+Use the full [main](/home/heefoo/Documents/code/Omni/build/main) binary for
+`--test-suite`, `--gen-e2e`, `--stack-affinity-probe`, `--language-ref`,
+`--manual`, `--init`, `--bind`, `--build`, and `--compile`.
+
+`main-dev` also strips the `pika` module from the fast-build path. Core
+evaluation, REPL, script execution, and non-regex schema flows still work, but
+`pika`-backed regex schema validation is not a parity target for the lean dev
+binary.
+
+The fast target also omits the compiler/AOT/bindgen source families entirely.
+That is why it is materially faster, and also why the full
+[main](/home/heefoo/Documents/code/Omni/build/main) binary remains the required
+integration build.
 
 ## Validation
 

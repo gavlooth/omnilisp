@@ -40,3 +40,12 @@ When behavior, validation state, or roadmap priority changes:
 2. Update the relevant area doc with current status and next steps.
 3. Update deep source docs (specs/plans) to remove drift.
 4. Keep next steps explicit and testable.
+
+## Operator Entry Point
+
+For a single machine-readable snapshot of the current bounded gate status, use:
+
+- `scripts/run_validation_status_summary.sh build/validation_status_summary.json`
+
+That artifact is the preferred broad status entrypoint before drilling into
+area-specific docs or narrower guard scripts.

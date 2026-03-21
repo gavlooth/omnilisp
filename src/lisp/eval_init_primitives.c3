@@ -98,6 +98,18 @@ fn void register_regular_primitives_core(Interp* interp) {
         { "list->string", &prim_list_to_string, 1 },
         { "string-trim", &prim_string_trim, 1 },
         { "continuation?", &prim_is_continuation, 1 },
+        { "__iterator-from-list", &prim_iterator_from_list, 1 },
+        { "__iterator-from-array", &prim_iterator_from_array, 1 },
+        { "__iterator-from-dict", &prim_iterator_from_dict, 1 },
+        { "__iterator-map", &prim_iterator_map, 2 },
+        { "__iterator-filter", &prim_iterator_filter, 2 },
+        { "__iterator-take", &prim_iterator_take, 2 },
+        { "__iterator-zip", &prim_iterator_zip, 2 },
+        { "__iterator-foldl", &prim_iterator_foldl, 3 },
+        { "__iterator-range-from", &prim_iterator_range_from, 1 },
+        { "__iterator-repeat", &prim_iterator_repeat, 1 },
+        { "__iterator-cycle", &prim_iterator_cycle, 1 },
+        { "__reverse-list", &prim_reverse_list, 1 },
         // File I/O
         { "__raw-read-file", &prim_read_file, 1 }, { "__raw-write-file", &prim_write_file, 2 },
         { "__raw-file-exists?", &prim_file_exists, 1 }, { "__raw-read-lines", &prim_read_lines, 1 },
@@ -122,9 +134,6 @@ fn void register_regular_primitives_core(Interp* interp) {
         // Dictionary
         { "Dictionary", &prim_dict, -1 }, // Canonical constructor.
         { "Dict", &prim_dict, -1 },       // Canonical shorthand alias (kept public).
-        { "dictionary", &prim_dict, -1 }, // Compatibility alias.
-        { "dict", &prim_dict, -1 },       // Compatibility alias.
-        { "dict-set!", &prim_dict_set, 3 },
         // Math library
         { "sin", &prim_sin, 1 }, { "cos", &prim_cos, 1 }, { "tan", &prim_tan, 1 },
         { "asin", &prim_asin, 1 }, { "acos", &prim_acos, 1 }, { "atan", &prim_atan, 1 },
@@ -152,8 +161,6 @@ fn void register_regular_primitives_collections(Interp* interp) {
         { "error", &prim_error, 1 }, { "error-message", &prim_error_message, 1 },
         // Arrays
         { "Array", &prim_array, -1 }, // Canonical constructor/conversion surface.
-        { "array", &prim_array, -1 }, // Compatibility alias (literals may desugar through this path).
-        { "array-set!", &prim_array_set, 3 },
         // Sets
         { "Set", &prim_set, -1 },
         { "set-add", &prim_set_add, 2 },
@@ -170,12 +177,10 @@ fn void register_regular_primitives_collections(Interp* interp) {
         // Memory reclamation
         { "unsafe-free!", &prim_free_bang, 1 },
         // Iterators
-        { "iterator?", &prim_iterator_p, 1 }, { "make-iterator", &prim_make_iterator, 1 }, // Low-level compatibility helper; prefer Iterator.
-        { "next", &prim_next, 1 }, { "collect", &prim_collect, 1 },
-        { "to-array", &prim_to_array, 1 },
+        { "iterator?", &prim_iterator_p, 1 }, { "__make-iterator", &prim_make_iterator, 1 }, // Internal low-level helper; prefer Iterator.
+        { "next", &prim_next, 1 },
         // Coroutines
         { "Coroutine", &prim_coroutine, 1 },
-        { "coroutine", &prim_coroutine, 1 },
         { "resume", &prim_resume, -1 },
         { "yield", &prim_yield, -1 },
         { "coroutine?", &prim_coroutine_p, 1 },
@@ -211,7 +216,6 @@ fn void register_regular_primitives_collections(Interp* interp) {
         { "json-get", &prim_json_get, 2 },
         { "time-point?", &prim_time_point_p, 1 },
         { "TimePoint", &prim_time_point, -1 }, // Canonical constructor.
-        { "time-point", &prim_time_point, -1 }, // Compatibility alias.
         // TOML / CSV
         { "toml-parse", &prim_toml_parse, 1 },
         { "csv-parse", &prim_csv_parse, -1 },
@@ -273,6 +277,9 @@ fn void register_regular_primitives_io_and_deduce(Interp* interp) {
         { "deduce/scan", &prim_deduce_ns_scan, -1 },
         { "deduce/scan-range", &prim_deduce_ns_scan_range, -1 },
         { "deduce/query", &prim_deduce_ns_query, -1 },
+        { "deduce/schema", &prim_deduce_ns_schema, -1 },
+        { "deduce/indexes", &prim_deduce_ns_indexes, -1 },
+        { "deduce/stats", &prim_deduce_ns_stats, -1 },
         { "deduce/count", &prim_deduce_ns_count, -1 },
         { "deduce/match", &prim_deduce_ns_match, -1 },
         { "deduce/fact!", &prim_deduce_ns_fact, -1 },

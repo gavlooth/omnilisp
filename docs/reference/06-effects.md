@@ -165,11 +165,24 @@ to `k`. `k` is a function — `(k value)` resumes with `value`.
 ### Semantics
 
 - Continuations are **multi-shot** — each invocation clones the stack
+- Continuation `resume` operation is invocation of the captured continuation:
+  `(k value)`
 - The result of `capture`'s body becomes the result of `checkpoint`
 - Each `k` invocation replays the resumed continuation segment, so side effects in that segment (`set!`, signaled effects, handled I/O) execute per invocation in source order
 - Each invocation starts from the captured stack snapshot; lexical locals in the resumed segment are restored per call unless mutation targets shared state outside that snapshot
+- Replay-visible side effects are parity-bound: interpreter, JIT, and compiled execution must produce the same replay outcomes.
 - Continuations run on dedicated mmap'd stacks (64KB) with guard pages
 - x86_64 assembly context switching with FPU state isolation
+
+Canonical continuation-resume example:
+
+```lisp
+(checkpoint (+ 1 (capture k (k 41))))
+;; => 42
+```
+
+This continuation resume form is separate from the coroutine primitive
+`(resume coroutine)`.
 
 ---
 
@@ -177,7 +190,7 @@ to `k`. `k` is a function — `(k value)` resumes with `value`.
 
 ```lisp
 (define counter
-  (coroutine (lambda ()
+  (Coroutine (lambda ()
     (yield 1)
     (yield 2)
     (yield 3))))
@@ -192,7 +205,7 @@ to `k`. `k` is a function — `(k value)` resumes with `value`.
 
 | Primitive | Arity | Description |
 |-----------|-------|-------------|
-| `coroutine` | 1 | Create from zero-arg thunk |
+| `Coroutine` | 1 | Create from zero-arg thunk |
 | `resume` | 1 | Resume, returns yielded/final value |
 | `yield` | 1 | Yield value, suspend execution |
 | `coroutine?` | 1 | Type check |
@@ -201,7 +214,7 @@ to `k`. `k` is a function — `(k value)` resumes with `value`.
 
 ```lisp
 (define (fibonacci)
-  (coroutine (lambda ()
+  (Coroutine (lambda ()
     (let loop (a 0 b 1)
       (yield a)
       (loop b (+ a b))))))

@@ -20,7 +20,7 @@ fn bool test_suite_is_valid(char* suite_name) @inline {
 fn int run_test_mode_for_suite(char* suite_name) {
     if (!test_suite_is_valid(suite_name)) {
         io::printfn("Unknown test suite '%s'. Expected one of: all, stack, scope, lisp.",
-            suite_name);
+            (ZString)suite_name);
         return 2;
     }
 

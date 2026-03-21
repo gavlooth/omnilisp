@@ -310,7 +310,7 @@ fn void repl_eval_buffer(void* rx, char[8192]* buf, usz* buf_len, Interp* interp
 
     (*buf)[*buf_len] = 0;
     replxx_history_add(rx, &(*buf)[0]);
-    jit_gc();
+    runtime_gc_between_top_level_runs();
 
     char[] input = (*buf)[:*buf_len];
     g_interrupted = false;

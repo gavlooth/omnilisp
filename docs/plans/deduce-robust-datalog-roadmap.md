@@ -11,8 +11,19 @@ Current behavior (validated as of 2026-03-11):
 
 - `deduce/query` evaluates via relation scan + callback filtering.
 - `deduce/match` scans rows and applies unification in memory.
-- scan-path materialization has been optimized (column-key caching), but planner
-  and recursive rule-evaluation layers are not implemented.
+- scan-path materialization has been optimized (column-key caching).
+- planner metadata, explain payload skeletons, and recursive SCC/fixpoint
+  execution hooks are present in the current tree, but they remain partial and
+  still need truthfulness, consolidation, and regression closure before they
+  count as complete.
+
+Current truth-source pointers:
+
+- authoritative capability matrix: `docs/deduce-datalog-spec.md#13-current-implementation-matrix`
+- canonical implementation surface inventory:
+  `docs/deduce-datalog-spec.md#14-canonical-implementation-surface-inventory`
+- incremental-state truth table:
+  `docs/deduce-datalog-spec.md#71-incremental-state-truth-table`
 
 Evidence:
 
@@ -196,4 +207,3 @@ Exit gate:
   progressively.
 - New advanced features can surface behind explicit commands (`deduce/rule!`,
   `deduce/explain`, `deduce/analyze`) before becoming default behavior.
-
