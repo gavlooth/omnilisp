@@ -1,373 +1,149 @@
 # Active TODO
 
-Last condensed: 2026-03-20
+Last condensed: 2026-03-26
 
-This file now tracks the live Deduce execution backlog.
-
-Previous `TODO.md` state was backed up at:
-- `docs/plans/TODO_BACKUP_2026-03-20.md`
-
-Historical completed TODO archive remains at:
-- `docs/plans/TODO_ARCHIVE_2026-03-11.md`
-
-Primary planning sources:
-- `docs/plans/deduce-full-roadmap-2026-03-20.md`
-- `docs/plans/deduce-sophistication-plan-2026-03-20.md`
-- `docs/plans/deduce-actionable-backlog-2026-03-20.md`
+This file is now the sole live backlog.
+All still-unimplemented items were migrated here from the removed backlog and
+roadmap trackers under `docs/plans/`.
 
 Current actionable count: 0
-Live blocker queue:
-- No live recursive aggregate execution blocker remains. Recursive grouped
-  aggregate support now ships for `count` / `sum` / `min` / `max` in both
-  non-recursive rules and aggregate-bearing recursive SCCs on the
-  `semi-naive-scc` production lane for the current stratified rule surface.
 
-## Deduce Actionable Backlog
+## Deduce Scan-Path Allocation Guard
 
-### P0. Truth and Correctness
+- [x] `src/lisp/deduce_relation_scan_helpers_more.c3`: guard `make_hashmap(...)` in `deduce_relation_materialize_row_dict(...)` so scan-range row materialization fails cleanly on OOM instead of dereferencing a null hashmap
 
-- [x] Create one authoritative Deduce capability matrix.
-  targets:
-  - `docs/deduce-datalog-spec.md`
-  - `docs/plans/deduce-robust-datalog-roadmap.md`
-  - `docs/plans/deduce-full-roadmap-2026-03-20.md`
-  completed:
-  - capability matrix published in `docs/deduce-datalog-spec.md#13-current-implementation-matrix`
+## Scheduler Offload Reuse Regression
 
-- [x] Inventory the canonical Deduce implementation surface.
-  targets:
-  - `src/lisp/deduce_rule_eval*.c3`
-  - `src/lisp/deduce_rule_ops*.c3`
-  - `src/lisp/deduce_relation_scan_helpers*.c3`
-  - `src/lisp/deduce_db_handles*.c3`
-  completed:
-  - canonical implementation surface inventory published in
-    `docs/deduce-datalog-spec.md#14-canonical-implementation-surface-inventory`
+- [x] `src/lisp/scheduler_offload_worker.c3` / `src/lisp/tests_scheduler_boundary_worker.c3`: add a targeted regression for `QueuedOffloadWork` recycle/reuse correctness so recycled nodes are reset and free-list accounting stays bounded across a reuse cycle
 
-- [x] Centralize rule validation behind one authority path.
-  targets:
-  - `src/lisp/deduce_rule_eval.c3`
-  - `src/lisp/deduce_rule_eval_prims.c3`
-  completed:
-  - `deduce/rule!` now routes through `deduce_rule_validate_install_candidate` in `src/lisp/deduce_rule_eval.c3`
+## Repo Audit Follow-up Plan
 
-- [x] Add deterministic invalid-rule rejection coverage.
-  targets:
-  - `src/lisp/tests_deduce_rule_groups*.c3`
-  completed:
-  - deterministic rejection coverage now exercises arity mismatch,
-    relation-not-found, unsafe head variables, unsafe negated variables, and
-    negative-cycle rejection
+- Harness-only teardown regression lane
+  - [x] Confirm the harness-only teardown regression lane in `src/lisp/tests_tests.c3` stays green under `OMNI_LISP_TEARDOWN_REGRESSION`
+- Method-table overwrite seam
+  - [x] Fix method-table allocation/error propagation in `src/lisp/jit_jit_define_method_table.c3` (`jit_new_method_table_with_sig`, `jit_method_table_append_entry_with_sig`) so a failed redefine cannot return success semantics
+  - [x] Validate stdlib-loaded redefine/replacement semantics and teardown with the focused regression in `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+- Environment hash-table OOM handling
+  - [x] `src/lisp/value_environment.c3`: preserve the old hash table until `Env.build_hash_table()` has allocated and initialized the replacement
+  - [x] `src/lisp/value_environment.c3`: guard the `Env.define()` growth allocation before copying bindings into the new buffer
+  - [x] `src/lisp/value_environment.c3`: add a targeted regression for env-table rebuild/growth under allocation failure
+- Interpreter init allocation failures
+  - [x] `src/lisp/value_interp_init_helpers.c3`: check module-table allocation before the index fill loop
+  - [x] `src/lisp/value_interp_init_helpers.c3`: check macro-table allocation before the index fill loop
+  - [x] `src/lisp/value_interp_init_helpers.c3`: propagate init failure so `Interp.init()` can abort cleanly instead of dereferencing null
+- Scheduler offload queue allocation failure
+  - [x] `src/lisp/scheduler_offload_worker.c3`: guard `scheduler_offload_take_queued_work()` when `mem::malloc` returns null
+  - [x] `src/lisp/scheduler_offload_worker.c3`: preserve slot-release and recycle behavior on queued-work allocation failure
+  - [x] `src/lisp/tests_scheduler_*`: add a targeted offload regression for queued-work allocation failure and fallback accounting
+- Unknown filtered test-group dispatch
+  - [x] `src/lisp/tests_deduce_groups.c3`: fail or warn when `OMNI_DEDUCE_GROUP_FILTER` matches no deduce group
+  - [x] `src/lisp/tests_tests.c3`: fail or warn when `OMNI_ADVANCED_GROUP_FILTER` matches no advanced group
+  - [x] `src/lisp/tests_tests.c3`: add a targeted regression proving a mistyped filter does not exit green with zero executed tests
 
-### P1. Planner and Explain Truthfulness
 
-- [x] Audit planner metadata versus runtime execution.
-  targets:
-  - `src/lisp/deduce_rule_eval_exec*.c3`
-  - `src/lisp/deduce_relation_scan_helpers*.c3`
-  - `src/lisp/deduce_rule_ops_explain.c3`
-  completed:
-  - explain payload now marks `surface-kind = 'planner-snapshot` and keeps step
-    counters explicitly labeled as `estimated`
+## Deduce Execution Queue
 
-- [x] Make `deduce/explain` execution-truthful for conjunctive queries.
-  targets:
-  - `src/lisp/deduce_rule_ops_explain.c3`
-  - `src/lisp/deduce_rule_eval_exec*.c3`
-  completed:
-  - explain payload no longer implies observed runtime counters where the
-    current plumbing only has planner-estimate data
+- [x] B6.3f1b Runtime persistence for the chosen rule/dependency catalog contract
+- [x] B6.3f2 Durable derived freshness and ready semantics after catalog persistence
+- [x] B6.4d Wider captured-call rewrite for `deduce/query` demand extraction
+- [x] B6.4e1 Disjunctive union execution for demand-safe `deduce/query` branches
+- [x] B6.4e2a Same-position disjunctive wrapper execution on the ephemeral query path
+- [x] B6.4e2b1 Same-position disjunctive residual-conjunct execution on the ephemeral query path
+- [x] B6.4e2b2 Mixed-position disjunctive branch union on the ephemeral query path
+- [x] B6.4f1 Truthful fallback for recursive multi-position symbolic query demands
+- [x] B6.4f2 Bounded recursive symbolic query support via single applied-position relaxation
+- [x] B6.4f3 Preserve the recursive carried position across reordered multi-position query demands
+- [x] B6.4f4a Truthful fallback for jointly-supported recursive permutation query demands
+- [x] B6.4f4b Preserve jointly-supported same-index multi-position recursive query demands
+- [x] B6.4f5a Truthful fallback when demanded positions require multiple recursive atoms
+- [x] B6.4f5b Same-index mutual-recursive multi-position query support across SCC-local recursive body atoms
+- [x] B6.4f5c1 Same-index mutual-recursive disjunctive multi-position query support
+- [x] B6.4f5c2a Multi-hop same-index SCC multi-position query support
+- [x] B6.4f5c2b1 Single-carried-position relaxation for transformed recursive SCC query demands
+- [x] B6.4f5c2b2a Disjunctive single-carried-position relaxation for transformed recursive SCC query demands
+- [x] B6.4f5c2b2b1 Multi-hop transformed SCC one-carried-position query support
+- [x] B6.4f5c2b2b2a Truthful fallback for transformed multi-atom recursive query demands
+- [x] B6.4f5c2b2b2b Retire stale transformed recursive-demand umbrella after support/fallback closure
+- [x] B6.6a1 Conjunctive explain field classification closure
+- [x] B6.6a2 Conjunctive analyze field classification closure
+- [x] B6.6b1 Conjunctive runtime path/order truth tightening
+- [x] B6.6b2 Conjunctive runtime counter truth tightening
+- [x] B6.7a1 Commit/abort mutation-log contract
+- [x] B6.7a2 Degraded-state and recovery contract
+- [x] B6.7b1 Dirty-frontier truth contract
+- [x] B6.7b2 Stats/analyze/refresh admin-truth alignment beyond tracked recompute
+- [x] B6.8a1 Incremental delta substrate data model
+- [x] B6.8a2 Fallback and admin boundary for incremental maintenance
+- [x] B6.8b1 First extensional-source maintained-update class
+- [x] B6.8b2 First derived-predicate maintained-update class
+- [x] B6.9a1 Why-result payload/status baseline
+- [x] B6.9a2 Public why-result seed-row surface
+- [x] B6.9a3 First non-recursive derived why-result lineage
+- [x] B6.9a4 One-body extensional derived why-result lineage
+- [x] B6.9a5 Reconstructible extensional multi-body why-result lineage
+- [x] B6.9a6 Exact-one-rule extensional search-based why-result lineage
+- [x] B6.9a7 Exact-one-rule mixed-body non-recursive why-result lineage
+- [x] B6.9a8 Multi-rule non-recursive derived why-result lineage
+- [x] B6.9b1a First positive recursive why-result closure lineage
+- [x] B6.9b1b Recursive why-result rule-step support beyond flattened fact-only closure payloads
+- [x] B6.9b2a Optional why-result goal-directed read context metadata
+- [x] B6.9b2b1 Exact-one goal-directed query context on matching why-result paths
+- [x] B6.9b2b2a Exact-one goal-directed match context on matching why-result paths
+- [x] B6.9b2b2b1 Exact-one goal-directed scan-range context on matching why-result paths
+- [x] B6.9b2b2b2a Selector-scoped parity for exact-one row-read goal-directed path context
+- [x] B6.9b2b2b2b1 Exact-one goal-directed scan context on matching why-result paths
+- [x] B6.9b2b2b2b2a Bounded complete row-set goal-directed path context on matching why-result paths
+- [x] B6.9b2b2b2b2b1 Selector-scoped parity for bounded-complete `scan` path-local goal-directed context
+- [x] B6.9b2b2b2b2b2a Bounded proof-path goal-directed context for plain no-op `query` / `scan-range` reads and matching support frames
+- [x] B6.9b2b2b2b2b2b1 Bounded root-path goal-directed context for plain no-op `match` reads
+- [x] B6.9b2b2b2b2b2b2a Truthful selector-scoped path-local parity across shipped no-op and ephemeral row-read shapes
+- [x] B6.9b2b2b2b2b2b2b1 Bounded proof-path goal-directed context for matching fact support frames
+- [x] B6.9b2b2b2b2b2b2b2a Unique path-level goal-directed context propagation from matching support frames
+- [x] B6.9b2b2b2b2b2b2b2b1 Common path-level goal-directed context propagation across same-relation support frames
+- [x] B6.9b2b2b2b2b2b2b2b2 Path-level mixed-context goal-directed provenance lists across support-frame relations
+- [x] B6.10a1 Next integrity-class selection
+- [x] B6.10a2 Schema/admin payload baseline for `check` constraints
+- [x] B6.10b1 Assert/write enforcement for `check` constraints
+- [x] B6.10b2 Dedicated admin counters and summary truth for `check` constraints
+- [x] B6.11a1 Scheduling policy contract for parallel recursion
+- [x] B6.11a2 Fallback and admin-truth contract for parallel recursion
+- [x] B6.11b1a Serialized component-delta payload seam for worker-scratch recursive batches
+- [x] B6.11b1b1 Single-pass worker-scratch recursive delta compute over the current component snapshot
+- [x] B6.11b1b2a Multi-iteration worker-scratch recursive closure for single-recursive-atom positive SCC rules
+- [x] B6.11b1b2b Broader worker-scratch recursive closure beyond single-recursive-atom rule shapes
+- [x] B6.11b1c Main-thread publish/apply path for worker-computed recursive deltas
+- [x] B6.11b2 Runtime/admin truth for parallel execution
 
-- [x] Add selective versus non-selective planner regressions.
-  - explain-side regressions now cover selective lookup ordering, broad scan
-    shape, and skew-sensitive join ordering without claiming observed runtime
-    counters
-  targets:
-  - `src/lisp/tests_deduce_query_groups.c3`
-  - `src/lisp/tests_deduce_query_bench_groups*.c3`
+## Legacy Runtime and Validation Follow-up
 
-### P2. Recursive and Negation Closeout
+- [x] Run a Docker-capped profiling pass for boundary-heavy workloads and record the baseline counters/trace summary.
+- [x] Capture scope-chain scan pressure and hint-hit/miss ratios from the current boundary telemetry surface.
+- [x] Identify which return-path outcomes dominate in practice (`reused`, destination-built, direct-promoted, spliced, disallowed).
+- [x] Record the accepted regression envelope for boundary-heavy workloads in docs or scripts.
+- [x] Add focused micro-bench coverage for method dispatch and typed lambda call boundaries before and after the allocation changes.
+- [x] Audit `src/lisp/eval_pattern_support.c3` deep equality workspace allocation (`stack`/`seen`) under nested list/array comparisons.
+- [x] Introduce a bounded scratch or inline-first workspace strategy that preserves cycle safety and current semantics.
+- [x] Add a regression/benchmark slice for large nested equality comparisons so allocator churn is measurable.
+- [x] Add micro-bench coverage for scheduler + async I/O/offload interaction hotspots (`queue`, completion publish, TLS/http offload).
+- [x] Audit per-request heap allocation in `src/lisp/scheduler_offload_worker.c3` and classify reusable worker-local buffers versus required owned outputs.
+- [x] Prototype a narrow pool/reuse strategy for offload request/completion scaffolding without changing boundary ownership semantics.
+- [x] Validate that any pooling change preserves generation/task handoff correctness and offload failure cleanup.
+- [x] Add benchmarks for `deduce` scan/query/count paths at corpus sizes large enough to expose regression envelopes.
+- [x] Measure row materialization cost in `relation_scan_range(...)`, including per-row hashmap creation and per-column symbol-key allocation.
+- [x] Reduce avoidable scan-path allocation where semantics allow (for example cached relation key values or other stable row-shape helpers).
+- [x] Split the dispatch/match diagnostics formatting helpers out of `src/lisp/eval_dispatch_types.c3` into `src/lisp/eval_dispatch_match_errors.c3`.
+- [x] Evaluate whether `deduce-query` should stay as full-scan + callback filtering or gain a narrower optimization path for common predicates.
+- [x] Extract `deduce_why_result_*` explainability helpers and `prim_deduce_why_result` from `src/lisp/deduce_schema_query.c3` into `src/lisp/deduce_why_result.c3`.
+- [x] Prioritize split candidates by size and hot-path relevance (`schema.c3`, `eval_dispatch_types.c3`, `scheduler_offload_worker.c3`).
+- [x] Investigate/fix bounded `OMNI_LISP_TEST_SLICE=deduce` crash/hang on the worker-scratch recursive-delta lane (current traced run stalls before worker-scratch markers), then re-check `deduce parallel worker-scratch component pass computes serialized recursive deltas`.
+- [x] Run targeted validation for the `deduce_why_result` split after the deduce worker-scratch crash/blocker is resolved.
+- [x] Rename legacy names so they are visible and intentional (`memory-soak`/`syntax` aliases if still used).
+- [x] Investigate/fix the remaining unfiltered `OMNI_LISP_TEST_SLICE=deduce` crash/hang starting at `deduce rule-derived reference heads validate against final recursive component snapshot`, then isolate it with a narrow validation slice.
+- [x] Document the minimum required container path for boundary/lifetime changes versus allocator-benchmark work.
+- [x] Stop implying that memory ownership tests are required for syntax/compiler-only changes in contributor docs.
+- [x] Record the slice split and rationale in `memory/CHANGELOG.md` once the code move lands.
+- [x] Add a short contributor rule: test lanes must follow ownership, not convenience bundling.
+## Leak cleanup follow-up plan
 
-- [x] Lock one canonical production recursive engine.
-  targets:
-  - `src/lisp/deduce_rule_eval_fixpoint.c3`
-  - `src/lisp/deduce_rule_eval_exec_naive.c3`
-  - `src/lisp/deduce_rule_eval_exec_seminaive.c3`
-  - `src/lisp/deduce_rule_eval_scc.c3`
-  completed:
-  - `deduce/analyze` now defaults to `semi-naive-scc`, while `naive-scc`
-    remains the reference parity mode
-
-- [x] Add recursive parity and convergence regressions.
-  targets:
-  - `src/lisp/tests_deduce_rule_groups*.c3`
-  completed:
-  - recursive closure parity now covers both `naive-scc` reference and
-    `semi-naive-scc` production paths, and recursive convergence/iteration-limit
-    regressions assert the documented hard-stop guard in
-    `src/lisp/tests_deduce_rule_groups_more_tail.c3`
-
-- [x] Share one dependency-graph model between validation and runtime.
-  targets:
-  - `src/lisp/deduce_rule_eval*.c3`
-  completed:
-  - validation and SCC scheduling now build from the same dependency-graph
-    helper, reducing drift between rule rejection and runtime ordering
-
-- [x] Add stratified-negation regression matrix.
-  targets:
-  - `src/lisp/tests_deduce_rule_groups*.c3`
-  completed:
-  - legal stratified negation and illegal negative-cycle rejection are both
-    covered by deterministic Deduce rule tests, alongside existing stratum
-    boundary analysis coverage
-
-### P3. Join Engine and Runtime Counters
-
-- [x] Make index nested-loop join the default for selectivity-supported shapes.
-  targets:
-  - `src/lisp/deduce_relation_scan_helpers_join.c3`
-  - `src/lisp/deduce_rule_eval_exec*.c3`
-  completed:
-  - default adaptive routing now prefers index-first for selective or
-    small-outer shapes, while the zero-threshold path hashes low-selectivity
-    partially bound shapes directly instead of taking a fallback detour
-  - fully bound unique supporting indexes still route index-first
-
-- [x] Harden hash-join and adaptive routing thresholds.
-  targets:
-  - `src/lisp/deduce_relation_scan_helpers_join.c3`
-  - `src/lisp/deduce_rule_eval_exec*.c3`
-  completed:
-  - explicit probe / miss thresholds still force the historical index-first
-    adaptive path, while the default route now uses explicit schema signals
-    instead of an opaque fallback-only heuristic
-  - added hash-first default regression coverage plus a selective-join benchmark
-    smoke
-  - bounded Deduce slice now passes the join default regression after tightening
-    the selected-index fully-bound check
-
-- [x] Surface observed operator counters in `deduce/explain` and `deduce/analyze`.
-  targets:
-  - `src/lisp/deduce_rule_ops_explain.c3`
-  - `src/lisp/deduce_rule_eval_exec*.c3`
-  completed:
-  - `deduce/explain` now preserves the existing per-step `counters` dictionary
-    shape while sourcing values from runtime execution and reporting
-    `counter-kind = 'observed`
-  - per-step payload now includes `rows-read`, `rows-emitted`, `index-hits`,
-    `index-misses`, and `join-probes`
-  - `deduce/analyze` now mirrors the same observed step counters under
-    `rule-execution`
-  - bounded Deduce slice passes payload assertions for the observed explain and
-    analyze surfaces
-
-### P4. Incremental Maintenance
-
-- [x] Publish the current incremental-state truth table.
-  targets:
-  - `docs/deduce-datalog-spec.md`
-  - `docs/plans/deduce-incremental-delta-propagation-design-2026-03-13.md`
-  completed:
-  - incremental-state truth table published in
-    `docs/deduce-datalog-spec.md#71-incremental-state-truth-table`
-
-- [x] Make commit/abort mutation logs the sole source for invalidation triggers.
-  targets:
-  - `src/lisp/deduce_db_handles_mutation*.c3`
-  - `src/lisp/deduce_rule_eval*.c3`
-  completed:
-  - commit-path mutation logs now drive invalidation, while abort discards the
-    pending mutation log without dirtying derived-state machinery
-
-- [x] Implement real dependency-aware invalidation for derived predicates.
-  targets:
-  - `src/lisp/deduce_rule_eval*.c3`
-  - `src/lisp/deduce_db_handles_mutation*.c3`
-  completed:
-  - dependency-aware invalidation now walks rule dependents from the mutated
-    predicate instead of forcing a blanket full recompute
-
-### P5. V1.5 Aggregate Support
-
-- [x] Lock the canonical aggregate syntax and projection semantics.
-  targets:
-  - `docs/deduce-datalog-spec.md`
-  - `docs/plans/deduce-v15-aggregate-implementation-plan-2026-03-20.md`
-  completed:
-  - the Deduce spec now pins the deferred v1.5 aggregate query shape as a
-    projection-driven surface where bare variables imply group-by keys and
-    supported aggregate forms are `count`, `sum`, `min`, and `max`
-
-- [x] Extend Deduce IR and installed signatures to carry aggregate metadata.
-  targets:
-  - `src/lisp/deduce_rule_ops.c3`
-  - `src/lisp/deduce_db_handles.c3`
-  - `src/lisp/deduce_db_handles_mutation.c3`
-  - `src/lisp/deduce_rule_eval_prims.c3`
-  completed:
-  - aggregate-aware rule terms and installed signatures now persist projection
-    kind, aggregate op, normalized source-var ids, and aggregate projection
-    counts across install / copy / release paths
-
-- [x] Add aggregate validation and explain/analyze payload scaffolding.
-  targets:
-  - `src/lisp/deduce_rule_eval.c3`
-  - `src/lisp/deduce_rule_ops_planning.c3`
-  - `src/lisp/deduce_rule_ops_explain.c3`
-  - `src/lisp/tests_deduce_rule_groups*.c3`
-  completed:
-  - aggregate head validation now rejects malformed or ungrounded grouped
-    projections, `deduce/explain` exposes aggregate projection count plus head
-    projection metadata, and the pre-execution scaffolding landed ahead of the
-    grouped runtime path
-
-- [x] Implement grouped execution for `count`, `sum`, `min`, `max`.
-  targets:
-  - `src/lisp/deduce_rule_eval_exec.c3`
-  - `src/lisp/deduce_rule_eval_exec_naive.c3`
-  - `src/lisp/deduce_rule_eval_exec_seminaive.c3`
-  - `src/lisp/deduce_rule_eval_fixpoint.c3`
-  - `src/lisp/tests_deduce_query_groups.c3`
-  completed:
-  - grouped aggregate execution now recomputes exact `count`, `sum`, `min`,
-    and `max` outputs for non-recursive aggregate rules through the shared
-    naive analyzer path
-  - `deduce/analyze` and `deduce/explain` no longer special-case aggregate
-    rules as deferred when grouped execution is supported
-  - unsupported shapes are now rejected explicitly:
-    - mixed aggregate/non-aggregate shared heads still reject
-    - incompatible aggregate-only shared heads still reject
-
-- [x] Add aggregate regressions and bounded benchmark smoke.
-  targets:
-  - `src/lisp/tests_deduce_query_groups.c3`
-  - `src/lisp/tests_deduce_query_bench_groups*.c3`
-  - `src/lisp/tests_deduce_rule_groups_explain.c3`
-  completed:
-  - deterministic grouped aggregate regressions now cover runtime
-    `count`/`sum`/`min`/`max` outputs
-  - explain/analyze regressions now assert that aggregate rules execute rather
-    than hard-failing as deferred
-  - benchmark-mode smoke now seeds and analyzes an aggregate workload in
-    `src/lisp/tests_deduce_query_bench_groups_more.c3`
-
-- [x] Support recursive aggregate rules via sound naive recompute fallback.
-  targets:
-  - `src/lisp/deduce_rule_eval.c3`
-  - `src/lisp/deduce_rule_eval_exec.c3`
-  - `src/lisp/deduce_rule_eval_exec_naive.c3`
-  - `src/lisp/deduce_rule_eval_exec_seminaive.c3`
-  - `src/lisp/deduce_rule_eval_fixpoint.c3`
-  - `src/lisp/tests_deduce_rule_groups*.c3`
-  - `src/lisp/tests_deduce_query_groups.c3`
-  completed:
-  - recursive aggregate SCCs now fall back from the requested semi-naive
-    engine to the sound naive grouped recompute path
-  - aggregate-only shared heads with matching projection signatures now batch
-    through one grouped finalize pass, while mixed or incompatible shapes
-    still reject at install time
-  - `deduce/analyze` now reports the requested execution engine, the actual
-    execution engine, and whether recursive aggregate fallback was applied
-  - deterministic regressions and bounded benchmark smoke now cover recursive
-    aggregate convergence and explain/analyze truthfulness
-  validation:
-  - `c3c build`
-  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
-  - result: `97 passed, 0 failed`
-
-- [x] B5.7 Build signed-delta substrate for aggregate-bearing recursive SCCs.
-  targets:
-  - `src/lisp/deduce_rule_eval_exec.c3`
-  - `src/lisp/deduce_rule_eval_exec_seminaive.c3`
-  - `src/lisp/deduce_rule_eval_fixpoint.c3`
-  - `src/lisp/deduce_rule_eval_prims.c3`
-  - `src/lisp/tests_deduce_rule_groups*.c3`
-  - `src/lisp/tests_deduce_query_groups.c3`
-  acceptance:
-  - seminaive recursive aggregate execution can publish signed add/remove
-    deltas for aggregate-bearing recursive SCCs without losing current grouped
-    result parity
-  - no automatic recursive aggregate fallback remains for currently valid
-    stratified recursive aggregate SCCs
-  - explain/analyze remain truthful about the active engine and fallback
-    status during the staged rollout
-  validation:
-  - `c3c build`
-  - Deduce slice in the bounded container path
-  - targeted recursive aggregate regressions
-  completed:
-  - seminaive recursive delta state now carries signed add/remove tuple slots
-    in the shared execution substrate instead of a single positive-only table
-  - aggregate-bearing recursive SCCs now seed tuple support tables and
-    sign-aware head-materialization hooks behind the fallback gate
-  - dormant seminaive aggregate finalize now publishes actual-tuple
-    add/remove transitions through the same support-table zero-crossing path
-    instead of direct head rewrites plus synthetic aggregate deltas
-  - aggregate groups now track signed support counts internally, including
-    removal-aware `count`/`sum` updates and `min`/`max` extremum recompute
-    when the current support disappears
-  - the dormant seminaive aggregate executor now runs mixed non-aggregate
-    rules in the same recursive SCC on the same signed-delta/support-table
-    substrate instead of skipping them outright
-  - positive recursive aggregate SCCs now run on `semi-naive-scc`,
-    including mixed aggregate/non-aggregate recursive SCCs that stay within
-    positive body atoms
-  - recursive aggregate SCCs with lower-stratum negated body atoms now also
-    run on `semi-naive-scc`, retiring the last automatic fallback shape
-  - mixed positive and mixed negated recursive aggregate regressions now pin
-    seminaive exactness and truthful analyze/explain reporting
-  - focused tuple-support and aggregate-group regressions now pin recursive-only,
-    base-seeded, signed count-removal, and `min`-recompute behavior independently
-    of the higher-level execution fixtures
-  - recursive aggregate seminaive rollout is complete for the current
-    stratified rule surface; remaining work is cleanup/perf, not fallback
-    retirement
-  - validation:
-    - `c3c build`
-    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
-    - result: `125 passed, 0 failed`
-## Notes
-
-- The detailed acceptance criteria and validation commands now live in:
-  - `docs/plans/deduce-actionable-backlog-2026-03-20.md`
-- Aggregate implementation seams and first patch slices are now documented in:
-  - `docs/plans/deduce-v15-aggregate-implementation-plan-2026-03-20.md`
-- Items beyond this queue remain in the full roadmap and are intentionally not
-  promoted into `TODO.md` yet:
-  - maintenance/admin: read-only `deduce/schema`, `deduce/indexes`, and
-    `deduce/stats` surfaces are now shipped; refresh/recompute, compact/reset,
-    and other write-side admin verbs remain deferred
-- runtime hardening: the explicit `escape-scope` iterator consume regression in
-  `src/lisp/tests_escape_scope_tests.c3` is fixed and the bounded
-  `escape-scope` slice is green again
-  - fixed cases:
-    - `escape-scope: iterator consume car`
-    - `escape-scope: iterator consume len`
-  - follow-up retained separately: keep large named-let list-accumulator
-    pressure in `memory-lifetime` budget tests rather than re-expanding the
-    bounded `escape-scope` smoke slice
-- aggregates: recursive aggregate seminaive support now ships for the current
-  stratified surface; follow-up work is no longer blocked on fallback
-  retirement
-  - logic surface: `and` / `or` now ship as variadic short-circuit forms
-    instead of binary-only parser forms, including macro-emitted variadic
-    lowering through the normal AST path
-  - `deduce/analyze` now routes explicit naive mixed recursive aggregate
-    requests onto the exact seminaive lane and reports that via
-    `naive-recursive-aggregate-mixed-routed-to-seminaive`
-  - `deduce/explain` now has matching engine-aware routing coverage, including
-    pure positive and pure negated recursive aggregate cases that stay on
-    `naive-scc` and do not emit the mixed-route diagnostic
-  - pure positive and pure negated recursive aggregate analyze/explain
-  - declared `key` relations, declared single/composite `unique` relations,
-    and declared single-column `ref` integrity constraints are now enforced
-    deterministically at `fact!` time, with machine-checkable payloads and
-    schema/analyze visibility for the current `B6.2` slice
-  - follow-up for `B6.2` now moves to richer integrity classes beyond
-    key/unique/reference relation integrity
-  - provenance / why-result: payload shape is documented, implementation still
-    remains deferred
-  - materialized views
-  - magic sets
-  - parallel evaluation
+- [ ] Confirm the harness-only teardown regression lane in `src/lisp/tests_tests.c3` stays green under `OMNI_LISP_TEARDOWN_REGRESSION`.
+- [ ] Confirm or fix the method-table overwrite seam in `src/lisp/jit_jit_define_method_table.c3` (`jit_eval_define_typed_callable`, `jit_eval_define`) with a focused regression for redefine/replacement semantics.

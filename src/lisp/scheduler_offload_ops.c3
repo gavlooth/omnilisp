@@ -333,6 +333,12 @@ fn bool scheduler_offload_file_exists(SharedHandle* path_blob, OffloadCompletion
 }
 
 fn OffloadCompletion* scheduler_execute_offload(OffloadWork work) {
+    if (work.custom_fn != null) {
+        OffloadCompletion* completion = work.custom_fn(work);
+        scheduler_release_shared(work.shared);
+        return completion;
+    }
+
     OffloadCompletion* completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
     if (completion == null) {
         scheduler_release_shared(work.shared);

@@ -140,7 +140,7 @@ module.exports = grammar({
       ),
 
     path: ($) =>
-      prec.left(PREC.PATH, seq(
+      prec.right(PREC.PATH, seq(
         field("root", $.symbol),
         repeat1($.path_segment),
       )),
@@ -178,6 +178,6 @@ module.exports = grammar({
       )),
 
     symbol: () =>
-      token(prec(1, /[0-9A-Za-z_+*\/=<>!?:@#$%&|^~\-\u0080-\uFFFF]+/u)),
+      token(prec(1, /[0-9A-Za-z_+*\/=<>!?:@%&|^~\-\u0080-\uFFFF]+/u)),
   },
 });

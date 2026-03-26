@@ -45,6 +45,124 @@ fn bool deduce_rule_test_build_recursive_limit_error_expr(char* buf, usz cap, us
     return true;
 }
 
+fn bool deduce_rule_test_capture_recursive_limit_code(
+    Interp* interp,
+    usz fact_count,
+    char[] expected_code
+) {
+    if (interp == null || fact_count < 2) return false;
+
+    SymbolId sym_memory = interp.symbols.intern("memory");
+    SymbolId rel_parent = interp.symbols.intern("parent_limit_direct");
+    SymbolId rel_ancestor = interp.symbols.intern("ancestor_limit_direct");
+    SymbolId col_src = interp.symbols.intern("src");
+    SymbolId col_dst = interp.symbols.intern("dst");
+    SymbolId var_x = interp.symbols.intern("?x");
+    SymbolId var_y = interp.symbols.intern("?y");
+    SymbolId var_z = interp.symbols.intern("?z");
+
+    Value*[1] open_args;
+    open_args[0] = deduce_rule_test_make_symbol_value(interp, sym_memory);
+    Value* db_val = prim_deduce_open(open_args[..], null, interp);
+    if (db_val == null || db_val.tag != FFI_HANDLE || db_val.ffi_val == null || db_val.ffi_val.lib_handle == null) {
+        return false;
+    }
+
+    Value* parent_rel = setup_deduce_relation_for_db(interp, db_val, rel_parent, col_src, col_dst);
+    Value* ancestor_rel = setup_deduce_relation_for_db(interp, db_val, rel_ancestor, col_src, col_dst);
+    if (parent_rel == null || parent_rel.tag != FFI_HANDLE || ancestor_rel == null || ancestor_rel.tag != FFI_HANDLE) {
+        return false;
+    }
+
+    for (usz i = 0; i + 1 < fact_count; i++) {
+        char[32] src_buf = {};
+        char[] src = io::bprintf(&src_buf, "%d", (int)i)!!;
+        char[32] dst_buf = {};
+        char[] dst = io::bprintf(&dst_buf, "%d", (int)(i + 1))!!;
+        Value*[3] fact_args = {
+            parent_rel,
+            make_string(interp, src),
+            make_string(interp, dst),
+        };
+        Value* fact_rv = prim_assert_fact(fact_args[..], null, interp);
+        if (fact_rv == null || fact_rv.tag != VOID) return false;
+    }
+
+    Value* head_base = deduce_rule_test_make_atom2(
+        interp,
+        rel_ancestor,
+        deduce_rule_test_make_symbol_value(interp, var_x),
+        deduce_rule_test_make_symbol_value(interp, var_y)
+    );
+    Value* body_base = deduce_rule_test_make_atom2(
+        interp,
+        rel_parent,
+        deduce_rule_test_make_symbol_value(interp, var_x),
+        deduce_rule_test_make_symbol_value(interp, var_y)
+    );
+    Value* head_rec = deduce_rule_test_make_atom2(
+        interp,
+        rel_ancestor,
+        deduce_rule_test_make_symbol_value(interp, var_x),
+        deduce_rule_test_make_symbol_value(interp, var_z)
+    );
+    Value* body_rec_left = deduce_rule_test_make_atom2(
+        interp,
+        rel_parent,
+        deduce_rule_test_make_symbol_value(interp, var_x),
+        deduce_rule_test_make_symbol_value(interp, var_y)
+    );
+    Value* body_rec_right = deduce_rule_test_make_atom2(
+        interp,
+        rel_ancestor,
+        deduce_rule_test_make_symbol_value(interp, var_y),
+        deduce_rule_test_make_symbol_value(interp, var_z)
+    );
+
+    Value*[3] rule_base_args = { db_val, head_base, body_base };
+    Value*[4] rule_rec_args = { db_val, head_rec, body_rec_left, body_rec_right };
+    Value* rule_base_rv = prim_deduce_rule(rule_base_args[..], null, interp);
+    Value* rule_rec_rv = prim_deduce_rule(rule_rec_args[..], null, interp);
+    if (rule_base_rv == null || rule_base_rv.tag != VOID || rule_rec_rv == null || rule_rec_rv.tag != VOID) {
+        return false;
+    }
+
+    if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+    SymbolId[1] handler_tags = { interp.sym_raise };
+    EffectHandler handler = {
+        .tags = &handler_tags[0],
+        .clauses = null,
+        .closures = null,
+        .clause_count = 1,
+        .handler_env = null,
+        .body_expr = null,
+        .body_env = null,
+        .strict_mode = false,
+        .effect_state = null,
+    };
+    interp.handler_stack[interp.handler_count++] = handler;
+
+    Value*[1] analyze_args = { db_val };
+    Value* analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
+    interp.handler_count--;
+
+    bool ok = analyzed != null &&
+              analyzed.tag == ERROR &&
+              interp.flags.raise_pending &&
+              interp.raise_payload != null &&
+              interp.raise_payload.tag == HASHMAP &&
+              interp.raise_payload.hashmap_val != null;
+    if (ok) {
+        Value* code = deduce_rule_test_dict_get(interp, interp.raise_payload, "code");
+        ok = code != null &&
+             code.tag == SYMBOL &&
+             deduce_name_equals(interp.symbols.get_name(code.sym_val), expected_code);
+    }
+
+    run_clear_stale_raise_state(interp);
+    return ok;
+}
+
 fn void run_deduce_rule_validation_tests_more_tail(Interp* interp, int* pass, int* fail) {
     {
         SymbolId sym_memory = interp.symbols.intern("memory");
@@ -669,27 +787,12 @@ fn void run_deduce_rule_validation_tests_more_tail(Interp* interp, int* pass, in
         }
     }
 
-    {
-        char[32768] limit_code_buf;
-        bool built_code = deduce_rule_test_build_recursive_limit_expr(
-            &limit_code_buf[0],
-            limit_code_buf.len,
-            300,
-            "(symbol->string (ref msg 'code))"
-        );
-        if (built_code) {
-            test_str_val(
-                interp,
-                "deduce analyze recursive limit reports stable error code",
-                limit_code_buf[..advanced_test_cstr_len(&limit_code_buf)],
-                "deduce/analyze-iteration-limit",
-                pass,
-                fail
-            );
-        } else {
-            io::printn("[FAIL] deduce analyze recursive limit reports stable error code (builder failed)");
-            (*fail)++;
-        }
+    if (deduce_rule_test_capture_recursive_limit_code(interp, 300, "deduce/analyze-iteration-limit")) {
+        emit_pass_literal("[PASS] deduce analyze recursive limit reports stable error code");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce analyze recursive limit reports stable error code");
+        (*fail)++;
     }
 
     {
@@ -1642,17 +1745,7 @@ fn void run_deduce_rule_validation_tests_more_tail(Interp* interp, int* pass, in
             "  (define ok9 (= ('incremental-dirty-predicate-count a3) 0)) "
             "  (define ok10 (= ('incremental-invalidation-mode a3) 'tracked)) "
             "  (define ok11 (= (deduce/count derived-inc) 2)) "
-            "  (and ok1 "
-            "       (and ok2 "
-            "            (and ok3 "
-            "                 (and ok4 "
-            "                      (and ok5 "
-            "                           (and ok6 "
-            "                                (and ok7 "
-            "                                     (and ok8 "
-            "                                          (and ok8a "
-            "                                               (and ok9 "
-            "                                                    (and ok10 ok11))))))))))))",
+            "  (and ok1 ok2 ok3 ok4 ok5 ok6 ok7 ok8 ok8a ok9 ok10 ok11))",
             interp
         );
         if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {

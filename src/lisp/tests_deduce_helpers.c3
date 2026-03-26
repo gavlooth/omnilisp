@@ -111,3 +111,49 @@ fn void deduce_test_expect_void(
     io::printfn((String)fail_fmt, r.value != null ? (int)r.value.tag : -1);
     (*fail)++;
 }
+
+fn bool deduce_test_capture_analyze_raise_payload(
+    Interp* interp,
+    Value* db_val,
+    Value** out_payload
+) {
+    if (out_payload != null) *out_payload = null;
+    if (interp == null || db_val == null) return false;
+
+    if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+    SymbolId[1] handler_tags = { interp.sym_raise };
+    EffectHandler handler = {
+        .tags = &handler_tags[0],
+        .clauses = null,
+        .closures = null,
+        .clause_count = 1,
+        .handler_env = null,
+        .body_expr = null,
+        .body_env = null,
+        .strict_mode = false,
+        .effect_state = null,
+    };
+    interp.handler_stack[interp.handler_count++] = handler;
+
+    Value*[1] analyze_args = { db_val };
+    Value* analyzed = prim_deduce_analyze(analyze_args[..], null, interp);
+    interp.handler_count--;
+
+    bool ok = analyzed != null &&
+              analyzed.tag == ERROR &&
+              interp.flags.raise_pending &&
+              interp.raise_payload != null &&
+              interp.raise_payload.tag == HASHMAP &&
+              interp.raise_payload.hashmap_val != null;
+    if (ok && out_payload != null) *out_payload = interp.raise_payload;
+    return ok;
+}
+
+fn bool deduce_test_string_equals(Value* value, char[] expected) {
+    if (!is_string(value)) return false;
+    if (value.str_len != expected.len) return false;
+    for (usz i = 0; i < expected.len; i++) {
+        if (value.str_chars[i] != expected[i]) return false;
+    }
+    return true;
+}

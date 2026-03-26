@@ -131,6 +131,54 @@ Follow `docs/C3_STYLE.md`. Especially:
 - Do not silently defer known work; record it in `docs/plans/` with concrete next steps
 - If behavior changes, update `memory/CHANGELOG.md` first, then update relevant area/spec docs
 
+## Backlog Shaping and Closure (Required)
+
+Backlog items must be shaped around real semantic/risk boundaries, not broad
+umbrella themes.
+
+- Do not keep one backlog item open across multiple materially different
+  implementation phases just because they share a topic area.
+- When a lane splits into distinct classes of work, split the backlog item
+  immediately. Typical split points:
+  - admin/visibility work vs execution-semantics changes,
+  - parser/surface work vs runtime work,
+  - non-recursive support vs recursive support,
+  - targeted/local execution vs full optimizer or rewrite semantics.
+- Close completed slices as soon as their shipped boundary is real, tested,
+  and documented. Do not leave them hanging under one parent item “for later.”
+- If one narrow residual blocker remains, promote that residual blocker into
+  its own explicit item instead of keeping the whole broader item open.
+- When a backlog item has accumulated more than 2-3 landed slices, reassess
+  whether it should be split before continuing further work.
+- Backlog wording must track the real shipped contract:
+  - completed behavior belongs under closed/completed slices,
+  - only genuinely unshipped behavior stays under the open item,
+  - avoid status text that makes completed work look perpetually partial.
+- When work is blocked on a missing language-facing naming or surface-contract
+  choice, do not respond only by splitting the backlog:
+  - either record an explicit current decision that the surface stays frozen as-is,
+  - or add a short decision note under `docs/plans/` with 2-4 concrete
+    candidate spellings, their exact semantics, rejected/deferred options,
+    and a recommended choice.
+- If multiple future trigger/contract families are already visible, choose
+  sensible canonical names for all of them in that decision note instead of
+  stopping at “pick one later.”
+- After such a decision note exists, retitle the remaining implementation item
+  so it refers to the chosen/frozen contract directly instead of repeating a
+  vague “naming later” umbrella.
+- General naming-problem rule:
+  - whenever naming is unclear, drifting, or blocking forward progress, do not
+    keep moving by hand-waving or repeated backlog reshaping alone
+  - resolve it by either:
+    - making and recording an explicit current naming decision,
+    - producing a short options note with concrete candidate names, meanings,
+      rejected/deferred names, and a recommendation,
+    - or asking the owner directly when the choice is inherently product-level
+      and local repo truth is insufficient
+  - do not use undefined phrases like “canonical naming later” or
+    “needs naming” as the stopping point for a task; turn them into a concrete
+    decision artifact or a concrete owner question
+
 ## Owner Workflow Preference (Required)
 
 - Apply safe, non-behavioral, non-hacky patches automatically without asking for

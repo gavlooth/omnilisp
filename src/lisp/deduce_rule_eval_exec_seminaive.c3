@@ -2,10 +2,63 @@ module lisp;
 
 import std::core::mem;
 import std::collections::list;
+import std::io;
 
 struct DeduceSemiNaiveAggregateBatch {
     DeduceRuleSignature* sig;
     DeduceAggregateGroups groups;
+}
+
+fn bool deduce_worker_scratch_trace_enabled() @inline {
+    return boundary_env_flag_enabled("OMNI_TRACE_DEDUCE_WORKER_SCRATCH");
+}
+
+fn void deduce_worker_scratch_trace(
+    String phase,
+    usz component_id,
+    long a = 0,
+    long b = 0
+) @inline {
+    if (!deduce_worker_scratch_trace_enabled()) return;
+    io::printfn(
+        "OMNI_DEDUCE_WORKER_SCRATCH phase=%s component=%d a=%d b=%d",
+        (ZString)phase,
+        component_id,
+        a,
+        b
+    );
+}
+
+fn usz deduce_worker_scratch_component_visible_tuple_count(
+    DeduceSccPlan* plan,
+    usz component_id,
+    DeduceDeltaTupleSet[] sets
+) {
+    if (plan == null) return 0;
+    usz total = 0;
+    for (usz pred_idx = 0; pred_idx < plan.predicates.len; pred_idx++) {
+        if (pred_idx >= plan.predicate_component.len || pred_idx >= sets.len) continue;
+        int pred_component = plan.predicate_component[pred_idx];
+        if (pred_component < 0 || (usz)pred_component != component_id) continue;
+        total += sets[pred_idx].count;
+    }
+    return total;
+}
+
+fn usz deduce_worker_scratch_component_next_additions_count(
+    DeduceSccPlan* plan,
+    usz component_id,
+    DeduceSignedDeltaSet[] sets
+) {
+    if (plan == null) return 0;
+    usz total = 0;
+    for (usz pred_idx = 0; pred_idx < plan.predicates.len; pred_idx++) {
+        if (pred_idx >= plan.predicate_component.len || pred_idx >= sets.len) continue;
+        int pred_component = plan.predicate_component[pred_idx];
+        if (pred_component < 0 || (usz)pred_component != component_id) continue;
+        total += sets[pred_idx].additions.count;
+    }
+    return total;
 }
 
 fn Value* deduce_seminaive_build_proof_key(
@@ -135,6 +188,17 @@ fn Value* deduce_seminaive_apply_supported_encoded_head_tuple_with_polarity(
     data.mv_data = &empty;
 
     if (became_present) {
+        Value* integrity_err = deduce_assert_encoded_head_tuple_integrity(
+            exec.db,
+            exec.head_schema,
+            exec.txn,
+            exec.head_dbi,
+            key.mv_data,
+            key_len,
+            exec.interp
+        );
+        if (integrity_err != null) return integrity_err;
+
         MdbVal existing = {};
         if (mdb_get(exec.txn, exec.head_dbi, &key, &existing) != MDB_SUCCESS) {
             int put_rc = mdb_put(exec.txn, exec.head_dbi, &key, &data, 0);
@@ -218,6 +282,40 @@ fn Value* deduce_seminaive_replay_anchor_delta_set(
     return null;
 }
 
+fn Value* deduce_seminaive_replay_scratch_visible_set(
+    DeduceSemiNaiveRuleExec* exec,
+    usz step_idx,
+    Value*[] tuple_vals,
+    bool[] var_bound,
+    Value*[] var_values,
+    bool[] candidate_bound,
+    Value*[] candidate_values,
+    DeduceDeltaTupleSet* visible_set,
+    bool use_prefix_probe,
+    Value*[] prefix_probe_values,
+    usz prefix_probe_len
+) {
+    if (exec == null || visible_set == null) return null;
+    for (usz tuple_idx = 0; tuple_idx < visible_set.count; tuple_idx++) {
+        deduce_observed_step_note_rows_read(exec.observed_rule_counters, step_idx);
+        DeduceEncodedTuple* visible_tuple = &visible_set.tuples[tuple_idx];
+        usz? decoded_count = decode_tuple(visible_tuple.key_bytes, visible_tuple.key_len, tuple_vals, exec.interp);
+        if (catch err = decoded_count) continue;
+        if (decoded_count != tuple_vals.len) continue;
+        if (use_prefix_probe && !deduce_tuple_matches_prefix(tuple_vals, prefix_probe_values, prefix_probe_len)) continue;
+
+        for (usz i = 0; i < var_bound.len; i++) candidate_bound[i] = var_bound[i];
+        for (usz i = 0; i < var_values.len; i++) candidate_values[i] = var_values[i];
+
+        if (deduce_rule_match_positive_tuple(exec.sig, step_idx, tuple_vals, candidate_bound, candidate_values)) {
+            deduce_observed_step_note_rows_emitted(exec.observed_rule_counters, step_idx);
+            Value* err = deduce_seminaive_eval_rule_step(exec, step_idx + 1, candidate_bound, candidate_values);
+            if (err != null) return err;
+        }
+    }
+    return null;
+}
+
 fn Value* deduce_seminaive_emit_head_fact(
     DeduceSemiNaiveRuleExec* exec,
     bool[] var_bound,
@@ -283,7 +381,26 @@ fn Value* deduce_seminaive_emit_head_fact(
         return deduce_raise(exec.interp, "deduce/analyze-tuple-too-large", "deduce/analyze: derived tuple too large for buffer");
     }
     if (exec.dry_run) {
-        return null;
+        if (exec.aggregate_component_mode) {
+            return deduce_raise(exec.interp, "deduce/parallel-worker-scratch-aggregate-unsupported",
+                "deduce/parallel: worker scratch batches do not yet support aggregate recursive components");
+        }
+
+        MdbVal key = { .mv_size = key_len, .mv_data = &key_buf[0] };
+        MdbVal existing = {};
+        if (mdb_get(exec.txn, exec.head_dbi, &key, &existing) == MDB_SUCCESS) {
+            deduce_worker_scratch_trace("emit_head_dry_run_skip_existing", exec.component_id, (long)key_len, (long)exec.sig.head_predicate);
+            return null;
+        }
+        if (deduce_seminaive_scratch_visible_contains(exec, exec.sig.head_predicate, &key_buf[0], key_len)) {
+            deduce_worker_scratch_trace("emit_head_dry_run_skip_visible", exec.component_id, (long)key_len, (long)exec.sig.head_predicate);
+            return null;
+        }
+
+        if (exec.changed_out != null) *exec.changed_out = true;
+        if (exec.derived_out != null && *exec.derived_out < long.max) *exec.derived_out = *exec.derived_out + 1;
+        deduce_worker_scratch_trace("emit_head_dry_run_record_new", exec.component_id, (long)key_len, (long)exec.sig.head_predicate);
+        return deduce_seminaive_record_new_delta_tuple(exec, exec.sig.head_predicate, &key_buf[0], key_len);
     }
 
     if (exec.aggregate_component_mode && exec.support_tables.len > 0) {
@@ -300,6 +417,17 @@ fn Value* deduce_seminaive_emit_head_fact(
     char empty = 0;
     data.mv_size = 0;
     data.mv_data = &empty;
+
+    Value* integrity_err = deduce_assert_schema_derived_write_integrity(
+        exec.db,
+        exec.head_schema,
+        exec.txn,
+        exec.head_dbi,
+        exec.head_tuple,
+        &key,
+        exec.interp
+    );
+    if (integrity_err != null) return integrity_err;
 
     MdbVal existing = {};
     if (mdb_get(exec.txn, exec.head_dbi, &key, &existing) == MDB_SUCCESS) {
@@ -363,6 +491,32 @@ fn Value* deduce_seminaive_eval_rule_step(
     }
     defer if (tuple_vals.ptr != null) mem::free(tuple_vals.ptr);
 
+    Value*[] prefix_probe_values = {};
+    usz prefix_probe_len = 0;
+    char[4096] prefix_probe_key_buf;
+    usz prefix_probe_key_len = 0;
+    bool use_prefix_probe =
+        exec.head_demand != null &&
+        !negated;
+    if (use_prefix_probe && body_schema.arity > 0) {
+        prefix_probe_values = mem::new_array(Value*, body_schema.arity);
+        if (prefix_probe_values.ptr == null) {
+            return deduce_raise(exec.interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
+        if (!deduce_rule_build_step_prefix_probe(exec.sig, step_idx, var_bound, var_values, prefix_probe_values, &prefix_probe_len)) {
+            use_prefix_probe = false;
+        } else {
+            usz? encoded_prefix_len = encode_tuple(prefix_probe_values[0:prefix_probe_len], prefix_probe_key_buf[..], prefix_probe_key_buf.len);
+            if (catch err = encoded_prefix_len) {
+                use_prefix_probe = false;
+                prefix_probe_len = 0;
+            } else {
+                prefix_probe_key_len = encoded_prefix_len;
+            }
+        }
+    }
+    defer if (prefix_probe_values.ptr != null) mem::free(prefix_probe_values.ptr);
+
     MdbCursor* cursor = null;
     int rc = mdb_cursor_open(exec.txn, body_dbi, &cursor);
     if (rc != MDB_SUCCESS || cursor == null) {
@@ -372,7 +526,13 @@ fn Value* deduce_seminaive_eval_rule_step(
 
     MdbVal key = {};
     MdbVal data = {};
-    rc = mdb_cursor_get(cursor, &key, &data, MDB_FIRST);
+    if (use_prefix_probe) {
+        key.mv_data = &prefix_probe_key_buf[0];
+        key.mv_size = prefix_probe_key_len;
+        rc = mdb_cursor_get(cursor, &key, &data, MDB_SET_RANGE);
+    } else {
+        rc = mdb_cursor_get(cursor, &key, &data, MDB_FIRST);
+    }
 
     if (negated) {
         bool found_match = false;
@@ -387,6 +547,7 @@ fn Value* deduce_seminaive_eval_rule_step(
                 rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
                 continue;
             }
+            if (use_prefix_probe && !deduce_tuple_matches_prefix(tuple_vals, prefix_probe_values, prefix_probe_len)) break;
             if (deduce_rule_match_negated_tuple(exec.sig, step_idx, tuple_vals, var_bound, var_values)) {
                 found_match = true;
                 break;
@@ -410,15 +571,30 @@ fn Value* deduce_seminaive_eval_rule_step(
     }
     defer if (candidate_values.ptr != null) mem::free(candidate_values.ptr);
 
-    int pred_idx = exec.anchor_active && step_idx == exec.anchor_step
-        ? deduce_scc_predicate_index(exec.plan, predicate)
-        : -1;
+    int pred_idx = deduce_scc_predicate_index(exec.plan, predicate);
     bool use_delta_scan =
+        exec.anchor_active &&
+        step_idx == exec.anchor_step &&
         pred_idx >= 0 &&
         (usz)pred_idx < exec.current_delta_sets.len &&
         (usz)pred_idx < exec.plan.predicate_component.len &&
         (usz)exec.plan.predicate_component[(usz)pred_idx] == exec.component_id;
+    bool use_scratch_visible_scan =
+        exec.dry_run &&
+        pred_idx >= 0 &&
+        (usz)pred_idx < exec.scratch_visible_sets.len &&
+        (usz)pred_idx < exec.plan.predicate_component.len &&
+        (usz)exec.plan.predicate_component[(usz)pred_idx] == exec.component_id &&
+        (!exec.anchor_active || step_idx != exec.anchor_step);
     if (use_delta_scan) {
+        deduce_worker_scratch_trace(
+            "replay_anchor_delta_scan",
+            exec.component_id,
+            (long)step_idx,
+            pred_idx >= 0 && (usz)pred_idx < exec.current_delta_sets.len
+                ? (long)exec.current_delta_sets[(usz)pred_idx].additions.count
+                : 0
+        );
         DeduceSignedDeltaSet* delta_set = &exec.current_delta_sets[(usz)pred_idx];
         Value* err = deduce_seminaive_replay_anchor_delta_set(
             exec,
@@ -449,27 +625,53 @@ fn Value* deduce_seminaive_eval_rule_step(
         return null;
     }
 
-    while (rc == MDB_SUCCESS) {
-        deduce_observed_step_note_rows_read(exec.observed_rule_counters, step_idx);
-        usz? decoded_count = decode_tuple((char*)key.mv_data, key.mv_size, tuple_vals, exec.interp);
-        if (catch err = decoded_count) {
-            rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
+        while (rc == MDB_SUCCESS) {
+            deduce_observed_step_note_rows_read(exec.observed_rule_counters, step_idx);
+            usz? decoded_count = decode_tuple((char*)key.mv_data, key.mv_size, tuple_vals, exec.interp);
+            if (catch err = decoded_count) {
+                rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
             continue;
         }
-        if (decoded_count != body_schema.arity) {
-            rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
-            continue;
-        }
+            if (decoded_count != body_schema.arity) {
+                rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
+                continue;
+            }
+            if (use_prefix_probe && !deduce_tuple_matches_prefix(tuple_vals, prefix_probe_values, prefix_probe_len)) break;
 
-        for (usz i = 0; i < var_bound.len; i++) candidate_bound[i] = var_bound[i];
-        for (usz i = 0; i < var_values.len; i++) candidate_values[i] = var_values[i];
+            for (usz i = 0; i < var_bound.len; i++) candidate_bound[i] = var_bound[i];
+            for (usz i = 0; i < var_values.len; i++) candidate_values[i] = var_values[i];
 
-        if (deduce_rule_match_positive_tuple(exec.sig, step_idx, tuple_vals, candidate_bound, candidate_values)) {
+            if (deduce_rule_match_positive_tuple(exec.sig, step_idx, tuple_vals, candidate_bound, candidate_values)) {
             deduce_observed_step_note_rows_emitted(exec.observed_rule_counters, step_idx);
             Value* err = deduce_seminaive_eval_rule_step(exec, step_idx + 1, candidate_bound, candidate_values);
             if (err != null) return err;
         }
         rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
+    }
+
+    if (use_scratch_visible_scan) {
+        deduce_worker_scratch_trace(
+            "replay_scratch_visible_scan",
+            exec.component_id,
+            (long)step_idx,
+            pred_idx >= 0 && (usz)pred_idx < exec.scratch_visible_sets.len
+                ? (long)exec.scratch_visible_sets[(usz)pred_idx].count
+                : 0
+        );
+        Value* err = deduce_seminaive_replay_scratch_visible_set(
+            exec,
+            step_idx,
+            tuple_vals,
+            var_bound,
+            var_values,
+            candidate_bound,
+            candidate_values,
+            &exec.scratch_visible_sets[(usz)pred_idx],
+            use_prefix_probe,
+            prefix_probe_values,
+            prefix_probe_len
+        );
+        if (err != null) return err;
     }
     return null;
 }
@@ -491,10 +693,13 @@ fn Value* deduce_seminaive_evaluate_rule_with_groups(
     MdbTxn* txn,
     DeduceSignedDeltaSet[] current_delta_sets,
     DeduceSignedDeltaSet[] next_delta_sets,
+    DeduceDeltaTupleSet[] scratch_visible_sets,
     DeduceTupleSupportTable[] support_tables,
+    DeduceRuleHeadDemand* head_demand,
     DeduceAggregateGroups* aggregate_groups,
     bool aggregate_component_mode,
     bool allow_unanchored,
+    bool dry_run,
     long* derived_out,
     bool* changed_out,
     DeduceObservedRuleCounters* observed_rule_counters,
@@ -536,6 +741,10 @@ fn Value* deduce_seminaive_evaluate_rule_with_groups(
     defer mem::free(var_bound.ptr);
     for (usz i = 0; i < var_bound.len; i++) var_bound[i] = false;
 
+    if (!deduce_rule_apply_head_demand(sig, head_demand, var_bound, var_values)) {
+        return null;
+    }
+
     Value*[] head_tuple = {};
     if (sig.head_term_count > 0) {
         head_tuple = mem::new_array(Value*, sig.head_term_count);
@@ -558,6 +767,7 @@ fn Value* deduce_seminaive_evaluate_rule_with_groups(
         .db = db,
         .sig = sig,
         .txn = txn,
+        .head_demand = head_demand,
         .head_dbi = head_dbi,
         .head_schema = head_schema,
         .head_tuple = head_tuple,
@@ -566,6 +776,7 @@ fn Value* deduce_seminaive_evaluate_rule_with_groups(
         .component_id = component_id,
         .current_delta_sets = current_delta_sets,
         .next_delta_sets = next_delta_sets,
+        .scratch_visible_sets = scratch_visible_sets,
         .support_tables = support_tables,
         .proof_seen_map = null,
         .anchor_active = false,
@@ -573,7 +784,7 @@ fn Value* deduce_seminaive_evaluate_rule_with_groups(
         .anchor_delta_is_removal = false,
         .aggregate_component_mode = aggregate_component_mode,
         .observed_rule_counters = observed_rule_counters,
-        .dry_run = false,
+        .dry_run = dry_run,
         .derived_out = derived_out,
         .changed_out = changed_out,
         .interp = interp,
@@ -603,6 +814,7 @@ fn Value* deduce_seminaive_evaluate_rule(
     MdbTxn* txn,
     DeduceSignedDeltaSet[] current_delta_sets,
     DeduceSignedDeltaSet[] next_delta_sets,
+    DeduceRuleHeadDemand* head_demand,
     long* derived_out,
     bool* changed_out,
     DeduceObservedRuleCounters* observed_rule_counters,
@@ -617,14 +829,62 @@ fn Value* deduce_seminaive_evaluate_rule(
         current_delta_sets,
         next_delta_sets,
         {},
+        {},
+        head_demand,
         null,
         false,
+        true,
+        false,
+        derived_out,
+        changed_out,
+        observed_rule_counters,
+        interp
+    );
+}
+
+fn Value* deduce_seminaive_evaluate_rule_dry_run(
+    DeduceDb* db,
+    DeduceSccPlan* plan,
+    usz component_id,
+    DeduceRuleSignature* sig,
+    MdbTxn* txn,
+    DeduceSignedDeltaSet[] current_delta_sets,
+    DeduceSignedDeltaSet[] next_delta_sets,
+    DeduceDeltaTupleSet[] scratch_visible_sets,
+    DeduceRuleHeadDemand* head_demand,
+    long* derived_out,
+    bool* changed_out,
+    DeduceObservedRuleCounters* observed_rule_counters,
+    Interp* interp
+) {
+    deduce_worker_scratch_trace("dry_run_rule_begin", component_id, (long)sig.head_predicate, 0);
+    Value* err = deduce_seminaive_evaluate_rule_with_groups(
+        db,
+        plan,
+        component_id,
+        sig,
+        txn,
+        current_delta_sets,
+        next_delta_sets,
+        scratch_visible_sets,
+        {},
+        head_demand,
+        null,
+        false,
+        true,
         true,
         derived_out,
         changed_out,
         observed_rule_counters,
         interp
     );
+    deduce_worker_scratch_trace(
+        "dry_run_rule_end",
+        component_id,
+        derived_out != null ? *derived_out : 0,
+        changed_out != null && *changed_out ? 1 : 0
+    );
+    return err;
 }
 
 fn Value* deduce_seminaive_finalize_aggregate_groups_for_signature(
@@ -671,6 +931,7 @@ fn Value* deduce_seminaive_finalize_aggregate_groups_for_signature(
         .db = db,
         .sig = sig,
         .txn = txn,
+        .head_demand = null,
         .head_dbi = head_dbi,
         .head_schema = head_schema,
         .head_tuple = head_tuple,
@@ -800,6 +1061,523 @@ fn Value* deduce_seminaive_clear_component_predicates(
     return null;
 }
 
+fn Value* deduce_seminaive_execute_component_rule_pass(
+    DeduceDb* db,
+    DeduceSccPlan* plan,
+    usz component_id,
+    MdbTxn* txn,
+    DeduceSignedDeltaSet[] current_delta_sets,
+    DeduceSignedDeltaSet[] next_delta_sets,
+    DeduceTupleSupportTable[] support_tables,
+    DeduceSemiNaiveAggregateBatch* batches,
+    usz batch_count,
+    isz[] aggregate_rule_batch_ids,
+    bool[] processed,
+    bool seedless_only,
+    bool use_seeded_rules,
+    long* derived_out,
+    DeduceObservedRuleCounters[] observed_rules,
+    Interp* interp
+) {
+    if (db == null || plan == null || txn == null || processed.ptr == null || interp == null) {
+        return deduce_raise(interp, "deduce/analyze-invalid-state", "deduce/analyze: invalid recursive aggregate state");
+    }
+
+    Value* err = null;
+    for (usz i = 0; i < db.rule_signature_count && err == null; i++) {
+        if (i >= plan.rule_component_ids.len || plan.rule_component_ids[i] != component_id || processed[i]) continue;
+        DeduceRuleSignature* sig = &db.rule_signatures[i];
+        DeduceObservedRuleCounters* observed_rule =
+            observed_rules.ptr != null && i < observed_rules.len ? &observed_rules[i] : null;
+        bool has_aggregates = deduce_rule_signature_has_aggregates(sig);
+        long anchor_count = deduce_seminaive_rule_anchor_count(sig, plan, component_id);
+        if (!has_aggregates) {
+            if (seedless_only ? anchor_count != 0 : anchor_count == 0) continue;
+            err = deduce_seminaive_evaluate_rule_with_groups(
+                db,
+                plan,
+                component_id,
+                sig,
+                txn,
+                current_delta_sets,
+                next_delta_sets,
+                {},
+                support_tables,
+                null,
+                null,
+                true,
+                use_seeded_rules,
+                false,
+                derived_out,
+                null,
+                observed_rule,
+                interp
+            );
+            processed[i] = true;
+            continue;
+        }
+        if (seedless_only ? anchor_count != 0 : anchor_count == 0) continue;
+
+        if (i >= aggregate_rule_batch_ids.len || aggregate_rule_batch_ids[i] < 0) continue;
+        usz batch_idx = (usz)aggregate_rule_batch_ids[i];
+        if (batch_idx >= batch_count) continue;
+        err = deduce_seminaive_execute_component_aggregate_batch(
+            db,
+            plan,
+            component_id,
+            txn,
+            current_delta_sets,
+            next_delta_sets,
+            support_tables,
+            &batches[batch_idx],
+            batch_idx,
+            aggregate_rule_batch_ids,
+            processed,
+            seedless_only,
+            use_seeded_rules,
+            derived_out,
+            observed_rules,
+            interp
+        );
+    }
+    return err;
+}
+
+fn Value* deduce_seminaive_execute_component_aggregate_batch(
+    DeduceDb* db,
+    DeduceSccPlan* plan,
+    usz component_id,
+    MdbTxn* txn,
+    DeduceSignedDeltaSet[] current_delta_sets,
+    DeduceSignedDeltaSet[] next_delta_sets,
+    DeduceTupleSupportTable[] support_tables,
+    DeduceSemiNaiveAggregateBatch* batch,
+    usz batch_idx,
+    isz[] aggregate_rule_batch_ids,
+    bool[] processed,
+    bool seedless_only,
+    bool use_seeded_rules,
+    long* derived_out,
+    DeduceObservedRuleCounters[] observed_rules,
+    Interp* interp
+) {
+    if (db == null || plan == null || txn == null || processed.ptr == null || interp == null) {
+        return deduce_raise(interp, "deduce/analyze-invalid-state", "deduce/analyze: invalid recursive aggregate state");
+    }
+    if (batch == null) return null;
+
+    DeduceAggregateGroups* groups = &batch.groups;
+    Value* err = null;
+    for (usz i = 0; i < db.rule_signature_count && err == null; i++) {
+        if (i >= plan.rule_component_ids.len || plan.rule_component_ids[i] != component_id || processed[i]) continue;
+        DeduceRuleSignature* sig = &db.rule_signatures[i];
+        if (!deduce_rule_signature_has_aggregates(sig)) continue;
+        if (i >= aggregate_rule_batch_ids.len || aggregate_rule_batch_ids[i] != (isz)batch_idx) continue;
+
+        long anchor_count = deduce_seminaive_rule_anchor_count(sig, plan, component_id);
+        if (seedless_only ? anchor_count != 0 : anchor_count == 0) continue;
+
+        DeduceObservedRuleCounters* observed_rule =
+            observed_rules.ptr != null && i < observed_rules.len ? &observed_rules[i] : null;
+        err = deduce_seminaive_evaluate_rule_with_groups(
+            db,
+            plan,
+            component_id,
+            sig,
+            txn,
+            current_delta_sets,
+            next_delta_sets,
+            {},
+            support_tables,
+            null,
+            groups,
+            true,
+            use_seeded_rules,
+            false,
+            derived_out,
+            null,
+            observed_rule,
+            interp
+        );
+        processed[i] = true;
+        for (usz j = i + 1; err == null && j < db.rule_signature_count; j++) {
+            if (j >= plan.rule_component_ids.len || plan.rule_component_ids[j] != component_id || processed[j]) continue;
+            DeduceRuleSignature* other = &db.rule_signatures[j];
+            if (!deduce_rule_signature_has_aggregates(other)) continue;
+            if (j >= aggregate_rule_batch_ids.len || aggregate_rule_batch_ids[j] != (isz)batch_idx) continue;
+            long other_anchor_count = deduce_seminaive_rule_anchor_count(other, plan, component_id);
+            if (seedless_only ? other_anchor_count != 0 : other_anchor_count == 0) continue;
+            DeduceObservedRuleCounters* other_observed =
+                observed_rules.ptr != null && j < observed_rules.len ? &observed_rules[j] : null;
+            err = deduce_seminaive_evaluate_rule_with_groups(
+                db,
+                plan,
+                component_id,
+                other,
+                txn,
+                current_delta_sets,
+                next_delta_sets,
+                {},
+                support_tables,
+                null,
+                groups,
+                true,
+                use_seeded_rules,
+                false,
+                derived_out,
+                null,
+                other_observed,
+                interp
+            );
+            processed[j] = true;
+        }
+    }
+    return err;
+}
+
+fn Value* deduce_seminaive_compute_component_scratch_pass_payload(
+    DeduceDb* db,
+    DeduceSccPlan* plan,
+    usz component_id,
+    char** bytes_out,
+    usz* len_out,
+    Interp* interp
+) {
+    if (db == null || plan == null || component_id >= plan.component_count ||
+        bytes_out == null || len_out == null || interp == null) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: invalid worker-scratch component delta state");
+    }
+    *bytes_out = null;
+    *len_out = 0;
+    deduce_worker_scratch_trace("scratch_pass_begin", component_id, (long)db.rule_signature_count, 0);
+
+    bool recursive = plan.component_recursive.ptr != null &&
+        component_id < plan.component_recursive.len &&
+        plan.component_recursive[component_id];
+    if (!recursive) {
+        return deduce_raise(interp, "deduce/parallel-worker-scratch-component-not-recursive",
+            "deduce/parallel: worker scratch batches require a recursive component");
+    }
+    if (deduce_component_has_aggregate_rules(db, plan, component_id)) {
+        return deduce_raise(interp, "deduce/parallel-worker-scratch-aggregate-unsupported",
+            "deduce/parallel: worker scratch batches do not yet support aggregate recursive components");
+    }
+    if (deduce_component_has_negated_body_atoms(db, plan, component_id)) {
+        return deduce_raise(interp, "deduce/parallel-worker-scratch-negation-unsupported",
+            "deduce/parallel: worker scratch batches do not yet support negated recursive components");
+    }
+
+    DeduceSignedDeltaSet[] current_delta_sets = mem::new_array(DeduceSignedDeltaSet, plan.predicates.len);
+    if (current_delta_sets.ptr == null && plan.predicates.len > 0) {
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
+    defer {
+        if (current_delta_sets.ptr != null) {
+            for (usz i = 0; i < current_delta_sets.len; i++) deduce_signed_delta_set_release(&current_delta_sets[i]);
+            mem::free(current_delta_sets.ptr);
+        }
+    }
+
+    DeduceSignedDeltaSet[] next_delta_sets = mem::new_array(DeduceSignedDeltaSet, plan.predicates.len);
+    if (next_delta_sets.ptr == null && plan.predicates.len > 0) {
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
+    defer {
+        if (next_delta_sets.ptr != null) {
+            for (usz i = 0; i < next_delta_sets.len; i++) deduce_signed_delta_set_release(&next_delta_sets[i]);
+            mem::free(next_delta_sets.ptr);
+        }
+    }
+
+    DeduceDeltaTupleSet[] scratch_visible_sets = mem::new_array(DeduceDeltaTupleSet, plan.predicates.len);
+    if (scratch_visible_sets.ptr == null && plan.predicates.len > 0) {
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
+    defer {
+        if (scratch_visible_sets.ptr != null) {
+            for (usz i = 0; i < scratch_visible_sets.len; i++) deduce_delta_set_release(&scratch_visible_sets[i]);
+            mem::free(scratch_visible_sets.ptr);
+        }
+    }
+
+    for (usz i = 0; i < plan.predicates.len; i++) {
+        current_delta_sets[i] = {};
+        next_delta_sets[i] = {};
+        scratch_visible_sets[i] = {};
+    }
+
+    Value* seed_err = deduce_seminaive_seed_component_delta_sets(db, plan, component_id, current_delta_sets, interp);
+    if (seed_err != null) return seed_err;
+
+    MdbTxn* txn = null;
+    int rc = mdb_txn_begin(db.env, null, MDB_RDONLY, &txn);
+    if (rc != MDB_SUCCESS || txn == null) {
+        return deduce_raise(interp, "deduce/txn-failed", "deduce/analyze: txn open failed");
+    }
+    defer if (txn != null) mdb_txn_abort(txn);
+
+    bool changed = false;
+    long derived = 0;
+    for (usz i = 0; i < db.rule_signature_count; i++) {
+        if (i >= plan.rule_component_ids.len || plan.rule_component_ids[i] != component_id) continue;
+        DeduceRuleSignature* sig = &db.rule_signatures[i];
+        deduce_worker_scratch_trace("scratch_pass_rule_loop_begin", component_id, (long)i, (long)sig.head_predicate);
+        Value* err = deduce_seminaive_evaluate_rule_dry_run(
+            db,
+            plan,
+            component_id,
+            sig,
+            txn,
+            current_delta_sets,
+            next_delta_sets,
+            scratch_visible_sets,
+            null,
+            &derived,
+            &changed,
+            null,
+            interp
+        );
+        if (err != null) return err;
+        deduce_worker_scratch_trace(
+            "scratch_pass_rule_loop_after_dry_run",
+            component_id,
+            (long)deduce_worker_scratch_component_next_additions_count(plan, component_id, next_delta_sets),
+            (long)deduce_worker_scratch_component_visible_tuple_count(plan, component_id, scratch_visible_sets)
+        );
+
+        err = deduce_seminaive_accumulate_component_visible_additions(
+            plan,
+            component_id,
+            next_delta_sets,
+            scratch_visible_sets,
+            interp
+        );
+        if (err != null) return err;
+        deduce_worker_scratch_trace(
+            "scratch_pass_rule_loop_after_accumulate_visible",
+            component_id,
+            (long)deduce_worker_scratch_component_next_additions_count(plan, component_id, next_delta_sets),
+            (long)deduce_worker_scratch_component_visible_tuple_count(plan, component_id, scratch_visible_sets)
+        );
+    }
+    deduce_worker_scratch_trace(
+        "scratch_pass_end_before_serialize",
+        component_id,
+        (long)deduce_worker_scratch_component_next_additions_count(plan, component_id, next_delta_sets),
+        (long)deduce_worker_scratch_component_visible_tuple_count(plan, component_id, scratch_visible_sets)
+    );
+
+    return deduce_component_delta_payload_serialize(plan, component_id, next_delta_sets, bytes_out, len_out, interp);
+}
+
+fn bool deduce_component_has_worker_scratch_single_recursive_atom_shape(
+    DeduceDb* db,
+    DeduceSccPlan* plan,
+    usz component_id
+) {
+    if (db == null || plan == null) return false;
+    for (usz i = 0; i < db.rule_signature_count; i++) {
+        if (i >= plan.rule_component_ids.len || plan.rule_component_ids[i] != component_id) continue;
+        DeduceRuleSignature* sig = &db.rule_signatures[i];
+        usz recursive_atom_count = 0;
+        for (usz body_idx = 0; body_idx < sig.body_count; body_idx++) {
+            if (sig.body_negated != null && sig.body_negated[body_idx]) continue;
+            if (sig.body_predicates == null) return false;
+            if (!deduce_scc_predicate_in_component(plan, sig.body_predicates[body_idx], component_id)) continue;
+            recursive_atom_count++;
+            if (recursive_atom_count > 1) return false;
+        }
+    }
+    return true;
+}
+
+fn Value* deduce_seminaive_accumulate_component_additions(
+    DeduceSccPlan* plan,
+    usz component_id,
+    DeduceSignedDeltaSet[] source,
+    DeduceSignedDeltaSet[] target,
+    Interp* interp
+) {
+    if (plan == null || interp == null) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: invalid scratch accumulation state");
+    }
+    for (usz pred_idx = 0; pred_idx < plan.predicates.len; pred_idx++) {
+        if (pred_idx >= plan.predicate_component.len || pred_idx >= source.len || pred_idx >= target.len) continue;
+        int pred_component = plan.predicate_component[pred_idx];
+        if (pred_component < 0 || (usz)pred_component != component_id) continue;
+        for (usz tuple_idx = 0; tuple_idx < source[pred_idx].additions.count; tuple_idx++) {
+            DeduceEncodedTuple tuple = source[pred_idx].additions.tuples[tuple_idx];
+            Value* err = deduce_delta_set_insert(&target[pred_idx].additions, tuple.key_bytes, tuple.key_len, interp);
+            if (err != null) return err;
+        }
+    }
+    return null;
+}
+
+fn Value* deduce_seminaive_compute_component_scratch_closure_payload(
+    DeduceDb* db,
+    DeduceSccPlan* plan,
+    usz component_id,
+    usz iteration_limit,
+    char** bytes_out,
+    usz* len_out,
+    Interp* interp
+) {
+    if (db == null || plan == null || component_id >= plan.component_count ||
+        bytes_out == null || len_out == null || interp == null) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: invalid worker-scratch closure state");
+    }
+    *bytes_out = null;
+    *len_out = 0;
+
+    bool recursive = plan.component_recursive.ptr != null &&
+        component_id < plan.component_recursive.len &&
+        plan.component_recursive[component_id];
+    if (!recursive) {
+        return deduce_raise(interp, "deduce/parallel-worker-scratch-component-not-recursive",
+            "deduce/parallel: worker scratch closure requires a recursive component");
+    }
+    if (deduce_component_has_aggregate_rules(db, plan, component_id)) {
+        return deduce_raise(interp, "deduce/parallel-worker-scratch-aggregate-unsupported",
+            "deduce/parallel: worker scratch closure does not yet support aggregate recursive components");
+    }
+    if (deduce_component_has_negated_body_atoms(db, plan, component_id)) {
+        return deduce_raise(interp, "deduce/parallel-worker-scratch-negation-unsupported",
+            "deduce/parallel: worker scratch closure does not yet support negated recursive components");
+    }
+    if (!deduce_component_has_worker_scratch_single_recursive_atom_shape(db, plan, component_id)) {
+        return deduce_raise(interp, "deduce/parallel-worker-scratch-multi-atom-unsupported",
+            "deduce/parallel: worker scratch closure does not yet support multi-atom recursive rule shapes");
+    }
+
+    DeduceSignedDeltaSet[] current_delta_sets = mem::new_array(DeduceSignedDeltaSet, plan.predicates.len);
+    if (current_delta_sets.ptr == null && plan.predicates.len > 0) {
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
+    defer {
+        if (current_delta_sets.ptr != null) {
+            for (usz i = 0; i < current_delta_sets.len; i++) deduce_signed_delta_set_release(&current_delta_sets[i]);
+            mem::free(current_delta_sets.ptr);
+        }
+    }
+
+    DeduceSignedDeltaSet[] next_delta_sets = mem::new_array(DeduceSignedDeltaSet, plan.predicates.len);
+    if (next_delta_sets.ptr == null && plan.predicates.len > 0) {
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
+    defer {
+        if (next_delta_sets.ptr != null) {
+            for (usz i = 0; i < next_delta_sets.len; i++) deduce_signed_delta_set_release(&next_delta_sets[i]);
+            mem::free(next_delta_sets.ptr);
+        }
+    }
+
+    DeduceSignedDeltaSet[] accumulated_delta_sets = mem::new_array(DeduceSignedDeltaSet, plan.predicates.len);
+    if (accumulated_delta_sets.ptr == null && plan.predicates.len > 0) {
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
+    defer {
+        if (accumulated_delta_sets.ptr != null) {
+            for (usz i = 0; i < accumulated_delta_sets.len; i++) deduce_signed_delta_set_release(&accumulated_delta_sets[i]);
+            mem::free(accumulated_delta_sets.ptr);
+        }
+    }
+
+    DeduceDeltaTupleSet[] scratch_visible_sets = mem::new_array(DeduceDeltaTupleSet, plan.predicates.len);
+    if (scratch_visible_sets.ptr == null && plan.predicates.len > 0) {
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
+    defer {
+        if (scratch_visible_sets.ptr != null) {
+            for (usz i = 0; i < scratch_visible_sets.len; i++) deduce_delta_set_release(&scratch_visible_sets[i]);
+            mem::free(scratch_visible_sets.ptr);
+        }
+    }
+
+    for (usz i = 0; i < plan.predicates.len; i++) {
+        current_delta_sets[i] = {};
+        next_delta_sets[i] = {};
+        accumulated_delta_sets[i] = {};
+        scratch_visible_sets[i] = {};
+    }
+
+    Value* seed_err = deduce_seminaive_seed_component_delta_sets(db, plan, component_id, current_delta_sets, interp);
+    if (seed_err != null) return seed_err;
+
+    MdbTxn* txn = null;
+    int rc = mdb_txn_begin(db.env, null, MDB_RDONLY, &txn);
+    if (rc != MDB_SUCCESS || txn == null) {
+        return deduce_raise(interp, "deduce/txn-failed", "deduce/analyze: txn open failed");
+    }
+    defer if (txn != null) mdb_txn_abort(txn);
+
+    usz limit = iteration_limit > 0 ? iteration_limit : 256;
+    for (usz iter = 0; iter < limit; iter++) {
+        bool changed = false;
+        long derived = 0;
+        for (usz i = 0; i < db.rule_signature_count; i++) {
+            if (i >= plan.rule_component_ids.len || plan.rule_component_ids[i] != component_id) continue;
+            DeduceRuleSignature* sig = &db.rule_signatures[i];
+            Value* err = deduce_seminaive_evaluate_rule_with_groups(
+                db,
+                plan,
+                component_id,
+                sig,
+                txn,
+                current_delta_sets,
+                next_delta_sets,
+                scratch_visible_sets,
+                {},
+                null,
+                null,
+                false,
+                true,
+                true,
+                &derived,
+                &changed,
+                null,
+                interp
+            );
+            if (err != null) return err;
+        }
+
+        bool has_delta = deduce_seminaive_component_has_delta(plan, component_id, next_delta_sets);
+        if (!has_delta) {
+            return deduce_component_delta_payload_serialize(plan, component_id, accumulated_delta_sets, bytes_out, len_out, interp);
+        }
+
+        Value* err = deduce_seminaive_accumulate_component_additions(
+            plan,
+            component_id,
+            next_delta_sets,
+            accumulated_delta_sets,
+            interp
+        );
+        if (err != null) return err;
+
+        err = deduce_seminaive_accumulate_component_visible_additions(
+            plan,
+            component_id,
+            next_delta_sets,
+            scratch_visible_sets,
+            interp
+        );
+        if (err != null) return err;
+
+        for (usz i = 0; i < plan.predicates.len; i++) {
+            deduce_signed_delta_set_release(&current_delta_sets[i]);
+            current_delta_sets[i] = next_delta_sets[i];
+            next_delta_sets[i] = {};
+        }
+    }
+
+    Value* data = deduce_analyze_iteration_limit_payload(interp, component_id, limit);
+    return deduce_raise(interp, "deduce/analyze-iteration-limit", "deduce/analyze: recursive stratum iteration limit reached", data);
+}
+
 fn Value* deduce_seminaive_evaluate_recursive_aggregate_component(
     DeduceDb* db,
     DeduceSccPlan* plan,
@@ -906,19 +1684,19 @@ fn Value* deduce_seminaive_evaluate_recursive_aggregate_component(
     }
     defer if (processed.ptr != null) mem::free(processed.ptr);
 
-    MdbTxn* seed_txn = null;
-    int rc = mdb_txn_begin(db.env, null, 0, &seed_txn);
-    if (rc != MDB_SUCCESS || seed_txn == null) {
+    MdbTxn* txn = null;
+    int rc = mdb_txn_begin(db.env, null, 0, &txn);
+    if (rc != MDB_SUCCESS || txn == null) {
         return deduce_raise(interp, "deduce/txn-failed", "deduce/analyze: txn open failed");
     }
 
-    Value* err = deduce_seminaive_clear_component_predicates(db, plan, component_id, seed_txn, interp);
+    Value* err = deduce_seminaive_clear_component_predicates(db, plan, component_id, txn, interp);
     if (err == null) {
         err = deduce_seminaive_seed_component_extensional_state_in_txn(
             db,
             plan,
             component_id,
-            seed_txn,
+            txn,
             next_delta_sets,
             support_tables,
             true,
@@ -927,86 +1705,24 @@ fn Value* deduce_seminaive_evaluate_recursive_aggregate_component(
     }
     if (err == null) {
         for (usz i = 0; i < processed.len; i++) processed[i] = false;
-        for (usz i = 0; i < db.rule_signature_count && err == null; i++) {
-            if (i >= plan.rule_component_ids.len || plan.rule_component_ids[i] != component_id || processed[i]) continue;
-            DeduceRuleSignature* sig = &db.rule_signatures[i];
-            DeduceObservedRuleCounters* observed_rule =
-                observed_rules.ptr != null && i < observed_rules.len ? &observed_rules[i] : null;
-            if (!deduce_rule_signature_has_aggregates(sig)) {
-                if (deduce_seminaive_rule_anchor_count(sig, plan, component_id) != 0) continue;
-                err = deduce_seminaive_evaluate_rule_with_groups(
-                    db,
-                    plan,
-                    component_id,
-                    sig,
-                    seed_txn,
-                    current_delta_sets,
-                    next_delta_sets,
-                    support_tables,
-                    null,
-                    true,
-                    true,
-                    derived_out,
-                    null,
-                    observed_rule,
-                    interp
-                );
-                processed[i] = true;
-                continue;
-            }
-            if (deduce_seminaive_rule_anchor_count(sig, plan, component_id) != 0) continue;
-
-            DeduceAggregateGroups* groups = null;
-            if (i < aggregate_rule_batch_ids.len && aggregate_rule_batch_ids[i] >= 0) {
-                usz batch_idx = (usz)aggregate_rule_batch_ids[i];
-                if (batch_idx < batch_count) groups = &batches[batch_idx].groups;
-            }
-            err = deduce_seminaive_evaluate_rule_with_groups(
-                db,
-                plan,
-                component_id,
-                sig,
-                seed_txn,
-                current_delta_sets,
-                next_delta_sets,
-                support_tables,
-                groups,
-                true,
-                true,
-                derived_out,
-                null,
-                observed_rule,
-                interp
-            );
-            processed[i] = true;
-            for (usz j = i + 1; err == null && j < db.rule_signature_count; j++) {
-                if (j >= plan.rule_component_ids.len || plan.rule_component_ids[j] != component_id || processed[j]) continue;
-                DeduceRuleSignature* other = &db.rule_signatures[j];
-                if (!deduce_rule_signature_has_aggregates(other)) continue;
-                if (j >= aggregate_rule_batch_ids.len || aggregate_rule_batch_ids[j] != aggregate_rule_batch_ids[i]) continue;
-                if (deduce_seminaive_rule_anchor_count(other, plan, component_id) != 0) continue;
-                DeduceObservedRuleCounters* other_observed =
-                    observed_rules.ptr != null && j < observed_rules.len ? &observed_rules[j] : null;
-                err = deduce_seminaive_evaluate_rule_with_groups(
-                    db,
-                    plan,
-                    component_id,
-                    other,
-                    seed_txn,
-                    current_delta_sets,
-                    next_delta_sets,
-                    support_tables,
-                    groups,
-                    true,
-                    true,
-                    derived_out,
-                    null,
-                    other_observed,
-                    interp
-                );
-                processed[j] = true;
-            }
-        }
+        err = deduce_seminaive_execute_component_rule_pass(
+            db,
+            plan,
+            component_id,
+            txn,
+            current_delta_sets,
+            next_delta_sets,
+            support_tables,
+            batches,
+            batch_count,
+            aggregate_rule_batch_ids,
+            processed,
+            true,
+            true,
+            derived_out,
+            observed_rules,
+            interp
+        );
     }
     for (usz batch_idx = 0; batch_idx < batch_count && err == null; batch_idx++) {
         err = deduce_seminaive_finalize_aggregate_groups_for_signature(
@@ -1014,7 +1730,7 @@ fn Value* deduce_seminaive_evaluate_recursive_aggregate_component(
             plan,
             component_id,
             batches[batch_idx].sig,
-            seed_txn,
+            txn,
             &batches[batch_idx].groups,
             next_delta_sets,
             support_tables,
@@ -1024,12 +1740,8 @@ fn Value* deduce_seminaive_evaluate_recursive_aggregate_component(
         );
     }
     if (err != null) {
-        mdb_txn_abort(seed_txn);
+        mdb_txn_abort(txn);
         return err;
-    }
-    rc = mdb_txn_commit(seed_txn);
-    if (rc != MDB_SUCCESS) {
-        return deduce_raise(interp, "deduce/txn-failed", "deduce/analyze: txn commit failed");
     }
     if (iterations_out != null && *iterations_out < long.max) *iterations_out = *iterations_out + 1;
 
@@ -1040,97 +1752,38 @@ fn Value* deduce_seminaive_evaluate_recursive_aggregate_component(
 
     usz limit = iteration_limit > 0 ? iteration_limit : 256;
     for (usz iter = 1; iter < limit; iter++) {
-        if (!deduce_seminaive_component_has_delta(plan, component_id, current_delta_sets)) return null;
-
-        MdbTxn* txn = null;
-        rc = mdb_txn_begin(db.env, null, 0, &txn);
-        if (rc != MDB_SUCCESS || txn == null) {
-            return deduce_raise(interp, "deduce/txn-failed", "deduce/analyze: txn open failed");
+        if (!deduce_seminaive_component_has_delta(plan, component_id, current_delta_sets)) {
+            Value* validate_err = deduce_validate_component_ref_head_snapshots(db, plan, component_id, txn, interp);
+            if (validate_err != null) {
+                mdb_txn_abort(txn);
+                return validate_err;
+            }
+            rc = mdb_txn_commit(txn);
+            if (rc != MDB_SUCCESS) {
+                return deduce_raise(interp, "deduce/txn-failed", "deduce/analyze: txn commit failed");
+            }
+            return null;
         }
 
         for (usz i = 0; i < processed.len; i++) processed[i] = false;
-        for (usz i = 0; i < db.rule_signature_count; i++) {
-            if (i >= plan.rule_component_ids.len || plan.rule_component_ids[i] != component_id || processed[i]) continue;
-            DeduceRuleSignature* sig = &db.rule_signatures[i];
-            DeduceObservedRuleCounters* observed_rule =
-                observed_rules.ptr != null && i < observed_rules.len ? &observed_rules[i] : null;
-            if (!deduce_rule_signature_has_aggregates(sig)) {
-                if (deduce_seminaive_rule_anchor_count(sig, plan, component_id) == 0) continue;
-                err = deduce_seminaive_evaluate_rule_with_groups(
-                    db,
-                    plan,
-                    component_id,
-                    sig,
-                    txn,
-                    current_delta_sets,
-                    next_delta_sets,
-                    support_tables,
-                    null,
-                    true,
-                    false,
-                    derived_out,
-                    null,
-                    observed_rule,
-                    interp
-                );
-                processed[i] = true;
-                if (err != null) break;
-                continue;
-            }
-            if (deduce_seminaive_rule_anchor_count(sig, plan, component_id) == 0) continue;
-
-            DeduceAggregateGroups* groups = null;
-            if (i < aggregate_rule_batch_ids.len && aggregate_rule_batch_ids[i] >= 0) {
-                usz batch_idx = (usz)aggregate_rule_batch_ids[i];
-                if (batch_idx < batch_count) groups = &batches[batch_idx].groups;
-            }
-            err = deduce_seminaive_evaluate_rule_with_groups(
-                db,
-                plan,
-                component_id,
-                sig,
-                txn,
-                current_delta_sets,
-                next_delta_sets,
-                support_tables,
-                groups,
-                true,
-                false,
-                derived_out,
-                null,
-                observed_rule,
-                interp
-            );
-            processed[i] = true;
-            for (usz j = i + 1; err == null && j < db.rule_signature_count; j++) {
-                if (j >= plan.rule_component_ids.len || plan.rule_component_ids[j] != component_id || processed[j]) continue;
-                DeduceRuleSignature* other = &db.rule_signatures[j];
-                if (!deduce_rule_signature_has_aggregates(other)) continue;
-                if (j >= aggregate_rule_batch_ids.len || aggregate_rule_batch_ids[j] != aggregate_rule_batch_ids[i]) continue;
-                if (deduce_seminaive_rule_anchor_count(other, plan, component_id) == 0) continue;
-                DeduceObservedRuleCounters* other_observed =
-                    observed_rules.ptr != null && j < observed_rules.len ? &observed_rules[j] : null;
-                err = deduce_seminaive_evaluate_rule_with_groups(
-                    db,
-                    plan,
-                    component_id,
-                    other,
-                    txn,
-                    current_delta_sets,
-                    next_delta_sets,
-                    support_tables,
-                    groups,
-                    true,
-                    false,
-                    derived_out,
-                    null,
-                    other_observed,
-                    interp
-                );
-                processed[j] = true;
-            }
-            if (err != null) break;
-        }
+        err = deduce_seminaive_execute_component_rule_pass(
+            db,
+            plan,
+            component_id,
+            txn,
+            current_delta_sets,
+            next_delta_sets,
+            support_tables,
+            batches,
+            batch_count,
+            aggregate_rule_batch_ids,
+            processed,
+            false,
+            false,
+            derived_out,
+            observed_rules,
+            interp
+        );
 
         for (usz batch_idx = 0; batch_idx < batch_count && err == null; batch_idx++) {
             err = deduce_seminaive_finalize_aggregate_groups_for_signature(
@@ -1152,10 +1805,6 @@ fn Value* deduce_seminaive_evaluate_recursive_aggregate_component(
             mdb_txn_abort(txn);
             return err;
         }
-        rc = mdb_txn_commit(txn);
-        if (rc != MDB_SUCCESS) {
-            return deduce_raise(interp, "deduce/txn-failed", "deduce/analyze: txn commit failed");
-        }
         if (iterations_out != null && *iterations_out < long.max) *iterations_out = *iterations_out + 1;
 
         bool has_delta = deduce_seminaive_component_has_delta(plan, component_id, next_delta_sets);
@@ -1164,9 +1813,21 @@ fn Value* deduce_seminaive_evaluate_recursive_aggregate_component(
             current_delta_sets[i] = next_delta_sets[i];
             next_delta_sets[i] = {};
         }
-        if (!has_delta) return null;
+        if (!has_delta) {
+            Value* validate_err = deduce_validate_component_ref_head_snapshots(db, plan, component_id, txn, interp);
+            if (validate_err != null) {
+                mdb_txn_abort(txn);
+                return validate_err;
+            }
+            rc = mdb_txn_commit(txn);
+            if (rc != MDB_SUCCESS) {
+                return deduce_raise(interp, "deduce/txn-failed", "deduce/analyze: txn commit failed");
+            }
+            return null;
+        }
     }
 
+    mdb_txn_abort(txn);
     Value* data = deduce_analyze_iteration_limit_payload(interp, component_id, limit);
     return deduce_raise(interp, "deduce/analyze-iteration-limit",
         "deduce/analyze: recursive stratum iteration limit reached", data);

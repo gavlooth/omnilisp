@@ -5,7 +5,7 @@ import std::io;
 /**
  * Run all stack engine tests.
  */
-fn void run_stack_engine_tests() {
+fn void run_stack_engine_tests(int* out_pass, int* out_fail) {
     g_stack_quiet_output =
         getenv("OMNI_TEST_QUIET") != null ||
         (stack_summary_enabled() && getenv("OMNI_TEST_VERBOSE") == null);
@@ -93,4 +93,7 @@ fn void run_stack_engine_tests() {
     emit_stack_defer_summary();
     emit_stack_summary(pass, fail);
     io::printfn("========================================\n");
+
+    if (out_pass != null) *out_pass = pass;
+    if (out_fail != null) *out_fail = fail;
 }

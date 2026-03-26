@@ -36,6 +36,8 @@ fn void run_scheduler_offload_worker_retry_full_wakeup_boundary_tests(Interp* in
 
         usz enqueues_before = g_scheduler.reliable_wakeup_enqueues.load();
         usz failures_before = g_scheduler.wakeup_enqueue_failures.load();
+        usz pooled_hits_before = scheduler_offload_queued_work_free_hits;
+        usz pooled_retained_before = scheduler_offload_queued_work_recycle_retained;
         usz pushed_fill = 0;
         for (usz j = 0; j < 512; j++) {
             if (scheduler_publish_poll_error(MAX_FIBERS + i * 512 + j + 1, -1)) {
@@ -99,18 +101,46 @@ fn void run_scheduler_offload_worker_retry_full_wakeup_boundary_tests(Interp* in
                             g_scheduler.pending_offloads[0].completion == null;
         usz failure_delta = g_scheduler.wakeup_enqueue_failures.load() - failures_before;
         usz enqueue_delta = g_scheduler.reliable_wakeup_enqueues.load() - enqueues_before;
+        usz pooled_hits_delta = scheduler_offload_queued_work_free_hits - pooled_hits_before;
+        usz pooled_retained_delta = scheduler_offload_queued_work_recycle_retained - pooled_retained_before;
+        QueuedOffloadWork* recycle_probe = scheduler_offload_take_queued_work();
+        bool reset_ok = recycle_probe != null &&
+                        recycle_probe.work.fiber_id == 0 &&
+                        recycle_probe.work.task_id == 0 &&
+                        recycle_probe.work.wake_epoch == 0 &&
+                        recycle_probe.work.op == OFFLOAD_SLEEP_MS &&
+                        recycle_probe.work.int_arg == 0 &&
+                        recycle_probe.work.int_arg2 == 0 &&
+                        recycle_probe.work.shared == null &&
+                        recycle_probe.work.custom_fn == null &&
+                        recycle_probe.work.custom_ctx == null &&
+                        recycle_probe.task_generation == 0 &&
+                        recycle_probe.completion == null &&
+                        !recycle_probe.executed &&
+                        recycle_probe.next_free == null;
+        if (recycle_probe != null) {
+            scheduler_offload_recycle_queued_work(recycle_probe);
+        }
+        bool bounded_ok = g_scheduler.offload_admission.queued_free_count <= g_scheduler.offload_admission.max_in_flight;
         // Global scheduler state is shared across isolated test groups, so
         // unrelated in-flight async completions may legitimately add extra
         // reliable-wakeup enqueues beyond this cycle's expected +1 offload
         // completion signal.
         bool enqueue_ok = failure_delta == 0 && enqueue_delta >= pushed_fill + 1;
-        bool cycle_ok = completion_ready && consume_ok && queue_empty && slot_cleared && enqueue_ok && state_ok;
+        bool reuse_ok = pooled_retained_delta >= 1 && (i == 0 || pooled_hits_delta >= 1);
+        bool cycle_ok = completion_ready && consume_ok && queue_empty && slot_cleared && enqueue_ok && reuse_ok && reset_ok && bounded_ok && state_ok;
         scheduler_test_cleanup_single_fiber_no_async(saved_async);
         if (!cycle_ok) {
             ok = false;
             failed_step = i;
             if (!enqueue_ok) {
                 failed_phase = "enqueue";
+            } else if (!reuse_ok) {
+                failed_phase = "reuse";
+            } else if (!reset_ok) {
+                failed_phase = "reset";
+            } else if (!bounded_ok) {
+                failed_phase = "bounded";
             } else if (!completion_ready || !consume_ok || !slot_cleared) {
                 failed_phase = "completion";
             } else if (!queue_empty) {

@@ -20,6 +20,10 @@ fn Value* deduce_bench_make_bound_tuple(Interp* interp, long id, long score) {
     );
 }
 
+fn bool deduce_scan_range_oom_probe_enabled() @inline {
+    return test_c_getenv("OMNI_DEDUCE_FORCE_ROW_DICT_OOM") != null;
+}
+
 fn void run_deduce_scan_tests(Interp* interp, int* pass, int* fail) {
     deduce_test_expect_int_at_least(
         interp,
@@ -53,6 +57,43 @@ fn void run_deduce_scan_tests(Interp* interp, int* pass, int* fail) {
 }
 
 fn void run_deduce_scan_range_tests(Interp* interp, int* pass, int* fail) {
+    if (deduce_scan_range_oom_probe_enabled()) {
+        EvalResult rel_run = run(
+            "(block "
+            "  (define scan-range-db (deduce 'open 'memory)) "
+            "  (define [relation scan-range-db] scan_range_person (name) (age) (email)) "
+            "  scan_range_person "
+            ")",
+            interp
+        );
+        if (rel_run.error.has_error || rel_run.value == null || rel_run.value.tag != FFI_HANDLE || rel_run.value.ffi_val == null || rel_run.value.ffi_val.lib_handle == null) {
+            io::printn("[FAIL] deduce 'scan-range row-dict oom probe (failed to prepare relation)");
+            (*fail)++;
+            return;
+        }
+
+        Relation* rel = (Relation*)rel_run.value.ffi_val.lib_handle;
+        Value*[3] vals = {
+            make_int(interp, 30),
+            make_int(interp, 40),
+            make_int(interp, 50),
+        };
+        Value* dict = deduce_relation_materialize_row_dict(
+            rel,
+            vals[..],
+            interp,
+            deduce_relation_row_dict_capacity(rel)
+        );
+        if (dict == null || dict.tag == ERROR) {
+            io::printn("[PASS] deduce 'scan-range row-dict oom probe");
+            (*pass)++;
+            return;
+        }
+        io::printn("[FAIL] deduce 'scan-range row-dict oom probe (expected OOM guard)");
+        (*fail)++;
+        return;
+    }
+
     setup(interp,
         "(block "
         "  (define scan-range-db (deduce 'open 'memory)) "

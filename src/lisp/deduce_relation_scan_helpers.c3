@@ -16,6 +16,7 @@ struct DeduceTupleIterator {
     Relation* rel;
     Interp*   interp;
     MdbTxn*   txn;
+    bool      owns_txn;
     MdbCursor* cursor;
     MdbVal    key;
     MdbVal    data;
@@ -97,6 +98,53 @@ fn bool deduce_tuple_iterator_open(
 
     it.started = false;
     it.open = true;
+    it.owns_txn = true;
+    return true;
+}
+
+fn bool deduce_tuple_iterator_open_in_txn(
+    DeduceTupleIterator* it,
+    Relation* rel,
+    Interp* interp,
+    MdbTxn* txn,
+    char* start_key,
+    usz start_key_len,
+    bool has_start,
+    Value*[] lower_bound,
+    Value*[] upper_bound,
+    bool has_end
+) {
+    if (it == null || rel == null || interp == null || txn == null) return false;
+    if (rel.db == null || !rel.db.open) return false;
+
+    *it = {};
+    it.rel = rel;
+    it.interp = interp;
+    it.txn = txn;
+    it.owns_txn = false;
+    it.start_key = start_key;
+    it.start_key_len = start_key_len;
+    it.has_start = has_start;
+    it.lower_bound = lower_bound;
+    it.upper_bound = upper_bound;
+    it.has_end = has_end;
+
+    if (rel.col_count > 0) {
+        it.vals = mem::new_array(Value*, rel.col_count);
+        if (it.vals.ptr == null) return false;
+    }
+
+    int rc = mdb_cursor_open(txn, rel.dbi, &it.cursor);
+    if (rc != MDB_SUCCESS || it.cursor == null) {
+        if (it.vals.ptr != null) {
+            mem::free(it.vals.ptr);
+            it.vals = {};
+        }
+        return false;
+    }
+
+    it.started = false;
+    it.open = true;
     return true;
 }
 
@@ -106,10 +154,10 @@ fn void deduce_tuple_iterator_close(DeduceTupleIterator* it) {
         mdb_cursor_close(it.cursor);
         it.cursor = null;
     }
-    if (it.txn != null) {
+    if (it.txn != null && it.owns_txn) {
         mdb_txn_abort(it.txn);
-        it.txn = null;
     }
+    it.txn = null;
     if (it.vals.ptr != null) {
         mem::free(it.vals.ptr);
         it.vals = {};

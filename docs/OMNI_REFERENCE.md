@@ -1,6 +1,6 @@
 # Omni Lisp Reference
 
-**Version 0.1.5** | **March 2026**
+**Version 0.2.0** | **March 2026**
 
 Omni is a Lisp with modern semantics: strict-arity lambdas, algebraic effects,
 delimited continuations, multiple dispatch, structural types, and region-based

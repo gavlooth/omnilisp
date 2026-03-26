@@ -8,7 +8,7 @@ coverage for:
 ## Benchmark Surface
 
 Implemented in:
-- `src/lisp/tests_advanced_type_effect_ffi_groups.c3`
+- `src/lisp/tests_advanced_type_dispatch_groups.c3`
   - `run_advanced_dispatch_hot_path_benchmarks(...)`
   - env gate: `OMNI_DISPATCH_BENCH`
   - summary line: `OMNI_BENCH_SUMMARY suite=dispatch_hot_path ...`

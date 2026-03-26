@@ -42,6 +42,32 @@ fn Value* deduce_naive_eval_rule_step(
     }
     defer if (tuple_vals.ptr != null) mem::free(tuple_vals.ptr);
 
+    Value*[] prefix_probe_values = {};
+    usz prefix_probe_len = 0;
+    char[4096] prefix_probe_key_buf;
+    usz prefix_probe_key_len = 0;
+    bool use_prefix_probe =
+        exec.head_demand != null &&
+        !negated;
+    if (use_prefix_probe && body_schema.arity > 0) {
+        prefix_probe_values = mem::new_array(Value*, body_schema.arity);
+        if (prefix_probe_values.ptr == null) {
+            return deduce_raise(exec.interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
+        if (!deduce_rule_build_step_prefix_probe(exec.sig, step_idx, var_bound, var_values, prefix_probe_values, &prefix_probe_len)) {
+            use_prefix_probe = false;
+        } else {
+            usz? encoded_prefix_len = encode_tuple(prefix_probe_values[0:prefix_probe_len], prefix_probe_key_buf[..], prefix_probe_key_buf.len);
+            if (catch err = encoded_prefix_len) {
+                use_prefix_probe = false;
+                prefix_probe_len = 0;
+            } else {
+                prefix_probe_key_len = encoded_prefix_len;
+            }
+        }
+    }
+    defer if (prefix_probe_values.ptr != null) mem::free(prefix_probe_values.ptr);
+
     MdbCursor* cursor = null;
     int rc = mdb_cursor_open(exec.txn, body_dbi, &cursor);
     if (rc != MDB_SUCCESS || cursor == null) {
@@ -51,7 +77,13 @@ fn Value* deduce_naive_eval_rule_step(
 
     MdbVal key = {};
     MdbVal data = {};
-    rc = mdb_cursor_get(cursor, &key, &data, MDB_FIRST);
+    if (use_prefix_probe) {
+        key.mv_data = &prefix_probe_key_buf[0];
+        key.mv_size = prefix_probe_key_len;
+        rc = mdb_cursor_get(cursor, &key, &data, MDB_SET_RANGE);
+    } else {
+        rc = mdb_cursor_get(cursor, &key, &data, MDB_FIRST);
+    }
 
     if (negated) {
         bool found_match = false;
@@ -66,6 +98,7 @@ fn Value* deduce_naive_eval_rule_step(
                 rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
                 continue;
             }
+            if (use_prefix_probe && !deduce_tuple_matches_prefix(tuple_vals, prefix_probe_values, prefix_probe_len)) break;
             if (deduce_rule_match_negated_tuple(exec.sig, step_idx, tuple_vals, var_bound, var_values)) {
                 found_match = true;
                 break;
@@ -100,6 +133,7 @@ fn Value* deduce_naive_eval_rule_step(
             rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
             continue;
         }
+        if (use_prefix_probe && !deduce_tuple_matches_prefix(tuple_vals, prefix_probe_values, prefix_probe_len)) break;
 
         for (usz i = 0; i < var_bound.len; i++) candidate_bound[i] = var_bound[i];
         for (usz i = 0; i < var_values.len; i++) candidate_values[i] = var_values[i];
@@ -118,6 +152,7 @@ fn Value* deduce_naive_evaluate_rule_with_groups(
     DeduceDb* db,
     DeduceRuleSignature* sig,
     MdbTxn* txn,
+    DeduceRuleHeadDemand* head_demand,
     DeduceAggregateGroups* shared_aggregate_groups,
     bool finalize_aggregates,
     long* derived_out,
@@ -158,6 +193,10 @@ fn Value* deduce_naive_evaluate_rule_with_groups(
     defer mem::free(var_bound.ptr);
     for (usz i = 0; i < var_bound.len; i++) var_bound[i] = false;
 
+    if (!deduce_rule_apply_head_demand(sig, head_demand, var_bound, var_values)) {
+        return null;
+    }
+
     Value*[] head_tuple = {};
     if (sig.head_term_count > 0) {
         head_tuple = mem::new_array(Value*, sig.head_term_count);
@@ -181,6 +220,7 @@ fn Value* deduce_naive_evaluate_rule_with_groups(
         .db = db,
         .sig = sig,
         .txn = txn,
+        .head_demand = head_demand,
         .head_dbi = head_dbi,
         .head_schema = head_schema,
         .head_tuple = head_tuple,
@@ -248,6 +288,7 @@ fn Value* deduce_naive_evaluate_rule(
     DeduceDb* db,
     DeduceRuleSignature* sig,
     MdbTxn* txn,
+    DeduceRuleHeadDemand* head_demand,
     long* derived_out,
     bool* changed_out,
     DeduceObservedRuleCounters* observed_rule_counters,
@@ -258,6 +299,7 @@ fn Value* deduce_naive_evaluate_rule(
         db,
         sig,
         txn,
+        head_demand,
         null,
         true,
         derived_out,

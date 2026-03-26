@@ -1,7 +1,6 @@
 module lisp;
 
 import std::core::mem;
-
 fn Value* deduce_explain_reverse_list(Value* list, Interp* interp) {
     Value* out = make_nil(interp);
     Value* cur = list;
@@ -38,6 +37,201 @@ fn SymbolId deduce_explain_aggregate_op_symbol(Interp* interp, DeduceAggregateOp
         case DEDUCE_AGGREGATE_MAX:
             return interp.symbols.intern("max");
     }
+}
+
+fn bool deduce_component_has_negated_body_atoms(
+    DeduceDb* db,
+    DeduceSccPlan* plan,
+    usz component_id
+) {
+    if (db == null || plan == null) return false;
+    for (usz i = 0; i < db.rule_signature_count; i++) {
+        if (i >= plan.rule_component_ids.len || plan.rule_component_ids[i] != component_id) continue;
+        DeduceRuleSignature* sig = &db.rule_signatures[i];
+        if (sig.body_negated == null) continue;
+        for (usz step = 0; step < sig.body_count; step++) {
+            if (sig.body_negated[step]) return true;
+        }
+    }
+    return false;
+}
+
+fn Value* deduce_explain_goal_directed_blockers(
+    bool recursive,
+    bool has_aggregates,
+    bool has_negated_body_atoms,
+    Interp* interp
+) {
+    Value* rev = make_nil(interp);
+    if (!recursive) {
+        rev = make_cons(interp, make_symbol(interp, interp.symbols.intern("non-recursive")), rev);
+    }
+    if (has_aggregates) {
+        rev = make_cons(interp, make_symbol(interp, interp.symbols.intern("aggregates-present")), rev);
+    }
+    if (has_negated_body_atoms) {
+        rev = make_cons(interp, make_symbol(interp, interp.symbols.intern("negated-body-atom")), rev);
+    }
+    return deduce_explain_reverse_list(rev, interp);
+}
+
+fn Value* deduce_explain_goal_directed_component_summaries(
+    DeduceDb* db,
+    DeduceSccPlan* plan,
+    Interp* interp
+) {
+    if (db == null || plan == null) return make_nil(interp);
+
+    Value* rev = make_nil(interp);
+    for (usz component_id = 0; component_id < plan.component_count; component_id++) {
+        bool recursive =
+            plan.component_recursive.ptr != null &&
+            component_id < plan.component_recursive.len &&
+            plan.component_recursive[component_id];
+        if (!recursive) continue;
+
+        bool has_aggregates = deduce_component_has_aggregate_rules(db, plan, component_id);
+        bool has_negated_body_atoms = deduce_component_has_negated_body_atoms(db, plan, component_id);
+        bool eligible = !has_aggregates && !has_negated_body_atoms;
+        long rule_count = 0;
+        for (usz i = 0; i < db.rule_signature_count; i++) {
+            if (i >= plan.rule_component_ids.len || plan.rule_component_ids[i] != component_id) continue;
+            rule_count++;
+        }
+
+        Value* entry = make_hashmap(interp, 16);
+        if (entry == null || entry.tag != HASHMAP || entry.hashmap_val == null) {
+            return deduce_raise(interp, "deduce/explain-out-of-memory", "deduce/explain: out of memory");
+        }
+
+        explain_dict_set(entry, interp, "component-id", make_int(interp, (long)component_id));
+        explain_dict_set(entry, interp, "stratum",
+            make_int(interp, component_id < plan.component_strata.len ? (long)plan.component_strata[component_id] : 0));
+        explain_dict_set(entry, interp, "rule-count", make_int(interp, rule_count));
+        explain_dict_set(entry, interp, "goal-directed-eligible",
+            eligible ? make_symbol(interp, interp.sym_true) : make_nil(interp));
+        explain_dict_set(entry, interp, "goal-directed-shape",
+            eligible
+                ? make_symbol(interp, interp.symbols.intern("positive-recursive-closure"))
+                : make_nil(interp));
+        explain_dict_set(entry, interp, "goal-directed-blockers",
+            deduce_explain_goal_directed_blockers(
+                recursive,
+                has_aggregates,
+                has_negated_body_atoms,
+                interp
+            ));
+        explain_dict_set(entry, interp, "aggregate-rules-present",
+            has_aggregates ? make_symbol(interp, interp.sym_true) : make_nil(interp));
+        explain_dict_set(entry, interp, "negated-body-atoms-present",
+            has_negated_body_atoms ? make_symbol(interp, interp.sym_true) : make_nil(interp));
+        rev = make_cons(interp, entry, rev);
+    }
+    return deduce_explain_reverse_list(rev, interp);
+}
+
+fn Value* deduce_explain_goal_directed_selected_components(
+    DeduceSccPlan* plan,
+    usz component_id,
+    bool eligible,
+    Interp* interp
+) {
+    if (!eligible || plan == null || interp == null) return make_nil(interp);
+
+    bool[] selected_components = mem::new_array(bool, plan.component_count);
+    if (selected_components.ptr == null && plan.component_count > 0) {
+        return deduce_raise(interp, "deduce/explain-out-of-memory", "deduce/explain: out of memory");
+    }
+    defer if (selected_components.ptr != null) mem::free(selected_components.ptr);
+
+    if (!deduce_fixpoint_select_dependency_components(plan, component_id, selected_components)) {
+        return make_nil(interp);
+    }
+
+    Value* rev = make_nil(interp);
+    for (usz i = 0; i < selected_components.len; i++) {
+        if (!selected_components[i]) continue;
+        rev = make_cons(interp, make_int(interp, (long)i), rev);
+    }
+    return deduce_explain_reverse_list(rev, interp);
+}
+
+fn Value* deduce_explain_goal_directed_selected_predicates(
+    DeduceSccPlan* plan,
+    usz component_id,
+    bool eligible,
+    Interp* interp
+) {
+    if (!eligible || plan == null || interp == null) return make_nil(interp);
+
+    bool[] selected_components = mem::new_array(bool, plan.component_count);
+    if (selected_components.ptr == null && plan.component_count > 0) {
+        return deduce_raise(interp, "deduce/explain-out-of-memory", "deduce/explain: out of memory");
+    }
+    defer if (selected_components.ptr != null) mem::free(selected_components.ptr);
+
+    if (!deduce_fixpoint_select_dependency_components(plan, component_id, selected_components)) {
+        return make_nil(interp);
+    }
+
+    Value* rev = make_nil(interp);
+    for (usz predicate_index = 0; predicate_index < plan.predicates.len; predicate_index++) {
+        if (predicate_index >= plan.predicate_component.len) continue;
+        int predicate_component = plan.predicate_component[predicate_index];
+        if (predicate_component < 0 || (usz)predicate_component >= selected_components.len) continue;
+        if (!selected_components[(usz)predicate_component]) continue;
+        rev = make_cons(interp, make_symbol(interp, plan.predicates[predicate_index]), rev);
+    }
+    return deduce_explain_reverse_list(rev, interp);
+}
+
+fn Value* deduce_explain_goal_directed_demand_bound_head_positions(
+    DeduceDb* db,
+    DeduceSccPlan* plan,
+    DeduceRuleSignature* sig,
+    usz component_id,
+    bool eligible,
+    Interp* interp
+) {
+    if (!eligible || db == null || plan == null || sig == null || interp == null) return make_nil(interp);
+
+    Value* rev = make_nil(interp);
+    for (usz i = 0; i < sig.head_term_count; i++) {
+        if (!deduce_component_position_can_use_relation_head_demand(
+                db,
+                plan,
+                component_id,
+                sig.head_predicate,
+                i
+            )) {
+            continue;
+        }
+        rev = make_cons(interp, make_int(interp, (long)i), rev);
+    }
+    return deduce_explain_reverse_list(rev, interp);
+}
+
+fn Value* deduce_explain_parallel_batch_components(
+    DeduceSccPlan* plan,
+    usz[] parallel_wave_ids,
+    usz component_id,
+    Interp* interp
+) {
+    if (plan == null || interp == null || component_id >= plan.component_count ||
+        component_id >= plan.component_strata.len || component_id >= parallel_wave_ids.len) {
+        return make_nil(interp);
+    }
+
+    usz stratum = plan.component_strata[component_id];
+    usz wave = parallel_wave_ids[component_id];
+    Value* rev = make_nil(interp);
+    for (usz other = 0; other < plan.component_count; other++) {
+        if (other >= plan.component_strata.len || other >= parallel_wave_ids.len) continue;
+        if (plan.component_strata[other] != stratum) continue;
+        if (parallel_wave_ids[other] != wave) continue;
+        rev = make_cons(interp, make_int(interp, (long)other), rev);
+    }
+    return deduce_explain_reverse_list(rev, interp);
 }
 
 fn SymbolId deduce_explain_head_projection_symbol(Interp* interp, DeduceRuleTermKind kind) {
@@ -117,6 +311,99 @@ fn long deduce_explain_rows_emitted_estimate(
     if (emitted <= 0) emitted = 1;
     if (emitted > rows_read) emitted = rows_read;
     return emitted;
+}
+
+fn void deduce_explain_set_last_goal_directed_read_fields(
+    Value* out,
+    DeduceDb* db,
+    DeduceRuleSignature* sig,
+    Interp* interp
+) {
+    if (out == null || out.tag != HASHMAP || out.hashmap_val == null || interp == null) return;
+
+    DeduceRelationSchema* schema = null;
+    if (db != null && sig != null) {
+        schema = deduce_db_lookup_relation_schema(db, sig.head_predicate);
+    }
+
+    SymbolId execution_path = schema != null ? schema.last_goal_directed_read_execution_path : (SymbolId)0;
+    explain_dict_set(out, interp, "last-goal-directed-read-execution-path",
+        execution_path != (SymbolId)0
+            ? make_symbol(interp, execution_path)
+            : make_nil(interp));
+    explain_dict_set(out, interp, "last-goal-directed-read-surface",
+        schema != null && schema.last_goal_directed_read_surface != (SymbolId)0
+            ? make_symbol(interp, schema.last_goal_directed_read_surface)
+            : make_nil(interp));
+    explain_dict_set(out, interp, "last-goal-directed-read-fallback-reason",
+        schema != null && schema.last_goal_directed_read_fallback_reason != (SymbolId)0
+            ? make_symbol(interp, schema.last_goal_directed_read_fallback_reason)
+            : make_nil(interp));
+    explain_dict_set(out, interp, "last-goal-directed-read-selector-rule-index",
+        schema != null && schema.last_goal_directed_read_selector_rule_index >= 0
+            ? make_int(interp, schema.last_goal_directed_read_selector_rule_index)
+            : make_nil(interp));
+    explain_dict_set(out, interp, "last-goal-directed-read-mutation-epoch",
+        execution_path != (SymbolId)0
+            ? make_int(interp, (long)schema.last_goal_directed_read_mutation_epoch)
+            : make_nil(interp));
+    explain_dict_set(out, interp, "last-goal-directed-read-requested-bound-count",
+        execution_path != (SymbolId)0
+            ? make_int(interp, (long)schema.last_goal_directed_read_requested_bound_count)
+            : make_nil(interp));
+    explain_dict_set(out, interp, "last-goal-directed-read-requested-bound-positions",
+        execution_path != (SymbolId)0
+            ? deduce_bound_positions_payload(
+                schema.last_goal_directed_read_requested_bound_positions,
+                schema.last_goal_directed_read_requested_bound_count,
+                interp
+            )
+            : make_nil(interp));
+    explain_dict_set(out, interp, "last-goal-directed-read-applied-bound-count",
+        execution_path != (SymbolId)0
+            ? make_int(interp, (long)schema.last_goal_directed_read_applied_bound_count)
+            : make_nil(interp));
+    explain_dict_set(out, interp, "last-goal-directed-read-applied-bound-positions",
+        execution_path != (SymbolId)0
+            ? deduce_bound_positions_payload(
+                schema.last_goal_directed_read_applied_bound_positions,
+                schema.last_goal_directed_read_applied_bound_count,
+                interp
+            )
+            : make_nil(interp));
+    explain_dict_set(out, interp, "last-goal-directed-read-step-counters",
+        execution_path != (SymbolId)0 && schema != null && schema.last_goal_directed_read_step_count > 0
+            ? deduce_explain_observed_step_counter_payload(
+                schema.last_goal_directed_read_step_counters,
+                schema.last_goal_directed_read_step_count,
+                interp
+            )
+            : make_nil(interp));
+}
+
+fn Value* deduce_explain_observed_step_counter_payload(
+    DeduceObservedStepCounters* steps,
+    usz step_count,
+    Interp* interp
+) {
+    if (steps == null || step_count == 0) return make_nil(interp);
+
+    Value* rev = make_nil(interp);
+    for (usz i = 0; i < step_count; i++) {
+        Value* entry = make_hashmap(interp, 8);
+        if (entry == null || entry.tag != HASHMAP || entry.hashmap_val == null) {
+            return deduce_raise(interp, "deduce/explain-out-of-memory", "deduce/explain: out of memory");
+        }
+        explain_dict_set(entry, interp, "step-index", make_int(interp, (long)i));
+        explain_dict_set(entry, interp, "rows-read", make_int(interp, steps[i].rows_read));
+        explain_dict_set(entry, interp, "rows-emitted", make_int(interp, steps[i].rows_emitted));
+        explain_dict_set(entry, interp, "index-hits", make_int(interp, steps[i].index_hits));
+        explain_dict_set(entry, interp, "index-misses", make_int(interp, steps[i].index_misses));
+        explain_dict_set(entry, interp, "join-probes", make_int(interp, steps[i].join_probes));
+        explain_dict_set_symbol(entry, interp, "counter-kind", interp.symbols.intern("observed"));
+        rev = make_cons(interp, entry, rev);
+    }
+    return deduce_explain_reverse_list(rev, interp);
 }
 
 fn Value* deduce_explain_build_step_counters(
@@ -245,7 +532,7 @@ fn Value* deduce_explain_build_rule_execution_entry(
     Interp* interp
 ) {
     if (sig == null) return make_nil(interp);
-    Value* entry = make_hashmap(interp, 12);
+    Value* entry = make_hashmap(interp, 16);
     if (entry == null || entry.tag != HASHMAP || entry.hashmap_val == null) {
         return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
     }
@@ -363,6 +650,17 @@ fn Value* prim_deduce_explain(Value*[] args, Env* env, Interp* interp) {
     Value* plan_err = deduce_build_scc_plan(db, &scc_plan, interp);
     if (plan_err != null) return plan_err;
     defer deduce_scc_plan_free(&scc_plan);
+    usz[] parallel_wave_ids = {};
+    usz[] parallel_batch_sizes = {};
+    Value* parallel_err = deduce_build_parallel_component_batch_metadata(
+        &scc_plan,
+        &parallel_wave_ids,
+        &parallel_batch_sizes,
+        interp
+    );
+    if (parallel_err != null) return parallel_err;
+    defer if (parallel_wave_ids.ptr != null) mem::free(parallel_wave_ids.ptr);
+    defer if (parallel_batch_sizes.ptr != null) mem::free(parallel_batch_sizes.ptr);
 
     SymbolId execution_engine_sym = requested_execution_engine_sym;
     bool naive_recursive_mixed_aggregate_routed = false;
@@ -380,19 +678,75 @@ fn Value* prim_deduce_explain(Value*[] args, Env* env, Interp* interp) {
     }
 
     bool aggregate_recursive_fallback = false;
+    bool goal_directed_recursive = false;
+    bool goal_directed_has_aggregates = false;
+    bool goal_directed_has_negated_body_atoms = false;
+    isz goal_directed_component_id = -1;
     if (use_seminaive_recursive &&
         selected_rule_index >= 0 &&
         (usz)selected_rule_index < scc_plan.rule_component_ids.len) {
         usz component_id = (usz)scc_plan.rule_component_ids[(usz)selected_rule_index];
         bool recursive =
             component_id < scc_plan.component_recursive.len && scc_plan.component_recursive[component_id];
+        goal_directed_component_id = (isz)component_id;
+        goal_directed_recursive = recursive;
+        goal_directed_has_aggregates = deduce_component_has_aggregate_rules(db, &scc_plan, component_id);
+        goal_directed_has_negated_body_atoms =
+            deduce_component_has_negated_body_atoms(db, &scc_plan, component_id);
         if (recursive &&
-            deduce_component_has_aggregate_rules(db, &scc_plan, component_id) &&
+            goal_directed_has_aggregates &&
             (!deduce_component_can_use_seminaive_aggregates(db, &scc_plan, component_id) ||
              !deduce_component_has_full_recursive_aggregate_seminaive_support(db, &scc_plan, component_id))) {
             aggregate_recursive_fallback = true;
             execution_engine_sym = interp.symbols.intern("naive-scc");
         }
+    } else if (selected_rule_index >= 0 &&
+               (usz)selected_rule_index < scc_plan.rule_component_ids.len) {
+        usz component_id = (usz)scc_plan.rule_component_ids[(usz)selected_rule_index];
+        goal_directed_component_id = (isz)component_id;
+        goal_directed_recursive =
+            component_id < scc_plan.component_recursive.len && scc_plan.component_recursive[component_id];
+        goal_directed_has_aggregates = deduce_component_has_aggregate_rules(db, &scc_plan, component_id);
+        goal_directed_has_negated_body_atoms =
+            deduce_component_has_negated_body_atoms(db, &scc_plan, component_id);
+    }
+    bool goal_directed_eligible =
+        goal_directed_recursive && !goal_directed_has_aggregates && !goal_directed_has_negated_body_atoms;
+    Value* goal_directed_blockers = deduce_explain_goal_directed_blockers(
+        goal_directed_recursive,
+        goal_directed_has_aggregates,
+        goal_directed_has_negated_body_atoms,
+        interp
+    );
+    Value* goal_directed_selected_components = deduce_explain_goal_directed_selected_components(
+        &scc_plan,
+        goal_directed_component_id,
+        goal_directed_eligible,
+        interp
+    );
+    if (goal_directed_selected_components != null && goal_directed_selected_components.tag == ERROR) {
+        return goal_directed_selected_components;
+    }
+    Value* goal_directed_selected_predicates = deduce_explain_goal_directed_selected_predicates(
+        &scc_plan,
+        goal_directed_component_id,
+        goal_directed_eligible,
+        interp
+    );
+    if (goal_directed_selected_predicates != null && goal_directed_selected_predicates.tag == ERROR) {
+        return goal_directed_selected_predicates;
+    }
+    Value* parallel_batch_components =
+        goal_directed_component_id >= 0
+            ? deduce_explain_parallel_batch_components(
+                &scc_plan,
+                parallel_wave_ids,
+                (usz)goal_directed_component_id,
+                interp
+            )
+            : make_nil(interp);
+    if (parallel_batch_components != null && parallel_batch_components.tag == ERROR) {
+        return parallel_batch_components;
     }
 
     DeduceRuleSignature* sig = &db.rule_signatures[(usz)selected_rule_index];
@@ -421,7 +775,17 @@ fn Value* prim_deduce_explain(Value*[] args, Env* env, Interp* interp) {
     if (steps != null && steps.tag == ERROR) return steps;
     Value* head_projections = deduce_explain_build_head_projections(sig, interp);
     if (head_projections != null && head_projections.tag == ERROR) return head_projections;
-
+    Value* demand_bound_head_positions = deduce_explain_goal_directed_demand_bound_head_positions(
+        db,
+        &scc_plan,
+        sig,
+        goal_directed_component_id,
+        goal_directed_eligible,
+        interp
+    );
+    if (demand_bound_head_positions != null && demand_bound_head_positions.tag == ERROR) {
+        return demand_bound_head_positions;
+    }
     explain_dict_set_symbol(out, interp, "kind", interp.symbols.intern("deduce-plan"));
     explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"));
     explain_dict_set_symbol(out, interp, "surface-kind", interp.symbols.intern("planner-snapshot"));
@@ -431,6 +795,43 @@ fn Value* prim_deduce_explain(Value*[] args, Env* env, Interp* interp) {
         aggregate_recursive_fallback ? make_symbol(interp, interp.sym_true) : make_nil(interp));
     explain_dict_set(out, interp, "naive-recursive-aggregate-mixed-routed-to-seminaive",
         naive_recursive_mixed_aggregate_routed ? make_symbol(interp, interp.sym_true) : make_nil(interp));
+    explain_dict_set(out, interp, "goal-directed-component-id",
+        goal_directed_component_id >= 0
+            ? make_int(interp, (long)goal_directed_component_id)
+            : make_nil(interp));
+    explain_dict_set(out, interp, "goal-directed-eligible",
+        goal_directed_eligible ? make_symbol(interp, interp.sym_true) : make_nil(interp));
+    explain_dict_set(out, interp, "goal-directed-shape",
+        goal_directed_eligible
+            ? make_symbol(interp, interp.symbols.intern("positive-recursive-closure"))
+            : make_nil(interp));
+    explain_dict_set(out, interp, "goal-directed-blockers", goal_directed_blockers);
+    explain_dict_set(out, interp, "goal-directed-execution-path",
+        goal_directed_eligible
+            ? make_symbol(interp, interp.symbols.intern("selected-component-closure"))
+            : make_nil(interp));
+    explain_dict_set(out, interp, "goal-directed-selected-components", goal_directed_selected_components);
+    explain_dict_set(out, interp, "goal-directed-selected-predicates", goal_directed_selected_predicates);
+    explain_dict_set(out, interp, "goal-directed-demand-bound-head-positions", demand_bound_head_positions);
+    deduce_explain_set_last_goal_directed_read_fields(out, db, sig, interp);
+    explain_dict_set(out, interp, "parallel-wave",
+        goal_directed_component_id >= 0 && (usz)goal_directed_component_id < parallel_wave_ids.len
+            ? make_int(interp, (long)parallel_wave_ids[(usz)goal_directed_component_id])
+            : make_nil(interp));
+    explain_dict_set(out, interp, "parallel-batch-size",
+        goal_directed_component_id >= 0 && (usz)goal_directed_component_id < parallel_batch_sizes.len
+            ? make_int(interp, (long)parallel_batch_sizes[(usz)goal_directed_component_id])
+            : make_nil(interp));
+    explain_dict_set_symbol(out, interp, "parallel-runtime-mode",
+        interp.symbols.intern("metadata-only"));
+    explain_dict_set(out, interp, "parallel-batch-components", parallel_batch_components);
+    explain_dict_set(out, interp, "parallel-batch-topology",
+        deduce_parallel_component_batch_topology_payload(
+            &scc_plan,
+            parallel_wave_ids[..],
+            parallel_batch_sizes[..],
+            interp
+        ));
     explain_dict_set(out, interp, "rule-index", make_int(interp, (long)selected_rule_index));
     explain_dict_set(out, interp, "rule-count", make_int(interp, (long)db.rule_signature_count));
     explain_dict_set(out, interp, "head-predicate", make_symbol(interp, sig.head_predicate));

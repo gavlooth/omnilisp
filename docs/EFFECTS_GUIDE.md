@@ -338,6 +338,12 @@ regular functions and compose them:
 ;; => "fail"
 ```
 
+Migration note (composition helper names):
+- canonical helper name in public docs is `handle/chain`
+- legacy names `with-handlers` and `handle-chain` are not part of the
+  canonical public helper surface
+- update older examples to `handle/chain` to avoid helper-name drift
+
 ---
 
 ## 9. Practical patterns

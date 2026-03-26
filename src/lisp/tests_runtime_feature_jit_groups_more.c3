@@ -580,10 +580,61 @@ fn void run_jit_policy_closure_method_iterator_boundary_test(Interp* interp, int
     );
 }
 
+fn void run_jit_policy_stdlib_teardown_redefinition_test(Interp* interp, int* pass, int* fail) {
+    // Regression: stdlib-loaded typed method redefinition must still tear down
+    // cleanly after interpreter destroy.
+    (void)interp;
+
+    Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+    if (tmp == null) {
+        io::printn("[FAIL] jit policy: stdlib teardown redefinition destroys cleanly (alloc)");
+        (*fail)++;
+        return;
+    }
+
+    tmp.init();
+    register_primitives(tmp);
+    register_stdlib(tmp);
+
+    EvalResult r = run(
+        "(block "
+        "  (define (dispatch-teardown (^Int x)) x) "
+        "  (define (dispatch-teardown x) x) "
+        "  (define (dispatch-teardown (^Int x)) (+ x 1)) "
+        "  (dispatch-teardown 1))",
+        tmp
+    );
+
+    bool ok = !r.error.has_error &&
+              r.value != null &&
+              r.value.tag == INT &&
+              r.value.int_val == 2;
+
+    tmp.destroy();
+    mem::free(tmp);
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: stdlib teardown redefinition destroys cleanly");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] jit policy: stdlib teardown redefinition destroys cleanly");
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
     io::printn("\n--- JIT Policy Tests ---");
 
     bool saved_jit_enabled = interp.flags.jit_enabled;
+    bool run_stdlib_teardown_redefinition_only =
+        test_c_getenv("OMNI_JIT_POLICY_STDLIB_TEARDOWN_REDEFINITION") != null;
+    if (run_stdlib_teardown_redefinition_only) {
+        run_jit_policy_stdlib_teardown_redefinition_test(interp, pass, fail);
+        interp.flags.jit_enabled = saved_jit_enabled;
+        jit_cache_clear();
+        return;
+    }
+
     bool parsed = run_jit_policy_warm_cache_tests(interp, pass, fail);
     if (parsed) {
         run_jit_policy_cache_overwrite_count_test(interp, pass, fail);
@@ -613,6 +664,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_iterator_array_thunk_boundary_test(interp, pass, fail);
         run_jit_policy_tco_cons_iterator_edge_copy_test(interp, pass, fail);
         run_jit_policy_closure_method_iterator_boundary_test(interp, pass, fail);
+        run_jit_policy_stdlib_teardown_redefinition_test(interp, pass, fail);
     }
 
     interp.flags.jit_enabled = saved_jit_enabled;

@@ -253,7 +253,7 @@ deterministic index metadata.
 Nested expected args are checked recursively, for example:
 
 ```lisp
-(^(Box (List Int)) v)
+(^(Box (List Integer)) v)
 ```
 
 Normative recursion rules:
@@ -415,7 +415,7 @@ Status tags:
 | Union participation in dispatch applicability | Union/variant types participate in subtype dispatch | Union variants are registered as subtype of union; dispatch uses subtype chain so variant-specialized methods outrank union-parent methods | `done` | `src/lisp/eval_type_evaluators.c3` (`eval_defunion_register_variant_type`); `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
 | Numeric conversion in dispatch | Numeric conversion should be explicit at call sites | Dispatch uses exact-or-subtype applicability only; cross-numeric matching requires constructor conversion such as `(Double 7)` | `done` | `src/lisp/eval_dispatch_match.c3`; `src/lisp/tests_advanced_type_dispatch_groups.c3` |
 | `where`-style constraints | `where` clauses on methods/types | Omni uses metadata constraints (`^{'T Number}`), not Julia `where` syntax | `done` (intentional difference) | This document §1.6; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (constraint tests) |
-| Match/union exhaustiveness | Exhaustiveness diagnostics | Runtime missing-case diagnostics are normative; compile-time exhaustiveness checker is currently an explicit non-goal | `done` (runtime policy) | `src/lisp/eval_dispatch_types.c3` (`format_match_error`); `src/lisp/tests_runtime_feature_groups.c3` |
+| Match/union exhaustiveness | Exhaustiveness diagnostics | Runtime missing-case diagnostics are normative; compile-time exhaustiveness checker is currently an explicit non-goal | `done` (runtime policy) | `src/lisp/eval_dispatch_match_errors.c3` (`format_match_error`); `src/lisp/tests_runtime_feature_groups.c3` |
 
 ### Parity Position: Julia vs Omni
 

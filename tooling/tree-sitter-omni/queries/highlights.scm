@@ -18,7 +18,7 @@
 (list
   .
   (symbol) @keyword
-  (#match? @keyword "^(lambda|λ|if|let|define|quote|block|match|checkpoint|capture|signal|handle|resolve|with-continuation|module|import|export-from|and|or|quasiquote|unquote|unquote-splicing|explain)$"))
+  (#match? @keyword "^(lambda|λ|if|let|define|quote|block|match|checkpoint|capture|signal|handle|resolve|with-continuation|module|import|export|export-from|syntax-match|template|insert|splice|and|or|quasiquote|unquote|unquote-splicing|explain)$"))
 
 (array
   (symbol) @attribute

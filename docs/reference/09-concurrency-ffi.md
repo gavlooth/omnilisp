@@ -152,7 +152,8 @@ All concurrency primitives go through effects and can be intercepted.
 | (none) | `void` return | use `^Void` when binding a function that returns C `void` |
 
 Use `^Pointer` in new bindings; `^Ptr` is retained for compatibility.
-`^Int`/`^Bool` remain accepted shorthand aliases.
+`^Int` and `^Bool` are not accepted shorthand aliases in new surface text; use
+canonical integer/boolean annotations (`^Integer`, `^Boolean`) instead.
 
 ### Features
 

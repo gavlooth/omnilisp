@@ -52,6 +52,8 @@ Conjure replacement yet.
 - Exposes a buffer-local fold refresh command that applies Omni LSP folding
   ranges as manual Neovim folds.
 - Exposes structural selection expansion backed by Omni LSP `selectionRange`.
+- Exposes first-party `conform.nvim` formatter helper specs for the shipped
+  `omni --fmt` CLI.
 - Streams the transcript into a scratch buffer.
 - Detects `.omni` files and applies buffer-local mappings.
 
@@ -206,6 +208,42 @@ require("omni").setup({
 })
 ```
 
+To wire the shipped `omni --fmt` CLI into `conform.nvim`:
+
+```lua
+local omni = require("omni")
+
+require("conform").setup(vim.tbl_deep_extend("force", {
+  formatters = {
+    omni_fmt = omni.conform_formatter(),
+  },
+  formatters_by_ft = omni.conform_formatters_by_ft(),
+}, {
+  format_on_save = {
+    timeout_ms = 1000,
+    lsp_format = "fallback",
+  },
+}))
+```
+
+Or use the combined helper spec directly:
+
+```lua
+local omni = require("omni")
+local spec = omni.conform_setup_spec()
+
+require("conform").setup(vim.tbl_deep_extend("force", spec, {
+  format_on_save = {
+    timeout_ms = 1000,
+    lsp_format = "fallback",
+  },
+}))
+```
+
+By default the helper targets `omni --fmt --write $FILENAME` with `stdin = false`.
+That matches the current formatter CLI contract and Conform's temp-file path
+for non-stdin formatters.
+
 ## Commands
 
 - `:OmniReplStart`
@@ -215,6 +253,7 @@ require("omni").setup({
 - `:OmniReplClear`
 - `:OmniTreesitterRegister`
 - `:OmniLspSetup`
+- `:OmniConformSetupSpec`
 - `:OmniLspHover`
 - `:OmniLspDefinition`
 - `:OmniLspDefinitionsList`
@@ -417,6 +456,31 @@ require("omni").setup({
 })
 ```
 
+Enable inline eval annotations for single-form evals (default: off):
+
+```lua
+require("omni").setup({
+  eval = {
+    annotations = {
+      enabled = true,
+      max_length = 160,
+      labels = {
+        form = true,
+        root = true,
+        call = true,
+        block = true,
+        declaration = true,
+        line = true,
+      },
+      hl = {
+        ok = "DiagnosticOk",
+        error = "DiagnosticError",
+      },
+    },
+  },
+})
+```
+
 Operator eval usage:
 
 ```vim
@@ -432,6 +496,9 @@ through the same structured REPL path as visual selection eval.
 - The transcript buffer strips ANSI escape codes from Omni's REPL output.
 - Transcript split direction is controlled by `output.split`, and automatic
   cursor-following can be disabled with `output.auto_scroll = false`.
+- Result annotations are optional and off by default. Enable them with
+  `eval.annotations.enabled = true` to show single-form `--eval` results as
+  virtual text in the current buffer.
 - When `nvim-treesitter` is installed, `omni-nvim` registers the Omni parser
   from this repo using the current checkout as the install source and appends
   `tooling/tree-sitter-omni` to `runtimepath` so the bundled queries are found.

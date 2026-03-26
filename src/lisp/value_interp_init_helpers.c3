@@ -85,8 +85,10 @@ fn void interp_init_module_state(Interp* self) {
     self.module_count = 0;
     self.module_capacity = MODULE_INITIAL_CAPACITY;
     self.modules = (Module*)mem::malloc(Module.sizeof * self.module_capacity);
+    assert(self.modules != null, "interp module table alloc failed");
     self.module_hash_capacity = self.module_capacity * 2;
     self.module_hash_index = (usz*)mem::malloc(usz.sizeof * self.module_hash_capacity);
+    assert(self.module_hash_index != null, "interp module hash alloc failed");
     for (usz i = 0; i < self.module_hash_capacity; i++) self.module_hash_index[i] = usz.max;
 }
 
@@ -111,8 +113,10 @@ fn void interp_init_macro_state(Interp* self) {
     self.macro_count = 0;
     self.macro_capacity = MACRO_INITIAL_CAPACITY;
     self.macro_table = (MacroDef*)mem::malloc(MacroDef.sizeof * self.macro_capacity);
+    assert(self.macro_table != null, "interp macro table alloc failed");
     self.gensym_counter = 0;
     self.macro_hash_capacity = self.macro_capacity * 2;
     self.macro_hash_index = (usz*)mem::malloc(usz.sizeof * self.macro_hash_capacity);
+    assert(self.macro_hash_index != null, "interp macro hash alloc failed");
     for (usz i = 0; i < self.macro_hash_capacity; i++) self.macro_hash_index[i] = usz.max;
 }

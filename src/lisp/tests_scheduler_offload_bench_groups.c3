@@ -21,6 +21,12 @@ fn void run_scheduler_offload_hot_path_benchmarks(Interp* interp) {
 
     io::printn("\n--- Scheduler/Offload Hot-Path Benchmarks ---");
 
+    scheduler_offload_queued_work_free_hits = 0;
+    scheduler_offload_queued_work_alloc_fallbacks = 0;
+    scheduler_offload_queued_work_recycle_retained = 0;
+    scheduler_offload_queued_work_recycle_freed = 0;
+    scheduler_offload_completion_alloc_fallbacks = 0;
+
     long queue_ms = 0;
     long completion_ms = 0;
     long http_ms = 0;
@@ -143,13 +149,18 @@ fn void run_scheduler_offload_hot_path_benchmarks(Interp* interp) {
     }
 
     io::printfn(
-        "OMNI_BENCH_SUMMARY suite=scheduler_offload_hot_path iters=%d queue_ms=%d queue_ok=%d queue_pending=%d queue_enqueue_delta=%d queue_fail_delta=%d completion_ms=%d completion_ok=%d completion_alloc_fail=%d http_ms=%d http_ok=%d http_shared_fail=%d tls_ms=%d tls_ok=%d",
+        "OMNI_BENCH_SUMMARY suite=scheduler_offload_hot_path iters=%d queue_ms=%d queue_ok=%d queue_pending=%d queue_enqueue_delta=%d queue_fail_delta=%d queue_free_hits=%d queue_alloc_fallbacks=%d queue_recycle_retained=%d queue_recycle_freed=%d completion_alloc_fallbacks=%d completion_ms=%d completion_ok=%d completion_alloc_fail=%d http_ms=%d http_ok=%d http_shared_fail=%d tls_ms=%d tls_ok=%d",
         (long)SCHEDULER_OFFLOAD_BENCH_ITERS,
         queue_ms,
         (long)queue_ok,
         (long)queue_pending,
         (long)queue_enqueue_delta,
         (long)queue_fail_delta,
+        (long)scheduler_offload_queued_work_free_hits,
+        (long)scheduler_offload_queued_work_alloc_fallbacks,
+        (long)scheduler_offload_queued_work_recycle_retained,
+        (long)scheduler_offload_queued_work_recycle_freed,
+        (long)scheduler_offload_completion_alloc_fallbacks,
         completion_ms,
         (long)completion_ok,
         (long)completion_alloc_fail,

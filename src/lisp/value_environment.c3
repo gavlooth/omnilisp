@@ -140,27 +140,31 @@ fn void Env.build_hash_table(Env* self) {
     usz cap = 32;
     while (cap < self.binding_count * 2) cap *= 2;
 
-    // Free old hash table if exists
-    if (self.hash_table != null) {
-        mem::free(self.hash_table);
+    EnvHashEntry* new_hash_table = (EnvHashEntry*)mem::malloc(EnvHashEntry.sizeof * cap);
+    if (new_hash_table == null) return;
+
+    // Initialize the replacement before swapping it in.
+    for (usz i = 0; i < cap; i++) {
+        new_hash_table[i].key = ENV_HASH_EMPTY;
     }
 
-    self.hash_capacity = cap;
-    self.hash_table = (EnvHashEntry*)mem::malloc(EnvHashEntry.sizeof * cap);
-    // Initialize all slots to empty
-    for (usz i = 0; i < cap; i++) {
-        self.hash_table[i].key = ENV_HASH_EMPTY;
-    }
     // Insert all existing bindings
     usz mask = cap - 1;
     for (usz i = 0; i < self.binding_count; i++) {
         usz slot = (usz)self.bindings[i].name & mask;
-        while (self.hash_table[slot].key != ENV_HASH_EMPTY) {
+        while (new_hash_table[slot].key != ENV_HASH_EMPTY) {
             slot = (slot + 1) & mask;
         }
-        self.hash_table[slot].key = self.bindings[i].name;
-        self.hash_table[slot].index = i;
+        new_hash_table[slot].key = self.bindings[i].name;
+        new_hash_table[slot].index = i;
     }
+
+    // Swap the replacement in only after it is fully initialized.
+    if (self.hash_table != null) {
+        mem::free(self.hash_table);
+    }
+    self.hash_capacity = cap;
+    self.hash_table = new_hash_table;
 }
 
 /**
@@ -213,6 +217,7 @@ fn void Env.define(Env* self, SymbolId name, Value* value) {
     if (self.binding_count >= self.capacity) {
         usz new_cap = self.capacity * 2;
         Binding* new_bindings = (Binding*)mem::malloc(Binding.sizeof * new_cap);
+        if (new_bindings == null) return;
         for (usz i = 0; i < self.binding_count; i++) {
             new_bindings[i] = self.bindings[i];
         }

@@ -220,6 +220,58 @@ fn void run_scheduler_task_join_timeout_then_join_boundary_tests(Interp* interp,
     }
 }
 
+fn void run_scheduler_custom_offload_task_join_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: task-bound custom offload jobs reuse the caller-supplied
+    // thread-task handle, complete exactly once, and preserve boundary state.
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
+
+    bool ok = true;
+    char[] failed_phase = "";
+
+    usz task_id = scheduler_alloc_thread_task();
+    uint generation = 0;
+    if (task_id == NO_TASK ||
+        !scheduler_get_thread_task_generation(task_id, &generation) ||
+        generation == 0) {
+        if (task_id != NO_TASK) scheduler_drop_thread_task(task_id);
+        ok = false;
+        failed_phase = "alloc";
+    } else {
+        int callback_count = 0;
+        Value* consumed = scheduler_execute_custom_offload_task_job(
+            &scheduler_test_custom_offload_callback,
+            &callback_count,
+            task_id,
+            interp
+        );
+
+        bool cycle_ok = consumed != null &&
+                        consumed.tag == INT &&
+                        consumed.int_val == 19 &&
+                        callback_count == 1 &&
+                        !scheduler_thread_task_exists(task_id, generation) &&
+                        scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+        if (!cycle_ok) {
+            ok = false;
+            failed_phase = "cycle";
+            if (scheduler_thread_task_exists(task_id, generation)) {
+                scheduler_drop_thread_task(task_id, generation);
+            }
+        }
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler custom offload task join boundary restore");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] scheduler custom offload task join boundary restore (%s)",
+            (ZString)failed_phase
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_scheduler_shared_retire_queue_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: shared-handle retire queue enqueues/releases deterministically,
     // overflow path falls back to immediate free, and domain safe points drain retired payloads.

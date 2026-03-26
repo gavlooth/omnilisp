@@ -42,7 +42,7 @@
 ;; ── Domain model ──────────────────────────────────────────────────────────────
 
 ;; Struct type — fields accessed via dot notation: item.id  item.name  item.qty
-(define [type] Item (^Int id) (^String name) (^Int qty))
+(define [type] Item (^Integer id) (^String name) (^Integer qty))
 
 ;; Sum type — repo functions return (Ok item) or (Err "reason").
 ;; The pipeline collapses these into HTTP response dicts in ONE place.
@@ -77,7 +77,7 @@
 
 ;; _ placeholder:  (= _ id)  desugars to  (lambda (x) (= x id))
 ;; compose wires:  row -> ('id row) -> (= ('id row) id)
-(define (repo/get-by-id (^Int id))
+(define (repo/get-by-id (^Integer id))
   (let (rows (deduce 'query items (compose (= _ id) 'id)))
     (if rows (row->item (car rows)) nil)))
 

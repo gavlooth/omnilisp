@@ -1,0 +1,139 @@
+*omni.nvim*  Omni Neovim integration
+
+Author: Omni contributors
+
+==============================================================================
+CONTENTS                                                     *omni.nvim-contents*
+
+1. Overview ............................................... |omni.nvim-overview|
+2. Setup ..................................................... |omni.nvim-setup|
+3. Core Commands ......................................... |omni.nvim-commands|
+4. Selection and Eval ....................................... |omni.nvim-eval|
+5. LSP Integration .......................................... |omni.nvim-lsp|
+6. Notes ................................................. |omni.nvim-notes|
+
+==============================================================================
+1. Overview                                                   *omni.nvim-overview*
+
+omni.nvim is the first-party Omni Neovim plugin for:
+- structured Omni REPL transport (`omni --repl --json`),
+- one-shot eval transport (`omni --eval --json`),
+- Tree-sitter-backed Omni form selection (with fallback),
+- optional first-party Omni LSP registration,
+- opt-in `conform.nvim` formatter wiring for `omni --fmt`.
+
+The plugin is intentionally lightweight and tracks the CLI contracts documented
+in `docs/PROJECT_TOOLING.md`.
+
+==============================================================================
+2. Setup                                                         *omni.nvim-setup*
+
+Example with lazy.nvim:
+
+>
+  {
+    dir = "/absolute/path/to/Omni/tooling/omni-nvim",
+    ft = { "omni" },
+    config = function()
+      require("omni").setup({
+        cmd = { "omni", "--repl", "--json" },
+        repl = { mode = "json" },
+        eval = { cmd = { "omni", "--eval", "--json" } },
+        lsp = { auto_setup = true },
+      })
+    end,
+  }
+<
+
+If `nvim-treesitter` is installed, install the parser after setup:
+
+>
+  :TSInstall omni
+<
+
+Generate help tags for this doc:
+
+>
+  :helptags /absolute/path/to/Omni/tooling/omni-nvim/doc
+  :help omni.nvim
+<
+
+For `conform.nvim`, omni.nvim exposes helper specs through:
+- `require("omni").conform_formatter()`
+- `require("omni").conform_formatters_by_ft()`
+- `require("omni").conform_setup_spec()`
+
+==============================================================================
+3. Core Commands                                               *omni.nvim-commands*
+
+REPL/transcript:
+- `:OmniReplStart`
+- `:OmniReplStop`
+- `:OmniReplRestart`
+- `:OmniReplOpen`
+- `:OmniReplClear`
+
+Evaluation:
+- `:OmniEvalForm`
+- `:OmniEvalRootForm`
+- `:OmniEvalDecl`
+- `:OmniEvalCall`
+- `:OmniEvalBlock`
+- `:OmniEvalLine`
+- `:OmniEvalSelection`
+- `:OmniEvalBuffer`
+- `:OmniEvalOperator`
+
+Selection:
+- `:OmniSelectForm`
+- `:OmniSelectRootForm`
+- `:OmniSelectDecl`
+- `:OmniSelectCall`
+- `:OmniSelectBlock`
+
+Formatter tooling:
+- `:OmniConformSetupSpec`
+
+==============================================================================
+4. Selection and Eval                                               *omni.nvim-eval*
+
+Default localleader mappings are documented in:
+- `tooling/omni-nvim/README.md` under `Default Mappings`.
+
+Operator eval starts an operator-pending motion send:
+
+>
+  <localleader>eoiw
+  <localleader>eoap
+<
+
+==============================================================================
+5. LSP Integration                                                   *omni.nvim-lsp*
+
+Register first-party Omni LSP in Neovim:
+
+>
+  :OmniLspSetup
+<
+
+Common LSP wrappers:
+- hover: `:OmniLspHover`
+- definitions: `:OmniLspDefinition`, `:OmniLspDefinitionsList`
+- references: `:OmniLspReferences`, `:OmniLspReferencesList`
+- rename: `:OmniLspRename`
+- diagnostics: `:OmniLspDiagnostics`, `:OmniLspDocumentDiagnostics`,
+  `:OmniLspWorkspaceDiagnostics`, `:OmniLspAllDiagnostics`
+
+==============================================================================
+6. Notes                                                         *omni.nvim-notes*
+
+- This help file is intentionally concise; `README.md` remains the exhaustive
+  command/config reference.
+- `eval.annotations` supports optional virtual-text result annotations for single-form
+  `--eval` paths and defaults to disabled.
+- `:OmniConformSetupSpec` prints a ready-to-merge `conform.nvim` setup table
+  for the shipped `omni --fmt --write $FILENAME` formatter command.
+- Keep naming and behavior aligned with:
+  - `tooling/omni-lsp/README.md`
+  - `docs/PROJECT_TOOLING.md`
+  - `docs/LANGUAGE_SPEC.md`

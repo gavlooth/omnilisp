@@ -81,23 +81,38 @@ without reopening the small-file churn that was already closed elsewhere.
   - `runtime_backend_hooks.c3`: `333`
   - `runtime_backend_hooks_cache.c3`: `113`
 
+## Landed Batch (2026-03-24)
+
+- `src/lisp/deduce_rule_eval.c3` →
+  `src/lisp/deduce_rule_eval_validation.c3`
+  - `deduce_rule_eval.c3`: `28`
+  - `deduce_rule_eval_validation.c3`: `275`
+- `src/lisp/deduce_relation_ops.c3` →
+  `src/lisp/deduce_relation_ops_mutations.c3`
+  - `deduce_relation_ops.c3`: `4`
+  - `deduce_relation_ops_mutations.c3`: `403`
+- `src/lisp/eval_env_copy.c3` →
+  `src/lisp/eval_env_copy_helpers.c3`
+  - `eval_env_copy.c3`: `4`
+  - `eval_env_copy_helpers.c3`: `440`
+- `src/lisp/eval_pattern_support.c3` →
+  `src/lisp/eval_pattern_support_helpers.c3`
+  - `eval_pattern_support.c3`: `3`
+  - `eval_pattern_support_helpers.c3`: `434`
+
 Validation:
 - `c3c build`
 - `scripts/run_validation_status_summary.sh build/validation_status_summary.json`
-  (`9/9 runs passed`)
+  (`6/9 runs passed`; current blockers: `status_consistency`, `jit_policy`, `deduce`)
 
 ## Next Queue
 
-1. `src/lisp/eval_promotion_copy.c3` (`442`)
-2. `src/lisp/deduce_rule_eval.c3` (`442`)
-3. `src/lisp/prim_string_format.c3` (`438`)
-4. `src/lisp/deduce_relation_ops.c3` (`437`)
-5. `src/lisp/primitives_meta_types.c3` (`434`)
-6. `src/lisp/eval_promotion_escape.c3` (`434`)
-7. `src/lisp/eval_pattern_support.c3` (`434`)
-8. `src/lisp/eval_env_copy.c3` (`433`)
-9. `src/lisp/aot_runtime_bridge.c3` (`433`)
-10. `src/lisp/async_tcp_transport_core.c3` (`431`)
+1. `src/lisp/aot_runtime_bridge.c3` (`433`)
+2. `src/lisp/async_tcp_transport_core.c3` (`431`)
+3. `src/lisp/eval_promotion_copy.c3` (`181`)
+4. `src/lisp/eval_promotion_escape.c3` (`168`)
+5. `src/lisp/primitives_meta_types.c3` (`147`)
+6. `src/lisp/prim_string_format.c3` (`51`)
 
 ## Validation
 

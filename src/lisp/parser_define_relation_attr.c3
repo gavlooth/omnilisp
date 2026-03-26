@@ -9,9 +9,11 @@ fn bool Parser.parse_relation_column_spec(
     SymbolId sym_unique,
     SymbolId sym_index,
     SymbolId sym_ref,
+    SymbolId sym_check,
     SymbolId* key_col,
     List{SymbolId}* unique_cols,
     List{DeduceReferenceConstraint}* reference_constraints,
+    List{DeduceCheckConstraint}* check_constraints,
     SymbolId* index_col
 ) {
     self.lexer.advance();  // consume (
@@ -20,8 +22,10 @@ fn bool Parser.parse_relation_column_spec(
     bool has_unique_role = false;
     bool has_index_role = false;
     bool has_ref_role = false;
+    bool has_check_role = false;
     SymbolId ref_target_relation = 0;
     SymbolId ref_target_column = 0;
+    SymbolId check_predicate = 0;
     while (self.lexer.current.type == T_SYMBOL) {
         SymbolId current = self.get_current_symbol();
         if ((uint)current == (uint)sym_key) {
@@ -56,6 +60,17 @@ fn bool Parser.parse_relation_column_spec(
             self.lexer.advance();
             continue;
         }
+        if ((uint)current == (uint)sym_check) {
+            self.lexer.advance();
+            if (self.lexer.current.type != T_SYMBOL) {
+                self.set_error("expected check predicate name after check");
+                return false;
+            }
+            check_predicate = self.get_current_symbol();
+            has_check_role = true;
+            self.lexer.advance();
+            continue;
+        }
         break;
     }
 
@@ -80,6 +95,12 @@ fn bool Parser.parse_relation_column_spec(
             .target_column = ref_target_column
         });
     }
+    if (has_check_role) {
+        check_constraints.push({
+            .local_column = col_name,
+            .predicate = check_predicate
+        });
+    }
     if (has_index_role) *index_col = col_name;
 
     self.lexer.advance();
@@ -93,6 +114,34 @@ fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, List{SymbolId}
         return null;
     }
     SymbolId db_name = (*attrs)[1];
+    bool materialized_view = false;
+    SymbolId materialized_refresh_policy = 0;
+    SymbolId sym_materialized = self.interp.symbols.intern("materialized");
+    SymbolId sym_manual = self.interp.symbols.intern("manual");
+    SymbolId sym_on_read = self.interp.symbols.intern("on-read");
+    for (usz i = 2; i < attrs.len(); i++) {
+        SymbolId attr = (*attrs)[i];
+        if ((uint)attr == (uint)sym_materialized) {
+            materialized_view = true;
+            materialized_refresh_policy = sym_manual;
+            if (i + 1 < attrs.len()) {
+                SymbolId next_attr = (*attrs)[i + 1];
+                if ((uint)next_attr == (uint)sym_manual) {
+                    materialized_refresh_policy = sym_manual;
+                    i++;
+                } else if ((uint)next_attr == (uint)sym_on_read) {
+                    materialized_refresh_policy = sym_on_read;
+                    i++;
+                } else {
+                    self.set_error("unknown materialized refresh policy");
+                    return null;
+                }
+            }
+            continue;
+        }
+        self.set_error("unknown relation attribute");
+        return null;
+    }
 
     SymbolId key_col = 0;
     SymbolId index_col = 0;
@@ -100,6 +149,7 @@ fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, List{SymbolId}
     SymbolId sym_unique = self.interp.symbols.intern("unique");
     SymbolId sym_index = self.interp.symbols.intern("index");
     SymbolId sym_ref = self.interp.symbols.intern("ref");
+    SymbolId sym_check = self.interp.symbols.intern("check");
 
     if (self.lexer.current.type != T_SYMBOL) {
         self.set_error("expected relation name");
@@ -114,6 +164,8 @@ fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, List{SymbolId}
     defer unique_cols.free();
     List{DeduceReferenceConstraint} reference_constraints;
     defer reference_constraints.free();
+    List{DeduceCheckConstraint} check_constraints;
+    defer check_constraints.free();
     while (self.lexer.current.type == T_LPAREN && !self.has_error) {
         if (!self.parse_relation_column_spec(
             &col_names,
@@ -121,9 +173,11 @@ fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, List{SymbolId}
             sym_unique,
             sym_index,
             sym_ref,
+            sym_check,
             &key_col,
             &unique_cols,
             &reference_constraints,
+            &check_constraints,
             &index_col
         )) {
             return null;
@@ -135,10 +189,13 @@ fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, List{SymbolId}
     Expr* call = self.build_define_relation_call(
         db_name,
         rel_name,
+        materialized_view,
+        materialized_refresh_policy,
         &col_names,
         key_col,
         &unique_cols,
         &reference_constraints,
+        &check_constraints,
         index_col
     );
 

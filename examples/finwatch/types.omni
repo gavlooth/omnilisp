@@ -27,24 +27,24 @@
 (define [type] (PriceEvent Event)
   (^String symbol)
   (^Double price)
-  (^Int    ts))
+  (^Integer    ts))
 
 ;; AlertEvent: a triggered alert with severity and message.
 (define [type] (AlertEvent Event)
   (^String severity)
   (^String message)
-  (^Int    ts))
+  (^Integer    ts))
 
 ;; SystemEvent: a system lifecycle event (startup, shutdown, error).
 (define [type] (SystemEvent Event)
   (^String kind)
   (^String detail)
-  (^Int    ts))
+  (^Integer    ts))
 
 ;; ── Type aliases ────────────────────────────────────────────────────────────
 
 ;; Semantic aliases — makes signatures self-documenting.
-(define [alias] Timestamp Int)
+(define [alias] Timestamp Integer)
 (define [alias] Price Double)
 
 ;; ── Event dispatch ──────────────────────────────────────────────────────────

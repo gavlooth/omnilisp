@@ -1,4 +1,2058 @@
 
+## 2026-03-26
+
+- Validated the scheduler offload reuse regression in
+  `src/lisp/tests_scheduler_boundary_worker.c3`, proving recycled queued-work
+  nodes are reset and the free-list bound stays intact across a reuse cycle.
+- Hardened `src/lisp/deduce_relation_scan_helpers_more.c3` so scan-range row
+  materialization fails through the native deduce OOM path when row-dict
+  allocation is unavailable instead of dereferencing a null hashmap.
+- Hardened method-table growth and first-define allocation in
+  `src/lisp/jit_jit_define_method_table.c3` by checking `mem::malloc` before
+  dereference and by propagating redefine/append failures instead of treating
+  them as success.
+- Validated the harness-only teardown regression lane with
+  `OMNI_LISP_TEARDOWN_REGRESSION=1` and validated the isolated stdlib-loaded
+  redefine/replacement regression with
+  `OMNI_JIT_POLICY_STDLIB_TEARDOWN_REDEFINITION=1`.
+- Made filtered test-group dispatch fail loudly when `OMNI_DEDUCE_GROUP_FILTER`
+  or `OMNI_ADVANCED_GROUP_FILTER` matches no tests, so targeted validation no
+  longer exits green on a mistyped filter.
+- Guarded the queued-work allocation path in `src/lisp/scheduler_offload_worker.c3`
+  so a null `mem::malloc` result returns failure instead of dereferencing the
+  reset helper on an invalid buffer.
+- Added explicit allocation checks to interpreter module/macro initialization in
+  `src/lisp/value_interp_init_helpers.c3` so startup fails fast with a clear
+  assertion instead of walking a null table during the fill loops.
+- Hardened the environment hash-table rebuild and binding-growth path in
+  `src/lisp/value_environment.c3` by keeping the old hash table live until a
+  replacement is fully allocated and initialized, and by skipping binding
+  growth when the expansion buffer allocation fails instead of dereferencing
+  null.
+- Shipped boundary regression wrapper to enforce the boundary fallback contract for
+  return/boundary handoffs and prevent escaped-state regressions.
+- Extended equality audit benchmarks to capture the new boundary wrapper behavior
+  and include parity coverage for regression-sensitive cases.
+- Added offload allocation counters on the boundary/offload path to track allocation
+  pressure and publish the new counters in the shipped admin surface.
+- Re-aligned deduce benchmark documentation with shipped behavior after the audit
+  pass, including scope and truth labels for current benchmark contracts.
+- Surfaced the boundary telemetry parser summary directly in
+  `scripts/parse_boundary_profile_summary.sh` so the scope-chain pressure and
+  dominant return-path outcomes appear in the regression output without digging
+  through the nested JSON payload.
+- Hardened the offload pool/reuse path by centralizing queued-work reset logic
+  in `src/lisp/scheduler_offload_worker.c3` and strengthening the offload
+  boundary worker retry coverage to assert pooled reuse is actually happening.
+- Moved `prim_schema_explain(...)` into `src/lisp/schema_validation.c3` so the
+  validation-facing entrypoints live together and `src/lisp/schema.c3` stays
+  focused on the explain selector dispatcher.
+- Split the dispatch/match diagnostics formatting helpers out of
+  `src/lisp/eval_dispatch_types.c3` into the existing
+  `src/lisp/eval_dispatch_match_errors.c3` module so the type registry and
+  type-query surface stay focused in the original file.
+- Extracted the `deduce_why_result_*` explainability/path-building block and
+  `prim_deduce_why_result` out of `src/lisp/deduce_schema_query.c3` into a new
+  `src/lisp/deduce_why_result.c3` sibling so the query/execution hot path can
+  stay focused in the original file.
+- Fixed worker-scratch component-pass recursive delta serialization by carrying
+  same-pass scratch-visible additions through
+  `src/lisp/deduce_rule_eval_exec_seminaive.c3`, so later recursive atoms in the
+  component can observe earlier same-component additions before payload
+  serialization.
+- Revalidated the deduce worker-scratch wiring path (`c3c build` passes), but the
+  bounded deduce lane currently aborts with `exit 139` before suite summary; the
+  worker-scratch blocker remains open until that crash is resolved and the
+  serialized recursive-delta test can be rechecked.
+- Added a per-row materialization cost metric to the deduce scan/query/count
+  benchmark summary and reconciled the dispatch hot-path benchmark plan with
+  the actual in-tree benchmark file so the shipped coverage is documented at
+  the right entrypoint.
+- Expanded the equality inline-first workspace caps to keep the common nested
+  comparison benchmark on-stack longer, and hoisted the deduce in-txn scan-row
+  dict capacity computation out of the per-row loop to remove a small avoidable
+  hot-path cost.
+
+## 2026-03-25
+
+- Closed Deduce TODO item `B6.9b2b2b2b2b2b2b2b2` with path-level mixed-context
+  goal-directed provenance lists across support-frame relations:
+  - proof paths now expose `goal-directed-read-contexts` when matching
+    support-frame contexts come from different relations, instead of keeping
+    the path-level surface blank or forcing a fake singular merge
+  - same-relation support paths still use the singular
+    `goal-directed-read-context` field
+- Closed Deduce TODO item `B6.9b2b2b2b2b2b2b2b1` with common path-level
+  goal-directed context propagation across same-relation support frames:
+  - paths now inherit `goal-directed-read-context` when all matching
+    support-frame contexts come from the same relation-local last-read state,
+    including multi-frame fact support paths on the same relation
+  - kept mixed-relation support paths unmerged and split the remaining
+    provenance tail to that broader unresolved merge space
+- Closed Deduce TODO item `B6.9b2b2b2b2b2b2b2a` with unique path-level
+  goal-directed context propagation from matching support frames:
+  - when the root tuple did not match but exactly one support frame in the
+    chosen proof path carried bounded `goal-directed-read-context`, the path
+    now inherits that same context
+  - added regression coverage proving unique support-frame propagation
+    succeeds while multi-frame fact support paths still stay unmerged
+- Closed Deduce TODO item `B6.9b2b2b2b2b2b2b1` with bounded proof-path
+  goal-directed context for matching fact support frames:
+  - added a regression proving `deduce/why-result` attaches
+    `goal-directed-read-context` to matching fact support frames inside a
+    chosen derived proof path, not just the root path or derived
+    `rule-step` frames
+  - split the remaining provenance tail honestly to broader proof-path
+    integration beyond the current root/fact-frame/rule-step row-matching
+    surface
+- Closed Deduce TODO item `B6.11b2` with explicit runtime/admin truth for
+  the current parallel execution lane:
+  - `deduce/analyze`, relation-local `deduce/stats`, and selector-scoped
+    `deduce/explain` now expose `parallel-runtime-mode`
+  - the shipped public value is `metadata-only`, which matches the real
+    boundary: parallel topology and internal worker-scratch/apply seams
+    exist, but the public execution engine is still not a parallel runtime
+- Closed Deduce TODO item `B6.11b1b2b` with broader worker-scratch recursive
+  closure for positive multi-atom SCC rule shapes:
+  - worker-scratch closure no longer stops at the old
+    `single-recursive-atom` guard
+  - non-anchor recursive atoms now read from `LMDB + prior-iteration
+    worker-visible additions`, while same-iteration scratch outputs remain
+    invisible until the iteration closes
+  - added a direct C-level Deduce regression proving a transitive
+    multi-atom recursive SCC emits the full serialized fixpoint delta payload
+- Closed Deduce TODO item `B6.9b2b2b2b2b2b2a` with truthful selector-scoped
+  path-local parity across the currently shipped row-read shapes:
+  - added a mixed-shape regression proving selector-scoped `match` and `scan`
+    keep bounded path-local context on `no-op`, while selector-scoped
+    `query` and `scan-range` keep bounded path-local context on their shipped
+    ephemeral demand paths
+  - removed the earlier misleading negative assumption that selector-scoped
+    no-op row reads were categorically outside the bounded path-local surface
+  - narrowed the remaining provenance backlog honestly back to broader
+    proof-path integration beyond the current bounded root/support-frame row
+    matching surface
+- Closed Deduce TODO item `B6.9b2b2b2b2b2b1` with plain no-op `match`
+  parity for bounded root-path goal-directed context:
+  - the plain non-ephemeral `deduce/match` path now uses the txn-based scan
+    helper when recording bounded subject keys, matching the shipped row-key
+    capture behavior used by the goal-directed path
+  - added a Deduce regression proving `why-result` attaches
+    `goal-directed-read-context` on the matching root proof path after a
+    plain no-op `deduce/match` read
+  - narrowed the remaining provenance backlog honestly to broader
+    proof-path integration beyond the current bounded root/support-frame row
+    matching surface
+- Closed Deduce TODO item `B6.9b2b2b2b2b2a` with the next truthful
+  proof-path provenance slice:
+  - plain no-op `deduce/query` and `deduce/scan-range` reads now preserve the
+    bounded complete subject set for later `why-result` path matching instead
+    of dropping it at the plain read boundary
+  - `deduce/why-result` now also attaches path-local
+    `goal-directed-read-context` on matching derived support frames, not only
+    on the root proof path, when the support frame’s `(relation, tuple)` pair
+    matches that bounded complete last-read subject set
+  - added Deduce regressions for direct no-op `query` path-local attachment
+    and derived support-frame attachment after a plain no-op `scan-range`
+  - narrowed the remaining provenance backlog honestly to broader
+    proof-path integration beyond the current bounded root/support-frame row
+    matching surface
+- Closed Deduce TODO item `B6.11b1c` with the main-thread publish/apply path
+  for worker-computed recursive deltas:
+  - `src/lisp/deduce_rule_eval_exec.c3` now validates and applies a
+    serialized component-delta payload back through the existing relation
+    integrity and LMDB write path on the main thread
+  - added a direct C-level Deduce regression proving a worker-computed
+    recursive closure payload can be deserialized, published, and observed as
+    durable relation rows with updated schema estimates
+  - narrowed the remaining parallel-runtime backlog honestly to broader
+    worker-scratch closure (`B6.11b1b2b`) and runtime/admin truth (`B6.11b2`)
+- Closed Deduce TODO item `B6.9b2b2b2b2b1` as a shipped selector-scan parity
+  closure rather than leaving it implied:
+  - selector-scoped `deduce/scan` was already participating in the bounded
+    complete row-set path-local `goal-directed-read-context` surface through
+    the shared capture path
+  - added an explicit Deduce regression and updated the docs so `scan` no
+    longer appears plain-only in the bounded-complete provenance slice
+- Closed Deduce TODO item `B6.9b2b2b2b2a` with the first bounded multi-row
+  proof-path goal-directed provenance slice:
+  - replaced the old exact-one-only stored subject key with a bounded complete
+    subject-set capture for the last goal-directed row read
+  - `deduce/why-result` path-local `goal-directed-read-context` now attaches
+    when the traced row belongs to that stored set and the full read stayed
+    within the current `8`-row capture limit
+  - this widened slice now applies to goal-directed `query`, `match`,
+    `scan-range`, and plain `scan`; `query`/`match`/`scan-range` keep
+    selector-scoped parity
+  - when the last row-read matched more than the bounded capture limit, the
+    top-level relation-read context remains available but path-local
+    attachment is suppressed truthfully
+  - added Deduce regressions for bounded-complete multi-row path attachment
+    and overflow fallback
+- Pruned the broad roadmap/milestone markers out of `TODO.md` so the live
+  backlog keeps only concrete actionable items:
+  - removed the `Deduce Product Roadmap Follow-up` section (`F0` through
+    `V2-5`) from the active queue
+  - kept the concrete open Deduce execution items plus the older runtime and
+    validation follow-up items that are still directly actionable
+  - corrected the live actionable count accordingly
+- Closed Deduce TODO item `B6.11b1b2a` with the first multi-iteration
+  worker-scratch recursive closure slice:
+  - `src/lisp/deduce_rule_eval_exec_seminaive.c3` now iterates the scratch
+    seminaive path to a fixpoint for positive recursive components whose
+    rules each have at most one positive recursive body atom
+  - the closure path keeps a worker-local visible tuple set for duplicate
+    suppression across iterations and returns the accumulated additions
+    through the serialized component-delta payload format
+  - added a direct C-level Deduce regression that proves the scratch closure
+    computes a transitive `path` fixpoint payload containing `(1,2)`,
+    `(2,3)`, and `(1,3)` without LMDB publish
+  - split the remaining worker-closure lane honestly into
+    `B6.11b1b2b` for broader multi-atom recursive shapes
+- Closed Deduce TODO item `B6.11b1b1` with the first actual worker-scratch
+  recursive compute slice:
+  - `src/lisp/deduce_rule_eval_exec_seminaive.c3` now exposes a read-only
+    seminaive scratch-pass helper for positive non-aggregate recursive
+    components
+  - the helper seeds from the current component snapshot, evaluates one
+    seminaive pass without LMDB publish, and returns serialized component
+    deltas through the `B6.11b1a` payload format
+  - added a direct C-level Deduce regression that proves a recursive rule can
+    emit current-snapshot-derived tuples into that serialized payload
+  - split the remaining worker-compute lane honestly into multi-iteration
+    scratch closure under `B6.11b1b2`
+- Closed Deduce TODO item `B6.11b1a` by shipping the first internal handoff
+  seam for parallel recursive worker-scratch batches:
+  - `src/lisp/deduce_rule_eval_exec.c3` now defines a versioned serialized
+    component-delta payload for one SCC component's signed deltas
+  - the payload carries component id, per-predicate identity, and opaque
+    encoded tuple additions/removals through owned bytes compatible with the
+    existing scheduler `OFFLOAD_RES_BYTES` result seam
+  - added a direct C-level Deduce regression that roundtrips the payload and
+    proves out-of-component predicates are excluded from the serialized batch
+  - split the remaining runtime work honestly into `B6.11b1b`
+    (worker-scratch compute) and `B6.11b1c` (main-thread publish/apply)
+- Tightened the open `B6.11b1` lane to a concrete first runtime shape instead
+  of leaving “parallel recursive execution” vague:
+  - added `docs/plans/deduce-parallel-recursive-first-runtime-shape-decision-2026-03-25.md`
+  - chose worker-local scratch computation plus main-thread publish as the
+  first honest runtime widening
+  - explicitly rejected direct worker-owned LMDB publish as the initial
+    parallel path
+- Closed Deduce TODO item `B6.11a2` by pinning the current fallback/admin
+  truth for parallel recursion metadata:
+  - selector-scoped `deduce/explain` now has explicit regression coverage
+    proving that parallel batch metadata does not imply a separate runtime
+    engine today
+  - the current truthful surface keeps `execution-engine = 'semi-naive-scc`
+    and `goal-directed-execution-path = 'selected-component-closure`
+    alongside the parallel topology fields
+- Closed Deduce TODO item `B6.11a1` by pinning the current parallel-recursion
+  scheduling contract:
+  - the parallel SCC metadata is now documented as a deterministic,
+    metadata-only scheduling surface
+  - recursive components batch only within the same stratum, grouped by the
+    same computed `wave`
+  - `wave = 1` means no same-stratum recursive dependency, and higher waves
+    reflect the one-based longest same-stratum dependency distance from that
+    boundary
+  - added regression coverage that pins the current `stratum` / `wave` /
+    `batch-size` topology on representative recursive SCC batches
+- Closed Deduce TODO item `B6.10b2` by shipping dedicated admin counters and
+  summary truth for `check` constraints:
+  - relation-local `deduce/stats` now exposes
+    `check-integrity-violation-count`
+  - DB-wide `deduce/analyze` now exposes the same dedicated
+    `check-integrity-violation-count` aggregate
+  - the existing integrity-reporting regressions now pin `0` for non-check
+    classes and `1` for check violations on the current `check` failure path
+- Closed Deduce TODO item `B6.10b1` with the first shipped write-enforcement
+  slice for canonical `check` constraints:
+  - immediate `fact!`, derived rule-head publish, and deferred
+    `write-deferred` commit-time snapshot validation now enforce declared
+    unary column checks
+  - failed checks raise deterministic machine-checkable payloads with
+    `deduce/integrity-check-failed`, while missing, non-callable, and raised
+    predicates reject with `deduce/check-predicate-missing`,
+    `deduce/check-predicate-not-callable`, and
+    `deduce/check-predicate-raised`
+  - generic relation and DB integrity history now surface
+    `violation-class = 'check` for those failures
+  - the remaining `check` follow-up is narrowed to dedicated per-class admin
+    counters and summary truth under `B6.10b2`
+- Closed Deduce TODO item `B6.10a2` with the first shipped schema/admin
+  baseline for canonical `check` constraints:
+  - relation declarations now accept unary column checks in the form
+    `(check predicate column)`
+  - relation schemas persist declared `check` metadata, `deduce/schema`
+    exposes `kind = 'check`, `predicate`, `columns`, and `enforced = false`,
+    and `deduce/analyze` now reports DB-wide `check-constraint-count`
+  - integrity totals now include declared `check` constraints on the admin
+    surfaces without claiming write-side enforcement
+  - added parser/storage and schema/analyze regression coverage for the new
+    `check` payload surface
+  - write-side `check` enforcement was the next follow-up slice and is now
+    closed under `B6.10b1`
+- Closed Deduce TODO item `B6.9b2b2b2b1` with exact-one goal-directed
+  `deduce/scan` path context on matching `why-result` paths:
+  - full-relation `deduce/scan` now captures the stored row key when the scan
+    result has exactly one row
+  - `deduce/why-result` now attaches path-local
+    `goal-directed-read-context` for exact-one goal-directed `deduce/scan`
+    subjects alongside the shipped `query`, `match`, and `scan-range` slices
+  - that shipped `scan` slice is pinned for plain reads only; selector-scoped
+    `scan` is still outside the current exact-one path-local slice
+  - the remaining provenance item is now narrowed to `B6.9b2b2b2b2`
+- Closed Deduce TODO item `B6.9b2b2b2a` by pinning selector-scoped parity for
+  the shipped exact-one row-read path-local provenance slice:
+  - exact-one path-local `goal-directed-read-context` now has explicit
+    regression coverage for selector-scoped goal-directed `deduce/query`,
+    `deduce/match`, and `deduce/scan-range`
+  - selector-scoped payloads keep their concrete `selector-rule-index` on the
+    matching proof path, while non-matching rows in the same relation keep
+    that path-local field `nil`
+  - the remaining provenance item is now narrowed to `B6.9b2b2b2b`
+- Closed Deduce TODO item `B6.9b2b2b1` with exact-one goal-directed
+  `deduce/scan-range` path context on matching `why-result` paths:
+  - transactional goal-directed `deduce/scan-range` scans now capture the
+    stored row key when exactly one tuple is returned
+  - `deduce/why-result` now attaches path-local
+    `goal-directed-read-context` for exact-one goal-directed
+    `deduce/scan-range` subjects alongside the shipped `query` and `match`
+    slices
+  - the remaining provenance item is now narrowed to `B6.9b2b2b2`
+- Closed Deduce TODO item `B6.9b2b2a` with exact-one goal-directed
+  `deduce/match` path context on matching `why-result` paths:
+  - transactional goal-directed `deduce/match` scans now capture the matched
+    stored row key when exactly one tuple matches
+  - `deduce/why-result` now attaches path-local
+    `goal-directed-read-context` for exact-one goal-directed `deduce/match`
+    subjects, just like the existing exact-one `query` slice
+  - the remaining provenance item is now narrowed to `B6.9b2b2b`
+- Closed Deduce TODO item `B6.9b2b1` with the first truthful
+  proof-path-integrated goal-directed provenance slice:
+  - `deduce/why-result` now attaches optional path-local
+    `goal-directed-read-context` metadata when the relation's last
+    goal-directed `deduce/query` observed exactly one row and that exact-one
+    row matches the traced tuple
+  - the broader provenance item is now narrowed to `B6.9b2b2`
+  - relation-level top-level `goal-directed-read-context` remains unchanged
+- Closed Deduce TODO item `B6.10a1` by fixing the next widened integrity
+  class as canonical `check`:
+  - the remaining backlog now names `check` constraints directly instead of
+    the vague “widened integrity class” wording
+  - `check` is the selected next integrity lane after the shipped
+    `key` / `unique` / `ref` surface
+  - rejected aliases for that lane are `assert`, `predicate`, and `guard`
+- Closed Deduce TODO item `B6.4f5c2b2b2b` as stale backlog drift:
+  - the transformed recursive query lane is now fully described by shipped
+    support/fallback slices:
+    same-index SCC support, one-carried-position transformed SCC relaxation,
+    truthful permutation fallback, and truthful transformed multi-atom
+    fallback
+  - no separate transformed residual remained beyond those now-pinned
+    boundaries
+- Closed Deduce TODO item `B6.4f5c2b2b2a` by restoring truthful fallback for
+  transformed recursive multi-atom `deduce/query` demands:
+  - transformed recursive single-branch and disjunctive shapes whose
+    uncarried demand is still distributed across multiple recursive body atoms
+    now stay on `selected-component-closure` instead of reporting
+    `ephemeral-head-demand-query` with incomplete rows
+  - the remaining transformed recursive query residual stays open as
+    `B6.4f5c2b2b2b`
+- Closed Deduce TODO item `B6.4f5c2b2b1` by pinning multi-hop transformed SCC
+  one-carried-position support:
+  - transformed recursive pair and pair-disjunction demand relaxation now has
+    explicit regression coverage for multi-hop SCC cycles, not just reordered
+    two-relation mutual recursion
+  - the remaining transformed recursive query residual stays open as
+    `B6.4f5c2b2b2`
+- Closed Deduce TODO item `B6.4f5c2b2a` by pinning transformed recursive
+  disjunctive one-carried-position relaxation:
+  - transformed reordered mutual-recursive pair disjunctions now have
+    explicit regression coverage on `ephemeral-head-demand-query` with
+    requested positions `(0 1)` and one applied carried position
+  - pure recursive permutation disjunctions still stay on truthful fallback
+  - the remaining transformed recursive query residual stays open as
+    `B6.4f5c2b2b`
+- Closed Deduce TODO item `B6.4f5c2b1` by widening recursive transformed
+  `deduce/query` support to one-carried-position relaxation:
+  - transformed recursive SCC pair demands may now stay on
+    `ephemeral-head-demand-query` when the queried head predicate still has
+    some same-index recursive carrier for one requested position
+  - that shipped slice reports requested positions `(0 1)` with one applied
+    carried position, while pure permutation shapes still fall back truthfully
+  - the remaining transformed recursive query residual stays open as
+    `B6.4f5c2b2`
+- Closed Deduce TODO item `B6.4f5c2a` by pinning multi-hop same-index SCC
+  `deduce/query` support:
+  - same-index recursive pair demands now have explicit regression coverage
+    for positive three-relation SCC cycles, not just self-recursive or
+    two-relation mutual-recursive shapes
+  - the remaining recursive query residual stays open as `B6.4f5c2b`
+- Closed Deduce TODO item `B6.4f5c1` by pinning same-index mutual-recursive
+  disjunctive `deduce/query` support:
+  - same-index mutual-recursive SCC pair disjunctions now have explicit
+    regression coverage on `ephemeral-head-demand-query` with requested and
+    applied positions `(0 1)`
+  - the remaining recursive query residual stays open as `B6.4f5c2`
+- Closed Deduce TODO item `B6.4f5b` by widening recursive multi-position
+  `deduce/query` support to same-index mutual-recursive SCC shapes:
+  - fully-bound pair demands may now stay on `ephemeral-head-demand-query`
+    not only for same-index self-recursive rules, but also for SCC-local
+    mutual recursion where each recursive rule has some positive recursive
+    body atom preserving all requested positions together at the same indices
+  - permutation shapes and multi-atom distributed-demand shapes still fall
+    back truthfully to `selected-component-closure`
+  - the remaining recursive query residual stays open as `B6.4f5c`
+- Closed Deduce TODO item `B6.9b2a` by exposing optional why-result
+  goal-directed read context metadata:
+  - `deduce/why-result` now adds top-level `goal-directed-read-context` when
+    the relation has existing last goal-directed read state
+  - that metadata mirrors the shipped `last-goal-directed-read-*` admin truth
+    and may appear even when the row subject is still `missing`
+  - proof-path-integrated goal-directed provenance now continues as the
+    narrower residual `B6.9b2b2`
+- Closed Deduce TODO item `B6.9b1b` by widening recursive `deduce/why-result`
+  payloads beyond flattened fact-only closure support:
+  - recursive closure paths now append a `rule-step` support frame for the
+    derived child subject used in the chosen proof chain
+  - recursive closure `max-depth` now reflects that deeper derived step,
+    moving the first shipped recursive payloads beyond flat fact-only support
+  - goal-directed provenance semantics remain open as `B6.9b2`
+- Closed Deduce TODO item `B6.9b1a` by shipping the first positive recursive
+  `deduce/why-result` closure lineage:
+  - stored rows in positive recursive closure relations now compose support
+    through the shipped row-subject provenance helper surface while guarding
+    against revisiting the same `(predicate, tuple)` subject
+  - one recursive support chain returns `status = ok`, and multiple recursive
+    support chains return `status = partial` with the first deterministic path
+  - broader recursive lineage beyond the current flattened fact-support surface
+    remains open as `B6.9b1b`
+- Closed Deduce TODO item `B6.9a8` by shipping the first multi-rule
+  non-recursive `deduce/why-result` lineage:
+  - stored rows in multi-rule non-recursive derived relations now aggregate
+    support paths across the already-shipped non-recursive provenance helper
+    surface
+  - a single supported path across matching rules returns `status = ok`, and
+    multiple supported paths return `status = partial` with the first
+    deterministic path
+  - recursive and goal-directed provenance semantics remain open as `B6.9b1`
+    and `B6.9b2`
+- Closed Deduce TODO item `B6.9a7` by shipping the first exact-one-rule
+  mixed-body non-recursive `deduce/why-result` lineage:
+  - mixed-body non-recursive rules now compose through already-supported
+    exact-one-rule child provenance helpers
+  - unique support chains return `status = ok`, and multiple support chains
+    return `status = partial` with the first deterministic path
+  - multi-rule non-recursive derived lineage remains open as `B6.9a8`
+- Closed Deduce TODO item `B6.9a6` by shipping the first exact-one-rule
+  extensional search-based `deduce/why-result` lineage:
+  - non-recursive extensional rules with existential/search-based support now
+    return `status = ok` when one deterministic path exists
+  - the same surface now returns `status = partial` with `truncated = true`
+    when multiple support paths exist and only the first deterministic path is
+    emitted
+  - mixed-body or multi-rule non-recursive derived lineage remains open as
+    `B6.9a7`
+- Closed Deduce TODO item `B6.9a5` by widening non-recursive
+  `deduce/why-result` lineage to reconstructible extensional multi-body rules:
+  - exact-one-rule extensional derived relations now return `status = ok` when
+    every support tuple is reconstructible from the head row
+  - current derived support now covers direct-copy, one-body
+    projection/permutation, and head-bound multi-body extensional rules
+  - existential or search-based non-recursive derived lineage remains open as
+    `B6.9a6`
+- Closed Deduce TODO item `B6.9a4` by widening non-recursive
+  `deduce/why-result` lineage to the first one-body extensional class:
+  - stored rows in relations with exactly one non-negated, non-aggregate,
+    one-body extensional rule now return `status = ok` when the source tuple is
+    fully reconstructible from the head row
+  - current derived support covers direct-copy plus one-body
+    variable projection/permutation rules
+  - multi-body or existential non-recursive derived lineage remains open as
+    `B6.9a5`
+- Closed Deduce TODO item `B6.9a3` by shipping the first non-recursive
+  derived `deduce/why-result` slice:
+  - stored rows in relations with exactly one non-negated, non-aggregate,
+    one-body direct-copy rule from an extensional source now return
+    `status = ok` with one deterministic `derived` path
+  - the derived path's support names the extensional source fact predicate
+  - broader non-recursive derived lineage remains open as `B6.9a4`
+- Closed Deduce TODO item `B6.9a2` by shipping the first public
+  `deduce/why-result` runtime slice:
+  - `(deduce/why-result relation val...)` now returns deterministic row-subject
+    payloads for stored extensional tuples
+  - extensional hits return `status = ok` with one `seed` path and one `fact`
+    support frame
+  - missing tuples return `status = missing`
+  - stored derived rows return `status = error` with
+    `deduce/why-result-derived-subject-not-yet-supported`
+  - the remaining non-recursive derived-lineage work is tracked separately as
+    `B6.9a3`
+- Closed Deduce TODO item `B6.9a1` by tightening the why-result baseline into
+  canonical doc truth:
+  - `docs/deduce-datalog-spec.md` now fixes the top-level status semantics for
+    `ok`, `missing`, `partial`, and `error`
+  - the canonical why-result envelope keys are now explicit before any public
+    provenance runtime rollout
+- Closed Deduce TODO item `B6.8b2` by shipping the first derived-predicate
+  maintained-update class:
+  - successful `incremental-targeted` refresh of a supported materialized
+    direct-copy source can now queue the same inserted tuples for one-step
+    downstream direct-copy materialized targets
+  - downstream ready targets can then refresh on the same
+    `incremental-targeted` path while still remaining stale until explicitly
+    refreshed
+- Closed Deduce TODO item `B6.8b1` by shipping the first maintained-update
+  class for ordinary DB mutations:
+  - committed insertions on supported extensional direct-copy sources now queue
+    encoded tuple keys per materialized target
+  - relation-scoped `deduce/refresh!` now reports
+    `refresh-execution-path = 'incremental-targeted` for already-refreshed
+    supported targets, and stale `on-read` materialized reads reuse that same
+    path
+  - queue-tracking failure now escalates truthfully to the existing
+    `full-recompute-required` boundary instead of silently dropping deltas
+- Closed Deduce TODO item `B6.8a2` by fixing the fallback/admin contract for
+  future incremental maintenance:
+  - the canonical docs now require later maintained-update work to reuse the
+    current `tracked` / `full-recompute` public vocabulary
+  - the docs now explicitly reject new public degraded-mode names and require
+    existing stats/analyze/refresh/read surfaces to stay truthful under
+    fallback
+- Closed Deduce TODO item `B6.8a1` by lifting the current incremental
+  signed-delta substrate into the canonical docs:
+  - `docs/deduce-datalog-spec.md` now has an explicit data-model baseline for
+    encoded tuples, signed delta sets, support tables, and current/next
+    iteration buffers
+  - `docs/reference/08-libraries.md` now points later maintenance work at
+    that substrate instead of leaving the internal model implicit
+- Closed Deduce TODO item `B6.7b2` by pinning admin-surface alignment beyond
+  tracked recompute:
+  - `deduce/stats`, `deduce/analyze`, and relation-scoped `deduce/refresh!`
+    now have explicit regression coverage across a rule-set-change degraded
+    transition
+  - the current surface is now pinned so that a prior plain DB-level analyze
+    clears `full-recompute`, a later relation refresh stays targeted, and the
+    untouched stale peer remains visible on both refresh and later analyze
+- Closed Deduce TODO item `B6.7b1` by pinning the current dirty-frontier truth
+  contract:
+  - relation-local `deduce/stats` now has explicit regression coverage showing
+    that `dirty-predicate-count` / `dirty-predicates` stay DB-global
+  - `dirty-self` is now pinned as the relation-local bit that differs between
+    a cleared relation and an untouched relation after selected-component
+    recovery
+- Closed Deduce TODO item `B6.7a2` by pinning the current degraded-state and
+  recovery contract:
+  - relation-local `deduce/stats` now has explicit regression coverage showing
+    `full-recompute-required` immediately after destructive writes
+  - plain DB-level `deduce/analyze` now has explicit regression coverage as a
+    pre-reset snapshot surface that still reports the degraded frontier it
+    observed
+  - a successful DB-level analyze run is now pinned as clearing the live
+    `full-recompute` / dirty-admin state afterward
+- Closed Deduce TODO item `B6.7a1` by pinning the current commit/abort
+  mutation-log contract:
+  - write-block mutations now have explicit regression coverage showing that
+    dirty/admin state changes only on commit
+  - `abort` drops pending mutation logs without changing row counts or dirty
+    metadata
+  - committed destructive writes are now pinned as the current path that
+    escalates `incremental-invalidation-mode` to `full-recompute`
+- Closed Deduce TODO item `B6.6b2` by pinning the real conjunctive counter
+  boundary:
+  - `deduce/stats.last-goal-directed-read-step-counters` now has explicit
+    regression coverage as the last preserved-bound runtime read surface
+  - `deduce/analyze.rule-execution[*].steps[*].counters` and
+    `deduce/explain.steps[*].counters` are now pinned as separate observed
+    execution surfaces, not aliases of the earlier read counters
+- Closed Deduce TODO item `B6.6b1` by pinning conjunctive path/order truth at
+  the current shipped boundary:
+  - `deduce/explain.steps[*]` and
+    `deduce/analyze.rule-execution[*].steps[*]` now have regression coverage
+    proving they stay aligned on planner-derived `join-order`, `predicate`,
+    `operator`, and `selected-index`
+  - runtime truth for that lane remains in the attached observed counters,
+    not a separate reordered execution trace
+- Closed Deduce TODO item `B6.6a2` by pinning the shipped `deduce/analyze`
+  classification boundary for conjunctive recursive selectors:
+  - selector-scoped top-level `goal-directed-*` fields remain planner-side
+  - `last-goal-directed-read-*` continues to mirror the last actual DB-level
+    read
+  - `rule-execution[*].steps[*].counters.counter-kind = 'observed` is now
+    covered explicitly for the analyzed rule entries
+- Closed Deduce TODO item `B6.6a1` by pinning the shipped `deduce/explain`
+  classification boundary:
+  - `deduce/explain` now has regression coverage proving it remains a
+    `planner-snapshot` surface even after a runtime `deduce/query`
+  - top-level `goal-directed-execution-path` stays planner-side, while
+    `last-goal-directed-read-*` and `steps[*].counters.counter-kind =
+    'observed` mirror the last actual runtime read
+- Closed Deduce TODO item `B6.4f5a` with the next recursive symbolic safety
+  slice:
+  - recursive query demands whose requested positions are split across
+    multiple recursive atoms, such as `path(x,z) :- path(x,y), path(y,z)`,
+    now have explicit selector/plain regression coverage on truthful
+    `selected-component-closure` fallback
+  - the remaining recursive symbolic residual is narrower `B6.4f5b`:
+    broader recursive multi-position query support beyond the current
+    same-index-preserved and fallback-only shapes
+- Closed Deduce TODO item `B6.4f4b` with the first real jointly-supported
+  recursive multi-position query slice:
+  - same-index self-recursive shapes such as `stable(x,y) :- stable(x,y)`
+    now keep fully-bound multi-position selector/plain query demands on
+    `ephemeral-head-demand-query`
+  - admin truth for that slice now reports requested and applied positions
+    `(0 1)` instead of collapsing to one carried position or a full
+    selected-component closure
+  - the remaining recursive symbolic residual is narrower `B6.4f5`:
+    broader recursive multi-position query support beyond the current
+    same-index-preserved and permutation-fallback shapes
+- Closed Deduce TODO item `B6.4f4a` with the next recursive symbolic safety
+  slice:
+  - jointly-supported recursive permutation query demands such as
+    `sym(x,y) :- sym(y,x)` no longer claim the ephemeral demand path when the
+    current evaluator cannot seed the needed support tuples
+  - those selector/plain single-branch and disjunctive queries now fall back
+    truthfully to `selected-component-closure` with `dirty-closure`
+  - the remaining recursive symbolic residual is narrower `B6.4f4b`:
+    preserving jointly-supported multi-position recursive query demands
+    beyond that truthful permutation fallback
+- Closed Deduce TODO item `B6.4f3` with the next bounded recursive symbolic
+  compatibility slice:
+  - recursive multi-position symbolic query demands no longer hard-code the
+    last requested position as the one applied recursive anchor
+  - the runtime now keeps the one head position preserved by the positive
+    self-recursive rule, which fixes reordered recursive head shapes where
+    the carried position is not the last column
+  - the remaining recursive symbolic residual is now narrower `B6.4f4`:
+    jointly-supported multi-position recursive demands that should stay
+    applied together on single positive self-recursive shapes
+- Closed Deduce TODO item `B6.4f2` with the first bounded recursive symbolic
+  compatibility slice:
+  - recursive multi-position symbolic pair filters and disjunctive pair
+    branches now stay on `ephemeral-head-demand-query` when the projected
+    recursive head demand can be relaxed to one applied position
+  - the current shipped relaxation keeps the trailing supported projected
+    position, so admin truth now reports requested positions `(0 1)` with
+    applied positions `(1)` for that slice
+  - the real residual is now narrower `B6.4f3`: broader recursive symbolic
+    rewrite beyond single applied-position relaxation
+- Retired stale Deduce TODO item `B6.4e2c` after rechecking the remaining
+  symbolic query lane against the current runtime contract:
+  - there is no separate non-recursive goal-directed symbolic disjunction
+    implementation lane beyond the already shipped subset, because non-recursive
+    one-rule subjects are not goal-directed eligible in the current planner
+  - the real open residual is entirely the recursive symbolic compatibility
+    lane now tracked as `B6.4f2`
+- Closed Deduce TODO item `B6.4f1` with the first truthful recursive-shape
+  safety slice: recursive multi-position symbolic query demands, including
+  single filters and disjunctive branches shaped like `(and (= src ...) (=
+  dst ...))`, now fall back to `selected-component-closure` instead of
+  claiming `ephemeral-head-demand-query` with incomplete results; the open
+  recursive residual is broader support beyond the current single-position
+  compatibility boundary under `B6.4f2`.
+- Closed Deduce TODO item `B6.4e2b2` with the next truthful disjunctive
+  rewrite slice: mixed-position demand-safe branches now stay on
+  `ephemeral-head-demand-query`, with the runtime unioning the branch-local
+  requested/applied positions before reapplying the original full
+  disjunctive filter; the remaining open residual is broader symbolic
+  multi-branch rewrite under `B6.4e2c`.
+- Closed Deduce TODO item `B6.4e2b1` with the next truthful same-position
+  disjunctive rewrite slice: same-position branch unions now also cover
+  branch-local residual unsupported conjuncts, because each branch still
+  mines only its shipped equality-demand subset and the original full filter
+  is reapplied over the union after the branch-local reads; the remaining
+  open residual is wider mixed-position or more symbolic disjunction under
+  `B6.4e2b2`.
+- Tightened the already-shipped `B6.4e1` / `B6.4e2a` disjunctive query
+  rewrite boundary to the truthful runtime contract:
+  - each shipped branch now executes in its own abortable temporary write
+    txn before the original full filter is reapplied over the union
+  - same-position wrapper disjuncts stay on the ephemeral path
+  - mixed-position multi-branch disjuncts are now pinned back to
+    `selected-component-closure`, which remains the open residual under
+    `B6.4e2b`
+- Closed Deduce TODO item `B6.4e2a` with the next truthful same-position
+  multi-branch rewrite slice: the disjunctive ephemeral query path now also
+  accepts same-position wrapper branches that reach the shared projected
+  head-demand slot through already shipped whole-filter or row-column
+  wrappers, while mixed-position disjuncts still fall back and remain open
+  under `B6.4e2b`.
+- Closed Deduce TODO item `B6.4e1` with the first broader query-time rewrite
+  execution slice: `deduce/query` can now union multiple abortable ephemeral
+  head-demand runs for an `or` of individually demand-safe branches inside
+  the same temporary write txn, while wider mixed or symbolic disjunctions
+  still fall back and remain open under `B6.4e2`.
+- Closed Deduce TODO item `B6.4d` with the next truthful `deduce/query`
+  demand-widening slice: the shipped extractor now also rewrites captured
+  comparator wrappers when exactly one call argument reduces to a row-derived
+  scalar and the remaining arguments are closed literals, and it preserves
+  that same bounded subset across short forwarding chains without claiming
+  generic captured-call rewrite or symbolic solving.
+- Closed Deduce TODO item `B6.3f2` with the first truthful durable
+  ready/freshness reopen slice: supported persisted executable rule
+  signatures now restore live derived execution through stable catalog-name
+  remapping plus inferred predicate-schema registration, so reopened
+  `deduce/analyze`, `deduce/refresh!`, refreshed manual materialized views,
+  and stale `on-read` reads regain truthful ready/fresh behavior on the
+  current supported signature surface while unsupported signature shapes
+  still fall back to summary-only admin truth.
+- Closed Deduce TODO item `B6.3f1b` with the first truthful rule/dependency
+  catalog persistence slice: file-backed DBs now persist a compact admin
+  catalog summary across reopen, so reopened `deduce/analyze` retains the
+  last installed `rule-count` and `incremental-dependency-edges` while
+  executable rule state and durable ready/fresh semantics remain deferred.
+- Consolidated the repo backlog into `TODO.md` and removed the parallel
+  backlog/roadmap tracker files from `docs/plans/`, so there is now one live
+  execution queue instead of several drifting sources.
+- Shipped Deduce declaration-time `on-read` materialization as the first
+  non-manual policy: `[relation db materialized on-read]` now parses,
+  persists across reopen, surfaces through `deduce/schema` and `deduce/stats`,
+  auto-refreshes stale derived materialized relations on ordinary stored-tuple
+  reads, and fails truthfully on stale reopen cases where rule/dependency
+  catalogs are still absent.
+- Chose the first future non-manual declaration policy target instead of
+  leaving it generic: `on-read` is now the explicit first widening after the
+  current manual-only surface, while `on-base-commit`, `on-open`, and
+  `scheduled` remain later approved names for different trigger families.
+- Strengthened the repo agent rule from “don’t split only when naming is
+  blocked” into a general naming-problem rule: whenever naming is unclear,
+  drifting, or blocking progress, agents must convert that into an explicit
+  decision, a concrete options note, or a direct owner question instead of
+  leaving “needs naming” as the stopping point.
+- Expanded the Deduce declaration-policy decision from “freeze at `manual`”
+  into a full naming table for future trigger families: `on-read`,
+  `on-base-commit`, `on-open`, and `scheduled` are now the approved future
+  names, while vague spellings like `auto`, `eager`, `background`, and
+  `on-write` are explicitly rejected.
+- Closed Deduce backlog item `B6.3e1` with an explicit surface decision
+  instead of leaving naming drift open-ended: declaration-time materialization
+  stays frozen at `manual` until a real non-manual maintenance contract exists,
+  and the decision note now records concrete rejected/deferred candidates such
+  as `auto`, `eager`, `on-open`, `on-read`, and `on-base-commit`.
+- Added an agent rule in `AGENTS.md` forbidding “split only” drift when work is
+  blocked on missing language-facing naming or surface-contract choices:
+  agents must either record the explicit current decision or add a short
+  decision note with concrete candidate spellings, semantics, and a
+  recommendation.
+- Closed Deduce backlog item `B6.3f1a` at the honest shipped reopen contract:
+  file-backed reopen preserves materialized snapshot rows and lifecycle
+  metadata, but installed rules and dependency catalogs do not survive reopen,
+  so reopened `deduce/analyze` resets to `rule-count = 0` and
+  `incremental-dependency-edges = 0` until rules are reinstalled.
+- Split Deduce backlog item `B6.3f1` at the real semantic boundary:
+  `B6.3f1a` now tracks the canonical reopen contract for persisted
+  rule/dependency catalogs, and `B6.3f1b` tracks any runtime/storage rollout
+  that should only happen after that catalog-persistence contract is chosen.
+- Split Deduce backlog item `B6.3f` at the real persistence boundary:
+  `B6.3f1` now tracks persisted rule/dependency catalogs beyond the current
+  snapshot contract, and `B6.3f2` tracks any later durable freshness/ready
+  semantics that should only be defined after that catalog-persistence
+  boundary exists.
+- Split Deduce backlog item `B6.3e` at the real semantic boundary instead of
+  guessing new language-facing declaration-policy names: `B6.3e1` now tracks
+  the canonical policy naming/contract choice beyond `manual`, and `B6.3e2`
+  tracks any parser/runtime/schema widening that should happen only after that
+  naming decision exists.
+- Closed Deduce backlog item `B6.3d` at the honest shipped persistence
+  boundary: file-backed materialized relations now have an explicit current
+  contract that persists the last stored snapshot rows across reopen in
+  addition to materialized lifecycle metadata, while reopened schema/admin
+  surfaces still remain conservatively unready until rules are reinstalled.
+  Broader persisted rule/dependency catalogs and durable derived freshness
+  semantics are promoted into follow-up item `B6.3f`.
+- Closed Deduce backlog item `B6.3c` at the honest shipped declaration-policy
+  boundary: declaration-time materialization is now recorded as an explicit
+  manual-only contract, `[relation db materialized]` is documented as
+  shorthand for `[relation db materialized manual]`, and broader
+  declaration-policy widening is promoted to follow-up item `B6.3e` instead
+  of leaving the shipped baseline looking perpetually partial.
+- Reshaped the remaining Deduce `B6.4` backlog so the old `B6.4c` umbrella
+  now closes as the shipped goal-directed execution baseline, and the true
+  residual work is split explicitly into:
+  - wider captured-call rewrite for `deduce/query` demand extraction
+  - broader query-time magic-set / rewrite execution
+  - compatibility and safety rules for wider recursive shapes
+- Added explicit Deduce backlog items for the remaining gaps still marked
+  `partial` or `deferred` in `docs/deduce-datalog-spec.md`, covering:
+  - planner-backed conjunctive execution / explain truthfulness tightening
+  - mutation logging / dirty-tracking contract beyond tracked recompute
+  - true incremental derived-state maintenance
+  - runtime provenance / why-result surface
+  - richer integrity classes beyond the current key/unique/reference slice
+  - parallel recursive evaluation beyond topology visibility
+- Increased the backlog granularity again by splitting each of those new
+  spec-derived residuals into two smaller items so contract/baseline work and
+  runtime rollout work are no longer bundled together.
+- Increased the backlog granularity one more time by splitting each of those
+  twelve smaller residuals again into two subitems, so the open
+  spec-derived Deduce queue now tracks twenty-four narrow contract/rollout
+  slices rather than twelve medium ones.
+
+- Landed the next `B6.4c` Deduce goal-directed query-demand validation slice:
+  - the preserved-row literal-arg wrapper subset is now pinned explicitly
+    when the forwarded `row` appears in a non-leading argument position on
+    both the whole-filter side and the row-column side, including
+    multi-literal-arg wrapper shapes that still collapse to the shipped
+    equality-demand subset
+  - added focused selector/plain regressions in
+    `src/lisp/tests_deduce_query_groups.c3` so the remaining open gap stays
+    "wider rewrite" rather than argument-position variants that are already
+    shipped
+
+- Landed the next `B6.4c` Deduce goal-directed query-demand slice:
+  - the preserved-row wrapper helper already keeps short forwarding chains of
+    extra-literal-arg wrappers on the ephemeral query path for both the
+    whole-filter and row-column cases
+  - added focused selector/plain regressions in
+    `src/lisp/tests_deduce_query_groups.c3` to pin those chain shapes
+    explicitly so the remaining open gap stays "wider rewrite" rather than
+    already-shipped bounded chains
+
+- Landed the next `B6.4c` Deduce goal-directed query-demand slice:
+  - `deduce/query` demand extraction now also unwraps preserved-row captured
+    wrapper calls with extra closed literal arguments on both the
+    whole-filter side and the row-column side
+  - this widening stays bounded to wrappers that still forward the current
+    `row` directly and only bind the remaining arguments from closed literal
+    expressions, so wider captured-call shapes still fall back to
+    `selected-component-closure`
+  - added focused selector/plain regressions in
+    `src/lisp/tests_deduce_query_groups.c3` that pin the ephemeral query path
+    through those preserved-row literal-arg wrapper shapes
+
+- Landed the next `B6.4c` Deduce goal-directed query-demand slice:
+  - `deduce/query` demand extraction now also follows short forwarding chains
+    of one-argument captured wrappers for both the whole-filter case and the
+    row-column-side case
+  - this widening stays bounded rather than pretending generic captured-call
+    rewrite is shipped: wider captured-call shapes outside that simple
+    forwarding-chain pattern still fall back to
+    `selected-component-closure`
+  - added focused selector/plain regressions in
+    `src/lisp/tests_deduce_query_groups.c3` that pin the ephemeral query path
+    through those forwarding-chain shapes
+
+- Landed the next `B6.4c` Deduce goal-directed query-demand slice:
+  - `deduce/query` demand extraction now also unwraps one-argument captured
+    closure wrappers on the row-column side when they forward the current
+    `row` into a body that already resolves to a supported
+    `(ref row 'column)` shape
+  - this widening is still intentionally narrow and non-recursive:
+    captured wrapper stacks on the row-column side still fall back to the
+    existing `selected-component-closure` path instead of pretending generic
+    captured-call rewrite is already shipped
+  - added focused selector/plain regressions in
+    `src/lisp/tests_deduce_query_groups.c3` that pin the ephemeral query path
+    through that row-column captured-wrapper shape
+
+- Landed the next `B6.4c` Deduce goal-directed query-demand slice:
+  - `deduce/query` demand extraction now also unwraps one-argument captured
+    closure wrappers around the whole filter body when they simply forward the
+    current `row` into a body that already fits the shipped
+    equality-demand subset
+  - the widening is intentionally narrow and non-recursive:
+    nested captured wrapper stacks still fall back to the existing
+    `selected-component-closure` path instead of pretending generic
+    captured-call rewrite is already shipped
+  - added focused selector/plain regressions in
+    `src/lisp/tests_deduce_query_groups.c3` that pin the ephemeral query path
+    through that captured-wrapper shape
+
+- Reshaped the remaining `B6.3` Deduce materialized-view backlog to match the
+  real residual work:
+  - closed the old `B6.3b` umbrella item as a backlog-shaping correction
+    instead of leaving shipped declaration, dematerialize, and persisted
+    lifecycle slices under one permanently-open heading
+  - promoted the only real residuals into two explicit open items in
+    `docs/plans/deduce-actionable-backlog-2026-03-20.md`:
+    - `B6.3c` declaration policy beyond the current manual-only marker
+    - `B6.3d` persisted derived-state durability semantics beyond the current
+      lifecycle metadata
+  - no runtime behavior changed in this patch; this is an active-plan truth
+    correction
+
+- Published the canonical Deduce maintenance analytics payload baseline:
+  - `docs/deduce-datalog-spec.md` now has one source-of-truth section for
+    relation-local `deduce/stats`, DB-level `deduce/analyze`,
+    `deduce/refresh!`, and the current maintenance/admin structured rejection
+    keys
+  - corrected the docs to match the shipped runtime surface exactly:
+    `materialized-refresh-policy` is currently a `deduce/schema` /
+    `deduce/refresh!` field, not a `deduce/stats` field
+  - `docs/reference/08-libraries.md` now points to that spec section instead
+    of duplicating field inventories, and the first analytics-extension
+    milestone item is closed in
+    `docs/plans/deduce-analytics-extension-milestone-2026-03-24.md`
+
+- Closed the next Deduce analytics-extension regression item:
+  - added focused public-surface coverage in
+    `src/lisp/tests_deduce_query_groups.c3` for:
+    - zero-row materialized refresh staying deterministic
+    - the dropped-handle split where `deduce/stats` still reports a
+      deterministic payload but `deduce/refresh!` rejects with
+      `deduce/refresh-relation-dropped`
+  - extended `src/lisp/tests_deduce_durability_groups.c3` so persisted but
+    still-unready materialized declarations also pin the DB-wide
+    `deduce/refresh!` payload (`0` refreshed views, honest remaining stale
+    relation list) after reopen
+  - closed the matching milestone item in
+    `docs/plans/deduce-analytics-extension-milestone-2026-03-24.md`
+
+- Closed the stats-maintenance benchmark harness item for the Deduce analytics
+  extension milestone:
+  - added `run_deduce_stats_maintenance_benchmarks(...)` under the existing
+    `OMNI_DEDUCE_BENCH=1` gate with one bounded smoke-oriented summary lane:
+    - tracked fact churn over a seeded materialized relation, asserting
+      targeted relation refreshes and post-refresh stats stability
+    - forced rule-set-change invalidation, asserting the relation-scoped
+      refresh fallback to DB-wide rebuild plus post-refresh stats recovery
+  - added benchmark helper coverage in
+    `src/lisp/tests_deduce_query_bench_groups.c3` and documented the emitted
+    `OMNI_BENCH_SUMMARY suite=deduce_stats_maintenance ...` fields in
+    `docs/plans/deduce-stats-maintenance-benchmark-notes-2026-03-25.md`
+
+- Closed the first cleanup/admin-verb item in the Deduce analytics extension
+  milestone:
+  - published `docs/deduce-datalog-spec.md#74-cleanup-verb-matrix` as the
+    canonical cleanup-surface contract for `deduce/retract!`,
+    `deduce/clear!`, and `deduce/drop!`
+  - documented:
+    - the only approved cleanup verb names
+    - accepted call shapes, including the current transaction-only support for
+      `retract!`
+    - deterministic no-op cases for absent tuples, empty relations, and
+      repeated drops
+    - the current rejection-code matrix
+  - updated `docs/reference/08-libraries.md` to point to the spec section
+    instead of carrying a second drifting cleanup contract summary
+  - corrected the milestone target from the old cleanup implementation file to
+    `src/lisp/deduce_relation_ops_mutations.c3`, where the cleanup verb
+    handlers currently live
+
+- Closed the cleanup-path audit item for the Deduce analytics extension
+  milestone:
+  - extended `src/lisp/tests_deduce_durability_groups.c3` to pin current
+    cleanup edge behavior:
+    - `retract!` on a missing tuple is a `Void` no-op
+    - repeated `drop!` on the same dropped relation handle is a `Void` no-op
+    - `retract!` and `clear!` on a dropped relation handle reject
+      deterministically with `deduce/retract-relation-dropped` and
+      `deduce/clear-relation-dropped`
+  - that audited behavior is now aligned with the published cleanup matrix in
+    `docs/deduce-datalog-spec.md#74-cleanup-verb-matrix`
+
+- Closed the dedicated cleanup admin-task regression item for the Deduce
+  analytics extension milestone:
+  - extended `src/lisp/tests_deduce_query_groups.c3` with a public-surface
+    write-intent regression that pins code-first cleanup failures for:
+    - `retract!` tuple arity mismatch
+    - `retract!` transaction/DB mismatch
+    - `clear!` and `drop!` invoked with the wrong Deduce handle kind
+  - together with the durability-side no-op/dropped-handle regressions, the
+    current cleanup contract is now pinned across both write-intent failure and
+    no-op maintenance surfaces
+
+- Restored the shipped `deduce_scan_query_count` benchmark lane so the current
+  source matches the existing benchmark notes and Docker perf-envelope script:
+  - implemented `run_deduce_scan_query_count_benchmarks(...)` in
+    `src/lisp/tests_deduce_query_bench_groups_more.c3` using the existing seed
+    helper and scan-range materialization counters
+  - the lane now emits the expected
+    `OMNI_BENCH_SUMMARY suite=deduce_scan_query_count ...` fields for:
+    - scan
+    - full-range scan-range
+    - query
+    - count
+    - scan-range materialization counters
+  - updated `docs/plans/deduce-scan-query-count-benchmark-baseline-2026-03-11.md`
+    to match the current implementation location and summary surface
+  - closed the remaining open post-complete backlog items for:
+    - deterministic Deduce cleanup/statistics behavior
+    - Deduce scan/query/copy hotspot benchmark coverage
+
+- Landed the formatter CLI baseline:
+  - added `omni --fmt <file>` as a first-party conservative formatter path
+  - default mode prints formatted source to stdout,
+    `--write` rewrites in place, and `--check` returns non-zero when a file
+    needs formatting changes
+  - the current formatter contract is intentionally narrow and matches the
+    existing LSP formatter behavior: normalize structural indentation, align
+    wrapped `export` / `export-from` payloads and wrapped `let` binding-list
+    continuations, trim trailing whitespace, preserve blank lines, and avoid
+    aggressive intra-line rewrites
+  - updated `docs/PROJECT_TOOLING.md`, `docs/man/omni.1`, and
+    `docs/plans/editor-tooling-roadmap.md` to reflect the shipped CLI surface
+
+- Landed Neovim formatter-tool integration for the formatter CLI:
+  - added `tooling/omni-nvim/lua/omni/formatter.lua` plus exported helper APIs
+    so `conform.nvim` can register the shipped `omni --fmt --write $FILENAME`
+    formatter without ad-hoc per-user command duplication
+  - added `:OmniConformSetupSpec` to print the ready-to-merge formatter setup
+    table for `conform.nvim`
+  - documented the Conform setup path in `tooling/omni-nvim/README.md` and
+    `tooling/omni-nvim/doc/omni.nvim.txt`
+  - closed the remaining formatter-tool integration roadmap item in
+    `docs/plans/editor-tooling-roadmap.md`
+  - reshaped the formatting roadmap so the rollout decision is explicitly
+    closed as `both in phases`, leaving only the real remaining formatter
+    follow-up: broader full-layout rewrites beyond the shipped conservative
+    continuation-aware formatter
+
+- Landed the next formatter semantics slice:
+  - `omni --fmt` now goes beyond pure bracket-depth indentation by aligning
+    wrapped `export` / `export-from` payloads and wrapped `let` binding-list
+    continuations
+  - `tooling/omni-lsp` mirrors the same conservative continuation rules for
+    full-document formatting so the shipped CLI and editor formatting paths do
+    not drift
+  - added regression coverage in `tooling/tests/omni_fmt_smoke.py` and
+    `tooling/omni-lsp/tests/smoke_test.py`
+  - split the old vague formatter backlog item so the shipped continuation
+    formatter is closed and only broader full-layout rewriting remains open
+
+- Landed the next formatter preservation slice:
+  - conservative formatting now preserves the existing repo-style indentation
+    for multiline `if` branches instead of flattening them to shallow
+    bracket-depth output
+  - inline block forms inside `let` binding lists now stay aligned to their
+    binding context, which preserves current `let ^rec` and similar in-tree
+    multiline bindings
+  - `tooling/omni-lsp` mirrors the same preservation rules so editor and CLI
+    formatting stay on the same contract
+  - extended regression coverage in `tooling/tests/omni_fmt_smoke.py` and
+    `tooling/omni-lsp/tests/smoke_test.py`
+
+- Landed the next generic-call formatter slice:
+  - conservative formatting now preserves wrapped generic call and pipeline
+    continuations by aligning them under the first argument instead of reducing
+    them to shallow block indentation
+  - `tooling/omni-lsp` mirrors the same generic-call continuation behavior so
+    editor and CLI formatting stay aligned
+  - extended regression coverage in `tooling/tests/omni_fmt_smoke.py` and
+    `tooling/omni-lsp/tests/smoke_test.py`
+
+- Landed the newline-preservation formatter slice:
+  - conservative formatting now preserves the source file's existing newline
+    style (`LF` vs `CRLF`) instead of rewriting line endings as a side effect
+  - `tooling/omni-lsp` mirrors the same newline-preservation behavior so editor
+    and CLI formatting remain on the same contract
+  - extended regression coverage in `tooling/tests/omni_fmt_smoke.py` and
+    `tooling/omni-lsp/tests/smoke_test.py`
+
+- Landed the nested control-flow/effect formatter slice:
+  - conservative formatting now preserves nested `if` body indentation from the
+    actual `if` column when the branch form starts later in a clause line,
+    which keeps current `match`-arm layouts from collapsing toward the clause
+    margin
+  - `when` / `unless` / `raise` / `checkpoint` now format as block-style forms
+    instead of inheriting generic continuation alignment
+  - `tooling/omni-lsp` mirrors the same control-flow/effect indentation rules
+    so editor and CLI formatting stay on one contract
+  - extended regression coverage in `tooling/tests/omni_fmt_smoke.py` and
+    `tooling/omni-lsp/tests/smoke_test.py`
+
+- Landed the higher-order lambda formatter slice:
+  - conservative formatting now preserves multiline lambda bodies in current
+    in-tree higher-order collection calls (`map`, `foldl`, `foldr`, `filter`,
+    `find`, `partition`, `sort-by`, `for-each`) by aligning those bodies from
+    the lambda's own opening column instead of flattening them to shallow
+    block indentation
+  - `tooling/omni-lsp` mirrors the same higher-order lambda-body alignment so
+    editor and CLI formatting stay on one contract
+  - extended regression coverage in `tooling/tests/omni_fmt_smoke.py` and
+    `tooling/omni-lsp/tests/smoke_test.py`
+
+- Landed the coroutine wrapper-lambda formatter slice:
+  - conservative formatting now preserves multiline `Coroutine (lambda ...)`
+    bodies on the current in-tree wrapper layout instead of flattening them
+    toward the generic lambda indentation used for other calls
+  - `tooling/omni-lsp` mirrors the same coroutine wrapper-lambda behavior so
+    editor and CLI formatting stay on one contract
+  - extended regression coverage in `tooling/tests/omni_fmt_smoke.py` and
+    `tooling/omni-lsp/tests/smoke_test.py`
+
+- Landed the clause/data-layout formatter slice:
+  - conservative formatting now preserves multiline `match` arm payload bodies
+    from their clause-opening delimiter instead of indenting them like generic
+    block bodies
+  - inline dict entries now keep key alignment from the `{` delimiter, and
+    multiline vector payload entries that start with nested forms keep the same
+    delimiter-anchored style used in current in-tree data literals
+  - `tooling/omni-lsp` mirrors the same clause/data-layout behavior so editor
+    and CLI formatting stay on one contract
+  - extended regression coverage in `tooling/tests/omni_fmt_smoke.py` and
+    `tooling/omni-lsp/tests/smoke_test.py`
+
+## 2026-03-24
+
+- Landed the next editor-tooling Tree-sitter query-hardening slice:
+  - tightened `tooling/tree-sitter-omni/queries/highlights.scm` so canonical
+    macro/module forms (`export`, `syntax-match`, `template`, `insert`,
+    `splice`) receive first-party captures while removed legacy spellings such
+    as `fn` / `begin` / `letrec` remain outside canonical keyword highlighting
+  - added `tooling/tree-sitter-omni/test/check_queries.sh` and focused query
+    fixtures under `tooling/tree-sitter-omni/test/queries/` covering
+    highlights, injections, locals, textobjects, folds, and legacy
+    non-highlight behavior
+  - added `tooling/tree-sitter-omni/queries/indents.scm` plus an indentation
+    fixture so bracketed Omni forms now expose a first-party structural
+    indentation surface for editor integrations
+  - reshaped `docs/plans/editor-tooling-roadmap.md` so parser-only legacy syntax
+    rejection no longer masquerades as a Tree-sitter grammar-corpus contract
+  - validation:
+    - `npx tree-sitter test --rebuild`
+    - `sh ./test/check_queries.sh`
+
+- Roadmap state audit for shipped editor tooling:
+  - closed the stale `tooling/omni-lsp` integration-test roadmap item because
+    `tooling/omni-lsp/tests/smoke_test.py` already drives initialize/open/change,
+    hover, completion, diagnostics, and related baseline requests through a
+    real stdio server subprocess
+  - closed the stale `tooling/omni-nvim` result-annotation roadmap item because
+    the plugin already supports optional single-form virtual-text eval
+    annotations and documents the setup in `tooling/omni-nvim/README.md` and
+    `tooling/omni-nvim/doc/omni.nvim.txt`
+
+- Landed the next editor-tooling Tree-sitter hardening slice:
+  - added a maintained accepted-syntax corpus at
+    `tooling/tree-sitter-omni/test/corpus/coverage.txt`
+  - the corpus now pins grammar coverage for:
+    - type annotations
+    - macro/template forms
+    - regex literals
+    - path plus postfix index chaining
+    - effect handlers and continuations
+    - module/import/export forms
+    - destructuring-heavy `let` / `match` inputs
+  - added package scripts for:
+    - `tree-sitter parse --rebuild examples/sample.omni`
+    - `tree-sitter test --rebuild`
+    - `tree-sitter test --rebuild --update`
+  - tightened the grammar token surface so `#r"..."` now produces
+    `regex_literal` nodes instead of tokenizing as a plain `#r` symbol plus
+    string literal
+  - updated `docs/plans/editor-tooling-roadmap.md` to close the accepted-syntax
+    grammar-coverage slice while leaving rejected-legacy corpus coverage open
+  - validation:
+    - `npx tree-sitter generate`
+    - `npx tree-sitter test --rebuild --update`
+    - `npx tree-sitter test --rebuild`
+
+- Hardened `omni --check --json` and closed the remaining structured-check
+  regression coverage slice:
+  - `src/entry_check_mode.c3` now treats compiler output containing explicit
+    unsupported-expression markers as a lowering failure instead of reporting a
+    false clean check result
+  - added `tooling/omni-lsp/tests/check_json_smoke.py` to pin:
+    - parser syntax diagnostics
+    - lowering diagnostics for unsupported lowered forms
+    - malformed `module` / `import` diagnostics
+    - deterministic top-level payload and diagnostic schema fields
+  - updated `docs/PROJECT_TOOLING.md`, `docs/man/omni.1`, and
+    `docs/plans/editor-tooling-roadmap.md` to match the shipped check contract
+    and completed regression state
+  - validation:
+    - `python3 -m py_compile tooling/omni-lsp/tests/check_json_smoke.py`
+    - `c3c build` blocked by existing file-permission issue:
+      `src/lisp/tests_deduce_query_groups.c3` was unreadable to the build user
+    - `python3 tooling/omni-lsp/tests/check_json_smoke.py` not run because the
+      rebuilt `build/main` binary could not be produced under the current
+      workspace permissions
+
+- Landed the next `runtime-modularization` slice for `eval` env-copy internals:
+  - split all env-copy mechanics and helper routines out of
+    `src/lisp/eval_env_copy.c3` into
+    `src/lisp/eval_env_copy_helpers.c3`
+  - kept behavior unchanged for closure/iterator payload handling, closure-env
+    rewriting, and promotion-context orchestration across parent-chain rewrites
+  - updated `docs/plans/largest-runtime-files-pass-2026-03-19.md`:
+    - added landed batch entry for `eval_env_copy` split
+    - removed `eval_env_copy` from the top of the next queue
+  - validation: not run in this slice (build/validation to be run at the lane boundary)
+
+- Landed the next `runtime-modularization` slice for `deduce` rule validation:
+  - factored rule-install validation helpers out of
+    `src/lisp/deduce_rule_eval.c3` into
+    `src/lisp/deduce_rule_eval_validation.c3`
+  - kept existing behavior unchanged; the orchestration path still performs, in
+    order:
+    - arity checks
+    - head-grounding safety checks
+    - negation-safety checks
+    - aggregate head validation
+    - aggregate compatibility/recursion checks
+    - constrained-head signature compatibility checks
+    - stratification checks
+  - updated `docs/plans/largest-runtime-files-pass-2026-03-19.md`:
+    - added landed batch entry for `deduce_rule_eval` split
+    - adjusted next-queue accounting for the landed/refactored file states
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_status_summary.sh build/validation_status_summary.json` (`6/9 runs passed`; blockers in `status_consistency`, `jit_policy`, `deduce` slices remain)
+
+- Landed the next `runtime-modularization` slice for `deduce` relation mutation primitives:
+  - split relation mutation operations (`fact!`, `retract!`, `clear!`, `drop!`) out of
+    `src/lisp/deduce_relation_ops.c3` into
+    `src/lisp/deduce_relation_ops_mutations.c3`
+  - kept behavior unchanged; validation and persistence paths for relation lifecycle,
+    integrity checks, and extensional shadow writes/read-paths are still routed through
+    the same prim entrypoints
+  - updated `docs/plans/largest-runtime-files-pass-2026-03-19.md`:
+    - added landed batch entry for `deduce_relation_ops` split
+    - adjusted next-queue accounting for landed/refactored file states
+  - validation: not run in this slice (build/validation to be run at the lane boundary)
+
+## 2026-03-23
+
+- Closed `B6.5` optional parallel evaluation:
+  - the shipped scheduler/runtime surface now covers the admin-visibility
+    slice plus the task, offload, and OS-thread batch dispatch helpers
+  - the remaining queue/thread batch primitives are now all validated through
+    targeted scheduler regressions
+- Extended the `B6.5` scheduler/runtime seam with a plural queued-task
+  execute helper:
+  - added `scheduler_execute_custom_offload_task_jobs(...)` so a small batch
+    of internal callback jobs can be queued and joined through the same
+    task-handle path
+  - added a focused scheduler regression that pins the batch execute path
+    with two queued custom callbacks and validates both results arrive in
+    order
+- Landed the first `B6.5` parallel-evaluation admin slice:
+  - relation-local `deduce/stats` now exposes the same parallel SCC batch
+    topology counts that `deduce/analyze` already reports:
+    - `parallel-recursive-component-count`
+    - `parallel-batched-component-count`
+    - `parallel-batch-count`
+    - `parallel-max-batch-size`
+  - `deduce/analyze`, relation-local `deduce/stats`, and `deduce/explain`
+    now also expose `parallel-batch-topology` payloads for the recursive SCC
+    batches
+  - added regression coverage that pins those counts and topology on a
+    representative recursive SCC topology
+- Landed the first `B6.5` scheduler/runtime seam for future parallel dispatch:
+  - the offload executor now accepts internal callback jobs via
+    `OffloadWork.custom_fn` / `OffloadWork.custom_ctx`
+  - added a focused scheduler regression that pins queued custom-callback
+    execution through the offload executor
+  - added `scheduler_execute_custom_offload_job(...)` as a dedicated queue
+    and join helper for internal callback jobs
+  - added `scheduler_execute_custom_offload_task_job(...)` so the same
+    custom callback path can reuse a caller-supplied thread-task handle
+  - added `scheduler_begin_custom_offload_task_job(...)` so the same
+    callback path can fan out multiple queued task jobs before joining them
+  - added `scheduler_begin_custom_offload_task_jobs(...)` so a single
+    callback can queue a small fan-out of task jobs and return the caller
+    supplied handles for later joins
+  - added `scheduler_begin_custom_os_thread_jobs(...)` so a single callback
+    can fan out multiple actual OS-thread jobs and return their caller
+    supplied handles for later joins
+  - added `scheduler_execute_custom_os_thread_jobs(...)` so the same
+    callback fan-out can also be started and joined through one helper
+  - added `scheduler_begin_os_thread_work_jobs(...)` and
+    `scheduler_execute_os_thread_work_jobs(...)` so distinct offload work
+    items can be dispatched and joined in parallel on real OS threads
+  - added `__raw-offload-batch` so a list of raw offload job forms can be
+    dispatched through the same batched queue/join path and return a result
+    list in order
+  - added `__raw-task-spawn-batch` so a list of raw offload job forms can be
+    dispatched through the queued task path and return a task-handle list in
+    order
+  - added `__raw-thread-spawn-batch` so a list of raw offload job forms can
+    be dispatched through the actual OS-thread spawn path and return a result
+    list in order
+- Tightened materialized-view rule-install invalidation:
+  - only already-ready materialized views are now marked stale on
+    `deduce/rule!`
+  - declared-but-unready materialized views keep their existing
+    `never-refreshed` lifecycle instead of being blanket-staled
+  - added restart coverage for ready-vs-unready selective invalidation
+- Goal-directed read admin truthfulness now also records fallback reasons:
+  - `deduce/stats`, `deduce/analyze`, and `deduce/explain` now expose
+    `last-goal-directed-read-fallback-reason`
+  - unsupported captured-call query shapes and dirty-closure fallback reads
+    now stay distinguishable from ordinary selected-closure reads in the
+    admin surface
+- Landed one more `B6.4c` query-demand widening:
+  - closed numeric builtin wrappers such as `abs`, `floor`, `ceiling`,
+    `round`, `truncate`, `sqrt`, `exp`, `log`, `log10`, `sin`, `cos`, `tan`,
+    `asin`, `acos`, `atan`, `atan2`, `min`, `max`, and `pow` are now accepted
+    by the shipped
+    `deduce/query` demand extractor when they remain row-independent and
+    still collapse to the existing equality-demand subset
+  - added focused regression coverage for the closed numeric-wrapper demand
+    path
+- Landed another `B6.4c` query-demand widening:
+  - closed one-argument pure closure wrappers such as `id` are now also
+    folded by the shipped `deduce/query` demand extractor when the wrapper
+    body still collapses to the supported equality-demand subset
+  - added focused regression coverage for the closure-wrapper demand path
+- Landed the next `B6.4c` Deduce query-time goal-directed execution slice:
+  - for the currently shipped preserved-bound subset, positive body scans now
+    also use demanded leading-prefix probes inside the naive and seminaive
+    rule-step executors, so the abortable demand path prefix-prunes those
+    positive body scans instead of only the outer selector plan
+  - selector-scoped preserved-bound reads now also record
+    `last-goal-directed-read-step-counters` in relation stats, DB analyze,
+    and explain, exposing observed per-step counters such as `rows-read`,
+    `rows-emitted`, and `join-probes` for the selected rule
+  - the shipped `deduce/query` equality-demand subset now also accepts
+    row-independent `or` wrappers with one closed falsy branch for both
+    selector-scoped and plain reads
+  - closed row-independent comparison guards (`=`, `<`, `<=`, `>`, `>=`) are
+    now also evaluated by the shipped `deduce/query` demand extractor, so
+    row-independent `if` wrappers can still keep the ephemeral query path
+  - closed row-independent `and` / `or` guards now also evaluate with Omni’s
+    value-returning short-circuit semantics inside the shipped
+    `deduce/query` demand extractor, so row-independent boolean wrappers can
+    still keep the ephemeral query path
+  - closed row-independent `not` guards now also evaluate with ordinary Omni
+    truthiness semantics inside the shipped `deduce/query` demand extractor,
+    so row-independent negated guard wrappers can still keep the ephemeral
+    query path
+  - closed literal-side `let` / `block` wrappers around the shipped
+    equality-demand subset are now also accepted by `deduce/query`,
+    including wrapped `ref` column symbols
+  - closed row-column-side `let` / `block` wrappers are now also accepted by
+    that same shipped `deduce/query` equality-demand subset when they still
+    resolve to `(ref row 'column)` through a closed symbol binding
+  - closed row-independent `if` wrappers are now also accepted around the
+    row-column side of that same shipped subset, so branch-selected
+    `(ref row 'column)` forms can keep the ephemeral query path
+  - closed row-independent `and` / `or` wrappers are now also accepted
+    around that same row-column side when the selected branch still resolves
+    to `(ref row 'column)`
+  - the strict preserved-bound safety gate is now pinned again for
+    multi-self-recursive `deduce/match` shapes: when every positive
+    self-recursive body atom does not preserve the demanded head positions,
+    the runtime falls back to `selected-component-closure`, cleans the
+    target component, and leaves unrelated dirty siblings untouched
+  - focused validation now pins selector-scoped preserved-bound `deduce/match`
+    step counters for the selected rule under the shipped prefix-pruning path
+    plus selector/plain `deduce/query` demand extraction through falsy `or`
+    wrappers, closed comparison guards, closed `and` guards, closed `not`
+    guards, and closed literal-side `let` / `block` wrappers
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `269 passed, 0 failed`
+
+- Landed the next `B6.3b` Deduce materialized-view durability slice:
+  - file-backed materialized relations now persist mutation-driven and
+    rule-set invalidation lifecycle metadata, not only materialized intent
+    and successful refresh history
+  - reopened materialized relations now stay stale when their persisted
+    lifecycle record still carries a non-`none` stale reason
+  - focused durability validation now pins restart/open-named persistence of
+    `dependency-dirty` stale state after a successful refresh
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `247 passed, 0 failed`
+
+- Landed the next `B6.3b` Deduce materialized-view durability slice:
+  - file-backed materialized relations now persist refresh-history metadata
+    across reopen / `open-named`, not only the materialized-intent flag
+  - the persisted lifecycle record now keeps reopened schema/admin payloads
+    truthful after a successful manual refresh by carrying:
+    - `materialized-refresh-count`
+    - `materialized-last-refresh-mutation-epoch`
+    - stored lifecycle stale metadata already tracked by the schema
+  - focused durability validation now pins restart/open-named persistence of a
+    successful materialized refresh
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `238 passed, 0 failed`
+
+- Landed the next `B6.4c` Deduce query-time goal-directed execution slice:
+  - the demand-bound `match`, `query`, and equality-bound `scan-range` paths
+    no longer fall back completely just because one requested head position is
+    unsupported by the preserved-bound gate
+  - the runtime now projects the requested demand down to the preserved subset,
+    evaluates that narrower demand in the abortable in-txn path, and still
+    applies the original full pattern / filter / range after the read
+  - this widens the shipped fast path safely for mixed supported-plus-
+    unsupported bound shapes such as transitive-closure reads that bind both a
+    preserved destination and a non-preserved source
+  - focused validation now pins projected demand execution for:
+    - plain `deduce/match`
+    - selector-scoped `deduce/query`
+    - plain equality-bound `deduce/scan-range`
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `238 passed, 0 failed`
+
+- Landed the next `B6.4c` Deduce query-time goal-directed execution slice:
+  - selector-scoped and plain `deduce/query` now use the same abortable
+    demand-bound path for the current preserved-bound positive recursive
+    subset when the filter closure is a conjunction of row-independent
+    literal, captured-constant, or small safe builtin expression equalities
+    on `(ref row 'column)` terms
+  - the new explain/admin field
+    `goal-directed-demand-bound-head-positions` makes the preserved-bound
+    positions visible directly instead of only surfacing planner-intent
+    metadata
+  - the read-path surface now records `ephemeral-head-demand-query`
+  - wider or unsupported filter shapes still fall back to the existing
+    selected-closure read path
+  - captured row-independent constants, closed numeric builtin
+    expressions, and row-independent `let` / `block` / `if` wrappers are now
+    accepted in that shipped equality-filter subset
+  - unsupported captured call shapes still fall back to selected-closure
+    reads
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `251 passed, 0 failed`
+
+- Landed the next `B6.4c` admin-truth slice for projected-demand reads:
+  - relation-local `deduce/stats` and DB-level `deduce/analyze` now also
+    expose:
+    - `last-goal-directed-read-requested-bound-count`
+    - `last-goal-directed-read-applied-bound-count`
+  - projected-demand reads now make preserved-subset application visible for:
+    - bound `deduce/match`
+    - equality-filter `deduce/query`
+    - equality-bound `deduce/scan-range`
+  - focused validation now pins the requested vs applied bound-counts for:
+    - plain `deduce/match`
+    - selector-scoped `deduce/query`
+    - plain `deduce/scan-range`
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `238 passed, 0 failed`
+
+- Landed the next `B6.4c` widening for `deduce/query` demand extraction:
+  - the demand-bound `deduce/query` path no longer requires every conjunct in
+    the filter to be equality-shaped
+  - the runtime now harvests supported equality conjuncts for head-demand
+    extraction while leaving residual unsupported conjuncts to the original
+    full filter after the read
+  - this widens the existing ephemeral query path without changing query
+    semantics or clearing dirty state
+  - focused validation now pins a selector-scoped recursive query that:
+    - uses one supported equality conjunct for demand extraction
+    - keeps one residual unsupported conjunct in the post-read filter
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `239 passed, 0 failed`
+
+- Tightened selector-scoped `B6.4c` match execution truth:
+  - selector-scoped bound `deduce/match` now actually threads the built
+    `head_demand` into the abortable in-txn selected-component evaluator,
+    instead of only using the preserved-bound gate as a selector-path label
+
+- Landed the next `B6.4c` admin-truth slice for projected-demand reads:
+  - relation-local `deduce/stats` and DB-level `deduce/analyze` now also
+    expose:
+    - `last-goal-directed-read-requested-bound-positions`
+    - `last-goal-directed-read-applied-bound-positions`
+  - the requested/applied bound-count metadata now has concrete position-list
+    payloads behind it for the last goal-directed read, not only counts
+  - focused validation now pins those position lists on the projected-demand
+    `deduce/query` path for:
+    - exact preserved demand
+    - projected preserved demand after residual unsupported conjuncts
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `239 passed, 0 failed`
+  - this keeps the shipped `ephemeral-head-demand-match` read-path stamp
+    honest for selector-scoped bound match reads
+
+- Landed the next `B6.4c` explain/admin-truth slice:
+  - `deduce/explain` now mirrors the last actual goal-directed read metadata
+    for the selected head relation instead of only surfacing planner
+    eligibility and selected-closure metadata
+  - the mirrored payload includes:
+    - `last-goal-directed-read-execution-path`
+    - `last-goal-directed-read-surface`
+    - `last-goal-directed-read-selector-rule-index`
+    - `last-goal-directed-read-mutation-epoch`
+    - requested/applied bound counts
+    - requested/applied bound-position lists
+  - focused validation now pins an eligible positive recursive closure rule,
+    performs a bound `deduce/match` that takes the ephemeral demand path, and
+    then verifies `deduce/explain` mirrors that actual runtime choice
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `239 passed, 0 failed`
+
+- Landed the next `B6.4c` safety/regression slice:
+  - focused validation now also pins projected-demand truth for:
+    - selector-scoped `deduce/match`
+    - selector-scoped `deduce/scan-range`
+    - plain `deduce/query`
+  - this closes the most obvious remaining coverage asymmetry between the
+    selector-scoped and plain demand-bound read surfaces without widening the
+    public runtime contract
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `242 passed, 0 failed`
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `231 passed, 0 failed`
+
+- The preserved-bound gate remains intentionally stricter for
+  multi-self-recursive shapes:
+  - each demanded head position must still be preserved by every positive
+    self-recursive body atom
+  - mixed-position preservation across different recursive atoms falls back
+    to `selected-component-closure` instead of taking an unsound ephemeral
+    demand path
+
+- Landed the next `B6.4c` Deduce query-time goal-directed execution slice:
+  - relation-local `deduce/stats` and DB-level `deduce/analyze` now expose
+    the last actual goal-directed read path chosen by the runtime, instead
+    of only planner-intent metadata
+  - the current shipped read-path surface now records:
+    - `no-op`
+    - `selected-component-closure`
+    - `full-db-fixpoint`
+    - `ephemeral-head-demand-match`
+    - `ephemeral-head-demand-scan-range`
+  - focused validation now pins last-read truth for:
+    - selected-component-closure
+    - full-db-fixpoint
+    - no-op
+    - ephemeral bound `match`
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `230 passed, 0 failed`
+
+- Landed the next `B6.4c` Deduce query-time goal-directed execution slice:
+  - the preserved-bound demand-gate widening is now explicitly pinned for
+    plain equality-bound `deduce/scan-range`, not just plain bound
+    `deduce/match`
+  - focused validation now covers a swapped self-recursive rule answering a
+    bounded plain `deduce/scan-range` read while leaving the target relation
+    dirty
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `228 passed, 0 failed`
+
+- Landed the next `B6.4c` Deduce query-time goal-directed execution slice:
+  - the preserved-bound demand gate now also accepts positive recursive rules
+    where demanded head variables are preserved through self-recursive
+    body-variable reordering, not only same-position carry-through
+  - this widens the shipped demand-bound `deduce/match` subset without
+    pretending generic magic-set rewrite is already done
+  - focused validation now pins a swapped self-recursive rule answering a
+    bound plain `deduce/match` read while leaving the target relation dirty
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `227 passed, 0 failed`
+
+- Landed the next `B6.4c` Deduce query-time goal-directed execution slice:
+  - plain `deduce/scan-range` now uses the same abortable demand-bound path
+    for the current preserved-bound positive recursive subset when
+    equality-bound head literals can be extracted from positions where
+    `lower == upper`, instead of always persisting a tracked closure refresh
+  - it restores in-memory schema estimates after abort and leaves the target
+    relation dirty
+  - wider recursive shapes and non-exact ranges still use the existing plain
+    tracked selected-closure auto-execution path
+  - focused validation now pins plain equality-bound `deduce/scan-range`
+    returning the bounded rows while leaving the target relation dirty
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `226 passed, 0 failed`
+
+- Landed the next `B6.4c` Deduce query-time goal-directed execution slice:
+  - plain `deduce/match` with bound literals now uses the same abortable
+    demand-bound path for the current preserved-bound positive recursive
+    subset instead of always persisting a tracked closure refresh
+  - it restores in-memory schema estimates after abort and leaves the target
+    relation dirty
+  - wider recursive shapes and unbound patterns still use the existing plain
+    tracked selected-closure auto-execution path
+  - focused validation now pins plain bound-literal `deduce/match`
+    returning the constrained rows while leaving the target relation dirty
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `225 passed, 0 failed`
+
+- Landed the next `B6.4c` Deduce query-time goal-directed execution slice:
+  - selector-scoped `deduce/scan-range` now has the matching bounded-demand
+    execution path when equality-bound head literals can be extracted from
+    `lower == upper` positions and the selected positive recursive shape
+    preserves those bound positions
+  - it executes inside an abortable write txn, snapshots/restores in-memory
+    schema estimates, and leaves dirty frontier state intact after the read
+  - wider recursive shapes still fall back to the existing selected-component
+    closure execution path instead of pretending generic demand rewrite is
+    already shipped
+  - focused validation now pins selector-scoped `deduce/scan-range` demand
+    execution that returns the bounded rows while leaving the target relation
+    dirty
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `224 passed, 0 failed`
+
+- Landed the next `B6.4c` Deduce query-time goal-directed execution slice:
+  - selector-scoped `deduce/match` with bound head literals now has the first
+    real demand-bound execution path for preserved-bound positive recursive
+    shapes
+  - it executes inside an abortable write txn, snapshots/restores in-memory
+    schema estimates, and leaves dirty frontier state intact after the read
+  - wider recursive shapes that do not preserve those bound positions still
+    fall back to the existing selected-component closure execution path
+    instead of pretending generic magic-set rewrite is already shipped
+  - focused validation now pins selector-bound recursive match execution that
+    returns the constrained rows while leaving the target relation dirty
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `223 passed, 0 failed`
+
+- Landed the next `B6.4c` Deduce query-time goal-directed execution slice:
+  - plain relation reads without a selector now auto-execute the same
+    currently eligible dirty positive recursive closure in tracked mode for:
+    - `(deduce/match relation pattern)`
+    - `(deduce/query relation filter-fn)`
+    - `(deduce/count relation)`
+    - `(deduce/scan relation)`
+    - `(deduce/scan-range relation lower upper)`
+  - the automatic read path is still intentionally narrow:
+    - it only runs for eligible positive recursive closures,
+    - it only runs when the selected closure is dirty,
+    - it leaves unrelated recursive components untouched,
+    - in tracked mode it executes only the target closure, and after
+      `full-recompute-required` plain derived reads fall back to the existing
+      full DB fixpoint path while selector-scoped reads still reject,
+    - focused regressions now pin the no-op boundaries for that shipped
+      plain-read path:
+      - clean eligible recursive targets do not execute unrelated dirty
+        closures
+      - unrelated non-recursive targets do not execute dirty recursive
+        closures
+      - blocked negated recursive targets do not execute unrelated eligible
+        closures
+    - it does not widen support to aggregate-bearing or negated recursive
+      shapes
+  - focused regression coverage now pins:
+    - plain `deduce/query` auto-execution that leaves a sibling recursive
+      component dirty
+    - plain `deduce/match` auto-execution for the same eligible shape
+    - plain `deduce/count` / `deduce/scan` / `deduce/scan-range`
+      auto-execution for the same eligible shape
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `210 passed, 0 failed`
+
+- Landed the next `B6.3b` Deduce materialized-view lifecycle slice:
+  - explicit teardown now ships through
+    `deduce 'dematerialize! relation` and `deduce/dematerialize!`
+  - dematerialization clears materialized intent and lifecycle metadata
+    without dropping the relation or its installed rules
+  - dematerialization also clears persisted materialized intent for file-backed
+    DBs, so reopen / `open-named` no longer resurrects a manually torn-down
+    view
+  - relation-scoped `deduce/refresh!` now rejects a dematerialized relation
+    through the existing `deduce/refresh-relation-not-materialized` contract
+  - focused regression coverage now pins:
+    - in-memory dematerialize -> refresh reject -> rematerialize lifecycle
+    - restart-time absence of persisted materialized intent after dematerialize
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `189 passed, 0 failed`
+- Landed the first real `B6.4c` Deduce query-time goal-directed execution
+  slice:
+  - `deduce/match` now supports selector-scoped execution for the currently
+    eligible positive recursive shape through:
+    - `(deduce/match relation pattern rule-index)`
+    - `(deduce/match relation pattern rule-index 'naive)`
+    - `(deduce/match relation pattern rule-index 'semi-naive)`
+  - selected match executes only the chosen component dependency closure
+    before matching and leaves unrelated recursive components untouched
+  - selector-scoped match rejects explicitly when:
+    - the selected recursive shape is aggregate-bearing
+    - the selected recursive shape has negated body atoms
+    - the selected closure does not produce the requested relation
+    - the DB has already escalated to `full-recompute-required`
+  - focused regression coverage now pins:
+    - selected match execution that leaves unrelated derived components
+      untouched
+    - relation/selector mismatch rejection
+    - aggregate recursive selector rejection
+    - negated recursive selector rejection
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `189 passed, 0 failed`
+- Landed the second `B6.4c` Deduce query-time goal-directed execution
+  slice:
+  - `deduce/query` now supports selector-scoped execution for that same
+    currently eligible positive recursive shape through:
+    - `(deduce/query relation filter-fn rule-index)`
+    - `(deduce/query relation filter-fn rule-index 'naive)`
+    - `(deduce/query relation filter-fn rule-index 'semi-naive)`
+  - selected query executes only the chosen component dependency closure
+    before filtering rows and leaves unrelated recursive components untouched
+  - selector-scoped query rejects explicitly when:
+    - the selected recursive shape is aggregate-bearing
+    - the selected recursive shape has negated body atoms
+    - the selected closure does not produce the requested relation
+    - the DB has already escalated to `full-recompute-required`
+  - focused regression coverage now pins:
+    - selected query execution that leaves unrelated derived components
+      untouched
+    - relation/selector mismatch rejection
+    - aggregate recursive selector rejection
+    - negated recursive selector rejection
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `193 passed, 0 failed`
+- Landed the third `B6.4c` Deduce query-time goal-directed execution
+  slice:
+  - `deduce/count`, `deduce/scan`, and `deduce/scan-range` now support
+    selector-scoped execution for that same currently eligible positive
+    recursive shape through:
+    - `(deduce/count relation rule-index)`
+    - `(deduce/count relation rule-index 'naive)`
+    - `(deduce/count relation rule-index 'semi-naive)`
+    - `(deduce/scan relation rule-index)`
+    - `(deduce/scan relation rule-index 'naive)`
+    - `(deduce/scan relation rule-index 'semi-naive)`
+    - `(deduce/scan-range relation lower upper rule-index)`
+    - `(deduce/scan-range relation lower upper rule-index 'naive)`
+    - `(deduce/scan-range relation lower upper rule-index 'semi-naive)`
+  - selector-scoped count / scan / scan-range execute only the chosen
+    component dependency closure before reading rows and leave unrelated
+    recursive components untouched
+  - selector-scoped count / scan / scan-range reject explicitly when:
+    - the selected recursive shape is aggregate-bearing
+    - the selected recursive shape has negated body atoms
+    - the selected closure does not produce the requested relation
+    - the DB has already escalated to `full-recompute-required`
+  - focused regression coverage now pins:
+    - selected count / scan / scan-range execution that leaves unrelated
+      derived components untouched
+    - count relation/selector mismatch rejection
+    - scan aggregate recursive selector rejection
+    - scan-range negated recursive selector rejection
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `201 passed, 0 failed`
+
+## 2026-03-22
+
+- Reshaped the live Deduce backlog so completed umbrella slices stop looking
+  perpetually open:
+  - `B6.3a` now names the shipped materialized-view admin/refresh surface and
+    is treated as closed
+  - `B6.3b` now isolates the still-open declaration/durability policy work
+  - `B6.4a` now covers the shipped goal-directed
+    planner/admin/selected-closure visibility surface and is treated as
+    closed
+  - `B6.4c` now isolates the still-open query-time magic-set / goal-directed
+    rewrite lane
+  - `B6.5` is now treated as closed; the shipped work covers both the
+    admin-visibility surface and the scheduler/runtime batch-dispatch seams
+  - this was a backlog/doc-structure correction only; no runtime behavior
+    changed
+
+- Landed the first `B6.3` Deduce materialized-view slice:
+  - explicit manual materialization now ships for derived relations through
+    `deduce 'materialize! relation` and `deduce/materialize!`
+  - manual DB-wide refresh now ships through `deduce 'refresh! db` and
+    `deduce/refresh!`
+  - `deduce/schema`, `deduce/stats`, and `deduce/analyze` now expose
+    materialized-view freshness metadata:
+    - `materialized-view`
+    - `materialized-refresh-policy`
+    - `materialized-refresh-count`
+    - `materialized-last-refresh-mutation-epoch`
+    - `materialized-stale`
+  - `deduce/analyze` is now explicitly diagnostic-only for this lane:
+    it reports stale materialized views but does not silently refresh them
+  - focused regression coverage now pins:
+    - rejecting `materialize!` on non-derived relations
+    - namespaced `deduce/materialize!` / `deduce/refresh!` registration
+    - stale-before-refresh, explicit manual refresh, refresh-count increment,
+      and stale-again after a base mutation
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `171 passed, 0 failed`
+- Landed the second `B6.3` Deduce materialized-view slice:
+  - `deduce/refresh!` now accepts either a Deduce DB handle or a
+    materialized relation handle
+  - non-materialized relation handles now reject refresh explicitly with
+    `deduce/refresh-relation-not-materialized`
+  - `deduce/schema` and `deduce/stats` now expose:
+    - `materialized-last-stale-mutation-epoch`
+    - `materialized-last-stale-reason`
+  - dependency-driven invalidation now records the stale reason
+    `dependency-dirty`, and refresh clears that reason back to `nil`
+  - relation-scoped refresh still reuses the existing full analyze/fixpoint
+    path internally; this is a narrower admin surface, not selective
+    incremental maintenance
+  - focused regression coverage now pins:
+    - non-materialized relation-handle refresh rejection
+    - relation-scoped refresh success
+    - stale-reason metadata transitions after base mutation and refresh
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `173 passed, 0 failed`
+- Landed the third `B6.3` Deduce materialized-view slice:
+  - relation declaration syntax now accepts the materialization marker:
+    `[relation db materialized] rel ...`
+  - the declaration marker sets the same current manual refresh policy as
+    explicit `deduce/materialize!`
+  - focused regression coverage now pins:
+    - schema registration for declared materialized relations
+    - rejection of unknown relation-wide attributes
+    - declaration-syntax alignment with relation-scoped refresh metadata
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `178 passed, 0 failed`
+- Landed the next `B6.3b` Deduce declaration-policy slice:
+  - relation declaration syntax now also accepts the explicit current manual
+    policy spelling:
+    `[relation db materialized manual] rel ...`
+  - the parser now rejects unknown declaration-time materialized refresh
+    policies deterministically instead of folding them into the generic
+    unknown-attribute path
+  - focused regression coverage now pins:
+    - explicit manual declaration syntax
+    - rejection of unknown materialized refresh policies
+- Landed the fourth `B6.3` Deduce materialized-view slice:
+  - relation-scoped `deduce/refresh! materialized-relation` now executes the
+    target relation’s dependency closure in tracked mode instead of routing
+    through full DB analyze
+  - targeted refresh now clears dirty state only for the predicates it
+    actually recomputed and leaves unrelated stale materialized views alone
+  - if the DB has already escalated to `full-recompute-required`, relation-
+    scoped refresh still falls back to the DB-wide path
+  - focused regression coverage now pins:
+    - refreshing one materialized relation leaves a sibling materialized
+      relation stale
+    - `stale-materialized-view-count` remains nonzero after the targeted
+      refresh when unrelated stale views still exist
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `178 passed, 0 failed`
+- Landed the fifth `B6.3` Deduce materialized-view slice:
+  - declaration-based materialization is now lifecycle-gated rather than
+    pretending every declared materialized relation is immediately refreshable
+  - `deduce/schema` / `deduce/stats` now expose
+    `materialized-derived-ready`, and `deduce/analyze` now exposes
+    `ready-materialized-view-count` plus
+    `unready-materialized-view-count`
+  - relation-scoped refresh now rejects declared-but-unready materialized
+    relations with `deduce/refresh-materialized-relation-not-derived`
+  - DB-scoped refresh only stamps ready materialized views as refreshed and
+    leaves unready declarations stale, with honest remaining stale counts
+  - focused regression coverage now pins:
+    - declared materialized relations reject refresh before rule install
+    - the same relation becomes refreshable after its first derived rule head
+    - DB-scoped refresh can refresh one ready view while leaving an unready
+      declared view stale
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `179 passed, 0 failed`
+- Landed the sixth `B6.3` Deduce materialized-view slice:
+  - materialized intent now persists across reopen / `open-named` for
+    file-backed DBs through a narrow relation-metadata catalog
+  - reopened materialized relations come back conservatively as materialized
+    but unready/stale until their rules are reinstalled and refreshed, so the
+    runtime no longer pretends durable derived state exists when only
+    materialized intent persisted
+  - dropping a declared materialized relation now clears that persisted
+    materialized-intent metadata instead of leaving stale declaration state
+    behind across reopen
+  - materialized stale reasons now distinguish `never-refreshed` from
+    mutation-driven reasons, so declared or reopened materialized views with
+    no successful refresh no longer report `materialized-stale == true` with
+    a blank stale reason
+  - focused regression coverage now pins:
+    - restart/open-named persistence of materialized intent without durable
+      rule state
+    - clearing persisted materialized intent on drop
+    - `materialized-last-stale-reason == 'never-refreshed` before first
+      refresh on declared or reopened materialized views
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `181 passed, 0 failed`
+- Landed the seventh `B6.3` Deduce materialized-view slice:
+  - installing a new rule now invalidates already refreshed materialized
+    views with the explicit stale reason `rule-set-change`
+  - rule-install invalidation also forces the existing
+    `full-recompute-required` fallback, keeping the contract honest instead of
+    pretending the targeted invalidation path already models rule-graph
+    changes soundly
+  - focused regression coverage now pins:
+    - refreshed materialized views become stale after `deduce/rule!`
+    - `materialized-last-stale-reason == 'rule-set-change`
+    - `deduce/stats` reports `full-recompute-required == true` after the
+      rule install
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `181 passed, 0 failed`
+- Landed the eighth `B6.3` Deduce materialized-view slice:
+  - `deduce/refresh!` payloads now report the actual refresh path:
+    relation-targeted, DB-wide, or relation-scoped fallback to DB-wide under
+    `full-recompute-required`
+  - the admin surface now exposes that through:
+    - `refresh-scope`
+    - `refresh-execution-path`
+    - `refresh-fallback-reason`
+  - focused regression coverage now pins DB refresh payload truthfulness,
+    targeted relation refresh payload truthfulness, and relation fallback
+    payload truthfulness after `rule-set-change`
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `182 passed, 0 failed`
+- Landed the ninth `B6.3` Deduce materialized-view slice:
+  - `deduce/refresh!` now reports the actual refreshed and still-stale
+    materialized relation identities through:
+    - `refreshed-materialized-relations`
+    - `remaining-stale-materialized-relations`
+    - `requested-refresh-relation` on relation-scoped calls
+  - relation-scoped fallback to DB-wide refresh no longer under-reports
+    refresh impact when more than one ready materialized view is refreshed
+  - focused regression coverage now pins DB refresh, targeted relation
+    refresh, and rule-set-change fallback payload truthfulness at the
+    relation-identity level
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `184 passed, 0 failed`
+- Landed the first `B6.4` Deduce goal-directed planning slice:
+  - `deduce/explain` now surfaces:
+    - `goal-directed-component-id`
+    - `goal-directed-eligible`
+    - `goal-directed-shape`
+    - `goal-directed-blockers`
+  - the current eligible shape is intentionally narrow:
+    positive recursive closure with no aggregates and no negated body atoms
+  - non-eligible recursive shapes now report explicit blockers such as
+    `aggregates-present` and `negated-body-atom`
+  - this slice is explain-only: there is still no magic-set rewrite, no
+    goal-directed execution path, and no runtime/query/analyze behavior change
+  - focused regression coverage now pins:
+    - positive recursive closure eligibility
+    - blocker reporting for recursive aggregate/negated shapes
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `175 passed, 0 failed`
+- Landed the second `B6.4` Deduce goal-directed planning slice:
+  - `deduce/analyze` now reports DB-level planner counts for recursive
+    goal-directed shapes:
+    - `goal-directed-recursive-component-count`
+    - `goal-directed-eligible-component-count`
+    - `goal-directed-blocked-component-count`
+    - `goal-directed-aggregate-blocked-component-count`
+    - `goal-directed-negated-blocked-component-count`
+  - this remains diagnostic-only planner metadata with no execution rewrite
+  - focused regression coverage now pins positive recursive closure counts
+    and aggregate/negated blocker counts
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `182 passed, 0 failed`
+- Landed the third `B6.4` Deduce goal-directed planning slice:
+  - `deduce/analyze` now exposes `goal-directed-components`, a recursive
+    component summary list carrying component id, stratum, rule count,
+    eligibility, shape, blockers, and aggregate/negation presence flags
+  - this remains planner/admin metadata only with no execution rewrite
+  - focused regression coverage now pins positive recursive closure summaries
+    and aggregate/negated blocked summaries
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `184 passed, 0 failed`
+- Landed the tenth `B6.3` Deduce materialized-view slice:
+  - the invalidation frontier is now explicit instead of only count-shaped:
+    - `deduce/analyze` exposes `incremental-dirty-predicates`
+    - `deduce/stats` exposes `dirty-predicates` and `dirty-self`
+    - `deduce/refresh!` exposes:
+      - `cleared-dirty-predicates`
+      - `remaining-dirty-predicates`
+  - targeted relation refresh now reports exactly which dirty predicates it
+    cleared while leaving unrelated dirty predicates behind
+  - DB-wide refresh now reports the pre-refresh dirty frontier it cleared and
+    the remaining frontier after success
+  - focused regression coverage now pins:
+    - DB refresh dirty-frontier visibility
+    - targeted refresh dirty-frontier visibility
+    - rule-set-change fallback dirty-frontier truthfulness
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `187 passed, 0 failed`
+- Landed the fourth `B6.4` Deduce goal-directed planning slice:
+  - `deduce/analyze` now supports selector-scoped execution for the currently
+    eligible recursive shape through:
+    - `(deduce/analyze db rule-index)`
+    - `(deduce/analyze db rule-index 'naive)`
+    - `(deduce/analyze db rule-index 'semi-naive)`
+  - eligible selectors are intentionally narrow:
+    positive recursive closure with no aggregates and no negated body atoms
+  - selected execution now evaluates only the chosen component's dependency
+    closure and reports:
+    - `goal-directed-execution-path = 'selected-component-closure`
+    - `goal-directed-selector-rule-index`
+    - `goal-directed-selected-component-id`
+  - aggregate-bearing and negated recursive selectors reject explicitly with
+    `deduce/analyze-goal-directed-selector-not-eligible` and blocker
+    payloads instead of silently falling back to full DB execution
+  - focused regression coverage now pins:
+    - selected-component closure execution that leaves unrelated derived
+      components untouched
+    - aggregate recursive selector rejection
+    - negated recursive selector rejection
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `187 passed, 0 failed`
+- Landed the fifth `B6.4` Deduce goal-directed planning slice:
+  - `deduce/explain` now mirrors selector-scoped analyze execution for the
+    currently eligible recursive shape by exposing:
+    - `goal-directed-execution-path`
+    - `goal-directed-selected-components`
+    - `goal-directed-selected-predicates`
+  - for eligible recursive selectors this closure payload matches the same
+    dependency closure used by `(deduce/analyze db rule-index [engine])`
+  - aggregate-bearing and negated recursive selectors continue to expose
+    blockers and now leave the selected-closure payload fields `nil`
+  - focused regression coverage now pins:
+    - positive recursive selector closure visibility in `deduce/explain`
+    - aggregate/negated recursive selector closure omission in
+      `deduce/explain`
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - result: `187 passed, 0 failed`
+
 ## Archive
 
 Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md).
@@ -43,8 +2097,19 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - declared multi-column `unique` roles on one relation now form enforced
     composite unique constraints at assert time while still treating identical
     full-tuple reasserts as idempotent
-  - declared single-column `ref` roles now enforce referenced-tuple existence
-    at assert time against a target relation/column pair
+  - declared single-column `ref` roles now enforce candidate-key references:
+    the target relation/column pair must resolve and the target column must be
+    a declared `key` or single-column `unique`
+  - integrity enforcement is no longer purely extensional: non-aggregate rule
+    heads on declared `key` / `unique` relations now enforce the same checks
+    on derived writes, including recursive seminaive materialization
+  - aggregate rule heads on declared `key` / `unique` relations now also
+    publish through the same derived-write integrity checks, including
+    recursive seminaive aggregate materialization
+  - declared `ref` rule heads now validate against the final component
+    transaction snapshot before commit, so derived ordinary and aggregate
+    rule-head publish no longer relies on unsound eager per-tuple `ref`
+    checks
   - conflict raises now use machine-checkable payload data under
     `deduce/integrity-key-conflict`,
     `deduce/integrity-unique-conflict`, and
@@ -55,6 +2120,43 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     metadata, including `unique-columns` for composite unique constraints, and
     `deduce/analyze` now reports keyed relation, unique relation, reference
     constraint, and integrity constraint counts
+  - `deduce/stats` now reports relation-local integrity violation totals,
+    per-class violation counts, and `last-integrity-violation-code`
+  - `deduce/analyze` now reports DB-wide integrity violation totals,
+    per-class counts, and `last-integrity-violation-code` /
+    `last-integrity-violation-relation`
+  - `deduce/stats` and `deduce/analyze` now both expose bounded
+    `recent-integrity-violations` history, newest first, so write-side/admin
+    inspection is no longer limited to counters plus last-code snapshots
+  - explicit `write-deferred` transactions now defer the current `fact!`-side
+    key/unique/reference checks to commit-time validation over touched
+    inserted relations, with exact rollback on failed deferred commit
+  - `write-deferred` transactions now also defer delete-side reference
+    protection to commit-time snapshot validation, so staged target deletes can
+    proceed until commit and are either rejected or accepted against the final
+    transaction-visible state
+  - `retract!` now rejects deleting referenced target tuples with
+    `deduce/integrity-reference-target-in-use`, while write transactions allow
+    the target delete after the blocking reference has already been removed in
+    the same transaction-visible snapshot
+  - `clear!` and `drop!` now enforce the same target-side reference protection
+    as `retract!`, rejecting bulk deletion when live referencing tuples still
+    exist
+  - `deduce/rule!` now accepts keyed, single-column unique, and composite
+    unique constrained head relations across both ordinary and aggregate rule
+    heads, and the derived-write regression surface now pins recursive keyed
+    materialization, aggregate keyed publish success, and machine-checkable
+    key/unique conflict payloads
+  - `deduce/rule!` now accepts declared `ref` constrained head relations
+    across both ordinary and aggregate rule heads
+  - `deduce/schema` and `deduce/analyze` now expose `target-unique` for
+    reference constraints, and writes against non-unique target columns now
+    raise `deduce/integrity-reference-target-not-unique`
+  - dropped target relations no longer appear resolved in `deduce/schema` /
+    `deduce/analyze`; reference metadata now exposes `target-live` and
+    unresolved counts include dropped targets
+  - bounded Deduce validation is green at `169 passed, 0 failed` after the
+    final `ref` rule-head closure
   - the explicit `escape-scope: iterator consume car` and
     `escape-scope: iterator consume len` regressions are fixed, and the bounded
     `escape-scope` slice is green again after moving the larger named-let list
@@ -62,7 +2164,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation for this slice:
     - `c3c build`
     - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
-    - result: `135 passed, 0 failed`
+    - result: `165 passed, 0 failed`
     - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=escape-scope ./build/main --test-suite lisp`
     - result: `29 passed, 0 failed`
     - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime ./build/main --test-suite lisp`
@@ -6842,3 +8944,52 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - bounded Deduce slice:
       `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
       (`90 passed, 0 failed`)
+
+- 2026-03-26 (Deduce worker-scratch crash triage instrumentation):
+  - added opt-in instrumentation in
+    `src/lisp/deduce_rule_eval_exec_seminaive.c3` behind
+    `OMNI_TRACE_DEDUCE_WORKER_SCRATCH=1`:
+    - scratch-pass entry/exit markers,
+    - per-rule dry-run begin/end markers,
+    - dry-run head-fact skip/record markers,
+    - scratch replay/accumulation boundary markers.
+  - no semantic/runtime behavior change intended; instrumentation-only slice.
+  - validation:
+    - `c3c build` passed.
+    - bounded deduce lane with tracing:
+      `OMNI_TRACE_DEDUCE_WORKER_SCRATCH=1 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+    - observed state:
+      - run stalled with no exit while log stayed flat at `167` lines for `30s`,
+      - no `OMNI_DEDUCE_WORKER_SCRATCH` marker appeared,
+      - last named boundary in log remained
+        `[PASS] deduce analyze recursive limit reports stable error code`.
+
+- 2026-03-26 (Deduce scan-range row-dict OOM guard validation):
+  - hardened `src/lisp/deduce_relation_scan_helpers_more.c3` so
+    `deduce_relation_materialize_row_dict(...)` returns a clean
+    `deduce/query-out-of-memory` error when `make_hashmap(...)` fails.
+  - added an env-gated direct helper probe in
+    `src/lisp/tests_deduce_query_scan_groups.c3` behind
+    `OMNI_DEDUCE_FORCE_ROW_DICT_OOM=1` so the row-dict OOM boundary is
+    validated directly instead of depending on scan-path optimization shape.
+  - validation:
+    - `c3c build`
+    - bounded deduce slice:
+      `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_SKIP_TLS_INTEGRATION=1 OMNI_DEDUCE_FORCE_ROW_DICT_OOM=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+      (`1 passed, 0 failed`)
+
+- 2026-03-26 (Omni version bump to 0.2.0):
+  - updated the runtime-facing version surfaces to `0.2.0`:
+    - `project.json`
+    - `src/entry_cli_help_version.c3`
+    - `src/entry_project_init_writer_project_json.c3`
+    - `src/entry_project_init_writers.c3`
+    - generated docs/man surfaces:
+      - `docs/OMNI_REFERENCE.md`
+      - `docs/man/omni.1`
+      - `docs/man/omni-language.7`
+  - rebuilt `build/main` so the binary replacement now reports `omni 0.2.0`.
+  - validation:
+    - `c3c build`
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --version`
+      (`omni 0.2.0`)

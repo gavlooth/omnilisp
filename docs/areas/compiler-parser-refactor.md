@@ -104,14 +104,18 @@ As of: 2026-03-19
   - further work in this area should be correctness or feature driven, not queue-driven file splitting.
 - Plan-governance closure is now explicit:
   - one historical compiler/parser tracker remains (`docs/plans/compiler-parser-refactor-plan.md`),
-  - historical plan files (`docs/plans/aot-unification.md`, `docs/plans/library-gaps-todo.md`) are reference-only and not active checklist surfaces for compiler/parser splits.
+  - historical plan files (for example `docs/plans/aot-unification.md`) are
+    reference-only and not active checklist surfaces for compiler/parser
+    splits.
 
 ## Known Drift
 
 - Legacy monolith-era docs (`docs/COMPILER.md`, `docs/REFACTOR_PLAN.md`,
   `docs/C3_MIGRATION.md`) were removed and should not be recreated as active
   status artifacts.
-- Historical plan files that contain prior refactor slices (`docs/plans/library-gaps-todo.md`, `docs/plans/aot-unification.md`) remain useful as implementation history but are no longer active tracking surfaces for this area.
+- Historical plan files that contain prior refactor slices (for example
+  `docs/plans/aot-unification.md`) remain useful as implementation history but
+  are no longer active tracking surfaces for this area.
 
 ## Next Steps
 

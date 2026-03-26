@@ -4,6 +4,7 @@ local state = {
   job_id = nil,
   bufnr = nil,
   winid = nil,
+  eval_annot_ns = vim.api.nvim_create_namespace("omni.nvim.eval_annotations"),
   stdout_partial = "",
   stderr_partial = "",
   request_seq = 0,
@@ -77,6 +78,109 @@ end
 
 local function strip_ansi(text)
   return text:gsub("\27%[[0-9;?]*[ -/]*[@-~]", "")
+end
+
+local function truncate_text(text, max_length)
+  local ok, normalized = pcall(tostring, text)
+  if not ok then
+    normalized = ""
+  end
+  normalized = normalized:gsub("[\r\n]+", " ")
+  normalized = normalized:gsub("^%s+", ""):gsub("%s+$", "")
+  if max_length and max_length > 0 and #normalized > max_length then
+    local limit = max_length - 3
+    if limit <= 0 then
+      return "..."
+    end
+    return normalized:sub(1, limit) .. "..."
+  end
+  return normalized
+end
+
+local function stringify_eval_value(value)
+  local ok, inspected = pcall(vim.inspect, value)
+  if ok then
+    return inspected
+  end
+  return tostring(value)
+end
+
+local function annotation_enabled(config, label, selection)
+  if not config or type(config.eval) ~= "table" then
+    return false, nil, nil
+  end
+  local annotations = config.eval.annotations
+  if type(annotations) ~= "table" or annotations.enabled ~= true then
+    return false, nil, nil
+  end
+  if not selection then
+    return false, nil, nil
+  end
+  if annotations.labels and annotations.labels[label] ~= true then
+    return false, nil, nil
+  end
+  return true,
+    (annotations.hl and annotations.hl.ok) or "DiagnosticOk",
+    (annotations.hl and annotations.hl.error) or "DiagnosticError"
+end
+
+local function format_annotation_message(result, max_length)
+  if type(result) ~= "table" then
+    return "!! invalid eval result"
+  end
+  if result.ok then
+    local display = result.value
+    if display == nil then
+      display = "nil"
+    elseif type(display) ~= "string" then
+      display = stringify_eval_value(display)
+    end
+    return truncate_text(string.format("=> %s", display), max_length)
+  end
+  local error_info = result.error or {}
+  local message = error_info.message or "unknown evaluation error"
+  return truncate_text(string.format("!! %s", message), max_length)
+end
+
+local function place_eval_annotation(config, ctx, label, result)
+  if not ctx then
+    return
+  end
+  local enabled, hl_ok, hl_error = annotation_enabled(config, label, ctx.selection)
+  if not enabled then
+    return
+  end
+  local bufnr = ctx.bufnr
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+  local selection = ctx.selection
+  local row = selection.end_row
+  local col = selection.end_col or 0
+  if type(row) ~= "number" or type(col) ~= "number" then
+    return
+  end
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  if row < 0 or row >= line_count then
+    return
+  end
+  local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
+  if col < 0 or col > #line then
+    col = #line
+  end
+  vim.api.nvim_buf_clear_namespace(bufnr, state.eval_annot_ns, row, row + 1)
+  local annotations = config.eval.annotations
+  local max_length = annotations and annotations.max_length or 0
+  local text = format_annotation_message(result, max_length)
+  local hl = result.ok and hl_ok or hl_error
+  if text == "" then
+    return
+  end
+  vim.api.nvim_buf_set_extmark(bufnr, state.eval_annot_ns, row, col, {
+    virt_text = { { text, hl } },
+    virt_text_pos = "eol",
+    hl_mode = "combine",
+  })
 end
 
 local function append_lines(lines)
@@ -231,7 +335,7 @@ local function handle_json_message(line)
   local pending = request_id and state.pending[request_id] or nil
   if pending then
     state.pending[request_id] = nil
-    append_eval_result(pending.label, pending.payload, decoded)
+    append_eval_result(pending.label, pending.payload, decoded, pending.annotation_ctx)
     return
   end
 
@@ -349,7 +453,7 @@ function M.restart(config)
   return M.start(config)
 end
 
-append_eval_result = function(label, payload, result)
+append_eval_result = function(label, payload, result, annotation_ctx)
   local lines = {
     string.format(">> %s", label),
     payload,
@@ -368,10 +472,14 @@ append_eval_result = function(label, payload, result)
     table.insert(lines, string.format("!! %s", message))
   end
 
+  local config = annotation_ctx and annotation_ctx.config
+  if config then
+    place_eval_annotation(config, annotation_ctx, label, result)
+  end
   append_lines(lines)
 end
 
-local function eval_once(config, text, label)
+local function eval_once(config, text, label, annotation_ctx)
   local payload = trim(text or "")
   if payload == "" then
     notify("nothing to evaluate", vim.log.levels.WARN)
@@ -384,7 +492,7 @@ local function eval_once(config, text, label)
   if result.code == 0 or result.code == 1 then
     local ok, decoded = pcall(vim.json.decode, result.stdout)
     if ok and type(decoded) == "table" then
-      append_eval_result(label, payload, decoded)
+      append_eval_result(label, payload, decoded, annotation_ctx)
       return decoded.ok == true
     end
   end
@@ -403,7 +511,7 @@ local function eval_once(config, text, label)
   return false
 end
 
-local function send_text(config, text, label, mode_override)
+local function send_text(config, text, label, mode_override, annotation_ctx)
   local payload = trim(text or "")
   if payload == "" then
     notify("nothing to send", vim.log.levels.WARN)
@@ -425,6 +533,7 @@ local function send_text(config, text, label, mode_override)
     state.pending[request_id] = {
       label = label,
       payload = payload,
+      annotation_ctx = annotation_ctx,
     }
 
     local mode = mode_override or (label == "buffer" and "program" or "expr")
@@ -996,14 +1105,14 @@ local function select_range(bufnr, selection)
   return true
 end
 
-local function eval_text(config, text, label, mode_override)
+local function eval_text(config, text, label, mode_override, annotation_ctx)
   if config.eval and config.eval.mode == "json" then
-    local ok = eval_once(config, text, label)
+    local ok = eval_once(config, text, label, annotation_ctx)
     if ok or not config.eval.fallback_to_repl then
       return
     end
   end
-  send_text(config, text, label, mode_override)
+  send_text(config, text, label, mode_override, annotation_ctx)
 end
 
 function M.send_current_form(config)
@@ -1016,8 +1125,9 @@ function M.send_current_form(config)
       return M.send_current_line(config)
     end
     text = text_from_range(bufnr, start_idx, end_idx)
+    selection = selection_from_index_range(bufnr, start_idx, end_idx)
   end
-  eval_text(config, text, "form")
+  eval_text(config, text, "form", nil, { config = config, bufnr = bufnr, selection = selection })
 end
 
 function M.send_root_form(config)
@@ -1030,14 +1140,23 @@ function M.send_root_form(config)
       return M.send_current_form(config)
     end
     text = text_from_range(bufnr, start_idx, end_idx)
+    selection = selection_from_index_range(bufnr, start_idx, end_idx)
   end
 
-  eval_text(config, text, "root")
+  eval_text(config, text, "root", nil, { config = config, bufnr = bufnr, selection = selection })
 end
 
 function M.send_current_line(config)
-  local text = vim.api.nvim_get_current_line()
-  eval_text(config, text, "line")
+  local bufnr = vim.api.nvim_get_current_buf()
+  local line = vim.api.nvim_win_get_cursor(0)[1] - 1
+  local line_text = vim.api.nvim_get_current_line()
+  local selection = {
+    start_row = line,
+    start_col = 0,
+    end_row = line,
+    end_col = #line_text,
+  }
+  eval_text(config, line_text, "line", nil, { config = config, bufnr = bufnr, selection = selection })
 end
 
 local function send_capture_group(config, capture_group_name, label, fallback)
@@ -1048,7 +1167,7 @@ local function send_capture_group(config, capture_group_name, label, fallback)
   if not text then
     return fallback(config)
   end
-  eval_text(config, text, label)
+  eval_text(config, text, label, nil, { config = config, bufnr = bufnr, selection = selection })
 end
 
 function M.send_current_call(config)

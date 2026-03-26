@@ -407,7 +407,7 @@
       ]
     },
     "path": {
-      "type": "PREC_LEFT",
+      "type": "PREC_RIGHT",
       "value": 20,
       "content": {
         "type": "SEQ",
@@ -544,7 +544,7 @@
         "value": 1,
         "content": {
           "type": "PATTERN",
-          "value": "[0-9A-Za-z_+*\\/=<>!?:@#$%&|^~\\-\\u0080-\\uFFFF]+",
+          "value": "[0-9A-Za-z_+*\\/=<>!?:@%&|^~\\-\\u0080-\\uFFFF]+",
           "flags": "u"
         }
       }

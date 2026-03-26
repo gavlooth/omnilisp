@@ -708,7 +708,7 @@ Canonical naming direction:
 
 - prefer descriptive language-facing type symbols and constructors over abbreviations,
 - `Integer`, `Boolean`, and `Dictionary` are the canonical builtin names,
-- `Int`, `Bool`, and `Dict` remain accepted compatibility aliases.
+- `Dict` remains the only accepted compatibility alias.
 - alias policy is input-tolerant but output-canonical:
   - aliases are accepted in constructor/type-annotation input position,
   - docs/examples and introspection outputs use canonical names (`Integer`,
@@ -805,7 +805,7 @@ Printing/introspection contract:
   `#<type Integer>`, `#<type Dictionary>`, etc.
 - Abstract/meta type descriptors for `Any`, `Number`, and `Collection` follow
   the same canonical `#<type Name>` rendering.
-- constructor aliases (`Int`, `Bool`, `Dict`) normalize to canonical type
+- constructor aliases (`Dict`) normalize to canonical type
   identity in introspection (`type-of`, descriptor rendering).
 - Ordinary callable primitives keep primitive rendering (`#<primitive +>`).
 
@@ -1228,7 +1228,7 @@ Set order contract:
 |------|-------------|
 | `string->number` | Parse string to number |
 | `number->string` | Number to string |
-| `exact->inexact` | Int to double |
+| `exact->inexact` | Integer to double |
 | `inexact->exact` | Double to int |
 | `string->symbol` | String to symbol |
 | `symbol->string` | Symbol to string |
@@ -1284,7 +1284,7 @@ Numeric conversion policy:
 ```
 
 - Uses libffi via C wrapper for portable ABI support
-- Type annotations: `^Integer`/`^Int` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred; `^Ptr` remains a compatibility shorthand) → pointer, `^Void` → void, `^Boolean`/`^Bool` → sint64
+- Type annotations: `^Integer` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred; `^Ptr` remains a compatibility shorthand) → pointer, `^Void` → void, `^Boolean` → sint64
 - `Nil` is the language-level empty/false value type; `Void` is a real singleton runtime value/type, and FFI `^Void` returns produce that value
 - Lazy dlsym: symbol resolution deferred to first call and cached
 
@@ -1618,6 +1618,14 @@ Effect handlers match on tag name only. For type-specific behavior, use dispatch
   (block (signal show 42) (signal show "hello"))
   (show x (println (on-show x)) (resolve nil)))
 ```
+
+### 10.6 Composition Helper Naming (Migration Note)
+
+For helper-style handler composition in examples and public-facing docs:
+- use `handle/chain` as the canonical helper name
+- do not introduce new abbreviated aliases for this helper
+- migrate historical `with-handlers` / `handle-chain` example spellings to
+  `handle/chain`
 
 ---
 

@@ -56,7 +56,7 @@ It is a short reference for contributors to avoid reintroducing removed aliases 
 - Canonical transaction command is:
 
 ```lisp
-(deduce 'block db ['read|'write])
+(deduce 'block db ['read|'write|'write-deferred])
 ```
 
 - Legacy transaction helper names were removed from parser and runtime surfaces.
@@ -70,8 +70,11 @@ It is a short reference for contributors to avoid reintroducing removed aliases 
 ### 7. Names Used in Helper Composition
 
 - Canonical handler-composition helper naming should prefer readable terms and avoid abbreviations:
-  - `handle-chain` for chain composition order,
+  - `handle/chain` for chain composition order,
   - explicit `with-continuation` for multi-shot control.
+- Migration note:
+  - historical helper spellings `with-handlers` and `handle-chain` should be
+    treated as non-canonical in public-facing examples/docs.
 
 ### 8. Macro Surface Model (Locked 2026-03-11)
 

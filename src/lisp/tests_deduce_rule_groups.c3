@@ -148,6 +148,92 @@ fn void run_deduce_rule_validation_tests(Interp* interp, int* pass, int* fail) {
         fail
     );
 
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-rule-key-head (deduce/open 'memory)) "
+        "  (define [relation db-rule-key-head] parent (child) (ancestor)) "
+        "  (define [relation db-rule-key-head] ancestor (key child) (ancestor)) "
+        "  (deduce/rule! db-rule-key-head '(ancestor ?x ?y) '(parent ?x ?y)) "
+        "  true)",
+        "[PASS] deduce rule! accepts keyed constrained non-aggregate head relations",
+        "[FAIL] deduce rule! accepts keyed constrained non-aggregate head relations",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-rule-ref-head (deduce/open 'memory)) "
+        "  (define [relation db-rule-ref-head] users (key id) (name)) "
+        "  (define [relation db-rule-ref-head] audit-src (user-id) (action)) "
+        "  (define [relation db-rule-ref-head] audit-out (ref users id user-id) (action)) "
+        "  (deduce/rule! db-rule-ref-head '(audit-out ?u ?a) '(audit-src ?u ?a)) "
+        "  true)",
+        "[PASS] deduce rule! accepts reference-constrained non-aggregate head relations",
+        "[FAIL] deduce rule! accepts reference-constrained non-aggregate head relations",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-rule-unique-head-single (deduce/open 'memory)) "
+        "  (define [relation db-rule-unique-head-single] staff-src (id) (email)) "
+        "  (define [relation db-rule-unique-head-single] unique-email (id) (unique email)) "
+        "  (deduce/rule! db-rule-unique-head-single '(unique-email ?id ?email) '(staff-src ?id ?email)) "
+        "  true)",
+        "[PASS] deduce rule! accepts single-column unique constrained non-aggregate head relations",
+        "[FAIL] deduce rule! accepts single-column unique constrained non-aggregate head relations",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-rule-unique-head (deduce/open 'memory)) "
+        "  (define [relation db-rule-unique-head] staff-src (id) (email) (dept)) "
+        "  (define [relation db-rule-unique-head] unique-path (id) (unique email) (unique dept)) "
+        "  (deduce/rule! db-rule-unique-head '(unique-path ?id ?email ?dept) '(staff-src ?id ?email ?dept)) "
+        "  true)",
+        "[PASS] deduce rule! accepts composite unique constrained non-aggregate head relations",
+        "[FAIL] deduce rule! accepts composite unique constrained non-aggregate head relations",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-rule-agg-constrained-head (deduce/open 'memory)) "
+        "  (define [relation db-rule-agg-constrained-head] parent (child) (score)) "
+        "  (define [relation db-rule-agg-constrained-head] score-total (key child) (total)) "
+        "  (deduce/rule! db-rule-agg-constrained-head '(score-total ?x (sum ?y)) '(parent ?x ?y)) "
+        "  true)",
+        "[PASS] deduce rule! accepts keyed aggregate constrained head relations",
+        "[FAIL] deduce rule! accepts keyed aggregate constrained head relations",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-rule-agg-ref-head (deduce/open 'memory)) "
+        "  (define [relation db-rule-agg-ref-head] users (key id) (name)) "
+        "  (define [relation db-rule-agg-ref-head] sale (user-id) (amount)) "
+        "  (define [relation db-rule-agg-ref-head] totals (ref users id user-id) (total)) "
+        "  (deduce/rule! db-rule-agg-ref-head '(totals ?u (sum ?amount)) '(sale ?u ?amount)) "
+        "  true)",
+        "[PASS] deduce rule! accepts reference-constrained aggregate head relations",
+        "[FAIL] deduce rule! accepts reference-constrained aggregate head relations",
+        pass,
+        fail
+    );
+
     test_error_contains(
         interp,
         "[PASS] deduce rule! rejects deferred aggregate functions",

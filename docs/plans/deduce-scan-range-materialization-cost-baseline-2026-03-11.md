@@ -6,7 +6,7 @@ per-column symbol-key allocation.
 
 ## Measurement Surface
 
-Implementation changes:
+Implementation changes in the exact benchmark files:
 - `src/lisp/deduce_relation_scan_helpers.c3`
   - added bench stats state:
     - `calls`
@@ -18,9 +18,20 @@ Implementation changes:
     - `deduce_scan_range_bench_reset()`
     - `deduce_scan_range_bench_snapshot()`
   - instrumented `relation_scan_range(...)` materialization block.
-- `src/lisp/tests_deduce_query_groups.c3`
-  - benchmark lane now includes bounded `scan-range` iterations and emits the
-    scan-range materialization counters.
+- `src/lisp/tests_deduce_query_bench_groups.c3`
+  - retained shared query-benchmark helper substrate used by the benchmark lane
+- `src/lisp/tests_deduce_query_bench_groups_more.c3`
+  - benchmark runner/reporting entrypoint now includes bounded `scan-range`
+    iterations and emits the scan-range materialization counters
+
+Benchmark-lane split:
+- retained seed/assert helpers and query benchmark support in
+  `src/lisp/tests_deduce_query_bench_groups.c3`
+- extracted benchmark runner/reporting entrypoints, including the timed
+  `scan-range` loop and summary emission, into
+  `src/lisp/tests_deduce_query_bench_groups_more.c3`
+- `src/lisp/tests_deduce_query_groups.c3` remains only the env-gated suite
+  dispatcher
 
 Runtime behavior:
 - Instrumentation is disabled by default.

@@ -10,7 +10,7 @@ fn void write_init_project_json(char* name, usz name_len) {
         file.write("// Generated from omni.toml — do not edit\n")!!;
         file.write("{\n")!!;
         file.write("    \"langrev\": \"1\",\n")!!;
-        file.write("    \"version\": \"0.1.5\",\n")!!;
+        file.write("    \"version\": \"0.2.0\",\n")!!;
         file.write("    \"sources\": [\"../src\"],\n")!!;
         file.write("    \"output\": \".\",\n")!!;
         file.write("    \"safe\": true,\n")!!;

@@ -5,6 +5,8 @@ import lisp;
 
 extern fn char* c_getcwd(char* buf, usz size) @extern("getcwd");
 
+const char[] CHECK_COMPILE_UNSUPPORTED_MARKER = "unsupported expr type";
+
 fn char* find_check_input_file(int argc, char** argv, int check_idx) {
     for (int i = check_idx + 1; i < argc; i++) {
         if (str_eq(argv[i], "--json")) continue;
@@ -28,6 +30,17 @@ fn char[] check_resolve_path(char* input_file, char[] abs_buf) {
         abs_buf[cwd_len + 1 + i] = input[i];
     }
     return abs_buf[:cwd_len + 1 + input.len];
+}
+
+fn lisp::EvalResult check_compile_source(char[] source, lisp::Interp* interp) {
+    char[] c3_code = lisp::compile_to_c3(source, interp);
+    if (c3_code.len == 0) {
+        return lisp::eval_error("compiler/lowering failed");
+    }
+    if (cstr_contains(c3_code, CHECK_COMPILE_UNSUPPORTED_MARKER)) {
+        return lisp::eval_error("compiler/lowering failed: unsupported expr type");
+    }
+    return lisp::eval_ok(null);
 }
 
 fn lisp::EvalResult check_parse_source(char[] source, lisp::Interp* interp) {
@@ -81,15 +94,23 @@ fn int run_check_mode(int argc, char** argv, int check_idx) {
 
         lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
         interp.init();
+        lisp::register_primitives(interp);
+        lisp::register_stdlib(interp);
 
         lisp::EvalResult result = check_parse_source(source, interp);
+        char[] diag_code = JSON_PARSE_ERROR_CODE;
+
+        if (!result.error.has_error) {
+            result = check_compile_source(source, interp);
+            diag_code = JSON_COMPILE_ERROR_CODE;
+        }
 
         interp.destroy();
         mem::free(interp);
         thread_registry_shutdown();
 
         if (json) {
-            print_check_result_json(resolved_path, result);
+            print_check_result_json(resolved_path, result, diag_code);
         } else {
             print_check_result_text(resolved_path, result);
         }

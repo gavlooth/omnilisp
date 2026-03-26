@@ -7,7 +7,8 @@ Owner: Codex workflow
 ## Purpose
 
 Track the next runtime cleanup lane after the closeout of
-`runtime-backend-simplification-backlog-2026-03-19.md`.
+the now-removed runtime/backend backlog tracker that has since been
+consolidated into `TODO.md`.
 
 This lane is narrower than the previous backlog. It is focused on the
 interpreter-state surface and the files immediately coupled to it, not a broad

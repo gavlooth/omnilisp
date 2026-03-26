@@ -117,6 +117,264 @@ fn Value* scheduler_prepare_os_thread_spawn(OffloadWork* work, usz* thread_id_ou
     return null;
 }
 
+fn Value* scheduler_begin_custom_os_thread_job(
+    OffloadCustomFn custom_fn,
+    void* custom_ctx,
+    SchedulerOsThreadHandle* handle,
+    Interp* interp
+) {
+    scheduler_init();
+
+    if (custom_fn == null) {
+        return scheduler_raise(interp, "scheduler/thread-spawn-invalid-job", "thread-spawn: invalid custom callback");
+    }
+    if (handle == null) {
+        return scheduler_raise(interp, "scheduler/thread-spawn-invalid-job", "thread-spawn: missing thread handle");
+    }
+
+    usz thread_id = scheduler_alloc_os_thread();
+    if (thread_id == NO_OS_THREAD) {
+        return scheduler_raise(interp, "scheduler/thread-spawn-thread-table-full", "thread-spawn: thread table full");
+    }
+
+    uint generation = 0;
+    if (!scheduler_get_os_thread_generation(thread_id, &generation) || generation == 0) {
+        scheduler_drop_os_thread(thread_id);
+        return scheduler_raise(
+            interp,
+            "scheduler/thread-spawn-thread-handle-invalid",
+            "thread-spawn: failed to create thread handle"
+        );
+    }
+
+    OffloadWork work = {};
+    work.custom_fn = custom_fn;
+    work.custom_ctx = custom_ctx;
+    work.task_id = NO_TASK;
+    work.fiber_id = NO_FIBER;
+    if (!scheduler_start_os_thread(thread_id, generation, work)) {
+        scheduler_drop_os_thread(thread_id, generation);
+        return scheduler_raise(
+            interp,
+            "scheduler/thread-spawn-create-failed",
+            "thread-spawn: failed to start OS thread"
+        );
+    }
+
+    handle.thread_id = thread_id;
+    handle.generation = generation;
+    handle.owner_interp = interp;
+    return null;
+}
+
+fn Value* scheduler_begin_custom_os_thread_jobs(
+    OffloadCustomFn custom_fn,
+    void** custom_ctxs,
+    usz count,
+    SchedulerOsThreadHandle* handles,
+    Interp* interp
+) {
+    scheduler_init();
+
+    if (custom_fn == null) {
+        return scheduler_raise(interp, "scheduler/thread-spawn-invalid-job", "thread-spawn: invalid custom callback");
+    }
+    if (count > 0 && handles == null) {
+        return scheduler_raise(interp, "scheduler/thread-spawn-invalid-job", "thread-spawn: missing thread handle");
+    }
+    if (count > 0 && custom_ctxs == null) {
+        return scheduler_raise(interp, "scheduler/thread-spawn-invalid-job", "thread-spawn: missing custom context array");
+    }
+
+    for (usz i = 0; i < count; i++) {
+        handles[i] = {};
+    }
+
+    for (usz i = 0; i < count; i++) {
+        Value* err = scheduler_begin_custom_os_thread_job(
+            custom_fn,
+            custom_ctxs != null ? custom_ctxs[i] : null,
+            &handles[i],
+            interp
+        );
+        if (err != null) {
+            for (usz j = 0; j < i; j++) {
+                if (handles[j].thread_id != NO_OS_THREAD) {
+                    scheduler_drop_os_thread(handles[j].thread_id, handles[j].generation);
+                    handles[j] = {};
+                }
+            }
+            return err;
+        }
+    }
+    return null;
+}
+
+fn Value* scheduler_execute_custom_os_thread_jobs(
+    OffloadCustomFn custom_fn,
+    void** custom_ctxs,
+    usz count,
+    Interp* interp
+) {
+    scheduler_init();
+
+    if (custom_fn == null) {
+        return scheduler_raise(interp, "scheduler/thread-spawn-invalid-job", "thread-spawn: invalid custom callback");
+    }
+    if (count > 0 && custom_ctxs == null) {
+        return scheduler_raise(interp, "scheduler/thread-spawn-invalid-job", "thread-spawn: missing custom context array");
+    }
+    if (count == 0) {
+        return make_void(interp);
+    }
+
+    SchedulerOsThreadHandle[] handles = mem::new_array(SchedulerOsThreadHandle, count);
+    if (handles.ptr == null) {
+        return scheduler_raise(interp, "scheduler/thread-spawn-out-of-memory", "thread-spawn: out of memory");
+    }
+    defer mem::free(handles.ptr);
+
+    Value* begin_err = scheduler_begin_custom_os_thread_jobs(
+        custom_fn,
+        custom_ctxs,
+        count,
+        &handles[0],
+        interp
+    );
+    if (begin_err != null) return begin_err;
+
+    for (usz i = 0; i < count; i++) {
+        Value* join_v = scheduler_thread_join_impl(
+            handles[i].thread_id,
+            handles[i].generation,
+            -1,
+            &handles[i],
+            interp
+        );
+        if (join_v != null && join_v.tag == ERROR) {
+            for (usz j = i + 1; j < count; j++) {
+                if (scheduler_os_thread_exists(handles[j].thread_id, handles[j].generation)) {
+                    scheduler_drop_os_thread(handles[j].thread_id, handles[j].generation);
+                }
+            }
+            return join_v;
+        }
+    }
+    return make_void(interp);
+}
+
+fn Value* scheduler_begin_os_thread_work_job(
+    OffloadWork work,
+    SchedulerOsThreadHandle* handle,
+    Interp* interp
+) {
+    scheduler_init();
+
+    if (handle == null) {
+        return scheduler_raise(interp, "scheduler/thread-spawn-invalid-job", "thread-spawn: missing thread handle");
+    }
+
+    usz thread_id = scheduler_alloc_os_thread();
+    if (thread_id == NO_OS_THREAD) {
+        return scheduler_raise(interp, "scheduler/thread-spawn-thread-table-full", "thread-spawn: thread table full");
+    }
+
+    uint generation = 0;
+    if (!scheduler_get_os_thread_generation(thread_id, &generation) || generation == 0) {
+        scheduler_drop_os_thread(thread_id);
+        return scheduler_raise(
+            interp,
+            "scheduler/thread-spawn-thread-handle-invalid",
+            "thread-spawn: failed to create thread handle"
+        );
+    }
+
+    work.fiber_id = NO_FIBER;
+    work.task_id = NO_TASK;
+    if (!scheduler_start_os_thread(thread_id, generation, work)) {
+        scheduler_drop_os_thread(thread_id, generation);
+        return scheduler_raise(
+            interp,
+            "scheduler/thread-spawn-create-failed",
+            "thread-spawn: failed to start OS thread"
+        );
+    }
+
+    handle.thread_id = thread_id;
+    handle.generation = generation;
+    handle.owner_interp = interp;
+    return null;
+}
+
+fn Value* scheduler_begin_os_thread_work_jobs(
+    OffloadWork[] works,
+    SchedulerOsThreadHandle* handles,
+    Interp* interp
+) {
+    scheduler_init();
+
+    if (works.len > 0 && handles == null) {
+        return scheduler_raise(interp, "scheduler/thread-spawn-invalid-job", "thread-spawn: missing thread handle");
+    }
+
+    for (usz i = 0; i < works.len; i++) {
+        handles[i] = {};
+    }
+
+    for (usz i = 0; i < works.len; i++) {
+        Value* err = scheduler_begin_os_thread_work_job(works[i], &handles[i], interp);
+        if (err != null) {
+            for (usz j = 0; j < i; j++) {
+                if (handles[j].thread_id != NO_OS_THREAD) {
+                    scheduler_drop_os_thread(handles[j].thread_id, handles[j].generation);
+                    handles[j] = {};
+                }
+            }
+            return err;
+        }
+    }
+    return null;
+}
+
+fn Value* scheduler_execute_os_thread_work_jobs(
+    OffloadWork[] works,
+    Interp* interp
+) {
+    scheduler_init();
+
+    if (works.len == 0) {
+        return make_void(interp);
+    }
+
+    SchedulerOsThreadHandle[] handles = mem::new_array(SchedulerOsThreadHandle, works.len);
+    if (handles.ptr == null) {
+        return scheduler_raise(interp, "scheduler/thread-spawn-out-of-memory", "thread-spawn: out of memory");
+    }
+    defer mem::free(handles.ptr);
+
+    Value* begin_err = scheduler_begin_os_thread_work_jobs(works, &handles[0], interp);
+    if (begin_err != null) return begin_err;
+
+    for (usz i = 0; i < works.len; i++) {
+        Value* join_v = scheduler_thread_join_impl(
+            handles[i].thread_id,
+            handles[i].generation,
+            -1,
+            &handles[i],
+            interp
+        );
+        if (join_v != null && join_v.tag == ERROR) {
+            for (usz j = i + 1; j < works.len; j++) {
+                if (scheduler_os_thread_exists(handles[j].thread_id, handles[j].generation)) {
+                    scheduler_drop_os_thread(handles[j].thread_id, handles[j].generation);
+                }
+            }
+            return join_v;
+        }
+    }
+    return make_void(interp);
+}
+
 fn Value* scheduler_thread_join_fiber_impl(
     usz thread_id,
     uint generation,

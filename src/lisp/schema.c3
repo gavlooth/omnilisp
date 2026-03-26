@@ -22,24 +22,3 @@ fn Value* prim_explain(Value*[] args, Env* env, Interp* interp) {
 
     return explain_effect_result_from_thunk(interp, args[1]);
 }
-
-fn Value* prim_schema_explain(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) {
-        return raise_error_with_payload_names(
-            interp,
-            "schema",
-            "schema/schema-explain-expected-schema-value",
-            "schema-explain: expected (schema-explain schema value)"
-        );
-    }
-
-    Value* schema = schema_resolve_named_symbol(args[0], interp);
-    Value* val = args[1];
-
-    if (schema_check(schema, val, interp)) {
-        return make_nil(interp);
-    }
-
-    Value* msg = make_string(interp, "validation failed");
-    return make_cons(interp, msg, make_nil(interp));
-}

@@ -478,7 +478,7 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 ```
 
 - Uses libffi via C wrapper (`csrc/ffi_helpers.c`) for portable ABI support
-- Type annotations: `^Integer`/`^Int` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred; `^Ptr` remains a compatibility shorthand) → pointer, `^Void` → void, `^Boolean`/`^Bool` → sint64
+- Type annotations: `^Integer` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred; `^Ptr` remains a compatibility shorthand) → pointer, `^Void` → void, `^Boolean` → sint64
 - `Nil` is the language-level empty/false value type; `Void` is a real builtin singleton value/type and FFI `^Void` returns map to it
 - Lazy dlsym: symbol resolution deferred to first call and cached
 - Handles allocated in root scope (permanent, survive scope release)
@@ -709,7 +709,7 @@ functions = ["sin", "cos", "sqrt"]    # optional filter
 )
 ```
 
-**C-to-Omni type mapping:** `int`/`long` → `'int`/`^Integer` (with `^Int` shorthand), `double`/`float` → `'double`/`^Double`, `char*` → `'string`/`^String`, `void*` → `'ptr`/`^Pointer` (preferred; `^Ptr` remains a compatibility shorthand).
+**C-to-Omni type mapping:** `int`/`long` → `'int`/`^Integer`, `double`/`float` → `'double`/`^Double`, `char*` → `'string`/`^String`, `void*` → `'ptr`/`^Pointer` (preferred; `^Ptr` remains a compatibility shorthand).
 
 **Requires:** libclang (optional runtime dependency, only loaded when `--bind` runs).
 

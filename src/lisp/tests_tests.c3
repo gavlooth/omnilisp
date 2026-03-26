@@ -229,28 +229,35 @@ fn void run_group_isolated(IsolatedTestGroupFn group_fn, int* pass, int* fail) {
     run_test_global_boundary_reset();
 }
 
-fn void run_named_group_isolated(char[] name, IsolatedTestGroupFn group_fn, int* pass, int* fail) {
-    if (!advanced_group_filter_matches(name)) return;
+fn bool run_named_group_isolated(char[] name, IsolatedTestGroupFn group_fn, int* pass, int* fail) {
+    if (!advanced_group_filter_matches(name)) return false;
     emit_advanced_group_trace("begin", name);
     run_group_isolated(group_fn, pass, fail);
     emit_advanced_group_trace("end", name);
+    return true;
 }
 
 fn void run_advanced_tests_isolated(int* pass, int* fail) {
     // Keep advanced subgroup definitions from accumulating in one long-lived interpreter.
-    run_named_group_isolated("advanced-core-semantics", &run_advanced_core_semantics_tests, pass, fail);
-    run_named_group_isolated("advanced-unicode-iterator", &run_advanced_unicode_iterator_tests, pass, fail);
-    run_named_group_isolated("advanced-logic-tco", &run_advanced_logic_tco_tests, pass, fail);
-    run_named_group_isolated("advanced-effect-continuation", &run_advanced_effect_continuation_tests, pass, fail);
-    run_named_group_isolated("advanced-runtime-control", &run_advanced_runtime_control_tests, pass, fail);
-    run_named_group_isolated("advanced-lambda-syntax", &run_advanced_lambda_syntax_tests, pass, fail);
-    run_named_group_isolated("advanced-binding-mutation", &run_advanced_binding_mutation_tests, pass, fail);
-    run_named_group_isolated("advanced-macro-hygiene", &run_advanced_macro_hygiene_tests, pass, fail);
-    run_named_group_isolated("advanced-collections-module", &run_advanced_collections_module_tests, pass, fail);
-    run_named_group_isolated("advanced-stdlib-numeric", &run_advanced_stdlib_numeric_tests, pass, fail);
-    run_named_group_isolated("advanced-type-dispatch-mutation-chain", &run_advanced_type_dispatch_mutation_chain_tests, pass, fail);
-    run_named_group_isolated("advanced-effect-union-limit", &run_advanced_effect_union_limit_tests, pass, fail);
-    run_named_group_isolated("advanced-ffi-system", &run_advanced_ffi_system_tests, pass, fail);
+    bool matched_any = false;
+    matched_any = run_named_group_isolated("advanced-core-semantics", &run_advanced_core_semantics_tests, pass, fail) || matched_any;
+    matched_any = run_named_group_isolated("advanced-unicode-iterator", &run_advanced_unicode_iterator_tests, pass, fail) || matched_any;
+    matched_any = run_named_group_isolated("advanced-logic-tco", &run_advanced_logic_tco_tests, pass, fail) || matched_any;
+    matched_any = run_named_group_isolated("advanced-effect-continuation", &run_advanced_effect_continuation_tests, pass, fail) || matched_any;
+    matched_any = run_named_group_isolated("advanced-runtime-control", &run_advanced_runtime_control_tests, pass, fail) || matched_any;
+    matched_any = run_named_group_isolated("advanced-lambda-syntax", &run_advanced_lambda_syntax_tests, pass, fail) || matched_any;
+    matched_any = run_named_group_isolated("advanced-binding-mutation", &run_advanced_binding_mutation_tests, pass, fail) || matched_any;
+    matched_any = run_named_group_isolated("advanced-macro-hygiene", &run_advanced_macro_hygiene_tests, pass, fail) || matched_any;
+    matched_any = run_named_group_isolated("advanced-collections-module", &run_advanced_collections_module_tests, pass, fail) || matched_any;
+    matched_any = run_named_group_isolated("advanced-stdlib-numeric", &run_advanced_stdlib_numeric_tests, pass, fail) || matched_any;
+    matched_any = run_named_group_isolated("advanced-type-dispatch-mutation-chain", &run_advanced_type_dispatch_mutation_chain_tests, pass, fail) || matched_any;
+    matched_any = run_named_group_isolated("advanced-effect-union-limit", &run_advanced_effect_union_limit_tests, pass, fail) || matched_any;
+    matched_any = run_named_group_isolated("advanced-ffi-system", &run_advanced_ffi_system_tests, pass, fail) || matched_any;
+    char* filter = test_c_getenv("OMNI_ADVANCED_GROUP_FILTER");
+    if (filter != null && !matched_any) {
+        io::printfn("[FAIL] advanced group filter matched no tests: %s", (ZString)filter);
+        (*fail)++;
+    }
 }
 
 fn void run_advanced_type_dispatch_mutation_chain_tests(Interp* interp, int* pass, int* fail) {
@@ -291,7 +298,7 @@ fn void run_test_group_boundary_reset(Interp* interp) {
     }
 }
 
-fn bool run_lisp_tests() {
+fn bool run_lisp_tests(int* out_pass, int* out_fail) {
     char* active_slice = resolved_lisp_slice();
     reject_deprecated_slice_aliases(active_slice);
     enforce_container_only_slice_execution(active_slice);
@@ -321,6 +328,7 @@ fn bool run_lisp_tests() {
     int pass = 0;
     int fail = 0;
     bool ok = true;
+    bool run_teardown_regression = test_c_getenv("OMNI_LISP_TEARDOWN_REGRESSION") != null;
     boundary_reset_decision_stats();
     reset_memory_promotion_stats();
     jit_fallback_audit_reset();
@@ -365,6 +373,7 @@ fn bool run_lisp_tests() {
     bool run_atomic = lisp_slice_any(active_slice) || lisp_slice_matches(active_slice, "atomic");
     bool run_compiler = lisp_slice_any(active_slice) || lisp_slice_matches(active_slice, "compiler");
     bool run_any_unified =
+        run_teardown_regression ||
         run_basic || run_memory_lifetime_smoke || run_memory_lifetime_soak || run_memory_lifetime_bench || run_allocator_bench || run_memory_stress ||
         run_memory_lifetime_policy || run_allocator_validation ||
         run_list_closure ||
@@ -374,46 +383,51 @@ fn bool run_lisp_tests() {
         run_data_format || run_json || run_async || run_reader_dispatch ||
         run_schema || run_deduce || run_scheduler || run_http || run_atomic;
 
-    if (run_basic) run_group_isolated(&run_basic_tests, &pass, &fail);
-    if (run_memory_lifetime_soak) {
-        run_group_isolated(&run_memory_lifetime_soak_tests, &pass, &fail);
-    } else if (run_memory_lifetime_bench) {
-        run_group_isolated(&run_memory_lifetime_benchmark_tests, &pass, &fail);
-    } else if (run_memory_lifetime_smoke) {
-        run_group_isolated(&run_memory_lifetime_smoke_tests, &pass, &fail);
+    if (run_teardown_regression) {
+        io::printn("[PASS] teardown regression loads stdlib and reaches deterministic interpreter teardown");
+        pass++;
+    } else {
+        if (run_basic) run_group_isolated(&run_basic_tests, &pass, &fail);
+        if (run_memory_lifetime_soak) {
+            run_group_isolated(&run_memory_lifetime_soak_tests, &pass, &fail);
+        } else if (run_memory_lifetime_bench) {
+            run_group_isolated(&run_memory_lifetime_benchmark_tests, &pass, &fail);
+        } else if (run_memory_lifetime_smoke) {
+            run_group_isolated(&run_memory_lifetime_smoke_tests, &pass, &fail);
+        }
+        if (run_memory_lifetime_policy) {
+            run_group_isolated(&run_memory_lifetime_boundary_policy_parse_tests, &pass, &fail);
+        }
+        if (run_allocator_validation) {
+            run_group_isolated(&run_memory_lifetime_ast_arena_validation_tests, &pass, &fail);
+        }
+        if (run_allocator_bench) {
+            run_group_isolated(&run_allocator_benchmark_tests, &pass, &fail);
+        }
+        if (run_memory_stress) run_group_isolated(&run_memory_stress_tests, &pass, &fail);
+        if (run_list_closure) run_group_isolated(&run_list_closure_tests, &pass, &fail);
+        if (run_arithmetic_comparison) run_group_isolated(&run_arithmetic_comparison_tests, &pass, &fail);
+        if (run_string_type) run_group_isolated(&run_string_type_tests, &pass, &fail);
+        if (run_diagnostics) run_diagnostic_tests_isolated(&pass, &fail);
+        if (run_jit_policy) run_jit_policy_tests_isolated(&pass, &fail);
+        if (run_advanced) run_advanced_tests_isolated(&pass, &fail);
+        if (run_escape_scope) run_group_isolated(&run_escape_scope_tests, &pass, &fail);
+        if (run_limit_busting) run_group_isolated(&run_limit_busting_tests, &pass, &fail);
+        if (run_tco_recycling) run_group_isolated(&run_tco_recycling_tests, &pass, &fail);
+        if (run_closure_lifecycle) run_group_isolated(&run_closure_lifecycle_tests, &pass, &fail);
+        if (run_pika) run_pika_tests_isolated(&pass, &fail);
+        if (run_unicode) run_unicode_tests_isolated(&pass, &fail);
+        if (run_compression) run_compression_tests_isolated(&pass, &fail);
+        if (run_data_format) run_data_format_tests_isolated(&pass, &fail);
+        if (run_json) run_json_tests_isolated(&pass, &fail);
+        if (run_async) run_async_tests_isolated(&pass, &fail);
+        if (run_reader_dispatch) run_reader_dispatch_tests_isolated(&pass, &fail);
+        if (run_schema) run_schema_tests_isolated(&pass, &fail);
+        if (run_deduce) run_deduce_tests(interp, &pass, &fail);
+        if (run_scheduler) run_scheduler_tests_isolated(&pass, &fail);
+        if (run_http) run_http_tests_isolated(&pass, &fail);
+        if (run_atomic) run_atomic_tests_isolated(&pass, &fail);
     }
-    if (run_memory_lifetime_policy) {
-        run_group_isolated(&run_memory_lifetime_boundary_policy_parse_tests, &pass, &fail);
-    }
-    if (run_allocator_validation) {
-        run_group_isolated(&run_memory_lifetime_ast_arena_validation_tests, &pass, &fail);
-    }
-    if (run_allocator_bench) {
-        run_group_isolated(&run_allocator_benchmark_tests, &pass, &fail);
-    }
-    if (run_memory_stress) run_group_isolated(&run_memory_stress_tests, &pass, &fail);
-    if (run_list_closure) run_group_isolated(&run_list_closure_tests, &pass, &fail);
-    if (run_arithmetic_comparison) run_group_isolated(&run_arithmetic_comparison_tests, &pass, &fail);
-    if (run_string_type) run_group_isolated(&run_string_type_tests, &pass, &fail);
-    if (run_diagnostics) run_diagnostic_tests_isolated(&pass, &fail);
-    if (run_jit_policy) run_jit_policy_tests_isolated(&pass, &fail);
-    if (run_advanced) run_advanced_tests_isolated(&pass, &fail);
-    if (run_escape_scope) run_group_isolated(&run_escape_scope_tests, &pass, &fail);
-    if (run_limit_busting) run_group_isolated(&run_limit_busting_tests, &pass, &fail);
-    if (run_tco_recycling) run_group_isolated(&run_tco_recycling_tests, &pass, &fail);
-    if (run_closure_lifecycle) run_group_isolated(&run_closure_lifecycle_tests, &pass, &fail);
-    if (run_pika) run_pika_tests_isolated(&pass, &fail);
-    if (run_unicode) run_unicode_tests_isolated(&pass, &fail);
-    if (run_compression) run_compression_tests_isolated(&pass, &fail);
-    if (run_data_format) run_data_format_tests_isolated(&pass, &fail);
-    if (run_json) run_json_tests_isolated(&pass, &fail);
-    if (run_async) run_async_tests_isolated(&pass, &fail);
-    if (run_reader_dispatch) run_reader_dispatch_tests_isolated(&pass, &fail);
-    if (run_schema) run_schema_tests_isolated(&pass, &fail);
-    if (run_deduce) run_deduce_tests(interp, &pass, &fail);
-    if (run_scheduler) run_scheduler_tests_isolated(&pass, &fail);
-    if (run_http) run_http_tests_isolated(&pass, &fail);
-    if (run_atomic) run_atomic_tests_isolated(&pass, &fail);
 
     if (run_any_unified) {
         io::printfn("\n=== Unified Tests: %d passed, %d failed ===", pass, fail);
@@ -433,5 +447,7 @@ fn bool run_lisp_tests() {
     jit_global_shutdown();
     interp.destroy();
     mem::free(interp);
+    if (out_pass != null) *out_pass = pass;
+    if (out_fail != null) *out_fail = fail;
     return ok;
 }

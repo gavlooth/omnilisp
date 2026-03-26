@@ -376,6 +376,7 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
     run_scheduler_worker_prestart_cancel_single_shared_release_boundary_tests(interp, pass, fail);
     run_scheduler_dns_connect_request_token_guard_boundary_tests(interp, pass, fail);
     run_scheduler_task_join_timeout_then_join_boundary_tests(interp, pass, fail);
+    run_scheduler_custom_offload_task_join_boundary_tests(interp, pass, fail);
     run_scheduler_shared_retire_queue_boundary_tests(interp, pass, fail);
     run_scheduler_wakeup_ready_barrier_boundary_tests(interp, pass, fail);
     run_scheduler_mixed_boundary_state_restore_tests(interp, pass, fail);

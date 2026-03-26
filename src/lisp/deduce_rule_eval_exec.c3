@@ -48,6 +48,42 @@ struct DeduceSignedDeltaSet {
     DeduceDeltaTupleSet removals;
 }
 
+const uint DEDUCE_COMPONENT_DELTA_PAYLOAD_MAGIC = 0x50444344u; // "DDCP"
+const uint DEDUCE_COMPONENT_DELTA_PAYLOAD_VERSION = 1u;
+
+struct DeduceSerializedComponentDeltaEntry {
+    usz                  predicate_index;
+    SymbolId             predicate;
+    DeduceSignedDeltaSet delta_set;
+}
+
+struct DeduceSerializedComponentDeltaPayload {
+    usz                                component_id;
+    DeduceSerializedComponentDeltaEntry* entries;
+    usz                                entry_count;
+}
+
+struct DeduceRuleHeadDemand {
+    SymbolId predicate;
+    bool*    term_bound;
+    Value**  term_values;
+    usz      term_count;
+}
+
+fn void deduce_rule_head_demand_release(DeduceRuleHeadDemand* demand) {
+    if (demand == null) return;
+    if (demand.term_bound != null) {
+        mem::free(demand.term_bound);
+        demand.term_bound = null;
+    }
+    if (demand.term_values != null) {
+        mem::free(demand.term_values);
+        demand.term_values = null;
+    }
+    demand.predicate = (SymbolId)0;
+    demand.term_count = 0;
+}
+
 struct DeduceTupleSupportTable {
     Value* base_counts;
     Value* recursive_counts;
@@ -57,6 +93,7 @@ struct DeduceNaiveRuleExec {
     DeduceDb*             db;
     DeduceRuleSignature*  sig;
     MdbTxn*               txn;
+    DeduceRuleHeadDemand* head_demand;
     MdbDbi                head_dbi;
     DeduceRelationSchema* head_schema;
     Value*[]              head_tuple;
@@ -72,6 +109,7 @@ struct DeduceSemiNaiveRuleExec {
     DeduceDb*             db;
     DeduceRuleSignature*  sig;
     MdbTxn*               txn;
+    DeduceRuleHeadDemand* head_demand;
     MdbDbi                head_dbi;
     DeduceRelationSchema* head_schema;
     Value*[]              head_tuple;
@@ -80,6 +118,7 @@ struct DeduceSemiNaiveRuleExec {
     usz                   component_id;
     DeduceSignedDeltaSet[] current_delta_sets;
     DeduceSignedDeltaSet[] next_delta_sets;
+    DeduceDeltaTupleSet[] scratch_visible_sets;
     DeduceTupleSupportTable[] support_tables;
     Value*                proof_seen_map;
     bool                  anchor_active;
@@ -153,6 +192,96 @@ fn bool deduce_rule_step_has_bound_join_input(
     return false;
 }
 
+fn bool deduce_rule_apply_head_demand(
+    DeduceRuleSignature* sig,
+    DeduceRuleHeadDemand* demand,
+    bool[] var_bound,
+    Value*[] var_values
+) {
+    if (sig == null || demand == null) return true;
+    if (demand.predicate == (SymbolId)0 || sig.head_predicate != demand.predicate) return true;
+    if (sig.head_term_count == 0) return true;
+    if (demand.term_count != sig.head_term_count) return false;
+    if (sig.head_term_kinds == null || sig.head_term_var_ids == null || sig.head_term_literals == null) {
+        return false;
+    }
+    if ((demand.term_bound == null && demand.term_count > 0) ||
+        (demand.term_values == null && demand.term_count > 0)) {
+        return false;
+    }
+
+    for (usz i = 0; i < demand.term_count; i++) {
+        if (!demand.term_bound[i]) continue;
+        Value* demand_value = demand.term_values[i];
+        switch (sig.head_term_kinds[i]) {
+            case DEDUCE_RULE_TERM_LITERAL:
+                if (!values_equal(sig.head_term_literals[i], demand_value)) return false;
+                break;
+            case DEDUCE_RULE_TERM_VARIABLE:
+                uint var_id = sig.head_term_var_ids[i];
+                if (var_id >= var_bound.len || var_id >= var_values.len) return false;
+                if (var_bound[var_id]) {
+                    if (!values_equal(var_values[var_id], demand_value)) return false;
+                } else {
+                    var_bound[var_id] = true;
+                    var_values[var_id] = demand_value;
+                }
+                break;
+            case DEDUCE_RULE_TERM_AGGREGATE:
+                return false;
+        }
+    }
+
+    return true;
+}
+
+fn bool deduce_rule_build_step_prefix_probe(
+    DeduceRuleSignature* sig,
+    usz step_idx,
+    bool[] var_bound,
+    Value*[] var_values,
+    Value*[] out_prefix_values,
+    usz* out_prefix_len
+) {
+    if (out_prefix_len == null) return false;
+    *out_prefix_len = 0;
+    if (sig == null || step_idx >= sig.body_count || out_prefix_values.ptr == null) return false;
+    if (sig.body_term_offsets == null || sig.body_term_counts == null) return false;
+    if (sig.body_term_is_variable == null || sig.body_term_var_ids == null || sig.body_term_literals == null) return false;
+
+    usz offset = sig.body_term_offsets[step_idx];
+    usz term_count = sig.body_term_counts[step_idx];
+    if (offset + term_count > sig.body_term_total_count || term_count > out_prefix_values.len) return false;
+
+    usz prefix_len = 0;
+    for (usz t = 0; t < term_count; t++) {
+        usz term_idx = offset + t;
+        if (sig.body_term_is_variable[term_idx]) {
+            uint var_id = sig.body_term_var_ids[term_idx];
+            if (var_id >= var_bound.len || var_id >= var_values.len || !var_bound[var_id]) break;
+            out_prefix_values[prefix_len++] = var_values[var_id];
+            continue;
+        }
+        out_prefix_values[prefix_len++] = sig.body_term_literals[term_idx];
+    }
+
+    *out_prefix_len = prefix_len;
+    return prefix_len > 0;
+}
+
+fn bool deduce_tuple_matches_prefix(
+    Value*[] tuple_vals,
+    Value*[] prefix_values,
+    usz prefix_len
+) @inline {
+    if (prefix_len == 0) return true;
+    if (tuple_vals.len < prefix_len || prefix_values.len < prefix_len) return false;
+    for (usz i = 0; i < prefix_len; i++) {
+        if (!values_equal(tuple_vals[i], prefix_values[i])) return false;
+    }
+    return true;
+}
+
 fn void deduce_observed_rule_counters_reset(DeduceObservedRuleCounters* counters) {
     if (counters == null || counters.steps == null) return;
     for (usz i = 0; i < counters.step_count; i++) {
@@ -191,10 +320,502 @@ fn void deduce_delta_set_release(DeduceDeltaTupleSet* set) {
     set.capacity = 0;
 }
 
+fn bool deduce_delta_set_append_encoded_tuple(
+    DeduceDeltaTupleSet* set,
+    void* key_data,
+    usz key_len
+) {
+    if (set == null || (key_data == null && key_len > 0)) return false;
+
+    usz needed = set.count + 1;
+    if (needed > set.capacity) {
+        usz new_cap = set.capacity > 0 ? set.capacity : 4;
+        while (new_cap < needed) {
+            if (new_cap > usz.max / 2) {
+                new_cap = needed;
+                break;
+            }
+            new_cap *= 2;
+        }
+        DeduceEncodedTuple* next =
+            (DeduceEncodedTuple*)mem::realloc(set.tuples, DeduceEncodedTuple.sizeof * new_cap);
+        if (next == null) return false;
+        set.tuples = next;
+        set.capacity = new_cap;
+    }
+
+    char* copied = null;
+    if (key_len > 0) {
+        copied = (char*)mem::malloc(key_len);
+        if (copied == null) return false;
+        mem::copy(copied, (char*)key_data, key_len);
+    }
+
+    set.tuples[set.count] = { .key_bytes = copied, .key_len = key_len };
+    set.count++;
+    return true;
+}
+
 fn void deduce_signed_delta_set_release(DeduceSignedDeltaSet* set) {
     if (set == null) return;
     deduce_delta_set_release(&set.additions);
     deduce_delta_set_release(&set.removals);
+}
+
+fn void deduce_serialized_component_delta_payload_release(DeduceSerializedComponentDeltaPayload* payload) {
+    if (payload == null) return;
+    if (payload.entries != null) {
+        for (usz i = 0; i < payload.entry_count; i++) {
+            deduce_signed_delta_set_release(&payload.entries[i].delta_set);
+        }
+        mem::free(payload.entries);
+        payload.entries = null;
+    }
+    payload.component_id = 0;
+    payload.entry_count = 0;
+}
+
+fn bool deduce_component_delta_payload_ensure_capacity(char** bytes_ref, usz* capacity_ref, usz needed) {
+    if (bytes_ref == null || capacity_ref == null) return false;
+    if (needed <= *capacity_ref) return true;
+
+    usz next_capacity = *capacity_ref > 0 ? *capacity_ref : 64;
+    while (next_capacity < needed) {
+        if (next_capacity > usz.max / 2) {
+            next_capacity = needed;
+            break;
+        }
+        next_capacity *= 2;
+    }
+
+    char* next = *bytes_ref == null
+        ? (char*)mem::malloc(next_capacity)
+        : (char*)mem::realloc(*bytes_ref, next_capacity);
+    if (next == null) return false;
+    *bytes_ref = next;
+    *capacity_ref = next_capacity;
+    return true;
+}
+
+fn bool deduce_component_delta_payload_append_bytes(
+    char** bytes_ref,
+    usz* len_ref,
+    usz* capacity_ref,
+    char* payload,
+    usz payload_len
+) {
+    if (bytes_ref == null || len_ref == null || capacity_ref == null) return false;
+    if (payload == null && payload_len > 0) return false;
+    if (*len_ref > usz.max - payload_len) return false;
+    usz next_len = *len_ref + payload_len;
+    if (!deduce_component_delta_payload_ensure_capacity(bytes_ref, capacity_ref, next_len)) return false;
+    if (payload_len > 0) mem::copy(*bytes_ref + *len_ref, payload, payload_len);
+    *len_ref = next_len;
+    return true;
+}
+
+fn bool deduce_component_delta_payload_append_u32(
+    char** bytes_ref,
+    usz* len_ref,
+    usz* capacity_ref,
+    uint value
+) {
+    char[4] encoded = {
+        (char)(value & 0xFF),
+        (char)((value >> 8) & 0xFF),
+        (char)((value >> 16) & 0xFF),
+        (char)((value >> 24) & 0xFF)
+    };
+    return deduce_component_delta_payload_append_bytes(bytes_ref, len_ref, capacity_ref, &encoded[0], encoded.len);
+}
+
+fn bool deduce_component_delta_payload_append_u64(
+    char** bytes_ref,
+    usz* len_ref,
+    usz* capacity_ref,
+    ulong value
+) {
+    char[8] encoded = {
+        (char)(value & 0xFF),
+        (char)((value >> 8) & 0xFF),
+        (char)((value >> 16) & 0xFF),
+        (char)((value >> 24) & 0xFF),
+        (char)((value >> 32) & 0xFF),
+        (char)((value >> 40) & 0xFF),
+        (char)((value >> 48) & 0xFF),
+        (char)((value >> 56) & 0xFF)
+    };
+    return deduce_component_delta_payload_append_bytes(bytes_ref, len_ref, capacity_ref, &encoded[0], encoded.len);
+}
+
+fn bool deduce_component_delta_payload_read_u32(char[] bytes, usz* pos_ref, uint* out) {
+    if (pos_ref == null || out == null) return false;
+    if (*pos_ref > bytes.len || bytes.len - *pos_ref < 4) return false;
+    char* cursor = bytes.ptr + *pos_ref;
+    *out =
+        ((uint)(char)cursor[0]) |
+        (((uint)(char)cursor[1]) << 8) |
+        (((uint)(char)cursor[2]) << 16) |
+        (((uint)(char)cursor[3]) << 24);
+    *pos_ref += 4;
+    return true;
+}
+
+fn bool deduce_component_delta_payload_read_u64(char[] bytes, usz* pos_ref, ulong* out) {
+    if (pos_ref == null || out == null) return false;
+    if (*pos_ref > bytes.len || bytes.len - *pos_ref < 8) return false;
+    char* cursor = bytes.ptr + *pos_ref;
+    *out =
+        ((ulong)(char)cursor[0]) |
+        (((ulong)(char)cursor[1]) << 8) |
+        (((ulong)(char)cursor[2]) << 16) |
+        (((ulong)(char)cursor[3]) << 24) |
+        (((ulong)(char)cursor[4]) << 32) |
+        (((ulong)(char)cursor[5]) << 40) |
+        (((ulong)(char)cursor[6]) << 48) |
+        (((ulong)(char)cursor[7]) << 56);
+    *pos_ref += 8;
+    return true;
+}
+
+fn Value* deduce_component_delta_payload_append_tuple_set(
+    char** bytes_ref,
+    usz* len_ref,
+    usz* capacity_ref,
+    DeduceDeltaTupleSet* set,
+    Interp* interp
+) {
+    if (set == null) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: invalid component delta set");
+    }
+    if (set.count > uint.max) {
+        return deduce_raise(interp, "deduce/parallel-component-delta-too-large",
+            "deduce/parallel: component delta tuple count exceeds payload format");
+    }
+    if (!deduce_component_delta_payload_append_u32(bytes_ref, len_ref, capacity_ref, (uint)set.count)) {
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
+    for (usz i = 0; i < set.count; i++) {
+        DeduceEncodedTuple tuple = set.tuples[i];
+        if (tuple.key_len > uint.max) {
+            return deduce_raise(interp, "deduce/parallel-component-delta-too-large",
+                "deduce/parallel: component delta tuple key exceeds payload format");
+        }
+        if (!deduce_component_delta_payload_append_u32(bytes_ref, len_ref, capacity_ref, (uint)tuple.key_len) ||
+            !deduce_component_delta_payload_append_bytes(bytes_ref, len_ref, capacity_ref, tuple.key_bytes, tuple.key_len)) {
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
+    }
+    return null;
+}
+
+// Versioned worker-scratch payload for routing one component's signed deltas
+// through the existing scheduler byte-result seam.
+fn Value* deduce_component_delta_payload_serialize(
+    DeduceSccPlan* plan,
+    usz component_id,
+    DeduceSignedDeltaSet[] delta_sets,
+    char** bytes_out,
+    usz* len_out,
+    Interp* interp
+) {
+    if (bytes_out == null || len_out == null || plan == null || interp == null) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: invalid component delta payload state");
+    }
+    *bytes_out = null;
+    *len_out = 0;
+
+    if (component_id >= plan.component_count ||
+        plan.predicate_component.ptr == null ||
+        delta_sets.len < plan.predicates.len) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: invalid component delta payload plan");
+    }
+
+    usz entry_count = 0;
+    for (usz pred_idx = 0; pred_idx < plan.predicates.len; pred_idx++) {
+        if (pred_idx >= plan.predicate_component.len) continue;
+        int pred_component = plan.predicate_component[pred_idx];
+        if (pred_component >= 0 && (usz)pred_component == component_id) entry_count++;
+    }
+    if (entry_count > uint.max || component_id > uint.max) {
+        return deduce_raise(interp, "deduce/parallel-component-delta-too-large",
+            "deduce/parallel: component delta metadata exceeds payload format");
+    }
+
+    char* bytes = null;
+    usz len = 0;
+    usz capacity = 0;
+    bool committed = false;
+    defer if (!committed && bytes != null) mem::free(bytes);
+
+    if (!deduce_component_delta_payload_append_u32(&bytes, &len, &capacity, DEDUCE_COMPONENT_DELTA_PAYLOAD_MAGIC) ||
+        !deduce_component_delta_payload_append_u32(&bytes, &len, &capacity, DEDUCE_COMPONENT_DELTA_PAYLOAD_VERSION) ||
+        !deduce_component_delta_payload_append_u32(&bytes, &len, &capacity, (uint)component_id) ||
+        !deduce_component_delta_payload_append_u32(&bytes, &len, &capacity, (uint)entry_count)) {
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
+
+    for (usz pred_idx = 0; pred_idx < plan.predicates.len; pred_idx++) {
+        if (pred_idx >= plan.predicate_component.len) continue;
+        int pred_component = plan.predicate_component[pred_idx];
+        if (pred_component < 0 || (usz)pred_component != component_id) continue;
+        if (pred_idx > uint.max) {
+            return deduce_raise(interp, "deduce/parallel-component-delta-too-large",
+                "deduce/parallel: predicate index exceeds payload format");
+        }
+        if (!deduce_component_delta_payload_append_u32(&bytes, &len, &capacity, (uint)pred_idx) ||
+            !deduce_component_delta_payload_append_u64(&bytes, &len, &capacity, (ulong)plan.predicates[pred_idx])) {
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
+
+        Value* err = deduce_component_delta_payload_append_tuple_set(
+            &bytes,
+            &len,
+            &capacity,
+            &delta_sets[pred_idx].additions,
+            interp
+        );
+        if (err != null) return err;
+        err = deduce_component_delta_payload_append_tuple_set(
+            &bytes,
+            &len,
+            &capacity,
+            &delta_sets[pred_idx].removals,
+            interp
+        );
+        if (err != null) return err;
+    }
+
+    *bytes_out = bytes;
+    *len_out = len;
+    committed = true;
+    return null;
+}
+
+fn Value* deduce_component_delta_payload_read_tuple_set(
+    char[] bytes,
+    usz* pos_ref,
+    DeduceDeltaTupleSet* set,
+    Interp* interp
+) {
+    if (pos_ref == null || set == null || interp == null) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: invalid component delta tuple decode state");
+    }
+
+    uint tuple_count = 0;
+    if (!deduce_component_delta_payload_read_u32(bytes, pos_ref, &tuple_count)) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: malformed component delta payload");
+    }
+
+    for (uint i = 0; i < tuple_count; i++) {
+        uint tuple_len = 0;
+        if (!deduce_component_delta_payload_read_u32(bytes, pos_ref, &tuple_len)) {
+            return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+                "deduce/parallel: malformed component delta payload");
+        }
+        if (*pos_ref > bytes.len || bytes.len - *pos_ref < tuple_len) {
+            return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+                "deduce/parallel: malformed component delta payload");
+        }
+        char* tuple_bytes = tuple_len > 0 ? bytes.ptr + *pos_ref : null;
+        if (!deduce_delta_set_append_encoded_tuple(set, tuple_bytes, tuple_len)) {
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
+        *pos_ref += tuple_len;
+    }
+
+    return null;
+}
+
+fn Value* deduce_component_delta_payload_deserialize(
+    char[] bytes,
+    DeduceSerializedComponentDeltaPayload* out,
+    Interp* interp
+) {
+    if (out == null || interp == null) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: invalid component delta decode target");
+    }
+    *out = {};
+
+    usz pos = 0;
+    uint magic = 0;
+    uint version = 0;
+    uint component_id = 0;
+    uint entry_count = 0;
+    if (!deduce_component_delta_payload_read_u32(bytes, &pos, &magic) ||
+        !deduce_component_delta_payload_read_u32(bytes, &pos, &version) ||
+        !deduce_component_delta_payload_read_u32(bytes, &pos, &component_id) ||
+        !deduce_component_delta_payload_read_u32(bytes, &pos, &entry_count)) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: malformed component delta payload");
+    }
+    if (magic != DEDUCE_COMPONENT_DELTA_PAYLOAD_MAGIC || version != DEDUCE_COMPONENT_DELTA_PAYLOAD_VERSION) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: unsupported component delta payload version");
+    }
+
+    if (entry_count > 0) {
+        out.entries = (DeduceSerializedComponentDeltaEntry*)mem::malloc(
+            DeduceSerializedComponentDeltaEntry.sizeof * entry_count
+        );
+        if (out.entries == null) {
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
+        for (usz i = 0; i < entry_count; i++) out.entries[i] = {};
+    }
+    out.component_id = component_id;
+    out.entry_count = entry_count;
+
+    bool committed = false;
+    defer if (!committed) deduce_serialized_component_delta_payload_release(out);
+
+    for (usz i = 0; i < entry_count; i++) {
+        uint predicate_index = 0;
+        ulong predicate = 0;
+        if (!deduce_component_delta_payload_read_u32(bytes, &pos, &predicate_index) ||
+            !deduce_component_delta_payload_read_u64(bytes, &pos, &predicate)) {
+            return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+                "deduce/parallel: malformed component delta payload");
+        }
+
+        DeduceSerializedComponentDeltaEntry* entry = &out.entries[i];
+        entry.predicate_index = predicate_index;
+        entry.predicate = (SymbolId)predicate;
+
+        Value* err = deduce_component_delta_payload_read_tuple_set(bytes, &pos, &entry.delta_set.additions, interp);
+        if (err != null) return err;
+        err = deduce_component_delta_payload_read_tuple_set(bytes, &pos, &entry.delta_set.removals, interp);
+        if (err != null) return err;
+    }
+
+    if (pos != bytes.len) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: malformed component delta payload");
+    }
+
+    committed = true;
+    return null;
+}
+
+fn Value* deduce_apply_serialized_component_delta_payload(
+    DeduceDb* db,
+    DeduceSccPlan* plan,
+    MdbTxn* txn,
+    DeduceSerializedComponentDeltaPayload* payload,
+    long* applied_out,
+    bool* changed_out,
+    Interp* interp
+) {
+    if (applied_out != null) *applied_out = 0;
+    if (changed_out != null) *changed_out = false;
+    if (db == null || plan == null || txn == null || payload == null || interp == null) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: invalid component delta apply state");
+    }
+    if (payload.component_id >= plan.component_count ||
+        plan.predicate_component.ptr == null ||
+        plan.predicates.ptr == null) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: invalid component delta apply plan");
+    }
+
+    for (usz entry_idx = 0; entry_idx < payload.entry_count; entry_idx++) {
+        DeduceSerializedComponentDeltaEntry* entry = &payload.entries[entry_idx];
+        usz predicate_index = entry.predicate_index;
+        if (predicate_index >= plan.predicates.len || predicate_index >= plan.predicate_component.len) {
+            return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+                "deduce/parallel: invalid component delta predicate index");
+        }
+        int pred_component = plan.predicate_component[predicate_index];
+        if (pred_component < 0 ||
+            (usz)pred_component != payload.component_id ||
+            plan.predicates[predicate_index] != entry.predicate) {
+            return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+                "deduce/parallel: invalid component delta predicate routing");
+        }
+
+        MdbDbi head_dbi = 0;
+        DeduceRelationSchema* head_schema = null;
+        if (!deduce_rule_open_existing_dbi(db, txn, entry.predicate, &head_dbi, &head_schema, interp) ||
+            head_schema == null) {
+            return deduce_raise(interp, "deduce/relation-not-found",
+                "deduce/parallel: component delta target relation is not registered");
+        }
+
+        for (usz tuple_idx = 0; tuple_idx < entry.delta_set.additions.count; tuple_idx++) {
+            DeduceEncodedTuple* tuple = &entry.delta_set.additions.tuples[tuple_idx];
+            Value* integrity_err = deduce_assert_encoded_head_tuple_integrity(
+                db,
+                head_schema,
+                txn,
+                head_dbi,
+                tuple.key_bytes,
+                tuple.key_len,
+                interp
+            );
+            if (integrity_err != null) return integrity_err;
+
+            char empty_key = 0;
+            MdbVal key = {
+                .mv_size = tuple.key_len,
+                .mv_data = tuple.key_len > 0 ? tuple.key_bytes : &empty_key
+            };
+            MdbVal existing = {};
+            if (mdb_get(txn, head_dbi, &key, &existing) == MDB_SUCCESS) continue;
+
+            MdbVal data = {};
+            char empty = 0;
+            data.mv_size = 0;
+            data.mv_data = &empty;
+            int put_rc = mdb_put(txn, head_dbi, &key, &data, 0);
+            if (put_rc != MDB_SUCCESS) {
+                return deduce_raise(interp, "deduce/analyze-put-failed",
+                    "deduce/parallel: failed to publish worker-computed derived tuple");
+            }
+
+            if (applied_out != null && *applied_out < long.max) *applied_out = *applied_out + 1;
+            if (changed_out != null) *changed_out = true;
+            if (head_schema.cardinality_estimate < ulong.max) {
+                head_schema.cardinality_estimate++;
+                if (head_schema.distinct_estimate < head_schema.cardinality_estimate) {
+                    head_schema.distinct_estimate = head_schema.cardinality_estimate;
+                }
+            }
+        }
+
+        for (usz tuple_idx = 0; tuple_idx < entry.delta_set.removals.count; tuple_idx++) {
+            DeduceEncodedTuple* tuple = &entry.delta_set.removals.tuples[tuple_idx];
+            char empty_key = 0;
+            MdbVal key = {
+                .mv_size = tuple.key_len,
+                .mv_data = tuple.key_len > 0 ? tuple.key_bytes : &empty_key
+            };
+            MdbVal existing = {};
+            if (mdb_get(txn, head_dbi, &key, &existing) != MDB_SUCCESS) continue;
+
+            int del_rc = mdb_del(txn, head_dbi, &key, null);
+            if (del_rc != MDB_SUCCESS && del_rc != MDB_NOTFOUND) {
+                return deduce_raise(interp, "deduce/analyze-put-failed",
+                    "deduce/parallel: failed to retract worker-computed derived tuple");
+            }
+            if (del_rc == MDB_NOTFOUND) continue;
+
+            if (applied_out != null && *applied_out < long.max) *applied_out = *applied_out + 1;
+            if (changed_out != null) *changed_out = true;
+            if (head_schema.cardinality_estimate > 0) {
+                head_schema.cardinality_estimate--;
+                head_schema.distinct_estimate = head_schema.cardinality_estimate;
+            }
+        }
+    }
+
+    return null;
 }
 
 fn void deduce_tuple_support_table_release(DeduceTupleSupportTable* table) {
@@ -807,7 +1428,7 @@ fn Value* deduce_collect_rule_observed_counters(
     }
     defer if (txn != null) mdb_txn_abort(txn);
 
-    return deduce_naive_evaluate_rule(db, sig, txn, null, null, counters, true, interp);
+    return deduce_naive_evaluate_rule(db, sig, txn, null, null, null, counters, true, interp);
 }
 
 fn Value* deduce_delta_set_insert(DeduceDeltaTupleSet* set, void* key_data, usz key_len, Interp* interp) {
@@ -1068,6 +1689,54 @@ fn Value* deduce_seminaive_record_new_delta_tuple(
     if ((usz)pred_idx >= exec.plan.predicate_component.len) return null;
     if ((usz)exec.plan.predicate_component[(usz)pred_idx] != exec.component_id) return null;
     return deduce_delta_set_insert(&exec.next_delta_sets[(usz)pred_idx].additions, key_data, key_len, exec.interp);
+}
+
+fn bool deduce_seminaive_scratch_visible_contains(
+    DeduceSemiNaiveRuleExec* exec,
+    SymbolId predicate,
+    void* key_data,
+    usz key_len
+) {
+    if (exec == null || exec.plan == null || exec.interp == null) return false;
+    int pred_idx = deduce_scc_predicate_index(exec.plan, predicate);
+    if (pred_idx < 0 || (usz)pred_idx >= exec.scratch_visible_sets.len) return false;
+    return deduce_delta_set_contains(&exec.scratch_visible_sets[(usz)pred_idx], key_data, key_len, exec.interp);
+}
+
+fn Value* deduce_seminaive_record_scratch_visible_tuple(
+    DeduceSemiNaiveRuleExec* exec,
+    SymbolId predicate,
+    void* key_data,
+    usz key_len
+) {
+    if (exec == null || exec.plan == null || exec.interp == null) return null;
+    int pred_idx = deduce_scc_predicate_index(exec.plan, predicate);
+    if (pred_idx < 0 || (usz)pred_idx >= exec.scratch_visible_sets.len) return null;
+    return deduce_delta_set_insert(&exec.scratch_visible_sets[(usz)pred_idx], key_data, key_len, exec.interp);
+}
+
+fn Value* deduce_seminaive_accumulate_component_visible_additions(
+    DeduceSccPlan* plan,
+    usz component_id,
+    DeduceSignedDeltaSet[] source,
+    DeduceDeltaTupleSet[] target,
+    Interp* interp
+) {
+    if (plan == null || interp == null) {
+        return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+            "deduce/parallel: invalid worker-visible accumulation state");
+    }
+    for (usz pred_idx = 0; pred_idx < plan.predicates.len; pred_idx++) {
+        if (pred_idx >= plan.predicate_component.len || pred_idx >= source.len || pred_idx >= target.len) continue;
+        int pred_component = plan.predicate_component[pred_idx];
+        if (pred_component < 0 || (usz)pred_component != component_id) continue;
+        for (usz tuple_idx = 0; tuple_idx < source[pred_idx].additions.count; tuple_idx++) {
+            DeduceEncodedTuple tuple = source[pred_idx].additions.tuples[tuple_idx];
+            Value* err = deduce_delta_set_insert(&target[pred_idx], tuple.key_bytes, tuple.key_len, interp);
+            if (err != null) return err;
+        }
+    }
+    return null;
 }
 
 fn Value* deduce_seminaive_record_removed_delta_tuple(
@@ -1435,6 +2104,17 @@ fn Value* deduce_naive_insert_head_tuple(DeduceNaiveRuleExec* exec) {
     data.mv_size = 0;
     data.mv_data = &empty;
 
+    Value* integrity_err = deduce_assert_schema_derived_write_integrity(
+        exec.db,
+        exec.head_schema,
+        exec.txn,
+        exec.head_dbi,
+        exec.head_tuple,
+        &key,
+        exec.interp
+    );
+    if (integrity_err != null) return integrity_err;
+
     MdbVal existing = {};
     if (mdb_get(exec.txn, exec.head_dbi, &key, &existing) == MDB_SUCCESS) {
         return null;
@@ -1452,6 +2132,39 @@ fn Value* deduce_naive_insert_head_tuple(DeduceNaiveRuleExec* exec) {
         if (exec.head_schema.distinct_estimate < exec.head_schema.cardinality_estimate) {
             exec.head_schema.distinct_estimate = exec.head_schema.cardinality_estimate;
         }
+    }
+    return null;
+}
+
+fn Value* deduce_validate_component_ref_head_snapshots(
+    DeduceDb* db,
+    DeduceSccPlan* plan,
+    usz component_id,
+    MdbTxn* txn,
+    Interp* interp
+) {
+    if (db == null || plan == null || txn == null || interp == null) {
+        return deduce_raise(interp, "deduce/analyze-invalid-state",
+            "deduce/analyze: invalid constrained head validation state");
+    }
+
+    for (usz pred_idx = 0; pred_idx < plan.predicates.len; pred_idx++) {
+        if (pred_idx >= plan.predicate_component.len) continue;
+        int comp = plan.predicate_component[pred_idx];
+        if (comp < 0 || (usz)comp != component_id) continue;
+
+        SymbolId predicate = plan.predicates[pred_idx];
+        DeduceRelationSchema* schema = deduce_db_lookup_relation_schema(db, predicate);
+        if (schema == null || schema.reference_constraint_count == 0) continue;
+
+        MdbDbi dbi = 0;
+        if (!deduce_open_relation_dbi_by_symbol(db, txn, predicate, &dbi, interp)) {
+            return deduce_raise(interp, "deduce/relation-not-found",
+                "deduce/analyze: head predicate relation is not registered");
+        }
+
+        Value* err = deduce_validate_schema_fact_integrity_snapshot(db, schema, txn, dbi, interp);
+        if (err != null) return err;
     }
     return null;
 }
@@ -1484,6 +2197,43 @@ fn Value* deduce_seminaive_seed_component_support_tables(
     );
 }
 
+fn Value* deduce_assert_encoded_head_tuple_integrity(
+    DeduceDb* db,
+    DeduceRelationSchema* head_schema,
+    MdbTxn* txn,
+    MdbDbi head_dbi,
+    void* key_data,
+    usz key_len,
+    Interp* interp
+) {
+    if (db == null || head_schema == null || txn == null || interp == null) return null;
+    if (deduce_relation_schema_constraint_count(head_schema) == 0) return null;
+
+    Value*[] decoded = {};
+    if (head_schema.arity > 0) {
+        decoded = mem::new_array(Value*, head_schema.arity);
+        if (decoded.ptr == null) {
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
+    }
+    defer if (decoded.ptr != null) mem::free(decoded.ptr);
+
+    char empty_key = 0;
+    char* key_bytes = key_len > 0 ? (char*)key_data : &empty_key;
+    usz? decoded_count = decode_tuple(key_bytes, key_len, decoded, interp);
+    if (catch err = decoded_count) {
+        return deduce_raise(interp, "deduce/analyze-invalid-state",
+            "deduce/analyze: failed to decode derived head tuple for integrity validation");
+    }
+    if (decoded_count != head_schema.arity) {
+        return deduce_raise(interp, "deduce/analyze-invalid-state",
+            "deduce/analyze: decoded derived head tuple arity mismatch");
+    }
+
+    MdbVal key = { .mv_size = key_len, .mv_data = key_bytes };
+    return deduce_assert_schema_derived_write_integrity(db, head_schema, txn, head_dbi, decoded, &key, interp);
+}
+
 fn Value* deduce_naive_insert_encoded_head_tuple(
     DeduceNaiveRuleExec* exec,
     char* key_bytes,
@@ -1502,6 +2252,17 @@ fn Value* deduce_naive_insert_encoded_head_tuple(
     char empty = 0;
     data.mv_size = 0;
     data.mv_data = &empty;
+
+    Value* integrity_err = deduce_assert_encoded_head_tuple_integrity(
+        exec.db,
+        exec.head_schema,
+        exec.txn,
+        exec.head_dbi,
+        key.mv_data,
+        key_len,
+        exec.interp
+    );
+    if (integrity_err != null) return integrity_err;
 
     MdbVal existing = {};
     if (mdb_get(exec.txn, exec.head_dbi, &key, &existing) == MDB_SUCCESS) {

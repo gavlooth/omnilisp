@@ -115,8 +115,20 @@ vim.lsp.enable("omni_lsp")
   body, while skipping obvious nested `define`, `module`, and `quote` forms so
   the server does not blindly cross simple shadowing boundaries.
 - Formatting is intentionally conservative for now: it normalizes leading
-  indentation and trims trailing whitespace from touched lines, but it does not
-  attempt a full pretty-printer or rewrite intra-line spacing.
+  indentation, aligns wrapped `export` / `export-from` payloads and wrapped
+  `let` binding-list continuations, preserves repo-style `if` branch
+  indentation including nested `if` bodies that start later in a clause line,
+  keeps block-style `when` / `unless` / `raise` / `checkpoint` bodies out of
+  generic continuation alignment, keeps inline block forms inside `let`
+  binding lists aligned to their binding context, keeps multiline higher-order
+  collection-call lambda bodies aligned from the lambda's own opening column,
+  keeps multiline `Coroutine (lambda ...)` bodies on the current in-tree
+  wrapper-lambda layout, keeps multiline clause bodies and inline dict/vector
+  payload entries aligned from their opening delimiter in current `match` arms
+  and data literals, aligns wrapped generic call and pipeline continuations
+  under their first argument, preserves the document's existing newline style,
+  and trims trailing whitespace from touched lines, but it does not attempt a
+  full pretty-printer or rewrite intra-line spacing.
 - On-type formatting reuses that same conservative formatter and currently
   applies only a line-scoped indentation fix when the client requests it after
   newline or `)` input.
@@ -180,8 +192,14 @@ vim.lsp.enable("omni_lsp")
   work across open and unopened workspace files without semantic indexing.
 - The server still does not attempt cross-module semantic analysis yet.
 
-## Smoke Test
+## Smoke Tests
 
 ```bash
+python3 tooling/omni-lsp/tests/check_json_smoke.py
 python3 tooling/omni-lsp/tests/smoke_test.py
 ```
+
+- `check_json_smoke.py` pins the first-party `omni --check --json` contract.
+- `smoke_test.py` runs a real stdio LSP session and covers initialize, open,
+  change, diagnostics, hover, completion, definition/declaration, workspace
+  fallback, formatting, and related baseline requests.

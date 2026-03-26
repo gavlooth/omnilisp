@@ -10,7 +10,7 @@ fn void write_init_toml(char* name, usz name_len) {
         file.write("[project]\n")!!;
         file.write("name = \"")!!;
         file.write(name[:name_len])!!;
-        file.write("\"\nversion = \"0.1.5\"\n\n")!!;
+        file.write("\"\nversion = \"0.2.0\"\n\n")!!;
         file.write("[build]\n")!!;
         file.write("output-dir = \"build\"\n")!!;
         file.write("safety = \"safe\"        # \"safe\", \"fast\", or \"none\"\n")!!;

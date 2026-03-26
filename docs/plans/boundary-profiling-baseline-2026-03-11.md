@@ -104,8 +104,10 @@ Interpretation for this workload:
 
 ## Accepted Regression Envelope (Boundary-Heavy Workload)
 
-Until a dedicated threshold checker is added for `memory-lifetime-bench`, use
-the following acceptance envelope for this exact profile (`iters=2048`):
+The following acceptance envelope for this exact profile (`iters=2048`) is now
+enforced by `scripts/check_boundary_profile_thresholds.sh`, and
+`scripts/run_boundary_profile_regression.sh` provides the one-shot bounded
+workload + parse + threshold chain for this lane:
 
 - Correctness counters:
   - `splice_ok == 2048`

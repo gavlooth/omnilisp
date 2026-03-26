@@ -55,7 +55,7 @@ Audit snapshot:
 |------|-------|-------------|
 | `fiber-cancel`, `run-fibers` | command-style | Return `Void` on successful scheduler command completion |
 | `__raw-thread-cancel`, `__raw-task-cancel` | command-style | Return `Void` on successful cancellation command |
-| `spawn`, `await`, `__raw-offload`, `__raw-thread-spawn`, `__raw-thread-join`, `__raw-thread-join-timeout`, `__raw-task-spawn`, `__raw-task-join`, `__raw-task-join-timeout` | query-style | Return ids/handles/results (`join-timeout` may return `nil` timeout absence) |
+| `spawn`, `await`, `__raw-offload`, `__raw-offload-batch`, `__raw-thread-spawn`, `__raw-thread-spawn-batch`, `__raw-thread-join`, `__raw-thread-join-timeout`, `__raw-task-spawn`, `__raw-task-spawn-batch`, `__raw-task-join`, `__raw-task-join-timeout` | query-style | Return ids/handles/results (`join-timeout` may return `nil` timeout absence) |
 
 #### Exhaustive Classification Rule
 
@@ -417,11 +417,14 @@ Preferred forcing style uses collection constructors:
 | `__raw-dns-resolve` | 1 | Raw DNS resolve |
 | `__raw-async-sleep` | 1 | Raw sleep |
 | `__raw-offload` | 1 | Raw pooled offload job |
+| `__raw-offload-batch` | 1 | Raw pooled offload job batch |
 | `__raw-thread-spawn` | 1 | Raw OS thread spawn |
+| `__raw-thread-spawn-batch` | 1 | Raw OS thread spawn batch |
 | `__raw-thread-join` | 1 | Raw OS thread join |
 | `__raw-thread-join-timeout` | 1 | Raw OS thread join with timeout pair |
 | `__raw-thread-cancel` | 1 | Raw OS thread cancel |
 | `__raw-task-spawn` | 1 | Raw pooled task spawn |
+| `__raw-task-spawn-batch` | 1 | Raw pooled task spawn batch |
 | `__raw-task-join` | 1 | Raw pooled task join |
 | `__raw-task-join-timeout` | 1 | Raw pooled task join with timeout pair |
 | `__raw-task-cancel` | 1 | Raw pooled task cancel |
@@ -440,7 +443,7 @@ Preferred forcing style uses collection constructors:
 | `deduce` | variadic | Unified database interface |
 | `deduce/open` | variadic | Open deduce database handle |
 | `deduce/open-named` | variadic | Open/register named relation handle |
-| `deduce/block` | variadic | Open deduce transaction handle |
+| `deduce/block` | variadic | Open deduce transaction handle (`'read`, `'write`, `'write-deferred`) |
 | `deduce/commit` | variadic | Commit transaction (`Void`) |
 | `deduce/abort` | variadic | Abort transaction (`Void`) |
 | `deduce/scan` | variadic | Scan relation tuples |

@@ -38,36 +38,50 @@ fn bool jit_method_sigs_equal(MethodSignature* a, MethodSignature* b) @inline {
     return true;
 }
 
-fn void jit_method_table_append_entry_with_sig(MethodTable* mt, MethodSignature* new_sig, Value* impl) {
+fn bool jit_method_table_append_entry_with_sig(MethodTable* mt, MethodSignature* new_sig, Value* impl) {
     // Replace existing entry with same signature (idempotent re-define).
     for (usz i = 0; i < mt.entry_count; i++) {
         if (jit_method_sigs_equal(&mt.entries[i].sig, new_sig)) {
             mt.entries[i].implementation = impl;
-            return;
+            return true;
         }
     }
     if (mt.entry_count >= mt.capacity) {
         usz new_cap = mt.capacity * 2;
         MethodEntry* new_entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * new_cap);
+        if (new_entries == null) return false;
         for (usz ei = 0; ei < mt.entry_count; ei++) new_entries[ei] = mt.entries[ei];
+        if (!method_signature_copy_to_heap(&new_entries[mt.entry_count].sig, new_sig)) {
+            mem::free(new_entries);
+            return false;
+        }
         mem::free(mt.entries);
         mt.entries = new_entries;
         mt.capacity = new_cap;
+        mt.entries[mt.entry_count].implementation = impl;
+        mt.entry_count++;
+        return true;
     }
-    if (!method_signature_copy_to_heap(&mt.entries[mt.entry_count].sig, new_sig)) return;
+    if (!method_signature_copy_to_heap(&mt.entries[mt.entry_count].sig, new_sig)) return false;
     mt.entries[mt.entry_count].implementation = impl;
     mt.entry_count++;
+    return true;
 }
 
-fn void jit_method_table_append_entry(MethodTable* mt, Value* impl) {
+fn bool jit_method_table_append_entry(MethodTable* mt, Value* impl) {
     MethodSignature* new_sig = impl.closure_val.type_sig;
-    jit_method_table_append_entry_with_sig(mt, new_sig, impl);
+    return jit_method_table_append_entry_with_sig(mt, new_sig, impl);
 }
 
 fn MethodTable* jit_new_method_table_with_sig(SymbolId name, MethodSignature* sig, Value* impl, Value* fallback) {
     MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
-    mt.name = name;
+    if (mt == null) return null;
     mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * METHOD_INITIAL_CAPACITY);
+    if (mt.entries == null) {
+        mem::free(mt);
+        return null;
+    }
+    mt.name = name;
     mt.capacity = METHOD_INITIAL_CAPACITY;
     mt.entry_count = 1;
     mt.fallback = fallback;
@@ -87,7 +101,9 @@ fn MethodTable* jit_new_method_table(SymbolId name, Value* impl, Value* fallback
 fn Value* jit_eval_define_typed_callable(Interp* interp, SymbolId name, Value* stored_val, MethodSignature* sig) {
     Value* existing = interp.global_env.lookup(name);
     if (existing != null && existing.tag == METHOD_TABLE) {
-        jit_method_table_append_entry_with_sig(existing.method_table_val, sig, stored_val);
+        if (!jit_method_table_append_entry_with_sig(existing.method_table_val, sig, stored_val)) {
+            return raise_error(interp, "jit: failed to extend method table");
+        }
         return existing;
     }
     Value* fallback = null;

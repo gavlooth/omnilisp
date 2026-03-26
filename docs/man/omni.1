@@ -1,4 +1,4 @@
-.TH OMNI 1 "March 2026" "Omni 0.1.5" "Omni Lisp Tools"
+.TH OMNI 1 "March 2026" "Omni 0.2.0" "Omni Lisp Tools"
 .SH NAME
 omni \- Omni Lisp CLI, REPL, and project tooling
 .SH SYNOPSIS
@@ -26,13 +26,28 @@ Use
 .B --json
 to emit a structured result payload.
 .TP
+.BI --describe " <symbol> " "[--json]"
+Describe a core Omni symbol (special form or builtin help entry).
+Use
+.B --json
+to emit a structured result payload.
+.TP
 .BI --check " <file> " "[--json]"
 Parse/check an Omni source file without executing it.
 Use
 .B --json
-to emit structured diagnostics with 0-based ranges.
+to emit structured diagnostics with 0-based ranges and non-zero exit status on
+syntax, lowering, or read failures.
 .TP
-.BI --test-suite " <all|stack|scope|lisp>"
+.BI --fmt " [--write|--check] <file>"
+Apply Omni's current conservative formatter to one source file.
+Default mode prints formatted text to stdout,
+.B --write
+rewrites the file in place, and
+.B --check
+returns non-zero when formatting changes would be applied.
+.TP
+.BI --test-suite " <all|stack|scope|lisp> " "[--json]"
 Run one bundled test suite.
 .TP
 .BI --build " <file> " "[-o output]"
@@ -69,6 +84,13 @@ Print help text.
 omni --init myproject
 cd myproject
 .EE
+After scaffold creation, first-party recommendation is:
+.EX
+omni --check src/main.omni
+.EE
+For editor tooling wiring (Tree-sitter, LSP, Neovim), see:
+.I docs/PROJECT_TOOLING.md
+\&.
 .SS Bind
 .EX
 omni --bind
@@ -87,9 +109,28 @@ omni --eval '(+ 1 2)'
 omni --eval --json '(+ 1 2)'
 .EE
 .TP
+Describe a symbol:
+.EX
+omni --describe define
+omni --describe --json define
+.EE
+.TP
 Structured REPL transport:
 .EX
 printf '%s\n' '{"id":"1","input":"(+ 1 2)","mode":"expr"}' | omni --repl --json
+.EE
+.TP
+Format one file:
+.EX
+omni --fmt script.omni
+omni --fmt --write script.omni
+omni --fmt --check script.omni
+.EE
+.TP
+Run test suite:
+.EX
+omni --test-suite all
+omni --test-suite all --json
 .EE
 .TP
 Check without executing:

@@ -11,6 +11,18 @@ Current query path:
 - row materialization from `relation_scan_all(...)` /
   `relation_scan_range(...)` in `src/lisp/deduce_relation_scan_helpers.c3`
 
+Benchmark evidence source files:
+- `src/lisp/tests_deduce_query_bench_groups.c3`
+  - retained seed/assert helpers and query benchmark support for the
+    `deduce_scan_query_count` lane
+- `src/lisp/tests_deduce_query_bench_groups_more.c3`
+  - benchmark runner/reporting entrypoint:
+    `run_deduce_scan_query_count_benchmarks(...)`
+  - owns the timed `scan`, `scan-range`, `query`, and `count` loops that emit
+    `OMNI_BENCH_SUMMARY suite=deduce_scan_query_count ...`
+- `src/lisp/tests_deduce_query_groups.c3`
+  - env-gated suite wiring only; not the benchmark lane implementation file
+
 Changes included in this evaluation pass:
 - scan materialization key-cache optimization (O5.3)
 - query filtering fused into a single pass (removed temporary match vector and

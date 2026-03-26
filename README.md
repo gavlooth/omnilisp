@@ -122,8 +122,9 @@ Canonical type names in docs/runtime are descriptive:
 `Integer`, `Double`, `String`, `Symbol`, `List`, `Array`, `Dictionary`,
 `Set`, `Iterator`, `Coroutine`, `TimePoint`, `Boolean`, `Nil`, `Void`.
 
-Compatibility shorthands such as `Int`, `Bool`, and `Dict` are still accepted
-where documented, but descriptive names are preferred in spec/docs/examples.
+Canonical naming is preferred in all surface docs and examples.
+`Dict` remains the only compatibility shorthand for `Dictionary` where needed;
+other legacy shorthand names are intentionally avoided.
 
 ## Build and Run
 
@@ -231,6 +232,26 @@ First-party editor integration scaffolds live under `tooling/`:
 - `tooling/tree-sitter-omni` for Tree-sitter grammar and queries
 - `tooling/omni-lsp` for a thin stdio language server
 - `tooling/omni-nvim` for Neovim REPL workflow integration
+
+Quick bootstrap (from this repo checkout):
+
+```bash
+# 1) verify CLI is available
+omni --version
+
+# 2) optional: verify Tree-sitter grammar parses a sample
+cd tooling/tree-sitter-omni
+tree-sitter generate
+tree-sitter parse examples/sample.omni
+
+# 3) run first-party LSP server
+cd /home/heefoo/Documents/code/Omni
+python3 tooling/omni-lsp/omni_lsp.py
+```
+
+Neovim setup is documented in:
+- `tooling/omni-nvim/README.md`
+- `docs/PROJECT_TOOLING.md` (editor tooling bootstrap section)
 
 ## Documentation Index
 

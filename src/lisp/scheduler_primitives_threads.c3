@@ -1,5 +1,8 @@
 module lisp;
 
+import std::core::mem;
+import std::io;
+
 fn Value* prim_thread_spawn(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
@@ -27,6 +30,110 @@ fn Value* prim_thread_spawn(Value*[] args, Env* env, Interp* interp) {
     Value* spawn_err = scheduler_prepare_os_thread_spawn(&work, &thread_id, &generation, interp);
     if (spawn_err != null) return spawn_err;
     return scheduler_make_thread_handle_value(thread_id, generation, interp);
+}
+
+fn Value* prim_thread_spawn_batch(Value*[] args, Env* env, Interp* interp) {
+    (void)env;
+    scheduler_init();
+    if (!g_scheduler.thread_task_mu_ready) {
+        return scheduler_raise(
+            interp,
+            "scheduler/thread-mutex-unavailable",
+            "thread-spawn-batch: thread mutex unavailable"
+        );
+    }
+    if (args.len < 1) {
+        return scheduler_raise(
+            interp,
+            "scheduler/thread-spawn-batch-expected-job-list",
+            "thread-spawn-batch: expected job list"
+        );
+    }
+
+    Value* jobs = args[0];
+    if (jobs == null || is_nil(jobs)) {
+        return make_nil(interp);
+    }
+
+    usz job_count = 0;
+    Value* cur = jobs;
+    while (is_cons(cur)) {
+        job_count++;
+        cur = cdr(cur);
+    }
+    if (!is_nil(cur)) {
+        return scheduler_raise(
+            interp,
+            "scheduler/thread-spawn-batch-expected-job-list",
+            "thread-spawn-batch: expected job list"
+        );
+    }
+    if (job_count == 0) {
+        return make_nil(interp);
+    }
+
+    OffloadWork[] works = mem::new_array(OffloadWork, job_count);
+    if (works.ptr == null) {
+        return scheduler_raise(
+            interp,
+            "scheduler/thread-spawn-batch-out-of-memory",
+            "thread-spawn-batch: out of memory"
+        );
+    }
+    defer mem::free(works.ptr);
+
+    cur = jobs;
+    for (usz i = 0; i < job_count; i++) {
+        works[i] = {};
+        Value* parse_err = scheduler_build_offload_work(cur.cons_val.car, &works[i], interp, false);
+        if (parse_err != null) return parse_err;
+        cur = cdr(cur);
+    }
+
+    SchedulerOsThreadHandle[] handles = mem::new_array(SchedulerOsThreadHandle, job_count);
+    if (handles.ptr == null) {
+        return scheduler_raise(
+            interp,
+            "scheduler/thread-spawn-batch-out-of-memory",
+            "thread-spawn-batch: out of memory"
+        );
+    }
+    defer mem::free(handles.ptr);
+
+    Value* begin_err = scheduler_begin_os_thread_work_jobs(works[..], &handles[0], interp);
+    if (begin_err != null) return begin_err;
+
+    Value*[] results = mem::new_array(Value*, job_count);
+    if (results.ptr == null) {
+        return scheduler_raise(interp, "scheduler/thread-spawn-batch-out-of-memory", "thread-spawn-batch: out of memory");
+    }
+    defer mem::free(results.ptr);
+
+    for (usz i = 0; i < job_count; i++) {
+        Value* join_v = scheduler_thread_join_impl(
+            handles[i].thread_id,
+            handles[i].generation,
+            -1,
+            &handles[i],
+            interp
+        );
+        if (join_v != null && join_v.tag == ERROR) {
+            for (usz j = i + 1; j < job_count; j++) {
+                if (scheduler_os_thread_exists(handles[j].thread_id, handles[j].generation)) {
+                    scheduler_drop_os_thread(handles[j].thread_id, handles[j].generation);
+                }
+            }
+            return join_v;
+        }
+        if (join_v == null) join_v = make_nil(interp);
+        results[i] = join_v;
+    }
+
+    Value* results_rev = make_nil(interp);
+    for (usz i = job_count; i > 0; i--) {
+        results_rev = make_cons(interp, results[i - 1], results_rev);
+    }
+    return results_rev;
 }
 
 fn Value* prim_thread_join(Value*[] args, Env* env, Interp* interp) {

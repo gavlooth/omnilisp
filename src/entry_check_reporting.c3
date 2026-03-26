@@ -5,6 +5,7 @@ import lisp;
 
 const char[] JSON_ERROR_SEVERITY = "error";
 const char[] JSON_PARSE_ERROR_CODE = "parser/syntax-error";
+const char[] JSON_COMPILE_ERROR_CODE = "compiler/lowering-error";
 const char[] JSON_IO_ERROR_CODE = "io/read-failed";
 
 fn void print_check_usage_json() {
@@ -77,7 +78,7 @@ fn void print_check_result_text(char[] path, lisp::EvalResult result) {
     io::printn("");
 }
 
-fn void print_check_result_json(char[] path, lisp::EvalResult result) {
+fn void print_check_result_json(char[] path, lisp::EvalResult result, char[] code) {
     io::print("{\"ok\":");
     io::print(result.error.has_error ? "false" : "true");
     io::print(",\"path\":");
@@ -88,7 +89,7 @@ fn void print_check_result_json(char[] path, lisp::EvalResult result) {
         usz line = check_zero_based_pos(result.error.line);
         usz column = check_zero_based_pos(result.error.column);
         io::print("{\"code\":");
-        print_json_escaped_string(JSON_PARSE_ERROR_CODE);
+        print_json_escaped_string(code);
         io::print(",\"severity\":");
         print_json_escaped_string(JSON_ERROR_SEVERITY);
         io::print(",\"message\":");

@@ -2,7 +2,7 @@ module main;
 
 import std::io;
 
-fn void run_scope_region_tests() {
+fn void run_scope_region_tests(int* out_pass, int* out_fail) {
     io::print("  Scope region tests... ");
     ScopeRegionTestCounts counts = run_scope_region_core_tests();
     usz passed = counts.passed;
@@ -85,4 +85,7 @@ fn void run_scope_region_tests() {
             (int)g_fiber_temp_pool_stats.bypass_escape_activity_allocs
         );
     }
+
+    if (out_pass != null) *out_pass = (int)passed;
+    if (out_fail != null) *out_fail = (int)failed;
 }

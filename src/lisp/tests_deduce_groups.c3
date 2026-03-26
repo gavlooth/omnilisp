@@ -1,7 +1,20 @@
 module lisp;
 
-
+import std::core::mem;
 import std::io;
+
+extern fn char* deduce_test_getenv(char* name) @extern("getenv");
+
+fn bool deduce_group_filter_matches(char* filter, char[] name) {
+    if (filter == null) return false;
+    usz len = 0;
+    while (filter[len] != 0) len++;
+    if (len != name.len) return false;
+    for (usz i = 0; i < len; i++) {
+        if (filter[i] != name[i]) return false;
+    }
+    return true;
+}
 
 fn void setup_deduce_person_relation(Interp* interp) {
     setup(interp, "(define ddb (deduce 'open 'memory))");
@@ -239,6 +252,228 @@ fn void run_deduce_relation_attr_define_test(Interp* interp, int* pass, int* fai
         io::printn("[FAIL] deduce [relation] define attr");
         (*fail)++;
     }
+}
+
+fn void run_deduce_relation_attr_materialized_define_test(Interp* interp, int* pass, int* fail) {
+    SymbolId rel_sym = interp.symbols.intern("rel-attr-materialized");
+    EvalResult r = run(
+        "(block "
+        "  (define ddb-rel-materialized (deduce 'open 'memory)) "
+        "  (define [relation ddb-rel-materialized materialized] rel-attr-materialized (src) (dst)) "
+        "  ddb-rel-materialized)",
+        interp
+    );
+
+    bool ok = !r.error.has_error &&
+              r.value != null &&
+              r.value.tag == FFI_HANDLE &&
+              r.value.ffi_val != null &&
+              r.value.ffi_val.lib_handle != null;
+    if (ok) {
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        DeduceRelationSchema* schema = deduce_db_lookup_relation_schema(db, rel_sym);
+        ok = schema != null &&
+             schema.materialized_view &&
+             schema.materialized_refresh_policy == interp.symbols.intern("manual") &&
+             schema.materialized_refresh_count == 0 &&
+             !deduce_relation_schema_is_materialized_ready(db, schema);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce [relation ... materialized] marks relation schema for manual materialization but not readiness");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce [relation ... materialized] marks relation schema for manual materialization but not readiness (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printn("[FAIL] deduce [relation ... materialized] marks relation schema for manual materialization but not readiness");
+        }
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_relation_attr_materialized_manual_define_test(Interp* interp, int* pass, int* fail) {
+    SymbolId rel_sym = interp.symbols.intern("rel-attr-materialized-manual");
+    EvalResult r = run(
+        "(block "
+        "  (define ddb-rel-materialized-manual (deduce 'open 'memory)) "
+        "  (define [relation ddb-rel-materialized-manual materialized manual] rel-attr-materialized-manual (src) (dst)) "
+        "  ddb-rel-materialized-manual)",
+        interp
+    );
+
+    bool ok = !r.error.has_error &&
+              r.value != null &&
+              r.value.tag == FFI_HANDLE &&
+              r.value.ffi_val != null &&
+              r.value.ffi_val.lib_handle != null;
+    if (ok) {
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        DeduceRelationSchema* schema = deduce_db_lookup_relation_schema(db, rel_sym);
+        ok = schema != null &&
+             schema.materialized_view &&
+             schema.materialized_refresh_policy == interp.symbols.intern("manual") &&
+             schema.materialized_refresh_count == 0 &&
+             !deduce_relation_schema_is_materialized_ready(db, schema);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce [relation ... materialized manual] declares manual materialization policy explicitly");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce [relation ... materialized manual] declares manual materialization policy explicitly (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printn("[FAIL] deduce [relation ... materialized manual] declares manual materialization policy explicitly");
+        }
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_relation_attr_materialized_on_read_define_test(Interp* interp, int* pass, int* fail) {
+    SymbolId rel_sym = interp.symbols.intern("rel-attr-materialized-on-read");
+    EvalResult r = run(
+        "(block "
+        "  (define ddb-rel-materialized-on-read (deduce 'open 'memory)) "
+        "  (define [relation ddb-rel-materialized-on-read materialized on-read] rel-attr-materialized-on-read (src) (dst)) "
+        "  ddb-rel-materialized-on-read)",
+        interp
+    );
+
+    bool ok = !r.error.has_error &&
+              r.value != null &&
+              r.value.tag == FFI_HANDLE &&
+              r.value.ffi_val != null &&
+              r.value.ffi_val.lib_handle != null;
+    if (ok) {
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        DeduceRelationSchema* schema = deduce_db_lookup_relation_schema(db, rel_sym);
+        ok = schema != null &&
+             schema.materialized_view &&
+             schema.materialized_refresh_policy == interp.symbols.intern("on-read") &&
+             schema.materialized_refresh_count == 0 &&
+             !deduce_relation_schema_is_materialized_ready(db, schema);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce [relation ... materialized on-read] declares on-read materialization policy explicitly");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce [relation ... materialized on-read] declares on-read materialization policy explicitly (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printn("[FAIL] deduce [relation ... materialized on-read] declares on-read materialization policy explicitly");
+        }
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_relation_attr_materialized_schema_policy_surface_test(Interp* interp, int* pass, int* fail) {
+    EvalResult r = run(
+        "(block "
+        "  (define ddb-rel-materialized-schema (deduce 'open 'memory)) "
+        "  (define [relation ddb-rel-materialized-schema materialized] rel-attr-materialized-schema-implicit (src) (dst)) "
+        "  (define [relation ddb-rel-materialized-schema materialized manual] rel-attr-materialized-schema-explicit (src) (dst)) "
+        "  (define [relation ddb-rel-materialized-schema materialized on-read] rel-attr-materialized-schema-on-read (src) (dst)) "
+        "  (define implicit-schema (deduce/schema rel-attr-materialized-schema-implicit)) "
+        "  (define explicit-schema (deduce/schema rel-attr-materialized-schema-explicit)) "
+        "  (define on-read-schema (deduce/schema rel-attr-materialized-schema-on-read)) "
+        "  (and "
+        "    (= (ref implicit-schema 'materialized-view) true) "
+        "    (= (ref implicit-schema 'materialized-refresh-policy) 'manual) "
+        "    (= (ref implicit-schema 'materialized-derived-ready) false) "
+        "    (= (ref implicit-schema 'materialized-stale) true) "
+        "    (= (ref implicit-schema 'materialized-last-stale-reason) 'never-refreshed) "
+        "    (= (ref explicit-schema 'materialized-view) true) "
+        "    (= (ref explicit-schema 'materialized-refresh-policy) 'manual) "
+        "    (= (ref explicit-schema 'materialized-derived-ready) false) "
+        "    (= (ref explicit-schema 'materialized-stale) true) "
+        "    (= (ref explicit-schema 'materialized-last-stale-reason) 'never-refreshed) "
+        "    (= (ref on-read-schema 'materialized-view) true) "
+        "    (= (ref on-read-schema 'materialized-refresh-policy) 'on-read) "
+        "    (= (ref on-read-schema 'materialized-derived-ready) false) "
+        "    (= (ref on-read-schema 'materialized-stale) true) "
+        "    (= (ref on-read-schema 'materialized-last-stale-reason) 'never-refreshed)))",
+        interp
+    );
+
+    if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+        emit_pass_literal("[PASS] deduce/schema exposes declared materialization policies faithfully");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce/schema exposes declared materialization policies faithfully (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printn("[FAIL] deduce/schema exposes declared materialization policies faithfully");
+        }
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_relation_attr_materialized_unknown_policy_test(Interp* interp, int* pass, int* fail) {
+    test_error_contains(
+        interp,
+        "[PASS] deduce [relation ... materialized] rejects unknown refresh policies",
+        "(block "
+        "  (define ddb-rel-materialized-policy (deduce 'open 'memory)) "
+        "  (define [relation ddb-rel-materialized-policy materialized eager] rel-attr-materialized-policy (id)) "
+        "  0)",
+        "unknown materialized refresh policy",
+        pass,
+        fail
+    );
+}
+
+fn void run_deduce_relation_attr_check_define_test(Interp* interp, int* pass, int* fail) {
+    SymbolId rel_sym = interp.symbols.intern("rel-attr-check");
+    EvalResult r = run(
+        "(block "
+        "  (define ddb-rel-check (deduce 'open 'memory)) "
+        "  (define [relation ddb-rel-check] rel-attr-check (id) (check positive amount)) "
+        "  ddb-rel-check)",
+        interp
+    );
+
+    bool ok = !r.error.has_error &&
+              r.value != null &&
+              r.value.tag == FFI_HANDLE &&
+              r.value.ffi_val != null &&
+              r.value.ffi_val.lib_handle != null;
+    if (ok) {
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        DeduceRelationSchema* schema = deduce_db_lookup_relation_schema(db, rel_sym);
+        ok = schema != null &&
+             schema.check_constraint_count == 1 &&
+             schema.check_constraints != null &&
+             schema.check_constraints[0].local_column == interp.symbols.intern("amount") &&
+             schema.check_constraints[0].predicate == interp.symbols.intern("positive");
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce [relation ... check predicate column] declares check constraint metadata explicitly");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce [relation ... check predicate column] declares check constraint metadata explicitly (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printn("[FAIL] deduce [relation ... check predicate column] declares check constraint metadata explicitly");
+        }
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_relation_attr_unknown_attribute_test(Interp* interp, int* pass, int* fail) {
+    test_error_contains(
+        interp,
+        "[PASS] deduce [relation] rejects unknown relation attributes",
+        "(block "
+        "  (define ddb-rel-unknown-attr (deduce 'open 'memory)) "
+        "  (define [relation ddb-rel-unknown-attr mystery] rel-attr-unknown (id)) "
+        "  0)",
+        "unknown relation attribute",
+        pass,
+        fail
+    );
 }
 
 fn void run_deduce_relation_attr_typed_role_schema_test(Interp* interp, int* pass, int* fail) {
@@ -680,6 +915,567 @@ fn void run_deduce_key_integrity_fact_tests(Interp* interp, int* pass, int* fail
         pass,
         fail
     );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-ref-nonunique (deduce 'open 'memory)) "
+        "  (define [relation db-ref-nonunique] ref-users-nonunique (id) (email)) "
+        "  (define [relation db-ref-nonunique] ref-audit-nonunique (ref ref-users-nonunique email user-email) (action)) "
+        "  (deduce 'fact! ref-users-nonunique 1 \"alice@x\") "
+        "  (define payload (handle (deduce 'fact! ref-audit-nonunique \"alice@x\" \"login\") (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (and (= (ref payload 'domain) 'deduce) "
+        "            (and (= (ref payload 'code) 'deduce/integrity-reference-target-not-unique) "
+        "                 (let (data (ref payload 'data)) "
+        "                   (and (dict? data) "
+        "                        (and (= (ref data 'relation) 'ref-audit-nonunique) "
+        "                             (and (= (ref data 'referenced-relation) 'ref-users-nonunique) "
+        "                                  (and (= (ref data 'referenced-column) 'email) "
+        "                                       (and (= (ref data 'key-value) \"alice@x\") "
+        "                                            (= (ref data 'violation-kind) 'reference-target-not-unique)))))))))))",
+        "[PASS] deduce reference fact! rejects non-unique target columns",
+        "[FAIL] deduce reference fact! rejects non-unique target columns",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-ref-dropped (deduce 'open 'memory)) "
+        "  (define [relation db-ref-dropped] ref-users-dropped (key id) (name)) "
+        "  (define [relation db-ref-dropped] ref-audit-dropped (ref ref-users-dropped id user-id) (action)) "
+        "  (deduce 'drop! ref-users-dropped) "
+        "  (define payload (handle (deduce 'fact! ref-audit-dropped 42 \"login\") (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (and (= (ref payload 'domain) 'deduce) "
+        "            (= (ref payload 'code) 'deduce/integrity-reference-target-missing))))",
+        "[PASS] deduce reference fact! stays consistent after target relation is dropped",
+        "[FAIL] deduce reference fact! stays consistent after target relation is dropped",
+        pass,
+        fail
+    );
+}
+
+fn void run_deduce_check_integrity_fact_tests(Interp* interp, int* pass, int* fail) {
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-check-ok (deduce 'open 'memory)) "
+        "  (define [relation db-check-ok] rel-check-ok (id) (check int? amount)) "
+        "  (deduce 'fact! rel-check-ok 1 7) "
+        "  (= (deduce 'count rel-check-ok) 1))",
+        "[PASS] deduce check fact! accepts tuples that satisfy the predicate",
+        "[FAIL] deduce check fact! accepts tuples that satisfy the predicate",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-check-fail (deduce 'open 'memory)) "
+        "  (define [relation db-check-fail] rel-check-fail (id) (check int? amount)) "
+        "  (define payload (handle (deduce 'fact! rel-check-fail 1 \"oops\") (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (and (= (ref payload 'domain) 'deduce) "
+        "            (and (= (ref payload 'code) 'deduce/integrity-check-failed) "
+        "                 (let (data (ref payload 'data)) "
+        "                   (and (dict? data) "
+        "                        (and (= (ref data 'relation) 'rel-check-fail) "
+        "                             (and (= (ref data 'predicate) 'int?) "
+        "                                  (and (= (ref data 'key-value) \"oops\") "
+        "                                       (= (ref data 'violation-kind) 'check-failed)))))))))))",
+        "[PASS] deduce check fact! exposes machine-checkable failure payload",
+        "[FAIL] deduce check fact! exposes machine-checkable failure payload",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-check-missing (deduce 'open 'memory)) "
+        "  (define [relation db-check-missing] rel-check-missing (id) (check missing-check-predicate amount)) "
+        "  (define payload (handle (deduce 'fact! rel-check-missing 1 7) (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (= (ref payload 'code) 'deduce/check-predicate-missing) "
+        "       (= (deduce 'count rel-check-missing) 0)))",
+        "[PASS] deduce check fact! rejects missing predicate symbols deterministically",
+        "[FAIL] deduce check fact! rejects missing predicate symbols deterministically",
+        pass,
+        fail
+    );
+}
+
+fn void run_deduce_rule_head_reference_snapshot_test(Interp* interp, int* pass, int* fail) {
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-rule-ref-ok (deduce 'open 'memory)) "
+        "  (define [relation db-rule-ref-ok] user-src (id) (name)) "
+        "  (define [relation db-rule-ref-ok] audit-src (user-id) (action)) "
+        "  (define [relation db-rule-ref-ok] users (key id) (name)) "
+        "  (define [relation db-rule-ref-ok] audit-out (ref users id user-id) (action)) "
+        "  (deduce 'fact! user-src 1 \"Alice\") "
+        "  (deduce 'fact! audit-src 1 \"login\") "
+        "  (deduce/rule! db-rule-ref-ok '(audit-out ?u ?a) '(audit-src ?u ?a)) "
+        "  (deduce/rule! db-rule-ref-ok '(audit-out ?u ?a) '(users ?u ?name) '(audit-src ?u ?a)) "
+        "  (deduce/rule! db-rule-ref-ok '(users ?u ?name) '(audit-out ?u ?a) '(user-src ?u ?name)) "
+        "  (define analyzed (deduce 'analyze db-rule-ref-ok)) "
+        "  (and (= (ref analyzed 'status) 'ok) "
+        "       (and (= (deduce 'count users) 1) "
+        "            (= (deduce 'count audit-out) 1))))",
+        "[PASS] deduce rule-derived reference heads validate against final recursive component snapshot",
+        "[FAIL] deduce rule-derived reference heads validate against final recursive component snapshot",
+        pass,
+        fail
+    );
+}
+
+fn void run_deduce_rule_head_integrity_tests(Interp* interp, int* pass, int* fail) {
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-rule-key-conflict (deduce 'open 'memory)) "
+        "  (define [relation db-rule-key-conflict] user-src (id) (name)) "
+        "  (define [relation db-rule-key-conflict] users (key id) (name)) "
+        "  (deduce 'fact! user-src 1 \"Alice\") "
+        "  (deduce 'fact! user-src 1 \"Bob\") "
+        "  (deduce/rule! db-rule-key-conflict '(users ?id ?name) '(user-src ?id ?name)) "
+        "  db-rule-key-conflict)",
+        "[PASS] deduce rule-derived keyed tuples raise machine-checkable conflict payloads",
+        "[FAIL] deduce rule-derived keyed tuples raise machine-checkable conflict payloads",
+        pass,
+        fail
+    );
+
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-rule-unique-conflict (deduce 'open 'memory)) "
+            "  (define [relation db-rule-unique-conflict] email-src (id) (email)) "
+            "  (define [relation db-rule-unique-conflict] emails (id) (unique email)) "
+            "  (deduce 'fact! email-src 1 \"alice@x\") "
+            "  (deduce 'fact! email-src 2 \"alice@x\") "
+            "  (deduce/rule! db-rule-unique-conflict '(emails ?id ?email) '(email-src ?id ?email)) "
+            "  db-rule-unique-conflict)",
+            interp
+        );
+        Value* payload = null;
+        bool ok = !r.error.has_error &&
+                  deduce_test_capture_analyze_raise_payload(interp, r.value, &payload);
+        if (ok) {
+            Value* code = deduce_rule_test_dict_get(interp, payload, "code");
+            Value* data = deduce_rule_test_dict_get(interp, payload, "data");
+            Value* relation = deduce_rule_test_dict_get(interp, data, "relation");
+            Value* unique_column = deduce_rule_test_dict_get(interp, data, "unique-column");
+            Value* key_value = deduce_rule_test_dict_get(interp, data, "key-value");
+            ok = code != null &&
+                 code.tag == SYMBOL &&
+                 deduce_name_equals(interp.symbols.get_name(code.sym_val), "deduce/integrity-unique-conflict") &&
+                 relation != null &&
+                 relation.tag == SYMBOL &&
+                 deduce_name_equals(interp.symbols.get_name(relation.sym_val), "emails") &&
+                 unique_column != null &&
+                 unique_column.tag == SYMBOL &&
+                 deduce_name_equals(interp.symbols.get_name(unique_column.sym_val), "email") &&
+                 deduce_test_string_equals(key_value, "alice@x");
+        }
+        run_clear_stale_raise_state(interp);
+        if (ok) {
+            emit_pass_literal("[PASS] deduce rule-derived unique tuples raise machine-checkable conflict payloads");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce rule-derived unique tuples raise machine-checkable conflict payloads");
+            (*fail)++;
+        }
+    }
+
+    run_deduce_rule_head_reference_snapshot_test(interp, pass, fail);
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-rule-ref-missing (deduce 'open 'memory)) "
+        "  (define [relation db-rule-ref-missing] audit-src (user-id) (action)) "
+        "  (define [relation db-rule-ref-missing] users (key id) (name)) "
+        "  (define [relation db-rule-ref-missing] audit-out (ref users id user-id) (action)) "
+        "  (deduce 'fact! audit-src 42 \"login\") "
+        "  (deduce/rule! db-rule-ref-missing '(audit-out ?u ?a) '(audit-src ?u ?a)) "
+        "  (define payload (handle (deduce 'analyze db-rule-ref-missing) (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (and (= (ref payload 'code) 'deduce/integrity-reference-missing) "
+        "            (let (data (ref payload 'data)) "
+        "              (and (dict? data) "
+        "                   (and (= (ref data 'relation) 'audit-out) "
+        "                        (and (= (ref data 'referenced-relation) 'users) "
+        "                             (and (= (ref data 'referenced-column) 'id) "
+        "                                  (and (= (ref data 'key-value) 42) "
+        "                                       (= (ref data 'violation-kind) 'reference-missing))))))))))",
+        "[PASS] deduce rule-derived reference heads raise machine-checkable missing-target payloads",
+        "[FAIL] deduce rule-derived reference heads raise machine-checkable missing-target payloads",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-rule-agg-key-ok (deduce 'open 'memory)) "
+        "  (define [relation db-rule-agg-key-ok] sale (dept) (amount)) "
+        "  (define [relation db-rule-agg-key-ok] total-by-dept (key dept) (total)) "
+        "  (deduce 'fact! sale \"eng\" 10) "
+        "  (deduce 'fact! sale \"eng\" 15) "
+        "  (deduce 'fact! sale \"sales\" 3) "
+        "  (deduce/rule! db-rule-agg-key-ok '(total-by-dept ?dept (sum ?amount)) '(sale ?dept ?amount)) "
+        "  (define analyzed (deduce 'analyze db-rule-agg-key-ok)) "
+        "  (and (= (ref analyzed 'status) 'ok) "
+        "       (= (length (deduce 'scan total-by-dept)) 2)))",
+        "[PASS] deduce aggregate keyed rule heads publish with integrity enforcement",
+        "[FAIL] deduce aggregate keyed rule heads publish with integrity enforcement",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-rule-agg-unique-conflict (deduce 'open 'memory)) "
+        "  (define [relation db-rule-agg-unique-conflict] sale (dept) (amount)) "
+        "  (define [relation db-rule-agg-unique-conflict] total-by-dept (dept) (unique total)) "
+        "  (deduce 'fact! sale \"eng\" 10) "
+        "  (deduce 'fact! sale \"sales\" 10) "
+        "  (deduce/rule! db-rule-agg-unique-conflict '(total-by-dept ?dept (sum ?amount)) '(sale ?dept ?amount)) "
+        "  (define payload (handle (deduce 'analyze db-rule-agg-unique-conflict) (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (and (= (ref payload 'code) 'deduce/integrity-unique-conflict) "
+        "            (let (data (ref payload 'data)) "
+        "              (and (dict? data) "
+        "                   (and (= (ref data 'relation) 'total-by-dept) "
+        "                        (and (= (ref data 'unique-column) 'total) "
+        "                             (= (ref data 'key-value) 10))))))))",
+        "[PASS] deduce aggregate unique rule heads raise machine-checkable conflict payloads",
+        "[FAIL] deduce aggregate unique rule heads raise machine-checkable conflict payloads",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-rule-agg-ref-ok (deduce 'open 'memory)) "
+        "  (define [relation db-rule-agg-ref-ok] users (key id) (name)) "
+        "  (define [relation db-rule-agg-ref-ok] sale (user-id) (amount)) "
+        "  (define [relation db-rule-agg-ref-ok] totals (ref users id user-id) (total)) "
+        "  (deduce 'fact! users 1 \"Alice\") "
+        "  (deduce 'fact! sale 1 10) "
+        "  (deduce 'fact! sale 1 15) "
+        "  (deduce/rule! db-rule-agg-ref-ok '(totals ?u (sum ?amount)) '(sale ?u ?amount)) "
+        "  (define analyzed (deduce 'analyze db-rule-agg-ref-ok)) "
+        "  (and (= (ref analyzed 'status) 'ok) "
+        "       (= (deduce 'count totals) 1)))",
+        "[PASS] deduce aggregate reference rule heads publish with final-snapshot integrity validation",
+        "[FAIL] deduce aggregate reference rule heads publish with final-snapshot integrity validation",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-rule-agg-key-rec (deduce 'open 'memory)) "
+        "  (define [relation db-rule-agg-key-rec] edge (src) (dst)) "
+        "  (define [relation db-rule-agg-key-rec] unit (node) (n)) "
+        "  (define [relation db-rule-agg-key-rec] total (key node) (total)) "
+        "  (deduce 'fact! edge 1 2) "
+        "  (deduce 'fact! edge 2 3) "
+        "  (deduce 'fact! unit 3 1) "
+        "  (deduce/rule! db-rule-agg-key-rec '(total ?x (sum ?n)) '(unit ?x ?n)) "
+        "  (deduce/rule! db-rule-agg-key-rec '(total ?x (sum ?n)) '(edge ?x ?y) '(total ?y ?n)) "
+        "  (define analyzed (deduce 'analyze db-rule-agg-key-rec)) "
+        "  (and (= (ref analyzed 'status) 'ok) "
+        "       (= (length (deduce 'scan total)) 3)))",
+        "[PASS] deduce recursive aggregate keyed rule heads run through seminaive integrity enforcement",
+        "[FAIL] deduce recursive aggregate keyed rule heads run through seminaive integrity enforcement",
+        pass,
+        fail
+    );
+
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-rule-check-conflict (deduce 'open 'memory)) "
+            "  (define [relation db-rule-check-conflict] amount-src (id) (amount)) "
+            "  (define [relation db-rule-check-conflict] checked-out (id) (check int? amount)) "
+            "  (deduce 'fact! amount-src 1 7) "
+            "  (deduce 'fact! amount-src 2 \"oops\") "
+            "  (deduce/rule! db-rule-check-conflict '(checked-out ?id ?amount) '(amount-src ?id ?amount)) "
+            "  db-rule-check-conflict)",
+            interp
+        );
+        Value* payload = null;
+        bool ok = !r.error.has_error &&
+                  deduce_test_capture_analyze_raise_payload(interp, r.value, &payload);
+        if (ok) {
+            Value* code = deduce_rule_test_dict_get(interp, payload, "code");
+            Value* data = deduce_rule_test_dict_get(interp, payload, "data");
+            Value* relation = deduce_rule_test_dict_get(interp, data, "relation");
+            Value* predicate = deduce_rule_test_dict_get(interp, data, "predicate");
+            Value* key_value = deduce_rule_test_dict_get(interp, data, "key-value");
+            ok = code != null &&
+                 code.tag == SYMBOL &&
+                 deduce_name_equals(interp.symbols.get_name(code.sym_val), "deduce/integrity-check-failed") &&
+                 relation != null &&
+                 relation.tag == SYMBOL &&
+                 deduce_name_equals(interp.symbols.get_name(relation.sym_val), "checked-out") &&
+                 predicate != null &&
+                 predicate.tag == SYMBOL &&
+                 deduce_name_equals(interp.symbols.get_name(predicate.sym_val), "int?") &&
+                 deduce_test_string_equals(key_value, "oops");
+        }
+        run_clear_stale_raise_state(interp);
+        if (ok) {
+            emit_pass_literal("[PASS] deduce rule-derived check constraints raise machine-checkable failure payloads");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce rule-derived check constraints raise machine-checkable failure payloads");
+            (*fail)++;
+        }
+    }
+
+}
+
+fn void run_deduce_deferred_integrity_commit_tests(Interp* interp, int* pass, int* fail) {
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-deferred-ok (deduce 'open 'memory)) "
+        "  (define [relation db-deferred-ok] users-deferred-ok (key id) (name)) "
+        "  (define [relation db-deferred-ok] audit-deferred-ok (ref users-deferred-ok id user-id) (action)) "
+        "  (define tx (deduce 'block db-deferred-ok 'write-deferred)) "
+        "  (deduce 'fact! tx users-deferred-ok 42 \"Alice\") "
+        "  (deduce 'fact! tx audit-deferred-ok 42 \"login\") "
+        "  (deduce 'commit tx) "
+        "  (and (= (deduce 'count users-deferred-ok) 1) "
+        "       (= (deduce 'count audit-deferred-ok) 1)))",
+        "[PASS] deduce deferred write commit validates staged reference success",
+        "[FAIL] deduce deferred write commit validates staged reference success",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-key-deferred (deduce 'open 'memory)) "
+        "  (define [relation db-key-deferred] rel-key-deferred (key id) (name)) "
+        "  (deduce 'fact! rel-key-deferred 1 \"Alice\") "
+        "  (define tx (deduce 'block db-key-deferred 'write-deferred)) "
+        "  (deduce 'fact! tx rel-key-deferred 1 \"Bob\") "
+        "  (define payload (handle (deduce 'commit tx) (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (= (ref payload 'code) 'deduce/integrity-key-conflict) "
+        "       (= (deduce 'count rel-key-deferred) 1)))",
+        "[PASS] deduce deferred write commit rejects keyed conflict and rolls back",
+        "[FAIL] deduce deferred write commit rejects keyed conflict and rolls back",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-unique-deferred (deduce 'open 'memory)) "
+        "  (define [relation db-unique-deferred] rel-unique-deferred (id) (unique email)) "
+        "  (deduce 'fact! rel-unique-deferred 1 \"alice@x\") "
+        "  (define tx (deduce 'block db-unique-deferred 'write-deferred)) "
+        "  (deduce 'fact! tx rel-unique-deferred 2 \"alice@x\") "
+        "  (define payload (handle (deduce 'commit tx) (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (= (ref payload 'code) 'deduce/integrity-unique-conflict) "
+        "       (= (deduce 'count rel-unique-deferred) 1)))",
+        "[PASS] deduce deferred write commit rejects unique conflict and rolls back",
+        "[FAIL] deduce deferred write commit rejects unique conflict and rolls back",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-ref-deferred (deduce 'open 'memory)) "
+        "  (define [relation db-ref-deferred] users-ref-deferred (key id) (name)) "
+        "  (define [relation db-ref-deferred] audit-ref-deferred (ref users-ref-deferred id user-id) (action)) "
+        "  (define tx (deduce 'block db-ref-deferred 'write-deferred)) "
+        "  (deduce 'fact! tx audit-ref-deferred 42 \"login\") "
+        "  (define payload (handle (deduce 'commit tx) (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (= (ref payload 'code) 'deduce/integrity-reference-missing) "
+        "       (= (deduce 'count audit-ref-deferred) 0)))",
+        "[PASS] deduce deferred write commit rejects missing reference and rolls back",
+        "[FAIL] deduce deferred write commit rejects missing reference and rolls back",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-check-deferred (deduce 'open 'memory)) "
+        "  (define [relation db-check-deferred] rel-check-deferred (id) (check int? amount)) "
+        "  (define tx (deduce 'block db-check-deferred 'write-deferred)) "
+        "  (deduce 'fact! tx rel-check-deferred 1 \"oops\") "
+        "  (define payload (handle (deduce 'commit tx) (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (= (ref payload 'code) 'deduce/integrity-check-failed) "
+        "       (= (deduce 'count rel-check-deferred) 0)))",
+        "[PASS] deduce deferred write commit rejects failed check constraints and rolls back",
+        "[FAIL] deduce deferred write commit rejects failed check constraints and rolls back",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-ref-delete-deferred (deduce 'open 'memory)) "
+        "  (define [relation db-ref-delete-deferred] users-ref-delete-deferred (key id) (name)) "
+        "  (define [relation db-ref-delete-deferred] audit-ref-delete-deferred (ref users-ref-delete-deferred id user-id) (action)) "
+        "  (deduce 'fact! users-ref-delete-deferred 42 \"Alice\") "
+        "  (deduce 'fact! audit-ref-delete-deferred 42 \"login\") "
+        "  (define tx (deduce 'block db-ref-delete-deferred 'write-deferred)) "
+        "  (deduce 'retract! tx users-ref-delete-deferred 42 \"Alice\") "
+        "  (define payload (handle (deduce 'commit tx) (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (= (ref payload 'code) 'deduce/integrity-reference-missing) "
+        "       (= (deduce 'count users-ref-delete-deferred) 1) "
+        "       (= (deduce 'count audit-ref-delete-deferred) 1)))",
+        "[PASS] deduce deferred write commit rejects delete that leaves dangling reference",
+        "[FAIL] deduce deferred write commit rejects delete that leaves dangling reference",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-ref-delete-ok-deferred (deduce 'open 'memory)) "
+        "  (define [relation db-ref-delete-ok-deferred] users-ref-delete-ok-deferred (key id) (name)) "
+        "  (define [relation db-ref-delete-ok-deferred] audit-ref-delete-ok-deferred (ref users-ref-delete-ok-deferred id user-id) (action)) "
+        "  (deduce 'fact! users-ref-delete-ok-deferred 42 \"Alice\") "
+        "  (deduce 'fact! audit-ref-delete-ok-deferred 42 \"login\") "
+        "  (define tx (deduce 'block db-ref-delete-ok-deferred 'write-deferred)) "
+        "  (deduce 'retract! tx audit-ref-delete-ok-deferred 42 \"login\") "
+        "  (deduce 'retract! tx users-ref-delete-ok-deferred 42 \"Alice\") "
+        "  (deduce 'commit tx) "
+        "  (and (= (deduce 'count users-ref-delete-ok-deferred) 0) "
+        "       (= (deduce 'count audit-ref-delete-ok-deferred) 0)))",
+        "[PASS] deduce deferred write commit allows delete after staged blocker removal",
+        "[FAIL] deduce deferred write commit allows delete after staged blocker removal",
+        pass,
+        fail
+    );
+}
+
+fn void run_deduce_reference_retract_integrity_tests(Interp* interp, int* pass, int* fail) {
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-ref-retract (deduce 'open 'memory)) "
+        "  (define [relation db-ref-retract] users-ref-retract (key id) (name)) "
+        "  (define [relation db-ref-retract] audit-ref-retract (ref users-ref-retract id user-id) (action)) "
+        "  (deduce 'fact! users-ref-retract 42 \"Alice\") "
+        "  (deduce 'fact! audit-ref-retract 42 \"login\") "
+        "  (define payload (handle (deduce 'retract! users-ref-retract 42 \"Alice\") (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (= (ref payload 'code) 'deduce/integrity-reference-target-in-use) "
+        "       (= (deduce 'count users-ref-retract) 1)))",
+        "[PASS] deduce retract! rejects deleting referenced target tuple",
+        "[FAIL] deduce retract! rejects deleting referenced target tuple",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-ref-retract-tx (deduce 'open 'memory)) "
+        "  (define [relation db-ref-retract-tx] users-ref-retract-tx (key id) (name)) "
+        "  (define [relation db-ref-retract-tx] audit-ref-retract-tx (ref users-ref-retract-tx id user-id) (action)) "
+        "  (deduce 'fact! users-ref-retract-tx 42 \"Alice\") "
+        "  (deduce 'fact! audit-ref-retract-tx 42 \"login\") "
+        "  (define tx (deduce 'block db-ref-retract-tx 'write)) "
+        "  (deduce 'retract! tx audit-ref-retract-tx 42 \"login\") "
+        "  (deduce 'retract! tx users-ref-retract-tx 42 \"Alice\") "
+        "  (deduce 'commit tx) "
+        "  (and (= (deduce 'count users-ref-retract-tx) 0) "
+        "       (= (deduce 'count audit-ref-retract-tx) 0)))",
+        "[PASS] deduce retract! allows deleting target after blocker is removed in same txn",
+        "[FAIL] deduce retract! allows deleting target after blocker is removed in same txn",
+        pass,
+        fail
+    );
+}
+
+fn void run_deduce_reference_bulk_delete_integrity_tests(Interp* interp, int* pass, int* fail) {
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-ref-clear (deduce 'open 'memory)) "
+        "  (define [relation db-ref-clear] users-ref-clear (key id) (name)) "
+        "  (define [relation db-ref-clear] audit-ref-clear (ref users-ref-clear id user-id) (action)) "
+        "  (deduce 'fact! users-ref-clear 42 \"Alice\") "
+        "  (deduce 'fact! audit-ref-clear 42 \"login\") "
+        "  (define payload (handle (deduce 'clear! users-ref-clear) (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (= (ref payload 'code) 'deduce/integrity-reference-target-in-use) "
+        "       (= (deduce 'count users-ref-clear) 1) "
+        "       (= (deduce 'count audit-ref-clear) 1)))",
+        "[PASS] deduce clear! rejects clearing referenced target relation",
+        "[FAIL] deduce clear! rejects clearing referenced target relation",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-ref-drop (deduce 'open 'memory)) "
+        "  (define [relation db-ref-drop] users-ref-drop (key id) (name)) "
+        "  (define [relation db-ref-drop] audit-ref-drop (ref users-ref-drop id user-id) (action)) "
+        "  (deduce 'fact! users-ref-drop 42 \"Alice\") "
+        "  (deduce 'fact! audit-ref-drop 42 \"login\") "
+        "  (define payload (handle (deduce 'drop! users-ref-drop) (raise msg msg))) "
+        "  (and (dict? payload) "
+        "       (= (ref payload 'code) 'deduce/integrity-reference-target-in-use) "
+        "       (= (deduce 'count users-ref-drop) 1) "
+        "       (= (deduce 'count audit-ref-drop) 1)))",
+        "[PASS] deduce drop! rejects dropping referenced target relation",
+        "[FAIL] deduce drop! rejects dropping referenced target relation",
+        pass,
+        fail
+    );
+
+    deduce_test_expect_true_symbol(
+        interp,
+        "(block "
+        "  (define db-ref-clear-ok (deduce 'open 'memory)) "
+        "  (define [relation db-ref-clear-ok] users-ref-clear-ok (key id) (name)) "
+        "  (define [relation db-ref-clear-ok] audit-ref-clear-ok (ref users-ref-clear-ok id user-id) (action)) "
+        "  (deduce 'fact! users-ref-clear-ok 42 \"Alice\") "
+        "  (deduce 'fact! audit-ref-clear-ok 42 \"login\") "
+        "  (deduce 'clear! audit-ref-clear-ok) "
+        "  (deduce 'clear! users-ref-clear-ok) "
+        "  (and (= (deduce 'count users-ref-clear-ok) 0) "
+        "       (= (deduce 'count audit-ref-clear-ok) 0)))",
+        "[PASS] deduce clear! allows clearing target after clearing blockers",
+        "[FAIL] deduce clear! allows clearing target after clearing blockers",
+        pass,
+        fail
+    );
 }
 
 fn void run_deduce_crud_example_flow_test(Interp* interp, int* pass, int* fail) {
@@ -720,12 +1516,594 @@ fn void run_deduce_legacy_alias_rejection_tests(Interp* interp, int* pass, int* 
     test_error(interp, "legacy deduce-match rejected", "(deduce-match nil nil)", pass, fail);
 }
 
+fn bool deduce_test_component_delta_tuple_matches(DeduceDeltaTupleSet* set, usz idx, char[] expected) {
+    if (set == null || idx >= set.count) return false;
+    return deduce_bytes_equal(
+        set.tuples[idx].key_bytes,
+        set.tuples[idx].key_len,
+        expected.ptr,
+        expected.len
+    );
+}
+
+fn void run_deduce_parallel_component_delta_payload_roundtrip_test(Interp* interp, int* pass, int* fail) {
+    SymbolId[3] predicates = {
+        interp.symbols.intern("parallel-component-a"),
+        interp.symbols.intern("parallel-component-b"),
+        interp.symbols.intern("parallel-component-c")
+    };
+    int[3] predicate_component = { 0, 0, 1 };
+    DeduceSccPlan plan = {
+        .predicates = predicates[..],
+        .predicate_component = predicate_component[..],
+        .component_count = 2
+    };
+
+    DeduceSignedDeltaSet[3] delta_sets = {};
+    bool ok =
+        deduce_delta_set_append_encoded_tuple(&delta_sets[0].additions, "add-a-0".ptr, "add-a-0".len) &&
+        deduce_delta_set_append_encoded_tuple(&delta_sets[0].additions, "add-a-1".ptr, "add-a-1".len) &&
+        deduce_delta_set_append_encoded_tuple(&delta_sets[0].removals, "remove-a".ptr, "remove-a".len) &&
+        deduce_delta_set_append_encoded_tuple(&delta_sets[1].removals, "remove-b".ptr, "remove-b".len) &&
+        deduce_delta_set_append_encoded_tuple(&delta_sets[2].additions, "ignored-c".ptr, "ignored-c".len);
+    defer foreach (signed : delta_sets) deduce_signed_delta_set_release(&signed);
+
+    char* encoded = null;
+    usz encoded_len = 0;
+    if (ok) {
+        Value* err = deduce_component_delta_payload_serialize(&plan, 0, delta_sets[..], &encoded, &encoded_len, interp);
+        ok = err == null && encoded != null && encoded_len > 0;
+    }
+    defer if (encoded != null) mem::free(encoded);
+
+    DeduceSerializedComponentDeltaPayload payload = {};
+    if (ok) {
+        Value* err = deduce_component_delta_payload_deserialize(encoded[0:encoded_len], &payload, interp);
+        ok = err == null;
+    }
+    defer deduce_serialized_component_delta_payload_release(&payload);
+
+    if (ok) {
+        ok = payload.component_id == 0 &&
+             payload.entry_count == 2 &&
+             payload.entries != null &&
+             payload.entries[0].predicate_index == 0 &&
+             payload.entries[0].predicate == predicates[0] &&
+             payload.entries[0].delta_set.additions.count == 2 &&
+             payload.entries[0].delta_set.removals.count == 1 &&
+             deduce_test_component_delta_tuple_matches(&payload.entries[0].delta_set.additions, 0, "add-a-0") &&
+             deduce_test_component_delta_tuple_matches(&payload.entries[0].delta_set.additions, 1, "add-a-1") &&
+             deduce_test_component_delta_tuple_matches(&payload.entries[0].delta_set.removals, 0, "remove-a") &&
+             payload.entries[1].predicate_index == 1 &&
+             payload.entries[1].predicate == predicates[1] &&
+             payload.entries[1].delta_set.additions.count == 0 &&
+             payload.entries[1].delta_set.removals.count == 1 &&
+             deduce_test_component_delta_tuple_matches(&payload.entries[1].delta_set.removals, 0, "remove-b");
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce parallel component delta payload roundtrips worker-scratch deltas");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce parallel component delta payload roundtrips worker-scratch deltas");
+        (*fail)++;
+    }
+}
+
+fn bool deduce_test_component_delta_set_has_tuple(DeduceDeltaTupleSet* set, char[] expected) {
+    if (set == null) return false;
+    for (usz i = 0; i < set.count; i++) {
+        if (deduce_bytes_equal(set.tuples[i].key_bytes, set.tuples[i].key_len, expected.ptr, expected.len)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn void run_deduce_parallel_component_scratch_pass_test(Interp* interp, int* pass, int* fail) {
+    EvalResult r = run(
+        "(block "
+        "  (define ddb-parallel-scratch-pass (deduce 'open 'memory)) "
+        "  (define [relation ddb-parallel-scratch-pass] edge-parallel-scratch-pass (src) (dst)) "
+        "  (define [relation ddb-parallel-scratch-pass] path-parallel-scratch-pass (src) (dst)) "
+        "  (deduce 'fact! edge-parallel-scratch-pass 1 2) "
+        "  (deduce 'fact! path-parallel-scratch-pass 2 3) "
+        "  (deduce/rule! ddb-parallel-scratch-pass '(path-parallel-scratch-pass ?x ?y) '(edge-parallel-scratch-pass ?x ?y)) "
+        "  (deduce/rule! ddb-parallel-scratch-pass '(path-parallel-scratch-pass ?x ?z) '(edge-parallel-scratch-pass ?x ?y) '(path-parallel-scratch-pass ?y ?z)) "
+        "  ddb-parallel-scratch-pass)",
+        interp
+    );
+
+    bool ok = !r.error.has_error &&
+              r.value != null &&
+              r.value.tag == FFI_HANDLE &&
+              r.value.ffi_val != null &&
+              r.value.ffi_val.lib_handle != null;
+
+    DeduceSccPlan plan = {};
+
+    char* encoded = null;
+    usz encoded_len = 0;
+    defer if (encoded != null) mem::free(encoded);
+
+    DeduceSerializedComponentDeltaPayload payload = {};
+    defer deduce_serialized_component_delta_payload_release(&payload);
+
+    Value* expected_1_2 = null;
+    Value* expected_1_3 = null;
+    if (ok) {
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        Value* err = null;
+        err = deduce_build_scc_plan(db, &plan, interp);
+        ok = err == null;
+        int path_idx = ok ? deduce_scc_find_predicate_index(plan.predicates, interp.symbols.intern("path-parallel-scratch-pass")) : -1;
+        ok = ok && path_idx >= 0 && (usz)path_idx < plan.predicate_component.len;
+        usz component_id = ok ? (usz)plan.predicate_component[(usz)path_idx] : 0;
+
+        if (ok) {
+            err = deduce_seminaive_compute_component_scratch_pass_payload(
+                db,
+                &plan,
+                component_id,
+                &encoded,
+                &encoded_len,
+                interp
+            );
+            ok = err == null && encoded != null && encoded_len > 0;
+        }
+        if (ok) {
+            err = deduce_component_delta_payload_deserialize(encoded[0:encoded_len], &payload, interp);
+            ok = err == null;
+        }
+        if (ok) {
+            Value*[2] tuple_1_2 = { make_int(interp, 1), make_int(interp, 2) };
+            Value*[2] tuple_1_3 = { make_int(interp, 1), make_int(interp, 3) };
+            err = deduce_encode_value_vector_to_owned_string(tuple_1_2[..], &expected_1_2, interp);
+            if (err == null) err = deduce_encode_value_vector_to_owned_string(tuple_1_3[..], &expected_1_3, interp);
+            ok = err == null && expected_1_2 != null && expected_1_3 != null;
+        }
+        if (ok) {
+            ok = payload.entry_count == 1 &&
+                 payload.entries != null &&
+                 payload.entries[0].predicate == interp.symbols.intern("path-parallel-scratch-pass") &&
+                 payload.entries[0].delta_set.additions.count == 2 &&
+                 payload.entries[0].delta_set.removals.count == 0 &&
+                 deduce_test_component_delta_set_has_tuple(
+                     &payload.entries[0].delta_set.additions,
+                     expected_1_2.str_chars[:expected_1_2.str_len]
+                 ) &&
+                 deduce_test_component_delta_set_has_tuple(
+                     &payload.entries[0].delta_set.additions,
+                     expected_1_3.str_chars[:expected_1_3.str_len]
+                 );
+        }
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce parallel worker-scratch component pass computes serialized recursive deltas");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce parallel worker-scratch component pass computes serialized recursive deltas (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printn("[FAIL] deduce parallel worker-scratch component pass computes serialized recursive deltas");
+        }
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_parallel_component_scratch_closure_test(Interp* interp, int* pass, int* fail) {
+    EvalResult r = run(
+        "(block "
+        "  (define ddb-parallel-closure (deduce 'open 'memory)) "
+        "  (define [relation ddb-parallel-closure] edge-parallel-closure (src) (dst)) "
+        "  (define [relation ddb-parallel-closure] path-parallel-closure (src) (dst)) "
+        "  (deduce 'fact! edge-parallel-closure 1 2) "
+        "  (deduce 'fact! edge-parallel-closure 2 3) "
+        "  (deduce 'rule! (path-parallel-closure x y) (edge-parallel-closure x y)) "
+        "  (deduce 'rule! (path-parallel-closure x z) (path-parallel-closure x y) (edge-parallel-closure y z)) "
+        "  ddb-parallel-closure)",
+        interp
+    );
+
+    bool ok = !r.error.has_error &&
+              r.value != null &&
+              r.value.tag == FFI_HANDLE &&
+              r.value.ffi_val != null &&
+              r.value.ffi_val.lib_handle != null;
+
+    DeduceSccPlan plan = {};
+    defer deduce_scc_plan_free(&plan);
+
+    char* encoded = null;
+    usz encoded_len = 0;
+    defer if (encoded != null) mem::free(encoded);
+
+    DeduceSerializedComponentDeltaPayload payload = {};
+    defer deduce_serialized_component_delta_payload_release(&payload);
+
+    Value* expected_1_2 = null;
+    Value* expected_2_3 = null;
+    Value* expected_1_3 = null;
+    if (ok) {
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        Value* err = deduce_build_scc_plan(db, &plan, interp);
+        ok = err == null;
+        int path_idx = ok ? deduce_scc_find_predicate_index(plan.predicates, interp.symbols.intern("path-parallel-closure")) : -1;
+        ok = ok && path_idx >= 0 && (usz)path_idx < plan.predicate_component.len;
+        usz component_id = ok ? (usz)plan.predicate_component[(usz)path_idx] : 0;
+
+        if (ok) {
+            err = deduce_seminaive_compute_component_scratch_closure_payload(
+                db,
+                &plan,
+                component_id,
+                0,
+                &encoded,
+                &encoded_len,
+                interp
+            );
+            ok = err == null && encoded != null && encoded_len > 0;
+        }
+        if (ok) {
+            err = deduce_component_delta_payload_deserialize(encoded[0:encoded_len], &payload, interp);
+            ok = err == null;
+        }
+        if (ok) {
+            Value*[2] tuple_1_2 = { make_int(interp, 1), make_int(interp, 2) };
+            Value*[2] tuple_2_3 = { make_int(interp, 2), make_int(interp, 3) };
+            Value*[2] tuple_1_3 = { make_int(interp, 1), make_int(interp, 3) };
+            err = deduce_encode_value_vector_to_owned_string(tuple_1_2[..], &expected_1_2, interp);
+            if (err == null) err = deduce_encode_value_vector_to_owned_string(tuple_2_3[..], &expected_2_3, interp);
+            if (err == null) err = deduce_encode_value_vector_to_owned_string(tuple_1_3[..], &expected_1_3, interp);
+            ok = err == null && expected_1_2 != null && expected_2_3 != null && expected_1_3 != null;
+        }
+        if (ok) {
+            ok = payload.entry_count == 1 &&
+                 payload.entries != null &&
+                 payload.entries[0].predicate == interp.symbols.intern("path-parallel-closure") &&
+                 payload.entries[0].delta_set.additions.count == 3 &&
+                 payload.entries[0].delta_set.removals.count == 0 &&
+                 deduce_test_component_delta_set_has_tuple(
+                     &payload.entries[0].delta_set.additions,
+                     expected_1_2.str_chars[:expected_1_2.str_len]
+                 ) &&
+                 deduce_test_component_delta_set_has_tuple(
+                     &payload.entries[0].delta_set.additions,
+                     expected_2_3.str_chars[:expected_2_3.str_len]
+                 ) &&
+                 deduce_test_component_delta_set_has_tuple(
+                     &payload.entries[0].delta_set.additions,
+                     expected_1_3.str_chars[:expected_1_3.str_len]
+                 );
+        }
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce parallel worker-scratch closure computes serialized recursive fixpoint deltas");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce parallel worker-scratch closure computes serialized recursive fixpoint deltas (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printn("[FAIL] deduce parallel worker-scratch closure computes serialized recursive fixpoint deltas");
+        }
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_parallel_component_scratch_multi_atom_closure_test(Interp* interp, int* pass, int* fail) {
+    EvalResult r = run(
+        "(block "
+        "  (define ddb-parallel-multiatom (deduce 'open 'memory)) "
+        "  (define [relation ddb-parallel-multiatom] edge-parallel-multiatom (src) (dst)) "
+        "  (define [relation ddb-parallel-multiatom] path-parallel-multiatom (src) (dst)) "
+        "  (deduce 'fact! edge-parallel-multiatom 1 2) "
+        "  (deduce 'fact! edge-parallel-multiatom 2 3) "
+        "  (deduce 'fact! edge-parallel-multiatom 3 4) "
+        "  (deduce 'rule! (path-parallel-multiatom x y) (edge-parallel-multiatom x y)) "
+        "  (deduce 'rule! (path-parallel-multiatom x z) (path-parallel-multiatom x y) (path-parallel-multiatom y z)) "
+        "  ddb-parallel-multiatom)",
+        interp
+    );
+
+    bool ok = !r.error.has_error &&
+              r.value != null &&
+              r.value.tag == FFI_HANDLE &&
+              r.value.ffi_val != null &&
+              r.value.ffi_val.lib_handle != null;
+
+    DeduceSccPlan plan = {};
+    defer deduce_scc_plan_free(&plan);
+
+    char* encoded = null;
+    usz encoded_len = 0;
+    defer if (encoded != null) mem::free(encoded);
+
+    DeduceSerializedComponentDeltaPayload payload = {};
+    defer deduce_serialized_component_delta_payload_release(&payload);
+
+    Value* expected_1_2 = null;
+    Value* expected_2_3 = null;
+    Value* expected_3_4 = null;
+    Value* expected_1_3 = null;
+    Value* expected_2_4 = null;
+    Value* expected_1_4 = null;
+    if (ok) {
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        Value* err = deduce_build_scc_plan(db, &plan, interp);
+        ok = err == null;
+        int path_idx = ok ? deduce_scc_find_predicate_index(plan.predicates, interp.symbols.intern("path-parallel-multiatom")) : -1;
+        ok = ok && path_idx >= 0 && (usz)path_idx < plan.predicate_component.len;
+        usz component_id = ok ? (usz)plan.predicate_component[(usz)path_idx] : 0;
+
+        if (ok) {
+            err = deduce_seminaive_compute_component_scratch_closure_payload(
+                db,
+                &plan,
+                component_id,
+                0,
+                &encoded,
+                &encoded_len,
+                interp
+            );
+            ok = err == null && encoded != null && encoded_len > 0;
+        }
+        if (ok) {
+            err = deduce_component_delta_payload_deserialize(encoded[0:encoded_len], &payload, interp);
+            ok = err == null;
+        }
+        if (ok) {
+            Value*[2] tuple_1_2 = { make_int(interp, 1), make_int(interp, 2) };
+            Value*[2] tuple_2_3 = { make_int(interp, 2), make_int(interp, 3) };
+            Value*[2] tuple_3_4 = { make_int(interp, 3), make_int(interp, 4) };
+            Value*[2] tuple_1_3 = { make_int(interp, 1), make_int(interp, 3) };
+            Value*[2] tuple_2_4 = { make_int(interp, 2), make_int(interp, 4) };
+            Value*[2] tuple_1_4 = { make_int(interp, 1), make_int(interp, 4) };
+            err = deduce_encode_value_vector_to_owned_string(tuple_1_2[..], &expected_1_2, interp);
+            if (err == null) err = deduce_encode_value_vector_to_owned_string(tuple_2_3[..], &expected_2_3, interp);
+            if (err == null) err = deduce_encode_value_vector_to_owned_string(tuple_3_4[..], &expected_3_4, interp);
+            if (err == null) err = deduce_encode_value_vector_to_owned_string(tuple_1_3[..], &expected_1_3, interp);
+            if (err == null) err = deduce_encode_value_vector_to_owned_string(tuple_2_4[..], &expected_2_4, interp);
+            if (err == null) err = deduce_encode_value_vector_to_owned_string(tuple_1_4[..], &expected_1_4, interp);
+            ok = err == null &&
+                 expected_1_2 != null &&
+                 expected_2_3 != null &&
+                 expected_3_4 != null &&
+                 expected_1_3 != null &&
+                 expected_2_4 != null &&
+                 expected_1_4 != null;
+        }
+        if (ok) {
+            ok = payload.entry_count == 1 &&
+                 payload.entries != null &&
+                 payload.entries[0].predicate == interp.symbols.intern("path-parallel-multiatom") &&
+                 payload.entries[0].delta_set.additions.count == 6 &&
+                 payload.entries[0].delta_set.removals.count == 0 &&
+                 deduce_test_component_delta_set_has_tuple(
+                     &payload.entries[0].delta_set.additions,
+                     expected_1_2.str_chars[:expected_1_2.str_len]
+                 ) &&
+                 deduce_test_component_delta_set_has_tuple(
+                     &payload.entries[0].delta_set.additions,
+                     expected_2_3.str_chars[:expected_2_3.str_len]
+                 ) &&
+                 deduce_test_component_delta_set_has_tuple(
+                     &payload.entries[0].delta_set.additions,
+                     expected_3_4.str_chars[:expected_3_4.str_len]
+                 ) &&
+                 deduce_test_component_delta_set_has_tuple(
+                     &payload.entries[0].delta_set.additions,
+                     expected_1_3.str_chars[:expected_1_3.str_len]
+                 ) &&
+                 deduce_test_component_delta_set_has_tuple(
+                     &payload.entries[0].delta_set.additions,
+                     expected_2_4.str_chars[:expected_2_4.str_len]
+                 ) &&
+                 deduce_test_component_delta_set_has_tuple(
+                     &payload.entries[0].delta_set.additions,
+                     expected_1_4.str_chars[:expected_1_4.str_len]
+                 );
+        }
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce parallel worker-scratch closure computes serialized deltas for positive multi-atom recursive SCC rules");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce parallel worker-scratch closure computes serialized deltas for positive multi-atom recursive SCC rules (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printn("[FAIL] deduce parallel worker-scratch closure computes serialized deltas for positive multi-atom recursive SCC rules");
+        }
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_parallel_component_delta_apply_test(Interp* interp, int* pass, int* fail) {
+    EvalResult r = run(
+        "(block "
+        "  (define ddb-parallel-apply (deduce 'open 'memory)) "
+        "  (define [relation ddb-parallel-apply] edge-parallel-apply (src) (dst)) "
+        "  (define [relation ddb-parallel-apply] path-parallel-apply (src) (dst)) "
+        "  (deduce 'fact! edge-parallel-apply 1 2) "
+        "  (deduce 'fact! edge-parallel-apply 2 3) "
+        "  (deduce 'rule! (path-parallel-apply x y) (edge-parallel-apply x y)) "
+        "  (deduce 'rule! (path-parallel-apply x z) (path-parallel-apply x y) (edge-parallel-apply y z)) "
+        "  ddb-parallel-apply)",
+        interp
+    );
+
+    bool ok = !r.error.has_error &&
+              r.value != null &&
+              r.value.tag == FFI_HANDLE &&
+              r.value.ffi_val != null &&
+              r.value.ffi_val.lib_handle != null;
+
+    DeduceSccPlan plan = {};
+    defer deduce_scc_plan_free(&plan);
+
+    char* encoded = null;
+    usz encoded_len = 0;
+    defer if (encoded != null) mem::free(encoded);
+
+    DeduceSerializedComponentDeltaPayload payload = {};
+    defer deduce_serialized_component_delta_payload_release(&payload);
+
+    long applied = 0;
+    bool changed = false;
+    long tuple_count = -1;
+    if (ok) {
+        DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
+        Value* err = deduce_build_scc_plan(db, &plan, interp);
+        ok = err == null;
+        int path_idx = ok ? deduce_scc_find_predicate_index(plan.predicates, interp.symbols.intern("path-parallel-apply")) : -1;
+        ok = ok && path_idx >= 0 && (usz)path_idx < plan.predicate_component.len;
+        usz component_id = ok ? (usz)plan.predicate_component[(usz)path_idx] : 0;
+
+        if (ok) {
+            err = deduce_seminaive_compute_component_scratch_closure_payload(
+                db,
+                &plan,
+                component_id,
+                0,
+                &encoded,
+                &encoded_len,
+                interp
+            );
+            ok = err == null && encoded != null && encoded_len > 0;
+        }
+        if (ok) {
+            err = deduce_component_delta_payload_deserialize(encoded[0:encoded_len], &payload, interp);
+            ok = err == null;
+        }
+        if (ok) {
+            MdbTxn* txn = null;
+            int rc = mdb_txn_begin(db.env, null, 0, &txn);
+            ok = rc == MDB_SUCCESS && txn != null;
+            if (ok) {
+                err = deduce_apply_serialized_component_delta_payload(
+                    db,
+                    &plan,
+                    txn,
+                    &payload,
+                    &applied,
+                    &changed,
+                    interp
+                );
+                ok = err == null;
+            }
+            if (ok) {
+                rc = mdb_txn_commit(txn);
+                ok = rc == MDB_SUCCESS;
+                txn = null;
+            }
+            if (txn != null) mdb_txn_abort(txn);
+        }
+        if (ok) {
+            MdbTxn* txn = null;
+            int rc = mdb_txn_begin(db.env, null, MDB_RDONLY, &txn);
+            ok = rc == MDB_SUCCESS && txn != null;
+            MdbCursor* cursor = null;
+            if (ok) {
+                MdbDbi path_dbi = 0;
+                DeduceRelationSchema* schema = null;
+                ok = deduce_rule_open_existing_dbi(
+                    db,
+                    txn,
+                    interp.symbols.intern("path-parallel-apply"),
+                    &path_dbi,
+                    &schema,
+                    interp
+                ) && schema != null;
+                if (ok) {
+                    rc = mdb_cursor_open(txn, path_dbi, &cursor);
+                    ok = rc == MDB_SUCCESS && cursor != null;
+                }
+                if (ok) {
+                    MdbVal key = {};
+                    MdbVal data = {};
+                    tuple_count = 0;
+                    rc = mdb_cursor_get(cursor, &key, &data, MDB_FIRST);
+                    while (rc == MDB_SUCCESS) {
+                        tuple_count++;
+                        rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT);
+                    }
+                    ok = tuple_count == 3 &&
+                        schema.cardinality_estimate == 3 &&
+                        schema.distinct_estimate == 3;
+                }
+            }
+            if (cursor != null) mdb_cursor_close(cursor);
+            if (txn != null) mdb_txn_abort(txn);
+        }
+        if (ok) {
+            ok = payload.entry_count == 1 && applied == 3 && changed;
+        }
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce parallel worker-computed component deltas apply on the main thread");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] deduce parallel worker-computed component deltas apply on the main thread (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printn("[FAIL] deduce parallel worker-computed component deltas apply on the main thread");
+        }
+        (*fail)++;
+    }
+}
+
 fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
+    if (deduce_test_getenv("OMNI_DEDUCE_FORCE_ROW_DICT_OOM") != null) {
+        run_deduce_query_tests(interp, pass, fail);
+        return;
+    }
+
+    char* deduce_group_filter = deduce_test_getenv("OMNI_DEDUCE_GROUP_FILTER");
+    if (deduce_group_filter != null) {
+        bool matched = false;
+        if (deduce_group_filter_matches(deduce_group_filter, "parallel_component_scratch_pass")) {
+            run_deduce_parallel_component_scratch_pass_test(interp, pass, fail);
+            matched = true;
+        } else if (deduce_group_filter_matches(deduce_group_filter, "rule_head_reference_snapshot")) {
+            run_deduce_rule_head_reference_snapshot_test(interp, pass, fail);
+            matched = true;
+        }
+        if (!matched) {
+            io::printfn("[FAIL] deduce group filter matched no tests: %s", (ZString)deduce_group_filter);
+            (*fail)++;
+        }
+        return;
+    }
+
+    char* deduce_query_filter = deduce_test_getenv("OMNI_DEDUCE_QUERY_FILTER");
+    if (deduce_query_filter != null) {
+        run_deduce_query_tests(interp, pass, fail);
+        return;
+    }
+
     run_deduce_open_smoke_test(interp, pass, fail);
     run_deduce_namespaced_alias_smoke_test(interp, pass, fail);
     run_deduce_open_named_test(interp, pass, fail);
     run_deduce_durability_restart_test(interp, pass, fail);
+    run_deduce_materialized_intent_restart_test(interp, pass, fail);
+    run_deduce_materialized_refresh_restart_test(interp, pass, fail);
+    run_deduce_materialized_stale_restart_test(interp, pass, fail);
+    run_deduce_materialized_on_read_refresh_restart_test(interp, pass, fail);
+    run_deduce_materialized_on_read_stale_restart_test(interp, pass, fail);
+    run_deduce_materialized_selective_rule_install_restart_test(interp, pass, fail);
+    run_deduce_materialized_drop_restart_test(interp, pass, fail);
+    run_deduce_materialized_dematerialize_restart_test(interp, pass, fail);
     run_deduce_relation_attr_define_test(interp, pass, fail);
+    run_deduce_relation_attr_materialized_define_test(interp, pass, fail);
+    run_deduce_relation_attr_materialized_manual_define_test(interp, pass, fail);
+    run_deduce_relation_attr_materialized_on_read_define_test(interp, pass, fail);
+    run_deduce_relation_attr_materialized_schema_policy_surface_test(interp, pass, fail);
+    run_deduce_relation_attr_materialized_unknown_policy_test(interp, pass, fail);
+    run_deduce_relation_attr_check_define_test(interp, pass, fail);
+    run_deduce_relation_attr_unknown_attribute_test(interp, pass, fail);
     run_deduce_relation_attr_typed_role_schema_test(interp, pass, fail);
     run_deduce_relation_attr_unique_role_schema_test(interp, pass, fail);
     run_deduce_relation_attr_composite_unique_role_schema_test(interp, pass, fail);
@@ -738,11 +2116,21 @@ fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_long_relation_name_isolation_test(interp, pass, fail);
     run_deduce_long_open_path_isolation_test(interp, pass, fail);
     run_deduce_key_integrity_fact_tests(interp, pass, fail);
+    run_deduce_check_integrity_fact_tests(interp, pass, fail);
+    run_deduce_rule_head_integrity_tests(interp, pass, fail);
+    run_deduce_deferred_integrity_commit_tests(interp, pass, fail);
+    run_deduce_reference_retract_integrity_tests(interp, pass, fail);
+    run_deduce_reference_bulk_delete_integrity_tests(interp, pass, fail);
     run_deduce_command_void_return_tests(interp, pass, fail);
     run_deduce_transaction_tests(interp, pass, fail);
     run_deduce_clear_drop_tests(interp, pass, fail);
     run_deduce_legacy_alias_rejection_tests(interp, pass, fail);
     run_deduce_rule_validation_tests(interp, pass, fail);
+    run_deduce_parallel_component_delta_payload_roundtrip_test(interp, pass, fail);
+    run_deduce_parallel_component_scratch_pass_test(interp, pass, fail);
+    run_deduce_parallel_component_scratch_closure_test(interp, pass, fail);
+    run_deduce_parallel_component_scratch_multi_atom_closure_test(interp, pass, fail);
+    run_deduce_parallel_component_delta_apply_test(interp, pass, fail);
     setup_deduce_person_relation(interp);
     run_deduce_query_tests(interp, pass, fail);
 }

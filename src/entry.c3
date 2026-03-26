@@ -13,6 +13,9 @@ fn int main(int argc, char** argv) {
     idx = find_flag_index(argc, argv, "--language-ref", "--lang-ref", "--manual");
     if (idx >= 0) return print_language_reference();
 
+    idx = find_flag_index(argc, argv, "--describe");
+    if (idx >= 0) return run_describe_mode(argc, argv, idx);
+
     idx = find_flag_index(argc, argv, "--eval");
     if (idx >= 0) return run_eval_mode(argc, argv, idx);
 
@@ -21,6 +24,9 @@ fn int main(int argc, char** argv) {
 
     idx = find_flag_index(argc, argv, "--bind");
     if (idx >= 0) return run_bind(argc, argv, idx);
+
+    idx = find_flag_index(argc, argv, "--fmt");
+    if (idx >= 0) return run_fmt_mode(argc, argv, idx);
 
     idx = find_flag_index(argc, argv, "--check");
     if (idx >= 0) return run_check_mode(argc, argv, idx);
@@ -44,7 +50,8 @@ fn int main(int argc, char** argv) {
     idx = find_flag_index(argc, argv, "--test-suite");
     if (idx >= 0) {
         char* suite_name = idx + 1 < argc ? argv[idx + 1] : null;
-        return run_test_mode_with_self_for_suite(argv[0], suite_name);
+        bool json = find_flag_index(argc, argv, "--json") >= 0;
+        return run_test_mode_with_self_for_suite(argv[0], suite_name, json);
     }
 
     idx = find_flag_index(argc, argv, "--repl", "-repl");

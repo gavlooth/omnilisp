@@ -205,7 +205,7 @@
   (println (format "d.['x]=%s" d.['x])))
 
 ;; [alias]
-(println (format "Timestamp alias: %s" (is? 100 'Int)))
+(println (format "Timestamp alias: %s" (is? 100 'Integer)))
 (println (format "Price alias: %s" (is? 3.14 'Double)))
 
 ;; string->number / number->string / symbol->string

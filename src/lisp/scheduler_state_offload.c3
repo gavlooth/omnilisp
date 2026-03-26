@@ -128,6 +128,8 @@ fn Value* scheduler_build_offload_work(Value* job, OffloadWork* work, Interp* in
     work.int_arg = 0;
     work.int_arg2 = 0;
     work.shared = null;
+    work.custom_fn = null;
+    work.custom_ctx = null;
 
     if (scheduler_str_eq(op_name, "sleep-ms")) {
         if (!is_cons(arg_list) || !is_int(arg_list.cons_val.car)) {

@@ -204,6 +204,8 @@ enum OffloadOp : char {
     OFFLOAD_TLS_CLOSE
 }
 
+alias OffloadCustomFn = fn OffloadCompletion*(OffloadWork);
+
 enum OffloadResultKind : char {
     OFFLOAD_RES_NIL,
     OFFLOAD_RES_INT,
@@ -219,6 +221,8 @@ struct OffloadWork {
     long int_arg;
     long int_arg2;
     SharedHandle* shared;
+    OffloadCustomFn custom_fn;
+    void* custom_ctx;
 }
 
 struct OffloadCompletion {

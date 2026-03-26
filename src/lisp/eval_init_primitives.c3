@@ -248,11 +248,14 @@ fn void register_regular_primitives_io_and_deduce(Interp* interp) {
         { "__raw-dns-resolve", &prim_dns_resolve, 1 },
         { "__raw-async-sleep", &prim_async_sleep, 1 },
         { "__raw-offload", &prim_offload, 1 },
+        { "__raw-offload-batch", &prim_offload_batch, 1 },
         { "__raw-thread-spawn", &prim_thread_spawn, 1 },
+        { "__raw-thread-spawn-batch", &prim_thread_spawn_batch, 1 },
         { "__raw-thread-join", &prim_thread_join, 1 },
         { "__raw-thread-join-timeout", &prim_thread_join_timeout, 1 },
         { "__raw-thread-cancel", &prim_thread_cancel, 1 },
         { "__raw-task-spawn", &prim_task_spawn, 1 },
+        { "__raw-task-spawn-batch", &prim_task_spawn_batch, 1 },
         { "__raw-task-join", &prim_task_join, 1 },
         { "__raw-task-join-timeout", &prim_task_join_timeout, 1 },
         { "__raw-task-cancel", &prim_task_cancel, 1 },
@@ -283,12 +286,17 @@ fn void register_regular_primitives_io_and_deduce(Interp* interp) {
         { "deduce/count", &prim_deduce_ns_count, -1 },
         { "deduce/match", &prim_deduce_ns_match, -1 },
         { "deduce/fact!", &prim_deduce_ns_fact, -1 },
+        // Canonical cleanup/admin verbs: retract! (tuple), clear! (contents), drop! (lifecycle).
         { "deduce/retract!", &prim_deduce_ns_retract, -1 },
         { "deduce/clear!", &prim_deduce_ns_clear, -1 },
         { "deduce/drop!", &prim_deduce_ns_drop, -1 },
         { "deduce/rule!", &prim_deduce_ns_rule, -1 },
         { "deduce/explain", &prim_deduce_ns_explain, -1 },
+        { "deduce/why-result", &prim_deduce_ns_why_result, -1 },
         { "deduce/analyze", &prim_deduce_ns_analyze, -1 },
+        { "deduce/materialize!", &prim_deduce_ns_materialize, -1 },
+        { "deduce/dematerialize!", &prim_deduce_ns_dematerialize, -1 },
+        { "deduce/refresh!", &prim_deduce_ns_refresh, -1 },
         { "__define-relation", &prim_define_relation, 1 },
         // Scheduler
         { "spawn", &prim_spawn, 1 },
@@ -313,7 +321,7 @@ fn void register_regular_primitives(Interp* interp) {
 }
 
 fn void register_effect_fast_paths(Interp* interp) {
-    const FAST_PATH_COUNT = 52;
+    const FAST_PATH_COUNT = 55;
     FastPathReg[FAST_PATH_COUNT] fast_paths = {
         { "io/print",      "__raw-print" },
         { "io/println",     "__raw-println" },
@@ -352,11 +360,14 @@ fn void register_effect_fast_paths(Interp* interp) {
         { "io/dns-resolve", "__raw-dns-resolve" },
         { "io/async-sleep", "__raw-async-sleep" },
         { "io/offload",     "__raw-offload" },
+        { "io/offload-batch", "__raw-offload-batch" },
         { "io/thread-spawn","__raw-thread-spawn" },
+        { "io/thread-spawn-batch","__raw-thread-spawn-batch" },
         { "io/thread-join", "__raw-thread-join" },
         { "io/thread-join-timeout", "__raw-thread-join-timeout" },
         { "io/thread-cancel", "__raw-thread-cancel" },
         { "io/task-spawn","__raw-task-spawn" },
+        { "io/task-spawn-batch","__raw-task-spawn-batch" },
         { "io/task-join", "__raw-task-join" },
         { "io/task-join-timeout", "__raw-task-join-timeout" },
         { "io/task-cancel", "__raw-task-cancel" },

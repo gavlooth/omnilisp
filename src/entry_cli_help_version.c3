@@ -3,7 +3,7 @@ module main;
 import std::io;
 
 fn int print_help() {
-    io::printn("omni 0.1.5 — A Lisp with modern semantics");
+    io::printn("omni 0.2.0 — A Lisp with modern semantics");
     io::printn("");
     io::printn("Usage: omni [options] [script.omni]");
     io::printn("");
@@ -13,10 +13,12 @@ fn int print_help() {
     io::printn("  omni --repl                       Start the REPL (explicit)");
     io::printn("  omni --repl --json                Start structured JSON REPL transport");
     io::printn("  omni --eval '<expr>' [--json]     Evaluate one Omni expression");
-    io::printn("  omni --test-suite <all|stack|scope|lisp>  Run one test suite (default: all)");
+    io::printn("  omni --describe <symbol> [--json] Describe a core symbol/help entry");
+    io::printn("  omni --test-suite <all|stack|scope|lisp> [--json]  Run one test suite (default: all)");
     io::printn("");
     io::printn("Building:");
     io::printn("  omni --check <file> [--json]      Parse/check Omni source without executing it");
+    io::printn("  omni --fmt [--write|--check] <file>  Apply the conservative formatter");
     io::printn("  omni --build <file> [-o output]   AOT compile to standalone binary");
     io::printn("  omni --compile <file> <out.c3>    Compile Omni source to C3");
     io::printn("");
@@ -39,6 +41,6 @@ fn int print_help() {
 }
 
 fn int print_version() {
-    io::printn("omni 0.1.5");
+    io::printn("omni 0.2.0");
     return 0;
 }

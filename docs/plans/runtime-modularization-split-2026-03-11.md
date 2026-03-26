@@ -17,7 +17,9 @@ Applied in largest-first order:
 2. `eval_dispatch_types.c3`
 - extracted dispatch match/type-check hot path into:
   - `src/lisp/eval_dispatch_match.c3`
-- retained type registry + formatting helpers in:
+- extracted dispatch/match diagnostics formatting into:
+  - `src/lisp/eval_dispatch_match_errors.c3`
+- retained type registry + type-query surface in:
   - `src/lisp/eval_dispatch_types.c3`
 
 3. `scheduler_offload_worker.c3`

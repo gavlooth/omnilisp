@@ -1,6 +1,7 @@
 local repl = require("omni.repl")
 local lsp = require("omni.lsp")
 local treesitter = require("omni.treesitter")
+local formatter = require("omni.formatter")
 
 local M = {}
 
@@ -13,6 +14,22 @@ local defaults = {
     mode = "json",
     cmd = { "omni", "--eval", "--json" },
     fallback_to_repl = true,
+    annotations = {
+      enabled = false,
+      max_length = 160,
+      labels = {
+        form = true,
+        root = true,
+        call = true,
+        block = true,
+        declaration = true,
+        line = true,
+      },
+      hl = {
+        ok = "DiagnosticOk",
+        error = "DiagnosticError",
+      },
+    },
   },
   output = {
     name = "Omni REPL",
@@ -88,6 +105,10 @@ local defaults = {
       folds = "<localleader>lz",
       expand_selection = "<localleader>lv",
     },
+  },
+  formatter = {
+    name = "omni_fmt",
+    cmd = { "omni", "--fmt", "--write", "$FILENAME" },
   },
   treesitter = {
     register = true,
@@ -640,6 +661,10 @@ local function create_commands()
     end
   end, {})
 
+  vim.api.nvim_create_user_command("OmniConformSetupSpec", function()
+    print(vim.inspect(formatter.conform_setup_spec(config)))
+  end, {})
+
   vim.api.nvim_create_user_command("OmniLspHover", function()
     call_lsp("hover")
   end, {})
@@ -1037,6 +1062,18 @@ end
 
 function M.config()
   return config
+end
+
+function M.conform_formatter()
+  return formatter.conform_formatter(config)
+end
+
+function M.conform_formatters_by_ft()
+  return formatter.conform_formatters_by_ft(config)
+end
+
+function M.conform_setup_spec()
+  return formatter.conform_setup_spec(config)
 end
 
 return M

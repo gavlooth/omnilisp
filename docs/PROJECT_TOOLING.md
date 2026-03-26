@@ -1,6 +1,6 @@
 # Omni Lisp — Project Tooling
 
-**Last updated:** 2026-03-18
+**Last updated:** 2026-03-26
 
 Omni provides CLI commands for creating projects and auto-generating FFI bindings from C headers.
 
@@ -52,6 +52,121 @@ These packages are intentionally thin. They reuse the installed `omni` binary
 where possible instead of carrying a second parser/runtime stack inside editor
 plugins.
 
+### Editor Tooling Bootstrap (Roadmap Slice)
+
+Minimal setup from a repo checkout:
+
+```bash
+# Omni CLI availability
+omni --version
+```
+
+Tree-sitter grammar sanity check:
+
+```bash
+cd tooling/tree-sitter-omni
+tree-sitter generate
+tree-sitter parse examples/sample.omni
+```
+
+Run the first-party LSP server over stdio:
+
+```bash
+cd /home/heefoo/Documents/code/Omni
+python3 tooling/omni-lsp/omni_lsp.py
+```
+
+Neovim plugin wiring:
+
+```lua
+{
+  dir = "/home/heefoo/Documents/code/Omni/tooling/omni-nvim",
+  ft = { "omni" },
+  config = function()
+    require("omni").setup({
+      cmd = { "omni", "--repl", "--json" },
+      repl = { mode = "json" },
+      eval = { cmd = { "omni", "--eval", "--json" } },
+      lsp = { auto_setup = true },
+    })
+  end,
+}
+```
+
+Related package docs:
+- `tooling/tree-sitter-omni/README.md`
+- `tooling/omni-lsp/README.md`
+- `tooling/omni-nvim/README.md`
+
+---
+
+## Formatting and Indentation Policy
+
+Current policy is intentionally phased:
+
+- phase 1: indentation-first tooling (`omni-lsp` document/range/on-type
+  indentation behavior),
+- phase 2: canonical full formatter behind a dedicated CLI entrypoint
+  (`omni --fmt` or equivalent) once rule coverage and compatibility are stable.
+
+Canonical formatting rules to preserve across editor tooling:
+
+- special forms:
+  - keep head symbol first (`if`, `let`, `block`, `handle`, `match`, etc.),
+  - single-line forms may stay single-line when concise,
+  - multiline forms use one argument/form per line with aligned indentation.
+- vector/dict literals:
+  - keep inline when short and legible,
+  - for multiline literals, one element/entry per line,
+  - align closing delimiter with the opening form indentation.
+- `handle` clauses:
+  - one clause per line/block,
+  - clause body forms are indented under the clause head,
+  - preserve explicit `(resolve ...)` placement instead of collapsing handler
+    control-flow forms into one line.
+- type/method declarations:
+  - keep declaration head and name grouped for readability,
+  - place parameter/type annotations consistently with one parameter per line in
+    multiline declarations,
+  - avoid reflow that obscures dispatch-relevant annotation structure.
+- macro/template blocks:
+  - keep `syntax-match` and `template` structures vertically explicit,
+  - keep each pattern arm visually isolated,
+  - preserve `(insert ...)` and `(splice ...)` boundaries without inline
+    collapsing that harms readability.
+
+Implementation note:
+- the current `omni --fmt` path is intentionally conservative:
+  normalize leading indentation from structural depth, align wrapped
+  `export`/`export-from` payloads, align wrapped `let` binding lists, preserve
+  repo-style `if` branch indentation including nested `if` bodies that start
+  later in a clause line, keep block-style `when` / `unless` / `raise` /
+  `checkpoint` bodies out of generic continuation alignment, keep inline block
+  forms inside `let` binding lists aligned to their binding context, keep
+  higher-order collection-call lambda bodies (`map` / `foldl` / `foldr` /
+  `filter` / `find` / `partition` / `sort-by` / `for-each`) aligned from the
+  lambda's own opening column, keep multiline `Coroutine (lambda ...)` bodies
+  on the current in-tree wrapper-lambda layout, keep multiline clause bodies
+  and inline dict/vector payload entries aligned from their opening delimiter
+  in current `match` arms and data literals, align wrapped generic call and
+  pipeline continuations under their first argument, trim trailing whitespace,
+  preserve blank lines, preserve original line-ending style, and avoid
+  aggressive intra-line rewrites.
+
+---
+
+## Validation Lanes
+
+Keep validation scope aligned with the change family:
+
+- `memory-lifetime-smoke`, `memory-lifetime-bench`, `memory-lifetime-soak`,
+  and `memory-stress` are the container-bound lanes for boundary/lifetime
+  changes.
+- `allocator-validation` and `allocator-bench` are separate lanes for AST
+  allocator correctness and throughput work.
+- Syntax/compiler-only changes should stay on their own non-memory lane and do
+  not implicitly require memory-ownership coverage.
+
 ---
 
 ## CLI Commands
@@ -69,8 +184,50 @@ Current behavior:
 
 - does not execute user code,
 - returns exit code `0` for clean input,
-- returns non-zero for syntax/read failures,
+- returns non-zero for syntax, lowering, and read failures,
 - `--json` emits structured diagnostics with 0-based ranges.
+
+### `--fmt` — Apply the Conservative Formatter
+
+```bash
+omni --fmt script.omni
+omni --fmt --write script.omni
+omni --fmt --check script.omni
+```
+
+Runs Omni's current first-party formatter contract over one source file.
+
+Current behavior:
+
+- default mode prints formatted source to stdout,
+- `--write` rewrites the file in place,
+- `--check` prints nothing and returns `0` when the file is already formatted,
+  `1` when formatting changes would be applied,
+- formatting is intentionally conservative:
+  - normalize leading indentation from structural depth,
+  - align wrapped `export` / `export-from` payload lines,
+  - align wrapped `let` binding-list continuation lines,
+  - preserve repo-style `if` branch indentation, including nested `if` bodies
+    that begin later in a clause line,
+  - keep `when` / `unless` / `raise` / `checkpoint` bodies on block-style
+    indentation instead of treating them as generic continuations,
+  - keep inline block forms inside `let` binding lists aligned to their
+    binding context,
+  - keep multiline higher-order lambda bodies aligned from the lambda's own
+    opening column for current in-tree collection calls such as `map`,
+    `foldl`, `foldr`, `filter`, `find`, `partition`, `sort-by`, and
+    `for-each`,
+  - keep multiline `Coroutine (lambda ...)` bodies on the current in-tree
+    wrapper-lambda layout instead of flattening them toward generic lambda
+    indentation,
+  - keep multiline clause bodies and inline dict/vector payload entries aligned
+    from their opening delimiter in current `match` arms and data literals,
+  - align wrapped generic call and pipeline continuation lines under their
+    first argument,
+  - trim trailing whitespace,
+  - preserve blank lines,
+  - preserve the source file's existing newline style (`LF` vs `CRLF`),
+  - avoid aggressive intra-line rewrites.
 
 ### `--eval` — Evaluate One Expression
 
@@ -87,6 +244,53 @@ Current behavior:
 - returns rendered value output in text mode,
 - returns structured success/error payloads in `--json` mode,
 - returns non-zero on evaluation failure.
+
+### `--describe` — Symbol Help Surface
+
+```bash
+omni --describe define
+omni --describe --json define
+```
+
+Returns first-party help for core special forms and selected builtin symbols.
+
+Current behavior:
+
+- text mode prints symbol, kind, and documentation,
+- `--json` emits machine-readable payload:
+  - `ok`,
+  - `symbol`,
+  - `kind`,
+  - `documentation`,
+  - `error` for unknown symbols.
+- returns exit code `0` for known symbols and non-zero for unknown/usage errors.
+
+### `--test-suite` — Structured Test Execution
+
+```bash
+omni --test-suite all
+omni --test-suite all --json
+```
+
+`--json` emits one machine-readable payload that includes per-suite pass/fail and exit
+code:
+
+- `ok` (`true`/`false`)
+- `requested_suite`
+- `suites` array with:
+  - `name`
+  - `pass`
+  - `fail`
+  - `code` (`0` success, `1` suite failure)
+- `totals` object with aggregate counters and final status code
+
+Current behavior:
+
+- JSON mode runs the same suite selection semantics as text mode:
+  - `all` (default when omitted), `stack`, `scope`, `lisp`
+- non-JSON mode keeps the existing human output
+- returns non-zero on suite failures, same as text mode
+- invalid suite selection still returns exit code `2`
 
 ### `--repl --json` — Structured Session Transport
 
@@ -125,10 +329,15 @@ selection from normal suite failure.
 - `--eval`
   - `0` on successful evaluation
   - `1` on usage or evaluation failure
+- `--describe`
+  - `0` on known symbol
+  - `1` on unknown symbol or usage failure
 - `--test-suite`
   - `0` on success
   - `1` on suite failure or stack-affinity harness failure
   - `2` on invalid suite name
+  - `--json` returns the same exit status semantics plus the JSON envelope:
+    - top-level `code` inside `totals`
 - `--build`, `--bind`, `--compile`, `--init`, `--repl`, `--gen-e2e`,
   `--language-ref`, `--version`, and `--help`
   - `0` on success
@@ -170,6 +379,25 @@ The generated `src/main.omni` contains a hello-world program:
 ```lisp
 (println "Hello from myproject!")
 ```
+
+Recommended editor/tooling setup after `--init`:
+
+```bash
+cd myproject
+omni --check src/main.omni
+```
+
+If developing from this repo checkout, then wire first-party tooling from
+`tooling/`:
+
+- Tree-sitter grammar: `tooling/tree-sitter-omni/`
+- LSP server: `tooling/omni-lsp/omni_lsp.py`
+- Neovim plugin: `tooling/omni-nvim/`
+
+For exact setup snippets, use:
+- `docs/PROJECT_TOOLING.md` (`Editor Tooling Bootstrap (Roadmap Slice)`)
+- `tooling/omni-lsp/README.md`
+- `tooling/omni-nvim/README.md`
 
 ### `--bind` — Generate FFI Bindings
 
@@ -350,23 +578,38 @@ This mode runs each capped command in a constrained container with:
 Default policy:
 - Docker-bound execution for gate scripts when run outside validation containers.
 - Max resource envelope of 30% host memory + 30% host CPUs per capped command (CPU and memory overrides are clamped to this maximum).
-- Host-side sliced Lisp runs are intentionally restricted by ownership lane:
-  - explicit non-memory slices (for example `advanced`, `compiler`, `list-closure`, `json`) may run directly on the host.
-  - explicit memory/allocator ownership slices (`memory-lifetime`, `memory-lifetime-smoke`, `memory-lifetime-policy`, `memory-lifetime-soak`, `memory-lifetime-bench`, `memory-stress`, `allocator-validation`, `allocator-bench`) require `scripts/run_validation_container.sh`.
-- Contributor rule: choose test lanes by ownership of the changed subsystem, not convenience bundling.
+- Host-side sliced Lisp runs are intentionally restricted by subsystem ownership:
+  - boundary/lifetime ownership changes must use `scripts/run_validation_container.sh` for the minimum required ownership lane (`memory-lifetime-smoke`) and for any broader ownership lane (`memory-lifetime-policy`, `memory-lifetime-bench`, `memory-lifetime-soak`, `memory-stress`).
+  - AST allocator ownership changes use allocator lanes, not boundary/lifetime lanes: run `allocator-validation` for non-benchmark correctness and add `allocator-bench` only when parser/compiler/macro allocation benchmarks or throughput claims changed.
+  - syntax/compiler-only work that does not touch boundary/lifetime or allocator ownership paths should stay on explicit non-memory lanes (for example `advanced`, `compiler`, `list-closure`, `json`) and does not require `memory-lifetime*` or allocator-lane coverage for contributor parity.
+- Deprecated `OMNI_LISP_TEST_SLICE` aliases (`memory-soak`, `syntax`) are rejected by `src/lisp/tests_slice_policy.c3`; use the explicit slice names above instead.
+- Contributor rule: choose the narrowest lane that owns the changed subsystem; do not bundle memory/allocator ownership lanes into syntax/compiler-only work for convenience.
 
-Slice-aware run profiles (container-first):
+Slice-aware run profiles:
 
-- `basic` / `memory-lifetime` / `memory-lifetime-smoke` / `memory-lifetime-policy` / `memory-lifetime-bench`:
-  - memory-boundary correctness coverage by ownership family.
+- `memory-lifetime` / `memory-lifetime-smoke` / `memory-lifetime-policy`:
+  - boundary/scoping/coroutine ownership correctness and boundary-policy contract coverage.
+  - this is the minimum container path for boundary/lifetime changes.
+  - run via `scripts/run_validation_container.sh`.
+- `memory-lifetime-bench` / `memory-lifetime-soak` / `memory-stress`:
+  - broader ownership perf/stress lanes for boundary/lifetime work.
+  - opt in only when the touched change owns that risk surface.
   - run via `scripts/run_validation_container.sh`.
 - `allocator-validation`:
-  - non-benchmark `AstArena` correctness checks, no benchmark flags required.
+  - non-benchmark `AstArena` correctness checks, separate from boundary/lifetime ownership coverage.
+  - run via `scripts/run_validation_container.sh`.
 - `allocator-bench`:
   - AST parser/compiler/macro throughput + allocation benchmarks.
+  - separate from boundary/lifetime correctness lanes; add it only when benchmark-sensitive allocator behavior changed.
+  - run via `scripts/run_validation_container.sh`.
   - requires benchmark env flags (`OMNI_AST_ARENA_BENCH` and friends).
+- `basic`:
+  - broad bounded integration smoke that may exercise ownership-sensitive paths.
+  - run via `scripts/run_validation_container.sh` when you intentionally want that broader integration lane.
+  - do not treat it as required for syntax/compiler-only changes.
 - non-memory syntax/runtime lanes (for example `advanced`, `compiler`, `list-closure`, etc.):
-  - safe to run independently by their own slice.
+  - safe to run independently on the host when no boundary/lifetime or allocator ownership path changed.
+  - do not add `memory-lifetime*` or allocator lanes unless the change actually owns those subsystems.
 
 To include benchmark-adjacent lanes in global gates, opt in explicitly:
 
@@ -483,15 +726,8 @@ flows:
 
 ### Backlog Freshness Rule
 
-The post-completion backlog is validated by:
-
-```bash
-bash scripts/check_post_complete_backlog_freshness.sh
-```
-
-The check fails CI when unchecked entries in
-`docs/plans/post-complete-backlog.md` have not been updated within one
-release cycle relative to `memory/CHANGELOG.md`.
+`TODO.md` is now the single live backlog and should be updated directly when
+unfinished work changes.
 
 Tunable knobs:
 
@@ -616,7 +852,7 @@ Running `--bind` produces one `.omni` file per dependency in `lib/ffi/`.
 
 - A `module` with an `export` list of all bound functions
 - A `_lib` handle opened via `ffi-open`
-- Each function gets typed parameters (`^Integer`, `^Double`, `^String`, `^Pointer`) and a body calling `ffi-call` with the appropriate type annotations (`^Int` remains a shorthand alias)
+- Each function gets typed parameters (`^Integer`, `^Double`, `^String`, `^Pointer`) and a body calling `ffi-call` with canonical type annotations
 - C `snake_case` names are converted to Omni `kebab-case` (e.g., `string_length` becomes `string-length`)
 - Variadic C functions are skipped with a comment (Omni's FFI doesn't support variadic calls)
 
@@ -643,7 +879,7 @@ The binding generator uses libclang to resolve types (including typedefs) and ma
 
 | C Type | Omni FFI Symbol | Omni Type Annotation | Notes |
 |--------|----------------|---------------------|-------|
-| `int`, `long`, `unsigned int`, `unsigned long` | `'int` | `^Integer` | All integer-width types (`^Int` shorthand supported) |
+| `int`, `long`, `unsigned int`, `unsigned long` | `'int` | `^Integer` | All integer-width types |
 | `size_t`, `ssize_t` | `'int` | `^Integer` | Resolved via typedef |
 | `enum` types | `'int` | `^Integer` | Enums are integers |
 | `float`, `double` | `'double` | `^Double` | All floating-point types |

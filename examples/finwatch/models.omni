@@ -15,15 +15,15 @@
 (define [type] Quote
   (^String symbol)
   (^Double price)
-  (^Int    ts))
+  (^Integer    ts))
 
 ;; A Hacker News story used as a financial news item.
 ;; Dot access: n.id  n.title  n.score  n.ts
 (define [type] NewsItem
-  (^Int    id)
+  (^Integer    id)
   (^String title)
-  (^Int    score)
-  (^Int    ts))
+  (^Integer    score)
+  (^Integer    ts))
 
 ;; A user-supplied portfolio position: how many units at what average cost.
 ;; Dot access: h.symbol  h.qty  h.cost

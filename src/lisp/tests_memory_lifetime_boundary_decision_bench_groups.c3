@@ -42,6 +42,15 @@ fn Value* boundary_bench_make_int_array(Interp* interp, usz len, long tail_delta
     return arr;
 }
 
+fn Value* boundary_bench_make_mixed_nested_fixture(Interp* interp, long tail_delta = 0) {
+    Value* nested_list = boundary_bench_make_nested_int_list(interp, EQUALITY_BENCH_NESTED_LIST_DEPTH / 2, tail_delta);
+    Value* nested_array = boundary_bench_make_int_array(interp, EQUALITY_BENCH_ARRAY_LENGTH / 2, tail_delta);
+    if (nested_list == null || nested_array == null) return null;
+
+    Value* pair = make_cons(interp, nested_list, make_cons(interp, nested_array, make_nil(interp)));
+    return make_cons(interp, pair, make_cons(interp, make_nil(interp), make_nil(interp)));
+}
+
 fn void boundary_bench_accumulate_equality_workspace(
     EqualityWorkspaceStats* total,
     EqualityWorkspaceStats sample
@@ -72,11 +81,15 @@ fn void run_memory_lifetime_boundary_benchmarks(Interp* interp) {
     long equality_list_false_ms = 0;
     long equality_array_true_ms = 0;
     long equality_array_false_ms = 0;
+    long equality_mixed_true_ms = 0;
+    long equality_mixed_false_ms = 0;
 
     usz equality_list_true_ok = 0;
     usz equality_list_false_ok = 0;
     usz equality_array_true_ok = 0;
     usz equality_array_false_ok = 0;
+    usz equality_mixed_true_ok = 0;
+    usz equality_mixed_false_ok = 0;
     bool equality_fixture_ok = false;
     EqualityWorkspaceStats equality_workspace = {};
 
@@ -298,13 +311,19 @@ fn void run_memory_lifetime_boundary_benchmarks(Interp* interp) {
         Value* array_left = boundary_bench_make_int_array(interp, EQUALITY_BENCH_ARRAY_LENGTH);
         Value* array_right = boundary_bench_make_int_array(interp, EQUALITY_BENCH_ARRAY_LENGTH);
         Value* array_mismatch = boundary_bench_make_int_array(interp, EQUALITY_BENCH_ARRAY_LENGTH, 1);
+        Value* mixed_left = boundary_bench_make_mixed_nested_fixture(interp);
+        Value* mixed_right = boundary_bench_make_mixed_nested_fixture(interp);
+        Value* mixed_mismatch = boundary_bench_make_mixed_nested_fixture(interp, 1);
 
         equality_fixture_ok = list_left != null &&
             list_right != null &&
             list_mismatch != null &&
             array_left != null &&
             array_right != null &&
-            array_mismatch != null;
+            array_mismatch != null &&
+            mixed_left != null &&
+            mixed_right != null &&
+            mixed_mismatch != null;
 
         if (equality_fixture_ok) {
             long start_ms = boundary_bench_now_ms();
@@ -338,12 +357,30 @@ fn void run_memory_lifetime_boundary_benchmarks(Interp* interp) {
                 if (!eq) equality_array_false_ok++;
                 boundary_bench_accumulate_equality_workspace(&equality_workspace, stats);
             }
+            long mixed_true_start_ms = boundary_bench_now_ms();
+
+            for (usz i = 0; i < EQUALITY_BENCH_ITERS; i++) {
+                EqualityWorkspaceStats stats = {};
+                bool eq = values_equal_with_workspace_stats(mixed_left, mixed_right, &stats);
+                if (eq) equality_mixed_true_ok++;
+                boundary_bench_accumulate_equality_workspace(&equality_workspace, stats);
+            }
+            long mixed_true_done_ms = boundary_bench_now_ms();
+
+            for (usz i = 0; i < EQUALITY_BENCH_ITERS; i++) {
+                EqualityWorkspaceStats stats = {};
+                bool eq = values_equal_with_workspace_stats(mixed_left, mixed_mismatch, &stats);
+                if (!eq) equality_mixed_false_ok++;
+                boundary_bench_accumulate_equality_workspace(&equality_workspace, stats);
+            }
             long end_ms = boundary_bench_now_ms();
 
             equality_list_true_ms = list_true_done_ms > start_ms ? list_true_done_ms - start_ms : 0;
             equality_list_false_ms = list_false_done_ms > list_true_done_ms ? list_false_done_ms - list_true_done_ms : 0;
             equality_array_true_ms = array_true_done_ms > list_false_done_ms ? array_true_done_ms - list_false_done_ms : 0;
-            equality_array_false_ms = end_ms > array_true_done_ms ? end_ms - array_true_done_ms : 0;
+            equality_array_false_ms = mixed_true_start_ms > array_true_done_ms ? mixed_true_start_ms - array_true_done_ms : 0;
+            equality_mixed_true_ms = mixed_true_done_ms > mixed_true_start_ms ? mixed_true_done_ms - mixed_true_start_ms : 0;
+            equality_mixed_false_ms = end_ms > mixed_true_done_ms ? end_ms - mixed_true_done_ms : 0;
         }
     }
 
@@ -372,7 +409,7 @@ fn void run_memory_lifetime_boundary_benchmarks(Interp* interp) {
         (long)splice_tail_ok
     );
     io::printfn(
-        "OMNI_BENCH_SUMMARY suite=equality_nested_workspace iters=%d fixture_ok=%d list_depth=%d array_len=%d list_true_ms=%d list_true_ok=%d list_false_ms=%d list_false_ok=%d array_true_ms=%d array_true_ok=%d array_false_ms=%d array_false_ok=%d stack_growth=%d seen_growth=%d stack_bytes=%d seen_bytes=%d",
+        "OMNI_BENCH_SUMMARY suite=equality_nested_workspace iters=%d fixture_ok=%d list_depth=%d array_len=%d list_true_ms=%d list_true_ok=%d list_false_ms=%d list_false_ok=%d array_true_ms=%d array_true_ok=%d array_false_ms=%d array_false_ok=%d mixed_true_ms=%d mixed_true_ok=%d mixed_false_ms=%d mixed_false_ok=%d stack_growth=%d seen_growth=%d stack_bytes=%d seen_bytes=%d",
         (long)EQUALITY_BENCH_ITERS,
         equality_fixture_ok ? 1 : 0,
         (long)EQUALITY_BENCH_NESTED_LIST_DEPTH,
@@ -385,6 +422,10 @@ fn void run_memory_lifetime_boundary_benchmarks(Interp* interp) {
         (long)equality_array_true_ok,
         equality_array_false_ms,
         (long)equality_array_false_ok,
+        equality_mixed_true_ms,
+        (long)equality_mixed_true_ok,
+        equality_mixed_false_ms,
+        (long)equality_mixed_false_ok,
         (long)equality_workspace.stack_heap_growths,
         (long)equality_workspace.seen_heap_growths,
         (long)equality_workspace.stack_heap_bytes,

@@ -26,6 +26,7 @@ That choice keeps the grammar resilient while the parser continues to evolve.
 - `queries/locals.scm`: minimal binding/scope hints
 - `queries/textobjects.scm`: structural captures for calls, blocks, declarations, and comments
 - `queries/folds.scm`: fold regions for list-style Omni forms
+- `queries/indents.scm`: structural indentation for bracketed Omni forms
 - `tree-sitter.json`: grammar metadata for editor integrations
 
 ## Generate
@@ -40,7 +41,24 @@ tree-sitter generate
 ```bash
 cd tooling/tree-sitter-omni
 printf "(define (inc x) (+ x 1))\n(handle (signal 'ask 1) (ask v (resolve (+ v 1))))\n" > examples/sample.omni
-tree-sitter parse examples/sample.omni
+tree-sitter parse --rebuild examples/sample.omni
+```
+
+## Corpus Tests
+
+```bash
+cd tooling/tree-sitter-omni
+tree-sitter test --rebuild
+```
+
+## Query Checks
+
+```bash
+cd tooling/tree-sitter-omni
+tree-sitter query --captures queries/highlights.scm test/queries/highlights/canonical_forms.omni
+tree-sitter query --captures queries/textobjects.scm test/queries/structural_forms.omni
+tree-sitter query --captures queries/indents.scm test/queries/indents_forms.omni
+sh ./test/check_queries.sh
 ```
 
 ## Current Notes
@@ -51,8 +69,12 @@ tree-sitter parse examples/sample.omni
   nodes, so chained forms like `matrix.[i].[j]` stay grouped.
 - `let`/`define`/`lambda` semantics are recognized in queries, not hard-coded into
   the grammar.
+- Removed spellings such as `fn`, `begin`, `do`, `letrec`, `reset`, and `shift`
+  are parser-level migration diagnostics, not structural Tree-sitter parse
+  errors. Query checks therefore verify that those spellings do not receive
+  canonical highlight captures instead of pretending the grammar rejects them.
 - Textobject captures stay structural and grammar-backed: they target form
   shapes such as function shorthand, plain bindings, module/type declarations,
   block-style special forms, and generic call forms.
-- Folding is currently list-oriented on purpose, so editors can fold module,
-  declaration, and nested expression bodies without semantic analysis.
+- Folding and indentation are intentionally bracket-structural, so editors can
+  fold and indent nested Omni forms without special-form-specific parser logic.

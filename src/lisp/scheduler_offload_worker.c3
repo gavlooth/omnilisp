@@ -8,7 +8,23 @@ struct QueuedOffloadWork {
     QueuedOffloadWork* next_free;
 }
 
+usz scheduler_offload_queued_work_free_hits = 0;
+usz scheduler_offload_queued_work_alloc_fallbacks = 0;
+usz scheduler_offload_queued_work_recycle_retained = 0;
+usz scheduler_offload_queued_work_recycle_freed = 0;
+usz scheduler_offload_completion_alloc_fallbacks = 0;
+
+fn void scheduler_offload_reset_queued_work(QueuedOffloadWork* queued) @inline {
+    if (queued == null) return;
+    queued.work = {};
+    queued.task_generation = 0;
+    queued.completion = null;
+    queued.executed = false;
+    queued.next_free = null;
+}
+
 fn OffloadCompletion* scheduler_make_offload_alloc_failure_completion() {
+    scheduler_offload_completion_alloc_fallbacks++;
     OffloadCompletion* completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
     if (completion == null) return null;
     *completion = {};
@@ -26,14 +42,19 @@ fn QueuedOffloadWork* scheduler_offload_take_queued_work() {
         queued = (QueuedOffloadWork*)admission.queued_free_head;
         admission.queued_free_head = queued.next_free;
         if (admission.queued_free_count > 0) admission.queued_free_count--;
+        scheduler_offload_queued_work_free_hits++;
     }
     admission.mu.unlock();
 
     if (queued != null) {
-        *queued = {};
+        scheduler_offload_reset_queued_work(queued);
         return queued;
     }
-    return (QueuedOffloadWork*)mem::malloc(QueuedOffloadWork.sizeof);
+    scheduler_offload_queued_work_alloc_fallbacks++;
+    queued = (QueuedOffloadWork*)mem::malloc(QueuedOffloadWork.sizeof);
+    if (queued == null) return null;
+    scheduler_offload_reset_queued_work(queued);
+    return queued;
 }
 
 fn void scheduler_offload_recycle_queued_work(QueuedOffloadWork* queued) {
@@ -44,6 +65,8 @@ fn void scheduler_offload_recycle_queued_work(QueuedOffloadWork* queued) {
         mem::free(queued);
         return;
     }
+
+    scheduler_offload_reset_queued_work(queued);
 
     bool recycled = false;
     admission.mu.lock();
@@ -56,6 +79,11 @@ fn void scheduler_offload_recycle_queued_work(QueuedOffloadWork* queued) {
     admission.mu.unlock();
 
     if (!recycled) mem::free(queued);
+    if (recycled) {
+        scheduler_offload_queued_work_recycle_retained++;
+    } else {
+        scheduler_offload_queued_work_recycle_freed++;
+    }
 }
 
 fn void scheduler_offload_admission_release_slot() {
@@ -130,9 +158,6 @@ fn void scheduler_uv_offload_after_cb(void* req, int status) {
         }
     }
 
-    queued.work.shared = null;
-    queued.completion = null;
-    queued.next_free = null;
     scheduler_offload_recycle_queued_work(queued);
     omni_uv_work_req_free(req);
 }
@@ -161,7 +186,6 @@ fn bool scheduler_enqueue_offload(OffloadWork work) {
         omni_uv_work_req_free(req);
         return false;
     }
-    *queued = {};
     queued.work = work;
     queued.task_generation = 0;
 

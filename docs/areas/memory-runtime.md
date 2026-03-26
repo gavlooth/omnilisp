@@ -1,7 +1,7 @@
 # Memory and Runtime
 
 Status: `green` (boundary hardening, bounded runtime/JIT gates, and release-signal cleanup are all currently validated)  
-As of: 2026-03-19
+As of: 2026-03-26
 
 ## Canonical Sources
 
@@ -42,13 +42,18 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `docs/BOUNDARY_ARCHITECTURE_AUDIT_2026-03-10.md` defines boundary invariants contract and residual risk list.
 - Memory/ownership test policy is split into explicit lanes:
   - `memory-lifetime` remains a compatibility alias for `memory-lifetime-smoke`.
-  - `memory-lifetime-smoke` owns boundary/scoping/coroutine ownership correctness.
-  - `memory-lifetime-policy` owns boundary-policy parser/config contracts.
-  - `memory-lifetime-bench` owns boundary allocation/perf coverage.
+  - `memory-lifetime-smoke` owns boundary/scoping/coroutine ownership correctness and is the minimum container lane for boundary/lifetime changes.
+  - `memory-lifetime-policy` owns boundary-policy parser/config contracts; it is not a generic syntax/compiler lane.
+  - `memory-lifetime-bench` owns boundary allocation/perf coverage when the touched change is boundary/lifetime allocation-sensitive.
   - `memory-lifetime-soak` owns explicit heavy saturation/stress ownership probes.
   - `memory-stress` owns the global stress profile.
-  - `allocator-validation` owns AST allocator correctness (non-benchmark).
-  - `allocator-bench` owns AST throughput/benchmark-only coverage.
+  - `allocator-validation` owns AST allocator correctness (non-benchmark) and is separate from boundary/lifetime ownership coverage.
+  - `allocator-bench` owns AST throughput/benchmark-only coverage and is only implied by allocator benchmark-sensitive work.
+- Contributor/container guidance is explicit by ownership family:
+  - boundary/lifetime lanes (`memory-lifetime*`, `memory-stress`) require `scripts/run_validation_container.sh`.
+  - allocator lanes (`allocator-validation`, `allocator-bench`) are separate from boundary/lifetime lanes and should be chosen only when allocator behavior or benchmarks changed.
+  - syntax/compiler-only changes should stay on their own non-memory lanes and do not implicitly require memory-ownership coverage.
+  - do not route syntax/compiler-only work through a memory lane by default; pick the lane that matches the touched semantics.
 - Parser/AST benchmark instrumentation is available under `OMNI_AST_ARENA_BENCH=1`, with dedicated parser and compiler smoke summaries (`ast_parser_smoke`, `ast_compiler_smoke`) for AST allocator shape validation.
 - Boundary graph traversal/copy-fallback routing is no longer a production return-path mechanism for eval/JIT finalize flows:
   - boundary commit paths now return explicit hard outcomes for disallowed fallback classes,
@@ -94,6 +99,7 @@ Repro artifacts:
 4. Use `scripts/check_scheduler_state_guards.sh` and `scripts/check_jit_env_scope_guards.sh` as the narrow release-signal reruns before escalating to broader runtime slices.
 5. Treat any new bounded `advanced`, `basic`, or `memory-lifetime-smoke` regression as a fresh blocker instead of reopening stale historical notes here.
 6. Keep runtime modularization queue updates in sync with `docs/plans/runtime-modularization-split-2026-03-11.md` and `memory/CHANGELOG.md` when deduce/runtime test splits land.
+7. Keep contributor guidance aligned with lane ownership: boundary/lifetime lanes stay container-bound, allocator lanes stay separate, and syntax/compiler-only work should not inherit memory lanes by convenience.
 
 ## Concurrency Boundary Plan Alignment
 

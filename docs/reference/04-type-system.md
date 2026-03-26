@@ -66,7 +66,6 @@ None              ;; nullary variant
 
 ```lisp
 (Integer 3.9)        ;; => 3
-(Int 3.9)            ;; => 3 (alias of Integer)
 (Double 3)           ;; => 3.0
 (String 3)           ;; => "3"
 (Symbol "name")      ;; => 'name
@@ -86,8 +85,8 @@ None              ;; nullary variant
 User-defined types and selected builtin/runtime types therefore share the same
 “type symbol in type position, constructor/coercion in value position” surface.
 Canonical names favor descriptiveness over terseness: `Integer`, `Boolean`, and
-`Dictionary` are the primary spellings, while `Int`, `Bool`, and `Dict` remain
-accepted compatibility aliases.
+`Dictionary` are the primary spellings, while `Dict` remains the only
+accepted compatibility shorthand alias.
 
 Alias policy is input-tolerant but output-canonical:
 - aliases are accepted at constructor/type-annotation input sites,
@@ -166,7 +165,7 @@ type-descriptor print shape is `#<type Name>` (not `#<Name>`); for example
 structurally as `{'a 1}` or `(Set 1 2 3)`. Non-constructor primitives keep
 primitive rendering (`#<primitive +>`).
 Constructor aliases normalize to canonical introspection identities (for
-example `(type-of (Int 3.9)) => Integer`, `(format "%s" Dict) => #<type Dictionary>`).
+example `(type-of (Integer 3.9)) => Integer`, `(format "%s" Dict) => #<type Dictionary>`).
 
 ---
 
